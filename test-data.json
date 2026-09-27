@@ -1,0 +1,360 @@
+{
+  "version": 2,
+  "app": "character-manager",
+  "exportedAt": "2026-09-24T12:00:00.000Z",
+  "scope": "all",
+  "parties": [
+    {
+      "name": "Alpha Strike",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "name": "Beta Squad",
+      "createdAt": "2026-09-01T10:05:00.000Z",
+      "updatedAt": "2026-09-01T10:05:00.000Z"
+    }
+  ],
+  "characters": [
+    {
+      "id": "char-uuid-001",
+      "nick": "DragonSlayer#1",
+      "class": "Воин",
+      "party": "Alpha Strike",
+      "level": 105,
+      "sky": {
+        "name": "Небо предела",
+        "level": 10
+      },
+      "contacts": {
+        "email": "dragon@example.com",
+        "password": "SuperSecretPass1!",
+        "recoveryEmail": "recover_dragon@example.com",
+        "phone": "+79990000001"
+      },
+      "dungeonPasses": {
+        "weapon": 5,
+        "armor": 2,
+        "relic": 1
+      },
+      "ancientCoins": 5000,
+      "coinHistory": [
+        {
+          "id": "coin-hist-001",
+          "delta": 5000,
+          "note": "Стартовый капитал",
+          "source": "manual",
+          "marathonId": null,
+          "taskId": null,
+          "stageId": null,
+          "createdAt": "2026-09-01T10:00:00.000Z"
+        }
+      ],
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-24T10:00:00.000Z"
+    },
+    {
+      "id": "char-uuid-002",
+      "nick": "Mystic_Owl_99",
+      "class": "Мистик",
+      "party": "Alpha Strike",
+      "level": 87,
+      "sky": {
+        "name": "Небо ясности",
+        "level": 7
+      },
+      "contacts": {
+        "email": "owl@example.com",
+        "password": "OwlPassword22",
+        "recoveryEmail": "",
+        "phone": ""
+      },
+      "dungeonPasses": {
+        "weapon": 0,
+        "armor": 3,
+        "relic": 10
+      },
+      "ancientCoins": 1200,
+      "coinHistory": [
+        {
+          "id": "coin-hist-002",
+          "delta": 1200,
+          "note": "Накопления за месяц",
+          "source": "manual",
+          "marathonId": null,
+          "taskId": null,
+          "stageId": null,
+          "createdAt": "2026-09-15T14:00:00.000Z"
+        }
+      ],
+      "createdAt": "2026-09-01T10:05:00.000Z",
+      "updatedAt": "2026-09-24T10:05:00.000Z"
+    },
+    {
+      "id": "char-uuid-003",
+      "nick": "ShadowBlade-X",
+      "class": "Убийца",
+      "party": "Beta Squad",
+      "level": 64,
+      "sky": {
+        "name": null,
+        "level": null
+      },
+      "contacts": {
+        "email": "shadow@example.com",
+        "password": "StealthMode",
+        "recoveryEmail": "backup_shadow@example.com",
+        "phone": "+79990000003"
+      },
+      "dungeonPasses": {
+        "weapon": 12,
+        "armor": 0,
+        "relic": 2
+      },
+      "ancientCoins": 350,
+      "coinHistory": [],
+      "createdAt": "2026-09-02T09:00:00.000Z",
+      "updatedAt": "2026-09-24T09:00:00.000Z"
+    },
+    {
+      "id": "char-uuid-004",
+      "nick": "HealBot_v2",
+      "class": "Жрец",
+      "party": null,
+      "level": 45,
+      "sky": {
+        "name": "Совершенное небо",
+        "level": 3
+      },
+      "contacts": {
+        "email": "",
+        "password": "",
+        "recoveryEmail": "",
+        "phone": ""
+      },
+      "dungeonPasses": {
+        "weapon": 0,
+        "armor": 5,
+        "relic": 0
+      },
+      "ancientCoins": 100,
+      "coinHistory": [
+        {
+          "id": "coin-hist-004",
+          "delta": -20,
+          "note": "Покупка зелья",
+          "source": "manual",
+          "marathonId": null,
+          "taskId": null,
+          "stageId": null,
+          "createdAt": "2026-09-20T11:00:00.000Z"
+        },
+        {
+          "id": "coin-hist-004b",
+          "delta": 120,
+          "note": "Ежедневная награда",
+          "source": "manual",
+          "marathonId": null,
+          "taskId": null,
+          "stageId": null,
+          "createdAt": "2026-09-21T11:00:00.000Z"
+        }
+      ],
+      "createdAt": "2026-09-03T12:00:00.000Z",
+      "updatedAt": "2026-09-24T12:00:00.000Z"
+    },
+    {
+      "id": "char-uuid-005",
+      "nick": "Ghost_Walker#",
+      "class": "Призрак",
+      "party": "Beta Squad",
+      "level": 92,
+      "sky": {
+        "name": "Призрачное небо",
+        "level": 9
+      },
+      "contacts": {
+        "email": "ghost@example.com",
+        "password": "Boo!",
+        "recoveryEmail": "",
+        "phone": "+79990000005"
+      },
+      "dungeonPasses": {
+        "weapon": 1,
+        "armor": 1,
+        "relic": 1
+      },
+      "ancientCoins": 800,
+      "coinHistory": [],
+      "createdAt": "2026-09-04T15:00:00.000Z",
+      "updatedAt": "2026-09-24T15:00:00.000Z"
+    }
+  ],
+  "marathons": [
+    {
+      "id": "marathon-uuid-001",
+      "title": "Осенний Вызов 2026",
+      "description": "Ежемесячный марафон активности",
+      "startDate": "2026-09-01",
+      "endDate": "2026-09-30",
+      "status": "active",
+      
+      "participantIds": [
+        "char-uuid-001",
+        "char-uuid-002",
+        "char-uuid-003"
+      ],
+      
+      "tasks": [
+        {
+          "id": "task-uuid-001",
+          "title": "Убить 50 монстров",
+          "description": "Ежедневная зачистка локации",
+          "targetChecks": 20,
+          "spareDays": 5,
+          "schedule": {
+            "mode": "everyDay",
+            "dates": []
+          },
+          "stages": [
+            {
+              "id": "stage-uuid-001a",
+              "threshold": 10,
+              "rewardText": "Малый сундук",
+              "rewardCoins": 50
+            },
+            {
+              "id": "stage-uuid-001b",
+              "threshold": 20,
+              "rewardText": "Большой сундук",
+              "rewardCoins": 100
+            }
+          ]
+        },
+        {
+          "id": "task-uuid-002",
+          "title": "Пройти Данж Величия",
+          "description": "Прохождение специального данжа",
+          "targetChecks": 10,
+          "spareDays": 2,
+          "schedule": {
+            "mode": "dates",
+            "dates": [
+              "2026-09-05",
+              "2026-09-10",
+              "2026-09-15",
+              "2026-09-20",
+              "2026-09-25"
+            ]
+          },
+          "stages": [
+            {
+              "id": "stage-uuid-002a",
+              "threshold": 5,
+              "rewardText": "Награда за половину пути",
+              "rewardCoins": 200
+            },
+            {
+              "id": "stage-uuid-002b",
+              "threshold": 10,
+              "rewardText": "Финальная награда",
+              "rewardCoins": 500
+            }
+          ]
+        }
+      ],
+      
+      "comboRewards": [
+        {
+          "id": "combo-uuid-001",
+          "title": "Мастер Осени",
+          "rewardText": "Титул + 1000 монет",
+          "rewardCoins": 1000,
+          "condition": {
+            "type": "allStagesInTasks",
+            "minTasks": 2
+          }
+        }
+      ],
+      
+      "records": [
+        {
+          "id": "rec-001",
+          "characterId": "char-uuid-001",
+          "taskId": "task-uuid-001",
+          "date": "2026-09-01",
+          "completed": true,
+          "note": "",
+          "updatedAt": "2026-09-01T20:00:00.000Z"
+        },
+        {
+          "id": "rec-002",
+          "characterId": "char-uuid-001",
+          "taskId": "task-uuid-001",
+          "date": "2026-09-02",
+          "completed": true,
+          "note": "",
+          "updatedAt": "2026-09-02T20:00:00.000Z"
+        },
+        {
+          "id": "rec-003",
+          "characterId": "char-uuid-002",
+          "taskId": "task-uuid-001",
+          "date": "2026-09-01",
+          "completed": false,
+          "note": "Пропустил день",
+          "updatedAt": "2026-09-01T20:00:00.000Z"
+        }
+      ],
+      
+      "awards": [],
+      
+      "createdAt": "2026-08-25T10:00:00.000Z",
+      "updatedAt": "2026-09-24T10:00:00.000Z",
+      "completedAt": null
+    }
+  ],
+  "settings": {
+    "privacy": {
+      "maskEmailByDefault": true,
+      "maskPasswordByDefault": true,
+      "maskRecoveryEmailByDefault": true,
+      "maskPhoneByDefault": true
+    },
+    "autosave": {
+      "enabled": true,
+      "debounceMs": 800
+    },
+    "backups": {
+      "enabled": true,
+      "maxCount": 10,
+      "createBeforeImport": true,
+      "createBeforeMarathonCompletion": true
+    },
+    "google": {
+      "clientId": "",
+      "driveEnabled": false,
+      "driveAutoBackup": false,
+      "driveLastSavedAt": null,
+      "sheetsEnabled": false,
+      "sheetsSpreadsheetId": "",
+      "sheetsFields": {
+        "nick": true,
+        "class": true,
+        "party": true,
+        "level": true,
+        "skyName": true,
+        "skyLevel": true,
+        "email": false,
+        "password": false,
+        "recoveryEmail": false,
+        "phone": false,
+        "ancientCoins": true,
+        "dungeonPasses": true
+      }
+    },
+    "ui": {
+      "theme": "dark"
+    }
+  }
+}

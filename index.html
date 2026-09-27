@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <link rel="icon" href="data:,">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Твиноферма</title>
+
+  <link rel="stylesheet" href="/css/variables.css" />
+  <link rel="stylesheet" href="/css/base.css" />
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/dashboard.css" />
+  <link rel="stylesheet" href="/css/components.css" />
+  <link rel="stylesheet" href="/css/cards.css" />
+  <link rel="stylesheet" href="/css/modal.css" />
+  <link rel="stylesheet" href="/css/marathon.css" />
+</head>
+<body>
+  <div class="app-shell">
+    
+    <!-- Шапка приложения -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">ТФ</div>
+        <div>
+          <h1>Твиноферма</h1>
+          <p class="muted">Учёт персонажей, пати и марафонов</p>
+        </div>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="characters">Персонажи</button>
+        <button class="tab" data-tab="parties">Пати</button>
+        <button class="tab" data-tab="marathons">Марафоны</button>
+        <!-- Вкладка Данные удалена -->
+        <button class="tab" data-tab="settings">Настройки</button>
+      </nav>
+    </header>
+
+    <!-- Основной контент -->
+    <main class="content">
+      
+      <!-- РАЗДЕЛ: ПЕРСОНАЖИ -->
+      <section class="page active" data-section="characters">
+        <div class="toolbar">
+          <div class="filters">
+            <input id="search-input" class="input" type="search" placeholder="Поиск по нику..." />
+            <select id="class-filter" class="select"><option value="">Все классы</option></select>
+            <select id="party-filter" class="select"><option value="">Все пати</option><option value="__none__">Без пати</option></select>
+          </div>
+          <div class="actions">
+            <button id="add-character-btn" class="btn primary">+ Персонаж</button>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card"><span class="kpi-label">Всего персонажей</span><strong id="kpi-characters">0</strong></div>
+          <div class="kpi-card"><span class="kpi-label">Сумма древних монет</span><strong id="kpi-coins">0</strong></div>
+          <div class="kpi-card"><span class="kpi-label">Активных пати</span><strong id="kpi-parties">0</strong></div>
+          <div class="kpi-card"><span class="kpi-label">Без пати</span><strong id="kpi-no-party">0</strong></div>
+        </div>
+
+        <div id="character-grid" class="card-grid"></div>
+      </section>
+
+      <!-- РАЗДЕЛ: ПАТИ -->
+      <section class="page" data-section="parties">
+        <div class="toolbar">
+          <h2>Управление пати</h2>
+          <button id="add-party-btn" class="btn primary">+ Новая пати</button>
+        </div>
+        <div id="party-list" class="list"></div>
+      </section>
+
+      <!-- РАЗДЕЛ: МАРАФОНЫ -->
+      <section class="page" data-section="marathons">
+        <div class="toolbar">
+          <h2>Марафоны и события</h2>
+          <button id="add-marathon-btn" class="btn primary">+ Новый марафон</button>
+        </div>
+        <div id="marathon-list" class="list">
+           <div class="empty-state">Марафонов пока нет.</div>
+        </div>
+      </section>
+
+      <!-- РАЗДЕЛ: НАСТРОЙКИ (Объединенный) -->
+      <section class="page" data-section="settings">
+        <div class="toolbar">
+          <h2>Настройки и Данные</h2>
+        </div>
+
+        <!-- Информационный блок -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>Информация о системе</h3>
+          <div class="setting-row">
+            <div>
+              <strong>Режим работы</strong>
+              <p class="muted" id="storage-runtime">Загрузка...</p>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>Папка хранения данных</strong>
+              <p class="muted" id="data-dir">Загрузка...</p>
+            </div>
+            <button class="btn ghost small" id="copy-data-dir-btn">📋 Скопировать путь</button>
+          </div>
+        </div>
+
+        <!-- Резервные копии -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>Резервные копии</h3>
+          <div class="row gap" style="margin-bottom: 12px;">
+            <button id="save-now-btn" class="btn">💾 Сохранить сейчас</button>
+            <button id="create-backup-btn" class="btn">☁️ Создать бэкап</button>
+            <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
+          </div>
+          <div id="backup-list" class="list compact"></div>
+        </div>
+
+        <!-- Импорт / Экспорт -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>Перенос данных</h3>
+          <div class="row gap" style="margin-bottom: 12px;">
+            <button id="export-all-btn" class="btn">📤 Экспорт всех данных (JSON)</button>
+            <!-- Внутри блока настроек, рядом с export-all-btn -->
+            <button id="advanced-export-btn" class="btn primary">
+              📤 Гибкий экспорт (Выбор полей)
+            </button>
+            <label class="btn ghost" style="cursor: pointer;">
+              📥 Импорт JSON
+              <input id="import-file" type="file" accept="application/json,.json" hidden />
+            </label>
+          </div>
+          <p class="muted">
+            • Экспорт сохраняет полное состояние.<br/>
+            • При импорте отдельного персонажа история монет не переносится.<br/>
+            • Режимы: Заменить всё, Добавить новое, Слить (LWW).
+          </p>
+        </div>
+
+        <!-- Опасные действия -->
+        <div class="panel" style="border-color: rgba(247, 118, 142, 0.3);">
+          <h3 style="color: var(--danger);">Опасные действия</h3>
+          <div class="row gap">
+             <button id="clear-all-characters-btn" class="btn danger" title="Удалить ВСЕХ персонажей">
+              🗑 Очистить всех персонажей
+            </button>
+            <span class="muted">(Действие необратимо!)</span>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

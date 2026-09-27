@@ -1,0 +1,18 @@
+:root {
+  --bg: #0f1115;
+  --panel: #151923;
+  --panel-2: #1b2130;
+  --border: #252c3b;
+  --text: #e6e8ef;
+  --muted: #8b93a7;
+
+  --accent: #7aa2f7;
+  --accent-2: #bb9af7;
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}

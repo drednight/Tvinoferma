@@ -1,0 +1,313 @@
+/* css/cards.css */
+
+.character-card {
+  /* КРИТИЧНО: Запретить разрыв карточки между колонками */
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  
+  /* Отступ снизу, так как gap в columns работает только горизонтально */
+  margin-bottom: 16px; 
+  
+  /* Ширина 100%, чтобы занять всю доступную ширину колонки */
+  width: 100%;
+  
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  
+  /* Flexbox для внутреннего содержимого */
+  display: flex;
+  flex-direction: column;
+}
+
+/* КОМПАКТНАЯ ЧАСТЬ: ФИКСИРОВАННАЯ ВЫСОТА */
+.card-compact {
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  
+  /* ЖЕСТКАЯ ВЫСОТА ДЛЯ СТАБИЛЬНОСТИ СЕТКИ 
+     Подбери значение, которое устраивает всех персонажей.
+     280px обычно хватает для: Иконка+Пати, Ник, LVL, Небо, Email, Пароль, Проходки. */
+  height: 300px; 
+  
+  /* Переполнение скрыто, чтобы длинный текст не ломал макет */
+  overflow: hidden;
+}
+
+/* При раскрытии убираем фиксированную высоту, позволяя расти */
+.character-card.expanded .card-compact {
+  height: auto;
+  overflow: visible;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-shrink: 0; /* Шапка не должна сжиматься */
+}
+
+.class-icon-container {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1a1f2e;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  display: grid;
+  place-items: center;
+}
+
+.class-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+.class-icon-fallback {
+  font-weight: 800;
+  color: var(--accent);
+  font-size: 1.4rem;
+}
+
+.badge-group {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.card-title {
+  min-width: 0;
+  flex-grow: 1; /* Занимает все свободное место между шапкой и контактами */
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Центрирует текст по вертикали в этом блоке */
+}
+
+.card-title h3 {
+  font-size: 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.card-meta {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.muted-text {
+  color: var(--muted);
+}
+
+.contact-lines {
+  display: grid;
+  gap: 8px;
+  margin-top: auto; /* Прижимает контакты к нижней части фиксированной зоны перед проходками */
+}
+
+.contact-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+}
+
+.contact-label {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.contact-value-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-grow: 1;
+  justify-content: flex-end;
+}
+
+.contact-value {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  word-break: break-all;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contact-value:hover {
+  border-bottom-color: var(--accent);
+}
+
+.contact-value.empty {
+  color: var(--muted);
+  cursor: default;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.passes-container {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  flex-shrink: 0; /* Проходки всегда видны внизу, не сжимаются */
+}
+
+.pass-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pass-icon-img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
+  display: block;
+  margin: 0;
+  padding: 0;
+}
+
+.pass-icon-fallback {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* РАСКРЫТАЯ ЧАСТЬ */
+.card-expanded {
+  border-top: 1px solid var(--border);
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.015);
+  display: grid;
+  gap: 16px;
+  animation: slideDown 0.2s ease-out forwards;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.expanded-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.info-block {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.info-block h4 {
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.coin-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.history-item {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.history-item .delta.positive {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.history-item .delta.negative {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.actions-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.party-item,
+.backup-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.party-item .meta,
+.backup-item .meta {
+  display: grid;
+  gap: 4px;
+}

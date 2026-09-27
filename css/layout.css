@@ -1,0 +1,158 @@
+/* css/layout.css */
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.topbar {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #121722, #0f1115);
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #0b0d12;
+  font-weight: 800;
+}
+
+.brand h1 {
+  font-size: 1.2rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tab.active {
+  border-color: var(--accent);
+  background: rgba(122, 162, 247, 0.12);
+}
+
+.content {
+  padding: 24px;
+}
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ --- */
+.card-grid {
+  display: grid;
+  
+  /* Адаптивная сетка: 
+     auto-fit позволяет элементам растягиваться на всю ширину.
+     minmax(280px, 1fr) гарантирует минимум 280px на колонку, 
+     но если места больше — колонки расширятся. 
+     Это решает проблему пустот справа и наложения. */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  
+  gap: 16px;
+  
+  /* Выравниваем по началу, чтобы короткие карточки не тянули соседей вверх */
+  align-items: start; 
+  
+  width: 100%;
+}
+
+/* Ограничение макс. 5 колонок на очень широких экранах (>1920px) */
+@media (min-width: 1920px) {
+  .card-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.list.compact {
+  margin-top: 14px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+
+.row.gap {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
