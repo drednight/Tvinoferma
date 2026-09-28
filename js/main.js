@@ -1,19 +1,23 @@
 // js/main.js
 
 import { state } from './state.js';
-import { loadData, persist } from './storage.js'; // Или loadState/saveNow, в зависимости от твоей реализации storage
+import { loadData, persist } from './storage.js'; 
 import { normalizeState } from './state.js';
 import { bindCharacters, renderCharacters } from './characters.js';
 import { bindParties, renderParties } from './parties.js';
 import { bindMarathons, renderMarathons } from './marathon.js';
 import { bindSettings, renderSettings } from './settings.js';
 import { toast } from './ui.js';
+import { initSyncListeners, refreshAllBalances } from './syncManager.js'; // Импортируем функции синхронизации
 
+/**
+ * Главная точка входа приложения
+ */
 async function boot() {
   try {
-    console.log('[BOOT] Starting application...');
+    console.log('[BOOT] Starting Twinoferma...');
     
-    // 1. Загрузка данных
+    // 1. Загрузка данных из хранилища
     const raw = await loadData(); 
     if (raw) {
       Object.assign(state, normalizeState(raw));
@@ -22,14 +26,25 @@ async function boot() {
       console.log('[BOOT] No saved data found. Using defaults.');
     }
 
-    // 2. Инициализация модулей с изоляцией ошибок
-    // Даже если Марафоны упадут, Персонажи и Настройки должны работать
+    // 2. Инициализация слушателей синхронизации PW Online
+    // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
+    try {
+        await initSyncListeners();
+        console.log('[BOOT] Sync listeners initialized.');
+    } catch (e) {
+        console.error('[BOOT ERROR] Failed to initialize sync listeners:', e);
+        toast('Модуль синхронизации недоступен', 'warning');
+    }
+
+    // 3. Инициализация модулей с изоляцией ошибок
+    // Даже если один модуль упадет, остальные должны работать
     
     try {
       bindCharacters();
       console.log('[BOOT] Characters bound.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Characters:', e);
+      toast('Ошибка загрузки персонажей', 'error');
     }
 
     try {
@@ -40,13 +55,12 @@ async function boot() {
     }
 
     try {
-      bindMarathons(); // Эта функция вызывает renderMarathons() внутри себя
+      bindMarathons(); 
       console.log('[BOOT] Marathons bound & rendered.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind/render Marathons:', e);
-      // Можно показать заглушку в контейнере марафонов
       const marList = document.getElementById('marathon-list');
-      if(marList) marList.innerHTML = '<div class="empty-state" style="color:red;">Ошибка загрузки модуля Марафонов.</div>';
+      if(marList) marList.innerHTML = '<div class="empty-state" style="color:red;">Ошибка загрузки марафонов.</div>';
     }
 
     try {
@@ -56,17 +70,21 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind Settings:', e);
     }
 
-    // 3. Привязка навигации по вкладкам (Должна быть последней, чтобы точно отработала)
+    // 4. Привязка глобальных контролов (кнопки вне карточек)
+    bindGlobalControls();
+
+    // 5. Привязка навигации по вкладкам
     bindNavigation();
     console.log('[BOOT] Navigation bound.');
 
-    // 4. Первый рендер активной вкладки (по умолчанию Персонажи)
-    // Используем безопасную обертку из твоего кода
+    // 6. Первый рендер активной вкладки (по умолчанию Персонажи)
     renderActiveTab('characters');
+
+    console.log('[BOOT] Application ready.');
 
   } catch (error) {
     console.error('[BOOT CRITICAL ERROR]', error);
-    alert(`Критическая ошибка запуска приложения: ${error.message}\nПроверьте консоль разработчика.`);
+    alert(`Критическая ошибка запуска: ${error.message}`);
   }
 }
 
@@ -121,19 +139,51 @@ function renderActiveTab(sectionName) {
     console.error(`[RENDER ERROR in ${sectionName}]`, err);
     toast(`Ошибка отображения раздела "${sectionName}". Подробности в консоли.`, 'error');
     
-    // Попытка восстановить UI: показываем пустой контейнер или сообщение об ошибке
+    // Попытка восстановить UI
     const container = document.querySelector(`.page[data-section="${sectionName}"]`);
     if (container) {
-       // Не трогаем toolbar, только контент ниже
        const contentArea = container.querySelector('#character-grid') || 
                            container.querySelector('#party-list') || 
                            container.querySelector('#marathon-list') ||
-                           container.querySelector('.settings-grid'); // Для настроек
+                           container.querySelector('.settings-grid'); 
       
       if(contentArea) {
          contentArea.innerHTML = `<div class="empty-state" style="color: var(--danger);">Не удалось загрузить данные. Ошибка: ${escapeHtmlSimple(err.message)}</div>`;
       }
     }
+  }
+}
+
+/**
+ * Привязка событий к глобальным кнопкам интерфейса
+ */
+function bindGlobalControls() {
+  
+  // Кнопка "Обновить все балансы" (должна быть в HTML с id="btn-refresh-all-balances")
+  const btnRefreshAll = document.getElementById('btn-refresh-all-balances');
+  if (btnRefreshAll) {
+    btnRefreshAll.addEventListener('click', async () => {
+      const charsWithAccounts = state.characters.filter(c => c.contacts?.email);
+      
+      if (charsWithAccounts.length === 0) {
+        toast('Нет персонажей с введенными контактами.', 'warning');
+        return;
+      }
+
+      btnRefreshAll.disabled = true;
+      const originalText = btnRefreshAll.textContent;
+      btnRefreshAll.textContent = '⏳ Проверка...';
+
+      try {
+        await refreshAllBalances();
+      } catch (err) {
+        console.error(err);
+        toast('Ошибка при массовом обновлении', 'error');
+      } finally {
+        btnRefreshAll.disabled = false;
+        btnRefreshAll.textContent = originalText;
+      }
+    });
   }
 }
 
@@ -147,4 +197,5 @@ function escapeHtmlSimple(str) {
     .replace(/'/g, "&#039;");
 }
 
+// Запуск приложения после полной загрузки DOM
 document.addEventListener('DOMContentLoaded', boot);

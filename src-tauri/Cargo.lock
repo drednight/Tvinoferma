@@ -3788,6 +3788,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-fs",
  "tauri-plugin-shell",
+ "tauri-utils",
 ]
 
 [[package]]

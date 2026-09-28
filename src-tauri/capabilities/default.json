@@ -5,14 +5,17 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "fs:allow-mkdir",
     "fs:allow-exists",
-    
     "shell:default",
-    "shell:allow-open"
+    "shell:allow-open",
+    "core:window:allow-create",
+    "core:webview:allow-create-webview-window",
+    "core:webview:default", 
+    "core:event:allow-emit",
+    "core:event:allow-listen"
   ]
 }

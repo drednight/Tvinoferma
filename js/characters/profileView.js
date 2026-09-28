@@ -1,10 +1,13 @@
 // js/characters/profileView.js
 
+import { state } from '../state.js';
+import { persist } from '../storage.js';
 import { escapeHtml } from '../utils.js';
 import { showModal, toast, confirmDialog, closeModal } from '../ui.js';
 import { getClassIconSrc } from '../constants.js';
-// ПРЯМОЙ ИМПОРТ ФОРМЫ РЕДАКТИРОВАНИЯ
 import { openCharacterForm } from './formEditor.js'; 
+// Импортируем именно ту функцию, которая есть в syncManager.js
+import { openSyncHelper } from '../syncManager.js'; 
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -27,6 +30,21 @@ export function openCharacterProfile(char) {
     <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.05);">
       <span class="muted">${label}</span>
       <strong>${val || '-'}</strong>
+    </div>
+  `;
+
+  // Блок синхронизации
+  const syncBlock = `
+    <div class="info-block" style="margin-top:20px; border:1px solid var(--accent); background:rgba(122, 162, 247, 0.05); padding:15px; border-radius:8px;">
+      <h4 style="color:var(--accent); margin-bottom:10px;">🌐 Синхронизация данных PW Online</h4>
+      <p class="muted" style="font-size:0.85rem; margin-bottom:10px;">
+        Автоматический вход невозможен из-за защиты VK Play.<br/>
+        Используйте помощника ниже для быстрого копирования данных и ручного обновления баланса.
+      </p>
+      
+      <button id="btn-open-sync-helper" class="btn primary" style="width:100%;">
+        🔑 Открыть помощник синхронизации
+      </button>
     </div>
   `;
 
@@ -164,6 +182,10 @@ export function openCharacterProfile(char) {
             </ul>
           ` : '<p class="muted">История пуста.</p>'}
         </div>
+        
+        <!-- НОВЫЙ БЛОК СИНХРОНИЗАЦИИ -->
+        ${syncBlock}
+
       </div>
       
       <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С КНОПКАМИ -->
@@ -178,8 +200,8 @@ export function openCharacterProfile(char) {
   showModal({
     title: `Профиль: ${char.nick}`,
     content,
-    submitText: null, // Нет стандартного сабмита
-    cancelText: null, // Нет стандартной отмены
+    submitText: null,
+    cancelText: null,
     onSubmit: () => true,
     onClose: () => {}
   });
@@ -238,10 +260,7 @@ export function openCharacterProfile(char) {
     const editBtn = document.getElementById('btn-edit-from-profile');
     if(editBtn) {
       editBtn.onclick = () => {
-        // 1. Закрываем текущее окно
         closeModal();
-        
-        // 2. Сразу открываем форму редактирования (без задержек и динамических импортов)
         openCharacterForm(char);
       };
     }
@@ -263,6 +282,14 @@ export function openCharacterProfile(char) {
              });
            });
         }
+      };
+    }
+
+    // NEW: Sync Helper Button
+    const syncBtn = document.getElementById('btn-open-sync-helper');
+    if(syncBtn) {
+      syncBtn.onclick = () => {
+        openSyncHelper(char.id); // <-- Новое имя
       };
     }
 
