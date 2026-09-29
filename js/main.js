@@ -8,7 +8,10 @@ import { bindParties, renderParties } from './parties/index.js';
 import { bindMarathons, renderMarathons } from './marathon.js';
 import { bindSettings, renderSettings } from './settings.js';
 import { toast } from './ui.js';
-import { initSyncListeners } from './syncManager.js'; // Импорт только инициализации
+import { initSyncListeners } from './syncManager.js'; 
+
+// === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
+import { initUiActions, updateFabVisibility } from './uiActions.js'; 
 
 /**
  * Главная точка входа приложения
@@ -27,7 +30,6 @@ async function boot() {
     }
 
     // 2. Инициализация слушателей синхронизации PW Online
-    // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
     try {
         await initSyncListeners();
         console.log('[BOOT] Sync listeners initialized.');
@@ -39,7 +41,7 @@ async function boot() {
     // 3. Инициализация модулей с изоляцией ошибок
     
     try {
-      bindCharacters(); // Вызовет initFilters() -> renderCharacters() -> initSyncButtons()
+      bindCharacters(); 
       console.log('[BOOT] Characters bound.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Characters:', e);
@@ -73,8 +75,16 @@ async function boot() {
     bindNavigation();
     console.log('[BOOT] Navigation bound.');
 
-    // 5. Первый рендер активной вкладки (по умолчанию Персонажи)
-    // Хотя bindCharacters уже вызывает render, явный вызов гарантирует актуальность
+    // 5. Инициализация UI Actions (FAB, Меню скриптов)
+    // Важно: это должно быть ПОСЛЕ рендера основных элементов, чтобы найти их в DOM
+    try {
+        initUiActions();
+        console.log('[BOOT] UI Actions (FAB/Menus) initialized.');
+    } catch (e) {
+        console.error('[BOOT ERROR] Failed to init UI Actions:', e);
+    }
+
+    // 6. Первый рендер активной вкладки
     renderActiveTab('characters');
 
     console.log('[BOOT] Application ready.');
@@ -107,6 +117,9 @@ function bindNavigation() {
 
       // Вызываем рендер конкретной секции
       renderActiveTab(targetSection);
+      
+      // === ОБНОВЛЯЕМ СОСТОЯНИЕ FAB ПРИ СМЕНЕ ВКЛАДКИ ===
+      updateFabVisibility(targetSection);
     });
   });
 }

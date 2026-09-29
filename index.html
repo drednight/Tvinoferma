@@ -15,6 +15,9 @@
   <link rel="stylesheet" href="/css/cards.css" />
   <link rel="stylesheet" href="/css/modal.css" />
   <link rel="stylesheet" href="/css/marathon.css" />
+  
+  <!-- НОВЫЙ СТИЛЬ ДЛЯ FAB И МЕНЮ -->
+  <link rel="stylesheet" href="/css/fab.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -59,7 +62,6 @@
               <option value="__none__">Без пати</option>
             </select>
 
-            <!-- НОВЫЙ ФИЛЬТР АВТОРИЗАЦИИ -->
             <select id="auth-filter" class="select" title="Фильтр по статусу входа в PW Online">
               <option value="">Все статусы</option>
               <option value="online">🟢 Авторизован</option>
@@ -67,26 +69,35 @@
             </select>
           </div>
           
-          <!-- Правая часть: Действия -->
-          <div class="actions" style="display:flex; gap:10px; margin-left:auto;">
-            <button id="add-character-btn" class="btn primary">+ Персонаж</button>
+          <!-- Правая часть: Действия (Меню скриптов) -->
+          <div class="actions" style="display:flex; gap:10px; margin-left:auto; align-items:center;">
             
-            <!-- КНОПКА: Проверка авторизации (Быстро) -->
-            <button id="btn-check-auth-status" class="btn secondary" title="Проверить, кто залогинен в PW Online (фон)">
-              🔐 Проверить авторизацию
-            </button>
+            <!-- СТАРАЯ КНОПКА + ПЕРСОНАЖ УДАЛЕНА (теперь она плавающая) -->
+            <!-- <button id="add-character-btn" class="btn primary">+ Персонаж</button> -->
+            
+            <!-- НОВАЯ КНОПКА МЕНЮ СКРИПТОВ -->
+            <div class="action-menu-wrapper" style="position:relative;">
+                <button id="btn-scripts-menu" class="btn icon-only secondary" title="Запустить скрипты синхронизации">
+                    ⚡ Скрипты
+                </button>
+                
+                <!-- Выпадающее меню (скрыто по умолчанию) -->
+                <div id="scripts-dropdown" class="dropdown-menu" style="display:none;">
+                    <button class="dropdown-item" data-action="check-auth">
+                        🔐 Проверить авторизацию
+                    </button>
+                    <button class="dropdown-item" data-action="update-balance">
+                        💰 Обновить балансы
+                    </button>
+                </div>
+            </div>
 
-            <!-- КНОПКА: Обновление балансов (Для тех, кто онлайн) -->
-            <button id="btn-refresh-balances" class="btn success" title="Обновить баланс древних монет у активных аккаунтов">
-              💰 Обновить балансы
-            </button>
           </div>
         </div>
 
-        <!-- KPI Блок (НОВЫЙ ДИЗАЙН С ЦВЕТНЫМИ РАМКАМИ И ДИНАМИЧЕСКИМ РАСЧЕТОМ) -->
+        <!-- KPI Блок -->
         <div class="kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px; margin-bottom:20px;">
           
-          <!-- Группа 1: Общая статистика выборки -->
           <div class="kpi-card" style="border-left: 4px solid var(--accent); background: var(--panel); padding:15px; border-radius:8px;">
             <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Всего персонажей</span>
             <strong id="kpi-total-chars" style="font-size:1.5rem; display:block; color:var(--text-primary);">0</strong>
@@ -102,7 +113,6 @@
             <strong id="kpi-no-party" style="font-size:1.5rem; display:block; color:#565f89;">0</strong>
           </div>
 
-          <!-- Группа 2: Финансы и Статус -->
           <div class="kpi-card" style="border-left: 4px solid gold; background: var(--panel); padding:15px; border-radius:8px; grid-column: span 2;">
             <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Сумма древних монет (в выборке)</span>
             <strong id="kpi-coins" style="font-size:1.8rem; color:gold; display:block;">0</strong>
@@ -127,7 +137,6 @@
       <section class="page" data-section="parties">
         <div class="toolbar">
           <h2>Управление пати</h2>
-          <button id="add-party-btn" class="btn primary">+ Новая пати</button>
         </div>
         <div id="party-list" class="list"></div>
       </section>
@@ -143,13 +152,12 @@
         </div>
       </section>
 
-      <!-- РАЗДЕЛ: НАСТРОЙКИ (Объединенный) -->
+      <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
         <div class="toolbar">
           <h2>Настройки и Данные</h2>
         </div>
 
-        <!-- Информационный блок -->
         <div class="panel" style="margin-bottom: 16px;">
           <h3>Информация о системе</h3>
           <div class="setting-row">
@@ -167,7 +175,6 @@
           </div>
         </div>
 
-        <!-- Резервные копии -->
         <div class="panel" style="margin-bottom: 16px;">
           <h3>Резервные копии</h3>
           <div class="row gap" style="margin-bottom: 12px;">
@@ -178,7 +185,6 @@
           <div id="backup-list" class="list compact"></div>
         </div>
 
-        <!-- Импорт / Экспорт -->
         <div class="panel" style="margin-bottom: 16px;">
           <h3>Перенос данных</h3>
           <div class="row gap" style="margin-bottom: 12px;">
@@ -198,7 +204,6 @@
           </p>
         </div>
 
-        <!-- Опасные действия -->
         <div class="panel" style="border-color: rgba(247, 118, 142, 0.3);">
           <h3 style="color: var(--danger);">Опасные действия</h3>
           <div class="row gap">
@@ -218,6 +223,14 @@
   <div id="modal-root"></div>
   <div id="toast-root"></div>
 
+     <!-- === НОВЫЙ БЛОК: CONTEXTUAL FLOATING ACTION BUTTONS === -->
+  <div class="fab-container" id="global-fab-container">
+    <!-- Основная кнопка. Иконка меняется динамически -->
+    <button id="fab-main-btn" class="fab-main" title="Добавить">
+      <span class="fab-icon" id="fab-icon-display">+</span>
+    </button>
+  </div>
+  <!-- ====================================================== -->
   <!-- Главный скрипт -->
   <script type="module" src="/js/main.js"></script>
 </body>
