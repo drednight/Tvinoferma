@@ -39,8 +39,15 @@ export function openCharacterForm(char = null) {
     </div>
   `;
 
+  // Получаем текущий баланс и дату обновления для отображения подсказки
+  const currentCoins = currentChar.ancientCoins || 0;
+  const lastUpdateHint = currentChar.lastCoinUpdate 
+    ? `(Последняя синхр.: ${new Date(currentChar.lastCoinUpdate).toLocaleDateString()})` 
+    : '(Еще не синхронизировалось)';
+
   const content = `
     <div class="form-grid">
+      <!-- Базовая информация -->
       <div class="two-cols">
         <div class="field"><label>Никнейм *</label><input class="input" name="nick" value="${escapeHtml(currentChar.nick)}" required autofocus /></div>
         <div class="field">
@@ -56,6 +63,7 @@ export function openCharacterForm(char = null) {
         <div class="field"><label>Пати</label><select class="select" name="party">${nonePartyOption}${partyOptions}</select></div>
       </div>
 
+      <!-- Небо -->
       <div class="info-block" style="margin-top:16px;"><h4>Небо (Sky)</h4>
         <div class="two-cols">
           <div class="field">
@@ -75,6 +83,18 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- КОНТАКТЫ (ТЕПЕРЬ ЗДЕСЬ, ПЕРЕД СТАТАМИ) -->
+      <details style="margin-top:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
+        <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные (для входа)</summary>
+        <div class="form-grid" style="margin-top:12px;">
+          <div class="field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
+          <div class="field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
+          <div class="field"><label>Recovery Email</label><input class="input" type="email" name="contact-recovery" value="${escapeHtml(contacts.recoveryEmail)}" /></div>
+          <div class="field"><label>Телефон</label><input class="input" type="tel" name="contact-phone" value="${escapeHtml(contacts.phone)}" /></div>
+        </div>
+      </details>
+
+      <!-- Основные характеристики -->
       <div class="info-block" style="margin-top:16px;"><h4>Основные характеристики</h4>
         <div class="four-cols">
           ${statInput('endurance', 'Выносливость')}
@@ -84,6 +104,7 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- Бой и Защита -->
       <div class="info-block" style="margin-top:16px;"><h4>Бой и Защита</h4>
         <div class="four-cols">
           ${statInput('hp', 'Здоровье (текущее)')}
@@ -99,6 +120,7 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- Показатели боя -->
       <div class="info-block" style="margin-top:16px;"><h4>Показатели боя</h4>
         <div class="three-cols">
           ${statInput('critChance', 'Шанс крит. удара (%)')}
@@ -121,6 +143,7 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- PvE и Пробивание -->
       <div class="info-block" style="margin-top:16px;"><h4>PvE и Пробивание</h4>
         <div class="two-cols">
           ${statInput('pvePa', 'Урон по монстрам (PvE PA)')}
@@ -132,6 +155,7 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- Проходки в данжи -->
       <div class="info-block" style="margin-top:16px;"><h4>Проходки в данжи</h4>
         <div class="three-cols">
           <div class="field"><label>Оружие</label><input class="input" type="number" name="pass-weapon" value="${passes.weapon}" min="0" /></div>
@@ -140,19 +164,16 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
-      <details style="margin-top:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
-        <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контакты</summary>
-        <div class="form-grid" style="margin-top:12px;">
-          <div class="field"><label>Email</label><input class="input" type="email" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
-          <div class="field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
-          <div class="field"><label>Recovery Email</label><input class="input" type="email" name="contact-recovery" value="${escapeHtml(contacts.recoveryEmail)}" /></div>
-          <div class="field"><label>Телефон</label><input class="input" type="tel" name="contact-phone" value="${escapeHtml(contacts.phone)}" /></div>
-        </div>
-      </details>
-
+      <!-- БЛОК ДРЕВНИХ МОНЕТ (В САМОМ НИЗУ) -->
       <div class="info-block" style="margin-top:16px; background:rgba(255,215,0,0.05); padding:12px; border-radius:4px; border:1px solid rgba(255,215,0,0.2);">
-        <h4 style="color:gold;">💰 Древние монеты</h4>
-        <div class="field"><label>Текущий баланс</label><input class="input" type="number" name="coins" value="${currentChar.ancientCoins}" min="0" readonly style="background:transparent; border:none; font-weight:bold; font-size:1.2rem;" /></div>
+        <h4 style="color:gold; margin-top:0;">💰 Древние монеты</h4>
+        <div class="field">
+          <label>Текущий баланс (можно изменить вручную)</label>
+          <input class="input" type="number" name="coins" value="${currentCoins}" min="0" style="font-size:1.2rem; font-weight:bold; color:gold;" />
+          <small class="help-text" style="display:block; margin-top:4px; color:#888;">
+             ${lastUpdateHint}
+          </small>
+        </div>
       </div>
     </div>
   `;
@@ -177,6 +198,30 @@ export function openCharacterForm(char = null) {
           newStats[key] = val !== null && val !== undefined ? (parseInt(val, 10) || 0) : 0;
         });
 
+        // Парсим новый баланс монет
+        const rawCoins = formData.get('coins');
+        const newCoinsVal = parseInt(rawCoins, 10);
+        const finalCoins = isNaN(newCoinsVal) ? 0 : Math.max(0, newCoinsVal);
+
+        // Логика обработки изменения монет
+        let updatedLastCoinDate = currentChar.lastCoinUpdate;
+        let newHistoryEntry = null;
+        const oldCoins = currentChar.ancientCoins || 0;
+
+        // Если это редактирование И баланс изменился
+        if (isEdit && oldCoins !== finalCoins) {
+           updatedLastCoinDate = nowISO();
+           
+           // Создаем запись в истории
+           newHistoryEntry = {
+             id: crypto.randomUUID(),
+             date: updatedLastCoinDate,
+             delta: finalCoins - oldCoins,
+             note: 'Ручное изменение в редакторе',
+             balanceAfter: finalCoins
+           };
+        }
+
         const newCharData = {
           ...currentChar,
           nick: nick,
@@ -199,7 +244,16 @@ export function openCharacterForm(char = null) {
             relic: parseInt(formData.get('pass-relic'), 10) || 0
           },
           stats: newStats,
-          ancientCoins: Number(currentChar.ancientCoins),
+          
+          // ОБНОВЛЯЕМ БАЛАНС И ДАТУ
+          ancientCoins: finalCoins,
+          lastCoinUpdate: updatedLastCoinDate,
+          
+          // ДОБАВЛЯЕМ ЗАПИСЬ В ИСТОРИЮ, ЕСЛИ БЫЛО ИЗМЕНЕНИЕ
+          coinHistory: newHistoryEntry 
+            ? [newHistoryEntry, ...(currentChar.coinHistory || [])] 
+            : (currentChar.coinHistory || []),
+            
           updatedAt: nowISO()
         };
 

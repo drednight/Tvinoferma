@@ -6,8 +6,8 @@ import { escapeHtml } from '../utils.js';
 import { showModal, toast, confirmDialog, closeModal } from '../ui.js';
 import { getClassIconSrc } from '../constants.js';
 import { openCharacterForm } from './formEditor.js'; 
-// Импортируем именно ту функцию, которая есть в syncManager.js
 import { openSyncHelper } from '../syncManager.js'; 
+import { invoke } from '@tauri-apps/api/core'; 
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -24,27 +24,39 @@ export function openCharacterProfile(char) {
   const passes = char.dungeonPasses || {};
   const sky = char.sky || {};
   const contacts = char.contacts || {};
-  const recentHistory = (char.coinHistory || []).slice(-5).reverse();
+  
+  // --- ИСПРАВЛЕНИЕ ЛОГИКИ ПОЛУЧЕНИЯ ИСТОРИИ ---
+  // 1. Берем копию массива истории
+  let historyList = [...(char.coinHistory || [])];
+  
+  // 2. Сортируем по дате убывания (самые новые сверху)
+  // Это гарантирует, что даже если порядок в массиве был странным, 
+  // мы покажем именно последние события.
+  historyList.sort((a, b) => {
+      const dateA = new Date(a.date || a.createdAt).getTime();
+      const dateB = new Date(b.date || b.createdAt).getTime();
+      return dateB - dateA; // Убывание (новые первыми)
+  });
+
+  // 3. Берем только первые 5 записей (которые теперь являются самыми свежими)
+  const recentHistory = historyList.slice(0, 5);
+  // ------------------------------------------------
+
+  // Форматирование даты последнего обновления баланса (для шапки)
+  let lastUpdateStr = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
+  if (char.lastCoinUpdate) {
+    try {
+      const d = new Date(char.lastCoinUpdate);
+      if (!isNaN(d.getTime())) {
+        lastUpdateStr = `<span class="muted" style="font-size:0.7rem;">Обновлено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+      }
+    } catch(e) {}
+  }
 
   const statRow = (label, val) => `
     <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.05);">
       <span class="muted">${label}</span>
       <strong>${val || '-'}</strong>
-    </div>
-  `;
-
-  // Блок синхронизации
-  const syncBlock = `
-    <div class="info-block" style="margin-top:20px; border:1px solid var(--accent); background:rgba(122, 162, 247, 0.05); padding:15px; border-radius:8px;">
-      <h4 style="color:var(--accent); margin-bottom:10px;">🌐 Синхронизация данных PW Online</h4>
-      <p class="muted" style="font-size:0.85rem; margin-bottom:10px;">
-        Автоматический вход невозможен из-за защиты VK Play.<br/>
-        Используйте помощника ниже для быстрого копирования данных и ручного обновления баланса.
-      </p>
-      
-      <button id="btn-open-sync-helper" class="btn primary" style="width:100%;">
-        🔑 Открыть помощник синхронизации
-      </button>
     </div>
   `;
 
@@ -67,11 +79,57 @@ export function openCharacterProfile(char) {
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
             <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(char.party || 'Без пати')}</p>
           </div>
-          <div style="margin-left:auto; text-align:right;">
-            <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${char.ancientCoins.toLocaleString('ru-RU')}</div>
-            <small class="muted">Древних монет</small>
+          
+          <!-- БЛОК МОНЕТ С КНОПКОЙ ОБНОВЛЕНИЯ -->
+          <div style="margin-left:auto; text-align:right; min-width:120px;">
+            <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${(char.ancientCoins || 0).toLocaleString('ru-RU')}</div>
+            <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
+            
+            ${lastUpdateStr}
+            
+            <button id="btn-refresh-coins-header" 
+                    class="btn small ghost" 
+                    style="margin-top:6px; font-size:0.75rem; padding:4px 8px; border:1px solid var(--border);"
+                    title="Проверить актуальный баланс на сайте">
+                🔄 Обновить
+            </button>
           </div>
         </div>
+
+        <!-- КОНТАКТНЫЕ ДАННЫЕ -->
+        <details style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
+          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные</summary>
+          <div style="margin-top:12px; font-family:monospace; font-size:0.9rem; line-height:1.6; display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
+               <span class="muted" style="font-size:0.7rem;">EMAIL:</span>
+               <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="contact-value profile-copy-trigger" data-type="email" data-original="${escapeHtml(contacts.email || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.email ? maskText(contacts.email) : '-'}</span>
+                  <button class="icon-btn profile-toggle-eye" data-target="email" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+               </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
+               <span class="muted" style="font-size:0.7rem;">PASSWORD:</span>
+               <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="contact-value profile-copy-trigger" data-type="password" data-original="${escapeHtml(contacts.password || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.password ? maskText(contacts.password) : '-'}</span>
+                  <button class="icon-btn profile-toggle-eye" data-target="password" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+               </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
+               <span class="muted" style="font-size:0.7rem;">RECOVERY EMAIL:</span>
+               <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="contact-value profile-copy-trigger" data-type="recovery" data-original="${escapeHtml(contacts.recoveryEmail || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.recoveryEmail ? maskText(contacts.recoveryEmail) : '-'}</span>
+                  <button class="icon-btn profile-toggle-eye" data-target="recovery" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+               </div>
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
+               <span class="muted" style="font-size:0.7rem;">PHONE:</span>
+               <div style="display:flex; align-items:center; gap:6px;">
+                  <span class="contact-value profile-copy-trigger" data-type="phone" data-original="${escapeHtml(contacts.phone || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.phone ? maskText(contacts.phone) : '-'}</span>
+                  <button class="icon-btn profile-toggle-eye" data-target="phone" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+               </div>
+            </div>
+          </div>
+        </details>
 
         <!-- Статы -->
         <div class="info-block" style="margin-bottom:16px;">
@@ -133,66 +191,64 @@ export function openCharacterProfile(char) {
           </div>
         </div>
 
-        <!-- Контакты -->
-        <details style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
-          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные</summary>
-          <div style="margin-top:12px; font-family:monospace; font-size:0.9rem; line-height:1.6; display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">EMAIL:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="email" data-original="${escapeHtml(contacts.email || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.email ? maskText(contacts.email) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="email" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">PASSWORD:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="password" data-original="${escapeHtml(contacts.password || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.password ? maskText(contacts.password) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="password" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">RECOVERY EMAIL:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="recovery" data-original="${escapeHtml(contacts.recoveryEmail || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.recoveryEmail ? maskText(contacts.recoveryEmail) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="recovery" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">PHONE:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="phone" data-original="${escapeHtml(contacts.phone || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.phone ? maskText(contacts.phone) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="phone" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- История -->
+        <!-- История Транзакций (ОБНОВЛЕННЫЙ БЛОК) -->
         <div class="info-block">
           <h4>История транзакций (последние 5)</h4>
           ${recentHistory.length > 0 ? `
             <ul style="list-style:none; padding:0; margin:0; font-size:0.85rem;">
-              ${recentHistory.map(h => `
-                <li style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.1);">
-                  <span>${new Date(h.createdAt).toLocaleDateString()} - ${escapeHtml(h.note || 'Операция')}</span>
-                  <strong style="color:${h.delta >= 0 ? 'var(--success)' : 'var(--danger)'}">${h.delta >= 0 ? '+' : ''}${h.delta}</strong>
-                </li>
-              `).join('')}
+              ${recentHistory.map(h => {
+                // Используем поле date или createdAt в зависимости от структуры
+                const timestamp = h.date || h.createdAt;
+                const d = new Date(timestamp);
+                let dateTimeStr = 'Неизвестно';
+                
+                if (!isNaN(d.getTime())) {
+                    const datePart = d.toLocaleDateString('ru-RU');
+                    const timePart = d.toLocaleTimeString('ru-RU', { 
+                        hour: '2-digit', 
+                        minute: '2-digit', 
+                        second: '2-digit',
+                        hour12: false 
+                    });
+                    dateTimeStr = `${datePart} ${timePart}`;
+                }
+
+                return `
+                  <li style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.1); align-items:flex-start;">
+                      <div style="flex-grow:1; margin-right:10px;">
+                          <div style="font-weight:bold; color:var(--text-main); margin-bottom:2px;">${dateTimeStr}</div>
+                          <div style="font-size:0.8rem; color:#888;">${escapeHtml(h.note || 'Операция')}</div>
+                      </div>
+                      <strong style="color:${h.delta >= 0 ? 'var(--success)' : 'var(--danger)'}; white-space:nowrap;">${h.delta >= 0 ? '+' : ''}${h.delta}</strong>
+                  </li>
+                `;
+              }).join('')}
             </ul>
           ` : '<p class="muted">История пуста.</p>'}
         </div>
         
-        <!-- НОВЫЙ БЛОК СИНХРОНИЗАЦИИ -->
-        ${syncBlock}
-
       </div>
       
-      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С КНОПКАМИ -->
-      <div style="flex-shrink: 0; display:flex; gap:10px; justify-content:flex-end; border-top:1px solid var(--border); padding-top:15px; background: var(--panel); position: sticky; bottom: 0; z-index: 10;">
-         <button id="btn-close-profile" class="btn ghost">Закрыть</button>
-         <button id="btn-edit-from-profile" class="btn primary">✏️ Редактировать</button>
-         <button id="btn-delete-from-profile" class="btn danger">🗑 Удалить</button>
+      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С НОВЫМИ КНОПКАМИ -->
+      <div style="flex-shrink: 0; display:flex; gap:10px; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:15px; background: var(--panel); position: sticky; bottom: 0; z-index: 10;">
+         
+         <!-- Левая группа: Опасные действия -->
+         <div style="display:flex; gap:10px;">
+            <button id="btn-delete-from-profile" class="btn danger">🗑 Удалить</button>
+         </div>
+
+         <!-- Центральная группа: Синхронизация -->
+         <div style="display:flex; gap:10px;">
+            <button id="btn-open-sync-helper-footer" class="btn secondary" title="Открыть браузер для входа">
+               🔑 Открыть сайт
+            </button>
+         </div>
+
+         <!-- Правая группа: Основные действия -->
+         <div style="display:flex; gap:10px;">
+            <button id="btn-edit-from-profile" class="btn primary">✏️ Редактировать</button>
+            <button id="btn-close-profile" class="btn ghost">Закрыть</button>
+         </div>
       </div>
     </div>
   `;
@@ -285,11 +341,34 @@ export function openCharacterProfile(char) {
       };
     }
 
-    // NEW: Sync Helper Button
-    const syncBtn = document.getElementById('btn-open-sync-helper');
-    if(syncBtn) {
-      syncBtn.onclick = () => {
-        openSyncHelper(char.id); // <-- Новое имя
+    // NEW: Open Site / Sync Helper Button (в футере)
+    const syncFooterBtn = document.getElementById('btn-open-sync-helper-footer');
+    if(syncFooterBtn) {
+      syncFooterBtn.onclick = () => {
+        openSyncHelper(char.id); 
+      };
+    }
+
+    // Refresh Coins Header Button (остается в шапке)
+    const refreshHeaderBtn = document.getElementById('btn-refresh-coins-header');
+    if(refreshHeaderBtn) {
+      refreshHeaderBtn.onclick = async () => {
+        const originalText = refreshHeaderBtn.textContent;
+        refreshHeaderBtn.disabled = true;
+        refreshHeaderBtn.textContent = '⏳...';
+        
+        try {
+            await invoke('fetch_and_parse_balance_v4', { charId: char.id });
+            toast(`Запрос на обновление баланса для ${char.nick} отправлен.`, 'info');
+        } catch (err) {
+            console.error(err);
+            toast('Ошибка запуска проверки', 'error');
+        } finally {
+            setTimeout(() => {
+                refreshHeaderBtn.disabled = false;
+                refreshHeaderBtn.textContent = originalText;
+            }, 3000);
+        }
       };
     }
 

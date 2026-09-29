@@ -12,6 +12,9 @@ import { CLASSES, CLASS_ICON_MAP, SKIES, SKY_LEVELS, PASS_TYPES, getClassIconSrc
 // Импортируем модульную систему персонажей
 import { bindCharactersModule, openCharacterProfile, openCharacterForm } from './characters/index.js';
 
+// НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
+import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from './syncManager.js'; // Добавили openSyncHelper
+
 let expandedCharacterId = null;
 
 /**
@@ -32,39 +35,50 @@ export function renderCharacters() {
   if (!gridEl) return;
 
   updateKPIs();
+  
+  // Обновляем состояние кнопок синхронизации (если они есть в DOM)
+  initSyncButtons();
 
   if (!state.characters.length) {
     gridEl.innerHTML = '<div class="empty-state">Нет персонажей. Добавьте первого!</div>';
     return;
   }
 
-  const sortedChars = [...state.characters].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
-  gridEl.innerHTML = sortedChars.map(generateCardHTML).join('');
-
-  bindCharacterEvents(gridEl);
+  // Вызываем рендер с учетом текущих фильтров
+  renderFilteredGrid();
 }
 
 /**
- * Инициализация фильтров (Поиск, Класс, Пати)
+ * Инициализация фильтров (Поиск, Класс, Пати, Авторизация)
  */
 function initFilters() {
   const searchInput = document.getElementById('search-input');
   const classSelect = document.getElementById('class-filter');
   const partySelect = document.getElementById('party-filter');
+  const authSelect = document.getElementById('auth-filter'); 
 
-  if (!searchInput || !classSelect || !partySelect) return;
+  if (!searchInput || !classSelect || !partySelect || !authSelect) return;
 
+  // Заполнение классов
   const uniqueClasses = [...new Set(state.characters.map(c => c.class).filter(Boolean))];
   uniqueClasses.sort((a, b) => a.localeCompare(b, 'ru'));
 
   classSelect.innerHTML = '<option value="">Все классы</option>' + 
     uniqueClasses.map(cls => `<option value="${escapeHtml(cls)}">${escapeHtml(cls)}</option>`).join('');
 
+  // Заполнение пати
   const uniqueParties = [...new Set(state.characters.map(c => c.party).filter(Boolean))];
   uniqueParties.sort((a, b) => a.localeCompare(b, 'ru'));
 
   partySelect.innerHTML = '<option value="">Все пати</option><option value="__none__">Без пати</option>' + 
     uniqueParties.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+
+  // ЗАПОЛНЕНИЕ АВТОРИЗАЦИИ (СТАТИЧЕСКИЙ СПИСОК)
+  authSelect.innerHTML = `
+    <option value="">Все статусы</option>
+    <option value="online">🟢 Только авторизованные</option>
+    <option value="offline">🔴 Только не авторизованные</option>
+  `;
 
   const applyFilters = () => {
     renderFilteredGrid();
@@ -73,6 +87,7 @@ function initFilters() {
   searchInput.oninput = applyFilters;
   classSelect.onchange = applyFilters;
   partySelect.onchange = applyFilters;
+  authSelect.onchange = applyFilters; 
 }
 
 /**
@@ -85,17 +100,21 @@ function renderFilteredGrid() {
   const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
   const selectedClass = document.getElementById('class-filter')?.value || '';
   const selectedParty = document.getElementById('party-filter')?.value || '';
+  const selectedAuth = document.getElementById('auth-filter')?.value || ''; 
 
   let filteredChars = state.characters;
 
+  // 1. Поиск по нику
   if (searchTerm) {
     filteredChars = filteredChars.filter(c => c.nick.toLowerCase().includes(searchTerm));
   }
 
+  // 2. Фильтр по классу
   if (selectedClass) {
     filteredChars = filteredChars.filter(c => c.class === selectedClass);
   }
 
+  // 3. Фильтр по пати
   if (selectedParty) {
     if (selectedParty === '__none__') {
       filteredChars = filteredChars.filter(c => !c.party);
@@ -104,12 +123,30 @@ function renderFilteredGrid() {
     }
   }
 
+  // 4. НОВЫЙ ФИЛЬТР ПО АВТОРИЗАЦИИ
+  if (selectedAuth === 'online') {
+    filteredChars = filteredChars.filter(c => c.isLoggedIn === true);
+  } else if (selectedAuth === 'offline') {
+    filteredChars = filteredChars.filter(c => c.isLoggedIn !== true);
+  }
+
   if (filteredChars.length === 0) {
     gridEl.innerHTML = '<div class="empty-state">Ничего не найдено по заданным фильтрам.</div>';
     return;
   }
 
-  const sortedChars = [...filteredChars].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+  // Сортировка: Сначала онлайн, потом по алфавиту
+  const sortedChars = [...filteredChars].sort((a, b) => {
+      const aOnline = a.isLoggedIn ? 1 : 0;
+      const bOnline = b.isLoggedIn ? 1 : 0;
+      
+      if (aOnline !== bOnline) {
+          return bOnline - aOnline; // Онлайн выше
+      }
+      
+      return a.nick.localeCompare(b.nick, 'ru');
+  });
+
   gridEl.innerHTML = sortedChars.map(generateCardHTML).join('');
 
   bindCharacterEvents(gridEl);
@@ -149,8 +186,15 @@ function generateCardHTML(char) {
     const coinsDisplay = char.ancientCoins ? char.ancientCoins.toLocaleString('ru-RU') : '0';
     const partyLabel = char.party ? escapeHtml(char.party) : 'Без пати';
 
+    // ЛОГИКА ИНДИКАТОРА СТАТУСА
+    const isOnline = char.isLoggedIn === true;
+    const statusColor = isOnline ? '#9ece6a' : '#f7768e'; // Зеленый / Красный
+    const statusIcon = isOnline ? '🟢' : '🔴';
+    const statusText = isOnline ? 'Онлайн' : 'Оффлайн';
+    const statusTitle = isOnline ? 'Аккаунт авторизован' : 'Требуется вход или истекла сессия';
+
     return `
-      <article class="card character-card clickable-card" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s;">
+      <article class="card character-card clickable-card" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 3px solid ${statusColor};">
         
         <header class="card-header" style="padding:12px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; background:var(--panel-2);">
           <div style="display:flex; gap:10px; align-items:center; flex-grow:1;">
@@ -165,9 +209,17 @@ function generateCardHTML(char) {
           </div>
           
           <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+             <!-- ИНДИКАТОР СТАТУСА -->
+             <div style="display:flex; align-items:center; gap:4px; font-size:0.7rem; color:${statusColor}; margin-bottom:2px;" title="${statusTitle}">
+                <span>${statusIcon}</span>
+                <span>${statusText}</span>
+             </div>
+
              <span class="badge muted" style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px; font-size:0.7rem; white-space:nowrap;">
                ${partyLabel}
              </span>
+             
+             <!-- БЛОК МОНЕТ (БЕЗ ДАТЫ СИНХРОНИЗАЦИИ) -->
              <div style="display:flex; align-items:center; gap:4px; background: rgba(255, 215, 0, 0.1); padding:2px 8px; border-radius:10px; border:1px solid rgba(255, 215, 0, 0.2);">
                <span style="color:gold; font-size:0.8rem;">🪙</span>
                <strong style="color:gold; font-size:0.85rem; font-weight:600;">${coinsDisplay}</strong>
@@ -204,10 +256,20 @@ function generateCardHTML(char) {
            </div>
         </div>
 
-        <footer class="card-footer" style="padding:8px 12px; border-top:1px solid var(--border); display:flex; justify-content:flex-start; align-items:center; background:var(--panel);">
+        <footer class="card-footer" style="padding:8px 12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--panel);">
+           <!-- Левая часть: Проходки -->
            <div style="display:flex; gap:6px;">
               ${passesHtml}
            </div>
+           
+           <!-- Правая часть: Кнопка Открыть Сайт -->
+           <button id="btn-open-site-${char.id}" 
+                   class="btn ghost small" 
+                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:pointer;"
+                   title="Открыть браузер для входа"
+                   onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">
+               🌐 Открыть сайт
+           </button>
         </footer>
       </article>
     `;
@@ -218,6 +280,10 @@ function updateKPIs() {
   const coinsEl = document.getElementById('kpi-coins');
   const partiesEl = document.getElementById('kpi-parties');
   const noPartyEl = document.getElementById('kpi-no-party');
+  
+  // Новые KPI для статуса
+  const onlineEl = document.getElementById('kpi-online-count');
+  const offlineEl = document.getElementById('kpi-offline-count');
 
   if(totalEl) totalEl.textContent = state.characters.length;
   
@@ -235,6 +301,70 @@ function updateKPIs() {
     const count = state.characters.filter(c => !c.party).length;
     noPartyEl.textContent = count;
   }
+
+  if(onlineEl) {
+    const count = state.characters.filter(c => c.isLoggedIn === true).length;
+    onlineEl.textContent = count;
+    onlineEl.style.color = '#9ece6a';
+  }
+
+  if(offlineEl) {
+    const count = state.characters.filter(c => c.isLoggedIn !== true).length;
+    offlineEl.textContent = count;
+    offlineEl.style.color = '#f7768e';
+  }
+}
+
+/**
+ * Инициализация кнопок синхронизации в UI
+ */
+function initSyncButtons() {
+    // Кнопка "Проверить авторизацию" (Быстрая проверка статусов)
+    const checkBtn = document.getElementById('btn-check-auth-status');
+    if(checkBtn && !checkBtn.dataset.bound) {
+        checkBtn.onclick = async () => {
+            checkBtn.disabled = true;
+            const originalText = checkBtn.innerHTML;
+            checkBtn.innerHTML = '⏳ Проверка...';
+            
+            try {
+                await refreshAllLoginStatuses();
+                toast('Статусы авторизации обновлены.', 'success');
+            } catch (err) {
+                console.error(err);
+                toast('Ошибка проверки статусов', 'error');
+            } finally {
+                setTimeout(() => {
+                    checkBtn.disabled = false;
+                    checkBtn.innerHTML = originalText;
+                }, 1000);
+            }
+        };
+        checkBtn.dataset.bound = "true";
+    }
+
+    // Кнопка "Обновить балансы" (Полная процедура)
+    const balanceBtn = document.getElementById('btn-refresh-balances');
+    if(balanceBtn && !balanceBtn.dataset.bound) {
+        balanceBtn.onclick = async () => {
+            balanceBtn.disabled = true;
+            const originalText = balanceBtn.innerHTML;
+            balanceBtn.innerHTML = '⏳ Обновление...';
+            
+            try {
+                await refreshAllBalances();
+            } catch (err) {
+                console.error(err);
+                toast('Ошибка обновления балансов', 'error');
+            } finally {
+                setTimeout(() => {
+                    balanceBtn.disabled = false;
+                    balanceBtn.innerHTML = originalText;
+                }, 1000);
+            }
+        };
+        balanceBtn.dataset.bound = "true";
+    }
 }
 
 function bindCharacterEvents(container) {
@@ -290,6 +420,16 @@ function bindCharacterEvents(container) {
   };
 }
 
+// Глобальная функция для вызова из inline onclick кнопки "Открыть сайт"
+window.handleOpenSite = (charId) => {
+    const char = state.characters.find(c => c.id === charId);
+    if (char) {
+        openSyncHelper(charId);
+    } else {
+        toast('Персонаж не найден', 'error');
+    }
+};
+
 export function bindCharacters() {
   const addBtn = document.getElementById('add-character-btn');
   if (addBtn) {
@@ -303,6 +443,5 @@ export function bindCharacters() {
   renderCharacters(); 
 }
 
-// --- ЭКСПОРТ ДЛЯ ДРУГИХ МОДУЛЕЙ (ИСПРАВЛЕНИЕ ОШИБКИ) ---
-// Мы должны экспортировать эти функции, чтобы parties.js мог их найти
+// --- ЭКСПОРТ ДЛЯ ДРУГИХ МОДУЛЕЙ ---
 export { openCharacterProfile, openCharacterForm };
