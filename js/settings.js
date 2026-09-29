@@ -6,7 +6,10 @@ import { persist } from './storage.js';
 import { escapeHtml, nowISO } from './utils.js';
 import { toast, confirmDialog, showModal } from './ui.js';
 import { renderCharacters } from './characters.js';
-import { renderParties } from './parties.js';
+
+// ИСПРАВЛЕНО: Импорт из новой структуры папок parties
+import { renderParties } from './parties/index.js'; 
+
 import { renderMarathons } from './marathon.js';
 import { openExportDialog } from './exportManager.js'; // <-- НОВЫЙ ИМПОРТ
 
@@ -198,7 +201,6 @@ export function bindSettings() {
   });
 
   // Import File
-    // Import File
   document.getElementById('import-file')?.addEventListener('change', async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -240,8 +242,8 @@ export function bindSettings() {
           </div>
         `,
         submitText: 'Импортировать',
-        cancelText: 'Отменить', // <-- Изменили текст
-        hideCloseButton: true,   // <-- НОВОЕ ПАРАМЕТР (см. шаг 3)
+        cancelText: 'Отменить', 
+        hideCloseButton: true,   
         onSubmit(formData) {
           applyImport(json, String(formData.get('mode')));
         }
@@ -268,15 +270,7 @@ export function bindSettings() {
     }
   });
 
-  // Copy Data Dir
-  // js/settings.js (фрагмент bindSettings)
-
-  // Open Data Dir (Вместо Copy Path)
-  // js/settings.js (фрагмент внутри bindSettings)
-
   // Open/Copy Data Dir
-  // js/settings.js (фрагмент bindSettings)
-
   document.getElementById('copy-data-dir-btn')?.addEventListener('click', async () => {
     const dirText = document.getElementById('data-dir').textContent;
     

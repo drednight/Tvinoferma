@@ -332,7 +332,7 @@ export function openCharacterProfile(char) {
                persist().then(() => {
                  closeModal();
                  import('../characters.js').then(mod => mod.renderCharacters());
-                 import('../parties.js').then(mod => mod.renderParties());
+                 import('../parties/index.js').then(mod => mod.renderParties());
                  toast('Персонаж удален', 'success');
                });
              });

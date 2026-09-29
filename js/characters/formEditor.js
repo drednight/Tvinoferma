@@ -5,7 +5,7 @@ import { persist } from '../storage.js';
 import { escapeHtml, nowISO } from '../utils.js';
 import { showModal, toast } from '../ui.js';
 import { renderCharacters } from '../characters.js';
-import { renderParties } from '../parties.js';
+import { renderParties } from '../parties/index.js';
 import { CLASSES, SKIES, SKY_LEVELS } from '../constants.js';
 import { createEmptyCharacter, DEFAULT_STATS } from './stateManager.js';
 

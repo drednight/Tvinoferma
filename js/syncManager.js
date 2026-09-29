@@ -2,134 +2,294 @@
 
 import { state } from './state.js';
 import { persist } from './storage.js';
-import { escapeHtml } from './utils.js';
-import { showModal, toast } from './ui.js';
-import { invoke } from '@tauri-apps/api/core';
+import { toast } from './ui.js';
 import { listen } from '@tauri-apps/api/event';
+import { renderCharacters } from './characters.js';
+import { renderParties } from './parties/index.js'; // <-- Импорт из новой структуры
+import { invoke } from '@tauri-apps/api/core';
+import { escapeHtml } from './utils.js';
+import { showModal, closeModal } from './ui.js';
+
+// Импортируем скрипты запуска задач
+import { checkCharacterAuth } from './scripts/checkAuth.js';
+import { getCharacterBalance } from './scripts/getBalance.js';
+
+// Импортируем компонент прогресса
+import { ProgressBar } from './components/ProgressBar.js'; 
 
 let activeListeners = [];
+const authProgress = new ProgressBar();
+const balanceProgress = new ProgressBar();
 
 /**
  * Инициализация слушателей событий Tauri IPC
  */
 export async function initSyncListeners() {
+    // Очищаем старые слушатели, если есть
     activeListeners.forEach(unlisten => unlisten());
     activeListeners = [];
 
-    console.log('[SYNC LISTENER] Initializing listeners in MAIN WINDOW...');
+    console.log('[SYNC MANAGER] Initializing listeners...');
 
-    // 1. Слушаем результат ПРОВЕРКИ ЛОГИНА (быстрый статус)
+    // 1. Слушаем результат ПРОВЕРКИ ЛОГИНА
     const unlistenLoginStatus = await listen('login-status-result-global', (event) => {
         const { charId, status } = event.payload;
-        console.log(`[LOGIN STATUS] ${charId}: ${status}`);
+        console.log(`[EVENT LOGIN] ${charId}: ${status}`);
         
-        updateCharacterLoginStatus(charId, status === 'online');
+        const charIndex = state.characters.findIndex(c => c.id === charId);
+        if (charIndex !== -1) {
+            const isOnline = status === 'online';
+            
+            // Если статус изменился — обновляем UI
+            if (state.characters[charIndex].isLoggedIn !== isOnline) {
+                state.characters[charIndex].isLoggedIn = isOnline;
+                state.characters[charIndex].lastLoginCheck = new Date().toISOString();
+                
+                persist().then(() => {
+                    renderCharacters();
+                    renderParties(); 
+                });
+            }
+        }
     });
     activeListeners.push(unlistenLoginStatus);
 
-    // 2. Слушаем результат БАЛАНСА (медленный парсинг)
+        // 2. Слушаем результат БАЛАНСА
     const unlistenBalance = await listen('pw-balance-result-global', (event) => {
-        console.group('[MAIN WINDOW] Received pw-balance-result-global');
-        console.log('Payload Details:', event.payload);
-        
         const { charId, balance, error } = event.payload;
-        
+        console.log(`[EVENT BALANCE] ${charId}: Balance=${balance}, Error=${error}`);
+
+        const charIndex = state.characters.findIndex(c => c.id === charId);
+        if (charIndex === -1) return;
+
+        const char = state.characters[charIndex];
+
+        // ЛОГИКА ОБРАБОТКИ ОШИБОК АВТОРИЗАЦИИ
         if (error) {
-            console.error(`[SYNC ERROR] Parsing failed for ${charId}:`, error);
+            // Список ошибок, означающих потерю сессии
+            const authErrors = ['not_logged_in', 'zero_no_user_session_expired', 'session_lost_during_parse'];
             
-            if (error === 'not_logged_in') {
-                // Если при запросе баланса выяснилось, что не залогинен, обновляем статус
-                updateCharacterLoginStatus(charId, false);
-                toast(`⚠️ Персонаж не залогинен. Пожалуйста, войдите в аккаунт PW Online.`, 'warning');
+            if (authErrors.includes(error)) {
+                console.warn(`[SYNC] Auth lost detected for ${char.nick}. Setting Offline.`);
+                char.isLoggedIn = false;
+                // Не обновляем баланс, оставляем старый или ставим 0? 
+                // Лучше оставить последний известный, чтобы не пугать юзера обнулением из-за бага сети
+                persist().then(() => {
+                    renderCharacters();
+                    renderParties();
+                });
+                toast(`⚠️ Сессия истекла для ${char.nick}. Требуется повторный вход.`, 'warning');
             } else {
-                toast(`Ошибка синхронизации (${charId}): ${error}`, 'error');
+                // Другие ошибки (таймаут, баг парсинга)
+                console.error(`[SYNC ERROR] Parsing failed for ${char.nick}:`, error);
+                toast(`Ошибка синхронизации (${char.nick}): ${error}`, 'error');
             }
-            console.groupEnd();
             return;
         }
 
+        // ЛОГИКА УСПЕХА
         if (balance !== null && balance >= 0) {
-            console.log(`[SYNC SUCCESS] Ready to update character ${charId} with balance ${balance}`);
+            const oldBalance = char.ancientCoins || 0;
             
-            const exists = state.characters.some(c => c.id === charId);
-            if (!exists) {
-                console.error(`[SYNC CRITICAL] Character ${charId} NOT FOUND in local state!`);
-                toast(`Ошибка: Персонаж ${charId} отсутствует в базе.`, 'error');
-            } else {
-                updateCharacterBalance(charId, balance);
-                // Успешное чтение баланса подтверждает онлайн-статус
-                updateCharacterLoginStatus(charId, true); 
+            // Обновляем баланс
+            char.ancientCoins = balance;
+            char.lastCoinUpdate = new Date().toISOString();
+            
+            // Подтверждаем, что пользователь онлайн (раз смогли прочитать баланс без ошибок)
+            // Даже если баланс 0, но ошибки не было (значит ник найден) - он Онлайн
+            char.isLoggedIn = true;
+
+            // Добавляем в историю, если сумма изменилась
+            if (oldBalance !== balance) {
+                const historyEntry = {
+                    id: crypto.randomUUID(),
+                    date: char.lastCoinUpdate,
+                    delta: balance - oldBalance,
+                    note: 'Автосинхронизация PW Online',
+                    balanceAfter: balance
+                };
+                char.coinHistory = [historyEntry, ...(char.coinHistory || [])];
             }
-        } else {
-            console.warn('[SYNC WARNING] Balance is invalid or null', balance);
+
+            persist().then(() => {
+                renderCharacters();
+                renderParties();
+                // Тост только если баланс реально изменился, чтобы не спамить
+                if (oldBalance !== balance) {
+                   toast(`Баланс ${char.nick} обновлен: ${balance}`, 'success');
+                }
+            });
         }
-        console.groupEnd();
     });
     activeListeners.push(unlistenBalance);
 
-    // 3. Закрытие окна браузера пользователем
+    // 3. Закрытие окна браузера
     const unlistenCloseBrowser = await listen('browser-window-closed', async (event) => {
         const { label } = event.payload;
         const charId = label.replace('sync-win-', '');
-        console.log(`[SYNC] Browser closed for ${charId}`);
-        // При закрытии окна статус становится неизвестным/оффлайн
-        updateCharacterLoginStatus(charId, false);
+        const charIndex = state.characters.findIndex(c => c.id === charId);
+        
+        if (charIndex !== -1) {
+             // При закрытии окна считаем оффлайном (безопаснее)
+             state.characters[charIndex].isLoggedIn = false;
+             persist().then(() => {
+                 renderCharacters();
+                 renderParties();
+             });
+        }
     });
     activeListeners.push(unlistenCloseBrowser);
 }
 
 /**
- * Обновляет статус логина в стейте
+ * МАССОВАЯ ПРОВЕРКА АВТОРИЗАЦИИ (2 ПРОХОДА + ПРОГРЕСС)
  */
-export function updateCharacterLoginStatus(charId, isOnline) {
-    const charIndex = state.characters.findIndex(c => c.id === charId);
-    if (charIndex === -1) return;
-
-    const char = state.characters[charIndex];
+export async function refreshAllLoginStatuses() {
+    const charsToCheck = [...state.characters];
+    const total = charsToCheck.length;
     
-    // Только если статус изменился, чтобы не спамить перерисовкой
-    if (char.isLoggedIn !== isOnline) {
-        char.isLoggedIn = isOnline;
-        char.lastLoginCheck = new Date().toISOString();
-        
-        persist().then(() => {
-            import('./characters.js').then(mod => mod.renderCharacters());
-        }).catch(e => console.error('Persist failed', e));
+    if (total === 0) {
+        toast('Нет персонажей для проверки.', 'info');
+        return;
+    }
+
+    // --- ПРОХОД 1: Быстрая проверка (3 секунды таймаут) ---
+    authProgress.show('🔐 Проверка авторизации (Проход 1/2)');
+    let completedCount = 0;
+
+    const promisesPass1 = charsToCheck.map(async (char) => {
+        try {
+            // Вызываем напрямую invoke с параметром таймаута
+            await invoke('check_login_status_http', { 
+                charId: char.id,
+                timeoutSeconds: 3 // Быстрый таймаут
+            });
+        } catch (err) {
+            console.error(`[AUTH PASS 1] Error for ${char.nick}:`, err);
+        } finally {
+            completedCount++;
+            authProgress.update(completedCount, total, 'Быстрая проверка');
+        }
+    });
+
+    await Promise.all(promisesPass1);
+    
+    // Пауза между проходами, чтобы дать окнам стабилизироваться
+    await new Promise(r => setTimeout(r, 1000));
+
+    // --- ПРОХОД 2: Углубленная проверка для тех, кто НЕ онлайн ---
+    // Находим персонажей, которые после первого прохода все еще оффлайн.
+    // Повторяем проверку с большим таймаутом (8 сек), так как возможно страница грузилась долго.
+    
+    const offlineChars = state.characters.filter(c => !c.isLoggedIn);
+    
+    if (offlineChars.length > 0) {
+        authProgress.show('🔐 Проверка авторизации (Проход 2/2 - Верификация)');
+        let pass2Completed = 0;
+        const pass2Total = offlineChars.length;
+
+        const promisesPass2 = offlineChars.map(async (char) => {
+            try {
+                await invoke('check_login_status_http', { 
+                    charId: char.id,
+                    timeoutSeconds: 8 // Долгий таймаут для надежности
+                });
+            } catch (err) {
+                console.error(`[AUTH PASS 2] Error for ${char.nick}:`, err);
+            } finally {
+                pass2Completed++;
+                authProgress.update(pass2Completed, pass2Total, 'Углубленная проверка');
+            }
+        });
+
+        await Promise.all(promisesPass2);
+    } else {
+        // Если все оказались онлайн в первом проходе, скрываем прогресс сразу
+        authProgress.hide();
+    }
+
+    // Финальное скрытие (на случай, если второй проход не запускался или завершился)
+    setTimeout(() => {
+        authProgress.hide();
+        toast('Проверка авторизации завершена.', 'success');
+    }, 500);
+}
+
+/**
+ * МАССОВОЕ ОБНОВЛЕНИЕ БАЛАНСА (+ ПРОГРЕСС)
+ * ОПТИМИЗИРОВАННАЯ ВЕРСИЯ: Скипает проверку логина, если статус уже Online
+ */
+export async function refreshAllBalances() {
+    // 1. Находим всех, кто помечен как Онлайн в локальном стейте
+    const onlineChars = state.characters.filter(c => c.isLoggedIn === true);
+    
+    if (onlineChars.length === 0) {
+        toast('Нет активных аккаунтов (по данным приложения). Сначала нажмите "Проверить авторизацию".', 'warning');
+        return;
+    }
+
+    const total = onlineChars.length;
+    balanceProgress.show(`💰 Обновление балансов (${total} акк.)`);
+    let completedCount = 0;
+
+    console.log(`[BALANCE SYNC] Starting update for ${total} characters...`);
+
+    // 2. Последовательный запуск запросов к Rust
+    // Используем for...of вместо Promise.all, чтобы не перегружать сеть и CPU
+    // и иметь возможность показывать прогресс по каждому шагу
+    for (const char of onlineChars) {
+        try {
+            // Вызываем скрипт получения баланса
+            // Эта команда блокируется до получения результата от Rust
+            await getCharacterBalance(char.id);
+            
+            completedCount++;
+            balanceProgress.update(completedCount, total, char.nick);
+            
+            // Небольшая пауза между запросами для стабильности
+            // Можно уменьшить до 200ms, если серверы PW позволяют
+            await new Promise(r => setTimeout(r, 500)); 
+            
+        } catch (e) {
+            console.error(`[BALANCE SYNC] Error processing ${char.nick}:`, e);
+            completedCount++; 
+            balanceProgress.update(completedCount, total, `Ошибка: ${char.nick}`);
+        }
+    }
+
+    balanceProgress.hide();
+    toast('Обновление балансов завершено.', 'success');
+}
+
+/**
+ * ОТКРЫТЬ ПОМОЩНИКА ВХОДА (Браузер + Модалка контактов)
+ */
+export async function openSyncHelper(characterId) {
+    const char = state.characters.find(c => c.id === characterId);
+    if (!char) {
+        toast('Персонаж не найден', 'error');
+        return;
+    }
+
+    // Показываем модалку с данными
+    showCredentialsModal(char);
+
+    // Открываем браузерное окно
+    try {
+        await invoke('open_sync_window', { 
+            charId: char.id, 
+            url: 'https://pwonline.ru/',
+            charNick: char.nick 
+        });
+    } catch (err) {
+        console.error(err);
+        toast('Не удалось открыть окно браузера', 'error');
     }
 }
 
-/**
- * Главная функция: Показать помощника и открыть браузер
- */
-export async function openSyncHelper(characterId) {
-  const char = state.characters.find(c => c.id === characterId);
-  if (!char) {
-    toast('Персонаж не найден', 'error');
-    return;
-  }
-
-  const contacts = char.contacts || {};
-  
-  // 1. Показываем МОДАЛКУ ПОМОЩНИКА
-  showCredentialsModal(char, contacts);
-
-  // 2. Автоматически открываем ВИДИМОЕ окно браузера
-  try {
-      await invoke('open_sync_window', { 
-          charId: characterId, 
-          url: 'https://pwonline.ru/' 
-      });
-      toast(`Окно браузера открыто для ${char.nick}.`, 'info');
-  } catch (err) {
-      console.error(err);
-      toast('Не удалось открыть окно браузера', 'error');
-  }
-}
-
-/**
- * Модалка с контактами и управлением окном браузера
- */
-function showCredentialsModal(char, contacts) {
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ МОДАЛКИ КОНТАКТОВ ---
+function showCredentialsModal(char) {
+    const contacts = char.contacts || {};
     const email = contacts.email || '';
     const password = contacts.password || '';
     const recovery = contacts.recoveryEmail || '';
@@ -141,11 +301,8 @@ function showCredentialsModal(char, contacts) {
             <div style="margin-bottom:8px;">
                 <span class="muted" style="font-size:0.8rem; display:block;">${label}</span>
                 <div 
-                    id="copy-${idSuffix}" 
                     data-value="${escapeHtml(value)}"
                     style="cursor:pointer; background:var(--panel-2); padding:6px 10px; border-radius:4px; border:1px solid transparent; transition:border-color 0.2s; word-break:break-all; font-family:monospace;"
-                    onmouseover="this.style.borderColor='var(--accent)'"
-                    onmouseout="this.style.borderColor='transparent'"
                     onclick="window.handleCopyClick(this)"
                 >
                     ${escapeHtml(value)}
@@ -157,6 +314,8 @@ function showCredentialsModal(char, contacts) {
     const content = `
         <div class="sync-helper-container" style="display:flex; flex-direction:column; gap:15px;">
             <h3 style="margin:0; color:var(--accent);">Данные: ${escapeHtml(char.nick)}</h3>
+            
+            <!-- БЛОК С КОНТАКТАМИ -->
             <div style="background:var(--bg-secondary, #1a1a24); padding:15px; border-radius:8px; border:1px solid var(--border);">
                 <p><strong>Нажмите на поле, чтобы скопировать:</strong></p>
                 ${copyField('Email / Логин', email, 'email')}
@@ -164,14 +323,26 @@ function showCredentialsModal(char, contacts) {
                 ${copyField('Recovery Email', recovery, 'rec')}
                 ${copyField('Телефон', phone, 'phone')}
             </div>
+
+            <!-- ПОДСКАЗКА ПРО БЕЛЫЙ ЭКРАН -->
+            <div style="background:rgba(255, 193, 7, 0.1); border:1px solid rgba(255, 193, 7, 0.3); padding:10px; border-radius:6px; font-size:0.85rem; color:#ffc107; display:flex; align-items:flex-start; gap:8px;">
+                <span style="font-size:1.2rem;">ℹ️</span>
+                <div>
+                    <strong>Важно при авторизации:</strong><br/>
+                    Если после входа через VK Play появился <b>белый экран</b>:<br/>
+                    1. Закройте это окно браузера.<br/>
+                    2. Нажмите кнопку "Проверить авторизацию" или откройте сайт заново.<br/>
+                    3. Статус должен обновиться на 🟢 Онлайн.
+                </div>
+            </div>
             
             <!-- УПРАВЛЕНИЕ ОКНОМ БРАУЗЕРА -->
             <div style="display:flex; gap:10px;">
-                 <button id="btn-reopen-window" class="btn secondary small full-width">🌐 Открыть/Фокус Браузер</button>
-                 <button id="btn-close-browser-only" class="btn danger small full-width">❌ Закрыть Браузер</button>
+                 <button id="btn-reopen-window-modal" class="btn secondary small full-width">🌐 Открыть/Фокус Браузер</button>
+                 <button id="btn-close-browser-modal" class="btn danger small full-width">❌ Закрыть Браузер</button>
             </div>
             
-            <button id="btn-close-modal" class="btn ghost" style="width:100%; margin-top:5px;">Закрыть подсказку</button>
+            <button id="btn-close-modal-btn" class="btn ghost" style="width:100%; margin-top:5px;">Закрыть подсказку</button>
         </div>
     `;
 
@@ -179,13 +350,12 @@ function showCredentialsModal(char, contacts) {
       title: 'Помощник входа',
       content,
       submitText: null,
-      cancelText: 'Отмена',
+      cancelText: null,
       onSubmit: () => true,
       onClose: () => {}
     });
 
     setTimeout(() => {
-        // Копирование
         window.handleCopyClick = async (el) => {
             const val = el.dataset.value;
             if (val) {
@@ -202,109 +372,22 @@ function showCredentialsModal(char, contacts) {
             }
         };
 
-        // Переоткрытие окна
-        const reopenBtn = document.getElementById('btn-reopen-window');
-        if(reopenBtn) {
-            reopenBtn.onclick = async () => {
-                await invoke('open_sync_window', { 
-                    charId: char.id, 
-                    url: 'https://pwonline.ru/' 
-                });
-                toast('Окно браузера открыто/сфокусировано.', 'info');
-            };
-        }
+        document.getElementById('btn-reopen-window-modal')?.addEventListener('click', async () => {
+            await invoke('open_sync_window', { 
+                charId: char.id, 
+                url: 'https://pwonline.ru/',
+                charNick: char.nick 
+            });
+            toast('Окно браузера открыто/сфокусировано.', 'info');
+        });
 
-        // Закрытие браузера
-        const closeBrowserBtn = document.getElementById('btn-close-browser-only');
-        if(closeBrowserBtn) {
-            closeBrowserBtn.onclick = async () => {
-                await invoke('close_sync_window', { charId: char.id });
-                toast('Окно браузера закрыто.', 'info');
-            };
-        }
+        document.getElementById('btn-close-browser-modal')?.addEventListener('click', async () => {
+            await invoke('close_sync_window', { charId: char.id });
+            toast('Окно браузера закрыто.', 'info');
+        });
 
-        // Закрытие модалки
-        document.getElementById('btn-close-modal')?.addEventListener('click', () => {
-            document.getElementById('modal-root').innerHTML = '';
+        document.getElementById('btn-close-modal-btn')?.addEventListener('click', () => {
+            closeModal();
         });
     }, 100);
-}
-
-/**
- * Обновляет баланс в стейте и сохраняет
- */
-function updateCharacterBalance(charId, newBalance) {
-    const charIndex = state.characters.findIndex(c => c.id === charId);
-    if (charIndex === -1) return;
-
-    const char = state.characters[charIndex];
-    const oldBalance = char.ancientCoins;
-
-    if (oldBalance !== newBalance || !char.lastCoinUpdate) {
-        char.ancientCoins = newBalance;
-        char.lastCoinUpdate = new Date().toISOString(); 
-        
-        const historyEntry = {
-            id: crypto.randomUUID(),
-            date: char.lastCoinUpdate,
-            delta: newBalance - (oldBalance || 0),
-            note: 'Автосинхронизация PW Online',
-            balanceAfter: newBalance
-        };
-        char.coinHistory = [historyEntry, ...(char.coinHistory || [])];
-
-        persist().then(() => {
-            toast(`Баланс ${char.nick} обновлен: ${newBalance}`, 'success');
-            import('./characters.js').then(mod => mod.renderCharacters());
-        }).catch(e => console.error('Persist failed', e));
-    }
-}
-
-/**
- * МАССОВОЕ ОБНОВЛЕНИЕ СТАТУСА (Быстрое, фоновое)
- */
-export async function refreshAllLoginStatuses() {
-    toast('Проверяю статус аккаунтов в фоне...', 'info');
-    
-    const charsToCheck = [...state.characters];
-    
-    // Запускаем все проверки параллельно
-    const promises = charsToCheck.map(async (char) => {
-        try {
-            await invoke('check_login_status_http', { charId: char.id });
-        } catch (err) {
-            console.error(`Failed to check login for ${char.nick}`, err);
-        }
-    });
-
-    await Promise.all(promises);
-    
-    toast('Проверка статуса завершена.', 'success');
-}
-
-/**
- * МАССОВОЕ ОБНОВЛЕНИЕ БАЛАНСА (Для тех, кто онлайн)
- */
-export async function refreshAllBalances() {
-    // Сначала обновляем статусы
-    await refreshAllLoginStatuses();
-    
-    // Ждем секунду, чтобы UI успел перерисовать точки
-    await new Promise(r => setTimeout(r, 1000)); 
-
-    const onlineChars = state.characters.filter(c => c.isLoggedIn);
-    
-    if (onlineChars.length === 0) {
-        toast('Ни один аккаунт не активен. Пожалуйста, войдите вручную.', 'warning');
-        return;
-    }
-
-    toast(`Найдено ${onlineChars.length} активных аккаунтов. Обновляю баланс...`, 'info');
-
-    for (const char of onlineChars) {
-        await invoke('fetch_and_parse_balance_v4', { charId: char.id });
-        await new Promise(r => setTimeout(r, 1500)); 
-    }
-
-    toast('Обновление баланса завершено.', 'success');
 }

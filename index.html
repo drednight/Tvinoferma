@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Твиноферма</title>
 
+  <!-- Стили -->
   <link rel="stylesheet" href="/css/variables.css" />
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/layout.css" />
@@ -70,36 +71,55 @@
           <div class="actions" style="display:flex; gap:10px; margin-left:auto;">
             <button id="add-character-btn" class="btn primary">+ Персонаж</button>
             
-            <!-- НОВАЯ КНОПКА: Проверка авторизации (Быстро) -->
+            <!-- КНОПКА: Проверка авторизации (Быстро) -->
             <button id="btn-check-auth-status" class="btn secondary" title="Проверить, кто залогинен в PW Online (фон)">
               🔐 Проверить авторизацию
             </button>
 
-            <!-- НОВАЯ КНОПКА: Обновление балансов (Для тех, кто онлайн) -->
+            <!-- КНОПКА: Обновление балансов (Для тех, кто онлайн) -->
             <button id="btn-refresh-balances" class="btn success" title="Обновить баланс древних монет у активных аккаунтов">
               💰 Обновить балансы
             </button>
           </div>
         </div>
 
-        <!-- KPI Блок -->
-        <div class="kpi-grid">
-          <div class="kpi-card"><span class="kpi-label">Всего персонажей</span><strong id="kpi-characters">0</strong></div>
-          <div class="kpi-card"><span class="kpi-label">Сумма древних монет</span><strong id="kpi-coins">0</strong></div>
-          <div class="kpi-card"><span class="kpi-label">Активных пати</span><strong id="kpi-parties">0</strong></div>
-          <div class="kpi-card"><span class="kpi-label">Без пати</span><strong id="kpi-no-party">0</strong></div>
+        <!-- KPI Блок (НОВЫЙ ДИЗАЙН С ЦВЕТНЫМИ РАМКАМИ И ДИНАМИЧЕСКИМ РАСЧЕТОМ) -->
+        <div class="kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px; margin-bottom:20px;">
           
-          <!-- НОВЫЕ KPI ДЛЯ СТАТУСА -->
-          <div class="kpi-card" style="border-left: 3px solid #9ece6a;">
-            <span class="kpi-label">Онлайн (Авторизовано)</span>
-            <strong id="kpi-online-count" style="color:#9ece6a;">0</strong>
+          <!-- Группа 1: Общая статистика выборки -->
+          <div class="kpi-card" style="border-left: 4px solid var(--accent); background: var(--panel); padding:15px; border-radius:8px;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Всего персонажей</span>
+            <strong id="kpi-total-chars" style="font-size:1.5rem; display:block; color:var(--text-primary);">0</strong>
           </div>
-          <div class="kpi-card" style="border-left: 3px solid #f7768e;">
-            <span class="kpi-label">Оффлайн (Требуется вход)</span>
-            <strong id="kpi-offline-count" style="color:#f7768e;">0</strong>
+          
+          <div class="kpi-card" style="border-left: 4px solid #bb9af7; background: var(--panel); padding:15px; border-radius:8px;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Активных пати</span>
+            <strong id="kpi-active-parties" style="font-size:1.5rem; display:block; color:#bb9af7;">0</strong>
+          </div>
+          
+          <div class="kpi-card" style="border-left: 4px solid #565f89; background: var(--panel); padding:15px; border-radius:8px;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Без пати</span>
+            <strong id="kpi-no-party" style="font-size:1.5rem; display:block; color:#565f89;">0</strong>
+          </div>
+
+          <!-- Группа 2: Финансы и Статус -->
+          <div class="kpi-card" style="border-left: 4px solid gold; background: var(--panel); padding:15px; border-radius:8px; grid-column: span 2;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Сумма древних монет (в выборке)</span>
+            <strong id="kpi-coins" style="font-size:1.8rem; color:gold; display:block;">0</strong>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #9ece6a; background: var(--panel); padding:15px; border-radius:8px;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Онлайн (Авторизовано)</span>
+            <strong id="kpi-online-count" style="font-size:1.5rem; color:#9ece6a; display:block;">0</strong>
+          </div>
+
+          <div class="kpi-card" style="border-left: 4px solid #f7768e; background: var(--panel); padding:15px; border-radius:8px;">
+            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Оффлайн (Требуется вход)</span>
+            <strong id="kpi-offline-count" style="font-size:1.5rem; color:#f7768e; display:block;">0</strong>
           </div>
         </div>
 
+        <!-- Сетка карточек персонажей -->
         <div id="character-grid" class="card-grid"></div>
       </section>
 
@@ -194,9 +214,11 @@
     </main>
   </div>
 
+  <!-- Контейнеры для модальных окон и уведомлений -->
   <div id="modal-root"></div>
   <div id="toast-root"></div>
 
+  <!-- Главный скрипт -->
   <script type="module" src="/js/main.js"></script>
 </body>
 </html>

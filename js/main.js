@@ -4,11 +4,11 @@ import { state } from './state.js';
 import { loadData, persist } from './storage.js'; 
 import { normalizeState } from './state.js';
 import { bindCharacters, renderCharacters } from './characters.js';
-import { bindParties, renderParties } from './parties.js';
+import { bindParties, renderParties } from './parties/index.js';
 import { bindMarathons, renderMarathons } from './marathon.js';
 import { bindSettings, renderSettings } from './settings.js';
 import { toast } from './ui.js';
-import { initSyncListeners, refreshAllBalances } from './syncManager.js'; // Импортируем функции синхронизации
+import { initSyncListeners } from './syncManager.js'; // Импорт только инициализации
 
 /**
  * Главная точка входа приложения
@@ -37,10 +37,9 @@ async function boot() {
     }
 
     // 3. Инициализация модулей с изоляцией ошибок
-    // Даже если один модуль упадет, остальные должны работать
     
     try {
-      bindCharacters();
+      bindCharacters(); // Вызовет initFilters() -> renderCharacters() -> initSyncButtons()
       console.log('[BOOT] Characters bound.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Characters:', e);
@@ -70,14 +69,12 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind Settings:', e);
     }
 
-    // 4. Привязка глобальных контролов (кнопки вне карточек)
-    bindGlobalControls();
-
-    // 5. Привязка навигации по вкладкам
+    // 4. Привязка навигации по вкладкам
     bindNavigation();
     console.log('[BOOT] Navigation bound.');
 
-    // 6. Первый рендер активной вкладки (по умолчанию Персонажи)
+    // 5. Первый рендер активной вкладки (по умолчанию Персонажи)
+    // Хотя bindCharacters уже вызывает render, явный вызов гарантирует актуальность
     renderActiveTab('characters');
 
     console.log('[BOOT] Application ready.');
@@ -138,63 +135,7 @@ function renderActiveTab(sectionName) {
   } catch (err) {
     console.error(`[RENDER ERROR in ${sectionName}]`, err);
     toast(`Ошибка отображения раздела "${sectionName}". Подробности в консоли.`, 'error');
-    
-    // Попытка восстановить UI
-    const container = document.querySelector(`.page[data-section="${sectionName}"]`);
-    if (container) {
-       const contentArea = container.querySelector('#character-grid') || 
-                           container.querySelector('#party-list') || 
-                           container.querySelector('#marathon-list') ||
-                           container.querySelector('.settings-grid'); 
-      
-      if(contentArea) {
-         contentArea.innerHTML = `<div class="empty-state" style="color: var(--danger);">Не удалось загрузить данные. Ошибка: ${escapeHtmlSimple(err.message)}</div>`;
-      }
-    }
   }
-}
-
-/**
- * Привязка событий к глобальным кнопкам интерфейса
- */
-function bindGlobalControls() {
-  
-  // Кнопка "Обновить все балансы" (должна быть в HTML с id="btn-refresh-all-balances")
-  const btnRefreshAll = document.getElementById('btn-refresh-all-balances');
-  if (btnRefreshAll) {
-    btnRefreshAll.addEventListener('click', async () => {
-      const charsWithAccounts = state.characters.filter(c => c.contacts?.email);
-      
-      if (charsWithAccounts.length === 0) {
-        toast('Нет персонажей с введенными контактами.', 'warning');
-        return;
-      }
-
-      btnRefreshAll.disabled = true;
-      const originalText = btnRefreshAll.textContent;
-      btnRefreshAll.textContent = '⏳ Проверка...';
-
-      try {
-        await refreshAllBalances();
-      } catch (err) {
-        console.error(err);
-        toast('Ошибка при массовом обновлении', 'error');
-      } finally {
-        btnRefreshAll.disabled = false;
-        btnRefreshAll.textContent = originalText;
-      }
-    });
-  }
-}
-
-// Простая экранировка для сообщений об ошибках
-function escapeHtmlSimple(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
 
 // Запуск приложения после полной загрузки DOM

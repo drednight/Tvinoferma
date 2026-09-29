@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { persist } from './storage.js';
 import { escapeHtml } from './utils.js';
 import { toast } from './ui.js';
-import { renderParties } from './parties.js'; 
+import { bindParties, renderParties } from './parties/index.js';
 
 // Импортируем константы
 import { CLASSES, CLASS_ICON_MAP, SKIES, SKY_LEVELS, PASS_TYPES, getClassIconSrc } from './constants.js';
@@ -13,7 +13,7 @@ import { CLASSES, CLASS_ICON_MAP, SKIES, SKY_LEVELS, PASS_TYPES, getClassIconSrc
 import { bindCharactersModule, openCharacterProfile, openCharacterForm } from './characters/index.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
-import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from './syncManager.js'; // Добавили openSyncHelper
+import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from './syncManager.js';
 
 let expandedCharacterId = null;
 
@@ -31,21 +31,11 @@ const EYE_SVG_OPEN = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none
 const EYE_SVG_CLOSED = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 
 export function renderCharacters() {
-  const gridEl = document.getElementById('character-grid');
-  if (!gridEl) return;
-
-  updateKPIs();
+  // 1. Сначала обновляем состояние кнопок синхронизации (навешиваем обработчики)
+  initSyncButtons(); 
   
-  // Обновляем состояние кнопок синхронизации (если они есть в DOM)
-  initSyncButtons();
-
-  if (!state.characters.length) {
-    gridEl.innerHTML = '<div class="empty-state">Нет персонажей. Добавьте первого!</div>';
-    return;
-  }
-
-  // Вызываем рендер с учетом текущих фильтров
-  renderFilteredGrid();
+  // 2. Затем рендерим сетку с учетом фильтров
+  renderFilteredGrid(); 
 }
 
 /**
@@ -129,6 +119,9 @@ function renderFilteredGrid() {
   } else if (selectedAuth === 'offline') {
     filteredChars = filteredChars.filter(c => c.isLoggedIn !== true);
   }
+
+  // ОБНОВЛЯЕМ KPI НА ОСНОВЕ ОТФИЛЬТРОВАННЫХ ДАННЫХ
+  updateKPIs(filteredChars);
 
   if (filteredChars.length === 0) {
     gridEl.innerHTML = '<div class="empty-state">Ничего не найдено по заданным фильтрам.</div>';
@@ -275,43 +268,51 @@ function generateCardHTML(char) {
     `;
 }
 
-function updateKPIs() {
-  const totalEl = document.getElementById('kpi-characters');
-  const coinsEl = document.getElementById('kpi-coins');
-  const partiesEl = document.getElementById('kpi-parties');
-  const noPartyEl = document.getElementById('kpi-no-party');
-  
-  // Новые KPI для статуса
+/**
+ * Обновление KPI на основе переданного массива отфильтрованных персонажей
+ */
+function updateKPIs(charsToCount) {
+  // Если массив пуст, ставим нули
+  if (!charsToCount || charsToCount.length === 0) {
+      document.getElementById('kpi-total-chars').textContent = '0';
+      document.getElementById('kpi-active-parties').textContent = '0';
+      document.getElementById('kpi-no-party').textContent = '0';
+      document.getElementById('kpi-coins').textContent = '0';
+      document.getElementById('kpi-online-count').textContent = '0';
+      document.getElementById('kpi-offline-count').textContent = '0';
+      return;
+  }
+
+  // 1. Всего персонажей в выборке
+  const totalChars = charsToCount.length;
+  document.getElementById('kpi-total-chars').textContent = totalChars;
+
+  // 2. Активные пати (уникальные названия пати среди отфильтрованных)
+  const uniquePartiesSet = new Set(charsToCount.map(c => c.party).filter(Boolean));
+  document.getElementById('kpi-active-parties').textContent = uniquePartiesSet.size;
+
+  // 3. Без пати
+  const noPartyCount = charsToCount.filter(c => !c.party).length;
+  document.getElementById('kpi-no-party').textContent = noPartyCount;
+
+  // 4. Сумма древних монет
+  const totalCoins = charsToCount.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0);
+  document.getElementById('kpi-coins').textContent = totalCoins.toLocaleString('ru-RU');
+
+  // 5. Онлайн (Авторизовано)
+  const onlineCount = charsToCount.filter(c => c.isLoggedIn === true).length;
   const onlineEl = document.getElementById('kpi-online-count');
-  const offlineEl = document.getElementById('kpi-offline-count');
-
-  if(totalEl) totalEl.textContent = state.characters.length;
-  
-  if(coinsEl) {
-    const totalCoins = state.characters.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0);
-    coinsEl.textContent = totalCoins.toLocaleString('ru-RU');
-  }
-
-  if(partiesEl) {
-    const uniqueParties = new Set(state.characters.map(c => c.party).filter(Boolean));
-    partiesEl.textContent = uniqueParties.size;
-  }
-
-  if(noPartyEl) {
-    const count = state.characters.filter(c => !c.party).length;
-    noPartyEl.textContent = count;
-  }
-
   if(onlineEl) {
-    const count = state.characters.filter(c => c.isLoggedIn === true).length;
-    onlineEl.textContent = count;
-    onlineEl.style.color = '#9ece6a';
+    onlineEl.textContent = onlineCount;
+    onlineEl.style.color = '#9ece6a'; // Зеленый
   }
 
+  // 6. Оффлайн (Требуется вход)
+  const offlineCount = charsToCount.filter(c => c.isLoggedIn !== true).length;
+  const offlineEl = document.getElementById('kpi-offline-count');
   if(offlineEl) {
-    const count = state.characters.filter(c => c.isLoggedIn !== true).length;
-    offlineEl.textContent = count;
-    offlineEl.style.color = '#f7768e';
+    offlineEl.textContent = offlineCount;
+    offlineEl.style.color = '#f7768e'; // Красный
   }
 }
 
@@ -319,51 +320,68 @@ function updateKPIs() {
  * Инициализация кнопок синхронизации в UI
  */
 function initSyncButtons() {
-    // Кнопка "Проверить авторизацию" (Быстрая проверка статусов)
+    console.log('[SYNC BUTTONS] Searching for buttons...');
+
+    // Кнопка "Проверить авторизацию"
     const checkBtn = document.getElementById('btn-check-auth-status');
-    if(checkBtn && !checkBtn.dataset.bound) {
-        checkBtn.onclick = async () => {
-            checkBtn.disabled = true;
-            const originalText = checkBtn.innerHTML;
-            checkBtn.innerHTML = '⏳ Проверка...';
-            
-            try {
-                await refreshAllLoginStatuses();
-                toast('Статусы авторизации обновлены.', 'success');
-            } catch (err) {
-                console.error(err);
-                toast('Ошибка проверки статусов', 'error');
-            } finally {
-                setTimeout(() => {
-                    checkBtn.disabled = false;
-                    checkBtn.innerHTML = originalText;
-                }, 1000);
-            }
-        };
-        checkBtn.dataset.bound = "true";
+    if(checkBtn) {
+        console.log('[SYNC BUTTONS] Found Auth Check button.');
+        
+        // Проверяем, не навешен ли уже обработчик (чтобы не дублировать события)
+        if(!checkBtn.dataset.bound) {
+            checkBtn.onclick = async () => {
+                console.log('[ACTION] Clicked: Check Authorization');
+                checkBtn.disabled = true;
+                const originalText = checkBtn.innerHTML;
+                checkBtn.innerHTML = '⏳ Проверка...';
+                
+                try {
+                    await refreshAllLoginStatuses();
+                    toast('Статусы авторизации обновлены.', 'success');
+                } catch (err) {
+                    console.error(err);
+                    toast('Ошибка проверки статусов', 'error');
+                } finally {
+                    setTimeout(() => {
+                        checkBtn.disabled = false;
+                        checkBtn.innerHTML = originalText;
+                    }, 1000);
+                }
+            };
+            checkBtn.dataset.bound = "true";
+        }
+    } else {
+        console.warn('[SYNC BUTTONS] Button #btn-check-auth-status NOT FOUND in DOM!');
     }
 
-    // Кнопка "Обновить балансы" (Полная процедура)
+    // Кнопка "Обновить балансы"
     const balanceBtn = document.getElementById('btn-refresh-balances');
-    if(balanceBtn && !balanceBtn.dataset.bound) {
-        balanceBtn.onclick = async () => {
-            balanceBtn.disabled = true;
-            const originalText = balanceBtn.innerHTML;
-            balanceBtn.innerHTML = '⏳ Обновление...';
-            
-            try {
-                await refreshAllBalances();
-            } catch (err) {
-                console.error(err);
-                toast('Ошибка обновления балансов', 'error');
-            } finally {
-                setTimeout(() => {
-                    balanceBtn.disabled = false;
-                    balanceBtn.innerHTML = originalText;
-                }, 1000);
-            }
-        };
-        balanceBtn.dataset.bound = "true";
+    if(balanceBtn) {
+        console.log('[SYNC BUTTONS] Found Balance Refresh button.');
+        
+        if(!balanceBtn.dataset.bound) {
+            balanceBtn.onclick = async () => {
+                console.log('[ACTION] Clicked: Update Balances');
+                balanceBtn.disabled = true;
+                const originalText = balanceBtn.innerHTML;
+                balanceBtn.innerHTML = '⏳ Обновление...';
+                
+                try {
+                    await refreshAllBalances();
+                } catch (err) {
+                    console.error(err);
+                    toast('Ошибка обновления балансов', 'error');
+                } finally {
+                    setTimeout(() => {
+                        balanceBtn.disabled = false;
+                        balanceBtn.innerHTML = originalText;
+                    }, 1000);
+                }
+            };
+            balanceBtn.dataset.bound = "true";
+        }
+    } else {
+        console.warn('[SYNC BUTTONS] Button #btn-refresh-balances NOT FOUND in DOM!');
     }
 }
 

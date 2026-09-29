@@ -77,7 +77,9 @@ function normalizeCharacter(input = {}) {
 
 function normalizeParty(input = {}) {
   return {
+    id: input.id || crypto.randomUUID?.() || String(Date.now()), // Добавили ID для стабильности
     name: String(input.name || '').trim(),
+    order: Number(input.order) || null, // ✅ СОХРАНЯЕМ ПОЛЕ ORDER
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
   };
@@ -103,12 +105,11 @@ function mergeSettings(input = {}) {
 }
 
 export function normalizeState(input) {
-  return {
+  // 1. Базовая структура
+  const normalized = {
     version: Number(input?.version) || DATA_VERSION,
     savedAt: input?.savedAt || null,
-    parties: Array.isArray(input?.parties)
-      ? input.parties.map(normalizeParty).filter((p) => p.name)
-      : [],
+    parties: [],
     characters: Array.isArray(input?.characters)
       ? input.characters.map(normalizeCharacter)
       : [],
@@ -121,5 +122,30 @@ export function normalizeState(input) {
       revealedContacts: {}
     }
   };
-}
 
+  // 2. Нормализация ПАРТИЙ с гарантией поля ORDER
+  if (Array.isArray(input?.parties)) {
+    // Сначала мапим через твою стандартную функцию
+    let tempParties = input.parties
+      .map(normalizeParty)
+      .filter((p) => p && p.name); // Убираем пустые/битые записи
+
+    // ВАЖНО: Если у партии нет поля order или оно не число, 
+    // присваиваем ей порядковый номер based on its position in the array.
+    // Это критически важно для сохранения порядка при загрузке старых данных.
+    tempParties.forEach((party, index) => {
+      if (typeof party.order !== 'number' || isNaN(party.order)) {
+        party.order = index + 1;
+      }
+    });
+
+    // Сортируем массив партий по полю order перед тем как положить в стейт.
+    // Это гарантирует, что renderPartiesGrid получит уже отсортированный список,
+    // и визуальный порядок будет соответствовать сохраненному.
+    tempParties.sort((a, b) => a.order - b.order);
+
+    normalized.parties = tempParties;
+  }
+
+  return normalized;
+}

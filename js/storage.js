@@ -48,8 +48,14 @@ export async function forceRenderAndPersist() {
   await persist();
   
   // Динамические импорты, чтобы избежать циклических зависимостей при старте
+  
+  // 1. Персонажи
   const { renderCharacters } = await import('./characters.js');
-  const { renderParties } = await import('./parties.js');
+  
+  // 2. Пати (ИСПРАВЛЕНО: теперь импортируем из index.js внутри папки parties)
+  const { renderParties } = await import('./parties/index.js'); 
+  
+  // 3. Марафоны
   const { renderMarathons } = await import('./marathon.js');
   
   renderCharacters();

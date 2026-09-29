@@ -41,13 +41,28 @@ pub fn run() {
 
 /// Открывает ВИДИМОЕ окно браузера (для ручного входа/действия)
 #[command]
-async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Result<String, String> {
+async fn open_sync_window(
+    app: AppHandle, 
+    char_id: String, 
+    url: String,
+    char_nick: Option<String> // НОВЫЙ ПАРАМЕТР
+) -> Result<String, String> {
     let label = format!("sync-win-{}", char_id);
     
-    // Если окно уже есть, фокусируем его
+    // Определяем заголовок окна
+    let window_title = match &char_nick {
+        Some(nick) => format!("PW Sync: {}", nick),
+        None => format!("PW Sync: {}", char_id),
+    };
+
+    // Если окно уже есть, фокусируем его и ОБНОВЛЯЕМ ЗАГОЛОВОК
     if let Some(win) = app.get_webview_window(&label) {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
+        
+        // Обновляем title, если он изменился или был пуст
+        let _ = win.set_title(&window_title);
+        
         return Ok(label);
     }
 
@@ -58,7 +73,7 @@ async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Resul
     std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
 
     let _window = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-        .title(format!("PW Sync: {}", char_id))
+        .title(window_title) // <-- ИСПОЛЬЗУЕМ НИК В ЗАГОЛОВКЕ
         .inner_size(1200.0, 800.0) 
         .resizable(true)
         .data_directory(profiles_dir) 
@@ -85,7 +100,6 @@ async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Resul
     }
 
     // --- ИНЖЕКТИРУЕМ JS-ПАТЧ ДЛЯ БОРЬБЫ С ПОПАПАМИ ---
-    // Ждем секунду, чтобы страница начала грузиться, и внедряем скрипт
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     
     if let Some(win) = app.get_webview_window(&label) {
@@ -93,28 +107,23 @@ async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Resul
             (function() {
                 console.log('[PATCH] Installing Popup Killer...');
                 
-                // Сохраняем оригинальный window.open
                 const originalOpen = window.open;
                 
                 window.open = function(url, name, specs) {
                     if (url && typeof url === 'string') {
                         const lowerUrl = url.toLowerCase();
                         
-                        // Проверяем, является ли это ссылкой на авторизацию
                         if (lowerUrl.includes('vkplay') || 
                             lowerUrl.includes('oauth') || 
                             lowerUrl.includes('passport') ||
                             lowerUrl.includes('/login')) {
                             
                             console.log('[PATCH] Intercepted auth popup:', url);
-                            // Принудительно переходим в текущем окне
                             window.location.href = url;
-                            return null; // Не открываем новое окно
+                            return null;
                         }
                     }
                     
-                    // Для всех остальных случаев используем стандартное поведение
-                    // Но если браузер заблокирует, пусть лучше ничего не откроется, чем зависнет
                     try {
                         return originalOpen.call(this, url, name, specs);
                     } catch(e) {
@@ -123,13 +132,11 @@ async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Resul
                     }
                 };
 
-                // Также перехватываем клики по кнопкам входа, если они есть на странице
                 document.addEventListener('click', function(e) {
                     const target = e.target.closest('.js-login, .login-button, a[href*="login"], button[onclick*="login"]');
                     if (target) {
                         let authUrl = target.getAttribute('href');
                         
-                        // Попытка вытащить URL из onclick, если href нет
                         if (!authUrl && target.onclick) {
                              const onclickStr = target.onclick.toString();
                              const match = onclickStr.match(/['"](https?:\/\/[^'"]+)['"]/);
@@ -158,12 +165,10 @@ async fn open_sync_window(app: AppHandle, char_id: String, url: String) -> Resul
 async fn close_sync_window(app: AppHandle, char_id: String) -> Result<(), String> {
     let base_label = format!("sync-win-{}", char_id);
     
-    // Закрываем основное окно
     if let Some(win) = app.get_webview_window(&base_label) {
         win.close().map_err(|e| e.to_string())?;
     }
     
-    // Закрываем все связанные попапы (если вдруг остались)
     for (_, window) in app.webview_windows() {
         if window.label().starts_with(&format!("popup-{}", base_label)) {
             let _ = window.close();
@@ -190,26 +195,32 @@ async fn execute_script_in_window(app: AppHandle, label: String, script: String)
     }
 }
 
-/// БЫСТРАЯ ПРОВЕРКА ЛОГИНА ЧЕРЕЗ СКРЫТОЕ ОКНО (Страница usercp.php)
+// src-tauri/src/lib.rs
+
+/// БЫСТРАЯ ПРОВЕРКА ЛОГИНА ЧЕРЕЗ СКРЫТОЕ ОКНО
 #[command]
-async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), String> {
+async fn check_login_status_http(
+    app: AppHandle, 
+    char_id: String,
+    timeout_seconds: Option<u64> // НОВЫЙ ПАРАМЕТР: Таймаут в секундах
+) -> Result<(), String> {
     let label = format!("sync-win-{}", char_id);
     
-    println!("[HIDDEN CHECK] Starting status check for {} via usercp.php", char_id);
+    // Дефолтный таймаут 5 секунд, если не передан
+    let wait_time = std::time::Duration::from_secs(timeout_seconds.unwrap_or(5));
+    
+    println!("[HIDDEN CHECK] Starting status check for {} (Timeout: {:?})", char_id, wait_time);
 
-    // 1. Получаем путь к профилю
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let profiles_dir = app_data_dir.join("pw-sync-profiles").join(&char_id);
     std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
 
-    // 2. Создаем или получаем окно
     let window = match app.get_webview_window(&label) {
         Some(w) => w,
         None => {
             println!("[HIDDEN CHECK] Creating HIDDEN window...");
             let parsed_url = Url::from_str("https://pwonline.ru/usercp.php").map_err(|e| format!("Invalid URL: {}", e))?;
             
-            // Для скрытых окон НЕ добавляем on_new_window, чтобы не спамить окнами при проверке
             let _win = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
                 .title(format!("Hidden Sync: {}", char_id))
                 .inner_size(800.0, 600.0)
@@ -219,7 +230,8 @@ async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), 
                 .build()
                 .map_err(|e| e.to_string())?;
             
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            // Ждем инициализации окна
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             
             app.get_webview_window(&label).ok_or("Window creation failed")?
         }
@@ -229,47 +241,34 @@ async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), 
     let target_url = Url::from_str("https://pwonline.ru/usercp.php").unwrap();
     window.navigate(target_url).map_err(|e| e.to_string())?;
     
-    tokio::time::sleep(std::time::Duration::from_millis(2500)).await;
+    // Ждем загрузки страницы (короче, чем раньше, чтобы ускорить первый проход)
+    tokio::time::sleep(wait_time / 2).await; 
 
-    // 3. Инжектим скрипт проверки
     let checker_script = r#"
         (function() {
-            console.log('[HIDDEN CHECKER] Verifying login status on usercp.php...');
-            
             function getResult() {
                 const nicknameSpan = document.querySelector('.info__forumname');
                 const welcomeText = document.body.innerText.includes("Добро пожаловать");
 
-                if (nicknameSpan && welcomeText) {
-                     console.log('[CHECKER] Found valid session marker (.info__forumname). Status: ONLINE');
-                     return 'ONLINE';
-                }
-
-                const bodyText = document.body.innerText || "";
-                const hasLoginError = bodyText.includes("Вы не авторизованы") || 
-                                      bodyText.includes("Предупреждение") && bodyText.includes("не имеете доступа");
+                if (nicknameSpan && welcomeText) return 'ONLINE';
                 
-                if (hasLoginError) {
-                    console.log('[CHECKER] Login error found. Status: OFFLINE');
-                    return 'OFFLINE';
-                }
-
+                const bodyText = document.body.innerText || "";
+                if (bodyText.includes("Вы не авторизованы")) return 'OFFLINE';
+                
                 return 'UNKNOWN'; 
             }
 
             let status = getResult();
-            
             if (status === 'UNKNOWN') {
                 setTimeout(() => {
                     status = getResult();
                     finalize(status);
-                }, 2000);
+                }, 1000);
             } else {
                 finalize(status);
             }
 
             function finalize(finalStatus) {
-                console.log('[CHECKER] Final Status:', finalStatus);
                 if (finalStatus === 'ONLINE') {
                     window.location.hash = 'TF_STATUS_ONLINE';
                 } else {
@@ -281,8 +280,8 @@ async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), 
 
     window.eval(checker_script).map_err(|e| e.to_string())?;
 
-    // 4. Опрашиваем hash URL
-    let max_attempts = 12; 
+    // Цикл опроса hash с учетом нового таймаута
+    let max_attempts = (timeout_seconds.unwrap_or(5) as usize) * 2; // 2 попытки в секунду
     
     for _ in 0..max_attempts {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -310,7 +309,7 @@ async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), 
         }
     }
 
-    println!("[HIDDEN CHECK] Timeout after 6s, assuming OFFLINE");
+    println!("[HIDDEN CHECK] Timeout after {:?}, assuming OFFLINE", wait_time);
     let _ = app.emit(
         "login-status-result-global", 
         serde_json::json!({ "charId": char_id, "status": "offline" })
@@ -319,7 +318,7 @@ async fn check_login_status_http(app: AppHandle, char_id: String) -> Result<(), 
     Ok(())
 }
 
-/// V4 FIX: Парсинг баланса с гарантированной навигацией
+/// V4 FIX: Парсинг баланса с умной обработкой нуля и проверкой авторизации
 #[command]
 async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(), String> {
     let label = format!("sync-win-{}", char_id);
@@ -332,7 +331,7 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
         Some(w) => w,
         None => {
             println!("[V4-FIX WARN] Creating new window...");
-            let _ = open_sync_window(app.clone(), char_id.clone(), "https://pwonline.ru/chests2.php".to_string()).await?;
+            let _ = open_sync_window(app.clone(), char_id.clone(), "https://pwonline.ru/chests2.php".to_string(), None).await?;
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             app.get_webview_window(&label).ok_or("Window creation failed")?
         }
@@ -347,70 +346,96 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
     println!("[V4-FIX WAIT] Waiting 5 seconds for page load...");
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    // 4. Инжектим ПРОСТОЙ скрипт парсинга
+    // 4. Инжектим УМНЫЙ скрипт парсинга
     let parser_script = r#"
         (function() {
-            console.log('[PARSER-V4-FIX] Starting direct parse on chests2.php...');
+            console.log('[PARSER-V4-SMART] Starting smart parse on chests2.php...');
             
-            function writeBalanceToHash(balance, error) {
-                const errStr = error ? error.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "null";
-                const balStr = (typeof balance === 'number' && !isNaN(balance)) ? balance.toString() : "0";
+            function reportResult(balance, errorType) {
+                const errStr = errorType ? errorType.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "null";
+                const balStr = (typeof balance === 'number' && !isNaN(balance)) ? balance.toString() : "-1";
+                
+                // Формат хэша: TF_BAL_{balance}_{error}
+                // Если error != null, значит это проблема с доступом/авторизацией
                 window.location.hash = `TF_BAL_${balStr}_${errStr}`;
-                console.log('[PARSER-V4-FIX] Hash updated:', window.location.hash);
+                console.log('[PARSER-V4-SMART] Hash updated:', window.location.hash);
             }
 
             try {
+                // Ищем основной контейнер баланса
                 const pointsInfo = document.querySelector('.points_info');
+                const bodyText = document.body.innerText || "";
+
+                // ПРОВЕРКА 1: Явные признаки отсутствия авторизации
+                // Эти тексты появляются, если куки истекли или вход не выполнен
+                const isNotLoggedIn = bodyText.includes("Вы не авторизованы") || 
+                                      bodyText.includes("Для доступа к разделу необходимо войти") ||
+                                      bodyText.includes("Ошибка авторизации") ||
+                                      window.location.href.includes("login.php") ||
+                                      window.location.href.includes("vkplay");
+
+                if (isNotLoggedIn) {
+                    console.warn('[PARSER-V4-SMART] Detected NOT LOGGED IN markers.');
+                    reportResult(null, 'not_logged_in');
+                    return;
+                }
+
+                // ПРОВЕРКА 2: Наличие элемента баланса
+                if (!pointsInfo) {
+                    console.warn('[PARSER-V4-SMART] Container .points_info not found, but no explicit login error. Assuming offline/blocked.');
+                    reportResult(null, 'container_missing');
+                    return;
+                }
+
+                const strongTag = pointsInfo.querySelector('strong');
                 
-                if (pointsInfo) {
-                    const strongTag = pointsInfo.querySelector('strong');
+                if (!strongTag) {
+                     console.warn('[PARSER-V4-SMART] Strong tag inside container missing.');
+                     reportResult(null, 'no_value_tag');
+                     return;
+                }
+
+                const text = strongTag.innerText.trim();
+                const cleanedText = text.replace(/[^0-9]/g, '');
+                const numericValue = parseInt(cleanedText, 10);
+                
+                if (isNaN(numericValue)) {
+                    console.warn('[PARSER-V4-SMART] Could not parse number from text:', text);
+                    reportResult(null, 'parse_nan');
+                    return;
+                }
+
+                // ПРОВЕРКА 3: Обработка нуля
+                if (numericValue === 0) {
+                    console.info('[PARSER-V4-SMART] Balance is 0. Double-checking session validity...');
                     
-                    if (strongTag) {
-                        const text = strongTag.innerText.trim();
-                        const cleanedText = text.replace(/[^0-9]/g, '');
-                        const numericValue = parseInt(cleanedText, 10);
-                        
-                        if (!isNaN(numericValue)) {
-                            writeBalanceToHash(numericValue, null);
-                            strongTag.style.backgroundColor = '#9ece6a'; 
-                            return;
-                        } else {
-                            writeBalanceToHash(null, 'parse_nan');
-                        }
+                    // Дополнительная проверка: есть ли никнейм пользователя где-то на странице?
+                    // На pwonline часто ник виден в шапке или футере
+                    const userNickElement = document.querySelector('.user-nick, .header-user-name, [class*="username"]');
+                    
+                    if (!userNickElement) {
+                        // Если баланс 0 и нигде нет имени пользователя - скорее всего, нас выкинуло
+                        console.warn('[PARSER-V4-SMART] Zero balance AND no username found. Treating as OFFLINE.');
+                        reportResult(null, 'zero_no_user_session_expired');
                     } else {
-                         writeBalanceToHash(null, 'no_strong_tag');
+                        // Баланс 0, но пользователь явно залогинен (виден ник)
+                        console.info('[PARSER-V4-SMART] Zero balance BUT user logged in. Recording 0 coins.');
+                        reportResult(0, null);
                     }
                 } else {
-                     writeBalanceToHash(null, 'no_container');
+                    // Баланс больше 0 - точно онлайн
+                    console.info('[PARSER-V4-SMART] Success! Balance:', numericValue);
+                    reportResult(numericValue, null);
                 }
-                
-                setTimeout(() => {
-                    const pi = document.querySelector('.points_info');
-                    if(pi) {
-                        const st = pi.querySelector('strong');
-                        if(st) {
-                            const val = parseInt(st.innerText.replace(/[^0-9]/g, ''), 10);
-                            if(!isNaN(val)) {
-                                writeBalanceToHash(val, null);
-                                st.style.backgroundColor = '#7aa2f7'; 
-                            } else {
-                                 writeBalanceToHash(null, 'retry_parse_error');
-                            }
-                        } else {
-                             writeBalanceToHash(null, 'retry_no_strong');
-                        }
-                    } else {
-                         writeBalanceToHash(null, 'retry_no_container');
-                    }
-                }, 2000);
 
             } catch (e) {
-                writeBalanceToHash(null, 'exception_' + e.message.substring(0, 20));
+                console.error('[PARSER-V4-SMART] Exception:', e);
+                reportResult(null, 'exception_' + e.message.substring(0, 20));
             }
         })();
     "#;
 
-    println!("[V4-FIX INJECT] Injecting simple parser...");
+    println!("[V4-FIX INJECT] Injecting smart parser...");
     window.eval(parser_script).map_err(|e| {
         println!("[V4-FIX ERROR] Eval inject failed: {}", e);
         e.to_string()
@@ -431,20 +456,6 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
             Ok(current_url) => {
                 let url_str = current_url.as_str();
                 
-                if url_str.contains("#TF_ERR_NOT_LOGGED_IN") || url_str.contains("login") {
-                     println!("[V4-FIX RESULT] Session lost or redirected to login.");
-                     let _ = app.emit(
-                        "pw-balance-result-global", 
-                        serde_json::json!({
-                            "charId": char_id,
-                            "balance": null,
-                            "error": "session_lost_during_parse"
-                        })
-                    );
-                    found_data = true;
-                    break;
-                }
-
                 if url_str.contains("#TF_BAL_") {
                     println!("[V4-FIX SUCCESS] Found data in URL at attempt {}: {}", i+1, url_str);
                     
@@ -459,20 +470,23 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
                             let balance_str = parts[0];
                             let error_raw = parts[1];
                             
-                            let balance: Option<i64> = balance_str.parse::<i64>().ok();
+                            // Парсим баланс (-1 означает ошибку по логике выше)
+                            let balance_opt: Option<i64> = balance_str.parse::<i64>().ok();
+                            let final_balance = if balance_opt == Some(-1) { None } else { balance_opt };
+                            
                             let error: Option<String> = if error_raw == "null" {
                                 None
                             } else {
                                 Some(error_raw.to_string())
                             };
 
-                            println!("[V4-FIX PARSED] Balance: {:?}, Error: {:?}", balance, error);
+                            println!("[V4-FIX PARSED] Balance: {:?}, Error: {:?}", final_balance, error);
 
                             let emit_result = app.emit(
                                 "pw-balance-result-global", 
                                 serde_json::json!({
                                     "charId": char_id,
-                                    "balance": balance,
+                                    "balance": final_balance,
                                     "error": error
                                 })
                             );
@@ -501,7 +515,7 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
             serde_json::json!({
                 "charId": char_id,
                 "balance": null,
-                "error": "timeout_polling_fix"
+                "error": "timeout_polling_smart"
             })
         );
     }
