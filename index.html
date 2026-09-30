@@ -89,6 +89,10 @@
                     <button class="dropdown-item" data-action="update-balance">
                         💰 Обновить балансы
                     </button>
+                    <!-- === НОВАЯ КНОПКА ДЛЯ МАРАФОНОВ === -->
+                    <button class="dropdown-item" data-action="update-marathons">
+                        🏃 Обновить марафоны
+                    </button>
                 </div>
             </div>
 
@@ -137,6 +141,8 @@
       <section class="page" data-section="parties">
         <div class="toolbar">
           <h2>Управление пати</h2>
+          <!-- Кнопка добавления убрана, так как есть FAB -->
+          <!-- <button id="add-party-btn" class="btn primary">+ Новая пати</button> -->
         </div>
         <div id="party-list" class="list"></div>
       </section>
@@ -145,8 +151,19 @@
       <section class="page" data-section="marathons">
         <div class="toolbar">
           <h2>Марафоны и события</h2>
-          <button id="add-marathon-btn" class="btn primary">+ Новый марафон</button>
+          
+          <!-- НОВЫЙ БЛОК КНОПОК -->
+          <div style="display:flex; gap:10px; margin-left:auto;">
+             <!-- Кнопка Авто-поиска -->
+             <button id="btn-discover-marathon" class="btn secondary" title="Автоматически найти текущий марафон на сайте PW Online">
+               🔍 Найти активный
+             </button>
+             
+             <!-- Твоя стандартная кнопка создания -->
+             <button id="add-marathon-btn" class="btn primary">+ Создать вручную</button>
+          </div>
         </div>
+        
         <div id="marathon-list" class="list">
            <div class="empty-state">Марафонов пока нет.</div>
         </div>
@@ -223,7 +240,7 @@
   <div id="modal-root"></div>
   <div id="toast-root"></div>
 
-     <!-- === НОВЫЙ БЛОК: CONTEXTUAL FLOATING ACTION BUTTONS === -->
+  <!-- === НОВЫЙ БЛОК: CONTEXTUAL FLOATING ACTION BUTTONS === -->
   <div class="fab-container" id="global-fab-container">
     <!-- Основная кнопка. Иконка меняется динамически -->
     <button id="fab-main-btn" class="fab-main" title="Добавить">
@@ -231,6 +248,7 @@
     </button>
   </div>
   <!-- ====================================================== -->
+
   <!-- Главный скрипт -->
   <script type="module" src="/js/main.js"></script>
 </body>

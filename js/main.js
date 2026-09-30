@@ -13,6 +13,9 @@ import { initSyncListeners } from './syncManager.js';
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
 import { initUiActions, updateFabVisibility } from './uiActions.js'; 
 
+// === НОВЫЙ ИМПОРТ ДЛЯ АВТО-ПОИСКА МАРАФОНОВ ===
+import { initDiscoveryListener, startDiscovery } from './marathons/discoveryLauncher.js'; 
+
 /**
  * Главная точка входа приложения
  */
@@ -30,6 +33,7 @@ async function boot() {
     }
 
     // 2. Инициализация слушателей синхронизации PW Online
+    // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
     try {
         await initSyncListeners();
         console.log('[BOOT] Sync listeners initialized.');
@@ -57,7 +61,12 @@ async function boot() {
 
     try {
       bindMarathons(); 
-      console.log('[BOOT] Marathons bound & rendered.');
+      
+      // === ИНИЦИАЛИЗАЦИЯ СЛУШАТЕЛЯ ПОИСКА МАРАФОНОВ ===
+      // Это должно быть после bindMarathons, чтобы DOM был готов
+      await initDiscoveryListener();
+      console.log('[BOOT] Marathon discovery listener initialized.');
+      
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind/render Marathons:', e);
       const marList = document.getElementById('marathon-list');
@@ -84,7 +93,10 @@ async function boot() {
         console.error('[BOOT ERROR] Failed to init UI Actions:', e);
     }
 
-    // 6. Первый рендер активной вкладки
+    // 6. Привязка глобальных контролов (кнопки вне карточек)
+    bindGlobalControls();
+
+    // 7. Первый рендер активной вкладки (по умолчанию Персонажи)
     renderActiveTab('characters');
 
     console.log('[BOOT] Application ready.');
@@ -148,6 +160,20 @@ function renderActiveTab(sectionName) {
   } catch (err) {
     console.error(`[RENDER ERROR in ${sectionName}]`, err);
     toast(`Ошибка отображения раздела "${sectionName}". Подробности в консоли.`, 'error');
+  }
+}
+
+/**
+ * Привязка событий к глобальным кнопкам интерфейса
+ */
+function bindGlobalControls() {
+  
+  // Кнопка "Найти активный марафон"
+  const btnDiscover = document.getElementById('btn-discover-marathon');
+  if (btnDiscover) {
+    btnDiscover.addEventListener('click', () => {
+        startDiscovery();
+    });
   }
 }
 

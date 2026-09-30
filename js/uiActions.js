@@ -1,7 +1,8 @@
 // js/uiActions.js
 
 import { openCharacterForm } from './characters/index.js';
-import { refreshAllLoginStatuses, refreshAllBalances } from './syncManager.js';
+// Добавили refreshAllMarathonStats к импортам
+import { refreshAllLoginStatuses, refreshAllBalances, refreshAllMarathonStats } from './syncManager.js'; 
 import { toast } from './ui.js';
 import { openCreatePartyModal } from './parties/manager.js'; 
 
@@ -104,6 +105,9 @@ function setupScriptsMenu() {
                 await handleRunScript('check-auth');
             } else if (action === 'update-balance') {
                 await handleRunScript('update-balance');
+            } else if (action === 'update-marathons') { 
+                // === НОВЫЙ CASE ДЛЯ МАРАФОНОВ ===
+                await handleRunScript('update-marathons');
             } else {
                 console.warn(`[UI] Unknown script action: ${action}`);
             }
@@ -132,6 +136,11 @@ async function handleRunScript(scriptType) {
             toast('Запуск обновления балансов...', 'info');
             await refreshAllBalances();
             resultMessage = 'Обновление балансов завершено.';
+        } else if (scriptType === 'update-marathons') {
+            // === НОВАЯ ЛОГИКА ЗАПУСКА МАРАФОНА ===
+            toast('Запуск обновления статистики марафонов...', 'info');
+            await refreshAllMarathonStats();
+            resultMessage = 'Обновление марафонов завершено.';
         } else {
             throw new Error('Unknown script type');
         }

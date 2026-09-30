@@ -20,6 +20,7 @@ import { ProgressBar } from './components/ProgressBar.js';
 let activeListeners = [];
 const authProgress = new ProgressBar();
 const balanceProgress = new ProgressBar();
+const marathonProgress = new ProgressBar(); // <--- НОВЫЙ ПРОГРЕСС БАР ДЛЯ МАРАФОНОВ
 
 /**
  * Инициализация слушателей событий Tauri IPC
@@ -54,7 +55,7 @@ export async function initSyncListeners() {
     });
     activeListeners.push(unlistenLoginStatus);
 
-        // 2. Слушаем результат БАЛАНСА
+    // 2. Слушаем результат БАЛАНСА
     const unlistenBalance = await listen('pw-balance-result-global', (event) => {
         const { charId, balance, error } = event.payload;
         console.log(`[EVENT BALANCE] ${charId}: Balance=${balance}, Error=${error}`);
@@ -72,8 +73,6 @@ export async function initSyncListeners() {
             if (authErrors.includes(error)) {
                 console.warn(`[SYNC] Auth lost detected for ${char.nick}. Setting Offline.`);
                 char.isLoggedIn = false;
-                // Не обновляем баланс, оставляем старый или ставим 0? 
-                // Лучше оставить последний известный, чтобы не пугать юзера обнулением из-за бага сети
                 persist().then(() => {
                     renderCharacters();
                     renderParties();
@@ -96,7 +95,6 @@ export async function initSyncListeners() {
             char.lastCoinUpdate = new Date().toISOString();
             
             // Подтверждаем, что пользователь онлайн (раз смогли прочитать баланс без ошибок)
-            // Даже если баланс 0, но ошибки не было (значит ник найден) - он Онлайн
             char.isLoggedIn = true;
 
             // Добавляем в историю, если сумма изменилась
@@ -123,7 +121,53 @@ export async function initSyncListeners() {
     });
     activeListeners.push(unlistenBalance);
 
-    // 3. Закрытие окна браузера
+    // 3. Слушаем результат МАРАФОНА (НОВЫЙ БЛОК)
+    const unlistenMarathon = await listen('marathon-progress-result-global', (event) => {
+        const { charId, quests, error } = event.payload;
+        console.log(`[EVENT MARATHON] ${charId}: Quests=${quests?.length}, Error=${error}`);
+
+        const charIndex = state.characters.findIndex(c => c.id === charId);
+        if (charIndex === -1) return;
+
+        const char = state.characters[charIndex];
+
+        if (error) {
+            if (error === 'not_logged_in') {
+                char.isLoggedIn = false;
+                persist().then(renderCharacters);
+                toast(`⚠️ Не удалось получить марафон для ${char.nick}: Нет авторизации.`, 'warning');
+            } else {
+                toast(`Ошибка парсинга марафона (${char.nick}): ${error}`, 'error');
+            }
+            return;
+        }
+
+        if (quests && Array.isArray(quests)) {
+            // Обновляем данные марафона в стейте
+            if (!char.marathonData) char.marathonData = {};
+            
+            char.marathonData.lastSyncDate = new Date().toISOString();
+            char.marathonData.quests = quests; // Сохраняем полный массив
+            
+            // Вычисляем общий прогресс (опционально, для отображения одной цифры)
+            const totalCompleted = quests.reduce((sum, q) => sum + q.completed, 0);
+            const totalPossible = quests.reduce((sum, q) => sum + q.total, 0);
+            
+            char.marathonData.summary = {
+                completed: totalCompleted,
+                total: totalPossible,
+                percentage: totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0
+            };
+
+            persist().then(() => {
+                renderCharacters();
+                renderParties();
+            });
+        }
+    });
+    activeListeners.push(unlistenMarathon);
+
+    // 4. Закрытие окна браузера
     const unlistenCloseBrowser = await listen('browser-window-closed', async (event) => {
         const { label } = event.payload;
         const charId = label.replace('sync-win-', '');
@@ -178,9 +222,6 @@ export async function refreshAllLoginStatuses() {
     await new Promise(r => setTimeout(r, 1000));
 
     // --- ПРОХОД 2: Углубленная проверка для тех, кто НЕ онлайн ---
-    // Находим персонажей, которые после первого прохода все еще оффлайн.
-    // Повторяем проверку с большим таймаутом (8 сек), так как возможно страница грузилась долго.
-    
     const offlineChars = state.characters.filter(c => !c.isLoggedIn);
     
     if (offlineChars.length > 0) {
@@ -235,19 +276,14 @@ export async function refreshAllBalances() {
     console.log(`[BALANCE SYNC] Starting update for ${total} characters...`);
 
     // 2. Последовательный запуск запросов к Rust
-    // Используем for...of вместо Promise.all, чтобы не перегружать сеть и CPU
-    // и иметь возможность показывать прогресс по каждому шагу
     for (const char of onlineChars) {
         try {
-            // Вызываем скрипт получения баланса
-            // Эта команда блокируется до получения результата от Rust
             await getCharacterBalance(char.id);
             
             completedCount++;
             balanceProgress.update(completedCount, total, char.nick);
             
             // Небольшая пауза между запросами для стабильности
-            // Можно уменьшить до 200ms, если серверы PW позволяют
             await new Promise(r => setTimeout(r, 500)); 
             
         } catch (e) {
@@ -259,6 +295,44 @@ export async function refreshAllBalances() {
 
     balanceProgress.hide();
     toast('Обновление балансов завершено.', 'success');
+}
+
+/**
+ * МАССОВОЕ ОБНОВЛЕНИЕ СТАТИСТИКИ МАРАФОНА (НОВАЯ ФУНКЦИЯ)
+ */
+export async function refreshAllMarathonStats() {
+    const charsToCheck = [...state.characters];
+    const total = charsToCheck.length;
+    
+    if (total === 0) {
+        toast('Нет персонажей для проверки.', 'info');
+        return;
+    }
+
+    marathonProgress.show('🏃 Обновление статистики марафонов');
+    let completedCount = 0;
+
+    // Последовательный запуск, чтобы не перегружать сеть/CPU
+    for (const char of charsToCheck) {
+        try {
+            // Вызываем новую Rust команду fetch_marathon_progress_v1
+            await invoke('fetch_marathon_progress_v1', { charId: char.id });
+            
+            completedCount++;
+            marathonProgress.update(completedCount, total, char.nick);
+            
+            // Пауза между запросами
+            await new Promise(r => setTimeout(r, 500)); 
+            
+        } catch (e) {
+            console.error(e);
+            completedCount++;
+            marathonProgress.update(completedCount, total, `Ошибка: ${char.nick}`);
+        }
+    }
+
+    marathonProgress.hide();
+    toast('Обновление марафонов завершено.', 'success');
 }
 
 /**
