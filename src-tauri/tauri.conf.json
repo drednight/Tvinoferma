@@ -1,28 +1,28 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Твиноферма",
   "version": "0.1.0",
   "identifier": "com.tvinoferma.desktop",
-    "build": {
+  "build": {
     "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420", 
+    "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev -- --port 1420 --strictPort",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-  "windows": [
-    {
-      "label": "main", 
-      "title": "Твиноферма",
-      "width": 1440,
-      "height": 900,
-      "minWidth": 1024,
-      "minHeight": 700,
-      "resizable": true,
-      "fullscreen": false,
-      "dragDropEnabled": false 
-    }
-  ],
-    
+    "windows": [
+      {
+        "label": "main",
+        "title": "Твиноферма",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "dragDropEnabled": false
+      }
+    ],
     "security": {
       "csp": null
     }
@@ -37,5 +37,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/drednight/Tvinoferma/releases/latest/download/latest.json"
+      ],
+      "pubkey": "ЗАМЕНИТЕ_НА_ПУБЛИЧНЫЙ_КЛЮЧ_ИЗ_tauri_signer_generate",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

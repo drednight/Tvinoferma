@@ -1,12 +1,14 @@
-import { DATA_VERSION, DEFAULT_SETTINGS } from './constants.js';
+import { DEFAULT_SETTINGS } from './constants.js';
 import { migrateMarathon } from './marathons/model.js';
+import { SCHEMA_VERSION, migrateState } from './migrations.js';
+import { DEFAULT_STATS } from './characters/stateManager.js';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
 export const state = {
-  version: DATA_VERSION,
+  schemaVersion: SCHEMA_VERSION,
   savedAt: null,
   parties: [],
   characters: [],
@@ -22,7 +24,9 @@ export const state = {
     },
     expandedCharacterId: null,
     revealedContacts: {},
-    authCheck: {}
+    authCheck: {},
+    selection: new Set(),
+    selectionMode: false
   }
 };
 
@@ -34,7 +38,25 @@ export function serializeState() {
   };
 }
 
-// js/state.js (фрагмент normalizeCharacter)
+function normalizeStats(input = {}) {
+  const stats = {};
+  Object.keys({ ...DEFAULT_STATS, ...(input || {}) }).forEach(key => {
+    stats[key] = Number(input?.[key]) || 0;
+  });
+  return stats;
+}
+
+/** Теги: строки без лишних пробелов, без дублей (регистр не важен). */
+export function normalizeTags(input) {
+  const list = Array.isArray(input) ? input : String(input || '').split(',');
+  const seen = new Set();
+  return list.map(t => String(t || '').trim().replace(/\s+/g, ' ')).filter(t => {
+    const key = t.toLowerCase();
+    if (!t || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 function normalizeCharacter(input = {}) {
   return {
@@ -59,17 +81,9 @@ function normalizeCharacter(input = {}) {
       relic: Number(input.dungeonPasses?.relic) || 0
     },
     
-    // --- НОВЫЕ СТАТИСТИЧЕСКИЕ ПОЛЯ ---
-    stats: {
-      hp: Number(input.stats?.hp) || 0,          // Здоровье
-      pa: Number(input.stats?.pa) || 0,          // Физ. Защита (PA)
-      pz: Number(input.stats?.pz) || 0,          // Маг. Защита (PZ)
-      pvePa: Number(input.stats?.pvePa) || 0,    // PvE Физ. Защита
-      pvePz: Number(input.stats?.pvePz) || 0,    // PvE Маг. Защита
-      physAttack: Number(input.stats?.physAttack) || 0, // Физ. Атака
-      magAttack: Number(input.stats?.magAttack) || 0    // Маг. Атака
-    },
-    // ----------------------------------
+    // Все характеристики из редактора (раньше сохранялись только 7 из них)
+    stats: normalizeStats(input.stats),
+    tags: normalizeTags(input.tags),
 
     ancientCoins: Number(input.ancientCoins) || 0,
     lastCoinUpdate: input.lastCoinUpdate || null,
@@ -111,14 +125,22 @@ function mergeSettings(input = {}) {
         ...(input.google?.sheetsFields || {})
       }
     },
-    ui: { ...DEFAULT_SETTINGS.ui, ...(input.ui || {}) }
+    ui: { ...DEFAULT_SETTINGS.ui, ...(input.ui || {}) },
+    security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
+    scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
+    notifications: { ...DEFAULT_SETTINGS.notifications, ...(input.notifications || {}) },
+    tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
+    updates: { ...DEFAULT_SETTINGS.updates, ...(input.updates || {}) }
   };
 }
 
-export function normalizeState(input) {
+export function normalizeState(raw) {
+  // 0. Единые миграции схемы state.json (js/migrations.js)
+  const input = migrateState(raw).state;
+
   // 1. Базовая структура
   const normalized = {
-    version: Number(input?.version) || DATA_VERSION,
+    schemaVersion: SCHEMA_VERSION,
     savedAt: input?.savedAt || null,
     parties: [],
     characters: Array.isArray(input?.characters)
@@ -135,7 +157,9 @@ export function normalizeState(input) {
       filters: { search: '', class: '', party: '' },
       expandedCharacterId: null,
       revealedContacts: {},
-      authCheck: {}
+      authCheck: {},
+      selection: new Set(),
+      selectionMode: false
     }
   };
 

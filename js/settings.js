@@ -1,17 +1,14 @@
 // js/settings.js
 
-import { getAdapter, saveNow, forceRenderAndPersist } from './storage.js'; 
+import { getAdapter, saveNow, forceRenderAndPersist, persist, createBackup, isTauri } from './storage.js';
 import { state, serializeState, normalizeState } from './state.js';
-import { persist } from './storage.js';
-import { escapeHtml, nowISO } from './utils.js';
+import { escapeHtml } from './utils.js';
+import { vaultStatus } from './secrets.js';
+import { HOTKEYS, applyDesktopSettings } from './desktop.js';
+import { runReminderCheck } from './notifications.js';
+import { checkForUpdates } from './updater.js';
 import { toast, confirmDialog, showModal } from './ui.js';
-import { renderCharacters } from './characters.js';
-
-// ИСПРАВЛЕНО: Импорт из новой структуры папок parties
-import { renderParties } from './parties/index.js'; 
-
-import { renderMarathons } from './marathon.js';
-import { openExportDialog } from './exportManager.js'; // <-- НОВЫЙ ИМПОРТ
+import { openExportDialog } from './exportManager.js';
 
 async function refreshBackups() {
   const adapter = getAdapter();
@@ -19,11 +16,15 @@ async function refreshBackups() {
   if (!adapter || !listEl) return;
 
   try {
-    const backups = await adapter.listBackups();
+    // Tauri отдаёт { name, createdAt, size }, браузерный адаптер — строки
+    const backups = (await adapter.listBackups()).map(b => typeof b === 'string' ? { name: b } : b);
     listEl.innerHTML = backups.length
-      ? backups.map((name) => `
+      ? backups.map(({ name, createdAt, size }) => `
           <div class="backup-item">
-            <div class="meta"><strong>${escapeHtml(name)}</strong></div>
+            <div class="meta">
+              <strong>${createdAt ? escapeHtml(new Date(createdAt).toLocaleString('ru-RU')) : escapeHtml(name)}</strong>
+              ${createdAt ? `<small class="muted">${escapeHtml(name)}${size ? ` · ${Math.round(size / 1024)} КБ` : ''}</small>` : ''}
+            </div>
             <div class="row gap">
               <button class="btn" data-backup-restore="${escapeHtml(name)}">Восстановить</button>
               <button class="btn danger" data-backup-delete="${escapeHtml(name)}">Удалить</button>
@@ -46,7 +47,10 @@ function downloadJson(data, filename) {
   URL.revokeObjectURL(url);
 }
 
-function applyImport(incoming, mode) {
+async function applyImport(incoming, mode) {
+  if (state.settings?.backups?.createBeforeImport !== false) {
+    try { await saveNow(); await createBackup('pre-import'); } catch (e) { console.warn('[IMPORT] backup failed', e); }
+  }
   const parsed = normalizeState(incoming);
 
   if (mode === 'replace') {
@@ -110,10 +114,9 @@ export async function renderSettings() {
   }
 
   // Runtime info
-  const isTauri = window.__TAURI_INTERNALS__ || window.__TAURI__;
   const runtimeEl = document.getElementById('storage-runtime');
   if (runtimeEl) {
-    runtimeEl.textContent = isTauri ? 'Tauri Desktop (Локальный файл)' : 'Browser (LocalStorage)';
+    runtimeEl.textContent = isTauri() ? 'Tauri Desktop (Локальный файл)' : 'Browser (LocalStorage)';
   }
 
   // Data Dir
@@ -129,9 +132,83 @@ export async function renderSettings() {
 
   // Backups
   await refreshBackups();
+
+  // Безопасность
+  const vaultEl = document.getElementById('vault-status');
+  if (vaultEl) {
+    const v = vaultStatus();
+    vaultEl.textContent = !isTauri()
+      ? 'Недоступно в браузерном режиме — контакты хранятся в localStorage.'
+      : state.settings.security?.useVault === false
+        ? '⚠️ Выключено: email и пароли хранятся в state.json открытым текстом.'
+        : v.ready
+          ? `✅ Email, пароли и телефоны хранятся в хранилище учётных данных ОС (записей: ${v.count}). В state.json и бэкапах их нет.`
+          : `⚠️ Хранилище ОС недоступно (${v.error || 'нет ответа'}) — контакты сохраняются в state.json.`;
+  }
+
+  // Версия
+  const verEl = document.getElementById('app-version');
+  if (verEl && isTauri()) {
+    try { verEl.textContent = await (await import('@tauri-apps/api/app')).getVersion(); } catch (_) { /* не критично */ }
+  }
+
+  // Значения настроек
+  document.querySelectorAll('[data-setting]').forEach(el => {
+    const value = getSetting(el.dataset.setting);
+    if (el.type === 'checkbox') el.checked = value !== false && value !== undefined;
+    else el.value = value ?? '';
+  });
+
+  const hk = document.getElementById('hotkeys-list');
+  if (hk && !hk.childElementCount) {
+    hk.innerHTML = HOTKEYS.map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
+  }
+}
+
+function getSetting(path) {
+  return path.split('.').reduce((o, k) => o?.[k], state.settings);
+}
+
+function setSetting(path, value) {
+  const keys = path.split('.');
+  let obj = state.settings;
+  keys.slice(0, -1).forEach(k => { if (!obj[k] || typeof obj[k] !== 'object') obj[k] = {}; obj = obj[k]; });
+  obj[keys[keys.length - 1]] = value;
+}
+
+function bindSettingInputs() {
+  document.querySelectorAll('[data-setting]').forEach(el => {
+    el.addEventListener('change', async () => {
+      const path = el.dataset.setting;
+      let value;
+      if (el.type === 'checkbox') value = el.checked;
+      else if (el.type === 'number' || el.tagName === 'SELECT') {
+        const n = Number(el.value);
+        const min = el.min !== '' ? Number(el.min) : -Infinity;
+        const max = el.max !== '' ? Number(el.max) : Infinity;
+        value = Math.min(max, Math.max(min, Number.isFinite(n) ? n : 0));
+        el.value = value;
+      } else value = el.value;
+      setSetting(path, value);
+      await persist();
+      if (path.startsWith('tray.')) await applyDesktopSettings();
+      if (path === 'security.useVault') {
+        toast(value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.', 'info');
+      }
+    });
+  });
 }
 
 export function bindSettings() {
+  bindSettingInputs();
+
+  document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {
+    const sent = await runReminderCheck({ force: true });
+    toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
+  });
+
+  document.getElementById('check-updates-btn')?.addEventListener('click', () => checkForUpdates());
+
   // Save Now
   document.getElementById('save-now-btn')?.addEventListener('click', async () => {
     await saveNow();
@@ -143,7 +220,8 @@ export function bindSettings() {
     const adapter = getAdapter();
     if (!adapter) return;
     try {
-      const name = await adapter.createBackup();
+      await saveNow();
+      const name = await createBackup();
       toast(`Бэкап создан: ${name}`, 'success');
       await refreshBackups();
     } catch (e) {

@@ -1,13 +1,14 @@
 // js/characters/formEditor.js
 
-import { state } from '../state.js';
+import { state, normalizeTags } from '../state.js';
 import { persist } from '../storage.js';
 import { escapeHtml, nowISO } from '../utils.js';
 import { showModal, toast } from '../ui.js';
-import { renderCharacters } from '../characters.js';
+import { renderCharacters, allTags } from '../characters.js';
 import { renderParties } from '../parties/index.js';
 import { CLASSES, SKIES, SKY_LEVELS } from '../constants.js';
 import { createEmptyCharacter, DEFAULT_STATS } from './stateManager.js';
+import { vaultStatus } from '../secrets.js';
 
 export function openCharacterForm(char = null) {
   const isEdit = !!char;
@@ -83,9 +84,17 @@ export function openCharacterForm(char = null) {
         </div>
       </div>
 
+      <!-- ТЕГИ -->
+      <div class="field" style="margin-top:16px;">
+        <label>Теги (через запятую: «основа, твин, крафт»)</label>
+        <input class="input" type="text" name="tags" list="char-tag-list" autocomplete="off" value="${escapeHtml((currentChar.tags || []).join(', '))}" />
+        <datalist id="char-tag-list">${allTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>
+      </div>
+
       <!-- КОНТАКТЫ (ТЕПЕРЬ ЗДЕСЬ, ПЕРЕД СТАТАМИ) -->
       <details style="margin-top:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
         <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные (для входа)</summary>
+        ${vaultStatus().ready ? '<p class="muted" style="font-size:0.75rem; margin:6px 0 0;">🔒 Хранятся в защищённом хранилище учётных данных ОС, а не в state.json</p>' : ''}
         <div class="form-grid" style="margin-top:12px;">
           <div class="field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
           <div class="field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
@@ -244,6 +253,7 @@ export function openCharacterForm(char = null) {
             relic: parseInt(formData.get('pass-relic'), 10) || 0
           },
           stats: newStats,
+          tags: normalizeTags(formData.get('tags')),
           
           // ОБНОВЛЯЕМ БАЛАНС И ДАТУ
           ancientCoins: finalCoins,

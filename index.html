@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/png" href="/assets/icons/app/icon.png">
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Твиноферма</title>
@@ -67,15 +67,18 @@
               <option value="online">🟢 Авторизован</option>
               <option value="offline">🔴 Не авторизован</option>
             </select>
+
+            <select id="tag-filter" class="select" title="Фильтр по тегу">
+              <option value="">Все теги</option>
+            </select>
           </div>
           
           <!-- Правая часть: Действия (Меню скриптов) -->
           <div class="actions" style="display:flex; gap:10px; margin-left:auto; align-items:center;">
             
-            <!-- СТАРАЯ КНОПКА + ПЕРСОНАЖ УДАЛЕНА (теперь она плавающая) -->
-            <!-- <button id="add-character-btn" class="btn primary">+ Персонаж</button> -->
-            
-            <!-- НОВАЯ КНОПКА МЕНЮ СКРИПТОВ -->
+            <button id="btn-select-mode" class="btn secondary" title="Выбрать несколько персонажей для массовых действий">☑ Выбрать</button>
+
+            <!-- Меню скриптов -->
             <div class="action-menu-wrapper" style="position:relative;">
                 <button id="btn-scripts-menu" class="btn icon-only secondary" title="Запустить скрипты синхронизации">
                     ⚡ Скрипты
@@ -132,6 +135,9 @@
             <strong id="kpi-offline-count" style="font-size:1.5rem; color:#f7768e; display:block;">0</strong>
           </div>
         </div>
+
+        <!-- Панель массовых действий (режим выбора) -->
+        <div id="bulk-bar" class="bulk-bar" hidden></div>
 
         <!-- Сетка карточек персонажей -->
         <div id="character-grid" class="card-grid"></div>
@@ -214,6 +220,84 @@
             • При импорте отдельного персонажа история монет не переносится.<br/>
             • Режимы: Заменить всё, Добавить новое, Слить (LWW).
           </p>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>🔒 Безопасность</h3>
+          <div class="setting-row">
+            <div>
+              <strong>Учётные данные в хранилище ОС</strong>
+              <p class="muted" id="vault-status">Проверка…</p>
+            </div>
+            <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>⚡ Скрипты</h3>
+          <div class="setting-row">
+            <div>
+              <strong>Одновременно открытых окон</strong>
+              <p class="muted">Сколько персонажей проверяется параллельно (вход, балансы, марафоны).</p>
+            </div>
+            <input class="input setting-num" type="number" min="1" max="8" data-setting="scripts.concurrency" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>Повторов при ошибке</strong>
+              <p class="muted">Если сайт не ответил или показал «Проверку безопасности».</p>
+            </div>
+            <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>🔔 Уведомления</h3>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="notifications.enabled" /> Системные уведомления</label>
+            <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
+            <label><input type="checkbox" data-setting="notifications.marathonEnding" /> Марафон заканчивается (≤ 2 дней)</label>
+            <label><input type="checkbox" data-setting="notifications.dailyReminder" /> Ежедневное напоминание о заданиях после
+              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч</label>
+          </div>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>🖥 Трей и фоновые проверки</h3>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
+            <label>Фоновая проверка входа:
+              <select class="select" data-setting="tray.backgroundAuthMinutes">
+                <option value="0">выключена</option>
+                <option value="15">каждые 15 мин</option>
+                <option value="30">каждые 30 мин</option>
+                <option value="60">каждый час</option>
+                <option value="180">каждые 3 часа</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>⬆️ Обновления</h3>
+          <div class="setting-row">
+            <div>
+              <strong>Версия <span id="app-version">—</span></strong>
+              <p class="muted">Обновления скачиваются из GitHub Releases.</p>
+            </div>
+            <div class="row gap">
+              <label class="switch-row"><input type="checkbox" data-setting="updates.checkOnStartup" /> Проверять при запуске</label>
+              <button id="check-updates-btn" class="btn">Проверить обновления</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>⌨️ Горячие клавиши</h3>
+          <div id="hotkeys-list" class="hotkeys-list"></div>
         </div>
 
         <div class="panel" style="border-color: rgba(247, 118, 142, 0.3);">

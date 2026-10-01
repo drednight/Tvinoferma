@@ -13,16 +13,12 @@ import { showModal, closeModal } from './ui.js';
 // Импортируем скрипты запуска задач
 import { checkCharacterAuth } from './scripts/checkAuth.js';
 import { getCharacterBalance } from './scripts/getBalance.js';
-
-// Импортируем компонент прогресса
-import { ProgressBar } from './components/ProgressBar.js'; 
+import { runQueue, browserSlots, isRetryableCode } from './scripts/queue.js';
 import { setAuthChecking } from './authStatus.js';
 import { onCharMarathonData, syncAllActiveMarathons } from './marathons/siteSync.js';
 import { logScope, errorText, startTask } from './taskLog.js';
 
 let activeListeners = [];
-const authProgress = new ProgressBar();
-const balanceProgress = new ProgressBar();
 
 /**
  * Инициализация слушателей событий Tauri IPC
@@ -31,103 +27,12 @@ export async function initSyncListeners() {
     // Очищаем старые слушатели, если есть
     activeListeners.forEach(unlisten => unlisten());
     activeListeners = [];
+    if (!window.__TAURI_INTERNALS__) return; // браузерный dev-режим: событий Tauri нет
 
     console.log('[SYNC MANAGER] Initializing listeners...');
 
-    // 1. Слушаем результат ПРОВЕРКИ ЛОГИНА
-    const unlistenLoginStatus = await listen('login-status-result-global', (event) => {
-        const { charId, status } = event.payload;
-        console.log(`[EVENT LOGIN] ${charId}: ${status}`);
-        
-        const charIndex = state.characters.findIndex(c => c.id === charId);
-        if (charIndex !== -1) {
-            const char = state.characters[charIndex];
-            const isOnline = status === 'online';
-            const wasChecking = state.ui.authCheck?.[charId] === 'checking';
-
-            char.lastLoginCheck = new Date().toISOString();
-            setAuthChecking(charId, false);
-
-            // Сохраняем всегда (lastLoginCheck), перерисовываем если статус изменился или шла проверка
-            const changed = char.isLoggedIn !== isOnline;
-            logScope(`char:${charId}`, `${char.nick}: ${isOnline ? 'вход подтверждён 🟢' : `нет входа 🔴 (${status})`}`, isOnline ? 'ok' : 'warn');
-            char.isLoggedIn = isOnline;
-            persist().then(() => {
-                if (changed || wasChecking) {
-                    renderCharacters();
-                    renderParties();
-                }
-            });
-        }
-    });
-    activeListeners.push(unlistenLoginStatus);
-
-    // 2. Слушаем результат БАЛАНСА
-    const unlistenBalance = await listen('pw-balance-result-global', (event) => {
-        const { charId, balance, error } = event.payload;
-        console.log(`[EVENT BALANCE] ${charId}: Balance=${balance}, Error=${error}`);
-
-        const charIndex = state.characters.findIndex(c => c.id === charId);
-        if (charIndex === -1) return;
-
-        const char = state.characters[charIndex];
-
-        // ЛОГИКА ОБРАБОТКИ ОШИБОК АВТОРИЗАЦИИ
-        logScope(`char:${charId}`, error ? `${char.nick}: баланс не получен — ${errorText(error)}` : `${char.nick}: баланс ДМ ${balance}`, error ? 'warn' : 'ok');
-        if (error) {
-            // Список ошибок, означающих потерю сессии
-            const authErrors = ['not_logged_in', 'zero_no_user_session_expired', 'session_lost_during_parse'];
-            
-            if (authErrors.includes(error)) {
-                console.warn(`[SYNC] Auth lost detected for ${char.nick}. Setting Offline.`);
-                char.isLoggedIn = false;
-                persist().then(() => {
-                    renderCharacters();
-                    renderParties();
-                });
-                toast(`⚠️ Сессия истекла для ${char.nick}. Требуется повторный вход.`, 'warning');
-            } else {
-                // Другие ошибки (таймаут, баг парсинга)
-                console.error(`[SYNC ERROR] Parsing failed for ${char.nick}:`, error);
-                toast(`Ошибка синхронизации (${char.nick}): ${error}`, 'error');
-            }
-            return;
-        }
-
-        // ЛОГИКА УСПЕХА
-        if (balance !== null && balance >= 0) {
-            const oldBalance = char.ancientCoins || 0;
-            
-            // Обновляем баланс
-            char.ancientCoins = balance;
-            char.lastCoinUpdate = new Date().toISOString();
-            
-            // Подтверждаем, что пользователь онлайн (раз смогли прочитать баланс без ошибок)
-            char.isLoggedIn = true;
-
-            // Добавляем в историю, если сумма изменилась
-            if (oldBalance !== balance) {
-                const historyEntry = {
-                    id: crypto.randomUUID(),
-                    date: char.lastCoinUpdate,
-                    delta: balance - oldBalance,
-                    note: 'Автосинхронизация PW Online',
-                    balanceAfter: balance
-                };
-                char.coinHistory = [historyEntry, ...(char.coinHistory || [])];
-            }
-
-            persist().then(() => {
-                renderCharacters();
-                renderParties();
-                // Тост только если баланс реально изменился, чтобы не спамить
-                if (oldBalance !== balance) {
-                   toast(`Баланс ${char.nick} обновлен: ${balance}`, 'success');
-                }
-            });
-        }
-    });
-    activeListeners.push(unlistenBalance);
+    // Результаты проверки входа и баланса приходят как ответ invoke (см. applyLoginResult /
+    // applyBalanceResult) — так очередь скриптов видит ошибку и может повторить попытку.
 
     // 3. Слушаем результат МАРАФОНА (НОВЫЙ БЛОК)
     const unlistenMarathon = await listen('marathon-progress-result-global', (event) => {
@@ -177,121 +82,172 @@ export async function initSyncListeners() {
              renderCharacters();
              renderParties();
              await new Promise(r => setTimeout(r, 1000)); // даём окну закрыться полностью
-             try {
-                 await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 8, closeAfter: true });
-             } catch (err) {
-                 console.error(`[AUTH] Re-check after close failed for ${char.nick}:`, err);
-                 setAuthChecking(char.id, false);
-                 renderCharacters();
-                 renderParties();
-             }
+             await runAuthChecks([char], { baseTimeout: 8, closeAfter: true, silent: true });
         }
     });
     activeListeners.push(unlistenCloseBrowser);
 }
 
-/**
- * МАССОВАЯ ПРОВЕРКА АВТОРИЗАЦИИ (2 ПРОХОДА + ПРОГРЕСС)
- */
-export async function refreshAllLoginStatuses() {
-    const charsToCheck = [...state.characters];
-    const total = charsToCheck.length;
+/* ------------------------------------------------------------------ */
+/*  Применение результатов скриптов                                    */
+/* ------------------------------------------------------------------ */
 
-    if (total === 0) {
-        toast('Нет персонажей для проверки.', 'info');
-        return;
+const AUTH_ERRORS = ['not_logged_in', 'zero_no_user_session_expired', 'session_lost_during_parse'];
+
+function scriptSettings() {
+    const s = state.settings?.scripts || {};
+    browserSlots.max = s.concurrency || 3;
+    return { retries: Number(s.retries ?? 2), retryDelayMs: Number(s.retryDelayMs ?? 2000) };
+}
+
+/** Результат check_login_status_http → состояние персонажа. */
+export function applyLoginResult(payload) {
+    const { charId, status, reason } = payload || {};
+    const char = state.characters.find(c => c.id === charId);
+    if (!char) return null;
+    const isOnline = status === 'online';
+    const changed = char.isLoggedIn !== isOnline;
+    char.isLoggedIn = isOnline;
+    char.lastLoginCheck = new Date().toISOString();
+    setAuthChecking(charId, false);
+    logScope(`char:${charId}`, `${char.nick}: ${isOnline ? 'вход подтверждён 🟢' : `нет входа 🔴 (${errorText(reason)})`}`, isOnline ? 'ok' : 'warn');
+    return { char, changed };
+}
+
+/** Результат fetch_and_parse_balance_v4 → баланс и история монет. */
+export function applyBalanceResult(payload, { final = true } = {}) {
+    const { charId, balance, error } = payload || {};
+    const char = state.characters.find(c => c.id === charId);
+    if (!char) return null;
+
+    if (error) {
+        logScope(`char:${charId}`, `${char.nick}: баланс не получен — ${errorText(error)}`, 'warn');
+        if (AUTH_ERRORS.includes(error)) {
+            char.isLoggedIn = false;
+            if (final) toast(`⚠️ Сессия истекла для ${char.nick}. Требуется повторный вход.`, 'warning');
+        } else if (final) {
+            toast(`Ошибка синхронизации (${char.nick}): ${errorText(error)}`, 'error');
+        }
+        return { char, changed: AUTH_ERRORS.includes(error) };
     }
+    if (balance === null || balance < 0) return { char, changed: false };
 
-    const task = authProgress.show('🔐 Проверка авторизации');
-    task.watch(...charsToCheck.map(c => `char:${c.id}`));
-    task.setStep(`Проход 1/2: быстрая проверка ${total} персонажей (таймаут 3 с)`);
-    let completedCount = 0;
+    const oldBalance = char.ancientCoins || 0;
+    char.ancientCoins = balance;
+    char.lastCoinUpdate = new Date().toISOString();
+    char.isLoggedIn = true; // баланс прочитан — значит вход есть
+    if (oldBalance !== balance) {
+        char.coinHistory = [{
+            id: crypto.randomUUID(),
+            date: char.lastCoinUpdate,
+            delta: balance - oldBalance,
+            note: 'Автосинхронизация PW Online',
+            balanceAfter: balance
+        }, ...(char.coinHistory || [])];
+    }
+    logScope(`char:${charId}`, `${char.nick}: баланс ДМ ${balance}`, 'ok');
+    return { char, changed: true, delta: balance - oldBalance };
+}
 
-    const promisesPass1 = charsToCheck.map(async (char) => {
-        try {
-            await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 3 });
-        } catch (err) {
-            console.error(`[AUTH PASS 1] Error for ${char.nick}:`, err);
-            task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
-        } finally {
-            completedCount++;
-            task.progress(completedCount, total * 2, `Проход 1/2 · ${char.nick}`);
+function rerender() {
+    renderCharacters();
+    renderParties();
+}
+
+/* ------------------------------------------------------------------ */
+/*  Проверка авторизации                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Проверка входа через общую очередь: лимит окон, повтор с увеличенным таймаутом,
+ * если сайт не ответил или показал «Проверку безопасности» («Вы не авторизованы» не повторяется).
+ */
+export async function runAuthChecks(chars, { title = '🔐 Проверка авторизации', baseTimeout = 4, closeAfter = false, silent = false } = {}) {
+    const { retries, retryDelayMs } = scriptSettings();
+    const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length });
+    task?.watch(...chars.map(c => `char:${c.id}`));
+    task?.setStep(`${chars.length} персонажей, по ${browserSlots.max} одновременно, повторов до ${retries}`);
+    chars.forEach(c => setAuthChecking(c.id, true));
+    rerender();
+
+    const results = await runQueue(chars, async (char, attempt) => {
+        if (attempt > 0) task?.log(`${char.nick}: повтор ${attempt}/${retries}`, 'info');
+        return await checkCharacterAuth(char.id, { timeoutSeconds: baseTimeout * (attempt + 1), closeAfter });
+    }, {
+        retries, retryDelayMs,
+        shouldRetry: (res, err) => !!err || (res?.status !== 'online' && isRetryableCode(res?.reason)),
+        onDone: ({ item, result, error }, done, total) => {
+            if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error');
+            const applied = result ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
+            task?.progress(done, total, item.nick);
+            persist().then(() => { if (applied?.changed !== false) rerender(); });
         }
     });
 
-    await Promise.all(promisesPass1);
-    await new Promise(r => setTimeout(r, 1000));
-
-    // --- ПРОХОД 2: Углубленная проверка для тех, кто НЕ онлайн ---
-    const offlineChars = state.characters.filter(c => !c.isLoggedIn);
-    if (offlineChars.length > 0) {
-        task.setStep(`Проход 2/2: перепроверка ${offlineChars.length} без входа (таймаут 8 с)`);
-        let pass2Completed = 0;
-        await Promise.all(offlineChars.map(async (char) => {
-            try {
-                await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 8 });
-            } catch (err) {
-                console.error(`[AUTH PASS 2] Error for ${char.nick}:`, err);
-                task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
-            } finally {
-                pass2Completed++;
-                task.progress(total + Math.round(pass2Completed / offlineChars.length * total), total * 2, `Проход 2/2 · ${char.nick}`);
-            }
-        }));
-    } else {
-        task.log('Все персонажи в сети — второй проход не нужен', 'info');
-    }
-
-    await new Promise(r => setTimeout(r, 500));
-    const online = state.characters.filter(c => c.isLoggedIn).length;
-    const offline = state.characters.filter(c => !c.isLoggedIn).map(c => c.nick);
-    if (offline.length) task.log(`Без входа: ${offline.join(', ')}`, 'warn');
-    authProgress.hide(`В сети ${online} из ${total}`, offline.length ? 'warn' : 'done');
-    toast(`Проверка авторизации: в сети ${online} из ${total}.`, offline.length ? 'warning' : 'success');
+    chars.forEach(c => setAuthChecking(c.id, false));
+    rerender();
+    const online = chars.filter(c => c.isLoggedIn === true).length;
+    const offline = chars.filter(c => c.isLoggedIn !== true).map(c => c.nick);
+    if (offline.length) task?.log(`Без входа: ${offline.join(', ')}`, 'warn');
+    task?.finish(`В сети ${online} из ${chars.length}`, offline.length ? 'warn' : 'done');
+    return { online, offline, results };
 }
 
 /**
- * МАССОВОЕ ОБНОВЛЕНИЕ БАЛАНСА (+ ПРОГРЕСС)
- * ОПТИМИЗИРОВАННАЯ ВЕРСИЯ: Скипает проверку логина, если статус уже Online
+ * МАССОВАЯ ПРОВЕРКА АВТОРИЗАЦИИ (все персонажи или выбранные)
  */
-export async function refreshAllBalances() {
-    // 1. Находим всех, кто помечен как Онлайн в локальном стейте
-    const onlineChars = state.characters.filter(c => c.isLoggedIn === true);
-    
-    if (onlineChars.length === 0) {
-        toast('Нет активных аккаунтов (по данным приложения). Сначала нажмите "Проверить авторизацию".', 'warning');
+export async function refreshAllLoginStatuses(chars = state.characters) {
+    const list = [...chars];
+    if (list.length === 0) {
+        toast('Нет персонажей для проверки.', 'info');
         return;
     }
+    const { online, offline } = await runAuthChecks(list);
+    toast(`Проверка авторизации: в сети ${online} из ${list.length}.`, offline.length ? 'warning' : 'success');
+}
 
-    const total = onlineChars.length;
-    const task = balanceProgress.show(`💰 Обновление балансов (${total} акк.)`);
-    task.watch(...onlineChars.map(c => `char:${c.id}`));
-    let completedCount = 0;
+/* ------------------------------------------------------------------ */
+/*  Балансы                                                            */
+/* ------------------------------------------------------------------ */
 
-    console.log(`[BALANCE SYNC] Starting update for ${total} characters...`);
-
-    // 2. Последовательный запуск запросов к Rust
-    for (const char of onlineChars) {
-        try {
-            task.setStep(`Запрашиваю баланс: ${char.nick}`);
-            await getCharacterBalance(char.id);
-            
-            completedCount++;
-            task.progress(completedCount, total, char.nick);
-            
-            // Небольшая пауза между запросами для стабильности
-            await new Promise(r => setTimeout(r, 500)); 
-            
-        } catch (e) {
-            console.error(`[BALANCE SYNC] Error processing ${char.nick}:`, e);
-            completedCount++; 
-            task.progress(completedCount, total, `Ошибка: ${char.nick}`);
-            task.log(`${char.nick}: ${e?.message || e}`, 'error');
-        }
+/**
+ * МАССОВОЕ ОБНОВЛЕНИЕ БАЛАНСА (все авторизованные или выбранные)
+ * Персонажи без входа пропускаются; при таймауте / «Проверке безопасности» — повтор.
+ */
+export async function refreshAllBalances(chars = state.characters, { title, onlyLoggedIn = true } = {}) {
+    const list = onlyLoggedIn ? chars.filter(c => c.isLoggedIn === true) : [...chars];
+    if (list.length === 0) {
+        toast('Нет активных аккаунтов (по данным приложения). Сначала нажмите "Проверить авторизацию".', 'warning');
+        return { updated: 0, failed: 0 };
     }
+    const { retries, retryDelayMs } = scriptSettings();
+    const task = startTask(title || `💰 Обновление балансов (${list.length} акк.)`, { total: list.length });
+    task.watch(...list.map(c => `char:${c.id}`));
+    let updated = 0, failed = 0;
 
-    balanceProgress.hide(`Обработано ${completedCount} из ${total}`);
-    toast('Обновление балансов завершено.', 'success');
+    await runQueue(list, async (char, attempt) => {
+        task.setStep(`Запрашиваю баланс: ${char.nick}${attempt ? ` (повтор ${attempt})` : ''}`);
+        return await getCharacterBalance(char.id, { timeoutSeconds: 15 + attempt * 10 });
+    }, {
+        retries, retryDelayMs,
+        shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
+        onDone: ({ item, result, error }, done, total) => {
+            if (error) task.log(`${item.nick}: ${error?.message || error}`, 'error');
+            const applied = result ? applyBalanceResult(result) : null;
+            if (result && !result.error) updated++; else failed++;
+            task.progress(done, total, item.nick);
+            if (applied?.changed) persist().then(rerender);
+        }
+    });
+
+    task.finish(`Обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}`, failed ? 'warn' : 'done');
+    toast(`Обновление балансов: ${updated} из ${list.length}.`, failed ? 'warning' : 'success');
+    return { updated, failed };
+}
+
+/** Баланс одного персонажа (кнопка в профиле). */
+export async function refreshBalanceFor(char) {
+    return refreshAllBalances([char], { title: `💰 Баланс: ${char.nick}`, onlyLoggedIn: false });
 }
 
 /**
@@ -454,65 +410,11 @@ function showCredentialsModal(char) {
  * Пока идёт проверка, персонаж показывается жёлтым 🟡 «Проверка…».
  * Скрытые окна, созданные для проверки, закрываются сразу после неё (экономия RAM).
  */
-export async function verifySavedLoginsOnStartup({ concurrency = 3 } = {}) {
+export async function verifySavedLoginsOnStartup({ title = '🔐 Проверка входа при запуске', quiet = false } = {}) {
     const candidates = state.characters.filter(c => c.isLoggedIn === true);
-    if (candidates.length === 0) return;
-
-    console.log(`[AUTH STARTUP] Verifying ${candidates.length} saved logins...`);
-    const task = startTask('🔐 Проверка входа при запуске', { total: candidates.length });
-    task.watch(...candidates.map(c => `char:${c.id}`));
-    task.setStep(`Проход 1/2: ${candidates.length} сохранённых входов (таймаут 5 с, по ${concurrency} одновременно)`);
-    let doneCount = 0;
-    candidates.forEach(c => setAuthChecking(c.id, true));
-    renderCharacters();
-    renderParties();
-
-    const runCheck = async (char, timeoutSeconds) => {
-        try {
-            await invoke('check_login_status_http', { charId: char.id, timeoutSeconds, closeAfter: true });
-        } catch (err) {
-            console.error(`[AUTH STARTUP] Error for ${char.nick}:`, err);
-            task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
-        }
-        doneCount++;
-        task.progress(Math.min(doneCount, candidates.length * 2), null, `${timeoutSeconds === 5 ? 'Проход 1/2' : 'Проход 2/2'} · ${char.nick}`);
-    };
-
-    // Ограничиваем число одновременно открытых скрытых окон
-    const runPool = async (items, timeoutSeconds) => {
-        const queue = [...items];
-        const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-            while (queue.length) await runCheck(queue.shift(), timeoutSeconds);
-        });
-        await Promise.all(workers);
-    };
-
-    // Проход 1: быстрая проверка
-    await runPool(candidates, 5);
-
-    // Проход 2: перепроверяем тех, кто «отвалился», с длинным таймаутом (защита от медленной загрузки)
-    const failed = candidates.filter(c => {
-        const ch = state.characters.find(x => x.id === c.id);
-        return ch && ch.isLoggedIn !== true;
-    });
-    if (failed.length) {
-        task.setStep(`Проход 2/2: перепроверка ${failed.length} (таймаут 10 с)`);
-        doneCount = candidates.length;
-        task.total = candidates.length + failed.length;
-        failed.forEach(c => setAuthChecking(c.id, true));
-        renderCharacters();
-        renderParties();
-        await runPool(failed, 10);
-    }
-
-    // На всякий случай снимаем «Проверка…» со всех, по кому не пришёл ответ
-    candidates.forEach(c => setAuthChecking(c.id, false));
-    renderCharacters();
-    renderParties();
-
-    const online = state.characters.filter(c => c.isLoggedIn === true).length;
-    const lost = candidates.length - candidates.filter(c => state.characters.find(x => x.id === c.id)?.isLoggedIn).length;
-    task.finish(`В сети ${online}, требуют входа ${lost}`, lost ? 'warn' : 'done');
-    if (lost > 0) toast(`Авторизация: ${online} онлайн, ${lost} требуют повторного входа.`, 'warning');
-    else toast(`Авторизация подтверждена у ${candidates.length} персонажей.`, 'success');
+    if (candidates.length === 0) return { online: 0, offline: [] };
+    const res = await runAuthChecks(candidates, { title, baseTimeout: 5, closeAfter: true });
+    if (res.offline.length > 0) toast(`Авторизация: ${res.online} онлайн, ${res.offline.length} требуют повторного входа.`, 'warning');
+    else if (!quiet) toast(`Авторизация подтверждена у ${candidates.length} персонажей.`, 'success');
+    return res;
 }

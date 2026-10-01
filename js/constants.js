@@ -1,7 +1,5 @@
 // js/constants.js
 
-export const STORAGE_KEY = 'characterManagerState';
-export const DATA_VERSION = 2;
 
 // Базовый путь к иконкам (относительно public/assets/icons/classes/)
 const ICON_BASE_PATH = '/assets/icons/classes/';
@@ -121,6 +119,30 @@ export const DEFAULT_SETTINGS = {
   },
   ui: {
     theme: 'dark'
+  },
+  // Учётные данные — в хранилище ОС (Windows Credential Manager / Keychain), а не в state.json
+  security: {
+    useVault: true
+  },
+  // Очередь фоновых скриптов (вход, балансы)
+  scripts: {
+    concurrency: 3,      // одновременно открытых скрытых окон
+    retries: 2,          // повторов при таймауте / «Проверке безопасности»
+    retryDelayMs: 2000
+  },
+  notifications: {
+    enabled: true,
+    marathonBehind: true,   // «не успевает» по заданиям марафона
+    marathonEnding: true,   // марафон заканчивается через ≤ 2 дня, есть невыполненные задания
+    dailyReminder: true,    // ежедневное напоминание о заданиях
+    dailyHour: 20
+  },
+  tray: {
+    closeToTray: false,
+    backgroundAuthMinutes: 0   // 0 — выключено
+  },
+  updates: {
+    checkOnStartup: true
   }
 };
 

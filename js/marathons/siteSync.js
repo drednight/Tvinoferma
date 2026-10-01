@@ -9,13 +9,13 @@ import { persist } from '../storage.js';
 import { applySiteQuests } from './model.js';
 import { startTask, errorText } from '../taskLog.js';
 import { parseNewsHtml } from './newsParser.js';
+import { runQueue, browserSlots, isRetryableCode } from '../scripts/queue.js';
 
 export const SITE_PAGES = [
   { url: 'https://pwonline.ru/supermarathon.php', label: 'supermarathon.php' },
   { url: 'https://pwonline.ru/supermarathon2.php', label: 'supermarathon2.php' }
 ];
 
-const CONCURRENCY = 3;
 const CHAR_TIMEOUT_MS = 45000;
 
 let listenersReady = false;
@@ -222,7 +222,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
   byUrl.forEach((ids, url) => ids.forEach(charId => jobs.push({ charId, url })));
   const total = jobs.length;
   let done = 0;
-  task.progress(0, total, `В очереди ${total} запросов, по ${CONCURRENCY} одновременно`);
+  task.progress(0, total, `В очереди ${total} запросов, по ${browserSlots.max} одновременно`);
   noUrl.forEach(m => task.log(`«${m.title}»: не указана страница на сайте — пропущен`, 'warn'));
   byUrl.forEach((ids, url) => task.log(`${url}: ${ids.size} перс.`));
   task.watch(...jobs.map(j => `char:${j.charId}`));
@@ -230,13 +230,19 @@ export async function syncMarathons(marathons, callbacks = {}) {
   const report = {};             // marathonId -> { changes: [], errors: [] }
   marathons.forEach(m => { report[m.id] = { changes: [], errors: [] }; });
 
-  const queue = [...jobs];
-  const worker = async () => {
-    while (queue.length) {
-      const { charId, url } = queue.shift();
-      callbacks.onStart?.(charId);
-      task.log(`${nick(charId)}: открываю ${url.replace('https://', '')}`, 'step');
-      const { quests, error } = await fetchChar(charId, url);
+  const retries = Number(state.settings?.scripts?.retries ?? 2);
+  await runQueue(jobs, async ({ charId, url }, attempt) => {
+    callbacks.onStart?.(charId);
+    task.log(`${nick(charId)}: открываю ${url.replace('https://', '')}${attempt ? ` (повтор ${attempt}/${retries})` : ''}`, 'step');
+    return await fetchChar(charId, url);
+  }, {
+    retries,
+    retryDelayMs: Number(state.settings?.scripts?.retryDelayMs ?? 2000),
+    shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
+    onDone: ({ item, result, error: thrown }) => {
+      const { charId, url } = item;
+      const quests = result?.quests;
+      const error = result?.error || (thrown ? String(thrown) : null);
       let changesForChar = {};
       if (!error && Array.isArray(quests)) {
         changesForChar = applyToMarathons(charId, quests, url, at);
@@ -261,8 +267,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
       callbacks.onDone?.(charId, { error, changes: changesForChar });
       callbacks.onProgress?.(done, total);
     }
-  };
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, worker));
+  });
 
   marathons.forEach(m => {
     if (!marathonUrlOf(m)) return;

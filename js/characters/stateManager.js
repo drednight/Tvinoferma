@@ -30,38 +30,8 @@ export function createEmptyCharacter() {
     ancientCoins: 0,
     coinHistory: [],
     stats: { ...DEFAULT_STATS },
+    tags: [],
     createdAt: nowISO(),
     updatedAt: nowISO()
-  };
-}
-
-/**
- * Нормализует данные персонажа при загрузке из JSON
- */
-export function normalizeCharacterData(input = {}) {
-  return {
-    ...createEmptyCharacter(), // База
-    ...input,                  // Переопределяем входными данными
-    sky: { 
-      name: input.sky?.name || null, 
-      level: input.sky?.level ? Number(input.sky.level) : null 
-    },
-    contacts: {
-      email: String(input.contacts?.email || ''),
-      password: String(input.contacts?.password || ''),
-      recoveryEmail: String(input.contacts?.recoveryEmail || ''),
-      phone: String(input.contacts?.phone || '')
-    },
-    dungeonPasses: {
-      weapon: Number(input.dungeonPasses?.weapon) || 0,
-      armor: Number(input.dungeonPasses?.armor) || 0,
-      relic: Number(input.dungeonPasses?.relic) || 0
-    },
-    stats: {
-      ...DEFAULT_STATS,
-      ...(input.stats || {})
-    },
-    ancientCoins: Number(input.ancientCoins) || 0,
-    coinHistory: Array.isArray(input.coinHistory) ? input.coinHistory : []
   };
 }

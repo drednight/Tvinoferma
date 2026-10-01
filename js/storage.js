@@ -1,21 +1,28 @@
 // js/storage.js
 
 import { serializeState } from './state.js';
-// Импортируем адаптеры из правильной папки /storageAdapters/
 import { tauriAdapter } from './storageAdapters/tauriAdapter.js';
 import { localStorageAdapter } from './storageAdapters/localStorageAdapter.js';
+import { prepareForDisk } from './secrets.js';
+
+export const isTauri = () => !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
 
 /**
  * Выбирает подходящий адаптер в зависимости от окружения.
- * Если мы внутри Tauri — используем файловую систему.
- * Если в браузере (dev mode) — используем LocalStorage.
+ * Внутри Tauri — файл через Rust, в браузере (dev mode) — LocalStorage.
  */
 export function getAdapter() {
-  // Проверка наличия глобальных объектов Tauri
-  if (window.__TAURI_INTERNALS__ || window.__TAURI__) {
-    return tauriAdapter;
-  }
-  return localStorageAdapter;
+  return isTauri() ? tauriAdapter : localStorageAdapter;
+}
+
+// Записи выстраиваются в очередь: параллельные persist() из фоновых скриптов
+// не перемешиваются, а несколько вызовов подряд схлопываются в одну запись.
+let writeChain = Promise.resolve();
+let pending = null;
+
+async function writeNow() {
+  const data = await prepareForDisk(serializeState());
+  await getAdapter().saveState(data);
 }
 
 /**
@@ -23,21 +30,19 @@ export function getAdapter() {
  * ВАЖНО: Не вызывает автоматический рендеринг UI!
  * Это критически важно для работы чекбоксов в таблице марафонов.
  */
-export async function persist() {
-  const adapter = getAdapter();
-  if (!adapter) {
-    console.warn('[STORAGE] No adapter found, skipping save.');
-    return;
-  }
-
-  try {
-    const data = serializeState();
-    await adapter.saveState(data);
-    console.log('[STORAGE] State saved successfully.');
-  } catch (error) {
-    console.error('[STORAGE] Failed to save state:', error);
-    throw error; // Пробрасываем ошибку выше, чтобы обработчик клика мог сделать откат
-  }
+export function persist() {
+  if (pending) return pending;
+  pending = writeChain = writeChain
+    .catch(() => {})
+    .then(() => {
+      pending = null;
+      return writeNow();
+    })
+    .catch((error) => {
+      console.error('[STORAGE] Failed to save state:', error);
+      throw error; // Пробрасываем ошибку выше, чтобы обработчик клика мог сделать откат
+    });
+  return pending;
 }
 
 /**
@@ -46,37 +51,29 @@ export async function persist() {
  */
 export async function forceRenderAndPersist() {
   await persist();
-  
+
   // Динамические импорты, чтобы избежать циклических зависимостей при старте
-  
-  // 1. Персонажи
   const { renderCharacters } = await import('./characters.js');
-  
-  // 2. Пати (ИСПРАВЛЕНО: теперь импортируем из index.js внутри папки parties)
-  const { renderParties } = await import('./parties/index.js'); 
-  
-  // 3. Марафоны
+  const { renderParties } = await import('./parties/index.js');
   const { renderMarathons } = await import('./marathon.js');
-  
+
   renderCharacters();
   renderParties();
   renderMarathons();
 }
 
-/**
- * Мгновенное сохранение (без ожидания debounce, если он есть).
- */
+/** Мгновенное сохранение (дожидается очереди записей). */
 export async function saveNow() {
-  const adapter = getAdapter();
-  if (!adapter) return;
-  await adapter.saveState(serializeState());
+  await persist();
 }
 
-/**
- * Загрузка данных из хранилища.
- */
+/** Загрузка данных из хранилища. */
 export async function loadData() {
-  const adapter = getAdapter();
-  if (!adapter) return null;
-  return await adapter.loadState();
+  return await getAdapter().loadState();
+}
+
+/** Резервная копия с учётом настроек ротации. */
+export async function createBackup(label) {
+  const { state } = await import('./state.js');
+  return getAdapter().createBackup({ maxCount: state.settings?.backups?.maxCount ?? 10, label });
 }

@@ -1,8 +1,12 @@
 // js/main.js
 
-import { state } from './state.js';
-import { loadData, persist } from './storage.js'; 
-import { normalizeState } from './state.js';
+import { state, normalizeState } from './state.js';
+import { loadData, persist, createBackup, isTauri } from './storage.js';
+import { migrateState, SCHEMA_VERSION } from './migrations.js';
+import { hydrateSecrets } from './secrets.js';
+import { initHotkeys, initDesktop } from './desktop.js';
+import { initNotifications } from './notifications.js';
+import { checkForUpdates } from './updater.js';
 import { bindCharacters, renderCharacters } from './characters.js';
 import { bindParties, renderParties } from './parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './marathon.js';
@@ -25,13 +29,39 @@ async function boot() {
     console.log('[BOOT] Starting Twinoferma...');
     
     // 1. Загрузка данных из хранилища
-    const raw = await loadData(); 
+    let raw = null;
+    try {
+      raw = await loadData();
+    } catch (e) {
+      console.error('[BOOT] Failed to load state:', e);
+      alert(`Не удалось прочитать данные: ${e?.message || e}\nПриложение запустится с пустыми данными, повреждённый файл сохранён рядом с state.json.`);
+    }
+    let needsSave = false;
     if (raw) {
-      Object.assign(state, normalizeState(raw));
+      // 1a. Миграции схемы: перед изменением формата делаем резервную копию исходного файла
+      const migration = migrateState(raw);
+      if (migration.newer) {
+        toast(`Данные созданы более новой версией приложения (схема v${migration.from}, поддерживается v${SCHEMA_VERSION}). Обновите приложение.`, 'warning');
+      } else if (migration.applied.length) {
+        console.log(`[BOOT] Migrating state v${migration.from} → v${migration.to}`);
+        if (isTauri()) {
+          try { await createBackup(`pre-migration-v${migration.from}`); } catch (e) { console.warn('[BOOT] Pre-migration backup failed:', e); }
+        }
+        needsSave = true;
+      }
+      Object.assign(state, normalizeState(migration.state));
       console.log('[BOOT] State loaded successfully.');
     } else {
       console.log('[BOOT] No saved data found. Using defaults.');
     }
+
+    // 1b. Учётные данные из хранилища ОС (и перенос туда открытых паролей из старого state.json)
+    const secrets = await hydrateSecrets(state.characters, { tauri: isTauri() });
+    if (secrets.migrated > 0) {
+      needsSave = true;
+      toast(`Учётные данные ${secrets.migrated} персонажей перенесены в защищённое хранилище ОС.`, 'success');
+    }
+    if (needsSave) await persist().catch(e => console.error('[BOOT] Save after migration failed:', e));
 
     // 2. Инициализация слушателей синхронизации PW Online
     // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
@@ -95,8 +125,14 @@ async function boot() {
         console.error('[BOOT ERROR] Failed to init UI Actions:', e);
     }
 
-    // 6. Привязка глобальных контролов (кнопки вне карточек)
-    bindGlobalControls();
+    // 6. Горячие клавиши, трей, фоновые проверки, уведомления
+    initHotkeys({ switchTab });
+    try {
+      await initDesktop();
+      initNotifications();
+    } catch (e) {
+      console.error('[BOOT ERROR] Failed to init desktop features:', e);
+    }
 
     // 7. Первый рендер активной вкладки (по умолчанию Персонажи)
     renderActiveTab('characters');
@@ -106,6 +142,11 @@ async function boot() {
     // 8. Фоновая проверка сохранённых авторизаций (не блокирует интерфейс)
     if (window.__TAURI_INTERNALS__ && state.settings?.autoVerifyLogins !== false) {
       verifySavedLoginsOnStartup().catch(e => console.error('[BOOT] Startup auth check failed:', e));
+    }
+
+    // 9. Проверка обновлений (тихо, без сообщений об ошибках)
+    if (isTauri() && state.settings?.updates?.checkOnStartup !== false) {
+      setTimeout(() => checkForUpdates({ silent: true }), 5000);
     }
 
   } catch (error) {
@@ -171,12 +212,9 @@ function renderActiveTab(sectionName) {
   }
 }
 
-/**
- * Привязка событий к глобальным кнопкам интерфейса
- */
-function bindGlobalControls() {
-  
-  // Кнопки раздела «Марафоны» привязываются в bindMarathons()
+/** Переключить вкладку программно (горячие клавиши). */
+function switchTab(sectionName) {
+  document.querySelector(`.tab[data-tab="${sectionName}"]`)?.click();
 }
 
 // Запуск приложения после полной загрузки DOM

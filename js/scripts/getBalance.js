@@ -2,18 +2,9 @@
 import { invoke } from '@tauri-apps/api/core';
 
 /**
- * Запускает парсинг баланса для персонажа.
- * Результат будет доставлен через событие 'pw-balance-result-global'.
+ * Баланс древних монет персонажа (chests2.php).
+ * @returns {Promise<{ charId: string, balance: number|null, error: string|null }>}
  */
-export async function getCharacterBalance(charId) {
-    try {
-        await invoke('fetch_and_parse_balance_v4', { charId });
-        
-        console.log(`[SCRIPT BALANCE] Fetch initiated for ${charId}`);
-        return true;
-        
-    } catch (error) {
-        console.error(`[SCRIPT BALANCE] Failed to start fetch for ${charId}:`, error);
-        throw error;
-    }
+export async function getCharacterBalance(charId, { timeoutSeconds = 15, closeAfter = true } = {}) {
+  return await invoke('fetch_and_parse_balance_v4', { charId, timeoutSeconds, closeAfter });
 }

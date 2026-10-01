@@ -14,5 +14,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     target: 'es2021'
+  },
+  test: {
+    environment: 'jsdom',
+    include: ['tests/**/*.test.js']
   }
 });

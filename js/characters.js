@@ -1,22 +1,23 @@
 // js/characters.js
 
-import { state } from './state.js';
+import { state, normalizeTags } from './state.js';
 import { persist } from './storage.js';
 import { escapeHtml } from './utils.js';
-import { toast } from './ui.js';
-import { bindParties, renderParties } from './parties/index.js';
+import { toast, showModal, confirmDialog } from './ui.js';
+import { renderParties } from './parties/index.js';
 
 // Импортируем константы
-import { CLASSES, CLASS_ICON_MAP, SKIES, SKY_LEVELS, PASS_TYPES, getClassIconSrc } from './constants.js';
+import { PASS_TYPES, getClassIconSrc } from './constants.js';
 
 // Импортируем модульную систему персонажей
-import { bindCharactersModule, openCharacterProfile, openCharacterForm } from './characters/index.js';
+import { openCharacterProfile, openCharacterForm } from './characters/index.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from './syncManager.js';
 import { getAuthView } from './authStatus.js';
 
-let expandedCharacterId = null;
+// Персонажи, видимые после фильтров (для «выбрать все»)
+let visibleIds = [];
 
 /**
  * Хелпер для маскирования текста
@@ -47,6 +48,7 @@ function initFilters() {
   const classSelect = document.getElementById('class-filter');
   const partySelect = document.getElementById('party-filter');
   const authSelect = document.getElementById('auth-filter'); 
+  const tagSelect = document.getElementById('tag-filter');
 
   if (!searchInput || !classSelect || !partySelect || !authSelect) return;
 
@@ -71,6 +73,11 @@ function initFilters() {
     <option value="offline">🔴 Только не авторизованные</option>
   `;
 
+  if (tagSelect) {
+    tagSelect.onchange = () => renderFilteredGrid();
+    fillTagFilter(tagSelect);
+  }
+
   const applyFilters = () => {
     renderFilteredGrid();
   };
@@ -79,6 +86,21 @@ function initFilters() {
   classSelect.onchange = applyFilters;
   partySelect.onchange = applyFilters;
   authSelect.onchange = applyFilters; 
+}
+
+/** Все теги персонажей (без учёта регистра), по алфавиту. */
+export function allTags() {
+  const map = new Map();
+  state.characters.forEach(c => (c.tags || []).forEach(t => { if (!map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
+  return [...map.values()].sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function fillTagFilter(select) {
+  const current = select.value;
+  const tags = allTags();
+  select.innerHTML = '<option value="">Все теги</option><option value="__none__">Без тегов</option>' +
+    tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
+  select.value = tags.includes(current) || current === '__none__' ? current : '';
 }
 
 /**
@@ -92,12 +114,25 @@ function renderFilteredGrid() {
   const selectedClass = document.getElementById('class-filter')?.value || '';
   const selectedParty = document.getElementById('party-filter')?.value || '';
   const selectedAuth = document.getElementById('auth-filter')?.value || ''; 
+  const tagSelect = document.getElementById('tag-filter');
+  if (tagSelect) fillTagFilter(tagSelect); // новые теги сразу появляются в фильтре
+  const selectedTag = tagSelect?.value || '';
 
   let filteredChars = state.characters;
 
-  // 1. Поиск по нику
+  // 1. Поиск по нику (и по тегам: «#тег» или просто слово)
   if (searchTerm) {
-    filteredChars = filteredChars.filter(c => c.nick.toLowerCase().includes(searchTerm));
+    const term = searchTerm.replace(/^#/, '');
+    filteredChars = filteredChars.filter(c => c.nick.toLowerCase().includes(searchTerm) ||
+      (c.tags || []).some(t => t.toLowerCase().includes(term)));
+  }
+
+  // 1a. Фильтр по тегу
+  if (selectedTag === '__none__') {
+    filteredChars = filteredChars.filter(c => !(c.tags || []).length);
+  } else if (selectedTag) {
+    const tl = selectedTag.toLowerCase();
+    filteredChars = filteredChars.filter(c => (c.tags || []).some(t => t.toLowerCase() === tl));
   }
 
   // 2. Фильтр по классу
@@ -123,6 +158,8 @@ function renderFilteredGrid() {
 
   // ОБНОВЛЯЕМ KPI НА ОСНОВЕ ОТФИЛЬТРОВАННЫХ ДАННЫХ
   updateKPIs(filteredChars);
+  visibleIds = filteredChars.map(c => c.id);
+  renderBulkBar();
 
   if (filteredChars.length === 0) {
     gridEl.innerHTML = '<div class="empty-state">Ничего не найдено по заданным фильтрам.</div>';
@@ -187,11 +224,21 @@ function generateCardHTML(char) {
     const statusText = authView.text;
     const statusTitle = authView.title;
 
+    const tagsHtml = (char.tags || []).length
+      ? `<div class="tag-list">${char.tags.map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('')}</div>`
+      : '';
+    const selecting = state.ui.selectionMode;
+    const selected = selecting && state.ui.selection.has(char.id);
+    const selectBox = selecting
+      ? `<span class="select-box" title="Выбрать"><input type="checkbox" class="char-select" tabindex="-1" ${selected ? 'checked' : ''}/></span>`
+      : '';
+
     return `
-      <article class="card character-card clickable-card" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 3px solid ${statusColor};">
+      <article class="card character-card clickable-card${selected ? ' is-selected' : ''}" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 3px solid ${statusColor};">
         
         <header class="card-header" style="padding:12px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; background:var(--panel-2);">
           <div style="display:flex; gap:10px; align-items:center; flex-grow:1;">
+            ${selectBox}
             <div style="width:36px; height:36px; background:rgba(255,255,255,0.05); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
               ${avatarContent}
             </div>
@@ -222,6 +269,7 @@ function generateCardHTML(char) {
         </header>
 
         <div class="card-body" style="flex-grow:1; padding:12px; display:flex; flex-direction:column; gap:12px;">
+           ${tagsHtml}
            
            <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:4px; text-align:center; font-size:0.75rem; background:rgba(0,0,0,0.15); padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
               <div><span class="muted">HP</span><br/><strong>${fmtStat(stats.hp)}</strong></div>
@@ -390,6 +438,24 @@ function bindCharacterEvents(container) {
   container.onclick = async (e) => {
     const target = e.target;
 
+    // 0. Режим выбора: клик по карточке переключает выбор
+    if (state.ui.selectionMode) {
+      const card = target.closest('.clickable-card');
+      if (card && !target.closest('button') && !target.closest('.contact-value')) {
+        toggleSelected(card.dataset.charId);
+        return;
+      }
+    }
+
+    // 0a. Клик по тегу — фильтр по этому тегу
+    const chip = target.closest('.tag-chip');
+    if (chip) {
+      e.stopPropagation();
+      const tagSelect = document.getElementById('tag-filter');
+      if (tagSelect) { fillTagFilter(tagSelect); tagSelect.value = chip.dataset.tag; renderFilteredGrid(); }
+      return;
+    }
+
     // 1. Мини-глазик
     const eyeBtn = target.closest('.mini-toggle-eye');
     if (eyeBtn) {
@@ -456,6 +522,12 @@ export function bindCharacters() {
       openCharacterForm(null);
     });
   }
+
+  document.getElementById('btn-select-mode')?.addEventListener('click', () => setSelectionMode(!state.ui.selectionMode));
+  document.getElementById('bulk-bar')?.addEventListener('click', onBulkAction);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.ui.selectionMode && !document.querySelector('.modal-overlay')) setSelectionMode(false);
+  });
   
   // ВАЖНО: Сначала инициализируем фильтры, потом рендерим
   initFilters(); 
@@ -464,3 +536,149 @@ export function bindCharacters() {
 
 // --- ЭКСПОРТ ДЛЯ ДРУГИХ МОДУЛЕЙ ---
 export { openCharacterProfile, openCharacterForm };
+/* ------------------------------------------------------------------ */
+/*  Режим выбора и массовые действия                                   */
+/* ------------------------------------------------------------------ */
+
+export function setSelectionMode(on) {
+  state.ui.selectionMode = !!on;
+  if (!on) state.ui.selection.clear();
+  document.getElementById('btn-select-mode')?.classList.toggle('active', !!on);
+  renderFilteredGrid();
+}
+
+function toggleSelected(id) {
+  const sel = state.ui.selection;
+  if (sel.has(id)) sel.delete(id); else sel.add(id);
+  const card = document.querySelector(`.character-card[data-char-id="${CSS.escape(id)}"]`);
+  card?.classList.toggle('is-selected', sel.has(id));
+  const box = card?.querySelector('.char-select');
+  if (box) box.checked = sel.has(id);
+  renderBulkBar();
+}
+
+/** Выбрать всех, кто виден после фильтров (повторный вызов снимает выбор). */
+export function selectAllVisible() {
+  if (!state.ui.selectionMode) setSelectionMode(true);
+  const sel = state.ui.selection;
+  const allSelected = visibleIds.length && visibleIds.every(id => sel.has(id));
+  if (allSelected) visibleIds.forEach(id => sel.delete(id));
+  else visibleIds.forEach(id => sel.add(id));
+  renderFilteredGrid();
+}
+
+function selectedChars() {
+  return state.characters.filter(c => state.ui.selection.has(c.id));
+}
+
+function renderBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  if (!bar) return;
+  // Выбор не должен «помнить» удалённых персонажей
+  const ids = new Set(state.characters.map(c => c.id));
+  [...state.ui.selection].forEach(id => { if (!ids.has(id)) state.ui.selection.delete(id); });
+
+  bar.hidden = !state.ui.selectionMode;
+  if (!state.ui.selectionMode) return;
+  const n = state.ui.selection.size;
+  const dis = n ? '' : 'disabled';
+  bar.innerHTML = `
+    <strong class="bulk-count">Выбрано: ${n}</strong>
+    <button class="btn ghost small" data-bulk="all">☑ Все по фильтру (${visibleIds.length})</button>
+    <span class="bulk-sep"></span>
+    <button class="btn secondary small" data-bulk="auth" ${dis}>🔐 Проверить вход</button>
+    <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
+    <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
+    <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
+    <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>
+    <button class="btn danger small" data-bulk="delete" ${dis}>🗑 Удалить</button>
+    <button class="btn ghost small" data-bulk="close" title="Esc">✕ Готово</button>
+  `;
+}
+
+async function saveAndRender(message) {
+  await persist();
+  renderCharacters();
+  renderParties();
+  if (message) toast(message, 'success');
+}
+
+function tagModal({ title, submitText, tags, onTag }) {
+  const options = tags.map(t => `<option value="${escapeHtml(t)}"></option>`).join('');
+  showModal({
+    title,
+    content: `
+      <div class="field">
+        <label>Тег (можно несколько через запятую)</label>
+        <input class="input" name="tag" list="bulk-tag-list" autocomplete="off" autofocus />
+        <datalist id="bulk-tag-list">${options}</datalist>
+      </div>`,
+    submitText,
+    cancelText: 'Отмена',
+    onSubmit(formData) {
+      const list = normalizeTags(formData.get('tag'));
+      if (!list.length) { toast('Введите тег', 'warning'); return false; }
+      onTag(list);
+    }
+  });
+}
+
+async function onBulkAction(e) {
+  const btn = e.target.closest('[data-bulk]');
+  if (!btn || btn.disabled) return;
+  const action = btn.dataset.bulk;
+  const chars = selectedChars();
+  const now = new Date().toISOString();
+
+  switch (action) {
+    case 'all': selectAllVisible(); break;
+    case 'close': setSelectionMode(false); break;
+    case 'auth': await refreshAllLoginStatuses(chars); break;
+    case 'balance': await refreshAllBalances(chars); break;
+    case 'tag-add':
+      tagModal({
+        title: `Добавить тег (${chars.length} перс.)`, submitText: 'Добавить', tags: allTags(),
+        onTag: (list) => {
+          chars.forEach(c => { c.tags = normalizeTags([...(c.tags || []), ...list]); c.updatedAt = now; });
+          saveAndRender(`Тег добавлен: ${chars.length} перс.`);
+        }
+      });
+      break;
+    case 'tag-remove': {
+      const present = [...new Set(chars.flatMap(c => c.tags || []))].sort((a, b) => a.localeCompare(b, 'ru'));
+      if (!present.length) { toast('У выбранных персонажей нет тегов', 'info'); break; }
+      tagModal({
+        title: `Убрать тег (${chars.length} перс.)`, submitText: 'Убрать', tags: present,
+        onTag: (list) => {
+          const drop = new Set(list.map(t => t.toLowerCase()));
+          chars.forEach(c => { c.tags = (c.tags || []).filter(t => !drop.has(t.toLowerCase())); c.updatedAt = now; });
+          saveAndRender(`Тег убран: ${chars.length} перс.`);
+        }
+      });
+      break;
+    }
+    case 'party': {
+      const options = state.parties.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+      showModal({
+        title: `Перенести в пати (${chars.length} перс.)`,
+        content: `<div class="field"><label>Пати</label><select class="select" name="party"><option value="">— Без пати —</option>${options}</select></div>`,
+        submitText: 'Перенести',
+        cancelText: 'Отмена',
+        onSubmit(formData) {
+          const party = formData.get('party') || null;
+          chars.forEach(c => { c.party = party; c.updatedAt = now; });
+          saveAndRender(party ? `Перенесено в «${party}»: ${chars.length}` : `Убраны из пати: ${chars.length}`);
+        }
+      });
+      break;
+    }
+    case 'delete':
+      if (confirmDialog(`Удалить ${chars.length} персонажей? Это действие необратимо.`)) {
+        const ids = new Set(chars.map(c => c.id));
+        state.characters = state.characters.filter(c => !ids.has(c.id));
+        state.ui.selection.clear();
+        saveAndRender(`Удалено: ${ids.size}`);
+      }
+      break;
+  }
+}

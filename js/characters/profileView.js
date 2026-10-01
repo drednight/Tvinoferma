@@ -6,8 +6,7 @@ import { escapeHtml } from '../utils.js';
 import { showModal, toast, confirmDialog, closeModal } from '../ui.js';
 import { getClassIconSrc } from '../constants.js';
 import { openCharacterForm } from './formEditor.js'; 
-import { openSyncHelper } from '../syncManager.js'; 
-import { invoke } from '@tauri-apps/api/core'; 
+import { openSyncHelper, refreshBalanceFor } from '../syncManager.js';
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -358,8 +357,7 @@ export function openCharacterProfile(char) {
         refreshHeaderBtn.textContent = '⏳...';
         
         try {
-            await invoke('fetch_and_parse_balance_v4', { charId: char.id });
-            toast(`Запрос на обновление баланса для ${char.nick} отправлен.`, 'info');
+            await refreshBalanceFor(char);
         } catch (err) {
             console.error(err);
             toast('Ошибка запуска проверки', 'error');
