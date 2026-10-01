@@ -1,6 +1,6 @@
 [package]
 name = "tvinoferma"
-version = "0.2.0"
+version = "0.2.1"
 description = "Менеджер персонажей Твинофермы"
 authors = ["#Дреднайт"]
 edition = "2021"
