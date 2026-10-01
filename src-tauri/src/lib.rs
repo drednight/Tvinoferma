@@ -34,7 +34,8 @@ pub fn run() {
             check_login_status_http,
             fetch_marathon_progress_v1,
             get_available_marathon_titles,
-            parse_specific_marathon_page
+            parse_specific_marathon_page,
+            fetch_marathon_news
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -160,7 +161,8 @@ async fn execute_script_in_window(app: AppHandle, label: String, script: String)
 async fn check_login_status_http(
     app: AppHandle, 
     char_id: String,
-    timeout_seconds: Option<u64>
+    timeout_seconds: Option<u64>,
+    close_after: Option<bool>
 ) -> Result<(), String> {
     let label = format!("sync-win-{}", char_id);
     let wait_time = std::time::Duration::from_secs(timeout_seconds.unwrap_or(5));
@@ -170,6 +172,9 @@ async fn check_login_status_http(
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let profiles_dir = app_data_dir.join("pw-sync-profiles").join(&char_id);
     std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
+
+    // Окно создано этой проверкой? Тогда его можно закрыть после неё (видимые окна пользователя не трогаем)
+    let created_here = app.get_webview_window(&label).is_none();
 
     let window = match app.get_webview_window(&label) {
         Some(w) => w,
@@ -220,30 +225,34 @@ async fn check_login_status_http(
     window.eval(checker_script).map_err(|e| e.to_string())?;
 
     let max_attempts = (timeout_seconds.unwrap_or(5) as usize) * 2;
-    
+    let mut status = "offline";
+    let mut resolved = false;
+
     for _ in 0..max_attempts {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         if let Ok(url) = window.url() {
             let url_str = url.as_str();
-            if url_str.contains("#TF_STATUS_ONLINE") {
-                println!("[HIDDEN CHECK] Result: ONLINE");
-                let emit_result = app.emit("login-status-result-global", serde_json::json!({ "charId": char_id, "status": "online" }));
-                match emit_result { Ok(_) => {}, Err(e) => println!("[HIDDEN CHECK] Emit Error: {:?}", e) }
-                return Ok(());
-            }
-            if url_str.contains("#TF_STATUS_OFFLINE") {
-                println!("[HIDDEN CHECK] Result: OFFLINE");
-                let emit_result = app.emit("login-status-result-global", serde_json::json!({ "charId": char_id, "status": "offline" }));
-                match emit_result { Ok(_) => {}, Err(e) => println!("[HIDDEN CHECK] Emit Error: {:?}", e) }
-                return Ok(());
-            }
+            if url_str.contains("#TF_STATUS_ONLINE") { status = "online"; resolved = true; break; }
+            if url_str.contains("#TF_STATUS_OFFLINE") { status = "offline"; resolved = true; break; }
         }
     }
 
-    println!("[HIDDEN CHECK] Timeout after {:?}, assuming OFFLINE", wait_time);
-    let emit_result = app.emit("login-status-result-global", serde_json::json!({ "charId": char_id, "status": "offline" }));
-    match emit_result { Ok(_) => {}, Err(e) => println!("[HIDDEN CHECK] Emit Error: {:?}", e) }
-    
+    if resolved {
+        println!("[HIDDEN CHECK] Result for {}: {}", char_id, status);
+    } else {
+        println!("[HIDDEN CHECK] Timeout after {:?}, assuming OFFLINE", wait_time);
+    }
+
+    // destroy() вместо close(): не генерирует CloseRequested, чтобы фронтенд
+    // не принял закрытие служебного окна за выход пользователя
+    if created_here && close_after.unwrap_or(false) {
+        let _ = window.destroy();
+    }
+
+    if let Err(e) = app.emit("login-status-result-global", serde_json::json!({ "charId": char_id, "status": status })) {
+        println!("[HIDDEN CHECK] Emit Error: {:?}", e);
+    }
+
     Ok(())
 }
 
@@ -354,45 +363,131 @@ async fn fetch_and_parse_balance_v4(app: AppHandle, char_id: String) -> Result<(
 
 // src-tauri/src/lib.rs
 
-/// ПАРСЕР МАРАФОНА v1: Собирает прогресс по всем активным заданиям
-#[command]
-async fn fetch_marathon_progress_v1(app: AppHandle, char_id: String) -> Result<(), String> {
-    let label = format!("sync-win-{}", char_id);
-    println!("[MARATHON-PARSER] Starting parse for CharID: {}", char_id);
+/// Возвращает окно `sync-win-{key}` (профиль персонажа), создавая СКРЫТОЕ при необходимости.
+/// Второе значение = true, если окно создано сейчас (его можно уничтожить после работы).
+async fn get_or_create_hidden_window(app: &AppHandle, key: &str, url: &str) -> Result<(tauri::WebviewWindow, bool), String> {
+    let label = format!("sync-win-{}", key);
+    if let Some(w) = app.get_webview_window(&label) {
+        return Ok((w, false));
+    }
+    let parsed_url = Url::from_str(url).map_err(|e| format!("Invalid URL: {}", e))?;
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let profiles_dir = app_data_dir.join("pw-sync-profiles").join(key);
+    std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
 
-    let window = match app.get_webview_window(&label) {
-        Some(w) => w,
-        None => {
-            println!("[MARATHON-PARSER] Creating hidden window...");
-            let target_url_str = "https://pwonline.ru/supermarathon.php"; 
-            let parsed_url = Url::from_str(target_url_str).map_err(|e| format!("Invalid URL: {}", e))?;
-            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let profiles_dir = app_data_dir.join("pw-sync-profiles").join(&char_id);
-            std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
+    tauri::WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed_url))
+        .title(format!("Hidden Sync: {}", key))
+        .inner_size(1000.0, 700.0)
+        .resizable(false)
+        .visible(false)
+        .data_directory(profiles_dir)
+        .build()
+        .map_err(|e| e.to_string())?;
 
-            let _win = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-                .title(format!("Marathon Sync: {}", char_id))
-                .inner_size(800.0, 600.0)
-                .resizable(false)
-                .visible(false) 
-                .data_directory(profiles_dir.clone()) 
-                .build()
-                .map_err(|e| e.to_string())?;
-            
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            app.get_webview_window(&label).ok_or("Window creation failed")?
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let w = app.get_webview_window(&label).ok_or("Window creation failed")?;
+    Ok((w, true))
+}
+
+/// Окно для сканирования марафонов: профиль указанного (авторизованного) персонажа,
+/// иначе любое открытое окно персонажа, иначе отдельный профиль сканера (без входа).
+async fn pick_scan_window(app: &AppHandle, char_id: Option<String>, url: &str, fallback_key: &str) -> Result<(tauri::WebviewWindow, bool), String> {
+    if let Some(id) = char_id.filter(|s| !s.is_empty()) {
+        return get_or_create_hidden_window(app, &id, url).await;
+    }
+    for (_, window) in app.webview_windows() {
+        if window.label().starts_with("sync-win-") {
+            return Ok((window, false));
         }
-    };
+    }
+    get_or_create_hidden_window(app, fallback_key, url).await
+}
+
+/// Выполняет скрипт парсера и ждёт ответ в hash (`#PREFIX<json>`).
+/// Пока сайт показывает «Проверку безопасности» (ответ error = "challenge") или страница
+/// перезагружается — повторяет скрипт. Возвращает None по таймауту.
+async fn eval_and_wait(
+    window: &tauri::WebviewWindow,
+    script: &str,
+    prefix: &str,
+    timeout_secs: u64,
+    scope: &str,
+) -> Option<(Option<String>, serde_json::Value)> {
+    use std::time::{Duration, Instant};
+    let app = window.app_handle().clone();
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let mut last_eval: Option<Instant> = None;
+    let mut challenge_logged = false;
+    tf_log(&app, scope, "info", format!("Жду загрузки страницы и ответа парсера (до {} с)…", timeout_secs));
+
+    while Instant::now() < deadline {
+        let need_eval = last_eval.map(|t| t.elapsed() >= Duration::from_millis(1500)).unwrap_or(true);
+        if need_eval {
+            let _ = window.eval(script);
+            last_eval = Some(Instant::now());
+        }
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        let Ok(url) = window.url() else { continue };
+        let Some((error, data)) = read_hash_payload(url.as_str(), prefix) else { continue };
+        if error.as_deref() == Some("challenge") {
+            if !challenge_logged {
+                tf_log(&app, scope, "warn", "Сайт показывает «Проверку безопасности» — жду, пока она пройдёт…");
+                challenge_logged = true;
+            }
+            // Убираем hash, чтобы не прочитать его повторно, и ждём прохождения проверки
+            let _ = window.eval("history.replaceState(null, '', location.pathname + location.search);");
+            continue;
+        }
+        return Some((error, data));
+    }
+    tf_log(&app, scope, "error", format!("Страница не ответила за {} с", timeout_secs));
+    None
+}
+
+/// Шаг для журнала задач в интерфейсе (событие `tf-task-log`, scope = `char:<id>` | `scan` | `detail`).
+fn tf_log(app: &AppHandle, scope: &str, level: &str, message: impl Into<String>) {
+    let message: String = message.into();
+    println!("[{}] {}: {}", scope, level, message);
+    let _ = app.emit(
+        "tf-task-log",
+        serde_json::json!({ "scope": scope, "level": level, "message": message }),
+    );
+}
+
+/// ПАРСЕР МАРАФОНА v2: прогресс персонажа по всем заданиям страницы марафона
+#[command]
+async fn fetch_marathon_progress_v1(
+    app: AppHandle,
+    char_id: String,
+    marathon_url: Option<String>,
+    close_after: Option<bool>
+) -> Result<(), String> {
+    let target_str = marathon_url.unwrap_or_else(|| "https://pwonline.ru/supermarathon.php".to_string());
+    let scope = format!("char:{}", char_id);
+    let (window, created_here) = get_or_create_hidden_window(&app, &char_id, &target_str).await?;
+    tf_log(&app, &scope, "info", if created_here { "Открыт скрытый профиль персонажа" } else { "Использую уже открытое окно персонажа" });
+
+    // Всегда переходим на страницу марафона: окно могло остаться на другой странице
+    let target_url = Url::from_str(&target_str).map_err(|e| format!("Invalid URL: {}", e))?;
+    window.navigate(target_url).map_err(|e| e.to_string())?;
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
     let parser_script = r#"
         (function() {
             console.log('[MARATHON-JS] Starting marathon parsing...');
             function reportResult(data, error) {
-                const errStr = error ? error.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "null";
-                const dataStr = encodeURIComponent(JSON.stringify(data));
-                window.location.hash = `TF_MARATHON_DATA_${errStr}_${dataStr}`;
+                const payload = { data: data, error: error ? String(error) : null };
+                window.location.hash = 'TF_MARATHON_DATA_' + encodeURIComponent(JSON.stringify(payload));
             }
             try {
+                // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
+                if (document.readyState === 'loading' ||
+                    (document.title || '').includes('Проверка безопасности') ||
+                    document.querySelector('script[src*="bp_chl"]')) {
+                    reportResult(null, 'challenge');
+                    return;
+                }
                 const bodyText = document.body.innerText || "";
                 if (bodyText.includes("Вы не авторизованы") || bodyText.includes("не имеете доступа")) {
                     reportResult(null, 'not_logged_in');
@@ -430,119 +525,61 @@ async fn fetch_marathon_progress_v1(app: AppHandle, char_id: String) -> Result<(
         })();
     "#;
 
-    println!("[MARATHON-PARSER] Injecting script...");
-    window.eval(parser_script).map_err(|e| { println!("[MARATHON-PARSER ERROR] Eval failed: {}", e); e.to_string() })?;
+    let result = eval_and_wait(&window, parser_script, "#TF_MARATHON_DATA_", 25, &scope).await;
 
-    println!("[MARATHON-PARSER] Polling for results...");
-    let max_attempts = 20; 
-    
-    for i in 0..max_attempts {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if let Ok(url) = window.url() {
-            let url_str = url.as_str();
-            if url_str.contains("#TF_MARATHON_DATA_") {
-                println!("[MARATHON-PARSER SUCCESS] Found data at attempt {}: {}", i+1, url_str.len());
-                if let Some(pos) = url_str.find("#TF_MARATHON_DATA_") {
-                    let content_start = pos + 17; 
-                    let content_end = url_str.len();
-                    let content = &url_str[content_start..content_end];
-                    if let Some(split_idx) = content.find('_') {
-                        let error_raw = &content[..split_idx];
-                        let json_encoded = &content[split_idx + 1..];
-                        let error: Option<String> = if error_raw == "null" { None } else { Some(error_raw.to_string()) };
-                        let decoded_json = urlencoding::decode(json_encoded).unwrap_or_else(|_| "".into());
-                        let data: serde_json::Value = serde_json::from_str(&decoded_json).unwrap_or(serde_json::Value::Null);
-                        println!("[MARATHON-PARSER PARSED] Error: {:?}, Data Keys: {:?}", error, data.as_object().map(|o| o.keys().collect::<Vec<_>>()));
-                        let emit_result = app.emit("marathon-progress-result-global", serde_json::json!({ "charId": char_id, "quests": data, "error": error }));
-                        match emit_result { Ok(_) => println!("[MARATHON-PARSER EMIT] Successfully emitted event."), Err(e) => println!("[MARATHON-PARSER EMIT] ERROR: {:?}", e) }
-                        return Ok(());
-                    }
-                }
-            }
-        }
+    if created_here && close_after.unwrap_or(false) {
+        let _ = window.destroy();
     }
 
-    println!("[MARATHON-PARSER TIMEOUT] Could not find valid data after {} attempts.", max_attempts);
-    let emit_result = app.emit("marathon-progress-result-global", serde_json::json!({ "charId": char_id, "quests": [], "error": "timeout_parsing_marathon" }));
-    match emit_result { Ok(_) => {}, Err(e) => println!("[MARATHON-PARSER EMIT] ERROR: {:?}", e) }
-    
+    let payload = match result {
+        Some((error, data)) => serde_json::json!({ "charId": char_id, "quests": data, "error": error }),
+        None => serde_json::json!({ "charId": char_id, "quests": [], "error": "timeout_parsing_marathon" }),
+    };
+    println!("[MARATHON-PARSER] {} -> error: {:?}", char_id, payload["error"]);
+    if let Err(e) = app.emit("marathon-progress-result-global", payload) {
+        println!("[MARATHON-PARSER EMIT] ERROR: {:?}", e);
+    }
     Ok(())
 }
 
-
-
-/// БЫСТРЫЙ СКАН НАЗВАНИЙ МАРАФОНОВ (v4 - With Progress Events)
+/// СКАН НАЗВАНИЙ МАРАФОНОВ (v5): использует профиль авторизованного персонажа (char_id)
 #[command]
-async fn get_available_marathon_titles(app: AppHandle) -> Result<(), String> {
-    println!("[TITLE SCANNER v4] Scanning for marathon titles...");
-
-    let urls_to_check = vec![
-        "https://pwonline.ru/supermarathon.php",
-        "https://pwonline.ru/supermarathon2.php"
+async fn get_available_marathon_titles(
+    app: AppHandle,
+    char_id: Option<String>,
+    extra_urls: Option<Vec<String>>,
+) -> Result<(), String> {
+    let mut urls_to_check: Vec<String> = vec![
+        "https://pwonline.ru/supermarathon.php".to_string(),
+        "https://pwonline.ru/supermarathon2.php".to_string(),
     ];
-
-    // Отправляем событие начала сканирования (0%)
-    let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 0, "message": "Подготовка..." }));
-
-    let mut target_window = None;
-    for (_, window) in app.webview_windows() {
-        if window.label().starts_with("sync-win-") {
-            target_window = Some(window);
-            break;
+    for u in extra_urls.unwrap_or_default() {
+        if u.starts_with("http") && !urls_to_check.contains(&u) {
+            urls_to_check.push(u);
         }
     }
+    println!("[TITLE SCANNER v5] Scanning (char: {:?})...", char_id);
+    let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 0, "message": "Подготовка..." }));
 
-    let base_window = match target_window {
-        Some(w) => w,
-        None => {
-            println!("[TITLE SCANNER v4] No open windows found. Creating temporary hidden window...");
-            let label = "sync-win-_title_scanner_v4_".to_string();
-            let parsed_url = Url::from_str(urls_to_check[0]).map_err(|e| format!("Invalid URL: {}", e))?;
-            
-            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let profiles_dir = app_data_dir.join("pw-sync-profiles").join("_title_scanner_v4_");
-            std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
-
-            let _win = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-                .title("Title Scanner v4")
-                .inner_size(800.0, 600.0)
-                .resizable(false)
-                .visible(false) 
-                .data_directory(profiles_dir.clone()) 
-                .build()
-                .map_err(|e| e.to_string())?;
-            
-            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-            app.get_webview_window(&label).ok_or("Temp window creation failed")?
-        }
-    };
+    let (base_window, created_here) = pick_scan_window(&app, char_id, &urls_to_check[0], "_title_scanner_v4_").await?;
+    tf_log(&app, "scan", "info", if created_here { "Открыт скрытый профиль для поиска" } else { "Использую уже открытое окно" });
 
     let mut results: Vec<serde_json::Value> = Vec::new();
-    let total_urls = urls_to_check.len();
-
-    for (index, url_str) in urls_to_check.iter().enumerate() {
-        // Прогресс: 0%, 50%, 100%
-        let percent = ((index as f64 / total_urls as f64) * 100.0) as u8;
-        let _ = app.emit("scan-progress-update", serde_json::json!({ 
-            "percent": percent, 
-            "message": format!("Проверка: {}", url_str.split('/').last().unwrap_or("")) 
-        }));
-
-        println!("[TITLE SCANNER v4] Checking title on: {}", url_str);
-
-        let target_url = Url::from_str(url_str).unwrap();
-        base_window.navigate(target_url).map_err(|e| e.to_string())?;
-        
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-        let parser_script = r#"
+    let mut errors: Vec<String> = Vec::new();
+    let parser_script = r#"
             (function() {
                 function report(data, error) {
-                    const errStr = error ? error.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "null";
-                    const dataStr = encodeURIComponent(JSON.stringify(data));
-                    window.location.hash = `TF_TITLE_V4_${errStr}_${dataStr}`;
+                    const payload = { data: data, error: error ? String(error) : null };
+                    window.location.hash = 'TF_TITLE_V4_' + encodeURIComponent(JSON.stringify(payload));
                 }
                 try {
+                // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
+                if (document.readyState === 'loading' ||
+                    (document.title || '').includes('Проверка безопасности') ||
+                    document.querySelector('script[src*="bp_chl"]')) {
+                    report(null, 'challenge');
+                    return;
+                }
                     const bodyText = document.body.innerText || "";
                     if (bodyText.includes("Вы не авторизованы")) {
                          report(null, 'not_logged_in');
@@ -568,133 +605,77 @@ async fn get_available_marathon_titles(app: AppHandle) -> Result<(), String> {
             })();
         "#;
 
-        base_window.eval(parser_script).map_err(|e| e.to_string())?;
+    for (index, url_str) in urls_to_check.iter().enumerate() {
+        let percent = ((index as f64 / urls_to_check.len() as f64) * 100.0) as u8;
+        let _ = app.emit("scan-progress-update", serde_json::json!({
+            "percent": percent,
+            "message": format!("Проверка: {}", url_str.split('/').last().unwrap_or(""))
+        }));
+        tf_log(&app, "scan", "step", format!("Открываю {}", url_str));
 
-        let max_attempts = 10;
-        let mut found_on_this_page = false;
+        let Ok(target_url) = Url::from_str(url_str) else {
+            errors.push(format!("bad_url: {}", url_str));
+            continue;
+        };
+        base_window.navigate(target_url).map_err(|e| e.to_string())?;
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
-        for _i in 0..max_attempts {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            
-            if let Ok(url_obj) = base_window.url() {
-                let current_url_str = url_obj.as_str();
-                
-                if current_url_str.contains("#TF_TITLE_V4_") {
-                    if let Some(pos) = current_url_str.find("#TF_TITLE_V4_") {
-                        let content_start = pos + 13; 
-                        let content_end = current_url_str.len();
-                        let content = &current_url_str[content_start..content_end];
-                        
-                        if let Some(split_idx) = content.find('_') {
-                            let error_raw = &content[..split_idx];
-                            let json_encoded = &content[split_idx + 1..];
-                            
-                            let error: Option<String> = if error_raw == "null" { None } else { Some(error_raw.to_string()) };
-
-                            if error.is_none() {
-                                let decoded_result = urlencoding::decode(json_encoded);
-                                
-                                if let Ok(decoded_str) = decoded_result {
-                                    if let Ok(data_val) = serde_json::from_str::<serde_json::Value>(&decoded_str) {
-                                        let title_name = data_val["name"].as_str().unwrap_or("?");
-                                        println!("[TITLE SCANNER v4] Found Title: {}", title_name);
-                                        
-                                        results.push(data_val);
-                                        found_on_this_page = true;
-                                    }
-                                }
-                            }
-                            break; 
-                        }
-                    }
-                }
+        match eval_and_wait(&base_window, parser_script, "#TF_TITLE_V4_", 20, "scan").await {
+            Some((None, data_val)) => {
+                println!("[TITLE SCANNER v5] Found: {}", data_val["name"].as_str().unwrap_or("?"));
+                results.push(data_val);
+            }
+            Some((Some(err), _)) => {
+                println!("[TITLE SCANNER v5] {} -> {}", url_str, err);
+                errors.push(err);
+            }
+            None => {
+                println!("[TITLE SCANNER v5] Timeout on {}", url_str);
+                errors.push("timeout".to_string());
             }
         }
-        
-        if !found_on_this_page {
-             println!("[TITLE SCANNER v4] Timeout or no data on {}", url_str);
-        }
     }
 
-    // Финальный прогресс 100%
     let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 100, "message": "Готово" }));
-
-    if base_window.label() == "sync-win-_title_scanner_v4_" {
-         let _ = base_window.close();
+    if created_here {
+        let _ = base_window.destroy();
     }
 
-    let emit_result = app.emit(
-        "marathon-titles-scanned-global", 
-        serde_json::json!({
-            "titles": results,
-            "count": results.len()
-        })
-    );
-
-    match emit_result {
-        Ok(_) => println!("[TITLE SCANNER v4] Emitted {} titles.", results.len()),
-        Err(e) => println!("[TITLE SCANNER v4] Emit Error: {:?}", e),
-    }
-    
+    let _ = app.emit("marathon-titles-scanned-global", serde_json::json!({
+        "titles": results,
+        "count": results.len(),
+        "errors": errors
+    }));
     Ok(())
 }
 
-
-/// ДЕТАЛЬНЫЙ ПАРСИНГ КОНКРЕТНОЙ СТРАНИЦЫ МАРАФОНА (v4 - Robust Stage Parsing)
+/// ДЕТАЛЬНЫЙ ПАРСИНГ СТРАНИЦЫ МАРАФОНА (v5): этапы + задания
 #[command]
-async fn parse_specific_marathon_page(app: AppHandle, url: String) -> Result<(), String> {
-    println!("[DETAIL PARSER v4] Parsing details from: {}", url);
-
-    let mut target_window = None;
-    for (_, window) in app.webview_windows() {
-        if window.label().starts_with("sync-win-") {
-            target_window = Some(window);
-            break;
-        }
-    }
-
-    let base_window = match target_window {
-        Some(w) => w,
-        None => {
-            println!("[DETAIL PARSER v4] No open windows found. Creating temporary hidden window...");
-            let label = "sync-win-_detail_parser_v4_".to_string();
-            let parsed_url = Url::from_str(&url).map_err(|e| format!("Invalid URL: {}", e))?;
-            
-            let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let profiles_dir = app_data_dir.join("pw-sync-profiles").join("_detail_parser_v4_");
-            std::fs::create_dir_all(&profiles_dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
-
-            let _win = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-                .title("Detail Parser v4")
-                .inner_size(800.0, 600.0)
-                .resizable(false)
-                .visible(false) 
-                .data_directory(profiles_dir.clone()) 
-                .build()
-                .map_err(|e| e.to_string())?;
-            
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            app.get_webview_window(&label).ok_or("Temp window creation failed")?
-        }
-    };
+async fn parse_specific_marathon_page(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
+    let (base_window, created_here) = pick_scan_window(&app, char_id, &url, "_detail_parser_v4_").await?;
+    tf_log(&app, "detail", "info", if created_here { "Открыт скрытый профиль" } else { "Использую уже открытое окно" });
 
     let target_url = Url::from_str(&url).map_err(|e| format!("Invalid URL: {}", e))?;
     base_window.navigate(target_url).map_err(|e| e.to_string())?;
-    
-    println!("[DETAIL PARSER v4] Navigated. Waiting for load...");
-    tokio::time::sleep(std::time::Duration::from_secs(6)).await; 
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
     let parser_script = r#"
         (function() {
             console.log('[DETAIL-PARSER-JS-v4] Starting deep parse with robust stages...');
             
             function reportResult(data, error) {
-                const errStr = error ? error.toString().replace(/[^a-zA-Z0-9_-]/g, '_') : "null";
-                const dataStr = encodeURIComponent(JSON.stringify(data));
-                window.location.hash = `TF_DETAIL_V4_${errStr}_${dataStr}`;
+                const payload = { data: data, error: error ? String(error) : null };
+                window.location.hash = 'TF_DETAIL_V4_' + encodeURIComponent(JSON.stringify(payload));
             }
 
             try {
+                // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
+                if (document.readyState === 'loading' ||
+                    (document.title || '').includes('Проверка безопасности') ||
+                    document.querySelector('script[src*="bp_chl"]')) {
+                    reportResult(null, 'challenge');
+                    return;
+                }
                 const bodyText = document.body.innerText || "";
                 if (bodyText.includes("Вы не авторизованы")) {
                      reportResult(null, 'not_logged_in');
@@ -705,58 +686,67 @@ async fn parse_specific_marathon_page(app: AppHandle, url: String) -> Result<(),
                 const headerEl = document.querySelector('h2');
                 const marathonName = headerEl ? headerEl.innerText.trim() : "Неизвестный Марафон";
 
-                // 2. Парсинг этапов из .status_legend
-                // Ищем блоки с текстом "Сроки проведения ... этапа ..."
-                const legendBlock = document.querySelector('.status_legend');
-                const stages = [];
-                
-                if (legendBlock) {
-                    const paragraphs = legendBlock.querySelectorAll('p');
-                    
-                    paragraphs.forEach(p => {
-                        const text = p.innerText.trim();
-                        // Паттерн: "Сроки проведения первого этапа марафона (июнь): с 00:01 мск 30 мая до 23:59 мск 28 июня."
-                        // Или просто: "(июнь): с ... до ..."
-                        
-                        const monthMatch = text.match(/\((.*?)\)/);
-                        if (!monthMatch) return; // Не нашели месяц в скобках
-                        
-                        const stageMonthRaw = monthMatch[1].trim().toLowerCase(); // "июнь"
-                        
-                        // Ищем даты внутри этого же параграфа
-                        // Паттерн: "с DD месяца ... до DD месяца"
-                        const dateRegex = /с\s+\d{2}:\d{2}\s+мск\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)\s+до\s+\d{2}:\d{2}\s+мск\s+(\d{1,2})\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)/gi;
-                        const matches = [...text.matchAll(dateRegex)];
-                        
-                        if (matches.length > 0) {
-                            const firstMatch = matches[0];
-                            const startDay = parseInt(firstMatch[1]);
-                            const startMonRaw = firstMatch[2].toLowerCase();
-                            const endDay = parseInt(firstMatch[3]);
-                            const endMonRaw = firstMatch[4].toLowerCase();
+                // 2. Парсинг этапов. Формат сайта:
+                // «Сроки проведения первого этапа марафона (июнь): с 00:01 мск 30 мая до 23:59 мск 28 июня.»
+                // Разбираем весь текст легенды (этапы могут быть в одном абзаце, через <br>),
+                // время и «мск» — необязательны, «до»/«по» — оба варианта.
+                const debug = [];
+                const norm = (s) => String(s || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
+                const MONTH_GEN = { 'января': 1, 'февраля': 2, 'марта': 3, 'апреля': 4, 'мая': 5, 'июня': 6,
+                    'июля': 7, 'августа': 8, 'сентября': 9, 'октября': 10, 'ноября': 11, 'декабря': 12 };
+                const MONTH_NOM = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август',
+                    'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+                const stageKeyOf = (inner) => {
+                    const low = norm(inner).toLowerCase();
+                    return MONTH_NOM.find(m => low.includes(m)) || low;
+                };
+                const G = Object.keys(MONTH_GEN).join('|');
+                const T = '(?:\\d{1,2}[:.]\\d{2}\\s*(?:мск|msk)?\\s*)?';
+                const reStage = new RegExp(
+                    '\\(([^()]{2,40})\\)[^()]{0,160}?(?:^|[\\s:,.—-])с\\s+' + T + '(\\d{1,2})\\s+(' + G + ')(?:\\s+(\\d{4}))?' +
+                    '[^()]{0,80}?(?:до|по)\\s+' + T + '(\\d{1,2})\\s+(' + G + ')(?:\\s+(\\d{4}))?', 'gi');
+                const now = new Date();
+                const curMonth = now.getMonth() + 1;
+                const yearFor = (mon) => {
+                    let y = now.getFullYear();
+                    if (mon < curMonth - 6) y += 1; else if (mon > curMonth + 6) y -= 1;
+                    return y;
+                };
+                const iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-                            const monthMap = {
-                                'января': '01', 'февраля': '02', 'марта': '03', 'апреля': '04',
-                                'мая': '05', 'июня': '06', 'июля': '07', 'августа': '08',
-                                'сентября': '09', 'октября': '10', 'ноября': '11', 'декабря': '12'
-                            };
-
-                            const startMonNum = monthMap[startMonRaw] || '01';
-                            const endMonNum = monthMap[endMonRaw] || '12';
-                            const year = new Date().getFullYear(); 
-
-                            const startDateISO = `${year}-${startMonNum}-${startDay.toString().padStart(2, '0')}`;
-                            const endDateISO = `${year}-${endMonNum}-${endDay.toString().padStart(2, '0')}`;
-
-                            stages.push({
-                                name: stageMonthRaw.charAt(0).toUpperCase() + stageMonthRaw.slice(1), // Июнь
-                                key: stageMonthRaw, // июнь
-                                startDate: startDateISO,
-                                endDate: endDateISO
-                            });
-                        }
-                    });
+                function parseStages(text) {
+                    const found = [];
+                    for (const mt of text.matchAll(reStage)) {
+                        const key = stageKeyOf(mt[1]);
+                        if (found.some(s => s.key === key)) continue;
+                        const sMon = MONTH_GEN[mt[3].toLowerCase()], eMon = MONTH_GEN[mt[6].toLowerCase()];
+                        const sYear = mt[4] ? parseInt(mt[4], 10) : yearFor(sMon);
+                        const eYear = mt[7] ? parseInt(mt[7], 10) : (eMon < sMon ? sYear + 1 : sYear);
+                        found.push({
+                            name: key.charAt(0).toUpperCase() + key.slice(1),
+                            key: key,
+                            startDate: iso(sYear, sMon, parseInt(mt[2], 10)),
+                            endDate: iso(eYear, eMon, parseInt(mt[5], 10))
+                        });
+                    }
+                    return found;
                 }
+
+                const legendBlock = document.querySelector('.status_legend');
+                const legendText = norm(legendBlock ? legendBlock.innerText : '');
+                let stages = parseStages(legendText);
+                debug.push(legendBlock ? `Блок сроков найден (${legendText.length} симв.), этапов: ${stages.length}` : 'Блок сроков (.status_legend) не найден на странице');
+                if (!stages.length) {
+                    stages = parseStages(norm(document.body.innerText));
+                    debug.push(`Поиск сроков по всей странице: этапов ${stages.length}`);
+                }
+                // Абзацы со скобками, из которых не удалось достать даты — в лог, для диагностики
+                (legendText.match(/[^\n]*\([^()]{2,40}\)[^\n]*/g) || []).forEach(line => {
+                    const keyM = line.match(/\(([^()]{2,40})\)/);
+                    if (keyM && MONTH_NOM.some(m => keyM[1].toLowerCase().includes(m)) && !stages.some(s => s.key === stageKeyOf(keyM[1]))) {
+                        debug.push(`Не распознаны сроки этапа: «${line.slice(0, 200)}»`);
+                    }
+                });
 
                 // 3. Парсинг заданий
                 const container = document.querySelector('.season_marathon');
@@ -782,8 +772,8 @@ async fn parse_specific_marathon_page(app: AppHandle, url: String) -> Result<(),
                             const rawTitle = titleEl.innerText.trim();
                             // Извлекаем месяц из заголовка для привязки к этапу
                             // Пример: "Испытание снов (июль)" -> ключ "июль"
-                            const monthInTitle = rawTitle.match(/\((.*?)\)/);
-                            const associatedStageKey = monthInTitle ? monthInTitle[1].toLowerCase() : null;
+                            const monthInTitle = rawTitle.match(/\(([^()]*)\)\s*$/) || rawTitle.match(/\(([^()]*)\)/);
+                            const associatedStageKey = monthInTitle ? stageKeyOf(monthInTitle[1]) : null;
 
                             // Чистое описание без префикса [месяц], если он был добавлен ранее
                             let cleanDescription = descEl ? descEl.innerText.trim() : "";
@@ -803,8 +793,9 @@ async fn parse_specific_marathon_page(app: AppHandle, url: String) -> Result<(),
                     name: marathonName,
                     sourceUrl: window.location.href,
                     detectedAt: new Date().toISOString(),
-                    stages: stages, 
-                    quests: quests  
+                    stages: stages,
+                    quests: quests,
+                    debug: debug
                 };
 
                 console.log('[DETAIL-PARSER-JS-v4] Success:', marathonName, 'Stages:', stages.length, 'Quests:', quests.length);
@@ -817,85 +808,88 @@ async fn parse_specific_marathon_page(app: AppHandle, url: String) -> Result<(),
         })();
     "#;
 
-    base_window.eval(parser_script).map_err(|e| e.to_string())?;
-
-    let max_attempts = 20;
-    let mut found = false;
-
-    for _i in 0..max_attempts {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        
-        if let Ok(url_obj) = base_window.url() {
-            let current_url_str = url_obj.as_str();
-            
-            if current_url_str.contains("#TF_DETAIL_V4_") {
-                if let Some(pos) = current_url_str.find("#TF_DETAIL_V4_") {
-                    let content_start = pos + 14; 
-                    let content_end = current_url_str.len();
-                    let content = &current_url_str[content_start..content_end];
-                    
-                    if let Some(split_idx) = content.find('_') {
-                        let error_raw = &content[..split_idx];
-                        let json_encoded = &content[split_idx + 1..];
-                        
-                        let error: Option<String> = if error_raw == "null" { None } else { Some(error_raw.to_string()) };
-
-                        if error.is_none() {
-                            let decoded_result = urlencoding::decode(json_encoded);
-                            
-                            if let Ok(decoded_str) = decoded_result {
-                                if let Ok(data_val) = serde_json::from_str::<serde_json::Value>(&decoded_str) {
-                                    let emit_result = app.emit(
-                                        "single-marathon-parsed-global", 
-                                        serde_json::json!({ "marathon": data_val, "error": null })
-                                    );
-                                    
-                                    if base_window.label() == "sync-win-_detail_parser_v4_" {
-                                         let _ = base_window.close();
-                                    }
-                                    
-                                    match emit_result {
-                                        Ok(_) => println!("[DETAIL PARSER v4] Success."),
-                                        Err(e) => println!("[DETAIL PARSER v4] Emit Error: {:?}", e),
-                                    }
-                                    return Ok(());
-                                }
-                            }
-                        } else {
-                             let emit_result = app.emit(
-                                "single-marathon-parsed-global", 
-                                serde_json::json!({ "marathon": null, "error": error })
-                            );
-                             if base_window.label() == "sync-win-_detail_parser_v4_" {
-                                 let _ = base_window.close();
-                            }
-                            match emit_result {
-                                Ok(_) => println!("[DETAIL PARSER v4] Sent error response."),
-                                Err(e) => println!("[DETAIL PARSER v4] Emit Error: {:?}", e),
-                            }
-                            return Ok(());
-                        }
-                        found = true;
-                        break; 
-                    }
-                }
-            }
-        }
+    let result = eval_and_wait(&base_window, parser_script, "#TF_DETAIL_V4_", 25, "detail").await;
+    if created_here {
+        let _ = base_window.destroy();
     }
 
-    if !found {
-        if base_window.label() == "sync-win-_detail_parser_v4_" {
-             let _ = base_window.close();
-        }
-        let emit_result = app.emit(
-            "single-marathon-parsed-global", 
-            serde_json::json!({ "marathon": null, "error": "timeout_parsing_details_v4" })
-        );
-        match emit_result {
-            Ok(_) => println!("[DETAIL PARSER v4] Timeout sent."),
-            Err(e) => println!("[DETAIL PARSER v4] Emit Error: {:?}", e),
-        }
+    let payload = match result {
+        Some((None, data)) => serde_json::json!({ "marathon": data, "error": null }),
+        Some((Some(err), _)) => serde_json::json!({ "marathon": null, "error": err }),
+        None => serde_json::json!({ "marathon": null, "error": "timeout_parsing_details" }),
+    };
+    if let Err(e) = app.emit("single-marathon-parsed-global", payload) {
+        println!("[DETAIL PARSER v5] Emit Error: {:?}", e);
     }
-    
     Ok(())
+}
+
+/// НОВОСТЬ О МАРАФОНЕ: возвращает очищенный HTML статьи (news.php?article=…),
+/// разбор этапов, заданий и наград выполняется в интерфейсе (js/marathons/newsParser.js).
+#[command]
+async fn fetch_marathon_news(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
+    tf_log(&app, "news", "step", format!("Открываю новость {}", url));
+    let (window, created_here) = pick_scan_window(&app, char_id, &url, "_news_reader_").await?;
+    let target_url = Url::from_str(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+    window.navigate(target_url).map_err(|e| e.to_string())?;
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+    let script = r#"
+        (function() {
+            function report(data, error) {
+                const payload = { data: data, error: error ? String(error) : null };
+                window.location.hash = 'TF_NEWS_V1_' + encodeURIComponent(JSON.stringify(payload));
+            }
+            try {
+                if (document.readyState === 'loading' ||
+                    (document.title || '').includes('Проверка безопасности') ||
+                    document.querySelector('script[src*="bp_chl"]')) {
+                    report(null, 'challenge');
+                    return;
+                }
+                const art = document.querySelector('.js-mediator-article') || document.querySelector('#content_body');
+                if (!art) { report(null, 'no_article'); return; }
+                const clone = art.cloneNode(true);
+                clone.querySelectorAll('img, script, style, iframe, .img_item_small_cont > span').forEach(e => e.remove());
+                clone.querySelectorAll('*').forEach(e => ['style', 'width', 'height', 'border', 'class'].forEach(a => {
+                    if (a !== 'class' || !e.classList.contains('click_spoiler')) e.removeAttribute(a);
+                }));
+                const h1 = document.querySelector('#content_top h1') || document.querySelector('h1');
+                const text = document.body.innerText || '';
+                const dm = text.match(/Обсудить\s+(\d{2}\.\d{2}\.\d{4})/) || text.match(/(\d{2}\.\d{2}\.\d{4})/);
+                report({
+                    title: h1 ? h1.textContent.replace(/\s+/g, ' ').trim() : document.title.split(' - ')[0],
+                    publishedAt: dm ? dm[1] : null,
+                    url: location.href.split('#')[0],
+                    html: clone.innerHTML
+                }, null);
+            } catch (e) {
+                report(null, 'exception_' + e.message.substring(0, 30));
+            }
+        })();
+    "#;
+
+    let result = eval_and_wait(&window, script, "#TF_NEWS_V1_", 25, "news").await;
+    if created_here {
+        let _ = window.destroy();
+    }
+    let payload = match result {
+        Some((None, data)) => serde_json::json!({ "news": data, "error": null }),
+        Some((Some(err), _)) => serde_json::json!({ "news": null, "error": err }),
+        None => serde_json::json!({ "news": null, "error": "timeout" }),
+    };
+    let _ = app.emit("marathon-news-parsed-global", payload);
+    Ok(())
+}
+
+/// Читает результат парсера из hash вида `#PREFIX<encodeURIComponent(JSON)>`,
+/// где JSON = { "data": ..., "error": string|null }.
+fn read_hash_payload(url_str: &str, prefix: &str) -> Option<(Option<String>, serde_json::Value)> {
+    let pos = url_str.find(prefix)?;
+    let encoded = &url_str[pos + prefix.len()..];
+    let decoded = urlencoding::decode(encoded).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&decoded).ok()?;
+    let error = value.get("error").and_then(|e| e.as_str()).map(|s| s.to_string());
+    let data = value.get("data").cloned().unwrap_or(serde_json::Value::Null);
+    Some((error, data))
 }

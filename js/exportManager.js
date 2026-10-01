@@ -134,22 +134,18 @@ export function openExportDialog() {
 
            // ВАЖНО: Очищаем марафоны от личных данных перед сохранением в файл
            exportData.marathons = marathonsToExport.map(m => ({
-             id: m.id,
-             title: m.title,
-             description: m.description,
-             startDate: m.startDate,
-             endDate: m.endDate,
-             status: 'draft', // Всегда начинаем как черновик
-             
-             // Копируем структуру заданий и этапов (это важно!)
-             tasks: JSON.parse(JSON.stringify(m.tasks)), 
-             
-             // ОЧИСТКА ЛИЧНЫХ ДАННЫХ:
-             participantIds: [],       // Пустой список участников
-             participantAssignments: {}, // Пустые назначения
-             records: [],              // Нет истории галочек
-             awards: []                // Нет начисленных наград
+             ...JSON.parse(JSON.stringify(m)),
+             // ОЧИСТКА ЛИЧНЫХ ДАННЫХ (структура, задания и награды сохраняются):
+             participantIds: [],
+             assignments: {},
+             progress: {},
+             lastSync: null,
+             balance: { start: {}, end: {} },
+             awards: [],
+             status: m.kind === 'series' ? undefined : 'active',
+             completedAt: null
            }));
+           if (state.marathonTemplates?.length) exportData.marathonTemplates = JSON.parse(JSON.stringify(state.marathonTemplates));
         }
 
         // 2. ЭКСПОРТ ПАТИ (Структура групп)

@@ -1,4 +1,5 @@
 import { DATA_VERSION, DEFAULT_SETTINGS } from './constants.js';
+import { migrateMarathon } from './marathons/model.js';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -10,6 +11,7 @@ export const state = {
   parties: [],
   characters: [],
   marathons: [],
+  marathonTemplates: [],
   settings: clone(DEFAULT_SETTINGS),
   ui: {
     activeTab: 'characters',
@@ -19,7 +21,8 @@ export const state = {
       party: ''
     },
     expandedCharacterId: null,
-    revealedContacts: {}
+    revealedContacts: {},
+    authCheck: {}
   }
 };
 
@@ -69,6 +72,14 @@ function normalizeCharacter(input = {}) {
     // ----------------------------------
 
     ancientCoins: Number(input.ancientCoins) || 0,
+    lastCoinUpdate: input.lastCoinUpdate || null,
+
+    // --- Данные синхронизации с pwonline.ru (раньше терялись при перезапуске) ---
+    isLoggedIn: input.isLoggedIn === true,
+    lastLoginCheck: input.lastLoginCheck || null,
+    marathonData: input.marathonData && typeof input.marathonData === 'object'
+      ? input.marathonData
+      : null,
     coinHistory: Array.isArray(input.coinHistory) ? input.coinHistory : [],
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
@@ -113,13 +124,18 @@ export function normalizeState(input) {
     characters: Array.isArray(input?.characters)
       ? input.characters.map(normalizeCharacter)
       : [],
-    marathons: Array.isArray(input?.marathons) ? input.marathons : [],
+    // Марафоны приводятся к схеме v2 (старые records/stages конвертируются автоматически)
+    marathons: Array.isArray(input?.marathons)
+      ? input.marathons.map(m => migrateMarathon(m, input.characters || [])).filter(Boolean)
+      : [],
+    marathonTemplates: Array.isArray(input?.marathonTemplates) ? input.marathonTemplates : [],
     settings: mergeSettings(input?.settings),
     ui: {
       activeTab: 'characters',
       filters: { search: '', class: '', party: '' },
       expandedCharacterId: null,
-      revealedContacts: {}
+      revealedContacts: {},
+      authCheck: {}
     }
   };
 

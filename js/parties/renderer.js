@@ -5,6 +5,7 @@ import { persist } from '../storage.js';
 import { escapeHtml } from '../utils.js';
 import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
+import { getAuthView } from '../authStatus.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
@@ -129,9 +130,10 @@ export function renderPartiesGrid() {
         const memberListHtml = members.length > 0 ? `
             <ul style="list-style:none; padding:0; margin:0 0 15px 0;">
                 ${members.map(m => {
+                    const authView = getAuthView(m);
                     const isOnline = m.isLoggedIn === true;
-                    const statusIcon = isOnline ? '🟢' : '🔴';
-                    const statusColor = isOnline ? '#9ece6a' : '#f7768e';
+                    const statusIcon = authView.icon;
+                    const statusColor = authView.color;
                     
                     return `
                         <li class="party-member-row" data-char-id="${m.id}" 

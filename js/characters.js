@@ -14,6 +14,7 @@ import { bindCharactersModule, openCharacterProfile, openCharacterForm } from '.
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from './syncManager.js';
+import { getAuthView } from './authStatus.js';
 
 let expandedCharacterId = null;
 
@@ -180,11 +181,11 @@ function generateCardHTML(char) {
     const partyLabel = char.party ? escapeHtml(char.party) : 'Без пати';
 
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
-    const isOnline = char.isLoggedIn === true;
-    const statusColor = isOnline ? '#9ece6a' : '#f7768e'; // Зеленый / Красный
-    const statusIcon = isOnline ? '🟢' : '🔴';
-    const statusText = isOnline ? 'Онлайн' : 'Оффлайн';
-    const statusTitle = isOnline ? 'Аккаунт авторизован' : 'Требуется вход или истекла сессия';
+    const authView = getAuthView(char);
+    const statusColor = authView.color;
+    const statusIcon = authView.icon;
+    const statusText = authView.text;
+    const statusTitle = authView.title;
 
     return `
       <article class="card character-card clickable-card" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 3px solid ${statusColor};">

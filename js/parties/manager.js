@@ -6,6 +6,7 @@ import { showModal, toast, confirmDialog, closeModal } from '../ui.js';
 import { escapeHtml, uid } from '../utils.js';
 import { renderCharacters } from '../characters.js';
 import { renderPartiesGrid } from './renderer.js';
+import { getAuthView } from '../authStatus.js';
 
 /**
  * Открывает модальное окно для создания новой пати
@@ -69,7 +70,7 @@ export function openEditPartyModal(currentName) {
     // Те, кто в группе — отмечены. Снятие галочки убирает из группы.
     const allCharsForCheckbox = state.characters.map(c => {
         const isInCurrentGroup = c.party === currentName;
-        const statusIcon = c.isLoggedIn ? '🟢' : '🔴';
+        const statusIcon = getAuthView(c).icon;
         return `
             <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />

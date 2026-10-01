@@ -16,11 +16,13 @@ import { getCharacterBalance } from './scripts/getBalance.js';
 
 // Импортируем компонент прогресса
 import { ProgressBar } from './components/ProgressBar.js'; 
+import { setAuthChecking } from './authStatus.js';
+import { onCharMarathonData, syncAllActiveMarathons } from './marathons/siteSync.js';
+import { logScope, errorText, startTask } from './taskLog.js';
 
 let activeListeners = [];
 const authProgress = new ProgressBar();
 const balanceProgress = new ProgressBar();
-const marathonProgress = new ProgressBar(); // <--- НОВЫЙ ПРОГРЕСС БАР ДЛЯ МАРАФОНОВ
 
 /**
  * Инициализация слушателей событий Tauri IPC
@@ -39,18 +41,23 @@ export async function initSyncListeners() {
         
         const charIndex = state.characters.findIndex(c => c.id === charId);
         if (charIndex !== -1) {
+            const char = state.characters[charIndex];
             const isOnline = status === 'online';
-            
-            // Если статус изменился — обновляем UI
-            if (state.characters[charIndex].isLoggedIn !== isOnline) {
-                state.characters[charIndex].isLoggedIn = isOnline;
-                state.characters[charIndex].lastLoginCheck = new Date().toISOString();
-                
-                persist().then(() => {
+            const wasChecking = state.ui.authCheck?.[charId] === 'checking';
+
+            char.lastLoginCheck = new Date().toISOString();
+            setAuthChecking(charId, false);
+
+            // Сохраняем всегда (lastLoginCheck), перерисовываем если статус изменился или шла проверка
+            const changed = char.isLoggedIn !== isOnline;
+            logScope(`char:${charId}`, `${char.nick}: ${isOnline ? 'вход подтверждён 🟢' : `нет входа 🔴 (${status})`}`, isOnline ? 'ok' : 'warn');
+            char.isLoggedIn = isOnline;
+            persist().then(() => {
+                if (changed || wasChecking) {
                     renderCharacters();
-                    renderParties(); 
-                });
-            }
+                    renderParties();
+                }
+            });
         }
     });
     activeListeners.push(unlistenLoginStatus);
@@ -66,6 +73,7 @@ export async function initSyncListeners() {
         const char = state.characters[charIndex];
 
         // ЛОГИКА ОБРАБОТКИ ОШИБОК АВТОРИЗАЦИИ
+        logScope(`char:${charId}`, error ? `${char.nick}: баланс не получен — ${errorText(error)}` : `${char.nick}: баланс ДМ ${balance}`, error ? 'warn' : 'ok');
         if (error) {
             // Список ошибок, означающих потерю сессии
             const authErrors = ['not_logged_in', 'zero_no_user_session_expired', 'session_lost_during_parse'];
@@ -126,43 +134,30 @@ export async function initSyncListeners() {
         const { charId, quests, error } = event.payload;
         console.log(`[EVENT MARATHON] ${charId}: Quests=${quests?.length}, Error=${error}`);
 
-        const charIndex = state.characters.findIndex(c => c.id === charId);
-        if (charIndex === -1) return;
+        // Передаём результат модулю марафонов (сверка, ожидающие запросы)
+        onCharMarathonData(charId, quests, error);
 
-        const char = state.characters[charIndex];
+        const char = state.characters.find(c => c.id === charId);
+        if (!char) return;
 
         if (error) {
-            if (error === 'not_logged_in') {
-                char.isLoggedIn = false;
-                persist().then(renderCharacters);
-                toast(`⚠️ Не удалось получить марафон для ${char.nick}: Нет авторизации.`, 'warning');
-            } else {
-                toast(`Ошибка парсинга марафона (${char.nick}): ${error}`, 'error');
-            }
+            // Ошибки показываются в панели «Результат сверки» марафона, без всплывающих уведомлений
+            if (error === 'not_logged_in') char.isLoggedIn = false;
             return;
         }
 
-        if (quests && Array.isArray(quests)) {
-            // Обновляем данные марафона в стейте
-            if (!char.marathonData) char.marathonData = {};
-            
-            char.marathonData.lastSyncDate = new Date().toISOString();
-            char.marathonData.quests = quests; // Сохраняем полный массив
-            
-            // Вычисляем общий прогресс (опционально, для отображения одной цифры)
+        if (Array.isArray(quests)) {
             const totalCompleted = quests.reduce((sum, q) => sum + q.completed, 0);
             const totalPossible = quests.reduce((sum, q) => sum + q.total, 0);
-            
-            char.marathonData.summary = {
-                completed: totalCompleted,
-                total: totalPossible,
-                percentage: totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0
+            char.marathonData = {
+                lastSyncDate: new Date().toISOString(),
+                quests,
+                summary: {
+                    completed: totalCompleted,
+                    total: totalPossible,
+                    percentage: totalPossible > 0 ? Math.round((totalCompleted / totalPossible) * 100) : 0
+                }
             };
-
-            persist().then(() => {
-                renderCharacters();
-                renderParties();
-            });
         }
     });
     activeListeners.push(unlistenMarathon);
@@ -173,13 +168,23 @@ export async function initSyncListeners() {
         const charId = label.replace('sync-win-', '');
         const charIndex = state.characters.findIndex(c => c.id === charId);
         
-        if (charIndex !== -1) {
-             // При закрытии окна считаем оффлайном (безопаснее)
-             state.characters[charIndex].isLoggedIn = false;
-             persist().then(() => {
+        if (charIndex !== -1 && label.startsWith('sync-win-')) {
+             // Куки сохраняются в профиле персонажа, поэтому закрытие окна ≠ выход.
+             // Вместо «оффлайн» сразу перепроверяем авторизацию в фоне
+             // (удобно: вошли в окне → закрыли → статус подтвердился сам).
+             const char = state.characters[charIndex];
+             setAuthChecking(char.id, true);
+             renderCharacters();
+             renderParties();
+             await new Promise(r => setTimeout(r, 1000)); // даём окну закрыться полностью
+             try {
+                 await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 8, closeAfter: true });
+             } catch (err) {
+                 console.error(`[AUTH] Re-check after close failed for ${char.nick}:`, err);
+                 setAuthChecking(char.id, false);
                  renderCharacters();
                  renderParties();
-             });
+             }
         }
     });
     activeListeners.push(unlistenCloseBrowser);
@@ -191,69 +196,58 @@ export async function initSyncListeners() {
 export async function refreshAllLoginStatuses() {
     const charsToCheck = [...state.characters];
     const total = charsToCheck.length;
-    
+
     if (total === 0) {
         toast('Нет персонажей для проверки.', 'info');
         return;
     }
 
-    // --- ПРОХОД 1: Быстрая проверка (3 секунды таймаут) ---
-    authProgress.show('🔐 Проверка авторизации (Проход 1/2)');
+    const task = authProgress.show('🔐 Проверка авторизации');
+    task.watch(...charsToCheck.map(c => `char:${c.id}`));
+    task.setStep(`Проход 1/2: быстрая проверка ${total} персонажей (таймаут 3 с)`);
     let completedCount = 0;
 
     const promisesPass1 = charsToCheck.map(async (char) => {
         try {
-            // Вызываем напрямую invoke с параметром таймаута
-            await invoke('check_login_status_http', { 
-                charId: char.id,
-                timeoutSeconds: 3 // Быстрый таймаут
-            });
+            await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 3 });
         } catch (err) {
             console.error(`[AUTH PASS 1] Error for ${char.nick}:`, err);
+            task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
         } finally {
             completedCount++;
-            authProgress.update(completedCount, total, 'Быстрая проверка');
+            task.progress(completedCount, total * 2, `Проход 1/2 · ${char.nick}`);
         }
     });
 
     await Promise.all(promisesPass1);
-    
-    // Пауза между проходами, чтобы дать окнам стабилизироваться
     await new Promise(r => setTimeout(r, 1000));
 
     // --- ПРОХОД 2: Углубленная проверка для тех, кто НЕ онлайн ---
     const offlineChars = state.characters.filter(c => !c.isLoggedIn);
-    
     if (offlineChars.length > 0) {
-        authProgress.show('🔐 Проверка авторизации (Проход 2/2 - Верификация)');
+        task.setStep(`Проход 2/2: перепроверка ${offlineChars.length} без входа (таймаут 8 с)`);
         let pass2Completed = 0;
-        const pass2Total = offlineChars.length;
-
-        const promisesPass2 = offlineChars.map(async (char) => {
+        await Promise.all(offlineChars.map(async (char) => {
             try {
-                await invoke('check_login_status_http', { 
-                    charId: char.id,
-                    timeoutSeconds: 8 // Долгий таймаут для надежности
-                });
+                await invoke('check_login_status_http', { charId: char.id, timeoutSeconds: 8 });
             } catch (err) {
                 console.error(`[AUTH PASS 2] Error for ${char.nick}:`, err);
+                task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
             } finally {
                 pass2Completed++;
-                authProgress.update(pass2Completed, pass2Total, 'Углубленная проверка');
+                task.progress(total + Math.round(pass2Completed / offlineChars.length * total), total * 2, `Проход 2/2 · ${char.nick}`);
             }
-        });
-
-        await Promise.all(promisesPass2);
+        }));
     } else {
-        // Если все оказались онлайн в первом проходе, скрываем прогресс сразу
-        authProgress.hide();
+        task.log('Все персонажи в сети — второй проход не нужен', 'info');
     }
 
-    // Финальное скрытие (на случай, если второй проход не запускался или завершился)
-    setTimeout(() => {
-        authProgress.hide();
-        toast('Проверка авторизации завершена.', 'success');
-    }, 500);
+    await new Promise(r => setTimeout(r, 500));
+    const online = state.characters.filter(c => c.isLoggedIn).length;
+    const offline = state.characters.filter(c => !c.isLoggedIn).map(c => c.nick);
+    if (offline.length) task.log(`Без входа: ${offline.join(', ')}`, 'warn');
+    authProgress.hide(`В сети ${online} из ${total}`, offline.length ? 'warn' : 'done');
+    toast(`Проверка авторизации: в сети ${online} из ${total}.`, offline.length ? 'warning' : 'success');
 }
 
 /**
@@ -270,7 +264,8 @@ export async function refreshAllBalances() {
     }
 
     const total = onlineChars.length;
-    balanceProgress.show(`💰 Обновление балансов (${total} акк.)`);
+    const task = balanceProgress.show(`💰 Обновление балансов (${total} акк.)`);
+    task.watch(...onlineChars.map(c => `char:${c.id}`));
     let completedCount = 0;
 
     console.log(`[BALANCE SYNC] Starting update for ${total} characters...`);
@@ -278,10 +273,11 @@ export async function refreshAllBalances() {
     // 2. Последовательный запуск запросов к Rust
     for (const char of onlineChars) {
         try {
+            task.setStep(`Запрашиваю баланс: ${char.nick}`);
             await getCharacterBalance(char.id);
             
             completedCount++;
-            balanceProgress.update(completedCount, total, char.nick);
+            task.progress(completedCount, total, char.nick);
             
             // Небольшая пауза между запросами для стабильности
             await new Promise(r => setTimeout(r, 500)); 
@@ -289,11 +285,12 @@ export async function refreshAllBalances() {
         } catch (e) {
             console.error(`[BALANCE SYNC] Error processing ${char.nick}:`, e);
             completedCount++; 
-            balanceProgress.update(completedCount, total, `Ошибка: ${char.nick}`);
+            task.progress(completedCount, total, `Ошибка: ${char.nick}`);
+            task.log(`${char.nick}: ${e?.message || e}`, 'error');
         }
     }
 
-    balanceProgress.hide();
+    balanceProgress.hide(`Обработано ${completedCount} из ${total}`);
     toast('Обновление балансов завершено.', 'success');
 }
 
@@ -301,38 +298,23 @@ export async function refreshAllBalances() {
  * МАССОВОЕ ОБНОВЛЕНИЕ СТАТИСТИКИ МАРАФОНА (НОВАЯ ФУНКЦИЯ)
  */
 export async function refreshAllMarathonStats() {
-    const charsToCheck = [...state.characters];
-    const total = charsToCheck.length;
-    
-    if (total === 0) {
-        toast('Нет персонажей для проверки.', 'info');
+    const active = state.marathons.filter(m => m.kind !== 'series' && m.status !== 'completed' && m.participantIds?.length);
+    if (!active.length) {
+        toast('Нет идущих марафонов с участниками.', 'info');
         return;
     }
 
-    marathonProgress.show('🏃 Обновление статистики марафонов');
-    let completedCount = 0;
+    const { report, noUrl } = await syncAllActiveMarathons();
 
-    // Последовательный запуск, чтобы не перегружать сеть/CPU
-    for (const char of charsToCheck) {
-        try {
-            // Вызываем новую Rust команду fetch_marathon_progress_v1
-            await invoke('fetch_marathon_progress_v1', { charId: char.id });
-            
-            completedCount++;
-            marathonProgress.update(completedCount, total, char.nick);
-            
-            // Пауза между запросами
-            await new Promise(r => setTimeout(r, 500)); 
-            
-        } catch (e) {
-            console.error(e);
-            completedCount++;
-            marathonProgress.update(completedCount, total, `Ошибка: ${char.nick}`);
-        }
-    }
+    const changes = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
+    const errors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
+    if (noUrl.length) toast(`Без страницы на сайте: ${noUrl.map(m => m.title).join(', ')}`, 'warning');
+    toast(`Марафоны: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, errors ? 'warning' : 'success');
 
-    marathonProgress.hide();
-    toast('Обновление марафонов завершено.', 'success');
+    renderCharacters();
+    renderParties();
+    const { renderMarathons } = await import('./marathon.js');
+    renderMarathons();
 }
 
 /**
@@ -464,4 +446,73 @@ function showCredentialsModal(char) {
             closeModal();
         });
     }, 100);
+}
+
+/**
+ * АВТОПРОВЕРКА ПРИ ЗАПУСКЕ
+ * Проверяет только тех, кто в прошлый раз был авторизован (isLoggedIn === true).
+ * Пока идёт проверка, персонаж показывается жёлтым 🟡 «Проверка…».
+ * Скрытые окна, созданные для проверки, закрываются сразу после неё (экономия RAM).
+ */
+export async function verifySavedLoginsOnStartup({ concurrency = 3 } = {}) {
+    const candidates = state.characters.filter(c => c.isLoggedIn === true);
+    if (candidates.length === 0) return;
+
+    console.log(`[AUTH STARTUP] Verifying ${candidates.length} saved logins...`);
+    const task = startTask('🔐 Проверка входа при запуске', { total: candidates.length });
+    task.watch(...candidates.map(c => `char:${c.id}`));
+    task.setStep(`Проход 1/2: ${candidates.length} сохранённых входов (таймаут 5 с, по ${concurrency} одновременно)`);
+    let doneCount = 0;
+    candidates.forEach(c => setAuthChecking(c.id, true));
+    renderCharacters();
+    renderParties();
+
+    const runCheck = async (char, timeoutSeconds) => {
+        try {
+            await invoke('check_login_status_http', { charId: char.id, timeoutSeconds, closeAfter: true });
+        } catch (err) {
+            console.error(`[AUTH STARTUP] Error for ${char.nick}:`, err);
+            task.log(`${char.nick}: ошибка проверки — ${err}`, 'error');
+        }
+        doneCount++;
+        task.progress(Math.min(doneCount, candidates.length * 2), null, `${timeoutSeconds === 5 ? 'Проход 1/2' : 'Проход 2/2'} · ${char.nick}`);
+    };
+
+    // Ограничиваем число одновременно открытых скрытых окон
+    const runPool = async (items, timeoutSeconds) => {
+        const queue = [...items];
+        const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+            while (queue.length) await runCheck(queue.shift(), timeoutSeconds);
+        });
+        await Promise.all(workers);
+    };
+
+    // Проход 1: быстрая проверка
+    await runPool(candidates, 5);
+
+    // Проход 2: перепроверяем тех, кто «отвалился», с длинным таймаутом (защита от медленной загрузки)
+    const failed = candidates.filter(c => {
+        const ch = state.characters.find(x => x.id === c.id);
+        return ch && ch.isLoggedIn !== true;
+    });
+    if (failed.length) {
+        task.setStep(`Проход 2/2: перепроверка ${failed.length} (таймаут 10 с)`);
+        doneCount = candidates.length;
+        task.total = candidates.length + failed.length;
+        failed.forEach(c => setAuthChecking(c.id, true));
+        renderCharacters();
+        renderParties();
+        await runPool(failed, 10);
+    }
+
+    // На всякий случай снимаем «Проверка…» со всех, по кому не пришёл ответ
+    candidates.forEach(c => setAuthChecking(c.id, false));
+    renderCharacters();
+    renderParties();
+
+    const online = state.characters.filter(c => c.isLoggedIn === true).length;
+    const lost = candidates.length - candidates.filter(c => state.characters.find(x => x.id === c.id)?.isLoggedIn).length;
+    task.finish(`В сети ${online}, требуют входа ${lost}`, lost ? 'warn' : 'done');
+    if (lost > 0) toast(`Авторизация: ${online} онлайн, ${lost} требуют повторного входа.`, 'warning');
+    else toast(`Авторизация подтверждена у ${candidates.length} персонажей.`, 'success');
 }

@@ -5,16 +5,17 @@ import { loadData, persist } from './storage.js';
 import { normalizeState } from './state.js';
 import { bindCharacters, renderCharacters } from './characters.js';
 import { bindParties, renderParties } from './parties/index.js';
-import { bindMarathons, renderMarathons } from './marathon.js';
+import { bindMarathons, renderMarathons, resetMarathonView } from './marathon.js';
+import { initTaskLog } from './taskLog.js';
 import { bindSettings, renderSettings } from './settings.js';
 import { toast } from './ui.js';
-import { initSyncListeners } from './syncManager.js'; 
+import { initSyncListeners, verifySavedLoginsOnStartup } from './syncManager.js'; 
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
 import { initUiActions, updateFabVisibility } from './uiActions.js'; 
 
-// === НОВЫЙ ИМПОРТ ДЛЯ АВТО-ПОИСКА МАРАФОНОВ ===
-import { initDiscoveryListener, startDiscovery } from './marathons/discoveryLauncher.js'; 
+// Слушатели событий поиска марафонов на сайте
+import { initDiscoveryListener } from './marathons/discoveryLauncher.js';
 
 /**
  * Главная точка входа приложения
@@ -36,6 +37,7 @@ async function boot() {
     // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
     try {
         await initSyncListeners();
+        await initTaskLog();
         console.log('[BOOT] Sync listeners initialized.');
     } catch (e) {
         console.error('[BOOT ERROR] Failed to initialize sync listeners:', e);
@@ -101,6 +103,11 @@ async function boot() {
 
     console.log('[BOOT] Application ready.');
 
+    // 8. Фоновая проверка сохранённых авторизаций (не блокирует интерфейс)
+    if (window.__TAURI_INTERNALS__ && state.settings?.autoVerifyLogins !== false) {
+      verifySavedLoginsOnStartup().catch(e => console.error('[BOOT] Startup auth check failed:', e));
+    }
+
   } catch (error) {
     console.error('[BOOT CRITICAL ERROR]', error);
     alert(`Критическая ошибка запуска: ${error.message}`);
@@ -149,6 +156,7 @@ function renderActiveTab(sectionName) {
         renderParties();
         break;
       case 'marathons':
+        resetMarathonView();   // клик по вкладке всегда возвращает к списку марафонов
         renderMarathons();
         break;
       case 'settings':
@@ -168,13 +176,7 @@ function renderActiveTab(sectionName) {
  */
 function bindGlobalControls() {
   
-  // Кнопка "Найти активный марафон"
-  const btnDiscover = document.getElementById('btn-discover-marathon');
-  if (btnDiscover) {
-    btnDiscover.addEventListener('click', () => {
-        startDiscovery();
-    });
-  }
+  // Кнопки раздела «Марафоны» привязываются в bindMarathons()
 }
 
 // Запуск приложения после полной загрузки DOM

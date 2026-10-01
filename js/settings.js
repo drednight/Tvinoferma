@@ -53,6 +53,7 @@ function applyImport(incoming, mode) {
     state.parties = parsed.parties;
     state.characters = parsed.characters;
     state.marathons = parsed.marathons;
+    state.marathonTemplates = parsed.marathonTemplates;
     state.settings = parsed.settings;
   } else if (mode === 'addOnly') {
      const existingPartyNames = new Set(state.parties.map(p => p.name));
