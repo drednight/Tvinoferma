@@ -1,7 +1,7 @@
 //! Марафоны: прогресс персонажа, поиск марафонов на сайте, разбор страницы и новости.
 
 use crate::parsers::{eval_and_wait, navigate_clean, tf_log};
-use crate::windows::{dispose, get_or_create_hidden_window, pick_scan_window};
+use crate::pool;
 use tauri::{command, AppHandle, Emitter};
 
 const PROGRESS_SCRIPT: &str = include_str!("scripts/marathon_progress.js");
@@ -24,13 +24,14 @@ pub async fn fetch_marathon_progress_v1(
 ) -> Result<(), String> {
     let target = marathon_url.unwrap_or_else(|| DEFAULT_PAGES[0].to_string());
     let scope = format!("char:{}", char_id);
-    let (window, created_here) = get_or_create_hidden_window(&app, &char_id, &target).await?;
-    tf_log(&app, &scope, "info", if created_here { "Открыт скрытый профиль персонажа" } else { "Использую уже открытое окно персонажа" });
+    let task = pool::acquire(&app, &char_id, &target).await?;
+    tf_log(&app, &scope, "info", task.describe());
 
     // Всегда переходим на страницу марафона: окно могло остаться на другой странице
-    navigate_clean(&window, &target).await?;
-    let result = eval_and_wait(&window, PROGRESS_SCRIPT, "#TF_MARATHON_DATA_", 25, &scope).await;
-    dispose(&window, created_here, close_after.unwrap_or(false));
+    navigate_clean(task.window(), &target).await?;
+    let result = eval_and_wait(task.window(), PROGRESS_SCRIPT, "#TF_MARATHON_DATA_", 25, &scope).await;
+    let ok = matches!(&result, Some((None, _)));
+    task.finish(Some(&char_id), close_after.unwrap_or(false), ok).await;
 
     let payload = match result {
         Some((error, data)) => serde_json::json!({ "charId": char_id, "quests": data, "error": error }),
@@ -56,8 +57,9 @@ pub async fn get_available_marathon_titles(
     }
     let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 0, "message": "Подготовка..." }));
 
-    let (window, created_here) = pick_scan_window(&app, char_id, &urls[0], "_title_scanner_v4_").await?;
-    tf_log(&app, "scan", "info", if created_here { "Открыт скрытый профиль для поиска" } else { "Использую уже открытое окно" });
+    let task = pool::acquire_for_scan(&app, char_id, &urls[0], "_title_scanner_v4_").await?;
+    let window = task.window().clone();
+    tf_log(&app, "scan", "info", task.describe());
 
     let mut results: Vec<serde_json::Value> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
@@ -82,7 +84,7 @@ pub async fn get_available_marathon_titles(
     }
 
     let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 100, "message": "Готово" }));
-    dispose(&window, created_here, true);
+    task.finish(None, true, false).await;
 
     let _ = app.emit("marathon-titles-scanned-global", serde_json::json!({
         "titles": results,
@@ -95,12 +97,12 @@ pub async fn get_available_marathon_titles(
 /// ДЕТАЛЬНЫЙ ПАРСИНГ СТРАНИЦЫ МАРАФОНА (v5): этапы + задания
 #[command]
 pub async fn parse_specific_marathon_page(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
-    let (window, created_here) = pick_scan_window(&app, char_id, &url, "_detail_parser_v4_").await?;
-    tf_log(&app, "detail", "info", if created_here { "Открыт скрытый профиль" } else { "Использую уже открытое окно" });
+    let task = pool::acquire_for_scan(&app, char_id, &url, "_detail_parser_v4_").await?;
+    tf_log(&app, "detail", "info", task.describe());
 
-    navigate_clean(&window, &url).await?;
-    let result = eval_and_wait(&window, DETAIL_SCRIPT, "#TF_DETAIL_V4_", 25, "detail").await;
-    dispose(&window, created_here, true);
+    navigate_clean(task.window(), &url).await?;
+    let result = eval_and_wait(task.window(), DETAIL_SCRIPT, "#TF_DETAIL_V4_", 25, "detail").await;
+    task.finish(None, true, false).await;
 
     let payload = match result {
         Some((None, data)) => serde_json::json!({ "marathon": data, "error": null }),
@@ -116,11 +118,11 @@ pub async fn parse_specific_marathon_page(app: AppHandle, url: String, char_id: 
 #[command]
 pub async fn fetch_marathon_news(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
     tf_log(&app, "news", "step", format!("Открываю новость {}", url));
-    let (window, created_here) = pick_scan_window(&app, char_id, &url, "_news_reader_").await?;
-    navigate_clean(&window, &url).await?;
+    let task = pool::acquire_for_scan(&app, char_id, &url, "_news_reader_").await?;
+    navigate_clean(task.window(), &url).await?;
 
-    let result = eval_and_wait(&window, NEWS_SCRIPT, "#TF_NEWS_V1_", 25, "news").await;
-    dispose(&window, created_here, true);
+    let result = eval_and_wait(task.window(), NEWS_SCRIPT, "#TF_NEWS_V1_", 25, "news").await;
+    task.finish(None, true, false).await;
 
     let payload = match result {
         Some((None, data)) => serde_json::json!({ "news": data, "error": null }),

@@ -202,7 +202,8 @@ export async function refreshAllLoginStatuses(chars = state.characters) {
         toast('Нет персонажей для проверки.', 'info');
         return;
     }
-    const { online, offline } = await runAuthChecks(list);
+    // closeAfter: окна профилей после проверки закрываются (иначе каждое держит ~100 МБ памяти)
+    const { online, offline } = await runAuthChecks(list, { closeAfter: true });
     toast(`Проверка авторизации: в сети ${online} из ${list.length}.`, offline.length ? 'warning' : 'success');
 }
 

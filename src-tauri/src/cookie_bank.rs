@@ -248,6 +248,46 @@ async fn probe_auth(win: &WebviewWindow, scope: &str) -> (String, Option<String>
     }
 }
 
+// ---------- для пула воркеров ----------
+
+/// Есть ли в банке сессия персонажа (файл существует, без расшифровки).
+pub fn has_session(app: &AppHandle, char_id: &str) -> bool {
+    if check_id(char_id).is_err() {
+        return false;
+    }
+    bank_dir(app)
+        .map(|d| d.join(format!("{}.bin", char_id)).exists())
+        .unwrap_or(false)
+}
+
+/// Подставляет куки персонажа из банка в окно воркера (куки банковских доменов окна заменяются).
+pub async fn restore_into(app: &AppHandle, char_id: &str, win: &WebviewWindow) -> Result<usize, String> {
+    check_id(char_id)?;
+    let dir = bank_dir(app)?;
+    let id = char_id.to_string();
+    let rec = blocking(move || read_record(&dir, &id))
+        .await?
+        .ok_or("В банке нет сессии этого персонажа")?;
+    let (ok, errors) = restore_into_window(win, &rec).await;
+    if ok == 0 {
+        return Err(format!("не удалось записать куки (ошибок: {})", errors));
+    }
+    Ok(ok)
+}
+
+/// Удаляет из окна куки банковских доменов (после задачи воркера).
+pub async fn wipe_scope(win: &WebviewWindow) {
+    let w = win.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        if let Ok(existing) = w.cookies() {
+            for c in existing.into_iter().filter(|c| in_scope(c)) {
+                let _ = w.delete_cookie(c);
+            }
+        }
+    })
+    .await;
+}
+
 // ---------- команды ----------
 
 /// Что лежит в банке: `[{ charId, savedAt (unix, сек), cookies } | { charId, error }]`. Значения кук не показываются.

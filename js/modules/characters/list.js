@@ -368,9 +368,8 @@ function updateKPIs(charsToCount) {
 /**
  * Инициализация кнопок синхронизации в UI
  */
+// Кнопок может не быть в разметке (запуск скриптов идёт через меню «Скрипты»), тогда ничего не делаем.
 function initSyncButtons() {
-    console.log('[SYNC BUTTONS] Searching for buttons...');
-
     // Кнопка "Проверить авторизацию"
     const checkBtn = document.getElementById('btn-check-auth-status');
     if(checkBtn) {
@@ -399,8 +398,6 @@ function initSyncButtons() {
             };
             checkBtn.dataset.bound = "true";
         }
-    } else {
-        console.warn('[SYNC BUTTONS] Button #btn-check-auth-status NOT FOUND in DOM!');
     }
 
     // Кнопка "Обновить балансы"
@@ -429,8 +426,6 @@ function initSyncButtons() {
             };
             balanceBtn.dataset.bound = "true";
         }
-    } else {
-        console.warn('[SYNC BUTTONS] Button #btn-refresh-balances NOT FOUND in DOM!');
     }
 }
 

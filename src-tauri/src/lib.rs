@@ -8,6 +8,7 @@
 //! - `marathons` — прогресс, поиск и разбор марафонов;
 //! - `commands`  — state.json, резервные копии, учётные данные в keychain ОС;
 //! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
+//! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
 //! - `tray`      — иконка в трее;
 //! - `automation` — (заготовка) промокоды, перевод предметов;
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры.
@@ -22,6 +23,7 @@ mod cookie_bank;
 mod injection;
 mod marathons;
 mod parsers;
+mod pool;
 mod tray;
 mod windows;
 
@@ -102,6 +104,7 @@ pub fn run() {
             cookie_bank::bank_status,
             cookie_bank::bank_verify,
             cookie_bank::bank_forget,
+            pool::pool_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
