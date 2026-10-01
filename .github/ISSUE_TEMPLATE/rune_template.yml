@@ -1,0 +1,38 @@
+name: Шаблон рун для каталога
+description: Предложить новый шаблон рун. Проверяется вручную и коммитится в каталог
+title: "[Руны] "
+labels: ["stage/06"]
+body:
+  - type: input
+    id: class
+    attributes:
+      label: Класс
+    validations:
+      required: true
+  - type: input
+    id: author
+    attributes:
+      label: Автор
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Дата составления
+      placeholder: "2026-10-01"
+    validations:
+      required: true
+  - type: textarea
+    id: pvp
+    attributes:
+      label: Шаблон PvP
+      render: text
+  - type: textarea
+    id: pve
+    attributes:
+      label: Шаблон PvE
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Комментарий

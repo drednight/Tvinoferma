@@ -1,0 +1,49 @@
+name: Ошибка
+description: Что-то работает неправильно
+labels: ["type/bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо за отчёт. **Не прикладывайте пароли, e-mail, куки и токены.** Скриншоты перед отправкой проверьте на личные данные.
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения
+      description: Настройки → Обновления
+      placeholder: "0.2.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Операционная система
+      options: [Windows 11, Windows 10, macOS, Linux, Другая]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Что произошло
+      description: Что вы ожидали и что получили. Для чисел укажите точные значения (например, на сайте 28,5, в приложении 285).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Открыть вкладку «Персонажи»
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Журнал задачи или диагностика
+      description: Скопируйте из журнала задач. Пароли и куки там быть не должно, но проверьте.
+      render: text
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Скриншоты

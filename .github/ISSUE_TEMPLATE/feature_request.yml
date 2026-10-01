@@ -1,0 +1,30 @@
+name: Идея или предложение
+description: Новая функция или улучшение
+labels: ["type/feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Какую проблему это решает
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Как вы это видите
+      description: Что должно появиться в интерфейсе, как это должно работать.
+    validations:
+      required: true
+  - type: dropdown
+    id: prio
+    attributes:
+      label: Насколько это важно для вас
+      options: [Критично, Важно, Было бы удобно, Мелочь]
+  - type: textarea
+    id: done
+    attributes:
+      label: Как понять, что готово
+      description: Критерий приёмки в виде списка.
+      placeholder: |
+        - [ ] ...
+        - [ ] ...

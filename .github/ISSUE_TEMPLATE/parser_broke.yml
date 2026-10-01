@@ -1,0 +1,35 @@
+name: Сломался разбор страницы сайта
+description: Сайт изменил вёрстку, баланс, марафон или вход определяются неверно
+labels: ["type/bug", "stage/02"]
+body:
+  - type: markdown
+    attributes:
+      value: Не прикладывайте HTML с личными данными. Удалите ники, e-mail, куки и токены.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Что не работает
+      options: [Проверка входа, Баланс монет, Список марафонов, Страница марафона, Новость о марафоне, Другое]
+    validations:
+      required: true
+  - type: input
+    id: page
+    attributes:
+      label: Страница сайта
+      placeholder: https://pwonline.ru/chests2.php
+  - type: input
+    id: code
+    attributes:
+      label: Код ошибки из журнала
+      placeholder: container_missing / no_value_tag / parse_nan / timeout / challenge
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что на сайте и что в приложении
+    validations:
+      required: true
+  - type: textarea
+    id: html
+    attributes:
+      label: Фрагмент HTML (по возможности, обезличенный)
+      render: html

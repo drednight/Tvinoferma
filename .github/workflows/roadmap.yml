@@ -1,0 +1,42 @@
+name: Roadmap progress
+
+# Обновляет блок прогресса в ROADMAP.md по состоянию Issues.
+on:
+  issues:
+    types: [opened, closed, reopened, edited, deleted, milestoned, demilestoned]
+  schedule:
+    - cron: "0 6 * * 1"   # по понедельникам, на случай пропущенных событий
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: roadmap-progress
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Render ROADMAP.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: node scripts/roadmap/render.mjs
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- ROADMAP.md; then
+            echo "Без изменений"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add ROADMAP.md
+            git commit -m "docs: обновлён прогресс роадмапа [skip ci]"
+            git push
+          fi
