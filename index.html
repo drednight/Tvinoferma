@@ -7,17 +7,17 @@
   <title>Твиноферма</title>
 
   <!-- Стили -->
-  <link rel="stylesheet" href="/css/variables.css" />
-  <link rel="stylesheet" href="/css/base.css" />
-  <link rel="stylesheet" href="/css/layout.css" />
-  <link rel="stylesheet" href="/css/dashboard.css" />
-  <link rel="stylesheet" href="/css/components.css" />
-  <link rel="stylesheet" href="/css/cards.css" />
-  <link rel="stylesheet" href="/css/modal.css" />
-  <link rel="stylesheet" href="/css/marathon.css" />
+  <link rel="stylesheet" href="/css/core/variables.css" />
+  <link rel="stylesheet" href="/css/core/base.css" />
+  <link rel="stylesheet" href="/css/core/layout.css" />
+  <link rel="stylesheet" href="/css/modules/dashboard.css" />
+  <link rel="stylesheet" href="/css/core/components.css" />
+  <link rel="stylesheet" href="/css/modules/characters.css" />
+  <link rel="stylesheet" href="/css/core/modal.css" />
+  <link rel="stylesheet" href="/css/modules/marathons.css" />
   
   <!-- НОВЫЙ СТИЛЬ ДЛЯ FAB И МЕНЮ -->
-  <link rel="stylesheet" href="/css/fab.css" />
+  <link rel="stylesheet" href="/css/core/fab.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -96,6 +96,9 @@
                     <button class="dropdown-item" data-action="update-marathons">
                         🏃 Обновить марафоны
                     </button>
+                    <button class="dropdown-item" data-action="task-journal" title="Журнал проверок и поисков: что делала программа">
+                        📄 Журнал задач
+                    </button>
                 </div>
             </div>
 
@@ -159,7 +162,6 @@
           <h2>Марафоны и события</h2>
           
           <div style="display:flex; gap:10px; margin-left:auto;">
-             <button id="task-journal-btn" class="btn secondary" title="Журнал проверок и поисков: что делала программа">📄 Журнал</button>
              <button id="add-folder-btn" class="btn secondary" title="Папка для группы марафонов (по месяцам, неделям — как удобно)">📁 Новая папка</button>
              <button id="add-marathon-btn" class="btn primary">+ Создать</button>
           </div>
@@ -216,9 +218,9 @@
             </label>
           </div>
           <p class="muted">
-            • Экспорт сохраняет полное состояние.<br/>
-            • При импорте отдельного персонажа история монет не переносится.<br/>
-            • Режимы: Заменить всё, Добавить новое, Слить (LWW).
+            • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
+            • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
+            • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
           </p>
         </div>
 

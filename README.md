@@ -49,50 +49,74 @@ npm run tauri build    # установщик локально (без файл�
 ## Структура
 
 ```txt
-index.html                  разметка вкладок
-css/                        стили (variables, layout, cards, components, marathon, modal, fab…)
+index.html                    разметка вкладок
+css/
+  core/                       общие стили: переменные, сетка, кнопки, модалки, FAB
+  modules/                    стили разделов: characters, dashboard, marathons
 js/
-  main.js                   загрузка: миграции → контакты из keychain → модули → фоновые задачи
-  state.js                  состояние и нормализация
-  migrations.js             версии схемы state.json и миграции
-  storage.js                очередь записей, выбор адаптера, бэкапы
-  storageAdapters/          tauriAdapter (Rust-команды) и localStorageAdapter (браузер)
-  secrets.js                контакты ↔ хранилище учётных данных ОС
-  characters.js             сетка персонажей, фильтры, теги, массовые действия
-  characters/               форма, профиль, шаблон персонажа
-  parties/                  пати
-  marathon.js, marathons/   марафоны: модель, мастер, сверка, разбор новостей, графики
-  syncManager.js            вход, балансы, помощник входа
-  scripts/                  очередь скриптов, вызовы Rust-команд
-  notifications.js          системные уведомления
-  desktop.js                трей, фоновые проверки, горячие клавиши
-  updater.js                автообновление
-  taskLog.js                журнал фоновых задач
+  main.js                     загрузка: миграции → профили/контакты → модули → фоновые задачи
+  core/                       ядро
+    state.js                  состояние и нормализация
+    migrations.js             версии схемы state.json и миграции
+    ids.js                    читаемые id персонажей из ника
+    storage.js                очередь записей, выбор адаптера, бэкапы
+    storageAdapters/          tauriAdapter (Rust-команды) и localStorageAdapter (браузер)
+    secrets.js                контакты ↔ хранилище учётных данных ОС
+    ui.js, uiActions.js       модалки, тосты, FAB, меню «Скрипты»
+    taskLog.js                журнал фоновых задач (меню «Скрипты» → «Журнал задач»)
+    constants.js, utils.js
+  data/                       перенос данных
+    export.js                 гибкий экспорт (JSON/CSV)
+    import.js                 импорт: сводка → сравнение → применение
+    compare.js                окно сравнения двух карточек персонажа
+    characterFields.js        все поля персонажа (для сравнения и экспорта)
+  desktop/                    трей и хоткеи, уведомления, автообновление
+  settings/                   вкладка «Настройки»
+  modules/
+    characters/               сетка (list.js), форма, профиль, модель, смена id (identity.js)
+    parties/                  пати
+    marathons/                марафоны: страница, модель, мастер, сверка с сайтом, новости, графики
+    sync/                     вход, балансы, очередь скриптов (queue.js)
+    automation/               [заготовка] промокоды, перевод предметов
+    dungeons/                 [заготовка] ежедневные данжи, допуски по Sky Level
+    runes/                    [заготовка] база шаблонов рун
+    bank/                     [заготовка] доходы/расходы и графики
+    arena/                    [заготовка] Арена Авроры
+    injection/                [заготовка] панель и CSS поверх страниц игры
+    cloud/                    [заготовка] Google Drive / Sheets
 src-tauri/src/
-  lib.rs                    сборка приложения, плагины, обработчики окон
-  windows.rs                окна и профили браузера персонажей
-  parsers.rs                ожидание ответа скрипта, «Проверка безопасности»
-  auth.rs, balance.rs       вход и баланс
-  marathons.rs              марафоны
-  commands/                 state.json, бэкапы, keychain
-  tray.rs                   иконка в трее
-  scripts/*.js              скрипты, внедряемые в страницы сайта
-tests/                      Vitest + фикстуры
-.github/workflows/          CI (тесты) и Release (установщики + latest.json)
+  lib.rs                      сборка приложения, плагины, обработчики окон
+  windows.rs                  окна и профили браузера персонажей
+  parsers.rs                  ожидание ответа скрипта, «Проверка безопасности»
+  auth.rs, balance.rs         вход и баланс
+  marathons.rs                марафоны
+  commands/                   state.json, бэкапы, keychain
+  tray.rs                     иконка в трее
+  automation/, injection.rs   [заготовки]
+  scripts/                    скрипты, внедряемые в страницы сайта (+ injection/)
+tests/                        Vitest + фикстуры (выдуманные данные)
+docs/RELEASE.md               как выпустить релиз и проверить автообновление
+.github/workflows/            CI (тесты) и Release (установщики + latest.json)
 ```
+
+Модули с пометкой «заготовка» пока не подключены в `main.js`: в них описано, что планируется.
+
+### id персонажей
+
+id строится из ника: `DragonSlayer#1` → `DragonSlayer_1`, `Тёмный Маг` → `Temnyy_Mag`
+(латиница, цифры, `_`, `-`; при совпадении добавляется `-2`, `-3`…). Под этим id персонаж виден
+в журнале задач, в имени окна браузера и в папке профиля `pw-sync-profiles/<id>`.
+При смене ника id меняется вместе с профилем браузера, вход на сайт сохраняется.
+Старые данные переводятся на такие id миграцией v4.
 
 ## Релиз и автообновление
 
-1. Один раз создать ключ подписи: `npm run tauri signer generate -- -w ~/.tauri/tvinoferma.key`.
-2. Публичный ключ вставить в `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`.
-3. Приватный ключ и пароль добавить в секреты GitHub: `TAURI_SIGNING_PRIVATE_KEY`,
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
-4. Поднять версию в `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, затем
-   `git tag v0.2.0 && git push origin v0.2.0`. Workflow **Release** соберёт `.msi`/`.exe`
-   и `latest.json` в черновик релиза — опубликуйте его.
+Пошагово — в [docs/RELEASE.md](docs/RELEASE.md). Коротко: ключ подписи → pubkey в
+`tauri.conf.json` → секреты GitHub → `npm run version:bump X.Y.Z` → тег `vX.Y.Z` →
+опубликовать черновик релиза.
 
 ## Миграции данных
 
-Версия схемы — `SCHEMA_VERSION` в `js/migrations.js`. Чтобы изменить формат: увеличьте версию и
+Версия схемы — `SCHEMA_VERSION` в `js/core/migrations.js`. Чтобы изменить формат: увеличьте версию и
 добавьте функцию в `MIGRATIONS`. При запуске старый файл сначала копируется в бэкап
 `…-pre-migration-vN`, затем мигрирует. Тест — в `tests/migrations.test.js`.

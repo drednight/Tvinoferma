@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { migrateState, detectVersion, SCHEMA_VERSION } from '../js/migrations.js';
-import { normalizeState, normalizeTags } from '../js/state.js';
+import { migrateState, detectVersion, SCHEMA_VERSION } from '../js/core/migrations.js';
+import { normalizeState, normalizeTags } from '../js/core/state.js';
 
 const fixture = (name) => JSON.parse(readFileSync(`tests/fixtures/${name}`, 'utf8'));
 
@@ -17,7 +17,7 @@ describe('migrateState', () => {
     const { state, from, applied, newer } = migrateState(raw);
     expect(from).toBe(2);
     expect(newer).toBe(false);
-    expect(applied).toEqual([3]);
+    expect(applied).toEqual([3, 4]);
     expect(state.schemaVersion).toBe(SCHEMA_VERSION);
     expect(state.version).toBeUndefined();
     expect(state.exportedAt).toBeUndefined();
@@ -27,7 +27,7 @@ describe('migrateState', () => {
 
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
-    expect(applied).toEqual([2, 3]);
+    expect(applied).toEqual([2, 3, 4]);
     expect(state.parties).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
   });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { collectAlerts } from '../js/notifications.js';
-import { createMarathon } from '../js/marathons/model.js';
+import { collectAlerts } from '../js/desktop/notifications.js';
+import { createMarathon } from '../js/modules/marathons/model.js';
 
 const st = (progress = {}) => ({
   characters: [{ id: 'c1', nick: 'Hero' }],

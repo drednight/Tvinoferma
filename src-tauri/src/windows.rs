@@ -1,6 +1,8 @@
 //! Окна браузера персонажей: видимые (ручной вход) и скрытые (фоновые скрипты).
 //! У каждого персонажа свой профиль WebView (`pw-sync-profiles/<id>`), поэтому куки не смешиваются.
+//! id персонажа строится из ника (`js/core/ids.js`): только `A-Za-z0-9_-`.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow};
 
@@ -10,13 +12,12 @@ pub fn window_label(key: &str) -> String {
     format!("sync-win-{}", key)
 }
 
+fn profiles_root(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("pw-sync-profiles"))
+}
+
 fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("pw-sync-profiles")
-        .join(key);
+    let dir = profiles_root(app)?.join(key);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
     Ok(dir)
 }
@@ -78,6 +79,40 @@ pub async fn close_sync_window(app: AppHandle, char_id: String) -> Result<(), St
         }
     }
     Ok(())
+}
+
+/// Переименовывает профили браузера после смены id персонажа (`{ старый: новый }`),
+/// чтобы не терялся вход на сайт. Возвращает старые id, которые перенести не удалось
+/// (окно персонажа открыто или папка с новым именем уже есть).
+#[command]
+pub fn rename_char_profiles(app: AppHandle, remap: HashMap<String, String>) -> Result<Vec<String>, String> {
+    let root = profiles_root(&app)?;
+    let mut failed = Vec::new();
+    for (old_id, new_id) in remap {
+        if old_id == new_id || !is_safe_key(&old_id) || !is_safe_key(&new_id) {
+            continue;
+        }
+        if app.get_webview_window(&window_label(&old_id)).is_some() {
+            failed.push(old_id);
+            continue;
+        }
+        let from = root.join(&old_id);
+        if !from.exists() {
+            continue;
+        }
+        let to = root.join(&new_id);
+        // Смена только регистра (bob → Bob): на Windows `to.exists()` уже true, переименовываем напрямую
+        let case_only = old_id.eq_ignore_ascii_case(&new_id);
+        if (to.exists() && !case_only) || std::fs::rename(&from, &to).is_err() {
+            failed.push(old_id);
+        }
+    }
+    Ok(failed)
+}
+
+/// id без разделителей пути (защита от `..` и `/` в имени папки).
+fn is_safe_key(key: &str) -> bool {
+    !key.is_empty() && key != "." && key != ".." && !key.contains(['/', '\\', ':'])
 }
 
 /// Проверяет существование окна по лейблу

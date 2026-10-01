@@ -7,13 +7,17 @@
 //! - `balance`   — баланс древних монет;
 //! - `marathons` — прогресс, поиск и разбор марафонов;
 //! - `commands`  — state.json, резервные копии, учётные данные в keychain ОС;
-//! - `tray`      — иконка в трее.
+//! - `tray`      — иконка в трее;
+//! - `automation` — (заготовка) промокоды, перевод предметов;
+//! - `injection` — (заготовка) панель и CSS поверх страниц игры.
 //!
 //! Скрипты, которые внедряются в страницы сайта, лежат в `src/scripts/*.js`.
 
 mod auth;
+mod automation;
 mod balance;
 mod commands;
+mod injection;
 mod marathons;
 mod parsers;
 mod tray;
@@ -70,6 +74,7 @@ pub fn run() {
             windows::close_sync_window,
             windows::check_window_exists,
             windows::execute_script_in_window,
+            windows::rename_char_profiles,
             // скрипты сайта
             auth::check_login_status_http,
             balance::fetch_and_parse_balance_v4,

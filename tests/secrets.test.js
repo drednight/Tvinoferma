@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { hydrateSecrets, prepareForDisk, __setInvoke, vaultStatus, contactsJson } from '../js/secrets.js';
-import { state } from '../js/state.js';
+import { hydrateSecrets, prepareForDisk, __setInvoke, vaultStatus, contactsJson } from '../js/core/secrets.js';
+import { state } from '../js/core/state.js';
 
 function fakeVault(initial = {}, { available = true } = {}) {
   const store = { ...initial };
@@ -69,5 +69,16 @@ describe('secrets', () => {
     __setInvoke(v.invoke);
     await hydrateSecrets([{ id: 'a', contacts: contacts('a') }]);
     expect(v.calls).toEqual([]);
+  });
+
+  it('после смены id (миграция v4) читает старый ключ и переносит запись под новый', async () => {
+    const v = fakeVault({ 'uuid-1': contactsJson(contacts('old@x.ru', 'pw')) });
+    __setInvoke(v.invoke);
+    const chars = [{ id: 'Bob', contacts: null }];
+    await hydrateSecrets(chars, { aliases: { Bob: 'uuid-1' } });
+    expect(chars[0].contacts.email).toBe('old@x.ru');
+    await prepareForDisk({ characters: chars });
+    expect(v.store['uuid-1']).toBeUndefined();
+    expect(JSON.parse(v.store.Bob)).toMatchObject({ email: 'old@x.ru', password: 'pw' });
   });
 });

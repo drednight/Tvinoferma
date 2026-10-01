@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseNewsHtml } from '../js/marathons/newsParser.js';
+import { parseNewsHtml } from '../js/modules/marathons/newsParser.js';
 
 const html = readFileSync('tests/fixtures/news-marathon.html', 'utf8');
 const parsed = parseNewsHtml(html, { title: 'Летний марафон', publishedAt: '25.05.2026', newsUrl: 'https://pwonline.ru/news.php?article=1' });

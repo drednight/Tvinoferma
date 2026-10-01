@@ -1,25 +1,25 @@
 // js/main.js
 
-import { state, normalizeState } from './state.js';
-import { loadData, persist, createBackup, isTauri } from './storage.js';
-import { migrateState, SCHEMA_VERSION } from './migrations.js';
-import { hydrateSecrets } from './secrets.js';
-import { initHotkeys, initDesktop } from './desktop.js';
-import { initNotifications } from './notifications.js';
-import { checkForUpdates } from './updater.js';
-import { bindCharacters, renderCharacters } from './characters.js';
-import { bindParties, renderParties } from './parties/index.js';
-import { bindMarathons, renderMarathons, resetMarathonView } from './marathon.js';
-import { initTaskLog } from './taskLog.js';
-import { bindSettings, renderSettings } from './settings.js';
-import { toast } from './ui.js';
-import { initSyncListeners, verifySavedLoginsOnStartup } from './syncManager.js'; 
+import { state, normalizeState } from './core/state.js';
+import { loadData, persist, createBackup, isTauri } from './core/storage.js';
+import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
+import { hydrateSecrets } from './core/secrets.js';
+import { initHotkeys, initDesktop } from './desktop/desktop.js';
+import { initNotifications } from './desktop/notifications.js';
+import { checkForUpdates } from './desktop/updater.js';
+import { bindCharacters, renderCharacters } from './modules/characters/list.js';
+import { bindParties, renderParties } from './modules/parties/index.js';
+import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
+import { initTaskLog } from './core/taskLog.js';
+import { bindSettings, renderSettings } from './settings/settings.js';
+import { toast } from './core/ui.js';
+import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
-import { initUiActions, updateFabVisibility } from './uiActions.js'; 
+import { initUiActions, updateFabVisibility } from './core/uiActions.js'; 
 
 // Слушатели событий поиска марафонов на сайте
-import { initDiscoveryListener } from './marathons/discoveryLauncher.js';
+import { initDiscoveryListener } from './modules/marathons/discoveryLauncher.js';
 
 /**
  * Главная точка входа приложения
@@ -37,6 +37,7 @@ async function boot() {
       alert(`Не удалось прочитать данные: ${e?.message || e}\nПриложение запустится с пустыми данными, повреждённый файл сохранён рядом с state.json.`);
     }
     let needsSave = false;
+    let idAliases = {}; // { новый id: старый id } после миграции v4
     if (raw) {
       // 1a. Миграции схемы: перед изменением формата делаем резервную копию исходного файла
       const migration = migrateState(raw);
@@ -50,13 +51,27 @@ async function boot() {
         needsSave = true;
       }
       Object.assign(state, normalizeState(migration.state));
+
+      // 1b. id персонажей стали читаемыми (из ника): переносим профили браузера, чтобы не слетел вход
+      const remap = migration.idRemap || {};
+      if (Object.keys(remap).length) {
+        idAliases = Object.fromEntries(Object.entries(remap).map(([oldId, newId]) => [newId, oldId]));
+        console.log('[BOOT] Character ids →', remap);
+        if (isTauri()) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const failed = await invoke('rename_char_profiles', { remap });
+            if (failed?.length) console.warn('[BOOT] Profiles not moved (re-login needed):', failed);
+          } catch (e) { console.warn('[BOOT] rename_char_profiles failed:', e); }
+        }
+      }
       console.log('[BOOT] State loaded successfully.');
     } else {
       console.log('[BOOT] No saved data found. Using defaults.');
     }
 
-    // 1b. Учётные данные из хранилища ОС (и перенос туда открытых паролей из старого state.json)
-    const secrets = await hydrateSecrets(state.characters, { tauri: isTauri() });
+    // 1c. Учётные данные из хранилища ОС (и перенос туда открытых паролей из старого state.json)
+    const secrets = await hydrateSecrets(state.characters, { tauri: isTauri(), aliases: idAliases });
     if (secrets.migrated > 0) {
       needsSave = true;
       toast(`Учётные данные ${secrets.migrated} персонажей перенесены в защищённое хранилище ОС.`, 'success');

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createLimiter, runQueue, isRetryableCode } from '../js/scripts/queue.js';
+import { createLimiter, runQueue, isRetryableCode } from '../js/modules/sync/queue.js';
 
 const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 

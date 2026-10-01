@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createMarathon, migrateMarathon, computeCell, rewardFor, marathonTotals,
   marathonPhase, matchQuest, applySiteQuests, freezeAwards, SCHEMA_VERSION
-} from '../js/marathons/model.js';
+} from '../js/modules/marathons/model.js';
 
 const marathon = (over = {}) => createMarathon({
   id: 'm1', title: 'Тест', startDate: '2026-06-01', endDate: '2026-06-10',
