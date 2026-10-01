@@ -1,6 +1,6 @@
 //! Проверка авторизации персонажа на pwonline.ru через скрытое окно его профиля.
 
-use crate::parsers::{eval_and_wait, navigate_clean};
+use crate::parsers::{eval_and_wait, navigate_clean, tf_log};
 use crate::windows::{dispose, get_or_create_hidden_window};
 use tauri::{command, AppHandle, Emitter};
 
@@ -26,6 +26,13 @@ pub async fn check_login_status_http(
         Some((err, _)) => ("offline", Some(err.unwrap_or_else(|| "unknown".into()))),
         None => ("offline", Some("timeout".to_string())),
     };
+    // Вход подтверждён: обновляем сессию в банке кук (сайт мог переиздать куки)
+    if status == "online" {
+        match crate::cookie_bank::save_from_window(&app, &char_id, &window).await {
+            Ok(n) => tf_log(&app, &scope, "info", format!("Сессия сохранена в банк кук ({} шт.)", n)),
+            Err(e) => tf_log(&app, &scope, "warn", format!("Банк кук: {}", e)),
+        }
+    }
     dispose(&window, created_here, close_after.unwrap_or(false));
 
     println!("[AUTH] {} -> {} ({:?})", char_id, status, reason);

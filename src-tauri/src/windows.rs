@@ -92,6 +92,8 @@ pub fn rename_char_profiles(app: AppHandle, remap: HashMap<String, String>) -> R
         if old_id == new_id || !is_safe_key(&old_id) || !is_safe_key(&new_id) {
             continue;
         }
+        // Сессия в банке кук привязана к id: переносим вместе с профилем
+        crate::cookie_bank::rename(&app, &old_id, &new_id);
         if app.get_webview_window(&window_label(&old_id)).is_some() {
             failed.push(old_id);
             continue;

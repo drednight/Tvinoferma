@@ -7,6 +7,7 @@
 //! - `balance`   — баланс древних монет;
 //! - `marathons` — прогресс, поиск и разбор марафонов;
 //! - `commands`  — state.json, резервные копии, учётные данные в keychain ОС;
+//! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
 //! - `tray`      — иконка в трее;
 //! - `automation` — (заготовка) промокоды, перевод предметов;
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры.
@@ -17,6 +18,7 @@ mod auth;
 mod automation;
 mod balance;
 mod commands;
+mod cookie_bank;
 mod injection;
 mod marathons;
 mod parsers;
@@ -96,6 +98,10 @@ pub fn run() {
             commands::secrets::secrets_delete_many,
             // трей
             tray::set_close_to_tray,
+            // куки-банк
+            cookie_bank::bank_status,
+            cookie_bank::bank_verify,
+            cookie_bank::bank_forget,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
