@@ -6,7 +6,8 @@ import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
 import { hydrateSecrets } from './core/secrets.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
-import { checkForUpdates } from './desktop/updater.js';
+import { startUpdateScheduler } from './desktop/updater.js';
+import { initUpdateUi } from './desktop/updateUi.js';
 import { bindCharacters, renderCharacters } from './modules/characters/list.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
@@ -159,9 +160,10 @@ async function boot() {
       verifySavedLoginsOnStartup().catch(e => console.error('[BOOT] Startup auth check failed:', e));
     }
 
-    // 9. Проверка обновлений (тихо, без сообщений об ошибках)
-    if (isTauri() && state.settings?.updates?.checkOnStartup !== false) {
-      setTimeout(() => checkForUpdates({ silent: true }), 5000);
+        // 9. Обновления: кнопка в шапке и в настройках; тихая проверка при запуске и раз в 6 часов
+    initUpdateUi();
+    if (isTauri()) {
+      startUpdateScheduler({ isEnabled: () => state.settings?.updates?.checkOnStartup !== false });
     }
 
   } catch (error) {

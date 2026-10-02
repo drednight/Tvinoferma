@@ -18,6 +18,7 @@
   
   <!-- НОВЫЙ СТИЛЬ ДЛЯ FAB И МЕНЮ -->
   <link rel="stylesheet" href="/css/core/fab.css" />
+  <link rel="stylesheet" href="/css/core/update.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -32,12 +33,17 @@
         </div>
       </div>
 
-      <nav class="tabs">
-        <button class="tab active" data-tab="characters">Персонажи</button>
-        <button class="tab" data-tab="parties">Пати</button>
-        <button class="tab" data-tab="marathons">Марафоны</button>
-        <button class="tab" data-tab="settings">Настройки</button>
-      </nav>
+            <div class="topbar-right">
+        <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->
+        <button id="update-badge" class="update-badge" type="button" hidden></button>
+
+        <nav class="tabs">
+          <button class="tab active" data-tab="characters">Персонажи</button>
+          <button class="tab" data-tab="parties">Пати</button>
+          <button class="tab" data-tab="marathons">Марафоны</button>
+          <button class="tab" data-tab="settings">Настройки</button>
+        </nav>
+      </div>
     </header>
 
     <!-- Основной контент -->
@@ -296,11 +302,11 @@
           <div class="setting-row">
             <div>
               <strong>Версия <span id="app-version">—</span></strong>
-              <p class="muted">Обновления скачиваются из GitHub Releases.</p>
-            </div>
+              <p class="muted" id="update-status">Обновления скачиваются из GitHub Releases.</p>
+              <p class="muted" id="update-checked-at" style="font-size:0.8rem; margin-top:2px;"></p>            </div>
             <div class="row gap">
               <label class="switch-row"><input type="checkbox" data-setting="updates.checkOnStartup" /> Проверять при запуске</label>
-              <button id="check-updates-btn" class="btn">Проверить обновления</button>
+              <button id="install-update-btn" class="btn primary" type="button" hidden></button>
             </div>
           </div>
         </div>

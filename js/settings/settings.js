@@ -6,7 +6,6 @@ import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
 import { runReminderCheck } from '../desktop/notifications.js';
-import { checkForUpdates } from '../desktop/updater.js';
 import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
@@ -153,7 +152,6 @@ export function bindSettings() {
     toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
   });
 
-  document.getElementById('check-updates-btn')?.addEventListener('click', () => checkForUpdates());
   document.getElementById('open-task-journal-btn')?.addEventListener('click', () => openTaskJournal());
 
   // Save Now
