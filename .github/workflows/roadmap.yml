@@ -38,5 +38,6 @@ jobs:
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add ROADMAP.md
             git commit -m "docs: обновлён прогресс роадмапа [skip ci]"
+            git pull --rebase
             git push
           fi
