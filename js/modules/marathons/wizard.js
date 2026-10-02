@@ -9,9 +9,10 @@ import { toast } from '../../core/ui.js';
 import { openOverlay } from './overlay.js';
 import { createMarathon, createSeries, createTask, totalActiveDays, matchQuest, normTitle, setTaskDescription, editTaskDescription } from './model.js';
 import { mergeSiteAndNews } from './mergeSources.js';
-import { scanTitles, parseMarathonPage, pickScannerCharacter, SITE_PAGES, customPages, rememberCustomPage, loadNewsPage, isNewsUrl } from './siteSync.js';
+import { scanTitles, parseMarathonPage, pickScannerCharacter, SITE_PAGES, customPages, rememberCustomPage, loadNewsPage, isNewsUrl, searchNewsList } from './siteSync.js';
+import { filterNews, NEWS_LIST_PAGES } from './newsList.js';
 import { baseTitle } from './model.js';
-import { taskCardHtml } from '../../core/taskLog.js';
+import { taskCardHtml, errorText } from '../../core/taskLog.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 
@@ -38,7 +39,7 @@ export function openMarathonWizard(opts = {}) {
     source: isEdit ? opts.marathon.source?.type : (opts.source === 'news' ? 'site' : (opts.source || null)),   // «из новости» теперь часть блока «С сайта»
     site: { scanning: false, scanned: false, progress: '', titles: [], errors: [], selectedUrl: null, loading: false, raw: null, error: null, split: 'stages', stageKeys: [], compare: [], customUrl: '', scanTask: null, parseTask: null },
     seriesId: opts.seriesId || null,
-    news: { url: '', loading: false, task: null, error: null, verify: true },
+    news: { url: '', loading: false, task: null, error: null, verify: true, search: { loading: false, items: null, all: false, task: null, error: null } },
     parsed: { news: null, site: null },   // сырые результаты разбора; в W.site.raw лежит их объединение
     rwNews: { open: false, url: '', loading: false, task: null },
     templateId: null,
@@ -118,8 +119,10 @@ export function openMarathonWizard(opts = {}) {
             <h4>📰 Новость <small class="muted">— рекомендуется: в ней задания, цели, награды, бонусы и полные описания</small></h4>
             <div class="row gap">
               <input class="input tf-grow" data-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(n.url)}"/>
-              <button type="button" class="btn primary" data-act="parse-news" ${n.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
+              <button type="button" class="btn primary" data-act="parse-news" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
+              <button type="button" class="btn" data-act="find-news" title="Просмотреть первые ${NEWS_LIST_PAGES} страницы архива событий pwonline.ru" ${n.loading || n.search.loading ? 'disabled' : ''}>${n.search.loading ? '⏳ Ищу…' : '🔎 Найти новость'}</button>
             </div>
+            ${newsSearchHtml(n.search)}
             <label class="tf-radio tf-small"><input type="checkbox" data-news-verify ${n.verify ? 'checked' : ''}/> После новости сверить со страницей отметок (нужен персонаж со входом)</label>
             ${n.task ? taskCardHtml(n.task) : ''}
             ${n.error ? `<p class="tf-warn">Не удалось разобрать новость: ${escapeHtml(n.error)}</p>` : ''}
@@ -187,6 +190,11 @@ export function openMarathonWizard(opts = {}) {
     ov.body.querySelector('[data-news-url]')?.addEventListener('input', e => { W.news.url = e.target.value.trim(); });
     ov.body.querySelector('[data-news-url]')?.addEventListener('keydown', e => { if (e.key === 'Enter') doParseNews(); });
     ov.body.querySelector('[data-act="parse-news"]')?.addEventListener('click', () => doParseNews());
+    ov.body.querySelector('[data-act="find-news"]')?.addEventListener('click', () => doFindNews());
+    ov.body.querySelector('[data-news-all]')?.addEventListener('change', e => { W.news.search.all = e.target.checked; render(); });
+    ov.body.querySelectorAll('[data-pick-news]').forEach(b => b.addEventListener('click', () => {
+      W.news.url = b.dataset.pickNews; doParseNews();
+    }));
     ov.body.querySelector('[data-news-verify]')?.addEventListener('change', e => { W.news.verify = e.target.checked; });
     ov.body.querySelector('[data-act="verify-site"]')?.addEventListener('click', () => doParse(W.parsed.news.sourceUrl));
     ov.body.querySelector('[data-act="parse-custom"]')?.addEventListener('click', () => {
@@ -242,6 +250,36 @@ export function openMarathonWizard(opts = {}) {
     applyMerged();
     task?.finish(`Этапов ${parsed.stages.length}, заданий ${parsed.quests.length}`, parsed.stages.some(st => st.guessed) ? 'warn' : 'done');
     render();
+  }
+
+  /** Поиск новости о марафоне в архиве событий (первые 3 страницы). */
+  async function doFindNews() {
+    const sr = W.news.search;
+    sr.loading = true; sr.error = null;
+    const pending = searchNewsList({ onTask: (t) => { sr.task = t; } });
+    render();
+    const { items, error } = await pending;
+    sr.loading = false; sr.items = items; sr.error = items.length ? null : (error || 'empty');
+    render();
+  }
+
+  /** Результаты поиска: найденные новости с кнопкой «Выбрать». */
+  function newsSearchHtml(sr) {
+    if (!sr.task && !sr.items && !sr.error) return '';
+    const found = sr.items ? filterNews(sr.items, { all: sr.all }) : [];
+    return `
+      <div class="tf-news-search">
+        ${sr.task && sr.loading ? taskCardHtml(sr.task) : ''}
+        ${sr.error ? `<p class="tf-warn">Не удалось получить список новостей: ${escapeHtml(errorText(sr.error))}. Вставьте ссылку вручную.</p>` : ''}
+        ${sr.items ? `
+          <label class="tf-radio tf-small"><input type="checkbox" data-news-all ${sr.all ? 'checked' : ''}/> Показать все новости, не только со словом «марафон» (просмотрено ${sr.items.length})</label>
+          ${found.length ? `<div class="tf-list">${found.map(x => `
+            <div class="tf-list-item">
+              <span class="tf-grow"><strong>${escapeHtml(x.title)}</strong> <small class="muted">${escapeHtml(x.date)}</small></span>
+              <button type="button" class="btn" data-pick-news="${escapeHtml(x.url)}">Выбрать</button>
+            </div>`).join('')}</div>`
+            : '<p class="muted">Новостей о марафоне на первых страницах нет. Включите «Показать все» или вставьте ссылку вручную.</p>'}` : ''}
+      </div>`;
   }
 
   async function doParseNews() {

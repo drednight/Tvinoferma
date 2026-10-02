@@ -15,7 +15,8 @@ import { syncMarathons, marathonUrlOf, SITE_PAGES, customPages, rememberCustomPa
 import { taskCardHtml, renderDock } from '../../core/taskLog.js';
 import {
   computeCell, marathonTotals, freezeAwards, marathonPhase, seriesChildren, seriesPhase,
-  ensureCell, STATUS_LABELS, maxRewardCoins, createSeries, bonusStatus, editTaskDescription, shortDescription
+  ensureCell, STATUS_LABELS, maxRewardCoins, createSeries, bonusStatus, editTaskDescription, shortDescription,
+  rewardPotential, calendarStates
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
 
@@ -356,7 +357,6 @@ function renderDetail(root, m) {
         <button class="btn" data-act="edit">✏️ Редактировать</button>
         ${completed ? '<button class="btn" data-act="reopen">🔓 Вернуть в работу</button>' : '<button class="btn" data-act="complete">🏁 Завершить</button>'}
         <button class="btn" data-act="move" title="Переместить в папку">📁</button>
-        <button class="btn" data-act="chart" title="Инфографика">📊</button>
         <button class="btn danger" data-act="delete" title="Удалить">🗑</button>
       </div>
     </div>
@@ -398,6 +398,25 @@ const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'и�
 const DESC_PREVIEW = 160;
 
 /** Раскрывающийся список описаний заданий: короткий текст, «Показать полностью», правка. */
+/** «🪙 до 10 ДМ за задание (15 → 5, 25 → 10)» — сколько можно получить, а не сколько уже получено. */
+function potentialLine(task) {
+  const { text } = rewardPotential(task);
+  return text ? `<p class="mr-desc-coins">🪙 Можно получить: ${escapeHtml(text)}</p>` : '';
+}
+
+/** Правая колонка описания: «Древние монеты 🪙» и ниже только число ДМ за каждый порог задания. */
+function rewardLadder(task) {
+  const { max, tiers } = rewardPotential(task);
+  if (!max) return '<div class="mr-desc-coins muted"><div class="mr-desc-coins-head">Древние монеты 🪙</div><div class="muted">—</div></div>';
+  return `
+    <div class="mr-desc-coins">
+      <div class="mr-desc-coins-head">Древние монеты 🪙</div>
+      ${tiers.length > 1
+        ? `<ul class="mr-desc-tiers">${tiers.map(x => `<li${x.coins === max ? ' class="is-max"' : ''}><span>${x.threshold} раз</span><b>${x.coins}</b></li>`).join('')}</ul>`
+        : `<ul class="mr-desc-tiers"><li class="is-max"><span>за задание</span><b>${max}</b></li></ul>`}
+    </div>`;
+}
+
 function descriptionsBlock(m) {
   if (!m.tasks.length) return '';
   const filled = m.tasks.filter(t => t.description).length;
@@ -408,7 +427,9 @@ function descriptionsBlock(m) {
     const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
     return `
       <div class="mr-desc-item" data-desc-task="${t.id}">
-        <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong>${src ? `<span class="mr-desc-src">${src}</span>` : ''}</div>
+        <div class="mr-desc-main">
+        <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong></div>
+        ${potentialLine(t)}
         ${editing
           ? `<textarea class="input" rows="4" data-desc-input placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
              <div class="mr-desc-actions">
@@ -421,6 +442,11 @@ function descriptionsBlock(m) {
                ${cut ? `<button class="btn small ghost" data-desc-toggle>${full ? 'Свернуть' : 'Показать полностью'}</button>` : ''}
                <button class="btn small ghost" data-desc-edit>✏️ ${t.description ? 'Изменить' : 'Добавить'}</button>
              </div>`}
+        </div>
+        <aside class="mr-desc-side">
+          ${src ? `<span class="mr-desc-src">${src}</span>` : ''}
+          ${rewardLadder(t)}
+        </aside>
       </div>`;
   }).join('');
   return `
@@ -510,7 +536,7 @@ function matrix(m) {
   return `
     <table class="mr-matrix">
       <thead><tr><th class="mr-name">Персонаж</th>${m.tasks.map(t => `
-        <th title="${escapeHtml(thTitle(t))}"><div class="mr-th">${escapeHtml(t.title)}${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}</div>
+        <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div>
         <small class="muted">цель ${t.targetChecks}${maxRewardCoins(t) ? ` · до 🪙${maxRewardCoins(t)}` : ''}</small></th>`).join('')}
         <th>Итого</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:20px">Нет персонажей по фильтру</td></tr>`}</tbody>
@@ -520,7 +546,9 @@ function matrix(m) {
 
 /** Подсказка при наведении на заголовок задания: название на сайте + начало описания. */
 function thTitle(t) {
-  const head = t.siteTitle && t.siteTitle !== t.title ? `${t.title} (на сайте: ${t.siteTitle})` : t.title;
+  const base = t.siteTitle && t.siteTitle !== t.title ? `${t.title} (на сайте: ${t.siteTitle})` : t.title;
+  const pot = rewardPotential(t).text;
+  const head = pot ? `${base}\n🪙 ${pot}` : base;
   if (!t.description) return head;
   const [short] = shortDescription(t.description, 400);
   return `${head}\n\n${short}`;
@@ -535,7 +563,7 @@ function cellHtml(m, charId, taskId, x) {
   else sub = `запас: ${x.reserve} дн.`;
   return `
     <td class="mr-cell mr-s-${x.state}" data-cell="${charId}|${taskId}" title="Нажмите для подробностей">
-      <div class="mr-cell-top"><b>${x.count}</b>/${x.target}${x.adjust ? ' <span class="mr-adj" title="Есть ручная поправка">✎</span>' : ''}${x.hasSite ? '' : ' <span class="muted" title="Нет данных с сайта — считаются ручные отметки">✋</span>'}</div>
+      <div class="mr-cell-top"><b>${x.count}</b>/${x.target}${x.adjust ? ' <span class="mr-adj" title="Есть ручная поправка">✎</span>' : ''}${x.driver === 'manual' ? ` <span class="muted" title="${x.hasSite ? 'Ручных отметок больше, чем засчитал сайт — считаются они' : 'Нет данных с сайта — считаются ручные отметки'}">✋</span>` : ''}</div>
       ${progressBar(x.percent, 'mr-bar-sm')}
       <small>${sub}</small>
     </td>`;
@@ -579,7 +607,6 @@ function bindDetail(root, m) {
   act('sync', () => runSync([m], m.id));
   act('edit', () => openMarathonWizard({ marathon: m }));
   act('move', () => openFolderPicker(m));
-  act('chart', async () => (await import('./charts.js')).showMarathonInfographic(m.id));
   act('complete', async () => {
     if (!confirmDialog(`Завершить «${m.title}»? Награды будут зафиксированы.`)) return;
     m.awards = freezeAwards(m, state.characters);
@@ -666,16 +693,19 @@ function openCellCard(m, charId, taskId) {
     const all = getAllDatesInRange(m.startDate, m.endDate);
     const today = new Date().toLocaleDateString('sv');
     const firstDow = (new Date(all[0] + 'T00:00:00').getDay() + 6) % 7; // Пн = 0
+    const calState = calendarStates(m, task, cell, today);
     const sortedRewards = [...task.rewards].sort((a, b) => a.threshold - b.threshold);
     const editable = m.status !== 'completed';
 
     ov.body.innerHTML = `
       ${task.description ? `<p class="mr-card-desc">${escapeHtml(task.description)}</p>` : ''}
+      ${potentialLine(task)}
       <div class="mr-card-summary mr-s-${x.state}">
-        <div><span class="muted">Итого</span><strong>${x.count} / ${x.target}</strong></div>
+        <div><span class="muted">Итого</span><strong>${x.count} / ${x.target}</strong><small class="muted">${x.driver === 'manual' ? 'по ручным отметкам' : x.driver === 'site' ? 'по данным сайта' : x.driver === 'both' ? 'сайт и отметки совпали' : ''}${x.adjust ? ` · поправка ${x.adjust > 0 ? '+' : ''}${x.adjust}` : ''}</small></div>
         <div><span class="muted">С сайта</span><strong>${x.hasSite ? cell.site : '—'}</strong><small class="muted">${cell.syncedAt ? fmtDateTime(cell.syncedAt) : 'нет данных'}</small></div>
-        <div><span class="muted">Осталось дней</span><strong>${x.left}</strong><small class="muted">запас ${x.reserve}</small></div>
-        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → 🪙${x.next.rewardCoins}` : ''}</small></div>
+        <div><span class="muted">Ручные отметки</span><strong>${x.manual}</strong><small class="muted">дни в календаре</small></div>
+        <div><span class="muted">Осталось дней</span><strong>${x.left}</strong><small class="muted" title="Сколько дней можно пропустить, если считать только сайт / только ручные отметки">запас: сайт ${x.siteReserve === null ? '—' : x.siteReserve} / ручной ${x.manualReserve}</small></div>
+        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → 🪙${x.next.rewardCoins}` : (rewardPotential(task).max ? 'максимум получен' : '')}</small></div>
       </div>
 
       <div class="mr-adjust">
@@ -684,13 +714,19 @@ function openCellCard(m, charId, taskId) {
         <strong>${cell.adjust > 0 ? '+' : ''}${cell.adjust}</strong>
         <button class="btn small" data-adj="1" ${editable ? '' : 'disabled'}>+</button>
         ${cell.adjust ? `<button class="btn small ghost" data-adj="0" ${editable ? '' : 'disabled'}>Сбросить</button>` : ''}
-        <small class="muted">${x.hasSite ? 'Добавляется к данным сайта.' : 'Данных сайта нет: считаются отмеченные дни + поправка.'}</small>
+        <small class="muted">Итого = большее из «С сайта» и «Ручные отметки» + поправка. Можно превысить цель (например, 30/25).</small>
       </div>
 
       ${sortedRewards.length ? `<div class="mr-rewards">${sortedRewards.map(r => `
         <span class="mr-reward ${x.count >= r.threshold ? 'is-reached' : ''}">${x.count >= r.threshold ? '✓' : '○'} ${r.threshold}: ${escapeHtml(r.rewardText || 'награда')} · 🪙${r.rewardCoins}</span>`).join('')}</div>` : ''}
 
-      <h4 class="mr-cal-title">Календарь ${x.hasSite ? '<small class="muted">(синие — прирост по сверкам; отметки дней в итог не идут, пока есть данные сайта)</small>' : '<small class="muted">(нажмите на день, чтобы отметить выполнение)</small>'}</h4>
+      <h4 class="mr-cal-title">Календарь <small class="muted">(нажмите на день, чтобы отметить выполнение вручную)</small></h4>
+      <div class="mr-cal-legend muted">
+        <span><i class="mr-lg is-marked"></i> отмечено</span>
+        <span><i class="mr-lg is-site"></i> засчитано сайтом</span>
+        <span><i class="mr-lg is-spare"></i> запасной день</span>
+        <span><i class="mr-lg is-missed"></i> пропущено</span>
+      </div>
       <div class="mr-cal">
         ${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => `<div class="mr-cal-dow">${d}</div>`).join('')}
         ${'<div></div>'.repeat(firstDow)}
@@ -698,7 +734,7 @@ function openCellCard(m, charId, taskId) {
           const active = isTaskActiveOnDate(task, d, all);
           const marked = cell.marks.includes(d);
           const delta = cell.history[d];
-          return `<button type="button" class="mr-cal-day ${active ? '' : 'is-inactive'} ${marked ? 'is-marked' : ''} ${d === today ? 'is-today' : ''} ${d > today ? 'is-future' : ''}"
+          return `<button type="button" class="mr-cal-day ${active ? '' : 'is-inactive'} ${marked ? 'is-marked' : ''} is-${calState[d] || 'normal'} ${d === today ? 'is-today' : ''} ${d > today ? 'is-future' : ''}"
             data-day="${d}" ${active && editable ? '' : 'disabled'}>
             <span>${Number(d.slice(8))}</span>${delta ? `<small class="mr-cal-delta">+${delta}</small>` : ''}${marked ? '<small>✓</small>' : ''}</button>`;
         }).join('')}

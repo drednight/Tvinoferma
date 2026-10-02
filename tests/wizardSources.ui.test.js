@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { parseNewsHtml } from '../js/modules/marathons/newsParser.js';
 import { fixture, parseSitePage } from './helpers/pageScript.js';
+import { parseNewsList } from '../js/modules/marathons/newsList.js';
 
 // Мастер: «С сайта» и «Из новости» объединены в один блок (issue #3).
-const mocks = vi.hoisted(() => ({ scanner: { id: 'c1', nick: 'Ник', isLoggedIn: true }, news: null, site: null, siteCalls: [] }));
+const mocks = vi.hoisted(() => ({ scanner: { id: 'c1', nick: 'Ник', isLoggedIn: true }, news: null, site: null, siteCalls: [], list: [] }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/sync/authStatus.js', () => ({ getAuthView: () => ({ icon: '' }) }));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({
@@ -12,6 +13,7 @@ vi.mock('../js/modules/marathons/siteSync.js', () => ({
   pickScannerCharacter: () => mocks.scanner,
   isNewsUrl: (u) => /news\.php\?.*article=\d+/i.test(String(u || '')),
   loadNewsPage: vi.fn(async () => ({ marathon: mocks.news, error: null, task: null })),
+  searchNewsList: vi.fn(async () => ({ items: mocks.list, error: null, task: null })),
   parseMarathonPage: vi.fn(async (url) => { mocks.siteCalls.push(url); return { marathon: mocks.site, error: null, task: null }; })
 }));
 
@@ -85,5 +87,35 @@ describe('мастер: один блок «С сайта» с новостью 
     await loadNews({ verify: true });
     await vi.waitFor(() => expect($('.tf-compare')).not.toBeNull());
     expect($('.tf-compare').textContent).toContain('цель в новости 25, на странице отметок 20');
+  });
+});
+
+describe('мастер: поиск новости о марафоне (issue #72 п.4)', () => {
+  it('«Найти новость» показывает марафоны; «Выбрать» подставляет ссылку и разбирает новость', async () => {
+    mocks.list = parseNewsList(fixture('news_list_p2.html'));
+    openMarathonWizard();
+    click('[data-src="site"]');
+    click('[data-act="find-news"]');
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-pick-news]').length).toBe(3));
+    expect($('.tf-news-search').textContent).toContain('Летний марафон');
+    expect($('.tf-news-search').textContent).not.toContain('День смеха');
+    // «показать все»
+    const all = $('[data-news-all]'); all.checked = true; all.dispatchEvent(new Event('change'));
+    expect(document.querySelectorAll('[data-pick-news]').length).toBe(15);
+    all.checked = false; $('[data-news-all]').dispatchEvent(new Event('change'));
+    // выбор найденной новости
+    const pick = [...document.querySelectorAll('[data-pick-news]')].find(b => b.dataset.pickNews.endsWith('article=9046'));
+    pick.click();
+    await vi.waitFor(() => expect($('.tf-src-summary')).not.toBeNull());
+    expect($('[data-news-url]').value).toBe(NEWS_URL);
+    expect($('.tf-src-summary').textContent).toContain('Новость: заданий 15');
+  });
+
+  it('пустой результат: подсказка вместо списка', async () => {
+    mocks.list = [];
+    openMarathonWizard();
+    click('[data-src="site"]');
+    click('[data-act="find-news"]');
+    await vi.waitFor(() => expect($('.tf-news-search .tf-warn')).not.toBeNull());
   });
 });

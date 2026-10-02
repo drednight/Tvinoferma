@@ -9,6 +9,7 @@ import { persist } from '../../core/storage.js';
 import { applySiteQuests } from './model.js';
 import { startTask, errorText } from '../../core/taskLog.js';
 import { parseNewsHtml } from './newsParser.js';
+import { parseNewsList, mergeNewsPages, newsListUrl, NEWS_LIST_PAGES } from './newsList.js';
 import { runQueue, browserSlots, isRetryableCode } from '../sync/queue.js';
 
 export const SITE_PAGES = [
@@ -155,6 +156,48 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
     return { marathon: null, error: 'no_quests', task };
   }
   return { marathon: parsed, error: null, task };
+}
+
+/**
+ * Поиск новостей в архиве событий pwonline.ru (первые NEWS_LIST_PAGES страниц).
+ * Страницы грузятся тем же механизмом, что и новость (fetch_marathon_news: скрытое окно + очистка HTML),
+ * поэтому отдельной команды в Rust не нужно.
+ * → { items: [{id,url,title,date,isoDate}], error, task }; ошибка на одной странице не отменяет найденное на других.
+ */
+export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, onTask } = {}) {
+  const task = startTask('🔎 Поиск новости о марафоне', { dock }).watch('news');
+  onTask?.(task);
+  const loaded = [];
+  let firstError = null;
+  for (let page = 1; page <= pages; page++) {
+    const url = newsListUrl(page);
+    task.log(`Страница ${page} из ${pages}: ${url}`);
+    const wait = new Promise(r => { newsWaiter = r; });
+    try {
+      await invoke('fetch_marathon_news', { url, charId: pickScannerCharacter()?.id || null });
+    } catch (e) {
+      newsWaiter = null;
+      firstError = firstError || String(e);
+      task.log(`Не удалось открыть страницу ${page}: ${e}`, 'warn');
+      continue;
+    }
+    const res = await withTimeout(wait, 60000, { news: null, error: 'timeout' });
+    if (res.error || !res.news?.html) {
+      firstError = firstError || res.error || 'no_article';
+      task.log(`Страница ${page}: ${errorText(res.error || 'no_article')}`, 'warn');
+      continue;
+    }
+    const items = parseNewsList(res.news.html);
+    task.log(`Страница ${page}: новостей ${items.length}`);
+    loaded.push(items);
+  }
+  const items = mergeNewsPages(loaded);
+  if (!items.length) {
+    task.finish(`Список новостей не получен: ${errorText(firstError || 'пусто')}`, 'error');
+    return { items: [], error: firstError || 'empty', task };
+  }
+  task.finish(`Загружено новостей: ${items.length}`, loaded.length < pages ? 'warn' : 'done');
+  return { items, error: null, task };
 }
 
 /* ------------------------------------------------------------------ */

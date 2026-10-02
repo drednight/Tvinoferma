@@ -66,15 +66,16 @@
 .tf-mx-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); max-height: 70vh; }
 .mr-matrix { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .85rem; }
 .mr-matrix th, .mr-matrix td { padding: 6px; border-bottom: 1px solid var(--border); text-align: center; }
-.mr-matrix thead th { position: sticky; top: 0; background: var(--panel-2); z-index: 2; min-width: 120px; vertical-align: bottom; }
+.mr-matrix thead th { position: sticky; top: 0; background: var(--panel-2); z-index: 2; box-sizing: border-box; min-width: 80px; padding: 6px 12px; vertical-align: bottom; }
 .mr-matrix tfoot td { position: sticky; bottom: 0; background: var(--panel-2); }
-.mr-th { max-width: 160px; margin: 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.mr-name { position: sticky; left: 0; background: var(--panel); z-index: 1; text-align: left !important; min-width: 150px; white-space: nowrap; }
-.mr-matrix thead .mr-name { z-index: 3; background: var(--panel-2); }
+/* название переносится (до 3 строк), чтобы все задания умещались в ширину; ⓘ закреплена в правом верхнем углу */
+.mr-th { margin: 0 auto; font-weight: 600; line-height: 1.2; overflow: hidden; overflow-wrap: break-word; font-size: .82rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.mr-name { position: sticky; left: 0; background: var(--panel); z-index: 1; text-align: left !important; min-width: 110px; white-space: nowrap; }
+.mr-matrix thead .mr-name { z-index: 3; background: var(--panel-2); padding: 6px; }
 .mr-group td { background: rgba(187,154,247,.08); color: var(--accent-2); font-weight: 700; text-align: left !important; position: sticky; left: 0; }
-.mr-total { min-width: 80px; }
+.mr-total { min-width: 64px; }
 
-.mr-cell { cursor: pointer; min-width: 120px; transition: filter .15s; border-left: 3px solid transparent; }
+.mr-cell { cursor: pointer; box-sizing: border-box; min-width: 84px; transition: filter .15s; border-left: 3px solid transparent; }
 .mr-cell:hover { filter: brightness(1.25); }
 .mr-cell-top { font-size: .95rem; margin-bottom: 4px; }
 .mr-cell small { display: block; margin-top: 4px; font-size: .74rem; }
@@ -101,7 +102,7 @@ tr.is-syncing td { animation: mr-pulse 1.2s ease-in-out infinite; }
 .mr-table tfoot td { border-bottom: none; }
 
 /* --- карточка ячейки --- */
-.mr-card-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; border-radius: 10px; }
+.mr-card-summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 12px; border-radius: 10px; }
 .mr-card-summary > div { display: flex; flex-direction: column; gap: 2px; }
 .mr-card-summary strong { font-size: 1.3rem; }
 .mr-adjust { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 14px 0; }
@@ -120,7 +121,17 @@ tr.is-syncing td { animation: mr-pulse 1.2s ease-in-out infinite; }
 .mr-cal-day.is-future { opacity: .65; }
 .mr-cal-day.is-today { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .mr-cal-day.is-marked { background: rgba(158,206,106,.2); border-color: var(--mr-done); }
+.mr-cal-day.is-site { background: rgba(122,162,247,.16); border-color: rgba(122,162,247,.5); }
+.mr-cal-day.is-spare { background: rgba(224,175,104,.16); border-color: rgba(224,175,104,.55); opacity: 1; }
+.mr-cal-day.is-missed { background: rgba(247,118,142,.22); border-color: #f7768e; opacity: 1; }
 .mr-cal-day small { font-size: .65rem; line-height: 1; }
+.mr-cal-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: .75rem; margin-bottom: 8px; }
+.mr-cal-legend .mr-lg { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1px solid var(--border); vertical-align: -1px; }
+.mr-lg.is-marked { background: rgba(158,206,106,.4); border-color: var(--mr-done); }
+.mr-lg.is-site { background: rgba(122,162,247,.35); }
+.mr-lg.is-spare { background: rgba(224,175,104,.4); }
+.mr-lg.is-missed { background: rgba(247,118,142,.5); }
+.mr-desc-coins { margin: 2px 0 0; font-size: .8rem; color: var(--mr-gold, #e0af68); }
 .mr-cal-delta { color: var(--accent); font-weight: 700; }
 
 /* ===================== Мастер ===================== */
@@ -269,11 +280,19 @@ tr.is-syncing td { animation: mr-pulse 1.2s ease-in-out infinite; }
 .mr-descs { margin: 10px 0; }
 .mr-descs > summary { cursor: pointer; font-weight: 600; }
 .mr-desc-list { display: grid; gap: 8px; margin-top: 8px; }
-.mr-desc-item { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
+.mr-desc-item { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 12px; align-items: start; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel-2); }
+.mr-desc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.mr-desc-side .mr-desc-coins { width: 100%; margin: 0; padding: 6px 8px; border: 1px solid rgba(224,175,104,.3); border-radius: 8px; background: rgba(224,175,104,.07); }
+.mr-desc-coins-head { font-size: .8rem; font-weight: 600; }
+.mr-desc-tiers { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; font-size: .78rem; color: var(--muted); }
+.mr-desc-tiers li { display: flex; justify-content: space-between; gap: 8px; }
+.mr-desc-tiers li.is-max, .mr-desc-tiers li.is-max b { color: var(--mr-gold, #e0af68); }
+@media (max-width: 760px) { .mr-desc-item { grid-template-columns: 1fr; } .mr-desc-side { align-items: stretch; flex-direction: column-reverse; } }
 .mr-desc-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; flex-wrap: wrap; }
 .mr-desc-text { white-space: pre-line; margin: 4px 0 0; font-size: .88rem; word-break: break-word; }
 .mr-desc-src { font-size: .72rem; opacity: .7; }
 .mr-desc-item textarea { width: 100%; resize: vertical; margin-top: 6px; }
 .mr-desc-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .mr-card-desc { margin: 0 0 10px; padding: 8px 10px; border-left: 3px solid var(--accent); background: var(--panel-2); border-radius: 0 8px 8px 0; font-size: .88rem; white-space: pre-line; }
-.mr-th-info { margin-left: 4px; cursor: help; font-size: .75rem; opacity: .75; }
+.mr-th-info { position: absolute; top: 3px; right: 5px; line-height: 1; cursor: help; font-size: .8rem; opacity: .85; }
+.mr-th-info:hover { opacity: 1; }

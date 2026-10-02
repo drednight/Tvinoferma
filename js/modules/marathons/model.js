@@ -245,10 +245,27 @@ export function maxRewardCoins(task) {
   return Math.max(0, ...(task.rewards || []).map(r => Number(r.rewardCoins) || 0));
 }
 
+/** Сколько ДМ можно получить за задание (максимальный порог) и по каким порогам: «до 10 ДМ (15 → 5, 25 → 10)». */
+export function rewardPotential(task) {
+  const tiers = [...(task.rewards || [])]
+    .filter(r => Number(r.rewardCoins) > 0)
+    .sort((a, b) => a.threshold - b.threshold)
+    .map(r => ({ threshold: r.threshold, coins: Number(r.rewardCoins) || 0 }));
+  const max = maxRewardCoins(task);
+  const text = !max ? '' : tiers.length > 1
+    ? `до ${max} ДМ за задание (${tiers.map(t => `${t.threshold} → ${t.coins}`).join(', ')})`
+    : `${max} ДМ за задание`;
+  return { max, tiers, text };
+}
+
 /**
  * Полный расчёт ячейки.
- * count = данные сайта + поправка; если сайта нет — отмеченные дни + поправка.
- * reserve = оставшиеся активные дни − оставшиеся выполнения.
+ * Сверка с сайтом и ручные отметки идут ПАРАЛЛЕЛЬНО (issue #72, п.3):
+ *   count = max(данные сайта, ручные отметки в календаре) + поправка.
+ * Берётся большее, чтобы день, отмеченный и на сайте, и вручную, не считался дважды;
+ * count не ограничивается целью: 30/25 — допустимо.
+ * reserve = оставшиеся активные дни − оставшиеся выполнения; отдельно считается запас
+ * по данным сайта (siteReserve) и по ручному вводу (manualReserve).
  */
 export function computeCell(m, charId, taskId, today = todayStr()) {
   const task = m.tasks.find(t => t.id === taskId);
@@ -258,12 +275,18 @@ export function computeCell(m, charId, taskId, today = todayStr()) {
   const target = Number(task.targetChecks) || 0;
 
   const hasSite = data && data.site !== null && data.site !== undefined;
-  const base = hasSite ? Number(data.site) : (data?.marks?.length || 0);
+  const site = hasSite ? Number(data.site) || 0 : 0;
+  const manual = data?.marks?.length || 0;
+  const base = Math.max(site, manual);
   const adjust = Number(data?.adjust) || 0;
   const count = Math.max(0, base + adjust);
   const remaining = Math.max(0, target - count);
   const left = daysLeft(m, task, today);
   const reserve = left - remaining;
+  const siteReserve = hasSite ? left - Math.max(0, target - Math.max(0, site + adjust)) : null;
+  const manualReserve = left - Math.max(0, target - Math.max(0, manual + adjust));
+  // Что даёт итог: 'site' | 'manual' | 'both' (поровну) | 'none'
+  const driver = !base ? 'none' : !hasSite || manual > site ? 'manual' : manual === site ? 'both' : 'site';
   const { reached, next } = rewardFor(task, count);
 
   let stateKey;
@@ -276,11 +299,54 @@ export function computeCell(m, charId, taskId, today = todayStr()) {
   else stateKey = 'ok';
 
   return {
-    assigned, task, target, count, base, adjust, hasSite, remaining, left, reserve,
+    assigned, task, target, count, base, adjust, hasSite, site, manual, driver, siteReserve, manualReserve, remaining, left, reserve,
     reached, next, coins: assigned && reached ? Number(reached.rewardCoins) || 0 : 0,
     state: stateKey, data,
     percent: target > 0 ? Math.min(100, Math.round((count / target) * 100)) : 0
   };
+}
+
+/**
+ * Раскраска календаря задания (issue #72, п.6). Возвращает { 'YYYY-MM-DD': состояние }:
+ *  inactive — задание в этот день не выдаётся;
+ *  marked   — день отмечен вручную;
+ *  site     — прирост по сверке с сайтом в этот день, или день засчитан сайтом без даты;
+ *  missed   — день прошёл, а выполнения нет (красный);
+ *  spare    — запасной день впереди (жёлтый); их ровно `reserve`, с каждым пропуском становится меньше;
+ *  normal   — обычный день впереди.
+ * Когда цель достигнута, пропуски и запас не показываются.
+ */
+export function calendarStates(m, task, cell, today = todayStr()) {
+  const all = getAllDatesInRange(m.startDate, m.endDate);
+  const marks = new Set(cell?.marks || []);
+  const history = cell?.history || {};
+  const out = {};
+  const pastUncovered = [];
+  const futureOpen = [];
+  let dated = 0;
+
+  all.forEach(d => {
+    if (!isTaskActiveOnDate(task, d, all)) { out[d] = 'inactive'; return; }
+    const covered = marks.has(d) || Number(history[d]) > 0;
+    if (covered) { out[d] = marks.has(d) ? 'marked' : 'site'; dated++; }
+    if (d < today) { if (!covered) pastUncovered.push(d); }
+    else if (!covered) { out[d] = 'normal'; futureOpen.push(d); }
+  });
+
+  const count = cell ? Math.max(0, Math.max(Number(cell.site) || 0, marks.size) + (Number(cell.adjust) || 0)) : 0;
+  const target = Number(task.targetChecks) || 0;
+  const done = target > 0 && count >= target;
+
+  // Выполнения, которые сайт засчитал без даты, «закрывают» самые ранние пропущенные дни
+  const credits = Math.max(0, count - dated);
+  pastUncovered.forEach((d, i) => { out[d] = done || i < credits ? 'site' : 'missed'; });
+
+  if (!done) {
+    // Запас = свободные дни впереди − сколько ещё нужно выполнить
+    const reserve = Math.max(0, Math.min(futureOpen.length, futureOpen.length - Math.max(0, target - count)));
+    futureOpen.slice(futureOpen.length - reserve).forEach(d => { out[d] = 'spare'; });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ */
