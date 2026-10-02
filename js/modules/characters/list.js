@@ -16,6 +16,7 @@ import { openCharacterProfile, openCharacterForm } from './index.js';
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView } from '../sync/authStatus.js';
+import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 
 // Персонажи, видимые после фильтров (для «выбрать все»)
 let visibleIds = [];
@@ -53,19 +54,9 @@ function initFilters() {
 
   if (!searchInput || !classSelect || !partySelect || !authSelect) return;
 
-  // Заполнение классов
-  const uniqueClasses = [...new Set(state.characters.map(c => c.class).filter(Boolean))];
-  uniqueClasses.sort((a, b) => a.localeCompare(b, 'ru'));
-
-  classSelect.innerHTML = '<option value="">Все классы</option>' + 
-    uniqueClasses.map(cls => `<option value="${escapeHtml(cls)}">${escapeHtml(cls)}</option>`).join('');
-
-  // Заполнение пати
-  const uniqueParties = [...new Set(state.characters.map(c => c.party).filter(Boolean))];
-  uniqueParties.sort((a, b) => a.localeCompare(b, 'ru'));
-
-  partySelect.innerHTML = '<option value="">Все пати</option><option value="__none__">Без пати</option>' + 
-    uniqueParties.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+  // Классы и пати (при каждой отрисовке списка пересобираются заново — см. renderFilteredGrid)
+  fillClassFilter(classSelect, state.characters);
+  fillPartyFilter(partySelect, state.characters);
 
   // ЗАПОЛНЕНИЕ АВТОРИЗАЦИИ (СТАТИЧЕСКИЙ СПИСОК)
   authSelect.innerHTML = `
@@ -111,51 +102,22 @@ function renderFilteredGrid() {
   const gridEl = document.getElementById('character-grid');
   if (!gridEl) return;
 
-  const searchTerm = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
-  const selectedClass = document.getElementById('class-filter')?.value || '';
-  const selectedParty = document.getElementById('party-filter')?.value || '';
-  const selectedAuth = document.getElementById('auth-filter')?.value || ''; 
+  // Варианты фильтров собираем из актуального state.characters при каждой отрисовке:
+  // новый класс/пати/тег сразу появляется в списке, исчезнувший — сбрасывает фильтр (issue #2)
+  const selectedClass = fillClassFilter(document.getElementById('class-filter'), state.characters);
+  const selectedParty = fillPartyFilter(document.getElementById('party-filter'), state.characters);
+  const selectedAuth = document.getElementById('auth-filter')?.value || '';
   const tagSelect = document.getElementById('tag-filter');
-  if (tagSelect) fillTagFilter(tagSelect); // новые теги сразу появляются в фильтре
+  if (tagSelect) fillTagFilter(tagSelect);
   const selectedTag = tagSelect?.value || '';
 
-  let filteredChars = state.characters;
-
-  // 1. Поиск по нику (и по тегам: «#тег» или просто слово)
-  if (searchTerm) {
-    const term = searchTerm.replace(/^#/, '');
-    filteredChars = filteredChars.filter(c => c.nick.toLowerCase().includes(searchTerm) ||
-      (c.tags || []).some(t => t.toLowerCase().includes(term)));
-  }
-
-  // 1a. Фильтр по тегу
-  if (selectedTag === '__none__') {
-    filteredChars = filteredChars.filter(c => !(c.tags || []).length);
-  } else if (selectedTag) {
-    const tl = selectedTag.toLowerCase();
-    filteredChars = filteredChars.filter(c => (c.tags || []).some(t => t.toLowerCase() === tl));
-  }
-
-  // 2. Фильтр по классу
-  if (selectedClass) {
-    filteredChars = filteredChars.filter(c => c.class === selectedClass);
-  }
-
-  // 3. Фильтр по пати
-  if (selectedParty) {
-    if (selectedParty === '__none__') {
-      filteredChars = filteredChars.filter(c => !c.party);
-    } else {
-      filteredChars = filteredChars.filter(c => c.party === selectedParty);
-    }
-  }
-
-  // 4. НОВЫЙ ФИЛЬТР ПО АВТОРИЗАЦИИ
-  if (selectedAuth === 'online') {
-    filteredChars = filteredChars.filter(c => c.isLoggedIn === true);
-  } else if (selectedAuth === 'offline') {
-    filteredChars = filteredChars.filter(c => c.isLoggedIn !== true);
-  }
+  const filteredChars = filterCharacters(state.characters, {
+    search: document.getElementById('search-input')?.value || '',
+    tag: selectedTag,
+    cls: selectedClass,
+    party: selectedParty,
+    auth: selectedAuth
+  });
 
   // ОБНОВЛЯЕМ KPI НА ОСНОВЕ ОТФИЛЬТРОВАННЫХ ДАННЫХ
   updateKPIs(filteredChars);
