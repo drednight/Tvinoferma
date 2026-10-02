@@ -7,7 +7,7 @@ use tauri::{command, AppHandle, Emitter};
 const CHESTS_URL: &str = "https://pwonline.ru/chests2.php";
 const SCRIPT: &str = include_str!("scripts/balance.js");
 
-/// Результат: `{ charId, balance: number | null, error: null | "not_logged_in" | "timeout" | ... }`.
+/// Результат: `{ charId, balance: number | null (может быть дробным, 1 знак), error: null | "not_logged_in" | "timeout" | ... }`.
 /// Дублируется событием `pw-balance-result-global`.
 #[command]
 pub async fn fetch_and_parse_balance_v4(
@@ -21,8 +21,9 @@ pub async fn fetch_and_parse_balance_v4(
     navigate_clean(task.window(), CHESTS_URL).await?;
 
     let (balance, error) = match eval_and_wait(task.window(), SCRIPT, "#TF_BAL_V5_", timeout_seconds.unwrap_or(15), &scope).await {
-        Some((None, data)) => match data.as_i64() {
-            Some(v) if v >= 0 => (Some(v), None),
+        Some((None, data)) => match data.as_f64() {
+            // Баланс бывает дробным (28,5): храним с точностью до 0,1
+            Some(v) if v.is_finite() && v >= 0.0 => (Some((v * 10.0).round() / 10.0), None),
             _ => (None, Some("parse_nan".to_string())),
         },
         Some((Some(err), _)) => (None, Some(err)),

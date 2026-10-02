@@ -3,6 +3,8 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
+import { formatCoins } from '../../core/coins.js';
+import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
@@ -24,30 +26,13 @@ export function openCharacterProfile(char) {
   const sky = char.sky || {};
   const contacts = char.contacts || {};
   
-  // --- ИСПРАВЛЕНИЕ ЛОГИКИ ПОЛУЧЕНИЯ ИСТОРИИ ---
-  // 1. Берем копию массива истории
-  let historyList = [...(char.coinHistory || [])];
-  
-  // 2. Сортируем по дате убывания (самые новые сверху)
-  // Это гарантирует, что даже если порядок в массиве был странным, 
-  // мы покажем именно последние события.
-  historyList.sort((a, b) => {
-      const dateA = new Date(a.date || a.createdAt).getTime();
-      const dateB = new Date(b.date || b.createdAt).getTime();
-      return dateB - dateA; // Убывание (новые первыми)
-  });
-
-  // 3. Берем только первые 5 записей (которые теперь являются самыми свежими)
-  const recentHistory = historyList.slice(0, 5);
-  // ------------------------------------------------
-
   // Форматирование даты последнего обновления баланса (для шапки)
   let lastUpdateStr = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
   if (char.lastCoinUpdate) {
     try {
       const d = new Date(char.lastCoinUpdate);
       if (!isNaN(d.getTime())) {
-        lastUpdateStr = `<span class="muted" style="font-size:0.7rem;">Обновлено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
+        lastUpdateStr = `<span class="muted" style="font-size:0.7rem;">Проверено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
       }
     } catch(e) {}
   }
@@ -82,7 +67,7 @@ export function openCharacterProfile(char) {
           
           <!-- БЛОК МОНЕТ С КНОПКОЙ ОБНОВЛЕНИЯ -->
           <div style="margin-left:auto; text-align:right; min-width:120px;">
-            <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${(char.ancientCoins || 0).toLocaleString('ru-RU')}</div>
+            <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
             <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
             
             ${lastUpdateStr}
@@ -191,42 +176,6 @@ export function openCharacterProfile(char) {
           </div>
         </div>
 
-        <!-- История Транзакций (ОБНОВЛЕННЫЙ БЛОК) -->
-        <div class="info-block">
-          <h4>История транзакций (последние 5)</h4>
-          ${recentHistory.length > 0 ? `
-            <ul style="list-style:none; padding:0; margin:0; font-size:0.85rem;">
-              ${recentHistory.map(h => {
-                // Используем поле date или createdAt в зависимости от структуры
-                const timestamp = h.date || h.createdAt;
-                const d = new Date(timestamp);
-                let dateTimeStr = 'Неизвестно';
-                
-                if (!isNaN(d.getTime())) {
-                    const datePart = d.toLocaleDateString('ru-RU');
-                    const timePart = d.toLocaleTimeString('ru-RU', { 
-                        hour: '2-digit', 
-                        minute: '2-digit', 
-                        second: '2-digit',
-                        hour12: false 
-                    });
-                    dateTimeStr = `${datePart} ${timePart}`;
-                }
-
-                return `
-                  <li style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.1); align-items:flex-start;">
-                      <div style="flex-grow:1; margin-right:10px;">
-                          <div style="font-weight:bold; color:var(--text-main); margin-bottom:2px;">${dateTimeStr}</div>
-                          <div style="font-size:0.8rem; color:#888;">${escapeHtml(h.note || 'Операция')}</div>
-                      </div>
-                      <strong style="color:${h.delta >= 0 ? 'var(--success)' : 'var(--danger)'}; white-space:nowrap;">${h.delta >= 0 ? '+' : ''}${h.delta}</strong>
-                  </li>
-                `;
-              }).join('')}
-            </ul>
-          ` : '<p class="muted">История пуста.</p>'}
-        </div>
-        
       </div>
       
       <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С НОВЫМИ КНОПКАМИ -->
@@ -241,6 +190,9 @@ export function openCharacterProfile(char) {
          <div style="display:flex; gap:10px;">
             <button id="btn-open-sync-helper-footer" class="btn secondary" title="Открыть браузер для входа">
                🔑 Открыть сайт
+            </button>
+            <button id="btn-coin-history-footer" class="btn secondary" title="История изменений баланса Древних монет">
+               🪙 История
             </button>
          </div>
 
@@ -340,6 +292,9 @@ export function openCharacterProfile(char) {
         }
       };
     }
+
+    // История Древних монет (рядом с «Открыть сайт»)
+    document.getElementById('btn-coin-history-footer')?.addEventListener('click', () => openCoinHistory(char.id));
 
     // NEW: Open Site / Sync Helper Button (в футере)
     const syncFooterBtn = document.getElementById('btn-open-sync-helper-footer');

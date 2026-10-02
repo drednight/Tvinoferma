@@ -96,7 +96,9 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-    min-width: 220px;
+    min-width: 300px;
+    width: max-content;
+    max-width: calc(100vw - 32px);
     padding: 8px 0;
     z-index: 900;
     animation: slideDownFade 0.2s ease-out forwards;
@@ -116,6 +118,7 @@
     border: none;
     color: var(--text-primary);
     font-size: 0.9rem;
+    white-space: nowrap;
     cursor: pointer;
     transition: background 0.2s, color 0.2s;
 }

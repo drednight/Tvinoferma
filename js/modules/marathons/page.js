@@ -5,6 +5,7 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
+import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
 import { confirmDialog, toast } from '../../core/ui.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { openOverlay } from './overlay.js';
@@ -22,7 +23,7 @@ const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: n
 
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-const coin = (n) => `🪙 ${Number(n || 0).toLocaleString('ru-RU')}`;
+const coin = (n) => `🪙 ${formatCoins(n || 0)}`;
 const charById = (id) => state.characters.find(c => c.id === id);
 const findM = (id) => state.marathons.find(m => m.id === id);
 
@@ -468,8 +469,8 @@ function coinsSection(m, t) {
     const now = charById(cid);
     const endCoins = e ? e.coins : (now?.lastCoinUpdate ? Number(now.ancientCoins) || 0 : null);
     if (!s || endCoins === null) return '<span class="muted">—</span>';
-    const d = endCoins - s.coins;
-    return `<span class="${d >= 0 ? 'mr-green' : 'mr-red'}">${d >= 0 ? '+' : ''}${d.toLocaleString('ru-RU')}</span>`;
+    const d = roundCoins(endCoins - s.coins);
+    return `<span class="${d >= 0 ? 'mr-green' : 'mr-red'}">${formatDelta(d)}</span>`;
   };
   const charRows = m.participantIds.map(cid => ({ cid, ...t.perChar[cid] })).sort((a, b) => b.coins - a.coins);
   const hasBonus = (m.bonuses || []).length > 0;

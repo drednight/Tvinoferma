@@ -3,6 +3,7 @@
 import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml, nowISO } from '../../core/utils.js';
+import { roundCoins, applyCoinBalance } from '../../core/coins.js';
 import { showModal, toast } from '../../core/ui.js';
 import { renderCharacters, allTags } from './list.js';
 import { renderParties } from '../parties/index.js';
@@ -179,7 +180,7 @@ export function openCharacterForm(char = null) {
         <h4 style="color:gold; margin-top:0;">💰 Древние монеты</h4>
         <div class="field">
           <label>Текущий баланс (можно изменить вручную)</label>
-          <input class="input" type="number" name="coins" value="${currentCoins}" min="0" style="font-size:1.2rem; font-weight:bold; color:gold;" />
+          <input class="input" type="number" name="coins" value="${currentCoins}" min="0" step="0.1" style="font-size:1.2rem; font-weight:bold; color:gold;" />
           <small class="help-text" style="display:block; margin-top:4px; color:#888;">
              ${lastUpdateHint}
           </small>
@@ -210,26 +211,22 @@ export function openCharacterForm(char = null) {
 
         // Парсим новый баланс монет
         const rawCoins = formData.get('coins');
-        const newCoinsVal = parseInt(rawCoins, 10);
-        const finalCoins = isNaN(newCoinsVal) ? 0 : Math.max(0, newCoinsVal);
+        // (число из <input type="number"> всегда с точкой; допускаем и запятую; округление до 0,1)
+        const newCoinsVal = Number(String(rawCoins ?? '').replace(',', '.'));
+        const finalCoins = isFinite(newCoinsVal) ? Math.max(0, roundCoins(newCoinsVal)) : 0;
 
-        // Логика обработки изменения монет
-        let updatedLastCoinDate = currentChar.lastCoinUpdate;
-        let newHistoryEntry = null;
-        const oldCoins = currentChar.ancientCoins || 0;
-
-        // Если это редактирование И баланс изменился
-        if (isEdit && oldCoins !== finalCoins) {
-           updatedLastCoinDate = nowISO();
-           
-           // Создаем запись в истории
-           newHistoryEntry = {
-             id: crypto.randomUUID(),
-             date: updatedLastCoinDate,
-             delta: finalCoins - oldCoins,
-             note: 'Ручное изменение в редакторе',
-             balanceAfter: finalCoins
-           };
+        // Логика обработки изменения монет: запись в историю и дата — только если баланс изменился
+        const coinState = {
+          ancientCoins: currentChar.ancientCoins || 0,
+          lastCoinUpdate: currentChar.lastCoinUpdate,
+          coinHistory: currentChar.coinHistory || []
+        };
+        if (isEdit) {
+          if (roundCoins(coinState.ancientCoins) !== finalCoins) {
+            applyCoinBalance(coinState, finalCoins, { note: 'Ручное изменение в редакторе' });
+          }
+        } else {
+          coinState.ancientCoins = finalCoins;
         }
 
         const newCharData = {
@@ -257,13 +254,10 @@ export function openCharacterForm(char = null) {
           tags: normalizeTags(formData.get('tags')),
           
           // ОБНОВЛЯЕМ БАЛАНС И ДАТУ
-          ancientCoins: finalCoins,
-          lastCoinUpdate: updatedLastCoinDate,
-          
-          // ДОБАВЛЯЕМ ЗАПИСЬ В ИСТОРИЮ, ЕСЛИ БЫЛО ИЗМЕНЕНИЕ
-          coinHistory: newHistoryEntry 
-            ? [newHistoryEntry, ...(currentChar.coinHistory || [])] 
-            : (currentChar.coinHistory || []),
+          ancientCoins: coinState.ancientCoins,
+          lastCoinUpdate: coinState.lastCoinUpdate,
+          // история: запись добавляется только при изменении баланса
+          coinHistory: coinState.coinHistory,
             
           updatedAt: nowISO()
         };

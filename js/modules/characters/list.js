@@ -3,6 +3,7 @@
 import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
+import { formatCoins } from '../../core/coins.js';
 import { toast, showModal, confirmDialog } from '../../core/ui.js';
 import { renderParties } from '../parties/index.js';
 
@@ -214,7 +215,7 @@ function generateCardHTML(char) {
       `;
     }).join('');
 
-    const coinsDisplay = char.ancientCoins ? char.ancientCoins.toLocaleString('ru-RU') : '0';
+    const coinsDisplay = formatCoins(char.ancientCoins || 0);
     const partyLabel = char.party ? escapeHtml(char.party) : 'Без пати';
 
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
@@ -346,7 +347,7 @@ function updateKPIs(charsToCount) {
 
   // 4. Сумма древних монет
   const totalCoins = charsToCount.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0);
-  document.getElementById('kpi-coins').textContent = totalCoins.toLocaleString('ru-RU');
+  document.getElementById('kpi-coins').textContent = formatCoins(totalCoins);
 
   // 5. Онлайн (Авторизовано)
   const onlineCount = charsToCount.filter(c => c.isLoggedIn === true).length;

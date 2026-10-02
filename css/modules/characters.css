@@ -311,3 +311,7 @@
   display: grid;
   gap: 4px;
 }
+/* ===== Окно «История Древних монет» ===== */
+.ch-entry { grid-template-columns: 150px 22px 1fr; }
+.ch-up { color: var(--success, #9ece6a); }
+.ch-down { color: var(--danger, #f7768e); }

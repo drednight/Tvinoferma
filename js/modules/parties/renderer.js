@@ -3,6 +3,7 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
+import { formatCoins, roundCoins } from '../../core/coins.js';
 import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
@@ -16,7 +17,7 @@ let expandedParties = new Set();
 function calculatePartyStats(members) {
     if (!members || members.length === 0) return { totalCoins: 0, onlineCount: 0 };
     
-    const totalCoins = members.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0);
+    const totalCoins = roundCoins(members.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0));
     const onlineCount = members.filter(c => c.isLoggedIn === true).length;
     return { totalCoins, onlineCount };
 }
@@ -122,7 +123,7 @@ export function renderPartiesGrid() {
         const isExpanded = expandedParties.has(name);
         const stats = calculatePartyStats(members);
         
-        const coinsDisplay = stats.totalCoins > 0 ? `${stats.totalCoins.toLocaleString('ru-RU')} 🪙` : '';
+        const coinsDisplay = stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : '';
         const memberCountLabel = `${members.length} чел.`;
         const isDraggable = name !== 'Без пати';
 

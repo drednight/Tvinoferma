@@ -8,6 +8,7 @@ import { renderCharacters } from '../characters/list.js';
 import { renderParties } from '../parties/index.js'; // <-- Импорт из новой структуры
 import { invoke } from '@tauri-apps/api/core';
 import { escapeHtml } from '../../core/utils.js';
+import { applyCoinBalance, formatCoins } from '../../core/coins.js';
 import { showModal, closeModal } from '../../core/ui.js';
 
 // Импортируем скрипты запуска задач
@@ -132,21 +133,11 @@ export function applyBalanceResult(payload, { final = true } = {}) {
     }
     if (balance === null || balance < 0) return { char, changed: false };
 
-    const oldBalance = char.ancientCoins || 0;
-    char.ancientCoins = balance;
-    char.lastCoinUpdate = new Date().toISOString();
     char.isLoggedIn = true; // баланс прочитан — значит вход есть
-    if (oldBalance !== balance) {
-        char.coinHistory = [{
-            id: crypto.randomUUID(),
-            date: char.lastCoinUpdate,
-            delta: balance - oldBalance,
-            note: 'Автосинхронизация PW Online',
-            balanceAfter: balance
-        }, ...(char.coinHistory || [])];
-    }
-    logScope(`char:${charId}`, `${char.nick}: баланс ДМ ${balance}`, 'ok');
-    return { char, changed: true, delta: balance - oldBalance };
+    // Баланс не изменился — обновляется только дата проверки (запись «+0» в историю не пишется)
+    const { delta, changed: balanceChanged } = applyCoinBalance(char, balance);
+    logScope(`char:${charId}`, `${char.nick}: баланс ДМ ${formatCoins(balance)}${balanceChanged ? '' : ' (без изменений)'}`, 'ok');
+    return { char, changed: true, delta };
 }
 
 function rerender() {

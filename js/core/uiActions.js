@@ -4,7 +4,6 @@ import { openCharacterForm } from '../modules/characters/index.js';
 // Добавили refreshAllMarathonStats к импортам
 import { refreshAllLoginStatuses, refreshAllBalances, refreshAllMarathonStats } from '../modules/sync/syncManager.js'; 
 import { toast } from './ui.js';
-import { openTaskJournal } from './taskLog.js';
 import { openCreatePartyModal } from '../modules/parties/manager.js'; 
 
 /**
@@ -108,8 +107,6 @@ function setupScriptsMenu() {
                 await handleRunScript('update-balance');
             } else if (action === 'update-marathons') {
                 await handleRunScript('update-marathons');
-            } else if (action === 'task-journal') {
-                openTaskJournal();
             } else {
                 console.warn(`[UI] Unknown script action: ${action}`);
             }

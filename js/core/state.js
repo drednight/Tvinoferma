@@ -3,6 +3,7 @@ import { migrateMarathon } from '../modules/marathons/model.js';
 import { SCHEMA_VERSION, migrateState } from './migrations.js';
 import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
+import { roundCoins, normalizeCoinHistory } from './coins.js';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -86,7 +87,7 @@ export function normalizeCharacter(input = {}) {
     stats: normalizeStats(input.stats),
     tags: normalizeTags(input.tags),
 
-    ancientCoins: Number(input.ancientCoins) || 0,
+    ancientCoins: roundCoins(Number(input.ancientCoins) || 0),
     lastCoinUpdate: input.lastCoinUpdate || null,
 
     // --- Данные синхронизации с pwonline.ru (раньше терялись при перезапуске) ---
@@ -95,7 +96,8 @@ export function normalizeCharacter(input = {}) {
     marathonData: input.marathonData && typeof input.marathonData === 'object'
       ? input.marathonData
       : null,
-    coinHistory: Array.isArray(input.coinHistory) ? input.coinHistory : [],
+    // История Древних монет: без записей «+0», не более 10 последних
+    coinHistory: normalizeCoinHistory(input.coinHistory),
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
   };

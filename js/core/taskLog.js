@@ -1,14 +1,16 @@
 // js/core/taskLog.js
-// Журнал фоновых задач (поиск марафонов, сверка, проверка входа, балансы).
+// Логи скриптов: автоматические задачи (проверка входа, балансы, поиск и сверка марафонов).
+// Ручные действия пользователя сюда не пишутся. Открывается из «Настроек».
 // Каждая задача показывает процент, текущий шаг и раскрывающийся список действий;
 // после завершения лог можно открыть и скопировать. Последние задачи сохраняются.
 
 import { listen } from '@tauri-apps/api/event';
 import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
+import { confirmDialog } from './ui.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
-const MAX_TASKS = 30;
+const MAX_TASKS = 300;
 const MAX_ENTRIES = 500;
 const DOCK_AUTOHIDE_MS = 20000;
 
@@ -36,15 +38,18 @@ let listenerReady = false;
 function loadJournal() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(raw) ? raw.map(t => Object.assign(new Task(), t)) : [];
+    // записи ручных операций (kind: 'operation') из промежуточной версии в логи скриптов не входят
+    return Array.isArray(raw) ? raw.filter(t => t.kind !== 'operation').map(t => Object.assign(new Task(), t)) : [];
   } catch (_) { return []; }
 }
 function saveJournal() {
-  try {
-    const finished = tasks.filter(t => t.status !== 'running').slice(0, MAX_TASKS)
-      .map(t => ({ ...t, scopes: [], open: false }));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(finished));
-  } catch (_) { /* переполнение хранилища не критично */ }
+  let finished = tasks.filter(t => t.status !== 'running').slice(0, MAX_TASKS)
+    .map(t => ({ ...t, scopes: [], open: false }));
+  // При переполнении localStorage выбрасываем самые старые записи, пока журнал не поместится
+  for (let i = 0; i < 6; i++) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(finished)); return; }
+    catch (_) { finished = finished.slice(0, Math.floor(finished.length / 2)); }
+  }
 }
 
 const nowIso = () => new Date().toISOString();
@@ -110,7 +115,7 @@ export function startTask(title, opts = {}) {
   ensureRustListener();
   const t = new Task(title, opts);
   tasks.unshift(t);
-  if (tasks.length > MAX_TASKS * 2) tasks.length = MAX_TASKS * 2;
+  if (tasks.length > MAX_TASKS) tasks.length = MAX_TASKS;
   t.log(`Начато: ${title}`, 'info');
   return t;
 }
@@ -224,22 +229,44 @@ export function openTaskLog(id) {
   const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
 }
 
-/** Журнал последних задач. */
+/** Логи скриптов (открываются из «Настроек»). */
 export function openTaskJournal() {
-  const ov = openOverlay({ title: '📄 Журнал задач', wide: true });
+  const ov = openOverlay({ title: '📄 Логи скриптов', wide: true });
+  let onlyProblems = false;
+  const rowsOf = () => tasks.filter(t => !onlyProblems || t.status === 'warn' || t.status === 'error' || t.errors || t.warnings);
   const draw = () => {
-    ov.body.innerHTML = tasks.length ? `<div class="tl-journal">${tasks.map(t => `
+    const rows = rowsOf();
+    ov.body.innerHTML = `
+      <div class="tl-filter row gap" style="margin-bottom:8px;">
+        <label class="tf-radio"><input type="checkbox" data-only-problems ${onlyProblems ? 'checked' : ''}/> Только с ошибками и предупреждениями</label>
+        <span class="muted">Записей: ${rows.length} из ${tasks.length}. Нажмите на запись, чтобы открыть подробный лог.</span>
+      </div>
+      ${rows.length ? `<div class="tl-journal">${rows.map(t => `
       <button type="button" class="tl-jrow tl-s-${t.status}" data-task-log="${t.id}">
         <span>${STATUS_ICON[t.status]}</span>
         <strong>${escapeHtml(t.title)}</strong>
         <span class="muted">${new Date(t.startedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
         <span class="tl-jsum">${escapeHtml(t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : ''))}</span>
-      </button>`).join('')}</div>` : '<div class="empty-state">Пока ничего не запускалось.</div>';
+      </button>`).join('')}</div>` : '<div class="empty-state">Ничего не найдено. Здесь появятся логи проверок входа, балансов и марафонов.</div>'}`;
+    ov.body.querySelector('[data-only-problems]').onchange = (e) => { onlyProblems = e.target.checked; draw(); };
   };
   draw();
-  ov.foot.innerHTML = `<button type="button" class="btn ghost" data-clear>🧹 Очистить журнал</button><button type="button" class="btn primary" data-close>Закрыть</button>`;
+  ov.foot.innerHTML = `<div class="row gap"><button type="button" class="btn ghost" data-clear>🧹 Очистить логи</button><button type="button" class="btn" data-copy-all>📋 Скопировать всё</button></div><button type="button" class="btn primary" data-close>Закрыть</button>`;
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-clear]').onclick = () => { tasks = tasks.filter(t => t.status === 'running'); saveJournal(); draw(); renderDock(); };
+  ov.foot.querySelector('[data-clear]').onclick = () => {
+    if (!confirmDialog('Очистить логи скриптов? Завершённые записи будут удалены.')) return;
+    tasks = tasks.filter(t => t.status === 'running'); saveJournal(); draw(); renderDock();
+  };
+  ov.foot.querySelector('[data-copy-all]').onclick = async (e) => {
+    const text = rowsOf().map(t => [
+      `=== ${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')} — ${t.summary || t.status} ===`,
+      ...t.entries.map(x => `${timeOf(x.at)} ${LEVEL_ICON[x.level] || '•'} ${x.message}`)
+    ].join('\n')).join('\n\n');
+    try { await navigator.clipboard.writeText(text); e.target.textContent = '✔ Скопировано'; }
+    catch (_) { e.target.textContent = 'Не удалось скопировать'; }
+  };
+  const unsub = onTaskChange(() => { if (document.body.contains(ov.el)) draw(); });
+  const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
 }
 
 // Делегирование кликов для всех карточек задач (док, мастер, страницы)

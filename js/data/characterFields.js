@@ -29,7 +29,7 @@ export const FIELD_GROUPS = [
   { id: 'coins', title: 'Древние монеты', fields: [
     { path: 'ancientCoins', label: 'Баланс', type: 'number' },
     { path: 'lastCoinUpdate', label: 'Обновлено', type: 'date' },
-    { path: 'coinHistory', label: 'История операций', type: 'history', mergeable: true }
+    { path: 'coinHistory', label: 'История Древних монет', type: 'history', mergeable: true }
   ] },
   { id: 'statsMain', title: 'Основные характеристики', fields: [
     stat('endurance', 'Выносливость'), stat('intelligence', 'Интеллект'),

@@ -10,6 +10,7 @@ import { checkForUpdates } from '../desktop/updater.js';
 import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
+import { openTaskJournal } from '../core/taskLog.js';
 
 async function refreshBackups() {
   const adapter = getAdapter();
@@ -153,6 +154,7 @@ export function bindSettings() {
   });
 
   document.getElementById('check-updates-btn')?.addEventListener('click', () => checkForUpdates());
+  document.getElementById('open-task-journal-btn')?.addEventListener('click', () => openTaskJournal());
 
   // Save Now
   document.getElementById('save-now-btn')?.addEventListener('click', async () => {
