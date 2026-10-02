@@ -7,7 +7,8 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { toast } from '../../core/ui.js';
 import { openOverlay } from './overlay.js';
-import { createMarathon, createSeries, createTask, totalActiveDays, matchQuest, normTitle } from './model.js';
+import { createMarathon, createSeries, createTask, totalActiveDays, matchQuest, normTitle, setTaskDescription, editTaskDescription } from './model.js';
+import { mergeSiteAndNews } from './mergeSources.js';
 import { scanTitles, parseMarathonPage, pickScannerCharacter, SITE_PAGES, customPages, rememberCustomPage, loadNewsPage, isNewsUrl } from './siteSync.js';
 import { baseTitle } from './model.js';
 import { taskCardHtml } from '../../core/taskLog.js';
@@ -33,10 +34,11 @@ export function openMarathonWizard(opts = {}) {
   const W = {
     mode: isEdit ? 'edit' : 'create',
     step: isEdit ? 1 : 0,
-    source: isEdit ? opts.marathon.source?.type : (opts.source || null),
-    site: { scanning: false, scanned: false, progress: '', titles: [], errors: [], selectedUrl: null, loading: false, raw: null, error: null, split: 'stages', stageKeys: [], customUrl: '', scanTask: null, parseTask: null },
+    source: isEdit ? opts.marathon.source?.type : (opts.source === 'news' ? 'site' : (opts.source || null)),   // «из новости» теперь часть блока «С сайта»
+    site: { scanning: false, scanned: false, progress: '', titles: [], errors: [], selectedUrl: null, loading: false, raw: null, error: null, split: 'stages', stageKeys: [], compare: [], customUrl: '', scanTask: null, parseTask: null },
     seriesId: opts.seriesId || null,
-    news: { url: '', loading: false, task: null, error: null },
+    news: { url: '', loading: false, task: null, error: null, verify: true },
+    parsed: { news: null, site: null },   // сырые результаты разбора; в W.site.raw лежит их объединение
     rwNews: { open: false, url: '', loading: false, task: null },
     templateId: null,
     seriesTitle: '',
@@ -90,7 +92,7 @@ export function openMarathonWizard(opts = {}) {
     if (W.step === 0) {
       if (W.source === 'manual') return true;
       if (W.source === 'template') return !!W.templateId;
-      if (W.source === 'site' || W.source === 'news') return !!W.site.raw;
+      if (W.source === 'site') return !!W.site.raw;
       return false;
     }
     return true;
@@ -107,58 +109,53 @@ export function openMarathonWizard(opts = {}) {
 
     let panel = '';
     if (W.source === 'site') {
-      const s = W.site;
+      const s = W.site, n = W.news, P = W.parsed, raw = s.raw;
+      const hasNews = !!P.news, hasSite = !!P.site;
       panel = `
         <div class="tf-panel">
-          ${scanner
-            ? `<p class="muted">Поиск через профиль <strong>${escapeHtml(scanner.nick)}</strong> ${getAuthView(scanner).icon}</p>`
-            : `<p class="tf-warn">⚠️ Нет авторизованных персонажей. Сайт не покажет марафон без входа — сначала войдите хотя бы одним персонажем.</p>`}
-          <div class="row gap">
-            <button type="button" class="btn ${s.scanned ? '' : 'primary'}" data-act="scan" ${s.scanning ? 'disabled' : ''}>${s.scanning ? '⏳ Поиск…' : s.scanned ? '🔄 Искать снова' : '🔍 Найти марафоны на сайте'}</button>
-          </div>
-          ${s.scanTask ? taskCardHtml(s.scanTask) : ''}
-          ${s.titles.length ? `
-            <div class="tf-list">${s.titles.map(t => `
-              <label class="tf-list-item">
-                <input type="radio" name="site-title" value="${escapeHtml(t.url)}" ${s.selectedUrl === t.url ? 'checked' : ''}/>
-                <div><strong>${escapeHtml(t.name)}</strong><br/><small class="muted">${escapeHtml(t.url.replace('https://', ''))}</small></div>
-              </label>`).join('')}
-            </div>
-            <button type="button" class="btn" data-act="parse" ${s.selectedUrl && !s.loading ? '' : 'disabled'}>${s.loading ? '⏳ Загружаю задания…' : '📥 Загрузить задания'}</button>` : ''}
-          <div class="tf-custom-url">
-            <label class="muted">Или своя ссылка на страницу марафона:</label>
+          <div class="tf-src-block ${hasNews ? 'is-loaded' : ''}">
+            <h4>📰 Новость <small class="muted">— рекомендуется: в ней задания, цели, награды, бонусы и полные описания</small></h4>
             <div class="row gap">
-              <input class="input tf-grow" data-custom-url placeholder="https://pwonline.ru/…" value="${escapeHtml(s.customUrl)}"/>
-              <button type="button" class="btn" data-act="parse-custom" ${s.loading ? 'disabled' : ''}>📥 Загрузить</button>
+              <input class="input tf-grow" data-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(n.url)}"/>
+              <button type="button" class="btn primary" data-act="parse-news" ${n.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : hasNews ? '📰 Разобрать заново' : '📰 Разобрать новость'}</button>
             </div>
-            ${customPages().length ? `<small class="muted">Свои страницы (ищутся автоматически): ${customPages().map(u => escapeHtml(u.replace('https://', ''))).join(', ')}</small>` : ''}
+            <label class="tf-radio tf-small"><input type="checkbox" data-news-verify ${n.verify ? 'checked' : ''}/> После новости сверить со страницей отметок (нужен персонаж со входом)</label>
+            ${n.task ? taskCardHtml(n.task) : ''}
+            ${n.error ? `<p class="tf-warn">Не удалось разобрать новость: ${escapeHtml(n.error)}</p>` : ''}
           </div>
-          ${s.parseTask ? taskCardHtml(s.parseTask) : ''}
-          ${!s.scanning && s.errors.length && !s.titles.length ? `<p class="tf-warn">Марафоны не найдены (${escapeHtml(s.errors.join(', '))}).</p>` : ''}
-          ${s.error ? `<p class="tf-warn">Ошибка разбора страницы: ${escapeHtml(s.error)}</p>` : ''}
-          ${s.raw ? `<p class="tf-ok">✅ «${escapeHtml(s.raw.name)}»: заданий ${s.raw.quests.length}, этапов ${s.raw.stages.length}. Нажмите «Далее».</p>` : ''}
-          ${s.raw?.stages.some(st => st.guessed) ? `<p class="tf-warn">⚠ Сроки этапов ${s.raw.stages.filter(st => st.guessed).map(st => `«${escapeHtml(st.name)}»`).join(', ')} не найдены на странице — даты поставлены по календарному месяцу, проверьте их на следующем шаге.</p>` : ''}
-        </div>`;
-    } else if (W.source === 'news') {
-      const n = W.news, raw = W.site.raw;
-      panel = `
-        <div class="tf-panel">
-          <p class="muted">Вставьте ссылку на новость о марафоне (например, <code>pwonline.ru/news.php?article=9046</code>). Из новости берутся этапы, сроки, задания, цели, награды в монетах и бонусы вроде «ларца за 4 задания».</p>
-          <div class="row gap">
-            <input class="input tf-grow" data-news-url placeholder="https://pwonline.ru/news.php?article=…" value="${escapeHtml(n.url)}"/>
-            <button type="button" class="btn primary" data-act="parse-news" ${n.loading ? 'disabled' : ''}>${n.loading ? '⏳ Разбираю…' : '📰 Разобрать новость'}</button>
+
+          <div class="tf-src-block ${hasSite ? 'is-loaded' : ''}">
+            <h4>🌐 Страница отметок <small class="muted">— supermarathon.php / supermarathon2.php: названия заданий как на сайте, проверка новости</small></h4>
+            ${scanner
+              ? `<p class="muted">Поиск через профиль <strong>${escapeHtml(scanner.nick)}</strong> ${getAuthView(scanner).icon}</p>`
+              : `<p class="tf-warn">⚠️ Нет авторизованных персонажей. Сайт не покажет марафон без входа — сначала войдите хотя бы одним персонажем.</p>`}
+            <div class="row gap">
+              <button type="button" class="btn ${s.scanned ? '' : 'primary'}" data-act="scan" ${s.scanning ? 'disabled' : ''}>${s.scanning ? '⏳ Поиск…' : s.scanned ? '🔄 Искать снова' : '🔍 Найти марафоны на сайте'}</button>
+              ${P.news?.sourceUrl && !hasSite ? `<button type="button" class="btn" data-act="verify-site" ${s.loading ? 'disabled' : ''}>✅ Сверить со страницей из новости</button>` : ''}
+            </div>
+            ${s.scanTask ? taskCardHtml(s.scanTask) : ''}
+            ${s.titles.length ? `
+              <div class="tf-list">${s.titles.map(t => `
+                <label class="tf-list-item">
+                  <input type="radio" name="site-title" value="${escapeHtml(t.url)}" ${s.selectedUrl === t.url ? 'checked' : ''}/>
+                  <div><strong>${escapeHtml(t.name)}</strong><br/><small class="muted">${escapeHtml(t.url.replace('https://', ''))}</small></div>
+                </label>`).join('')}
+              </div>
+              <button type="button" class="btn" data-act="parse" ${s.selectedUrl && !s.loading ? '' : 'disabled'}>${s.loading ? '⏳ Загружаю задания…' : '📥 Загрузить задания'}</button>` : ''}
+            <div class="tf-custom-url">
+              <label class="muted">Или своя ссылка на страницу марафона (ссылка на новость тоже подойдёт):</label>
+              <div class="row gap">
+                <input class="input tf-grow" data-custom-url placeholder="https://pwonline.ru/…" value="${escapeHtml(s.customUrl)}"/>
+                <button type="button" class="btn" data-act="parse-custom" ${s.loading ? 'disabled' : ''}>📥 Загрузить</button>
+              </div>
+              ${customPages().length ? `<small class="muted">Свои страницы (ищутся автоматически): ${customPages().map(u => escapeHtml(u.replace('https://', ''))).join(', ')}</small>` : ''}
+            </div>
+            ${s.parseTask ? taskCardHtml(s.parseTask) : ''}
+            ${!s.scanning && s.errors.length && !s.titles.length ? `<p class="tf-warn">Марафоны не найдены (${escapeHtml(s.errors.join(', '))}).</p>` : ''}
+            ${s.error ? `<p class="tf-warn">Ошибка разбора страницы: ${escapeHtml(s.error)}</p>` : ''}
           </div>
-          ${n.task ? taskCardHtml(n.task) : ''}
-          ${n.error ? `<p class="tf-warn">Не удалось разобрать новость: ${escapeHtml(n.error)}</p>` : ''}
-          ${raw ? `
-            <p class="tf-ok">✅ «${escapeHtml(raw.name)}»: этапов ${raw.stages.length}, заданий ${raw.quests.length}. Нажмите «Далее».</p>
-            <div class="tf-news-preview">${raw.stages.map(st => `
-              <div class="tf-news-stage">
-                <strong>📅 ${escapeHtml(st.name)}</strong> <small class="muted">${st.startDate || '?'} — ${st.endDate || '?'}</small>
-                ${st.bonus ? `<div class="tf-small">🎁 ${escapeHtml(st.bonus.text)} — за ${st.bonus.needTasks} выполн. заданий</div>` : ''}
-                <ul>${raw.quests.filter(q => q.stageKey === st.key).map(q => `<li>${escapeHtml(q.title)} — цель ${q.goal}${q.weekly ? ' (раз в неделю)' : ''} · ${q.rewards.map(r => `${r.threshold}→🪙${r.rewardCoins}`).join(', ') || 'без наград'}</li>`).join('')}</ul>
-              </div>`).join('')}</div>
-            <p class="muted tf-small">🌐 Сверка отметок: ${raw.sourceUrl ? escapeHtml(raw.sourceUrl.replace('https://', '')) : '<span class="tf-warn">ссылка не найдена — укажите на следующем шаге</span>'}</p>` : ''}
+
+          ${raw ? sourceSummaryHtml(raw) : '<p class="muted tf-small">Загрузите новость или страницу отметок — можно оба источника: данные объединятся.</p>'}
         </div>`;
     } else if (W.source === 'template') {
       panel = `<div class="tf-panel">${templates.length
@@ -175,15 +172,13 @@ export function openMarathonWizard(opts = {}) {
 
     ov.body.innerHTML = `
       <div class="tf-sources">
-        ${card('site', '🌐', 'С сайта', 'Найти марафон на pwonline.ru и взять задания и этапы')}
-        ${card('news', '📰', 'Из новости', 'Ссылка на новость: этапы, задания и награды')}
+        ${card('site', '🌐', 'С сайта', 'Новость и/или страница отметок на pwonline.ru: этапы, задания, награды')}
         ${card('template', '📁', 'Из шаблона', 'Повторить сохранённую структуру и награды')}
         ${card('manual', '✏️', 'Вручную', 'Начать с пустого марафона')}
       </div>${panel}`;
 
     ov.body.querySelectorAll('.tf-source').forEach(b => b.onclick = () => {
       W.source = b.dataset.src; render();
-      if (W.source === 'site' && !W.site.scanned && !W.site.scanning) doScan();   // поиск запускается сам
     });
     ov.body.querySelector('[data-act="scan"]')?.addEventListener('click', doScan);
     ov.body.querySelector('[data-act="parse"]')?.addEventListener('click', () => doParse());
@@ -191,10 +186,12 @@ export function openMarathonWizard(opts = {}) {
     ov.body.querySelector('[data-news-url]')?.addEventListener('input', e => { W.news.url = e.target.value.trim(); });
     ov.body.querySelector('[data-news-url]')?.addEventListener('keydown', e => { if (e.key === 'Enter') doParseNews(); });
     ov.body.querySelector('[data-act="parse-news"]')?.addEventListener('click', () => doParseNews());
+    ov.body.querySelector('[data-news-verify]')?.addEventListener('change', e => { W.news.verify = e.target.checked; });
+    ov.body.querySelector('[data-act="verify-site"]')?.addEventListener('click', () => doParse(W.parsed.news.sourceUrl));
     ov.body.querySelector('[data-act="parse-custom"]')?.addEventListener('click', () => {
       const u = W.site.customUrl;
       if (!/^https?:\/\//.test(u)) { toast('Вставьте полную ссылку, начиная с https://', 'warning'); return; }
-      if (isNewsUrl(u)) { W.source = 'news'; W.news.url = u; doParseNews(); return; }   // это новость, а не страница отметок
+      if (isNewsUrl(u)) { W.news.url = u; doParseNews(); return; }   // это новость, а не страница отметок
       W.site.selectedUrl = u; doParse(u);
     });
     ov.body.querySelectorAll('input[name="site-title"]').forEach(r => r.onchange = () => { W.site.selectedUrl = r.value; render(); });
@@ -209,7 +206,7 @@ export function openMarathonWizard(opts = {}) {
 
   async function doScan() {
     const s = W.site;
-    Object.assign(s, { scanning: true, titles: [], errors: [], raw: null, error: null, selectedUrl: null, progress: '', parseTask: null });
+    Object.assign(s, { scanning: true, titles: [], errors: [], error: null, selectedUrl: null, progress: '', parseTask: null });
     const pending = scanTitles(null, { onTask: (t) => { s.scanTask = t; } });
     render();
     try {
@@ -226,43 +223,76 @@ export function openMarathonWizard(opts = {}) {
 
   async function doParse(url = W.site.selectedUrl) {
     const s = W.site;
-    s.loading = true; s.error = null; s.raw = null;
+    s.loading = true; s.error = null;
     const pending = parseMarathonPage(url, { onTask: (t) => { s.parseTask = t; } });
     render();
     const { marathon, error, task } = await pending;
     s.loading = false;
     if (error || !marathon) { s.error = error || 'нет данных'; render(); return; }
-    s.raw = normalizeParsed({ ...marathon, stages: marathon.stages || [], quests: marathon.quests || [] }, task);
+    W.parsed.site = normalizeParsed({ ...marathon, stages: marathon.stages || [], quests: marathon.quests || [] }, task);
+    const parsed = W.parsed.site;
     if (!s.titles.some(t => t.url === url)) {
       // своя ссылка: запоминаем, чтобы в следующий раз она искалась автоматически
       rememberCustomPage(url);
-      s.titles.push({ name: s.raw.name, url });
+      s.titles.push({ name: parsed.name, url });
       s.selectedUrl = url;
       persist();
     }
-    s.stageKeys = s.raw.stages.map(st => st.key);   // по умолчанию выбраны все этапы
-    s.split = s.raw.stages.length > 1 ? 'stages' : 'all';
-    W.seriesTitle = s.raw.name;
-    task?.finish(`Этапов ${s.raw.stages.length}, заданий ${s.raw.quests.length}`, s.raw.stages.some(st => st.guessed) ? 'warn' : 'done');
+    applyMerged();
+    task?.finish(`Этапов ${parsed.stages.length}, заданий ${parsed.quests.length}`, parsed.stages.some(st => st.guessed) ? 'warn' : 'done');
     render();
   }
 
   async function doParseNews() {
     const n = W.news;
     if (!isNewsUrl(n.url)) { toast('Нужна ссылка вида https://pwonline.ru/news.php?article=…', 'warning'); return; }
-    n.loading = true; n.error = null; W.site.raw = null;
+    n.loading = true; n.error = null;
     const pending = loadNewsPage(n.url, { onTask: (t) => { n.task = t; } });
     render();
     const { marathon, error, task } = await pending;
     n.loading = false;
     if (error || !marathon) { n.error = error || 'нет данных'; render(); return; }
-    const s = W.site;
-    s.raw = normalizeParsed(marathon, task);
-    s.stageKeys = s.raw.stages.map(st => st.key);
-    s.split = s.raw.stages.length > 1 ? 'stages' : 'all';
-    W.seriesTitle = s.raw.name;
-    task?.finish(`Этапов ${s.raw.stages.length}, заданий ${s.raw.quests.length}`, marathon.debug.some(d => /вручную|проверьте/.test(d)) ? 'warn' : 'done');
+    W.parsed.news = normalizeParsed(marathon, task);
+    applyMerged();
+    task?.finish(`Этапов ${W.parsed.news.stages.length}, заданий ${W.parsed.news.quests.length}`, marathon.debug.some(d => /вручную|проверьте/.test(d)) ? 'warn' : 'done');
     render();
+    // страница отметок из новости: сверяем сразу, если есть персонаж со входом
+    const url = W.parsed.news.sourceUrl;
+    if (n.verify && url && pickScannerCharacter() && !W.parsed.site && !W.site.loading) await doParse(url);
+  }
+
+  /** Объединяет загруженные источники: названия — со страницы отметок, остальное — из новости. */
+  function applyMerged() {
+    const s = W.site;
+    const { raw, notes } = mergeSiteAndNews({ news: W.parsed.news, site: W.parsed.site });
+    s.raw = raw; s.compare = notes;
+    if (!raw) return;
+    s.stageKeys = raw.stages.map(st => st.key);   // по умолчанию выбраны все этапы
+    s.split = raw.stages.length > 1 ? 'stages' : 'all';
+    W.seriesTitle = raw.name;
+  }
+
+  /** Итог под блоками источников: что загружено, что нашлось, расхождения. */
+  function sourceSummaryHtml(raw) {
+    const P = W.parsed;
+    const part = (icon, label, p) => p ? `<span class="tf-chip is-ok">${icon} ${label}: заданий ${p.quests.length}, этапов ${p.stages.length}</span>` : `<span class="tf-chip">${icon} ${label}: не загружено</span>`;
+    const warns = W.site.compare.filter(x => x.level === 'warn'), infos = W.site.compare.filter(x => x.level === 'info');
+    const withDesc = raw.quests.filter(q => q.description).length;
+    return `
+      <div class="tf-src-summary">
+        <p class="tf-ok">✅ «${escapeHtml(raw.name)}»: этапов ${raw.stages.length}, заданий ${raw.quests.length}, описаний ${withDesc}. Нажмите «Далее».</p>
+        <div class="row gap">${part('📰', 'Новость', P.news)}${part('🌐', 'Страница отметок', P.site)}</div>
+        ${raw.stages.some(st => st.guessed) ? `<p class="tf-warn">⚠ Сроки этапов ${raw.stages.filter(st => st.guessed).map(st => `«${escapeHtml(st.name)}»`).join(', ')} не найдены — даты поставлены по календарному месяцу, проверьте их на следующем шаге.</p>` : ''}
+        ${warns.length ? `<ul class="tf-compare">${warns.map(x => `<li class="tf-warn">⚠ ${escapeHtml(x.text)}</li>`).join('')}</ul>` : (P.news && P.site ? '<p class="tf-ok tf-small">Сверка новости со страницей отметок: расхождений нет.</p>' : '')}
+        ${infos.length ? `<details class="tf-small"><summary class="muted">Подробности сверки (${infos.length})</summary><ul class="tf-compare">${infos.map(x => `<li class="muted">${escapeHtml(x.text)}</li>`).join('')}</ul></details>` : ''}
+        <div class="tf-news-preview">${raw.stages.map(st => `
+          <div class="tf-news-stage">
+            <strong>📅 ${escapeHtml(st.name)}</strong> <small class="muted">${st.startDate || '?'} — ${st.endDate || '?'}</small>
+            ${st.bonus ? `<div class="tf-small">🎁 ${escapeHtml(st.bonus.text)} — за ${st.bonus.needTasks} выполн. заданий</div>` : ''}
+            <ul>${raw.quests.filter(q => q.stageKey === st.key || (!q.stageKey && raw.stages.length === 1)).map(q => `<li>${escapeHtml(q.title)} — цель ${q.goal}${q.weekly ? ' (раз в неделю)' : ''} · ${(q.rewards || []).map(r => `${r.threshold}→🪙${r.rewardCoins}`).join(', ') || 'без наград'}${q.description ? '' : ' · <span class="tf-warn">без описания</span>'}</li>`).join('')}</ul>
+          </div>`).join('')}</div>
+        <p class="muted tf-small">🌐 Сверка отметок: ${raw.sourceUrl ? escapeHtml(raw.sourceUrl.replace('https://', '')) : '<span class="tf-warn">ссылка не найдена — укажите на следующем шаге</span>'}</p>
+      </div>`;
   }
 
   /**
@@ -311,9 +341,11 @@ export function openMarathonWizard(opts = {}) {
 
   function buildSiteDrafts() {
     const raw = W.site.raw;
-    const fromNews = W.source === 'news';
+    const fromNews = raw.origin === 'news';   // только новость: названий «как на сайте» ещё нет
     const toTask = (q) => createTask({
-      title: q.title, siteTitle: fromNews ? null : q.title, description: q.description, targetChecks: q.goal,
+      title: q.title, siteTitle: q.siteTitle ?? (raw.origin === 'site' ? q.title : null),
+      description: q.description, descriptionSource: q.descriptionSource || (q.description ? (fromNews ? 'news' : 'site') : ''),
+      targetChecks: q.goal,
       schedule: q.weekly ? { mode: 'weekly', weekStartDay: 1 } : undefined,
       rewards: (q.rewards || []).map(r => ({ ...r }))
     });
@@ -445,6 +477,11 @@ export function openMarathonWizard(opts = {}) {
       row.querySelectorAll('[data-t]').forEach(inp => inp.oninput = inp.onchange = () => {
         const f = inp.dataset.t;
         if (f === 'title') t.title = inp.value;
+        if (f === 'description') {
+          editTaskDescription(t, inp.value);   // ручная правка: сверка с сайтом её не затрёт
+          const mark = row.querySelector('[data-desc-mark]'); if (mark) mark.textContent = descMark(t);
+          return;
+        }
         if (f === 'targetChecks') t.targetChecks = Math.max(1, Number(inp.value) || 1);
         if (f === 'mode') { t.schedule.mode = inp.value; render(); return; }
         if (f === 'dates') t.schedule.dates = inp.value.split(',').map(x => x.trim()).filter(Boolean);
@@ -476,7 +513,16 @@ export function openMarathonWizard(opts = {}) {
         <span class="tf-task-stat" data-stat="${t.id}">${taskStat(d, t)}</span>
         <button type="button" class="icon-btn danger" data-act="del-task" title="Удалить">🗑</button>
         ${t.siteTitle ? `<small class="tf-task-site muted" title="Название на сайте">🌐 ${escapeHtml(t.siteTitle)}</small>` : ''}
+        <details class="tf-task-desc">
+          <summary class="muted">📝 Описание <small data-desc-mark>${descMark(t)}</small></summary>
+          <textarea class="input" rows="3" data-t="description" placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
+        </details>
       </div>`;
+  }
+
+  function descMark(t) {
+    if (!t.description) return '— нет';
+    return { site: '· со страницы сайта', news: '· из новости', manual: '· изменено вручную' }[t.descriptionSource] || '';
   }
 
   function taskStat(d, t) {
@@ -716,6 +762,7 @@ export function openMarathonWizard(opts = {}) {
         matched++;
         t.targetChecks = q.goal;
         t.rewards = q.rewards.map(r => ({ ...r, id: uid() }));
+        setTaskDescription(t, q.description, 'news');   // описание из новости полнее; ручное не трогаем
         if (q.weekly) t.schedule = { ...t.schedule, mode: 'weekly' };
       });
       if (stage?.bonus && !(d.bonuses || []).some(b => b.text === stage.bonus.text)) d.bonuses = [...(d.bonuses || []), { id: uid(), ...stage.bonus }];
@@ -782,7 +829,7 @@ export function openMarathonWizard(opts = {}) {
         id: uid(),
         name: (W.templateName || W.seriesTitle || d.title).trim(),
         sourceUrl: d.source?.url || null,
-        tasks: d.tasks.map(t => ({ title: t.title, siteTitle: t.siteTitle, description: t.description, targetChecks: t.targetChecks, schedule: clone(t.schedule), rewards: clone(t.rewards) })),
+        tasks: d.tasks.map(t => ({ title: t.title, siteTitle: t.siteTitle, description: t.description, descriptionSource: t.descriptionSource, targetChecks: t.targetChecks, schedule: clone(t.schedule), rewards: clone(t.rewards) })),
         bonuses: clone(d.bonuses || []),
         createdAt: now
       });

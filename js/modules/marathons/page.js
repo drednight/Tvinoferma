@@ -14,12 +14,12 @@ import { syncMarathons, marathonUrlOf, SITE_PAGES, customPages, rememberCustomPa
 import { taskCardHtml, renderDock } from '../../core/taskLog.js';
 import {
   computeCell, marathonTotals, freezeAwards, marathonPhase, seriesChildren, seriesPhase,
-  ensureCell, STATUS_LABELS, maxRewardCoins, createSeries, bonusStatus
+  ensureCell, STATUS_LABELS, maxRewardCoins, createSeries, bonusStatus, editTaskDescription, shortDescription
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
 
 const view = { type: 'list', id: null };
-const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null };
+const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set(), descEdit: null };
 
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -368,6 +368,7 @@ function renderDetail(root, m) {
 
     ${ui.syncTask && ui.syncTaskFor === m.id ? taskCardHtml(ui.syncTask) : ''}
     ${syncPanel(m)}
+    ${descriptionsBlock(m)}
 
     <div class="toolbar mr-filters">
       <div class="row gap">
@@ -388,6 +389,71 @@ function renderDetail(root, m) {
 
   bindCrumbs(root);
   bindDetail(root, m);
+}
+
+const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'из новости', manual: 'изменено вручную' };
+const DESC_PREVIEW = 160;
+
+/** Раскрывающийся список описаний заданий: короткий текст, «Показать полностью», правка. */
+function descriptionsBlock(m) {
+  if (!m.tasks.length) return '';
+  const filled = m.tasks.filter(t => t.description).length;
+  const items = m.tasks.map(t => {
+    const editing = ui.descEdit === t.id;
+    const full = ui.descFull.has(t.id);
+    const [short, cut] = shortDescription(t.description, DESC_PREVIEW);
+    const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
+    return `
+      <div class="mr-desc-item" data-desc-task="${t.id}">
+        <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong>${src ? `<span class="mr-desc-src">${src}</span>` : ''}</div>
+        ${editing
+          ? `<textarea class="input" rows="4" data-desc-input placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
+             <div class="mr-desc-actions">
+               <button class="btn small primary" data-desc-save>💾 Сохранить</button>
+               <button class="btn small ghost" data-desc-cancel>Отмена</button>
+               ${t.descriptionSource === 'manual' ? '<button class="btn small ghost" data-desc-reset title="Убрать своё описание: при следующей сверке подставится описание с сайта">↩ Сбросить правку</button>' : ''}
+             </div>`
+          : `${t.description ? `<p class="mr-desc-text">${escapeHtml(full ? t.description : short)}</p>` : '<p class="muted mr-desc-text">Описания нет. Оно подтянется при сверке с сайтом или из новости; можно написать своё.</p>'}
+             <div class="mr-desc-actions">
+               ${cut ? `<button class="btn small ghost" data-desc-toggle>${full ? 'Свернуть' : 'Показать полностью'}</button>` : ''}
+               <button class="btn small ghost" data-desc-edit>✏️ ${t.description ? 'Изменить' : 'Добавить'}</button>
+             </div>`}
+      </div>`;
+  }).join('');
+  return `
+    <details class="panel mr-descs" ${ui.descOpen.has(m.id) ? 'open' : ''}>
+      <summary>📋 Описания заданий <span class="muted">(${filled} из ${m.tasks.length})</span></summary>
+      <div class="mr-desc-list">${items}</div>
+    </details>`;
+}
+
+function bindDescriptions(root, m) {
+  root.querySelector('.mr-descs')?.addEventListener('toggle', (e) => {
+    if (e.target.open) ui.descOpen.add(m.id); else ui.descOpen.delete(m.id);
+  });
+  root.querySelectorAll('[data-desc-task]').forEach(box => {
+    const t = m.tasks.find(x => x.id === box.dataset.descTask);
+    if (!t) return;
+    box.querySelector('[data-desc-toggle]')?.addEventListener('click', () => {
+      if (ui.descFull.has(t.id)) ui.descFull.delete(t.id); else ui.descFull.add(t.id);
+      renderMarathons();
+    });
+    box.querySelector('[data-desc-edit]')?.addEventListener('click', () => { ui.descEdit = t.id; ui.descOpen.add(m.id); renderMarathons(); });
+    box.querySelector('[data-desc-cancel]')?.addEventListener('click', () => { ui.descEdit = null; renderMarathons(); });
+    box.querySelector('[data-desc-save]')?.addEventListener('click', async () => {
+      editTaskDescription(t, box.querySelector('[data-desc-input]').value);   // ручное описание сверка не затирает
+      m.updatedAt = new Date().toISOString();
+      ui.descEdit = null;
+      await persist(); renderMarathons();
+    });
+    box.querySelector('[data-desc-reset]')?.addEventListener('click', async () => {
+      editTaskDescription(t, '');
+      m.updatedAt = new Date().toISOString();
+      ui.descEdit = null;
+      await persist(); renderMarathons();
+      toast('Своё описание убрано. Следующая сверка с сайтом подставит описание.', 'info');
+    });
+  });
 }
 
 function syncPanel(m) {
@@ -440,12 +506,20 @@ function matrix(m) {
   return `
     <table class="mr-matrix">
       <thead><tr><th class="mr-name">Персонаж</th>${m.tasks.map(t => `
-        <th title="${escapeHtml(t.siteTitle || t.title)}"><div class="mr-th">${escapeHtml(t.title)}</div>
+        <th title="${escapeHtml(thTitle(t))}"><div class="mr-th">${escapeHtml(t.title)}${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}</div>
         <small class="muted">цель ${t.targetChecks}${maxRewardCoins(t) ? ` · до 🪙${maxRewardCoins(t)}` : ''}</small></th>`).join('')}
         <th>Итого</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:20px">Нет персонажей по фильтру</td></tr>`}</tbody>
       <tfoot><tr><td class="mr-name muted">Выполнили</td>${foot}<td></td></tr></tfoot>
     </table>`;
+}
+
+/** Подсказка при наведении на заголовок задания: название на сайте + начало описания. */
+function thTitle(t) {
+  const head = t.siteTitle && t.siteTitle !== t.title ? `${t.title} (на сайте: ${t.siteTitle})` : t.title;
+  if (!t.description) return head;
+  const [short] = shortDescription(t.description, 400);
+  return `${head}\n\n${short}`;
 }
 
 function cellHtml(m, charId, taskId, x) {
@@ -531,6 +605,7 @@ function bindDetail(root, m) {
   root.querySelector('[data-f="party"]').onchange = (e) => { ui.party = e.target.value; renderMarathons(); };
   root.querySelector('[data-f="problems"]').onchange = (e) => { ui.onlyProblems = e.target.checked; renderMarathons(); };
   root.querySelector('.mr-sync')?.addEventListener('toggle', (e) => { ui.showSync = e.target.open; });
+  bindDescriptions(root, m);
   root.querySelectorAll('[data-login]').forEach(b => b.onclick = async () => {
     const { openSyncHelper } = await import('../sync/syncManager.js');
     openSyncHelper(b.dataset.login);
@@ -591,6 +666,7 @@ function openCellCard(m, charId, taskId) {
     const editable = m.status !== 'completed';
 
     ov.body.innerHTML = `
+      ${task.description ? `<p class="mr-card-desc">${escapeHtml(task.description)}</p>` : ''}
       <div class="mr-card-summary mr-s-${x.state}">
         <div><span class="muted">Итого</span><strong>${x.count} / ${x.target}</strong></div>
         <div><span class="muted">С сайта</span><strong>${x.hasSite ? cell.site : '—'}</strong><small class="muted">${cell.syncedAt ? fmtDateTime(cell.syncedAt) : 'нет данных'}</small></div>

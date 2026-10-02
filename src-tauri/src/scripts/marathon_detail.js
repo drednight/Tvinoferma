@@ -95,7 +95,6 @@
             const questBlocks = container.querySelectorAll(':scope > div');
             questBlocks.forEach(block => {
                 const titleEl = block.querySelector('b');
-                const descEl = block.querySelector('p'); 
                 const progressSpan = block.querySelector('.progress span');
 
                 let totalGoal = 0;
@@ -114,8 +113,10 @@
                     const monthInTitle = rawTitle.match(/\(([^()]*)\)\s*$/) || rawTitle.match(/\(([^()]*)\)/);
                     const associatedStageKey = monthInTitle ? stageKeyOf(monthInTitle[1]) : null;
 
-                    // Чистое описание без префикса [месяц], если он был добавлен ранее
-                    let cleanDescription = descEl ? descEl.innerText.trim() : "";
+                    // Описание задания: все абзацы блока (у некоторых заданий их два: условие и список)
+                    const cleanDescription = Array.from(block.querySelectorAll('p'))
+                        .map(p => norm(p.innerText || p.textContent))
+                        .filter(Boolean).join('\n');
 
                     quests.push({
                         id: crypto.randomUUID(), 

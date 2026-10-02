@@ -18,6 +18,13 @@ const iso = (y, m, d) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStar
 const cap = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
 const nums = (s) => String(s).split('/').map(x => parseInt(x, 10)).filter(n => Number.isFinite(n));
 
+/** https, без завершающего «/» (в новостях бывает «supermarathon.php/»). */
+function cleanPageUrl(href) {
+  const u = new URL(String(href).replace(/^http:/, 'https:'));
+  u.pathname = u.pathname.replace(/\/+$/, '');
+  return u.href;
+}
+
 function parsePubDate(s) {
   const m = String(s || '').match(/(\d{2})\.(\d{2})\.(\d{4})/);
   return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : new Date();
@@ -61,6 +68,14 @@ function toNominative(text) {
   }).join(' ');
 }
 
+/** Текст ячейки: <br> и абзацы превращаются в переводы строк, лишние пробелы убираются. */
+function cellText(td) {
+  const c = td.cloneNode(true);
+  c.querySelectorAll('br').forEach(b => b.replaceWith('\n'));
+  c.querySelectorAll('p, div, li').forEach(b => b.append('\n'));
+  return c.textContent.replace(/\u00a0/g, ' ').split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+}
+
 function cellsOf(tr) { return [...tr.children].filter(c => c.tagName === 'TD' || c.tagName === 'TH'); }
 function isHeaderRow(tr) {
   const c = cellsOf(tr).map(x => norm(x.textContent).toLowerCase());
@@ -75,11 +90,14 @@ function parseTaskRow(tr) {
   if (cells.length < 3) return null;
   const name = norm(cells[0].textContent);
   const task = norm(cells[1].textContent);
+  const description = cellText(cells[1]);
   const reward = norm(cells[cells.length - 1].textContent);
   if (!name || isHeaderRow(tr)) return null;
   const goalsAll = [...task.matchAll(/(\d+(?:\s*\/\s*\d+)*)\s*раз/gi)];
-  const goals = goalsAll.length ? nums(goalsAll[goalsAll.length - 1][1].replace(/\s/g, '')) : [];
-  const coinM = reward.match(/(\d+(?:\s*\/\s*\d+)*)\s*(?:древн[а-яё]*\s*)?(?:монет|дм)/i);
+  // «… 10/15/20 раз.» — основной вариант; бывает и без слова «раз»: «… сдать задание Старейшине 10/12/15.»
+  const tail = task.match(/(\d+(?:\s*\/\s*\d+)+)\s*[.!]?\s*$/);
+  const goals = goalsAll.length ? nums(goalsAll[goalsAll.length - 1][1].replace(/\s/g, '')) : (tail ? nums(tail[1].replace(/\s/g, '')) : []);
+  const coinM = reward.match(/(\d+(?:\s*\/\s*\d+)*)\s*(?:древн[а-яё]*\s*)?(?:монет[а-яё]*|дм)/i);
   const coins = coinM ? nums(coinM[1].replace(/\s/g, '')) : [];
   const extraText = coinM ? norm(reward.replace(coinM[0], '').replace(/^[+,;и\s]+|[+,;\s]+$/g, '')) : reward;
   const thresholds = goals.length ? goals : [1];
@@ -90,7 +108,7 @@ function parseTaskRow(tr) {
   })).filter(r => r.rewardCoins || r.rewardText);
   return {
     title: name,
-    description: task,
+    description,
     goal: Math.max(...thresholds),
     goalFound: goals.length > 0,
     weekly: /еженедельн|раз в неделю/i.test(task),
@@ -112,7 +130,7 @@ export function parseNewsHtml(html, meta = {}) {
 
   // Ссылка на страницу с отметками (FAQ: «Где я могу проследить…? — Здесь»)
   const link = [...root.querySelectorAll('a[href]')].map(a => a.getAttribute('href')).find(h => /supermarathon\d*\.php/i.test(h));
-  const sourceUrl = link ? new URL(link, 'https://pwonline.ru/news.php').href.replace(/^http:/, 'https:') : null;
+  const sourceUrl = link ? cleanPageUrl(new URL(link, 'https://pwonline.ru/news.php').href) : null;
   debug.push(sourceUrl ? `Страница отметок: ${sourceUrl}` : 'Ссылка на страницу отметок в новости не найдена — укажите её вручную');
 
   // Обход в порядке документа: заголовки, абзацы, таблицы заданий

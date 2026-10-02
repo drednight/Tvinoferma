@@ -29,6 +29,10 @@
             const titleEl = block.querySelector('b');
             const title = titleEl ? titleEl.innerText.trim() : "Unknown Quest";
             const progressEl = block.querySelector('.progress span');
+            // Описание задания: все абзацы блока (у некоторых заданий их два)
+            const description = Array.from(block.querySelectorAll('p'))
+                .map(p => String(p.innerText || p.textContent || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim())
+                .filter(Boolean).join('\n');
             let completed = 0;
             let total = 0;
             if (progressEl) {
@@ -40,7 +44,7 @@
                 }
             }
             if (total > 0 || completed > 0) {
-                results.push({ title: title, completed: completed, total: total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 });
+                results.push({ title: title, description: description, completed: completed, total: total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 });
             }
         });
         reportResult(results, null);

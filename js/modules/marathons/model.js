@@ -26,6 +26,8 @@ export function createTask(partial = {}) {
     title: partial.title || 'Новое задание',
     siteTitle: partial.siteTitle || null,          // точное название задания на сайте (для сверки)
     description: partial.description || '',
+    // Откуда описание: 'site' | 'news' | 'manual' (ручную правку сверка с сайтом не затирает); '' — описания нет
+    descriptionSource: partial.description ? (partial.descriptionSource || 'site') : '',
     targetChecks: Math.max(1, Number(partial.targetChecks) || 1),
     schedule: {
       mode: partial.schedule?.mode || 'everyDay',
@@ -155,6 +157,44 @@ export function migrateMarathon(m, characters = []) {
       url: m.sourceUrl || urlFromDesc
     }
   });
+}
+
+/* ------------------------------------------------------------------ */
+/*  Описания заданий                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Приоритет источников описания: ручная правка > новость > страница сайта. */
+const DESC_RANK = { '': 0, site: 1, news: 2, manual: 3 };
+
+/**
+ * Ставит описание, если источник не слабее текущего. Ручное описание перезаписывается только вручную.
+ * @returns {boolean} изменилось ли описание
+ */
+export function setTaskDescription(task, text, source) {
+  const next = String(text || '').trim();
+  if (!next) return false;
+  const cur = task.description ? (task.descriptionSource || 'site') : '';
+  if (DESC_RANK[source] < DESC_RANK[cur]) return false;
+  if (task.description === next && cur === source) return false;
+  task.description = next;
+  task.descriptionSource = source;
+  return true;
+}
+
+/** Правка пользователем: пустой текст убирает описание и снимает защиту. */
+export function editTaskDescription(task, text) {
+  const next = String(text || '').trim();
+  task.description = next;
+  task.descriptionSource = next ? 'manual' : '';
+}
+
+/** Длинное описание для списка: [короткий текст, обрезано ли]. */
+export function shortDescription(text, limit = 140) {
+  const t = String(text || '').trim();
+  if (t.length <= limit) return [t, false];
+  const cut = t.slice(0, limit);
+  const sp = cut.lastIndexOf(' ');
+  return [`${(sp > limit * 0.6 ? cut.slice(0, sp) : cut).trimEnd()}…`, true];
 }
 
 /* ------------------------------------------------------------------ */
@@ -377,6 +417,7 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
     cell.siteTotal = Number(q.total) || null;
     cell.syncedAt = at;
     if (!task.siteTitle) task.siteTitle = q.title;
+    setTaskDescription(task, q.description, 'site');   // ручное описание и описание из новости не затираются
     if (from !== to) changes.push({ taskId: task.id, from, to });
   });
   return changes;
