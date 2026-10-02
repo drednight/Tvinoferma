@@ -7,6 +7,7 @@ import { escapeHtml, uid } from '../../core/utils.js';
 import { renderCharacters } from '../characters/list.js';
 import { renderPartiesGrid } from './renderer.js';
 import { getAuthView } from '../sync/authStatus.js';
+import { partyByName, charactersInParty, isInParty, isMainParty, setMembership } from './membership.js';
 
 /**
  * Открывает модальное окно для создания новой пати
@@ -33,10 +34,7 @@ export function openCreatePartyModal() {
                 return false;
             }
             
-            const existsInParties = state.parties.some(p => p.name.toLowerCase() === name.toLowerCase());
-            const existsInChars = state.characters.some(c => c.party && c.party.toLowerCase() === name.toLowerCase());
-
-            if (existsInParties || existsInChars) {
+            if (partyByName(state.parties, name)) {
                 setError('Такая группа уже существует.');
                 return false;
             }
@@ -64,17 +62,19 @@ export function openCreatePartyModal() {
  * Комплексное редактирование пати: имя, состав, удаление
  */
 export function openEditPartyModal(currentName) {
-    const currentMembers = state.characters.filter(c => c.party === currentName);
+    const party = partyByName(state.parties, currentName);
+    if (!party) { toast('Пати не найдена.', 'error'); return; }
+    const currentMembers = charactersInParty(state.characters, party.id);
     
     // Для простоты UX: показываем всех персонажей с чекбоксами.
     // Те, кто в группе — отмечены. Снятие галочки убирает из группы.
     const allCharsForCheckbox = state.characters.map(c => {
-        const isInCurrentGroup = c.party === currentName;
+        const isInCurrentGroup = isInParty(c, party.id);
         const statusIcon = getAuthView(c).icon;
         return `
             <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />
-                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${c.class})</small></span>
+                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small>${isInCurrentGroup ? (isMainParty(c, party.id) ? ' <small class="muted">· основная</small>' : ' <small class="muted">· доп.</small>') : ''}</span>
             </label>
         `;
     }).join('');
@@ -91,7 +91,7 @@ export function openEditPartyModal(currentName) {
             <!-- 2. Состав -->
             <div>
                 <label style="display:block; margin-bottom:8px; font-weight:bold;">Состав группы (${currentMembers.length} чел.)</label>
-                <p class="muted" style="font-size:0.8rem; margin-bottom:8px;">Отметьте галочкой тех, кто должен быть в этой группе.</p>
+                <p class="muted" style="font-size:0.8rem; margin-bottom:8px;">Отметьте галочкой тех, кто должен быть в этой группе. У персонажа одна основная пати (по ней считаются монеты) и сколько угодно дополнительных; основную меняют в карточке персонажа.</p>
                 
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); padding: 8px; border-radius: 4px; background: var(--panel-2);">
                     ${allCharsForCheckbox}
@@ -101,7 +101,7 @@ export function openEditPartyModal(currentName) {
             <!-- Опасная зона -->
             <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:10px;">
                  <button id="delete-this-party-btn" class="btn danger outline" style="width:100%;">
-                    🗑 Удалить эту группу (все участники станут "Без пати")
+                    🗑 Удалить эту группу (участники останутся в других группах)
                  </button>
             </div>
         </div>
@@ -122,50 +122,25 @@ export function openEditPartyModal(currentName) {
             }
 
             // Проверка дубликата имени
-            if (newName !== currentName) {
-                const exists = state.parties.some(p => p.name.toLowerCase() === newName.toLowerCase()) ||
-                               state.characters.some(c => c.party && c.party.toLowerCase() === newName.toLowerCase());
-                if (exists) {
+            if (newName.toLowerCase() !== currentName.toLowerCase()) {
+                if (partyByName(state.parties, newName)) {
                     setError('Такая группа уже существует.');
                     return false;
                 }
             }
 
             const checkboxes = document.querySelectorAll('.member-checkbox');
-            
-            // Обновляем состояние персонажей
+            const now = new Date().toISOString();
+
+            // Состав: добавляем/убираем только эту пати, остальные пати персонажа не трогаем
             checkboxes.forEach(cb => {
-                const charId = cb.dataset.charId;
-                const charIndex = state.characters.findIndex(c => c.id === charId);
-                
-                if (charIndex !== -1) {
-                    const char = state.characters[charIndex];
-                    
-                    if (cb.checked) {
-                        char.party = newName;
-                    } else {
-                        // Если был в старой группе, а сейчас сняли галочку -> убираем из группы
-                        if (char.party === currentName) {
-                            char.party = null; 
-                        }
-                    }
-                    char.updatedAt = new Date().toISOString();
-                }
+                const char = state.characters.find(c => c.id === cb.dataset.charId);
+                if (char && setMembership(char, party.id, cb.checked)) char.updatedAt = now;
             });
 
-            // Обновляем запись о группе
-            let partyObj = state.parties.find(p => p.name === currentName);
-            if (partyObj) {
-                partyObj.name = newName;
-                partyObj.updatedAt = new Date().toISOString();
-            } else {
-                state.parties.push({
-                    id: uid(),
-                    name: newName,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                });
-            }
+            // Переименование меняет только название: персонажи ссылаются на id
+            party.name = newName;
+            party.updatedAt = now;
 
             persist().then(() => {
                 renderPartiesGrid();
@@ -183,13 +158,9 @@ export function openEditPartyModal(currentName) {
         if (delBtn) {
             delBtn.onclick = () => {
                 if (confirmDialog(`Удалить группу "${currentName}"?\nВсе участники станут без пати.`)) {
-                    state.parties = state.parties.filter(p => p.name !== currentName);
-                    state.characters.forEach(c => {
-                        if (c.party === currentName) {
-                            c.party = null;
-                            c.updatedAt = new Date().toISOString();
-                        }
-                    });
+                    state.parties = state.parties.filter(p => p.id !== party.id);
+                    const now = new Date().toISOString();
+                    state.characters.forEach(c => { if (setMembership(c, party.id, false)) c.updatedAt = now; });
                     persist().then(() => {
                         closeModal();
                         renderPartiesGrid();

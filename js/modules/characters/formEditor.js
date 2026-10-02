@@ -11,6 +11,7 @@ import { CLASSES, SKIES, SKY_LEVELS } from '../../core/constants.js';
 import { createEmptyCharacter, DEFAULT_STATS } from './stateManager.js';
 import { newCharacterId, syncIdWithNick } from './identity.js';
 import { vaultStatus } from '../../core/secrets.js';
+import { normalizePartyIds } from '../parties/membership.js';
 
 export function openCharacterForm(char = null) {
   const isEdit = !!char;
@@ -26,8 +27,14 @@ export function openCharacterForm(char = null) {
   const classOptions = CLASSES.map(c => `<option value="${escapeHtml(c)}" ${currentChar.class === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
   const noneClassOption = `<option value="" ${!currentChar.class ? 'selected' : ''}>— Выберите класс —</option>`;
 
-  const partyOptions = state.parties.map(p => `<option value="${escapeHtml(p.name)}" ${currentChar.party === p.name ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
-  const nonePartyOption = `<option value="" ${!currentChar.party ? 'selected' : ''}>— Без пати —</option>`;
+  // Основная пати (одна) + дополнительные (чипы). Монеты и выбор в марафон идут по основной.
+  const mainId = currentChar.mainPartyId || null;
+  const extraIdsSet = new Set((currentChar.partyIds || []).filter(id => id !== mainId));
+  const mainOptions = `<option value="">— Без пати —</option>` + state.parties.map(p =>
+    `<option value="${escapeHtml(p.id)}" ${mainId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+  const partyChips = state.parties.length
+    ? state.parties.map(p => `<label class="party-chip"><input type="checkbox" name="extraPartyIds" value="${escapeHtml(p.id)}" ${extraIdsSet.has(p.id) ? 'checked' : ''} ${mainId === p.id ? 'disabled' : ''} /><span>${escapeHtml(p.name)}</span></label>`).join('')
+    : '<span class="muted">Пока нет пати. Создайте их во вкладке «Пати».</span>';
 
   const skyNameOptions = SKIES.map(s => `<option value="${escapeHtml(s)}" ${sky.name === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
   const noneSkyOption = `<option value="" ${!sky.name ? 'selected' : ''}>— Не выбрано —</option>`;
@@ -63,8 +70,9 @@ export function openCharacterForm(char = null) {
       </div>
       <div class="two-cols">
         <div class="field"><label>Уровень</label><input class="input" type="number" name="level" value="${currentChar.level}" min="1" /></div>
-        <div class="field"><label>Пати</label><select class="select" name="party">${nonePartyOption}${partyOptions}</select></div>
+        <div class="field"><label>Основная пати</label><select class="select" name="mainParty" id="char-main-party">${mainOptions}</select></div>
       </div>
+      <div class="field"><label>Дополнительные пати <small class="muted">(если нужны; монеты и марафоны считаются по основной)</small></label><div class="party-chips" id="char-extra-parties">${partyChips}</div></div>
 
       <!-- Небо -->
       <div class="info-block" style="margin-top:16px;"><h4>Небо (Sky)</h4>
@@ -189,6 +197,19 @@ export function openCharacterForm(char = null) {
     </div>
   `;
 
+  // Выбранная основная пати не может быть и дополнительной
+  setTimeout(() => {
+    const sel = document.getElementById('char-main-party');
+    const box = document.getElementById('char-extra-parties');
+    if (!sel || !box) return;
+    const sync = () => box.querySelectorAll('input').forEach(cb => {
+      const isMain = cb.value === sel.value;
+      cb.disabled = isMain;
+      if (isMain) cb.checked = false;
+    });
+    sel.addEventListener('change', sync);
+  }, 0);
+
   showModal({
     title: isEdit ? `Редактировать: ${currentChar.nick}` : 'Новый персонаж',
     content,
@@ -202,6 +223,15 @@ export function openCharacterForm(char = null) {
           setError('Никнейм обязателен.'); 
           return false; 
         }
+
+        // Основная + дополнительные пати
+        const mainPartyNext = String(formData.get('mainParty') || '') || null;
+        const extras = normalizePartyIds(formData.getAll('extraPartyIds')).filter(id => id !== mainPartyNext);
+        if (!mainPartyNext && extras.length) {
+          setError('Выберите основную пати, чтобы добавить дополнительные.');
+          return false;
+        }
+        const partyIdsNext = mainPartyNext ? [mainPartyNext, ...extras] : [];
 
         const newStats = {};
         Object.keys(DEFAULT_STATS).forEach(key => {
@@ -233,7 +263,8 @@ export function openCharacterForm(char = null) {
           ...currentChar,
           nick: nick,
           class: getSafeStr('class'),
-          party: formData.get('party') || null,
+          partyIds: partyIdsNext,
+          mainPartyId: mainPartyNext,
           level: parseInt(formData.get('level'), 10) || 1,
           sky: { 
             name: getSafeStr('sky-name') || null, 

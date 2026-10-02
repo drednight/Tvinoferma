@@ -7,6 +7,7 @@ import { formatCoins, roundCoins } from '../../core/coins.js';
 import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
+import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL } from './membership.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
@@ -14,12 +15,14 @@ let expandedParties = new Set();
 /**
  * Рассчитывает статистику для массива участников
  */
-function calculatePartyStats(members) {
+function calculatePartyStats(members, party = null) {
     if (!members || members.length === 0) return { totalCoins: 0, onlineCount: 0 };
     
-    const totalCoins = roundCoins(members.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0));
+    // Монеты пати = персонажи, для которых она основная (дополнительные пати монеты не добавляют)
+    const coinMembers = party ? charactersInMainParty(members, party.id) : members;
+    const sumCoins = roundCoins(totalCoins(coinMembers));
     const onlineCount = members.filter(c => c.isLoggedIn === true).length;
-    return { totalCoins, onlineCount };
+    return { totalCoins: sumCoins, onlineCount };
 }
 
 /**
@@ -33,12 +36,10 @@ function getGroupedParties() {
         if (!map.has(p.name)) map.set(p.name, []);
     });
 
-    // Распределяем персонажей
-    state.characters.forEach(char => {
-        const pName = char.party || 'Без пати';
-        if (!map.has(pName)) map.set(pName, []);
-        map.get(pName).push(char);
-    });
+    // Персонаж попадает в каждую свою пати (в нескольких сразу), без пати — в отдельную группу
+    state.parties.forEach(p => map.set(p.name, charactersInParty(state.characters, p.id)));
+    const unassigned = state.characters.filter(c => hasNoParty(c, state.parties));
+    if (unassigned.length) map.set(NO_PARTY_LABEL, unassigned);
 
     return map;
 }
@@ -117,14 +118,23 @@ export function renderPartiesGrid() {
     }
 
     container.className = 'party-grid-container'; 
+
+    // Общий итог: персонаж из нескольких пати учитывается один раз
+    const overall = totalCoins(state.characters);
+    const multi = state.characters.filter(c => (c.partyIds || []).length > 1).length;
+    const summaryHtml = `<div class="party-summary muted" style="grid-column:1 / -1; font-size:0.85rem;">
+        Всего персонажей: <strong>${state.characters.length}</strong> · древних монет: <strong style="color:gold;">${formatCoins(overall)} 🪙</strong>${multi ? ` · в дополнительных пати: ${multi} (монеты считаются только по основной)` : ''}
+    </div>`;
     
-    container.innerHTML = sortedKeys.map(name => {
+    container.innerHTML = summaryHtml + sortedKeys.map(name => {
         const members = partyMap.get(name);
         const isExpanded = expandedParties.has(name);
-        const stats = calculatePartyStats(members);
+        const party = partyByName(state.parties, name);
+        const stats = calculatePartyStats(members, party);
         
         const coinsDisplay = stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : '';
-        const memberCountLabel = `${members.length} чел.`;
+        const mainCount = party ? charactersInMainParty(members, party.id).length : members.length;
+        const memberCountLabel = party && mainCount !== members.length ? `${members.length} чел. (осн. ${mainCount})` : `${members.length} чел.`;
         const isDraggable = name !== 'Без пати';
 
         // --- Тело карточки (всегда генерируется, но скрыто CSS) ---
@@ -146,6 +156,7 @@ export function renderPartiesGrid() {
                                 <span style="color:${statusColor}; font-size:0.9rem; flex-shrink:0;" title="${isOnline ? 'Онлайн' : 'Оффлайн'}">${statusIcon}</span>
                                 <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-primary);">${escapeHtml(m.nick)}</strong>
                                 <small class="muted" style="font-size:0.8rem; white-space:nowrap;">${escapeHtml(m.class)}</small>
+                                ${party && !isMainParty(m, party.id) ? '<span class="badge muted" style="font-size:0.65rem;" title="Для этого персонажа это дополнительная пати: его монеты считаются в основной">доп.</span>' : ''}
                             </div>
                             
                             <button class="btn ghost small open-profile-btn" data-char-id="${m.id}" style="padding:2px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--accent); cursor:pointer;">
@@ -200,7 +211,7 @@ export function renderPartiesGrid() {
                 
                 <div style="text-align:right; flex-shrink:0; margin-left:10px;">
                     <span class="badge muted" style="font-size:0.7rem; display:block; margin-bottom:2px;">${memberCountLabel}</span>
-                    <span style="font-size:0.85rem; color:gold; font-weight:bold;">${coinsDisplay}</span>
+                    <span style="font-size:0.85rem; color:gold; font-weight:bold;" title="Монеты считаются по основной пати персонажей">${coinsDisplay}</span>
                 </div>
             </header>
         `;

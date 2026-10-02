@@ -17,6 +17,9 @@ import { openCharacterProfile, openCharacterForm } from './index.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
+import {
+  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
+} from '../parties/membership.js';
 
 // Персонажи, видимые после фильтров (для «выбрать все»)
 let visibleIds = [];
@@ -56,7 +59,7 @@ function initFilters() {
 
   // Классы и пати (при каждой отрисовке списка пересобираются заново — см. renderFilteredGrid)
   fillClassFilter(classSelect, state.characters);
-  fillPartyFilter(partySelect, state.characters);
+  fillPartyFilter(partySelect, state.parties);
 
   // ЗАПОЛНЕНИЕ АВТОРИЗАЦИИ (СТАТИЧЕСКИЙ СПИСОК)
   authSelect.innerHTML = `
@@ -105,7 +108,7 @@ function renderFilteredGrid() {
   // Варианты фильтров собираем из актуального state.characters при каждой отрисовке:
   // новый класс/пати/тег сразу появляется в списке, исчезнувший — сбрасывает фильтр (issue #2)
   const selectedClass = fillClassFilter(document.getElementById('class-filter'), state.characters);
-  const selectedParty = fillPartyFilter(document.getElementById('party-filter'), state.characters);
+  const selectedParty = fillPartyFilter(document.getElementById('party-filter'), state.parties);
   const selectedAuth = document.getElementById('auth-filter')?.value || '';
   const tagSelect = document.getElementById('tag-filter');
   if (tagSelect) fillTagFilter(tagSelect);
@@ -178,7 +181,11 @@ function generateCardHTML(char) {
     }).join('');
 
     const coinsDisplay = formatCoins(char.ancientCoins || 0);
-    const partyLabel = char.party ? escapeHtml(char.party) : 'Без пати';
+    const mainName = mainPartyName(char, state.parties);
+    const extraNames = additionalPartiesOf(char, state.parties).map(p => p.name);
+    const partyLabel = mainName
+      ? `${escapeHtml(mainName)}${extraNames.length ? ` <span title="Дополнительные: ${escapeHtml(extraNames.join(', '))}">+${extraNames.length}</span>` : ''}`
+      : NO_PARTY_LABEL;
 
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
     const authView = getAuthView(char);
@@ -299,17 +306,16 @@ function updateKPIs(charsToCount) {
   const totalChars = charsToCount.length;
   document.getElementById('kpi-total-chars').textContent = totalChars;
 
-  // 2. Активные пати (уникальные названия пати среди отфильтрованных)
-  const uniquePartiesSet = new Set(charsToCount.map(c => c.party).filter(Boolean));
+  // 2. Активные пати (уникальные основные пати среди отфильтрованных)
+  const uniquePartiesSet = new Set(charsToCount.map(c => c.mainPartyId).filter(id => partyById(state.parties, id)));
   document.getElementById('kpi-active-parties').textContent = uniquePartiesSet.size;
 
   // 3. Без пати
-  const noPartyCount = charsToCount.filter(c => !c.party).length;
+  const noPartyCount = charsToCount.filter(c => hasNoParty(c, state.parties)).length;
   document.getElementById('kpi-no-party').textContent = noPartyCount;
 
   // 4. Сумма древних монет
-  const totalCoins = charsToCount.reduce((sum, c) => sum + (Number(c.ancientCoins) || 0), 0);
-  document.getElementById('kpi-coins').textContent = formatCoins(totalCoins);
+  document.getElementById('kpi-coins').textContent = formatCoins(totalCoinsOf(charsToCount));
 
   // 5. Онлайн (Авторизовано)
   const onlineCount = charsToCount.filter(c => c.isLoggedIn === true).length;
@@ -616,16 +622,37 @@ async function onBulkAction(e) {
       break;
     }
     case 'party': {
-      const options = state.parties.map(p => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+      if (!state.parties.length) { toast('Сначала создайте пати во вкладке «Пати»', 'info'); break; }
+      const options = state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
       showModal({
-        title: `Перенести в пати (${chars.length} перс.)`,
-        content: `<div class="field"><label>Пати</label><select class="select" name="party"><option value="">— Без пати —</option>${options}</select></div>`,
-        submitText: 'Перенести',
+        title: `Пати (${chars.length} перс.)`,
+        content: `
+          <div class="field"><label>Пати</label><select class="select" name="party">${options}</select></div>
+          <div class="field"><label>Действие</label>
+            <label class="switch-row"><input type="radio" name="op" value="main" checked /> Сделать основной (прежняя основная станет дополнительной)</label>
+            <label class="switch-row"><input type="radio" name="op" value="add" /> Добавить как дополнительную (у кого нет пати — станет основной)</label>
+            <label class="switch-row"><input type="radio" name="op" value="remove" /> Убрать из этой пати</label>
+            <label class="switch-row"><input type="radio" name="op" value="clear" /> Убрать из всех пати</label>
+          </div>`,
+        submitText: 'Применить',
         cancelText: 'Отмена',
         onSubmit(formData) {
-          const party = formData.get('party') || null;
-          chars.forEach(c => { c.party = party; c.updatedAt = now; });
-          saveAndRender(party ? `Перенесено в «${party}»: ${chars.length}` : `Убраны из пати: ${chars.length}`);
+          const partyId = String(formData.get('party') || '');
+          const op = String(formData.get('op') || 'add');
+          const party = partyById(state.parties, partyId);
+          if (op === 'clear') {
+            chars.forEach(c => { c.partyIds = []; c.mainPartyId = null; c.updatedAt = now; });
+            saveAndRender(`Убраны из всех пати: ${chars.length}`);
+            return;
+          }
+          if (!party) return false;
+          let changed = 0;
+          chars.forEach(c => {
+            const did = op === 'main' ? setMainParty(c, party.id) : setMembership(c, party.id, op === 'add');
+            if (did) { c.updatedAt = now; changed++; }
+          });
+          const msg = { main: `Основная пати «${party.name}»`, add: `Добавлены в «${party.name}»`, remove: `Убраны из «${party.name}»` }[op];
+          saveAndRender(`${msg}: ${changed}`);
         }
       });
       break;

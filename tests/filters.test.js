@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from '../js/modules/characters/filters.js';
 
-const ch = (nick, over = {}) => ({ id: nick, nick, class: '', party: null, tags: [], isLoggedIn: false, ...over });
+const ch = (nick, over = {}) => ({ id: nick, nick, class: '', partyIds: [], tags: [], isLoggedIn: false, ...over });
 const values = (select) => [...select.options].map(o => o.value);
 
 describe('фильтр по классам (issue #2)', () => {
@@ -59,31 +59,38 @@ describe('фильтр по классам (issue #2)', () => {
 });
 
 describe('фильтр по пати', () => {
-  it('«Без пати» всегда на месте, новые пати добавляются, исчезнувшая сбрасывается', () => {
+  it('«Без пати» всегда на месте, новые пати появляются, удалённая сбрасывает фильтр', () => {
     document.body.innerHTML = '<select id="p"></select>';
     const select = document.getElementById('p');
-    const chars = [ch('A', { party: 'Основа' })];
-    fillPartyFilter(select, chars);
-    expect(values(select)).toEqual(['', '__none__', 'Основа']);
-    select.value = 'Основа';
-    chars[0].party = 'Крипочки';
-    expect(fillPartyFilter(select, chars)).toBe('');
-    expect(values(select)).toEqual(['', '__none__', 'Крипочки']);
+    const parties = [{ id: 'p1', name: 'Основа', order: 1 }];
+    fillPartyFilter(select, parties);
+    expect(values(select)).toEqual(['', '__none__', 'p1']);
+    expect(select.options[2].textContent).toBe('Основа');
+    select.value = 'p1';
+    parties.push({ id: 'p2', name: 'Крипочки', order: 2 });
+    expect(fillPartyFilter(select, parties)).toBe('p1');
+    parties.shift();
+    expect(fillPartyFilter(select, parties)).toBe('');
+    expect(values(select)).toEqual(['', '__none__', 'p2']);
   });
 });
 
 describe('filterCharacters', () => {
   const chars = [
-    ch('Alpha', { class: 'Маг', party: 'P1', tags: ['фарм'], isLoggedIn: true }),
-    ch('Beta', { class: 'Воин', party: null, tags: [] }),
-    ch('Gamma', { class: 'Маг', party: 'P2', tags: ['Фарм'] })
+    ch('Alpha', { class: 'Маг', partyIds: ['P1'], tags: ['фарм'], isLoggedIn: true }),
+    ch('Beta', { class: 'Воин', partyIds: [], tags: [] }),
+    ch('Gamma', { class: 'Маг', partyIds: ['P2', 'P1'], tags: ['Фарм'] })
   ];
   const nicks = (f) => filterCharacters(chars, f).map(c => c.nick);
   it('без фильтров — все', () => expect(nicks({})).toEqual(['Alpha', 'Beta', 'Gamma']));
   it('класс', () => expect(nicks({ cls: 'Маг' })).toEqual(['Alpha', 'Gamma']));
-  it('пати и «Без пати»', () => { expect(nicks({ party: 'P2' })).toEqual(['Gamma']); expect(nicks({ party: '__none__' })).toEqual(['Beta']); });
+  it('пати: персонаж входит в выбранную пати; «Без пати»', () => {
+    expect(nicks({ party: 'P2' })).toEqual(['Gamma']);
+    expect(nicks({ party: 'P1' })).toEqual(['Alpha', 'Gamma']); // Gamma состоит в двух пати
+    expect(nicks({ party: '__none__' })).toEqual(['Beta']);
+  });
   it('тег без учёта регистра и «Без тегов»', () => { expect(nicks({ tag: 'фарм' })).toEqual(['Alpha', 'Gamma']); expect(nicks({ tag: '__none__' })).toEqual(['Beta']); });
   it('статус входа', () => { expect(nicks({ auth: 'online' })).toEqual(['Alpha']); expect(nicks({ auth: 'offline' })).toEqual(['Beta', 'Gamma']); });
   it('поиск по нику и #тегу', () => { expect(nicks({ search: 'bet' })).toEqual(['Beta']); expect(nicks({ search: '#фарм' })).toEqual(['Alpha', 'Gamma']); });
-  it('комбинация фильтров', () => expect(nicks({ cls: 'Маг', party: 'P1' })).toEqual(['Alpha']));
+  it('комбинация фильтров', () => expect(nicks({ cls: 'Маг', party: 'P2' })).toEqual(['Gamma']));
 });

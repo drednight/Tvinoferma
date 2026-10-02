@@ -1,6 +1,7 @@
 // js/modules/characters/profileView.js
 
-import { state } from '../../core/state.js';
+import { state, NOTES_MAX_LENGTH } from '../../core/state.js';
+import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/membership.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
@@ -62,7 +63,7 @@ export function openCharacterProfile(char) {
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
             <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
-            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(char.party || 'Без пати')}</p>
+            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}${additionalPartiesOf(char, state.parties).length ? ` <small>· доп.: ${escapeHtml(additionalPartiesOf(char, state.parties).map(p => p.name).join(', '))}</small>` : ''}</p>
           </div>
           
           <!-- БЛОК МОНЕТ С КНОПКОЙ ОБНОВЛЕНИЯ -->
@@ -115,6 +116,12 @@ export function openCharacterProfile(char) {
             </div>
           </div>
         </details>
+
+        <!-- ПРИМЕЧАНИЯ (локально, автосохранение) -->
+        <div class="info-block" style="margin-bottom:16px;">
+          <h4>Примечания <small id="char-notes-status" class="muted" style="font-weight:normal;"></small></h4>
+          <textarea id="char-notes" class="input" rows="4" maxlength="${NOTES_MAX_LENGTH}" style="width:100%; resize:vertical;" placeholder="Заметки о персонаже: что докачать, что купить, особенности аккаунта…">${escapeHtml(char.notes || '')}</textarea>
+        </div>
 
         <!-- Статы -->
         <div class="info-block" style="margin-bottom:16px;">
@@ -257,6 +264,32 @@ export function openCharacterProfile(char) {
         }
       };
     });
+
+    // Примечания: автосохранение с задержкой (текст не пишем в журналы)
+    const notesEl = document.getElementById('char-notes');
+    const notesStatus = document.getElementById('char-notes-status');
+    if (notesEl) {
+      let timer = null;
+      const saveNotes = async () => {
+        clearTimeout(timer); timer = null;
+        const next = notesEl.value.slice(0, NOTES_MAX_LENGTH);
+        if (next === (char.notes || '')) return;
+        char.notes = next;
+        char.updatedAt = new Date().toISOString();
+        try {
+          await persist();
+          if (notesStatus) notesStatus.textContent = '— сохранено';
+        } catch (e) {
+          if (notesStatus) notesStatus.textContent = '— ошибка сохранения';
+        }
+      };
+      notesEl.addEventListener('input', () => {
+        if (notesStatus) notesStatus.textContent = '— …';
+        clearTimeout(timer);
+        timer = setTimeout(saveNotes, 700);
+      });
+      notesEl.addEventListener('blur', saveNotes); // не теряем текст при закрытии окна
+    }
 
     // Close Button
     const closeBtn = document.getElementById('btn-close-profile');

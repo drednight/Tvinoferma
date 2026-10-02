@@ -4,6 +4,7 @@ import { state } from '../core/state.js';
 import { showModal, toast } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
 import { SCHEMA_VERSION } from '../core/migrations.js';
+import { partyByName, partyNamesOf, mainPartyName, additionalPartiesOf, charactersInParty, hasNoParty } from '../modules/parties/membership.js';
 
 function downloadFile(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
@@ -27,8 +28,7 @@ export function openExportDialog() {
 
   const allMarathons = [...state.marathons].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   
-  const partiesSet = new Set(state.characters.map(c => c.party).filter(Boolean));
-  const allParties = Array.from(partiesSet);
+  const allParties = [...state.parties].sort((a, b) => (Number(a.order) || 1e9) - (Number(b.order) || 1e9)).map(p => p.name);
   
   const allCharacters = [...state.characters].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
 
@@ -85,6 +85,7 @@ export function openExportDialog() {
            <label><input type="checkbox" id="inc-passes" checked /> Проходки</label>
            <label><input type="checkbox" id="inc-coins" checked /> Монеты и история</label>
            <label><input type="checkbox" id="inc-tags" checked /> Теги</label>
+           <label><input type="checkbox" id="inc-notes" checked /> Примечания</label>
            <label><input type="checkbox" id="inc-sync" checked /> Прогресс марафонов с сайта</label>
         </div>
         <p class="muted" style="font-size:0.8rem; margin:6px 0 0;">Невыбранные группы не попадут в файл, а при импорте не затрут данные у получателя.</p>
@@ -120,6 +121,7 @@ export function openExportDialog() {
         const incCoins = document.getElementById('inc-coins')?.checked || false;
         const incStats = document.getElementById('inc-stats')?.checked || false;
         const incTags = document.getElementById('inc-tags')?.checked || false;
+        const incNotes = document.getElementById('inc-notes')?.checked || false;
         const incSync = document.getElementById('inc-sync')?.checked || false;
 
         // Сбор финального списка ID персонажей
@@ -170,7 +172,7 @@ export function openExportDialog() {
            exportData.characters = charsToExport.map(c => {
              const copy = JSON.parse(JSON.stringify(c));
              const clean = {
-               id: copy.id, nick: copy.nick, class: copy.class, party: copy.party, level: copy.level, sky: copy.sky,
+               id: copy.id, nick: copy.nick, class: copy.class, partyIds: copy.partyIds || [], mainPartyId: copy.mainPartyId || null, level: copy.level, sky: copy.sky,
                createdAt: copy.createdAt, updatedAt: copy.updatedAt
              };
              const contacts = {};
@@ -189,9 +191,16 @@ export function openExportDialog() {
                clean.coinHistory = copy.coinHistory;
              }
              if (incTags) clean.tags = copy.tags;
+             if (incNotes) clean.notes = copy.notes || '';
              if (incSync) clean.marathonData = copy.marathonData;
              return clean;
            });
+
+           // partyIds ссылаются на id партий: кладём в файл и сами партии, иначе при импорте ссылки потеряются
+           const needed = new Set(charsToExport.flatMap(c => c.partyIds || []));
+           const have = new Set((exportData.parties || []).map(p => p.id));
+           const extra = state.parties.filter(p => needed.has(p.id) && !have.has(p.id));
+           if (extra.length) exportData.parties = [...(exportData.parties || []), ...JSON.parse(JSON.stringify(extra))];
         }
 
         // Генерация файла
@@ -210,13 +219,13 @@ export function openExportDialog() {
              return false;
           }
           
-          const headers = ['ID', 'Nick', 'Class', 'Party', 'Level'];
+          const headers = ['ID', 'Nick', 'Class', 'Party', 'Extra Parties', 'Level'];
           if (incEmails) headers.push('Email');
           if (incPasses) headers.push('Weapon Passes', 'Armor Passes', 'Relic Passes');
           if (incCoins) headers.push('Ancient Coins');
 
           const rows = exportData.characters.map(c => {
-            const row = [c.id, `"${c.nick}"`, c.class || '', c.party || '-', c.level];
+            const row = [c.id, `"${c.nick}"`, c.class || '', `"${mainPartyName(c, state.parties) || '-'}"`, `"${additionalPartiesOf(c, state.parties).map(p => p.name).join(' / ')}"`, c.level];
             if (incEmails) row.push(`"${c.contacts?.email || ''}"`);
             if (incPasses) row.push(c.dungeonPasses?.weapon || 0, c.dungeonPasses?.armor || 0, c.dungeonPasses?.relic || 0);
             if (incCoins) row.push(c.ancientCoins || 0);
@@ -310,7 +319,7 @@ export function openExportDialog() {
        listEl.innerHTML = allCharacters.map(c => `
          <label style="display:block; padding:2px 0;">
            <input type="checkbox" value="${c.id}" ${selectedCharacterIds.has(c.id) ? 'checked':''} onchange="window.handleCharCheck(this)" />
-           ${escapeHtml(c.nick)} <small class="muted">(${c.party || '-'})</small>
+           ${escapeHtml(c.nick)} <small class="muted">(${escapeHtml(partyNamesOf(c, state.parties).join(', ') || '-')})</small>
          </label>
        `).join('');
     }
@@ -329,9 +338,10 @@ export function openExportDialog() {
         // Находим персонажей этой пати
         let charsInParty = [];
         if (partyName === '__none__') {
-           charsInParty = allCharacters.filter(c => !c.party);
+           charsInParty = allCharacters.filter(c => hasNoParty(c, state.parties));
         } else {
-           charsInParty = allCharacters.filter(c => c.party === partyName);
+           const party = partyByName(state.parties, partyName);
+           charsInParty = party ? charactersInParty(allCharacters, party.id) : [];
         }
 
         if (charsInParty.length === 0) return;

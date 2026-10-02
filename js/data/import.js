@@ -8,7 +8,8 @@ import { saveNow, createBackup, forceRenderAndPersist } from '../core/storage.js
 import { characterIdFor } from '../core/ids.js';
 import { showModal, toast } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
-import { diffCharacters, presentPaths, buildMerged } from './characterFields.js';
+import { diffCharacters, presentPaths, buildMerged, setPartyNameResolver } from './characterFields.js';
+import { planPartyImport, remapCharacterParties, partyNamesOf } from '../modules/parties/membership.js';
 import { openCompareDialog } from './compare.js';
 import { syncIdWithNick } from '../modules/characters/identity.js';
 
@@ -58,11 +59,16 @@ export function openImportDialog(raw) {
   const incoming = normalizeState(source);
   // Какие поля реально есть в файле: не попавшее в экспорт (пароли, статы…) не затирает текущие данные
   const rawChars = Array.isArray(source?.characters) ? source.characters : [];
-  const presence = new Map(incoming.characters.map((c, i) => [c, presentPaths(rawChars[i] || {})]));
-  const plan = planImport(state.characters, incoming.characters, c => presence.get(c) || null);
 
-  const localPartyNames = new Set(state.parties.map(p => p.name));
-  const newParties = incoming.parties.filter(p => !localPartyNames.has(p.name));
+  // Пати из файла сопоставляются с локальными по названию; персонажи для слияния получают локальные id пати
+  const partyPlan = planPartyImport(state.parties, incoming.parties);
+  const newParties = partyPlan.newParties;
+  const mergeChars = remapCharacterParties(incoming.characters, partyPlan.idMap);
+  setPartyNameResolver(id => [...state.parties, ...newParties].find(p => p.id === id)?.name || null);
+
+  const presence = new Map(mergeChars.map((c, i) => [c, presentPaths(rawChars[i] || {})]));
+  const plan = planImport(state.characters, mergeChars, c => presence.get(c) || null);
+
   const localMarathons = new Map(state.marathons.map(m => [m.id, m]));
   const newMarathons = incoming.marathons.filter(m => !localMarathons.has(m.id));
   const newerMarathons = incoming.marathons.filter(m => localMarathons.has(m.id) &&
@@ -93,7 +99,7 @@ export function openImportDialog(raw) {
 
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">👤 Новые персонажи: ${plan.added.length}</h4>
-          ${list(plan.added, c => `<label><input type="checkbox" name="add" value="${escapeHtml(c.id)}" checked /> ${escapeHtml(c.nick)} <small class="muted">${escapeHtml(c.class || '')} · ${escapeHtml(c.party || 'без пати')}</small></label>`)}
+          ${list(plan.added, c => `<label><input type="checkbox" name="add" value="${escapeHtml(c.id)}" checked /> ${escapeHtml(c.nick)} <small class="muted">${escapeHtml(c.class || '')} · ${escapeHtml(partyNamesOf(c, [...state.parties, ...newParties]).join(', ') || 'без пати')}</small></label>`)}
         </div>
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">⚖️ Совпадают, но отличаются: ${plan.conflicts.length}</h4>
@@ -111,7 +117,8 @@ export function openImportDialog(raw) {
       if (mode === 'replace') {
         await backupBeforeImport();
         state.characters = incoming.characters;
-        if (hasKey(source, 'parties')) state.parties = incoming.parties;
+        // Пати берём из файла всегда, когда они есть: на них ссылаются partyIds персонажей
+        if (hasKey(source, 'parties') || incoming.parties.length) state.parties = incoming.parties;
         if (hasKey(source, 'marathons')) state.marathons = incoming.marathons;
         if (hasKey(source, 'marathonTemplates')) state.marathonTemplates = incoming.marathonTemplates;
         if (hasKey(source, 'settings')) state.settings = incoming.settings;

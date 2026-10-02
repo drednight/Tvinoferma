@@ -3,6 +3,12 @@
 // Добавили поле в модель (modules/characters/stateManager.js) — добавьте его и сюда,
 // тогда оно появится в окне сравнения при импорте.
 
+// Название пати по id для окна сравнения (import.js подставляет локальные и новые пати)
+let resolvePartyName = (id) => id;
+export function setPartyNameResolver(fn) { resolvePartyName = typeof fn === 'function' ? fn : (id) => id; }
+
+const isListType = (f) => f.type === 'list' || f.type === 'parties';
+
 const stat = (key, label) => ({ path: `stats.${key}`, label, type: 'number' });
 
 export const FIELD_GROUPS = [
@@ -10,10 +16,12 @@ export const FIELD_GROUPS = [
     { path: 'nick', label: 'Ник' },
     { path: 'class', label: 'Класс' },
     { path: 'level', label: 'Уровень', type: 'number' },
-    { path: 'party', label: 'Пати' },
+    { path: 'mainPartyId', label: 'Основная пати', type: 'party' },
+    { path: 'partyIds', label: 'Все пати', type: 'parties', mergeable: true },
     { path: 'sky.name', label: 'Небо' },
     { path: 'sky.level', label: 'Уровень неба', type: 'number' },
-    { path: 'tags', label: 'Теги', type: 'list', mergeable: true }
+    { path: 'tags', label: 'Теги', type: 'list', mergeable: true },
+    { path: 'notes', label: 'Примечания' }
   ] },
   { id: 'contacts', title: 'Контакты', fields: [
     { path: 'contacts.email', label: 'Email / Логин' },
@@ -73,7 +81,7 @@ export function setPath(obj, path, value) {
 /** Нормализованное значение для сравнения («пусто» = '', null, 0 у чисел не путаем). */
 function comparable(field, v) {
   if (v === undefined || v === null || v === '') return '';
-  if (field.type === 'list') return JSON.stringify([...(v || [])].map(x => String(x).toLowerCase()).sort());
+  if (isListType(field)) return JSON.stringify([...(v || [])].map(x => String(x).toLowerCase()).sort());
   if (field.type === 'history') return JSON.stringify((v || []).map(h => h.id || `${h.date}|${h.delta}`).sort());
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
@@ -94,12 +102,15 @@ export function diffCharacters(local, incoming, present = null) {
 
 /** Какие поля есть в «сыром» персонаже из файла (до нормализации). */
 export function presentPaths(rawChar) {
-  return new Set(ALL_FIELDS.filter(f => getPath(rawChar, f.path) !== undefined).map(f => f.path));
+  const present = new Set(ALL_FIELDS.filter(f => getPath(rawChar, f.path) !== undefined).map(f => f.path));
+  // Файлы старого формата хранили пати названием в поле `party`
+  if (rawChar && rawChar.party !== undefined) { present.add('partyIds'); present.add('mainPartyId'); }
+  return present;
 }
 
 /** Объединение для полей-списков: теги без дублей, история монет без повторов, новые сверху. */
 export function mergeValues(field, a, b) {
-  if (field.type === 'list') {
+  if (isListType(field)) {
     const seen = new Set();
     return [...(a || []), ...(b || [])].filter(t => { const k = String(t).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
   }
@@ -133,6 +144,8 @@ export function buildMerged(local, incoming, picks = {}) {
 export function displayValue(field, v) {
   if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) return '—';
   if (field.type === 'list') return v.join(', ');
+  if (field.type === 'party') return resolvePartyName(v) || '?';
+  if (field.type === 'parties') return v.map(id => resolvePartyName(id) || '?').join(', ');
   if (field.type === 'history') return `${v.length} операц.${v[0] ? ` · последняя ${String(v[0].date || '').slice(0, 10)}: ${v[0].delta > 0 ? '+' : ''}${v[0].delta ?? ''}` : ''}`;
   if (field.type === 'date') return new Date(v).toLocaleString('ru-RU');
   if (field.type === 'json') {

@@ -13,6 +13,7 @@ import { scanTitles, parseMarathonPage, pickScannerCharacter, SITE_PAGES, custom
 import { baseTitle } from './model.js';
 import { taskCardHtml } from '../../core/taskLog.js';
 import { getAuthView } from '../sync/authStatus.js';
+import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 
 const STEPS = ['Источник', 'Этапы и задания', 'Участники', 'Награды'];
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -540,7 +541,8 @@ export function openMarathonWizard(opts = {}) {
     const d = W.drafts[W.active];
     const chars = [...state.characters].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
     const groups = new Map();
-    chars.forEach(c => { const k = c.party || 'Без пати'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+    // выбор участников идёт по основной пати персонажа
+    chars.forEach(c => { const k = mainPartyName(c, state.parties) || NO_PARTY_LABEL; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
     const order = [...state.parties].sort((a, b) => (a.order || 0) - (b.order || 0)).map(p => p.name);
     const groupNames = [...groups.keys()].sort((a, b) => {
       const ia = order.indexOf(a), ib = order.indexOf(b);

@@ -4,6 +4,10 @@ import { SCHEMA_VERSION, migrateState } from './migrations.js';
 import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
+import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
+
+/** Максимальная длина примечания к персонажу (символов). */
+export const NOTES_MAX_LENGTH = 5000;
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -65,7 +69,9 @@ export function normalizeCharacter(input = {}) {
     id: input.id ? String(input.id) : null, // пустой id назначается из ника в normalizeState
     nick: String(input.nick || ''),
     class: String(input.class || ''),
-    party: input.party === '' ? null : input.party || null,
+    partyIds: normalizePartyIds(input.partyIds), // id всех партий; миграция v5 переводит старое поле `party`
+    mainPartyId: resolveMainPartyId(input.partyIds, input.mainPartyId), // основная пати (входит в partyIds)
+    notes: String(input.notes ?? '').slice(0, NOTES_MAX_LENGTH),
     level: Number(input.level) || 1,
     sky: {
       name: input.sky?.name || null,
@@ -196,6 +202,9 @@ export function normalizeState(raw) {
 
     normalized.parties = tempParties;
   }
+
+  // 3. Ссылки персонажей на несуществующие партии (удалённые, потерянные при импорте) убираем
+  sweepPartyIds(normalized.characters, normalized.parties);
 
   return normalized;
 }

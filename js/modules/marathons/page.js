@@ -8,6 +8,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
 import { confirmDialog, toast } from '../../core/ui.js';
 import { getAuthView } from '../sync/authStatus.js';
+import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 import { openOverlay } from './overlay.js';
 import { openMarathonWizard, setWizardSavedHandler } from './wizard.js';
 import { syncMarathons, marathonUrlOf, SITE_PAGES, customPages, rememberCustomPage } from './siteSync.js';
@@ -25,6 +26,8 @@ const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU',
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const coin = (n) => `🪙 ${formatCoins(n || 0)}`;
 const charById = (id) => state.characters.find(c => c.id === id);
+/** Группа персонажа в марафоне — его основная пати; без пати — «Без пати». */
+const partyLabel = (c) => mainPartyName(c, state.parties) || NO_PARTY_LABEL;
 const findM = (id) => state.marathons.find(m => m.id === id);
 
 const ERROR_TEXT = {
@@ -374,7 +377,7 @@ function renderDetail(root, m) {
       <div class="row gap">
         <select class="select" data-f="party">
           <option value="all">Все пати</option>
-          ${[...new Set(m.participantIds.map(id => charById(id)?.party || 'Без пати'))].map(p => `<option ${ui.party === p ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
+          ${[...new Set(m.participantIds.filter(id => charById(id)).map(id => partyLabel(charById(id))))].map(p => `<option ${ui.party === p ? 'selected' : ''}>${escapeHtml(p)}</option>`).join('')}
         </select>
         <label class="tf-radio"><input type="checkbox" data-f="problems" ${ui.onlyProblems ? 'checked' : ''}/> Только проблемные</label>
       </div>
@@ -475,9 +478,10 @@ function syncPanel(m) {
 function matrix(m) {
   if (!m.participantIds.length) return '<div class="empty-state">Нет участников. Откройте «✏️ Редактировать» → «Участники».</div>';
   const chars = m.participantIds.map(charById).filter(Boolean)
-    .filter(c => ui.party === 'all' || (c.party || 'Без пати') === ui.party);
+    .filter(c => ui.party === 'all' || partyLabel(c) === ui.party);
   const groups = new Map();
-  chars.forEach(c => { const k = c.party || 'Без пати'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+  // Персонаж показан один раз — в своей основной пати
+  chars.forEach(c => { const k = partyLabel(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
   const cols = m.tasks.length + 2;
 
   const rows = [...groups.entries()].map(([party, members]) => {

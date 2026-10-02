@@ -22,7 +22,9 @@ export function createEmptyCharacter() {
     id: null, // назначается из ника при сохранении (core/ids.js)
     nick: '',
     class: '',
-    party: null,
+    partyIds: [],
+    mainPartyId: null,
+    notes: '',
     level: 1,
     sky: { name: null, level: null },
     contacts: { email: '', password: '', recoveryEmail: '', phone: '' },
