@@ -121,7 +121,7 @@ export async function renderSettings() {
   // Backups
   await refreshBackups();
 
-  // История промокодов
+  // Логи промокодов
   renderPromoLog();
 
   // Безопасность

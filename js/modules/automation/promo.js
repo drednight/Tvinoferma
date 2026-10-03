@@ -29,7 +29,7 @@ const cellHtml = (row) => {
   if (!row) return '<span class="promo-muted">⏳ в очереди</span>';
   const info = statusInfo(row.status);
   const tip = [rowLabel(row), rowDetail(row)].filter(Boolean).join(' — ');
-  return `<span title="${escapeHtml(tip)}">${info.icon} ${escapeHtml(row.skipped && isOk(row.status) ? 'ранее' : info.label)}</span>`;
+  return `<span title="${escapeHtml(tip)}">${info.icon} ${escapeHtml(row.skipped && isOk(row.status) ? 'ранее' : rowLabel(row))}</span>`;
 };
 
 const rewardsHtml = (rewards) => !rewards?.length ? '' : `

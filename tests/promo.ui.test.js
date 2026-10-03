@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Диалог промокодов и блок «История промокодов» в Настройках (Issue #25)
+// Диалог промокодов и блок «Логи промокодов» в Настройках (Issue #25)
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(() => true), toast: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
@@ -21,7 +21,7 @@ beforeEach(async () => {
   mocks.invoke.mockReset();
   mocks.confirm.mockReset().mockReturnValue(true);
   mocks.toast.mockReset();
-  document.body.innerHTML = '<div id="modal-root"></div><div id="promo-log-root"></div>';
+  document.body.innerHTML = '<div id="modal-root"></div><p id="promo-log-summary"></p><div id="promo-log-root"></div>';
   ({ state } = await import('../js/core/state.js'));
   state.characters = chars.map(c => ({ ...c })); state.parties = [];
   ({ openPromoDialog } = await import('../js/modules/automation/promo.js'));
@@ -91,7 +91,7 @@ describe('запуск', () => {
     expect($('[data-act="retry"]')).not.toBeNull();
     // журнал в Настройках
     renderPromoLog();
-    expect([...document.querySelectorAll('.promo-log-item > summary code')].map(c => c.textContent).sort()).toEqual(['AAAA1111', 'BBBB2222']);
+    expect([...document.querySelectorAll('[data-promo-code]')].map(c => c.dataset.promoCode).sort()).toEqual(['AAAA1111', 'BBBB2222']);
   });
 
   it('недействительный код: предупреждение «не принят» и ничего в журнале', async () => {
@@ -100,7 +100,7 @@ describe('запуск', () => {
     expect($('.promo-alert').textContent).toContain('BADD0001');
     expect($('.promo-alert').textContent).toContain('не принят');
     renderPromoLog();
-    expect(document.querySelectorAll('.promo-log-item')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(0);
   });
 
   it('повторный ввод того же кода: введённых пропускает без запроса, остальных прогоняет заново', async () => {
@@ -132,41 +132,48 @@ describe('запуск', () => {
     // начатый ввод завершился и сохранён, остальные не начинались
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
     renderPromoLog();
-    expect(document.querySelectorAll('.promo-log-item')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(1);
     expect($('.tf-dialog-sub').textContent).toContain('Остановлено');
   });
 });
 
-describe('Настройки → История промокодов', () => {
+describe('Настройки → Логи промокодов', () => {
   it('пусто: понятная заглушка, кнопки выгрузки и очистки неактивны', () => {
     renderPromoLog();
-    expect($('#promo-log-root').textContent).toContain('Пока ни один промокод не введён');
+    expect($('#promo-log-root').textContent).toContain('Здесь появятся введённые промокоды');
+    expect($('#promo-log-summary').textContent).toContain('Записей пока нет');
     expect($('[data-promo-log="clear"]').disabled).toBe(true);
     expect($('[data-promo-log="archive"]').disabled).toBe(true);
   });
 
-  it('свёрнутая строка — код и дата; внутри кто получил, награда и отдельно кому не введён (с причиной)', () => {
+  it('список как в логах скриптов: строка «код — дата — итог»; по нажатию открывается окно, а не раскрывается список', () => {
     recordRun('CODE1234', [
       okRow('a', 'CODE1234', { rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }] }),
-      okRow('b', 'CODE1234', { status: 'challenge', clicked: false })
-    ], { known: chars });
+      okRow('b', 'CODE1234', { status: 'challenge', clicked: false }),
+      okRow('c', 'CODE1234', { status: 'not_run', clicked: false, detail: 'Сайт показал проверку безопасности — остальные коды не вводились' })
+    ], { known: [...chars, { id: 'd', nick: 'Гг' }] });
     renderPromoLog();
-    const item = $('.promo-log-item');
-    expect(item.querySelector('summary').textContent).toMatch(/CODE1234\s+— введён/);
-    const text = item.querySelector('.promo-log-body').textContent;
+    const row = $('.tl-jrow[data-promo-code="CODE1234"]');
+    expect(row.textContent).toContain('CODE1234');
+    expect(row.textContent).toContain('Введён: 1, не введён: 3');
+    expect($('#promo-log-summary').textContent).toMatch(/Записей: 1.*последний: CODE1234/);
+    expect($('.tf-dialog')).toBeNull();
+    row.click();
+    const text = $('.tf-dialog').textContent;
+    expect($('.tf-dialog-title').textContent).toContain('CODE1234');
     expect(text).toContain('Метеорит ×100');
     expect(text).toContain('Введён (1)');
-    expect(text).toContain('Аа');
-    expect(text).toContain('Не введён (2)');
+    expect(text).toContain('Не введён (3)');
     expect(text).toMatch(/Бб[\s\S]*Нужна проверка безопасности/);
-    expect(text).toMatch(/Вв[\s\S]*не запускался/);
+    expect(text).toMatch(/Вв[\s\S]*остальные коды не вводились/);
+    expect(text).toMatch(/Гг[\s\S]*не запускался/);
   });
 
   it('очистка журнала оставляет архив', async () => {
     recordRun('CODE1234', [okRow('a')], { known: chars });
     renderPromoLog();
     $('[data-promo-log="clear"]').click();
-    expect(document.querySelectorAll('.promo-log-item')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(0);
     expect($('[data-promo-log="archive"]').textContent).toContain('(1)');
   });
 });

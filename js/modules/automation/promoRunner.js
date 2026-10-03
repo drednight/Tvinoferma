@@ -78,7 +78,7 @@ export async function runPromoBatch({
       if (skips[i]) { emit(char, code, plainRow(char, code, skips[i].status || 'already_used', skips[i].detail ?? null, { skipped: true })); continue; }
       if (signal.cancelled) { emit(char, code, plainRow(char, code, 'cancelled')); continue; }
       if (blocked) { emit(char, code, plainRow(char, code, 'not_run', blocked)); continue; }
-      if (dead.has(codeKey(code))) { emit(char, code, plainRow(char, code, 'not_run', 'Сайт не принял этот код у других персонажей — не вводился')); continue; }
+      if (dead.has(codeKey(code))) { emit(char, code, plainRow(char, code, 'not_run', 'Сайт не принял этот код у других персонажей — здесь он не вводился')); continue; }
       if (invoked === 0 && started++ > 0) await sleepFn(range(START_STAGGER_MS, random));
       else if (invoked > 0) await sleepFn(range(CODE_PAUSE_MS, random));
       invoked++;
@@ -93,7 +93,9 @@ export async function runPromoBatch({
         rejected.set(k, (rejected.get(k) || 0) + 1);
         if (rejected.get(k) >= REJECT_LIMIT && !accepted.has(k)) dead.add(k);
       } else if (row.status === 'not_logged_in' || row.status === 'challenge' || row.error === 'window_open') {
-        blocked = row.status === 'not_logged_in' ? 'У персонажа нет входа' : row.status === 'challenge' ? 'Сайт показал проверку безопасности' : 'Открыто окно персонажа';
+        blocked = row.status === 'not_logged_in' ? 'У персонажа нет входа — остальные коды не вводились'
+          : row.status === 'challenge' ? 'Сайт показал проверку безопасности — остальные коды не вводились'
+            : 'Открыто окно персонажа — остальные коды не вводились';
       }
     }
   };

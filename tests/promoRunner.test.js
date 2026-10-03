@@ -55,6 +55,7 @@ describe('runPromoBatch: несколько кодов', () => {
     const rows = await runPromoBatch(base({ codes: ['AAAA1111', 'BBBB2222'], chars: mk(2), invokeFn }));
     expect(invokeFn).toHaveBeenCalledTimes(3);
     expect(rows.filter(r => r.charId === 'c0').map(r => r.status)).toEqual(['not_logged_in', 'not_run']);
+    expect(rows[1].detail).toBe('У персонажа нет входа — остальные коды не вводились');
     expect(rows.filter(r => r.charId === 'c1').map(r => r.status)).toEqual(['success', 'success']);
   });
 
@@ -64,6 +65,7 @@ describe('runPromoBatch: несколько кодов', () => {
     expect(invokeFn).toHaveBeenCalledTimes(REJECT_LIMIT);
     expect(rows.filter(r => r.status === 'invalid_code')).toHaveLength(REJECT_LIMIT);
     expect(rows.filter(r => r.status === 'not_run')).toHaveLength(8 - REJECT_LIMIT);
+    expect(rows.find(r => r.status === 'not_run').detail).toBe('Сайт не принял этот код у других персонажей — здесь он не вводился');
   });
 
   it('если код хоть раз приняли, отказы его не «убивают»', async () => {

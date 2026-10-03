@@ -58,6 +58,8 @@ describe('статусы', () => {
     expect(statusInfo('nope').label).toBe('Ошибка');
     expect(rowLabel(row({ status: 'already_used', skipped: true }))).toBe('Уже введён ранее');
     expect(rowLabel(row({ status: 'already_used' }))).toBe('Уже введён');
+    expect(rowLabel(row({ status: 'not_run', detail: 'Сайт не принял этот код у других персонажей — здесь он не вводился' }))).toContain('Сайт не принял этот код');
+    expect(rowLabel(row({ status: 'not_run' }))).toBe('Пропущен');
   });
 });
 
