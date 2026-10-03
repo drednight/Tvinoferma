@@ -37,15 +37,54 @@ describe('раскрытая карточка', () => {
     expect([...rows[0].querySelectorAll('li')].map(li => li.textContent).sort()).toEqual(['Арена', 'Фарм']);
   });
 
-  it('у баланса и статуса входа есть метка «N назад»; устаревшее подсвечено (issue #16)', async () => {
+  it('окно «Когда что проверено» стоит между шапкой и «Контактными данными»; на баланс и вход чипов нет (issue #16)', async () => {
+    openCharacterProfile(mkChar()); await wait();
+    const block = $('#profile-checks-block');
+    expect(block).not.toBeNull();
+    const all = [...document.querySelectorAll('#modal-root *')];
+    const idx = (el) => all.indexOf(el);
+    const contacts = [...document.querySelectorAll('summary')].find(s => s.textContent.includes('Контактные данные'));
+    expect(idx(block)).toBeGreaterThan(idx($('[data-extra-party]')));
+    expect(idx(block)).toBeLessThan(idx(contacts));
+    expect(block.textContent).toContain('Когда что проверено');
+    expect($('#profile-coins-block [data-fresh-kind]')).toBeNull();
+    expect($('#profile-auth-line [data-fresh-kind]')).toBeNull();
+  });
+
+  it('в окне — дата и «N назад» для баланса и входа; устаревшее подсвечено', async () => {
     const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
     openCharacterProfile(mkChar({ lastCoinUpdate: hoursAgo(2), lastLoginCheck: hoursAgo(30) })); await wait();
-    const coin = $('#profile-coins-block [data-fresh-kind="balance"]');
-    const login = $('#profile-auth-line [data-fresh-kind="login"]');
+    const coin = $('#profile-checks-block [data-fresh-kind="balance"]');
+    const login = $('#profile-checks-block [data-fresh-kind="login"]');
     expect(coin.textContent).toContain('2 ч назад');
     expect(coin.classList.contains('is-stale')).toBe(false);
     expect(login.textContent).toContain('1 дн. назад');
     expect(login.classList.contains('is-stale')).toBe(true);
+    const rows = [...document.querySelectorAll('#profile-checks-block .pf-check-row')].map(r => r.textContent);
+    expect(rows[0]).toContain('Баланс монет');
+    expect(rows[0]).toMatch(/\d{2}\.\d{2}\.\d{4}, \d{2}:\d{2}/);
+    expect(rows[1]).toContain('Вход на сайт');
+  });
+
+  it('ничего не проверялось → «ещё не проверялось» и «нет данных»', async () => {
+    openCharacterProfile(mkChar({ lastCoinUpdate: null, lastLoginCheck: null })); await wait();
+    const text = $('#profile-checks-block').textContent;
+    expect(text.match(/ещё не проверялось/g)).toHaveLength(2);
+    expect(text.match(/нет данных/g)).toHaveLength(2);
+  });
+
+  it('идущие марафоны с сайтом — отдельными строками; без них — пояснение; пороги подписаны по-русски', async () => {
+    openCharacterProfile(mkChar()); await wait();
+    expect($('#profile-checks-block').textContent).toContain('Идущих марафонов с адресом страницы на сайте нет');
+    expect($('#profile-checks-block').textContent).toContain('баланс — 1 день, вход — 1 день, марафон — 1 день');
+    document.getElementById('modal-root').innerHTML = '';
+    const h = (n) => new Date(Date.now() - n * 3600e3).toISOString();
+    state.marathons = [{ id: 'm1', title: 'Лето', kind: 'single', status: 'active', participantIds: ['c1'], source: { url: 'https://pwonline.ru/supermarathon.php' }, progress: { c1: { t: { syncedAt: h(50) } } } }];
+    openCharacterProfile(mkChar()); await wait();
+    const row = [...document.querySelectorAll('#profile-checks-block .pf-check-row')].find(r => r.textContent.includes('Марафон «Лето»'));
+    expect(row).toBeTruthy();
+    expect(row.querySelector('[data-fresh-kind="marathon"]').classList.contains('is-stale')).toBe(true);
+    expect($('#profile-checks-block').textContent).not.toContain('Идущих марафонов');
   });
 
   it('без дополнительных пати строки нет', async () => {

@@ -10,7 +10,7 @@ import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import { openTaskJournal } from '../core/taskLog.js';
-import { refreshFreshnessLabels } from '../core/freshness.js';
+import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 
 async function refreshBackups() {
   const adapter = getAdapter();
@@ -104,11 +104,21 @@ export async function renderSettings() {
     if (el.type === 'checkbox') el.checked = value !== false && value !== undefined;
     else el.value = value ?? '';
   });
+  updateHoursHints();
 
   const hk = document.getElementById('hotkeys-list');
   if (hk && !hk.childElementCount) {
     hk.innerHTML = HOTKEYS.map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
   }
+}
+
+/** Подписи к полям «часов»: 24 → «= 1 день», 30 → «= 1 день 6 часов». */
+function updateHoursHints() {
+  document.querySelectorAll('[data-hours-for]').forEach(hint => {
+    const input = document.querySelector(`[data-setting="${hint.dataset.hoursFor}"]`);
+    const text = input instanceof HTMLInputElement ? formatHoursSpan(input.value) : '';
+    hint.textContent = text ? `= ${text}` : '';
+  });
 }
 
 function getSetting(path) {
@@ -123,6 +133,10 @@ function setSetting(path, value) {
 }
 
 function bindSettingInputs() {
+  // Подпись «= 3 дня» меняется по мере ввода, до сохранения значения
+  document.querySelectorAll('[data-hours-for]').forEach(hint => {
+    document.querySelector(`[data-setting="${hint.dataset.hoursFor}"]`)?.addEventListener('input', updateHoursHints);
+  });
   document.querySelectorAll('[data-setting]').forEach(el => {
     el.addEventListener('change', async () => {
       const path = el.dataset.setting;
@@ -133,7 +147,9 @@ function bindSettingInputs() {
         const min = el.min !== '' ? Number(el.min) : -Infinity;
         const max = el.max !== '' ? Number(el.max) : Infinity;
         value = Math.min(max, Math.max(min, Number.isFinite(n) ? n : 0));
+        if (path.startsWith('freshness.')) value = Math.round(value);   // порог — целое число часов
         el.value = value;
+        updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
       await persist();

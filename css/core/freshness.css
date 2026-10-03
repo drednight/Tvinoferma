@@ -17,3 +17,27 @@
 .fresh-chip.is-stale::before {
   content: '⏳ ';
 }
+
+/* Окно «Когда что проверено» в профиле персонажа */
+.pf-checks {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+.pf-checks-title { font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.pf-check-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto auto;
+  gap: 4px 14px;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: 0.9rem;
+}
+.pf-check-when { color: var(--text); font-variant-numeric: tabular-nums; }
+.pf-check-note { margin-top: 6px; font-size: 0.78rem; }
+
+/* Подпись «= 1 день» рядом с полем часов в настройках */
+.hours-field { display: flex; align-items: center; gap: 10px; }
+.hours-hint { min-width: 120px; }

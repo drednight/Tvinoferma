@@ -8,7 +8,7 @@
 
 import { planCharacterIds, remapIdsDeep } from './ids.js';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -82,6 +82,12 @@ export const MIGRATIONS = {
       return { ...rest, partyIds: ids, mainPartyId, notes: typeof c.notes === 'string' ? c.notes : '' };
     });
     s.parties = parties;
+    return s;
+  },
+
+  // v5 → v6: порог свежести входа по умолчанию стал 24 ч (в первой версии настройки было 12 ч и оно сохранилось в файле)
+  6: (s) => {
+    if (s.settings?.freshness?.loginHours === 12) s.settings.freshness.loginHours = 24;
     return s;
   }
 };

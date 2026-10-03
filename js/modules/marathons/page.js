@@ -405,12 +405,6 @@ const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'и�
 const DESC_PREVIEW = 160;
 
 /** Раскрывающийся список описаний заданий: короткий текст, «Показать полностью», правка. */
-/** «🪙 до 10 ДМ за задание (15 → 5, 25 → 10)» — сколько можно получить, а не сколько уже получено. */
-function potentialLine(task) {
-  const { text } = rewardPotential(task);
-  return text ? `<p class="mr-desc-coins">🪙 Можно получить: ${escapeHtml(text)}</p>` : '';
-}
-
 /** Правая колонка описания: «Древние монеты 🪙» и ниже только число ДМ за каждый порог задания. */
 function rewardLadder(task) {
   const { max, tiers } = rewardPotential(task);
@@ -678,7 +672,6 @@ function openCellCard(m, charId, taskId) {
 
     ov.body.innerHTML = `
       ${task.description ? `<p class="mr-card-desc">${escapeHtml(task.description)}</p>` : ''}
-      ${potentialLine(task)}
       <div class="mr-card-summary mr-s-${x.state}">
         <div><span class="muted">Итого</span><strong>${x.count} / ${x.target}</strong><small class="muted">${x.driver === 'manual' ? 'по ручным отметкам' : x.driver === 'site' ? 'по данным сайта' : x.driver === 'both' ? 'сайт и отметки совпали' : ''}${x.adjust ? ` · поправка ${x.adjust > 0 ? '+' : ''}${x.adjust}` : ''}</small></div>
         <div><span class="muted">С сайта</span><strong>${x.hasSite ? cell.site : '—'}</strong><small class="muted">${cell.syncedAt ? fmtDateTime(cell.syncedAt) : 'нет данных'}</small></div>

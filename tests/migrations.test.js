@@ -17,7 +17,7 @@ describe('migrateState', () => {
     const { state, from, applied, newer } = migrateState(raw);
     expect(from).toBe(2);
     expect(newer).toBe(false);
-    expect(applied).toEqual([3, 4, 5]);
+    expect(applied).toEqual([3, 4, 5, 6]);
     expect(state.schemaVersion).toBe(SCHEMA_VERSION);
     expect(state.version).toBeUndefined();
     expect(state.exportedAt).toBeUndefined();
@@ -27,7 +27,7 @@ describe('migrateState', () => {
 
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
-    expect(applied).toEqual([2, 3, 4, 5]);
+    expect(applied).toEqual([2, 3, 4, 5, 6]);
     expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
     expect(state.parties.every(p => typeof p.id === 'string' && p.id)).toBe(true);
   });
@@ -61,7 +61,7 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
 
   it('party (название) → partyIds (id), поле party удаляется, notes по умолчанию пустые', () => {
     const { state, applied } = migrateState(v4());
-    expect(applied).toEqual([5]);
+    expect(applied).toEqual([5, 6]);
     const id = (name) => state.parties.find(p => p.name === name).id;
     expect(state.parties.every(p => p.id)).toBe(true);
     expect(state.parties.find(p => p.name === 'Основа').id).toBe('p1');
@@ -91,6 +91,19 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
     ] });
     expect(st.characters[0].partyIds).toEqual(['p1']);
     expect(st.characters[0].notes).toHaveLength(NOTES_MAX_LENGTH);
+  });
+});
+
+describe('миграция v6: порог свежести входа 24 ч (issue #16)', () => {
+  it('старое значение по умолчанию 12 ч заменяется на 24 ч, остальные не трогаются', () => {
+    const run = (freshness) => migrateState({ schemaVersion: 5, settings: { freshness }, characters: [] }).state.settings.freshness;
+    expect(run({ balanceHours: 24, loginHours: 12, marathonHours: 24 })).toEqual({ balanceHours: 24, loginHours: 24, marathonHours: 24 });
+    expect(run({ balanceHours: 6, loginHours: 18, marathonHours: 48 })).toEqual({ balanceHours: 6, loginHours: 18, marathonHours: 48 });
+  });
+
+  it('без settings.freshness миграция не падает', () => {
+    expect(() => migrateState({ schemaVersion: 5, characters: [] })).not.toThrow();
+    expect(() => migrateState({ schemaVersion: 5, settings: {}, characters: [] })).not.toThrow();
   });
 });
 

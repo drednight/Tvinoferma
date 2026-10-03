@@ -156,3 +156,22 @@
 .setting-row:last-child {
   border-bottom: none;
 }
+/* Сворачиваемая панель настроек: в свёрнутом виде видны только название и описание */
+.panel.fold > summary {
+  position: relative;
+  padding-right: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+.panel.fold > summary::-webkit-details-marker { display: none; }
+.panel.fold > summary::after {
+  content: '▸';
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  color: var(--muted);
+}
+.panel.fold[open] > summary::after { content: '▾'; }
+.panel.fold > summary h3 { margin: 0 0 4px; }
+.panel.fold > summary p { margin: 0; }
+.panel.fold[open] > summary { margin-bottom: 12px; }

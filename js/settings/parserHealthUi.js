@@ -92,7 +92,9 @@ export function initParserHealthUi() {
     }
     if (target.closest('[data-health-open]')) {
       document.querySelector('.tab[data-tab="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      document.getElementById('parser-health-panel')?.scrollIntoView({ block: 'start' });
+      const panel = document.getElementById('parser-health-panel');
+      if (panel instanceof HTMLDetailsElement) panel.open = true;   // панель в настройках свёрнута по умолчанию
+      panel?.scrollIntoView({ block: 'start' });
     }
   };
   document.addEventListener('click', onClick);

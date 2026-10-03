@@ -142,10 +142,10 @@ export const DEFAULT_SETTINGS = {
     closeToTray: false,
     backgroundAuthMinutes: 0   // 0 — выключено
   },
-  // Через сколько часов данные считаются устаревшими (метки «Обновлено N ч назад», фильтр «Давно не обновлялись»)
+  // Через сколько часов данные считаются устаревшими (подсветка «3 ч назад» в профиле персонажа и на карточках марафонов)
   freshness: {
     balanceHours: 24,
-    loginHours: 12,
+    loginHours: 24,
     marathonHours: 24
   },
   updates: {

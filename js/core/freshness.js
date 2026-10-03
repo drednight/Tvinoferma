@@ -1,8 +1,8 @@
 // js/core/freshness.js
 // @ts-check
-// Свежесть данных: «Обновлено 3 ч назад» у баланса, статуса входа и прогресса марафона,
-// подсветка устаревших (порог в настройках), сортировка и фильтр «давно не обновлялись».
-// Время берётся из уже сохранённых полей: char.lastCoinUpdate, char.lastLoginCheck, cell.syncedAt в марафонах.
+// Свежесть данных: «3 ч назад» у баланса, статуса входа и прогресса марафона, подсветка устаревших
+// (порог в настройках). Время берётся из уже сохранённых полей: char.lastCoinUpdate, char.lastLoginCheck,
+// cell.syncedAt в марафонах. Показывается в профиле персонажа (окно «Когда что проверено») и на карточках марафонов.
 
 import { DEFAULT_SETTINGS } from './constants.js';
 import { escapeHtml } from './utils.js';
@@ -74,59 +74,58 @@ function hasSiteUrl(m, all) {
 }
 
 /**
- * Когда последний раз прогресс персонажа обновлялся с сайта по его идущим марафонам.
- * Берётся самая старая сверка среди марафонов (устарел один — устарело всё).
- * @returns {string|null|undefined} ISO-время; null — хотя бы один марафон ещё не сверялся; undefined — сверять нечего
+ * Идущие марафоны персонажа, которые сверяются с сайтом, и время их последней сверки.
+ * Время — самое свежее по заданиям марафона; null — марафон ещё ни разу не сверялся.
+ * @returns {Array<{ marathon: any, at: string|null }>}
  */
-export function marathonSyncAt(charId, marathons = []) {
-  let oldest = null;
-  let count = 0;
+export function marathonSyncList(charId, marathons = []) {
+  const out = [];
   for (const m of marathons) {
     if (m.kind === 'series' || m.status === 'completed' || !m.participantIds?.includes(charId) || !hasSiteUrl(m, marathons)) continue;
-    count++;
-    const cells = Object.values(m.progress?.[charId] || {});
-    const latest = cells.map(c => toMs(c?.syncedAt)).filter(t => t !== null).sort((a, b) => b - a)[0];
-    if (latest === undefined) return null;
-    if (oldest === null || latest < oldest) oldest = latest;
+    const times = Object.values(m.progress?.[charId] || {}).map(c => toMs(c?.syncedAt)).filter(t => t !== null);
+    out.push({ marathon: m, at: times.length ? new Date(Math.max(...times)).toISOString() : null });
   }
-  return count ? new Date(/** @type {number} */ (oldest)).toISOString() : undefined;
+  return out;
 }
+
+const plural = (n, [one, few, many]) => {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+};
 
 /**
- * Свежесть данных персонажа: баланс, вход и (если есть идущие марафоны с сайтом) прогресс марафонов.
- * @param {{ id: string, lastCoinUpdate?: string|null, lastLoginCheck?: string|null }} char
- * @param {{ settings?: any, marathons?: any[], now?: number }} [ctx]
- * @returns {FreshnessItem[]}
+ * Часы словами для настроек: 24 → «1 день», 72 → «3 дня», 30 → «1 день 6 часов», 5 → «5 часов».
+ * Дробные значения округляются до целых; не число или меньше 1 → пустая строка.
  */
-export function charFreshness(char, { settings, marathons = [], now = Date.now() } = {}) {
-  const items = [
-    freshnessOf('balance', char.lastCoinUpdate, settings, now),
-    freshnessOf('login', char.lastLoginCheck, settings, now)
-  ];
-  const sync = marathonSyncAt(char.id, marathons);
-  if (sync !== undefined) items.push(freshnessOf('marathon', sync, settings, now));
-  return items;
+export function formatHoursSpan(hours) {
+  const h = Math.round(Number(hours));
+  if (!Number.isFinite(h) || h < 1) return '';
+  const days = Math.floor(h / 24), rest = h % 24;
+  const d = `${days} ${plural(days, ['день', 'дня', 'дней'])}`;
+  const r = `${rest} ${plural(rest, ['час', 'часа', 'часов'])}`;
+  if (!days) return r;
+  return rest ? `${d} ${r}` : d;
 }
 
-/** Хотя бы один вид данных устарел или ни разу не обновлялся. */
-export const isStale = (char, ctx) => charFreshness(char, ctx).some(i => i.stale);
-
-/** Насколько давно обновлялись данные: возраст самых старых (никогда не обновлялись — бесконечность). */
-export const staleness = (char, ctx) => Math.max(...charFreshness(char, ctx).map(i => i.ageMs));
+/** «03.10.2026, 14:23» или «ещё не проверялось». */
+export function formatWhen(iso) {
+  const t = toMs(iso);
+  return t === null ? 'ещё не проверялось' : fmtDateTime(t);
+}
 
 /* ------------------------------------------------------------------ */
 /*  Разметка и обновление подписей на странице                         */
 /* ------------------------------------------------------------------ */
 
-/** Метка «🪙 3 ч назад»; подпись пересчитывается раз в минуту (refreshFreshnessLabels). */
-export function freshnessChipHtml(item, { withLabel = false } = {}) {
-  const info = FRESHNESS_KINDS[item.kind];
-  return `<span class="fresh-chip${item.stale ? ' is-stale' : ''}" data-fresh-kind="${item.kind}" data-fresh-at="${escapeHtml(item.at || '')}" title="${escapeHtml(item.title)}">${info.icon} ${withLabel ? `${info.label}: ` : ''}<span data-fresh-text>${escapeHtml(item.text)}</span></span>`;
-}
-
-/** Строка «Обновлено: 🪙 3 ч назад · 🔐 5 мин назад · 🏆 1 дн. назад». */
-export function freshnessRowHtml(items) {
-  return `<div class="fresh-row"><span class="muted">Обновлено:</span> ${items.map(i => freshnessChipHtml(i)).join('')}</div>`;
+/**
+ * Метка «🪙 3 ч назад»; подпись пересчитывается раз в минуту (refreshFreshnessLabels).
+ * bare: только «3 ч назад», без значка (когда значок и название уже есть рядом).
+ */
+export function freshnessChipHtml(item, { bare = false } = {}) {
+  const icon = bare ? '' : `${FRESHNESS_KINDS[item.kind].icon} `;
+  return `<span class="fresh-chip${item.stale ? ' is-stale' : ''}" data-fresh-kind="${item.kind}" data-fresh-at="${escapeHtml(item.at || '')}" title="${escapeHtml(item.title)}">${icon}<span data-fresh-text>${escapeHtml(item.text)}</span></span>`;
 }
 
 /** Пересчитывает подписи и подсветку у всех меток на странице (без перерисовки карточек). */

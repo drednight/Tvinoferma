@@ -5,7 +5,7 @@ import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/m
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
-import { freshnessOf, freshnessChipHtml } from '../../core/freshness.js';
+import { freshnessOf, freshnessChipHtml, marathonSyncList, formatWhen, formatHoursSpan, thresholdHours } from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
@@ -63,6 +63,9 @@ export function openCharacterProfile(char) {
           <!-- БЛОК МОНЕТ (обновление баланса — в меню «🔄 Проверить» внизу) -->
           <div id="profile-coins-block" style="margin-left:auto; text-align:right; min-width:120px;">${coinBlockHtml(char)}</div>
         </div>
+
+        <!-- КОГДА ЧТО ПРОВЕРЕНО (баланс, вход, прогресс марафонов) -->
+        <div id="profile-checks-block" class="pf-checks">${checksBlockHtml(char)}</div>
 
         <!-- КОНТАКТНЫЕ ДАННЫЕ -->
         <details style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
@@ -335,6 +338,8 @@ export function openCharacterProfile(char) {
     const redraw = () => {
       const line = document.getElementById('profile-auth-line');
       if (line) line.innerHTML = authLineHtml(char);
+      const checks = document.getElementById('profile-checks-block');
+      if (checks) checks.innerHTML = checksBlockHtml(char);
       const coins = document.getElementById('profile-coins-block');
       if (coins) coins.innerHTML = coinBlockHtml(char);          // красная пометка исчезает, если баланс перечитан
       const item = document.querySelector('[data-pf-coins]');
@@ -370,8 +375,32 @@ export function openCharacterProfile(char) {
 /** Строка «🔐 🟢 Онлайн · проверено …» (проверка запускается из меню «🔄 Проверить» внизу). */
 function authLineHtml(char) {
   const v = getAuthView(char);
-  const age = freshnessChipHtml(freshnessOf('login', char.lastLoginCheck, state.settings));
-  return `🔐 <span style="color:${v.color};">${v.icon} ${escapeHtml(authDetails(char))}</span> ${age}`;
+  return `🔐 <span style="color:${v.color};">${v.icon} ${escapeHtml(authDetails(char))}</span>`;
+}
+
+/**
+ * Окно «Когда что проверено»: баланс, вход и прогресс каждого идущего марафона — дата, «N назад»
+ * и пометка, если данные устарели (порог — в «Настройки → Свежесть данных»).
+ */
+function checksBlockHtml(char) {
+  const row = (icon, label, item) => `
+    <div class="pf-check-row">
+      <span class="pf-check-name">${icon} ${escapeHtml(label)}</span>
+      <span class="pf-check-when${item.never ? ' muted' : ''}">${escapeHtml(formatWhen(item.at))}</span>
+      ${item.never ? '<span class="fresh-chip is-stale">нет данных</span>' : freshnessChipHtml(item, { bare: true })}
+    </div>`;
+  const marathons = marathonSyncList(char.id, state.marathons);
+  const rows = [
+    row('🪙', 'Баланс монет', freshnessOf('balance', char.lastCoinUpdate, state.settings)),
+    row('🔐', 'Вход на сайт', freshnessOf('login', char.lastLoginCheck, state.settings)),
+    ...marathons.map(({ marathon, at }) => row('🏆', `Марафон «${marathon.title}»`, freshnessOf('marathon', at, state.settings)))
+  ];
+  const limit = (kind) => formatHoursSpan(thresholdHours(state.settings, kind));
+  return `
+    <div class="pf-checks-title">🕒 Когда что проверено</div>
+    ${rows.join('')}
+    ${marathons.length ? '' : '<div class="pf-check-note muted">🏆 Идущих марафонов с адресом страницы на сайте нет — прогресс не сверяется.</div>'}
+    <div class="pf-check-note muted">Данные считаются устаревшими через: баланс — ${limit('balance')}, вход — ${limit('login')}, марафон — ${limit('marathon')} (Настройки → Свежесть данных).</div>`;
 }
 
 /** Баланс Древних монет, время проверки и пометка «записан до исправления» (пока баланс не перечитан). */
@@ -385,7 +414,6 @@ function coinBlockHtml(char) {
     <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
     <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
     ${last}
-    <div>${freshnessChipHtml(freshnessOf('balance', char.lastCoinUpdate, state.settings))}</div>
     ${needsCoinRecheck(char) ? '<small data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Откройте «🔄 Проверить» → «Перепроверить баланс»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}`;
 }
 
