@@ -37,7 +37,7 @@
 ## Прогресс
 
 <!-- roadmap:start -->
-**Всего выполнено:** `██░░░░░░░░` 12/71 (17%) · обновлено 2026-10-03
+**Всего выполнено:** `██░░░░░░░░` 13/71 (18%) · обновлено 2026-10-03
 
 ### v0.2.3 — Баги: баланс монет и фильтр классов
 
@@ -62,12 +62,12 @@
 
 ### v0.4 — Устойчивость парсеров и данные
 
-`██░░░░░░░░` 2/9 (22%)
+`███░░░░░░░` 3/9 (33%)
 
 - [x] [#9](https://github.com/drednight/Tvinoferma/issues/9) **1.5** Фикстуры страниц сайта и тесты парсеров — Высокий, M
 - [ ] [#10](https://github.com/drednight/Tvinoferma/issues/10) **1.6** Единый лог с ротацией и диагностика — Средний, M
 - [ ] [#12](https://github.com/drednight/Tvinoferma/issues/12) **2.1** Health-check парсеров — Высокий, M
-- [ ] [#13](https://github.com/drednight/Tvinoferma/issues/13) **2.2** Селекторы и регулярные выражения в одном конфиге — Высокий, M
+- [x] [#13](https://github.com/drednight/Tvinoferma/issues/13) **2.2** Селекторы и регулярные выражения в одном конфиге — Высокий, M
 - [ ] [#16](https://github.com/drednight/Tvinoferma/issues/16) **2.5** Метки свежести данных — Средний, S
 - [ ] [#19](https://github.com/drednight/Tvinoferma/issues/19) **3.1** Марафоны: довести до плана — Высокий, M
 - [ ] [#22](https://github.com/drednight/Tvinoferma/issues/22) **3.4** Экспорт и импорт в CSV — Средний, M
