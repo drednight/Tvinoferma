@@ -65,7 +65,10 @@
     // Баланс может быть дробным и с разделителями тысяч: 285, 28,5, 1 285,5 — см. parseCoins
     const value = parseCoins(strongTag.innerText);
     if (isNaN(value)) { report(null, 'parse_nan'); return; }
-    if (value === 0 && !document.querySelector('.user-nick, .header-user-name, [class*="username"]')) {
+    // Ноль без признаков входа — скорее «сессия истекла», чем реальный нулевой баланс.
+    // Признак входа на реальной странице: ник в шапке, ссылка <a href="/usercp.php"><strong>ник</strong></a>
+    const hasUser = document.querySelector('.user-nick, .header-user-name, [class*="username"], .info__forumname, a[href*="usercp.php"] > strong');
+    if (value === 0 && !hasUser) {
       report(null, 'zero_no_user_session_expired');
       return;
     }

@@ -79,4 +79,4 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 1. Скрипт в `src-tauri/src/scripts/имя.js`: читает DOM, пишет `location.hash = 'TF_ИМЯ_V1_' + encodeURIComponent(JSON.stringify({ data, error }))`. Никаких кликов и отправки форм (см. [COMPLIANCE.md](COMPLIANCE.md)).
 2. Команда в Rust: `navigate_clean` → `eval_and_wait(…, "#TF_ИМЯ_V1_", таймаут, scope)`; зарегистрировать в `lib.rs`.
 3. Обёртка в `js/modules/…` + постановка в очередь `queue.js`.
-4. Сохранённая страница сайта в `tests/fixtures/` и тест, который прогоняет скрипт на ней (`tests/helpers/pageScript.js`).
+4. Сохранённая страница сайта в `tests/fixtures/` и тест, который прогоняет скрипт на ней (`tests/helpers/pageScript.js`), в том числе на странице с «изменённой вёрсткой»: парсер должен вернуть ошибку, а не пустой результат. Как делать фикстуры без личных данных: [FIXTURES.md](FIXTURES.md).

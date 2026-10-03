@@ -47,6 +47,12 @@
                 results.push({ title: title, description: description, completed: completed, total: total, percentage: total > 0 ? Math.round((completed / total) * 100) : 0 });
             }
         });
+        // Блоки заданий есть, а ни одной полосы прогресса нет — скорее всего, сайт изменил вёрстку.
+        // Ошибка надёжнее «пустого успеха»: данные в базе не затираются.
+        if (questBlocks.length > 0 && results.length === 0) {
+            reportResult([], 'no_progress_found');
+            return;
+        }
         reportResult(results, null);
     } catch (e) {
         reportResult(null, 'exception_' + e.message.substring(0, 20));
