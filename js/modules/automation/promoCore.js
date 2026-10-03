@@ -53,14 +53,14 @@ export const STATUS_INFO = {
   dry_run: { icon: '👁', label: 'Пробный запуск: кнопка найдена, не нажата', level: 'info' },
   unknown: { icon: '❓', label: 'Результат не распознан — проверьте вручную', level: 'warn' },
   error: { icon: '❌', label: 'Ошибка', level: 'error' },
-  cancelled: { icon: '⏹', label: 'Остановлено', level: 'info' },
-  not_run: { icon: '⏭', label: 'Не выполнено', level: 'info' }
+  cancelled: { icon: '⏹', label: 'Остановлено кнопкой «Стоп» — не вводился', level: 'info' },
+  not_run: { icon: '⏭', label: 'Пропущен', level: 'info' }
 };
 
 export const statusInfo = (status) => STATUS_INFO[status] || STATUS_INFO.error;
 
 /** Подпись строки результата: «Уже введён ранее» для пропущенных по журналу. */
-export const rowLabel = (row) => (row?.skipped && isOk(row.status) ? 'Уже введён ранее' : statusInfo(row?.status).label);
+export const rowLabel = (row) => (row?.skipped && isOk(row.status) ? 'Уже введён ранее' : row?.status === 'not_run' && row.detail ? row.detail : statusInfo(row?.status).label);
 
 /** Введён (или сайт сообщил, что уже введён) — для пользователя это успех. */
 export const isOk = (status) => status === 'success' || status === 'already_used';

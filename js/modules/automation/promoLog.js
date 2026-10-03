@@ -75,7 +75,7 @@ export function applyRows(log, code, rows, { known = [], now = new Date() } = {}
       // Награда берётся с первого удачного прохода и дальше не перезаписывается
       if (!rec.reward && r.status === 'success' && r.rewards?.length) { rec.reward = r.rewards; rewardSet = true; }
     } else if (!rec.entered[r.charId]) {
-      rec.missed[r.charId] = { nick: r.nick, status: r.status, error: r.error || null, at: r.at || at };
+      rec.missed[r.charId] = { nick: r.nick, status: r.status, error: r.error || null, detail: r.status === 'not_run' ? (r.detail || null) : null, at: r.at || at };
     }
   }
   const next = [rec, ...log.filter(r => r !== existing)].sort(byRecent).slice(0, LOG_MAX);

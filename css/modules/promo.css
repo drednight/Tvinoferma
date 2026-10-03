@@ -19,7 +19,5 @@
 .promo-alert { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(247, 118, 142, 0.5); background: rgba(247, 118, 142, 0.1); }
 .promo-sums { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .promo-reward ul, .promo-log-list { margin: 4px 0 4px 18px; padding: 0; }
-.promo-reward summary, .promo-log-item > summary { cursor: pointer; }
-.promo-log-item { border-bottom: 1px solid var(--border, #3a3f4b); padding: 6px 0; }
-.promo-log-body { padding: 6px 0 4px 16px; }
+.promo-reward summary { cursor: pointer; }
 .promo-log-h { margin: 8px 0 4px; font-weight: 600; }

@@ -33,7 +33,7 @@ describe('applyRows', () => {
     expect(record.firstAt).toBe(T(5).toISOString());
     expect(record.reward).toEqual(reward);
     expect(enteredList(record).map(e => [e.nick, e.status])).toEqual([['Аа', 'success'], ['Бб', 'already_used']]);
-    expect(missedList(record)).toEqual([{ id: 'c', nick: 'Вв', reason: { nick: 'Вв', status: 'challenge', error: null, at: T(1).toISOString() } }]);
+    expect(missedList(record)).toEqual([{ id: 'c', nick: 'Вв', reason: { nick: 'Вв', status: 'challenge', error: null, detail: null, at: T(1).toISOString() } }]);
   });
 
   it('персонаж, которого не запускали, виден в «не введён» без причины', () => {
