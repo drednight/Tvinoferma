@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/datePicker.js
 // Календарь выбора даты в том же виде, что и календарь ручных отметок марафона (.mr-cal / .mr-cal-day).
 // Вместо системного <input type="date"> подставляется кнопка с датой «дд.мм.гггг» и скрытое поле
@@ -51,14 +52,14 @@ function showPopup(anchor, hidden, onPick) {
         ${days.map(d => `<button type="button" class="mr-cal-day is-normal ${d === selected ? 'is-marked' : ''} ${d === today ? 'is-today' : ''}" data-dp-day="${d}"><span>${Number(d.slice(8))}</span></button>`).join('')}
       </div>
       <div class="tf-dp-foot"><button type="button" class="btn small ghost" data-dp-today>Сегодня</button></div>`;
-    pop.querySelectorAll('[data-dp-nav]').forEach(b => b.onclick = (e) => {
+    /** @type {NodeListOf<HTMLElement>} */ (pop.querySelectorAll('[data-dp-nav]')).forEach(b => b.onclick = (e) => {
       e.stopPropagation();
       month += Number(b.dataset.dpNav);
       if (month < 0) { month = 11; year--; } else if (month > 11) { month = 0; year++; }
       draw();
     });
-    pop.querySelectorAll('[data-dp-day]').forEach(b => b.onclick = (e) => { e.stopPropagation(); onPick(b.dataset.dpDay); closePopup(); });
-    pop.querySelector('[data-dp-today]').onclick = (e) => { e.stopPropagation(); onPick(todayIso()); closePopup(); };
+    /** @type {NodeListOf<HTMLElement>} */ (pop.querySelectorAll('[data-dp-day]')).forEach(b => b.onclick = (e) => { e.stopPropagation(); onPick(b.dataset.dpDay); closePopup(); });
+    /** @type {HTMLElement} */ (pop.querySelector('[data-dp-today]')).onclick = (e) => { e.stopPropagation(); onPick(todayIso()); closePopup(); };
   };
   draw();
   document.body.appendChild(pop);

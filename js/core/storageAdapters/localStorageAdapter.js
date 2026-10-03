@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/storageAdapters/localStorageAdapter.js
 
 const STORAGE_KEY = 'tvinoferma_state_v1';

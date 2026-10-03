@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveMainPartyId, ensureMainParty, setMainParty, mainPartyName, additionalPartiesOf, charactersInMainParty, isMainParty,
-  normalizePartyIds, partiesOf, partyNamesOf, isInParty, hasNoParty, charactersInParty,
+  normalizePartyIds, partiesOf, partyNamesOf, hasNoParty, charactersInParty,
   setMembership, removePartyFromAll, sweepPartyIds, planPartyImport, remapCharacterParties, totalCoins, coinSummary
 } from '../js/modules/parties/membership.js';
 import { planImport } from '../js/data/import.js';

@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/uiActions.js
 
 import { openCharacterForm } from '../modules/characters/index.js';
@@ -48,7 +49,7 @@ export function updateFabVisibility(sectionName) {
     
     if (!container || !fabBtn) return;
 
-    let isVisible = false;
+    let isVisible;
     let tooltipText = '';
 
     if (sectionName === 'characters') {
@@ -74,7 +75,7 @@ export function updateFabVisibility(sectionName) {
  */
 function getActiveSectionName() {
     const activePage = document.querySelector('.page.active');
-    return activePage ? activePage.dataset.section : null;
+    return activePage ? /** @type {HTMLElement} */ (activePage).dataset.section : null;
 }
 
 /**
@@ -93,7 +94,7 @@ function setupScriptsMenu() {
     });
 
     dropdown.addEventListener('click', async (e) => {
-        const item = e.target.closest('.dropdown-item');
+        const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.dropdown-item'));
         if (!item) return;
 
         e.stopPropagation();
@@ -117,7 +118,8 @@ function setupScriptsMenu() {
     });
 
     window.addEventListener('click', (e) => {
-        if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
+        const target = /** @type {Node} */ (e.target);
+        if (!menuBtn.contains(target) && !dropdown.contains(target)) {
             dropdown.style.display = 'none';
         }
     });

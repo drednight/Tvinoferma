@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/migrations.js
 // Единая версия схемы для всего state.json (`schemaVersion`).
 // Каждая миграция — чистая функция `state(vN-1) -> state(vN)`; применяются по порядку.

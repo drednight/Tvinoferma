@@ -1,3 +1,4 @@
+// @ts-check
 import { DEFAULT_SETTINGS } from './constants.js';
 import { migrateMarathon } from '../modules/marathons/model.js';
 import { SCHEMA_VERSION, migrateState } from './migrations.js';
@@ -147,6 +148,7 @@ function mergeSettings(input = {}) {
 
 export function normalizeState(raw) {
   // 0. Единые миграции схемы state.json (js/migrations.js)
+  /** @type {any} */
   const input = migrateState(raw).state;
 
   // 1. Базовая структура

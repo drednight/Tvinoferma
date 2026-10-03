@@ -5,7 +5,7 @@
 // монет есть вариант «Объединить»).
 
 import { escapeHtml } from '../core/utils.js';
-import { FIELD_GROUPS, getPath, sameValue, displayValue, buildMerged, diffCharacters } from './characterFields.js';
+import { FIELD_GROUPS, getPath, displayValue, buildMerged, diffCharacters } from './characterFields.js';
 
 /**
  * @returns {Promise<{ action: 'merge', character: object } | { action: 'keep' } | { action: 'both' } |

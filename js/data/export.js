@@ -337,7 +337,7 @@ export function openExportDialog() {
      
      selectedPartyNames.forEach(partyName => {
         // Находим персонажей этой пати
-        let charsInParty = [];
+        let charsInParty;
         if (partyName === '__none__') {
            charsInParty = allCharacters.filter(c => hasNoParty(c, state.parties));
         } else {

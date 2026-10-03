@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/secrets.js
 // Учётные данные персонажей (email, пароль, recovery, телефон) хранятся в хранилище ОС
 // (Windows Credential Manager / macOS Keychain / Secret Service) через Rust-команды secrets_*.

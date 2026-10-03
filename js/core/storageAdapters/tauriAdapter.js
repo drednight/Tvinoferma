@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/storageAdapters/tauriAdapter.js
 // Хранилище desktop-версии: все операции с файлами выполняет Rust (src-tauri/src/commands),
 // state.json пишется атомарно, бэкапы создаются/ротируются на стороне Rust.

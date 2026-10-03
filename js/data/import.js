@@ -1,3 +1,4 @@
+// @ts-check
 // js/data/import.js
 // Импорт JSON: разбор файла → сводка (новые / совпадающие / одинаковые) →
 // сравнение каждой совпавшей пары (data/compare.js) → применение.
@@ -32,7 +33,12 @@ export function liftLegacyContacts(raw) {
 
 const nickKey = nick => String(nick || '').trim().toLowerCase();
 
-/** Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами). */
+/**
+ * Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами).
+ * @param {any[]} localChars
+ * @param {any[]} incomingChars
+ * @param {(c: any) => any} [presentFor]
+ */
 export function planImport(localChars, incomingChars, presentFor = () => null) {
   const byId = new Map(localChars.map(c => [c.id, c]));
   const byNick = new Map(localChars.map(c => [nickKey(c.nick), c]));

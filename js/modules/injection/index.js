@@ -6,3 +6,4 @@
 //  - Скрытие рекламы и лишнего контента PWOL (src-tauri/src/scripts/injection/hide_ads.css)
 //
 // Модуль-заготовка: пока не подключён в main.js.
+// Статус и план: Issue #54 (ROADMAP.md)

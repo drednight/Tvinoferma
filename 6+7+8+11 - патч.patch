@@ -1,0 +1,2628 @@
+From 03baba339a43227c0e8f38e192e3a9e54490c3af Mon Sep 17 00:00:00 2001
+From: Notion AI <ai@notion.so>
+Date: Sat, 3 Oct 2026 01:59:24 +0000
+Subject: [PATCH] =?UTF-8?q?chore:=20ESLint,=20Prettier,=20checkJs,=20CI-?=
+ =?UTF-8?q?=D0=BF=D1=80=D0=BE=D0=B2=D0=B5=D1=80=D0=BA=D0=B8=20Rust=20?=
+ =?UTF-8?q?=D0=B8=20npm,=20Dependabot,=20README=20=D0=B8=20=D0=B4=D0=BE?=
+ =?UTF-8?q?=D0=BA=D1=83=D0=BC=D0=B5=D0=BD=D1=82=D0=B0=D1=86=D0=B8=D1=8F=20?=
+ =?UTF-8?q?(#6,=20#7,=20#8,=20#11)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .github/dependabot.yml                        |   26 +
+ .github/pull_request_template.md              |    2 +-
+ .github/workflows/ci.yml                      |   24 +
+ .prettierignore                               |    6 +
+ .prettierrc.json                              |    8 +
+ CONTRIBUTING.md                               |   87 ++
+ README.md                                     |   52 +-
+ ROADMAP.md                                    |    8 +-
+ Tvinoferma-roadmap.md                         |    5 +-
+ docs/ARCHITECTURE.md                          |   82 +
+ docs/COMPLIANCE.md                            |   52 +
+ eslint.config.js                              |   31 +
+ js/core/coins.js                              |    4 +
+ js/core/constants.js                          |    1 +
+ js/core/datePicker.js                         |    7 +-
+ js/core/ids.js                                |    1 +
+ js/core/migrations.js                         |    1 +
+ js/core/secrets.js                            |    1 +
+ js/core/state.js                              |    2 +
+ js/core/storage.js                            |    6 +-
+ .../storageAdapters/localStorageAdapter.js    |    1 +
+ js/core/storageAdapters/tauriAdapter.js       |    1 +
+ js/core/ui.js                                 |    2 +
+ js/core/uiActions.js                          |   10 +-
+ js/core/utils.js                              |    1 +
+ js/data/characterFields.js                    |    1 +
+ js/data/compare.js                            |    2 +-
+ js/data/export.js                             |    2 +-
+ js/data/import.js                             |    8 +-
+ js/modules/arena/index.js                     |    1 +
+ js/modules/automation/index.js                |    1 +
+ js/modules/bank/index.js                      |    1 +
+ js/modules/cloud/googleDrive.js               |    1 +
+ js/modules/cloud/googleSheets.js              |    1 +
+ js/modules/cloud/index.js                     |    1 +
+ js/modules/dungeons/index.js                  |    1 +
+ js/modules/injection/index.js                 |    1 +
+ js/modules/runes/index.js                     |    1 +
+ jsconfig.json                                 |   11 +-
+ package-lock.json                             | 1348 ++++++++++++++++-
+ package.json                                  |   12 +-
+ src-tauri/src/automation/mod.rs               |    1 +
+ src-tauri/src/injection.rs                    |    1 +
+ tests/parties.test.js                         |    2 +-
+ 44 files changed, 1789 insertions(+), 29 deletions(-)
+ create mode 100644 .github/dependabot.yml
+ create mode 100644 .prettierignore
+ create mode 100644 .prettierrc.json
+ create mode 100644 CONTRIBUTING.md
+ create mode 100644 docs/ARCHITECTURE.md
+ create mode 100644 docs/COMPLIANCE.md
+ create mode 100644 eslint.config.js
+
+diff --git a/.github/dependabot.yml b/.github/dependabot.yml
+new file mode 100644
+index 0000000..5a772f9
+--- /dev/null
++++ b/.github/dependabot.yml
+@@ -0,0 +1,26 @@
++# Автоматические PR с обновлениями зависимостей (раз в неделю).
++# Мажорные обновления Tauri (npm + cargo) нужно обновлять вместе — см. CONTRIBUTING.md
++version: 2
++updates:
++  - package-ecosystem: npm
++    directory: /
++    schedule:
++      interval: weekly
++    open-pull-requests-limit: 5
++    groups:
++      dev-tools:
++        dependency-type: development
++    labels: [dependencies]
++
++  - package-ecosystem: cargo
++    directory: /src-tauri
++    schedule:
++      interval: weekly
++    open-pull-requests-limit: 5
++    labels: [dependencies]
++
++  - package-ecosystem: github-actions
++    directory: /
++    schedule:
++      interval: weekly
++    labels: [dependencies]
+diff --git a/.github/pull_request_template.md b/.github/pull_request_template.md
+index 1b8c64b..cea4785 100644
+--- a/.github/pull_request_template.md
++++ b/.github/pull_request_template.md
+@@ -7,7 +7,7 @@ Closes #
+ ## Как проверить
+ 
+ - [ ] Запускал приложение (`npm run tauri dev`) и проверил сценарий
+-- [ ] `npm test` проходит
++- [ ] `npm run check` (линтер, типы, тесты) проходит
+ - [ ] Для парсеров: добавлена или обновлена фикстура в `tests/fixtures`
+ 
+ ## Данные и безопасность
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a28fd60..83f9dcb 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -4,6 +4,9 @@ on:
+   push:
+     branches: [main]
+   pull_request:
++  schedule:
++    # раз в неделю — чтобы новые уязвимости в зависимостях не оставались незамеченными
++    - cron: '0 6 * * 1'
+ 
+ jobs:
+   frontend:
+@@ -15,17 +18,38 @@ jobs:
+           node-version: 20
+           cache: npm
+       - run: npm ci
++      - run: npm run lint
++      - run: npm run typecheck
+       - run: npm test
+       - run: npm run build
++      # Информационный шаг: показывает уязвимости, но не блокирует PR
++      - run: npm audit --omit=dev --audit-level=high
++        continue-on-error: true
+ 
+   rust:
+     runs-on: windows-latest
+     steps:
+       - uses: actions/checkout@v4
+       - uses: dtolnay/rust-toolchain@stable
++        with:
++          components: rustfmt, clippy
+       - uses: swatinem/rust-cache@v2
+         with:
+           workspaces: src-tauri -> target
+       # generate_context! требует собранный фронтенд (frontendDist = ../dist)
+       - run: mkdir dist
+       - run: cargo test --manifest-path src-tauri/Cargo.toml
++      # TODO(#8): после первого локального `cargo fmt` и `cargo clippy --fix` убрать continue-on-error,
++      # чтобы эти шаги стали блокирующими.
++      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
++        continue-on-error: true
++      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
++        continue-on-error: true
++
++  rust-audit:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++      - run: cargo install cargo-audit --locked
++      - run: cargo audit --file src-tauri/Cargo.lock
++        continue-on-error: true
+diff --git a/.prettierignore b/.prettierignore
+new file mode 100644
+index 0000000..11bd94a
+--- /dev/null
++++ b/.prettierignore
+@@ -0,0 +1,6 @@
++dist
++node_modules
++src-tauri
++public
++package-lock.json
++*.patch
+diff --git a/.prettierrc.json b/.prettierrc.json
+new file mode 100644
+index 0000000..6f35bdb
+--- /dev/null
++++ b/.prettierrc.json
+@@ -0,0 +1,8 @@
++{
++  "singleQuote": true,
++  "semi": true,
++  "printWidth": 120,
++  "tabWidth": 2,
++  "trailingComma": "none",
++  "arrowParens": "avoid"
++}
+diff --git a/CONTRIBUTING.md b/CONTRIBUTING.md
+new file mode 100644
+index 0000000..c4ff199
+--- /dev/null
++++ b/CONTRIBUTING.md
+@@ -0,0 +1,87 @@
++# Как работать с проектом
++
++Коротко: как запустить, проверить и выпустить Твиноферму. Устройство приложения — в
++[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), правила работы с сайтом — в
++[docs/COMPLIANCE.md](docs/COMPLIANCE.md), порядок работы с задачами — в
++[docs/GITHUB-WORKFLOW.md](docs/GITHUB-WORKFLOW.md).
++
++## Что нужно установить
++
++- [Node.js](https://nodejs.org) 20.19 или новее.
++- [Rust](https://rustup.rs) (stable) и [зависимости Tauri для Windows](https://tauri.app/start/prerequisites/)
++  (Microsoft C++ Build Tools, WebView2).
++
++```powershell
++npm ci
++```
++
++## Запуск
++
++| Команда | Что делает |
++| --- | --- |
++| `npm run tauri dev` | Приложение целиком (окно Tauri + Rust). Первая сборка Rust долгая, дальше быстрее |
++| `npm run dev` | Только интерфейс в браузере (`http://localhost:1420`). Rust-команд нет: скрытые окна, пароли в хранилище ОС и обновления не работают |
++| `npm run build` | Сборка интерфейса в `dist/` |
++
++## Проверки перед коммитом
++
++```powershell
++npm run check
++```
++
++Это три шага подряд:
++
++1. `npm run lint` — ESLint (опечатки, неиспользуемые переменные, забытые импорты).
++2. `npm run typecheck` — проверка типов по JSDoc. Пока включена только в файлах с первой строкой
++   `// @ts-check` (сейчас `js/core/` и часть `js/data/`). Новые файлы в этих папках начинайте с неё.
++   Чтобы включить в старом файле: добавьте строку, запустите `npm run typecheck`, исправьте ошибки.
++3. `npm test` — тесты (vitest + jsdom). Парсеры проверяются на сохранённых страницах сайта в `tests/fixtures/`.
++
++Для Rust (в папке `src-tauri`):
++
++```powershell
++cargo test
++cargo fmt
++cargo clippy --all-targets -- -D warnings
++```
++
++Форматирование: `npm run format -- путь/к/файлу.js` приводит файл к стилю Prettier (`.prettierrc.json`).
++Весь старый код автоматически не переформатируется, чтобы не раздувать историю изменений. Форматируйте
++только те файлы, которые правите.
++
++CI (`.github/workflows/ci.yml`) запускает то же самое на GitHub для каждого pull request.
++
++## Ветки, коммиты, Issues
++
++- Каждая задача — Issue из [ROADMAP.md](ROADMAP.md); в PR пишите `Closes #N`.
++- Ветки: `fix/…`, `feat/…`, `chore/…`. Коммиты — короткое описание на русском, что и зачем.
++- Для парсеров: сохраните страницу в `tests/fixtures/`, уберите из неё личные данные
++  (ники, e-mail, куки) и добавьте тест.
++- Менялась схема `state.json` — добавьте миграцию в `js/core/migrations.js` и тест на старом файле
++  (`tests/migrations.test.js`). Менялся формат экспорта — старые файлы должны импортироваться.
++
++## Секреты и личные данные
++
++- Не коммитьте пароли, e-mail, куки, токены, `*.key` (ключ подписи обновлений) и реальные `state.json`.
++- Скриншоты и фикстуры проверяйте глазами: на них часто видны ники и баланс.
++
++## Выпуск версии
++
++Полная инструкция — [docs/RELEASE.md](docs/RELEASE.md). Кратко:
++
++```powershell
++npm run version:bump 0.4.0   # версия сразу в package.json, tauri.conf.json, Cargo.toml, Cargo.lock
++git add -A
++git commit -m "Версия 0.4.0"
++git push
++git tag v0.4.0
++git push origin v0.4.0       # запускает сборку установщиков и черновик релиза
++```
++
++Поддерживается только сборка для Windows (`.msi` и `-setup.exe`). Сборки для macOS и Linux не
++проверяются.
++
++## Зависимости
++
++Dependabot раз в неделю присылает PR с обновлениями npm, cargo и GitHub Actions. Пакеты Tauri
++(`@tauri-apps/*` в npm и `tauri*` в Cargo) обновляйте вместе, иначе версии JS и Rust частей разойдутся.
+diff --git a/README.md b/README.md
+index e080c68..b4d66e3 100644
+--- a/README.md
++++ b/README.md
+@@ -11,12 +11,14 @@
+ *   **Наглядный интерфейс:** Карточки пати показывают количество персонажей и общий баланс древних монет даже в свернутом виде.
+ *   **Drag & Drop:** Меняйте порядок пати перетаскиванием мыши. Порядок сохраняется автоматически.
+ *   **Статус подключения:** Видите, какие персонажи авторизованы, а какие требуют повторной авторизации.
++*   **Несколько пати у одного персонажа:** персонаж может состоять в нескольких партиях сразу (основная группа + отдельная для марафона). В карточке видна основная пати и раскрывающийся список остальных.
+ 
+ ### 🔐 Ассистент авторизации (Login Assistant)
+ Забудьте о постоянном вводе логинов и паролей в разных вкладках браузера.
+ *   **Индивидуальные профили:** Для каждого персонажа создается изолированная браузерная сессия. Это предотвращает конфликты куки между аккаунтами.
+ *   **Быстрый вход:** Нажмите кнопку «Открыть», и браузер запустится с уже введенными данными или готовой формой входа.
+-*   **Проверка статуса:** Встроенный фильтр позволяет массово проверить, кто из ваших персонажей все еще залогинен, а чья сессия истекла. Процесс сопровождается индикатором прогресса.
++*   **Проверка статуса:** Встроенный фильтр позволяет массово проверить, кто из ваших персонажей все еще залогинен, а чья сессия истекла. Процесс сопровождается индикатором прогресса. Проверить одного персонажа можно из меню «🔄 Проверить» в его карточке.
++*   **Отмена:** любую массовую проверку (вход, баланс, сверка марафонов) можно остановить кнопкой «Отмена».
+ 
+ ### 💰 Мониторинг ресурсов и истории
+ Держите руку на пульсе экономики ваших аккаунтов.
+@@ -24,14 +26,40 @@
+ *   **История транзакций:** Подробный журнал изменений баланса с точностью до секунды (`ЧЧ:ММ:СС`). Вы всегда знаете, когда и сколько было потрачено или заработано.
+ *   **Уведомления об обновлении:** Прогресс-бар показывает процент выполнения запросов к сайту во время обновления балансов.
+ 
++### 🏁 Марафоны
++Планируйте марафоны и следите за прогрессом каждого персонажа.
++*   **Мастер добавления:** найдите марафон на сайте по названию или добавьте вручную. Описания заданий подтягиваются со страницы марафона и из новости (источники не смешиваются между разными марафонами).
++*   **Прогресс по персонажам:** какие задания выполнены, сколько осталось до цели и даты, сколько запасных дней.
++*   **Сверка с сайтом:** прогресс можно обновить прямо с сайта для выбранных персонажей. Для сверки используется только чтение страниц.
++*   **Календарь выбора даты** и «доп. пати» (дополнительные группы участников) в карточке марафона.
++
+ ### 📋 Полезные инструменты
+ *   **Копирование данных:** Быстрое копирование Email, Пароля, Дополнительного Email и Телефона прямо из профиля персонажа по клику.
++*   **Заметки и теги:** свободные заметки в карточке персонажа, теги и фильтры по классу, пати и тегу.
++*   **Экспорт и импорт:** выгрузка всех данных в файл и загрузка обратно. При импорте приложение показывает отличия и предлагает объединить, оставить своё или взять из файла.
++
++### 🛡️ Надёжность данных
++*   **Резервные копии:** копия файла данных создаётся перед импортом и перед обновлением схемы данных, хранится последние 10 (число настраивается); запись файла атомарная, обрыв питания не оставит «обрезанный» файл.
++*   **Миграции:** при обновлении приложения старый файл данных автоматически приводится к новой схеме.
++*   **Автообновление:** приложение проверяет новые версии на GitHub при запуске и по кнопке; подпись обновления проверяется публичным ключом.
++
++<!--
++## 🖼️ Скриншоты
++Добавьте снимки (без реальных ников и паролей!) в docs/screenshots/ и раскомментируйте:
++![Список персонажей](docs/screenshots/characters.png)
++![Пати](docs/screenshots/parties.png)
++![Марафоны](docs/screenshots/marathons.png)
++![Настройки](docs/screenshots/settings.png)
++![Основной сценарий](docs/screenshots/demo.gif)
++-->
+ 
+ ## 📥 Установка и использование
+ 
+-1.  Скачайте последнюю версию из раздела [Releases](https://github.com/drednight/Tvinoferma/releases).
+-2.  Распакуйте архив в любую папку.
+-3.  Запустите исполняемый файл программы.
++1.  Скачайте последнюю версию из раздела [Releases](https://github.com/drednight/Tvinoferma/releases): установщик `.msi` или `-setup.exe`.
++2.  Запустите установщик. Дальше приложение обновляется само.
++3.  Откройте «Твиноферма» из меню «Пуск».
++
++Поддерживается **Windows 10/11** (нужен WebView2, он входит в современные сборки Windows). Сборки для macOS и Linux не проверяются.
+ 
+ ### Как начать работу?
+ 1.  **Добавьте персонажей:** Введите данные учетных записей (логин/пароль) в базу менеджера.
+@@ -45,7 +73,21 @@
+ Срок жизни куки-сессий на сайте игры ограничен. Если вы давно не заходили, потребуется пройти процедуру авторизации снова через встроенный браузер. Менеджер подскажет, у кого именно истекла сессия.
+ 
+ **Это безопасно?**
+-Да. Все данные хранятся локально на вашем компьютере. Программа использует стандартный движок Chromium для открытия страниц сайта, что идентично работе обычного браузера, но с разделением профилей для удобства мультиаккаунтинга.
++Данные хранятся только на вашем компьютере. Подробности — в разделе «Безопасность и приватность» ниже.
++
++## 🔒 Безопасность и приватность
++
++*   **Пароли:** логины, пароли, дополнительные e-mail и телефоны хранятся в хранилище учётных данных вашей ОС (Windows Credential Manager) и **не попадают в файл данных** приложения.
++*   **Сессии (куки):** куки для `pwonline.ru` хранятся локально в зашифрованном виде (AES-256-GCM). Ключ шифрования лежит в хранилище ОС, поэтому файлы сессий без него бесполезны и на другой компьютер не переносятся. Куки VK / Mail.ru не сохраняются.
++*   **Что уходит в сеть:** только `pwonline.ru` (страницы сайта в окнах приложения) и GitHub (проверка и загрузка обновлений). Телеметрии нет, ничего не отправляется «на сервер автора».
++*   **Что делает приложение на сайте:** фоновые скрипты только **читают** страницы (баланс, статус входа, марафоны). Никаких кликов, отправки форм и запусков по расписанию. Подробнее — [docs/COMPLIANCE.md](docs/COMPLIANCE.md).
++*   **Экспорт:** пароли попадают в файл экспорта только если вы отметили пункт «Пароли» (он помечен как опасный). Такой файл храните как пароль и не отправляйте другим.
++
++## 🧑‍💻 Для разработчиков
++
++*   Как запустить, проверить и выпустить версию: [CONTRIBUTING.md](CONTRIBUTING.md).
++*   Как устроено приложение: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
++*   План развития: [ROADMAP.md](ROADMAP.md).
+ 
+ ## 🤝 Поддержка
+ 
+diff --git a/ROADMAP.md b/ROADMAP.md
+index b2c2e41..52dbfe8 100644
+--- a/ROADMAP.md
++++ b/ROADMAP.md
+@@ -37,7 +37,7 @@
+ ## Прогресс
+ 
+ <!-- roadmap:start -->
+-**Всего выполнено:** `█░░░░░░░░░` 8/71 (11%) · обновлено 2026-10-02
++**Всего выполнено:** `█░░░░░░░░░` 10/71 (14%) · обновлено 2026-10-02
+ 
+ ### v0.2.3 — Баги: баланс монет и фильтр классов
+ 
+@@ -48,15 +48,15 @@
+ 
+ ### v0.3 — Описания заданий, несколько партий, заметки, чистый репозиторий
+ 
+-`██████░░░░` 5/9 (56%)
++`████████░░` 7/9 (78%)
+ 
+ - [x] [#3](https://github.com/drednight/Tvinoferma/issues/3) **0.3** Описания заданий марафона — Высокий, M
+ - [x] [#4](https://github.com/drednight/Tvinoferma/issues/4) **0.4** Несколько партий у одного персонажа — Высокий, M
+ - [x] [#5](https://github.com/drednight/Tvinoferma/issues/5) **1.1** `ROADMAP.md` в репозитории и Issues — Высокий, S
+ - [ ] [#6](https://github.com/drednight/Tvinoferma/issues/6) **1.2** About, topics, скриншоты, лицензия — Средний, S
+-- [ ] [#7](https://github.com/drednight/Tvinoferma/issues/7) **1.3** ESLint + Prettier + `checkJs` — Средний, S
++- [x] [#7](https://github.com/drednight/Tvinoferma/issues/7) **1.3** ESLint + Prettier + `checkJs` — Средний, S
+ - [ ] [#8](https://github.com/drednight/Tvinoferma/issues/8) **1.4** Rust: `clippy`, `rustfmt`, `cargo audit`; `npm audit` — Средний, S
+-- [ ] [#11](https://github.com/drednight/Tvinoferma/issues/11) **1.7** Документация для разработчика — Низкий, S
++- [x] [#11](https://github.com/drednight/Tvinoferma/issues/11) **1.7** Документация для разработчика — Низкий, S
+ - [x] [#20](https://github.com/drednight/Tvinoferma/issues/20) **3.2** Примечания в карточке персонажа — Высокий, S
+ - [x] [#21](https://github.com/drednight/Tvinoferma/issues/21) **3.3** Проверка авторизации вручную — Средний, S
+ 
+diff --git a/Tvinoferma-roadmap.md b/Tvinoferma-roadmap.md
+index bd29172..7a51956 100644
+--- a/Tvinoferma-roadmap.md
++++ b/Tvinoferma-roadmap.md
+@@ -34,7 +34,8 @@
+ - [x] Примечания в карточке персонажа (поле `notes`, локально, в экспорте/импорте)
+ - [x] Кнопка «Проверить авторизацию» в карточке персонажа (кнопка «🔐 Проверить вход» в карточке и профиле, результат и время проверки, отмена массовой проверки)
+ - [ ] Экспорт/импорт в CSV, а не только JSON
+-- [ ] Актуализировать README: марафоны, теги, бэкапы, автообновление, скриншоты
++- [x] Актуализировать README: марафоны, теги, бэкапы, автообновление, безопасность
++- [ ] Скриншоты и GIF в README (нужны снимки из приложения без реальных ников)
+ 
+ ### Issue #72. Улучшение «Марафона»
+ 
+@@ -113,6 +114,8 @@
+ 
+ - Иконки данжей весят 1–2,4 МБ каждая: сжать до WebP, сократить установщик.
+ - Заглушки `cloud/googleDrive.js` и `googleSheets.js` не входят в ваш план. Либо довести до ума (синхронизация между компьютерами), либо удалить.
++- Rust-шаги CI (`cargo fmt --check`, `clippy`) пока не блокируют сборку: после первого локального прогона `cargo fmt` и `cargo clippy --fix` убрать `continue-on-error` в `ci.yml` (Issue #8).
++- Проверка типов (`npm run typecheck`) включена только в файлах с `// @ts-check` (`js/core/`, часть `js/data/`). Остальные файлы подключать по одному.
+ - Тесты на Rust и e2e для критичных сценариев (миграции, импорт, сверка марафона) расширять вместе с каждой фазой.
+ 
+ ## Предлагаемый порядок
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+new file mode 100644
+index 0000000..9d71dc0
+--- /dev/null
++++ b/docs/ARCHITECTURE.md
+@@ -0,0 +1,82 @@
++# Архитектура
++
++Твиноферма — Tauri 2: интерфейс на чистом JavaScript (без фреймворка, сборка Vite) и Rust-часть,
++которая открывает окна браузера (WebView) и запускает в них скрипты.
++
++## Главная схема: как приложение получает данные с сайта
++
++```
++Интерфейс (js/)          Rust (src-tauri/src/)                 Сайт pwonline.ru
++─────────────────        ───────────────────────────           ──────────────────
++кнопка / очередь
++  │  invoke('команда')
++  ▼
++queue.js ───────────────► команда (auth / balance / marathons)
++                            │ берёт скрытое окно (windows.rs / pool.rs)
++                            │ ставит куки персонажа из банка (cookie_bank.rs)
++                            │ navigate → страница ─────────────────► загружается
++                            │ eval(скрипт из src/scripts/*.js) ────► читает DOM
++                            │                                         │
++                            │ ◄── location.hash = "#TF_…<json>" ◄────┘
++                            │ parsers.rs читает hash, повторяет
++                            │ при «Проверке безопасности»
++  ◄── событие (emit) ◄──────┘ результат { data, error }
++syncManager.js / siteSync.js
++  │ обновляет state, persist()
++  ▼
++state.json на диске (commands/state.rs) + пароли в хранилище ОС (commands/secrets.rs)
++```
++
++Ответ передаётся через `hash`, а не через `invoke` из страницы: так внешней странице сайта не нужен доступ
++к командам Tauri. Скрипт только пишет ответ в адрес окна, а Rust его читает.
++
++Формат ответа: `#TF_<ИМЯ>_V<N>_<encodeURIComponent(JSON)>`, где JSON = `{ "data": …, "error": null | "строка" }`.
++Коды ошибок: `not_logged_in`, `timeout`, `challenge` (сайт показывает «Проверку безопасности»),
++`pending` (страница ещё не дорисована). Номер версии в префиксе (`TF_BAL_V5_`) меняется, когда меняется
++формат ответа: так старый ответ в hash не принимается за новый.
++
++## Rust (`src-tauri/src/`)
++
++| Файл | За что отвечает |
++| --- | --- |
++| `lib.rs` | Регистрация команд, плагинов, старт приложения |
++| `windows.rs` | Окна персонажей: видимые (ручной вход) и скрытые (фоновые скрипты); у каждого персонажа свой профиль WebView `pw-sync-profiles/<id>` |
++| `parsers.rs` | Общий цикл «выполнить скрипт → ждать ответ в hash», журнал шагов (`tf-task-log`), обход «Проверки безопасности» |
++| `auth.rs` | Проверка входа (`usercp.php`) |
++| `balance.rs` | Баланс древних монет (`chests2.php`) |
++| `marathons.rs` | Прогресс персонажа, поиск марафонов, разбор страницы и новости |
++| `pool.rs` | Пул воркеров: до 4 общих скрытых окон вместо окна на каждого персонажа |
++| `cookie_bank.rs` | Куки сессий pwonline.ru, зашифрованные AES-256-GCM; ключ лежит в хранилище ОС |
++| `commands/` | `state.json` (атомарная запись), резервные копии, пароли в хранилище ОС (`keyring`) |
++| `tray.rs` | Иконка в трее |
++| `scripts/*.js` | Скрипты, которые внедряются в страницы сайта (`include_str!`). Только читают DOM |
++| `automation/`, `injection.rs` | Заготовки (Issues #25, #26, #54), не подключены |
++
++## Интерфейс (`js/`)
++
++| Папка / файл | За что отвечает |
++| --- | --- |
++| `main.js` | Точка входа: загрузка состояния, подключение разделов |
++| `core/` | Состояние (`state.js`), хранение (`storage.js` и адаптеры), миграции `state.json` (`migrations.js`), пароли (`secrets.js`), монеты (`coins.js`), идентификаторы (`ids.js`), модальные окна и уведомления (`ui.js`), журнал задач и отмена (`taskLog.js`), выбор даты (`datePicker.js`) |
++| `data/` | Экспорт, импорт, сравнение и слияние персонажей |
++| `modules/sync/` | Очередь фоновых задач (`queue.js`: лимит окон, повторы), проверка входа, баланс, `syncManager.js` |
++| `modules/characters/`, `modules/parties/` | Список, карточка, форма персонажа; пати |
++| `modules/marathons/` | Марафоны: модель (`model.js`), сверка с сайтом (`siteSync.js`), мастер добавления (`wizard.js`), страница (`page.js`), разбор новости (`newsParser.js`, `newsList.js`), слияние источников (`mergeSources.js`) |
++| `desktop/`, `settings/` | Уведомления, автообновление (`updater.js`, `updateState.js`, `updateUi.js`), окно приложения; настройки |
++| `modules/{arena,automation,bank,dungeons,injection,runes,cloud}` | Заготовки будущих разделов, помечены ссылками на Issues |
++
++## Данные
++
++- `state.json` лежит в `<AppData>/com.tvinoferma.desktop/tvinoferma_data/`. Запись атомарная (временный файл → переименование),
++  резервные копии делает `commands/backup.rs`.
++- Версия схемы — `SCHEMA_VERSION` в `js/core/migrations.js`. Любое изменение схемы = миграция в `js/core/migrations.js` + тест.
++- Пароли, e-mail и телефоны персонажей в `state.json` не пишутся: они в хранилище ОС (Windows Credential Manager).
++  В памяти приложения они есть, поэтому экспорт и помощник входа работают как раньше.
++- Куки-банк (`cookie-bank/<id>.bin`) в экспорт не входит и на другой ПК не переносится.
++
++## Как добавить новый парсер
++
++1. Скрипт в `src-tauri/src/scripts/имя.js`: читает DOM, пишет `location.hash = 'TF_ИМЯ_V1_' + encodeURIComponent(JSON.stringify({ data, error }))`. Никаких кликов и отправки форм (см. [COMPLIANCE.md](COMPLIANCE.md)).
++2. Команда в Rust: `navigate_clean` → `eval_and_wait(…, "#TF_ИМЯ_V1_", таймаут, scope)`; зарегистрировать в `lib.rs`.
++3. Обёртка в `js/modules/…` + постановка в очередь `queue.js`.
++4. Сохранённая страница сайта в `tests/fixtures/` и тест, который прогоняет скрипт на ней (`tests/helpers/pageScript.js`).
+diff --git a/docs/COMPLIANCE.md b/docs/COMPLIANCE.md
+new file mode 100644
+index 0000000..51f9bc9
+--- /dev/null
++++ b/docs/COMPLIANCE.md
+@@ -0,0 +1,52 @@
++# Правила сайта и границы приложения
++
++Здесь записано, что приложение делает на pwonline.ru, а чего не делает. Цель — не подвести аккаунты
++пользователей под блокировку и не превратить приложение в инструмент, который сайт запрещает.
++
++> ⚠️ **Статус документа: черновик.** Официальные правила сайта и пользовательское соглашение
++> автором документа **не проверялись**. Перед тем как расширять автоматизацию (Issues #25, #26),
++> прочитайте актуальные правила pwonline.ru и при сомнениях спросите у администрации.
++> Результат запишите сюда (дата, кто ответил, что именно разрешено).
++
++## Принципы (решение 1 из ROADMAP)
++
++1. **Фоновые скрипты только читают.** Скрипты в `src-tauri/src/scripts/` читают DOM страницы
++   (баланс, прогресс марафонов, статус входа) и ничего не нажимают, не вводят и не отправляют.
++   Сейчас в них нет `click()`, отправки форм и запросов `POST`.
++2. **Действие на сайте — только по явной кнопке пользователя.** Всё, что меняет состояние на сайте
++   (промокоды, перевод предметов — Issues #25, #26), запускается кнопкой, для каждого персонажа
++   показывает, что будет сделано, и позволяет отменить.
++3. **Никаких расписаний для действий.** Автоматически (по таймеру) допускается только чтение.
++4. **Щадящая нагрузка.** Общая очередь (`js/modules/sync/queue.js`) ограничивает число одновременных
++   окон, добавляет паузы между задачами и растущую паузу при повторах. Пул (`pool.rs`) — не больше 4 окон.
++5. **«Проверка безопасности» не обходится.** Когда сайт показывает проверку, приложение ждёт и
++   повторяет чтение; решать проверку за пользователя оно не должно. Для сценария «пользователь
++   пройдёт проверку вручную» есть Issue #15.
++6. **Никакого взаимодействия с игровым сервером.** Приложение работает только со страницами сайта.
++
++## Что уходит в сеть
++
++| Куда | Что |
++| --- | --- |
++| `pwonline.ru` | Страницы, которые открыты в окнах приложения: вход, баланс, марафоны, новости. Запросы идут от окна WebView с куками персонажа, как у обычного браузера |
++| `github.com/drednight/Tvinoferma` | Файл `latest.json` и установщик при проверке обновлений |
++
++Телеметрии и аналитики нет. Пароли и куки наружу не отправляются: пароли в хранилище ОС,
++куки-банк зашифрован и лежит локально (`cookie_bank.rs`).
++
++При ручном входе через VK / Mail.ru пользователь работает со страницами этих сервисов в видимом окне
++сам. Куки этих доменов в куки-банк не сохраняются.
++
++## Чек-лист перед добавлением новой возможности
++
++- [ ] Скрипт только читает? Если нет — это действие, нужна кнопка и подтверждение (принцип 2).
++- [ ] Не запускается по расписанию (принцип 3), если меняет данные на сайте.
++- [ ] Идёт через общую очередь, а не напрямую.
++- [ ] Правила сайта по этому сценарию прочитаны, вывод записан выше.
++- [ ] В фикстурах и логах нет паролей, куков и личных данных.
++
++## Что нужно уточнить (открытые вопросы)
++
++- Что говорят правила pwonline.ru про сторонние программы и автоматизированное чтение страниц.
++- Допустима ли активация промокодов и перевод предметов несколькими аккаунтами через приложение.
++- Допустима ли работа нескольких аккаунтов с одного IP/устройства (мультиаккаунтинг).
+diff --git a/eslint.config.js b/eslint.config.js
+new file mode 100644
+index 0000000..a40fde8
+--- /dev/null
++++ b/eslint.config.js
+@@ -0,0 +1,31 @@
++import js from '@eslint/js';
++import globals from 'globals';
++
++export default [
++  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'public/**', 'coverage/**'] },
++  js.configs.recommended,
++  {
++    files: ['js/**/*.js'],
++    languageOptions: {
++      ecmaVersion: 2022,
++      sourceType: 'module',
++      globals: { ...globals.browser },
++    },
++    rules: {
++      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
++      'no-empty': ['error', { allowEmptyCatch: true }],
++    },
++  },
++  {
++    files: ['tests/**/*.js', 'scripts/**/*.{js,mjs}', 'vite.config.js', 'eslint.config.js'],
++    languageOptions: {
++      ecmaVersion: 2022,
++      sourceType: 'module',
++      globals: { ...globals.node, ...globals.browser },
++    },
++    rules: {
++      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
++      'no-empty': ['error', { allowEmptyCatch: true }],
++    },
++  },
++];
+diff --git a/js/core/coins.js b/js/core/coins.js
+index 71ceec9..86b75b5 100644
+--- a/js/core/coins.js
++++ b/js/core/coins.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/coins.js
+ // Древние монеты: разбор текста с сайта (округление вниз до 0,1), формат вывода и история.
+ // ВАЖНО: функция parseCoins продублирована в src-tauri/src/scripts/balance.js
+@@ -92,6 +93,9 @@ export function needsCoinRecheck(char) {
+  * - lastCoinUpdate обновляется всегда (это «дата последней проверки»);
+  * - запись в историю добавляется только если баланс изменился (никаких «+0»);
+  * Возвращает { changed, delta }.
++ * @param {any} char
++ * @param {number} balance
++ * @param {{ note?: string | null, now?: string }} [opts]
+  */
+ export function applyCoinBalance(char, balance, { note, now = new Date().toISOString() } = {}) {
+   // Первая проверка после исправления разбора: пометка в истории, чтобы было видно, почему значение «скакнуло»
+diff --git a/js/core/constants.js b/js/core/constants.js
+index 8e8e657..1bd593c 100644
+--- a/js/core/constants.js
++++ b/js/core/constants.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/constants.js
+ 
+ 
+diff --git a/js/core/datePicker.js b/js/core/datePicker.js
+index 219e883..c83b4cf 100644
+--- a/js/core/datePicker.js
++++ b/js/core/datePicker.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/datePicker.js
+ // Календарь выбора даты в том же виде, что и календарь ручных отметок марафона (.mr-cal / .mr-cal-day).
+ // Вместо системного <input type="date"> подставляется кнопка с датой «дд.мм.гггг» и скрытое поле
+@@ -51,14 +52,14 @@ function showPopup(anchor, hidden, onPick) {
+         ${days.map(d => `<button type="button" class="mr-cal-day is-normal ${d === selected ? 'is-marked' : ''} ${d === today ? 'is-today' : ''}" data-dp-day="${d}"><span>${Number(d.slice(8))}</span></button>`).join('')}
+       </div>
+       <div class="tf-dp-foot"><button type="button" class="btn small ghost" data-dp-today>Сегодня</button></div>`;
+-    pop.querySelectorAll('[data-dp-nav]').forEach(b => b.onclick = (e) => {
++    /** @type {NodeListOf<HTMLElement>} */ (pop.querySelectorAll('[data-dp-nav]')).forEach(b => b.onclick = (e) => {
+       e.stopPropagation();
+       month += Number(b.dataset.dpNav);
+       if (month < 0) { month = 11; year--; } else if (month > 11) { month = 0; year++; }
+       draw();
+     });
+-    pop.querySelectorAll('[data-dp-day]').forEach(b => b.onclick = (e) => { e.stopPropagation(); onPick(b.dataset.dpDay); closePopup(); });
+-    pop.querySelector('[data-dp-today]').onclick = (e) => { e.stopPropagation(); onPick(todayIso()); closePopup(); };
++    /** @type {NodeListOf<HTMLElement>} */ (pop.querySelectorAll('[data-dp-day]')).forEach(b => b.onclick = (e) => { e.stopPropagation(); onPick(b.dataset.dpDay); closePopup(); });
++    /** @type {HTMLElement} */ (pop.querySelector('[data-dp-today]')).onclick = (e) => { e.stopPropagation(); onPick(todayIso()); closePopup(); };
+   };
+   draw();
+   document.body.appendChild(pop);
+diff --git a/js/core/ids.js b/js/core/ids.js
+index 5b6fbfa..39d2166 100644
+--- a/js/core/ids.js
++++ b/js/core/ids.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/ids.js
+ // Читаемые id персонажей, построенные из ника: «Тёмный_Маг#2» → «Temnyy_Mag_2».
+ // id используется в именах окон браузера (sync-win-<id>), папках профилей
+diff --git a/js/core/migrations.js b/js/core/migrations.js
+index f0fca0a..e911731 100644
+--- a/js/core/migrations.js
++++ b/js/core/migrations.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/migrations.js
+ // Единая версия схемы для всего state.json (`schemaVersion`).
+ // Каждая миграция — чистая функция `state(vN-1) -> state(vN)`; применяются по порядку.
+diff --git a/js/core/secrets.js b/js/core/secrets.js
+index e12456f..f67960b 100644
+--- a/js/core/secrets.js
++++ b/js/core/secrets.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/secrets.js
+ // Учётные данные персонажей (email, пароль, recovery, телефон) хранятся в хранилище ОС
+ // (Windows Credential Manager / macOS Keychain / Secret Service) через Rust-команды secrets_*.
+diff --git a/js/core/state.js b/js/core/state.js
+index f182610..83e1dd8 100644
+--- a/js/core/state.js
++++ b/js/core/state.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ import { DEFAULT_SETTINGS } from './constants.js';
+ import { migrateMarathon } from '../modules/marathons/model.js';
+ import { SCHEMA_VERSION, migrateState } from './migrations.js';
+@@ -147,6 +148,7 @@ function mergeSettings(input = {}) {
+ 
+ export function normalizeState(raw) {
+   // 0. Единые миграции схемы state.json (js/migrations.js)
++  /** @type {any} */
+   const input = migrateState(raw).state;
+ 
+   // 1. Базовая структура
+diff --git a/js/core/storage.js b/js/core/storage.js
+index c56af5c..06c84a4 100644
+--- a/js/core/storage.js
++++ b/js/core/storage.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/storage.js
+ 
+ import { serializeState } from './state.js';
+@@ -5,7 +6,10 @@ import { tauriAdapter } from './storageAdapters/tauriAdapter.js';
+ import { localStorageAdapter } from './storageAdapters/localStorageAdapter.js';
+ import { prepareForDisk } from './secrets.js';
+ 
+-export const isTauri = () => !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
++export const isTauri = () => {
++  const w = /** @type {any} */ (window);
++  return !!(w.__TAURI_INTERNALS__ || w.__TAURI__);
++};
+ 
+ /**
+  * Выбирает подходящий адаптер в зависимости от окружения.
+diff --git a/js/core/storageAdapters/localStorageAdapter.js b/js/core/storageAdapters/localStorageAdapter.js
+index 31f10f4..2b5b022 100644
+--- a/js/core/storageAdapters/localStorageAdapter.js
++++ b/js/core/storageAdapters/localStorageAdapter.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/storageAdapters/localStorageAdapter.js
+ 
+ const STORAGE_KEY = 'tvinoferma_state_v1';
+diff --git a/js/core/storageAdapters/tauriAdapter.js b/js/core/storageAdapters/tauriAdapter.js
+index 63d8c80..ebafbe1 100644
+--- a/js/core/storageAdapters/tauriAdapter.js
++++ b/js/core/storageAdapters/tauriAdapter.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/storageAdapters/tauriAdapter.js
+ // Хранилище desktop-версии: все операции с файлами выполняет Rust (src-tauri/src/commands),
+ // state.json пишется атомарно, бэкапы создаются/ротируются на стороне Rust.
+diff --git a/js/core/ui.js b/js/core/ui.js
+index 6447a83..2e80088 100644
+--- a/js/core/ui.js
++++ b/js/core/ui.js
+@@ -4,6 +4,8 @@ import { escapeHtml } from './utils.js';
+ 
+ /**
+  * Универсальная функция показа модального окна
++ * @param {{ title: string, content: string, submitText?: string, cancelText?: string,
++ *           onSubmit?: (data: any) => any, onClose?: () => void, hideCloseButton?: boolean }} opts
+  */
+ export function showModal({ 
+   title, 
+diff --git a/js/core/uiActions.js b/js/core/uiActions.js
+index cca84b1..f8eb7cd 100644
+--- a/js/core/uiActions.js
++++ b/js/core/uiActions.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/core/uiActions.js
+ 
+ import { openCharacterForm } from '../modules/characters/index.js';
+@@ -48,7 +49,7 @@ export function updateFabVisibility(sectionName) {
+     
+     if (!container || !fabBtn) return;
+ 
+-    let isVisible = false;
++    let isVisible;
+     let tooltipText = '';
+ 
+     if (sectionName === 'characters') {
+@@ -74,7 +75,7 @@ export function updateFabVisibility(sectionName) {
+  */
+ function getActiveSectionName() {
+     const activePage = document.querySelector('.page.active');
+-    return activePage ? activePage.dataset.section : null;
++    return activePage ? /** @type {HTMLElement} */ (activePage).dataset.section : null;
+ }
+ 
+ /**
+@@ -93,7 +94,7 @@ function setupScriptsMenu() {
+     });
+ 
+     dropdown.addEventListener('click', async (e) => {
+-        const item = e.target.closest('.dropdown-item');
++        const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.dropdown-item'));
+         if (!item) return;
+ 
+         e.stopPropagation();
+@@ -117,7 +118,8 @@ function setupScriptsMenu() {
+     });
+ 
+     window.addEventListener('click', (e) => {
+-        if (!menuBtn.contains(e.target) && !dropdown.contains(e.target)) {
++        const target = /** @type {Node} */ (e.target);
++        if (!menuBtn.contains(target) && !dropdown.contains(target)) {
+             dropdown.style.display = 'none';
+         }
+     });
+diff --git a/js/core/utils.js b/js/core/utils.js
+index 04c140f..807d781 100644
+--- a/js/core/utils.js
++++ b/js/core/utils.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ export function uid() {
+   if (crypto.randomUUID) return crypto.randomUUID();
+   return 'id-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
+diff --git a/js/data/characterFields.js b/js/data/characterFields.js
+index a527127..2e7ce38 100644
+--- a/js/data/characterFields.js
++++ b/js/data/characterFields.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/data/characterFields.js
+ // Полный список полей персонажа для экспорта/импорта и сравнения карточек.
+ // Добавили поле в модель (modules/characters/stateManager.js) — добавьте его и сюда,
+diff --git a/js/data/compare.js b/js/data/compare.js
+index cda9d40..787fc99 100644
+--- a/js/data/compare.js
++++ b/js/data/compare.js
+@@ -5,7 +5,7 @@
+ // монет есть вариант «Объединить»).
+ 
+ import { escapeHtml } from '../core/utils.js';
+-import { FIELD_GROUPS, getPath, sameValue, displayValue, buildMerged, diffCharacters } from './characterFields.js';
++import { FIELD_GROUPS, getPath, displayValue, buildMerged, diffCharacters } from './characterFields.js';
+ 
+ /**
+  * @returns {Promise<{ action: 'merge', character: object } | { action: 'keep' } | { action: 'both' } |
+diff --git a/js/data/export.js b/js/data/export.js
+index 3a9adb1..b92c7b0 100644
+--- a/js/data/export.js
++++ b/js/data/export.js
+@@ -337,7 +337,7 @@ export function openExportDialog() {
+      
+      selectedPartyNames.forEach(partyName => {
+         // Находим персонажей этой пати
+-        let charsInParty = [];
++        let charsInParty;
+         if (partyName === '__none__') {
+            charsInParty = allCharacters.filter(c => hasNoParty(c, state.parties));
+         } else {
+diff --git a/js/data/import.js b/js/data/import.js
+index c8c73ff..d79e902 100644
+--- a/js/data/import.js
++++ b/js/data/import.js
+@@ -1,3 +1,4 @@
++// @ts-check
+ // js/data/import.js
+ // Импорт JSON: разбор файла → сводка (новые / совпадающие / одинаковые) →
+ // сравнение каждой совпавшей пары (data/compare.js) → применение.
+@@ -32,7 +33,12 @@ export function liftLegacyContacts(raw) {
+ 
+ const nickKey = nick => String(nick || '').trim().toLowerCase();
+ 
+-/** Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами). */
++/**
++ * Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами).
++ * @param {any[]} localChars
++ * @param {any[]} incomingChars
++ * @param {(c: any) => any} [presentFor]
++ */
+ export function planImport(localChars, incomingChars, presentFor = () => null) {
+   const byId = new Map(localChars.map(c => [c.id, c]));
+   const byNick = new Map(localChars.map(c => [nickKey(c.nick), c]));
+diff --git a/js/modules/arena/index.js b/js/modules/arena/index.js
+index 946fcfc..4a21d5e 100644
+--- a/js/modules/arena/index.js
++++ b/js/modules/arena/index.js
+@@ -5,3 +5,4 @@
+ //  - Интеграция внешнего проекта мониторинга
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issue #59 (ROADMAP.md)
+diff --git a/js/modules/automation/index.js b/js/modules/automation/index.js
+index 8b6f6ce..4b67bc5 100644
+--- a/js/modules/automation/index.js
++++ b/js/modules/automation/index.js
+@@ -7,6 +7,7 @@
+ //  - Все запуски — через очередь js/modules/sync/queue.js (лимит окон и ретраи)
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #25 (промокоды), #26 (перевод предметов) (ROADMAP.md)
+ 
+ export { openPromoDialog } from './promo.js';
+ export { openTransferDialog } from './transfer.js';
+diff --git a/js/modules/bank/index.js b/js/modules/bank/index.js
+index 55d72d2..ff11e26 100644
+--- a/js/modules/bank/index.js
++++ b/js/modules/bank/index.js
+@@ -6,3 +6,4 @@
+ //  - Графики по банку на chart.js (charts.js)
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #56, #57 (ROADMAP.md)
+diff --git a/js/modules/cloud/googleDrive.js b/js/modules/cloud/googleDrive.js
+index 8a4f8d3..c97f2e3 100644
+--- a/js/modules/cloud/googleDrive.js
++++ b/js/modules/cloud/googleDrive.js
+@@ -2,3 +2,4 @@
+ // Бэкап в Google Drive
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #60, #62 (ROADMAP.md)
+diff --git a/js/modules/cloud/googleSheets.js b/js/modules/cloud/googleSheets.js
+index 31b9b62..e637d57 100644
+--- a/js/modules/cloud/googleSheets.js
++++ b/js/modules/cloud/googleSheets.js
+@@ -2,3 +2,4 @@
+ // Выгрузка в Google Sheets
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issue #61 (ROADMAP.md)
+diff --git a/js/modules/cloud/index.js b/js/modules/cloud/index.js
+index f1ada04..d86be47 100644
+--- a/js/modules/cloud/index.js
++++ b/js/modules/cloud/index.js
+@@ -6,3 +6,4 @@
+ //  - Выгрузка таблицы персонажей в Google Sheets (googleSheets.js); настройки — settings.google
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #60, #61, #62 (ROADMAP.md)
+diff --git a/js/modules/dungeons/index.js b/js/modules/dungeons/index.js
+index f784593..1695e08 100644
+--- a/js/modules/dungeons/index.js
++++ b/js/modules/dungeons/index.js
+@@ -8,5 +8,6 @@
+ //  - Уведомление о смене данжа — через js/desktop/notifications.js
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #30–#34 (ROADMAP.md)
+ 
+ export { dungeonForDate } from './schedule.js';
+diff --git a/js/modules/injection/index.js b/js/modules/injection/index.js
+index 7e20eb6..4b90d30 100644
+--- a/js/modules/injection/index.js
++++ b/js/modules/injection/index.js
+@@ -6,3 +6,4 @@
+ //  - Скрытие рекламы и лишнего контента PWOL (src-tauri/src/scripts/injection/hide_ads.css)
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issue #54 (ROADMAP.md)
+diff --git a/js/modules/runes/index.js b/js/modules/runes/index.js
+index ae95819..08c9d44 100644
+--- a/js/modules/runes/index.js
++++ b/js/modules/runes/index.js
+@@ -7,3 +7,4 @@
+ //  - Форма отправки нового шаблона автору (submit.js)
+ //
+ // Модуль-заготовка: пока не подключён в main.js.
++// Статус и план: Issues #35–#37 (ROADMAP.md)
+diff --git a/jsconfig.json b/jsconfig.json
+index fa61892..b6fdd3d 100644
+--- a/jsconfig.json
++++ b/jsconfig.json
+@@ -1,9 +1,14 @@
+ {
+   "compilerOptions": {
+     "module": "ESNext",
+-    "target": "ES2020",
++    "moduleResolution": "Bundler",
++    "target": "ES2022",
++    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+     "allowJs": true,
+-    "checkJs": false 
++    "checkJs": false,
++    "noEmit": true,
++    "skipLibCheck": true,
++    "strict": false
+   },
+   "include": ["js/**/*"]
+-}
+\ No newline at end of file
++}
+diff --git a/package-lock.json b/package-lock.json
+index 55a2a03..224026e 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "tvinoferma",
+-  "version": "0.2.2",
++  "version": "0.3.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "tvinoferma",
+-      "version": "0.2.2",
++      "version": "0.3.0",
+       "dependencies": {
+         "@tauri-apps/api": "^2.0.0",
+         "@tauri-apps/plugin-notification": "^2.5.1",
+@@ -16,8 +16,13 @@
+         "chart.js": "^4.5.1"
+       },
+       "devDependencies": {
++        "@eslint/js": "^10.0.1",
+         "@tauri-apps/cli": "^2.0.0",
++        "eslint": "^10.12.0",
++        "globals": "^17.13.0",
+         "jsdom": "^26.1.0",
++        "prettier": "^3.9.9",
++        "typescript": "^7.0.2",
+         "vite": "^8.3.2",
+         "vitest": "^5.0.3"
+       }
+@@ -36,6 +41,30 @@
+         "lru-cache": "^10.4.3"
+       }
+     },
++    "node_modules/@cacheable/memory": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/@cacheable/memory/-/memory-2.2.0.tgz",
++      "integrity": "sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@cacheable/utils": "^2.5.0",
++        "@keyv/bigmap": "^1.3.1",
++        "hookified": "^1.15.1",
++        "keyv": "^5.6.0"
++      }
++    },
++    "node_modules/@cacheable/utils": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/@cacheable/utils/-/utils-2.5.0.tgz",
++      "integrity": "sha512-buipgOVDkkPXNR5+xBpDw7Zk2n1EvU7qBJCNUcL7rhQ//kfpOXPAvQ511Os0vpLYJ1pZnvudNytkQt2hst3wqA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hashery": "^1.5.1",
++        "keyv": "^5.6.0"
++      }
++    },
+     "node_modules/@csstools/color-helpers": {
+       "version": "5.1.0",
+       "resolved": "https://registry.npmjs.org/@csstools/color-helpers/-/color-helpers-5.1.0.tgz",
+@@ -151,6 +180,200 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/@eslint-community/eslint-utils": {
++      "version": "4.10.1",
++      "resolved": "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.10.1.tgz",
++      "integrity": "sha512-cuadcxVFE8sDK6iWJbs8Sn0av2Nrh2QSGQhVlBW9AaAHqHwjWsZHT8LJ4hFGPh7ASBV2deFdM7H/DPjulmh8rg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "eslint-visitor-keys": "^3.4.3"
++      },
++      "engines": {
++        "node": "^12.22.0 || ^14.17.0 || >=16.0.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      },
++      "peerDependencies": {
++        "eslint": "^6.0.0 || ^7.0.0 || >=8.0.0"
++      }
++    },
++    "node_modules/@eslint-community/eslint-utils/node_modules/eslint-visitor-keys": {
++      "version": "3.4.3",
++      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-3.4.3.tgz",
++      "integrity": "sha512-wpc+LXeiyiisxPlEkUzU6svyS1frIO3Mgxj1fdy7Pm8Ygzguax2N3Fa/D/ag1WqbOprdI+uY6wMUl8/a2G+iag==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": "^12.22.0 || ^14.17.0 || >=16.0.0"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      }
++    },
++    "node_modules/@eslint-community/regexpp": {
++      "version": "4.12.2",
++      "resolved": "https://registry.npmjs.org/@eslint-community/regexpp/-/regexpp-4.12.2.tgz",
++      "integrity": "sha512-EriSTlt5OC9/7SXkRSCAhfSxxoSUgBm33OH+IkwbdpgoqsSsUg7y3uh+IICI/Qg4BBWr3U2i39RpmycbxMq4ew==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^12.0.0 || ^14.0.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@eslint/config-array": {
++      "version": "0.23.5",
++      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.5.tgz",
++      "integrity": "sha512-Y3kKLvC1dvTOT+oGlqNQ1XLqK6D1HU2YXPc52NmAlJZbMMWDzGYXMiPRJ8TYD39muD/OTjlZmNJ4ib7dvSrMBA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@eslint/object-schema": "^3.0.5",
++        "debug": "^4.3.1",
++        "minimatch": "^10.2.4"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@eslint/config-helpers": {
++      "version": "0.7.0",
++      "resolved": "https://registry.npmjs.org/@eslint/config-helpers/-/config-helpers-0.7.0.tgz",
++      "integrity": "sha512-DObd/KKUsU+FaFv4PLxSRenpXfQWmPXXP3pPZ6/K1PCrMu2vQpMDMuQe/BqYeoLcz8ro0bVDF1RxOJgfVEdhUw==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@eslint/core": "^1.2.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@eslint/core": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/@eslint/core/-/core-1.2.1.tgz",
++      "integrity": "sha512-MwcE1P+AZ4C6DWlpin/OmOA54mmIZ/+xZuJiQd4SyB29oAJjN30UW9wkKNptW2ctp4cEsvhlLY/CsQ1uoHDloQ==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@types/json-schema": "^7.0.15"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@eslint/js": {
++      "version": "10.0.1",
++      "resolved": "https://registry.npmjs.org/@eslint/js/-/js-10.0.1.tgz",
++      "integrity": "sha512-zeR9k5pd4gxjZ0abRoIaxdc7I3nDktoXZk2qOv9gCNWx3mVwEn32VRhyLaRsDiJjTs0xq/T8mfPtyuXu7GWBcA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://eslint.org/donate"
++      },
++      "peerDependencies": {
++        "eslint": "^10.0.0"
++      },
++      "peerDependenciesMeta": {
++        "eslint": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/@eslint/object-schema": {
++      "version": "3.0.5",
++      "resolved": "https://registry.npmjs.org/@eslint/object-schema/-/object-schema-3.0.5.tgz",
++      "integrity": "sha512-vqTaUEgxzm+YDSdElad6PiRoX4t8VGDjCtt05zn4nU810UIx/uNEV7/lZJ6KwFThKZOzOxzXy48da+No7HZaMw==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@eslint/plugin-kit": {
++      "version": "0.7.3",
++      "resolved": "https://registry.npmjs.org/@eslint/plugin-kit/-/plugin-kit-0.7.3.tgz",
++      "integrity": "sha512-IkO+/KEUvwbVpiURZg+P7zF74z5Jxe0UgJxVni+RtoHQ6IZieXaO02kmadomap/q+l6bc/jdPGGqTjhuZnuz1Q==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@eslint/core": "^1.2.1",
++        "levn": "^0.4.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      }
++    },
++    "node_modules/@humanfs/core": {
++      "version": "0.19.2",
++      "resolved": "https://registry.npmjs.org/@humanfs/core/-/core-0.19.2.tgz",
++      "integrity": "sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@humanfs/types": "^0.15.0"
++      },
++      "engines": {
++        "node": ">=18.18.0"
++      }
++    },
++    "node_modules/@humanfs/node": {
++      "version": "0.16.8",
++      "resolved": "https://registry.npmjs.org/@humanfs/node/-/node-0.16.8.tgz",
++      "integrity": "sha512-gE1eQNZ3R++kTzFUpdGlpmy8kDZD/MLyHqDwqjkVQI0JMdI1D51sy1H958PNXYkM2rAac7e5/CnIKZrHtPh3BQ==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "dependencies": {
++        "@humanfs/core": "^0.19.2",
++        "@humanfs/types": "^0.15.0",
++        "@humanwhocodes/retry": "^0.4.0"
++      },
++      "engines": {
++        "node": ">=18.18.0"
++      }
++    },
++    "node_modules/@humanfs/types": {
++      "version": "0.15.0",
++      "resolved": "https://registry.npmjs.org/@humanfs/types/-/types-0.15.0.tgz",
++      "integrity": "sha512-ZZ1w0aoQkwuUuC7Yf+7sdeaNfqQiiLcSRbfI08oAxqLtpXQr9AIVX7Ay7HLDuiLYAaFPu8oBYNq/QIi9URHJ3Q==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18.18.0"
++      }
++    },
++    "node_modules/@humanwhocodes/module-importer": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/@humanwhocodes/module-importer/-/module-importer-1.0.1.tgz",
++      "integrity": "sha512-bxveV4V8v5Yb4ncFTT3rPSgZBOpCkjfK0y4oVVVJwIuDVBRMDXrPyXRL988i5ap9m9bnyEEjWfm5WkBmtffLfA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=12.22"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/nzakas"
++      }
++    },
++    "node_modules/@humanwhocodes/retry": {
++      "version": "0.4.3",
++      "resolved": "https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.4.3.tgz",
++      "integrity": "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": ">=18.18"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/nzakas"
++      }
++    },
+     "node_modules/@jridgewell/resolve-uri": {
+       "version": "3.1.2",
+       "resolved": "https://registry.npmjs.org/@jridgewell/resolve-uri/-/resolve-uri-3.1.2.tgz",
+@@ -179,6 +402,30 @@
+         "@jridgewell/sourcemap-codec": "^1.4.14"
+       }
+     },
++    "node_modules/@keyv/bigmap": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/@keyv/bigmap/-/bigmap-1.3.1.tgz",
++      "integrity": "sha512-WbzE9sdmQtKy8vrNPa9BRnwZh5UF4s1KTmSK0KUVLo3eff5BlQNNWDnFOouNpKfPKDnms9xynJjsMYjMaT/aFQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hashery": "^1.4.0",
++        "hookified": "^1.15.0"
++      },
++      "engines": {
++        "node": ">= 18"
++      },
++      "peerDependencies": {
++        "keyv": "^5.6.0"
++      }
++    },
++    "node_modules/@keyv/serialize": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/@keyv/serialize/-/serialize-1.1.1.tgz",
++      "integrity": "sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@kurkle/color": {
+       "version": "0.3.4",
+       "resolved": "https://registry.npmjs.org/@kurkle/color/-/color-0.3.4.tgz",
+@@ -767,11 +1014,365 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@types/esrecurse": {
++      "version": "4.3.1",
++      "resolved": "https://registry.npmjs.org/@types/esrecurse/-/esrecurse-4.3.1.tgz",
++      "integrity": "sha512-xJBAbDifo5hpffDBuHl0Y8ywswbiAp/Wi7Y/GtAgSlZyIABppyurxVueOPE8LUQOxdlgi6Zqce7uoEpqNTeiUw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/@types/estree": {
+       "version": "1.0.9",
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@types/json-schema": {
++      "version": "7.0.15",
++      "resolved": "https://registry.npmjs.org/@types/json-schema/-/json-schema-7.0.15.tgz",
++      "integrity": "sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@typescript/typescript-aix-ppc64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-aix-ppc64/-/typescript-aix-ppc64-7.0.2.tgz",
++      "integrity": "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-darwin-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-arm64/-/typescript-darwin-arm64-7.0.2.tgz",
++      "integrity": "sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-darwin-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-x64/-/typescript-darwin-x64-7.0.2.tgz",
++      "integrity": "sha512-SZ9xZInqApNlNGc9s0W1VSsktYSOe9cFqNOIqmN1Gs8SmkjKZYFt017G4VwPxASInODuAdbTW7sXiFUf893RgA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-freebsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-arm64/-/typescript-freebsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-W5NH4y/J0plIIS5b2xvTEkU7JFxyqdMAOgf+Ilhl0vHQXKO5dZoxd+C/jEtq56c4F3wk71RB4BMRQ2XdI+bwYQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-freebsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-x64/-/typescript-freebsd-x64-7.0.2.tgz",
++      "integrity": "sha512-UMGDx5sTpzNw3WiPebH7l90IWfJggEd+egHt/q6p7/Cm3zqoV7VxkGXt+3DxPIw8CcmvAB0j3sVVfbhX+M4Tpw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-arm": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm/-/typescript-linux-arm-7.0.2.tgz",
++      "integrity": "sha512-gffT3xPz9sR7j/YJExkyPntrI0P2EP9XbOyWzth2/Gs0RstK+90RBcO0ncXoXy/beYll1SXw846Nf2zdnEz0QQ==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm64/-/typescript-linux-arm64-7.0.2.tgz",
++      "integrity": "sha512-Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-loong64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-loong64/-/typescript-linux-loong64-7.0.2.tgz",
++      "integrity": "sha512-uEHck9i8hoAzXPiYRib1O7miOnz23SxIeVl6F4LXox+qov1K35jHcEW6VHKvZI+pyvl7fZEP4MCU5LYvIq1GuQ==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-mips64el": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-mips64el/-/typescript-linux-mips64el-7.0.2.tgz",
++      "integrity": "sha512-R4KvAMnE43W5Qeqb0Ly56O3mWMWIAgsMyz36DCaycd5nbg/9kzm0liw3JocfRqyJY0KPmzFjbswozXyW0DnIYA==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-ppc64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-ppc64/-/typescript-linux-ppc64-7.0.2.tgz",
++      "integrity": "sha512-DORx5b3sd/4S7eayxm4FQv+A7CrkUIGRaHiwI8oiHTAI1fAPWhF4J0vAlkC8biAlHSVVwxMQ3tjZ2/DVbnQiiA==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-riscv64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-riscv64/-/typescript-linux-riscv64-7.0.2.tgz",
++      "integrity": "sha512-wf0jqEDOjrPRnKwYRyyJDRo11KMbvMFrU+q4zqKyChODBzvlkbhNQfKvLxQCcwTpdDaXSHZTVuh0JoCrKCUMHQ==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-s390x": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-s390x/-/typescript-linux-s390x-7.0.2.tgz",
++      "integrity": "sha512-IkwJc3L7yhytWd/ewjyxNDfOmswCm9GWMJT/ue/dU4aZNbwZeYAetq42VyLmsmSjvoX7z74X6ZaYCtzAr0EuGw==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
++      "integrity": "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-netbsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-arm64/-/typescript-netbsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-+polYF4MF04aPpO5FTkHran9yUQDSXqy5GiSDKpsll5jy3l3+g9QLhpf39T+ePtefhXLOGrLl0QIjkQP6VnelA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-netbsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-x64/-/typescript-netbsd-x64-7.0.2.tgz",
++      "integrity": "sha512-8YIT0EHM/3dq10ZOVF/A7pc/YSMtbcecct4rWtexrnSCHOPcpC2KTLXfTCR6vDpnSiY12heNb1GiN/wu+T/FyA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-openbsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-arm64/-/typescript-openbsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-APT8+ClYnuYm1u9+kgGXoMj2VzWzcymwh2gNSQVySHfkRDGOTVkoWLjCmOQSaO+PoqQ57B0flRp9SA+7GnnkzQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-openbsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-x64/-/typescript-openbsd-x64-7.0.2.tgz",
++      "integrity": "sha512-yX7s+Q0Dln0Dt9tEzZsAjXXR/+ytBM7AlglaqyeMPxQszJ1JhlJdZ6jLA+IzldHtflX81em7lDao1xXu+aRRkg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-sunos-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-sunos-x64/-/typescript-sunos-x64-7.0.2.tgz",
++      "integrity": "sha512-dLJDGaLZ1D4HPQn62u1n8mBDkJREwMsAkCdkwd4Ieqw+x3TUyTsqY0YiBCtE6H6OzzgGk3iuZ3vFWRS+E8/d1g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-win32-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz",
++      "integrity": "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-win32-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz",
++      "integrity": "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
+     "node_modules/@vitest/mocker": {
+       "version": "5.0.3",
+       "resolved": "https://registry.npmjs.org/@vitest/mocker/-/mocker-5.0.3.tgz",
+@@ -810,6 +1411,29 @@
+         "url": "https://opencollective.com/vitest"
+       }
+     },
++    "node_modules/acorn": {
++      "version": "8.18.0",
++      "resolved": "https://registry.npmjs.org/acorn/-/acorn-8.18.0.tgz",
++      "integrity": "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ==",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "acorn": "bin/acorn"
++      },
++      "engines": {
++        "node": ">=0.4.0"
++      }
++    },
++    "node_modules/acorn-jsx": {
++      "version": "5.3.2",
++      "resolved": "https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.2.tgz",
++      "integrity": "sha512-rq9s+JNhf0IChjtDXxllJ7g41oZk5SlXtp0LHwyA5cejwn7vKmKp4pPri6YEePv2PU65sAsegbXtIinmDFDXgQ==",
++      "dev": true,
++      "license": "MIT",
++      "peerDependencies": {
++        "acorn": "^6.0.0 || ^7.0.0 || ^8.0.0"
++      }
++    },
+     "node_modules/agent-base": {
+       "version": "7.1.4",
+       "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
+@@ -820,6 +1444,23 @@
+         "node": ">= 14"
+       }
+     },
++    "node_modules/ajv": {
++      "version": "6.15.0",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.15.0.tgz",
++      "integrity": "sha512-fgFx7Hfoq60ytK2c7DhnF8jIvzYgOMxfugjLOSMHjLIPgenqa7S7oaagATUq99mV6IYvN2tRmC0wnTYX6iPbMw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fast-deep-equal": "^3.1.1",
++        "fast-json-stable-stringify": "^2.0.0",
++        "json-schema-traverse": "^0.4.1",
++        "uri-js": "^4.2.2"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/epoberezkin"
++      }
++    },
+     "node_modules/assertion-error": {
+       "version": "2.0.1",
+       "resolved": "https://registry.npmjs.org/assertion-error/-/assertion-error-2.0.1.tgz",
+@@ -830,6 +1471,43 @@
+         "node": ">=12"
+       }
+     },
++    "node_modules/balanced-match": {
++      "version": "4.0.4",
++      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-4.0.4.tgz",
++      "integrity": "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": "18 || 20 || >=22"
++      }
++    },
++    "node_modules/brace-expansion": {
++      "version": "5.0.12",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.12.tgz",
++      "integrity": "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "balanced-match": "^4.0.2"
++      },
++      "engines": {
++        "node": "20 || >=22"
++      }
++    },
++    "node_modules/cacheable": {
++      "version": "2.5.0",
++      "resolved": "https://registry.npmjs.org/cacheable/-/cacheable-2.5.0.tgz",
++      "integrity": "sha512-60cyAOytib/OzBw1JNSoSV/boK1AtHryDIjvVBk7XbN4ugfkM3+Sry7fEjNgPMGgOjuaZPAp8ruZ0Cxafwyq9g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@cacheable/memory": "^2.2.0",
++        "@cacheable/utils": "^2.5.0",
++        "hookified": "^1.15.0",
++        "keyv": "^5.6.0",
++        "qified": "^0.10.1"
++      }
++    },
+     "node_modules/chai": {
+       "version": "6.3.0",
+       "resolved": "https://registry.npmjs.org/chai/-/chai-6.3.0.tgz",
+@@ -852,6 +1530,21 @@
+         "pnpm": ">=8"
+       }
+     },
++    "node_modules/cross-spawn": {
++      "version": "7.0.6",
++      "resolved": "https://registry.npmjs.org/cross-spawn/-/cross-spawn-7.0.6.tgz",
++      "integrity": "sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "path-key": "^3.1.0",
++        "shebang-command": "^2.0.0",
++        "which": "^2.0.1"
++      },
++      "engines": {
++        "node": ">= 8"
++      }
++    },
+     "node_modules/cssstyle": {
+       "version": "4.6.0",
+       "resolved": "https://registry.npmjs.org/cssstyle/-/cssstyle-4.6.0.tgz",
+@@ -905,6 +1598,13 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/deep-is": {
++      "version": "0.1.4",
++      "resolved": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.4.tgz",
++      "integrity": "sha512-oIPzksmTg4/MriiaYGO+okXDT7ztn/w3Eptv/+gSIdMdKsJo0u4CfYNFJPy+4SKMuCqGw2wxnA+URMg3t8a/bQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/detect-libc": {
+       "version": "2.1.2",
+       "resolved": "https://registry.npmjs.org/detect-libc/-/detect-libc-2.1.2.tgz",
+@@ -935,6 +1635,164 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/escape-string-regexp": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz",
++      "integrity": "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/eslint": {
++      "version": "10.12.0",
++      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.12.0.tgz",
++      "integrity": "sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==",
++      "dev": true,
++      "license": "MIT",
++      "workspaces": [
++        "packages/*"
++      ],
++      "dependencies": {
++        "@eslint-community/eslint-utils": "^4.8.0",
++        "@eslint-community/regexpp": "^4.12.2",
++        "@eslint/config-array": "^0.23.5",
++        "@eslint/config-helpers": "^0.7.0",
++        "@eslint/core": "^1.2.1",
++        "@eslint/plugin-kit": "^0.7.3",
++        "@humanfs/node": "^0.16.6",
++        "@humanwhocodes/module-importer": "^1.0.1",
++        "@humanwhocodes/retry": "^0.4.2",
++        "@types/estree": "^1.0.6",
++        "ajv": "^6.14.0",
++        "cross-spawn": "^7.0.6",
++        "debug": "^4.3.2",
++        "escape-string-regexp": "^4.0.0",
++        "eslint-scope": "^9.1.2",
++        "eslint-visitor-keys": "^5.0.1",
++        "espree": "^11.2.0",
++        "esquery": "^1.7.0",
++        "esutils": "^2.0.2",
++        "fast-deep-equal": "^3.1.3",
++        "file-entry-cache": "11.1.5 || >11.1.6 <12",
++        "find-up": "^5.0.0",
++        "glob-parent": "^6.0.2",
++        "ignore": "^5.2.0",
++        "imurmurhash": "^0.1.4",
++        "is-glob": "^4.0.0",
++        "json-stable-stringify-without-jsonify": "^1.0.1",
++        "minimatch": "^10.2.5",
++        "natural-compare": "^1.4.0",
++        "optionator": "^0.9.3"
++      },
++      "bin": {
++        "eslint": "bin/eslint.js"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://eslint.org/donate"
++      },
++      "peerDependencies": {
++        "jiti": "*"
++      },
++      "peerDependenciesMeta": {
++        "jiti": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/eslint-scope": {
++      "version": "9.1.2",
++      "resolved": "https://registry.npmjs.org/eslint-scope/-/eslint-scope-9.1.2.tgz",
++      "integrity": "sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "dependencies": {
++        "@types/esrecurse": "^4.3.1",
++        "@types/estree": "^1.0.8",
++        "esrecurse": "^4.3.0",
++        "estraverse": "^5.2.0"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      }
++    },
++    "node_modules/eslint-visitor-keys": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-5.0.1.tgz",
++      "integrity": "sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe//mB+IHCqHDGV7pxF+7MklTvighcCPPZC7ynWyjdTA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      }
++    },
++    "node_modules/espree": {
++      "version": "11.2.0",
++      "resolved": "https://registry.npmjs.org/espree/-/espree-11.2.0.tgz",
++      "integrity": "sha512-7p3DrVEIopW1B1avAGLuCSh1jubc01H2JHc8B4qqGblmg5gI9yumBgACjWo4JlIc04ufug4xJ3SQI8HkS/Rgzw==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "dependencies": {
++        "acorn": "^8.16.0",
++        "acorn-jsx": "^5.3.2",
++        "eslint-visitor-keys": "^5.0.1"
++      },
++      "engines": {
++        "node": "^20.19.0 || ^22.13.0 || >=24"
++      },
++      "funding": {
++        "url": "https://opencollective.com/eslint"
++      }
++    },
++    "node_modules/esquery": {
++      "version": "1.7.0",
++      "resolved": "https://registry.npmjs.org/esquery/-/esquery-1.7.0.tgz",
++      "integrity": "sha512-Ap6G0WQwcU/LHsvLwON1fAQX9Zp0A2Y6Y/cJBl9r/JbW90Zyg4/zbG6zzKa2OTALELarYHmKu0GhpM5EO+7T0g==",
++      "dev": true,
++      "license": "BSD-3-Clause",
++      "dependencies": {
++        "estraverse": "^5.1.0"
++      },
++      "engines": {
++        "node": ">=0.10"
++      }
++    },
++    "node_modules/esrecurse": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/esrecurse/-/esrecurse-4.3.0.tgz",
++      "integrity": "sha512-KmfKL3b6G+RXvP8N1vr3Tq1kL/oCFgn2NYXEtqP8/L3pKapUA4G8cFVaoF3SU323CD4XypR/ffioHmkti6/Tag==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "dependencies": {
++        "estraverse": "^5.2.0"
++      },
++      "engines": {
++        "node": ">=4.0"
++      }
++    },
++    "node_modules/estraverse": {
++      "version": "5.3.0",
++      "resolved": "https://registry.npmjs.org/estraverse/-/estraverse-5.3.0.tgz",
++      "integrity": "sha512-MMdARuVEQziNTeJD8DgMqmhwR11BRQ/cBP+pLtYdSTnf3MIO8fFeiINEbX36ZdNlfU/7A9f3gUw49B3oQsvwBA==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=4.0"
++      }
++    },
+     "node_modules/estree-walker": {
+       "version": "3.0.3",
+       "resolved": "https://registry.npmjs.org/estree-walker/-/estree-walker-3.0.3.tgz",
+@@ -945,6 +1803,16 @@
+         "@types/estree": "^1.0.0"
+       }
+     },
++    "node_modules/esutils": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/esutils/-/esutils-2.0.3.tgz",
++      "integrity": "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
+     "node_modules/expect-type": {
+       "version": "1.4.0",
+       "resolved": "https://registry.npmjs.org/expect-type/-/expect-type-1.4.0.tgz",
+@@ -955,6 +1823,27 @@
+         "node": ">=12.0.0"
+       }
+     },
++    "node_modules/fast-deep-equal": {
++      "version": "3.1.3",
++      "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
++      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/fast-json-stable-stringify": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz",
++      "integrity": "sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/fast-levenshtein": {
++      "version": "2.0.6",
++      "resolved": "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz",
++      "integrity": "sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/fdir": {
+       "version": "6.5.0",
+       "resolved": "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
+@@ -973,6 +1862,52 @@
+         }
+       }
+     },
++    "node_modules/file-entry-cache": {
++      "version": "11.1.5",
++      "resolved": "https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-11.1.5.tgz",
++      "integrity": "sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "flat-cache": "^6.1.23"
++      }
++    },
++    "node_modules/find-up": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/find-up/-/find-up-5.0.0.tgz",
++      "integrity": "sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "locate-path": "^6.0.0",
++        "path-exists": "^4.0.0"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/flat-cache": {
++      "version": "6.1.23",
++      "resolved": "https://registry.npmjs.org/flat-cache/-/flat-cache-6.1.23.tgz",
++      "integrity": "sha512-f++BY9pTk+983xK1FLzlLpmM0i0z+jHmx3QESGkURMXujQZz1k5wzwX6hjnQ8goaD0B+sYnDK1yZ6MTyZfUaqA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "cacheable": "^2.5.0",
++        "flatted": "^3.4.2",
++        "hookified": "^1.15.0"
++      }
++    },
++    "node_modules/flatted": {
++      "version": "3.4.4",
++      "resolved": "https://registry.npmjs.org/flatted/-/flatted-3.4.4.tgz",
++      "integrity": "sha512-5+ybhBZANEJxaH3X5evAFatUxLfEHSr7n6kYJ+1Qd0mUqr4eu9gIf6GDbWHf8RJijHrjjO8G+la14SlL2SeS1Q==",
++      "dev": true,
++      "license": "ISC"
++    },
+     "node_modules/fsevents": {
+       "version": "2.3.3",
+       "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
+@@ -988,6 +1923,52 @@
+         "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
+       }
+     },
++    "node_modules/glob-parent": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/glob-parent/-/glob-parent-6.0.2.tgz",
++      "integrity": "sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "is-glob": "^4.0.3"
++      },
++      "engines": {
++        "node": ">=10.13.0"
++      }
++    },
++    "node_modules/globals": {
++      "version": "17.13.0",
++      "resolved": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
++      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=18"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/hashery": {
++      "version": "1.5.1",
++      "resolved": "https://registry.npmjs.org/hashery/-/hashery-1.5.1.tgz",
++      "integrity": "sha512-iZyKG96/JwPz1N55vj2Ie2vXbhu440zfUfJvSwEqEbeLluk7NnapfGqa7LH0mOsnDxTF85Mx8/dyR6HfqcbmbQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hookified": "^1.15.0"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/hookified": {
++      "version": "1.15.1",
++      "resolved": "https://registry.npmjs.org/hookified/-/hookified-1.15.1.tgz",
++      "integrity": "sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/html-encoding-sniffer": {
+       "version": "4.0.0",
+       "resolved": "https://registry.npmjs.org/html-encoding-sniffer/-/html-encoding-sniffer-4.0.0.tgz",
+@@ -1042,6 +2023,49 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/ignore": {
++      "version": "5.3.2",
++      "resolved": "https://registry.npmjs.org/ignore/-/ignore-5.3.2.tgz",
++      "integrity": "sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 4"
++      }
++    },
++    "node_modules/imurmurhash": {
++      "version": "0.1.4",
++      "resolved": "https://registry.npmjs.org/imurmurhash/-/imurmurhash-0.1.4.tgz",
++      "integrity": "sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.8.19"
++      }
++    },
++    "node_modules/is-extglob": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/is-extglob/-/is-extglob-2.1.1.tgz",
++      "integrity": "sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
++    "node_modules/is-glob": {
++      "version": "4.0.3",
++      "resolved": "https://registry.npmjs.org/is-glob/-/is-glob-4.0.3.tgz",
++      "integrity": "sha512-xelSayHH36ZgE7ZWhli7pW34hNbNl8Ojv5KVmkJD4hBdD3th8Tfk9vYasLM+mXWOZhFkgZfxhLSnrwRr4elSSg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "is-extglob": "^2.1.1"
++      },
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
+     "node_modules/is-potential-custom-element-name": {
+       "version": "1.0.1",
+       "resolved": "https://registry.npmjs.org/is-potential-custom-element-name/-/is-potential-custom-element-name-1.0.1.tgz",
+@@ -1049,6 +2073,13 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/isexe": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz",
++      "integrity": "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==",
++      "dev": true,
++      "license": "ISC"
++    },
+     "node_modules/jsdom": {
+       "version": "26.1.0",
+       "resolved": "https://registry.npmjs.org/jsdom/-/jsdom-26.1.0.tgz",
+@@ -1089,6 +2120,44 @@
+         }
+       }
+     },
++    "node_modules/json-schema-traverse": {
++      "version": "0.4.1",
++      "resolved": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-0.4.1.tgz",
++      "integrity": "sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/json-stable-stringify-without-jsonify": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz",
++      "integrity": "sha512-Bdboy+l7tA3OGW6FjyFHWkP5LuByj1Tk33Ljyq0axyzdk9//JSi2u3fP1QSmd1KNwq6VOKYGlAu87CisVir6Pw==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/keyv": {
++      "version": "5.6.0",
++      "resolved": "https://registry.npmjs.org/keyv/-/keyv-5.6.0.tgz",
++      "integrity": "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@keyv/serialize": "^1.1.1"
++      }
++    },
++    "node_modules/levn": {
++      "version": "0.4.1",
++      "resolved": "https://registry.npmjs.org/levn/-/levn-0.4.1.tgz",
++      "integrity": "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "prelude-ls": "^1.2.1",
++        "type-check": "~0.4.0"
++      },
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
+     "node_modules/lightningcss": {
+       "version": "1.33.0",
+       "resolved": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz",
+@@ -1362,6 +2431,22 @@
+         "url": "https://opencollective.com/parcel"
+       }
+     },
++    "node_modules/locate-path": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/locate-path/-/locate-path-6.0.0.tgz",
++      "integrity": "sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "p-locate": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
+     "node_modules/lru-cache": {
+       "version": "10.4.3",
+       "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-10.4.3.tgz",
+@@ -1379,6 +2464,22 @@
+         "@jridgewell/sourcemap-codec": "^1.6.0"
+       }
+     },
++    "node_modules/minimatch": {
++      "version": "10.2.6",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
++      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
++      "dev": true,
++      "license": "BlueOak-1.0.0",
++      "dependencies": {
++        "brace-expansion": "^5.0.8"
++      },
++      "engines": {
++        "node": "18 || 20 || >=22"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/isaacs"
++      }
++    },
+     "node_modules/ms": {
+       "version": "2.1.3",
+       "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
+@@ -1403,6 +2504,13 @@
+         "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
+       }
+     },
++    "node_modules/natural-compare": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/natural-compare/-/natural-compare-1.4.0.tgz",
++      "integrity": "sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/nwsapi": {
+       "version": "2.2.28",
+       "resolved": "https://registry.npmjs.org/nwsapi/-/nwsapi-2.2.28.tgz",
+@@ -1424,6 +2532,56 @@
+         "node": ">=12.20.0"
+       }
+     },
++    "node_modules/optionator": {
++      "version": "0.9.4",
++      "resolved": "https://registry.npmjs.org/optionator/-/optionator-0.9.4.tgz",
++      "integrity": "sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "deep-is": "^0.1.3",
++        "fast-levenshtein": "^2.0.6",
++        "levn": "^0.4.1",
++        "prelude-ls": "^1.2.1",
++        "type-check": "^0.4.0",
++        "word-wrap": "^1.2.5"
++      },
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
++    "node_modules/p-limit": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/p-limit/-/p-limit-3.1.0.tgz",
++      "integrity": "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "yocto-queue": "^0.1.0"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
++    "node_modules/p-locate": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/p-locate/-/p-locate-5.0.0.tgz",
++      "integrity": "sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "p-limit": "^3.0.2"
++      },
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
++    },
+     "node_modules/parse5": {
+       "version": "7.3.0",
+       "resolved": "https://registry.npmjs.org/parse5/-/parse5-7.3.0.tgz",
+@@ -1437,6 +2595,26 @@
+         "url": "https://github.com/inikulin/parse5?sponsor=1"
+       }
+     },
++    "node_modules/path-exists": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
++      "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/path-key": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/path-key/-/path-key-3.1.1.tgz",
++      "integrity": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8"
++      }
++    },
+     "node_modules/picocolors": {
+       "version": "1.1.1",
+       "dev": true,
+@@ -1482,6 +2660,32 @@
+         "node": "^10 || ^12 || >=14"
+       }
+     },
++    "node_modules/prelude-ls": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz",
++      "integrity": "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
++    "node_modules/prettier": {
++      "version": "3.9.9",
++      "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.9.9.tgz",
++      "integrity": "sha512-Z/CJHIkdujO/OtN7nXUii0Rf3VT5SRuhjBA82Xvu2XhBUgX3nhP67T0LHceBdQLex7OOFGTox+Q5Yg8Jk2Qivg==",
++      "dev": true,
++      "license": "MIT",
++      "bin": {
++        "prettier": "bin/prettier.cjs"
++      },
++      "engines": {
++        "node": ">=14"
++      },
++      "funding": {
++        "url": "https://github.com/prettier/prettier?sponsor=1"
++      }
++    },
+     "node_modules/punycode": {
+       "version": "2.3.1",
+       "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.3.1.tgz",
+@@ -1492,6 +2696,26 @@
+         "node": ">=6"
+       }
+     },
++    "node_modules/qified": {
++      "version": "0.10.1",
++      "resolved": "https://registry.npmjs.org/qified/-/qified-0.10.1.tgz",
++      "integrity": "sha512-+Owyggi9IxT1ePKGafcI87ubSmxol6smwJ+RAHDQlx9+9cPwFWDiKFFCPuWhr9ignlGpZ9vDQLw67N4dcTVFEA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "hookified": "^2.1.1"
++      },
++      "engines": {
++        "node": ">=20"
++      }
++    },
++    "node_modules/qified/node_modules/hookified": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/hookified/-/hookified-2.2.0.tgz",
++      "integrity": "sha512-p/LgFzRN5FeoD3DLS6bkUapeye6E4SI6yJs6KetENd18S+FBthqYq2amJUWpt5z0EQwwHemidjY5OqJGEKm5uA==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/rolldown": {
+       "version": "1.2.12",
+       "resolved": "https://registry.npmjs.org/rolldown/-/rolldown-1.2.12.tgz",
+@@ -1553,6 +2777,29 @@
+         "node": ">=v12.22.7"
+       }
+     },
++    "node_modules/shebang-command": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/shebang-command/-/shebang-command-2.0.0.tgz",
++      "integrity": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "shebang-regex": "^3.0.0"
++      },
++      "engines": {
++        "node": ">=8"
++      }
++    },
++    "node_modules/shebang-regex": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/shebang-regex/-/shebang-regex-3.0.0.tgz",
++      "integrity": "sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=8"
++      }
++    },
+     "node_modules/source-map-js": {
+       "version": "1.2.1",
+       "dev": true,
+@@ -1658,6 +2905,64 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/type-check": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz",
++      "integrity": "sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "prelude-ls": "^1.2.1"
++      },
++      "engines": {
++        "node": ">= 0.8.0"
++      }
++    },
++    "node_modules/typescript": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz",
++      "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "tsc": "bin/tsc"
++      },
++      "engines": {
++        "node": ">=16.20.0"
++      },
++      "optionalDependencies": {
++        "@typescript/typescript-aix-ppc64": "7.0.2",
++        "@typescript/typescript-darwin-arm64": "7.0.2",
++        "@typescript/typescript-darwin-x64": "7.0.2",
++        "@typescript/typescript-freebsd-arm64": "7.0.2",
++        "@typescript/typescript-freebsd-x64": "7.0.2",
++        "@typescript/typescript-linux-arm": "7.0.2",
++        "@typescript/typescript-linux-arm64": "7.0.2",
++        "@typescript/typescript-linux-loong64": "7.0.2",
++        "@typescript/typescript-linux-mips64el": "7.0.2",
++        "@typescript/typescript-linux-ppc64": "7.0.2",
++        "@typescript/typescript-linux-riscv64": "7.0.2",
++        "@typescript/typescript-linux-s390x": "7.0.2",
++        "@typescript/typescript-linux-x64": "7.0.2",
++        "@typescript/typescript-netbsd-arm64": "7.0.2",
++        "@typescript/typescript-netbsd-x64": "7.0.2",
++        "@typescript/typescript-openbsd-arm64": "7.0.2",
++        "@typescript/typescript-openbsd-x64": "7.0.2",
++        "@typescript/typescript-sunos-x64": "7.0.2",
++        "@typescript/typescript-win32-arm64": "7.0.2",
++        "@typescript/typescript-win32-x64": "7.0.2"
++      }
++    },
++    "node_modules/uri-js": {
++      "version": "4.4.1",
++      "resolved": "https://registry.npmjs.org/uri-js/-/uri-js-4.4.1.tgz",
++      "integrity": "sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==",
++      "dev": true,
++      "license": "BSD-2-Clause",
++      "dependencies": {
++        "punycode": "^2.1.0"
++      }
++    },
+     "node_modules/vite": {
+       "version": "8.3.2",
+       "resolved": "https://registry.npmjs.org/vite/-/vite-8.3.2.tgz",
+@@ -1880,6 +3185,22 @@
+         "node": ">=18"
+       }
+     },
++    "node_modules/which": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
++      "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
++      "dev": true,
++      "license": "ISC",
++      "dependencies": {
++        "isexe": "^2.0.0"
++      },
++      "bin": {
++        "node-which": "bin/node-which"
++      },
++      "engines": {
++        "node": ">= 8"
++      }
++    },
+     "node_modules/why-is-node-running": {
+       "version": "3.2.1",
+       "resolved": "https://registry.npmjs.org/why-is-node-running/-/why-is-node-running-3.2.1.tgz",
+@@ -1893,6 +3214,16 @@
+         "node": ">=20.11"
+       }
+     },
++    "node_modules/word-wrap": {
++      "version": "1.2.5",
++      "resolved": "https://registry.npmjs.org/word-wrap/-/word-wrap-1.2.5.tgz",
++      "integrity": "sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
+     "node_modules/ws": {
+       "version": "8.22.0",
+       "resolved": "https://registry.npmjs.org/ws/-/ws-8.22.0.tgz",
+@@ -1931,6 +3262,19 @@
+       "integrity": "sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==",
+       "dev": true,
+       "license": "MIT"
++    },
++    "node_modules/yocto-queue": {
++      "version": "0.1.0",
++      "resolved": "https://registry.npmjs.org/yocto-queue/-/yocto-queue-0.1.0.tgz",
++      "integrity": "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/sindresorhus"
++      }
+     }
+   }
+ }
+diff --git a/package.json b/package.json
+index 19b128c..b32c527 100644
+--- a/package.json
++++ b/package.json
+@@ -10,7 +10,12 @@
+     "tauri": "tauri",
+     "test": "vitest run",
+     "test:watch": "vitest",
+-    "version:bump": "node scripts/bump-version.mjs"
++    "version:bump": "node scripts/bump-version.mjs",
++    "lint": "eslint .",
++    "typecheck": "tsc -p jsconfig.json",
++    "format": "prettier --write",
++    "format:check": "prettier --check",
++    "check": "npm run lint && npm run typecheck && npm test"
+   },
+   "dependencies": {
+     "@tauri-apps/api": "^2.0.0",
+@@ -21,8 +26,13 @@
+     "chart.js": "^4.5.1"
+   },
+   "devDependencies": {
++    "@eslint/js": "^10.0.1",
+     "@tauri-apps/cli": "^2.0.0",
++    "eslint": "^10.12.0",
++    "globals": "^17.13.0",
+     "jsdom": "^26.1.0",
++    "prettier": "^3.9.9",
++    "typescript": "^7.0.2",
+     "vite": "^8.3.2",
+     "vitest": "^5.0.3"
+   }
+diff --git a/src-tauri/src/automation/mod.rs b/src-tauri/src/automation/mod.rs
+index 8e77ecc..ec7f8ed 100644
+--- a/src-tauri/src/automation/mod.rs
++++ b/src-tauri/src/automation/mod.rs
+@@ -1,5 +1,6 @@
+ //! Скрипты автоматизации (промокоды, перевод предметов).
+ //! Заготовка: команды появятся здесь и будут зарегистрированы в `lib.rs`.
++//! Статус и план: Issues #25 (промокоды), #26 (перевод предметов) в ROADMAP.md.
+ 
+ pub mod promo;
+ pub mod transfer;
+diff --git a/src-tauri/src/injection.rs b/src-tauri/src/injection.rs
+index 5e2af73..a999fb0 100644
+--- a/src-tauri/src/injection.rs
++++ b/src-tauri/src/injection.rs
+@@ -1,2 +1,3 @@
+ //! UI-инжекция в окна игры: панель Tvinoferma и скрытие рекламы
+ //! (`scripts/injection/panel.js`, `scripts/injection/hide_ads.css`).
++//! Заготовка, не подключена. Статус и план: Issue #54 в ROADMAP.md.
+diff --git a/tests/parties.test.js b/tests/parties.test.js
+index aadd5d6..d416bf7 100644
+--- a/tests/parties.test.js
++++ b/tests/parties.test.js
+@@ -1,7 +1,7 @@
+ import { describe, it, expect } from 'vitest';
+ import {
+   resolveMainPartyId, ensureMainParty, setMainParty, mainPartyName, additionalPartiesOf, charactersInMainParty, isMainParty,
+-  normalizePartyIds, partiesOf, partyNamesOf, isInParty, hasNoParty, charactersInParty,
++  normalizePartyIds, partiesOf, partyNamesOf, hasNoParty, charactersInParty,
+   setMembership, removePartyFromAll, sweepPartyIds, planPartyImport, remapCharacterParties, totalCoins, coinSummary
+ } from '../js/modules/parties/membership.js';
+ import { planImport } from '../js/data/import.js';
+-- 
+2.49.0
+

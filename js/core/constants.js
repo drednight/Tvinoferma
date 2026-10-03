@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/constants.js
 
 

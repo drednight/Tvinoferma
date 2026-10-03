@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/coins.js
 // Древние монеты: разбор текста с сайта (округление вниз до 0,1), формат вывода и история.
 // ВАЖНО: функция parseCoins продублирована в src-tauri/src/scripts/balance.js
@@ -92,6 +93,9 @@ export function needsCoinRecheck(char) {
  * - lastCoinUpdate обновляется всегда (это «дата последней проверки»);
  * - запись в историю добавляется только если баланс изменился (никаких «+0»);
  * Возвращает { changed, delta }.
+ * @param {any} char
+ * @param {number} balance
+ * @param {{ note?: string | null, now?: string }} [opts]
  */
 export function applyCoinBalance(char, balance, { note, now = new Date().toISOString() } = {}) {
   // Первая проверка после исправления разбора: пометка в истории, чтобы было видно, почему значение «скакнуло»

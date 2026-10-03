@@ -7,6 +7,7 @@
 //  - Все запуски — через очередь js/modules/sync/queue.js (лимит окон и ретраи)
 //
 // Модуль-заготовка: пока не подключён в main.js.
+// Статус и план: Issues #25 (промокоды), #26 (перевод предметов) (ROADMAP.md)
 
 export { openPromoDialog } from './promo.js';
 export { openTransferDialog } from './transfer.js';

@@ -1,3 +1,4 @@
+// @ts-check
 // js/data/characterFields.js
 // Полный список полей персонажа для экспорта/импорта и сравнения карточек.
 // Добавили поле в модель (modules/characters/stateManager.js) — добавьте его и сюда,

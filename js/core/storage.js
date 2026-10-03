@@ -1,3 +1,4 @@
+// @ts-check
 // js/core/storage.js
 
 import { serializeState } from './state.js';
@@ -5,7 +6,10 @@ import { tauriAdapter } from './storageAdapters/tauriAdapter.js';
 import { localStorageAdapter } from './storageAdapters/localStorageAdapter.js';
 import { prepareForDisk } from './secrets.js';
 
-export const isTauri = () => !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
+export const isTauri = () => {
+  const w = /** @type {any} */ (window);
+  return !!(w.__TAURI_INTERNALS__ || w.__TAURI__);
+};
 
 /**
  * Выбирает подходящий адаптер в зависимости от окружения.

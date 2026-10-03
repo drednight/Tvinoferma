@@ -8,5 +8,6 @@
 //  - Уведомление о смене данжа — через js/desktop/notifications.js
 //
 // Модуль-заготовка: пока не подключён в main.js.
+// Статус и план: Issues #30–#34 (ROADMAP.md)
 
 export { dungeonForDate } from './schedule.js';

@@ -4,6 +4,8 @@ import { escapeHtml } from './utils.js';
 
 /**
  * Универсальная функция показа модального окна
+ * @param {{ title: string, content: string, submitText?: string, cancelText?: string,
+ *           onSubmit?: (data: any) => any, onClose?: () => void, hideCloseButton?: boolean }} opts
  */
 export function showModal({ 
   title, 
