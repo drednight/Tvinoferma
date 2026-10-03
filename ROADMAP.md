@@ -37,7 +37,7 @@
 ## Прогресс
 
 <!-- roadmap:start -->
-**Всего выполнено:** `██░░░░░░░░` 14/72 (19%) · обновлено 2026-10-03
+**Всего выполнено:** `██░░░░░░░░` 15/72 (21%) · обновлено 2026-10-03
 
 ### v0.2.3 — Баги: баланс монет и фильтр классов
 
@@ -138,7 +138,7 @@
 
 ### После 1.0 — Инжекция, банк, арена, облако, косметика
 
-`░░░░░░░░░░` 0/20 (0%)
+`█░░░░░░░░░` 1/20 (5%)
 
 - [ ] [#24](https://github.com/drednight/Tvinoferma/issues/24) **3.6** Сохранённые представления — Низкий, S
 - [ ] [#29](https://github.com/drednight/Tvinoferma/issues/29) **4.5** Пресеты скриптов — Низкий, S
@@ -148,7 +148,7 @@
 - [ ] [#45](https://github.com/drednight/Tvinoferma/issues/45) **7.7** Онбординг-мастер — Низкий, S
 - [ ] [#46](https://github.com/drednight/Tvinoferma/issues/46) **7.8** Быстрый доступ и мелочи — Низкий, S
 - [ ] [#53](https://github.com/drednight/Tvinoferma/issues/53) **9.1** CSS-очистка — Низкий, S
-- [ ] [#54](https://github.com/drednight/Tvinoferma/issues/54) **9.2** Панель Tvinoferma поверх страницы — Низкий, M
+- [x] [#54](https://github.com/drednight/Tvinoferma/issues/54) **9.2** Панель Tvinoferma поверх страницы — Низкий, M
 - [ ] [#55](https://github.com/drednight/Tvinoferma/issues/55) **9.3** Оценка рисков — Низкий, S
 - [ ] [#56](https://github.com/drednight/Tvinoferma/issues/56) **10.1** Журнал доходов и расходов — Низкий, M
 - [ ] [#57](https://github.com/drednight/Tvinoferma/issues/57) **10.2** Отчёты и графики — Низкий, M
