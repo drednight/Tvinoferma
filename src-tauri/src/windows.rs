@@ -4,7 +4,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow};
+use tauri::webview::NewWindowResponse;
+use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const POPUP_PATCH: &str = include_str!("scripts/popup_patch.js");
 
@@ -24,6 +25,50 @@ fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
     let dir = profiles_root(app)?.join(key);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
     Ok(dir)
+}
+
+/// Защита от всплывающих окон для окон персонажей. Попап (`window.open`, `target="_blank"`)
+/// ломает вход через VK Play: сессия и `window.opener` остаются в другом окне.
+/// 1) `popup_patch.js` вшит как initialization_script и срабатывает в каждом документе окна
+///    (раньше он выполнялся один раз через `eval` и пропадал после первого перехода);
+/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает.
+fn guard_popups<'a, M: Manager<tauri::Wry>>(
+    builder: WebviewWindowBuilder<'a, tauri::Wry, M>,
+    app: &AppHandle,
+    label: &str,
+) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
+    let app = app.clone();
+    let label = label.to_string();
+    builder
+        .initialization_script(POPUP_PATCH)
+        .on_new_window(move |url, _features| {
+            // В лог попадает только адрес без параметров: в них бывают коды входа
+            println!(
+                "[WINDOW] {}: запрос нового окна -> {}{}",
+                label,
+                url.host_str().unwrap_or("?"),
+                url.path()
+            );
+            if matches!(url.scheme(), "http" | "https") {
+                if let Some(win) = app.get_webview_window(&label) {
+                    tauri::async_runtime::spawn(async move {
+                        let _ = win.navigate(url);
+                    });
+                }
+            }
+            NewWindowResponse::Deny
+        })
+}
+
+/// Окно осталось на служебной странице прошлой задачи (`#TF_...`) или не на сайте.
+fn is_stale_page(win: &WebviewWindow) -> bool {
+    match win.url() {
+        Ok(u) => {
+            !matches!(u.scheme(), "http" | "https")
+                || u.fragment().is_some_and(|f| f.starts_with("TF_"))
+        }
+        Err(_) => false,
+    }
 }
 
 fn center_window(app: &AppHandle, win: &WebviewWindow, width: f64, height: f64) {
@@ -50,34 +95,39 @@ pub async fn open_sync_window(
     let label = window_label(&char_id);
     let title = format!("PW Sync: {}", char_nick.as_deref().unwrap_or(&char_id));
 
+    let parsed_url = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+
     if let Some(win) = app.get_webview_window(&label) {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
         let _ = win.set_title(&title);
-        // Панель «Помощник входа»: обновляем в уже открытом окне
+        // Окно могло остаться от фоновой задачи: на служебной странице и без панели.
+        // Открываем сайт заново, иначе пользователь видит пустую страницу вместо входа.
+        let stale = is_stale_page(&win);
+        if stale {
+            win.navigate(parsed_url).map_err(|e| e.to_string())?;
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        }
+        // Панель «Помощник входа»: в уже открытом окне она живёт до следующего перехода
+        let _ = win.eval(POPUP_PATCH);
         if let Some(script) = panel_script.as_deref() {
             let _ = win.eval(script);
         }
         return Ok(label);
     }
 
-    let parsed_url = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
-    let mut builder =
-        tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-            .title(title)
-            .inner_size(1200.0, 800.0)
-            .resizable(true)
-            .data_directory(profile_dir(&app, &char_id)?);
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
+        .title(title)
+        .inner_size(1200.0, 800.0)
+        .resizable(true)
+        .data_directory(profile_dir(&app, &char_id)?);
+    let mut builder = guard_popups(builder, &app, &label);
     // Панель «Помощник входа» рисуется скриптом поверх страницы и переживает переходы
     if let Some(script) = panel_script.as_deref() {
         builder = builder.initialization_script(script);
     }
     let win = builder.build().map_err(|e| e.to_string())?;
     center_window(&app, &win, 1200.0, 800.0);
-
-    // Патч против попапов
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    win.eval(POPUP_PATCH).ok();
     Ok(label)
 }
 
@@ -170,12 +220,13 @@ pub async fn get_or_create_hidden_window(
         return Ok((w, false));
     }
     let parsed_url = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
-    tauri::WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed_url))
+    let builder = WebviewWindowBuilder::new(app, &label, WebviewUrl::External(parsed_url))
         .title(format!("Hidden Sync: {}", key))
         .inner_size(1000.0, 700.0)
         .resizable(false)
         .visible(false)
-        .data_directory(profile_dir(app, key)?)
+        .data_directory(profile_dir(app, key)?);
+    guard_popups(builder, app, &label)
         .build()
         .map_err(|e| e.to_string())?;
 
