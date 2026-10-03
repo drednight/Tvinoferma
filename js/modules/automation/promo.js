@@ -10,8 +10,8 @@ import { errorText } from '../../core/errorCodes.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { partiesOf, charactersInParty } from '../parties/membership.js';
 import {
-  validateCode, maskCode, statusInfo, isRetryable, summarize, createSessionGuard,
-  loadHistory, clearHistory, addHistory, keepCodeSetting, setKeepCodeSetting, resultsToCsv
+  validateCode, statusInfo, isRetryable, summarize, createSessionGuard,
+  loadHistory, clearHistory, addHistory, resultsToCsv
 } from './promoCore.js';
 import { runPromoBatch } from './promoRunner.js';
 
@@ -79,7 +79,7 @@ export function openPromoDialog({ ids = [] } = {}) {
 
   function renderForm() {
     const partyOptions = state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
-    dlg.sub.textContent = 'Код откроется на странице pwonline.ru/pin/<код>, на ней будет нажата кнопка «Ввести».';
+    dlg.sub.textContent = 'Код откроется на странице pwonline.ru/pin/<код>, на ней будет нажата кнопка «Активировать».';
     dlg.body.innerHTML = `
       <div class="field"><label for="promo-code">Промокод</label>
         <input class="input" id="promo-code" maxlength="40" autocomplete="off" spellcheck="false" value="${escapeHtml(code)}" placeholder="Например, ABCD1234"></div>
@@ -92,8 +92,7 @@ export function openPromoDialog({ ids = [] } = {}) {
       </div>
       <div class="promo-list" id="promo-list">${listHtml()}</div>
       <div class="promo-count" id="promo-count"></div>
-      <label class="promo-opt"><input type="checkbox" id="promo-dry" ${dryRun ? 'checked' : ''}> Пробный запуск: открыть страницу и найти кнопку «Ввести», но <b>не нажимать</b></label>
-      <label class="promo-opt"><input type="checkbox" id="promo-keep" ${keepCodeSetting() ? 'checked' : ''}> Хранить код в истории целиком (иначе он маскируется: AB••••••26)</label>`;
+      <label class="promo-opt"><input type="checkbox" id="promo-dry" ${dryRun ? 'checked' : ''}> Пробный запуск: открыть страницу и найти кнопку «Активировать», но <b>не нажимать</b></label>`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="history">📜 История</button>
       <span style="flex:1"></span>
@@ -124,11 +123,11 @@ export function openPromoDialog({ ids = [] } = {}) {
   async function start(chars, { retry = false } = {}) {
     const mode = dryRun ? 'dry' : 'real';
     const ask = dryRun
-      ? `Пробный запуск: страница промокода будет открыта у ${chars.length} перс., кнопка «Ввести» нажиматься НЕ будет. Продолжить?`
+      ? `Пробный запуск: страница промокода будет открыта у ${chars.length} перс., кнопка «Активировать» нажиматься НЕ будет. Продолжить?`
       : `Код ${code} будет применён к ${chars.length} перс. (${chars.slice(0, 5).map(c => c.nick).join(', ')}${chars.length > 5 ? '…' : ''}).\nДействие необратимо. Продолжить?`;
     if (!retry && !confirmDialog(ask)) return;
 
-    const task = startTask(`🎟 Промокод ${maskCode(code)}${dryRun ? ' (пробный)' : ''}`, { total: chars.length, cancelable: true });
+    const task = startTask(`🎟 Промокод ${code}${dryRun ? ' (пробный)' : ''}`, { total: chars.length, cancelable: true });
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
@@ -199,7 +198,7 @@ export function openPromoDialog({ ids = [] } = {}) {
 
   function renderHistory() {
     const items = loadHistory().slice(0, 100);
-    dlg.sub.textContent = 'Хранится только на этом компьютере. Коды маскируются, если не включено «Хранить код целиком».';
+    dlg.sub.textContent = 'Хранится только на этом компьютере.';
     dlg.body.innerHTML = items.length ? `
       <table class="promo-table"><thead><tr><th>Время</th><th>Код</th><th>Персонаж</th><th>Результат</th></tr></thead><tbody>${items.map(h =>
         `<tr><td class="promo-muted">${escapeHtml(new Date(h.at).toLocaleString('ru-RU'))}</td><td><code>${escapeHtml(h.code)}</code></td><td><b>${escapeHtml(h.nick)}</b></td><td>${statusInfo(h.status).icon} ${escapeHtml(statusInfo(h.status).label)}</td></tr>`).join('')}</tbody></table>`
@@ -227,7 +226,6 @@ export function openPromoDialog({ ids = [] } = {}) {
   dlg.body.addEventListener('change', (e) => {
     const t = e.target;
     if (t.matches('[data-id]')) { if (t.checked) selected.add(t.dataset.id); else selected.delete(t.dataset.id); updateCount(); }
-    if (t.id === 'promo-keep') setKeepCodeSetting(t.checked);
   });
   dlg.body.addEventListener('click', (e) => {
     const q = e.target.closest('[data-q]');

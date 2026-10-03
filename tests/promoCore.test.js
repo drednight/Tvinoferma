@@ -1,7 +1,7 @@
 // Чистая логика активации промокодов (Issue #25): проверка кода, строки результата, защита от повторов, история, CSV.
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  validateCode, maskCode, rowFromPayload, isRetryable, summarize, createSessionGuard,
+  validateCode, rowFromPayload, isRetryable, summarize, createSessionGuard,
   addHistory, loadHistory, clearHistory, csvCell, resultsToCsv, statusInfo, HISTORY_MAX
 } from '../js/modules/automation/promoCore.js';
 
@@ -9,7 +9,7 @@ const char = { id: 'c1', nick: 'Ник' };
 const NOW = new Date('2026-01-02T03:04:05Z');
 const row = (over = {}) => ({ charId: 'c1', nick: 'Ник', status: 'error', error: null, detail: null, clicked: false, dryRun: false, at: NOW.toISOString(), ...over });
 
-describe('validateCode / maskCode', () => {
+describe('validateCode', () => {
   it('принимает обычные коды и обрезает пробелы', () => {
     expect(validateCode('  PWZNANIYA26 ')).toEqual({ ok: true, code: 'PWZNANIYA26', error: null });
     expect(validateCode('a-b_c1').ok).toBe(true);
@@ -22,11 +22,6 @@ describe('validateCode / maskCode', () => {
     expect(validateCode('ABCD/../x').ok).toBe(false);
     expect(validateCode('ABCD?x=1').ok).toBe(false);
     expect(validateCode('ABCDé').ok).toBe(false);
-  });
-  it('маскирует код, оставляя края', () => {
-    expect(maskCode('PWZNANIYA26')).toBe('PW•••••••26');
-    expect(maskCode('abcd')).toBe('••••');
-    expect(maskCode('')).toBe('••••');
   });
 });
 
@@ -101,24 +96,19 @@ describe('createSessionGuard', () => {
 
 describe('история', () => {
   beforeEach(() => { window.localStorage.clear(); });
-  it('по умолчанию код маскируется, пробные запуски не сохраняются', () => {
-    addHistory('PWZNANIYA26', [row({ status: 'success', clicked: true }), row({ charId: 'c2', status: 'dry_run', dryRun: true })], { keepCode: false });
+  it('код хранится целиком, пробные запуски не сохраняются; очистка работает', () => {
+    addHistory('PWZNANIYA26', [row({ status: 'success', clicked: true }), row({ charId: 'c2', status: 'dry_run', dryRun: true })]);
     const h = loadHistory();
     expect(h).toHaveLength(1);
-    expect(h[0].code).toBe('PW•••••••26');
-    expect(JSON.stringify(h)).not.toContain('PWZNANIYA26');
-  });
-  it('с разрешением хранится код целиком; очистка работает', () => {
-    addHistory('PWZNANIYA26', [row({ status: 'success', clicked: true })], { keepCode: true });
-    expect(loadHistory()[0].code).toBe('PWZNANIYA26');
+    expect(h[0]).toMatchObject({ code: 'PWZNANIYA26', nick: 'Ник', status: 'success' });
     clearHistory();
     expect(loadHistory()).toEqual([]);
   });
   it('история ограничена по длине, новые записи сверху', () => {
     const many = Array.from({ length: HISTORY_MAX + 20 }, (_, i) => row({ charId: `c${i}`, status: 'success', clicked: true }));
-    addHistory('ABCD1234', many, { keepCode: false });
+    addHistory('ABCD1234', many);
     expect(loadHistory()).toHaveLength(HISTORY_MAX);
-    addHistory('ABCD1234', [row({ charId: 'new', status: 'success', clicked: true })], { keepCode: false });
+    addHistory('ABCD1234', [row({ charId: 'new', status: 'success', clicked: true })]);
     expect(loadHistory()[0].charId).toBe('new');
   });
   it('повреждённые данные не ломают загрузку', () => {
@@ -135,7 +125,7 @@ describe('CSV', () => {
     expect(csvCell('-1')).toBe("'-1");
     expect(csvCell(null)).toBe('');
   });
-  it('таблица: BOM, заголовок, строки, без кода', () => {
+  it('таблица: BOM, заголовок, строки', () => {
     const csv = resultsToCsv([row({ nick: '=cmd', status: 'success', clicked: true, detail: 'ok' }), row({ nick: 'Б', status: 'challenge' })]);
     expect(csv.startsWith('\ufeffПерсонаж;Результат;Подробности;Время')).toBe(true);
     const lines = csv.split('\r\n');

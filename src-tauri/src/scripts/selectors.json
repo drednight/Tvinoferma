@@ -29,9 +29,12 @@
     "news.title": ["#content_top h1", "h1"],
     "news.junk": ["img, script, style, iframe, .img_item_small_cont > span"],
 
+    "promo.input": ["form[action*=\"pin.php\"] input[name=\"pin\"]", "input#pin", "input[name=\"pin\"]"],
     "promo.controls": [
-      "button, input[type=\"submit\"], input[type=\"button\"], a[class*=\"btn\"], a[class*=\"button\"], .button"
+      "input[type=\"submit\"], button[type=\"submit\"], button"
     ],
+    "promo.content": ["#content_body"],
+    "promo.static": [".pin_description, .pin_header"],
     "promo.choice": ["select"]
   },
   "texts": {
@@ -50,7 +53,7 @@
 
     "marathon.noAccess": ["не имеете доступа"],
 
-    "promo.buttonLabels": ["ввести", "активировать", "применить"],
+    "promo.buttonLabels": ["активировать", "ввести", "применить"],
     "promo.used": [
       "уже использован",
       "уже активирован",
