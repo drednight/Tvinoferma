@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::webview::NewWindowResponse;
-use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    command, AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 const POPUP_PATCH: &str = include_str!("scripts/popup_patch.js");
 
@@ -27,20 +29,55 @@ fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Служебная схема панели «Помощник входа»: страница переходит на `tf-panel://<действие>`,
+/// Rust отменяет переход и сообщает основному окну (Issue #54-2). Параметры не принимаются.
+const PANEL_SCHEME: &str = "tf-panel";
+
+/// Действие из адреса `tf-panel://<действие>`; список закрыт, остальное игнорируется.
+fn parse_panel_action(url: &Url) -> Option<&'static str> {
+    if url.scheme() != PANEL_SCHEME {
+        return None;
+    }
+    match url.host_str()? {
+        "balance" => Some("balance"),
+        "parties" => Some("parties"),
+        "promo" => Some("promo"),
+        _ => None,
+    }
+}
+
 /// Защита от всплывающих окон для окон персонажей. Попап (`window.open`, `target="_blank"`)
 /// ломает вход через VK Play: сессия и `window.opener` остаются в другом окне.
 /// 1) `popup_patch.js` вшит как initialization_script и срабатывает в каждом документе окна
 ///    (раньше он выполнялся один раз через `eval` и пропадал после первого перехода);
-/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает.
+/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает;
+/// 3) переход на `tf-panel://…` превращается в событие `panel-action` для основного окна.
+///    Персонаж определяется по окну (`char_id`), а не по данным страницы.
 fn guard_popups<'a, M: Manager<tauri::Wry>>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, M>,
     app: &AppHandle,
     label: &str,
+    char_id: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
+    let nav_app = app.clone();
+    let char_id = char_id.to_string();
     let app = app.clone();
     let label = label.to_string();
     builder
         .initialization_script(POPUP_PATCH)
+        .on_navigation(move |url| {
+            if url.scheme() != PANEL_SCHEME {
+                return true;
+            }
+            if let Some(action) = parse_panel_action(url) {
+                let _ = nav_app.emit_to(
+                    "main",
+                    "panel-action",
+                    serde_json::json!({ "charId": char_id, "action": action }),
+                );
+            }
+            false
+        })
         .on_new_window(move |url, _features| {
             // В лог попадает только адрес без параметров: в них бывают коды входа
             println!(
@@ -121,7 +158,7 @@ pub async fn open_sync_window(
         .inner_size(1200.0, 800.0)
         .resizable(true)
         .data_directory(profile_dir(&app, &char_id)?);
-    let mut builder = guard_popups(builder, &app, &label);
+    let mut builder = guard_popups(builder, &app, &label, &char_id);
     // Панель «Помощник входа» рисуется скриптом поверх страницы и переживает переходы
     if let Some(script) = panel_script.as_deref() {
         builder = builder.initialization_script(script);
@@ -226,7 +263,7 @@ pub async fn get_or_create_hidden_window(
         .resizable(false)
         .visible(false)
         .data_directory(profile_dir(app, key)?);
-    guard_popups(builder, app, &label)
+    guard_popups(builder, app, &label, key)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -262,5 +299,30 @@ pub async fn pick_scan_window(
 pub fn dispose(window: &WebviewWindow, created_here: bool, close_after: bool) {
     if created_here && close_after {
         let _ = window.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn action(url: &str) -> Option<&'static str> {
+        parse_panel_action(&Url::parse(url).unwrap())
+    }
+
+    #[test]
+    fn panel_actions_from_closed_list() {
+        assert_eq!(action("tf-panel://balance"), Some("balance"));
+        assert_eq!(action("tf-panel://parties"), Some("parties"));
+        assert_eq!(action("tf-panel://promo"), Some("promo"));
+        assert_eq!(action("tf-panel://balance/"), Some("balance"));
+    }
+
+    #[test]
+    fn unknown_actions_and_foreign_schemes_are_ignored() {
+        assert_eq!(action("tf-panel://delete"), None);
+        assert_eq!(action("tf-panel://"), None);
+        assert_eq!(action("https://balance/"), None);
+        assert_eq!(action("https://pwonline.ru/tf-panel://balance"), None);
     }
 }
