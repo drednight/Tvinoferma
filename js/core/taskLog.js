@@ -8,6 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { confirmDialog } from './ui.js';
+import { ERROR_TEXT, errorText } from './errorCodes.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
 const MAX_TASKS = 300;
@@ -16,25 +17,7 @@ const DOCK_AUTOHIDE_MS = 20000;
 
 const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌' };
 
-/** Понятные описания кодов ошибок из Rust/парсеров. */
-export const ERROR_TEXT = {
-  not_logged_in: 'не выполнен вход на сайт',
-  challenge: 'сайт показывает «Проверку безопасности»',
-  timeout: 'сайт не ответил вовремя',
-  timeout_parsing_marathon: 'сайт не ответил вовремя',
-  timeout_parsing_details: 'сайт не ответил вовремя',
-  container_not_found: 'на странице нет заданий марафона',
-  no_title_found: 'на странице нет марафона',
-  no_quests: 'задания не найдены',
-  config_missing: 'у парсера нет конфигурации селекторов (ошибка сборки, сообщите разработчику)',
-  no_progress_found: 'на странице нет полос прогресса (возможно, сайт изменил вёрстку)',
-  container_missing: 'на странице нет блока с балансом (возможно, сайт изменил вёрстку)',
-  no_value_tag: 'в блоке баланса нет значения (возможно, сайт изменил вёрстку)',
-  parse_nan: 'не удалось прочитать число баланса',
-  zero_no_user_session_expired: 'сессия истекла',
-  session_lost_during_parse: 'сессия потеряна во время чтения'
-};
-export const errorText = (code) => ERROR_TEXT[code] || (code ? String(code) : 'неизвестная ошибка');
+export { ERROR_TEXT, errorText };
 
 let tasks = loadJournal();
 const subscribers = new Set();

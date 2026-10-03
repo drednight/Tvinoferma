@@ -96,7 +96,7 @@ describe('запасные селекторы', () => {
 
   it('тексты берутся из конфига: другая фраза «не вошли» распознаётся', () => {
     const r = runOnFixture('check_auth.js', 'TF_AUTH_V2_', 'site-warning.html', (h) => h, (c) => { c.texts['common.notLoggedIn'] = ['Вход не выполнен']; });
-    expect(r).toEqual({ data: null, error: 'pending' });
+    expect(r).toEqual({ data: 'complete', error: 'pending' });
   });
 
   it('без общего слоя скрипт сообщает config_missing, а не падает', () => {

@@ -1,0 +1,29 @@
+/* ===== Состояние парсеров: плашка под шапкой и таблица в настройках (issue #12) ===== */
+.health-banner {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: rgba(224, 175, 104, 0.12);
+}
+.health-banner[hidden] { display: none; }
+.health-banner-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 360px; }
+.health-banner-text span { color: var(--muted); font-size: 0.9rem; }
+.health-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.health-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.health-table th,
+.health-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.health-table th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+.health-table small { display: block; }
+.health-table tr.is-problem td { background: rgba(224, 175, 104, 0.1); }

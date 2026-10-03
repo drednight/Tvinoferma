@@ -8,6 +8,7 @@ import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { applySiteQuests } from './model.js';
 import { startTask, errorText } from '../../core/taskLog.js';
+import { recordParserResult, classifyErrors } from '../../core/parserHealth.js';
 import { parseNewsHtml } from './newsParser.js';
 import { parseNewsList, mergeNewsPages, newsListUrl, NEWS_LIST_PAGES } from './newsList.js';
 import { runQueue, browserSlots, isRetryableCode } from '../sync/queue.js';
@@ -82,6 +83,8 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
   const res = await withTimeout(wait, 90000, { titles: [], errors: ['timeout'] });
   progressHandler = null;
   const titles = res.titles || [], errors = res.errors || [];
+  if (titles.length) recordParserResult('titles', null);
+  else { const worst = classifyErrors(errors); recordParserResult('titles', worst.error, { status: worst.status }); }
   titles.forEach(t => task.log(`Найден: «${t.name}» — ${t.url}`, 'ok'));
   errors.forEach(e => task.log(`Ошибка: ${errorText(e)}`, 'warn'));
   task.finish(titles.length ? `Найдено марафонов: ${titles.length}` : 'Марафоны не найдены', titles.length ? (errors.length ? 'warn' : 'done') : 'error');
@@ -106,6 +109,7 @@ export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   }
   const res = await withTimeout(wait, 60000, { marathon: null, error: 'timeout' });
   const m = res.marathon;
+  recordParserResult('detail', res.error || (m ? null : 'no_marathon'), { empty: !!m && !m.quests?.length });
   if (res.error || !m) {
     task.finish(`Не удалось разобрать страницу: ${errorText(res.error)}`, 'error');
     return { ...res, task };
@@ -136,6 +140,7 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
     return { marathon: null, error: String(e), task };
   }
   const res = await withTimeout(wait, 60000, { news: null, error: 'timeout' });
+  recordParserResult('news', res.error || (res.news?.html ? null : 'no_article'));
   if (res.error || !res.news?.html) {
     task.finish(`Не удалось открыть новость: ${errorText(res.error || 'no_article')}`, 'error');
     return { marathon: null, error: res.error || 'no_article', task };
@@ -192,6 +197,8 @@ export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, on
     loaded.push(items);
   }
   const items = mergeNewsPages(loaded);
+  // Страницы архива открылись, а новостей в них не нашлось — признак изменившейся вёрстки списка
+  recordParserResult('news', items.length ? null : (firstError || 'no_news_list'));
   if (!items.length) {
     task.finish(`Список новостей не получен: ${errorText(firstError || 'пусто')}`, 'error');
     return { items: [], error: firstError || 'empty', task };
@@ -293,6 +300,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
       const quests = result?.quests;
       const error = result?.error || (thrown ? String(thrown) : null);
       let changesForChar = {};
+      recordParserResult('progress', error, { empty: !error && Array.isArray(quests) && !quests.length });
       if (!error && Array.isArray(quests)) {
         changesForChar = applyToMarathons(charId, quests, url, at);
         if (!quests.length) {

@@ -68,11 +68,22 @@ describe('проверка входа (usercp.php, check_auth.js)', () => {
 
   it('вёрстка изменилась: нет блока с ником → pending (повтор), но не online и не offline', () => {
     const r = auth('site-usercp.html', (h) => editDom(h, (d) => d.querySelector('.info__forumname').className = 'info__nick'));
-    expect(r).toEqual({ data: null, error: 'pending' });
+    // 'complete' — страница загружена целиком: по таймауту Rust сообщит об этом, а не «сайт не ответил»
+    expect(r).toEqual({ data: 'complete', error: 'pending' });
+  });
+
+  it('страница ещё грузится → challenge со значением loading; проверка безопасности → page (Rust по таймауту различает)', () => {
+    Object.defineProperty(document, 'readyState', { value: 'loading', configurable: true });
+    try {
+      expect(runPageScript('check_auth.js', EMPTY_PAGE, 'TF_AUTH_V2_')).toEqual({ data: 'loading', error: 'challenge' });
+    } finally {
+      delete document.readyState;
+    }
+    expect(runPageScript('check_auth.js', CHALLENGE_TITLE, 'TF_AUTH_V2_')).toEqual({ data: 'page', error: 'challenge' });
   });
 
   it('пустая страница → pending; «Проверка безопасности» → challenge', () => {
-    expect(runPageScript('check_auth.js', EMPTY_PAGE, 'TF_AUTH_V2_')).toEqual({ data: null, error: 'pending' });
+    expect(runPageScript('check_auth.js', EMPTY_PAGE, 'TF_AUTH_V2_')).toEqual({ data: 'complete', error: 'pending' });
     expect(runPageScript('check_auth.js', CHALLENGE_TITLE, 'TF_AUTH_V2_').error).toBe('challenge');
     expect(runPageScript('check_auth.js', CHALLENGE_SCRIPT, 'TF_AUTH_V2_').error).toBe('challenge');
   });

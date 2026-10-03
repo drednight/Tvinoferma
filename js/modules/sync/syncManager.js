@@ -18,6 +18,7 @@ import { runQueue, browserSlots, isRetryableCode } from './queue.js';
 import { setAuthChecking, authDetails } from './authStatus.js';
 import { onCharMarathonData, syncAllActiveMarathons } from '../marathons/siteSync.js';
 import { logScope, errorText, startTask } from '../../core/taskLog.js';
+import { recordParserResult } from '../../core/parserHealth.js';
 
 let activeListeners = [];
 
@@ -112,6 +113,7 @@ export function applyLoginResult(payload) {
     char.lastLoginCheck = new Date().toISOString();
     char.lastLoginReason = isOnline ? null : (reason || null);
     setAuthChecking(charId, false);
+    recordParserResult('auth', isOnline ? null : (reason || 'unknown'));
     logScope(`char:${charId}`, `${char.nick}: ${isOnline ? 'вход подтверждён 🟢' : `нет входа 🔴 (${errorText(reason)})`}`, isOnline ? 'ok' : 'warn');
     return { char, changed };
 }
@@ -123,6 +125,7 @@ export function applyBalanceResult(payload, { final = true } = {}) {
     if (!char) return null;
 
     if (error) {
+        recordParserResult('balance', error);   // ошибка: прежний баланс и история монет не меняются
         logScope(`char:${charId}`, `${char.nick}: баланс не получен — ${errorText(error)}`, 'warn');
         if (AUTH_ERRORS.includes(error)) {
             char.isLoggedIn = false;
@@ -134,6 +137,7 @@ export function applyBalanceResult(payload, { final = true } = {}) {
     }
     if (balance === null || balance < 0) return { char, changed: false };
 
+    recordParserResult('balance', null);
     char.isLoggedIn = true; // баланс прочитан — значит вход есть
     // Баланс не изменился — обновляется только дата проверки (запись «+0» в историю не пишется)
     const { delta, changed: balanceChanged } = applyCoinBalance(char, balance);

@@ -8,15 +8,16 @@
   if (!TF) { report(null, 'config_missing'); return; }
   try {
     if (TF.isChallenge()) {
-      report(null, 'challenge');
+      report(TF.waitKind(), 'challenge');
       return;
     }
     const bodyText = (document.body && document.body.innerText) || '';
     const nicknameSpan = TF.q('auth.nick');
     if (nicknameSpan && TF.has(bodyText, 'auth.welcome')) { report('online', null); return; }
     if (TF.has(bodyText, 'common.notLoggedIn')) { report('offline', 'not_logged_in'); return; }
-    // Страница ещё не дорисована — Rust повторит скрипт
-    report(null, 'pending');
+    // Нет ни ника, ни «Вы не авторизованы»: страница ещё не дорисована или сайт изменил вёрстку.
+    // Rust повторит скрипт, а по таймауту отличит одно от другого по состоянию документа.
+    report(document.readyState === 'complete' ? 'complete' : 'loading', 'pending');
   } catch (e) {
     report(null, 'exception_' + String(e.message).substring(0, 20));
   }

@@ -59,10 +59,33 @@ pub fn read_hash_payload(
     Some((error, data))
 }
 
+/// Что вернуть, если время вышло, а последним ответом скрипта был «мягкий» (`challenge` / `pending`).
+/// Страница при этом отвечала, поэтому это не «сайт не ответил» (`None`):
+/// - `challenge` со значением `"page"` — сайт так и не пропустил дальше «Проверки безопасности»;
+/// - `pending` со значением `"complete"` — страница полностью загрузилась, но признаков входа
+///   или нужного блока в ней нет (возможно, сайт изменил вёрстку).
+///
+/// Недогруженная страница (значение `"loading"` или его нет) остаётся таймаутом.
+pub fn soft_timeout_result(
+    error: &str,
+    data: &serde_json::Value,
+) -> Option<(Option<String>, serde_json::Value)> {
+    match error {
+        "challenge" if data.as_str() == Some("page") => {
+            Some((Some("challenge".to_string()), serde_json::Value::Null))
+        }
+        "pending" if data.as_str() == Some("complete") => {
+            Some((Some("pending".to_string()), serde_json::Value::Null))
+        }
+        _ => None,
+    }
+}
+
 /// Выполняет скрипт парсера и ждёт ответ в hash (`#PREFIX<json>`).
 /// Пока сайт показывает «Проверку безопасности» (error = "challenge"), страница
 /// ещё не дорисована (error = "pending") или перезагружается — повторяет скрипт.
-/// Возвращает None по таймауту.
+/// Возвращает None по таймауту; если страница всё это время отвечала «мягким» ответом —
+/// `Some` с его кодом (см. `soft_timeout_result`).
 pub async fn eval_and_wait(
     window: &WebviewWindow,
     script: &str,
@@ -74,6 +97,7 @@ pub async fn eval_and_wait(
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let mut last_eval: Option<Instant> = None;
     let mut challenge_logged = false;
+    let mut last_soft: Option<(String, serde_json::Value)> = None;
     let full_script = with_common(script);
     tf_log(
         &app,
@@ -101,6 +125,7 @@ pub async fn eval_and_wait(
         };
         match error.as_deref() {
             Some("challenge") => {
+                last_soft = Some(("challenge".to_string(), data));
                 if !challenge_logged {
                     tf_log(
                         &app,
@@ -111,11 +136,27 @@ pub async fn eval_and_wait(
                     challenge_logged = true;
                 }
             }
-            Some("pending") => {}
+            Some("pending") => last_soft = Some(("pending".to_string(), data)),
             _ => return Some((error, data)),
         }
         // Убираем hash, чтобы не прочитать его повторно, и ждём
         let _ = window.eval("history.replaceState(null, '', location.pathname + location.search);");
+    }
+    if let Some(result) = last_soft
+        .as_ref()
+        .and_then(|(error, data)| soft_timeout_result(error, data))
+    {
+        tf_log(
+            &app,
+            scope,
+            "error",
+            format!(
+                "За {} с получен только промежуточный ответ парсера ({})",
+                timeout_secs,
+                result.0.as_deref().unwrap_or("?")
+            ),
+        );
+        return Some(result);
     }
     tf_log(
         &app,
@@ -128,7 +169,9 @@ pub async fn eval_and_wait(
 
 #[cfg(test)]
 mod tests {
-    use super::{read_hash_payload, with_common, SELECTORS_JSON, SELECTORS_MARKER};
+    use super::{
+        read_hash_payload, soft_timeout_result, with_common, SELECTORS_JSON, SELECTORS_MARKER,
+    };
 
     #[test]
     fn reads_payload_from_hash() {
@@ -146,6 +189,27 @@ mod tests {
             Some("challenge")
         );
         assert!(read_hash_payload(url, "#TF_Y_").is_none());
+    }
+
+    #[test]
+    fn soft_timeout_distinguishes_silence_from_wrong_page() {
+        use serde_json::json;
+        // «Проверка безопасности» не пройдена — это ответ сайта, а не тишина
+        assert_eq!(
+            soft_timeout_result("challenge", &json!("page")),
+            Some((Some("challenge".to_string()), json!(null)))
+        );
+        assert_eq!(soft_timeout_result("challenge", &json!("loading")), None);
+        assert_eq!(soft_timeout_result("challenge", &json!(null)), None);
+        // страница загрузилась целиком, но нужных признаков нет
+        assert_eq!(
+            soft_timeout_result("pending", &json!("complete")),
+            Some((Some("pending".to_string()), json!(null)))
+        );
+        // страница ещё грузилась или скрипт не сообщил состояние — остаётся таймаутом
+        assert_eq!(soft_timeout_result("pending", &json!("loading")), None);
+        assert_eq!(soft_timeout_result("pending", &json!(null)), None);
+        assert_eq!(soft_timeout_result("timeout", &json!("complete")), None);
     }
 
     #[test]

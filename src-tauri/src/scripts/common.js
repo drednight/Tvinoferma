@@ -48,6 +48,14 @@ window.__TF = (function () {
       return document.readyState === 'loading' ||
         this.has(document.title || '', 'common.challengeTitle') ||
         !!this.q('common.challengeScript');
+    },
+    /**
+     * Что именно мешает читать страницу, когда isChallenge() = true: 'loading' (документ ещё грузится)
+     * или 'page' («Проверка безопасности»). Уходит в `data` ответа; по таймауту Rust отличает
+     * «сайт не ответил» от «сайт держит проверку безопасности».
+     */
+    waitKind: function () {
+      return document.readyState === 'loading' ? 'loading' : 'page';
     }
   };
 })();

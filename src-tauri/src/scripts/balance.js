@@ -48,7 +48,7 @@
   if (!TF) { report(null, 'config_missing'); return; }
   try {
     if (TF.isChallenge()) {
-      report(null, 'challenge');
+      report(TF.waitKind(), 'challenge');
       return;
     }
     const bodyText = (document.body && document.body.innerText) || '';

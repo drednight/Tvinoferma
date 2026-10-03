@@ -10,7 +10,7 @@
     try {
         // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
         if (TF.isChallenge()) {
-            reportResult(null, 'challenge');
+            reportResult(TF.waitKind(), 'challenge');
             return;
         }
         const bodyText = document.body.innerText || "";

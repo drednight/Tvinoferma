@@ -8,6 +8,7 @@ import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
 import { startUpdateScheduler } from './desktop/updater.js';
 import { initUpdateUi } from './desktop/updateUi.js';
+import { initParserHealthUi } from './settings/parserHealthUi.js';
 import { bindCharacters, renderCharacters } from './modules/characters/list.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
@@ -162,6 +163,7 @@ async function boot() {
 
         // 9. Обновления: кнопка в шапке и в настройках; тихая проверка при запуске и раз в 6 часов
     initUpdateUi();
+    initParserHealthUi();
     if (isTauri()) {
       startUpdateScheduler({ isEnabled: () => state.settings?.updates?.checkOnStartup !== false });
     }
