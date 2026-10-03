@@ -4,7 +4,9 @@
 
 import { escapeHtml } from '../core/utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
+import { state as appState } from '../core/state.js';
 import { installUpdate, checkForUpdates } from './updater.js';
+import { resolveUpdateMode, nextCheckText } from './updateSchedule.js';
 import {
   subscribeUpdate, hasUpdate, isBusy, badgeLabel, installButtonLabel, statusText, checkedAtText, formatVersion
 } from './updateState.js';
@@ -46,6 +48,12 @@ export function openUpdateDialog() {
   return ov;
 }
 
+/** Обновляет строку «Следующая проверка» (после смены режима в настройках). */
+export function refreshUpdateSchedule() {
+  const el = document.getElementById('update-next-check');
+  if (el) el.textContent = nextCheckText(resolveUpdateMode(appState.settings));
+}
+
 /** Подключает кнопку в шапке и блок в настройках. Вызывать один раз при старте. */
 export function initUpdateUi() {
   const badge = document.getElementById('update-badge');
@@ -70,6 +78,7 @@ export function initUpdateUi() {
         badge.title = `Версия ${formatVersion(s.version)}: нажмите, чтобы посмотреть, что нового, и установить`;
       }
     }
+    refreshUpdateSchedule();
     if (status) status.textContent = statusText(s, { supported });
     if (checkedAt) checkedAt.textContent = checkedAtText(s);
     if (installBtn) {

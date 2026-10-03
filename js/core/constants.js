@@ -148,7 +148,10 @@ export const DEFAULT_SETTINGS = {
     loginHours: 24,
     marathonHours: 24
   },
+  // mode: startup | daily | weekly | never (см. desktop/updateSchedule.js).
+  // Если mode не задан, он выводится из checkOnStartup (старые данные).
   updates: {
-    checkOnStartup: true
+    checkOnStartup: true,
+    lastCheckedAt: null
   }
 };

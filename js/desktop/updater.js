@@ -5,8 +5,10 @@
 
 import { toast } from '../core/ui.js';
 import { getUpdateState, setUpdateState, hasUpdate, formatVersion } from './updateState.js';
+import { isScheduledMode, isCheckDue, nextBoundary } from './updateSchedule.js';
 
-export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // повторная проверка раз в 6 часов
+export const CATCHUP_INTERVAL_MS = 10 * 60 * 1000; // если плановая проверка пропущена (сон ПК, офлайн), догоняем
+export const BOUNDARY_SLACK_MS = 1000;
 export const FIRST_CHECK_DELAY_MS = 5000;
 
 let pending = null;      // объект Update из плагина (нужен для установки)
@@ -103,21 +105,56 @@ export async function installUpdate() {
   }
 }
 
+let schedule = null;   // { getMode, getLastChecked }
+let boundaryTimer = null;
+
+const dueNow = () => !!schedule && isCheckDue(schedule.getMode(), schedule.getLastChecked());
+
+/** Таймер на ближайшую полночь (или понедельник) для режимов daily/weekly. */
+function armBoundary() {
+  clearTimeout(boundaryTimer);
+  boundaryTimer = null;
+  const mode = schedule?.getMode();
+  if (!isScheduledMode(mode)) return;
+  const ms = Math.max(1000, nextBoundary(mode).getTime() - Date.now() + BOUNDARY_SLACK_MS);
+  boundaryTimer = setTimeout(() => {
+    if (dueNow()) checkForUpdates({ silent: true });   // если догоняющая проверка уже сработала, повтора нет
+    armBoundary();
+  }, Math.min(ms, 2 ** 31 - 1));
+}
+
 /**
- * Тихая проверка при запуске (через 5 с) и затем раз в 6 часов.
- * @param {{ isEnabled?: () => boolean }} opts isEnabled — читает настройку «Проверять при запуске»
+ * Тихая автопроверка по расписанию (updateSchedule.js):
+ *  - startup: один раз через 5 с после запуска;
+ *  - daily/weekly: в 00:00 и, если пропустили срок, при запуске или в ближайшие 10 минут;
+ *  - never: ничего.
+ * @param {{ getMode?: () => string, getLastChecked?: () => (string|null|undefined) }} opts
  */
-export function startUpdateScheduler({ isEnabled = () => true } = {}) {
+export function startUpdateScheduler({ getMode = () => 'startup', getLastChecked = () => getUpdateState().lastCheckedAt } = {}) {
   stopUpdateScheduler();
   if (!isSupported()) return;
-  const run = () => { if (isEnabled()) checkForUpdates({ silent: true }); };
-  timers.push(setTimeout(run, FIRST_CHECK_DELAY_MS));
-  timers.push(setInterval(run, UPDATE_CHECK_INTERVAL_MS));
+  schedule = { getMode, getLastChecked };
+  timers.push(setTimeout(() => {
+    const mode = getMode();
+    if (mode === 'startup' || dueNow()) checkForUpdates({ silent: true });
+  }, FIRST_CHECK_DELAY_MS));
+  timers.push(setInterval(() => { if (dueNow()) checkForUpdates({ silent: true }); }, CATCHUP_INTERVAL_MS));
+  armBoundary();
+}
+
+/** Вызывается после смены режима в настройках: пересчитывает таймер и, если срок уже прошёл, проверяет сразу. */
+export function rescheduleUpdates() {
+  if (!schedule) return;
+  armBoundary();
+  if (dueNow()) checkForUpdates({ silent: true });
 }
 
 export function stopUpdateScheduler() {
   timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
   timers = [];
+  clearTimeout(boundaryTimer);
+  boundaryTimer = null;
+  schedule = null;
 }
 
 export { getUpdateState };

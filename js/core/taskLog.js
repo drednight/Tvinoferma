@@ -230,14 +230,26 @@ export function openTaskLog(id) {
   const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
 }
 
-/** Логи скриптов (открываются из «Настроек»). */
-export function openTaskJournal() {
-  const ov = openOverlay({ title: '📄 Логи скриптов', wide: true });
+/** Короткая строка для заголовка свёрнутой панели «Логи скриптов» в настройках. */
+export function taskJournalSummary() {
+  if (!tasks.length) return 'Записей пока нет: они появятся после первых проверок.';
+  const problems = tasks.filter(t => t.status === 'warn' || t.status === 'error' || t.errors || t.warnings).length;
+  const last = tasks[0];
+  return `Записей: ${tasks.length}${problems ? ` (с проблемами: ${problems})` : ''} · последняя: ${last.title}`;
+}
+
+/**
+ * Рисует журнал скриптов (фильтр, список, «Очистить», «Скопировать всё») прямо в контейнер.
+ * Используется в «Настройках» (раскрываемая панель) и в окне openTaskJournal.
+ * Журнал перерисовывается при новых записях, пока контейнер в DOM и не свёрнут.
+ * @returns {() => void} отписка
+ */
+export function mountTaskJournal(root) {
   let onlyProblems = false;
   const rowsOf = () => tasks.filter(t => !onlyProblems || t.status === 'warn' || t.status === 'error' || t.errors || t.warnings);
   const draw = () => {
     const rows = rowsOf();
-    ov.body.innerHTML = `
+    root.innerHTML = `
       <div class="tl-filter row gap" style="margin-bottom:8px;">
         <label class="tf-radio"><input type="checkbox" data-only-problems ${onlyProblems ? 'checked' : ''}/> Только с ошибками и предупреждениями</label>
         <span class="muted">Записей: ${rows.length} из ${tasks.length}. Нажмите на запись, чтобы открыть подробный лог.</span>
@@ -248,25 +260,40 @@ export function openTaskJournal() {
         <strong>${escapeHtml(t.title)}</strong>
         <span class="muted">${new Date(t.startedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
         <span class="tl-jsum">${escapeHtml(t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : ''))}</span>
-      </button>`).join('')}</div>` : '<div class="empty-state">Ничего не найдено. Здесь появятся логи проверок входа, балансов и марафонов.</div>'}`;
-    ov.body.querySelector('[data-only-problems]').onchange = (e) => { onlyProblems = e.target.checked; draw(); };
+      </button>`).join('')}</div>` : '<div class="empty-state">Ничего не найдено. Здесь появятся логи проверок входа, балансов и марафонов.</div>'}
+      <div class="row gap tl-actions" style="margin-top:10px;">
+        <button type="button" class="btn ghost" data-clear>🧹 Очистить логи</button>
+        <button type="button" class="btn" data-copy-all>📋 Скопировать всё</button>
+      </div>`;
+    root.querySelector('[data-only-problems]').onchange = (e) => { onlyProblems = e.target.checked; draw(); };
+    root.querySelector('[data-clear]').onclick = () => {
+      if (!confirmDialog('Очистить логи скриптов? Завершённые записи будут удалены.')) return;
+      tasks = tasks.filter(t => t.status === 'running'); saveJournal(); draw(); renderDock();
+    };
+    root.querySelector('[data-copy-all]').onclick = async (e) => {
+      const text = rowsOf().map(t => [
+        `=== ${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')} — ${t.summary || t.status} ===`,
+        ...t.entries.map(x => `${timeOf(x.at)} ${LEVEL_ICON[x.level] || '•'} ${x.message}`)
+      ].join('\n')).join('\n\n');
+      try { await navigator.clipboard.writeText(text); e.target.textContent = '✔ Скопировано'; }
+      catch (_) { e.target.textContent = 'Не удалось скопировать'; }
+    };
   };
   draw();
-  ov.foot.innerHTML = `<div class="row gap"><button type="button" class="btn ghost" data-clear>🧹 Очистить логи</button><button type="button" class="btn" data-copy-all>📋 Скопировать всё</button></div><button type="button" class="btn primary" data-close>Закрыть</button>`;
+  const unsub = onTaskChange(() => {
+    if (!document.body.contains(root)) { unsub(); return; }
+    const fold = root.closest('details');
+    if (!fold || fold.open) draw();
+  });
+  return unsub;
+}
+
+/** Логи скриптов в отдельном окне. */
+export function openTaskJournal() {
+  const ov = openOverlay({ title: '📄 Логи скриптов', wide: true });
+  const unsub = mountTaskJournal(ov.body);
+  ov.foot.innerHTML = '<button type="button" class="btn primary" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-clear]').onclick = () => {
-    if (!confirmDialog('Очистить логи скриптов? Завершённые записи будут удалены.')) return;
-    tasks = tasks.filter(t => t.status === 'running'); saveJournal(); draw(); renderDock();
-  };
-  ov.foot.querySelector('[data-copy-all]').onclick = async (e) => {
-    const text = rowsOf().map(t => [
-      `=== ${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')} — ${t.summary || t.status} ===`,
-      ...t.entries.map(x => `${timeOf(x.at)} ${LEVEL_ICON[x.level] || '•'} ${x.message}`)
-    ].join('\n')).join('\n\n');
-    try { await navigator.clipboard.writeText(text); e.target.textContent = '✔ Скопировано'; }
-    catch (_) { e.target.textContent = 'Не удалось скопировать'; }
-  };
-  const unsub = onTaskChange(() => { if (document.body.contains(ov.el)) draw(); });
   const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
 }
 

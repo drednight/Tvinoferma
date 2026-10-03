@@ -175,3 +175,6 @@
 .panel.fold > summary h3 { margin: 0 0 4px; }
 .panel.fold > summary p { margin: 0; }
 .panel.fold[open] > summary { margin-bottom: 12px; }
+
+/* Журнал скриптов внутри панели: прокрутка, чтобы настройки не раздувались */
+#task-journal-body .tl-journal { max-height: 360px; overflow-y: auto; }

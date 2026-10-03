@@ -165,19 +165,38 @@ describe('updater: проверка и установка', () => {
     expect(relaunchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('планировщик: первая проверка через 5 с и далее раз в 6 ч; учитывает настройку', async () => {
+  it('планировщик, режим startup: одна проверка через 5 с, дальше тишина', async () => {
     vi.useFakeTimers();
     checkMock.mockResolvedValue(null);
-    let enabled = true;
-    mod.startUpdateScheduler({ isEnabled: () => enabled });
+    mod.startUpdateScheduler({ getMode: () => 'startup', getLastChecked: () => null });
     await vi.advanceTimersByTimeAsync(mod.FIRST_CHECK_DELAY_MS - 1);
     expect(checkMock).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(checkMock).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(mod.UPDATE_CHECK_INTERVAL_MS);
-    expect(checkMock).toHaveBeenCalledTimes(2);
-    enabled = false;
-    await vi.advanceTimersByTimeAsync(mod.UPDATE_CHECK_INTERVAL_MS);
+    await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+    expect(checkMock).toHaveBeenCalledTimes(1);
+    mod.stopUpdateScheduler();
+  });
+
+  it('планировщик, режим never: ничего не проверяет', async () => {
+    vi.useFakeTimers();
+    mod.startUpdateScheduler({ getMode: () => 'never', getLastChecked: () => null });
+    await vi.advanceTimersByTimeAsync(2 * 24 * 60 * 60 * 1000);
+    expect(checkMock).not.toHaveBeenCalled();
+    mod.stopUpdateScheduler();
+  });
+
+  it('планировщик, режим daily: догоняет пропущенное при запуске и срабатывает в полночь', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 7, 23, 50, 0));
+    let last = new Date(2026, 9, 6, 12, 0, 0).toISOString();   // вчера — срок пропущен
+    checkMock.mockImplementation(async () => { last = new Date().toISOString(); return null; });
+    mod.startUpdateScheduler({ getMode: () => 'daily', getLastChecked: () => last });
+    await vi.advanceTimersByTimeAsync(mod.FIRST_CHECK_DELAY_MS);
+    expect(checkMock).toHaveBeenCalledTimes(1);          // надогнали
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);    // все ещё до полуночи
+    expect(checkMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);    // перешли в 00:00
     expect(checkMock).toHaveBeenCalledTimes(2);
     mod.stopUpdateScheduler();
   });

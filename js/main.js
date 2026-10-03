@@ -7,6 +7,8 @@ import { hydrateSecrets } from './core/secrets.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
 import { startUpdateScheduler } from './desktop/updater.js';
+import { resolveUpdateMode } from './desktop/updateSchedule.js';
+import { subscribeUpdate, setUpdateState } from './desktop/updateState.js';
 import { initUpdateUi } from './desktop/updateUi.js';
 import { initParserHealthUi } from './settings/parserHealthUi.js';
 import { startFreshnessTicker } from './core/freshness.js';
@@ -166,8 +168,21 @@ async function boot() {
     initUpdateUi();
     initParserHealthUi();
     startFreshnessTicker(() => state.settings);   // «5 мин назад» пересчитывается раз в минуту
+    // Время последней успешной проверки хранится в настройках, чтобы расписание переживало перезапуск
+    const savedCheck = state.settings?.updates?.lastCheckedAt;
+    if (savedCheck) setUpdateState({ lastCheckedAt: savedCheck });
+    subscribeUpdate((s) => {
+      if ((s.status === 'uptodate' || s.status === 'available') && s.lastCheckedAt
+        && s.lastCheckedAt !== state.settings.updates?.lastCheckedAt) {
+        state.settings.updates = { ...state.settings.updates, lastCheckedAt: s.lastCheckedAt };
+        persist();
+      }
+    });
     if (isTauri()) {
-      startUpdateScheduler({ isEnabled: () => state.settings?.updates?.checkOnStartup !== false });
+      startUpdateScheduler({
+        getMode: () => resolveUpdateMode(state.settings),
+        getLastChecked: () => state.settings?.updates?.lastCheckedAt
+      });
     }
 
   } catch (error) {
@@ -233,7 +248,7 @@ function renderActiveTab(sectionName) {
   }
 }
 
-/** Переключить вкладку программно (горячие клавиши). */
+/** Переключить вкладку ��рограммно (горячие клавиши). */
 function switchTab(sectionName) {
   document.querySelector(`.tab[data-tab="${sectionName}"]`)?.click();
 }

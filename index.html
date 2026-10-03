@@ -203,18 +203,29 @@
           </div>
         </div>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>Резервные копии</h3>
-          <div class="row gap" style="margin-bottom: 12px;">
-            <button id="save-now-btn" class="btn">💾 Сохранить сейчас</button>
-            <button id="create-backup-btn" class="btn">☁️ Создать бэкап</button>
-            <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
-          </div>
-          <div id="backup-list" class="list compact"></div>
+        <div class="row gap" style="margin-bottom: 16px;">
+          <button id="save-now-btn" class="btn" title="Записать текущие данные в state.json прямо сейчас">💾 Сохранить сейчас</button>
         </div>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>Перенос данных</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>☁️ Резервные копии</h3>
+            <p class="muted" id="backup-summary">Загрузка списка резервных копий…</p>
+          </summary>
+          <div class="row gap" style="margin-bottom: 12px;">
+            <button id="create-backup-btn" class="btn" title="Сохранить снимок данных в отдельный файл">☁️ Создать бэкап</button>
+            <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
+            <button id="all-backups-btn" class="btn" hidden>📚 Полный список бэкапов</button>
+          </div>
+          <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
+          <div id="backup-list" class="list compact"></div>
+        </details>
+
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>📦 Перенос данных</h3>
+            <p class="muted">Экспорт в JSON (полный и выборочный) и импорт с сравнением карточек.</p>
+          </summary>
           <div class="row gap" style="margin-bottom: 12px;">
             <button id="export-all-btn" class="btn">📤 Экспорт всех данных (JSON)</button>
             <button id="advanced-export-btn" class="btn primary">
@@ -224,7 +235,7 @@
               📥 Импорт JSON
               <input id="import-file" type="file" accept="application/json,.json" hidden />
             </label>
-          </div>
+          </details>
           <p class="muted">
             • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
             • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
@@ -232,16 +243,14 @@
           </p>
         </div>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>📄 Логи скриптов</h3>
-          <div class="setting-row">
-            <div>
-              <strong>Логи автоматических скриптов</strong>
-              <p class="muted">Проверка авторизации, обновление балансов, поиск и сверка марафонов. У каждого запуска есть подробный лог по шагам: если что-то пошло не так, откройте запись, нажмите «Скопировать лог» и отправьте разработчику. Пароли и почты в логи не попадают.</p>
-            </div>
-            <button id="open-task-journal-btn" class="btn">📄 Открыть логи</button>
-          </div>
-        </div>
+        <details class="panel fold" id="task-journal-panel" style="margin-bottom: 16px;">
+          <summary>
+            <h3>📄 Логи скриптов</h3>
+            <p class="muted" id="task-journal-summary">Записей пока нет: они появятся после первых проверок.</p>
+          </summary>
+          <p class="muted" style="margin-bottom: 8px;">Проверка авторизации, обновление балансов, поиск и сверка марафонов. Если что-то пошло не так, откройте запись, нажмите «Скопировать лог» и отправьте разработчику. Пароли и почты в логи не попадают.</p>
+          <div id="task-journal-body"></div>
+        </details>
 
         <details class="panel fold" style="margin-bottom: 16px;">
           <summary>
@@ -274,8 +283,11 @@
           </div>
         </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>🔒 Безопасность</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>🔒 Безопасность</h3>
+            <p class="muted">Хранение email, паролей и телефонов в хранилище учётных данных ОС.</p>
+          </summary>
           <div class="setting-row">
             <div>
               <strong>Учётные данные в хранилище ОС</strong>
@@ -283,10 +295,13 @@
             </div>
             <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
           </div>
-        </div>
+        </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>⚡ Скрипты</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>⚡ Скрипты</h3>
+            <p class="muted">Сколько окон открывать одновременно и сколько раз повторять при ошибке.</p>
+          </summary>
           <div class="setting-row">
             <div>
               <strong>Одновременно открытых окон</strong>
@@ -301,10 +316,13 @@
             </div>
             <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
           </div>
-        </div>
+        </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>🔔 Уведомления</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>🔔 Уведомления</h3>
+            <p class="muted">Какие системные напоминания показывать и кнопка проверки.</p>
+          </summary>
           <div class="settings-checks">
             <label><input type="checkbox" data-setting="notifications.enabled" /> Системные уведомления</label>
             <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
@@ -315,10 +333,13 @@
           <div class="row gap" style="margin-top: 12px;">
             <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
           </div>
-        </div>
+        </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>🖥 Трей и фоновые проверки</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>🖥 Трей и фоновые проверки</h3>
+            <p class="muted">Закрытие окна в трей и автоматическая проверка входа в фоне.</p>
+          </summary>
           <div class="settings-checks">
             <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
             <label>Фоновая проверка входа:
@@ -331,26 +352,45 @@
               </select>
             </label>
           </div>
-        </div>
+        </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>⬆️ Обновления</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>⬆️ Обновления</h3>
+            <p class="muted">Версия <span id="app-version">—</span> · проверка вручную и по расписанию.</p>
+          </summary>
           <div class="setting-row">
             <div>
-              <strong>Версия <span id="app-version">—</span></strong>
               <p class="muted" id="update-status">Обновления скачиваются из GitHub Releases.</p>
-              <p class="muted" id="update-checked-at" style="font-size:0.8rem; margin-top:2px;"></p>            </div>
+              <p class="muted" id="update-checked-at" style="font-size:0.8rem; margin-top:2px;"></p>
+              <p class="muted" id="update-next-check" style="font-size:0.8rem; margin-top:2px;"></p>
+            </div>
             <div class="row gap">
-              <label class="switch-row"><input type="checkbox" data-setting="updates.checkOnStartup" /> Проверять при запуске</label>
+              <button id="check-updates-btn" class="btn" type="button">Проверить обновления</button>
               <button id="install-update-btn" class="btn primary" type="button" hidden></button>
             </div>
           </div>
-        </div>
+          <div class="setting-row">
+            <div>
+              <strong>Автоматическая проверка</strong>
+              <p class="muted">Ежедневная — в 00:00, еженедельная — по понедельникам в 00:00. Если программа была закрыта, проверка пройдёт при следующем запуске.</p>
+            </div>
+            <select data-setting="updates.mode" data-value-type="string">
+              <option value="startup">При запуске программы</option>
+              <option value="daily">Ежедневно (00:00)</option>
+              <option value="weekly">Еженедельно (пн, 00:00)</option>
+              <option value="never">Не проверять автоматически</option>
+            </select>
+          </div>
+        </details>
 
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>⌨️ Горячие клавиши</h3>
+        <details class="panel fold" style="margin-bottom: 16px;">
+          <summary>
+            <h3>⌨️ Горячие клавиши</h3>
+            <p class="muted">Список сочетаний клавиш приложения.</p>
+          </summary>
           <div id="hotkeys-list" class="hotkeys-list"></div>
-        </div>
+        </details>
 
         <div class="panel" style="border-color: rgba(247, 118, 142, 0.3);">
           <h3 style="color: var(--danger);">Опасные действия</h3>

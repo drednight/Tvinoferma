@@ -9,19 +9,26 @@ import { runReminderCheck } from '../desktop/notifications.js';
 import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
-import { openTaskJournal } from '../core/taskLog.js';
+import { mountTaskJournal, taskJournalSummary, onTaskChange } from '../core/taskLog.js';
+import { openOverlay } from '../modules/marathons/overlay.js';
 import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
+import { rescheduleUpdates } from '../desktop/updater.js';
+import { refreshUpdateSchedule } from '../desktop/updateUi.js';
+import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 
-async function refreshBackups() {
+export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
+
+/** Tauri отдаёт { name, createdAt, size }, браузерный адаптер — строки; возвращаем от новых к старым. */
+async function loadBackups() {
   const adapter = getAdapter();
-  const listEl = document.getElementById('backup-list');
-  if (!adapter || !listEl) return;
+  if (!adapter) return [];
+  const list = (await adapter.listBackups()).map(b => typeof b === 'string' ? { name: b } : b);
+  return list.sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0) || String(y.name).localeCompare(String(x.name)));
+}
 
-  try {
-    // Tauri отдаёт { name, createdAt, size }, браузерный адаптер — строки
-    const backups = (await adapter.listBackups()).map(b => typeof b === 'string' ? { name: b } : b);
-    listEl.innerHTML = backups.length
-      ? backups.map(({ name, createdAt, size }) => `
+function backupRowsHtml(backups) {
+  return backups.length
+    ? backups.map(({ name, createdAt, size }) => `
           <div class="backup-item">
             <div class="meta">
               <strong>${createdAt ? escapeHtml(new Date(createdAt).toLocaleString('ru-RU')) : escapeHtml(name)}</strong>
@@ -33,10 +40,44 @@ async function refreshBackups() {
             </div>
           </div>
         `).join('')
-      : '<div class="empty-state">Нет резервных копий.</div>';
+    : '<div class="empty-state">Нет резервных копий.</div>';
+}
+
+let fullBackupsOverlay = null;
+
+async function refreshBackups() {
+  const listEl = document.getElementById('backup-list');
+  const summaryEl = document.getElementById('backup-summary');
+  const allBtn = document.getElementById('all-backups-btn');
+  if (!listEl) return;
+
+  try {
+    const backups = await loadBackups();
+    listEl.innerHTML = backupRowsHtml(backups.slice(0, BACKUPS_SHOWN));
+    if (allBtn) {
+      allBtn.hidden = backups.length <= BACKUPS_SHOWN;
+      allBtn.textContent = `📚 Полный список бэкапов (${backups.length})`;
+    }
+    if (summaryEl) {
+      const last = backups[0];
+      summaryEl.textContent = backups.length
+        ? `Копий: ${backups.length}${last?.createdAt ? ` · последняя: ${new Date(last.createdAt).toLocaleString('ru-RU')}` : ''}`
+        : 'Резервных копий пока нет: нажмите «Создать бэкап».';
+    }
+    if (fullBackupsOverlay) fullBackupsOverlay.body.innerHTML = `<div class="list compact" id="full-backup-list">${backupRowsHtml(backups)}</div>`;
   } catch (error) {
     listEl.innerHTML = `<div class="empty-state">Ошибка: ${escapeHtml(error.message || error)}</div>`;
   }
+}
+
+/** Окно со всеми сохранёнными бэкапами (те же кнопки «Восстановить» / «Удалить»). */
+async function openFullBackups() {
+  if (fullBackupsOverlay) return;
+  const ov = openOverlay({ title: '📚 Полный список бэкапов', wide: true, onClose: () => { fullBackupsOverlay = null; } });
+  fullBackupsOverlay = ov;
+  ov.foot.innerHTML = '<button type="button" class="btn primary" data-close>Закрыть</button>';
+  ov.foot.querySelector('[data-close]').onclick = () => ov.close();
+  await refreshBackups();
 }
 
 function downloadJson(data, filename) {
@@ -102,6 +143,7 @@ export async function renderSettings() {
   document.querySelectorAll('[data-setting]').forEach(el => {
     const value = getSetting(el.dataset.setting);
     if (el.type === 'checkbox') el.checked = value !== false && value !== undefined;
+    else if (el.dataset.setting === 'updates.mode') el.value = resolveUpdateMode(state.settings);
     else el.value = value ?? '';
   });
   updateHoursHints();
@@ -142,6 +184,7 @@ function bindSettingInputs() {
       const path = el.dataset.setting;
       let value;
       if (el.type === 'checkbox') value = el.checked;
+      else if (el.dataset.valueType === 'string') value = el.value;
       else if (el.type === 'number' || el.tagName === 'SELECT') {
         const n = Number(el.value);
         const min = el.min !== '' ? Number(el.min) : -Infinity;
@@ -152,7 +195,9 @@ function bindSettingInputs() {
         updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
+      if (path === 'updates.mode') setSetting('updates.checkOnStartup', value !== 'never');   // совместимость со старыми версиями
       await persist();
+      if (path === 'updates.mode') { refreshUpdateSchedule(); rescheduleUpdates(); }
       if (path.startsWith('tray.')) await applyDesktopSettings();
       if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings);   // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
@@ -170,7 +215,17 @@ export function bindSettings() {
     toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
   });
 
-  document.getElementById('open-task-journal-btn')?.addEventListener('click', () => openTaskJournal());
+  // Логи скриптов: журнал рисуется при первом раскрытии панели, заголовок обновляется всегда
+  const journalPanel = document.getElementById('task-journal-panel');
+  const journalBody = document.getElementById('task-journal-body');
+  const journalSummary = document.getElementById('task-journal-summary');
+  const refreshJournalSummary = () => { if (journalSummary) journalSummary.textContent = taskJournalSummary(); };
+  refreshJournalSummary();
+  onTaskChange(refreshJournalSummary);
+  let journalMounted = false;
+  journalPanel?.addEventListener('toggle', () => {
+    if (journalPanel.open && !journalMounted && journalBody) { journalMounted = true; mountTaskJournal(journalBody); }
+  });
 
   // Save Now
   document.getElementById('save-now-btn')?.addEventListener('click', async () => {
@@ -194,11 +249,13 @@ export function bindSettings() {
 
   // Refresh Backups
   document.getElementById('refresh-backups-btn')?.addEventListener('click', refreshBackups);
+  document.getElementById('all-backups-btn')?.addEventListener('click', openFullBackups);
 
   // Backup Actions (Delegate)
-  document.getElementById('backup-list')?.addEventListener('click', async (e) => {
-    const restoreBtn = e.target.closest('[data-backup-restore]');
-    const deleteBtn = e.target.closest('[data-backup-delete]');
+  document.addEventListener('click', async (e) => {
+    const restoreBtn = e.target.closest?.('[data-backup-restore]');
+    const deleteBtn = e.target.closest?.('[data-backup-delete]');
+    if (!restoreBtn && !deleteBtn) return;
     const adapter = getAdapter();
     if (!adapter) return;
 
