@@ -76,26 +76,10 @@ describe('panelBootstrap', () => {
     expect(document.querySelectorAll('#__tf_login_panel__').length).toBe(1);
   });
 
-  it('кнопки действий переходят на tf-panel://<действие>, «Промокод» отключён', () => {
-    const nav = vi.fn();
-    panelBootstrap(data, nav);
-    const btn = (t) => [...shadow.querySelectorAll('button')].find(b => b.textContent.includes(t));
-    expect(btn('Промокод').disabled).toBe(true);
-    btn('Баланс').click();
-    expect(nav).toHaveBeenCalledWith('tf-panel://balance');
-    expect(shadow.textContent).toContain('Запрос отправлен');
-    btn('Партии').click();
-    expect(nav).toHaveBeenLastCalledWith('tf-panel://parties');
-    btn('Промокод').click();
-    expect(nav).toHaveBeenCalledTimes(2);
-  });
-
-  it('ответ приложения показывается как текст, HTML не разбирается', () => {
-    panelBootstrap(data, vi.fn());
-    const host = document.getElementById('__tf_login_panel__');
-    host.dispatchEvent(new CustomEvent('tf-panel-notify', { detail: { text: '💰 28,5 <b>x</b>' } }));
-    expect(shadow.querySelector('.status').textContent).toBe('💰 28,5 <b>x</b>');
-    expect(shadow.querySelector('.status b')).toBeNull();
+  it('в панели нет кнопок действий (баланс, партии, промокод)', () => {
+    panelBootstrap(data);
+    const text = [...shadow.querySelectorAll('button')].map(b => b.textContent).join(' ');
+    expect(text).not.toMatch(/Баланс|Партии|Промокод/);
   });
 
   it('buildPanelScript — самодостаточный скрипт с данными', () => {

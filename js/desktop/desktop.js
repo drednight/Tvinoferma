@@ -88,7 +88,5 @@ export async function initDesktop() {
   if (!window.__TAURI_INTERNALS__) return;
   const { listen } = await import('@tauri-apps/api/event');
   await listen('tray-action', (e) => runScript(e.payload));
-  const { initPanelActions } = await import('./panelActions.js');
-  await initPanelActions();
   await applyDesktopSettings();
 }

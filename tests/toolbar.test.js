@@ -1,14 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { toolbarBootstrap, buildPanelScript, SITE_LINKS } from '../js/desktop/loginPanel.js';
+import { toolbarBootstrap, buildPanelScript, SITE_LINKS, TOOLBAR_HEIGHT } from '../js/desktop/loginPanel.js';
 
-// Issue #54-3: тулбар навигации в окне браузера персонажа
+// Issue #54-3: тулбар навигации сверху окна браузера персонажа
 let shadow;
 let origAttach;
 let api;
 
 beforeEach(() => {
   document.body.innerHTML = '';
-  localStorage.clear();
+  document.documentElement.removeAttribute('style');
   origAttach = origAttach || Element.prototype.attachShadow;
   const orig = origAttach;
   Element.prototype.attachShadow = function (init) { shadow = orig.call(this, { ...init, mode: 'open' }); return shadow; };
@@ -16,12 +16,21 @@ beforeEach(() => {
 });
 
 const btn = (title) => [...shadow.querySelectorAll('button')].find(b => b.title === title);
+const labels = () => [...shadow.querySelectorAll('button')].map(b => b.textContent);
 
 describe('SITE_LINKS', () => {
+  it('ровно три раздела: Домой, МДМ, Перевод подарков', () => {
+    expect(SITE_LINKS.map(l => l[0])).toEqual(['🏠 Домой', 'МДМ', '🎁 Перевод подарков']);
+    expect(SITE_LINKS.map(l => l[1])).toEqual([
+      'https://pwonline.ru/',
+      'https://pwonline.ru/chests2.php',
+      'https://pwonline.ru/promo_items.php'
+    ]);
+  });
+
   it('ведут только на pwonline.ru по https и без параметров', () => {
-    SITE_LINKS.forEach(([label, url, path]) => {
+    SITE_LINKS.forEach(([, url, path]) => {
       const u = new URL(url);
-      expect(label).toBeTruthy();
       expect(u.protocol).toBe('https:');
       expect(u.hostname).toBe('pwonline.ru');
       expect(u.pathname).toBe(path);
@@ -31,49 +40,39 @@ describe('SITE_LINKS', () => {
 });
 
 describe('toolbarBootstrap', () => {
-  it('рисует навигацию и быстрые ссылки', () => {
-    toolbarBootstrap(SITE_LINKS, api);
-    expect(document.getElementById('__tf_toolbar__')).not.toBeNull();
-    expect(btn('Назад')).toBeTruthy();
-    expect(btn('Вперёд')).toBeTruthy();
-    expect(btn('Обновить страницу')).toBeTruthy();
-    expect(shadow.textContent).toContain('Сундуки');
-    expect(shadow.textContent).toContain('Марафон');
+  it('остаются только назад / вперёд / обновить, Домой, МДМ, Перевод подарков', () => {
+    toolbarBootstrap(SITE_LINKS, TOOLBAR_HEIGHT, api);
+    expect(labels()).toEqual(['◀', '▶', '⟳', '🏠 Домой', 'МДМ', '🎁 Перевод подарков']);
+    expect(shadow.textContent).not.toMatch(/Марафон|Сундуки|Профиль|Новости|Баланс|Промокод|pwonline\.ru/);
   });
 
   it('кнопки вызывают навигацию', () => {
-    toolbarBootstrap(SITE_LINKS, api);
+    toolbarBootstrap(SITE_LINKS, TOOLBAR_HEIGHT, api);
     btn('Назад').click();
     btn('Вперёд').click();
     btn('Обновить страницу').click();
     btn('https://pwonline.ru/chests2.php').click();
+    btn('https://pwonline.ru/promo_items.php').click();
     expect(api.back).toHaveBeenCalledTimes(1);
     expect(api.forward).toHaveBeenCalledTimes(1);
     expect(api.reload).toHaveBeenCalledTimes(1);
-    expect(api.go).toHaveBeenCalledWith('https://pwonline.ru/chests2.php');
+    expect(api.go).toHaveBeenNthCalledWith(1, 'https://pwonline.ru/chests2.php');
+    expect(api.go).toHaveBeenNthCalledWith(2, 'https://pwonline.ru/promo_items.php');
   });
 
-  it('показывает домен; не pwonline.ru помечается как посторонний', () => {
-    toolbarBootstrap(SITE_LINKS, api);
-    const site = shadow.querySelector('.site');
-    expect(site.textContent).toBe(window.location.hostname);
-    expect(site.classList.contains('foreign')).toBe(true);   // в тесте адрес localhost
-  });
-
-  it('сворачивается в значок и запоминает состояние', () => {
-    toolbarBootstrap(SITE_LINKS, api);
-    btn('Свернуть').click();
-    expect(localStorage.getItem('__tf_tb_collapsed')).toBe('1');
-    expect(btn('Назад')).toBeUndefined();
-    toolbarBootstrap(SITE_LINKS, api);   // «новая страница»: остаётся свёрнутым
-    expect(btn('Назад')).toBeUndefined();
-    btn('Развернуть навигацию').click();
-    expect(btn('Назад')).toBeTruthy();
+  it('полоса сверху на всю ширину, сайт сдвигается вниз на её высоту', () => {
+    toolbarBootstrap(SITE_LINKS, TOOLBAR_HEIGHT, api);
+    const css = document.getElementById('__tf_toolbar__').style.cssText;
+    expect(css).toContain('position: fixed');
+    expect(css).toMatch(/top: 0(px)?/);
+    expect(css).toMatch(/left: 0(px)?/);
+    expect(css).toMatch(/right: 0(px)?/);
+    expect(document.documentElement.style.getPropertyValue('margin-top')).toBe(`${TOOLBAR_HEIGHT}px`);
   });
 
   it('повторный запуск заменяет тулбар, а не дублирует', () => {
-    toolbarBootstrap(SITE_LINKS, api);
-    toolbarBootstrap(SITE_LINKS, api);
+    toolbarBootstrap(SITE_LINKS, TOOLBAR_HEIGHT, api);
+    toolbarBootstrap(SITE_LINKS, TOOLBAR_HEIGHT, api);
     expect(document.querySelectorAll('#__tf_toolbar__').length).toBe(1);
   });
 });
