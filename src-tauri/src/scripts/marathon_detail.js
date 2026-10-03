@@ -7,22 +7,22 @@
         window.location.hash = 'TF_DETAIL_V4_' + encodeURIComponent(JSON.stringify(payload));
     }
 
+    const TF = window.__TF; // селекторы и тексты: selectors.json (marathon.*, common.*)
+    if (!TF) { reportResult(null, 'config_missing'); return; }
     try {
         // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
-        if (document.readyState === 'loading' ||
-            (document.title || '').includes('Проверка безопасности') ||
-            document.querySelector('script[src*="bp_chl"]')) {
+        if (TF.isChallenge()) {
             reportResult(null, 'challenge');
             return;
         }
         const bodyText = document.body.innerText || "";
-        if (bodyText.includes("Вы не авторизованы")) {
+        if (TF.has(bodyText, 'common.notLoggedIn')) {
              reportResult(null, 'not_logged_in');
              return;
         }
 
         // 1. Название основного марафона
-        const headerEl = document.querySelector('h2');
+        const headerEl = TF.q('marathon.heading');
         const marathonName = headerEl ? headerEl.innerText.trim() : "Неизвестный Марафон";
 
         // 2. Парсинг этапов. Формат сайта:
@@ -71,7 +71,7 @@
             return found;
         }
 
-        const legendBlock = document.querySelector('.status_legend');
+        const legendBlock = TF.q('marathon.legend');
         const legendText = norm(legendBlock ? legendBlock.innerText : '');
         let stages = parseStages(legendText);
         debug.push(legendBlock ? `Блок сроков найден (${legendText.length} симв.), этапов: ${stages.length}` : 'Блок сроков (.status_legend) не найден на странице');
@@ -88,14 +88,14 @@
         });
 
         // 3. Парсинг заданий
-        const container = document.querySelector('.season_marathon');
+        const container = TF.q('marathon.container');
         const quests = [];
 
         if (container) {
-            const questBlocks = container.querySelectorAll(':scope > div');
+            const questBlocks = TF.qa('marathon.quest', container);
             questBlocks.forEach(block => {
-                const titleEl = block.querySelector('b');
-                const progressSpan = block.querySelector('.progress span');
+                const titleEl = TF.q('marathon.questTitle', block);
+                const progressSpan = TF.q('marathon.progressValue', block);
 
                 let totalGoal = 0;
                 if (progressSpan) {
@@ -114,7 +114,7 @@
                     const associatedStageKey = monthInTitle ? stageKeyOf(monthInTitle[1]) : null;
 
                     // Описание задания: все абзацы блока (у некоторых заданий их два: условие и список)
-                    const cleanDescription = Array.from(block.querySelectorAll('p'))
+                    const cleanDescription = TF.qa('marathon.description', block)
                         .map(p => norm(p.innerText || p.textContent))
                         .filter(Boolean).join('\n');
 

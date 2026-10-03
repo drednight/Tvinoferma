@@ -4,24 +4,24 @@
         const payload = { data: data, error: error ? String(error) : null };
         window.location.hash = 'TF_TITLE_V4_' + encodeURIComponent(JSON.stringify(payload));
     }
+    const TF = window.__TF; // селекторы и тексты: selectors.json (titles.*, common.*)
+    if (!TF) { report(null, 'config_missing'); return; }
     try {
     // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
-    if (document.readyState === 'loading' ||
-        (document.title || '').includes('Проверка безопасности') ||
-        document.querySelector('script[src*="bp_chl"]')) {
+    if (TF.isChallenge()) {
         report(null, 'challenge');
         return;
     }
         const bodyText = document.body.innerText || "";
-        if (bodyText.includes("Вы не авторизованы")) {
+        if (TF.has(bodyText, 'common.notLoggedIn')) {
              report(null, 'not_logged_in');
              return;
         }
-        const headers = document.querySelectorAll('h2');
+        const headers = TF.qa('titles.heading');
         let marathonName = null;
         for (let h of headers) {
             const text = h.innerText.trim();
-            if (text && text.length > 3 && !text.includes('Новости')) {
+            if (text && text.length > 3 && !TF.has(text, 'titles.skipHeading')) {
                 marathonName = text;
                 break;
             }

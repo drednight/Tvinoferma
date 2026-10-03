@@ -4,17 +4,17 @@
     const payload = { data: data, error: error ? String(error) : null };
     window.location.hash = 'TF_AUTH_V2_' + encodeURIComponent(JSON.stringify(payload));
   }
+  const TF = window.__TF; // селекторы и тексты: selectors.json
+  if (!TF) { report(null, 'config_missing'); return; }
   try {
-    if (document.readyState === 'loading' ||
-        (document.title || '').includes('Проверка безопасности') ||
-        document.querySelector('script[src*="bp_chl"]')) {
+    if (TF.isChallenge()) {
       report(null, 'challenge');
       return;
     }
     const bodyText = (document.body && document.body.innerText) || '';
-    const nicknameSpan = document.querySelector('.info__forumname');
-    if (nicknameSpan && bodyText.includes('Добро пожаловать')) { report('online', null); return; }
-    if (bodyText.includes('Вы не авторизованы')) { report('offline', 'not_logged_in'); return; }
+    const nicknameSpan = TF.q('auth.nick');
+    if (nicknameSpan && TF.has(bodyText, 'auth.welcome')) { report('online', null); return; }
+    if (TF.has(bodyText, 'common.notLoggedIn')) { report('offline', 'not_logged_in'); return; }
     // Страница ещё не дорисована — Rust повторит скрипт
     report(null, 'pending');
   } catch (e) {

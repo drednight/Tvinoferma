@@ -4,23 +4,23 @@
         const payload = { data: data, error: error ? String(error) : null };
         window.location.hash = 'TF_NEWS_V1_' + encodeURIComponent(JSON.stringify(payload));
     }
+    const TF = window.__TF; // селекторы, тексты и регулярные выражения: selectors.json (news.*, common.*)
+    if (!TF) { report(null, 'config_missing'); return; }
     try {
-        if (document.readyState === 'loading' ||
-            (document.title || '').includes('Проверка безопасности') ||
-            document.querySelector('script[src*="bp_chl"]')) {
+        if (TF.isChallenge()) {
             report(null, 'challenge');
             return;
         }
-        const art = document.querySelector('.js-mediator-article') || document.querySelector('#content_body');
+        const art = TF.q('news.article');
         if (!art) { report(null, 'no_article'); return; }
         const clone = art.cloneNode(true);
-        clone.querySelectorAll('img, script, style, iframe, .img_item_small_cont > span').forEach(e => e.remove());
+        TF.qa('news.junk', clone).forEach(e => e.remove());
         clone.querySelectorAll('*').forEach(e => ['style', 'width', 'height', 'border', 'class'].forEach(a => {
             if (a !== 'class' || !e.classList.contains('click_spoiler')) e.removeAttribute(a);
         }));
-        const h1 = document.querySelector('#content_top h1') || document.querySelector('h1');
+        const h1 = TF.q('news.title');
         const text = document.body.innerText || '';
-        const dm = text.match(/Обсудить\s+(\d{2}\.\d{2}\.\d{4})/) || text.match(/(\d{2}\.\d{2}\.\d{4})/);
+        const dm = TF.match('news.date', text);
         report({
             title: h1 ? h1.textContent.replace(/\s+/g, ' ').trim() : document.title.split(' - ')[0],
             publishedAt: dm ? dm[1] : null,

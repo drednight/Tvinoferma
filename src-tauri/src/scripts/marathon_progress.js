@@ -5,32 +5,32 @@
         const payload = { data: data, error: error ? String(error) : null };
         window.location.hash = 'TF_MARATHON_DATA_' + encodeURIComponent(JSON.stringify(payload));
     }
+    const TF = window.__TF; // селекторы и тексты: selectors.json (marathon.*, common.*)
+    if (!TF) { reportResult(null, 'config_missing'); return; }
     try {
         // Сайт показывает «Проверку безопасности» (anti-bot) — просим Rust подождать и повторить
-        if (document.readyState === 'loading' ||
-            (document.title || '').includes('Проверка безопасности') ||
-            document.querySelector('script[src*="bp_chl"]')) {
+        if (TF.isChallenge()) {
             reportResult(null, 'challenge');
             return;
         }
         const bodyText = document.body.innerText || "";
-        if (bodyText.includes("Вы не авторизованы") || bodyText.includes("не имеете доступа")) {
+        if (TF.has(bodyText, ['common.notLoggedIn', 'marathon.noAccess'])) {
             reportResult(null, 'not_logged_in');
             return;
         }
-        const marathonContainer = document.querySelector('.season_marathon');
+        const marathonContainer = TF.q('marathon.container');
         if (!marathonContainer) {
             reportResult([], 'container_not_found');
             return;
         }
-        const questBlocks = marathonContainer.querySelectorAll(':scope > div');
+        const questBlocks = TF.qa('marathon.quest', marathonContainer);
         const results = [];
         questBlocks.forEach(block => {
-            const titleEl = block.querySelector('b');
+            const titleEl = TF.q('marathon.questTitle', block);
             const title = titleEl ? titleEl.innerText.trim() : "Unknown Quest";
-            const progressEl = block.querySelector('.progress span');
+            const progressEl = TF.q('marathon.progressValue', block);
             // Описание задания: все абзацы блока (у некоторых заданий их два)
-            const description = Array.from(block.querySelectorAll('p'))
+            const description = TF.qa('marathon.description', block)
                 .map(p => String(p.innerText || p.textContent || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim())
                 .filter(Boolean).join('\n');
             let completed = 0;

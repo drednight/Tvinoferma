@@ -4,6 +4,19 @@
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewWindow};
 
+/// Общий слой скриптов (`window.__TF`): поиск по списку селекторов с запасными вариантами, тексты, регулярные выражения.
+const COMMON_JS: &str = include_str!("scripts/common.js");
+/// Все селекторы, тексты и регулярные выражения парсеров. Правится здесь, а не в самих скриптах.
+const SELECTORS_JSON: &str = include_str!("scripts/selectors.json");
+/// Маркер в `common.js`, вместо которого подставляется `selectors.json`.
+const SELECTORS_MARKER: &str = "{} /*TF_SELECTORS*/";
+
+/// Собирает скрипт для выполнения на странице: `common.js` с подставленным `selectors.json` + сам скрипт.
+pub fn with_common(script: &str) -> String {
+    let common = COMMON_JS.replace(SELECTORS_MARKER, SELECTORS_JSON.trim());
+    format!("{}\n{}", common, script)
+}
+
 /// Шаг для журнала задач в интерфейсе (событие `tf-task-log`, scope = `char:<id>` | `scan` | `detail` | `news`).
 pub fn tf_log(app: &AppHandle, scope: &str, level: &str, message: impl Into<String>) {
     let message: String = message.into();
@@ -61,6 +74,7 @@ pub async fn eval_and_wait(
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let mut last_eval: Option<Instant> = None;
     let mut challenge_logged = false;
+    let full_script = with_common(script);
     tf_log(
         &app,
         scope,
@@ -76,7 +90,7 @@ pub async fn eval_and_wait(
             .map(|t| t.elapsed() >= Duration::from_millis(1500))
             .unwrap_or(true);
         if need_eval {
-            let _ = window.eval(script);
+            let _ = window.eval(&full_script);
             last_eval = Some(Instant::now());
         }
         tokio::time::sleep(Duration::from_millis(400)).await;
@@ -114,7 +128,7 @@ pub async fn eval_and_wait(
 
 #[cfg(test)]
 mod tests {
-    use super::read_hash_payload;
+    use super::{read_hash_payload, with_common, SELECTORS_JSON, SELECTORS_MARKER};
 
     #[test]
     fn reads_payload_from_hash() {
@@ -132,5 +146,46 @@ mod tests {
             Some("challenge")
         );
         assert!(read_hash_payload(url, "#TF_Y_").is_none());
+    }
+
+    #[test]
+    fn selectors_json_is_valid() {
+        let cfg: serde_json::Value =
+            serde_json::from_str(SELECTORS_JSON).expect("selectors.json — не JSON");
+        assert!(
+            cfg["version"].as_u64().unwrap_or(0) >= 1,
+            "нужна версия конфига"
+        );
+        for section in ["selectors", "texts", "regex"] {
+            let map = cfg[section]
+                .as_object()
+                .unwrap_or_else(|| panic!("нет раздела {section}"));
+            for (name, list) in map {
+                let list = list
+                    .as_array()
+                    .unwrap_or_else(|| panic!("{name}: ожидался список"));
+                assert!(!list.is_empty(), "{name}: пустой список");
+                assert!(
+                    list.iter()
+                        .all(|v| v.as_str().is_some_and(|s| !s.trim().is_empty())),
+                    "{name}: пустое значение"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn with_common_embeds_selectors_before_script() {
+        let full = with_common("(function(){ /* парсер */ })();");
+        assert!(
+            full.contains("\"balance.container\""),
+            "селекторы не подставлены"
+        );
+        assert!(!full.contains(SELECTORS_MARKER), "маркер остался в тексте");
+        assert!(full.contains("window.__TF = "), "нет общего слоя");
+        assert!(
+            full.ends_with("(function(){ /* парсер */ })();"),
+            "скрипт должен идти после общего слоя"
+        );
     }
 }

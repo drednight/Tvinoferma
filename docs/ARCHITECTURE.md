@@ -50,6 +50,8 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 | `commands/` | `state.json` (атомарная запись), резервные копии, пароли в хранилище ОС (`keyring`) |
 | `tray.rs` | Иконка в трее |
 | `scripts/*.js` | Скрипты, которые внедряются в страницы сайта (`include_str!`). Только читают DOM |
+| `scripts/selectors.json` | Все селекторы, тексты («Вы не авторизованы») и регулярные выражения парсеров: имя → список «основной, запасные…» |
+| `scripts/common.js` | Общий слой `window.__TF`: поиск по списку селекторов, проверка «Проверки безопасности». Перед каждым скриптом `parsers.rs` (`with_common`) подставляет в него `selectors.json` |
 | `automation/`, `injection.rs` | Заготовки (Issues #25, #26, #54), не подключены |
 
 ## Интерфейс (`js/`)
@@ -76,7 +78,7 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 
 ## Как добавить новый парсер
 
-1. Скрипт в `src-tauri/src/scripts/имя.js`: читает DOM, пишет `location.hash = 'TF_ИМЯ_V1_' + encodeURIComponent(JSON.stringify({ data, error }))`. Никаких кликов и отправки форм (см. [COMPLIANCE.md](COMPLIANCE.md)).
+1. Скрипт в `src-tauri/src/scripts/имя.js`: читает DOM через `window.__TF` (`TF.q('имя.элемент')`, `TF.has(текст, 'имя.фраза')`), селекторы и тексты добавляет в `selectors.json`; пишет `location.hash = 'TF_ИМЯ_V1_' + encodeURIComponent(JSON.stringify({ data, error }))`. Никаких кликов и отправки форм (см. [COMPLIANCE.md](COMPLIANCE.md)). Прямых `document.querySelector('…')` в скрипте быть не должно, тест `tests/selectorsConfig.test.js` это проверяет.
 2. Команда в Rust: `navigate_clean` → `eval_and_wait(…, "#TF_ИМЯ_V1_", таймаут, scope)`; зарегистрировать в `lib.rs`.
 3. Обёртка в `js/modules/…` + постановка в очередь `queue.js`.
 4. Сохранённая страница сайта в `tests/fixtures/` и тест, который прогоняет скрипт на ней (`tests/helpers/pageScript.js`), в том числе на странице с «изменённой вёрсткой»: парсер должен вернуть ошибку, а не пустой результат. Как делать фикстуры без личных данных: [FIXTURES.md](FIXTURES.md).

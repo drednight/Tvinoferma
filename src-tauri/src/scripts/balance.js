@@ -1,4 +1,5 @@
 // Баланс древних монет на chests2.php. Ответ: #TF_BAL_V5_<json> = { data: number|null, error }
+// Селекторы и тексты — в selectors.json (balance.*, common.*).
 (function () {
   /*PARSE_START*/
   function parseCoins(text) {
@@ -43,31 +44,29 @@
     const payload = { data: data, error: error ? String(error) : null };
     window.location.hash = 'TF_BAL_V5_' + encodeURIComponent(JSON.stringify(payload));
   }
+  const TF = window.__TF; // селекторы и тексты: selectors.json (common.js подставляется перед скриптом)
+  if (!TF) { report(null, 'config_missing'); return; }
   try {
-    if (document.readyState === 'loading' ||
-        (document.title || '').includes('Проверка безопасности') ||
-        document.querySelector('script[src*="bp_chl"]')) {
+    if (TF.isChallenge()) {
       report(null, 'challenge');
       return;
     }
     const bodyText = (document.body && document.body.innerText) || '';
     const href = window.location.href;
-    const isNotLoggedIn = bodyText.includes('Вы не авторизованы') ||
-      bodyText.includes('Для доступа к разделу необходимо войти') ||
-      bodyText.includes('Ошибка авторизации') ||
-      href.includes('login.php') || href.includes('vkplay');
+    const isNotLoggedIn = TF.has(bodyText, ['common.notLoggedIn', 'balance.notLoggedIn']) ||
+      TF.has(href, 'balance.notLoggedInUrl');
     if (isNotLoggedIn) { report(null, 'not_logged_in'); return; }
 
-    const pointsInfo = document.querySelector('.points_info');
+    const pointsInfo = TF.q('balance.container');
     if (!pointsInfo) { report(null, 'container_missing'); return; }
-    const strongTag = pointsInfo.querySelector('strong');
+    const strongTag = TF.q('balance.value', pointsInfo);
     if (!strongTag) { report(null, 'no_value_tag'); return; }
     // Баланс может быть дробным и с разделителями тысяч: 285, 28,5, 1 285,5 — см. parseCoins
     const value = parseCoins(strongTag.innerText);
     if (isNaN(value)) { report(null, 'parse_nan'); return; }
     // Ноль без признаков входа — скорее «сессия истекла», чем реальный нулевой баланс.
     // Признак входа на реальной странице: ник в шапке, ссылка <a href="/usercp.php"><strong>ник</strong></a>
-    const hasUser = document.querySelector('.user-nick, .header-user-name, [class*="username"], .info__forumname, a[href*="usercp.php"] > strong');
+    const hasUser = TF.q('balance.userMarker');
     if (value === 0 && !hasUser) {
       report(null, 'zero_no_user_session_expired');
       return;

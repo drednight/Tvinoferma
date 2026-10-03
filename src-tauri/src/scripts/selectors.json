@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "selectors": {
+    "common.challengeScript": ["script[src*=\"bp_chl\"]"],
+
+    "balance.container": [".points_info"],
+    "balance.value": ["strong"],
+    "balance.userMarker": [
+      ".user-nick",
+      ".header-user-name",
+      "[class*=\"username\"]",
+      ".info__forumname",
+      "a[href*=\"usercp.php\"] > strong"
+    ],
+
+    "auth.nick": [".info__forumname"],
+
+    "titles.heading": ["h2"],
+
+    "marathon.heading": ["h2"],
+    "marathon.legend": [".status_legend"],
+    "marathon.container": [".season_marathon"],
+    "marathon.quest": [":scope > div"],
+    "marathon.questTitle": ["b"],
+    "marathon.progressValue": [".progress span"],
+    "marathon.description": ["p"],
+
+    "news.article": [".js-mediator-article", "#content_body"],
+    "news.title": ["#content_top h1", "h1"],
+    "news.junk": ["img, script, style, iframe, .img_item_small_cont > span"]
+  },
+  "texts": {
+    "common.challengeTitle": ["Проверка безопасности"],
+    "common.notLoggedIn": ["Вы не авторизованы"],
+
+    "balance.notLoggedIn": [
+      "Для доступа к разделу необходимо войти",
+      "Ошибка авторизации"
+    ],
+    "balance.notLoggedInUrl": ["login.php", "vkplay"],
+
+    "auth.welcome": ["Добро пожаловать"],
+
+    "titles.skipHeading": ["Новости"],
+
+    "marathon.noAccess": ["не имеете доступа"]
+  },
+  "regex": {
+    "news.date": [
+      "Обсудить\\s+(\\d{2}\\.\\d{2}\\.\\d{4})",
+      "(\\d{2}\\.\\d{2}\\.\\d{4})"
+    ]
+  }
+}
