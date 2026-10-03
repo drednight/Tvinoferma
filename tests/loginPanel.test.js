@@ -76,6 +76,12 @@ describe('panelBootstrap', () => {
     expect(document.querySelectorAll('#__tf_login_panel__').length).toBe(1);
   });
 
+  it('в панели нет кнопок действий (баланс, партии, промокод)', () => {
+    panelBootstrap(data);
+    const text = [...shadow.querySelectorAll('button')].map(b => b.textContent).join(' ');
+    expect(text).not.toMatch(/Баланс|Партии|Промокод/);
+  });
+
   it('buildPanelScript — самодостаточный скрипт с данными', () => {
     const script = buildPanelScript(data);
     expect(script).toContain('"secret&1"');
