@@ -553,7 +553,7 @@ function renderBulkBar() {
     <span class="bulk-sep"></span>
     <button class="btn secondary small" data-bulk="auth" ${dis}>🔐 Проверить вход</button>
     <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
-    <button class="btn secondary small" data-bulk="promo" ${dis}>🎟 Промокод</button>
+    <button class="btn secondary small" data-bulk="promo" ${dis}>🎁 Промокод</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
     <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>

@@ -15,6 +15,7 @@ import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
+import { renderPromoLog } from '../modules/automation/promoLogView.js';
 
 export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
 
@@ -119,6 +120,9 @@ export async function renderSettings() {
 
   // Backups
   await refreshBackups();
+
+  // История промокодов
+  renderPromoLog();
 
   // Безопасность
   const vaultEl = document.getElementById('vault-status');

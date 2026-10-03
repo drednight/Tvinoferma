@@ -105,7 +105,7 @@
                         💰 Обновить балансы
                     </button>
                     <button class="dropdown-item" data-action="promo">
-                        🎟 Активировать промокод
+                        🎁 Активировать промокод
                     </button>
                     <!-- === НОВАЯ КНОПКА ДЛЯ МАРАФОНОВ === -->
                     <button class="dropdown-item" data-action="update-marathons">
@@ -350,6 +350,13 @@
             </div>
             <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
           </div>
+        </details>
+        <details class="panel fold" id="promo-log-panel">
+          <summary>
+            <h3>🎁 История промокодов</h3>
+            <p class="muted" id="promo-log-summary">Здесь хранятся введённые промокоды: дата первого ввода, награда, кому код введён, а кому нет и почему. Недействительные коды не сохраняются. Данные лежат только на этом компьютере.</p>
+          </summary>
+          <div id="promo-log-root"></div>
         </details>
         <details class="panel fold">
           <summary>

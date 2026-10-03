@@ -6,7 +6,7 @@
 //! - перед нажатием страница только читается (вход, код не отклонён, ровно одна кнопка);
 //! - кнопка нажимается ОДИН раз, повторов нет: поэтому `clicked = true` означает «заново запускать нельзя»;
 //! - режим `dry_run` доходит до осмотра страницы и не нажимает ничего;
-//! - код не пишется в журнал и в консоль.
+//! - код в консоль не пишется; награда со страницы успеха возвращается в `rewards`.
 
 use crate::parsers::{eval_and_wait, navigate_clean, tf_log, with_common};
 use crate::pool;
@@ -55,8 +55,11 @@ fn classify_inspect(res: Wait) -> Result<(String, String), (&'static str, String
                 "not_logged_in" => "not_logged_in",
                 "challenge" => "challenge",
                 "invalid_code" => "invalid_code",
+                "expired" => "expired",
                 "already_used" => "already_used",
                 "needs_choice" => "needs_choice",
+                // /pin/<код> не подставил код в поле: сами мы его не вводим и ничего не нажимаем
+                "code_not_filled" => return Err(("error", "code_not_filled".to_string())),
                 // страница загрузилась, но кнопки «Активировать» на ней нет
                 "pending" => return Err(("error", "button_not_found".to_string())),
                 _ => "error",
@@ -66,22 +69,48 @@ fn classify_inspect(res: Wait) -> Result<(String, String), (&'static str, String
     }
 }
 
-/// Итог после нажатия: `(status, error, detail)`. Любая неясность — `unknown`, а не успех.
-fn classify_result(res: Wait) -> (&'static str, Option<String>, Option<String>) {
+/// Итог после нажатия.
+struct Outcome {
+    status: &'static str,
+    error: Option<String>,
+    detail: Option<String>,
+    /// Список наград (массив объектов) только для успеха.
+    rewards: Value,
+}
+
+impl Outcome {
+    fn new(status: &'static str, error: Option<String>, detail: Option<String>) -> Self {
+        Outcome {
+            status,
+            error,
+            detail,
+            rewards: Value::Null,
+        }
+    }
+}
+
+/// Итог после нажатия. Любая неясность — `unknown`, а не успех.
+fn classify_result(res: Wait) -> Outcome {
     let text = |v: &Value| v.as_str().map(|s| s.to_string());
     match res {
-        None => ("unknown", Some("timeout".to_string()), None),
+        None => Outcome::new("unknown", Some("timeout".to_string()), None),
         Some((None, data)) if data["state"] == "success" => {
-            ("success", None, text(&data["detail"]))
+            let mut out = Outcome::new("success", None, text(&data["detail"]));
+            if data["rewards"].is_array() {
+                out.rewards = data["rewards"].clone();
+            }
+            out
         }
-        Some((None, _)) => ("unknown", Some("bad_response".to_string()), None),
+        Some((None, _)) => Outcome::new("unknown", Some("bad_response".to_string()), None),
         Some((Some(err), data)) => match err.as_str() {
-            "already_used" => ("already_used", None, text(&data)),
-            "invalid_code" => ("invalid_code", None, text(&data)),
-            "not_logged_in" => ("not_logged_in", None, text(&data)),
-            "unknown" => ("unknown", None, text(&data)),
+            "already_used" => Outcome::new("already_used", None, text(&data)),
+            "invalid_code" => Outcome::new("invalid_code", None, text(&data)),
+            "expired" => Outcome::new("expired", None, text(&data)),
+            "not_logged_in" => Outcome::new("not_logged_in", None, text(&data)),
+            // «Пустой пин-код» после нажатия: сайт не получил код, результат неясен
+            "unknown" | "code_empty" => Outcome::new("unknown", None, text(&data)),
             // страница после нажатия не изменилась / показала проверку безопасности
-            _ => ("unknown", Some(err.clone()), None),
+            _ => Outcome::new("unknown", Some(err.clone()), None),
         },
     }
 }
@@ -101,6 +130,7 @@ fn payload(
         "detail": detail,
         "clicked": clicked,
         "dryRun": dry_run,
+        "rewards": Value::Null,
     })
 }
 
@@ -110,8 +140,8 @@ fn pin_script(mode: &str, code: &str, baseline: &str) -> String {
     format!("window.__TF_PIN = {};\n{}", cfg, SCRIPT)
 }
 
-/// Результат: `{ charId, status, error, detail, clicked, dryRun }`.
-/// `status`: `success` | `already_used` | `invalid_code` | `not_logged_in` | `challenge` | `needs_choice`
+/// Результат: `{ charId, status, error, detail, clicked, dryRun, rewards }`.
+/// `status`: `success` | `already_used` | `invalid_code` | `expired` | `not_logged_in` | `challenge` | `needs_choice`
 /// | `dry_run` | `unknown` | `error`. `clicked = true` — кнопка нажата, команду повторять нельзя.
 #[command]
 pub async fn activate_promo(
@@ -243,23 +273,29 @@ pub async fn activate_promo(
         &scope,
     )
     .await;
-    let (status, error, detail) = classify_result(result);
+    let out = classify_result(result);
     tf_log(
         &app,
         &scope,
-        if status == "success" { "ok" } else { "warn" },
-        format!("Ответ сайта: {}", status),
+        if out.status == "success" {
+            "ok"
+        } else {
+            "warn"
+        },
+        format!("Ответ сайта: {}", out.status),
     );
-    task.finish(Some(&char_id), true, status != "not_logged_in")
+    task.finish(Some(&char_id), true, out.status != "not_logged_in")
         .await;
-    Ok(payload(
+    let mut res = payload(
         &char_id,
-        status,
-        error.as_deref(),
-        detail.as_deref(),
+        out.status,
+        out.error.as_deref(),
+        out.detail.as_deref(),
         true,
         false,
-    ))
+    );
+    res["rewards"] = out.rewards;
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -327,34 +363,49 @@ mod tests {
     }
 
     #[test]
+    fn inspect_code_not_filled_is_a_final_error() {
+        let e = classify_inspect(Some((Some("code_not_filled".to_string()), Value::Null)));
+        assert_eq!(e.unwrap_err(), ("error", "code_not_filled".to_string()));
+        let e = classify_inspect(Some((Some("expired".to_string()), Value::Null)));
+        assert_eq!(e.unwrap_err().0, "expired");
+    }
+
+    #[test]
     fn result_is_success_only_when_page_says_so() {
         let ok = classify_result(Some((
             None,
-            json!({ "state": "success", "detail": "Готово" }),
+            json!({ "state": "success", "detail": "Готово", "rewards": [{ "name": "Метеорит", "qty": 100 }] }),
         )));
-        assert_eq!(ok, ("success", None, Some("Готово".to_string())));
+        assert_eq!(ok.status, "success");
+        assert_eq!(ok.detail.as_deref(), Some("Готово"));
+        assert_eq!(ok.rewards[0]["name"], "Метеорит");
         // неясный ответ никогда не считается успехом
         let unknown = classify_result(Some((Some("unknown".to_string()), json!("текст"))));
-        assert_eq!(unknown, ("unknown", None, Some("текст".to_string())));
-        assert_eq!(
-            classify_result(None),
-            ("unknown", Some("timeout".to_string()), None)
-        );
-        assert_eq!(
-            classify_result(Some((Some("pending".to_string()), Value::Null))).0,
-            "unknown"
-        );
-        assert_eq!(
-            classify_result(Some((Some("challenge".to_string()), Value::Null))).0,
-            "unknown"
-        );
+        assert_eq!(unknown.status, "unknown");
+        assert_eq!(unknown.detail.as_deref(), Some("текст"));
+        assert!(unknown.rewards.is_null());
+        let none = classify_result(None);
+        assert_eq!(none.status, "unknown");
+        assert_eq!(none.error.as_deref(), Some("timeout"));
+        for e in ["pending", "challenge", "code_empty"] {
+            let r = classify_result(Some((Some(e.to_string()), Value::Null)));
+            assert_eq!(r.status, "unknown", "{e}");
+        }
+    }
+
+    #[test]
+    fn success_without_rewards_list_has_null_rewards() {
+        let ok = classify_result(Some((None, json!({ "state": "success", "detail": "ok" }))));
+        assert_eq!(ok.status, "success");
+        assert!(ok.rewards.is_null());
     }
 
     #[test]
     fn result_known_outcomes() {
-        let r = |e: &str| classify_result(Some((Some(e.to_string()), json!("x")))).0;
+        let r = |e: &str| classify_result(Some((Some(e.to_string()), json!("x")))).status;
         assert_eq!(r("already_used"), "already_used");
         assert_eq!(r("invalid_code"), "invalid_code");
+        assert_eq!(r("expired"), "expired");
         assert_eq!(r("not_logged_in"), "not_logged_in");
     }
 
