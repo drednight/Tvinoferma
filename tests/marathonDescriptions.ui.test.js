@@ -47,18 +47,19 @@ describe('описания заданий на странице марафона
     expect(document.querySelector('[data-desc-task="t1"] .mr-desc-text').textContent.endsWith('…')).toBe(true);
   });
 
-  it('ручная правка сохраняется и помечается', async () => {
-    document.querySelector('[data-desc-task="t2"] [data-desc-edit]').click();
-    const input = document.querySelector('[data-desc-task="t2"] [data-desc-input]');
-    input.value = 'Моё описание';
-    document.querySelector('[data-desc-task="t2"] [data-desc-save]').click();
-    await vi.waitFor(() => expect(state.marathons[0].tasks[1].description).toBe('Моё описание'));
-    expect(state.marathons[0].tasks[1].descriptionSource).toBe('manual');
-    expect(document.querySelector('[data-desc-task="t2"]').textContent).toContain('изменено вручную');
-    // можно сбросить правку
-    document.querySelector('[data-desc-task="t2"] [data-desc-edit]').click();
-    document.querySelector('[data-desc-task="t2"] [data-desc-reset]').click();
-    await vi.waitFor(() => expect(state.marathons[0].tasks[1].description).toBe(''));
+  it('в блоке нет кнопок правки: описание меняется в редакторе марафона', () => {
+    const box = document.querySelector('.mr-descs');
+    expect(box.querySelector('[data-desc-edit], [data-desc-save], textarea')).toBeNull();
+    expect(box.textContent).not.toContain('Изменить');
+    expect(box.querySelector('[data-desc-task="t2"]').textContent).toContain('Редактировать');
+  });
+
+  it('в заголовке столбца нет строки «цель … · до 🪙…»', () => {
+    state.characters = [{ id: 'c1', nick: 'Ник', party: null, class: '' }];
+    state.marathons[0].participantIds = ['c1'];
+    state.marathons[0].assignments = { c1: ['t1', 't2'] };
+    page.renderMarathons();
+    expect(document.querySelector('.mr-matrix thead').textContent).not.toMatch(/цель/);
   });
 
   it('подсказка заголовка столбца содержит описание', () => {

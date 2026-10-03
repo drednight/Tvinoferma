@@ -15,7 +15,7 @@ import { showModal, closeModal } from '../../core/ui.js';
 import { checkCharacterAuth } from './checkAuth.js';
 import { getCharacterBalance } from './getBalance.js';
 import { runQueue, browserSlots, isRetryableCode } from './queue.js';
-import { setAuthChecking } from './authStatus.js';
+import { setAuthChecking, authDetails } from './authStatus.js';
 import { onCharMarathonData, syncAllActiveMarathons } from '../marathons/siteSync.js';
 import { logScope, errorText, startTask } from '../../core/taskLog.js';
 
@@ -110,6 +110,7 @@ export function applyLoginResult(payload) {
     const changed = char.isLoggedIn !== isOnline;
     char.isLoggedIn = isOnline;
     char.lastLoginCheck = new Date().toISOString();
+    char.lastLoginReason = isOnline ? null : (reason || null);
     setAuthChecking(charId, false);
     logScope(`char:${charId}`, `${char.nick}: ${isOnline ? 'вход подтверждён 🟢' : `нет входа 🔴 (${errorText(reason)})`}`, isOnline ? 'ok' : 'warn');
     return { char, changed };
@@ -155,21 +156,24 @@ function rerender() {
  */
 export async function runAuthChecks(chars, { title = '🔐 Проверка авторизации', baseTimeout = 4, closeAfter = false, silent = false } = {}) {
     const { retries, retryDelayMs } = scriptSettings();
-    const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length });
+    const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1 });
+    const signal = { cancelled: false };
+    task?.onCancel(() => { signal.cancelled = true; });
     task?.watch(...chars.map(c => `char:${c.id}`));
     task?.setStep(`${chars.length} персонажей, по ${browserSlots.max} одновременно, повторов до ${retries}`);
     chars.forEach(c => setAuthChecking(c.id, true));
     rerender();
 
     const results = await runQueue(chars, async (char, attempt) => {
+        if (signal.cancelled) return { skipped: true };   // ждал свободное окно, а пользователь уже отменил
         if (attempt > 0) task?.log(`${char.nick}: повтор ${attempt}/${retries}`, 'info');
         return await checkCharacterAuth(char.id, { timeoutSeconds: baseTimeout * (attempt + 1), closeAfter });
     }, {
-        retries, retryDelayMs,
+        retries, retryDelayMs, signal,
         shouldRetry: (res, err) => !!err || (res?.status !== 'online' && isRetryableCode(res?.reason)),
         onDone: ({ item, result, error }, done, total) => {
             if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error');
-            const applied = result ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
+            const applied = result && !result.skipped ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
             task?.progress(done, total, item.nick);
             persist().then(() => { if (applied?.changed !== false) rerender(); });
         }
@@ -177,11 +181,15 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
 
     chars.forEach(c => setAuthChecking(c.id, false));
     rerender();
-    const online = chars.filter(c => c.isLoggedIn === true).length;
-    const offline = chars.filter(c => c.isLoggedIn !== true).map(c => c.nick);
+    // Пропущенные из-за отмены не считаем ни «онлайн», ни «оффлайн»: их статус остался прежним
+    const checked = results.filter(r => !r.cancelled && !r.result?.skipped).map(r => r.item);
+    const skipped = chars.length - checked.length;
+    const online = checked.filter(c => c.isLoggedIn === true).length;
+    const offline = checked.filter(c => c.isLoggedIn !== true).map(c => c.nick);
     if (offline.length) task?.log(`Без входа: ${offline.join(', ')}`, 'warn');
-    task?.finish(`В сети ${online} из ${chars.length}`, offline.length ? 'warn' : 'done');
-    return { online, offline, results };
+    if (signal.cancelled) task?.finish(`Отменено: проверено ${checked.length} из ${chars.length}, в сети ${online}`, 'warn');
+    else task?.finish(`В сети ${online} из ${chars.length}`, offline.length ? 'warn' : 'done');
+    return { online, offline, results, cancelled: signal.cancelled, skipped };
 }
 
 /**
@@ -194,8 +202,22 @@ export async function refreshAllLoginStatuses(chars = state.characters) {
         return;
     }
     // closeAfter: окна профилей после проверки закрываются (иначе каждое держит ~100 МБ памяти)
-    const { online, offline } = await runAuthChecks(list, { closeAfter: true });
+    const { online, offline, cancelled, skipped } = await runAuthChecks(list, { closeAfter: true });
+    if (cancelled) { toast(`Проверка отменена: проверено ${list.length - skipped} из ${list.length}, в сети ${online}.`, 'info'); return; }
     toast(`Проверка авторизации: в сети ${online} из ${list.length}.`, offline.length ? 'warning' : 'success');
+}
+
+/**
+ * Ручная проверка входа одного персонажа (кнопка в карточке и в профиле).
+ * Показывает результат и время проверки; причина «оффлайн» — понятным текстом.
+ * → строка authDetails(char)
+ */
+export async function refreshAuthFor(char) {
+    await runAuthChecks([char], { title: `🔐 Вход: ${char.nick}`, baseTimeout: 8, closeAfter: true });
+    await persist();
+    const text = authDetails(char);
+    toast(`${char.nick}: ${text}`, char.isLoggedIn === true ? 'success' : 'warning');
+    return text;
 }
 
 /* ------------------------------------------------------------------ */
@@ -213,17 +235,21 @@ export async function refreshAllBalances(chars = state.characters, { title, only
         return { updated: 0, failed: 0 };
     }
     const { retries, retryDelayMs } = scriptSettings();
-    const task = startTask(title || `💰 Обновление балансов (${list.length} акк.)`, { total: list.length });
+    const task = startTask(title || `💰 Обновление балансов (${list.length} акк.)`, { total: list.length, cancelable: list.length > 1 });
+    const signal = { cancelled: false };
+    task.onCancel(() => { signal.cancelled = true; });
     task.watch(...list.map(c => `char:${c.id}`));
     let updated = 0, failed = 0;
 
     await runQueue(list, async (char, attempt) => {
+        if (signal.cancelled) return { skipped: true };      // ждал свободное окно, а пользователь уже отменил
         task.setStep(`Запрашиваю баланс: ${char.nick}${attempt ? ` (повтор ${attempt})` : ''}`);
         return await getCharacterBalance(char.id, { timeoutSeconds: 15 + attempt * 10 });
     }, {
-        retries, retryDelayMs,
+        retries, retryDelayMs, signal,
         shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
         onDone: ({ item, result, error }, done, total) => {
+            if (result?.skipped) return;
             if (error) task.log(`${item.nick}: ${error?.message || error}`, 'error');
             const applied = result ? applyBalanceResult(result) : null;
             if (result && !result.error) updated++; else failed++;
@@ -232,6 +258,11 @@ export async function refreshAllBalances(chars = state.characters, { title, only
         }
     });
 
+    if (signal.cancelled) {
+        task.finish(`Отменено: обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}`, 'warn');
+        toast(`Обновление балансов отменено: обновлено ${updated} из ${list.length}.`, 'info');
+        return { updated, failed, cancelled: true };
+    }
     task.finish(`Обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}`, failed ? 'warn' : 'done');
     toast(`Обновление балансов: ${updated} из ${list.length}.`, failed ? 'warning' : 'success');
     return { updated, failed };
@@ -252,12 +283,12 @@ export async function refreshAllMarathonStats() {
         return;
     }
 
-    const { report, noUrl } = await syncAllActiveMarathons();
+    const { report, noUrl, cancelled } = await syncAllActiveMarathons();
 
     const changes = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
     const errors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
     if (noUrl.length) toast(`Без страницы на сайте: ${noUrl.map(m => m.title).join(', ')}`, 'warning');
-    toast(`Марафоны: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, errors ? 'warning' : 'success');
+    toast(`Марафоны${cancelled ? ' (отменено)' : ''}: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, cancelled ? 'info' : errors ? 'warning' : 'success');
 
     renderCharacters();
     renderParties();
@@ -406,6 +437,7 @@ export async function verifySavedLoginsOnStartup({ title = '🔐 Проверк�
     const candidates = state.characters.filter(c => c.isLoggedIn === true);
     if (candidates.length === 0) return { online: 0, offline: [] };
     const res = await runAuthChecks(candidates, { title, baseTimeout: 5, closeAfter: true });
+    if (res.cancelled) { toast(`Проверка входа отменена: проверено ${candidates.length - res.skipped} из ${candidates.length}.`, 'info'); return res; }
     if (res.offline.length > 0) toast(`Авторизация: ${res.online} онлайн, ${res.offline.length} требуют повторного входа.`, 'warning');
     else if (!quiet) toast(`Авторизация подтверждена у ${candidates.length} персонажей.`, 'success');
     return res;

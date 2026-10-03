@@ -25,6 +25,20 @@ export function findSiteQuest(newsQuest, siteQuests, used = new Set()) {
 }
 
 const sameText = (a, b) => normTitle(a) === normTitle(b);
+
+const hasDates = (st) => /^\d{4}-\d{2}-\d{2}$/.test(st.startDate || '') && /^\d{4}-\d{2}-\d{2}$/.test(st.endDate || '');
+
+/**
+ * Страница отметок и новость — про один и тот же марафон?
+ * Страница supermarathon2.php всегда показывает ТЕКУЩИЙ марафон, а новость может быть про прошлый
+ * (весенний, а на сайте уже летний). Тогда объединять их нельзя: из страницы в марафон попали бы чужие этапы.
+ * Признак: пересекаются сроки этапов; если у какой-то стороны сроков нет — совпадают названия заданий.
+ */
+export function isSameMarathon(news, site) {
+  const ns = (news.stages || []).filter(hasDates), ss = (site.stages || []).filter(hasDates);
+  if (ns.length && ss.length) return ns.some(a => ss.some(b => a.startDate <= b.endDate && b.startDate <= a.endDate));
+  return (news.quests || []).some(nq => (site.quests || []).some(sq => sameText(sq.title, nq.title) || baseTitle(sq.title) === baseTitle(nq.title)));
+}
 const range = (st) => `${st.startDate || '?'} — ${st.endDate || '?'}`;
 
 /**
@@ -37,6 +51,11 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
   if (!news && !site) return { raw: null, notes };
   if (!site) return { raw: { ...news, origin: 'news' }, notes };
   if (!news) return { raw: { ...site, origin: 'site' }, notes };
+
+  if (!isSameMarathon(news, site)) {
+    notes.push({ level: 'warn', text: `Страница отметок относится к другому марафону («${site.name || 'без названия'}», этапов ${site.stages.length}) — не использована; марафон собран только из новости «${news.name || 'без названия'}».` });
+    return { raw: { ...news, origin: 'news' }, notes };
+  }
 
   const used = new Set();
   let descDiff = 0;

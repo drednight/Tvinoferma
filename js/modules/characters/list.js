@@ -15,7 +15,7 @@ import { openCharacterProfile, openCharacterForm } from './index.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
-import { getAuthView } from '../sync/authStatus.js';
+import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 import {
   NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
@@ -192,7 +192,7 @@ function generateCardHTML(char) {
     const statusColor = authView.color;
     const statusIcon = authView.icon;
     const statusText = authView.text;
-    const statusTitle = authView.title;
+    const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
 
     const tagsHtml = (char.tags || []).length
       ? `<div class="tag-list">${char.tags.map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('')}</div>`
@@ -274,7 +274,7 @@ function generateCardHTML(char) {
               ${passesHtml}
            </div>
            
-           <!-- Правая часть: Кнопка Открыть Сайт -->
+           <!-- Правая часть: кнопка Открыть Сайт -->
            <button id="btn-open-site-${char.id}" 
                    class="btn ghost small" 
                    style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:pointer;"

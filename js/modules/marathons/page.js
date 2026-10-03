@@ -15,13 +15,13 @@ import { syncMarathons, marathonUrlOf, SITE_PAGES, customPages, rememberCustomPa
 import { taskCardHtml, renderDock } from '../../core/taskLog.js';
 import {
   computeCell, marathonTotals, freezeAwards, marathonPhase, seriesChildren, seriesPhase,
-  ensureCell, STATUS_LABELS, maxRewardCoins, createSeries, bonusStatus, editTaskDescription, shortDescription,
+  ensureCell, STATUS_LABELS, createSeries, bonusStatus, shortDescription,
   rewardPotential, calendarStates
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
 
 const view = { type: 'list', id: null };
-const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set(), descEdit: null };
+const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set() };
 
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -421,7 +421,6 @@ function descriptionsBlock(m) {
   if (!m.tasks.length) return '';
   const filled = m.tasks.filter(t => t.description).length;
   const items = m.tasks.map(t => {
-    const editing = ui.descEdit === t.id;
     const full = ui.descFull.has(t.id);
     const [short, cut] = shortDescription(t.description, DESC_PREVIEW);
     const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
@@ -429,19 +428,8 @@ function descriptionsBlock(m) {
       <div class="mr-desc-item" data-desc-task="${t.id}">
         <div class="mr-desc-main">
         <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong></div>
-        ${potentialLine(t)}
-        ${editing
-          ? `<textarea class="input" rows="4" data-desc-input placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
-             <div class="mr-desc-actions">
-               <button class="btn small primary" data-desc-save>💾 Сохранить</button>
-               <button class="btn small ghost" data-desc-cancel>Отмена</button>
-               ${t.descriptionSource === 'manual' ? '<button class="btn small ghost" data-desc-reset title="Убрать своё описание: при следующей сверке подставится описание с сайта">↩ Сбросить правку</button>' : ''}
-             </div>`
-          : `${t.description ? `<p class="mr-desc-text">${escapeHtml(full ? t.description : short)}</p>` : '<p class="muted mr-desc-text">Описания нет. Оно подтянется при сверке с сайтом или из новости; можно написать своё.</p>'}
-             <div class="mr-desc-actions">
-               ${cut ? `<button class="btn small ghost" data-desc-toggle>${full ? 'Свернуть' : 'Показать полностью'}</button>` : ''}
-               <button class="btn small ghost" data-desc-edit>✏️ ${t.description ? 'Изменить' : 'Добавить'}</button>
-             </div>`}
+        ${t.description ? `<p class="mr-desc-text">${escapeHtml(full ? t.description : short)}</p>` : '<p class="muted mr-desc-text">Описания нет. Оно подтянется при сверке с сайтом или из новости; текст можно написать в редакторе марафона (✏️ Редактировать).</p>'}
+        ${cut ? `<div class="mr-desc-actions"><button class="btn small ghost" data-desc-toggle>${full ? 'Свернуть' : 'Показать полностью'}</button></div>` : ''}
         </div>
         <aside class="mr-desc-side">
           ${src ? `<span class="mr-desc-src">${src}</span>` : ''}
@@ -466,21 +454,6 @@ function bindDescriptions(root, m) {
     box.querySelector('[data-desc-toggle]')?.addEventListener('click', () => {
       if (ui.descFull.has(t.id)) ui.descFull.delete(t.id); else ui.descFull.add(t.id);
       renderMarathons();
-    });
-    box.querySelector('[data-desc-edit]')?.addEventListener('click', () => { ui.descEdit = t.id; ui.descOpen.add(m.id); renderMarathons(); });
-    box.querySelector('[data-desc-cancel]')?.addEventListener('click', () => { ui.descEdit = null; renderMarathons(); });
-    box.querySelector('[data-desc-save]')?.addEventListener('click', async () => {
-      editTaskDescription(t, box.querySelector('[data-desc-input]').value);   // ручное описание сверка не затирает
-      m.updatedAt = new Date().toISOString();
-      ui.descEdit = null;
-      await persist(); renderMarathons();
-    });
-    box.querySelector('[data-desc-reset]')?.addEventListener('click', async () => {
-      editTaskDescription(t, '');
-      m.updatedAt = new Date().toISOString();
-      ui.descEdit = null;
-      await persist(); renderMarathons();
-      toast('Своё описание убрано. Следующая сверка с сайтом подставит описание.', 'info');
     });
   });
 }
@@ -536,8 +509,7 @@ function matrix(m) {
   return `
     <table class="mr-matrix">
       <thead><tr><th class="mr-name">Персонаж</th>${m.tasks.map(t => `
-        <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div>
-        <small class="muted">цель ${t.targetChecks}${maxRewardCoins(t) ? ` · до 🪙${maxRewardCoins(t)}` : ''}</small></th>`).join('')}
+        <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div></th>`).join('')}
         <th>Итого</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:20px">Нет персонажей по фильтру</td></tr>`}</tbody>
       <tfoot><tr><td class="mr-name muted">Выполнили</td>${foot}<td></td></tr></tfoot>
@@ -662,7 +634,7 @@ async function runSync(marathons, ownerId = null) {
   ui.showSync = true;
   renderMarathons();
 
-  const { report } = await syncMarathons(list, {
+  const { report, cancelled } = await syncMarathons(list, {
     onTask: (t) => { ui.syncTask = t; ui.syncTaskFor = ownerId; },
     onStart: (cid) => { ui.syncQueue.delete(cid); ui.syncing.add(cid); renderMarathons(); },
     onDone: (cid) => { ui.syncing.delete(cid); renderMarathons(); },
@@ -673,7 +645,7 @@ async function runSync(marathons, ownerId = null) {
   renderMarathons();
   const changes = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
   const errors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
-  toast(`Сверка завершена: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, errors ? 'warning' : 'success');
+  toast(`${cancelled ? 'Сверка отменена' : 'Сверка завершена'}: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, cancelled ? 'info' : errors ? 'warning' : 'success');
   try { const { renderCharacters } = await import('../characters/list.js'); renderCharacters(); } catch (_) {}
 }
 

@@ -9,7 +9,8 @@ import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
-import { openSyncHelper, refreshBalanceFor } from '../sync/syncManager.js';
+import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
+import { getAuthView, authDetails } from '../sync/authStatus.js';
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -27,16 +28,6 @@ export function openCharacterProfile(char) {
   const sky = char.sky || {};
   const contacts = char.contacts || {};
   
-  // Форматирование даты последнего обновления баланса (для шапки)
-  let lastUpdateStr = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
-  if (char.lastCoinUpdate) {
-    try {
-      const d = new Date(char.lastCoinUpdate);
-      if (!isNaN(d.getTime())) {
-        lastUpdateStr = `<span class="muted" style="font-size:0.7rem;">Проверено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>`;
-      }
-    } catch(e) {}
-  }
 
   const statRow = (label, val) => `
     <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.05);">
@@ -63,24 +54,13 @@ export function openCharacterProfile(char) {
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
             <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
-            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}${additionalPartiesOf(char, state.parties).length ? ` <small>· доп.: ${escapeHtml(additionalPartiesOf(char, state.parties).map(p => p.name).join(', '))}</small>` : ''}</p>
+            <p class="muted" style="margin:4px 0;" id="profile-auth-line">${authLineHtml(char)}</p>
+            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}</p>
+            ${extraPartiesHtml(char)}
           </div>
           
-          <!-- БЛОК МОНЕТ С КНОПКОЙ ОБНОВЛЕНИЯ -->
-          <div style="margin-left:auto; text-align:right; min-width:120px;">
-            <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
-            <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
-            
-            ${lastUpdateStr}
-            ${needsCoinRecheck(char) ? '<small class="mr-red" data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Нажмите «Обновить»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}
-            
-            <button id="btn-refresh-coins-header" 
-                    class="btn small ghost" 
-                    style="margin-top:6px; font-size:0.75rem; padding:4px 8px; border:1px solid var(--border);"
-                    title="Проверить актуальный баланс на сайте">
-                ${needsCoinRecheck(char) ? '🔄 Перепроверить' : '🔄 Обновить'}
-            </button>
-          </div>
+          <!-- БЛОК МОНЕТ (обновление баланса — в меню «🔄 Проверить» внизу) -->
+          <div id="profile-coins-block" style="margin-left:auto; text-align:right; min-width:120px;">${coinBlockHtml(char)}</div>
         </div>
 
         <!-- КОНТАКТНЫЕ ДАННЫЕ -->
@@ -202,6 +182,13 @@ export function openCharacterProfile(char) {
             <button id="btn-coin-history-footer" class="btn secondary" title="История изменений баланса Древних монет">
                🪙 История
             </button>
+            <div class="pf-menu" id="pf-check-menu">
+               <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
+               <div class="pf-menu-list" hidden>
+                  <button type="button" data-pf-check="auth">🔐 Вход на сайт</button>
+                  <button type="button" data-pf-check="coins" data-pf-coins>${needsCoinRecheck(char) ? '🪙 Перепроверить баланс' : '🪙 Баланс Древних монет'}</button>
+               </div>
+            </div>
          </div>
 
          <!-- Правая группа: Основные действия -->
@@ -338,27 +325,74 @@ export function openCharacterProfile(char) {
       };
     }
 
-    // Refresh Coins Header Button (остается в шапке)
-    const refreshHeaderBtn = document.getElementById('btn-refresh-coins-header');
-    if(refreshHeaderBtn) {
-      refreshHeaderBtn.onclick = async () => {
-        const originalText = refreshHeaderBtn.textContent;
-        refreshHeaderBtn.disabled = true;
-        refreshHeaderBtn.textContent = '⏳...';
-        
+    // Меню «🔄 Проверить»: вход и баланс; после проверки строки в шапке обновляются сразу
+    const menu = document.getElementById('pf-check-menu');
+    const menuBtn = document.getElementById('btn-pf-check');
+    const menuList = menu?.querySelector('.pf-menu-list');
+    const setMenu = (open) => { if (!menuList) return; menuList.hidden = !open; menuBtn.setAttribute('aria-expanded', String(open)); };
+    if (menuBtn) menuBtn.onclick = (e) => { e.stopPropagation(); setMenu(menuList.hidden); };
+    const redraw = () => {
+      const line = document.getElementById('profile-auth-line');
+      if (line) line.innerHTML = authLineHtml(char);
+      const coins = document.getElementById('profile-coins-block');
+      if (coins) coins.innerHTML = coinBlockHtml(char);          // красная пометка исчезает, если баланс перечитан
+      const item = document.querySelector('[data-pf-coins]');
+      if (item) item.textContent = needsCoinRecheck(char) ? '🪙 Перепроверить баланс' : '🪙 Баланс Древних монет';
+    };
+    menu?.querySelectorAll('[data-pf-check]').forEach(btn => {
+      btn.onclick = async () => {
+        const kind = btn.dataset.pfCheck;
+        setMenu(false);
+        menu.querySelectorAll('[data-pf-check]').forEach(b => { b.disabled = true; });
         try {
-            await refreshBalanceFor(char);
+          if (kind === 'auth') await refreshAuthFor(char);
+          else await refreshBalanceFor(char);
         } catch (err) {
-            console.error(err);
-            toast('Ошибка запуска проверки', 'error');
+          console.error(err);
+          toast(kind === 'auth' ? 'Не удалось запустить проверку входа' : 'Ошибка запуска проверки', 'error');
         } finally {
-            setTimeout(() => {
-                refreshHeaderBtn.disabled = false;
-                refreshHeaderBtn.textContent = originalText;
-            }, 3000);
+          menu.querySelectorAll('[data-pf-check]').forEach(b => { b.disabled = false; });
+          redraw();
         }
       };
-    }
+    });
+    // клик вне меню закрывает его
+    const closeOnOutside = (e) => {
+      if (!menu || !document.body.contains(menu)) { document.removeEventListener('click', closeOnOutside); return; }   // профиль закрыт
+      if (!menuList.hidden && !menu.contains(e.target)) setMenu(false);
+    };
+    document.addEventListener('click', closeOnOutside);
 
   }, 100);
+}
+
+/** Строка «🔐 🟢 Онлайн · проверено …» (проверка запускается из меню «🔄 Проверить» внизу). */
+function authLineHtml(char) {
+  const v = getAuthView(char);
+  return `🔐 <span style="color:${v.color};">${v.icon} ${escapeHtml(authDetails(char))}</span>`;
+}
+
+/** Баланс Древних монет, время проверки и пометка «записан до исправления» (пока баланс не перечитан). */
+function coinBlockHtml(char) {
+  let last = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
+  const d = char.lastCoinUpdate ? new Date(char.lastCoinUpdate) : null;
+  if (d && !isNaN(d.getTime())) {
+    last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+  }
+  return `
+    <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
+    <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
+    ${last}
+    ${needsCoinRecheck(char) ? '<small data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Откройте «🔄 Проверить» → «Перепроверить баланс»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}`;
+}
+
+/** Одна строка «↳ доп. пати: N» под основной; список, в каких ещё пати состоит персонаж, раскрывается по клику. */
+function extraPartiesHtml(char) {
+  const extra = additionalPartiesOf(char, state.parties);
+  if (!extra.length) return '';
+  return `
+    <details class="pf-extra-parties" data-extra-party style="margin:2px 0 4px 22px; font-size:0.9em;">
+      <summary class="muted" style="cursor:pointer;">↳ доп. пати: ${extra.length}</summary>
+      <ul class="muted" style="margin:4px 0 0; padding-left:18px;">${extra.map(p => `<li>${escapeHtml(p.name)}</li>`).join('')}</ul>
+    </details>`;
 }

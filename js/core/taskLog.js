@@ -73,6 +73,9 @@ class Task {
     this.open = false;
     this.warnings = 0;
     this.errors = 0;
+    this.cancelable = !!opts.cancelable;   // показывать кнопку «Отмена»
+    this.cancelled = false;
+    this._onCancel = null;
   }
   get percent() {
     if (this.status !== 'running') return 100;
@@ -88,6 +91,15 @@ class Task {
     return this;
   }
   setStep(message) { return this.log(message, 'step'); }
+  /** Что сделать при нажатии «Отмена» (обычно — поднять флаг для очереди). */
+  onCancel(fn) { this._onCancel = fn; return this; }
+  cancel() {
+    if (this.status !== 'running' || this.cancelled) return this;
+    this.cancelled = true;
+    this.log('Отмена: уже запущенные проверки завершатся, остальные будут пропущены', 'warn');
+    try { this._onCancel?.(); } catch (_) {}
+    return this;
+  }
   progress(done, total, step) {
     this.done = done; if (total != null) this.total = total;
     if (step) this.step = step;
@@ -159,6 +171,7 @@ export function taskCardHtml(t, { closable = false } = {}) {
       <div class="tl-head">
         <strong>${STATUS_ICON[t.status]} ${escapeHtml(t.title)}</strong>
         <span class="tl-head-actions">
+          ${t.cancelable && t.status === 'running' ? `<button type="button" class="tl-link" data-task-cancel="${t.id}" ${t.cancelled ? 'disabled' : ''} title="Остановить задачу">${t.cancelled ? '⏳ Отменяю…' : '⛔ Отмена'}</button>` : ''}
           <button type="button" class="tl-link" data-task-log="${t.id}" title="Открыть полный лог">📄 Лог</button>
           ${closable ? `<button type="button" class="tl-link" data-task-close="${t.id}" title="Скрыть">✕</button>` : ''}
         </span>
@@ -273,6 +286,8 @@ export function openTaskJournal() {
 document.addEventListener('click', (e) => {
   const tg = e.target.closest?.('[data-task-toggle]');
   if (tg) { const t = tasks.find(x => x.id === tg.dataset.taskToggle); if (t) { t.open = !t.open; notify(t); } return; }
+  const cn = e.target.closest?.('[data-task-cancel]');
+  if (cn) { const t = tasks.find(x => x.id === cn.dataset.taskCancel); if (t) { t.cancel(); notify(t); } return; }
   const lg = e.target.closest?.('[data-task-log]');
   if (lg) { openTaskLog(lg.dataset.taskLog); return; }
   const cl = e.target.closest?.('[data-task-close]');

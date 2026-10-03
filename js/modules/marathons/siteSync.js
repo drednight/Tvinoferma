@@ -250,7 +250,9 @@ function applyToMarathons(charId, quests, url, at) {
 export async function syncMarathons(marathons, callbacks = {}) {
   const at = new Date().toISOString();
   const nick = (id) => state.characters.find(c => c.id === id)?.nick || id;
-  const task = startTask(marathons.length === 1 ? `🔄 Сверка: ${marathons[0].title}` : `🔄 Сверка марафонов (${marathons.length})`);
+  const task = startTask(marathons.length === 1 ? `🔄 Сверка: ${marathons[0].title}` : `🔄 Сверка марафонов (${marathons.length})`, { cancelable: true });
+  const signal = { cancelled: false };
+  task.onCancel(() => { signal.cancelled = true; });
   callbacks.onTask?.(task);
   const byUrl = new Map();
   const noUrl = [];
@@ -264,6 +266,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
   const jobs = [];
   byUrl.forEach((ids, url) => ids.forEach(charId => jobs.push({ charId, url })));
   const total = jobs.length;
+  task.cancelable = total > 1;      // «Отмена» нужна, только если запросов несколько
   let done = 0;
   task.progress(0, total, `В очереди ${total} запросов, по ${browserSlots.max} одновременно`);
   noUrl.forEach(m => task.log(`«${m.title}»: не указана страница на сайте — пропущен`, 'warn'));
@@ -275,15 +278,18 @@ export async function syncMarathons(marathons, callbacks = {}) {
 
   const retries = Number(state.settings?.scripts?.retries ?? 2);
   await runQueue(jobs, async ({ charId, url }, attempt) => {
+    if (signal.cancelled) return { skipped: true };      // отмена: запрос не отправляется
     callbacks.onStart?.(charId);
     task.log(`${nick(charId)}: открываю ${url.replace('https://', '')}${attempt ? ` (повтор ${attempt}/${retries})` : ''}`, 'step');
     return await fetchChar(charId, url);
   }, {
     retries,
     retryDelayMs: Number(state.settings?.scripts?.retryDelayMs ?? 2000),
+    signal,
     shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
     onDone: ({ item, result, error: thrown }) => {
       const { charId, url } = item;
+      if (result?.skipped) { callbacks.onDone?.(charId, { error: null, changes: {}, skipped: true }); return; }
       const quests = result?.quests;
       const error = result?.error || (thrown ? String(thrown) : null);
       let changesForChar = {};
@@ -320,8 +326,9 @@ export async function syncMarathons(marathons, callbacks = {}) {
   await persist();
   const allChanges = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
   const allErrors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
-  task.finish(`Изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`, allErrors ? 'warn' : 'done');
-  return { report, noUrl, total, task };
+  if (signal.cancelled) task.finish(`Отменено: сверено ${done} из ${total}, изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`, 'warn');
+  else task.finish(`Изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`, allErrors ? 'warn' : 'done');
+  return { report, noUrl, total, task, cancelled: signal.cancelled };
 }
 
 /** Для меню скриптов: сверить все идущие марафоны. */

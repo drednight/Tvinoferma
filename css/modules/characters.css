@@ -315,3 +315,12 @@
 .ch-entry { grid-template-columns: 150px 22px 1fr; }
 .ch-up { color: var(--success, #9ece6a); }
 .ch-down { color: var(--danger, #f7768e); }
+
+/* Меню «🔄 Проверить» в футере профиля (раскрывается вверх; кнопка по высоте как соседние) */
+.pf-menu { position: relative; display: flex; }
+.pf-menu > .btn { flex: 1; }
+.pf-menu-list { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 230px; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.35); z-index: 30; }
+.pf-menu-list[hidden] { display: none; }
+.pf-menu-list button { text-align: left; padding: 8px 10px; background: transparent; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; }
+.pf-menu-list button:hover:not(:disabled) { background: rgba(255,255,255,.07); }
+.pf-menu-list button:disabled { opacity: .5; cursor: default; }

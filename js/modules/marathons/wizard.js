@@ -11,6 +11,7 @@ import { createMarathon, createSeries, createTask, totalActiveDays, matchQuest, 
 import { mergeSiteAndNews } from './mergeSources.js';
 import { scanTitles, parseMarathonPage, pickScannerCharacter, SITE_PAGES, customPages, rememberCustomPage, loadNewsPage, isNewsUrl, searchNewsList } from './siteSync.js';
 import { filterNews, NEWS_LIST_PAGES } from './newsList.js';
+import { enhanceDateInputs } from '../../core/datePicker.js';
 import { baseTitle } from './model.js';
 import { taskCardHtml, errorText } from '../../core/taskLog.js';
 import { getAuthView } from '../sync/authStatus.js';
@@ -489,6 +490,7 @@ export function openMarathonWizard(opts = {}) {
     });
     ov.body.querySelector('[data-series-title]')?.addEventListener('input', e => { W.seriesTitle = e.target.value; });
 
+    enhanceDateInputs(ov.body);      // даты — календарь как у ручных отметок марафона
     ov.body.querySelectorAll('[data-f]').forEach(inp => inp.oninput = inp.onchange = () => {
       const f = inp.dataset.f;
       if (f === 'url') {

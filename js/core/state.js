@@ -100,6 +100,7 @@ export function normalizeCharacter(input = {}) {
     // --- Данные синхронизации с pwonline.ru (раньше терялись при перезапуске) ---
     isLoggedIn: input.isLoggedIn === true,
     lastLoginCheck: input.lastLoginCheck || null,
+    lastLoginReason: input.lastLoginReason || null,   // почему «оффлайн» (код ошибки), см. authDetails
     marathonData: input.marathonData && typeof input.marathonData === 'object'
       ? input.marathonData
       : null,

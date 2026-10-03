@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fixture, parseSitePage } from './helpers/pageScript.js';
 import { parseNewsHtml } from '../js/modules/marathons/newsParser.js';
-import { mergeSiteAndNews, findSiteQuest } from '../js/modules/marathons/mergeSources.js';
+import { mergeSiteAndNews, findSiteQuest, isSameMarathon } from '../js/modules/marathons/mergeSources.js';
 import { migrateMarathon, createTask, applySiteQuests, createMarathon, setTaskDescription, editTaskDescription, shortDescription, ensureCell } from '../js/modules/marathons/model.js';
 
 // Фикстуры — реальные страницы pwonline.ru, сохранённые в UTF-8 (issue #3).
@@ -189,5 +189,31 @@ describe('описание задания в модели: приоритеты 
   it('старые данные (схема v1) без описаний получают пустое описание', () => {
     const old = migrateMarathon({ id: 'x', title: 'Старый', tasks: [{ id: 't', title: 'Задание', targetChecks: 3 }], participantIds: [] });
     expect(old.tasks[0]).toMatchObject({ description: '', descriptionSource: '' });
+  });
+});
+
+describe('новость про другой марафон + текущая страница отметок (issue #72 п.4)', () => {
+  const siteRaw = () => ({ ...detail('site-supermarathon2.html').data, sourceUrl: 'https://pwonline.ru/supermarathon2.php' });
+
+  it('весенняя новость и летняя страница не склеиваются: марафон один, только из новости', () => {
+    const spring = news('news-spring-2025.html', { title: 'Весенний марафон', publishedAt: '24.04.2025' });
+    const { raw, notes } = mergeSiteAndNews({ news: spring, site: siteRaw() });
+    expect(raw.origin).toBe('news');
+    expect(raw.stages.map(st => st.key)).toEqual(spring.stages.map(st => st.key));   // этапов из страницы не добавлено
+    expect(raw.quests).toHaveLength(spring.quests.length);                            // заданий из страницы не добавлено
+    expect(notes.some(n => n.level === 'warn' && /другому марафону/.test(n.text))).toBe(true);
+  });
+
+  it('летняя новость и страница того же лета объединяются как раньше', () => {
+    const summer = news('news-summer-2026.html', { title: 'Летний марафон', publishedAt: '29.05.2026' });
+    expect(mergeSiteAndNews({ news: summer, site: siteRaw() }).raw.origin).toBe('merged');
+  });
+
+  it('isSameMarathon: пересечение сроков; без сроков — по названиям заданий', () => {
+    const st = (a, b) => ({ startDate: a, endDate: b });
+    expect(isSameMarathon({ stages: [st('2026-04-25', '2026-05-17')], quests: [] }, { stages: [st('2026-05-30', '2026-06-28')], quests: [] })).toBe(false);
+    expect(isSameMarathon({ stages: [st('2026-06-01', '2026-06-30')], quests: [] }, { stages: [st('2026-05-30', '2026-06-28')], quests: [] })).toBe(true);
+    expect(isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Охота (июль)' }] })).toBe(true);
+    expect(isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Другое' }] })).toBe(false);
   });
 });
