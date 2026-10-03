@@ -26,7 +26,8 @@
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
 }
-.pf-checks-title { font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.pf-checks-title { font-weight: 700; color: var(--muted); cursor: pointer; }
+.pf-checks[open] > .pf-checks-title { margin-bottom: 8px; }
 .pf-check-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) auto auto;

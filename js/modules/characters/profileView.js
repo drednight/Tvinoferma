@@ -65,7 +65,10 @@ export function openCharacterProfile(char) {
         </div>
 
         <!-- КОГДА ЧТО ПРОВЕРЕНО (баланс, вход, прогресс марафонов) -->
-        <div id="profile-checks-block" class="pf-checks">${checksBlockHtml(char)}</div>
+        <details class="pf-checks">
+          <summary class="pf-checks-title">🕒 Когда что проверено</summary>
+          <div id="profile-checks-block">${checksBlockHtml(char)}</div>
+        </details>
 
         <!-- КОНТАКТНЫЕ ДАННЫЕ -->
         <details style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
@@ -397,7 +400,6 @@ function checksBlockHtml(char) {
   ];
   const limit = (kind) => formatHoursSpan(thresholdHours(state.settings, kind));
   return `
-    <div class="pf-checks-title">🕒 Когда что проверено</div>
     ${rows.join('')}
     ${marathons.length ? '' : '<div class="pf-check-note muted">🏆 Идущих марафонов с адресом страницы на сайте нет — прогресс не сверяется.</div>'}
     <div class="pf-check-note muted">Данные считаются устаревшими через: баланс — ${limit('balance')}, вход — ${limit('login')}, марафон — ${limit('marathon')} (Настройки → Свежесть данных).</div>`;

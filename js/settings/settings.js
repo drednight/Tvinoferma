@@ -227,12 +227,6 @@ export function bindSettings() {
     if (journalPanel.open && !journalMounted && journalBody) { journalMounted = true; mountTaskJournal(journalBody); }
   });
 
-  // Save Now
-  document.getElementById('save-now-btn')?.addEventListener('click', async () => {
-    await saveNow();
-    toast('Сохранено', 'success');
-  });
-
   // Create Backup
   document.getElementById('create-backup-btn')?.addEventListener('click', async () => {
     const adapter = getAdapter();

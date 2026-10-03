@@ -178,3 +178,9 @@
 
 /* Журнал скриптов внутри панели: прокрутка, чтобы настройки не раздувались */
 #task-journal-body .tl-journal { max-height: 360px; overflow-y: auto; }
+
+/* Настройки: две колонки свёрнутых карточек. Раскрытая карточка растёт вниз только в своей колонке. */
+.settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.settings-col > .panel { margin: 0; }
+@media (max-width: 900px) { .settings-cols { grid-template-columns: minmax(0, 1fr); } }

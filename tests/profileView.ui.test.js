@@ -46,7 +46,9 @@ describe('раскрытая карточка', () => {
     const contacts = [...document.querySelectorAll('summary')].find(s => s.textContent.includes('Контактные данные'));
     expect(idx(block)).toBeGreaterThan(idx($('[data-extra-party]')));
     expect(idx(block)).toBeLessThan(idx(contacts));
-    expect(block.textContent).toContain('Когда что проверено');
+    const fold = block.closest('details.pf-checks');
+    expect(fold.querySelector('summary').textContent).toContain('Когда что проверено');
+    expect(fold.open).toBe(false);   // по умолчанию свёрнуто
     expect($('#profile-coins-block [data-fresh-kind]')).toBeNull();
     expect($('#profile-auth-line [data-fresh-kind]')).toBeNull();
   });

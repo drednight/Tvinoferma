@@ -203,11 +203,9 @@
           </div>
         </div>
 
-        <div class="row gap" style="margin-bottom: 16px;">
-          <button id="save-now-btn" class="btn" title="Записать текущие данные в state.json прямо сейчас">💾 Сохранить сейчас</button>
-        </div>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
+        <div class="settings-cols">
+          <div class="settings-col">
+        <details class="panel fold">
           <summary>
             <h3>☁️ Резервные копии</h3>
             <p class="muted" id="backup-summary">Загрузка списка резервных копий…</p>
@@ -220,8 +218,7 @@
           <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
           <div id="backup-list" class="list compact"></div>
         </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
+        <details class="panel fold">
           <summary>
             <h3>📦 Перенос данных</h3>
             <p class="muted">Экспорт в JSON (полный и выборочный) и импорт с сравнением карточек.</p>
@@ -235,15 +232,14 @@
               📥 Импорт JSON
               <input id="import-file" type="file" accept="application/json,.json" hidden />
             </label>
-          </details>
+          </div>
           <p class="muted">
             • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
             • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
             • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
           </p>
-        </div>
-
-        <details class="panel fold" id="task-journal-panel" style="margin-bottom: 16px;">
+        </details>
+        <details class="panel fold" id="task-journal-panel">
           <summary>
             <h3>📄 Логи скриптов</h3>
             <p class="muted" id="task-journal-summary">Записей пока нет: они появятся после первых проверок.</p>
@@ -251,110 +247,7 @@
           <p class="muted" style="margin-bottom: 8px;">Проверка авторизации, обновление балансов, поиск и сверка марафонов. Если что-то пошло не так, откройте запись, нажмите «Скопировать лог» и отправьте разработчику. Пароли и почты в логи не попадают.</p>
           <div id="task-journal-body"></div>
         </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
-          <summary>
-            <h3>⏳ Свежесть данных</h3>
-            <p class="muted">Через сколько времени данные считаются устаревшими. Устаревшие значения подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов.</p>
-          </summary>
-          <div class="setting-row">
-            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.balanceHours" /><span class="muted hours-hint" data-hours-for="freshness.balanceHours"></span></div>
-          </div>
-          <div class="setting-row">
-            <div><strong>🔐 Статус входа</strong><p class="muted">Часов с последней проверки авторизации.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.loginHours" /><span class="muted hours-hint" data-hours-for="freshness.loginHours"></span></div>
-          </div>
-          <div class="setting-row">
-            <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
-          </div>
-        </details>
-
-        <details class="panel fold" id="parser-health-panel" style="margin-bottom: 16px;">
-          <summary>
-            <h3>🩺 Состояние парсеров</h3>
-            <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
-          </summary>
-          <div id="parser-health-list"></div>
-          <div class="setting-row">
-            <p class="muted" id="parser-health-config"></p>
-            <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
-          </div>
-        </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
-          <summary>
-            <h3>🔒 Безопасность</h3>
-            <p class="muted">Хранение email, паролей и телефонов в хранилище учётных данных ОС.</p>
-          </summary>
-          <div class="setting-row">
-            <div>
-              <strong>Учётные данные в хранилище ОС</strong>
-              <p class="muted" id="vault-status">Проверка…</p>
-            </div>
-            <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
-          </div>
-        </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
-          <summary>
-            <h3>⚡ Скрипты</h3>
-            <p class="muted">Сколько окон открывать одновременно и сколько раз повторять при ошибке.</p>
-          </summary>
-          <div class="setting-row">
-            <div>
-              <strong>Одновременно открытых окон</strong>
-              <p class="muted">Сколько персонажей проверяется параллельно (вход, балансы, марафоны).</p>
-            </div>
-            <input class="input setting-num" type="number" min="1" max="8" data-setting="scripts.concurrency" />
-          </div>
-          <div class="setting-row">
-            <div>
-              <strong>Повторов при ошибке</strong>
-              <p class="muted">Если сайт не ответил или показал «Проверку безопасности».</p>
-            </div>
-            <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
-          </div>
-        </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
-          <summary>
-            <h3>🔔 Уведомления</h3>
-            <p class="muted">Какие системные напоминания показывать и кнопка проверки.</p>
-          </summary>
-          <div class="settings-checks">
-            <label><input type="checkbox" data-setting="notifications.enabled" /> Системные уведомления</label>
-            <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
-            <label><input type="checkbox" data-setting="notifications.marathonEnding" /> Марафон заканчивается (≤ 2 дней)</label>
-            <label><input type="checkbox" data-setting="notifications.dailyReminder" /> Ежедневное напоминание о заданиях после
-              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч</label>
-          </div>
-          <div class="row gap" style="margin-top: 12px;">
-            <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
-          </div>
-        </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
-          <summary>
-            <h3>🖥 Трей и фоновые проверки</h3>
-            <p class="muted">Закрытие окна в трей и автоматическая проверка входа в фоне.</p>
-          </summary>
-          <div class="settings-checks">
-            <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
-            <label>Фоновая проверка входа:
-              <select class="select" data-setting="tray.backgroundAuthMinutes">
-                <option value="0">выключена</option>
-                <option value="15">каждые 15 мин</option>
-                <option value="30">каждые 30 мин</option>
-                <option value="60">каждый час</option>
-                <option value="180">каждые 3 часа</option>
-              </select>
-            </label>
-          </div>
-        </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
+        <details class="panel fold">
           <summary>
             <h3>⬆️ Обновления</h3>
             <p class="muted">Версия <span id="app-version">—</span> · проверка вручную и по расписанию.</p>
@@ -383,16 +276,115 @@
             </select>
           </div>
         </details>
-
-        <details class="panel fold" style="margin-bottom: 16px;">
+        <details class="panel fold">
           <summary>
             <h3>⌨️ Горячие клавиши</h3>
             <p class="muted">Список сочетаний клавиш приложения.</p>
           </summary>
           <div id="hotkeys-list" class="hotkeys-list"></div>
         </details>
+          </div>
+          <div class="settings-col">
+        <details class="panel fold">
+          <summary>
+            <h3>⏳ Свежесть данных</h3>
+            <p class="muted">Через сколько времени данные считаются устаревшими. Устаревшие значения подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов.</p>
+          </summary>
+          <div class="setting-row">
+            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.balanceHours" /><span class="muted hours-hint" data-hours-for="freshness.balanceHours"></span></div>
+          </div>
+          <div class="setting-row">
+            <div><strong>🔐 Статус входа</strong><p class="muted">Часов с последней проверки авторизации.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.loginHours" /><span class="muted hours-hint" data-hours-for="freshness.loginHours"></span></div>
+          </div>
+          <div class="setting-row">
+            <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
+          </div>
+        </details>
+        <details class="panel fold" id="parser-health-panel">
+          <summary>
+            <h3>🩺 Состояние парсеров</h3>
+            <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
+          </summary>
+          <div id="parser-health-list"></div>
+          <div class="setting-row">
+            <p class="muted" id="parser-health-config"></p>
+            <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🔒 Безопасность</h3>
+            <p class="muted">Хранение email, паролей и телефонов в хранилище учётных данных ОС.</p>
+          </summary>
+          <div class="setting-row">
+            <div>
+              <strong>Учётные данные в хранилище ОС</strong>
+              <p class="muted" id="vault-status">Проверка…</p>
+            </div>
+            <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>⚡ Скрипты</h3>
+            <p class="muted">Сколько окон открывать одновременно и сколько раз повторять при ошибке.</p>
+          </summary>
+          <div class="setting-row">
+            <div>
+              <strong>Одновременно открытых окон</strong>
+              <p class="muted">Сколько персонажей проверяется параллельно (вход, балансы, марафоны).</p>
+            </div>
+            <input class="input setting-num" type="number" min="1" max="8" data-setting="scripts.concurrency" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>Повторов при ошибке</strong>
+              <p class="muted">Если сайт не ответил или показал «Проверку безопасности».</p>
+            </div>
+            <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🔔 Уведомления</h3>
+            <p class="muted">Какие системные напоминания показывать и кнопка проверки.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="notifications.enabled" /> Системные уведомления</label>
+            <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
+            <label><input type="checkbox" data-setting="notifications.marathonEnding" /> Марафон заканчивается (≤ 2 дней)</label>
+            <label><input type="checkbox" data-setting="notifications.dailyReminder" /> Ежедневное напоминание о заданиях после
+              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч</label>
+          </div>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🖥 Трей и фоновые проверки</h3>
+            <p class="muted">Закрытие окна в трей и автоматическая проверка входа в фоне.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
+            <label>Фоновая проверка входа:
+              <select class="select" data-setting="tray.backgroundAuthMinutes">
+                <option value="0">выключена</option>
+                <option value="15">каждые 15 мин</option>
+                <option value="30">каждые 30 мин</option>
+                <option value="60">каждый час</option>
+                <option value="180">каждые 3 часа</option>
+              </select>
+            </label>
+          </div>
+        </details>
+          </div>
+        </div>
 
-        <div class="panel" style="border-color: rgba(247, 118, 142, 0.3);">
+        <div class="panel" style="border-color: rgba(247, 118, 142, 0.3); margin-top: 16px;">
           <h3 style="color: var(--danger);">Опасные действия</h3>
           <div class="row gap">
              <button id="clear-all-characters-btn" class="btn danger" title="Удалить ВСЕХ персонажей">
