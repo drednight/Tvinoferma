@@ -16,11 +16,19 @@
 | `news_list_p1.html`, `news_list_p2.html` | Архив новостей | `newsList.js` |
 | `news-*.html` | Вырезки новостей (только статья) | `newsParser.js` |
 
-**Страница промокода:** `site-pin-code.html` (`/pin/<код>`, код уже подставлен в поле) и `site-pin-empty.html`
-(`/pin.php`, поле пустое) — настоящие, обезличенные (проверяет `promo.js`, `tests/promoScript.test.js`).
-Страниц ПОСЛЕ нажатия «Активировать» (успех, «код уже использован», «неверный код») пока нет: в тестах они
-СИНТЕТИЧЕСКИЕ. Когда появятся настоящие, сохраните их как `site-pin-result-*.html` и уточните тексты
-в `src-tauri/src/scripts/selectors.json` (`promo.used`, `promo.invalid`, `promo.success`).
+**Промокоды (`promo.js`, `tests/promoScript.test.js`):** все страницы настоящие, обезличенные.
+
+| Файл | Страница |
+| --- | --- |
+| `site-pin-code.html` | `/pin/<код>`: код подставлен в поле, кнопка «Активировать» |
+| `site-pin-empty.html` | `/pin.php`: поле пустое |
+| `site-pin-result-ok.html` | успех: «Вы успешно активировали пин-код…» и 13 наград |
+| `site-pin-result-used.html` | «Вы уже активировали этот пин-код!» |
+| `site-pin-result-expired.html` | «Время действия пин-кода истекло!» |
+| `site-pin-result-nobonus.html` | «Не добавлены бонусы для этого типа пин-кода» (код неверный или ещё не настроен) |
+| `site-pin-result-empty.html` | «Пустой пин-код» |
+
+Нет только страницы ответа на заведомо несуществующий код (если сайт отвечает иначе, чем «Не добавлены бонусы»).
 
 Тесты: `tests/parsers.test.js` (скрипты на страницах) и `tests/fixturesPrivacy.test.js` (в фикстурах нет личных данных).
 

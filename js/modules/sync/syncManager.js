@@ -97,7 +97,8 @@ export async function initSyncListeners() {
 
 const AUTH_ERRORS = ['not_logged_in', 'zero_no_user_session_expired', 'session_lost_during_parse'];
 
-function scriptSettings() {
+/** Настройки «Скрипты»: сколько окон одновременно (browserSlots.max) и сколько повторов при ошибке. */
+export function scriptSettings() {
     const s = state.settings?.scripts || {};
     browserSlots.max = s.concurrency || 3;
     return { retries: Number(s.retries ?? 2), retryDelayMs: Number(s.retryDelayMs ?? 2000) };

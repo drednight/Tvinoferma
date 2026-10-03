@@ -12,3 +12,14 @@
 .promo-table { width: 100%; border-collapse: collapse; }
 .promo-table th, .promo-table td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border, #3a3f4b); vertical-align: top; }
 .promo-warn { margin-top: 10px; color: #e6c25a; font-size: 0.9em; }
+.promo-hint { margin: 4px 0 0; }
+.promo-codes-info { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 0.9em; }
+.promo-known { color: #8fbf8f; }
+.promo-scroll { overflow-x: auto; }
+.promo-alert { margin-bottom: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(247, 118, 142, 0.5); background: rgba(247, 118, 142, 0.1); }
+.promo-sums { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.promo-reward ul, .promo-log-list { margin: 4px 0 4px 18px; padding: 0; }
+.promo-reward summary, .promo-log-item > summary { cursor: pointer; }
+.promo-log-item { border-bottom: 1px solid var(--border, #3a3f4b); padding: 6px 0; }
+.promo-log-body { padding: 6px 0 4px 16px; }
+.promo-log-h { margin: 8px 0 4px; font-weight: 600; }

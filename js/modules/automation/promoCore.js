@@ -1,11 +1,14 @@
 // js/modules/automation/promoCore.js
-// Активация промокодов (Issue #25): чистая логика без интерфейса — проверка кода, статусы,
-// защита от повторного запуска, история и CSV. Диалог и запуск: promo.js.
+// Активация промокодов (Issue #25): чистая логика без интерфейса — разбор списка кодов, статусы, итоги.
+// Журнал и архив: promoLog.js. Запуск: promoRunner.js. Диалог: promo.js.
 
 /** Допустимые символы кода: он подставляется в адрес /pin/<КОД>. Длина: поле на сайте `maxlength=40`. */
 export const CODE_RE = /^[A-Za-z0-9_-]{4,40}$/;
+/** Сколько разных кодов можно ввести за один запуск. */
+export const MAX_CODES = 10;
 
 export const normalizeCode = (raw) => String(raw ?? '').trim();
+export const codeKey = (code) => normalizeCode(code).toLowerCase();
 
 /** @returns {{ ok: boolean, code: string, error: string|null }} */
 export function validateCode(raw) {
@@ -17,119 +20,143 @@ export function validateCode(raw) {
   return { ok: true, code, error: null };
 }
 
-/** Как показывать каждый итог. `final` — исход известен, повторять не нужно. */
+/**
+ * Список кодов из одного поля: через запятую, точку с запятой, пробел или с новой строки.
+ * @returns {{ codes: string[], invalid: string[], duplicates: number, extra: number }}
+ *   invalid — куски, которые не похожи на код; extra — сколько кодов не поместилось в лимит.
+ */
+export function parseCodes(raw, max = MAX_CODES) {
+  const tokens = String(raw ?? '').split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+  const codes = [];
+  const invalid = [];
+  const seen = new Set();
+  let duplicates = 0;
+  for (const t of tokens) {
+    if (!CODE_RE.test(t)) { invalid.push(t); continue; }
+    const k = codeKey(t);
+    if (seen.has(k)) { duplicates++; continue; }
+    seen.add(k);
+    codes.push(t);
+  }
+  return { codes: codes.slice(0, max), invalid, duplicates, extra: Math.max(0, codes.length - max) };
+}
+
+/** Как показывать каждый итог. */
 export const STATUS_INFO = {
-  success: { icon: '✅', label: 'Успех', level: 'ok' },
-  already_used: { icon: '♻️', label: 'Код уже использован', level: 'warn' },
+  success: { icon: '✅', label: 'Введён', level: 'ok' },
+  already_used: { icon: '✅', label: 'Уже введён', level: 'ok' },
   invalid_code: { icon: '⛔', label: 'Недействительный код', level: 'warn' },
+  expired: { icon: '⌛', label: 'Срок действия кода истёк', level: 'warn' },
   not_logged_in: { icon: '🔴', label: 'Нет входа', level: 'warn' },
   challenge: { icon: '🛡️', label: 'Нужна проверка безопасности', level: 'warn' },
   needs_choice: { icon: '❔', label: 'Нужно выбрать аккаунт вручную', level: 'warn' },
   dry_run: { icon: '👁', label: 'Пробный запуск: кнопка найдена, не нажата', level: 'info' },
   unknown: { icon: '❓', label: 'Результат не распознан — проверьте вручную', level: 'warn' },
   error: { icon: '❌', label: 'Ошибка', level: 'error' },
-  cancelled: { icon: '⏹', label: 'Не выполнено (отмена)', level: 'info' }
+  cancelled: { icon: '⏹', label: 'Остановлено', level: 'info' },
+  not_run: { icon: '⏭', label: 'Не выполнено', level: 'info' }
 };
 
 export const statusInfo = (status) => STATUS_INFO[status] || STATUS_INFO.error;
+
+/** Подпись строки результата: «Уже введён ранее» для пропущенных по журналу. */
+export const rowLabel = (row) => (row?.skipped && isOk(row.status) ? 'Уже введён ранее' : statusInfo(row?.status).label);
+
+/** Введён (или сайт сообщил, что уже введён) — для пользователя это успех. */
+export const isOk = (status) => status === 'success' || status === 'already_used';
+/** Ответ сайта про сам код: такой код нигде не сохраняется. */
+export const isInvalid = (status) => status === 'invalid_code' || status === 'expired';
+
+/** Строка награды: «Метеорит ×100». */
+export const rewardLine = (r) => `${r.name}${r.qty > 1 ? ` ×${r.qty}` : ''}`;
+export const rewardText = (reward) => (Array.isArray(reward) ? reward.map(rewardLine).join('; ') : '');
+
+/** Награды из ответа Rust: оставляем только понятные поля. */
+export function cleanRewards(list) {
+  if (!Array.isArray(list)) return null;
+  const out = list
+    .filter(r => r && typeof r.name === 'string' && r.name.trim())
+    .map(r => ({ name: r.name.trim().slice(0, 120), qty: Number(r.qty) > 0 ? Number(r.qty) : 1, id: r.id ? String(r.id) : null, bound: !!r.bound }));
+  return out.length ? out : null;
+}
 
 /**
  * Строка результата из ответа Rust-команды `activate_promo` (или из ошибки вызова).
  * @param {{ id: string, nick: string }} char
  */
-export function rowFromPayload(char, payload, error, now = new Date()) {
-  const at = now.toISOString();
+export function rowFromPayload(char, code, payload, error, now = new Date()) {
+  const base = { code, charId: char.id, nick: char.nick, skipped: false, at: now.toISOString() };
   if (error || !payload) {
-    return { charId: char.id, nick: char.nick, status: 'error', error: String(error?.message || error || 'no_response'), detail: null, clicked: false, dryRun: false, at };
+    return { ...base, status: 'error', error: String(error?.message || error || 'no_response'), detail: null, clicked: false, dryRun: false, rewards: null };
   }
   return {
-    charId: char.id,
-    nick: char.nick,
+    ...base,
     status: STATUS_INFO[payload.status] ? payload.status : 'error',
     error: payload.error || null,
     detail: payload.detail || null,
     clicked: !!payload.clicked,
     dryRun: !!payload.dryRun,
-    at
+    rewards: cleanRewards(payload.rewards)
   };
 }
+
+/** Строка без запуска: пропущена по журналу, остановлена, не выполнялась. */
+export const plainRow = (char, code, status, detail = null, extra = {}, now = new Date()) =>
+  ({ code, charId: char.id, nick: char.nick, status, error: null, detail, clicked: false, dryRun: false, rewards: null, skipped: false, at: now.toISOString(), ...extra });
 
 /**
- * Можно ли безопасно запустить заново: кнопка НЕ была нажата (иначе код мог примениться),
- * а причина — временная (сайт, вход, проверка безопасности, окно) или запуск не состоялся.
+ * Можно ли повторить запрос САМИ (без участия пользователя): кнопка не нажата, а причина временная —
+ * сайт не успел ответить или показал «Проверку безопасности». «Нет входа» не повторяется: вход сам не появится.
  */
-export function isRetryable(row) {
+export function canAutoRetry(row, isTransientError = () => false) {
   if (!row || row.clicked || row.dryRun) return false;
-  if (row.status === 'cancelled' || row.status === 'challenge' || row.status === 'not_logged_in') return true;
-  if (row.status === 'error') return !['bad_code', 'bad_char', 'button_ambiguous'].includes(row.error);
-  return false;
+  if (row.status === 'challenge') return true;
+  return row.status === 'error' && isTransientError(row.error);
 }
 
-/** Итог по набору строк: { success, alreadyUsed, failed, unknown, ... }. */
+/** Ошибки команды, после которых имеет смысл подождать и повторить. */
+export const TRANSIENT_ERRORS = new Set(['timeout', 'button_not_found', 'pending', 'click_failed']);
+export const isTransient = (code) => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
+
+/** Строки, которые «Повторить ввод» запустит снова: не введены и это не «нажато, но результат неясен». */
+export const isRerunnable = (row) => !!row && !isOk(row.status) && !(row.clicked && row.status === 'unknown') && !row.dryRun;
+
+/** Общий итог по набору строк. */
 export function summarize(rows) {
   const count = (pred) => rows.filter(pred).length;
+  const ok = count(r => isOk(r.status));
   return {
     total: rows.length,
-    success: count(r => r.status === 'success'),
-    alreadyUsed: count(r => r.status === 'already_used'),
+    ok,
+    entered: count(r => r.status === 'success'),
+    alreadyUsed: count(r => r.status === 'already_used' && !r.skipped),
+    skipped: count(r => r.skipped && isOk(r.status)),
+    invalid: count(r => isInvalid(r.status)),
     unknown: count(r => r.status === 'unknown'),
-    dryRun: count(r => r.status === 'dry_run'),
-    retryable: count(isRetryable),
-    failed: count(r => !['success', 'already_used', 'dry_run'].includes(r.status))
+    notRun: count(r => r.status === 'not_run' || r.status === 'cancelled'),
+    rerun: count(isRerunnable),
+    failed: count(r => !isOk(r.status) && !isInvalid(r.status) && r.status !== 'unknown' && r.status !== 'not_run' && r.status !== 'cancelled')
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  Защита от повторного запуска в течение сессии                       */
-/* ------------------------------------------------------------------ */
-
-/** Исходы, после которых код на этом персонаже считается уже отправленным. */
-const SENT = new Set(['success', 'already_used', 'unknown']);
-
-export function createSessionGuard() {
-  /** @type {Map<string, Map<string, string>>} код (в нижнем регистре) → { charId → статус } */
-  const runs = new Map();
-  const key = (code) => normalizeCode(code).toLowerCase();
-  return {
-    /** Запоминает итог настоящего запуска (пробные не считаются). */
-    record(code, rows) {
-      const k = key(code);
-      if (!runs.has(k)) runs.set(k, new Map());
-      rows.filter(r => !r.dryRun && r.clicked && SENT.has(r.status)).forEach(r => runs.get(k).set(r.charId, r.status));
-    },
-    /** Какие из персонажей этим кодом уже пользовались в этой сессии. */
-    alreadySent(code, charIds) {
-      const m = runs.get(key(code));
-      return m ? charIds.filter(id => m.has(id)) : [];
-    },
-    clear() { runs.clear(); }
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/*  История (локально, в localStorage)                                  */
-/* ------------------------------------------------------------------ */
-
-export const HISTORY_KEY = 'tf_promo_history_v1';
-export const HISTORY_MAX = 300;
-
-const store = () => { try { return window.localStorage; } catch { return null; } };
-
-export function loadHistory() {
-  try { const v = JSON.parse(store()?.getItem(HISTORY_KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
-}
-
-export function clearHistory() { store()?.removeItem(HISTORY_KEY); }
-
-
-/** Добавляет строки в историю. Промокод не секретный, поэтому хранится целиком. */
-export function addHistory(code, rows) {
-  const shown = normalizeCode(code);
-  const entries = rows.filter(r => !r.dryRun).map(r => ({ at: r.at, code: shown, charId: r.charId, nick: r.nick, status: r.status, error: r.error || null }));
-  if (!entries.length) return loadHistory();
-  const next = [...entries.reverse(), ...loadHistory()].slice(0, HISTORY_MAX);
-  try { store()?.setItem(HISTORY_KEY, JSON.stringify(next)); } catch { /* квота: история не критична */ }
-  return next;
+/** Итог по каждому коду: { code, ok, entered, invalid, failed, rewards, firstDetail }. */
+export function summarizeByCode(rows, codes) {
+  return codes.map(code => {
+    const mine = rows.filter(r => codeKey(r.code) === codeKey(code));
+    const s = summarize(mine);
+    const rejected = mine.find(r => isInvalid(r.status));
+    return {
+      code,
+      total: mine.length,
+      ok: s.ok,
+      entered: s.entered,
+      alreadyUsed: s.alreadyUsed + s.skipped,
+      invalid: s.invalid,
+      rewards: mine.find(r => r.rewards?.length)?.rewards || null,
+      rejected: s.ok === 0 && rejected ? { status: rejected.status, detail: rejected.detail, count: s.invalid } : null,
+      other: s.total - s.ok - s.invalid
+    };
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -143,9 +170,7 @@ export function csvCell(value) {
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** CSV для русского Excel: разделитель «;», в начале BOM.  */
-export function resultsToCsv(rows) {
-  const head = ['Персонаж', 'Результат', 'Подробности', 'Время'];
-  const lines = rows.map(r => [r.nick, statusInfo(r.status).label, r.error || r.detail || '', r.at].map(csvCell).join(';'));
-  return '\ufeff' + [head.join(';'), ...lines].join('\r\n');
+/** CSV для русского Excel: разделитель «;», в начале BOM. */
+export function toCsv(head, lines) {
+  return '\ufeff' + [head, ...lines].map(row => row.map(csvCell).join(';')).join('\r\n');
 }
