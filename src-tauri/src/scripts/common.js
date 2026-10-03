@@ -39,6 +39,10 @@ window.__TF = (function () {
         return entry('texts', n).some(function (p) { return text.indexOf(p) !== -1; });
       });
     },
+    /** Список фраз целиком (для точного сравнения, а не поиска подстроки). */
+    texts: function (name) {
+      return entry('texts', name);
+    },
     /** Первое совпадение среди регулярных выражений списка (основное, затем запасные). */
     match: function (name, text) {
       return firstOf(entry('regex', name), function (src) { return String(text).match(new RegExp(src)); });

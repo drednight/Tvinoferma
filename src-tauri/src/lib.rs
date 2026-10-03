@@ -81,6 +81,7 @@ pub fn run() {
             windows::execute_script_in_window,
             windows::rename_char_profiles,
             // скрипты сайта
+            automation::promo::activate_promo,
             auth::check_login_status_http,
             balance::fetch_and_parse_balance_v4,
             marathons::fetch_marathon_progress_v1,

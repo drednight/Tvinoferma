@@ -108,6 +108,9 @@ function setupScriptsMenu() {
                 await handleRunScript('update-balance');
             } else if (action === 'update-marathons') {
                 await handleRunScript('update-marathons');
+            } else if (action === 'promo') {
+                const { openPromoDialog } = await import('../modules/automation/promo.js');
+                openPromoDialog();
             } else {
                 console.warn(`[UI] Unknown script action: ${action}`);
             }

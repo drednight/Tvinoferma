@@ -553,6 +553,7 @@ function renderBulkBar() {
     <span class="bulk-sep"></span>
     <button class="btn secondary small" data-bulk="auth" ${dis}>🔐 Проверить вход</button>
     <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
+    <button class="btn secondary small" data-bulk="promo" ${dis}>🎟 Промокод</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
     <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>
@@ -600,6 +601,11 @@ async function onBulkAction(e) {
     case 'close': setSelectionMode(false); break;
     case 'auth': await refreshAllLoginStatuses(chars); break;
     case 'balance': await refreshAllBalances(chars); break;
+    case 'promo': {
+      const { openPromoDialog } = await import('../automation/promo.js');
+      openPromoDialog({ ids: chars.map(c => c.id) });
+      break;
+    }
     case 'tag-add':
       tagModal({
         title: `Добавить тег (${chars.length} перс.)`, submitText: 'Добавить', tags: allTags(),
