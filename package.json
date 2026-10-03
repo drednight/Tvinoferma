@@ -22,7 +22,7 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-notification": "^2.5.1",
     "@tauri-apps/plugin-process": "^2.4.0",
-    "@tauri-apps/plugin-shell": "^2.3.6",
+    "@tauri-apps/plugin-shell": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.13.1",
     "chart.js": "^4.5.1"
   },
