@@ -11,7 +11,8 @@ pub fn write_atomic(path: &Path, contents: &str) -> Result<(), String> {
     let tmp = path.with_extension("json.tmp");
     {
         let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
-        file.write_all(contents.as_bytes()).map_err(|e| e.to_string())?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
     }
     fs::rename(&tmp, path).map_err(|e| e.to_string())
@@ -30,7 +31,11 @@ pub fn load_state(app: AppHandle) -> Result<Option<Value>, String> {
             // Повреждённый файл не перезаписываем молча — откладываем в сторону для ручного восстановления
             let broken = path.with_extension(format!("broken-{}.json", super::backup::unix_now()));
             let _ = fs::copy(&path, &broken);
-            Err(format!("state.json повреждён ({}). Копия: {}", e, broken.display()))
+            Err(format!(
+                "state.json повреждён ({}). Копия: {}",
+                e,
+                broken.display()
+            ))
         }
     }
 }

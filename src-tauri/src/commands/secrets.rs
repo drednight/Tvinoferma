@@ -10,8 +10,12 @@ fn entry(key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, &format!("contacts:{}", key)).map_err(|e| e.to_string())
 }
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Доступно ли хранилище ОС (пробная запись/чтение/удаление).
@@ -59,7 +63,8 @@ pub async fn secrets_set_many(items: HashMap<String, String>) -> Result<(), Stri
                     Err(err) => return Err(format!("{}: {}", key, err)),
                 }
             } else {
-                e.set_password(&value).map_err(|err| format!("{}: {}", key, err))?;
+                e.set_password(&value)
+                    .map_err(|err| format!("{}: {}", key, err))?;
             }
         }
         Ok(())

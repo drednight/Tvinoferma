@@ -20,7 +20,15 @@ pub async fn fetch_and_parse_balance_v4(
     let task = pool::acquire(&app, &char_id, CHESTS_URL).await?;
     navigate_clean(task.window(), CHESTS_URL).await?;
 
-    let (balance, error) = match eval_and_wait(task.window(), SCRIPT, "#TF_BAL_V5_", timeout_seconds.unwrap_or(15), &scope).await {
+    let (balance, error) = match eval_and_wait(
+        task.window(),
+        SCRIPT,
+        "#TF_BAL_V5_",
+        timeout_seconds.unwrap_or(15),
+        &scope,
+    )
+    .await
+    {
         Some((None, data)) => match normalize_balance(&data) {
             Some(v) => (Some(v), None),
             None => (None, Some("parse_nan".to_string())),
@@ -28,7 +36,8 @@ pub async fn fetch_and_parse_balance_v4(
         Some((Some(err), _)) => (None, Some(err)),
         None => (None, Some("timeout".to_string())),
     };
-    task.finish(Some(&char_id), close_after.unwrap_or(true), error.is_none()).await;
+    task.finish(Some(&char_id), close_after.unwrap_or(true), error.is_none())
+        .await;
 
     println!("[BALANCE] {} -> {:?} ({:?})", char_id, balance, error);
     let payload = serde_json::json!({ "charId": char_id, "balance": balance, "error": error });

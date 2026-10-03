@@ -39,10 +39,8 @@ jobs:
       # generate_context! требует собранный фронтенд (frontendDist = ../dist)
       - run: mkdir dist
       - run: cargo test --manifest-path src-tauri/Cargo.toml
-      # TODO(#8): после первого локального `cargo fmt` и `cargo clippy --fix` убрать continue-on-error,
-      # чтобы эти шаги стали блокирующими.
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-        continue-on-error: true
+      # TODO(#8): после `cargo clippy --fix` убрать continue-on-error, чтобы шаг стал блокирующим.
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
         continue-on-error: true
 

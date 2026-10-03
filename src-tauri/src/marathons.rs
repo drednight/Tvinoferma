@@ -29,15 +29,30 @@ pub async fn fetch_marathon_progress_v1(
 
     // Всегда переходим на страницу марафона: окно могло остаться на другой странице
     navigate_clean(task.window(), &target).await?;
-    let result = eval_and_wait(task.window(), PROGRESS_SCRIPT, "#TF_MARATHON_DATA_", 25, &scope).await;
+    let result = eval_and_wait(
+        task.window(),
+        PROGRESS_SCRIPT,
+        "#TF_MARATHON_DATA_",
+        25,
+        &scope,
+    )
+    .await;
     let ok = matches!(&result, Some((None, _)));
-    task.finish(Some(&char_id), close_after.unwrap_or(false), ok).await;
+    task.finish(Some(&char_id), close_after.unwrap_or(false), ok)
+        .await;
 
     let payload = match result {
-        Some((error, data)) => serde_json::json!({ "charId": char_id, "quests": data, "error": error }),
-        None => serde_json::json!({ "charId": char_id, "quests": [], "error": "timeout_parsing_marathon" }),
+        Some((error, data)) => {
+            serde_json::json!({ "charId": char_id, "quests": data, "error": error })
+        }
+        None => {
+            serde_json::json!({ "charId": char_id, "quests": [], "error": "timeout_parsing_marathon" })
+        }
     };
-    println!("[MARATHON-PARSER] {} -> error: {:?}", char_id, payload["error"]);
+    println!(
+        "[MARATHON-PARSER] {} -> error: {:?}",
+        char_id, payload["error"]
+    );
     let _ = app.emit("marathon-progress-result-global", payload);
     Ok(())
 }
@@ -55,7 +70,10 @@ pub async fn get_available_marathon_titles(
             urls.push(u);
         }
     }
-    let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 0, "message": "Подготовка..." }));
+    let _ = app.emit(
+        "scan-progress-update",
+        serde_json::json!({ "percent": 0, "message": "Подготовка..." }),
+    );
 
     let task = pool::acquire_for_scan(&app, char_id, &urls[0], "_title_scanner_v4_").await?;
     let window = task.window().clone();
@@ -66,10 +84,13 @@ pub async fn get_available_marathon_titles(
 
     for (index, url) in urls.iter().enumerate() {
         let percent = ((index as f64 / urls.len() as f64) * 100.0) as u8;
-        let _ = app.emit("scan-progress-update", serde_json::json!({
-            "percent": percent,
-            "message": format!("Проверка: {}", url.split('/').last().unwrap_or(""))
-        }));
+        let _ = app.emit(
+            "scan-progress-update",
+            serde_json::json!({
+                "percent": percent,
+                "message": format!("Проверка: {}", url.split('/').last().unwrap_or(""))
+            }),
+        );
         tf_log(&app, "scan", "step", format!("Открываю {}", url));
 
         if let Err(e) = navigate_clean(&window, url).await {
@@ -83,20 +104,30 @@ pub async fn get_available_marathon_titles(
         }
     }
 
-    let _ = app.emit("scan-progress-update", serde_json::json!({ "percent": 100, "message": "Готово" }));
+    let _ = app.emit(
+        "scan-progress-update",
+        serde_json::json!({ "percent": 100, "message": "Готово" }),
+    );
     task.finish(None, true, false).await;
 
-    let _ = app.emit("marathon-titles-scanned-global", serde_json::json!({
-        "titles": results,
-        "count": results.len(),
-        "errors": errors
-    }));
+    let _ = app.emit(
+        "marathon-titles-scanned-global",
+        serde_json::json!({
+            "titles": results,
+            "count": results.len(),
+            "errors": errors
+        }),
+    );
     Ok(())
 }
 
 /// ДЕТАЛЬНЫЙ ПАРСИНГ СТРАНИЦЫ МАРАФОНА (v5): этапы + задания
 #[command]
-pub async fn parse_specific_marathon_page(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
+pub async fn parse_specific_marathon_page(
+    app: AppHandle,
+    url: String,
+    char_id: Option<String>,
+) -> Result<(), String> {
     let task = pool::acquire_for_scan(&app, char_id, &url, "_detail_parser_v4_").await?;
     tf_log(&app, "detail", "info", task.describe());
 
@@ -116,7 +147,11 @@ pub async fn parse_specific_marathon_page(app: AppHandle, url: String, char_id: 
 /// НОВОСТЬ О МАРАФОНЕ: возвращает очищенный HTML статьи (news.php?article=…),
 /// разбор этапов, заданий и наград выполняется в интерфейсе (js/marathons/newsParser.js).
 #[command]
-pub async fn fetch_marathon_news(app: AppHandle, url: String, char_id: Option<String>) -> Result<(), String> {
+pub async fn fetch_marathon_news(
+    app: AppHandle,
+    url: String,
+    char_id: Option<String>,
+) -> Result<(), String> {
     tf_log(&app, "news", "step", format!("Открываю новость {}", url));
     let task = pool::acquire_for_scan(&app, char_id, &url, "_news_reader_").await?;
     navigate_clean(task.window(), &url).await?;

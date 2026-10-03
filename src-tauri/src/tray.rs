@@ -21,12 +21,33 @@ pub fn show_main(app: &AppHandle) {
 
 pub fn setup(app: &App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Открыть Твиноферму", true, None::<&str>)?;
-    let auth = MenuItem::with_id(app, "check-auth", "🔐 Проверить авторизацию", true, None::<&str>)?;
-    let balance = MenuItem::with_id(app, "update-balance", "💰 Обновить балансы", true, None::<&str>)?;
-    let marathons = MenuItem::with_id(app, "update-marathons", "🏃 Обновить марафоны", true, None::<&str>)?;
+    let auth = MenuItem::with_id(
+        app,
+        "check-auth",
+        "🔐 Проверить авторизацию",
+        true,
+        None::<&str>,
+    )?;
+    let balance = MenuItem::with_id(
+        app,
+        "update-balance",
+        "💰 Обновить балансы",
+        true,
+        None::<&str>,
+    )?;
+    let marathons = MenuItem::with_id(
+        app,
+        "update-marathons",
+        "🏃 Обновить марафоны",
+        true,
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &auth, &balance, &marathons, &separator, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&show, &auth, &balance, &marathons, &separator, &quit],
+    )?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("Твиноферма")
@@ -41,7 +62,12 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             }
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 show_main(tray.app_handle());
             }
         });

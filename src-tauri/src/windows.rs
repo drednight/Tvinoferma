@@ -13,7 +13,11 @@ pub fn window_label(key: &str) -> String {
 }
 
 fn profiles_root(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("pw-sync-profiles"))
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("pw-sync-profiles"))
 }
 
 fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
@@ -27,7 +31,10 @@ fn center_window(app: &AppHandle, win: &WebviewWindow, width: f64, height: f64) 
         let scale = monitor.scale_factor();
         let x = ((monitor.size().width as f64 - width) / 2.0) + 50.0;
         let y = (monitor.size().height as f64 - height) / 2.0;
-        let _ = win.set_position(tauri::PhysicalPosition::new((x * scale) as i32, (y * scale) as i32));
+        let _ = win.set_position(tauri::PhysicalPosition::new(
+            (x * scale) as i32,
+            (y * scale) as i32,
+        ));
     }
 }
 
@@ -85,7 +92,10 @@ pub async fn close_sync_window(app: AppHandle, char_id: String) -> Result<(), St
 /// чтобы не терялся вход на сайт. Возвращает старые id, которые перенести не удалось
 /// (окно персонажа открыто или папка с новым именем уже есть).
 #[command]
-pub fn rename_char_profiles(app: AppHandle, remap: HashMap<String, String>) -> Result<Vec<String>, String> {
+pub fn rename_char_profiles(
+    app: AppHandle,
+    remap: HashMap<String, String>,
+) -> Result<Vec<String>, String> {
     let root = profiles_root(&app)?;
     let mut failed = Vec::new();
     for (old_id, new_id) in remap {
@@ -125,17 +135,27 @@ pub fn check_window_exists(app: AppHandle, label: String) -> bool {
 
 /// Выполняет произвольный JS в окне персонажа (только `sync-win-*`, не в главном окне)
 #[command]
-pub async fn execute_script_in_window(app: AppHandle, label: String, script: String) -> Result<(), String> {
+pub async fn execute_script_in_window(
+    app: AppHandle,
+    label: String,
+    script: String,
+) -> Result<(), String> {
     if !label.starts_with("sync-win-") {
         return Err(format!("Window {} is not a sync window", label));
     }
-    let window = app.get_webview_window(&label).ok_or_else(|| format!("Window {} not found", label))?;
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Window {} not found", label))?;
     window.eval(&script).map_err(|e| e.to_string())
 }
 
 /// Возвращает окно `sync-win-{key}` (профиль персонажа), создавая СКРЫТОЕ при необходимости.
 /// Второе значение = true, если окно создано сейчас (его можно уничтожить после работы).
-pub async fn get_or_create_hidden_window(app: &AppHandle, key: &str, url: &str) -> Result<(WebviewWindow, bool), String> {
+pub async fn get_or_create_hidden_window(
+    app: &AppHandle,
+    key: &str,
+    url: &str,
+) -> Result<(WebviewWindow, bool), String> {
     let label = window_label(key);
     if let Some(w) = app.get_webview_window(&label) {
         return Ok((w, false));
@@ -151,13 +171,20 @@ pub async fn get_or_create_hidden_window(app: &AppHandle, key: &str, url: &str) 
         .map_err(|e| e.to_string())?;
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let w = app.get_webview_window(&label).ok_or("Window creation failed")?;
+    let w = app
+        .get_webview_window(&label)
+        .ok_or("Window creation failed")?;
     Ok((w, true))
 }
 
 /// Окно для сканирования марафонов: профиль указанного (авторизованного) персонажа,
 /// иначе любое открытое окно персонажа, иначе отдельный профиль сканера (без входа).
-pub async fn pick_scan_window(app: &AppHandle, char_id: Option<String>, url: &str, fallback_key: &str) -> Result<(WebviewWindow, bool), String> {
+pub async fn pick_scan_window(
+    app: &AppHandle,
+    char_id: Option<String>,
+    url: &str,
+    fallback_key: &str,
+) -> Result<(WebviewWindow, bool), String> {
     if let Some(id) = char_id.filter(|s| !s.is_empty()) {
         return get_or_create_hidden_window(app, &id, url).await;
     }

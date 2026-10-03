@@ -31,7 +31,12 @@ struct Slot {
     last_used: Option<Instant>,
 }
 
-static SLOTS: Mutex<[Slot; POOL_MAX]> = Mutex::new([Slot { busy: false, last_used: None }; POOL_MAX]);
+static SLOTS: Mutex<[Slot; POOL_MAX]> = Mutex::new(
+    [Slot {
+        busy: false,
+        last_used: None,
+    }; POOL_MAX],
+);
 
 fn label(slot: usize) -> String {
     format!("pool-win-{}", slot)
@@ -61,7 +66,8 @@ async fn ensure_window(app: &AppHandle, slot: usize) -> Result<WebviewWindow, St
         .map_err(|e| e.to_string())?
         .join("pw-sync-profiles")
         .join(format!("_pool_{}", slot));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create pool profile dir: {}", e))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create pool profile dir: {}", e))?;
     let url = Url::parse("about:blank").map_err(|e| e.to_string())?;
     tauri::WebviewWindowBuilder::new(app, &lbl, WebviewUrl::External(url))
         .title(format!("Pool worker {}", slot))
@@ -178,7 +184,9 @@ impl TaskWin {
             Kind::Pool { .. } => {
                 if refresh_bank {
                     if let Some(id) = char_id {
-                        if let Err(e) = cookie_bank::save_from_window(&self.app, id, &self.window).await {
+                        if let Err(e) =
+                            cookie_bank::save_from_window(&self.app, id, &self.window).await
+                        {
                             println!("[POOL] не удалось обновить банк для {}: {}", id, e);
                         }
                     }
@@ -213,11 +221,17 @@ pub async fn acquire(app: &AppHandle, char_id: &str, url: &str) -> Result<TaskWi
                     })
                 }
                 Err(e) => {
-                    println!("[POOL] {}: сессия из банка не подставилась ({}), использую профиль", char_id, e);
+                    println!(
+                        "[POOL] {}: сессия из банка не подставилась ({}), использую профиль",
+                        char_id, e
+                    );
                     free_slot(app, slot);
                 }
             },
-            Err(e) => println!("[POOL] {}: воркер недоступен ({}), использую профиль", char_id, e),
+            Err(e) => println!(
+                "[POOL] {}: воркер недоступен ({}), использую профиль",
+                char_id, e
+            ),
         }
     }
     let (window, created_here) = get_or_create_hidden_window(app, char_id, url).await?;

@@ -54,12 +54,19 @@ struct Record {
 
 // ---------- вспомогательное ----------
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -70,7 +77,11 @@ fn check_id(id: &str) -> Result<(), String> {
 }
 
 fn bank_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("cookie-bank");
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("cookie-bank");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Не удалось создать папку банка: {}", e))?;
     Ok(dir)
 }
@@ -91,7 +102,11 @@ fn from_hex(s: &str) -> Option<Vec<u8>> {
 
 /// Входит ли кука в банк: домен совпадает с одним из `BANK_DOMAINS` или является его поддоменом.
 fn in_scope(c: &Cookie<'_>) -> bool {
-    let domain = c.domain().unwrap_or("").trim_start_matches('.').to_ascii_lowercase();
+    let domain = c
+        .domain()
+        .unwrap_or("")
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
     BANK_DOMAINS
         .iter()
         .any(|d| domain == *d || domain.ends_with(&format!(".{}", d)))
@@ -108,7 +123,9 @@ fn get_or_create_key() -> Result<Vec<u8>, String> {
             .ok_or_else(|| "Ключ банка кук в хранилище ОС повреждён".to_string()),
         Err(keyring::Error::NoEntry) => {
             let key = Aes256Gcm::generate_key(OsRng);
-            entry.set_password(&to_hex(&key)).map_err(|e| e.to_string())?;
+            entry
+                .set_password(&to_hex(&key))
+                .map_err(|e| e.to_string())?;
             Ok(key.to_vec())
         }
         Err(e) => Err(e.to_string()),
@@ -158,7 +175,9 @@ fn read_record(dir: &Path, char_id: &str) -> Result<Option<Record>, String> {
     let data = std::fs::read(&path).map_err(|e| e.to_string())?;
     let key = get_or_create_key()?;
     let json = decrypt(&key, &data)?;
-    serde_json::from_slice(&json).map(Some).map_err(|e| e.to_string())
+    serde_json::from_slice(&json)
+        .map(Some)
+        .map_err(|e| e.to_string())
 }
 
 /// Переносит запись банка при смене id персонажа (вызывается из `windows::rename_char_profiles`).
@@ -188,15 +207,27 @@ async fn read_cookies(win: &WebviewWindow) -> Result<Vec<Cookie<'static>>, Strin
 
 /// Сохраняет в банк куки окна персонажа. Вызывать, когда вход подтверждён (online).
 /// Возвращает число сохранённых кук.
-pub async fn save_from_window(app: &AppHandle, char_id: &str, win: &WebviewWindow) -> Result<usize, String> {
+pub async fn save_from_window(
+    app: &AppHandle,
+    char_id: &str,
+    win: &WebviewWindow,
+) -> Result<usize, String> {
     check_id(char_id)?;
     let all = read_cookies(win).await?;
-    let kept: Vec<String> = all.iter().filter(|c| in_scope(c)).map(|c| c.to_string()).collect();
+    let kept: Vec<String> = all
+        .iter()
+        .filter(|c| in_scope(c))
+        .map(|c| c.to_string())
+        .collect();
     if kept.is_empty() {
         return Err("в профиле нет кук pwonline.ru".into());
     }
     let count = kept.len();
-    let rec = Record { v: 1, saved_at: now_secs(), cookies: kept };
+    let rec = Record {
+        v: 1,
+        saved_at: now_secs(),
+        cookies: kept,
+    };
     let dir = bank_dir(app)?;
     let id = char_id.to_string();
     blocking(move || write_record(&dir, &id, &rec)).await?;
@@ -243,7 +274,10 @@ async fn probe_auth(win: &WebviewWindow, scope: &str) -> (String, Option<String>
     }
     match eval_and_wait(win, AUTH_SCRIPT, "#TF_AUTH_V2_", 15, scope).await {
         Some((None, data)) if data.as_str() == Some("online") => ("online".into(), None),
-        Some((err, _)) => ("offline".into(), Some(err.unwrap_or_else(|| "unknown".into()))),
+        Some((err, _)) => (
+            "offline".into(),
+            Some(err.unwrap_or_else(|| "unknown".into())),
+        ),
         None => ("offline".into(), Some("timeout".into())),
     }
 }
@@ -261,7 +295,11 @@ pub fn has_session(app: &AppHandle, char_id: &str) -> bool {
 }
 
 /// Подставляет куки персонажа из банка в окно воркера (куки банковских доменов окна заменяются).
-pub async fn restore_into(app: &AppHandle, char_id: &str, win: &WebviewWindow) -> Result<usize, String> {
+pub async fn restore_into(
+    app: &AppHandle,
+    char_id: &str,
+    win: &WebviewWindow,
+) -> Result<usize, String> {
     check_id(char_id)?;
     let dir = bank_dir(app)?;
     let id = char_id.to_string();
@@ -301,7 +339,11 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
             if path.extension().and_then(|x| x.to_str()) != Some("bin") {
                 continue;
             }
-            let id = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+            let id = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
             match read_record(&dir, &id) {
                 Ok(Some(r)) => out.push(serde_json::json!({
                     "charId": id,
@@ -373,7 +415,10 @@ pub async fn bank_verify(app: AppHandle, char_id: String) -> Result<serde_json::
         ("offline", "online") => "ОК: сессия из банка работает",
         (_, _) => "НЕ СРАБОТАЛО: после записи кук из банка вход не появился. Возможно, для входа нужны куки других доменов (см. BANK_DOMAINS)",
     };
-    println!("[BANK] verify {}: before={} after={} -> {}", char_id, before, after, verdict);
+    println!(
+        "[BANK] verify {}: before={} after={} -> {}",
+        char_id, before, after, verdict
+    );
 
     Ok(serde_json::json!({
         "verdict": verdict,
@@ -425,7 +470,11 @@ mod tests {
 
     #[test]
     fn cookie_survives_string_roundtrip() {
-        let c = Cookie::build(("bbsessionhash", "abc123")).domain("pwonline.ru").path("/").http_only(true).build();
+        let c = Cookie::build(("bbsessionhash", "abc123"))
+            .domain("pwonline.ru")
+            .path("/")
+            .http_only(true)
+            .build();
         let back = Cookie::parse(c.to_string()).unwrap();
         assert_eq!(back.name(), "bbsessionhash");
         assert_eq!(back.value(), "abc123");

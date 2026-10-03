@@ -21,15 +21,21 @@ pub async fn check_login_status_http(
     let (window, created_here) = get_or_create_hidden_window(&app, &char_id, USERCP_URL).await?;
     navigate_clean(&window, USERCP_URL).await?;
 
-    let (status, reason) = match eval_and_wait(&window, SCRIPT, "#TF_AUTH_V2_", timeout, &scope).await {
-        Some((None, data)) if data.as_str() == Some("online") => ("online", None),
-        Some((err, _)) => ("offline", Some(err.unwrap_or_else(|| "unknown".into()))),
-        None => ("offline", Some("timeout".to_string())),
-    };
+    let (status, reason) =
+        match eval_and_wait(&window, SCRIPT, "#TF_AUTH_V2_", timeout, &scope).await {
+            Some((None, data)) if data.as_str() == Some("online") => ("online", None),
+            Some((err, _)) => ("offline", Some(err.unwrap_or_else(|| "unknown".into()))),
+            None => ("offline", Some("timeout".to_string())),
+        };
     // Вход подтверждён: обновляем сессию в банке кук (сайт мог переиздать куки)
     if status == "online" {
         match crate::cookie_bank::save_from_window(&app, &char_id, &window).await {
-            Ok(n) => tf_log(&app, &scope, "info", format!("Сессия сохранена в банк кук ({} шт.)", n)),
+            Ok(n) => tf_log(
+                &app,
+                &scope,
+                "info",
+                format!("Сессия сохранена в банк кук ({} шт.)", n),
+            ),
             Err(e) => tf_log(&app, &scope, "warn", format!("Банк кук: {}", e)),
         }
     }
