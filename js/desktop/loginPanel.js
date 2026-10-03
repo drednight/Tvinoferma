@@ -17,9 +17,14 @@ export function panelDataFor(char) {
 /**
  * Тело панели. Выполняется в странице сайта, поэтому должна быть самодостаточной:
  * ничего из внешнего модуля внутри неё использовать нельзя (она передаётся строкой через toString).
+ * Кнопки действий (Issue #54-2) НЕ вызывают команды приложения: страница только переходит на служебный
+ * адрес `tf-panel://<действие>`. Rust перехватывает переход (`on_navigation`), отменяет его и шлёт событие
+ * в основное окно; персонаж определяется по окну, а не по странице. Ответ приложение пишет в панель
+ * событием `tf-panel-notify` на её host-элементе.
  * @param {{ nick: string, contacts: Record<string, string> }} DATA
+ * @param {(url: string) => void} [nav] переход (в тестах подменяется)
  */
-export function panelBootstrap(DATA) {
+export function panelBootstrap(DATA, nav) {
   if (window.top !== window) return;
   const HOST_ID = '__tf_login_panel__';
   const STORE_KEY = '__tf_lp_collapsed';
@@ -29,6 +34,12 @@ export function panelBootstrap(DATA) {
   const later = window.setTimeout.bind(window);
   const clip = navigator.clipboard && navigator.clipboard.writeText
     ? navigator.clipboard.writeText.bind(navigator.clipboard) : null;
+  const go = nav || ((url) => { window.location.href = url; });
+  const ACTIONS = [
+    ['balance', '💰 Баланс', 'Обновить баланс древних монет этого персонажа', false],
+    ['parties', '👥 Партии', 'Показать статус партий персонажа', false],
+    ['promo', '🎟 Промокод', 'Появится вместе с активацией промокодов (Issue #25)', true]
+  ];
   const FIELDS = [
     ['email', 'Email / Логин', false],
     ['password', 'Пароль', true],
@@ -50,12 +61,16 @@ export function panelBootstrap(DATA) {
     '.val.empty{color:#7c8190;font-style:italic;font-family:inherit}',
     'button{background:#2d323d;color:#e8e8ea;border:1px solid #444a58;border-radius:5px;cursor:pointer;padding:2px 7px;font-size:12px}',
     'button:hover{border-color:#f0b84a}',
+    '.acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:10px}',
+    'button:disabled{opacity:.45;cursor:not-allowed}',
+    '.status{margin-top:6px;padding:4px 6px;background:#262a33;border-radius:5px;color:#b9e6b9;white-space:pre-line;word-break:break-word}',
     'details{margin-top:8px;color:#e6c25a;font-size:11px}',
     'summary{cursor:pointer}'
   ].join('');
   let collapsed = false;
   try { collapsed = window.localStorage.getItem(STORE_KEY) === '1'; } catch (e) { collapsed = false; }
   let revealed = false;
+  let status = '';
 
   const make = (tag, cls, text) => {
     const n = create.call(doc, tag);
@@ -139,6 +154,22 @@ export function panelBootstrap(DATA) {
         line.appendChild(cp);
         card.appendChild(line);
       });
+      const acts = make('div', 'acts');
+      ACTIONS.forEach((a) => {
+        const btn = make('button', '', a[1]);
+        btn.title = a[2];
+        btn.disabled = a[3];
+        if (!a[3]) {
+          btn.addEventListener('click', () => {
+            status = '⏳ Запрос отправлен в приложение…';
+            draw();
+            go('tf-panel://' + a[0]);
+          });
+        }
+        acts.appendChild(btn);
+      });
+      card.appendChild(acts);
+      if (status) card.appendChild(make('div', 'status', status));
       const hint = make('details');
       hint.appendChild(make('summary', '', 'ℹ️ Если после входа белый экран'));
       hint.appendChild(make('div', '', 'Если после входа через VK Play появился белый экран: 1) закройте это окно браузера; 2) в Tvinoferma нажмите «Проверить авторизацию»; 3) статус должен стать 🟢.'));
@@ -146,6 +177,11 @@ export function panelBootstrap(DATA) {
       box.appendChild(card);
     };
 
+    // Ответ приложения: только текст (textContent), HTML не разбирается
+    host.addEventListener('tf-panel-notify', (e) => {
+      status = String((e.detail && e.detail.text) || '').slice(0, 600);
+      draw();
+    });
     draw();
     (doc.body || doc.documentElement).appendChild(host);
   };
