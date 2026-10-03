@@ -95,5 +95,9 @@
 *   Создайте Issue в разделе [Issues](https://github.com/drednight/Tvinoferma/issues).
 *   Пожалуйста, прикладывайте скриншоты ошибок и описание действий, которые привели к проблеме.
 
+## 📄 Лицензия
+
+Код распространяется по лицензии [MIT](LICENSE): его можно использовать, изменять и форкать, сохраняя уведомление об авторстве (© drednight). Программа предоставляется «как есть», без гарантий.
+
 ---
 *Perfect World is a registered trademark of its respective owners. This software is an independent third-party utility designed to assist players with account management via the official game website.*
