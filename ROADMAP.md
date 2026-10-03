@@ -37,11 +37,7 @@
 ## Прогресс
 
 <!-- roadmap:start -->
-<<<<<<< HEAD
-**Всего выполнено:** `█░░░░░░░░░` 8/71 (11%) · обновлено 2026-10-02
-=======
-**Всего выполнено:** `█░░░░░░░░░` 8/71 (11%) · обновлено 2026-10-03
->>>>>>> 0685117a1979a8241b84961342e66f55d3557eff
+**Всего выполнено:** `█░░░░░░░░░` 10/71 (14%) · обновлено 2026-10-03
 
 ### v0.2.3 — Баги: баланс монет и фильтр классов
 
@@ -52,15 +48,15 @@
 
 ### v0.3 — Описания заданий, несколько партий, заметки, чистый репозиторий
 
-`██████░░░░` 5/9 (56%)
+`████████░░` 7/9 (78%)
 
 - [x] [#3](https://github.com/drednight/Tvinoferma/issues/3) **0.3** Описания заданий марафона — Высокий, M
 - [x] [#4](https://github.com/drednight/Tvinoferma/issues/4) **0.4** Несколько партий у одного персонажа — Высокий, M
 - [x] [#5](https://github.com/drednight/Tvinoferma/issues/5) **1.1** `ROADMAP.md` в репозитории и Issues — Высокий, S
 - [ ] [#6](https://github.com/drednight/Tvinoferma/issues/6) **1.2** About, topics, скриншоты, лицензия — Средний, S
-- [ ] [#7](https://github.com/drednight/Tvinoferma/issues/7) **1.3** ESLint + Prettier + `checkJs` — Средний, S
+- [x] [#7](https://github.com/drednight/Tvinoferma/issues/7) **1.3** ESLint + Prettier + `checkJs` — Средний, S
 - [ ] [#8](https://github.com/drednight/Tvinoferma/issues/8) **1.4** Rust: `clippy`, `rustfmt`, `cargo audit`; `npm audit` — Средний, S
-- [ ] [#11](https://github.com/drednight/Tvinoferma/issues/11) **1.7** Документация для разработчика — Низкий, S
+- [x] [#11](https://github.com/drednight/Tvinoferma/issues/11) **1.7** Документация для разработчика — Низкий, S
 - [x] [#20](https://github.com/drednight/Tvinoferma/issues/20) **3.2** Примечания в карточке персонажа — Высокий, S
 - [x] [#21](https://github.com/drednight/Tvinoferma/issues/21) **3.3** Проверка авторизации вручную — Средний, S
 
