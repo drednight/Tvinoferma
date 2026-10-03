@@ -16,7 +16,8 @@ import { openCharacterProfile, openCharacterForm } from './index.js';
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
-import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
+import { fillClassFilter, fillPartyFilter, filterCharacters, sortCharacters } from './filters.js';
+import { charFreshness, freshnessRowHtml } from '../../core/freshness.js';
 import {
   NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
 } from '../parties/membership.js';
@@ -81,6 +82,11 @@ function initFilters() {
   classSelect.onchange = applyFilters;
   partySelect.onchange = applyFilters;
   authSelect.onchange = applyFilters; 
+  // Свежесть данных: фильтр «Давно не обновлялись» и порядок карточек
+  const freshSelect = document.getElementById('fresh-filter');
+  const sortSelect = document.getElementById('sort-select');
+  if (freshSelect) freshSelect.onchange = applyFilters;
+  if (sortSelect) sortSelect.onchange = applyFilters;
 }
 
 /** Все теги персонажей (без учёта регистра), по алфавиту. */
@@ -97,6 +103,9 @@ function fillTagFilter(select) {
     tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
   select.value = tags.includes(current) || current === '__none__' ? current : '';
 }
+
+/** Что нужно для расчёта свежести данных: пороги из настроек и марафоны (прогресс сверяется по ним). */
+const freshCtx = () => ({ settings: state.settings, marathons: state.marathons, now: Date.now() });
 
 /**
  * Рендер сетки с учетом активных фильтров
@@ -119,7 +128,9 @@ function renderFilteredGrid() {
     tag: selectedTag,
     cls: selectedClass,
     party: selectedParty,
-    auth: selectedAuth
+    auth: selectedAuth,
+    fresh: document.getElementById('fresh-filter')?.value || '',
+    freshness: freshCtx()
   });
 
   // ОБНОВЛЯЕМ KPI НА ОСНОВЕ ОТФИЛЬТРОВАННЫХ ДАННЫХ
@@ -132,17 +143,8 @@ function renderFilteredGrid() {
     return;
   }
 
-  // Сортировка: Сначала онлайн, потом по алфавиту
-  const sortedChars = [...filteredChars].sort((a, b) => {
-      const aOnline = a.isLoggedIn ? 1 : 0;
-      const bOnline = b.isLoggedIn ? 1 : 0;
-      
-      if (aOnline !== bOnline) {
-          return bOnline - aOnline; // Онлайн выше
-      }
-      
-      return a.nick.localeCompare(b.nick, 'ru');
-  });
+  // Порядок: по умолчанию сначала онлайн, потом по алфавиту; можно по нику или «давно не обновлялись — сверху»
+  const sortedChars = sortCharacters(filteredChars, document.getElementById('sort-select')?.value || 'default', freshCtx());
 
   gridEl.innerHTML = sortedChars.map(generateCardHTML).join('');
 
@@ -248,6 +250,8 @@ function generateCardHTML(char) {
               <div><span class="muted">PvE-PA</span><br/><strong>${fmtStat(stats.pvePa)}</strong></div>
               <div><span class="muted">PvE-PZ</span><br/><strong>${fmtStat(stats.pvePz)}</strong></div>
            </div>
+
+           ${freshnessRowHtml(charFreshness(char, freshCtx()))}
 
            <div style="display:flex; flex-direction:column; gap:6px; font-size:0.8rem;">
               <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-mini">

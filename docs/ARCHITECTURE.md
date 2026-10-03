@@ -59,7 +59,7 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 | Папка / файл | За что отвечает |
 | --- | --- |
 | `main.js` | Точка входа: загрузка состояния, подключение разделов |
-| `core/` | Состояние (`state.js`), хранение (`storage.js` и адаптеры), миграции `state.json` (`migrations.js`), пароли (`secrets.js`), монеты (`coins.js`), идентификаторы (`ids.js`), модальные окна и уведомления (`ui.js`), журнал задач и отмена (`taskLog.js`), тексты кодов ошибок (`errorCodes.js`), состояние парсеров (`parserHealth.js`), выбор даты (`datePicker.js`) |
+| `core/` | Состояние (`state.js`), хранение (`storage.js` и адаптеры), миграции `state.json` (`migrations.js`), пароли (`secrets.js`), монеты (`coins.js`), идентификаторы (`ids.js`), модальные окна и уведомления (`ui.js`), журнал задач и отмена (`taskLog.js`), тексты кодов ошибок (`errorCodes.js`), состояние парсеров (`parserHealth.js`), свежесть данных (`freshness.js`), выбор даты (`datePicker.js`) |
 | `data/` | Экспорт, импорт, сравнение и слияние персонажей |
 | `modules/sync/` | Очередь фоновых задач (`queue.js`: лимит окон, повторы), проверка входа, баланс, `syncManager.js` |
 | `modules/characters/`, `modules/parties/` | Список, карточка, форма персонажа; пати |
@@ -84,6 +84,18 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 
 При любой ошибке данные в базе не меняются: баланс, история монет и прогресс марафона обновляются только по успешному ответу.
 Новый парсер подключается так: ключ в `PARSERS` (`parserHealth.js`), вызов `recordParserResult(ключ, error)` в месте, где известен итог, тест в `tests/parserHealth.test.js`.
+
+## Свежесть данных
+
+`js/core/freshness.js` считает, насколько давно обновлялись данные персонажа. Новых полей в `state.json` нет, время берётся из уже сохранённых:
+
+| Вид | Откуда время | Порог по умолчанию (`settings.freshness`) |
+| --- | --- | --- |
+| 🪙 Баланс | `char.lastCoinUpdate` | `balanceHours` = 24 |
+| 🔐 Вход | `char.lastLoginCheck` | `loginHours` = 12 |
+| 🏆 Прогресс марафона | самая старая из последних сверок `progress[charId][taskId].syncedAt` по идущим марафонам с адресом страницы | `marathonHours` = 24 |
+
+Данные «устарели», если с обновления прошло больше порога или обновления ещё не было. Метки рисует `freshnessRowHtml` (карточка), `freshnessChipHtml` (профиль, карточка и страница марафона), текст пересчитывается раз в минуту (`startFreshnessTicker`) без перерисовки списка. Фильтр «Давно не обновлялись» и сортировка — в `modules/characters/filters.js` (`filterCharacters`, `sortCharacters`).
 
 ## Данные
 

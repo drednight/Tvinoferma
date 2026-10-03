@@ -5,6 +5,7 @@ import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/m
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
+import { freshnessOf, freshnessChipHtml } from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
@@ -369,7 +370,8 @@ export function openCharacterProfile(char) {
 /** Строка «🔐 🟢 Онлайн · проверено …» (проверка запускается из меню «🔄 Проверить» внизу). */
 function authLineHtml(char) {
   const v = getAuthView(char);
-  return `🔐 <span style="color:${v.color};">${v.icon} ${escapeHtml(authDetails(char))}</span>`;
+  const age = freshnessChipHtml(freshnessOf('login', char.lastLoginCheck, state.settings));
+  return `🔐 <span style="color:${v.color};">${v.icon} ${escapeHtml(authDetails(char))}</span> ${age}`;
 }
 
 /** Баланс Древних монет, время проверки и пометка «записан до исправления» (пока баланс не перечитан). */
@@ -383,6 +385,7 @@ function coinBlockHtml(char) {
     <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
     <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
     ${last}
+    <div>${freshnessChipHtml(freshnessOf('balance', char.lastCoinUpdate, state.settings))}</div>
     ${needsCoinRecheck(char) ? '<small data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Откройте «🔄 Проверить» → «Перепроверить баланс»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}`;
 }
 

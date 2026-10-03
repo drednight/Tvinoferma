@@ -3,6 +3,7 @@
 // с матрицей прогресса «персонаж × задание», сверкой с сайтом и статистикой монет.
 
 import { state } from '../../core/state.js';
+import { freshnessOf, freshnessChipHtml } from '../../core/freshness.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
@@ -229,6 +230,12 @@ function progressBar(percent, cls = '') {
   return `<div class="mr-bar ${cls}"><span style="width:${percent}%"></span></div>`;
 }
 
+/** Метка «🏆 3 ч назад» у последней сверки; у завершённых марафонов подсветки устаревания нет. */
+function syncAgeHtml(m) {
+  if (!m.lastSync || m.status === 'completed') return '';
+  return freshnessChipHtml(freshnessOf('marathon', m.lastSync.at, state.settings));
+}
+
 function marathonCard(m, { inFolder = false } = {}) {
   const t = marathonTotals(m);
   const phase = marathonPhase(m);
@@ -241,7 +248,7 @@ function marathonCard(m, { inFolder = false } = {}) {
         <span>✅ ${t.done}/${t.cells}${t.failing ? ` · <span class="mr-red">⚠ ${t.failing}</span>` : ''}</span>
         <span class="mr-gold">${coin(t.coins)}${t.maxCoins ? ` <small class="muted">/ ${t.maxCoins}</small>` : ''}</span>
       </div>
-      ${m.lastSync ? `<small class="muted">🔄 ${fmtDateTime(m.lastSync.at)}</small>` : ''}
+      ${m.lastSync ? `<small class="muted">🔄 ${fmtDateTime(m.lastSync.at)} ${syncAgeHtml(m)}</small>` : ''}
     </article>`;
 }
 
@@ -366,7 +373,7 @@ function renderDetail(root, m) {
       ${kpi('Выполнено заданий', `${t.done}/${t.cells}`)}
       ${kpi('Не успевают', t.failing ? `<span class="mr-red">${t.failing}</span>` : '0', t.failing ? 'запас дней исчерпан' : 'все в графике')}
       ${kpi(completed ? '💰 Заработано (итог)' : '💰 Заработано', t.coins.toLocaleString('ru-RU'), t.maxCoins ? `из ${t.maxCoins.toLocaleString('ru-RU')} возможных` : 'награды не заданы')}
-      ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length}` : '')}
+      ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length} ${syncAgeHtml(m)}` : '')}
     </div>
 
     ${ui.syncTask && ui.syncTaskFor === m.id ? taskCardHtml(ui.syncTask) : ''}

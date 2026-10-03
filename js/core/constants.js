@@ -142,6 +142,12 @@ export const DEFAULT_SETTINGS = {
     closeToTray: false,
     backgroundAuthMinutes: 0   // 0 — выключено
   },
+  // Через сколько часов данные считаются устаревшими (метки «Обновлено N ч назад», фильтр «Давно не обновлялись»)
+  freshness: {
+    balanceHours: 24,
+    loginHours: 12,
+    marathonHours: 24
+  },
   updates: {
     checkOnStartup: true
   }

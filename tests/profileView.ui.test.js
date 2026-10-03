@@ -37,6 +37,17 @@ describe('раскрытая карточка', () => {
     expect([...rows[0].querySelectorAll('li')].map(li => li.textContent).sort()).toEqual(['Арена', 'Фарм']);
   });
 
+  it('у баланса и статуса входа есть метка «N назад»; устаревшее подсвечено (issue #16)', async () => {
+    const hoursAgo = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+    openCharacterProfile(mkChar({ lastCoinUpdate: hoursAgo(2), lastLoginCheck: hoursAgo(30) })); await wait();
+    const coin = $('#profile-coins-block [data-fresh-kind="balance"]');
+    const login = $('#profile-auth-line [data-fresh-kind="login"]');
+    expect(coin.textContent).toContain('2 ч назад');
+    expect(coin.classList.contains('is-stale')).toBe(false);
+    expect(login.textContent).toContain('1 дн. назад');
+    expect(login.classList.contains('is-stale')).toBe(true);
+  });
+
   it('без дополнительных пати строки нет', async () => {
     openCharacterProfile(mkChar({ partyIds: ['p1'] })); await wait();
     expect(document.querySelector('[data-extra-party]')).toBeNull();

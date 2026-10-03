@@ -4,6 +4,7 @@
 
 import { escapeHtml } from '../../core/utils.js';
 import { NO_PARTY, isInParty } from '../parties/membership.js';
+import { isStale, staleness } from '../../core/freshness.js';
 
 /** Уникальные непустые значения по алфавиту (без учёта регистра букв ru). */
 export function uniqueSorted(values) {
@@ -48,8 +49,12 @@ export const fillPartyFilter = (select, parties) =>
       .map(p => ({ value: p.id, label: p.name }))
   });
 
-/** Применяет фильтры к списку персонажей (поиск, тег, класс, пати, статус входа). */
-export function filterCharacters(chars, { search = '', tag = '', cls = '', party = '', auth = '' } = {}) {
+/**
+ * Применяет фильтры к списку персонажей (поиск, тег, класс, пати, статус входа, свежесть данных).
+ * fresh: 'stale' — «давно не обновлялись» (устарел или ни разу не обновлялся баланс, вход или прогресс марафона),
+ * 'fresh' — всё свежее; для этого нужен freshness = { settings, marathons, now }.
+ */
+export function filterCharacters(chars, { search = '', tag = '', cls = '', party = '', auth = '', fresh = '', freshness = {} } = {}) {
   const searchTerm = String(search).toLowerCase().trim();
   let out = chars;
 
@@ -76,5 +81,24 @@ export function filterCharacters(chars, { search = '', tag = '', cls = '', party
   if (auth === 'online') out = out.filter(c => c.isLoggedIn === true);
   else if (auth === 'offline') out = out.filter(c => c.isLoggedIn !== true);
 
+  if (fresh === 'stale') out = out.filter(c => isStale(c, freshness));
+  else if (fresh === 'fresh') out = out.filter(c => !isStale(c, freshness));
+
   return out;
+}
+
+/**
+ * Порядок карточек. default — сначала в сети, затем по нику (как было); nick — только по нику;
+ * stale — сверху те, чьи данные обновлялись давнее всего (ни разу не обновлявшиеся — первыми).
+ * Новый массив, исходный не меняется.
+ */
+export function sortCharacters(chars, mode = 'default', freshness = {}) {
+  const byNick = (a, b) => a.nick.localeCompare(b.nick, 'ru');
+  const list = [...chars];
+  if (mode === 'nick') return list.sort(byNick);
+  if (mode === 'stale') {
+    const age = new Map(list.map(c => [c.id, staleness(c, freshness)]));
+    return list.sort((a, b) => (age.get(b.id) - age.get(a.id)) || byNick(a, b));
+  }
+  return list.sort((a, b) => (b.isLoggedIn ? 1 : 0) - (a.isLoggedIn ? 1 : 0) || byNick(a, b));
 }

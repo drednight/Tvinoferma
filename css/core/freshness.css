@@ -1,0 +1,19 @@
+/* ===== Метки свежести данных «Обновлено N ч назад» (issue #16) ===== */
+.fresh-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  font-size: 0.72rem;
+}
+.fresh-chip {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.fresh-chip.is-stale {
+  color: var(--warning);
+  font-weight: 600;
+}
+.fresh-chip.is-stale::before {
+  content: '⏳ ';
+}

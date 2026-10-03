@@ -10,6 +10,7 @@ import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import { openTaskJournal } from '../core/taskLog.js';
+import { refreshFreshnessLabels } from '../core/freshness.js';
 
 async function refreshBackups() {
   const adapter = getAdapter();
@@ -137,6 +138,7 @@ function bindSettingInputs() {
       setSetting(path, value);
       await persist();
       if (path.startsWith('tray.')) await applyDesktopSettings();
+      if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings);   // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
         toast(value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.', 'info');
       }

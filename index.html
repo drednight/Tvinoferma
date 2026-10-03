@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="/css/core/fab.css" />
   <link rel="stylesheet" href="/css/core/update.css" />
   <link rel="stylesheet" href="/css/core/health.css" />
+  <link rel="stylesheet" href="/css/core/freshness.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -80,6 +81,18 @@
 
             <select id="tag-filter" class="select" title="Фильтр по тегу">
               <option value="">Все теги</option>
+            </select>
+
+            <select id="fresh-filter" class="select" title="Свежесть данных: баланс, вход, прогресс марафона. Порог устаревания — в настройках">
+              <option value="">Любая свежесть</option>
+              <option value="stale">⏳ Давно не обновлялись</option>
+              <option value="fresh">✅ Свежие данные</option>
+            </select>
+
+            <select id="sort-select" class="select" title="Порядок карточек">
+              <option value="default">Сначала в сети, по нику</option>
+              <option value="nick">По нику</option>
+              <option value="stale">Давно не обновлялись — сверху</option>
             </select>
           </div>
           
@@ -239,6 +252,23 @@
               <p class="muted">Проверка авторизации, обновление балансов, поиск и сверка марафонов. У каждого запуска есть подробный лог по шагам: если что-то пошло не так, откройте запись, нажмите «Скопировать лог» и отправьте разработчику. Пароли и почты в логи не попадают.</p>
             </div>
             <button id="open-task-journal-btn" class="btn">📄 Открыть логи</button>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom: 16px;">
+          <h3>⏳ Свежесть данных</h3>
+          <p class="muted">Через сколько часов данные считаются устаревшими. Устаревшие метки «Обновлено N ч назад» подсвечиваются на карточках персонажей и марафонов, их можно отфильтровать («Давно не обновлялись») или поставить наверх списка.</p>
+          <div class="setting-row">
+            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
+            <input class="input setting-num" type="number" min="1" max="720" data-setting="freshness.balanceHours" />
+          </div>
+          <div class="setting-row">
+            <div><strong>🔐 Статус входа</strong><p class="muted">Часов с последней проверки авторизации.</p></div>
+            <input class="input setting-num" type="number" min="1" max="720" data-setting="freshness.loginHours" />
+          </div>
+          <div class="setting-row">
+            <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
+            <input class="input setting-num" type="number" min="1" max="720" data-setting="freshness.marathonHours" />
           </div>
         </div>
 
