@@ -241,7 +241,7 @@ pub async fn activate_promo(
     tf_log(&app, &scope, "step", format!("Нажимаю «{}»", label));
     if task
         .window()
-        .eval(&with_common(&pin_script("click", &code, "")))
+        .eval(with_common(&pin_script("click", &code, "")))
         .is_err()
     {
         task.finish(Some(&char_id), true, true).await;
