@@ -1,5 +1,5 @@
 //! Активация промокода на персонаже (Issue #25): страница `/pin/<КОД>` в окне его профиля,
-//! нажатие кнопки «Ввести», чтение ответа сайта (скрипт `scripts/promo.js`).
+//! нажатие кнопки «Активировать», чтение ответа сайта (скрипт `scripts/promo.js`).
 //!
 //! Правила безопасности (см. `docs/COMPLIANCE.md`):
 //! - команда запускается только по кнопке пользователя из диалога; расписаний нет;
@@ -57,7 +57,7 @@ fn classify_inspect(res: Wait) -> Result<(String, String), (&'static str, String
                 "invalid_code" => "invalid_code",
                 "already_used" => "already_used",
                 "needs_choice" => "needs_choice",
-                // страница загрузилась, но кнопки «Ввести» на ней нет
+                // страница загрузилась, но кнопки «Активировать» на ней нет
                 "pending" => return Err(("error", "button_not_found".to_string())),
                 _ => "error",
             };
@@ -299,9 +299,9 @@ mod tests {
     fn inspect_ready_returns_label_and_signature() {
         let ok = classify_inspect(Some((
             None,
-            json!({ "state": "ready", "label": "ввести", "sig": "123" }),
+            json!({ "state": "ready", "label": "активировать", "sig": "123" }),
         )));
-        assert_eq!(ok, Ok(("ввести".to_string(), "123".to_string())));
+        assert_eq!(ok, Ok(("активировать".to_string(), "123".to_string())));
     }
 
     #[test]

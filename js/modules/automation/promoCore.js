@@ -17,13 +17,6 @@ export function validateCode(raw) {
   return { ok: true, code, error: null };
 }
 
-/** «PWZNANIYA26» → «PW•••••••26»: для журнала и истории, если полный код хранить не нужно. */
-export function maskCode(code) {
-  const c = normalizeCode(code);
-  if (c.length <= 4) return '••••';
-  return c.slice(0, 2) + '•'.repeat(c.length - 4) + c.slice(-2);
-}
-
 /** Как показывать каждый итог. `final` — исход известен, повторять не нужно. */
 export const STATUS_INFO = {
   success: { icon: '✅', label: 'Успех', level: 'ok' },
@@ -118,7 +111,6 @@ export function createSessionGuard() {
 /* ------------------------------------------------------------------ */
 
 export const HISTORY_KEY = 'tf_promo_history_v1';
-export const KEEP_CODE_KEY = 'tf_promo_keep_code';
 export const HISTORY_MAX = 300;
 
 const store = () => { try { return window.localStorage; } catch { return null; } };
@@ -129,12 +121,10 @@ export function loadHistory() {
 
 export function clearHistory() { store()?.removeItem(HISTORY_KEY); }
 
-export const keepCodeSetting = () => store()?.getItem(KEEP_CODE_KEY) === '1';
-export const setKeepCodeSetting = (on) => store()?.setItem(KEEP_CODE_KEY, on ? '1' : '0');
 
-/** Добавляет строки в историю: код маскируется, если пользователь не разрешил хранить его целиком. */
-export function addHistory(code, rows, { keepCode = keepCodeSetting() } = {}) {
-  const shown = keepCode ? normalizeCode(code) : maskCode(code);
+/** Добавляет строки в историю. Промокод не секретный, поэтому хранится целиком. */
+export function addHistory(code, rows) {
+  const shown = normalizeCode(code);
   const entries = rows.filter(r => !r.dryRun).map(r => ({ at: r.at, code: shown, charId: r.charId, nick: r.nick, status: r.status, error: r.error || null }));
   if (!entries.length) return loadHistory();
   const next = [...entries.reverse(), ...loadHistory()].slice(0, HISTORY_MAX);
@@ -153,7 +143,7 @@ export function csvCell(value) {
   return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** CSV для русского Excel: разделитель «;», в начале BOM. Код в файл не попадает. */
+/** CSV для русского Excel: разделитель «;», в начале BOM.  */
 export function resultsToCsv(rows) {
   const head = ['Персонаж', 'Результат', 'Подробности', 'Время'];
   const lines = rows.map(r => [r.nick, statusInfo(r.status).label, r.error || r.detail || '', r.at].map(csvCell).join(';'));

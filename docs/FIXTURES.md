@@ -16,10 +16,11 @@
 | `news_list_p1.html`, `news_list_p2.html` | Архив новостей | `newsList.js` |
 | `news-*.html` | Вырезки новостей (только статья) | `newsParser.js` |
 
-**Страница промокода `/pin/<код>`:** настоящей фикстуры пока нет. `tests/promoScript.test.js` использует
-СИНТЕТИЧЕСКИЕ страницы (предполагаемая вёрстка). Как только появятся настоящие обезличенные страницы
-(до нажатия «Ввести», после успеха, «код уже использован», «неверный код»), сохраните их в `tests/fixtures/`
-(`site-pin-*.html`), добавьте в таблицу и уточните тексты в `src-tauri/src/scripts/selectors.json` (`promo`).
+**Страница промокода:** `site-pin-code.html` (`/pin/<код>`, код уже подставлен в поле) и `site-pin-empty.html`
+(`/pin.php`, поле пустое) — настоящие, обезличенные (проверяет `promo.js`, `tests/promoScript.test.js`).
+Страниц ПОСЛЕ нажатия «Активировать» (успех, «код уже использован», «неверный код») пока нет: в тестах они
+СИНТЕТИЧЕСКИЕ. Когда появятся настоящие, сохраните их как `site-pin-result-*.html` и уточните тексты
+в `src-tauri/src/scripts/selectors.json` (`promo.used`, `promo.invalid`, `promo.success`).
 
 Тесты: `tests/parsers.test.js` (скрипты на страницах) и `tests/fixturesPrivacy.test.js` (в фикстурах нет личных данных).
 
