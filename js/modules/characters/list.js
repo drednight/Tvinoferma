@@ -277,8 +277,9 @@ function generateCardHTML(char) {
            <!-- Правая часть: кнопка Открыть Сайт -->
            <button id="btn-open-site-${char.id}" 
                    class="btn ghost small" 
-                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:pointer;"
-                   title="Открыть браузер для входа"
+                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:${state.ui?.authCheck?.[char.id] === 'checking' ? 'not-allowed' : 'pointer'}; ${state.ui?.authCheck?.[char.id] === 'checking' ? 'opacity:.45;' : ''}"
+                   title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}"
+                   ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
                    onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">
                🌐 Открыть сайт
            </button>

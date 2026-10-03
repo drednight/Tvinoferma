@@ -12,6 +12,7 @@ import { applyCoinBalance, formatCoins } from '../../core/coins.js';
 import { showModal, closeModal } from '../../core/ui.js';
 
 // Импортируем скрипты запуска задач
+import { buildPanelScript, panelDataFor } from '../../desktop/loginPanel.js';
 import { checkCharacterAuth } from './checkAuth.js';
 import { getCharacterBalance } from './getBalance.js';
 import { runQueue, browserSlots, isRetryableCode } from './queue.js';
@@ -300,8 +301,13 @@ export async function refreshAllMarathonStats() {
     renderMarathons();
 }
 
+/** Идёт ли сейчас проверка входа этого персонажа (пока идёт — вручную открывать сайт нельзя). */
+export function isCheckInProgress(charId) {
+    return state.ui?.authCheck?.[charId] === 'checking';
+}
+
 /**
- * ОТКРЫТЬ ПОМОЩНИКА ВХОДА (Браузер + Модалка контактов)
+ * ОТКРЫТЬ ПОМОЩНИКА ВХОДА (Браузер + панель контактов внутри окна)
  */
 export async function openSyncHelper(characterId) {
     const char = state.characters.find(c => c.id === characterId);
@@ -309,20 +315,23 @@ export async function openSyncHelper(characterId) {
         toast('Персонаж не найден', 'error');
         return;
     }
+    if (isCheckInProgress(char.id)) {
+        toast(`Идёт проверка входа для ${char.nick} — дождитесь окончания, потом откройте сайт`, 'info');
+        return;
+    }
 
-    // Показываем модалку с данными
-    showCredentialsModal(char);
-
-    // Открываем браузерное окно
+    // Открываем браузерное окно; контакты показывает сворачиваемая панель слева поверх страницы
     try {
-        await invoke('open_sync_window', { 
-            charId: char.id, 
+        await invoke('open_sync_window', {
+            charId: char.id,
             url: 'https://pwonline.ru/',
-            charNick: char.nick 
+            charNick: char.nick,
+            panelScript: buildPanelScript(panelDataFor(char))
         });
     } catch (err) {
         console.error(err);
         toast('Не удалось открыть окно браузера', 'error');
+        showCredentialsModal(char);   // запасной вариант: контакты в модалке
     }
 }
 
@@ -412,6 +421,7 @@ function showCredentialsModal(char) {
         };
 
         document.getElementById('btn-reopen-window-modal')?.addEventListener('click', async () => {
+            if (isCheckInProgress(char.id)) { toast('Идёт проверка входа — дождитесь окончания', 'info'); return; }
             await invoke('open_sync_window', { 
                 charId: char.id, 
                 url: 'https://pwonline.ru/',

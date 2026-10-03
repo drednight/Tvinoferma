@@ -120,3 +120,18 @@ describe('отмена массового обновления балансов'
     expect(document.querySelector('[data-task-cancel]')).toBeNull();
   });
 });
+
+describe('открытие сайта вручную', () => {
+  it('пока идёт проверка персонажа, окно не открывается', async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    invoke.mockClear();
+    state.characters = [mk('a')];
+    state.ui.authCheck = { a: 'checking' };
+    expect(sync.isCheckInProgress('a')).toBe(true);
+    await sync.openSyncHelper('a');
+    expect(invoke).not.toHaveBeenCalledWith('open_sync_window', expect.anything());
+    state.ui.authCheck = {};
+    await sync.openSyncHelper('a');
+    expect(invoke).toHaveBeenCalledWith('open_sync_window', expect.anything());
+  });
+});

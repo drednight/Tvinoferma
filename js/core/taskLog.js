@@ -9,11 +9,12 @@ import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { confirmDialog } from './ui.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
+import { state } from './state.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
 const MAX_TASKS = 300;
 const MAX_ENTRIES = 500;
-const DOCK_AUTOHIDE_MS = 20000;
+const DOCK_AUTOHIDE_MS = 8000;
 
 const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌' };
 
@@ -59,6 +60,7 @@ class Task {
     this.entries = [];
     this.scopes = [];
     this.open = false;
+    this.actor = null;           // кто и что делается сейчас: { nick, text }
     this.warnings = 0;
     this.errors = 0;
     this.cancelable = !!opts.cancelable;   // показывать кнопку «Отмена»
@@ -104,6 +106,7 @@ class Task {
     this.finishedAt = nowIso();
     this.step = summary || 'Готово';
     this.scopes = [];
+    this.actor = null;
     this.log(summary || 'Завершено', this.status === 'error' ? 'error' : this.status === 'warn' ? 'warn' : 'ok');
     saveJournal();
     if (this.dock) setTimeout(() => { this._hidden = true; renderDock(); }, DOCK_AUTOHIDE_MS);
@@ -124,7 +127,27 @@ export function onTaskChange(fn) { subscribers.add(fn); return () => subscribers
 
 /** Записать строку во все идущие задачи, которые следят за scope. */
 export function logScope(scope, message, level = 'info') {
-  tasks.filter(t => t.status === 'running' && t.scopes.includes(scope)).forEach(t => t.log(message, level));
+  const text = withNick(scope, message);
+  const nick = nickOfScope(scope);
+  tasks.filter(t => t.status === 'running' && t.scopes.includes(scope)).forEach(t => {
+    if (nick) t.actor = { nick, text: text.slice(nick.length + 2) };
+    t.log(text, level);
+  });
+}
+
+/** Для scope `char:<id>` добавляет к строке ник персонажа (если его там ещё нет). */
+export function nickOfScope(scope) {
+  const m = /^char:(.+)$/.exec(String(scope || ''));
+  if (!m) return '';
+  const char = (state.characters || []).find(c => c.id === m[1]);
+  return char?.nick || m[1];
+}
+
+export function withNick(scope, message) {
+  const nick = nickOfScope(scope);
+  if (!nick) return message;
+  const text = String(message);
+  return text.startsWith(`${nick}:`) ? text : `${nick}: ${text}`;
 }
 
 async function ensureRustListener() {
@@ -166,6 +189,7 @@ export function taskCardHtml(t, { closable = false } = {}) {
       </div>
       <div class="tl-bar"><span style="width:${t.percent}%"></span></div>
       <div class="tl-meta"><span>${t.percent}%${counter}</span><span class="tl-step">${escapeHtml(t.step || '')}</span></div>
+      ${t.status === 'running' && t.actor ? `<div class="tl-actor">👤 Персонаж: <b>${escapeHtml(t.actor.nick)}</b> — ${escapeHtml(t.actor.text)}</div>` : ''}
       ${t.warnings || t.errors ? `<div class="tl-counts">${t.errors ? `<span class="mr-red">ошибок: ${t.errors}</span>` : ''} ${t.warnings ? `<span class="tl-warn-c">предупреждений: ${t.warnings}</span>` : ''}</div>` : ''}
       <button type="button" class="tl-toggle" data-task-toggle="${t.id}">${t.open ? '▾ Скрыть подробности' : '▸ Что происходит'}</button>
       ${t.open ? `<div class="tl-entries">${last.map(entryHtml).join('')}</div>` : ''}

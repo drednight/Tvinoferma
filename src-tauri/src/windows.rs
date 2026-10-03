@@ -45,6 +45,7 @@ pub async fn open_sync_window(
     char_id: String,
     url: String,
     char_nick: Option<String>,
+    panel_script: Option<String>,
 ) -> Result<String, String> {
     let label = window_label(&char_id);
     let title = format!("PW Sync: {}", char_nick.as_deref().unwrap_or(&char_id));
@@ -53,17 +54,25 @@ pub async fn open_sync_window(
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
         let _ = win.set_title(&title);
+        // Панель «Помощник входа»: обновляем в уже открытом окне
+        if let Some(script) = panel_script.as_deref() {
+            let _ = win.eval(script);
+        }
         return Ok(label);
     }
 
     let parsed_url = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
-    let win = tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
-        .title(title)
-        .inner_size(1200.0, 800.0)
-        .resizable(true)
-        .data_directory(profile_dir(&app, &char_id)?)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let mut builder =
+        tauri::WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed_url))
+            .title(title)
+            .inner_size(1200.0, 800.0)
+            .resizable(true)
+            .data_directory(profile_dir(&app, &char_id)?);
+    // Панель «Помощник входа» рисуется скриптом поверх страницы и переживает переходы
+    if let Some(script) = panel_script.as_deref() {
+        builder = builder.initialization_script(script);
+    }
+    let win = builder.build().map_err(|e| e.to_string())?;
     center_window(&app, &win, 1200.0, 800.0);
 
     // Патч против попапов

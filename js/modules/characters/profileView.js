@@ -183,7 +183,7 @@ export function openCharacterProfile(char) {
 
          <!-- Центральная группа: Синхронизация -->
          <div style="display:flex; gap:10px;">
-            <button id="btn-open-sync-helper-footer" class="btn secondary" title="Открыть браузер для входа">
+            <button id="btn-open-sync-helper-footer" class="btn secondary" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">
                🔑 Открыть сайт
             </button>
             <button id="btn-coin-history-footer" class="btn secondary" title="История изменений баланса Древних монет">
