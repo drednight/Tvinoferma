@@ -184,3 +184,13 @@
 .settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .settings-col > .panel { margin: 0; }
 @media (max-width: 900px) { .settings-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* Свёрнутая карточка: описание в одну строку (с «…»), поэтому все карточки одинаковой высоты
+   и ряды в двух колонках выровнены. В раскрытой карточке описание показано полностью. */
+.settings-col > .panel.fold > summary { min-height: 56px; }
+.settings-col > .panel.fold:not([open]) > summary p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 24px;   /* место под стрелку */
+}
