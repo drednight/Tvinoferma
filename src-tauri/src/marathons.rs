@@ -88,7 +88,7 @@ pub async fn get_available_marathon_titles(
             "scan-progress-update",
             serde_json::json!({
                 "percent": percent,
-                "message": format!("Проверка: {}", url.split('/').last().unwrap_or(""))
+                "message": format!("Проверка: {}", url.split('/').next_back().unwrap_or(""))
             }),
         );
         tf_log(&app, "scan", "step", format!("Открываю {}", url));

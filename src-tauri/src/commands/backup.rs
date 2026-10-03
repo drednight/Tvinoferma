@@ -58,7 +58,7 @@ fn list_backup_files(dir: &Path) -> Result<Vec<(PathBuf, u64, u64)>, String> {
             .unwrap_or(0);
         files.push((path, modified, meta.len()));
     }
-    files.sort_by(|a, b| b.1.cmp(&a.1)); // новые сверху
+    files.sort_by_key(|a| std::cmp::Reverse(a.1)); // новые сверху
     Ok(files)
 }
 
