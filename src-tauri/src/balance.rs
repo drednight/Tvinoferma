@@ -21,10 +21,9 @@ pub async fn fetch_and_parse_balance_v4(
     navigate_clean(task.window(), CHESTS_URL).await?;
 
     let (balance, error) = match eval_and_wait(task.window(), SCRIPT, "#TF_BAL_V5_", timeout_seconds.unwrap_or(15), &scope).await {
-        Some((None, data)) => match data.as_f64() {
-            // Баланс бывает дробным (28,5): храним с точностью до 0,1
-            Some(v) if v.is_finite() && v >= 0.0 => (Some((v * 10.0).round() / 10.0), None),
-            _ => (None, Some("parse_nan".to_string())),
+        Some((None, data)) => match normalize_balance(&data) {
+            Some(v) => (Some(v), None),
+            None => (None, Some("parse_nan".to_string())),
         },
         Some((Some(err), _)) => (None, Some(err)),
         None => (None, Some("timeout".to_string())),
@@ -35,4 +34,44 @@ pub async fn fetch_and_parse_balance_v4(
     let payload = serde_json::json!({ "charId": char_id, "balance": balance, "error": error });
     let _ = app.emit("pw-balance-result-global", payload.clone());
     Ok(payload)
+}
+
+/// Значение из скрипта страницы → баланс. Баланс бывает дробным (28,5), поэтому читаем как `f64`
+/// (раньше `as_i64()` отбрасывал дробные числа) и храним с точностью до 0,1.
+fn normalize_balance(data: &serde_json::Value) -> Option<f64> {
+    match data.as_f64() {
+        Some(v) if v.is_finite() && v >= 0.0 => Some((v * 10.0).round() / 10.0),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_balance;
+    use serde_json::json;
+
+    #[test]
+    fn fractional_balance_is_kept() {
+        assert_eq!(normalize_balance(&json!(28.5)), Some(28.5));
+        assert_eq!(normalize_balance(&json!(1285.5)), Some(1285.5));
+        assert_eq!(normalize_balance(&json!(0.5)), Some(0.5));
+    }
+
+    #[test]
+    fn integer_balance_is_kept() {
+        assert_eq!(normalize_balance(&json!(285)), Some(285.0));
+        assert_eq!(normalize_balance(&json!(0)), Some(0.0));
+    }
+
+    #[test]
+    fn extra_digits_are_rounded_to_one_decimal() {
+        assert_eq!(normalize_balance(&json!(28.4999999)), Some(28.5));
+    }
+
+    #[test]
+    fn invalid_values_are_rejected() {
+        assert_eq!(normalize_balance(&json!(null)), None);
+        assert_eq!(normalize_balance(&json!("28,5")), None);
+        assert_eq!(normalize_balance(&json!(-1)), None);
+    }
 }

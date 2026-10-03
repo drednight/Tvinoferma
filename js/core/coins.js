@@ -74,12 +74,29 @@ export function normalizeCoinHistory(list) {
 }
 
 /**
+ * Версия разбора баланса. До v2 значение «28,5» читалось как 285 (запятая удалялась), поэтому
+ * баланс и история, записанные раньше, могли быть неверными: такие данные помечаются как
+ * «требуют перепроверки», пока баланс не будет прочитан с сайта заново.
+ */
+export const COIN_PARSER_VERSION = 2;
+
+/** Баланс записан старым разбором (или не проверялся после исправления) и мог быть испорчен. */
+export function needsCoinRecheck(char) {
+  if (!char) return false;
+  const synced = !!char.lastCoinUpdate || (Array.isArray(char.coinHistory) && char.coinHistory.length > 0);
+  return synced && (Number(char.coinsParserV) || 0) < COIN_PARSER_VERSION;
+}
+
+/**
  * Записывает новый баланс в персонажа (мутирует char).
  * - lastCoinUpdate обновляется всегда (это «дата последней проверки»);
  * - запись в историю добавляется только если баланс изменился (никаких «+0»);
  * Возвращает { changed, delta }.
  */
-export function applyCoinBalance(char, balance, { note = 'Автосинхронизация PW Online', now = new Date().toISOString() } = {}) {
+export function applyCoinBalance(char, balance, { note, now = new Date().toISOString() } = {}) {
+  // Первая проверка после исправления разбора: пометка в истории, чтобы было видно, почему значение «скакнуло»
+  if (note == null) note = needsCoinRecheck(char) ? 'Перепроверка после исправления разбора баланса' : 'Автосинхронизация PW Online';
+  char.coinsParserV = COIN_PARSER_VERSION;
   const oldBalance = roundCoins(char.ancientCoins || 0);
   const newBalance = roundCoins(balance);
   char.lastCoinUpdate = now;

@@ -95,6 +95,7 @@ export function normalizeCharacter(input = {}) {
 
     ancientCoins: roundCoins(Number(input.ancientCoins) || 0),
     lastCoinUpdate: input.lastCoinUpdate || null,
+    coinsParserV: Number(input.coinsParserV) || 0,   // версия разбора баланса (см. needsCoinRecheck)
 
     // --- Данные синхронизации с pwonline.ru (раньше терялись при перезапуске) ---
     isLoggedIn: input.isLoggedIn === true,

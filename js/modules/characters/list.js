@@ -3,7 +3,7 @@
 import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
-import { formatCoins } from '../../core/coins.js';
+import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
 import { toast, showModal, confirmDialog } from '../../core/ui.js';
 import { renderParties } from '../parties/index.js';
 
@@ -180,7 +180,7 @@ function generateCardHTML(char) {
       `;
     }).join('');
 
-    const coinsDisplay = formatCoins(char.ancientCoins || 0);
+    const coinsDisplay = formatCoins(char.ancientCoins || 0) + (needsCoinRecheck(char) ? ' <span title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить»." style="color:#f7768e; cursor:help;">⚠</span>' : '');
     const mainName = mainPartyName(char, state.parties);
     const extraNames = additionalPartiesOf(char, state.parties).map(p => p.name);
     const partyLabel = mainName

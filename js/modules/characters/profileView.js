@@ -4,7 +4,7 @@ import { state, NOTES_MAX_LENGTH } from '../../core/state.js';
 import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/membership.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
-import { formatCoins } from '../../core/coins.js';
+import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
@@ -72,12 +72,13 @@ export function openCharacterProfile(char) {
             <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
             
             ${lastUpdateStr}
+            ${needsCoinRecheck(char) ? '<small class="mr-red" data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Нажмите «Обновить»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}
             
             <button id="btn-refresh-coins-header" 
                     class="btn small ghost" 
                     style="margin-top:6px; font-size:0.75rem; padding:4px 8px; border:1px solid var(--border);"
                     title="Проверить актуальный баланс на сайте">
-                🔄 Обновить
+                ${needsCoinRecheck(char) ? '🔄 Перепроверить' : '🔄 Обновить'}
             </button>
           </div>
         </div>

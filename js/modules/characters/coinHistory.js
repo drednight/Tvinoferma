@@ -6,7 +6,7 @@
 import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
-import { formatCoins, formatDelta, normalizeCoinHistory } from '../../core/coins.js';
+import { formatCoins, formatDelta, normalizeCoinHistory, needsCoinRecheck } from '../../core/coins.js';
 
 const fmtDate = (iso) => {
   const d = new Date(iso);
@@ -33,7 +33,9 @@ export function openCoinHistory(charOrId) {
   const ov = openOverlay({ title: `🪙 История Древних монет: ${char.nick}`, wide: true });
   const last = char.lastCoinUpdate ? fmtDate(char.lastCoinUpdate) : 'ещё не проверялся';
 
+  const stale = needsCoinRecheck(char);
   ov.body.innerHTML = `
+    ${stale ? '<p class="tf-warn" data-coin-warn>⚠ Баланс и записи ниже сделаны до исправления разбора: значение с запятой (28,5) могло записаться как 285. Нажмите «Перепроверить» — баланс будет прочитан с сайта заново, в историю добавится запись о разнице.</p>' : ''}
     <div class="tl-summary">
       <strong>🪙 ${formatCoins(char.ancientCoins || 0)}</strong>
       <span class="muted">Последняя проверка: ${escapeHtml(last)}</span>
@@ -42,8 +44,20 @@ export function openCoinHistory(charOrId) {
     <div class="tl-entries tl-full">${history.length ? history.map(entryHtml).join('') : '<div class="muted" style="padding:8px;">История пуста: баланс ещё не менялся.</div>'}</div>
     <p class="muted" style="font-size:0.78rem; margin:8px 0 0;">Если при проверке баланс не изменился, запись не добавляется — обновляется только дата последней проверки.</p>`;
 
-  ov.foot.innerHTML = `<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
+  ov.foot.innerHTML = `<span></span><div class="row gap">${stale ? '<button type="button" class="btn primary" data-recheck>🔄 Перепроверить</button>' : ''}<button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
+  const recheck = ov.foot.querySelector('[data-recheck]');
+  if (recheck) recheck.onclick = async () => {
+    recheck.disabled = true; recheck.textContent = '⏳ Проверяю…';
+    try {
+      const { refreshBalanceFor } = await import('../sync/syncManager.js');
+      await refreshBalanceFor(char);
+      ov.close();
+      openCoinHistory(char.id);          // заново: уже с новым балансом и без предупреждения
+    } catch (e) {
+      recheck.disabled = false; recheck.textContent = '🔄 Перепроверить';
+    }
+  };
   ov.foot.querySelector('[data-copy]').onclick = async (e) => {
     const text = [
       `История Древних монет: ${char.nick} (баланс ${formatCoins(char.ancientCoins || 0)}, проверка: ${last})`,

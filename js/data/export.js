@@ -188,6 +188,7 @@ export function openExportDialog() {
              if (incCoins) {
                clean.ancientCoins = copy.ancientCoins;
                clean.lastCoinUpdate = copy.lastCoinUpdate;
+               clean.coinsParserV = copy.coinsParserV || 0;
                clean.coinHistory = copy.coinHistory;
              }
              if (incTags) clean.tags = copy.tags;

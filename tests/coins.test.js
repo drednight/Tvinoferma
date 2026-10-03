@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   parseCoins, roundCoins, formatCoins, formatDelta, normalizeCoinHistory,
-  applyCoinBalance
+  applyCoinBalance, needsCoinRecheck, COIN_PARSER_VERSION
 } from '../js/core/coins.js';
 import { normalizeCharacter } from '../js/core/state.js';
 
@@ -100,5 +100,42 @@ describe('нормализация сохранённых данных', () => {
   it('normalizeCharacter сохраняет дробный баланс', () => {
     const c = normalizeCharacter({ id: 'a', nick: 'A', ancientCoins: 28.54 });
     expect(c.ancientCoins).toBe(28.5);
+  });
+});
+
+describe('пометка старых данных баланса (issue #1)', () => {
+  const old = (extra = {}) => ({ ancientCoins: 285, lastCoinUpdate: '2025-01-01T00:00:00Z', coinHistory: [{ delta: 285, date: '2025-01-01T00:00:00Z' }], ...extra });
+
+  it('данные, записанные до исправления, требуют перепроверки', () => {
+    expect(needsCoinRecheck(old())).toBe(true);
+    expect(needsCoinRecheck(old({ coinsParserV: 1 }))).toBe(true);
+  });
+  it('новый персонаж и проверенный по новой версии — без пометки', () => {
+    expect(needsCoinRecheck({ ancientCoins: 0, coinHistory: [] })).toBe(false);
+    expect(needsCoinRecheck(old({ coinsParserV: COIN_PARSER_VERSION }))).toBe(false);
+    expect(needsCoinRecheck(null)).toBe(false);
+  });
+  it('перепроверка снимает пометку и подписывает запись в истории', () => {
+    const c = old();
+    const r = applyCoinBalance(c, 28.5, { now: '2025-02-01T00:00:00Z' });
+    expect(r).toEqual({ changed: true, delta: -256.5 });
+    expect(c.coinsParserV).toBe(COIN_PARSER_VERSION);
+    expect(needsCoinRecheck(c)).toBe(false);
+    expect(c.coinHistory[0].note).toMatch(/Перепроверка/);
+  });
+  it('если значение верное, пометка снимается без записи «+0»', () => {
+    const c = old({ ancientCoins: 28.5 });
+    expect(applyCoinBalance(c, 28.5).changed).toBe(false);
+    expect(needsCoinRecheck(c)).toBe(false);
+    expect(c.coinHistory).toHaveLength(1);
+  });
+  it('обычная синхронизация подписывается как раньше', () => {
+    const c = old({ coinsParserV: COIN_PARSER_VERSION });
+    applyCoinBalance(c, 300);
+    expect(c.coinHistory[0].note).toBe('Автосинхронизация PW Online');
+  });
+  it('версия сохраняется при нормализации; старый файл без поля → 0 (будет пометка)', () => {
+    expect(normalizeCharacter({ nick: 'a', coinsParserV: 2 }).coinsParserV).toBe(2);
+    expect(normalizeCharacter({ nick: 'a', ancientCoins: 285, lastCoinUpdate: '2025-01-01T00:00:00Z' }).coinsParserV).toBe(0);
   });
 });
