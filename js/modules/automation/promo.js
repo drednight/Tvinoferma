@@ -50,6 +50,7 @@ export function openPromoDialog({ ids = [] } = {}) {
   let lastRows = [];       // результаты последнего запуска
   let lastCodes = [];
   let lastChars = [];
+  let lastDry = false;     // последний запуск был пробным
 
   const dlg = openOverlay({ title: '🎁 Активация промокодов', wide: true, onClose: () => { if (running) running.cancelled = true; } });
   const alive = () => dlg.el.isConnected;
@@ -93,6 +94,7 @@ export function openPromoDialog({ ids = [] } = {}) {
     dlg.foot.innerHTML = `
       <span style="flex:1"></span>
       <button class="btn ghost" data-act="close">Закрыть</button>
+      <button class="btn secondary" data-act="dry" title="Откроет страницу кода и найдёт кнопку «Активировать», но не нажмёт её: ничего не вводится и не сохраняется">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start">▶ Запустить</button>`;
     updateCount();
     updateCodesInfo();
@@ -148,26 +150,26 @@ export function openPromoDialog({ ids = [] } = {}) {
     };
   }
 
-  async function start(codes, chars, { carry = [] } = {}) {
+  async function start(codes, chars, { carry = [], dry = false } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
 
     const total = codes.length * chars.length;
-    const task = startTask(`🎁 Промокод: ${codes.join(', ').slice(0, 60)}`, { total, cancelable: true });
+    const task = startTask(`🎁 Промокод${dry ? ' (пробный)' : ''}: ${codes.join(', ').slice(0, 60)}`, { total, cancelable: true });
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
     task.watch(...chars.map(c => `char:${c.id}`));
     task.setStep(`${chars.length} перс. × ${codes.length} код., по ${browserSlots.max} одновременно, повторов до ${retries}`);
-    renderRunning(codes, chars, signal);
+    renderRunning(codes, chars, signal, dry);
 
     const { invoke } = await import('@tauri-apps/api/core');
     const known = state.characters.map(c => ({ id: c.id, nick: c.nick }));
     let rows = [];
     try {
       rows = await runPromoBatch({
-        codes, chars, signal, task, invokeFn: invoke, retries, retryDelayMs, skip: makeSkip(carry),
+        codes, chars, dryRun: dry, signal, task, invokeFn: invoke, retries, retryDelayMs, skip: makeSkip(carry),
         onRow: (row, done, all) => {
           // Введённое сохраняем сразу: «Стоп» или закрытие окна ничего не теряют
           if (isOk(row.status) && !row.skipped) recordRun(row.code, [row], { known });
@@ -178,14 +180,15 @@ export function openPromoDialog({ ids = [] } = {}) {
       running = null;
     }
     // Итог по каждому коду: кому введён и кому нет (и почему); недействительные коды в журнал не попадают
-    codes.forEach(code => recordRun(code, rows.filter(r => codeKey(r.code) === codeKey(code)), { known }));
+    if (!dry) codes.forEach(code => recordRun(code, rows.filter(r => codeKey(r.code) === codeKey(code)), { known }));
 
     const s = summarize(rows);
-    task.finish(`${signal.cancelled ? 'Остановлено. ' : ''}Введено ${s.ok} из ${s.total}, пропущено (уже введены) ${s.skipped}, отклонено ${s.invalid}, ошибок ${s.failed}`,
+    if (dry) task.finish(`${signal.cancelled ? 'Остановлено. ' : ''}Пробный запуск: кнопка найдена у ${s.dry} из ${s.total}, ничего не нажато и не сохранено`, s.dry === s.total ? 'done' : 'warn');
+    else task.finish(`${signal.cancelled ? 'Остановлено. ' : ''}Введено ${s.ok} из ${s.total}, пропущено (уже введены) ${s.skipped}, отклонено ${s.invalid}, ошибок ${s.failed}`,
       s.ok === s.total ? 'done' : 'warn');
     rows.filter(r => !r.skipped).forEach(r => task.log(`${r.nick} · ${r.code}: ${rowLabel(r)}${rowDetail(r) ? ` — ${rowDetail(r)}` : ''}`, statusInfo(r.status).level === 'error' ? 'error' : 'info'));
 
-    lastRows = rows; lastCodes = codes; lastChars = chars;
+    lastRows = rows; lastCodes = codes; lastChars = chars; lastDry = dry;
     if (alive()) renderResults(signal.cancelled);
   }
 
@@ -194,8 +197,8 @@ export function openPromoDialog({ ids = [] } = {}) {
       <tbody>${chars.map(ch => `<tr data-row="${escapeHtml(ch.id)}"><td><b>${escapeHtml(ch.nick)}</b></td>${codes.map(code =>
         `<td data-cell="${escapeHtml(ch.id)}|${escapeHtml(codeKey(code))}">${cellHtml(byKey.get(`${ch.id}|${codeKey(code)}`))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 
-  function renderRunning(codes, chars, signal) {
-    dlg.sub.textContent = 'Идёт ввод: персонажи обрабатываются несколько одновременно, коды у каждого — по очереди.';
+  function renderRunning(codes, chars, signal, dry = false) {
+    dlg.sub.textContent = dry ? '👁 Пробный запуск: страницы открываются, кнопка ищется, но не нажимается.' : 'Идёт ввод: персонажи обрабатываются несколько одновременно, коды у каждого — по очереди.';
     dlg.body.innerHTML = `<div class="promo-progress" id="promo-progress">0 из ${codes.length * chars.length}</div>${tableHtml(codes, chars, new Map())}`;
     dlg.foot.innerHTML = `<span class="promo-muted" style="flex:1">«Стоп» не начинает новых вводов; уже начатые завершатся, введённое сохранится.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
@@ -213,6 +216,7 @@ export function openPromoDialog({ ids = [] } = {}) {
   /* ------------------------- результаты -------------------------- */
 
   function renderResults(stopped) {
+    if (lastDry) { renderDryResults(stopped); return; }
     const s = summarize(lastRows);
     const perCode = summarizeByCode(lastRows, lastCodes);
     const log = loadLog();
@@ -236,6 +240,21 @@ export function openPromoDialog({ ids = [] } = {}) {
       <button class="btn primary" data-act="close">Закрыть</button>`;
   }
 
+  /** Итог пробного запуска: где кнопка найдена, а где нет; в журнал ничего не пишется. */
+  function renderDryResults(stopped) {
+    const s = summarize(lastRows);
+    const byKey = new Map(lastRows.map(r => [`${r.charId}|${codeKey(r.code)}`, r]));
+    dlg.sub.textContent = `${stopped ? '⏹ Остановлено. ' : ''}👁 Пробный запуск: кнопка найдена ${s.dry} из ${s.total}.`
+      + `${s.skipped ? ` Уже введены раньше: ${s.skipped}.` : ''}${s.failed ? ` Проблем: ${s.failed}.` : ''}${s.invalid ? ` Отклонено сайтом: ${s.invalid}.` : ''}`;
+    dlg.body.innerHTML = `${tableHtml(lastCodes, lastChars, byKey)}
+      <p class="promo-muted">Ничего не нажато, не введено и не записано в журнал промокодов. Если везде «кнопка найдена» — можно запускать по-настоящему.</p>`;
+    dlg.foot.innerHTML = `
+      <button class="btn ghost" data-act="back">← К списку</button>
+      <span style="flex:1"></span>
+      <button class="btn secondary" data-act="dry-again">👁 Ещё раз</button>
+      <button class="btn primary" data-act="real">▶ Запустить по-настоящему</button>`;
+  }
+
   /* ------------------------- события ------------------------------ */
 
   dlg.body.addEventListener('input', (e) => {
@@ -255,12 +274,13 @@ export function openPromoDialog({ ids = [] } = {}) {
   });
 
   /** Предпросмотр и подтверждение; возвращает false, если запускать нечего или пользователь отказался. */
-  function confirmRun(codes, chars, carry = []) {
+  function confirmRun(codes, chars, carry = [], { dry = false } = {}) {
     const plans = planRun(loadLog(), codes, chars);
     const unclear = new Set(carry.filter(r => r.clicked && r.status === 'unknown').map(r => `${r.charId}|${codeKey(r.code)}`));
     const todo = plans.reduce((n, p) => n + p.todo.filter(c => !unclear.has(`${c.id}|${codeKey(p.code)}`)).length, 0);
     const skipped = plans.reduce((n, p) => n + p.done.length, 0);
     if (!todo) { toast('Все выбранные персонажи уже получили эти коды', 'info'); return false; }
+    if (dry) return true;          // пробный запуск ничего не нажимает: подтверждение не нужно
     return confirmDialog(
       `${codes.length === 1 ? `Код ${codes[0]}` : `Коды (${codes.length}): ${codes.join(', ')}`} — персонажей: ${chars.length}.\n`
       + `${skipped ? `Уже введены, пропущу: ${skipped}.\n` : ''}Будет выполнено вводов: ${todo}.\nДействие необратимо. Продолжить?`);
@@ -271,19 +291,28 @@ export function openPromoDialog({ ids = [] } = {}) {
     if (!act) return;
     if (act === 'close') { dlg.close(); return; }
     if (act === 'back') { renderForm(); return; }
+    if (act === 'dry-again') {
+      if (confirmRun(lastCodes, lastChars, [], { dry: true })) await start(lastCodes, lastChars, { dry: true });
+      return;
+    }
+    if (act === 'real') {
+      if (confirmRun(lastCodes, lastChars)) await start(lastCodes, lastChars);
+      return;
+    }
     if (act === 'retry') {
       const carry = lastRows;
       if (confirmRun(lastCodes, lastChars, carry)) await start(lastCodes, lastChars, { carry });
       return;
     }
-    if (act === 'start') {
+    if (act === 'start' || act === 'dry') {
+      const dry = act === 'dry';
       codesRaw = dlg.body.querySelector('#promo-code')?.value ?? codesRaw;
       const p = parseCodes(codesRaw);
       if (p.invalid.length) { toast(`Не похоже на промокод: ${p.invalid.slice(0, 3).join(', ')}`, 'warning'); return; }
       if (!p.codes.length) { toast('Введите хотя бы один промокод', 'warning'); return; }
       const chars = selectedChars();
       if (!chars.length) { toast('Выберите хотя бы одного персонажа', 'warning'); return; }
-      if (confirmRun(p.codes, chars)) await start(p.codes, chars);
+      if (confirmRun(p.codes, chars, [], { dry })) await start(p.codes, chars, { dry });
     }
   });
 

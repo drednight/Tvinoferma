@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runPromoBatch, CODE_PAUSE_MS, START_STAGGER_MS, REJECT_LIMIT } from '../js/modules/automation/promoRunner.js';
 import { createLimiter } from '../js/modules/sync/queue.js';
+import { summarize } from '../js/modules/automation/promoCore.js';
 
 const mk = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, nick: `Ник${i}` }));
 const ok = (charId, extra = {}) => ({ charId, status: 'success', clicked: true, dryRun: false, rewards: null, ...extra });
@@ -20,6 +21,14 @@ describe('runPromoBatch: параллельность', () => {
     const rows = await runPromoBatch(base({ chars: mk(6), invokeFn, limiter: createLimiter(3) }));
     expect(maxActive).toBe(3);
     expect(rows).toHaveLength(6);
+  });
+
+  it('пробный запуск: dryRun уходит в команду, строки dry_run не считаются ни введёнными, ни ошибками', async () => {
+    const invokeFn = vi.fn(async (_, a) => ({ charId: a.charId, status: 'dry_run', clicked: false, dryRun: true, detail: 'Активировать' }));
+    const rows = await runPromoBatch(base({ invokeFn, dryRun: true }));
+    expect(invokeFn.mock.calls.every(c => c[1].dryRun === true)).toBe(true);
+    const s = summarize(rows);
+    expect([s.dry, s.ok, s.failed, s.rerun]).toEqual([3, 0, 0, 0]);
   });
 
   it('лимит 1 — строго по одному', async () => {
