@@ -4,10 +4,40 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::webview::NewWindowResponse;
-use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    command, AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 const POPUP_PATCH: &str = include_str!("scripts/popup_patch.js");
+/// Снимает клиентский лимит сайта «не более 6 предметов» на странице передачи предметов (только видимые окна).
+const PROMO_ITEMS_UNLIMITED: &str = include_str!("scripts/promo_items_unlimited.js");
+
+/// Настройки видимых окон браузера (из «Настроек» приложения).
+pub struct BrowserSettings {
+    pub unlimited_items: AtomicBool,
+}
+
+impl Default for BrowserSettings {
+    fn default() -> Self {
+        Self {
+            unlimited_items: AtomicBool::new(true),
+        }
+    }
+}
+
+fn unlimited_items_enabled(app: &AppHandle) -> bool {
+    app.try_state::<BrowserSettings>()
+        .map(|s| s.unlimited_items.load(Ordering::Relaxed))
+        .unwrap_or(true)
+}
+
+/// «Снять лимит 6 предметов» в видимых окнах: действует на окна, открытые после изменения.
+#[command]
+pub fn set_unlimited_items(settings: State<'_, BrowserSettings>, enabled: bool) {
+    settings.unlimited_items.store(enabled, Ordering::Relaxed);
+}
 
 pub fn window_label(key: &str) -> String {
     format!("sync-win-{}", key)
@@ -31,33 +61,37 @@ fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
 /// ломает вход через VK Play: сессия и `window.opener` остаются в другом окне.
 /// 1) `popup_patch.js` вшит как initialization_script и срабатывает в каждом документе окна
 ///    (раньше он выполнялся один раз через `eval` и пропадал после первого перехода);
-/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает.
+/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает;
+/// 3) `promo_items_unlimited.js` (если не выключен в настройках) снимает лимит сайта «6 предметов» на странице передачи.
 fn guard_popups<'a, M: Manager<tauri::Wry>>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, M>,
     app: &AppHandle,
     label: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
+    let unlimited = unlimited_items_enabled(app);
     let app = app.clone();
     let label = label.to_string();
-    builder
-        .initialization_script(POPUP_PATCH)
-        .on_new_window(move |url, _features| {
-            // В лог попадает только адрес без параметров: в них бывают коды входа
-            println!(
-                "[WINDOW] {}: запрос нового окна -> {}{}",
-                label,
-                url.host_str().unwrap_or("?"),
-                url.path()
-            );
-            if matches!(url.scheme(), "http" | "https") {
-                if let Some(win) = app.get_webview_window(&label) {
-                    tauri::async_runtime::spawn(async move {
-                        let _ = win.navigate(url);
-                    });
-                }
+    let mut builder = builder.initialization_script(POPUP_PATCH);
+    if unlimited {
+        builder = builder.initialization_script(PROMO_ITEMS_UNLIMITED);
+    }
+    builder.on_new_window(move |url, _features| {
+        // В лог попадает только адрес без параметров: в них бывают коды входа
+        println!(
+            "[WINDOW] {}: запрос нового окна -> {}{}",
+            label,
+            url.host_str().unwrap_or("?"),
+            url.path()
+        );
+        if matches!(url.scheme(), "http" | "https") {
+            if let Some(win) = app.get_webview_window(&label) {
+                tauri::async_runtime::spawn(async move {
+                    let _ = win.navigate(url);
+                });
             }
-            NewWindowResponse::Deny
-        })
+        }
+        NewWindowResponse::Deny
+    })
 }
 
 /// Окно осталось на служебной странице прошлой задачи (`#TF_...`) или не на сайте.
@@ -110,6 +144,9 @@ pub async fn open_sync_window(
         }
         // Панель «Помощник входа»: в уже открытом окне она живёт до следующего перехода
         let _ = win.eval(POPUP_PATCH);
+        if unlimited_items_enabled(&app) {
+            let _ = win.eval(PROMO_ITEMS_UNLIMITED);
+        }
         if let Some(script) = panel_script.as_deref() {
             let _ = win.eval(script);
         }

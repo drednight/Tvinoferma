@@ -202,7 +202,7 @@ function bindSettingInputs() {
       if (path === 'updates.mode') setSetting('updates.checkOnStartup', value !== 'never');   // совместимость со старыми версиями
       await persist();
       if (path === 'updates.mode') { refreshUpdateSchedule(); rescheduleUpdates(); }
-      if (path.startsWith('tray.')) await applyDesktopSettings();
+      if (path.startsWith('tray.') || path.startsWith('browser.')) await applyDesktopSettings();
       if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings);   // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
         toast(value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.', 'info');

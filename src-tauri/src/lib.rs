@@ -39,6 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(tray::TraySettings::default())
+        .manage(windows::BrowserSettings::default())
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -107,6 +108,8 @@ pub fn run() {
             commands::secrets::secrets_delete_many,
             // трей
             tray::set_close_to_tray,
+            // видимые окна браузера
+            windows::set_unlimited_items,
             // куки-банк
             cookie_bank::bank_status,
             cookie_bank::bank_verify,

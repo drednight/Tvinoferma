@@ -71,6 +71,10 @@ export async function applyDesktopSettings() {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('set_close_to_tray', { enabled: !!tray.closeToTray });
     } catch (e) { console.warn('[TRAY]', e); }
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_unlimited_items', { enabled: state.settings?.browser?.unlimitedGiftItems !== false });
+    } catch (e) { console.warn('[BROWSER]', e); }
   }
 
   if (backgroundTimer) { clearInterval(backgroundTimer); backgroundTimer = null; }

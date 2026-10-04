@@ -145,6 +145,7 @@ function mergeSettings(input = {}) {
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: { ...DEFAULT_SETTINGS.notifications, ...(input.notifications || {}) },
+    browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
     freshness: { ...DEFAULT_SETTINGS.freshness, ...(input.freshness || {}) },
     updates: { ...DEFAULT_SETTINGS.updates, ...(input.updates || {}) }

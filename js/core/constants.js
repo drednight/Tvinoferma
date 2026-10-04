@@ -138,6 +138,10 @@ export const DEFAULT_SETTINGS = {
     dailyReminder: true,    // ежедневное напоминание о заданиях
     dailyHour: 20
   },
+  // Видимые окна браузера персонажей
+  browser: {
+    unlimitedGiftItems: true   // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
+  },
   tray: {
     closeToTray: false,
     backgroundAuthMinutes: 0   // 0 — выключено
