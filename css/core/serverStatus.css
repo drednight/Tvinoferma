@@ -1,0 +1,33 @@
+/* ===== Плашка «Статус серверов» (шапка и окно передачи предметов, Issue #26) ===== */
+.server-status {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+.srv-plaque {
+  max-width: 100%;
+  min-width: 0;
+  padding: 7px 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  display: grid;
+  gap: 5px;
+}
+.srv-head { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; font-size: 0.78rem; }
+.srv-head b { font-size: 0.82rem; }
+.srv-age { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+.srv-plaque.is-warn .srv-age { color: var(--warning, #e0af68); }
+.srv-plaque.is-busy .srv-age { color: var(--accent); }
+.srv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.srv { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; white-space: nowrap; }
+.srv-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.srv.is-on .srv-dot { background: var(--success, #9ece6a); box-shadow: 0 0 0 2px rgba(158, 206, 106, 0.18); }
+.srv.is-off .srv-dot { background: var(--danger, #f7768e); }
+.srv.is-off { color: var(--muted); }
+
+/* В окне передачи плашка занимает всю ширину слева от кнопок обновления */
+.tr-top .server-status { justify-content: flex-start; }
+.tr-top .srv-plaque { width: 100%; }
+@media (max-width: 900px) { .server-status { flex-basis: 100%; order: 3; } }

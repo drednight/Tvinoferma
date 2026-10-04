@@ -14,6 +14,7 @@ import { PASS_TYPES, getClassIconSrc } from '../../core/constants.js';
 import { openCharacterProfile, openCharacterForm } from './index.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
+import { hasGameCenterPath } from '../launcher/launch.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
@@ -274,15 +275,24 @@ function generateCardHTML(char) {
               ${passesHtml}
            </div>
            
-           <!-- Правая часть: кнопка Открыть Сайт -->
-           <button id="btn-open-site-${char.id}" 
-                   class="btn ghost small" 
-                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:${state.ui?.authCheck?.[char.id] === 'checking' ? 'not-allowed' : 'pointer'}; ${state.ui?.authCheck?.[char.id] === 'checking' ? 'opacity:.45;' : ''}"
-                   title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}"
-                   ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
-                   onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">
-               🌐 Открыть сайт
-           </button>
+           <!-- Правая часть: компактные кнопки — запуск игры и вход на сайт (подписи — во всплывающих подсказках) -->
+           <div class="card-actions">
+              <button class="card-act play${hasGameCenterPath(char) ? '' : ' is-unset'}"
+                      type="button"
+                      aria-label="Играть"
+                      title="${hasGameCenterPath(char) ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите GameCenter (откроется карточка)'}"
+                      onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
+                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
+              </button>
+              <button id="btn-open-site-${char.id}"
+                      class="card-act"
+                      type="button"
+                      aria-label="Открыть сайт"
+                      style="${state.ui?.authCheck?.[char.id] === 'checking' ? 'cursor:not-allowed;' : ''}"
+                      title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
+                      ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
+                      onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
+           </div>
         </footer>
       </article>
     `;
@@ -480,6 +490,14 @@ window.handleOpenSite = (charId) => {
     }
 };
 
+// Кнопка «▶ Играть» на карточке
+window.handleLaunchChar = async (charId) => {
+    const char = state.characters.find(c => c.id === charId);
+    if (!char) { toast('Персонаж не найден', 'error'); return; }
+    const { launchOne } = await import('../launcher/partyLaunch.js');
+    launchOne(char);
+};
+
 export function bindCharacters() {
   const addBtn = document.getElementById('add-character-btn');
   if (addBtn) {
@@ -554,6 +572,8 @@ function renderBulkBar() {
     <button class="btn secondary small" data-bulk="auth" ${dis}>🔐 Проверить вход</button>
     <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
     <button class="btn secondary small" data-bulk="promo" ${dis}>🎁 Промокод</button>
+    <button class="btn secondary small" data-bulk="transfer" ${dis}>📦 Передать предметы</button>
+    <button class="btn secondary small" data-bulk="launch" ${dis} title="Запустить игру для выбранных по очереди">▶ Запустить</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
     <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>
@@ -604,6 +624,16 @@ async function onBulkAction(e) {
     case 'promo': {
       const { openPromoDialog } = await import('../automation/promo.js');
       openPromoDialog({ ids: chars.map(c => c.id) });
+      break;
+    }
+    case 'transfer': {
+      const { openTransferDialog } = await import('../automation/transfer.js');
+      openTransferDialog({ ids: chars.map(c => c.id) });
+      break;
+    }
+    case 'launch': {
+      const { launchGroup } = await import('../launcher/partyLaunch.js');
+      launchGroup(`Запуск игры: выбранные (${chars.length})`, chars);
       break;
     }
     case 'tag-add':

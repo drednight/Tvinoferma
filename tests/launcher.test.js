@@ -1,14 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { launchCharacters, launchable } from '../js/modules/launcher/launch.js';
+import { readFileSync } from 'node:fs';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText } from '../js/modules/launcher/launch.js';
+import { confirmModal } from '../js/core/ui.js';
+import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
-import { normalizeCharacter } from '../js/core/state.js';
+import { normalizeCharacter, normalizeState } from '../js/core/state.js';
 
-const ch = (id, gcPath) => ({ id, nick: id, launch: { gcPath } });
+const ch = (id, gcPath, extra = {}) => ({ id, nick: id, launch: { gcPath, ...extra } });
 
 describe('launcher', () => {
   it('берёт только аккаунты с путём к GameCenter', () => {
     const list = [ch('a', 'D:\\GC1'), ch('b', ''), ch('c', '  '), { id: 'd' }, ch('e', 'D:\\GC2')];
     expect(launchable(list).map(c => c.id)).toEqual(['a', 'e']);
+  });
+
+  it('план запуска: кого запускаем и кого пропускаем', () => {
+    const plan = launchPlan([ch('a', 'D:\\GC1'), ch('b', ''), { id: 'c' }]);
+    expect(plan.ready.map(c => c.id)).toEqual(['a']);
+    expect(plan.skipped.map(c => c.id)).toEqual(['b', 'c']);
+    expect(launchPlan(null)).toEqual({ ready: [], skipped: [] });
   });
 
   it('запускает по очереди, ошибка одного не мешает остальным', async () => {
@@ -30,11 +40,40 @@ describe('launcher', () => {
     expect(done).toEqual(['a', 'b', 'c']);
   });
 
-  it('передаёт ссылку и время ожидания клиента в команду запуска', async () => {
+  it('в команду запуска уходят путь, id и ник аккаунта (токена в JS нет), ссылка и время ожидания', async () => {
     const seen = [];
     const invoke = async (cmd, args) => { seen.push([cmd, args]); return {}; };
-    await launchCharacters([ch('a', 'one')], { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 }, { invoke });
-    expect(seen).toEqual([['launcher_start', { path: 'one', url: 'vkplay://play/0.61', waitSecs: 30 }]]);
+    await launchCharacters(
+      [ch('a', 'one', { gcNick: 'Twin', gcAccount: true })],
+      { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
+      { invoke }
+    );
+    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
+    seen.length = 0;
+    await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
+    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
+  });
+
+  it('onStart вызывается по очереди, а не для всех сразу', async () => {
+    const log = [];
+    const invoke = async (cmd, args) => { log.push(`start:${args.charId}`); await new Promise(r => setTimeout(r, 5)); log.push(`end:${args.charId}`); };
+    await launchCharacters([ch('a', '1'), ch('b', '2')], { delayMs: 0, onStart: (c) => log.push(`onStart:${c.id}`) }, { invoke });
+    expect(log).toEqual(['onStart:a', 'start:a', 'end:a', 'onStart:b', 'start:b', 'end:b']);
+  });
+
+  it('отмена: ожидающие в очереди не запускаются', async () => {
+    const signal = { cancelled: false };
+    const started = [];
+    const invoke = async (cmd, args) => { started.push(args.charId); signal.cancelled = true; };
+    const res = await launchCharacters([ch('a', '1'), ch('b', '2'), ch('c', '3')], { delayMs: 0, signal }, { invoke });
+    expect(started).toEqual(['a']);
+    expect(res.map(r => [r.ok, r.cancelled])).toEqual([[true, false], [false, true], [false, true]]);
+  });
+
+  it('текст про сохранённый вход', () => {
+    expect(loginStatusText(ch('a', 'x'))).toContain('Вход не запомнен');
+    expect(loginStatusText(ch('a', 'x', { gcAccount: true, gcNick: 'Twin' }))).toContain('«Twin»');
+    expect(loginStatusText(ch('a', 'x', { gcAccount: true }))).toContain('Вход запомнен.');
   });
 
   it('миграция v7 добавляет launch.gcPath', () => {
@@ -43,8 +82,85 @@ describe('launcher', () => {
     expect(state.characters[0].launch).toEqual({ gcPath: '' });
   });
 
-  it('normalizeCharacter сохраняет путь и обрезает пробелы', () => {
-    expect(normalizeCharacter({ nick: 'X', launch: { gcPath: '  D:\\GC1  ' } }).launch.gcPath).toBe('D:\\GC1');
-    expect(normalizeCharacter({ nick: 'X' }).launch.gcPath).toBe('');
+  it('normalizeCharacter: путь и ник обрезаются, признак входа сохраняется, токена в данных нет', () => {
+    const c = normalizeCharacter({ nick: 'X', launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' } });
+    expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
+    expect(JSON.stringify(c)).not.toContain('SECRET');
+    expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} });
+  });
+});
+
+describe('launcher: итог запуска, трей', () => {
+  it('длительность: секунды, минуты, часы', () => {
+    expect(formatDuration(0)).toBe('0 с');
+    expect(formatDuration(45400)).toBe('45 с');
+    expect(formatDuration(60000)).toBe('1 мин');
+    expect(formatDuration(72000)).toBe('1 мин 12 с');
+    expect(formatDuration(3900000)).toBe('1 ч 05 мин');
+    expect(formatDuration(-5)).toBe('0 с');
+  });
+
+  it('склонение «окно»', () => {
+    expect([0, 1, 2, 4, 5, 11, 12, 21, 22, 25].map(windowsWord))
+      .toEqual(['окон', 'окно', 'окна', 'окна', 'окон', 'окон', 'окон', 'окно', 'окна', 'окон']);
+  });
+
+  it('одна строка итога: сколько окон и за какое время; ошибки и пропуски — в конце', () => {
+    expect(launchSummary({ ok: 3, ms: 72000 })).toBe('Запущено 3 окна за 1 мин 12 с');
+    expect(launchSummary({ ok: 1, ms: 9000 })).toBe('Запущено 1 окно за 9 с');
+    expect(launchSummary({ ok: 5, failed: 1, cancelled: 2, skipped: 1, ms: 30000 }))
+      .toBe('Запущено 5 окон за 30 с, с ошибкой: 1, отменено: 2, без пути к GameCenter: 1');
+  });
+
+  it('в меню трея попадают только пати, где есть кого запускать, в порядке вкладки «Пати»', () => {
+    const parties = [{ id: 'p2', name: 'Вторая', order: 2 }, { id: 'p1', name: 'Первая', order: 1 }, { id: 'p3', name: 'Пустая', order: 3 }];
+    const chars = [
+      { id: 'a', partyIds: ['p1'], launch: { gcPath: 'D:\\GC1' } },
+      { id: 'b', partyIds: ['p2'], launch: { gcPath: '' } },
+      { id: 'c', partyIds: ['p3'], launch: { gcPath: 'D:\\GC3' } }
+    ];
+    expect(launchablePartyNames(parties, chars, charactersInParty)).toEqual(['Первая', 'Пустая']);
+    expect(launchablePartyNames([], chars, charactersInParty)).toEqual([]);
+  });
+
+  it('настройка «показывать итог» включена по умолчанию и сохраняется', () => {
+    expect(normalizeState({ characters: [], settings: {} }).settings.launcher.notify).toBe(true);
+    expect(normalizeState({ characters: [], settings: { launcher: { notify: false } } }).settings.launcher.notify).toBe(false);
+  });
+
+  it('трей: пункты меню и префикс пати совпадают у Rust и интерфейса', () => {
+    const rust = readFileSync('src-tauri/src/tray.rs', 'utf8');
+    const desk = readFileSync('js/desktop/desktop.js', 'utf8');
+    expect(rust).toContain('LAUNCH_PREFIX: &str = "launch-party:"');
+    expect(desk).toContain("'launch-party:'");
+    expect(rust).toContain('"close-game"');
+    expect(rust).toContain('"game-closed"');
+    expect(desk).toContain("'game-closed'");
+    expect(rust).toContain('set_tray_parties');
+    expect(readFileSync('src-tauri/src/lib.rs', 'utf8')).toContain('tray::set_tray_parties');
+  });
+
+  it('итог закрытия окон: ничего не было, всё закрыто, часть не поддалась, ошибка поиска', () => {
+    expect(closeReportText({ found: 0 })).toBe('Окон игры не запущено');
+    expect(closeReportText({ found: 2, closed: 2, failed: 0 })).toBe('Закрыто окон игры: 2');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('Закрыто 1 из 3');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('администратора');
+    expect(closeReportText({ error: 'tasklist: не найден' })).toContain('tasklist');
+  });
+
+  it('подтверждение в стиле приложения: «ОК» — да, «Отмена»/Esc — нет, окно убирается', async () => {
+    const ask = () => confirmModal({ title: 'Закрыть?', text: 'Будет закрыто окон: 2', okText: 'Закрыть (2)', danger: true });
+    let p = ask();
+    expect(document.querySelector('.tf-confirm .modal-body').textContent).toContain('окон: 2');
+    document.querySelector('[data-act="ok"]').click();
+    expect(await p).toBe(true);
+    expect(document.querySelector('.tf-confirm')).toBeNull();
+    p = ask();
+    document.querySelector('[data-act="cancel"]').click();
+    expect(await p).toBe(false);
+    p = ask();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(await p).toBe(false);
+    expect(document.querySelector('.tf-confirm-overlay')).toBeNull();
   });
 });

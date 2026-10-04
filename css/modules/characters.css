@@ -324,3 +324,33 @@
 .pf-menu-list button { text-align: left; padding: 8px 10px; background: transparent; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; }
 .pf-menu-list button:hover:not(:disabled) { background: rgba(255,255,255,.07); }
 .pf-menu-list button:disabled { opacity: .5; cursor: default; }
+
+/* ===== Кнопки действий на маленькой карточке персонажа ===== */
+.card-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.card-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 30px; padding: 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); color: var(--text);
+  font-size: 0.95rem; line-height: 1; cursor: pointer;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.card-act:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.card-act:disabled { opacity: .45; }
+.card-act.play { color: var(--success, #9ece6a); background: rgba(158, 206, 106, .12); border-color: rgba(158, 206, 106, .45); }
+.card-act.play:hover:not(:disabled) { background: rgba(158, 206, 106, .26); border-color: var(--success, #9ece6a); }
+/* путь к GameCenter не указан: кнопка тусклая, пунктиром — по клику откроется карточка с блоком «Запуск игры» */
+.card-act.play.is-unset { color: var(--muted); background: transparent; border: 1px dashed var(--border); }
+
+/* ===== Нижняя панель профиля: [🗑] [Играть · Сайт · История · Проверить ▾] [Править · Закрыть] ===== */
+.pf-footer {
+  flex-shrink: 0; position: sticky; bottom: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding-top: 15px; border-top: 1px solid var(--border); background: var(--panel);
+}
+.pf-footer .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 8px 12px; font-size: 0.92rem; }
+.pf-footer-main { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; justify-content: center; }
+.pf-footer-end { display: flex; gap: 6px; margin-left: auto; }
+.pf-delete { padding: 8px 11px; }
+.pf-play { color: #0b0d12; font-weight: 700; border-color: transparent; background: linear-gradient(135deg, #9ece6a, #73daca); }
+.pf-play:hover { filter: brightness(1.08); border-color: transparent; }

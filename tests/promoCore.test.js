@@ -116,7 +116,7 @@ describe('summarize / summarizeByCode', () => {
     row({ code: 'BAD00001', charId: 'c2', status: 'invalid_code', clicked: true })
   ];
   it('общий итог', () => {
-    expect(summarize(rows)).toEqual({ total: 8, ok: 3, entered: 1, alreadyUsed: 1, skipped: 1, invalid: 2, unknown: 1, notRun: 1, rerun: 4, failed: 1 });
+    expect(summarize(rows)).toEqual({ total: 8, ok: 3, entered: 1, alreadyUsed: 1, skipped: 1, invalid: 2, unknown: 1, notRun: 1, rerun: 4, dry: 0, failed: 1 });
   });
   it('итог по коду: награда и отклонение', () => {
     const [a, b] = summarizeByCode(rows, ['ABCD1234', 'BAD00001']);

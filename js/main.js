@@ -19,6 +19,8 @@ import { initTaskLog } from './core/taskLog.js';
 import { bindSettings, renderSettings } from './settings/settings.js';
 import { toast } from './core/ui.js';
 import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
+import { mountServerStatus } from './modules/servers/serverStatusView.js';
+import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
 import { initUiActions, updateFabVisibility } from './core/uiActions.js'; 
@@ -154,14 +156,24 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to init desktop features:', e);
     }
 
+    // Плашка «Статус серверов» в шапке: сначала последнее сохранённое чтение, затем обновляется само
+    mountServerStatus(document.getElementById('server-status'));
+
     // 7. Первый рендер активной вкладки (по умолчанию Персонажи)
     renderActiveTab('characters');
 
     console.log('[BOOT] Application ready.');
 
-    // 8. Фоновая проверка сохранённых авторизаций (не блокирует интерфейс)
-    if (window.__TAURI_INTERNALS__ && state.settings?.autoVerifyLogins !== false) {
-      verifySavedLoginsOnStartup().catch(e => console.error('[BOOT] Startup auth check failed:', e));
+    // 8. Фоновые проверки при запуске (не блокируют интерфейс). Порядок: сначала «Статус серверов»
+    // (публичная страница, аккаунты не нужны), затем проверка сохранённых авторизаций персонажей.
+    if (window.__TAURI_INTERNALS__) {
+      (async () => {
+        await loadServerStatusOnStartup(() => state.settings);
+        startServerStatusScheduler(() => state.settings);
+        if (state.settings?.autoVerifyLogins !== false) {
+          await verifySavedLoginsOnStartup().catch(e => console.error('[BOOT] Startup auth check failed:', e));
+        }
+      })().catch(e => console.error('[BOOT] Startup checks failed:', e));
     }
 
         // 9. Обновления: кнопка в шапке и в настройках; тихая проверка при запуске и раз в 6 часов

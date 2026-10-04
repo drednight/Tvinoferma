@@ -135,7 +135,8 @@ export function summarize(rows) {
     unknown: count(r => r.status === 'unknown'),
     notRun: count(r => r.status === 'not_run' || r.status === 'cancelled'),
     rerun: count(isRerunnable),
-    failed: count(r => !isOk(r.status) && !isInvalid(r.status) && r.status !== 'unknown' && r.status !== 'not_run' && r.status !== 'cancelled')
+    dry: count(r => r.status === 'dry_run'),
+    failed: count(r => !isOk(r.status) && !isInvalid(r.status) && r.status !== 'unknown' && r.status !== 'dry_run' && r.status !== 'not_run' && r.status !== 'cancelled')
   };
 }
 

@@ -1,5 +1,5 @@
 // js/core/taskLog.js
-// Логи скриптов: автоматические задачи (проверка входа, балансы, поиск и сверка марафонов).
+// Вид логов «Скрипты» (автоматические задачи: проверка входа, балансы, поиск и сверка марафонов); общий список — core/logHub.js.
 // Ручные действия пользователя сюда не пишутся. Открывается из «Настроек».
 // Каждая задача показывает процент, текущий шаг и раскрывающийся список действий;
 // после завершения лог можно открыть и скопировать. Последние задачи сохраняются.
@@ -7,7 +7,7 @@
 import { listen } from '@tauri-apps/api/event';
 import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
-import { confirmDialog } from './ui.js';
+import { registerLogSource } from './logHub.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
 import { state } from './state.js';
 
@@ -254,72 +254,36 @@ export function openTaskLog(id) {
   const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
 }
 
-/** Короткая строка для заголовка свёрнутой панели «Логи скриптов» в настройках. */
-export function taskJournalSummary() {
-  if (!tasks.length) return 'Записей пока нет: они появятся после первых проверок.';
-  const problems = tasks.filter(t => t.status === 'warn' || t.status === 'error' || t.errors || t.warnings).length;
-  const last = tasks[0];
-  return `Записей: ${tasks.length}${problems ? ` (с проблемами: ${problems})` : ''} · последняя: ${last.title}`;
+/* ------------------------------------------------------------------ */
+/*  Подключение к единому модулю логов (logHub.js, «Настройки → Журналы») */
+/* ------------------------------------------------------------------ */
+
+function logStatus(t) {
+  if (t.status === 'running') return 'running';
+  if (t.status === 'error') return 'error';
+  return t.status === 'warn' || t.errors || t.warnings ? 'warn' : 'ok';
 }
 
-/**
- * Рисует журнал скриптов (фильтр, список, «Очистить», «Скопировать всё») прямо в контейнер.
- * Используется в «Настройках» (раскрываемая панель) и в окне openTaskJournal.
- * Журнал перерисовывается при новых записях, пока контейнер в DOM и не свёрнут.
- * @returns {() => void} отписка
- */
-export function mountTaskJournal(root) {
-  let onlyProblems = false;
-  const rowsOf = () => tasks.filter(t => !onlyProblems || t.status === 'warn' || t.status === 'error' || t.errors || t.warnings);
-  const draw = () => {
-    const rows = rowsOf();
-    root.innerHTML = `
-      <div class="tl-filter row gap" style="margin-bottom:8px;">
-        <label class="tf-radio"><input type="checkbox" data-only-problems ${onlyProblems ? 'checked' : ''}/> Только с ошибками и предупреждениями</label>
-        <span class="muted">Записей: ${rows.length} из ${tasks.length}. Нажмите на запись, чтобы открыть подробный лог.</span>
-      </div>
-      ${rows.length ? `<div class="tl-journal">${rows.map(t => `
-      <button type="button" class="tl-jrow tl-s-${t.status}" data-task-log="${t.id}">
-        <span>${STATUS_ICON[t.status]}</span>
-        <strong>${escapeHtml(t.title)}</strong>
-        <span class="muted">${new Date(t.startedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-        <span class="tl-jsum">${escapeHtml(t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : ''))}</span>
-      </button>`).join('')}</div>` : '<div class="empty-state">Ничего не найдено. Здесь появятся логи проверок входа, балансов и марафонов.</div>'}
-      <div class="row gap tl-actions" style="margin-top:10px;">
-        <button type="button" class="btn ghost" data-clear>🧹 Очистить логи</button>
-        <button type="button" class="btn" data-copy-all>📋 Скопировать всё</button>
-      </div>`;
-    root.querySelector('[data-only-problems]').onchange = (e) => { onlyProblems = e.target.checked; draw(); };
-    root.querySelector('[data-clear]').onclick = () => {
-      if (!confirmDialog('Очистить логи скриптов? Завершённые записи будут удалены.')) return;
-      tasks = tasks.filter(t => t.status === 'running'); saveJournal(); draw(); renderDock();
-    };
-    root.querySelector('[data-copy-all]').onclick = async (e) => {
-      const text = rowsOf().map(t => [
-        `=== ${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')} — ${t.summary || t.status} ===`,
-        ...t.entries.map(x => `${timeOf(x.at)} ${LEVEL_ICON[x.level] || '•'} ${x.message}`)
-      ].join('\n')).join('\n\n');
-      try { await navigator.clipboard.writeText(text); e.target.textContent = '✔ Скопировано'; }
-      catch (_) { e.target.textContent = 'Не удалось скопировать'; }
-    };
-  };
-  draw();
-  const unsub = onTaskChange(() => {
-    if (!document.body.contains(root)) { unsub(); return; }
-    const fold = root.closest('details');
-    if (!fold || fold.open) draw();
-  });
-  return unsub;
+/** Удаляет завершённые записи (идущие задачи остаются). */
+export function clearTaskJournal() {
+  tasks = tasks.filter(t => t.status === 'running');
+  saveJournal();
+  renderDock();
 }
 
-/** Логи скриптов в отдельном окне. */
-export function openTaskJournal() {
-  const ov = openOverlay({ title: '📄 Логи скриптов', wide: true });
-  const unsub = mountTaskJournal(ov.body);
-  ov.foot.innerHTML = '<button type="button" class="btn primary" data-close>Закрыть</button>';
-  ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
-}
+registerLogSource({
+  id: 'task',
+  title: 'Скрипты',
+  icon: '📄',
+  list: () => tasks.map(t => ({
+    key: t.id, at: t.startedAt, title: t.title, status: logStatus(t),
+    summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
+  })),
+  open: (item) => openTaskLog(item.key),
+  clear: clearTaskJournal,
+  clearConfirm: 'Очистить логи скриптов? Завершённые записи будут удалены.',
+  subscribe: onTaskChange
+});
 
 // Делегирование кликов для всех карточек задач (док, мастер, страницы)
 document.addEventListener('click', (e) => {

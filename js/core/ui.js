@@ -156,6 +156,46 @@ export function toast(message, type = 'info') {
   }, 3000);
 }
 
+/**
+ * Подтверждение в стиле приложения (вместо системного окна «Сообщение с localhost»).
+ * Не трогает уже открытые окна. Возвращает Promise<boolean>; Esc и клик по фону — «Отмена».
+ * @param {{ title: string, text: string, okText?: string, cancelText?: string, danger?: boolean }} opts
+ */
+export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отмена', danger = false }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay tf-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="modal-container tf-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <div class="modal-header"><h3>${escapeHtml(title)}</h3></div>
+        <div class="modal-body"><p style="margin:0; line-height:1.5;">${escapeHtml(text)}</p></div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-act="cancel">${escapeHtml(cancelText)}</button>
+          <button type="button" class="btn ${danger ? 'danger' : 'primary'}" data-act="ok">${escapeHtml(okText)}</button>
+        </div>
+      </div>`;
+    const done = (value) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      done(false);
+    };
+    overlay.addEventListener('click', (e) => {
+      const act = /** @type {HTMLElement} */ (e.target).closest?.('[data-act]')?.getAttribute('data-act');
+      if (act === 'ok') done(true);
+      else if (act === 'cancel' || e.target === overlay) done(false);
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    /** @type {HTMLElement | null} */ (overlay.querySelector('[data-act="ok"]'))?.focus();
+  });
+}
+
 export function confirmDialog(message) {
   return window.confirm(message);
 }

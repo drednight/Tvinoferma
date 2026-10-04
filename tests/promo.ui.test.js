@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Диалог промокодов и блок «Логи промокодов» в Настройках (Issue #25)
+// Диалог промокодов и вид «Промокоды» в «Настройки → Журналы» (Issue #25)
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(() => true), toast: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
@@ -10,7 +10,9 @@ vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmDialog: mocks.co
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms = 50) => new Promise(r => setTimeout(r, ms));
-let state, openPromoDialog, renderPromoLog, recordRun;
+let state, openPromoDialog, recordRun, mountLogHub, logHubSummary;
+// «Настройки → Журналы», вид «Промокоды» (единый модуль логов)
+const renderPromoLog = () => { $('#promo-log-root').innerHTML = ''; mountLogHub($('#promo-log-root'), { source: 'promo' }); };
 
 const chars = [{ id: 'a', nick: 'Аа' }, { id: 'b', nick: 'Бб' }, { id: 'c', nick: 'Вв', isLoggedIn: true }];
 const okRow = (charId, code = 'CODE1234', extra = {}) => ({ code, charId, nick: chars.find(c => c.id === charId).nick, status: 'success', error: null, clicked: true, dryRun: false, skipped: false, rewards: null, at: new Date().toISOString(), ...extra });
@@ -25,7 +27,8 @@ beforeEach(async () => {
   ({ state } = await import('../js/core/state.js'));
   state.characters = chars.map(c => ({ ...c })); state.parties = [];
   ({ openPromoDialog } = await import('../js/modules/automation/promo.js'));
-  ({ renderPromoLog } = await import('../js/modules/automation/promoLogView.js'));
+  await import('../js/modules/automation/promoLogView.js');
+  ({ mountLogHub, logHubSummary } = await import('../js/core/logHub.js'));
   ({ recordRun } = await import('../js/modules/automation/promoLog.js'));
 });
 
@@ -33,7 +36,7 @@ describe('форма промокодов', () => {
   it('нет галочек и пояснения про страницу /pin; есть «Выбрать всех», фильтра по пати нет', () => {
     openPromoDialog();
     expect($('.tf-dialog').querySelectorAll('input[type=checkbox]:not([data-id])')).toHaveLength(0);
-    expect($('.tf-dialog').textContent).not.toMatch(/pwonline\.ru\/pin|Ввести|Пробный/);
+    expect($('.tf-dialog').textContent).not.toMatch(/pwonline\.ru\/pin|Ввести/);
     expect($('.tf-dialog').querySelector('#promo-party')).toBeNull();
     expect($('[data-q="all"]').textContent).toContain('Выбрать всех');
     expect($('.tf-dialog-title').textContent).toContain('🎁');
@@ -91,7 +94,28 @@ describe('запуск', () => {
     expect($('[data-act="retry"]')).not.toBeNull();
     // журнал в Настройках
     renderPromoLog();
-    expect([...document.querySelectorAll('[data-promo-code]')].map(c => c.dataset.promoCode).sort()).toEqual(['AAAA1111', 'BBBB2222']);
+    expect([...document.querySelectorAll('[data-lh-key]')].map(c => c.dataset.lhKey).sort()).toEqual(['AAAA1111', 'BBBB2222']);
+  });
+
+  it('пробный запуск: кнопка «Пробный запуск» вызывает activate_promo с dryRun=true, без подтверждения, без журнала; потом можно запустить по-настоящему', async () => {
+    mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'dry_run', clicked: false, dryRun: true, detail: 'Активировать' }));
+    openPromoDialog({ ids: ['a', 'b'] });
+    $('#promo-code').value = 'AAAA1111';
+    $('#promo-code').dispatchEvent(new Event('input', { bubbles: true }));
+    $('[data-act="dry"]').click(); await wait(400);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(mocks.invoke.mock.calls.every(c => c[0] === 'activate_promo' && c[1].dryRun === true)).toBe(true);
+    expect($('.tf-dialog-sub').textContent).toContain('кнопка найдена 2 из 2');
+    renderPromoLog();
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(0);
+    // «Запустить по-настоящему»: уже с подтверждением и dryRun=false
+    mocks.invoke.mockClear();
+    mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'success', clicked: true }));
+    $('[data-act="real"]').click(); await wait(400);
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke.mock.calls.every(c => c[1].dryRun === false)).toBe(true);
+    expect($('.tf-dialog-sub').textContent).toContain('Введено: 2 из 2');
   });
 
   it('недействительный код: предупреждение «не принят» и ничего в журнале', async () => {
@@ -100,7 +124,7 @@ describe('запуск', () => {
     expect($('.promo-alert').textContent).toContain('BADD0001');
     expect($('.promo-alert').textContent).toContain('не принят');
     renderPromoLog();
-    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(0);
   });
 
   it('повторный ввод того же кода: введённых пропускает без запроса, остальных прогоняет заново', async () => {
@@ -132,18 +156,18 @@ describe('запуск', () => {
     // начатый ввод завершился и сохранён, остальные не начинались
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
     renderPromoLog();
-    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(1);
     expect($('.tf-dialog-sub').textContent).toContain('Остановлено');
   });
 });
 
-describe('Настройки → Логи промокодов', () => {
+describe('Журналы → Промокоды', () => {
   it('пусто: понятная заглушка, кнопки выгрузки и очистки неактивны', () => {
     renderPromoLog();
-    expect($('#promo-log-root').textContent).toContain('Здесь появятся введённые промокоды');
-    expect($('#promo-log-summary').textContent).toContain('Записей пока нет');
-    expect($('[data-promo-log="clear"]').disabled).toBe(true);
-    expect($('[data-promo-log="archive"]').disabled).toBe(true);
+    expect($('#promo-log-root').textContent).toContain('Ничего не найдено');
+    expect(logHubSummary()).toContain('Записей пока нет');
+    expect($('[data-lh-clear]').disabled).toBe(true);
+    expect($('[data-lh-action="archive"]').disabled).toBe(true);
   });
 
   it('список как в логах скриптов: строка «код — дата — итог»; по нажатию открывается окно, а не раскрывается список', () => {
@@ -153,10 +177,10 @@ describe('Настройки → Логи промокодов', () => {
       okRow('c', 'CODE1234', { status: 'not_run', clicked: false, detail: 'Сайт показал проверку безопасности — остальные коды не вводились' })
     ], { known: [...chars, { id: 'd', nick: 'Гг' }] });
     renderPromoLog();
-    const row = $('.tl-jrow[data-promo-code="CODE1234"]');
+    const row = $('.tl-jrow[data-lh-key="CODE1234"]');
     expect(row.textContent).toContain('CODE1234');
     expect(row.textContent).toContain('Введён: 1, не введён: 3');
-    expect($('#promo-log-summary').textContent).toMatch(/Записей: 1.*последний: CODE1234/);
+    expect(logHubSummary()).toMatch(/Записей: 1.*последняя: .*CODE1234/);
     expect($('.tf-dialog')).toBeNull();
     row.click();
     const text = $('.tf-dialog').textContent;
@@ -172,8 +196,8 @@ describe('Настройки → Логи промокодов', () => {
   it('очистка журнала оставляет архив', async () => {
     recordRun('CODE1234', [okRow('a')], { known: chars });
     renderPromoLog();
-    $('[data-promo-log="clear"]').click();
-    expect(document.querySelectorAll('[data-promo-code]')).toHaveLength(0);
-    expect($('[data-promo-log="archive"]').textContent).toContain('(1)');
+    $('[data-lh-clear]').click();
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(0);
+    expect($('[data-lh-action="archive"]').textContent).toContain('(1)');
   });
 });

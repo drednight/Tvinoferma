@@ -27,6 +27,8 @@ let pending = null;
 async function writeNow() {
   const data = await prepareForDisk(serializeState());
   await getAdapter().saveState(data);
+  // Сообщаем остальным частям приложения (например, меню трея со списком пати), что данные сохранены
+  try { window.dispatchEvent(new CustomEvent('tf-persisted')); } catch { /* вне браузера */ }
 }
 
 /**

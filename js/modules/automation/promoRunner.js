@@ -27,6 +27,7 @@ const range = (r, random) => r[0] + random() * (r[1] - r[0]);
  *   skip?: (code: string, char: object) => (object|null),   // уже введено/решено: готовая часть строки, окно не открывается
  *   signal?: { cancelled: boolean },
  *   invokeFn: (cmd: string, args: object) => Promise<any>,
+ *   dryRun?: boolean,                                        // пробный запуск: страница открывается, кнопка ищется, но не нажимается
  *   limiter?: object, retries?: number, retryDelayMs?: number,
  *   task?: { setStep?: Function, progress?: Function, log?: Function },
  *   onRow?: (row: object, done: number, total: number) => void,
@@ -35,7 +36,7 @@ const range = (r, random) => r[0] + random() * (r[1] - r[0]);
  * @returns {Promise<object[]>} строки результата: персонажи по порядку, у каждого коды по порядку
  */
 export async function runPromoBatch({
-  codes, chars, skip, signal = { cancelled: false }, invokeFn, limiter = browserSlots,
+  codes, chars, skip, dryRun = false, signal = { cancelled: false }, invokeFn, limiter = browserSlots,
   retries = 0, retryDelayMs = 2000, task, onRow, sleepFn = sleep, random = Math.random
 }) {
   const total = codes.length * chars.length;
@@ -57,10 +58,10 @@ export async function runPromoBatch({
 
   const attempt = async (char, code) => {
     for (let a = 0; ; a++) {
-      task?.setStep?.(`${char.nick}: ввожу промокод${a ? ` (повтор ${a}/${retries})` : ''}`);
+      task?.setStep?.(`${char.nick}: ${dryRun ? 'осматриваю страницу промокода' : 'ввожу промокод'}${a ? ` (повтор ${a}/${retries})` : ''}`);
       let payload, error;
       try {
-        payload = await invokeFn('activate_promo', { charId: char.id, code, dryRun: false, timeoutSeconds: Math.min(25 + 15 * a, 60) });
+        payload = await invokeFn('activate_promo', { charId: char.id, code, dryRun, timeoutSeconds: Math.min(25 + 15 * a, 60) });
       } catch (e) { error = e; }
       const row = rowFromPayload(char, code, payload, error);
       if (a >= retries || signal.cancelled || !canAutoRetry(row, isTransient)) return row;

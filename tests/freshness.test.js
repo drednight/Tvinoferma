@@ -189,11 +189,11 @@ describe('карточки персонажей и настройки', () => {
     expect([...document.querySelectorAll('.character-card h3')].map(h => h.textContent)).toEqual(['Свежий', 'Давний', 'Новый']);
   });
 
-  it('в настройках три порога, подключённые к settings.freshness', () => {
+  it('в настройках три порога в часах и частота чтения «Статус серверов» (минуты), подключённые к settings.freshness', () => {
     const inputs = [...document.querySelectorAll('[data-setting^="freshness."]')].map(i => i.dataset.setting);
-    expect(inputs).toEqual(['freshness.balanceHours', 'freshness.loginHours', 'freshness.marathonHours']);
+    expect(inputs).toEqual(['freshness.balanceHours', 'freshness.loginHours', 'freshness.marathonHours', 'freshness.serverStatusMinutes']);
     const hints = [...document.querySelectorAll('[data-hours-for]')].map(i => i.dataset.hoursFor);
-    expect(hints).toEqual(inputs);
+    expect(hints).toEqual(inputs.slice(0, 3));   // подпись «= 1 день» только у часов
   });
 
   it('панели «Свежесть данных» и «Состояние парсеров» свёрнуты по умолчанию; в свёрнутом виде видны название и описание', () => {
@@ -233,10 +233,10 @@ describe('карточки персонажей и настройки', () => {
     vi.doUnmock('../js/core/storage.js');
   });
 
-  it('старый state.json без settings.freshness получает значения по умолчанию — все по 24 ч', async () => {
+  it('старый state.json без settings.freshness получает значения по умолчанию — пороги по 24 ч, статус серверов раз в 10 минут', async () => {
     const { normalizeState } = await import('../js/core/state.js');
     const s = normalizeState({ characters: [], settings: { scripts: { concurrency: 2 } } });
-    expect(s.settings.freshness).toEqual({ balanceHours: 24, loginHours: 24, marathonHours: 24 });
+    expect(s.settings.freshness).toEqual({ balanceHours: 24, loginHours: 24, marathonHours: 24, serverStatusMinutes: 10 });
   });
 });
 

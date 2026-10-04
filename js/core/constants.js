@@ -138,6 +138,17 @@ export const DEFAULT_SETTINGS = {
     dailyReminder: true,    // ежедневное напоминание о заданиях
     dailyHour: 20
   },
+  // Видимые окна браузера персонажей
+  browser: {
+    unlimitedGiftItems: true   // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
+  },
+  // Запуск игры (Issue: запуск окон)
+  launcher: {
+    notify: true,   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
+    gameCenters: [],   // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
+    preferredGcId: '', // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
+    decorateWindows: true  // после запуска назвать окно клиента «Ник — Класс» и поставить значок класса
+  },
   tray: {
     closeToTray: false,
     backgroundAuthMinutes: 0   // 0 — выключено
@@ -146,7 +157,8 @@ export const DEFAULT_SETTINGS = {
   freshness: {
     balanceHours: 24,
     loginHours: 24,
-    marathonHours: 24
+    marathonHours: 24,
+    serverStatusMinutes: 10   // как часто перечитывать «Статус серверов» (минуты; 0 — только при запуске). Сайт обновляет его раз в 10 минут
   },
   // mode: startup | daily | weekly | never (см. desktop/updateSchedule.js).
   // Если mode не задан, он выводится из checkOnStartup (старые данные).

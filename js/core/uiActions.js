@@ -108,9 +108,15 @@ function setupScriptsMenu() {
                 await handleRunScript('update-balance');
             } else if (action === 'update-marathons') {
                 await handleRunScript('update-marathons');
+            } else if (action === 'close-game') {
+                const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
+                await closeAllGameWindows({ confirm: true });
             } else if (action === 'promo') {
                 const { openPromoDialog } = await import('../modules/automation/promo.js');
                 openPromoDialog();
+            } else if (action === 'transfer') {
+                const { openTransferDialog } = await import('../modules/automation/transfer.js');
+                openTransferDialog();
             } else {
                 console.warn(`[UI] Unknown script action: ${action}`);
             }

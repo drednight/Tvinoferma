@@ -22,6 +22,8 @@
   <link rel="stylesheet" href="/css/core/update.css" />
   <link rel="stylesheet" href="/css/core/health.css" />
   <link rel="stylesheet" href="/css/core/freshness.css" />
+  <link rel="stylesheet" href="/css/core/serverStatus.css" />
+  <link rel="stylesheet" href="/css/modules/launcher.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -36,7 +38,10 @@
         </div>
       </div>
 
-            <div class="topbar-right">
+      <!-- Плашка «Статус серверов» (js/modules/servers/serverStatusView.js): только показ, данные со страницы сайта -->
+      <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
+
+      <div class="topbar-right">
         <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->
         <button id="update-badge" class="update-badge" type="button" hidden></button>
 
@@ -107,9 +112,15 @@
                     <button class="dropdown-item" data-action="promo">
                         🎁 Активировать промокод
                     </button>
+                    <button class="dropdown-item" data-action="transfer">
+                        📦 Передать предметы в игру
+                    </button>
                     <!-- === НОВАЯ КНОПКА ДЛЯ МАРАФОНОВ === -->
                     <button class="dropdown-item" data-action="update-marathons">
                         🏃 Обновить марафоны
+                    </button>
+                    <button class="dropdown-item" data-action="close-game" title="Закрыть все запущенные окна игры">
+                        🛑 Закрыть все окна игры
                     </button>
                 </div>
             </div>
@@ -243,13 +254,13 @@
             • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
           </p>
         </details>
-        <details class="panel fold" id="task-journal-panel">
+        <details class="panel fold" id="log-hub-panel">
           <summary>
-            <h3>📄 Логи скриптов</h3>
-            <p class="muted" id="task-journal-summary">Записей пока нет: они появятся после первых проверок.</p>
+            <h3>📚 Журналы</h3>
+            <p class="muted" id="log-hub-summary">Записей пока нет: они появятся после первых проверок, промокодов и передач.</p>
           </summary>
-          <p class="muted" style="margin-bottom: 8px;">Проверка авторизации, обновление балансов, поиск и сверка марафонов. Если что-то пошло не так, откройте запись, нажмите «Скопировать лог» и отправьте разработчику. Пароли и почты в логи не попадают.</p>
-          <div id="task-journal-body"></div>
+          <p class="muted" style="margin-bottom: 8px;">Все логи в одном месте: скрипты (вход, балансы, марафоны), промокоды и передача предметов. Выберите вид, найдите запись поиском, нажмите на неё — откроются подробности. Если что-то пошло не так, скопируйте лог или сохраните список в файл и отправьте разработчику. Пароли и почты в логи не попадают. Данные лежат только на этом компьютере.</p>
+          <div id="log-hub-root"></div>
         </details>
         <details class="panel fold">
           <summary>
@@ -290,7 +301,7 @@
         <details class="panel fold">
           <summary>
             <h3>⏳ Свежесть данных</h3>
-            <p class="muted">Через сколько времени данные считаются устаревшими. Устаревшие значения подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов.</p>
+            <p class="muted">Через сколько времени данные считаются устаревшими (подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов) и как часто обновляется статус серверов.</p>
           </summary>
           <div class="setting-row">
             <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
@@ -303,6 +314,10 @@
           <div class="setting-row">
             <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
             <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
+          </div>
+          <div class="setting-row">
+            <div><strong>🖥 Статус серверов</strong><p class="muted">Как часто перечитывать страницу «Статус серверов» (плашка в шапке). Читается и при запуске приложения, до проверки входа персонажей. Сайт обновляет её раз в 10 минут; 0 — только при запуске.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="1" data-setting="freshness.serverStatusMinutes" /><span class="muted hours-hint">мин</span></div>
           </div>
         </details>
           </div>
@@ -351,14 +366,6 @@
             <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
           </div>
         </details>
-        <details class="panel fold" id="promo-log-panel">
-          <summary>
-            <h3>🎁 Логи промокодов</h3>
-            <p class="muted" id="promo-log-summary">Записей пока нет: они появятся после первого введённого промокода.</p>
-          </summary>
-          <p class="muted" style="margin-bottom: 8px;">Введённые промокоды: дата первого ввода, награда, кому код введён, а кому нет и почему. Нажмите на промокод, чтобы открыть подробности. Недействительные и просроченные коды не сохраняются. Данные лежат только на этом компьютере.</p>
-          <div id="promo-log-root"></div>
-        </details>
         <details class="panel fold">
           <summary>
             <h3>🔔 Уведомления</h3>
@@ -373,6 +380,32 @@
           </div>
           <div class="row gap" style="margin-top: 12px;">
             <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🌐 Окно браузера персонажа</h3>
+            <p class="muted">Что приложение подправляет на страницах сайта, когда вы открываете их сами.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🎮 Запуск игры</h3>
+            <p class="muted">Запуск окон игры из карточек, пати и трея.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="launcher.decorateWindows" /> Подписывать окна игры: название «Ник — Класс» и значок класса персонажа (меняется только вид окна и панели задач)</label>
+            <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+          </div>
+          <div class="row gap" style="margin-top: 12px; align-items:center; flex-wrap:wrap;">
+            <button id="gc-manage-btn" class="btn secondary" title="Список GameCenter с названиями, какой запускать и какие GameCenter у каких персонажей">⚙ GameCenter и персонажи…</button>
+            <span id="gc-summary" class="muted"></span>
+          </div>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="close-game-windows-btn" class="btn ghost" title="Закрыть все запущенные окна игры (elementclient_64.exe)">🛑 Закрыть все окна игры</button>
           </div>
         </details>
         <details class="panel fold">

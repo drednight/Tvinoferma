@@ -7,6 +7,11 @@
 .promo-muted { color: var(--text-muted, #9aa0ad); font-size: 0.85em; }
 .promo-empty { padding: 16px; text-align: center; color: var(--text-muted, #9aa0ad); }
 .promo-count { margin: 6px 2px; font-size: 0.9em; color: var(--text-muted, #9aa0ad); }
+.tr-ack-box { margin-top: 12px; padding: 12px 14px; border-radius: 10px; border: 2px solid rgba(247, 118, 142, 0.85); background: rgba(247, 118, 142, 0.12); display: flex; flex-direction: column; gap: 10px; }
+.tr-ack { display: flex; gap: 10px; align-items: flex-start; font-size: 1.05em; font-weight: 700; cursor: pointer; }
+.tr-ack input, .tr-force input { width: 20px; height: 20px; flex: none; margin-top: 1px; cursor: pointer; }
+.tr-force { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9em; cursor: pointer; padding-top: 8px; border-top: 1px dashed rgba(247, 118, 142, 0.5); }
+.tr-ack-box > .btn { align-self: flex-start; }
 .promo-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 0.9em; }
 .promo-progress { margin-bottom: 8px; font-weight: 600; }
 .promo-table { width: 100%; border-collapse: collapse; }
@@ -21,3 +26,21 @@
 .promo-reward ul, .promo-log-list { margin: 4px 0 4px 18px; padding: 0; }
 .promo-reward summary { cursor: pointer; }
 .promo-log-h { margin: 8px 0 4px; font-weight: 600; }
+
+/* Диалог передачи предметов (Issue #26) */
+.tr-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.tr-top .field { flex: 1 1 260px; margin: 0; }
+.tr-top .btn { flex: 0 1 auto; }
+.tr-body > * { flex: none; }   /* окно прокручивается; список браузеров не схлопывается под раскрытым планом */
+.tr-list { min-height: 140px; max-height: min(38vh, 320px); }
+.tr-plan { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid var(--border, #3a3f4b); border-radius: 8px; }
+.tr-plan[hidden] { display: none; }
+.tr-items { margin: 4px 0 0; padding-left: 22px; columns: 2 260px; font-size: .92em; }
+.tr-items li { break-inside: avoid; }
+.tr-row { display: grid; grid-template-columns: minmax(150px, 1.1fr) auto minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(190px, 1.5fr); gap: 8px; align-items: center; cursor: default; }
+.tr-refresh { padding: 2px 8px; }
+.tr-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.tr-recipient, .tr-server { width: 100%; min-width: 0; }
+.tr-summary { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.92em; }
+.tr-notes { margin-top: 4px; }
+@media (max-width: 760px) { .tr-row { grid-template-columns: 1fr; } }

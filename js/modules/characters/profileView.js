@@ -12,6 +12,8 @@ import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
+import { hasGameCenterPath, loginStatusText, launchContext } from '../launcher/launch.js';
+import { attachedGcs, accountKeysOf } from '../launcher/gameCenters.js';
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -23,11 +25,18 @@ function maskText(text, length = 8) {
 const EYE_SVG_OPEN = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const EYE_SVG_CLOSED = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 
+/** Какие GameCenter из общего списка прикреплены к персонажу (строка в блоке «Запуск игры»). */
+function gcListText(char) {
+  const names = attachedGcs(char, launchContext().gameCenters).map(g => g.name);
+  return names.length ? `Прикреплено: ${names.join(', ')}` : 'GameCenter из общего списка не прикреплены.';
+}
+
 export function openCharacterProfile(char) {
   const stats = char.stats || {};
   const passes = char.dungeonPasses || {};
   const sky = char.sky || {};
   const contacts = char.contacts || {};
+  const launch = char.launch || {};
   
 
   const statRow = (label, val) => `
@@ -105,6 +114,26 @@ export function openCharacterProfile(char) {
           </div>
         </details>
 
+        <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json -->
+        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" ${hasGameCenterPath(char) ? 'open' : ''}>
+          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">🎮 Запуск игры</summary>
+          <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+            <div id="pf-gc-list" class="muted" style="font-size:0.85rem;">${escapeHtml(gcListText(char))}</div>
+            <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
+            <label class="muted" style="font-size:0.8rem;" for="pf-gc-path">Свой GameCenter (запасной вариант, если выше ничего не прикреплено): папка или файл GameCenter.exe</label>
+            <div style="display:flex; gap:8px;">
+              <input id="pf-gc-path" class="input" style="flex:1;" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
+              <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe в проводнике">📂 Обзор…</button>
+              <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
+            </div>
+            <div id="pf-gc-account" class="muted" style="font-size:0.85rem;">${escapeHtml(loginStatusText(char))}</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом GameCenter, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход GameCenter</button>
+              <button id="pf-gc-forget" type="button" class="btn ghost">Забыть вход</button>
+            </div>
+          </div>
+        </details>
+
         <!-- ПРИМЕЧАНИЯ (локально, автосохранение) -->
         <div class="info-block" style="margin-bottom:16px;">
           <h4>Примечания <small id="char-notes-status" class="muted" style="font-weight:normal;"></small></h4>
@@ -173,22 +202,17 @@ export function openCharacterProfile(char) {
 
       </div>
       
-      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С НОВЫМИ КНОПКАМИ -->
-      <div style="flex-shrink: 0; display:flex; gap:10px; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:15px; background: var(--panel); position: sticky; bottom: 0; z-index: 10;">
-         
-         <!-- Левая группа: Опасные действия -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-delete-from-profile" class="btn danger">🗑 Удалить</button>
-         </div>
+      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ: слева «Удалить», по центру действия с персонажем, справа «Редактировать» и «Закрыть» -->
+      <div class="pf-footer">
+         <button id="btn-delete-from-profile" class="btn danger pf-delete" type="button" title="Удалить персонажа" aria-label="Удалить персонажа">🗑</button>
 
-         <!-- Центральная группа: Синхронизация -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-open-sync-helper-footer" class="btn secondary" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">
-               🔑 Открыть сайт
+         <div class="pf-footer-main">
+            <button id="btn-launch-from-profile" class="btn pf-play" type="button" title="Запустить игру для этого персонажа через его GameCenter">
+               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
+               Играть
             </button>
-            <button id="btn-coin-history-footer" class="btn secondary" title="История изменений баланса Древних монет">
-               🪙 История
-            </button>
+            <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
+            <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет">🪙 История</button>
             <div class="pf-menu" id="pf-check-menu">
                <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
                <div class="pf-menu-list" hidden>
@@ -198,10 +222,9 @@ export function openCharacterProfile(char) {
             </div>
          </div>
 
-         <!-- Правая группа: Основные действия -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-edit-from-profile" class="btn primary">✏️ Редактировать</button>
-            <button id="btn-close-profile" class="btn ghost">Закрыть</button>
+         <div class="pf-footer-end">
+            <button id="btn-edit-from-profile" class="btn primary" type="button">✏️ Править</button>
+            <button id="btn-close-profile" class="btn ghost" type="button">Закрыть</button>
          </div>
       </div>
     </div>
@@ -306,6 +329,8 @@ export function openCharacterProfile(char) {
     if(delBtn) {
       delBtn.onclick = () => {
         if(confirmDialog(`Удалить персонажа "${char.nick}"? Это действие необратимо.`)) {
+           // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
+           accountKeysOf(char).forEach(key => import('../launcher/launch.js').then(m => m.forgetAccount(key)).catch(() => {}));
            import('../../core/state.js').then(({ state }) => {
              import('../../core/storage.js').then(({ persist }) => {
                state.characters = state.characters.filter(c => c.id !== char.id);
@@ -320,6 +345,60 @@ export function openCharacterProfile(char) {
         }
       };
     }
+
+    // Запуск игры: путь к GameCenter, запомненный вход, кнопка «Играть»
+    const gcInput = document.getElementById('pf-gc-path');
+    const redrawGc = () => {
+      const el = document.getElementById('pf-gc-account');
+      if (el) el.textContent = loginStatusText(char);
+      const list = document.getElementById('pf-gc-list');
+      if (list) list.textContent = gcListText(char);
+    };
+    // Путь из поля сохраняется, если его изменили и не нажали «Сохранить путь»
+    const ensureGcPathSaved = async () => {
+      const typed = String(gcInput?.value || '').trim();
+      if (typed === String(char.launch?.gcPath || '')) return true;
+      const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
+      return saveGameCenterPath(char, typed);
+    };
+    document.getElementById('pf-gc-browse')?.addEventListener('click', async () => {
+      try {
+        const { pickGameCenter } = await import('../launcher/launch.js');
+        const picked = await pickGameCenter();
+        if (picked && gcInput) gcInput.value = picked;
+      } catch (e) { toast(String(e?.message || e), 'error'); }
+    });
+    document.getElementById('pf-gc-manage')?.addEventListener('click', async () => {
+      const { openGameCentersModal } = await import('../launcher/gcSettingsModal.js');
+      openGameCentersModal({ onClose: () => openCharacterProfile(char) });
+    });
+    document.getElementById('pf-gc-save')?.addEventListener('click', async () => {
+      const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
+      await saveGameCenterPath(char, gcInput?.value);
+    });
+    document.getElementById('pf-gc-capture')?.addEventListener('click', async () => {
+      if (!(await ensureGcPathSaved())) return;
+      const { captureLogin } = await import('../launcher/partyLaunch.js');
+      await captureLogin(char);
+      redrawGc();
+    });
+    document.getElementById('pf-gc-forget')?.addEventListener('click', async () => {
+      const { forgetLogin } = await import('../launcher/partyLaunch.js');
+      await forgetLogin(char);
+      redrawGc();
+    });
+    document.getElementById('btn-launch-from-profile')?.addEventListener('click', async () => {
+      if (!(await ensureGcPathSaved())) return;
+      if (!hasGameCenterPath(char)) {
+        const fold = modalRoot.querySelector('.pf-launch');
+        if (fold) fold.open = true;
+        gcInput?.focus();
+        toast('Укажите GameCenter этого аккаунта', 'error');
+        return;
+      }
+      const { launchGroup } = await import('../launcher/partyLaunch.js');
+      launchGroup(`Запуск игры: ${char.nick}`, [char]);
+    });
 
     // История Древних монет (рядом с «Открыть сайт»)
     document.getElementById('btn-coin-history-footer')?.addEventListener('click', () => openCoinHistory(char.id));

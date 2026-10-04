@@ -31,7 +31,7 @@ pub fn is_valid_code(code: &str) -> bool {
 }
 
 /// id персонажа строится из ника (`js/core/ids.js`): только `A-Za-z0-9_-`.
-fn is_valid_char_id(id: &str) -> bool {
+pub(crate) fn is_valid_char_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id

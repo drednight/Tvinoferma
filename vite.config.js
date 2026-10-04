@@ -17,6 +17,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['tests/**/*.test.js']
+    include: ['tests/**/*.test.js'],
+    // На медленной машине (OneDrive, антивирус, параллельная сборка) тесты страниц сайта выполняются дольше 5 с по умолчанию
+    testTimeout: 30000,
+    hookTimeout: 30000
   }
 });

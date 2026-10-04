@@ -10,7 +10,7 @@
 //! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
 //! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
 //! - `tray`      — иконка в трее;
-//! - `automation` — (заготовка) промокоды, перевод предметов;
+//! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
@@ -39,6 +39,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(tray::TraySettings::default())
+        .manage(windows::BrowserSettings::default())
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -84,6 +85,9 @@ pub fn run() {
             windows::rename_char_profiles,
             // скрипты сайта
             automation::promo::activate_promo,
+            automation::transfer::read_transfer_page,
+            automation::transfer::read_server_status,
+            automation::transfer::transfer_items,
             auth::check_login_status_http,
             balance::fetch_and_parse_balance_v4,
             marathons::fetch_marathon_progress_v1,
@@ -104,6 +108,9 @@ pub fn run() {
             commands::secrets::secrets_delete_many,
             // трей
             tray::set_close_to_tray,
+            tray::set_tray_parties,
+            // видимые окна браузера
+            windows::set_unlimited_items,
             // куки-банк
             cookie_bank::bank_status,
             cookie_bank::bank_verify,
@@ -111,10 +118,15 @@ pub fn run() {
             pool::pool_status,
             // запуск GameCenter
             launcher::launcher_check_path,
+            launcher::launcher_gc_info,
+            launcher::launcher_pick_gamecenter,
             launcher::launcher_start,
             launcher::launcher_running_clients,
             launcher::launcher_close_clients,
             launcher::launcher_find_dialogs,
+            launcher::launcher_capture_account,
+            launcher::launcher_forget_account,
+            launcher::launcher_has_account,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
