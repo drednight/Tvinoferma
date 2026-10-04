@@ -21,7 +21,8 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 const GAMECENTER_EXE: &str = "GameCenter.exe";
-const CLIENT_EXE: &str = "elementclient_64.exe";
+/// Клиенты игры: `elementclient_64.exe`, а также `elementclient.exe` и подобные образы
+const CLIENT_FILTER: &str = "IMAGENAME eq elementclient*";
 /// Perfect World в VK Play (id проекта 0.61)
 const DEFAULT_URL: &str = "vkplay://play/0.61";
 /// Класс окон-вопросов GameCenter
@@ -163,26 +164,33 @@ fn hidden(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-/// PID из вывода `tasklist /FO CSV /NH`: `"elementclient_64.exe","22368","Console",...`
-fn parse_tasklist(out: &str) -> Vec<u32> {
+/// Имя образа и PID из вывода `tasklist /FO CSV /NH`: `"elementclient_64.exe","22368","Console",...`
+fn parse_processes(out: &str) -> Vec<(String, u32)> {
     out.lines()
         .filter_map(|line| {
             let line = line.trim();
             if !line.starts_with('"') {
                 return None; // «INFO: задачи не найдены» и пустые строки
             }
-            line.trim_matches('"').split("\",\"").nth(1)?.parse().ok()
+            let mut parts = line.trim_matches('"').split("\",\"");
+            let name = parts.next()?.to_string();
+            let pid = parts.next()?.parse().ok()?;
+            Some((name, pid))
         })
         .collect()
 }
 
-/// PID всех запущенных клиентов игры.
-fn client_pids() -> Result<Vec<u32>, String> {
-    let filter = format!("IMAGENAME eq {}", CLIENT_EXE);
-    let out = hidden(Command::new("tasklist").args(["/FI", filter.as_str(), "/FO", "CSV", "/NH"]))
+/// Все запущенные клиенты игры: (имя образа, PID).
+fn client_processes() -> Result<Vec<(String, u32)>, String> {
+    let out = hidden(Command::new("tasklist").args(["/FI", CLIENT_FILTER, "/FO", "CSV", "/NH"]))
         .output()
         .map_err(|e| e.to_string())?;
-    Ok(parse_tasklist(&String::from_utf8_lossy(&out.stdout)))
+    Ok(parse_processes(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// PID всех запущенных клиентов игры.
+fn client_pids() -> Result<Vec<u32>, String> {
+    Ok(client_processes()?.into_iter().map(|(_, pid)| pid).collect())
 }
 
 /// Окно вопроса GameCenter «Клиент игры уже запущен»: видимое, класс `TYesNoForm`, заголовок «VK Play…».
@@ -238,9 +246,10 @@ enum IniEncoding {
 
 fn decode_ini(bytes: &[u8]) -> (String, IniEncoding) {
     if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE {
-        let units: Vec<u16> = bytes[2..]
-            .chunks_exact(2)
-            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        // пары байт после BOM (лишний нечётный байт в конце игнорируется)
+        let units: Vec<u16> = (2..bytes.len().saturating_sub(1))
+            .step_by(2)
+            .map(|i| u16::from_le_bytes([bytes[i], bytes[i + 1]]))
             .collect();
         (String::from_utf16_lossy(&units), IniEncoding::Utf16Le)
     } else {
@@ -561,25 +570,59 @@ pub async fn launcher_running_clients() -> Result<Vec<u32>, String> {
         .map_err(|e| e.to_string())?
 }
 
-/// Закрывает все клиенты игры. Возвращает, сколько было запущено.
-#[tauri::command]
-pub async fn launcher_close_clients() -> Result<u32, String> {
-    let count = launcher_running_clients().await?.len() as u32;
-    if count == 0 {
-        return Ok(0);
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        let out = hidden(Command::new("taskkill").args(["/F", "/IM", CLIENT_EXE]))
-            .output()
-            .map_err(|e| e.to_string())?;
-        if out.status.success() {
-            Ok::<u32, String>(count)
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+/// Итог закрытия окон игры.
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseReport {
+    /// Сколько клиентов игры было запущено
+    pub found: u32,
+    /// Сколько удалось закрыть
+    pub closed: u32,
+    /// Сколько закрыть не удалось (обычно — нет прав: игра запущена от имени администратора)
+    pub failed: u32,
+    /// Имена образов, которые нашли (для диагностики)
+    pub images: Vec<String>,
+    /// Ошибка поиска процессов (если сам поиск не удался)
+    pub error: String,
+}
+
+/// Закрывает все клиенты игры по одному (по PID) и возвращает отчёт. Вызывается из команды и из меню трея.
+pub fn close_clients_now() -> CloseReport {
+    let mut report = CloseReport::default();
+    let list = match client_processes() {
+        Ok(list) => list,
+        Err(e) => {
+            report.error = e;
+            return report;
         }
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    };
+    report.found = list.len() as u32;
+    for (name, _) in &list {
+        if !report.images.contains(name) {
+            report.images.push(name.clone());
+        }
+    }
+    for (_, pid) in list {
+        let pid = pid.to_string();
+        let ok = hidden(Command::new("taskkill").args(["/F", "/PID", pid.as_str()]))
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false);
+        if ok {
+            report.closed += 1;
+        } else {
+            report.failed += 1;
+        }
+    }
+    report
+}
+
+/// Закрывает все клиенты игры.
+#[tauri::command]
+pub async fn launcher_close_clients() -> Result<CloseReport, String> {
+    tauri::async_runtime::spawn_blocking(close_clients_now)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Диагностика: видимые окна VK Play и окна вопросов GameCenter (`hwnd | класс | заголовок`).
@@ -602,10 +645,16 @@ mod tests {
     #[test]
     fn parses_tasklist_output() {
         let out = "\"elementclient_64.exe\",\"22368\",\"Console\",\"1\",\"500 000 K\"\r\n\
-                   \"elementclient_64.exe\",\"1204\",\"Console\",\"1\",\"480 000 K\"\r\n";
-        assert_eq!(parse_tasklist(out), vec![22368, 1204]);
-        assert!(parse_tasklist("INFO: No tasks are running.\r\n").is_empty());
-        assert!(parse_tasklist("").is_empty());
+                   \"elementclient.exe\",\"1204\",\"Console\",\"1\",\"480 000 K\"\r\n";
+        assert_eq!(
+            parse_processes(out),
+            vec![
+                ("elementclient_64.exe".to_string(), 22368),
+                ("elementclient.exe".to_string(), 1204)
+            ]
+        );
+        assert!(parse_processes("INFO: No tasks are running.\r\n").is_empty());
+        assert!(parse_processes("").is_empty());
     }
 
     #[test]

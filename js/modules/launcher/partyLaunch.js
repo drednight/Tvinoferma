@@ -5,9 +5,9 @@
 
 import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
-import { toast, confirmDialog } from '../../core/ui.js';
+import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients } from './launch.js';
+import { launchCharacters, launchPlan, launchSummary, closeReportText, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients } from './launch.js';
 
 let active = null; // { signal } идущего запуска
 
@@ -26,7 +26,7 @@ async function reportDone(text, isError) {
   if (focused) { toast(text, isError ? 'error' : 'success'); return; }
   try {
     const { notify } = await import('../../desktop/notifications.js');
-    if (await notify('Твиноферма', text)) return;
+    if (await notify('Твиноферма', text)) return;   // false — нет разрешения на уведомления: покажем подпись ниже
   } catch { /* системные уведомления недоступны */ }
   toast(text, isError ? 'error' : 'success');
 }
@@ -112,27 +112,41 @@ export async function launchPartyByName(name) {
 }
 
 /**
- * Закрывает все окна игры (elementclient_64.exe). `confirm: true` — спросить, сколько окон будет закрыто
- * (из меню трея спрашивать не нужно: пункт выбран явно).
+ * Закрывает все окна игры. `confirm: true` — сначала спросить, сколько окон будет закрыто.
+ * (Из меню трея окна закрывает сам Rust, интерфейс получает только итог — см. showCloseReport.)
  */
 export async function closeAllGameWindows({ confirm = true } = {}) {
   if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
   try {
     const running = await runningClients();
-    if (!running.length) { reportClosed('Окон игры не запущено'); return 0; }
-    if (confirm && !confirmDialog(`Закрыть все окна игры (${running.length})? Несохранённое в игре будет потеряно.`)) return 0;
-    const closed = await closeAllClients();
-    reportClosed(`Закрыто окон игры: ${closed}`);
-    return closed;
+    if (!running.length) { showCloseReport({ found: 0 }); return 0; }
+    if (confirm) {
+      const ok = await confirmModal({
+        title: 'Закрыть все окна игры?',
+        text: `Будет закрыто окон: ${running.length}. Всё, что не сохранено в игре, будет потеряно.`,
+        okText: `Закрыть (${running.length})`,
+        danger: true
+      });
+      if (!ok) return 0;
+    }
+    const report = await closeAllClients();
+    showCloseReport(report);
+    return Number(report?.closed) || 0;
   } catch (e) {
     toast(`Не удалось закрыть окна игры: ${errText(e)}`, 'error');
     return 0;
   }
 }
 
-function reportClosed(text) {
-  if (typeof document !== 'undefined' && document.hasFocus()) { toast(text, 'success'); return; }
-  import('../../desktop/notifications.js').then(m => m.notify('Твиноферма', text)).catch(() => toast(text, 'success'));
+/** Итог закрытия окон: подпись в приложении или системное уведомление, если приложение свёрнуто. */
+export function showCloseReport(report) {
+  const text = closeReportText(report);
+  const isError = !!(report?.error || report?.failed);
+  if (typeof document !== 'undefined' && document.hasFocus()) { toast(text, isError ? 'error' : 'success'); return; }
+  import('../../desktop/notifications.js')
+    .then(m => m.notify('Твиноферма', text))
+    .then(sent => { if (!sent) toast(text, isError ? 'error' : 'success'); })
+    .catch(() => toast(text, isError ? 'error' : 'success'));
 }
 
 /** Сохраняет путь к GameCenter у персонажа (в приложении путь проверяется). */

@@ -110,3 +110,8 @@
 .imp-list { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: var(--panel-2, transparent); }
 .imp-list label { display: block; padding: 2px 0; }
 .imp-section { margin-bottom: 14px; }
+
+/* Подтверждение в стиле приложения (confirmModal): компактное окно поверх остальных */
+.tf-confirm-overlay { z-index: 2000; }
+.tf-confirm { width: min(440px, 92vw); max-height: none; }
+.tf-confirm .modal-body { color: var(--text); }

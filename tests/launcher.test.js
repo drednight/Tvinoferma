@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames } from '../js/modules/launcher/launch.js';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText } from '../js/modules/launcher/launch.js';
+import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
 import { normalizeCharacter, normalizeState } from '../js/core/state.js';
@@ -133,8 +134,33 @@ describe('launcher: итог запуска, трей', () => {
     expect(rust).toContain('LAUNCH_PREFIX: &str = "launch-party:"');
     expect(desk).toContain("'launch-party:'");
     expect(rust).toContain('"close-game"');
-    expect(desk).toContain("'close-game'");
+    expect(rust).toContain('"game-closed"');
+    expect(desk).toContain("'game-closed'");
     expect(rust).toContain('set_tray_parties');
     expect(readFileSync('src-tauri/src/lib.rs', 'utf8')).toContain('tray::set_tray_parties');
+  });
+
+  it('итог закрытия окон: ничего не было, всё закрыто, часть не поддалась, ошибка поиска', () => {
+    expect(closeReportText({ found: 0 })).toBe('Окон игры не запущено');
+    expect(closeReportText({ found: 2, closed: 2, failed: 0 })).toBe('Закрыто окон игры: 2');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('Закрыто 1 из 3');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('администратора');
+    expect(closeReportText({ error: 'tasklist: не найден' })).toContain('tasklist');
+  });
+
+  it('подтверждение в стиле приложения: «ОК» — да, «Отмена»/Esc — нет, окно убирается', async () => {
+    const ask = () => confirmModal({ title: 'Закрыть?', text: 'Будет закрыто окон: 2', okText: 'Закрыть (2)', danger: true });
+    let p = ask();
+    expect(document.querySelector('.tf-confirm .modal-body').textContent).toContain('окон: 2');
+    document.querySelector('[data-act="ok"]').click();
+    expect(await p).toBe(true);
+    expect(document.querySelector('.tf-confirm')).toBeNull();
+    p = ask();
+    document.querySelector('[data-act="cancel"]').click();
+    expect(await p).toBe(false);
+    p = ask();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(await p).toBe(false);
+    expect(document.querySelector('.tf-confirm-overlay')).toBeNull();
   });
 });

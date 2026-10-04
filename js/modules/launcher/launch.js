@@ -75,6 +75,20 @@ export function launchSummary(r) {
   return parts.join(', ');
 }
 
+/**
+ * Текст итога закрытия окон по отчёту Rust: `{ found, closed, failed, error }`.
+ * @param {{ found?: number, closed?: number, failed?: number, error?: string }} r
+ */
+export function closeReportText(r) {
+  if (r?.error) return `Не удалось найти окна игры: ${r.error}`;
+  const found = Number(r?.found) || 0;
+  const closed = Number(r?.closed) || 0;
+  const failed = Number(r?.failed) || 0;
+  if (!found) return 'Окон игры не запущено';
+  if (!failed) return `Закрыто окон игры: ${closed}`;
+  return `Закрыто ${closed} из ${found}. Остальные не поддались: возможно, игра запущена от имени администратора — запустите Твиноферму так же`;
+}
+
 /** Пати, которые есть смысл запускать из трея: в них есть хотя бы один персонаж с путём к GameCenter. */
 export function launchablePartyNames(parties, characters, membersOf) {
   return (parties || [])

@@ -21,10 +21,6 @@ export const HOTKEYS = [
 let backgroundTimer = null;
 
 async function runScript(action) {
-  if (action === 'close-game') {
-    const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
-    return closeAllGameWindows({ confirm: false });   // пункт трея выбран явно, повторно не спрашиваем
-  }
   if (typeof action === 'string' && action.startsWith('launch-party:')) {
     const { launchPartyByName } = await import('../modules/launcher/partyLaunch.js');
     return launchPartyByName(action.slice('launch-party:'.length));
@@ -117,6 +113,11 @@ export async function initDesktop() {
   if (!window.__TAURI_INTERNALS__) return;
   const { listen } = await import('@tauri-apps/api/event');
   await listen('tray-action', (e) => runScript(e.payload));
+  // «🛑 Закрыть все окна игры» в трее закрывает окна в Rust и присылает отчёт
+  await listen('game-closed', async (e) => {
+    const { showCloseReport } = await import('../modules/launcher/partyLaunch.js');
+    showCloseReport(e.payload);
+  });
   window.addEventListener('tf-persisted', () => { syncTrayParties(); });
   await applyDesktopSettings();
   await syncTrayParties();

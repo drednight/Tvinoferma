@@ -192,23 +192,17 @@ export function openCharacterProfile(char) {
 
       </div>
       
-      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ С НОВЫМИ КНОПКАМИ -->
-      <div style="flex-shrink: 0; display:flex; gap:10px; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:15px; background: var(--panel); position: sticky; bottom: 0; z-index: 10;">
-         
-         <!-- Левая группа: Опасные действия -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-delete-from-profile" class="btn danger">🗑 Удалить</button>
-         </div>
+      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ: слева «Удалить», по центру действия с персонажем, справа «Редактировать» и «Закрыть» -->
+      <div class="pf-footer">
+         <button id="btn-delete-from-profile" class="btn danger pf-delete" type="button" title="Удалить персонажа" aria-label="Удалить персонажа">🗑</button>
 
-         <!-- Центральная группа: Синхронизация -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-launch-from-profile" class="btn secondary" title="Запустить игру для этого персонажа через его GameCenter">▶ Играть</button>
-            <button id="btn-open-sync-helper-footer" class="btn secondary" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">
-               🔑 Открыть сайт
+         <div class="pf-footer-main">
+            <button id="btn-launch-from-profile" class="btn pf-play" type="button" title="Запустить игру для этого персонажа через его GameCenter">
+               <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
+               Играть
             </button>
-            <button id="btn-coin-history-footer" class="btn secondary" title="История изменений баланса Древних монет">
-               🪙 История
-            </button>
+            <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
+            <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет">🪙 История</button>
             <div class="pf-menu" id="pf-check-menu">
                <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
                <div class="pf-menu-list" hidden>
@@ -218,10 +212,9 @@ export function openCharacterProfile(char) {
             </div>
          </div>
 
-         <!-- Правая группа: Основные действия -->
-         <div style="display:flex; gap:10px;">
-            <button id="btn-edit-from-profile" class="btn primary">✏️ Редактировать</button>
-            <button id="btn-close-profile" class="btn ghost">Закрыть</button>
+         <div class="pf-footer-end">
+            <button id="btn-edit-from-profile" class="btn primary" type="button">✏️ Править</button>
+            <button id="btn-close-profile" class="btn ghost" type="button">Закрыть</button>
          </div>
       </div>
     </div>

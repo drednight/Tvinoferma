@@ -78,7 +78,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::
     let close_game = MenuItem::with_id(
         app,
         "close-game",
-        "⏹ Закрыть все окна игры",
+        "🛑 Закрыть все окна игры",
         true,
         None::<&str>,
     )?;
@@ -100,6 +100,14 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
             "quit" => app.exit(0),
+            "close-game" => {
+                // Окна закрываем сразу в Rust (интерфейс может быть свёрнут в трей); итог показывает интерфейс
+                let handle = app.clone();
+                std::thread::spawn(move || {
+                    let report = crate::launcher::close_clients_now();
+                    let _ = handle.emit_to("main", "game-closed", report);
+                });
+            }
             action => {
                 // Скрипты выполняет интерфейс — пересылаем ему действие
                 let _ = app.emit_to("main", "tray-action", action.to_string());

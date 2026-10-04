@@ -274,22 +274,23 @@ function generateCardHTML(char) {
               ${passesHtml}
            </div>
            
-           <!-- Правая часть: запуск игры и кнопка Открыть Сайт -->
-           <div style="display:flex; gap:6px; align-items:center;">
-           <button class="btn ghost small card-launch-btn"
-                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px;${char.launch?.gcPath ? ' color:var(--success, #9ece6a);' : ' opacity:.6;'}"
-                   title="${char.launch?.gcPath ? 'Запустить игру для этого персонажа' : 'Не указан путь к GameCenter: нажмите, чтобы указать'}"
-                   onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
-               ▶ Играть
-           </button>
-           <button id="btn-open-site-${char.id}" 
-                   class="btn ghost small" 
-                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:${state.ui?.authCheck?.[char.id] === 'checking' ? 'not-allowed' : 'pointer'}; ${state.ui?.authCheck?.[char.id] === 'checking' ? 'opacity:.45;' : ''}"
-                   title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}"
-                   ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
-                   onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">
-               🌐 Открыть сайт
-           </button>
+           <!-- Правая часть: компактные кнопки — запуск игры и вход на сайт (подписи — во всплывающих подсказках) -->
+           <div class="card-actions">
+              <button class="card-act play${char.launch?.gcPath ? '' : ' is-unset'}"
+                      type="button"
+                      aria-label="Играть"
+                      title="${char.launch?.gcPath ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите путь к GameCenter (откроется карточка)'}"
+                      onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
+                 <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
+              </button>
+              <button id="btn-open-site-${char.id}"
+                      class="card-act"
+                      type="button"
+                      aria-label="Открыть сайт"
+                      style="${state.ui?.authCheck?.[char.id] === 'checking' ? 'cursor:not-allowed;' : ''}"
+                      title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
+                      ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
+                      onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
            </div>
         </footer>
       </article>
