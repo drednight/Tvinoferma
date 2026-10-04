@@ -146,7 +146,8 @@ export const DEFAULT_SETTINGS = {
   launcher: {
     notify: true,   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
     gameCenters: [],   // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
-    preferredGcId: ''  // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
+    preferredGcId: '', // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
+    decorateWindows: true  // после запуска назвать окно клиента «Ник — Класс» и поставить значок класса
   },
   tray: {
     closeToTray: false,

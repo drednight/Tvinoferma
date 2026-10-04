@@ -48,10 +48,10 @@ describe('launcher', () => {
       { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
       { invoke }
     );
-    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30 }]]);
+    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
     seen.length = 0;
     await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
-    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null });
+    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
   });
 
   it('onStart вызывается по очереди, а не для всех сразу', async () => {

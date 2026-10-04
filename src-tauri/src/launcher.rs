@@ -10,11 +10,14 @@
 //!    в этом окне выбирается «Запустить новую копию клиента» (по умолчанию выбрана она, достаточно Enter).
 //!    Окно «Попытка авторизации…» с кнопкой «Прервать» не трогаем: Enter в нём прервал бы вход.
 //! 4. Ждём, пока появится новый процесс клиента игры.
+//! 5. Если передан заголовок и значок класса, окну нового клиента ставятся название «Ник — Класс»
+//!    и значок (в фоне: окно появляется не сразу). Меняется только вид окна, сама игра не затрагивается.
 //!
 //! Безопасность: запускается только файл с именем `GameCenter.exe`, а ссылка запуска
 //! должна начинаться с `vkplay://` и не содержать пробелов — произвольные программы отсюда не стартуют.
 
 use serde::Serialize;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
@@ -33,6 +36,15 @@ const DIALOG_TITLE: &str = "VK Play";
 const DIALOG_WAIT: Duration = Duration::from_secs(30);
 /// Сколько ждать новый клиент игры, секунд (если не задано в вызове)
 const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
+/// Сколько искать окно нового клиента, чтобы подписать его и поставить значок
+const DECORATE_WAIT: Duration = Duration::from_secs(90);
+/// Сколько ещё следить за окном после первой подписи (игра может сама сменить заголовок при загрузке)
+const DECORATE_KEEP: Duration = Duration::from_secs(20);
+/// Как часто проверять окна клиента
+const DECORATE_STEP: Duration = Duration::from_millis(700);
+/// Допустимый размер значка (сторона квадрата, пикселей)
+const ICON_MIN: usize = 8;
+const ICON_MAX: usize = 128;
 
 const INI_NAME: &str = "GameCenter.ini";
 const KEY_NICK: &str = "CurrentUserNick";
@@ -47,6 +59,8 @@ pub struct LaunchInfo {
     dialog_clicked: bool,
     /// Был ли перед запуском подставлен сохранённый вход аккаунта в GameCenter.ini
     switched: bool,
+    /// PID нового клиента игры (0 — не определён)
+    client_pid: u32,
 }
 
 /// Окна и клавиши Windows (user32) без лишних зависимостей.
@@ -64,10 +78,44 @@ mod win {
         fn GetWindowTextW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
+        fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
+        fn SendMessageTimeoutW(
+            hwnd: Hwnd,
+            msg: u32,
+            wparam: usize,
+            lparam: isize,
+            flags: u32,
+            timeout_ms: u32,
+            result: *mut usize,
+        ) -> isize;
+        fn CreateIconIndirect(info: *const IconInfo) -> *mut c_void;
+    }
+
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateBitmap(
+            width: i32,
+            height: i32,
+            planes: u32,
+            bits_per_pixel: u32,
+            bits: *const c_void,
+        ) -> *mut c_void;
+        fn DeleteObject(obj: *mut c_void) -> i32;
+    }
+
+    /// ICONINFO из Win32: цветная картинка и маска значка.
+    #[repr(C)]
+    struct IconInfo {
+        is_icon: i32,
+        x_hotspot: u32,
+        y_hotspot: u32,
+        mask: *mut c_void,
+        color: *mut c_void,
     }
 
     pub struct WinInfo {
         pub hwnd: usize,
+        pub pid: u32,
         pub class: String,
         pub title: String,
         pub visible: bool,
@@ -84,8 +132,11 @@ mod win {
         let class = read(|b, n| unsafe { GetClassNameW(hwnd, b, n) });
         let title = read(|b, n| unsafe { GetWindowTextW(hwnd, b, n) });
         let visible = unsafe { IsWindowVisible(hwnd) } != 0;
+        let mut pid: u32 = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
         list.push(WinInfo {
             hwnd: hwnd as usize,
+            pid,
             class,
             title,
             visible,
@@ -100,6 +151,84 @@ mod win {
             EnumWindows(collect, &mut list as *mut Vec<WinInfo> as isize);
         }
         list
+    }
+
+    /// Отправка сообщения окну другого процесса с ограничением по времени: зависшее окно нас не подвесит.
+    fn send(hwnd: usize, msg: u32, wparam: usize, lparam: isize) -> bool {
+        const SMTO_ABORTIFHUNG: u32 = 0x0002;
+        let mut result: usize = 0;
+        unsafe {
+            SendMessageTimeoutW(
+                hwnd as Hwnd,
+                msg,
+                wparam,
+                lparam,
+                SMTO_ABORTIFHUNG,
+                1500,
+                &mut result,
+            ) != 0
+        }
+    }
+
+    /// Меняет заголовок окна (в том числе окна другого процесса).
+    pub fn set_title(hwnd: usize, title: &str) -> bool {
+        const WM_SETTEXT: u32 = 0x000C;
+        let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+        send(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize)
+    }
+
+    /// Значок из пикселей BGRA (предумноженная прозрачность), сторона — `size`. 0 — не получилось.
+    /// Значок не уничтожается: он нужен окну, пока оно живо (пара маленьких значков на окно).
+    pub fn make_icon(bgra: &[u8], size: usize) -> usize {
+        if size == 0 || bgra.len() != size * size * 4 {
+            return 0;
+        }
+        let mask = vec![0u8; size.div_ceil(16) * 2 * size]; // строки 1-битной маски выровнены по WORD
+        unsafe {
+            let color = CreateBitmap(
+                size as i32,
+                size as i32,
+                1,
+                32,
+                bgra.as_ptr() as *const c_void,
+            );
+            let mask_bmp = CreateBitmap(
+                size as i32,
+                size as i32,
+                1,
+                1,
+                mask.as_ptr() as *const c_void,
+            );
+            let mut icon: *mut c_void = std::ptr::null_mut();
+            if !color.is_null() && !mask_bmp.is_null() {
+                let info = IconInfo {
+                    is_icon: 1,
+                    x_hotspot: 0,
+                    y_hotspot: 0,
+                    mask: mask_bmp,
+                    color,
+                };
+                icon = CreateIconIndirect(&info);
+            }
+            if !color.is_null() {
+                DeleteObject(color);
+            }
+            if !mask_bmp.is_null() {
+                DeleteObject(mask_bmp);
+            }
+            icon as usize
+        }
+    }
+
+    /// Ставит окну малый (заголовок) и большой (панель задач, Alt+Tab) значки. 0 — этот значок не меняем.
+    pub fn set_icons(hwnd: usize, small: usize, big: usize) {
+        const WM_SETICON: u32 = 0x0080;
+        if small != 0 {
+            send(hwnd, WM_SETICON, 0, small as isize); // ICON_SMALL
+        }
+        if big != 0 {
+            send(hwnd, WM_SETICON, 1, big as isize); // ICON_BIG
+        }
     }
 
     /// Нажатие Enter в окне (сообщения клавиатуры отправляются прямо в окно, фокус не нужен).
@@ -119,6 +248,7 @@ mod win {
 mod win {
     pub struct WinInfo {
         pub hwnd: usize,
+        pub pid: u32,
         pub class: String,
         pub title: String,
         pub visible: bool,
@@ -127,6 +257,13 @@ mod win {
         Vec::new()
     }
     pub fn press_enter(_hwnd: usize) {}
+    pub fn set_title(_hwnd: usize, _title: &str) -> bool {
+        false
+    }
+    pub fn make_icon(_bgra: &[u8], _size: usize) -> usize {
+        0
+    }
+    pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) {}
 }
 
 /// Принимает папку GameCenter или путь к `GameCenter.exe`, возвращает путь к exe.
@@ -234,6 +371,97 @@ fn confirm_new_client_dialog() -> bool {
         sleep(Duration::from_millis(300));
     }
     false
+}
+
+// ---------------------------------------------------------------------------
+// Название окна клиента («Ник — Класс») и значок класса
+// ---------------------------------------------------------------------------
+
+/// Заголовок окна: без управляющих символов, не длиннее 100 знаков. `None` — подписывать нечем.
+fn clean_title(raw: &str) -> Option<String> {
+    let t: String = raw
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .chars()
+        .take(100)
+        .collect();
+    if t.is_empty() {
+        None
+    } else {
+        Some(t)
+    }
+}
+
+/// Сторона квадратного значка по числу байт RGBA. `None` — размер не подходит (не квадрат или вне границ).
+fn icon_side(len: usize) -> Option<usize> {
+    if len == 0 || (len & 3) != 0 {
+        return None;
+    }
+    let px = len / 4;
+    let side = (px as f64).sqrt().round() as usize;
+    (side * side == px && (ICON_MIN..=ICON_MAX).contains(&side)).then_some(side)
+}
+
+/// RGBA из canvas (прозрачность отдельно) → BGRA с предумноженной прозрачностью, как ждёт Windows.
+fn rgba_to_bgra_premultiplied(rgba: &[u8]) -> Vec<u8> {
+    let premul = |c: u8, a: u8| ((u32::from(c) * u32::from(a) + 127) / 255) as u8;
+    let mut out = Vec::with_capacity(rgba.len());
+    for px in rgba.chunks(4) {
+        if let [r, g, b, a] = *px {
+            out.extend_from_slice(&[premul(b, a), premul(g, a), premul(r, a), a]);
+        }
+    }
+    out
+}
+
+/// Значок из пикселей RGBA (присылает интерфейс). 0 — значка нет или он некорректный.
+fn icon_from_rgba(rgba: Option<&[u8]>) -> usize {
+    let Some(bytes) = rgba else { return 0 };
+    match icon_side(bytes.len()) {
+        Some(side) => win::make_icon(&rgba_to_bgra_premultiplied(bytes), side),
+        None => 0,
+    }
+}
+
+/// Первый PID клиента игры, которого не было до запуска.
+fn new_client_pid(before: &HashSet<u32>, now: &[u32]) -> Option<u32> {
+    now.iter().copied().find(|pid| !before.contains(pid))
+}
+
+/// Окно клиента, которое стоит подписывать: видимое, с заголовком и принадлежит нужному процессу.
+fn is_client_window(w: &win::WinInfo, pid: u32) -> bool {
+    w.pid == pid && w.visible && !w.title.is_empty()
+}
+
+/// Подписывает окно(а) клиента и ставит значок. Окно появляется не сразу (загрузка), поэтому ищем его в фоне;
+/// после первой подписи ещё `DECORATE_KEEP` следим за заголовком: игра может переписать его при загрузке.
+fn decorate_client(pid: u32, title: String, small: Option<Vec<u8>>, big: Option<Vec<u8>>) {
+    let small_icon = icon_from_rgba(small.as_deref());
+    let big_icon = icon_from_rgba(big.as_deref());
+    let deadline = Instant::now() + DECORATE_WAIT;
+    let mut first_done: Option<Instant> = None;
+    let mut with_icons: Vec<usize> = Vec::new();
+    while Instant::now() < deadline {
+        for w in win::all_windows()
+            .iter()
+            .filter(|w| is_client_window(w, pid))
+        {
+            if w.title != title {
+                win::set_title(w.hwnd, &title);
+            }
+            if !with_icons.contains(&w.hwnd) {
+                win::set_icons(w.hwnd, small_icon, big_icon);
+                with_icons.push(w.hwnd);
+            }
+            first_done.get_or_insert_with(Instant::now);
+        }
+        if first_done.is_some_and(|t| t.elapsed() > DECORATE_KEEP) {
+            return;
+        }
+        sleep(DECORATE_STEP);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -591,14 +819,19 @@ pub async fn launcher_has_account(char_id: String) -> Result<bool, String> {
 /// 2. Запоминает, сколько клиентов игры уже запущено, и стартует `GameCenter.exe <ссылка>`.
 /// 3. Если клиенты уже были — ждёт окно «Клиент игры уже запущен» и выбирает «Запустить новую копию клиента».
 ///    Если не было — ничего не нажимает.
-/// 4. Ждёт, пока число клиентов вырастет (до `wait_secs`, по умолчанию 60 с); иначе — ошибка.
+/// 4. Ждёт, пока появится новый клиент игры (до `wait_secs`, по умолчанию 60 с); иначе — ошибка.
+/// 5. Если передан `window_title`, в фоне подписывает окно нового клиента и ставит значок (`icon_small`, `icon_big` — RGBA).
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn launcher_start(
     path: String,
     char_id: Option<String>,
     nick: Option<String>,
     url: Option<String>,
     wait_secs: Option<u64>,
+    window_title: Option<String>,
+    icon_small: Option<Vec<u8>>,
+    icon_big: Option<Vec<u8>>,
 ) -> Result<LaunchInfo, String> {
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
@@ -623,7 +856,7 @@ pub async fn launcher_start(
             None => false,
         };
 
-        let before = client_pids()?.len();
+        let before: HashSet<u32> = client_pids()?.into_iter().collect();
         let child = Command::new(&exe)
             .current_dir(&dir)
             .arg(&url)
@@ -631,12 +864,12 @@ pub async fn launcher_start(
             .map_err(|e| format!("{}: {}", exe.display(), e))?;
         let pid = child.id();
 
-        let dialog_clicked = before > 0 && confirm_new_client_dialog();
+        let dialog_clicked = !before.is_empty() && confirm_new_client_dialog();
 
         let deadline = Instant::now() + wait;
-        loop {
-            if client_pids()?.len() > before {
-                break;
+        let client_pid = loop {
+            if let Some(pid) = new_client_pid(&before, &client_pids()?) {
+                break pid;
             }
             if Instant::now() >= deadline {
                 return Err(format!(
@@ -646,11 +879,18 @@ pub async fn launcher_start(
                 ));
             }
             sleep(Duration::from_millis(500));
+        };
+
+        // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт
+        if let Some(title) = window_title.as_deref().and_then(clean_title) {
+            std::thread::spawn(move || decorate_client(client_pid, title, icon_small, icon_big));
         }
+
         Ok::<LaunchInfo, String>(LaunchInfo {
             pid,
             dialog_clicked,
             switched,
+            client_pid,
         })
     })
     .await
@@ -736,6 +976,63 @@ pub fn launcher_find_dialogs() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn window_title_is_cleaned() {
+        assert_eq!(
+            clean_title("  Twin — Маг \n").as_deref(),
+            Some("Twin — Маг")
+        );
+        assert_eq!(clean_title("a\u{0}b\tc").as_deref(), Some("abc"));
+        assert_eq!(clean_title("   "), None);
+        assert_eq!(clean_title(&"я".repeat(300)).unwrap().chars().count(), 100);
+    }
+
+    #[test]
+    fn icon_must_be_a_small_square() {
+        assert_eq!(icon_side(16 * 16 * 4), Some(16));
+        assert_eq!(icon_side(48 * 48 * 4), Some(48));
+        assert_eq!(icon_side(0), None);
+        assert_eq!(icon_side(16 * 16 * 4 + 1), None);
+        assert_eq!(icon_side(16 * 8 * 4), None); // не квадрат
+        assert_eq!(icon_side(4 * 4 * 4), None); // слишком мелкий
+        assert_eq!(icon_side(256 * 256 * 4), None); // слишком крупный
+    }
+
+    #[test]
+    fn pixels_become_premultiplied_bgra() {
+        // красный, непрозрачный; зелёный, наполовину прозрачный; полностью прозрачный
+        let rgba = [255, 0, 0, 255, 0, 200, 0, 128, 9, 9, 9, 0];
+        assert_eq!(
+            rgba_to_bgra_premultiplied(&rgba),
+            vec![0, 0, 255, 255, 0, 100, 0, 128, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn new_client_is_the_pid_that_was_not_there_before() {
+        let before: HashSet<u32> = [10, 20].into_iter().collect();
+        assert_eq!(new_client_pid(&before, &[10, 20]), None);
+        assert_eq!(new_client_pid(&before, &[10, 30, 20]), Some(30));
+        // один клиент закрылся, другой открылся: число то же, но новый клиент найден
+        assert_eq!(new_client_pid(&before, &[20, 40]), Some(40));
+        assert_eq!(new_client_pid(&HashSet::new(), &[]), None);
+    }
+
+    #[test]
+    fn only_visible_titled_windows_of_the_client_are_decorated() {
+        let w = |pid, title: &str, visible| win::WinInfo {
+            hwnd: 1,
+            pid,
+            class: String::new(),
+            title: title.to_string(),
+            visible,
+        };
+        assert!(is_client_window(&w(7, "完美世界国际版", true), 7));
+        assert!(!is_client_window(&w(8, "完美世界国际版", true), 7)); // чужой процесс
+        assert!(!is_client_window(&w(7, "", true), 7)); // служебное окно без заголовка
+        assert!(!is_client_window(&w(7, "IME", false), 7)); // невидимое
+    }
 
     #[test]
     fn picker_output_is_a_single_path() {

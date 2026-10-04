@@ -12,6 +12,7 @@
 import { createLimiter, runQueue, sleep } from '../sync/queue.js';
 import { state } from '../../core/state.js';
 import { resolveGameCenter } from './gameCenters.js';
+import { getClassIconSrc } from '../../core/constants.js';
 
 /** Пауза между запусками аккаунтов (после появления нового клиента), мс. */
 export const DEFAULT_LAUNCH_DELAY_MS = 3000;
@@ -51,6 +52,72 @@ export function loginStatusText(character, ctx = launchContext()) {
   if (!r?.saved) return `${where}Вход не запомнен: запускается тот аккаунт, под которым уже открыт этот GameCenter.`;
   const who = r.nick ? ` «${r.nick}»` : '';
   return `${where}Вход запомнен${who}. При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.`;
+}
+
+/** Размеры значков окна: малый (заголовок) и большой (панель задач, Alt+Tab), пикселей. */
+export const WINDOW_ICON_SMALL = 16;
+export const WINDOW_ICON_BIG = 48;
+
+/** Название окна клиента: «Ник — Класс» (без класса — просто ник). */
+export function windowTitle(character) {
+  const nick = String(character?.nick || '').trim();
+  const cls = String(character?.class || '').trim();
+  return cls ? `${nick} — ${cls}` : nick;
+}
+
+/** Подписывать ли окна клиентов (Настройки → Запуск игры). */
+export function decorateEnabled() {
+  return state.settings?.launcher?.decorateWindows !== false;
+}
+
+/** @type {Map<string, Promise<number[] | null>>} */
+const iconCache = new Map();
+
+/**
+ * Значок класса как пиксели RGBA (`size`×`size`, массив байт) — так его ждёт Rust. Берётся из `public/assets/icons/classes`.
+ * null — у класса нет значка или картинку не удалось прочитать (тогда окно только получит название).
+ */
+export function classIconRgba(className, size) {
+  const src = getClassIconSrc(className);
+  if (!src || typeof document === 'undefined') return Promise.resolve(null);
+  const key = `${src}@${size}`;
+  let p = iconCache.get(key);
+  if (!p) {
+    p = new Promise((resolve) => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const g = canvas.getContext('2d', { willReadFrequently: true });
+          if (!g) { resolve(null); return; }
+          g.imageSmoothingQuality = 'high';
+          g.drawImage(img, 0, 0, size, size);
+          resolve(Array.from(g.getImageData(0, 0, size, size).data));
+        } catch { resolve(null); }
+      };
+      img.src = src;
+    });
+    iconCache.set(key, p);
+    p.then(v => { if (!v) iconCache.delete(key); }); // неудачу не запоминаем: в следующий раз попробуем снова
+  }
+  return p;
+}
+
+/**
+ * Что передать в Rust, чтобы окно клиента получило название и значок класса.
+ * @param {any} character
+ * @param {{ loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
+ */
+export async function windowDecor(character, deps = {}) {
+  const load = deps.loadIcon || classIconRgba;
+  const cls = String(character?.class || '').trim();
+  const [iconSmall, iconBig] = cls
+    ? await Promise.all([load(cls, WINDOW_ICON_SMALL), load(cls, WINDOW_ICON_BIG)])
+    : [null, null];
+  return { windowTitle: windowTitle(character) || null, iconSmall, iconBig };
 }
 
 /** «45 с», «1 мин 12 с», «2 ч 05 мин» — для итога запуска. */
@@ -173,13 +240,15 @@ export function closeAllClients(deps = {}) {
  *   url?: string,
  *   signal?: { cancelled: boolean },
  *   gcId?: string,
+ *   decorate?: boolean,
  *   onStart?: (character: any) => void,
  *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string }, done: number, total: number) => void
  * }} [opts]
- * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext }} [deps]
+ * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext, loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
  */
 export async function launchCharacters(characters, opts = {}, deps = {}) {
   const { delayMs = DEFAULT_LAUNCH_DELAY_MS, waitSecs, url, signal, onStart, onDone, gcId } = opts;
+  const decorate = opts.decorate ?? decorateEnabled();
   const invoke = deps.invoke || tauriInvoke;
   // gcId — GameCenter, из которого запускать в этот раз (например, «папка 2»); у кого его нет — запускается из доступного
   const base = deps.ctx || launchContext();
@@ -194,12 +263,15 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       if (signal?.cancelled) return { cancelled: true };
       onStart?.(character);
       const target = resolveGameCenter(character, ctx);
+      // Название окна «Ник — Класс» и значок: Rust применит их к новому окну клиента в фоне
+      const decor = decorate ? await windowDecor(character, deps) : { windowTitle: null, iconSmall: null, iconBig: null };
       await invoke('launcher_start', {
         path: target?.path,
         charId: target?.key,
         nick: target?.nick || null,
         url: url || null,
-        waitSecs: waitSecs ?? null
+        waitSecs: waitSecs ?? null,
+        ...decor
       });
       if (!last && delayMs > 0) await sleep(delayMs); // следующий аккаунт стартует после паузы
       return { cancelled: false };
