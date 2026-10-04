@@ -16,6 +16,7 @@ import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 import { renderPromoLog } from '../modules/automation/promoLogView.js';
+import { renderTransferLog } from '../modules/automation/transferLogView.js';
 
 export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
 
@@ -123,6 +124,7 @@ export async function renderSettings() {
 
   // Логи промокодов
   renderPromoLog();
+  renderTransferLog();
 
   // Безопасность
   const vaultEl = document.getElementById('vault-status');

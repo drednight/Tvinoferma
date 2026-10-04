@@ -38,7 +38,28 @@
     "promo.error": ["#content_body .m_error", ".m_error"],
     "promo.rewardsBox": [".pin_bonuses_list"],
     "promo.rewards": [".pin_bonuses_list li"],
-    "promo.choice": ["select"]
+    "promo.choice": ["select"],
+
+    "transfer.title": ["#content_top h2"],
+    "transfer.accountName": ["#content_top_2 strong", ".auth_h strong"],
+    "transfer.form": [".js-transfer-form"],
+    "transfer.row": ["table.promo_items tr"],
+    "transfer.itemBlock": [".item_input_block"],
+    "transfer.chest": [".chest_input_block", "a[href*=\"do=activate\"]"],
+    "transfer.label": ["label"],
+    "transfer.checkbox": ["input[type=\"checkbox\"][name=\"cart_items[]\"]"],
+    "transfer.until": [".date_end"],
+    "transfer.promoHead": [".promo_container_content_body"],
+    "transfer.promoTitle": ["h6"],
+    "transfer.shard": ["select.js-shard"],
+    "transfer.char": ["select.js-char"],
+    "transfer.go": [".js-transfer-go"],
+    "transfer.modal": [".modals"],
+    "transfer.modalYes": [".js-transfer-done"],
+    "transfer.error": ["#content_body .m_error", ".m_error"],
+    "transfer.historyRow": ["table.promo_history tr"],
+    "transfer.name": ["b"],
+    "transfer.promoSmall": ["small"]
   },
   "texts": {
     "common.challengeTitle": ["Проверка безопасности"],
@@ -73,12 +94,21 @@
       "не найден"
     ],
     "promo.empty": ["пустой пин-код"],
-    "promo.success": ["успешно активировали"]
+    "promo.success": ["успешно активировали"],
+
+    "transfer.titleText": ["Передача предметов"],
+    "transfer.historyAccount": ["Игровой аккаунт:"],
+    "transfer.historyChar": ["Персонаж:"],
+    "transfer.historyServer": ["Сервер:"]
   },
   "regex": {
     "promo.reward": [
       "^(.*?)(?:\\s+x\\s*(\\d+))?\\s*\\(ID:\\s*(\\d+)\\)(?:,\\s*(.+))?$"
     ],
+    "transfer.item": ["^(.*?)(?:\\s+x\\s*(\\d+))?$"],
+    "transfer.historyItem": ["^(.*?)\\s+x\\s*(\\d+)$"],
+    "transfer.historyDate": ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"],
+    "transfer.historyPromo": ["^\\((.*)\\)$"],
     "news.date": [
       "Обсудить\\s+(\\d{2}\\.\\d{2}\\.\\d{4})",
       "(\\d{2}\\.\\d{2}\\.\\d{4})"

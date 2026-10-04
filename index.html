@@ -107,6 +107,9 @@
                     <button class="dropdown-item" data-action="promo">
                         🎁 Активировать промокод
                     </button>
+                    <button class="dropdown-item" data-action="transfer">
+                        📦 Передать предметы в игру
+                    </button>
                     <!-- === НОВАЯ КНОПКА ДЛЯ МАРАФОНОВ === -->
                     <button class="dropdown-item" data-action="update-marathons">
                         🏃 Обновить марафоны
@@ -304,6 +307,14 @@
             <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
             <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
           </div>
+        </details>
+        <details class="panel fold" id="transfer-log-panel">
+          <summary>
+            <h3>📦 Логи переводов</h3>
+            <p class="muted" id="transfer-log-summary">Записей пока нет: они появятся после первой передачи предметов.</p>
+          </summary>
+          <p class="muted" style="margin-bottom: 8px;">Передачи предметов с сайта в игру: когда, с какого браузера, на какой сервер и персонажу, что передано и чем закончилось. Нажмите на запись, чтобы открыть подробности. Пробные запуски не записываются. Данные лежат только на этом компьютере.</p>
+          <div id="transfer-log-root"></div>
         </details>
           </div>
           <div class="settings-col">

@@ -21,3 +21,14 @@
 .promo-reward ul, .promo-log-list { margin: 4px 0 4px 18px; padding: 0; }
 .promo-reward summary { cursor: pointer; }
 .promo-log-h { margin: 8px 0 4px; font-weight: 600; }
+
+/* Диалог передачи предметов (Issue #26) */
+.tr-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.tr-top .field { flex: 1 1 260px; margin: 0; }
+.tr-list { max-height: 300px; }
+.tr-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(160px, 2fr) minmax(200px, 2fr); gap: 8px; align-items: center; cursor: default; }
+.tr-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.tr-recipient { width: 100%; min-width: 0; }
+.tr-summary { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.92em; }
+.tr-notes { margin-top: 4px; }
+@media (max-width: 760px) { .tr-row { grid-template-columns: 1fr; } }

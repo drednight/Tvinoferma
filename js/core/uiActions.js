@@ -111,6 +111,9 @@ function setupScriptsMenu() {
             } else if (action === 'promo') {
                 const { openPromoDialog } = await import('../modules/automation/promo.js');
                 openPromoDialog();
+            } else if (action === 'transfer') {
+                const { openTransferDialog } = await import('../modules/automation/transfer.js');
+                openTransferDialog();
             } else {
                 console.warn(`[UI] Unknown script action: ${action}`);
             }
