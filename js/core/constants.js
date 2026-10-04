@@ -142,6 +142,10 @@ export const DEFAULT_SETTINGS = {
   browser: {
     unlimitedGiftItems: true   // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
   },
+  // Запуск игры (Issue: запуск окон)
+  launcher: {
+    notify: true   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
+  },
   tray: {
     closeToTray: false,
     backgroundAuthMinutes: 0   // 0 — выключено

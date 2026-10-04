@@ -142,7 +142,10 @@ fn resolve_gamecenter_exe(input: &str) -> Result<PathBuf, String> {
         .map(|n| n.eq_ignore_ascii_case(GAMECENTER_EXE))
         .unwrap_or(false);
     if !name_ok {
-        return Err(format!("Укажите папку GameCenter или файл {}", GAMECENTER_EXE));
+        return Err(format!(
+            "Укажите папку GameCenter или файл {}",
+            GAMECENTER_EXE
+        ));
     }
     if !exe.is_file() {
         return Err(format!("Файл не найден: {}", exe.display()));
@@ -242,7 +245,10 @@ fn decode_ini(bytes: &[u8]) -> (String, IniEncoding) {
         (String::from_utf16_lossy(&units), IniEncoding::Utf16Le)
     } else {
         // Побайтово: любая однобайтная кодировка и UTF-8 возвращаются в файл без потерь
-        (bytes.iter().map(|&b| b as char).collect(), IniEncoding::Bytes)
+        (
+            bytes.iter().map(|&b| b as char).collect(),
+            IniEncoding::Bytes,
+        )
     }
 }
 
@@ -263,7 +269,9 @@ fn encode_ini(text: &str, enc: &IniEncoding) -> Vec<u8> {
 fn ini_get(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let (k, v) = line.trim_start().split_once('=')?;
-        k.trim().eq_ignore_ascii_case(key).then(|| v.trim().to_string())
+        k.trim()
+            .eq_ignore_ascii_case(key)
+            .then(|| v.trim().to_string())
     })
 }
 
@@ -437,7 +445,9 @@ pub async fn launcher_capture_account(char_id: String, path: String) -> Result<S
         let (text, _) = decode_ini(&bytes);
         let magic = ini_get(&text, KEY_MAGIC)
             .filter(|m| !m.is_empty())
-            .ok_or_else(|| "В этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string())?;
+            .ok_or_else(|| {
+                "В этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string()
+            })?;
         if !safe_ini_value(&magic) {
             return Err("Данные входа в GameCenter.ini имеют неожиданный вид".to_string());
         }
@@ -621,10 +631,18 @@ mod tests {
     fn answers_only_the_question_window() {
         // «Клиент игры уже запущен»: заголовок «VK Play Игровой центр»
         assert!(is_gc_dialog("TYesNoForm", "VK Play Игровой центр", true));
-        assert!(is_gc_dialog("GameCenter.TYesNoForm", "VK Play Игровой центр", true));
+        assert!(is_gc_dialog(
+            "GameCenter.TYesNoForm",
+            "VK Play Игровой центр",
+            true
+        ));
         // «Попытка авторизации…» с кнопкой «Прервать» — Enter туда не отправляем
         assert!(!is_gc_dialog("TYesNoForm", "Попытка авторизации...", true));
-        assert!(!is_gc_dialog("TYesNoForm", "VK Play: попытка авторизации", true));
+        assert!(!is_gc_dialog(
+            "TYesNoForm",
+            "VK Play: попытка авторизации",
+            true
+        ));
         assert!(!is_gc_dialog("TYesNoForm", "VK Play Игровой центр", false)); // скрытое окно
         assert!(!is_gc_dialog("TMainForm", "VK Play Игровой центр", true));
         assert!(!is_gc_dialog("TYesNoForm", "", true));
@@ -654,7 +672,10 @@ mod tests {
     fn inserts_missing_key_after_main_section() {
         let ini = "[Main]\nLang=ru\n[Chrome]\nCacheVersion=2\n";
         let out = ini_set(ini, KEY_MAGIC, "T1");
-        assert_eq!(out, "[Main]\nMyComUserMagic2=T1\nLang=ru\n[Chrome]\nCacheVersion=2\n");
+        assert_eq!(
+            out,
+            "[Main]\nMyComUserMagic2=T1\nLang=ru\n[Chrome]\nCacheVersion=2\n"
+        );
         assert_eq!(ini_set("A=1", KEY_MAGIC, "T1"), "A=1\nMyComUserMagic2=T1\n");
     }
 
@@ -670,7 +691,10 @@ mod tests {
         expected.extend_from_slice(&[0xC4, 0xF0, 0xE5, 0xE4]);
         expected.extend_from_slice(b"\r\nMyComUserMagic2=NEW\r\n");
         assert_eq!(out, expected);
-        assert_eq!(display_value(&ini_get(&text, "CurrentUserName").unwrap()), "Дред");
+        assert_eq!(
+            display_value(&ini_get(&text, "CurrentUserName").unwrap()),
+            "Дред"
+        );
     }
 
     #[test]
@@ -715,7 +739,8 @@ mod tests {
         let backup = std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup, INI);
         switch_account(&exe, None, "OTHER").unwrap();
-        let backup2 = std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
+        let backup2 =
+            std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup2, INI); // повторная подмена копию не затирает
         assert!(switch_account(&exe, None, "bad value").is_err());
         let _ = std::fs::remove_dir_all(dir);

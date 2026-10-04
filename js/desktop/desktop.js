@@ -3,6 +3,8 @@
 
 import { state } from '../core/state.js';
 import { toast } from '../core/ui.js';
+import { launchablePartyNames } from '../modules/launcher/launch.js';
+import { charactersInParty } from '../modules/parties/membership.js';
 
 export const HOTKEYS = [
   { keys: 'Ctrl+1…4', text: 'Вкладки: Персонажи / Пати / Марафоны / Настройки' },
@@ -19,6 +21,14 @@ export const HOTKEYS = [
 let backgroundTimer = null;
 
 async function runScript(action) {
+  if (action === 'close-game') {
+    const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
+    return closeAllGameWindows({ confirm: false });   // пункт трея выбран явно, повторно не спрашиваем
+  }
+  if (typeof action === 'string' && action.startsWith('launch-party:')) {
+    const { launchPartyByName } = await import('../modules/launcher/partyLaunch.js');
+    return launchPartyByName(action.slice('launch-party:'.length));
+  }
   const sync = await import('../modules/sync/syncManager.js');
   if (action === 'check-auth') return sync.refreshAllLoginStatuses();
   if (action === 'update-balance') return sync.refreshAllBalances();
@@ -88,9 +98,26 @@ export async function applyDesktopSettings() {
   }
 }
 
+let trayPartiesKey = null;
+
+/** Меню трея «🎮 Запустить пати»: только пати, где есть персонажи с путём к GameCenter. Обновляется при каждом сохранении. */
+export async function syncTrayParties() {
+  if (!window.__TAURI_INTERNALS__) return;
+  const names = launchablePartyNames(state.parties, state.characters, charactersInParty);
+  const key = JSON.stringify(names);
+  if (key === trayPartiesKey) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('set_tray_parties', { names });
+    trayPartiesKey = key;
+  } catch (e) { console.warn('[TRAY]', e); }
+}
+
 export async function initDesktop() {
   if (!window.__TAURI_INTERNALS__) return;
   const { listen } = await import('@tauri-apps/api/event');
   await listen('tray-action', (e) => runScript(e.payload));
+  window.addEventListener('tf-persisted', () => { syncTrayParties(); });
   await applyDesktopSettings();
+  await syncTrayParties();
 }

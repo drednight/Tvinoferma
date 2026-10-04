@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { launchCharacters, launchable, launchPlan, loginStatusText } from '../js/modules/launcher/launch.js';
+import { readFileSync } from 'node:fs';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames } from '../js/modules/launcher/launch.js';
+import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
-import { normalizeCharacter } from '../js/core/state.js';
+import { normalizeCharacter, normalizeState } from '../js/core/state.js';
 
 const ch = (id, gcPath, extra = {}) => ({ id, nick: id, launch: { gcPath, ...extra } });
 
@@ -84,5 +86,55 @@ describe('launcher', () => {
     expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true });
     expect(JSON.stringify(c)).not.toContain('SECRET');
     expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false });
+  });
+});
+
+describe('launcher: итог запуска, трей', () => {
+  it('длительность: секунды, минуты, часы', () => {
+    expect(formatDuration(0)).toBe('0 с');
+    expect(formatDuration(45400)).toBe('45 с');
+    expect(formatDuration(60000)).toBe('1 мин');
+    expect(formatDuration(72000)).toBe('1 мин 12 с');
+    expect(formatDuration(3900000)).toBe('1 ч 05 мин');
+    expect(formatDuration(-5)).toBe('0 с');
+  });
+
+  it('склонение «окно»', () => {
+    expect([0, 1, 2, 4, 5, 11, 12, 21, 22, 25].map(windowsWord))
+      .toEqual(['окон', 'окно', 'окна', 'окна', 'окон', 'окон', 'окон', 'окно', 'окна', 'окон']);
+  });
+
+  it('одна строка итога: сколько окон и за какое время; ошибки и пропуски — в конце', () => {
+    expect(launchSummary({ ok: 3, ms: 72000 })).toBe('Запущено 3 окна за 1 мин 12 с');
+    expect(launchSummary({ ok: 1, ms: 9000 })).toBe('Запущено 1 окно за 9 с');
+    expect(launchSummary({ ok: 5, failed: 1, cancelled: 2, skipped: 1, ms: 30000 }))
+      .toBe('Запущено 5 окон за 30 с, с ошибкой: 1, отменено: 2, без пути к GameCenter: 1');
+  });
+
+  it('в меню трея попадают только пати, где есть кого запускать, в порядке вкладки «Пати»', () => {
+    const parties = [{ id: 'p2', name: 'Вторая', order: 2 }, { id: 'p1', name: 'Первая', order: 1 }, { id: 'p3', name: 'Пустая', order: 3 }];
+    const chars = [
+      { id: 'a', partyIds: ['p1'], launch: { gcPath: 'D:\\GC1' } },
+      { id: 'b', partyIds: ['p2'], launch: { gcPath: '' } },
+      { id: 'c', partyIds: ['p3'], launch: { gcPath: 'D:\\GC3' } }
+    ];
+    expect(launchablePartyNames(parties, chars, charactersInParty)).toEqual(['Первая', 'Пустая']);
+    expect(launchablePartyNames([], chars, charactersInParty)).toEqual([]);
+  });
+
+  it('настройка «показывать итог» включена по умолчанию и сохраняется', () => {
+    expect(normalizeState({ characters: [], settings: {} }).settings.launcher.notify).toBe(true);
+    expect(normalizeState({ characters: [], settings: { launcher: { notify: false } } }).settings.launcher.notify).toBe(false);
+  });
+
+  it('трей: пункты меню и префикс пати совпадают у Rust и интерфейса', () => {
+    const rust = readFileSync('src-tauri/src/tray.rs', 'utf8');
+    const desk = readFileSync('js/desktop/desktop.js', 'utf8');
+    expect(rust).toContain('LAUNCH_PREFIX: &str = "launch-party:"');
+    expect(desk).toContain("'launch-party:'");
+    expect(rust).toContain('"close-game"');
+    expect(desk).toContain("'close-game'");
+    expect(rust).toContain('set_tray_parties');
+    expect(readFileSync('src-tauri/src/lib.rs', 'utf8')).toContain('tray::set_tray_parties');
   });
 });

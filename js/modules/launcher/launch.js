@@ -42,6 +42,49 @@ export function loginStatusText(character) {
   return `Вход запомнен${who}. При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.`;
 }
 
+/** «45 с», «1 мин 12 с», «2 ч 05 мин» — для итога запуска. */
+export function formatDuration(ms) {
+  const total = Math.max(0, Math.round((Number(ms) || 0) / 1000));
+  if (total < 60) return `${total} с`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m < 60) return s ? `${m} мин ${s} с` : `${m} мин`;
+  const h = Math.floor(m / 60);
+  return `${h} ч ${String(m % 60).padStart(2, '0')} мин`;
+}
+
+/** Склонение: 1 окно, 2 окна, 5 окон. */
+export function windowsWord(n) {
+  const k = Math.abs(n) % 100;
+  const d = k % 10;
+  if (k > 10 && k < 20) return 'окон';
+  if (d === 1) return 'окно';
+  if (d >= 2 && d <= 4) return 'окна';
+  return 'окон';
+}
+
+/**
+ * Итог запуска одной строкой: «Запущено 3 окна за 1 мин 12 с» (+ ошибки, отмена, пропущенные без пути).
+ * @param {{ ok: number, failed?: number, cancelled?: number, skipped?: number, ms: number }} r
+ */
+export function launchSummary(r) {
+  const parts = [`Запущено ${r.ok} ${windowsWord(r.ok)} за ${formatDuration(r.ms)}`];
+  if (r.failed) parts.push(`с ошибкой: ${r.failed}`);
+  if (r.cancelled) parts.push(`отменено: ${r.cancelled}`);
+  if (r.skipped) parts.push(`без пути к GameCenter: ${r.skipped}`);
+  return parts.join(', ');
+}
+
+/** Пати, которые есть смысл запускать из трея: в них есть хотя бы один персонаж с путём к GameCenter. */
+export function launchablePartyNames(parties, characters, membersOf) {
+  return (parties || [])
+    .slice()
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+    .filter(p => launchable(membersOf(characters, p.id)).length > 0)
+    .map(p => p.name)
+    .filter(Boolean);
+}
+
 /** Проверка пути из настроек. Возвращает полный путь к GameCenter.exe или бросает ошибку. */
 export function checkGameCenterPath(path, deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_check_path', { path });

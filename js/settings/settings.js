@@ -219,6 +219,11 @@ export function bindSettings() {
     toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
   });
 
+  document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {
+    const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
+    await closeAllGameWindows({ confirm: true });
+  });
+
   // Журналы (единый модуль логов): список рисуется при первом раскрытии панели, заголовок обновляется всегда
   const logPanel = document.getElementById('log-hub-panel');
   const logBody = document.getElementById('log-hub-root');

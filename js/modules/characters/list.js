@@ -274,7 +274,14 @@ function generateCardHTML(char) {
               ${passesHtml}
            </div>
            
-           <!-- Правая часть: кнопка Открыть Сайт -->
+           <!-- Правая часть: запуск игры и кнопка Открыть Сайт -->
+           <div style="display:flex; gap:6px; align-items:center;">
+           <button class="btn ghost small card-launch-btn"
+                   style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px;${char.launch?.gcPath ? ' color:var(--success, #9ece6a);' : ' opacity:.6;'}"
+                   title="${char.launch?.gcPath ? 'Запустить игру для этого персонажа' : 'Не указан путь к GameCenter: нажмите, чтобы указать'}"
+                   onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
+               ▶ Играть
+           </button>
            <button id="btn-open-site-${char.id}" 
                    class="btn ghost small" 
                    style="font-size:0.7rem; padding:2px 8px; border:1px solid var(--border); border-radius:4px; cursor:${state.ui?.authCheck?.[char.id] === 'checking' ? 'not-allowed' : 'pointer'}; ${state.ui?.authCheck?.[char.id] === 'checking' ? 'opacity:.45;' : ''}"
@@ -283,6 +290,7 @@ function generateCardHTML(char) {
                    onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">
                🌐 Открыть сайт
            </button>
+           </div>
         </footer>
       </article>
     `;
@@ -480,6 +488,14 @@ window.handleOpenSite = (charId) => {
     }
 };
 
+// Кнопка «▶ Играть» на карточке
+window.handleLaunchChar = async (charId) => {
+    const char = state.characters.find(c => c.id === charId);
+    if (!char) { toast('Персонаж не найден', 'error'); return; }
+    const { launchOne } = await import('../launcher/partyLaunch.js');
+    launchOne(char);
+};
+
 export function bindCharacters() {
   const addBtn = document.getElementById('add-character-btn');
   if (addBtn) {
@@ -555,6 +571,7 @@ function renderBulkBar() {
     <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
     <button class="btn secondary small" data-bulk="promo" ${dis}>🎁 Промокод</button>
     <button class="btn secondary small" data-bulk="transfer" ${dis}>📦 Передать предметы</button>
+    <button class="btn secondary small" data-bulk="launch" ${dis} title="Запустить игру для выбранных по очереди">▶ Запустить</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
     <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>
@@ -610,6 +627,11 @@ async function onBulkAction(e) {
     case 'transfer': {
       const { openTransferDialog } = await import('../automation/transfer.js');
       openTransferDialog({ ids: chars.map(c => c.id) });
+      break;
+    }
+    case 'launch': {
+      const { launchGroup } = await import('../launcher/partyLaunch.js');
+      launchGroup(`Запуск игры: выбранные (${chars.length})`, chars);
       break;
     }
     case 'tag-add':

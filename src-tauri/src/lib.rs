@@ -108,6 +108,7 @@ pub fn run() {
             commands::secrets::secrets_delete_many,
             // трей
             tray::set_close_to_tray,
+            tray::set_tray_parties,
             // видимые окна браузера
             windows::set_unlimited_items,
             // куки-банк

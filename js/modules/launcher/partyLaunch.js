@@ -5,13 +5,31 @@
 
 import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
-import { toast } from '../../core/ui.js';
+import { toast, confirmDialog } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, checkGameCenterPath, captureAccount, forgetAccount } from './launch.js';
+import { launchCharacters, launchPlan, launchSummary, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients } from './launch.js';
 
 let active = null; // { signal } идущего запуска
 
 export const isLaunching = () => !!active;
+
+/** Показывать ли итог запуска (настройка «Настройки → Запуск игры»). Ошибки показываются всегда. */
+const notifyEnabled = () => state.settings?.launcher?.notify !== false;
+
+/**
+ * Один итог на весь запуск: в окне приложения — всплывающая подпись, если приложение свёрнуто (например, запуск из трея) —
+ * системное уведомление. Никаких сообщений по каждому окну.
+ */
+async function reportDone(text, isError) {
+  if (!isError && !notifyEnabled()) return;
+  const focused = typeof document !== 'undefined' && document.hasFocus();
+  if (focused) { toast(text, isError ? 'error' : 'success'); return; }
+  try {
+    const { notify } = await import('../../desktop/notifications.js');
+    if (await notify('Твиноферма', text)) return;
+  } catch { /* системные уведомления недоступны */ }
+  toast(text, isError ? 'error' : 'success');
+}
 
 const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
 
@@ -35,6 +53,7 @@ export async function launchGroup(title, characters) {
     return null;
   }
 
+  const startedAt = Date.now();
   const signal = { cancelled: false };
   const task = startTask(title, { total: ready.length, cancelable: true });
   task.onCancel(() => { signal.cancelled = true; });
@@ -53,13 +72,9 @@ export async function launchGroup(title, characters) {
     const ok = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok && !r.cancelled).length;
     const cancelled = results.filter(r => r.cancelled).length;
-    const parts = [`запущено ${ok} из ${ready.length}`];
-    if (failed) parts.push(`с ошибкой: ${failed}`);
-    if (cancelled) parts.push(`отменено: ${cancelled}`);
-    if (skipped.length) parts.push(`пропущено без пути: ${skipped.length}`);
-    const summary = parts.join(', ');
+    const summary = launchSummary({ ok, failed, cancelled, skipped: skipped.length, ms: Date.now() - startedAt });
     task.finish(summary, failed ? 'warn' : undefined);
-    toast(summary, failed ? 'error' : 'success');
+    reportDone(summary, failed > 0);
     return results;
   } catch (e) {
     task.log(errText(e), 'error');
@@ -69,6 +84,55 @@ export async function launchGroup(title, characters) {
   } finally {
     active = null;
   }
+}
+
+/** Запуск одного персонажа (кнопка «▶» на карточке). Без пути к GameCenter открывает его карточку на блоке «Запуск игры». */
+export async function launchOne(char) {
+  if (!char) return null;
+  if (!String(char.launch?.gcPath || '').trim()) {
+    toast('Укажите путь к GameCenter этого аккаунта', 'error');
+    const { openCharacterProfile } = await import('../characters/profileView.js');
+    openCharacterProfile(char);
+    setTimeout(() => {
+      const fold = document.querySelector('.pf-launch');
+      if (fold) fold.open = true;
+      document.getElementById('pf-gc-path')?.focus();
+    }, 0);
+    return null;
+  }
+  return launchGroup(`Запуск игры: ${char.nick}`, [char]);
+}
+
+/** Запуск пати по названию (меню трея и вкладка «Пати»). */
+export async function launchPartyByName(name) {
+  const { partyByName, charactersInParty } = await import('../parties/membership.js');
+  const party = partyByName(state.parties, name);
+  if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
+  return launchGroup(`Запуск игры: ${party.name}`, charactersInParty(state.characters, party.id));
+}
+
+/**
+ * Закрывает все окна игры (elementclient_64.exe). `confirm: true` — спросить, сколько окон будет закрыто
+ * (из меню трея спрашивать не нужно: пункт выбран явно).
+ */
+export async function closeAllGameWindows({ confirm = true } = {}) {
+  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  try {
+    const running = await runningClients();
+    if (!running.length) { reportClosed('Окон игры не запущено'); return 0; }
+    if (confirm && !confirmDialog(`Закрыть все окна игры (${running.length})? Несохранённое в игре будет потеряно.`)) return 0;
+    const closed = await closeAllClients();
+    reportClosed(`Закрыто окон игры: ${closed}`);
+    return closed;
+  } catch (e) {
+    toast(`Не удалось закрыть окна игры: ${errText(e)}`, 'error');
+    return 0;
+  }
+}
+
+function reportClosed(text) {
+  if (typeof document !== 'undefined' && document.hasFocus()) { toast(text, 'success'); return; }
+  import('../../desktop/notifications.js').then(m => m.notify('Твиноферма', text)).catch(() => toast(text, 'success'));
 }
 
 /** Сохраняет путь к GameCenter у персонажа (в приложении путь проверяется). */

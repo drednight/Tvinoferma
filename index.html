@@ -118,6 +118,9 @@
                     <button class="dropdown-item" data-action="update-marathons">
                         🏃 Обновить марафоны
                     </button>
+                    <button class="dropdown-item" data-action="close-game" title="Закрыть все запущенные окна игры">
+                        ⏹ Закрыть все окна игры
+                    </button>
                 </div>
             </div>
 
@@ -385,6 +388,18 @@
           </summary>
           <div class="settings-checks">
             <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
+          </div>
+        </details>
+        <details class="panel fold">
+          <summary>
+            <h3>🎮 Запуск игры</h3>
+            <p class="muted">Запуск окон игры из карточек, пати и трея.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+          </div>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="close-game-windows-btn" class="btn ghost" title="Закрыть все запущенные окна игры (elementclient_64.exe)">⏹ Закрыть все окна игры</button>
           </div>
         </details>
         <details class="panel fold">
