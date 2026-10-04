@@ -1,8 +1,9 @@
 // Страница «Передача предметов в игру» (/promo_items.php) в ВИДИМОМ окне персонажа (Issue #26):
 //  1) снимает клиентский лимит сайта «за один раз возможно перевести не более 6 предметов» (решение владельца);
-//  2) рисует слева, под панелью «Помощник входа», сворачиваемую панель «Типы предметов»:
-//     только те типы, что есть на странице (строка «Тип:» в описании предмета), у каждого — «Отметить» и «Снять»,
-//     внизу — скрытый по умолчанию список «какой предмет к какому типу относится».
+//  2) рисует слева, под панелью «Помощник входа», сворачиваемую панель «Типы предметов» с переключателем «По типам | По акциям»:
+//     «По типам» — только типы, что есть на странице (строка «Тип:» в описании предмета);
+//     «По акциям» — акции в порядке страницы (галочки под заголовком акции — до следующей акции);
+//     у каждой строки — «Отметить» и «Снять», внизу — скрытый по умолчанию список «какой предмет к какой группе относится».
 // Скрипт вшит как initialization_script, поэтому срабатывает в каждом документе окна до скриптов сайта и сам проверяет адрес.
 //
 // Лимит: сайт ограничивает число отмеченных предметов обработчиками click/change на галочках. Мы ставим свои обработчики
@@ -24,7 +25,10 @@
   const HOST_ID = '__tf_items_panel__';
   const LOGIN_ID = '__tf_login_panel__';
   const STORE_KEY = '__tf_ip_collapsed';
+  const MODE_KEY = '__tf_ip_mode';
   const NO_TYPE = 'Без типа';
+  const NO_PROMO = 'Без акции';
+  const HEAD_SEL = '.promo_container_content_body';
   const doc = document;
   const create = Document.prototype.createElement;
   const attach = Element.prototype.attachShadow;
@@ -67,20 +71,36 @@
     return squash(c.textContent) || 'Предмет';
   }
 
+  /** Акция предмета: ближайший заголовок акции перед блоком `.promo_container` (так же, как sourceOf в transfer.js). */
+  function promoOf(row) {
+    const cont = row && row.closest('.promo_container');
+    for (let n = cont && cont.previousElementSibling; n; n = n.previousElementSibling) {
+      if (n.matches && n.matches(HEAD_SEL)) {
+        const h = n.querySelector('h6');
+        return squash(h ? h.textContent : '').substring(0, 120) || NO_PROMO;
+      }
+    }
+    return NO_PROMO;
+  }
+
   function readItems() {
     return boxes().map((box) => {
       const row = box.closest('tr');
-      return { box: box, name: nameOf(row), type: typeOf(row) };
+      return { box: box, name: nameOf(row), type: typeOf(row), promo: promoOf(row), row: row };
     });
   }
 
-  /** Типы только с этой страницы: по алфавиту, «Без типа» в конце. */
-  function groupByType(items) {
+  /** Группы по ключу: типы — по алфавиту («Без типа» в конце), акции — в порядке страницы («Без акции» в конце). */
+  function group(items, key) {
     const map = {};
-    items.forEach((it) => { (map[it.type] = map[it.type] || []).push(it); });
-    return Object.keys(map)
-      .sort((a, b) => (a === NO_TYPE) - (b === NO_TYPE) || a.localeCompare(b, 'ru'))
-      .map((type) => ({ type: type, items: map[type] }));
+    const order = [];
+    items.forEach((it) => {
+      if (!map[it[key]]) { map[it[key]] = []; order.push(it[key]); }
+      map[it[key]].push(it);
+    });
+    const none = key === 'type' ? NO_TYPE : NO_PROMO;
+    order.sort((a, b) => (a === none) - (b === none) || (key === 'type' ? a.localeCompare(b, 'ru') : 0));
+    return order.map((name) => ({ type: name, items: map[name], first: map[name][0] }));
   }
 
   /* ----------------------------- панель ---------------------------- */
@@ -95,6 +115,13 @@
     '.muted{color:#9aa0ad;font-size:11px}',
     '.count{margin:6px 0;font-weight:700}',
     '.bar{display:flex;gap:6px;margin-bottom:6px}',
+    '.seg{display:flex;margin-bottom:6px}',
+    '.seg button{flex:1;border-radius:0}',
+    '.seg button:first-child{border-radius:5px 0 0 5px}',
+    '.seg button:last-child{border-radius:0 5px 5px 0}',
+    '.seg button.on{background:#f0b84a;color:#1c1f26;border-color:#f0b84a;font-weight:700}',
+    '.tname.go{cursor:pointer}',
+    '.tname.go:hover{color:#f0b84a;text-decoration:underline}',
     '.row{display:flex;align-items:center;gap:4px;padding:3px 0;border-top:1px solid #2d323d}',
     '.tname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.tcnt{color:#9aa0ad;font-size:11px;min-width:34px;text-align:right}',
@@ -112,7 +139,9 @@
   let host = null;
   let box = null;                   // контейнер внутри shadow DOM
   let items = [];
-  let groups = [];
+  let groups = { type: [], promo: [] };
+  let mode = 'type';                // 'type' | 'promo'
+  try { if (window.localStorage.getItem(MODE_KEY) === 'promo') mode = 'promo'; } catch (e) { mode = 'type'; }
   let totalEl = null;
   let countEls = [];                // [{ el, items }]
 
@@ -179,17 +208,35 @@
     bar.appendChild(none);
     card.appendChild(bar);
 
-    groups.forEach((g) => {
+    const seg = make('div', 'seg');
+    [['type', 'По типам'], ['promo', 'По акциям']].forEach((m) => {
+      const b = make('button', mode === m[0] ? 'on' : '', m[1]);
+      b.title = m[0] === 'type' ? 'Группы по типу предмета' : 'Группы по акциям: галочки под заголовком акции — до следующей акции';
+      b.addEventListener('click', () => setMode(m[0]));
+      seg.appendChild(b);
+    });
+    card.appendChild(seg);
+
+    const unit = mode === 'type' ? 'типа' : 'акции';
+    groups[mode].forEach((g) => {
       const row = make('div', 'row');
       const name = make('span', 'tname', g.type);
       name.title = g.type;
+      if (mode === 'promo') {
+        name.classList.add('go');
+        name.title = g.type + ' — нажмите, чтобы перейти к акции на странице';
+        name.addEventListener('click', () => {
+          const target = g.first && g.first.row;
+          if (target && target.scrollIntoView) target.scrollIntoView({ block: 'center' });
+        });
+      }
       const cnt = make('span', 'tcnt');
       countEls.push({ el: cnt, items: g.items });
       const on = make('button', '', 'Отметить');
-      on.title = 'Отметить все предметы типа «' + g.type + '»';
+      on.title = 'Отметить все предметы ' + unit + ' «' + g.type + '»';
       on.addEventListener('click', () => setChecked(g.items, true));
       const off = make('button', '', 'Снять');
-      off.title = 'Снять отметку со всех предметов типа «' + g.type + '»';
+      off.title = 'Снять отметку со всех предметов ' + unit + ' «' + g.type + '»';
       off.addEventListener('click', () => setChecked(g.items, false));
       [name, cnt, on, off].forEach((n) => row.appendChild(n));
       card.appendChild(row);
@@ -198,8 +245,8 @@
     const det = make('details');
     if (detailsOpen) det.open = true;
     det.addEventListener('toggle', () => { detailsOpen = det.open; });
-    det.appendChild(make('summary', '', '📋 Какие предметы к какому типу относятся'));
-    groups.forEach((g) => {
+    det.appendChild(make('summary', '', mode === 'type' ? '📋 Какие предметы к какому типу относятся' : '📋 Какие предметы в какой акции'));
+    groups[mode].forEach((g) => {
       det.appendChild(make('div', 'grp', g.type + ' (' + g.items.length + ')'));
       const ul = make('ul');
       g.items.forEach((it) => ul.appendChild(make('li', '', it.name)));
@@ -209,6 +256,13 @@
     box.appendChild(card);
     refresh();
     place();
+  }
+
+  function setMode(m) {
+    mode = m;
+    try { window.localStorage.setItem(MODE_KEY, m); } catch (e) { /* не критично */ }
+    draw();
+    later(place, 0);
   }
 
   function setCollapsed(v) {
@@ -221,7 +275,7 @@
   function mount() {
     items = readItems();
     if (!items.length) return false;
-    groups = groupByType(items);
+    groups = { type: group(items, 'type'), promo: group(items, 'promo') };
     const old = doc.getElementById(HOST_ID);
     if (old) old.remove();
     host = make('div');

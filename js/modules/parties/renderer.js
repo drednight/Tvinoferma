@@ -168,8 +168,14 @@ export function renderPartiesGrid() {
             </ul>
         ` : '<p class="muted" style="text-align:center; padding:20px; color:var(--muted);">Группа пуста</p>';
 
+        // Запуск игры: сколько участников пати имеют путь к своему GameCenter
+        const launchReady = members.filter(m => String(m.launch?.gcPath || '').trim()).length;
         const controlPanelHtml = `
-            <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:auto;">
+            <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:auto; display:flex; flex-direction:column; gap:8px;">
+                <button class="btn secondary full-width launch-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;" ${launchReady ? '' : 'disabled'}
+                        title="${launchReady ? 'Запустить игру для участников по очереди' : 'Ни у кого в пати не указан путь к GameCenter (карточка персонажа → «Запуск игры»)'}">
+                    ▶ Запустить пати (${launchReady}/${members.length})
+                </button>
                 <button class="btn primary full-width edit-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;">
                     ⚙️ Настроить состав / Переименовать
                 </button>
@@ -264,6 +270,19 @@ function bindPartyEvents(container) {
             }
             
             // НИКАКОЙ ПЕРЕРАИСОВКИ ВСЕГО СПИСКА!
+            return;
+        }
+
+        // 1a. Клик по кнопке "Запустить пати"
+        const launchBtn = target.closest('.launch-party-action-btn');
+        if (launchBtn) {
+            e.stopPropagation();
+            const name = launchBtn.dataset.partyName;
+            const party = partyByName(state.parties, name);
+            const members = party
+                ? charactersInParty(state.characters, party.id)
+                : state.characters.filter(c => hasNoParty(c, state.parties));
+            import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
             return;
         }
 

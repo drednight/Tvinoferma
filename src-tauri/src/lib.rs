@@ -121,6 +121,9 @@ pub fn run() {
             launcher::launcher_running_clients,
             launcher::launcher_close_clients,
             launcher::launcher_find_dialogs,
+            launcher::launcher_capture_account,
+            launcher::launcher_forget_account,
+            launcher::launcher_has_account,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

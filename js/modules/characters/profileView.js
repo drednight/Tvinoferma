@@ -12,6 +12,7 @@ import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
+import { hasGameCenterPath, loginStatusText } from '../launcher/launch.js';
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -28,6 +29,7 @@ export function openCharacterProfile(char) {
   const passes = char.dungeonPasses || {};
   const sky = char.sky || {};
   const contacts = char.contacts || {};
+  const launch = char.launch || {};
   
 
   const statRow = (label, val) => `
@@ -101,6 +103,23 @@ export function openCharacterProfile(char) {
                   <span class="contact-value profile-copy-trigger" data-type="phone" data-original="${escapeHtml(contacts.phone || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.phone ? maskText(contacts.phone) : '-'}</span>
                   <button class="icon-btn profile-toggle-eye" data-target="phone" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
                </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json -->
+        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" ${launch.gcPath ? 'open' : ''}>
+          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">🎮 Запуск игры</summary>
+          <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+            <label class="muted" style="font-size:0.8rem;" for="pf-gc-path">GameCenter этого аккаунта: папка или файл GameCenter.exe</label>
+            <div style="display:flex; gap:8px;">
+              <input id="pf-gc-path" class="input" style="flex:1;" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
+              <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
+            </div>
+            <div id="pf-gc-account" class="muted" style="font-size:0.85rem;">${escapeHtml(loginStatusText(char))}</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом GameCenter, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход GameCenter</button>
+              <button id="pf-gc-forget" type="button" class="btn ghost">Забыть вход</button>
             </div>
           </div>
         </details>
@@ -183,6 +202,7 @@ export function openCharacterProfile(char) {
 
          <!-- Центральная группа: Синхронизация -->
          <div style="display:flex; gap:10px;">
+            <button id="btn-launch-from-profile" class="btn secondary" title="Запустить игру для этого персонажа через его GameCenter">▶ Играть</button>
             <button id="btn-open-sync-helper-footer" class="btn secondary" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">
                🔑 Открыть сайт
             </button>
@@ -306,6 +326,8 @@ export function openCharacterProfile(char) {
     if(delBtn) {
       delBtn.onclick = () => {
         if(confirmDialog(`Удалить персонажа "${char.nick}"? Это действие необратимо.`)) {
+           // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
+           if (char.launch?.gcAccount) import('../launcher/launch.js').then(m => m.forgetAccount(char.id)).catch(() => {});
            import('../../core/state.js').then(({ state }) => {
              import('../../core/storage.js').then(({ persist }) => {
                state.characters = state.characters.filter(c => c.id !== char.id);
@@ -320,6 +342,47 @@ export function openCharacterProfile(char) {
         }
       };
     }
+
+    // Запуск игры: путь к GameCenter, запомненный вход, кнопка «Играть»
+    const gcInput = document.getElementById('pf-gc-path');
+    const redrawGc = () => {
+      const el = document.getElementById('pf-gc-account');
+      if (el) el.textContent = loginStatusText(char);
+    };
+    // Путь из поля сохраняется, если его изменили и не нажали «Сохранить путь»
+    const ensureGcPathSaved = async () => {
+      const typed = String(gcInput?.value || '').trim();
+      if (typed === String(char.launch?.gcPath || '')) return true;
+      const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
+      return saveGameCenterPath(char, typed);
+    };
+    document.getElementById('pf-gc-save')?.addEventListener('click', async () => {
+      const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
+      await saveGameCenterPath(char, gcInput?.value);
+    });
+    document.getElementById('pf-gc-capture')?.addEventListener('click', async () => {
+      if (!(await ensureGcPathSaved())) return;
+      const { captureLogin } = await import('../launcher/partyLaunch.js');
+      await captureLogin(char);
+      redrawGc();
+    });
+    document.getElementById('pf-gc-forget')?.addEventListener('click', async () => {
+      const { forgetLogin } = await import('../launcher/partyLaunch.js');
+      await forgetLogin(char);
+      redrawGc();
+    });
+    document.getElementById('btn-launch-from-profile')?.addEventListener('click', async () => {
+      if (!(await ensureGcPathSaved())) return;
+      if (!hasGameCenterPath(char)) {
+        const fold = modalRoot.querySelector('.pf-launch');
+        if (fold) fold.open = true;
+        gcInput?.focus();
+        toast('Укажите путь к GameCenter этого аккаунта', 'error');
+        return;
+      }
+      const { launchGroup } = await import('../launcher/partyLaunch.js');
+      launchGroup(`Запуск игры: ${char.nick}`, [char]);
+    });
 
     // История Древних монет (рядом с «Открыть сайт»)
     document.getElementById('btn-coin-history-footer')?.addEventListener('click', () => openCoinHistory(char.id));

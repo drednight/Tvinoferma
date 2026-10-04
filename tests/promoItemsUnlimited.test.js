@@ -139,3 +139,76 @@ describe('promo_items_unlimited.js: панель «Типы предметов»
     expect(document.getElementById('__tf_items_panel__').style.top).toBe('90px');
   });
 });
+
+describe('promo_items_unlimited.js: режим «По акциям»', () => {
+  const promoRows = () => rows().map(r => r.querySelector('.tname').textContent);
+  const cnt = (name) => rowOf(name).querySelector('.tcnt').textContent;
+
+  it('по умолчанию «По типам»; переключатель показывает акции в порядке страницы и только те, где есть галочки', () => {
+    mount(); run();
+    expect(shadow.querySelector('.seg button.on').textContent).toBe('По типам');
+    btn(shadow, 'По акциям').click();
+    expect(shadow.querySelector('.seg button.on').textContent).toBe('По акциям');
+    expect(promoRows()).toEqual(['Идеальный шанс', 'День рождения «Мицара»', 'Летние бонусы арены Авроры']);
+    expect(cnt('Идеальный шанс')).toBe('0/2');
+    expect(cnt('День рождения «Мицара»')).toBe('0/5');
+    expect(cnt('Летние бонусы арены Авроры')).toBe('0/5');
+    expect(localStorage.getItem('__tf_ip_mode')).toBe('promo');
+  });
+
+  it('«Отметить» / «Снять» акции действуют только на галочки под её заголовком (больше лимита сайта) и обновляют счётчики', () => {
+    mount(); siteLimiter(); run();
+    btn(shadow, 'По акциям').click();
+    btn(rowOf('День рождения «Мицара»'), 'Отметить').click();
+    expect(checked()).toBe(5);
+    btn(rowOf('Летние бонусы арены Авроры'), 'Отметить').click();
+    expect(checked()).toBe(10);
+    expect(alerts).toBe(0);
+    expect(cnt('День рождения «Мицара»')).toBe('5/5');
+    expect(cnt('Идеальный шанс')).toBe('0/2');
+    expect(shadow.querySelector('.count').textContent).toBe(`Отмечено: 10 из ${boxes().length}`);
+    btn(rowOf('День рождения «Мицара»'), 'Снять').click();
+    expect(checked()).toBe(5);
+    expect(cnt('День рождения «Мицара»')).toBe('0/5');
+    expect(cnt('Летние бонусы арены Авроры')).toBe('5/5');
+    // и «Отметить все» / «Снять все» работают в этом режиме
+    btn(shadow, 'Отметить все').click();
+    expect(checked()).toBe(boxes().length);
+    btn(shadow, 'Снять все').click();
+    expect(checked()).toBe(0);
+  });
+
+  it('галочки акции — именно те, что стоят до следующего заголовка акции', () => {
+    mount(); run();
+    btn(shadow, 'По акциям').click();
+    btn(rowOf('Идеальный шанс'), 'Отметить').click();
+    const heads = [...document.querySelectorAll('.promo_container_content_body')];
+    const mine = boxes().filter(b => b.checked);
+    expect(mine).toHaveLength(2);
+    const next = heads.find(h => h.textContent.includes('Девятый сезон'));
+    // обе отмеченные галочки лежат в блоках между «Идеальный шанс» и «Девятый сезон»
+    expect(mine.every(b => next.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_PRECEDING)).toBe(true);
+  });
+
+  it('режим запоминается; список «в какой акции» описывает предметы по акциям', () => {
+    mount(); localStorage.setItem('__tf_ip_mode', 'promo'); run();
+    expect(shadow.querySelector('.seg button.on').textContent).toBe('По акциям');
+    const det = shadow.querySelector('details');
+    expect(det.querySelector('summary').textContent).toContain('в какой акции');
+    expect(det.textContent).toContain('День рождения «Мицара» (5)');
+    btn(shadow, 'По типам').click();
+    expect(rowOf('Расходник')).toBeTruthy();
+    expect(shadow.querySelector('details summary').textContent).toContain('к какому типу');
+  });
+
+  it('щелчок по названию акции прокручивает страницу к её первому предмету', () => {
+    mount(); run();
+    btn(shadow, 'По акциям').click();
+    const spy = vi.fn();
+    Element.prototype.scrollIntoView = spy;
+    rowOf('День рождения «Мицара»').querySelector('.tname').click();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.contexts[0]).toBe(boxes()[2].closest('tr'));   // первая галочка «Мицара»: в «Идеальном шансе» их две
+    delete Element.prototype.scrollIntoView;
+  });
+});

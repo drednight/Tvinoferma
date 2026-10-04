@@ -86,7 +86,9 @@ export function normalizeCharacter(input = {}) {
     },
     // Запуск игры: у каждого аккаунта свой GameCenter (папка или GameCenter.exe)
     launch: {
-      gcPath: String(input.launch?.gcPath || '').trim()
+      gcPath: String(input.launch?.gcPath || '').trim(),
+      gcNick: String(input.launch?.gcNick || '').trim(),   // ник в GameCenter (для показа); токен входа лежит в хранилище ОС
+      gcAccount: input.launch?.gcAccount === true          // вход этого аккаунта запомнен (см. launcher_capture_account)
     },
     dungeonPasses: {
       weapon: Number(input.dungeonPasses?.weapon) || 0,
