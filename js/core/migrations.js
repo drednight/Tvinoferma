@@ -8,7 +8,7 @@
 
 import { planCharacterIds, remapIdsDeep } from './ids.js';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -88,6 +88,15 @@ export const MIGRATIONS = {
   // v5 → v6: порог свежести входа по умолчанию стал 24 ч (в первой версии настройки было 12 ч и оно сохранилось в файле)
   6: (s) => {
     if (s.settings?.freshness?.loginHours === 12) s.settings.freshness.loginHours = 24;
+    return s;
+  },
+
+  // v6 → v7: запуск игры. У каждого аккаунта свой GameCenter (VK Play): путь к папке или GameCenter.exe
+  7: (s) => {
+    s.characters = (Array.isArray(s.characters) ? s.characters : []).map(c => ({
+      ...c,
+      launch: { gcPath: String(c?.launch?.gcPath || '').trim() }
+    }));
     return s;
   }
 };

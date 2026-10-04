@@ -84,6 +84,10 @@ export function normalizeCharacter(input = {}) {
       recoveryEmail: String(input.contacts?.recoveryEmail || ''),
       phone: String(input.contacts?.phone || '')
     },
+    // Запуск игры: у каждого аккаунта свой GameCenter (папка или GameCenter.exe)
+    launch: {
+      gcPath: String(input.launch?.gcPath || '').trim()
+    },
     dungeonPasses: {
       weapon: Number(input.dungeonPasses?.weapon) || 0,
       armor: Number(input.dungeonPasses?.armor) || 0,

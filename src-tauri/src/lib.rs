@@ -11,7 +11,8 @@
 //! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
 //! - `tray`      — иконка в трее;
 //! - `automation` — (заготовка) промокоды, перевод предметов;
-//! - `injection` — (заготовка) панель и CSS поверх страниц игры.
+//! - `injection` — (заготовка) панель и CSS поверх страниц игры;
+//! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
 //! Скрипты, которые внедряются в страницы сайта, лежат в `src/scripts/*.js`.
 
@@ -21,6 +22,7 @@ mod balance;
 mod commands;
 mod cookie_bank;
 mod injection;
+mod launcher;
 mod marathons;
 mod parsers;
 mod pool;
@@ -107,6 +109,12 @@ pub fn run() {
             cookie_bank::bank_verify,
             cookie_bank::bank_forget,
             pool::pool_status,
+            // запуск GameCenter
+            launcher::launcher_check_path,
+            launcher::launcher_start,
+            launcher::launcher_running_clients,
+            launcher::launcher_close_clients,
+            launcher::launcher_find_dialogs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
