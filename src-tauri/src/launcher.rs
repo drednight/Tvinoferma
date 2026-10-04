@@ -126,7 +126,10 @@ fn resolve_gamecenter_exe(input: &str) -> Result<PathBuf, String> {
         .map(|n| n.eq_ignore_ascii_case(GAMECENTER_EXE))
         .unwrap_or(false);
     if !name_ok {
-        return Err(format!("Укажите папку GameCenter или файл {}", GAMECENTER_EXE));
+        return Err(format!(
+            "Укажите папку GameCenter или файл {}",
+            GAMECENTER_EXE
+        ));
     }
     if !exe.is_file() {
         return Err(format!("Файл не найден: {}", exe.display()));
