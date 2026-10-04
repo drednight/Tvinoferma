@@ -84,9 +84,9 @@ describe('launcher', () => {
 
   it('normalizeCharacter: путь и ник обрезаются, признак входа сохраняется, токена в данных нет', () => {
     const c = normalizeCharacter({ nick: 'X', launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' } });
-    expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true });
+    expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
     expect(JSON.stringify(c)).not.toContain('SECRET');
-    expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false });
+    expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} });
   });
 });
 

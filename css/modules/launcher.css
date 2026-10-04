@@ -1,0 +1,46 @@
+/* Окно «GameCenter и персонажи» (js/modules/launcher/gcSettingsModal.js) */
+.gcm { display: flex; flex-direction: column; gap: 18px; }
+.gcm-sec h4 { margin: 0 0 6px; }
+.gcm-sec p { margin: 0 0 10px; font-size: 0.85rem; line-height: 1.4; }
+.gcm-empty { padding: 8px 0; }
+
+.gcm-gc {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) auto;
+  grid-template-areas: "name path btns" "name who btns";
+  gap: 2px 12px;
+  align-items: center;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.gcm-gc-name { grid-area: name; }
+.gcm-gc-path { grid-area: path; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; direction: rtl; text-align: left; }
+.gcm-gc-who { grid-area: who; font-size: 0.8rem; }
+.gcm-gc-btns { grid-area: btns; display: flex; gap: 6px; }
+
+.gcm-actions { margin-top: 4px; }
+.gcm-import {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 0.85rem;
+}
+.gcm-import[hidden] { display: none; }
+.gcm-pref { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+
+#gcm-filter { width: 100%; margin-bottom: 10px; }
+.gcm-char { padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.gcm-char-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.gcm-ico { width: 22px; height: 22px; object-fit: contain; flex: 0 0 22px; }
+.gcm-bind { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.gcm-bind .select { min-width: 160px; }
+.gcm-acc { font-size: 0.82rem; }
+.gcm-acc.is-saved { color: var(--accent); }
+.gcm-badge { font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.gcm-own { font-size: 0.8rem; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gcm-add { max-width: 260px; }
+
+@media (max-width: 720px) {
+  .gcm-gc { grid-template-columns: 1fr; grid-template-areas: "name" "path" "who" "btns"; }
+}

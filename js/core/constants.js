@@ -144,7 +144,9 @@ export const DEFAULT_SETTINGS = {
   },
   // Запуск игры (Issue: запуск окон)
   launcher: {
-    notify: true   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
+    notify: true,   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
+    gameCenters: [],   // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
+    preferredGcId: ''  // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
   },
   tray: {
     closeToTray: false,

@@ -219,6 +219,20 @@ export function bindSettings() {
     toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
   });
 
+  // Запуск игры: список GameCenter с названиями и привязка персонажей (окно собирается в js/modules/launcher/gcSettingsModal.js)
+  const gcSummary = document.getElementById('gc-summary');
+  const refreshGcSummary = async () => {
+    if (!gcSummary) return;
+    const { gcSummaryText } = await import('../modules/launcher/gcSettingsModal.js');
+    gcSummary.textContent = gcSummaryText();
+  };
+  refreshGcSummary();
+  window.addEventListener('tf-persisted', refreshGcSummary);
+  document.getElementById('gc-manage-btn')?.addEventListener('click', async () => {
+    const { openGameCentersModal } = await import('../modules/launcher/gcSettingsModal.js');
+    openGameCentersModal({ onClose: refreshGcSummary });
+  });
+
   document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {
     const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
     await closeAllGameWindows({ confirm: true });

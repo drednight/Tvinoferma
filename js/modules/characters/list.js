@@ -14,6 +14,7 @@ import { PASS_TYPES, getClassIconSrc } from '../../core/constants.js';
 import { openCharacterProfile, openCharacterForm } from './index.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
+import { hasGameCenterPath } from '../launcher/launch.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
@@ -276,10 +277,10 @@ function generateCardHTML(char) {
            
            <!-- Правая часть: компактные кнопки — запуск игры и вход на сайт (подписи — во всплывающих подсказках) -->
            <div class="card-actions">
-              <button class="card-act play${char.launch?.gcPath ? '' : ' is-unset'}"
+              <button class="card-act play${hasGameCenterPath(char) ? '' : ' is-unset'}"
                       type="button"
                       aria-label="Играть"
-                      title="${char.launch?.gcPath ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите путь к GameCenter (откроется карточка)'}"
+                      title="${hasGameCenterPath(char) ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите GameCenter (откроется карточка)'}"
                       onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
               </button>

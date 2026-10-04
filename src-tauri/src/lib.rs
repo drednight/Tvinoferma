@@ -118,6 +118,8 @@ pub fn run() {
             pool::pool_status,
             // запуск GameCenter
             launcher::launcher_check_path,
+            launcher::launcher_gc_info,
+            launcher::launcher_pick_gamecenter,
             launcher::launcher_start,
             launcher::launcher_running_clients,
             launcher::launcher_close_clients,

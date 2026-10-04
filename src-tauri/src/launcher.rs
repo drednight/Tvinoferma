@@ -190,7 +190,10 @@ fn client_processes() -> Result<Vec<(String, u32)>, String> {
 
 /// PID всех запущенных клиентов игры.
 fn client_pids() -> Result<Vec<u32>, String> {
-    Ok(client_processes()?.into_iter().map(|(_, pid)| pid).collect())
+    Ok(client_processes()?
+        .into_iter()
+        .map(|(_, pid)| pid)
+        .collect())
 }
 
 /// Окно вопроса GameCenter «Клиент игры уже запущен»: видимое, класс `TYesNoForm`, заголовок «VK Play…».
@@ -443,6 +446,98 @@ pub fn launcher_check_path(path: String) -> Result<String, String> {
     resolve_gamecenter_exe(&path).map(|p| p.display().to_string())
 }
 
+/// Что сейчас открыто в GameCenter: путь к `GameCenter.exe`, ник и есть ли вход вообще.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GcInfo {
+    exe: String,
+    nick: String,
+    logged_in: bool,
+}
+
+/// Читает из `GameCenter.ini` ник и признак входа. Токен наружу не отдаётся.
+fn read_gc_info(exe: &Path) -> Result<GcInfo, String> {
+    let ini = gc_ini_path(exe)?;
+    let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
+    let (text, _) = decode_ini(&bytes);
+    let logged_in = ini_get(&text, KEY_MAGIC)
+        .map(|m| !m.is_empty())
+        .unwrap_or(false);
+    let nick = ini_get(&text, KEY_NICK)
+        .map(|v| display_value(&v))
+        .unwrap_or_default();
+    Ok(GcInfo {
+        exe: exe.display().to_string(),
+        nick,
+        logged_in,
+    })
+}
+
+/// Какой аккаунт сейчас открыт в этом GameCenter (для окна «GameCenter и персонажи»).
+#[tauri::command]
+pub async fn launcher_gc_info(path: String) -> Result<GcInfo, String> {
+    let exe = resolve_gamecenter_exe(&path)?;
+    tauri::async_runtime::spawn_blocking(move || read_gc_info(&exe))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Окно проводника «Открыть файл» (системное, через Windows Forms): пользователь указывает `GameCenter.exe`.
+/// Скрипт ничего не запускает и не читает, только возвращает выбранный путь.
+#[cfg(windows)]
+const PICKER_SCRIPT: &str = r#"
+Add-Type -AssemblyName System.Windows.Forms
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$owner = New-Object System.Windows.Forms.Form
+$owner.TopMost = $true
+$dlg = New-Object System.Windows.Forms.OpenFileDialog
+$dlg.Title = 'Укажите файл GameCenter.exe'
+$dlg.Filter = 'GameCenter.exe|GameCenter.exe|Программы (*.exe)|*.exe'
+$dlg.CheckFileExists = $true
+if ($dlg.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dlg.FileName) }
+$owner.Dispose()
+"#;
+
+/// Вывод скрипта выбора файла: путь одной строкой (без BOM и переводов строк) или `None`, если окно закрыли.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn parse_picker_output(out: &str) -> Option<String> {
+    let path = out.trim_matches(|c: char| c == '\u{feff}' || c.is_whitespace());
+    if path.is_empty() {
+        None
+    } else {
+        Some(path.to_string())
+    }
+}
+
+/// Открывает проводник и возвращает полный путь к выбранному `GameCenter.exe` (`None` — окно закрыли без выбора).
+#[tauri::command]
+pub async fn launcher_pick_gamecenter() -> Result<Option<String>, String> {
+    #[cfg(windows)]
+    {
+        let out = tauri::async_runtime::spawn_blocking(|| {
+            hidden(Command::new("powershell").args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-STA",
+                "-Command",
+                PICKER_SCRIPT,
+            ]))
+            .output()
+            .map_err(|e| format!("powershell: {}", e))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        match parse_picker_output(&String::from_utf8_lossy(&out.stdout)) {
+            Some(path) => resolve_gamecenter_exe(&path).map(|p| Some(p.display().to_string())),
+            None => Ok(None),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Выбор файла доступен только в Windows".to_string())
+    }
+}
+
 /// Запоминает вход, который сейчас открыт в этом GameCenter: токен — в хранилище ОС, ник возвращается
 /// для показа. Перед этим войдите в нужный аккаунт в самом GameCenter.
 #[tauri::command]
@@ -641,6 +736,16 @@ pub fn launcher_find_dialogs() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picker_output_is_a_single_path() {
+        assert_eq!(parse_picker_output(""), None);
+        assert_eq!(parse_picker_output("\r\n"), None);
+        assert_eq!(
+            parse_picker_output("\u{feff}D:\\GC 2\\GameCenter.exe\r\n").as_deref(),
+            Some("D:\\GC 2\\GameCenter.exe")
+        );
+    }
 
     #[test]
     fn parses_tasklist_output() {

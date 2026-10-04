@@ -1,6 +1,7 @@
 // @ts-check
 // js/modules/launcher/launch.js
-// Запуск игры: у каждого аккаунта (персонажа) свой GameCenter — путь в character.launch.gcPath.
+// Запуск игры: у каждого аккаунта (персонажа) свой GameCenter — из общего списка с названиями (Настройки → Запуск игры)
+// или «свой путь» в character.launch.gcPath. Выбор между ними — resolveGameCenter (gameCenters.js).
 // Аккаунты запускаются по очереди. Rust-команда launcher_start сама:
 //  - подставляет сохранённый вход аккаунта в GameCenter.ini (если он запомнен, см. captureAccount);
 //  - подтверждает окно GameCenter «Клиент игры уже запущен» («Запустить новую копию клиента»);
@@ -9,6 +10,8 @@
 // Токен входа в JS не попадает: он лежит в хранилище ОС и читается только на стороне Rust.
 
 import { createLimiter, runQueue, sleep } from '../sync/queue.js';
+import { state } from '../../core/state.js';
+import { resolveGameCenter } from './gameCenters.js';
 
 /** Пауза между запусками аккаунтов (после появления нового клиента), мс. */
 export const DEFAULT_LAUNCH_DELAY_MS = 3000;
@@ -18,28 +21,36 @@ async function tauriInvoke(cmd, args) {
   return invoke(cmd, args);
 }
 
-/** Указан ли у персонажа путь к GameCenter. */
-export function hasGameCenterPath(character) {
-  return !!String(character?.launch?.gcPath || '').trim();
+/** GameCenter из настроек (общий список с названиями) и предпочитаемый — для выбора, откуда запускать персонажа. */
+/** @returns {import('./gameCenters.js').GcContext} */
+export function launchContext() {
+  const l = state.settings?.launcher || {};
+  return { gameCenters: l.gameCenters || [], preferredId: l.preferredGcId || '' };
 }
 
-/** Аккаунты, для которых указан путь к GameCenter, в порядке списка. */
-export function launchable(characters) {
-  return (characters || []).filter(hasGameCenterPath);
+/** Есть ли чем запускать персонажа: GameCenter из списка или свой путь из карточки. */
+export function hasGameCenterPath(character, ctx = launchContext()) {
+  return !!resolveGameCenter(character, ctx);
 }
 
-/** Кого запустим (`ready`), а кого пропустим из-за отсутствия пути (`skipped`). */
-export function launchPlan(characters) {
+/** Аккаунты, для которых есть GameCenter, в порядке списка. */
+export function launchable(characters, ctx = launchContext()) {
+  return (characters || []).filter(c => hasGameCenterPath(c, ctx));
+}
+
+/** Кого запустим (`ready`), а кого пропустим из-за отсутствия GameCenter (`skipped`). */
+export function launchPlan(characters, ctx = launchContext()) {
   const list = characters || [];
-  return { ready: list.filter(hasGameCenterPath), skipped: list.filter(c => !hasGameCenterPath(c)) };
+  return { ready: list.filter(c => hasGameCenterPath(c, ctx)), skipped: list.filter(c => !hasGameCenterPath(c, ctx)) };
 }
 
-/** Строка про сохранённый вход для карточки персонажа. */
-export function loginStatusText(character) {
-  const l = character?.launch || {};
-  if (!l.gcAccount) return 'Вход не запомнен: запускается тот аккаунт, под которым уже открыт этот GameCenter.';
-  const who = l.gcNick ? ` «${l.gcNick}»` : '';
-  return `Вход запомнен${who}. При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.`;
+/** Строка про GameCenter и сохранённый вход для карточки персонажа. */
+export function loginStatusText(character, ctx = launchContext()) {
+  const r = resolveGameCenter(character, ctx);
+  const where = r?.gc ? `GameCenter «${r.gc.name}». ` : '';
+  if (!r?.saved) return `${where}Вход не запомнен: запускается тот аккаунт, под которым уже открыт этот GameCenter.`;
+  const who = r.nick ? ` «${r.nick}»` : '';
+  return `${where}Вход запомнен${who}. При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.`;
 }
 
 /** «45 с», «1 мин 12 с», «2 ч 05 мин» — для итога запуска. */
@@ -90,11 +101,11 @@ export function closeReportText(r) {
 }
 
 /** Пати, которые есть смысл запускать из трея: в них есть хотя бы один персонаж с путём к GameCenter. */
-export function launchablePartyNames(parties, characters, membersOf) {
+export function launchablePartyNames(parties, characters, membersOf, ctx = launchContext()) {
   return (parties || [])
     .slice()
     .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
-    .filter(p => launchable(membersOf(characters, p.id)).length > 0)
+    .filter(p => launchable(membersOf(characters, p.id), ctx).length > 0)
     .map(p => p.name)
     .filter(Boolean);
 }
@@ -106,13 +117,24 @@ export function checkGameCenterPath(path, deps = {}) {
 
 /**
  * Запомнить вход, который сейчас открыт в GameCenter персонажа (токен уходит в хранилище ОС).
+ * `target` — `{ key, path }` из resolveGameCenter; без него берётся «свой путь» из карточки.
  * Возвращает ник из GameCenter (может быть пустой строкой).
  */
-export function captureAccount(character, deps = {}) {
+export function captureAccount(character, deps = {}, target = null) {
   return (deps.invoke || tauriInvoke)('launcher_capture_account', {
-    charId: character.id,
-    path: character.launch?.gcPath || ''
+    charId: target?.key || character.id,
+    path: target?.path ?? (character.launch?.gcPath || '')
   });
+}
+
+/** Что сейчас за вход открыт в GameCenter (ник и есть ли вход вообще): `{ exe, nick, loggedIn }`. */
+export function gameCenterInfo(path, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_gc_info', { path });
+}
+
+/** Открыть проводник и выбрать GameCenter.exe. Возвращает полный путь или null, если окно закрыли. */
+export function pickGameCenter(deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter');
 }
 
 /** Удалить сохранённый вход персонажа из хранилища ОС. */
@@ -142,23 +164,27 @@ export function closeAllClients(deps = {}) {
 
 /**
  * Запустить игру для списка аккаунтов по очереди (по одному, с паузой между запусками).
- * Персонажи без пути к GameCenter пропускаются (их можно узнать через launchPlan).
+ * Персонажи без GameCenter пропускаются (их можно узнать через launchPlan).
  *
- * @param {Array<{ id: string, nick?: string, launch?: { gcPath?: string, gcNick?: string } }>} characters
+ * @param {Array<any>} characters
  * @param {{
  *   delayMs?: number,
  *   waitSecs?: number,
  *   url?: string,
  *   signal?: { cancelled: boolean },
+ *   gcId?: string,
  *   onStart?: (character: any) => void,
  *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string }, done: number, total: number) => void
  * }} [opts]
- * @param {{ invoke?: (cmd: string, args?: any) => Promise<any> }} [deps]
+ * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext }} [deps]
  */
 export async function launchCharacters(characters, opts = {}, deps = {}) {
-  const { delayMs = DEFAULT_LAUNCH_DELAY_MS, waitSecs, url, signal, onStart, onDone } = opts;
+  const { delayMs = DEFAULT_LAUNCH_DELAY_MS, waitSecs, url, signal, onStart, onDone, gcId } = opts;
   const invoke = deps.invoke || tauriInvoke;
-  const list = launchable(characters);
+  // gcId — GameCenter, из которого запускать в этот раз (например, «папка 2»); у кого его нет — запускается из доступного
+  const base = deps.ctx || launchContext();
+  const ctx = gcId ? { ...base, preferredId: gcId } : base;
+  const list = launchable(characters, ctx);
   const jobs = list.map((character, i) => ({ character, last: i === list.length - 1 }));
 
   const results = await runQueue(
@@ -167,10 +193,11 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       // Отмена: тем, кто ещё ждёт своей очереди, запуск уже не начинается
       if (signal?.cancelled) return { cancelled: true };
       onStart?.(character);
+      const target = resolveGameCenter(character, ctx);
       await invoke('launcher_start', {
-        path: character.launch?.gcPath,
-        charId: character.id,
-        nick: character.launch?.gcNick || null,
+        path: target?.path,
+        charId: target?.key,
+        nick: target?.nick || null,
         url: url || null,
         waitSecs: waitSecs ?? null
       });

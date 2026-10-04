@@ -7,7 +7,8 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, closeReportText, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients } from './launch.js';
+import { launchCharacters, launchPlan, launchSummary, closeReportText, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext } from './launch.js';
+import { resolveGameCenter, accountKey, setGcAccount } from './gameCenters.js';
 
 let active = null; // { signal } идущего запуска
 
@@ -37,8 +38,9 @@ const errText = (e) => String(e?.message || e || 'неизвестная оши�
  * Запускает игру для списка персонажей по очереди.
  * @param {string} title заголовок задачи в журнале
  * @param {any[]} characters
+ * @param {{ gcId?: string }} [opts] gcId — GameCenter, из которого запускать в этот раз (у кого его нет — из доступного)
  */
-export async function launchGroup(title, characters) {
+export async function launchGroup(title, characters, opts = {}) {
   if (active) {
     toast('Запуск уже идёт: дождитесь окончания или отмените его (док задач внизу)', 'error');
     return null;
@@ -49,7 +51,7 @@ export async function launchGroup(title, characters) {
   }
   const { ready, skipped } = launchPlan(characters);
   if (!ready.length) {
-    toast('Не указан путь к GameCenter: откройте персонажа → «🎮 Запуск игры»', 'error');
+    toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
     return null;
   }
 
@@ -58,11 +60,12 @@ export async function launchGroup(title, characters) {
   const task = startTask(title, { total: ready.length, cancelable: true });
   task.onCancel(() => { signal.cancelled = true; });
   active = { signal };
-  skipped.forEach(c => task.log(`${c.nick}: пропущен — не указан путь к GameCenter`, 'warn'));
+  skipped.forEach(c => task.log(`${c.nick}: пропущен — не указан GameCenter`, 'warn'));
 
   try {
     const results = await launchCharacters(ready, {
       signal,
+      gcId: opts.gcId,
       onStart: (c) => task.setStep(`${c.nick}: запуск…`),
       onDone: (e, done, total) => {
         task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
@@ -89,8 +92,8 @@ export async function launchGroup(title, characters) {
 /** Запуск одного персонажа (кнопка «▶» на карточке). Без пути к GameCenter открывает его карточку на блоке «Запуск игры». */
 export async function launchOne(char) {
   if (!char) return null;
-  if (!String(char.launch?.gcPath || '').trim()) {
-    toast('Укажите путь к GameCenter этого аккаунта', 'error');
+  if (!hasGameCenterPath(char)) {
+    toast('Укажите GameCenter этого аккаунта', 'error');
     const { openCharacterProfile } = await import('../characters/profileView.js');
     openCharacterProfile(char);
     setTimeout(() => {
@@ -163,16 +166,37 @@ export async function saveGameCenterPath(char, path) {
   return true;
 }
 
-/** Запоминает вход, открытый сейчас в GameCenter персонажа. */
-export async function captureLogin(char) {
-  if (!String(char.launch?.gcPath || '').trim()) {
-    toast('Сначала укажите и сохраните путь к GameCenter', 'error');
+/**
+ * Куда привязывать вход: GameCenter из списка (`gcId` или тот, из которого персонаж запускается) либо «свой путь» из карточки.
+ * @returns {{ gc: any, key: string, path: string } | { gc: null, key: string, path: string } | null}
+ */
+function loginTarget(char, gcId) {
+  const ctx = launchContext();
+  const gc = gcId ? ctx.gameCenters.find(g => g.id === gcId) : resolveGameCenter(char, ctx)?.gc;
+  if (gc) return { gc, key: accountKey(char, gc.id), path: gc.path };
+  const own = String(char.launch?.gcPath || '').trim();
+  return own ? { gc: null, key: String(char.id), path: own } : null;
+}
+
+/**
+ * Запоминает вход, открытый сейчас в GameCenter персонажа.
+ * `gcId` — для какого из его GameCenter (по умолчанию — для того, из которого он запускается).
+ */
+export async function captureLogin(char, gcId = null) {
+  const target = loginTarget(char, gcId);
+  if (!target) {
+    toast('Сначала укажите GameCenter (и сохраните путь)', 'error');
     return false;
   }
   if (!isTauri()) { toast('Доступно только в приложении', 'error'); return false; }
   try {
-    const nick = await captureAccount(char);
-    char.launch = { ...char.launch, gcNick: nick || '', gcAccount: true };
+    const nick = await captureAccount(char, {}, target);
+    if (target.gc) {
+      const legacy = !!char.launch?.gcAccounts?.[target.gc.id]?.legacy;
+      setGcAccount(char, target.gc.id, nick || '', legacy);
+    } else {
+      char.launch = { ...char.launch, gcNick: nick || '', gcAccount: true };
+    }
     char.updatedAt = new Date().toISOString();
     await persist();
     toast(nick ? `Вход запомнен: ${nick}` : 'Вход запомнен', 'success');
@@ -183,11 +207,19 @@ export async function captureLogin(char) {
   }
 }
 
-/** Забывает сохранённый вход персонажа. */
-export async function forgetLogin(char) {
+/** Забывает сохранённый вход персонажа (в указанном GameCenter или в том, из которого он запускается). */
+export async function forgetLogin(char, gcId = null) {
   try {
-    if (isTauri()) await forgetAccount(char.id);
-    char.launch = { ...(char.launch || {}), gcNick: '', gcAccount: false };
+    const target = loginTarget(char, gcId);
+    if (isTauri() && target) await forgetAccount(target.key);
+    if (target?.gc) {
+      const legacy = !!char.launch?.gcAccounts?.[target.gc.id]?.legacy;
+      setGcAccount(char, target.gc.id, null);
+      // legacy-вход — это тот же токен, что и у «своего пути»: убираем и его отметку
+      if (legacy) char.launch = { ...char.launch, gcNick: '', gcAccount: false };
+    } else {
+      char.launch = { ...(char.launch || {}), gcNick: '', gcAccount: false };
+    }
     char.updatedAt = new Date().toISOString();
     await persist();
     toast('Сохранённый вход удалён', 'success');

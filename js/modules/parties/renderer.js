@@ -8,6 +8,7 @@ import { openEditPartyModal } from './manager.js';
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
 import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL } from './membership.js';
+import { hasGameCenterPath } from '../launcher/launch.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
@@ -169,11 +170,11 @@ export function renderPartiesGrid() {
         ` : '<p class="muted" style="text-align:center; padding:20px; color:var(--muted);">Группа пуста</p>';
 
         // Запуск игры: сколько участников пати имеют путь к своему GameCenter
-        const launchReady = members.filter(m => String(m.launch?.gcPath || '').trim()).length;
+        const launchReady = members.filter(m => hasGameCenterPath(m)).length;
         const controlPanelHtml = `
             <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:auto; display:flex; flex-direction:column; gap:8px;">
                 <button class="btn secondary full-width launch-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;" ${launchReady ? '' : 'disabled'}
-                        title="${launchReady ? 'Запустить игру для участников по очереди' : 'Ни у кого в пати не указан путь к GameCenter (карточка персонажа → «Запуск игры»)'}">
+                        title="${launchReady ? 'Запустить игру для участников по очереди' : 'Ни у кого в пати не указан GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
                     ▶ Запустить пати (${launchReady}/${members.length})
                 </button>
                 <button class="btn primary full-width edit-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;">

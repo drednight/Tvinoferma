@@ -5,6 +5,7 @@ import { SCHEMA_VERSION, migrateState } from './migrations.js';
 import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
+import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
 
 /** Максимальная длина примечания к персонажу (символов). */
@@ -65,6 +66,22 @@ export function normalizeTags(input) {
   });
 }
 
+function normalizeGcIds(list) {
+  const ids = (Array.isArray(list) ? list : []).map(v => String(v || '').trim()).filter(Boolean);
+  return [...new Set(ids)];
+}
+
+function normalizeGcAccounts(map) {
+  /** @type {Record<string, { nick: string, legacy?: true }>} */
+  const out = {};
+  if (!map || typeof map !== 'object') return out;
+  for (const [id, v] of Object.entries(map)) {
+    if (!id || !v || typeof v !== 'object') continue;
+    out[id] = v.legacy === true ? { nick: String(v.nick || ''), legacy: true } : { nick: String(v.nick || '') };
+  }
+  return out;
+}
+
 export function normalizeCharacter(input = {}) {
   return {
     id: input.id ? String(input.id) : null, // пустой id назначается из ника в normalizeState
@@ -88,7 +105,11 @@ export function normalizeCharacter(input = {}) {
     launch: {
       gcPath: String(input.launch?.gcPath || '').trim(),
       gcNick: String(input.launch?.gcNick || '').trim(),   // ник в GameCenter (для показа); токен входа лежит в хранилище ОС
-      gcAccount: input.launch?.gcAccount === true          // вход этого аккаунта запомнен (см. launcher_capture_account)
+      gcAccount: input.launch?.gcAccount === true,         // вход этого аккаунта запомнен (см. launcher_capture_account)
+      // GameCenter из общего списка (Настройки → Запуск игры): id по порядку, первый — основной
+      gcIds: normalizeGcIds(input.launch?.gcIds),
+      // Запомненный вход персонажа в каждом из них: { [gcId]: { nick, legacy? } }; токены лежат в хранилище ОС
+      gcAccounts: normalizeGcAccounts(input.launch?.gcAccounts)
     },
     dungeonPasses: {
       weapon: Number(input.dungeonPasses?.weapon) || 0,
@@ -128,6 +149,14 @@ function normalizeParty(input = {}) {
   };
 }
 
+function normalizeLauncherSettings(input = {}) {
+  const merged = { ...DEFAULT_SETTINGS.launcher, ...(input || {}) };
+  merged.gameCenters = normalizeGameCenters(merged.gameCenters);
+  const preferred = String(merged.preferredGcId || '');
+  merged.preferredGcId = merged.gameCenters.some(g => g.id === preferred) ? preferred : '';
+  return merged;
+}
+
 function mergeSettings(input = {}) {
   return {
     ...clone(DEFAULT_SETTINGS),
@@ -148,7 +177,7 @@ function mergeSettings(input = {}) {
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: { ...DEFAULT_SETTINGS.notifications, ...(input.notifications || {}) },
     browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
-    launcher: { ...DEFAULT_SETTINGS.launcher, ...(input.launcher || {}) },
+    launcher: normalizeLauncherSettings(input.launcher),
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
     freshness: { ...DEFAULT_SETTINGS.freshness, ...(input.freshness || {}) },
     updates: { ...DEFAULT_SETTINGS.updates, ...(input.updates || {}) }

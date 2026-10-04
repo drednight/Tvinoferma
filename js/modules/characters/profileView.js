@@ -12,7 +12,8 @@ import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
-import { hasGameCenterPath, loginStatusText } from '../launcher/launch.js';
+import { hasGameCenterPath, loginStatusText, launchContext } from '../launcher/launch.js';
+import { attachedGcs, accountKeysOf } from '../launcher/gameCenters.js';
 
 function maskText(text, length = 8) {
   if (!text) return '';
@@ -23,6 +24,12 @@ function maskText(text, length = 8) {
 
 const EYE_SVG_OPEN = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const EYE_SVG_CLOSED = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+
+/** Какие GameCenter из общего списка прикреплены к персонажу (строка в блоке «Запуск игры»). */
+function gcListText(char) {
+  const names = attachedGcs(char, launchContext().gameCenters).map(g => g.name);
+  return names.length ? `Прикреплено: ${names.join(', ')}` : 'GameCenter из общего списка не прикреплены.';
+}
 
 export function openCharacterProfile(char) {
   const stats = char.stats || {};
@@ -108,12 +115,15 @@ export function openCharacterProfile(char) {
         </details>
 
         <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json -->
-        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" ${launch.gcPath ? 'open' : ''}>
+        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" ${hasGameCenterPath(char) ? 'open' : ''}>
           <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">🎮 Запуск игры</summary>
           <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
-            <label class="muted" style="font-size:0.8rem;" for="pf-gc-path">GameCenter этого аккаунта: папка или файл GameCenter.exe</label>
+            <div id="pf-gc-list" class="muted" style="font-size:0.85rem;">${escapeHtml(gcListText(char))}</div>
+            <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
+            <label class="muted" style="font-size:0.8rem;" for="pf-gc-path">Свой GameCenter (запасной вариант, если выше ничего не прикреплено): папка или файл GameCenter.exe</label>
             <div style="display:flex; gap:8px;">
               <input id="pf-gc-path" class="input" style="flex:1;" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
+              <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe в проводнике">📂 Обзор…</button>
               <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
             </div>
             <div id="pf-gc-account" class="muted" style="font-size:0.85rem;">${escapeHtml(loginStatusText(char))}</div>
@@ -320,7 +330,7 @@ export function openCharacterProfile(char) {
       delBtn.onclick = () => {
         if(confirmDialog(`Удалить персонажа "${char.nick}"? Это действие необратимо.`)) {
            // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
-           if (char.launch?.gcAccount) import('../launcher/launch.js').then(m => m.forgetAccount(char.id)).catch(() => {});
+           accountKeysOf(char).forEach(key => import('../launcher/launch.js').then(m => m.forgetAccount(key)).catch(() => {}));
            import('../../core/state.js').then(({ state }) => {
              import('../../core/storage.js').then(({ persist }) => {
                state.characters = state.characters.filter(c => c.id !== char.id);
@@ -341,6 +351,8 @@ export function openCharacterProfile(char) {
     const redrawGc = () => {
       const el = document.getElementById('pf-gc-account');
       if (el) el.textContent = loginStatusText(char);
+      const list = document.getElementById('pf-gc-list');
+      if (list) list.textContent = gcListText(char);
     };
     // Путь из поля сохраняется, если его изменили и не нажали «Сохранить путь»
     const ensureGcPathSaved = async () => {
@@ -349,6 +361,17 @@ export function openCharacterProfile(char) {
       const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
       return saveGameCenterPath(char, typed);
     };
+    document.getElementById('pf-gc-browse')?.addEventListener('click', async () => {
+      try {
+        const { pickGameCenter } = await import('../launcher/launch.js');
+        const picked = await pickGameCenter();
+        if (picked && gcInput) gcInput.value = picked;
+      } catch (e) { toast(String(e?.message || e), 'error'); }
+    });
+    document.getElementById('pf-gc-manage')?.addEventListener('click', async () => {
+      const { openGameCentersModal } = await import('../launcher/gcSettingsModal.js');
+      openGameCentersModal({ onClose: () => openCharacterProfile(char) });
+    });
     document.getElementById('pf-gc-save')?.addEventListener('click', async () => {
       const { saveGameCenterPath } = await import('../launcher/partyLaunch.js');
       await saveGameCenterPath(char, gcInput?.value);
@@ -370,7 +393,7 @@ export function openCharacterProfile(char) {
         const fold = modalRoot.querySelector('.pf-launch');
         if (fold) fold.open = true;
         gcInput?.focus();
-        toast('Укажите путь к GameCenter этого аккаунта', 'error');
+        toast('Укажите GameCenter этого аккаунта', 'error');
         return;
       }
       const { launchGroup } = await import('../launcher/partyLaunch.js');
