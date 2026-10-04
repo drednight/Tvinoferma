@@ -76,6 +76,52 @@ const FILL = { shard: '3', recipient: KEY, charName: '#Тестовый' };
 
 beforeEach(() => { window.__TF_XFER = undefined; delete window.shards; delete window.jQuery; });
 
+describe('transfer.js: servers (страница «Статус серверов», только чтение)', () => {
+  const page = () => fixture('site-serverstatus.html');
+
+  it('все серверы со страницы и рекомендуемый; номеров на странице нет', () => {
+    const r = run(page(), 'servers', {}, { shards: undefined });
+    expect(r.error).toBeNull();
+    expect(r.data).toEqual({
+      state: 'servers', recommended: 'Капелла',
+      servers: [{ name: 'Центавр', online: true }, { name: 'Фенрир', online: true }, { name: 'Мицар', online: true }, { name: 'Капелла', online: true }]
+    });
+  });
+
+  it('оффлайн-сервер помечается; вход на сайт для этой страницы не нужен', () => {
+    const html = editDom(page(), (d) => {
+      const span = d.querySelector('.servers_container li span'); span.className = 'server_status_0';
+      d.body.insertAdjacentHTML('beforeend', '<p>Вы не авторизованы</p>');
+    });
+    const r = run(html, 'servers', {}, { shards: undefined });
+    expect(r.error).toBeNull();
+    expect(r.data.servers[0]).toEqual({ name: 'Центавр', online: false });
+  });
+
+  it('вёрстка изменилась (списка нет): pending, а не пустой список', () => {
+    const html = editDom(page(), (d) => { d.querySelector('.servers_container').remove(); });
+    const r = run(html, 'servers', {}, { shards: undefined });
+    expect(r.error).toBe('pending');
+  });
+
+  it('проверка безопасности вместо страницы → challenge', () => {
+    const r = run('<html><head><title>Проверка безопасности</title></head><body></body></html>', 'servers', {}, { shards: undefined });
+    expect(r.error).toBe('challenge');
+  });
+});
+
+describe('transfer.js: персонаж без ника', () => {
+  const NONICK = { 3: { id: 3, name: 'Фенрир', accounts: { 1000000002: { id: 1000000002, name: 'u_1000000001', chars: [{ id: 1000000009, name: '', occupation: 'Призрак', level: '103' }] } } } };
+  it('scan отдаёт персонажа с пустым ником; fill выбирает его по ключу, без проверки имени', () => {
+    const s = run(fixture('site-promoitems.html'), 'scan', {}, { shards: NONICK });
+    expect(s.data.shards[0].chars).toEqual([{ key: '1000000002_3_1000000009', account: 'u_1000000001', name: '', cls: 'Призрак', level: 103 }]);
+    const f = run(fixture('site-promoitems.html'), 'fill', { shard: '3', recipient: '1000000002_3_1000000009', charName: '' }, { shards: NONICK });
+    expect(f.error).toBeNull();
+    expect(f.data.state).toBe('ready');
+    expect(f.data.char.key).toBe('1000000002_3_1000000009');
+  });
+});
+
 describe('transfer.js: scan (только чтение)', () => {
   it('предметы по акциям, сундуки и строки без галочки; серверы и персонажи из shards', () => {
     const r = run(fixture('site-promoitems.html'), 'scan');
@@ -138,6 +184,31 @@ describe('transfer.js: fill (выбор без отправки)', () => {
     expect(document.querySelector('.js-shard').value).toBe('3');
     expect(document.querySelector('.js-char').value).toBe(KEY);
     expect(go.__h).not.toHaveBeenCalled();
+  });
+
+  it('предметы акции из skipSources (сайт принимает их только на другой сервер) не отмечаются; остальные — да', () => {
+    const SRC = 'День рождения «Мицара»';
+    mount(fixture('site-promoitems.html'), { mode: 'scan' }); exec();
+    const all = payload().data.items;
+    const own = all.filter(i => i.source === SRC);
+    expect(own.length).toBeGreaterThan(0);
+    const r = run(fixture('site-promoitems.html'), 'fill', { ...FILL, skipSources: [SRC.toLowerCase()] });   // без учёта регистра
+    expect(r.error).toBeNull();
+    expect(r.data.skipped).toBe(own.length);
+    expect(r.data.count).toBe(all.length - own.length);
+    expect(r.data.items.some(i => i.source === SRC)).toBe(false);
+    const checked = [...document.querySelectorAll('input[name="cart_items[]"]')].filter(b => b.checked).map(b => b.value);
+    expect(checked).toHaveLength(all.length - own.length);
+    own.forEach(i => expect(checked).not.toContain(i.id));
+  });
+
+  it('без skipSources skipped = 0; если пропускается всё — no_items и ничего не отмечено', () => {
+    expect(run(fixture('site-promoitems.html'), 'fill', FILL).data.skipped).toBe(0);
+    mount(fixture('site-promoitems.html'), { mode: 'scan' }); exec();
+    const sources = [...new Set(payload().data.items.map(i => i.source))];
+    const r = run(fixture('site-promoitems.html'), 'fill', { ...FILL, skipSources: sources });
+    expect(r.error).toBe('no_items');
+    expect([...document.querySelectorAll('input[name="cart_items[]"]')].some(b => b.checked)).toBe(false);
   });
 
   it('другой сервер: список персонажей перестраивается, выбирается нужный', () => {
@@ -246,6 +317,23 @@ describe('transfer.js: result (история передачи)', () => {
     expect(run(fixture('site-promoitems.html'), 'result', {}).error).toBe('pending');
     const err = editDom(fixture('site-promoitems.html'), (d) => d.querySelector('#content_top').insertAdjacentHTML('afterend', '<div id="content_body"><div class="m_error">Что-то пошло не так</div></div>'));
     expect(run(err, 'result', {})).toEqual({ data: 'Что-то пошло не так', error: 'unknown' });
+    expect(run(fixture('site-warning.html'), 'result', {}).error).toBe('not_logged_in');
+  });
+
+  it('страница «Предупреждение» вместо истории (предметы только на другой сервер) → warning с текстом и названием сервера', () => {
+    const r = run(fixture('site-promoitems-warning.html'), 'result', {}, { shards: undefined });
+    expect(r.error).toBeNull();
+    expect(r.data).toEqual({
+      state: 'warning', onlyServer: 'Мицар',
+      message: 'Уважаемый пользователь, данные предметы можно перевести только на сервер «Мицар»'
+    });
+  });
+
+  it('другое предупреждение сайта: текст есть, сервера нет; предупреждение «не авторизован» остаётся not_logged_in', () => {
+    const other = fixture('site-promoitems-warning.html').replace('данные предметы можно перевести только на сервер «Мицар»', 'передача сейчас недоступна');
+    const r = run(other, 'result', {}, { shards: undefined });
+    expect(r.data).toMatchObject({ state: 'warning', onlyServer: '' });
+    expect(r.data.message).toContain('передача сейчас недоступна');
     expect(run(fixture('site-warning.html'), 'result', {}).error).toBe('not_logged_in');
   });
 

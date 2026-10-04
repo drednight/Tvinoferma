@@ -57,9 +57,14 @@
     "transfer.modal": [".modals"],
     "transfer.modalYes": [".js-transfer-done"],
     "transfer.error": ["#content_body .m_error", ".m_error"],
+    "transfer.warningBox": [".panelsurround", "#content_body"],
     "transfer.historyRow": ["table.promo_history tr"],
     "transfer.name": ["b"],
-    "transfer.promoSmall": ["small"]
+    "transfer.promoSmall": ["small"],
+    "transfer.statusItem": [".servers_container ul li", ".server_status_container li"],
+    "transfer.statusOnline": [".server_status_1"],
+    "transfer.statusOffline": [".server_status_0"],
+    "transfer.statusRecommend": [".recommend strong"]
   },
   "texts": {
     "common.challengeTitle": ["Проверка безопасности"],
@@ -97,6 +102,7 @@
     "promo.success": ["успешно активировали"],
 
     "transfer.titleText": ["Передача предметов"],
+    "transfer.warningTitle": ["Предупреждение"],
     "transfer.historyAccount": ["Игровой аккаунт:"],
     "transfer.historyChar": ["Персонаж:"],
     "transfer.historyServer": ["Сервер:"]
@@ -109,6 +115,7 @@
     "transfer.historyItem": ["^(.*?)\\s+x\\s*(\\d+)$"],
     "transfer.historyDate": ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"],
     "transfer.historyPromo": ["^\\((.*)\\)$"],
+    "transfer.onlyServer": ["только на сервер\\s*[«\"“]([^»\"”]+)[»\"”]"],
     "news.date": [
       "Обсудить\\s+(\\d{2}\\.\\d{2}\\.\\d{4})",
       "(\\d{2}\\.\\d{2}\\.\\d{4})"

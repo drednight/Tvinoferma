@@ -176,8 +176,18 @@
 .panel.fold > summary p { margin: 0; }
 .panel.fold[open] > summary { margin-bottom: 12px; }
 
-/* Журнал скриптов внутри панели: прокрутка, чтобы настройки не раздувались */
-#task-journal-body .tl-journal { max-height: 360px; overflow-y: auto; }
+/* Единый журнал (core/logHub.js): список с прокруткой, чтобы настройки не раздувались */
+.lh-list { max-height: 360px; overflow-y: auto; }
+.lh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.lh-chip { border: 1px solid var(--border, rgba(255,255,255,.12)); background: transparent; color: inherit; border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: .85rem; }
+.lh-chip:hover { border-color: var(--accent, #7aa2f7); }
+.lh-chip.active { background: var(--accent, #7aa2f7); border-color: var(--accent, #7aa2f7); color: #0b0d14; }
+.lh-chip.active .muted { color: inherit; opacity: .75; }
+.lh-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
+.lh-filters .input { flex: 1 1 220px; min-width: 0; }
+.lh-count { margin-bottom: 6px; font-size: .85rem; }
+.lh-actions { margin-top: 10px; flex-wrap: wrap; align-items: center; }
+.lh-more { margin-top: 6px; }
 
 /* Настройки: две колонки свёрнутых карточек. Раскрытая карточка растёт вниз только в своей колонке. */
 .settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }

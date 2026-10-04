@@ -9,14 +9,15 @@ import { runReminderCheck } from '../desktop/notifications.js';
 import { toast, confirmDialog } from '../core/ui.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
-import { mountTaskJournal, taskJournalSummary, onTaskChange } from '../core/taskLog.js';
+import '../core/taskLog.js';   // подключает вид логов «Скрипты» к единому модулю логов
+import { mountLogHub, logHubSummary, onLogsChange } from '../core/logHub.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
-import { renderPromoLog } from '../modules/automation/promoLogView.js';
-import { renderTransferLog } from '../modules/automation/transferLogView.js';
+import '../modules/automation/promoLogView.js';      // виды логов «Промокоды» и «Передачи»
+import '../modules/automation/transferLogView.js';
 
 export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
 
@@ -122,9 +123,6 @@ export async function renderSettings() {
   // Backups
   await refreshBackups();
 
-  // Логи промокодов
-  renderPromoLog();
-  renderTransferLog();
 
   // Безопасность
   const vaultEl = document.getElementById('vault-status');
@@ -221,16 +219,16 @@ export function bindSettings() {
     toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
   });
 
-  // Логи скриптов: журнал рисуется при первом раскрытии панели, заголовок обновляется всегда
-  const journalPanel = document.getElementById('task-journal-panel');
-  const journalBody = document.getElementById('task-journal-body');
-  const journalSummary = document.getElementById('task-journal-summary');
-  const refreshJournalSummary = () => { if (journalSummary) journalSummary.textContent = taskJournalSummary(); };
-  refreshJournalSummary();
-  onTaskChange(refreshJournalSummary);
-  let journalMounted = false;
-  journalPanel?.addEventListener('toggle', () => {
-    if (journalPanel.open && !journalMounted && journalBody) { journalMounted = true; mountTaskJournal(journalBody); }
+  // Журналы (единый модуль логов): список рисуется при первом раскрытии панели, заголовок обновляется всегда
+  const logPanel = document.getElementById('log-hub-panel');
+  const logBody = document.getElementById('log-hub-root');
+  const logSummary = document.getElementById('log-hub-summary');
+  const refreshLogSummary = () => { if (logSummary) logSummary.textContent = logHubSummary(); };
+  refreshLogSummary();
+  onLogsChange(refreshLogSummary);
+  let logMounted = false;
+  logPanel?.addEventListener('toggle', () => {
+    if (logPanel.open && !logMounted && logBody) { logMounted = true; mountLogHub(logBody); }
   });
 
   // Create Backup

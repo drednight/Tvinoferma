@@ -1,9 +1,11 @@
 //! Передача предметов с сайта в игру (Issue #26): страница `/promo_items.php` в окне профиля персонажа.
-//! Скрипт страницы: `scripts/transfer.js` (режимы `scan`, `fill`, `click`, `result`).
+//! Скрипт страницы: `scripts/transfer.js` (режимы `scan`, `servers`, `fill`, `click`, `result`).
 //!
 //! Правила безопасности (см. `docs/COMPLIANCE.md`):
-//! - обе команды запускаются только кнопкой пользователя из диалога; расписаний нет;
+//! - `transfer_items` и `read_transfer_page` запускаются только кнопкой пользователя из диалога; расписаний нет;
 //! - `read_transfer_page` только читает страницу (что ждёт передачи, какие серверы и персонажи есть);
+//! - `read_server_status` только читает публичную страницу «Статус серверов» (`/server_status.php`): названия всех серверов
+//!   (без аккаунтов; при запуске приложения и по расписанию из настроек);
 //! - `transfer_items` сначала только выбирает сервер, персонажа и предметы в списках сайта (`fill`), и лишь затем
 //!   нажимает «Передать» ОДИН раз, без повторов: `clicked = true` означает «заново запускать нельзя»;
 //! - режим `dry_run` доходит до выбора и ничего не нажимает;
@@ -11,7 +13,9 @@
 //!   сверяя историю с отправленным, поэтому неясный ответ никогда не считается успехом.
 
 use super::promo::is_valid_char_id;
-use crate::parsers::{eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common};
+use crate::parsers::{
+    eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common, QUIET_SCOPE,
+};
 use crate::pool;
 use crate::windows::window_label;
 use serde_json::{json, Value};
@@ -20,7 +24,14 @@ use tauri::{command, AppHandle, Manager};
 
 const SCRIPT: &str = include_str!("../scripts/transfer.js");
 const PAGE_URL: &str = "https://pwonline.ru/promo_items.php";
+/// «История передачи»: сюда сайт ведёт после успешной отправки; сюда же заходим, если вместо неё показано предупреждение.
+const HISTORY_URL: &str = "https://pwonline.ru/promo_items.php?do=history";
+const STATUS_URL: &str = "https://pwonline.ru/server_status.php";
 const PREFIX: &str = "#TF_XFER_V1_";
+/// Служебный профиль для публичной страницы «Статус серверов» (без аккаунтов персонажей).
+const STATUS_KEY: &str = "_server_status_";
+/// Чтение статуса серверов идёт без журнала и уведомлений.
+const STATUS_SCOPE: &str = QUIET_SCOPE;
 const CLEAR_HASH: &str = "history.replaceState(null, '', location.pathname + location.search);";
 
 /// Идентификатор сервера из списка сайта: только цифры.
@@ -52,6 +63,22 @@ fn clean_name(name: &str) -> String {
         .to_string()
 }
 
+/// Названия акций, предметы которых не отмечаются (сайт принимает их только на другой сервер): не больше 20, как на странице.
+fn clean_sources(list: &[String]) -> Vec<String> {
+    list.iter()
+        .map(|s| {
+            s.chars()
+                .filter(|c| !c.is_control())
+                .take(120)
+                .collect::<String>()
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .take(20)
+        .collect()
+}
+
 type Wait = Option<(Option<String>, Value)>;
 
 /// Скрипт страницы для одного режима: `window.__TF_XFER = {...}` + `transfer.js`.
@@ -79,10 +106,31 @@ fn classify_scan(res: Wait) -> Result<Value, (&'static str, String)> {
     }
 }
 
+/// Итог чтения «Статуса серверов»: `{ servers: [{ name, online }], recommended }` или конечный `(status, error)`.
+fn classify_servers(res: Wait) -> Result<Value, (&'static str, String)> {
+    match res {
+        None => Err(timeout_error()),
+        Some((None, data))
+            if data["state"] == "servers"
+                && data["servers"].as_array().is_some_and(|a| !a.is_empty()) =>
+        {
+            Ok(json!({ "servers": data["servers"], "recommended": data["recommended"] }))
+        }
+        Some((None, _)) => Err(("error", "bad_response".to_string())),
+        Some((Some(err), _)) => Err(match err.as_str() {
+            "challenge" => ("challenge", err),
+            "pending" => ("error", "servers_not_found".to_string()),
+            _ => ("error", err),
+        }),
+    }
+}
+
 /// Выбор сделан: сколько предметов отмечено, что именно и отпечаток страницы.
 #[derive(Debug, PartialEq)]
 struct Filled {
     count: u64,
+    /// Сколько предметов не отмечено: их акция принимается только на другой сервер.
+    skipped: u64,
     items: Value,
 }
 
@@ -94,6 +142,7 @@ fn classify_fill(res: Wait) -> Result<Filled, (&'static str, String)> {
         {
             Ok(Filled {
                 count: data["count"].as_u64().unwrap_or(0),
+                skipped: data["skipped"].as_u64().unwrap_or(0),
                 items: data["items"].clone(),
             })
         }
@@ -118,6 +167,8 @@ struct Outcome {
     detail: Option<String>,
     /// Строки самой новой передачи из «Истории передачи» (только для `submitted`).
     history: Value,
+    /// Страница «Предупреждение» после нажатия: `{ message, onlyServer }` (иначе null).
+    warning: Value,
 }
 
 impl Outcome {
@@ -127,6 +178,7 @@ impl Outcome {
             error,
             detail,
             history: Value::Null,
+            warning: Value::Null,
         }
     }
 }
@@ -140,13 +192,62 @@ fn classify_result(res: Wait) -> Outcome {
             error: None,
             detail: None,
             history: data["rows"].clone(),
+            warning: Value::Null,
         },
+        // сайт показал «Предупреждение» (например, «предметы можно перевести только на сервер «Мицар»»):
+        // часть предметов могла уйти, поэтому дальше читается история (`history_after_warning`)
+        Some((None, data)) if data["state"] == "warning" && data["message"].is_string() => {
+            Outcome {
+                status: "warning",
+                error: None,
+                detail: text(&data["message"]),
+                history: Value::Null,
+                warning: json!({ "message": data["message"], "onlyServer": data["onlyServer"] }),
+            }
+        }
         Some((None, _)) => Outcome::unknown(Some("bad_response".to_string()), None),
         // «нет входа» после нажатия не говорит, ушла ли передача: проверять историю вручную
         Some((Some(err), data)) => Outcome::unknown(
             (err != "unknown").then(|| err.clone()),
             text(&data).filter(|_| err == "unknown"),
         ),
+    }
+}
+
+/// После страницы «Предупреждение» читаем «Историю передачи» (только чтение): так видно, какие предметы сайт всё же принял.
+/// Не прочиталась — `unknown` с текстом предупреждения (проверять вручную). `warning` сохраняется всегда.
+async fn history_after_warning(
+    task: &pool::TaskWin,
+    first: Outcome,
+    timeout: u64,
+    scope: &str,
+) -> Outcome {
+    let hist = match navigate_clean(task.window(), HISTORY_URL).await {
+        Ok(()) => classify_result(
+            eval_and_wait(
+                task.window(),
+                &xfer_script(&json!({ "mode": "result" })),
+                PREFIX,
+                timeout,
+                scope,
+            )
+            .await,
+        ),
+        Err(e) => Outcome::unknown(Some(e), None),
+    };
+    if hist.status == "submitted" {
+        Outcome {
+            warning: first.warning,
+            ..hist
+        }
+    } else {
+        Outcome {
+            status: "unknown",
+            error: hist.error,
+            detail: first.detail,
+            history: Value::Null,
+            warning: first.warning,
+        }
     }
 }
 
@@ -170,7 +271,9 @@ fn payload(
         "dryRun": dry_run,
         "count": count,
         "items": items,
+        "skipped": 0,
         "history": Value::Null,
+        "warning": Value::Null,
     })
 }
 
@@ -232,6 +335,46 @@ pub async fn read_transfer_page(
     }
 }
 
+/// Чтение страницы «Статус серверов» (только чтение): `{ status, error, servers, recommended }`.
+/// Страница открыта всем: аккаунты и входы не нужны, работает отдельный служебный профиль без персонажей
+/// (приложение читает её при запуске и по расписанию из настроек «Свежесть данных»).
+/// Номеров серверов на ней нет: их знает только страница передачи (`read_transfer_page`).
+#[command]
+pub async fn read_server_status(
+    app: AppHandle,
+    timeout_seconds: Option<u64>,
+) -> Result<Value, String> {
+    let reply = |status: &str, error: Option<&str>, data: Value| {
+        json!({
+            "status": status, "error": error,
+            "servers": data["servers"], "recommended": data["recommended"]
+        })
+    };
+    let timeout = timeout_seconds.unwrap_or(20).max(5);
+    let task = pool::acquire_anonymous(&app, STATUS_KEY, STATUS_URL).await?;
+    navigate_clean(task.window(), STATUS_URL).await?;
+
+    let res = eval_and_wait(
+        task.window(),
+        &xfer_script(&json!({ "mode": "servers" })),
+        PREFIX,
+        timeout,
+        STATUS_SCOPE,
+    )
+    .await;
+    match classify_servers(res) {
+        Ok(data) => {
+            task.finish(None, true, false).await;
+            Ok(reply("ok", None, data))
+        }
+        Err((status, error)) => {
+            task.finish(None, true, false).await;
+            let err = (status == "error").then_some(error.as_str());
+            Ok(reply(status, err, Value::Null))
+        }
+    }
+}
+
 /// Передача всех доступных предметов выбранному персонажу.
 /// Результат: `{ charId, status, error, detail, clicked, dryRun, count, items, history }`.
 /// `status`: `submitted` (после нажатия открылась история; `history` — строки самой новой передачи) | `dry_run`
@@ -244,6 +387,7 @@ pub async fn transfer_items(
     shard_id: String,
     recipient: String,
     char_name: Option<String>,
+    skip_sources: Option<Vec<String>>,
     dry_run: Option<bool>,
     timeout_seconds: Option<u64>,
 ) -> Result<Value, String> {
@@ -274,6 +418,7 @@ pub async fn transfer_items(
     }
 
     let name = clean_name(char_name.as_deref().unwrap_or(""));
+    let skip = clean_sources(skip_sources.as_deref().unwrap_or(&[]));
     let scope = format!("char:{}", char_id);
     let timeout = timeout_seconds.unwrap_or(30).max(5);
     let task = pool::acquire(&app, &char_id, PAGE_URL).await?;
@@ -281,8 +426,7 @@ pub async fn transfer_items(
     navigate_clean(task.window(), PAGE_URL).await?;
 
     // 1. Выбор в списках сайта (ничего не отправляется)
-    let fill_cfg =
-        json!({ "mode": "fill", "shard": shard_id, "recipient": recipient, "charName": name });
+    let fill_cfg = json!({ "mode": "fill", "shard": shard_id, "recipient": recipient, "charName": name, "skipSources": skip });
     let filled = eval_and_wait(
         task.window(),
         &xfer_script(&fill_cfg),
@@ -327,7 +471,7 @@ pub async fn transfer_items(
             ),
         );
         task.finish(Some(&char_id), true, true).await;
-        return Ok(payload(
+        let mut res = payload(
             &char_id,
             "dry_run",
             None,
@@ -336,7 +480,9 @@ pub async fn transfer_items(
             true,
             filled.count,
             filled.items,
-        ));
+        );
+        res["skipped"] = json!(filled.skipped);
+        return Ok(res);
     }
 
     // 2. Нажатие: строго один раз, без повторов
@@ -393,7 +539,19 @@ pub async fn transfer_items(
         &scope,
     )
     .await;
-    let out = classify_result(result);
+    let mut out = classify_result(result);
+    if out.status == "warning" {
+        tf_log(
+            &app,
+            &scope,
+            "warn",
+            format!(
+                "Сайт показал предупреждение: {}",
+                out.detail.as_deref().unwrap_or("")
+            ),
+        );
+        out = history_after_warning(&task, out, timeout.max(40), &scope).await;
+    }
     tf_log(
         &app,
         &scope,
@@ -416,6 +574,8 @@ pub async fn transfer_items(
         filled.items,
     );
     res["history"] = out.history;
+    res["warning"] = out.warning;
+    res["skipped"] = json!(filled.skipped);
     Ok(res)
 }
 
@@ -445,6 +605,35 @@ mod tests {
         }
         assert!(recipient_matches_shard("153909633_3_2069946672", "3"));
         assert!(!recipient_matches_shard("153909633_3_2069946672", "5"));
+    }
+
+    #[test]
+    fn server_status_returns_list_or_final_error() {
+        let page = json!({
+            "state": "servers", "recommended": "Капелла",
+            "servers": [{ "name": "Фенрир", "online": true }, { "name": "Мицар", "online": false }]
+        });
+        let data = classify_servers(ok(page)).unwrap();
+        assert_eq!(data["servers"].as_array().unwrap().len(), 2);
+        assert_eq!(data["recommended"], "Капелла");
+        // пустой список — не успех
+        let empty = json!({ "state": "servers", "servers": [] });
+        assert_eq!(
+            classify_servers(ok(empty)),
+            Err(("error", "bad_response".to_string()))
+        );
+        assert_eq!(
+            classify_servers(None),
+            Err(("error", "timeout".to_string()))
+        );
+        assert_eq!(
+            classify_servers(err("challenge")),
+            Err(("challenge", "challenge".to_string()))
+        );
+        assert_eq!(
+            classify_servers(err("pending")),
+            Err(("error", "servers_not_found".to_string()))
+        );
     }
 
     #[test]
@@ -524,6 +713,42 @@ mod tests {
             assert_eq!(o.status, "unknown");
             assert!(o.history.is_null());
         }
+    }
+
+    #[test]
+    fn warning_page_is_recognized_and_keeps_server() {
+        let o = classify_result(ok(json!({
+            "state": "warning",
+            "message": "Уважаемый пользователь, данные предметы можно перевести только на сервер «Мицар»",
+            "onlyServer": "Мицар"
+        })));
+        assert_eq!(o.status, "warning");
+        assert_eq!(o.warning["onlyServer"], "Мицар");
+        assert!(o.detail.as_deref().unwrap().contains("только на сервер"));
+        // предупреждение без текста — не предупреждение: остаётся «не распознано»
+        assert_eq!(
+            classify_result(ok(json!({ "state": "warning" }))).status,
+            "unknown"
+        );
+    }
+
+    #[test]
+    fn skipped_sources_are_cleaned() {
+        let list = vec![
+            "  День рождения «Мицара»\n ".to_string(),
+            "".to_string(),
+            "x".repeat(300),
+        ];
+        let out = clean_sources(&list);
+        assert_eq!(out[0], "День рождения «Мицара»");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].chars().count(), 120);
+        assert_eq!(clean_sources(&vec!["a".to_string(); 50]).len(), 20);
+        let f = classify_fill(ok(
+            json!({ "state": "ready", "count": 8, "skipped": 13, "items": [] }),
+        ))
+        .unwrap();
+        assert_eq!(f.skipped, 13);
     }
 
     #[test]

@@ -4,12 +4,17 @@
 //   scan   — только чтение: что ждёт передачи (предметы, сундуки) и на какие серверы и к каким персонажам можно передать.
 //            Ответ: { state: 'scan', siteId, accountName, shards, items, chests, locked, empty }.
 //   fill   — НИЧЕГО НЕ ОТПРАВЛЯЕТ: выбирает сервер и персонажа в списках сайта и отмечает ВСЕ предметы (лимит сайта в 6 штук
-//            проверяется только при клике по галочке, поэтому программная отметка его не включает).
-//            Ответ: { state: 'ready', count, items, shard, char, sig }.
+//            проверяется только при клике по галочке, поэтому программная отметка его не включает). Предметы акций из
+//            `skipSources` (их сайт принимает только на другой сервер) не отмечаются.
+//            Ответ: { state: 'ready', count, skipped, items, shard, char, sig }.
 //   click  — повторно проверяет выбор и нажимает «Передать» ОДИН раз; если сайт показал свой диалог «Вы уверены…»
 //            (настройка «Получать подтверждение…»), нажимает в нём «Да» тоже один раз. Ответ пишется только при отказе.
+//   servers — только чтение страницы «Статус серверов» (/server_status.php): названия всех серверов и онлайн ли они.
+//            Ответ: { state: 'servers', servers: [{ name, online }], recommended }. Номеров серверов на странице нет.
 //   result — только чтение: страница «История передачи» (?do=history). Ответ: { state: 'history', rows } — строки самой
 //            новой передачи; решение «успех или нет» принимает приложение (transferCore.js), сверяя их с отправленным.
+//            Если вместо истории сайт показал страницу «Предупреждение» (например, «данные предметы можно перевести только
+//            на сервер «Мицар»»), ответ: { state: 'warning', message, onlyServer }.
 // Ответ: #TF_XFER_V1_<json> = { data, error }. Все тексты и селекторы: selectors.json (transfer.*).
 (function () {
   function report(data, error) {
@@ -122,6 +127,18 @@
     return TF.qa('transfer.checkbox').filter(function (b) { return b.checked; }).length;
   }
 
+  // «Статус серверов»: список серверов с отметкой онлайн/оффлайн
+  function readServerStatus() {
+    var list = [];
+    TF.qa('transfer.statusItem').forEach(function (li) {
+      var name = textOf(li);
+      if (!name || name.length > 40) return;
+      list.push({ name: name, online: TF.q('transfer.statusOnline', li) ? true : (TF.q('transfer.statusOffline', li) ? false : null) });
+    });
+    var rec = TF.q('transfer.statusRecommend');
+    return { servers: list, recommended: rec ? textOf(rec).substring(0, 40) : '' };
+  }
+
   // История передачи: строка таблицы → { name, qty, source, account, char, server, status, at }
   function readHistory() {
     var rows = [];
@@ -156,6 +173,13 @@
 
   try {
     if (TF.isChallenge()) { report(TF.waitKind(), 'challenge'); return; }
+    if (mode === 'servers') {
+      // страница открыта всем: проверка входа не нужна
+      var st = readServerStatus();
+      if (!st.servers.length) { report(document.readyState === 'complete' ? 'complete' : 'loading', 'pending'); return; }
+      report({ state: 'servers', servers: st.servers.slice(0, 40), recommended: st.recommended }, null);
+      return;
+    }
     var bodyText = squash((document.body && document.body.innerText) || '');
     var loginUrl = TF.has(window.location.href, 'balance.notLoggedInUrl');
     if (loginUrl || TF.has(bodyText, ['common.notLoggedIn', 'balance.notLoggedIn'])) { report(bodyText.substring(0, 240), 'not_logged_in'); return; }
@@ -166,6 +190,17 @@
         if (!rows.length) { report(document.readyState === 'complete' ? 'complete' : 'loading', 'pending'); return; }
         report({ state: 'history', rows: rows.slice(0, 60) }, null);
         return;
+      }
+      // Страница «Предупреждение» вместо истории: сайт отказал (целиком или для части предметов)
+      var head = TF.q('transfer.title');
+      if (head && TF.has(textOf(head), 'transfer.warningTitle') && !TF.q('transfer.form')) {
+        var wbox = TF.q('transfer.warningBox');
+        var message = wbox ? textOf(wbox).substring(0, 240) : '';
+        if (message) {
+          var only = TF.match('transfer.onlyServer', message);
+          report({ state: 'warning', message: message, onlyServer: only ? squash(only[1]).substring(0, 40) : '' }, null);
+          return;
+        }
       }
       // Всё ещё страница передачи: диалог сайта мог остаться неподтверждённым — подтверждаем один раз
       confirmModal();
@@ -209,7 +244,14 @@
     var recipient = String(cfg.recipient || '');
 
     if (mode === 'fill') {
-      var usable = TF.qa('transfer.checkbox').filter(function (b) { return !hidden(b) && !b.disabled; });
+      // названия акций сравниваются без учёта регистра и «ё»
+      var normS = function (s) { return squash(s).toLowerCase().replace(/ё/g, 'е'); };
+      var skipSources = [].concat(cfg.skipSources || []).map(normS);
+      var allUsable = TF.qa('transfer.checkbox').filter(function (b) { return !hidden(b) && !b.disabled; });
+      var usable = allUsable.filter(function (b) {
+        var row = b.closest('tr');
+        return !(skipSources.length && row && skipSources.indexOf(normS(sourceOf(row))) !== -1);
+      });
       if (!usable.length) { report(null, 'no_items'); return; }
       shardSel.value = shardId;
       if (shardSel.value !== shardId) { report(shardId, 'server_not_found'); return; }
@@ -224,7 +266,7 @@
         return usable.some(function (b) { return String(b.value) === it.id; });
       });
       report({
-        state: 'ready', count: selectedCount(), items: chosen,
+        state: 'ready', count: selectedCount(), skipped: allUsable.length - usable.length, items: chosen,
         shard: { id: shardId, name: squash(shardSel.selectedOptions[0].textContent) },
         char: { key: recipient, text: shownName },
         sig: hash(bodyText.toLowerCase())

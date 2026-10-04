@@ -242,6 +242,17 @@ pub async fn acquire(app: &AppHandle, char_id: &str, url: &str) -> Result<TaskWi
     })
 }
 
+/// Окно без входа в аккаунт: отдельный служебный профиль `key` для публичных страниц сайта
+/// (например, «Статус серверов»). Окна персонажей не трогает, аккаунты не нужны.
+pub async fn acquire_anonymous(app: &AppHandle, key: &str, url: &str) -> Result<TaskWin, String> {
+    let (window, created_here) = get_or_create_hidden_window(app, key, url).await?;
+    Ok(TaskWin {
+        app: app.clone(),
+        window,
+        kind: Kind::Profile { created_here },
+    })
+}
+
 /// То же для сканирования страниц: если указан персонаж с сессией в банке, берётся воркер,
 /// иначе прежний выбор окна (`windows::pick_scan_window`).
 pub async fn acquire_for_scan(

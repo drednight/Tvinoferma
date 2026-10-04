@@ -7,7 +7,7 @@
 // Без интерфейса: всё внешнее передаётся параметрами (так проще тестировать).
 
 import { runQueue, sleep, browserSlots } from '../sync/queue.js';
-import { rowFromPayload, plainRow, canAutoRetry, isTransient } from './transferCore.js';
+import { rowFromPayload, plainRow, canAutoRetry, isTransient, charTitle } from './transferCore.js';
 
 /** Разброс старта новых браузеров, мс: окна открываются не одновременно. */
 export const START_STAGGER_MS = [400, 1400];
@@ -46,6 +46,26 @@ export async function scanRosters({
 }
 
 /**
+ * Названия всех серверов со страницы «Статус серверов» (команда `read_server_status`, только чтение).
+ * Страница открыта всем: аккаунты и браузеры персонажей не нужны, читает служебное окно приложения.
+ * @returns {Promise<{ status: 'ok', servers: object[], recommended: string } | { status: string, error: string|null }>}
+ */
+export async function readServerStatus({ invokeFn, signal = { cancelled: false }, retries = 0, retryDelayMs = 2000, sleepFn = sleep }) {
+  let last = { status: 'error', error: 'bad_response' };
+  for (let a = 0; a <= retries; a++) {
+    if (signal.cancelled) return { status: 'cancelled', error: null };
+    let res;
+    try { res = await invokeFn('read_server_status', { timeoutSeconds: 20 + 10 * a }); }
+    catch (e) { res = { status: 'error', error: String(e?.message || e) }; }
+    if (res?.status === 'ok' && Array.isArray(res.servers) && res.servers.length) return { status: 'ok', servers: res.servers, recommended: res.recommended || '' };
+    last = res?.status && res.status !== 'ok' ? { status: res.status, error: res.error || null } : { status: 'error', error: res?.error || 'bad_response' };
+    if (!(last.status === 'challenge' || (last.status === 'error' && isTransient(last.error))) || a >= retries) break;
+    await sleepFn(retryDelayMs * (a + 1));
+  }
+  return last;
+}
+
+/**
  * Передача предметов по плану (planTransfer из transferCore.js).
  * Строки плана без `run` получают готовый статус (нет сервера, не выбран получатель, тот же аккаунт…) и на сайт не ходят.
  * @param {{
@@ -78,12 +98,12 @@ export async function runTransferBatch({
 
   const attempt = async (plan) => {
     for (let a = 0; ; a++) {
-      task?.setStep?.(`${plan.char.nick} → ${plan.serverName} → ${plan.recipient.name}: ${dryRun ? 'пробный запуск' : 'передаю предметы'}${a ? ` (повтор ${a}/${retries})` : ''}`);
+      task?.setStep?.(`${plan.char.nick} → ${plan.serverName} → ${charTitle(plan.recipient)}: ${dryRun ? 'пробный запуск' : 'передаю предметы'}${a ? ` (повтор ${a}/${retries})` : ''}`);
       let payload, error;
       try {
         payload = await invokeFn('transfer_items', {
           charId: plan.char.id, shardId: plan.shardId, recipient: plan.recipient.key, charName: plan.recipient.name,
-          dryRun, timeoutSeconds: Math.min(30 + 15 * a, 75)
+          skipSources: plan.skipSources || [], dryRun, timeoutSeconds: Math.min(30 + 15 * a, 75)
         });
       } catch (e) { error = e; }
       const row = rowFromPayload(plan, payload, error);

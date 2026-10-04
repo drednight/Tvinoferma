@@ -1,7 +1,7 @@
 //! Иконка в трее: сворачивание вместо закрытия, быстрые действия, выход.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Emitter, Manager, State};
 
@@ -42,12 +42,11 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    // Все скрипты спрятаны в подменю: в основном меню только «Открыть», «Скрипты» и «Выход»
+    let scripts = Submenu::with_items(app, "📜 Скрипты", true, &[&auth, &balance, &marathons])?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-    let menu = Menu::with_items(
-        app,
-        &[&show, &auth, &balance, &marathons, &separator, &quit],
-    )?;
+    let menu = Menu::with_items(app, &[&show, &scripts, &separator, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("Твиноферма")

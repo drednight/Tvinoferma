@@ -146,7 +146,8 @@ export const DEFAULT_SETTINGS = {
   freshness: {
     balanceHours: 24,
     loginHours: 24,
-    marathonHours: 24
+    marathonHours: 24,
+    serverStatusMinutes: 10   // как часто перечитывать «Статус серверов» (минуты; 0 — только при запуске). Сайт обновляет его раз в 10 минут
   },
   // mode: startup | daily | weekly | never (см. desktop/updateSchedule.js).
   // Если mode не задан, он выводится из checkOnStartup (старые данные).

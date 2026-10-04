@@ -10,7 +10,7 @@
 //! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
 //! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
 //! - `tray`      — иконка в трее;
-//! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `transfer_items`);
+//! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
@@ -85,6 +85,7 @@ pub fn run() {
             // скрипты сайта
             automation::promo::activate_promo,
             automation::transfer::read_transfer_page,
+            automation::transfer::read_server_status,
             automation::transfer::transfer_items,
             auth::check_login_status_http,
             balance::fetch_and_parse_balance_v4,

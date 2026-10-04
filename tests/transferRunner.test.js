@@ -1,7 +1,7 @@
 // Запуск передачи (transferRunner.js, Issue #26): чтение серверов и передача по плану.
 import { describe, it, expect, vi } from 'vitest';
 import { createLimiter } from '../js/modules/sync/queue.js';
-import { scanRosters, runTransferBatch } from '../js/modules/automation/transferRunner.js';
+import { scanRosters, runTransferBatch, readServerStatus } from '../js/modules/automation/transferRunner.js';
 
 const mk = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, nick: `N${i}` }));
 const plansOf = (chars) => chars.map(char => ({ char, run: true, shardId: '3', serverName: 'Фенрир', recipient: { key: '1_3_2', name: '#Тест' } }));
@@ -46,7 +46,7 @@ describe('runTransferBatch', () => {
     const invokeFn = vi.fn(async (_, a) => sent(a));
     const rows = await runTransferBatch(base({ invokeFn }));
     expect(invokeFn).toHaveBeenCalledTimes(3);
-    expect(invokeFn.mock.calls[0]).toEqual(['transfer_items', { charId: 'c0', shardId: '3', recipient: '1_3_2', charName: '#Тест', dryRun: false, timeoutSeconds: 30 }]);
+    expect(invokeFn.mock.calls[0]).toEqual(['transfer_items', { charId: 'c0', shardId: '3', recipient: '1_3_2', charName: '#Тест', skipSources: [], dryRun: false, timeoutSeconds: 30 }]);
     expect(rows.map(r => r.status)).toEqual(['success', 'success', 'success']);
     expect(rows[0]).toMatchObject({ nick: 'N0', server: 'Фенрир', recipient: '#Тест', clicked: true });
   });
@@ -114,5 +114,33 @@ describe('runTransferBatch', () => {
     await runTransferBatch(base({ invokeFn: async (_, a) => sent(a), onRow }));
     expect(onRow.mock.calls.map(c => c[1])).toEqual([1, 2, 3]);
     expect(onRow.mock.calls[0][2]).toBe(3);
+  });
+});
+
+describe('readServerStatus', () => {
+  const ok = () => ({ status: 'ok', servers: [{ name: 'Фенрир', online: true }], recommended: 'Фенрир' });
+
+  it('читает командой read_server_status без персонажа и аккаунта', async () => {
+    const invokeFn = vi.fn(async () => ok());
+    const res = await readServerStatus({ invokeFn });
+    expect(res).toEqual({ status: 'ok', servers: [{ name: 'Фенрир', online: true }], recommended: 'Фенрир' });
+    expect(invokeFn).toHaveBeenCalledTimes(1);
+    expect(invokeFn).toHaveBeenCalledWith('read_server_status', { timeoutSeconds: 20 });
+  });
+
+  it('проверка безопасности — не успех и не повторяется без лимита; ответ без списка — ошибка; исключение — ошибка; стоп — на сайт не ходим', async () => {
+    expect(await readServerStatus({ invokeFn: async () => ({ status: 'challenge' }) })).toEqual({ status: 'challenge', error: null });
+    expect((await readServerStatus({ invokeFn: async () => ({ status: 'ok' }) })).status).toBe('error');
+    expect(await readServerStatus({ invokeFn: async () => { throw new Error('boom'); } })).toEqual({ status: 'error', error: 'boom' });
+    const invokeFn = vi.fn();
+    expect(await readServerStatus({ invokeFn, signal: { cancelled: true } })).toEqual({ status: 'cancelled', error: null });
+    expect(invokeFn).not.toHaveBeenCalled();
+  });
+
+  it('временный сбой повторяется до лимита настроек', async () => {
+    let n = 0;
+    const invokeFn = vi.fn(async () => (++n < 2 ? { status: 'error', error: 'timeout' } : ok()));
+    expect((await readServerStatus({ invokeFn, retries: 2, retryDelayMs: 1, sleepFn: async () => {} })).status).toBe('ok');
+    expect(invokeFn).toHaveBeenCalledTimes(2);
   });
 });

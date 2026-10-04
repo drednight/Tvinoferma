@@ -1,14 +1,13 @@
 // js/modules/automation/promoLogView.js
-// Настройки → «🎁 Логи промокодов» (Issue #25) — по образцу «Логов скриптов».
-// Список «Промокод — дата первого ввода — итог». Нажатие на промокод открывает окно: награда, персонажи,
-// у которых он введён (и когда), и отдельно те, кому он не введён (и почему).
+// Логи промокодов (Issue #25) как вид логов единого модуля (core/logHub.js, «Настройки → Журналы»).
+// Нажатие на запись открывает окно: награда, персонажи, у которых код введён (и когда), и те, кому не введён (и почему).
 
 import { escapeHtml } from '../../core/utils.js';
-import { confirmDialog, toast } from '../../core/ui.js';
+import { registerLogSource } from '../../core/logHub.js';
 import { errorText } from '../../core/errorCodes.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { statusInfo, rewardLine } from './promoCore.js';
-import { loadLog, clearLog, loadArchive, archiveCsv, enteredList, missedList, findRecord, LOG_MAX } from './promoLog.js';
+import { loadLog, clearLog, loadArchive, archiveCsv, enteredList, missedList, findRecord } from './promoLog.js';
 
 const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -30,14 +29,6 @@ function downloadText(content, filename) {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
-}
-
-/** Короткая строка для заголовка свёрнутого блока. */
-export function promoLogSummary(log = loadLog()) {
-  if (!log.length) return 'Записей пока нет: они появятся после первого введённого промокода.';
-  const last = [...log].sort((a, b) => String(b.lastAt).localeCompare(String(a.lastAt)))[0];
-  const problems = log.filter(r => missedList(r).length).length;
-  return `Записей: ${log.length}${problems ? ` (не у всех введён: ${problems})` : ''} · последний: ${last.code}`;
 }
 
 const recordText = (rec) => {
@@ -80,54 +71,29 @@ export function openPromoRecord(code) {
   return ov;
 }
 
-/** Перерисовывает список в настройках (если он есть на странице) и заголовок блока. */
-export function renderPromoLog() {
-  const summary = document.getElementById('promo-log-summary');
-  const log = loadLog();
-  if (summary) summary.textContent = promoLogSummary(log);
-  const root = document.getElementById('promo-log-root');
-  if (!root) return;
-  bindPromoLog();
-  const rows = [...log].sort((a, b) => String(b.firstAt).localeCompare(String(a.firstAt)));
-  const archive = loadArchive();
-  root.innerHTML = `
-    <div class="muted" style="margin-bottom:8px;">Записей: ${rows.length}. Нажмите на промокод, чтобы открыть подробности.</div>
-    ${rows.length ? `<div class="tl-journal">${rows.map(rec => {
-      const missed = missedList(rec).length;
-      const entered = Object.keys(rec.entered).length;
-      return `<button type="button" class="tl-jrow tl-s-${missed ? 'warn' : 'done'}" data-promo-code="${escapeHtml(rec.code)}">
-        <span>${missed ? '⚠️' : '✅'}</span>
-        <strong>${escapeHtml(rec.code)}</strong>
-        <span class="muted">${escapeHtml(when(rec.firstAt))}</span>
-        <span class="tl-jsum">Введён: ${entered}${missed ? `, не введён: ${missed}` : ''}${rec.reward?.length ? ` · 🎁 ${rec.reward.length}` : ''}</span>
-      </button>`;
-    }).join('')}</div>` : '<div class="empty-state">Ничего не найдено. Здесь появятся введённые промокоды.</div>'}
-    <div class="row gap" style="margin-top: 12px;">
-      <button class="btn ghost" data-promo-log="archive" ${archive.length ? '' : 'disabled'} title="Все коды за всё время: код, дата, награда">⬇ Весь архив (${archive.length}), CSV</button>
-      <button class="btn ghost danger" data-promo-log="clear" ${rows.length ? '' : 'disabled'}>🧹 Очистить логи</button>
-    </div>
-    <p class="muted" style="margin-top: 6px;">В логах последние ${LOG_MAX} кодов. Архив (код, дата, награда) хранится без ограничения.</p>`;
-}
-
-let bound = false;
-/** Один раз навешивает обработчики на блок; безопасно вызывать повторно. */
-export function bindPromoLog() {
-  if (bound) return;
-  const root = document.getElementById('promo-log-root');
-  if (!root) return;
-  bound = true;
-  root.addEventListener('click', (e) => {
-    const row = e.target.closest('[data-promo-code]');
-    if (row) { openPromoRecord(row.dataset.promoCode); return; }
-    const act = e.target.closest('[data-promo-log]')?.dataset.promoLog;
-    if (act === 'archive') {
-      downloadText(archiveCsv(loadArchive()), `promo-archive-${new Date().toISOString().slice(0, 10)}.csv`);
-    }
-    if (act === 'clear' && confirmDialog('Очистить логи промокодов? Архив (код, дата, награда) останется. Приложение забудет, кому коды уже введены, и при повторном вводе откроет страницы заново.')) {
-      clearLog();
-      renderPromoLog();
-      toast('Логи очищены', 'success');
-    }
-  });
-  window.addEventListener('tf-promo-log', () => renderPromoLog());
-}
+/** Вид логов «Промокоды» в едином модуле логов (logHub.js). */
+export const promoLogSource = {
+  id: 'promo',
+  title: 'Промокоды',
+  icon: '🎁',
+  list: () => loadLog().map(rec => {
+    const missed = missedList(rec).length;
+    const entered = Object.keys(rec.entered).length;
+    return {
+      key: rec.code, at: rec.lastAt || rec.firstAt, title: `Промокод ${rec.code}`, status: missed ? 'warn' : 'ok',
+      summary: `Введён: ${entered}${missed ? `, не введён: ${missed}` : ''}${rec.reward?.length ? ` · награда: ${rec.reward.length}` : ''}`
+    };
+  }),
+  open: (item) => openPromoRecord(item.key),
+  clear: () => clearLog(),
+  clearConfirm: 'Очистить логи промокодов? Архив (код, дата, награда) останется. Приложение забудет, кому коды уже введены, и при повторном вводе откроет страницы заново.',
+  subscribe: (fn) => { window.addEventListener('tf-promo-log', fn); return () => window.removeEventListener('tf-promo-log', fn); },
+  actions: () => {
+    const n = loadArchive().length;
+    return [{
+      id: 'archive', label: `⬇ Архив промокодов (${n}), CSV`, disabled: !n,
+      run: () => downloadText(archiveCsv(loadArchive()), `promo-archive-${new Date().toISOString().slice(0, 10)}.csv`)
+    }];
+  }
+};
+registerLogSource(promoLogSource);

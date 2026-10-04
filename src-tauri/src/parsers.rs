@@ -17,8 +17,14 @@ pub fn with_common(script: &str) -> String {
     format!("{}\n{}", common, script)
 }
 
+/// Область «без журнала»: сообщения в неё не пишутся ни в консоль, ни в журнал задач (например, чтение «Статуса серверов»).
+pub const QUIET_SCOPE: &str = "quiet";
+
 /// Шаг для журнала задач в интерфейсе (событие `tf-task-log`, scope = `char:<id>` | `scan` | `detail` | `news`).
 pub fn tf_log(app: &AppHandle, scope: &str, level: &str, message: impl Into<String>) {
+    if scope == QUIET_SCOPE {
+        return;
+    }
     let message: String = message.into();
     println!("[{}] {}: {}", scope, level, message);
     let _ = app.emit(
