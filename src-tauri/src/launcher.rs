@@ -22,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
+use tauri::Emitter;
 
 const GAMECENTER_EXE: &str = "GameCenter.exe";
 /// Клиенты игры: `elementclient_64.exe`, а также `elementclient.exe` и подобные образы
@@ -38,8 +39,8 @@ const DIALOG_WAIT: Duration = Duration::from_secs(30);
 const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
 /// Сколько искать окно нового клиента, чтобы подписать его и поставить значок
 const DECORATE_WAIT: Duration = Duration::from_secs(90);
-/// Сколько ещё следить за окном после первой подписи (игра может сама сменить заголовок при загрузке)
-const DECORATE_KEEP: Duration = Duration::from_secs(20);
+/// Сколько ещё следить за окном после первой подписи (игра может сама сменить заголовок при загрузке и входе в мир)
+const DECORATE_KEEP: Duration = Duration::from_secs(180);
 /// Как часто проверять окна клиента
 const DECORATE_STEP: Duration = Duration::from_millis(700);
 /// Допустимый размер значка (сторона квадрата, пикселей)
@@ -61,6 +62,10 @@ pub struct LaunchInfo {
     switched: bool,
     /// PID нового клиента игры (0 — не определён)
     client_pid: u32,
+    /// Сколько GameCenter из других папок пришлось закрыть (иначе они перехватили бы запуск)
+    closed_other_gc: u32,
+    /// Сколько GameCenter закрыть не удалось (запущены от администратора): запуск может пойти из них
+    gc_close_failed: u32,
 }
 
 /// Окна и клавиши Windows (user32) без лишних зависимостей.
@@ -175,11 +180,13 @@ mod win {
     }
 
     /// Отправка сообщения окну другого процесса с ограничением по времени: зависшее окно нас не подвесит.
-    fn send(hwnd: usize, msg: u32, wparam: usize, lparam: isize) -> bool {
+    /// `Err(код)` — код ошибки Windows: 5 — отказано в доступе (окно запущено от администратора, а мы нет),
+    /// 1460 — окно не ответило вовремя.
+    fn send(hwnd: usize, msg: u32, wparam: usize, lparam: isize) -> Result<(), u32> {
         const SMTO_ABORTIFHUNG: u32 = 0x0002;
         let mut result: usize = 0;
         unsafe {
-            SendMessageTimeoutW(
+            let ok = SendMessageTimeoutW(
                 hwnd as Hwnd,
                 msg,
                 wparam,
@@ -187,12 +194,17 @@ mod win {
                 SMTO_ABORTIFHUNG,
                 1500,
                 &mut result,
-            ) != 0
+            ) != 0;
+            if ok {
+                Ok(())
+            } else {
+                Err(GetLastError())
+            }
         }
     }
 
     /// Меняет заголовок окна (в том числе окна другого процесса).
-    pub fn set_title(hwnd: usize, title: &str) -> bool {
+    pub fn set_title(hwnd: usize, title: &str) -> Result<(), u32> {
         const WM_SETTEXT: u32 = 0x000C;
         let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
         send(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize)
@@ -242,14 +254,15 @@ mod win {
     }
 
     /// Ставит окну малый (заголовок) и большой (панель задач, Alt+Tab) значки. 0 — этот значок не меняем.
-    pub fn set_icons(hwnd: usize, small: usize, big: usize) {
+    pub fn set_icons(hwnd: usize, small: usize, big: usize) -> Result<(), u32> {
         const WM_SETICON: u32 = 0x0080;
         if small != 0 {
-            send(hwnd, WM_SETICON, 0, small as isize); // ICON_SMALL
+            send(hwnd, WM_SETICON, 0, small as isize)?; // ICON_SMALL
         }
         if big != 0 {
-            send(hwnd, WM_SETICON, 1, big as isize); // ICON_BIG
+            send(hwnd, WM_SETICON, 1, big as isize)?; // ICON_BIG
         }
+        Ok(())
     }
 
     /// Завершает процесс по PID. `Err(код)` — код ошибки Windows (5 — отказано в доступе: процесс запущен от имени администратора).
@@ -320,13 +333,15 @@ mod win {
         Vec::new()
     }
     pub fn press_enter(_hwnd: usize) {}
-    pub fn set_title(_hwnd: usize, _title: &str) -> bool {
-        false
+    pub fn set_title(_hwnd: usize, _title: &str) -> Result<(), u32> {
+        Err(1)
     }
     pub fn make_icon(_bgra: &[u8], _size: usize) -> usize {
         0
     }
-    pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) {}
+    pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
+        Err(1)
+    }
     pub fn kill_process(_pid: u32) -> Result<(), u32> {
         Err(1)
     }
@@ -504,32 +519,131 @@ fn is_client_window(w: &win::WinInfo, pid: u32) -> bool {
     w.pid == pid && w.visible && !w.title.is_empty()
 }
 
+/// Чем закончилась попытка подписать окно клиента.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Decorated {
+    /// Название стоит (проверено по заголовку окна)
+    Ok,
+    /// Windows не пускает нас в окно: игра запущена от администратора, а Твиноферма — нет
+    Denied,
+    /// Окно нашлось, но название не принялось (код ошибки в событии)
+    Failed,
+    /// Окно клиента не появилось за отведённое время
+    Missing,
+}
+
+/// Событие `launcher-decorate` для интерфейса: подпись окна может закончиться уже после запуска.
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorateEvent {
+    pid: u32,
+    title: String,
+    status: Decorated,
+    code: u32,
+}
+
+/// Что накопилось за время слежения за окном клиента.
+#[derive(Default)]
+struct DecorateProgress {
+    /// Заголовок окна уже совпал с нужным
+    verified: bool,
+    /// Окно клиента хотя бы раз попалось на глаза
+    seen: bool,
+    /// Последний код ошибки Windows
+    last_error: u32,
+    /// Окна, которым значок уже ставили
+    with_icons: Vec<usize>,
+}
+
+/// Один проход по окнам: подписывает окна клиента `pid`. `Some(код)` — дальше пробовать бессмысленно (нет доступа).
+fn decorate_step(
+    progress: &mut DecorateProgress,
+    windows: &[win::WinInfo],
+    pid: u32,
+    title: &str,
+    set_title: &mut impl FnMut(usize, &str) -> Result<(), u32>,
+    set_icons: &mut impl FnMut(usize) -> Result<(), u32>,
+) -> Option<u32> {
+    for w in windows.iter().filter(|w| is_client_window(w, pid)) {
+        progress.seen = true;
+        let mut touched = false;
+        if w.title == title {
+            progress.verified = true;
+        } else {
+            // заголовка нет или игра сама его переписала — ставим снова
+            touched = true;
+            if let Err(code) = set_title(w.hwnd, title) {
+                progress.last_error = code;
+                if code == ERROR_ACCESS_DENIED {
+                    return Some(code);
+                }
+            }
+        }
+        if touched || !progress.with_icons.contains(&w.hwnd) {
+            if let Err(code) = set_icons(w.hwnd) {
+                progress.last_error = code;
+                if code == ERROR_ACCESS_DENIED {
+                    return Some(code);
+                }
+            }
+            if !progress.with_icons.contains(&w.hwnd) {
+                progress.with_icons.push(w.hwnd);
+            }
+        }
+    }
+    None
+}
+
 /// Подписывает окно(а) клиента и ставит значок. Окно появляется не сразу (загрузка), поэтому ищем его в фоне;
 /// после первой подписи ещё `DECORATE_KEEP` следим за заголовком: игра может переписать его при загрузке.
-fn decorate_client(pid: u32, title: String, small: Option<Vec<u8>>, big: Option<Vec<u8>>) {
+/// Итог (`Ok`, `Denied`, …) сообщается один раз через `report`.
+fn decorate_client(
+    pid: u32,
+    title: String,
+    small: Option<Vec<u8>>,
+    big: Option<Vec<u8>>,
+    report: impl Fn(Decorated, u32),
+) {
     let small_icon = icon_from_rgba(small.as_deref());
     let big_icon = icon_from_rgba(big.as_deref());
     let deadline = Instant::now() + DECORATE_WAIT;
-    let mut first_done: Option<Instant> = None;
-    let mut with_icons: Vec<usize> = Vec::new();
+    let mut progress = DecorateProgress::default();
+    let mut reported = false;
+    let mut verified_at: Option<Instant> = None;
     while Instant::now() < deadline {
-        for w in win::all_windows()
-            .iter()
-            .filter(|w| is_client_window(w, pid))
-        {
-            if w.title != title {
-                win::set_title(w.hwnd, &title);
-            }
-            if !with_icons.contains(&w.hwnd) {
-                win::set_icons(w.hwnd, small_icon, big_icon);
-                with_icons.push(w.hwnd);
-            }
-            first_done.get_or_insert_with(Instant::now);
-        }
-        if first_done.is_some_and(|t| t.elapsed() > DECORATE_KEEP) {
+        let windows = win::all_windows();
+        let denied = decorate_step(
+            &mut progress,
+            &windows,
+            pid,
+            &title,
+            &mut |hwnd, t| win::set_title(hwnd, t),
+            &mut |hwnd| win::set_icons(hwnd, small_icon, big_icon),
+        );
+        if let Some(code) = denied {
+            report(Decorated::Denied, code);
             return;
         }
+        if progress.verified {
+            if !reported {
+                reported = true;
+                verified_at = Some(Instant::now());
+                report(Decorated::Ok, 0);
+            }
+            if verified_at.is_some_and(|t| t.elapsed() > DECORATE_KEEP) {
+                return;
+            }
+        }
         sleep(DECORATE_STEP);
+    }
+    if !reported {
+        let status = if progress.seen {
+            Decorated::Failed
+        } else {
+            Decorated::Missing
+        };
+        report(status, progress.last_error);
     }
 }
 
@@ -713,21 +827,49 @@ fn plain_path(p: &Path) -> String {
     s.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(s)
 }
 
-/// Закрывает процессы GameCenter, запущенные именно из этого `GameCenter.exe`
-/// (остальные установки GameCenter не трогаем). Запущенные клиенты игры продолжают работать.
-fn close_gamecenter(exe: &Path) -> Result<(), String> {
-    let script = "Get-CimInstance Win32_Process -Filter \"Name='GameCenter.exe'\" | \
-                  Where-Object { $_.ExecutablePath -ieq $env:TF_GC_EXE } | \
-                  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }";
+/// Итог закрытия GameCenter перед запуском.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct GcClosed {
+    /// Сколько GameCenter из других папок закрыто
+    others: u32,
+    /// Сколько GameCenter закрыть не удалось (обычно они запущены от администратора)
+    failed: u32,
+}
+
+/// Разбор строки «закрыто_чужих не_удалось», которую печатает скрипт закрытия.
+fn parse_gc_closed(out: &str) -> GcClosed {
+    let mut it = out.split_whitespace().filter_map(|w| w.parse::<u32>().ok());
+    GcClosed {
+        others: it.next().unwrap_or(0),
+        failed: it.next().unwrap_or(0),
+    }
+}
+
+/// Закрывает GameCenter перед запуском. Запущенные клиенты игры продолжают работать.
+///
+/// GameCenter работает в одном экземпляре на компьютер: если уже открыт GameCenter из другой папки,
+/// новый просто передаёт ему ссылку запуска, и игра стартует под тем аккаунтом, что открыт там.
+/// Поэтому GameCenter из **других** папок закрываются всегда, а из этого `exe` — только если `close_own`
+/// (когда подставляется сохранённый вход).
+fn close_gamecenters(exe: &Path, close_own: bool) -> Result<GcClosed, String> {
+    let script = "$me = $env:TF_GC_EXE; $own = $env:TF_GC_OWN -eq '1'; $others = 0; $failed = 0; \
+                  Get-CimInstance Win32_Process -Filter \"Name='GameCenter.exe'\" | ForEach-Object { \
+                    $mine = ($_.ExecutablePath -ieq $me); \
+                    if ($mine -and -not $own) { return }; \
+                    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; if (-not $mine) { $others++ } } \
+                    catch { $failed++ } \
+                  }; \
+                  Write-Output \"$others $failed\"";
     let out = hidden(
         Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .env("TF_GC_EXE", plain_path(exe)),
+            .env("TF_GC_EXE", plain_path(exe))
+            .env("TF_GC_OWN", if close_own { "1" } else { "0" }),
     )
     .output()
     .map_err(|e| format!("powershell: {}", e))?;
     if out.status.success() {
-        Ok(())
+        Ok(parse_gc_closed(&String::from_utf8_lossy(&out.stdout)))
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
     }
@@ -884,15 +1026,18 @@ pub async fn launcher_has_account(char_id: String) -> Result<bool, String> {
 
 /// Запускает игру для аккаунта и дожидается нового клиента.
 ///
-/// 1. Если у персонажа (`char_id`) сохранён вход — закрывает этот GameCenter и подставляет вход в его ini.
+/// 1. Закрывает GameCenter из других папок (иначе они перехватят запуск и откроют игру под своим аккаунтом).
+///    Если у персонажа (`char_id`) сохранён вход — закрывает и этот GameCenter и подставляет вход в его ini.
 /// 2. Запоминает, сколько клиентов игры уже запущено, и стартует `GameCenter.exe <ссылка>`.
 /// 3. Если клиенты уже были — ждёт окно «Клиент игры уже запущен» и выбирает «Запустить новую копию клиента».
 ///    Если не было — ничего не нажимает.
 /// 4. Ждёт, пока появится новый клиент игры (до `wait_secs`, по умолчанию 60 с); иначе — ошибка.
-/// 5. Если передан `window_title`, в фоне подписывает окно нового клиента и ставит значок (`icon_small`, `icon_big` — RGBA).
+/// 5. Если передан `window_title`, в фоне подписывает окно нового клиента и ставит значок (`icon_small`, `icon_big` — RGBA);
+///    итог приходит событием `launcher-decorate`.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn launcher_start(
+    app: tauri::AppHandle,
     path: String,
     char_id: Option<String>,
     nick: Option<String>,
@@ -915,10 +1060,14 @@ pub async fn launcher_start(
 
     tauri::async_runtime::spawn_blocking(move || {
         let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        let switched = match id.map(get_magic).transpose()?.flatten() {
+        let magic = id.map(get_magic).transpose()?.flatten();
+        // Чужие GameCenter закрываем всегда, свой — только если подставляем в него сохранённый вход
+        let closed = close_gamecenters(&exe, magic.is_some())?;
+        if magic.is_some() || closed.others > 0 {
+            sleep(Duration::from_millis(1500));
+        }
+        let switched = match magic {
             Some(magic) => {
-                close_gamecenter(&exe)?;
-                sleep(Duration::from_millis(1500));
                 switch_account(&exe, nick.as_deref(), &magic)?;
                 true
             }
@@ -952,7 +1101,20 @@ pub async fn launcher_start(
 
         // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт
         if let Some(title) = window_title.as_deref().and_then(clean_title) {
-            std::thread::spawn(move || decorate_client(client_pid, title, icon_small, icon_big));
+            std::thread::spawn(move || {
+                let shown = title.clone();
+                decorate_client(client_pid, title, icon_small, icon_big, |status, code| {
+                    let _ = app.emit(
+                        "launcher-decorate",
+                        DecorateEvent {
+                            pid: client_pid,
+                            title: shown.clone(),
+                            status,
+                            code,
+                        },
+                    );
+                });
+            });
         }
 
         Ok::<LaunchInfo, String>(LaunchInfo {
@@ -960,6 +1122,8 @@ pub async fn launcher_start(
             dialog_clicked,
             switched,
             client_pid,
+            closed_other_gc: closed.others,
+            gc_close_failed: closed.failed,
         })
     })
     .await
@@ -974,7 +1138,8 @@ pub async fn launcher_running_clients() -> Result<Vec<u32>, String> {
         .map_err(|e| e.to_string())?
 }
 
-/// Код ошибки Windows «Отказано в доступе»: клиент запущен от имени администратора, а Твиноферма — нет.
+/// Код ошибки Windows «Отказано в доступе»: клиент запущен от имени администратора, а Твиноферма — нет
+/// (для окон это запрет интерфейсной изоляции UIPI).
 const ERROR_ACCESS_DENIED: u32 = 5;
 
 /// Итог закрытия окон игры.
@@ -1233,6 +1398,132 @@ mod tests {
         assert!(!is_client_window(&w(8, "完美世界国际版", true), 7)); // чужой процесс
         assert!(!is_client_window(&w(7, "", true), 7)); // служебное окно без заголовка
         assert!(!is_client_window(&w(7, "IME", false), 7)); // невидимое
+    }
+
+    fn client_window(hwnd: usize, pid: u32, title: &str) -> win::WinInfo {
+        win::WinInfo {
+            hwnd,
+            pid,
+            class: "ElementClient Window".to_string(),
+            title: title.to_string(),
+            visible: true,
+        }
+    }
+
+    #[test]
+    fn game_window_gets_title_and_icons() {
+        let mut progress = DecorateProgress::default();
+        let windows = [
+            client_window(1, 100, "Perfect World"),
+            client_window(2, 200, "Чужое окно"),
+        ];
+        let mut titled: Vec<(usize, String)> = Vec::new();
+        let mut iconed: Vec<usize> = Vec::new();
+        let denied = decorate_step(
+            &mut progress,
+            &windows,
+            100,
+            "Ник — Класс",
+            &mut |h, t| {
+                titled.push((h, t.to_string()));
+                Ok(())
+            },
+            &mut |h| {
+                iconed.push(h);
+                Ok(())
+            },
+        );
+        assert_eq!(denied, None);
+        assert_eq!(titled, vec![(1, "Ник — Класс".to_string())]); // чужое окно не тронуто
+        assert_eq!(iconed, vec![1]);
+        assert!(progress.seen && !progress.verified); // совпадение видно только на следующем проходе
+    }
+
+    #[test]
+    fn title_is_verified_and_reapplied_after_the_game_rewrites_it() {
+        let mut progress = DecorateProgress::default();
+        let mut titles = 0;
+        let mut icons = 0;
+        let mut step = |p: &mut DecorateProgress, title: &str| {
+            decorate_step(
+                p,
+                &[client_window(1, 100, title)],
+                100,
+                "Ник — Класс",
+                &mut |_, _| {
+                    titles += 1;
+                    Ok(())
+                },
+                &mut |_| {
+                    icons += 1;
+                    Ok(())
+                },
+            )
+        };
+        step(&mut progress, "Perfect World"); // первая подпись
+        step(&mut progress, "Ник — Класс"); // заголовок совпал: ничего не делаем
+        assert!(progress.verified);
+        step(&mut progress, "Perfect World"); // игра переписала заголовок: ставим снова, значок тоже
+        assert_eq!((titles, icons), (2, 2));
+    }
+
+    #[test]
+    fn access_denied_stops_decoration_and_names_the_reason() {
+        let mut progress = DecorateProgress::default();
+        let denied = decorate_step(
+            &mut progress,
+            &[client_window(1, 100, "Perfect World")],
+            100,
+            "Ник — Класс",
+            &mut |_, _| Err(ERROR_ACCESS_DENIED),
+            &mut |_| Ok(()),
+        );
+        assert_eq!(denied, Some(ERROR_ACCESS_DENIED));
+        assert_eq!(progress.last_error, ERROR_ACCESS_DENIED);
+    }
+
+    #[test]
+    fn other_errors_are_remembered_but_do_not_stop() {
+        let mut progress = DecorateProgress::default();
+        let denied = decorate_step(
+            &mut progress,
+            &[client_window(1, 100, "Perfect World")],
+            100,
+            "Ник — Класс",
+            &mut |_, _| Err(1460),
+            &mut |_| Ok(()),
+        );
+        assert_eq!(denied, None);
+        assert_eq!(progress.last_error, 1460);
+    }
+
+    #[test]
+    fn decorate_event_is_sent_to_the_interface_in_camel_case() {
+        let json = serde_json::to_string(&DecorateEvent {
+            pid: 7,
+            title: "Ник".to_string(),
+            status: Decorated::Denied,
+            code: 5,
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            r#"{"pid":7,"title":"Ник","status":"denied","code":5}"#
+        );
+    }
+
+    #[test]
+    fn gamecenter_close_report_is_parsed() {
+        assert_eq!(
+            parse_gc_closed("2 1\r\n"),
+            GcClosed {
+                others: 2,
+                failed: 1
+            }
+        );
+        assert_eq!(parse_gc_closed("0 0"), GcClosed::default());
+        assert_eq!(parse_gc_closed(""), GcClosed::default());
+        assert_eq!(parse_gc_closed("мусор"), GcClosed::default());
     }
 
     #[test]

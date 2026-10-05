@@ -236,6 +236,8 @@ export function bindSettings() {
     openGameCentersModal({ onClose: refreshGcSummary });
   });
 
+  import('../desktop/autostart.js').then(m => m.bindAutostart()).catch(e => console.warn('[AUTOSTART]', e));
+
   document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {
     const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
     await closeAllGameWindows({ confirm: true });

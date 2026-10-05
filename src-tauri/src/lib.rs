@@ -12,12 +12,14 @@
 //! - `tray`      — иконка в трее;
 //! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
+//! - `autostart` — запуск вместе с Windows (запись в `Run`, режим «в трее»);
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
 //! Скрипты, которые внедряются в страницы сайта, лежат в `src/scripts/*.js`.
 
 mod auth;
 mod automation;
+mod autostart;
 mod balance;
 mod commands;
 mod cookie_bank;
@@ -46,6 +48,12 @@ pub fn run() {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 tray::setup(app)?;
+                // Автозапуск «в трее»: окно не показываем, приложение сразу работает в фоне
+                if autostart::started_minimized() {
+                    if let Some(main) = app.get_webview_window("main") {
+                        let _ = main.hide();
+                    }
+                }
             }
             Ok(())
         })
@@ -116,6 +124,9 @@ pub fn run() {
             cookie_bank::bank_verify,
             cookie_bank::bank_forget,
             pool::pool_status,
+            // автозапуск вместе с Windows
+            autostart::autostart_status,
+            autostart::autostart_set,
             // запуск GameCenter
             launcher::launcher_check_path,
             launcher::launcher_gc_info,

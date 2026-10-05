@@ -136,7 +136,7 @@ export function closeModal() {
   }
 }
 
-export function toast(message, type = 'info') {
+export function toast(message, type = 'info', durationMs = 3000) {
   const root = document.getElementById('toast-root');
   if (!root) return;
 
@@ -153,7 +153,7 @@ export function toast(message, type = 'info') {
   setTimeout(() => {
     el.classList.remove('show');
     setTimeout(() => el.remove(), 300);
-  }, 3000);
+  }, durationMs);
 }
 
 /**

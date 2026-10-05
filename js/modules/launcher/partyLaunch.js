@@ -7,7 +7,7 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext } from './launch.js';
+import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
 
 let active = null; // { signal } идущего запуска
@@ -80,9 +80,14 @@ export async function launchGroup(title, characters, opts = {}) {
       onStart: (c) => task.setStep(`${c.nick}: запуск…`),
       onDone: (e, done, total) => {
         task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
+        launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
         task.progress(done, total);
       }
     });
+    const noLogin = withoutSavedLogin(results);
+    if (noLogin > 0 && results.length > 1) {
+      task.log(`Без запомненного входа запущено: ${noLogin}. Такие окна открываются под аккаунтом, который сейчас выбран в GameCenter. Запомните вход: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter»`, 'warn');
+    }
     const ok = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok && !r.cancelled).length;
     const cancelled = results.filter(r => r.cancelled).length;
