@@ -19,7 +19,7 @@ import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 import {
-  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
+  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
 } from '../parties/membership.js';
 
 // Персонажи, видимые после фильтров (для «выбрать все»)
@@ -659,23 +659,35 @@ async function onBulkAction(e) {
       break;
     }
     case 'party': {
-      if (!state.parties.length) { toast('Сначала создайте пати во вкладке «Пати»', 'info'); break; }
-      const options = state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('');
+      // Можно выбрать существующую пати или создать новую для выбранных персонажей
+      const NEW = '__new__';
+      const options = [...state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`),
+        `<option value="${NEW}">➕ Создать новую пати…</option>`].join('');
       showModal({
         title: `Пати (${chars.length} перс.)`,
         content: `
-          <div class="field"><label>Пати</label><select class="select" name="party">${options}</select></div>
+          <div class="field"><label>Пати</label><select class="select" name="party" id="bulk-party-select">${options}</select></div>
+          <div class="field" id="bulk-party-new"><label>Название новой пати</label>
+            <input class="input" name="newName" id="bulk-party-name" placeholder="Например: Ферма-2" maxlength="40" autocomplete="off" />
+            <small class="muted">В неё попадут выбранные персонажи (${chars.length}).</small>
+          </div>
           <div class="field"><label>Действие</label>
             <label class="switch-row"><input type="radio" name="op" value="main" checked /> Сделать основной (прежняя основная станет дополнительной)</label>
             <label class="switch-row"><input type="radio" name="op" value="add" /> Добавить как дополнительную (у кого нет пати — станет основной)</label>
-            <label class="switch-row"><input type="radio" name="op" value="remove" /> Убрать из этой пати</label>
-            <label class="switch-row"><input type="radio" name="op" value="clear" /> Убрать из всех пати</label>
+            <label class="switch-row" data-existing-only><input type="radio" name="op" value="remove" /> Убрать из этой пати</label>
+            <label class="switch-row" data-existing-only><input type="radio" name="op" value="clear" /> Убрать из всех пати</label>
           </div>`,
         submitText: 'Применить',
         cancelText: 'Отмена',
-        onSubmit(formData) {
+        onSubmit(formData, { setError }) {
           const partyId = String(formData.get('party') || '');
           const op = String(formData.get('op') || 'add');
+          if (partyId === NEW) {
+            const res = createPartyWith(state.parties, chars, String(formData.get('newName') || ''), { asMain: op !== 'add', now });
+            if ('error' in res) { setError(res.error); return false; }
+            saveAndRender(`Создана пати «${res.party.name}»: ${res.changed} перс.`);
+            return;
+          }
           const party = partyById(state.parties, partyId);
           if (op === 'clear') {
             chars.forEach(c => { c.partyIds = []; c.mainPartyId = null; c.updatedAt = now; });
@@ -692,6 +704,22 @@ async function onBulkAction(e) {
           saveAndRender(`${msg}: ${changed}`);
         }
       });
+      // «Создать новую» — показываем поле названия; «убрать из пати» к новой пати не относится
+      const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById('bulk-party-select'));
+      const sync = () => {
+        const isNew = sel?.value === NEW;
+        const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
+        show(document.getElementById('bulk-party-new'), isNew);
+        document.querySelectorAll('#modal-root [data-existing-only]').forEach(el => show(el, !isNew));
+        if (isNew) {
+          const keep = /** @type {HTMLInputElement | null} */ (document.querySelector('#modal-root input[name="op"][value="add"]'));
+          const main = /** @type {HTMLInputElement | null} */ (document.querySelector('#modal-root input[name="op"][value="main"]'));
+          if (main && !keep?.checked) main.checked = true;   // «убрать» к новой пати не относится
+          document.getElementById('bulk-party-name')?.focus();
+        }
+      };
+      sel?.addEventListener('change', sync);
+      sync();
       break;
     }
     case 'delete':

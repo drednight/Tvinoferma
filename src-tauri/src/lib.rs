@@ -123,6 +123,7 @@ pub fn run() {
             launcher::launcher_start,
             launcher::launcher_running_clients,
             launcher::launcher_close_clients,
+            launcher::launcher_close_clients_elevated,
             launcher::launcher_find_dialogs,
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,

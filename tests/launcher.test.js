@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText } from '../js/modules/launcher/launch.js';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
@@ -140,11 +140,29 @@ describe('launcher: итог запуска, трей', () => {
     expect(readFileSync('src-tauri/src/lib.rs', 'utf8')).toContain('tray::set_tray_parties');
   });
 
+  it('трей → «Скрипты»: промокод и передача предметов доходят до интерфейса', () => {
+    const rust = readFileSync('src-tauri/src/tray.rs', 'utf8');
+    const desk = readFileSync('js/desktop/desktop.js', 'utf8');
+    expect(rust).toContain('PROMO_ACTION: &str = "promo"');
+    expect(rust).toContain('TRANSFER_ACTION: &str = "transfer"');
+    expect(rust).toContain('Ввести промокод');
+    expect(rust).toContain('Передать предметы в игру');
+    expect(desk).toContain("action === 'promo'");
+    expect(desk).toContain("action === 'transfer'");
+    expect(desk).toContain('openPromoDialog');
+    expect(desk).toContain('openTransferDialog');
+  });
+
   it('итог закрытия окон: ничего не было, всё закрыто, часть не поддалась, ошибка поиска', () => {
     expect(closeReportText({ found: 0 })).toBe('Окон игры не запущено');
     expect(closeReportText({ found: 2, closed: 2, failed: 0 })).toBe('Закрыто окон игры: 2');
     expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('Закрыто 1 из 3');
-    expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('администратора');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2, denied: 2 })).toContain('нужны права администратора');
+    expect(closeReportText({ found: 3, closed: 1, failed: 2, denied: 2, elevated: true })).not.toContain('нужны права');
+    expect(closeReportText({ found: 2, closed: 0, failed: 2, details: ['PID 7: код ошибки Windows 1'] })).toContain('PID 7');
+    expect(canCloseElevated({ found: 2, failed: 2, denied: 2 })).toBe(true);
+    expect(canCloseElevated({ found: 2, failed: 2, denied: 2, elevated: true })).toBe(false);
+    expect(canCloseElevated({ found: 2, failed: 2, denied: 0 })).toBe(false);
     expect(closeReportText({ error: 'tasklist: не найден' })).toContain('tasklist');
   });
 

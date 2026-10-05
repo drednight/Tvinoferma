@@ -172,26 +172,44 @@ function entryHtml(e) {
   return `<div class="tl-entry tl-l-${e.level}"><span class="tl-time">${timeOf(e.at)}</span><span class="tl-icon">${LEVEL_ICON[e.level] || '•'}</span><span>${escapeHtml(e.message)}</span></div>`;
 }
 
-/** Карточка задачи: процент, шаг, раскрывающиеся детали, кнопка лога. */
+const RING_ICON = { done: '✓', warn: '!', error: '✕' };
+
+/**
+ * Карточка задачи: кольцо с процентом, название и текущий шаг, кнопки действий, полоса прогресса.
+ * Идущая задача — с бегущим бликом на полосе, завершённая — цветная (зелёная / жёлтая / красная) и без кольца.
+ * Подробности (последние строки лога) раскрываются стрелкой.
+ */
 export function taskCardHtml(t, { closable = false } = {}) {
   if (!t) return '';
-  const counter = t.total ? ` · ${t.done}/${t.total}` : '';
+  const running = t.status === 'running';
+  const counter = t.total ? `${t.done}/${t.total}` : '';
   const last = t.entries.slice(-8);
+  const ring = running
+    ? `<span class="tl-ring" style="--p:${t.percent}" title="${t.percent}%"><b>${t.percent}%</b></span>`
+    : `<span class="tl-ring tl-ring-end" title="${t.status === 'done' ? 'Готово' : t.status === 'warn' ? 'Есть замечания' : 'Ошибка'}"><b>${RING_ICON[t.status] || '✓'}</b></span>`;
+  const chips = [
+    counter ? `<span class="tl-chip">${counter}</span>` : '',
+    t.errors ? `<span class="tl-chip tl-chip-err">ошибок: ${t.errors}</span>` : '',
+    t.warnings ? `<span class="tl-chip tl-chip-warn">предупреждений: ${t.warnings}</span>` : ''
+  ].join('');
   return `
-    <div class="tl-card tl-s-${t.status}" data-task-card="${t.id}">
-      <div class="tl-head">
-        <strong>${STATUS_ICON[t.status]} ${escapeHtml(t.title)}</strong>
+    <div class="tl-card tl-s-${t.status}${t.open ? ' is-open' : ''}" data-task-card="${t.id}">
+      <div class="tl-top">
+        ${ring}
+        <div class="tl-main">
+          <div class="tl-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</div>
+          <div class="tl-step" title="${escapeHtml(t.step || '')}">${escapeHtml(t.step || (running ? 'Начинаю…' : ''))}</div>
+        </div>
         <span class="tl-head-actions">
-          ${t.cancelable && t.status === 'running' ? `<button type="button" class="tl-link" data-task-cancel="${t.id}" ${t.cancelled ? 'disabled' : ''} title="Остановить задачу">${t.cancelled ? '⏳ Отменяю…' : '⛔ Отмена'}</button>` : ''}
-          <button type="button" class="tl-link" data-task-log="${t.id}" title="Открыть полный лог">📄 Лог</button>
-          ${closable ? `<button type="button" class="tl-link" data-task-close="${t.id}" title="Скрыть">✕</button>` : ''}
+          ${t.cancelable && running ? `<button type="button" class="tl-icon-btn tl-cancel" data-task-cancel="${t.id}" ${t.cancelled ? 'disabled' : ''} title="${t.cancelled ? 'Отменяю…' : 'Остановить задачу'}">${t.cancelled ? '…' : '■'}</button>` : ''}
+          <button type="button" class="tl-icon-btn" data-task-log="${t.id}" title="Открыть полный лог">📄</button>
+          <button type="button" class="tl-icon-btn" data-task-toggle="${t.id}" title="${t.open ? 'Скрыть подробности' : 'Что происходит'}">${t.open ? '▴' : '▾'}</button>
+          ${closable ? `<button type="button" class="tl-icon-btn" data-task-close="${t.id}" title="Скрыть">✕</button>` : ''}
         </span>
       </div>
       <div class="tl-bar"><span style="width:${t.percent}%"></span></div>
-      <div class="tl-meta"><span>${t.percent}%${counter}</span><span class="tl-step">${escapeHtml(t.step || '')}</span></div>
-      ${t.status === 'running' && t.actor ? `<div class="tl-actor">👤 Персонаж: <b>${escapeHtml(t.actor.nick)}</b> — ${escapeHtml(t.actor.text)}</div>` : ''}
-      ${t.warnings || t.errors ? `<div class="tl-counts">${t.errors ? `<span class="mr-red">ошибок: ${t.errors}</span>` : ''} ${t.warnings ? `<span class="tl-warn-c">предупреждений: ${t.warnings}</span>` : ''}</div>` : ''}
-      <button type="button" class="tl-toggle" data-task-toggle="${t.id}">${t.open ? '▾ Скрыть подробности' : '▸ Что происходит'}</button>
+      ${chips ? `<div class="tl-chips">${chips}</div>` : ''}
+      ${running && t.actor ? `<div class="tl-actor"><span class="tl-actor-nick">${escapeHtml(t.actor.nick)}</span><span>${escapeHtml(t.actor.text)}</span></div>` : ''}
       ${t.open ? `<div class="tl-entries">${last.map(entryHtml).join('')}</div>` : ''}
     </div>`;
 }

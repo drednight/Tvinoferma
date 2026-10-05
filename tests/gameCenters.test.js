@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeGameCenters, resolveGameCenter, accountKey, attachGc, detachGc, replaceGc, setGcAccount,
-  accountKeysOf, removeGameCenter, importLegacyPaths, suggestGcName, samePathKey, countLaunchReady
+  accountKeysOf, removeGameCenter, importLegacyPaths, suggestGcName, samePathKey, countLaunchReady, pickMajorityGc
 } from '../js/modules/launcher/gameCenters.js';
 import { launchCharacters, launchable, launchPlan, loginStatusText } from '../js/modules/launcher/launch.js';
 import { normalizeCharacter, normalizeState } from '../js/core/state.js';
@@ -82,6 +82,41 @@ describe('GameCenter: какой запускать', () => {
     setGcAccount(c, 'gc-1', 'Twin', true);
     expect(accountKey(c, 'gc-1')).toBe('a');
     expect(accountKeysOf(c)).toEqual(['a']);
+  });
+});
+
+describe('GameCenter: выбор по большинству участников пати', () => {
+  const pc = (id, ids) => ch(id, { gcIds: ids });
+  const base = { gameCenters: [GC1, GC2], preferredId: '' };
+
+  it('побеждает GameCenter, которым пользуется больше персонажей', () => {
+    const party = [pc('a', ['gc-2']), pc('b', ['gc-2']), pc('c', ['gc-1'])];
+    const m = pickMajorityGc(party, base);
+    expect(m).toMatchObject({ count: 2, total: 3, distinct: 2 });
+    expect(m.gc.id).toBe('gc-2');
+  });
+
+  it('учитывает все прикреплённые GameCenter, а не только первый', () => {
+    const party = [pc('a', ['gc-1', 'gc-2']), pc('b', ['gc-2', 'gc-1']), pc('c', ['gc-1'])];
+    expect(pickMajorityGc(party, base).gc.id).toBe('gc-1');
+  });
+
+  it('ничья: сначала «в первую очередь» из настроек, потом порядок списка', () => {
+    const party = [pc('a', ['gc-1']), pc('b', ['gc-2'])];
+    expect(pickMajorityGc(party, base).gc.id).toBe('gc-1');
+    expect(pickMajorityGc(party, { ...base, preferredId: 'gc-2' }).gc.id).toBe('gc-2');
+  });
+
+  it('у кого нет выбранного GameCenter — запускается из доступного ему', () => {
+    const party = [pc('a', ['gc-2']), pc('b', ['gc-2']), pc('c', ['gc-1'])];
+    const ctxMajor = { ...base, preferredId: pickMajorityGc(party, base).gc.id };
+    expect(party.map(c => resolveGameCenter(c, ctxMajor).gc.id)).toEqual(['gc-2', 'gc-2', 'gc-1']);
+  });
+
+  it('без GameCenter из списка — null; персонажи только со своим путём не учитываются', () => {
+    expect(pickMajorityGc([], base)).toBeNull();
+    expect(pickMajorityGc([ch('a', { gcPath: 'D:\\own' }), pc('b', ['нет такого'])], base)).toBeNull();
+    expect(pickMajorityGc([pc('a', ['gc-1'])], base)).toMatchObject({ distinct: 1, total: 1 });
   });
 });
 

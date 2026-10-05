@@ -25,10 +25,37 @@ function setupFabLogic() {
     const fabBtn = document.getElementById('fab-main-btn');
     if (!fabBtn) return;
 
+    const menu = document.getElementById('fab-menu');
+    const setMenu = (open) => {
+        if (!menu) return;
+        menu.hidden = !open;
+        fabBtn.classList.toggle('is-open', open);
+        fabBtn.setAttribute('aria-expanded', String(open));
+    };
+    // Меню «Папка / Марафон»: выбранное действие открывает нужный диалог
+    menu?.addEventListener('click', async (e) => {
+        const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-fab-action]'));
+        if (!item) return;
+        setMenu(false);
+        const { createFolderFromFab, createMarathonFromFab } = await import('../modules/marathons/page.js');
+        if (item.dataset.fabAction === 'folder') createFolderFromFab();
+        else createMarathonFromFab();
+    });
+    document.addEventListener('click', (e) => {
+        if (menu && !menu.hidden && !(/** @type {HTMLElement} */ (e.target)).closest('#global-fab-container')) setMenu(false);
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+    // Ушли с вкладки «Марафоны» — меню закрываем
+    document.addEventListener('click', (e) => {
+        if ((/** @type {HTMLElement} */ (e.target)).closest?.('.tab')) setMenu(false);
+    });
+
     fabBtn.addEventListener('click', () => {
         const activeSection = getActiveSectionName();
         
-        if (activeSection === 'characters') {
+        if (activeSection === 'marathons') {
+            setMenu(!!menu?.hidden);
+        } else if (activeSection === 'characters') {
             console.log('[UI] FAB: Create Character');
             openCharacterForm(null);
         } else if (activeSection === 'parties') {
@@ -58,6 +85,9 @@ export function updateFabVisibility(sectionName) {
     } else if (sectionName === 'parties') {
         isVisible = true;
         tooltipText = 'Создать новую пати';
+    } else if (sectionName === 'marathons') {
+        isVisible = true;
+        tooltipText = 'Создать папку или марафон';
     } else {
         isVisible = false;
     }

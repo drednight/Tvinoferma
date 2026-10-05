@@ -93,6 +93,27 @@ export function setMainParty(char, partyId) {
   return was !== char.mainPartyId;
 }
 
+/**
+ * Создаёт новую пати и сразу собирает в неё персонажей (режим «Выбрать» → «В пати» → «Создать новую»).
+ * `asMain: true` — пати становится основной у всех (прежняя основная остаётся дополнительной), иначе — дополнительной
+ * (у кого пати не было, она всё равно станет основной). Пати добавляется в конец списка и в `parties`.
+ * @returns {{ error: string } | { party: any, changed: number }}
+ */
+export function createPartyWith(parties, chars, name, { asMain = true, now = new Date().toISOString() } = {}) {
+  const title = String(name ?? '').trim();
+  if (!title) return { error: 'Введите название новой пати.' };
+  if (partyByName(parties, title)) return { error: `Пати «${title}» уже существует.` };
+  const max = (parties || []).reduce((m, p) => Math.max(m, Number(p.order) || 0), 0);
+  const party = { id: newId(), name: title, order: Math.max(max, (parties || []).length) + 1, createdAt: now, updatedAt: now };
+  parties.push(party);
+  let changed = 0;
+  (chars || []).forEach(c => {
+    const did = asMain ? setMainParty(c, party.id) : setMembership(c, party.id, true);
+    if (did) { c.updatedAt = now; changed++; }
+  });
+  return { party, changed };
+}
+
 /** Убирает партию у всех персонажей (удаление партии). Возвращает число затронутых. */
 export function removePartyFromAll(chars, partyId) {
   let n = 0;

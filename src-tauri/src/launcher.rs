@@ -91,6 +91,27 @@ mod win {
         fn CreateIconIndirect(info: *const IconInfo) -> *mut c_void;
     }
 
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn TerminateProcess(process: *mut c_void, code: u32) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+        fn GetLastError() -> u32;
+        fn GetCurrentProcess() -> *mut c_void;
+    }
+
+    #[link(name = "advapi32")]
+    unsafe extern "system" {
+        fn OpenProcessToken(process: *mut c_void, access: u32, token: *mut *mut c_void) -> i32;
+        fn GetTokenInformation(
+            token: *mut c_void,
+            class: u32,
+            info: *mut c_void,
+            len: u32,
+            returned: *mut u32,
+        ) -> i32;
+    }
+
     #[link(name = "gdi32")]
     unsafe extern "system" {
         fn CreateBitmap(
@@ -231,6 +252,48 @@ mod win {
         }
     }
 
+    /// Завершает процесс по PID. `Err(код)` — код ошибки Windows (5 — отказано в доступе: процесс запущен от имени администратора).
+    pub fn kill_process(pid: u32) -> Result<(), u32> {
+        const PROCESS_TERMINATE: u32 = 0x0001;
+        unsafe {
+            let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if h.is_null() {
+                return Err(GetLastError());
+            }
+            let ok = TerminateProcess(h, 1) != 0;
+            let err = if ok { 0 } else { GetLastError() };
+            CloseHandle(h);
+            if ok {
+                Ok(())
+            } else {
+                Err(err)
+            }
+        }
+    }
+
+    /// Запущена ли сама Твиноферма с правами администратора.
+    pub fn is_elevated() -> bool {
+        const TOKEN_QUERY: u32 = 0x0008;
+        const TOKEN_ELEVATION: u32 = 20;
+        unsafe {
+            let mut token: *mut c_void = std::ptr::null_mut();
+            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+                return false;
+            }
+            let mut elevation: u32 = 0;
+            let mut returned: u32 = 0;
+            let ok = GetTokenInformation(
+                token,
+                TOKEN_ELEVATION,
+                &mut elevation as *mut u32 as *mut c_void,
+                std::mem::size_of::<u32>() as u32,
+                &mut returned,
+            ) != 0;
+            CloseHandle(token);
+            ok && elevation != 0
+        }
+    }
+
     /// Нажатие Enter в окне (сообщения клавиатуры отправляются прямо в окно, фокус не нужен).
     pub fn press_enter(hwnd: usize) {
         const WM_KEYDOWN: u32 = 0x0100;
@@ -264,6 +327,12 @@ mod win {
         0
     }
     pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) {}
+    pub fn kill_process(_pid: u32) -> Result<(), u32> {
+        Err(1)
+    }
+    pub fn is_elevated() -> bool {
+        false
+    }
 }
 
 /// Принимает папку GameCenter или путь к `GameCenter.exe`, возвращает путь к exe.
@@ -905,51 +974,86 @@ pub async fn launcher_running_clients() -> Result<Vec<u32>, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Код ошибки Windows «Отказано в доступе»: клиент запущен от имени администратора, а Твиноферма — нет.
+const ERROR_ACCESS_DENIED: u32 = 5;
+
 /// Итог закрытия окон игры.
-#[derive(Serialize, Clone, Default)]
+#[derive(Serialize, Clone, Default, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CloseReport {
     /// Сколько клиентов игры было запущено
     pub found: u32,
     /// Сколько удалось закрыть
     pub closed: u32,
-    /// Сколько закрыть не удалось (обычно — нет прав: игра запущена от имени администратора)
+    /// Сколько закрыть не удалось
     pub failed: u32,
+    /// Из них — отказано в доступе (игра запущена от имени администратора)
+    pub denied: u32,
+    /// Запущена ли сама Твиноферма от имени администратора
+    pub elevated: bool,
     /// Имена образов, которые нашли (для диагностики)
     pub images: Vec<String>,
+    /// Почему не закрылся каждый из процессов: «PID 1234: отказано в доступе (код 5)»
+    pub details: Vec<String>,
     /// Ошибка поиска процессов (если сам поиск не удался)
     pub error: String,
 }
 
-/// Закрывает все клиенты игры по одному (по PID) и возвращает отчёт. Вызывается из команды и из меню трея.
-pub fn close_clients_now() -> CloseReport {
-    let mut report = CloseReport::default();
-    let list = match client_processes() {
-        Ok(list) => list,
-        Err(e) => {
-            report.error = e;
-            return report;
+/// Человеческое описание кода ошибки Windows при закрытии процесса.
+fn kill_error_text(code: u32) -> String {
+    match code {
+        ERROR_ACCESS_DENIED => {
+            "отказано в доступе (код 5): процесс запущен от имени администратора".into()
         }
-    };
-    report.found = list.len() as u32;
-    for (name, _) in &list {
-        if !report.images.contains(name) {
-            report.images.push(name.clone());
-        }
+        87 => "процесс уже завершился (код 87)".into(),
+        c => format!("код ошибки Windows {}", c),
     }
-    for (_, pid) in list {
-        let pid = pid.to_string();
-        let ok = hidden(Command::new("taskkill").args(["/F", "/PID", pid.as_str()]))
-            .output()
-            .map(|out| out.status.success())
-            .unwrap_or(false);
-        if ok {
-            report.closed += 1;
-        } else {
-            report.failed += 1;
+}
+
+/// Закрывает процессы из списка через `kill` и собирает отчёт. `kill` возвращает `Err(код Windows)`.
+fn close_with(
+    list: Vec<(String, u32)>,
+    elevated: bool,
+    kill: impl Fn(u32) -> Result<(), u32>,
+) -> CloseReport {
+    let mut report = CloseReport {
+        found: list.len() as u32,
+        elevated,
+        ..Default::default()
+    };
+    for (name, pid) in list {
+        if !report.images.contains(&name) {
+            report.images.push(name);
+        }
+        match kill(pid) {
+            Ok(()) => report.closed += 1,
+            // 87 — процесс уже исчез между поиском и закрытием: для нас это то же «закрыт»
+            Err(87) => report.closed += 1,
+            Err(code) => {
+                report.failed += 1;
+                if code == ERROR_ACCESS_DENIED {
+                    report.denied += 1;
+                }
+                report
+                    .details
+                    .push(format!("PID {}: {}", pid, kill_error_text(code)));
+            }
         }
     }
     report
+}
+
+/// Закрывает все клиенты игры по одному (по PID) и возвращает отчёт. Вызывается из команды и из меню трея.
+/// Процесс завершается напрямую (`TerminateProcess`), поэтому причина отказа известна точно, а не угадывается по тексту `taskkill`.
+pub fn close_clients_now() -> CloseReport {
+    match client_processes() {
+        Ok(list) => close_with(list, win::is_elevated(), win::kill_process),
+        Err(e) => CloseReport {
+            error: e,
+            elevated: win::is_elevated(),
+            ..Default::default()
+        },
+    }
 }
 
 /// Закрывает все клиенты игры.
@@ -958,6 +1062,67 @@ pub async fn launcher_close_clients() -> Result<CloseReport, String> {
     tauri::async_runtime::spawn_blocking(close_clients_now)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Команда PowerShell, которая запускает `taskkill` с правами администратора (покажет запрос Windows — UAC).
+/// PID — только числа, поэтому подставлять их в строку безопасно.
+fn elevated_kill_script(pids: &[u32]) -> String {
+    let args = pids
+        .iter()
+        .flat_map(|p| ["'/PID'".to_string(), format!("'{}'", p)])
+        .chain(["'/F'".to_string()])
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "Start-Process -FilePath taskkill -ArgumentList {} -Verb RunAs -WindowStyle Hidden -Wait -ErrorAction Stop",
+        args
+    )
+}
+
+/// Закрывает клиенты игры с правами администратора: Windows спросит разрешение (UAC), затем `taskkill` выполнится от администратора.
+/// Нужно, когда игра запущена от имени администратора, а Твиноферма — обычным пользователем.
+#[tauri::command]
+pub async fn launcher_close_clients_elevated() -> Result<CloseReport, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let before = client_processes()?;
+        if before.is_empty() {
+            return Ok(CloseReport::default());
+        }
+        let pids: Vec<u32> = before.iter().map(|(_, pid)| *pid).collect();
+        let out = hidden(Command::new("powershell").args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            elevated_kill_script(&pids).as_str(),
+        ]))
+        .output()
+        .map_err(|e| format!("powershell: {}", e))?;
+        if !out.status.success() {
+            return Err("Запрос прав администратора отклонён или не выполнен".to_string());
+        }
+        let after = client_processes()?;
+        let mut report = CloseReport {
+            found: before.len() as u32,
+            elevated: true, // закрывал процесс с правами администратора
+            images: before.iter().map(|(n, _)| n.clone()).collect(),
+            ..Default::default()
+        };
+        report.images.dedup();
+        for (_, pid) in &before {
+            if after.iter().any(|(_, p)| p == pid) {
+                report.failed += 1;
+                report.details.push(format!(
+                    "PID {}: не закрылся и с правами администратора",
+                    pid
+                ));
+            } else {
+                report.closed += 1;
+            }
+        }
+        Ok(report)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Диагностика: видимые окна VK Play и окна вопросов GameCenter (`hwnd | класс | заголовок`).
@@ -986,6 +1151,42 @@ mod tests {
         assert_eq!(clean_title("a\u{0}b\tc").as_deref(), Some("abc"));
         assert_eq!(clean_title("   "), None);
         assert_eq!(clean_title(&"я".repeat(300)).unwrap().chars().count(), 100);
+    }
+
+    #[test]
+    fn close_report_counts_and_explains_failures() {
+        let list = vec![
+            ("elementclient_64.exe".to_string(), 10),
+            ("elementclient_64.exe".to_string(), 20),
+            ("elementclient_64.exe".to_string(), 30),
+            ("elementclient.exe".to_string(), 40),
+        ];
+        let r = close_with(list, false, |pid| match pid {
+            10 => Ok(()),
+            20 => Err(5),
+            30 => Err(87),
+            _ => Err(1),
+        });
+        assert_eq!((r.found, r.closed, r.failed, r.denied), (4, 2, 2, 1));
+        assert_eq!(r.images, vec!["elementclient_64.exe", "elementclient.exe"]);
+        assert!(!r.elevated);
+        assert_eq!(r.details.len(), 2);
+        assert!(r.details[0].starts_with("PID 20: отказано в доступе"));
+        assert!(r.details[1].contains("код ошибки Windows 1"));
+    }
+
+    #[test]
+    fn close_report_for_empty_list() {
+        let r = close_with(vec![], true, |_| Ok(()));
+        assert_eq!((r.found, r.closed, r.failed), (0, 0, 0));
+        assert!(r.elevated);
+    }
+
+    #[test]
+    fn elevated_kill_script_lists_every_pid() {
+        let script = elevated_kill_script(&[11, 22]);
+        assert!(script.contains("'/PID','11','/PID','22','/F'"));
+        assert!(script.contains("-Verb RunAs"));
     }
 
     #[test]

@@ -9,6 +9,7 @@ import { openCharacterProfile } from '../characters/profileView.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL } from './membership.js';
 import { hasGameCenterPath } from '../launcher/launch.js';
+import { getClassIconSrc } from '../../core/constants.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
@@ -45,16 +46,99 @@ function getGroupedParties() {
     return map;
 }
 
+/** Оттенок пати (0–359) по названию: у каждой пати свой стабильный цвет полоски и значка. */
+export function partyHue(name) {
+    let h = 0;
+    for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
+    return h;
+}
+
+/** Две буквы для значка пати: «Alpha Strike» → «AS», «Основная пати» → «ОП», «222» → «22». */
+export function partyInitials(name) {
+    const words = String(name || '').trim().split(/\s+/).filter(Boolean);
+    const letters = words.length > 1 ? words.slice(0, 2).map(w => Array.from(w)[0]).join('') : Array.from(words[0] || '?').slice(0, 2).join('');
+    return letters.toUpperCase();
+}
+
+/** Стопка значков классов (до 5) и «+N» — быстро видно, кто в пати. */
+function avatarStackHtml(members) {
+    const shown = members.slice(0, 5);
+    const rest = members.length - shown.length;
+    const icons = shown.map(m => {
+        const src = getClassIconSrc(m.class);
+        const online = m.isLoggedIn === true;
+        return `<span class="pt-ava ${online ? 'is-online' : ''}" title="${escapeHtml(m.nick)} · ${escapeHtml(m.class || '')}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>`;
+    }).join('');
+    return `<span class="pt-stack">${icons}${rest > 0 ? `<span class="pt-ava pt-ava-more">+${rest}</span>` : ''}</span>`;
+}
+
+function memberRowHtml(m, party) {
+    const authView = getAuthView(m);
+    const isOnline = m.isLoggedIn === true;
+    const src = getClassIconSrc(m.class);
+    return `
+        <li class="pt-member party-member-row" data-char-id="${m.id}">
+            <span class="pt-ava ${isOnline ? 'is-online' : ''}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>
+            <span class="pt-member-name"><strong>${escapeHtml(m.nick)}</strong><small class="muted">${escapeHtml(m.class || '')}</small></span>
+            ${party && !isMainParty(m, party.id) ? '<span class="pt-badge" title="Для этого персонажа это дополнительная пати: его монеты считаются в основной">доп.</span>' : ''}
+            <span class="pt-dot" style="color:${authView.color}" title="${isOnline ? 'Онлайн' : 'Оффлайн'}">${authView.icon}</span>
+            <button class="pt-open open-profile-btn" data-char-id="${m.id}" type="button">Открыть</button>
+        </li>`;
+}
+
+function partyCardHtml(name, members) {
+    const isExpanded = expandedParties.has(name);
+    const party = partyByName(state.parties, name);
+    const stats = calculatePartyStats(members, party);
+    const mainCount = party ? charactersInMainParty(members, party.id).length : members.length;
+    const countLabel = party && mainCount !== members.length ? `${members.length} чел. (осн. ${mainCount})` : `${members.length} чел.`;
+    const isDraggable = name !== NO_PARTY_LABEL;
+    const hue = isDraggable ? partyHue(name) : null;
+    const launchReady = members.filter(m => hasGameCenterPath(m)).length;
+    const onlinePct = members.length ? Math.round(stats.onlineCount / members.length * 100) : 0;
+    const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
+    const style = hue === null ? '--pt-h:220;--pt-s:8%' : `--pt-h:${hue};--pt-s:70%`;
+
+    return `
+        <article class="party-card-modern pt-card ${isExpanded ? 'is-expanded' : ''} ${isDraggable ? '' : 'is-none'}" data-party-name="${escapeHtml(name)}" style="${style}">
+            <header class="party-card-header pt-head ${isDraggable ? 'draggable-area' : ''}" data-party-name="${escapeHtml(name)}" ${dragAttrs}>
+                <span class="pt-badge-icon" aria-hidden="true">${isDraggable ? escapeHtml(partyInitials(name)) : '∅'}</span>
+                <div class="pt-title">
+                    <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+                    <span class="pt-sub">${countLabel}${members.length ? ` · онлайн ${stats.onlineCount}` : ''}</span>
+                </div>
+                <div class="pt-coins" title="Монеты считаются по основной пати персонажей">${stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : ''}</div>
+                <span class="toggle-arrow pt-arrow" aria-hidden="true"></span>
+            </header>
+            <div class="pt-glance">
+                ${members.length ? avatarStackHtml(members) : '<span class="muted pt-empty-note">Пока никого</span>'}
+                <div class="pt-online" title="Онлайн: ${stats.onlineCount} из ${members.length}"><span style="width:${onlinePct}%"></span></div>
+            </div>
+            <div class="pt-actions">
+                <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${launchReady ? '' : 'disabled'}
+                        title="${launchReady ? 'Запустить игру для участников по очереди (GameCenter выбирается по большинству участников)' : 'Ни у кого в пати не указан GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
+                    ▶ Запустить <small>${launchReady}/${members.length}</small>
+                </button>
+                ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав и название пати">⚙</button>` : ''}
+            </div>
+            <div class="party-body-wrapper pt-body">
+                <div class="pt-body-inner">
+                    ${members.length ? `<ul class="pt-members">${members.map(m => memberRowHtml(m, party)).join('')}</ul>` : '<p class="muted pt-empty">Группа пуста. Добавьте персонажей кнопкой ⚙ или через режим «Выбрать» на вкладке «Персонажи».</p>'}
+                </div>
+            </div>
+        </article>`;
+}
+
 export function renderPartiesGrid() {
     const container = document.getElementById('party-list');
     if (!container) return;
 
     const partyMap = getGroupedParties();
-    
+
     // Сортировка ключей
     let sortedKeys = Array.from(partyMap.keys()).sort((a, b) => {
-        if (a === 'Без пати') return 1;
-        if (b === 'Без пати') return -1;
+        if (a === NO_PARTY_LABEL) return 1;
+        if (b === NO_PARTY_LABEL) return -1;
 
         const partyA = state.parties.find(p => p.name === a);
         const partyB = state.parties.find(p => p.name === b);
@@ -66,170 +150,26 @@ export function renderPartiesGrid() {
         return a.localeCompare(b, 'ru');
     });
 
+    // Сводка над сеткой: общий итог (персонаж из нескольких пати учитывается один раз)
+    const summary = document.getElementById('party-summary');
+    if (summary) {
+        const overall = totalCoins(state.characters);
+        const multi = state.characters.filter(c => (c.partyIds || []).length > 1).length;
+        summary.innerHTML = `
+            <span class="pt-chip">👥 Персонажей <b>${state.characters.length}</b></span>
+            <span class="pt-chip">🛡 Пати <b>${state.parties.length}</b></span>
+            <span class="pt-chip pt-chip-gold">🪙 <b>${formatCoins(overall)}</b></span>
+            ${multi ? `<span class="pt-chip" title="Монеты таких персонажей считаются только по основной пати">В нескольких пати: <b>${multi}</b></span>` : ''}`;
+    }
+
     if (sortedKeys.length === 0) {
-        container.innerHTML = '<div class="empty-state">Нет активных партий.</div>';
+        container.className = 'pt-grid';
+        container.innerHTML = '<div class="empty-state">Пока нет пати. Нажмите «+» справа внизу, чтобы создать первую.</div>';
         return;
     }
 
-    // Добавляем стили один раз
-    if (!document.getElementById('party-grid-styles')) {
-        const styleSheet = document.createElement("style");
-        styleSheet.id = "party-grid-styles";
-                styleSheet.innerText = `
-            .party-grid-container {
-                display: grid;
-                gap: 15px;
-                width: 100%;
-                padding-bottom: 20px;
-                
-                /* КРИТИЧЕСКИ ВАЖНО: Выравнивание по началу строки */
-                align-items: start; 
-                
-                grid-template-columns: 1fr; 
-            }
-            
-            @media (min-width: 768px) { 
-                .party-grid-container { grid-template-columns: repeat(2, 1fr); } 
-            }
-            @media (min-width: 1024px) { 
-                .party-grid-container { grid-template-columns: repeat(3, 1fr); } 
-            }
-            @media (min-width: 1280px) { 
-                .party-grid-container { grid-template-columns: repeat(4, 1fr); } 
-            }
-
-            /* Стили для перетаскивания */
-            .party-card-dragging { opacity: 0.5; border: 2px dashed var(--accent); }
-            .party-card-drop-target { border: 2px solid var(--success, #9ece6a); box-shadow: 0 0 10px rgba(158, 206, 106, 0.3); }
-            .party-card-header.draggable-area { cursor: grab; }
-            .party-card-header.draggable-area:active { cursor: grabbing; }
-            
-            /* Управление видимостью через max-height */
-            .party-body-wrapper {
-                max-height: 0;
-                overflow: hidden;
-                transition: max-height 0.3s ease-out;
-                background: transparent;
-            }
-            .party-card-modern.is-expanded .party-body-wrapper {
-                max-height: 2000px; 
-            }
-        `;
-        document.head.appendChild(styleSheet);
-    }
-
-    container.className = 'party-grid-container'; 
-
-    // Общий итог: персонаж из нескольких пати учитывается один раз
-    const overall = totalCoins(state.characters);
-    const multi = state.characters.filter(c => (c.partyIds || []).length > 1).length;
-    const summaryHtml = `<div class="party-summary muted" style="grid-column:1 / -1; font-size:0.85rem;">
-        Всего персонажей: <strong>${state.characters.length}</strong> · древних монет: <strong style="color:gold;">${formatCoins(overall)} 🪙</strong>${multi ? ` · в дополнительных пати: ${multi} (монеты считаются только по основной)` : ''}
-    </div>`;
-    
-    container.innerHTML = summaryHtml + sortedKeys.map(name => {
-        const members = partyMap.get(name);
-        const isExpanded = expandedParties.has(name);
-        const party = partyByName(state.parties, name);
-        const stats = calculatePartyStats(members, party);
-        
-        const coinsDisplay = stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : '';
-        const mainCount = party ? charactersInMainParty(members, party.id).length : members.length;
-        const memberCountLabel = party && mainCount !== members.length ? `${members.length} чел. (осн. ${mainCount})` : `${members.length} чел.`;
-        const isDraggable = name !== 'Без пати';
-
-        // --- Тело карточки (всегда генерируется, но скрыто CSS) ---
-        const memberListHtml = members.length > 0 ? `
-            <ul style="list-style:none; padding:0; margin:0 0 15px 0;">
-                ${members.map(m => {
-                    const authView = getAuthView(m);
-                    const isOnline = m.isLoggedIn === true;
-                    const statusIcon = authView.icon;
-                    const statusColor = authView.color;
-                    
-                    return `
-                        <li class="party-member-row" data-char-id="${m.id}" 
-                            style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; transition:background 0.2s;"
-                            onmouseover="this.style.background='rgba(255,255,255,0.05)'"
-                            onmouseout="this.style.background='transparent'">
-                            
-                            <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
-                                <span style="color:${statusColor}; font-size:0.9rem; flex-shrink:0;" title="${isOnline ? 'Онлайн' : 'Оффлайн'}">${statusIcon}</span>
-                                <strong style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-primary);">${escapeHtml(m.nick)}</strong>
-                                <small class="muted" style="font-size:0.8rem; white-space:nowrap;">${escapeHtml(m.class)}</small>
-                                ${party && !isMainParty(m, party.id) ? '<span class="badge muted" style="font-size:0.65rem;" title="Для этого персонажа это дополнительная пати: его монеты считаются в основной">доп.</span>' : ''}
-                            </div>
-                            
-                            <button class="btn ghost small open-profile-btn" data-char-id="${m.id}" style="padding:2px 8px; font-size:0.75rem; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--accent); cursor:pointer;">
-                                Открыть
-                            </button>
-                        </li>
-                    `;
-                }).join('')}
-            </ul>
-        ` : '<p class="muted" style="text-align:center; padding:20px; color:var(--muted);">Группа пуста</p>';
-
-        // Запуск игры: сколько участников пати имеют путь к своему GameCenter
-        const launchReady = members.filter(m => hasGameCenterPath(m)).length;
-        const controlPanelHtml = `
-            <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:auto; display:flex; flex-direction:column; gap:8px;">
-                <button class="btn secondary full-width launch-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;" ${launchReady ? '' : 'disabled'}
-                        title="${launchReady ? 'Запустить игру для участников по очереди' : 'Ни у кого в пати не указан GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
-                    ▶ Запустить пати (${launchReady}/${members.length})
-                </button>
-                <button class="btn primary full-width edit-party-action-btn" data-party-name="${escapeHtml(name)}" style="width:100%;">
-                    ⚙️ Настроить состав / Переименовать
-                </button>
-            </div>
-        `;
-
-        // Оборачиваем контент в div с классом wrapper
-        const bodyContent = `
-            <div class="party-body-wrapper">
-                <div style="display:flex; flex-direction:column; height:100%; padding: 0 15px 15px 15px;">
-                     ${memberListHtml}
-                     ${controlPanelHtml}
-                </div>
-            </div>
-        `;
-
-        // --- Заголовок карточки ---
-        const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
-        const dragClass = isDraggable ? 'draggable-area' : '';
-        
-        // Добавляем класс is-expanded к самой статье, если она открыта
-        const cardClass = isExpanded ? 'card party-card-modern is-expanded' : 'card party-card-modern';
-
-        const headerHtml = `
-            <header class="party-card-header ${dragClass}" 
-                    data-party-name="${escapeHtml(name)}"
-                    ${dragAttrs}
-                    style="padding:12px 15px; user-select:none; background:var(--panel-2); border-bottom:1px solid var(--border); transition:background 0.2s; display:flex; justify-content:space-between; align-items:center;">
-                
-                <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
-                    ${isDraggable ? '<span style="color:var(--muted); font-size:0.8rem; margin-right:4px;">≡</span>' : ''}
-                    
-                    <!-- Стрелка поворачивается через CSS родителя -->
-                    <span class="toggle-arrow" style="transition:transform 0.2s; transform:rotate(${isExpanded ? '90deg' : '0deg'}); font-size:0.8rem; color:var(--muted); flex-shrink:0;">▶</span>
-                    <h3 style="margin:0; font-size:1rem; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                        ${escapeHtml(name)}
-                    </h3>
-                </div>
-                
-                <div style="text-align:right; flex-shrink:0; margin-left:10px;">
-                    <span class="badge muted" style="font-size:0.7rem; display:block; margin-bottom:2px;">${memberCountLabel}</span>
-                    <span style="font-size:0.85rem; color:gold; font-weight:bold;" title="Монеты считаются по основной пати персонажей">${coinsDisplay}</span>
-                </div>
-            </header>
-        `;
-
-        return `
-            <article class="${cardClass}" data-party-name="${escapeHtml(name)}" style="height:auto; min-height:100px; overflow:hidden; border-radius:8px; border:1px solid var(--border); background:var(--panel); box-shadow:0 2px 5px rgba(0,0,0,0.1); display:flex; flex-direction:column;">
-                ${headerHtml}
-                ${bodyContent}
-            </article>
-        `;
-    }).join('');
+    container.className = 'pt-grid';
+    container.innerHTML = sortedKeys.map(name => partyCardHtml(name, partyMap.get(name))).join('');
 
     bindPartyEvents(container);
     initDragAndDrop(container);
@@ -250,27 +190,11 @@ function bindPartyEvents(container) {
             // Проверяем текущее состояние визуально (через класс)
             const isCurrentlyExpanded = card.classList.contains('is-expanded');
 
-            if (isCurrentlyExpanded) {
-                // Свернуть
-                card.classList.remove('is-expanded');
-                // Обновить стрелку внутри заголовка
-                const arrow = header.querySelector('.toggle-arrow');
-                if(arrow) arrow.style.transform = 'rotate(0deg)';
-                
-                // Удаляем из Set
-                expandedParties.delete(name);
-            } else {
-                // Развернуть
-                card.classList.add('is-expanded');
-                // Обновить стрелку
-                const arrow = header.querySelector('.toggle-arrow');
-                if(arrow) arrow.style.transform = 'rotate(90deg)';
-                
-                // Добавляем в Set
-                expandedParties.add(name);
-            }
+            // Стрелка и раскрытие списка — чисто через CSS по классу is-expanded
+            card.classList.toggle('is-expanded', !isCurrentlyExpanded);
+            if (isCurrentlyExpanded) expandedParties.delete(name);
+            else expandedParties.add(name);
             
-            // НИКАКОЙ ПЕРЕРАИСОВКИ ВСЕГО СПИСКА!
             return;
         }
 
@@ -408,8 +332,8 @@ function initDragAndDrop(container) {
 
         // Проверки безопасности
         if (targetName === sourceName) return; // Бросили на себя же
-        if (targetName === 'Без пати') return; // Нельзя менять местами "Без пати"
-        if (sourceName === 'Без пати') return; // На всякий случай
+        if (targetName === NO_PARTY_LABEL) return; // Нельзя менять местами "Без пати"
+        if (sourceName === NO_PARTY_LABEL) return; // На всякий случай
 
         console.log(`[DND] Swapping "${sourceName}" with "${targetName}"`);
 

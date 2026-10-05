@@ -1,15 +1,28 @@
 /* css/layout.css */
 
+/* Колонка (а не сетка): липкая шапка работает только внутри блока, который выше неё. В сетке её область — одна строка шапки,
+   и шапка «прилипнуть» не может */
 .app-shell {
   min-height: 100vh;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
 }
+.app-shell > .content { flex: 1 1 auto; }
 
+/* При переходе к элементу (scrollIntoView, якоря) он не прячется под шапкой */
+html { scroll-padding-top: calc(var(--topbar-h, 72px) + 16px); }
+
+/* Шапка с навигацией всегда на виду: остаётся сверху при прокрутке любой вкладки.
+   z-index ниже окон (1000), меню и дока задач, выше карточек. */
 .topbar {
-  padding: 18px 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 12px 24px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #121722, #0f1115);
+  background: linear-gradient(180deg, rgba(18, 23, 34, .97), rgba(15, 17, 21, .97));
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
   display: flex;
   justify-content: space-between;
   gap: 20px;
@@ -204,3 +217,19 @@
   text-overflow: ellipsis;
   padding-right: 24px;   /* место под стрелку */
 }
+
+
+/* Опасные действия: у каждого действия название, описание и кнопка */
+.panel.fold.danger-zone { border-color: rgba(247, 118, 142, .3); margin-top: 16px; }
+.panel.fold.danger-zone > summary h3 { color: var(--danger); }
+.danger-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  padding: 12px 0; border-top: 1px solid rgba(247, 118, 142, .15);
+}
+.danger-item > div { min-width: 0; }
+.danger-item p { margin: 4px 0 0; max-width: 70ch; }
+.danger-item .btn { flex: 0 0 auto; white-space: nowrap; min-width: 200px; }
+.danger-more { margin-top: 4px; border-top: 1px dashed rgba(247, 118, 142, .25); }
+.danger-more > summary { padding: 10px 0 2px; cursor: pointer; color: var(--muted); font-size: .85rem; }
+.danger-more > summary:hover { color: var(--danger); }
+@media (max-width: 700px) { .danger-item { flex-direction: column; align-items: stretch; } }

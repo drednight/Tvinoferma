@@ -19,7 +19,7 @@ import {
   ensureCell, STATUS_LABELS, createSeries, bonusStatus, shortDescription,
   rewardPotential, calendarStates
 } from './model.js';
-import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
+import { getAllDatesInRange, isTaskActiveOnDate, phaseHint } from './dates.js';
 
 const view = { type: 'list', id: null };
 const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set() };
@@ -61,6 +61,8 @@ export function renderMarathons() {
     if (view.type === 'detail' && findM(view.id)) renderDetail(root, findM(view.id));
     else if (view.type === 'series' && findM(view.id)) renderSeries(root, findM(view.id));
     else { view.type = 'list'; renderList(root); }
+    // Круглая кнопка «+» нужна только на списке (CSS прячет её на страницах марафона и папки)
+    document.querySelector('.page[data-section="marathons"]')?.setAttribute('data-view', view.type);
     renderDock();
   } catch (err) {
     console.error('[MARATHONS RENDER]', err);
@@ -69,10 +71,12 @@ export function renderMarathons() {
 }
 
 export function bindMarathons() {
-  document.getElementById('add-marathon-btn')?.addEventListener('click', () => openMarathonWizard());
-  document.getElementById('add-folder-btn')?.addEventListener('click', () => openFolderDialog());
   renderMarathons();
 }
+
+/** Создание папки и марафона вызываются из круглой кнопки «+» (js/core/uiActions.js). */
+export function createMarathonFromFab() { openMarathonWizard(); }
+export function createFolderFromFab() { openFolderDialog(); }
 
 /** Возврат к списку марафонов (клик по вкладке «Марафоны»). */
 export function resetMarathonView() {
@@ -153,7 +157,7 @@ function openFolderPicker(m) {
       ${folders.map(f => `<label class="tf-list-item"><input type="radio" name="fold" value="${f.id}" ${m.seriesId === f.id ? 'checked' : ''}/>
         <div><strong>📁 ${escapeHtml(f.title)}</strong><br/><small class="muted">${f.childIds.length} марафонов${f.description ? ` · ${escapeHtml(f.description)}` : ''}</small></div></label>`).join('')}
     </div>
-    ${folders.length ? '' : '<p class="muted">Папок пока нет — создайте её кнопкой «📁 Новая папка» в списке марафонов.</p>'}`;
+    ${folders.length ? '' : '<p class="muted">Папок пока нет — создайте её кнопкой «+» справа внизу на вкладке «Марафоны».</p>'}`;
   ov.foot.innerHTML = `<button type="button" class="btn ghost" data-x="cancel">Отмена</button><button type="button" class="btn primary" data-x="ok">Переместить</button>`;
   ov.foot.querySelector('[data-x="cancel"]').onclick = () => ov.close();
   ov.foot.querySelector('[data-x="ok"]').onclick = async () => {
@@ -206,21 +210,44 @@ function openDeleteFolder(folder) {
 /*  Список                                                             */
 /* ================================================================== */
 
+const PHASE_GROUPS = [
+  ['ended', '⌛', 'Ждут завершения'],
+  ['active', '🏃', 'Идут'],
+  ['upcoming', '⏳', 'Скоро'],
+  ['completed', '🏁', 'Завершённые']
+];
+
 function renderList(root) {
   const items = state.marathons.filter(m => m.kind === 'series' || !m.seriesId);
   if (!items.length) {
-    root.innerHTML = `<div class="empty-state">Марафонов пока нет. Нажмите «+ Создать» — мастер сам найдёт марафоны на сайте, или «📁 Новая папка», чтобы собрать свои марафоны в группу.</div>`;
+    root.innerHTML = `
+      <div class="mr-empty">
+        <div class="mr-empty-ico">🏃</div>
+        <h3>Марафонов пока нет</h3>
+        <p class="muted">Нажмите круглую кнопку «+» справа внизу: «Марафон» — мастер сам найдёт марафоны на сайте, «Папка» — соберёт свои марафоны в одну группу.</p>
+      </div>`;
     return;
   }
   const phaseOf = (m) => m.kind === 'series' ? seriesPhase(m, state.marathons) : marathonPhase(m);
-  const groups = [
-    ['ended', '⌛ Ждут завершения'], ['active', '🏃 Идут'], ['upcoming', '⏳ Скоро'], ['completed', '🏁 Завершённые']
-  ].map(([key, label]) => [label, items.filter(m => phaseOf(m) === key)
-    .sort((a, b) => String(b.startDate || b.createdAt).localeCompare(String(a.startDate || a.createdAt)))]);
+  const groups = PHASE_GROUPS.map(([key, icon, label]) => ({
+    key, icon, label,
+    list: items.filter(m => phaseOf(m) === key)
+      .sort((a, b) => String(b.startDate || b.createdAt).localeCompare(String(a.startDate || a.createdAt)))
+  }));
 
-  root.innerHTML = groups.filter(([, list]) => list.length).map(([label, list]) => `
-    <h3 class="mr-group-title">${label} <span class="muted">${list.length}</span></h3>
-    <div class="mr-cards">${list.map(m => m.kind === 'series' ? seriesCard(m) : marathonCard(m)).join('')}</div>
+  // Сводка над списком: сколько марафонов в каждом состоянии и сколько монет заработано
+  const earned = state.marathons.filter(m => m.kind !== 'series').reduce((sum, m) => sum + marathonTotals(m).coins, 0);
+  const overview = `
+    <div class="mr-overview">
+      ${groups.filter(g => g.list.length).map(g => `<span class="mr-ov mr-ov-${g.key}"><b>${g.list.length}</b> ${g.label.toLowerCase()}</span>`).join('')}
+      <span class="mr-ov mr-ov-coins" title="Сумма по всем марафонам">🪙 <b>${formatCoins(roundCoins(earned))}</b> заработано</span>
+    </div>`;
+
+  root.innerHTML = overview + groups.filter(g => g.list.length).map(g => `
+    <section class="mr-group mr-group-${g.key}">
+      <h3 class="mr-group-title"><span class="mr-group-ico">${g.icon}</span>${g.label}<span class="mr-group-count">${g.list.length}</span></h3>
+      <div class="mr-cards">${g.list.map(m => m.kind === 'series' ? seriesCard(m) : marathonCard(m)).join('')}</div>
+    </section>
   `).join('');
 
   root.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openMarathon(el.dataset.open));
@@ -239,16 +266,23 @@ function syncAgeHtml(m) {
 function marathonCard(m, { inFolder = false } = {}) {
   const t = marathonTotals(m);
   const phase = marathonPhase(m);
+  const hint = phaseHint(m, new Date().toLocaleDateString('sv'));
   return `
-    <article class="mr-card" data-open="${m.id}">
-      <header><strong>${escapeHtml(m.title)}</strong><span class="row gap-s"><span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>${inFolder ? `<button type="button" class="icon-btn mr-unlink" data-unlink="${m.id}" title="Убрать из папки">↩</button>` : ''}</span></header>
-      <div class="muted mr-card-meta">${fmtDate(m.startDate)} — ${fmtDate(m.endDate)} · 👥 ${m.participantIds.length} · 📋 ${m.tasks.length}</div>
-      ${progressBar(t.percent)}
-      <div class="mr-card-foot">
-        <span>✅ ${t.done}/${t.cells}${t.failing ? ` · <span class="mr-red">⚠ ${t.failing}</span>` : ''}</span>
-        <span class="mr-gold">${coin(t.coins)}${t.maxCoins ? ` <small class="muted">/ ${t.maxCoins}</small>` : ''}</span>
+    <article class="mr-card mr-ph-${phase}" data-open="${m.id}">
+      <header>
+        <strong class="mr-card-title">${escapeHtml(m.title)}</strong>
+        <span class="row gap-s"><span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>${inFolder ? `<button type="button" class="icon-btn mr-unlink" data-unlink="${m.id}" title="Убрать из папки">↩</button>` : ''}</span>
+      </header>
+      <div class="mr-card-meta"><span>📅 ${fmtDate(m.startDate)} — ${fmtDate(m.endDate)}</span>${hint.text ? `<span class="mr-hint mr-hint-${hint.tone}">${hint.text}</span>` : ''}</div>
+      <div class="mr-prog">${progressBar(t.percent)}<b>${t.percent}%</b></div>
+      <div class="mr-stats">
+        <span title="Выполнено заданий">✅ ${t.done}/${t.cells}</span>
+        ${t.failing ? `<span class="mr-red" title="Не успевают">⚠ ${t.failing}</span>` : ''}
+        <span class="muted" title="Участников">👥 ${m.participantIds.length}</span>
+        <span class="muted" title="Заданий">📋 ${m.tasks.length}</span>
+        <span class="mr-gold mr-coins">${coin(t.coins)}${t.maxCoins ? ` <small class="muted">/ ${t.maxCoins}</small>` : ''}</span>
       </div>
-      ${m.lastSync ? `<small class="muted">🔄 ${fmtDateTime(m.lastSync.at)} ${syncAgeHtml(m)}</small>` : ''}
+      ${m.lastSync ? `<small class="muted mr-sync-line">🔄 ${fmtDateTime(m.lastSync.at)} ${syncAgeHtml(m)}</small>` : ''}
     </article>`;
 }
 
@@ -257,14 +291,18 @@ function seriesCard(s) {
   const coins = kids.reduce((sum, k) => sum + marathonTotals(k).coins, 0);
   const phase = seriesPhase(s, state.marathons);
   return `
-    <article class="mr-card mr-series" data-open="${s.id}">
-      <header><strong>📁 ${escapeHtml(s.title)}</strong><span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span></header>
-      <div class="mr-series-kids">${kids.map(k => {
+    <article class="mr-card mr-series mr-ph-${phase}" data-open="${s.id}">
+      <header>
+        <strong class="mr-card-title"><span class="mr-folder-ico">📁</span>${escapeHtml(s.title)}</strong>
+        <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
+      </header>
+      ${s.description ? `<div class="mr-card-meta"><span>${escapeHtml(s.description)}</span></div>` : ''}
+      <div class="mr-series-kids">${kids.slice(0, 4).map(k => {
         const t = marathonTotals(k);
         return `<div class="mr-kid"><span>${escapeHtml(k.source?.stageName || k.title)}</span>${progressBar(t.percent, 'mr-bar-sm')}<small>${t.percent}%</small></div>`;
-      }).join('')}</div>
+      }).join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
       ${kids.length ? '' : '<div class="muted mr-card-meta">Папка пуста</div>'}
-      <div class="mr-card-foot"><span class="muted">${s.description ? escapeHtml(s.description) + ' · ' : ''}Марафонов: ${kids.length}</span><span class="mr-gold">${coin(coins)}</span></div>
+      <div class="mr-stats"><span class="muted">Марафонов: ${kids.length}</span><span class="mr-gold mr-coins">${coin(coins)}</span></div>
     </article>`;
 }
 

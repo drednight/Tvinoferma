@@ -147,3 +147,51 @@
     color: var(--accent);
     border-color: var(--accent);
 }
+
+/* --- Меню круглой кнопки «+» на вкладке «Марафоны»: создать папку или марафон --- */
+.fab-container { align-items: flex-end; }
+.fab-main .fab-icon { transition: transform .25s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.fab-main.is-open .fab-icon { transform: rotate(135deg); }
+.fab-menu {
+    position: absolute;
+    right: 0;
+    bottom: 74px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+}
+.fab-menu[hidden] { display: none; }
+.fab-menu-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px 8px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    font: inherit;
+    font-size: .92rem;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, .4);
+    animation: fabMenuIn .18s ease-out both;
+}
+.fab-menu-item:nth-child(1) { animation-delay: .05s; }
+.fab-menu-ico {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    font-size: 1rem;
+}
+.fab-menu-item:hover { border-color: var(--accent); transform: translateX(-3px); }
+.fab-menu-item { transition: transform .15s, border-color .15s; }
+@keyframes fabMenuIn { from { opacity: 0; transform: translateY(10px) scale(.95); } to { opacity: 1; transform: none; } }
+
+/* На страницах марафона и папки кнопка не нужна: там свои кнопки */
+body:has(.page[data-section="marathons"].active[data-view="detail"]) .fab-container,
+body:has(.page[data-section="marathons"].active[data-view="series"]) .fab-container { display: none; }
