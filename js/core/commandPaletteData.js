@@ -73,6 +73,7 @@ export function buildCommands(state, deps = {}) {
 
   // --- Разделы ---
   for (const [tab, title, icon] of [
+    ['today', 'Сегодня', '⌂'],
     ['characters', 'Персонажи', '👥'],
     ['parties', 'Пати', '🛡'],
     ['marathons', 'Марафоны', '🏃'],

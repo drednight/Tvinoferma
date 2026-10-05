@@ -86,6 +86,7 @@ describe('состав команд', () => {
   const titles = () => commands.map(c => c.title);
 
   it('есть разделы и основные действия', () => {
+    expect(titles()).toContain('⌂ Сегодня');
     expect(titles()).toContain('👥 Персонажи');
     expect(titles()).toContain('⚙ Настройки');
     expect(titles()).toContain('🔐 Проверить авторизацию');

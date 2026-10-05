@@ -12,10 +12,18 @@ import { openCreatePartyModal } from '../modules/parties/manager.js';
  */
 export function initUiActions() {
     setupFabLogic();
+    setupGameWindowsFab();
     setupScriptsMenu();
     
     // Вызываем обновление сразу после инициализации
     updateFabVisibility(getActiveSectionName());
+}
+
+function setupGameWindowsFab() {
+    document.getElementById('fab-game-windows-btn')?.addEventListener('click', async () => {
+        const { openWindowPicker } = await import('../modules/launcher/windowPicker.js');
+        await openWindowPicker();
+    });
 }
 
 /**
@@ -73,8 +81,10 @@ function setupFabLogic() {
 export function updateFabVisibility(sectionName) {
     const container = document.getElementById('global-fab-container');
     const fabBtn = document.getElementById('fab-main-btn');
+    const windowsBtn = document.getElementById('fab-game-windows-btn');
     
     if (!container || !fabBtn) return;
+    if (windowsBtn) windowsBtn.hidden = sectionName !== 'characters';
 
     let isVisible;
     let tooltipText = '';

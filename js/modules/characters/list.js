@@ -19,7 +19,6 @@ import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 import { onboardingHtml } from './onboarding.js';
-import { renderToday } from '../dashboard/todayView.js';
 import {
   NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
 } from '../parties/membership.js';
@@ -154,10 +153,6 @@ function renderFilteredGrid() {
   updateKPIs(filteredChars);
   visibleIds = filteredChars.map(c => c.id);
   renderBulkBar();
-
-  // Экран «Сегодня» над списком: что требует внимания, марафоны и запасы (Issue #39).
-  // Показывается всегда, когда есть персонажи, — это ответ на вопрос «что делать сегодня».
-  renderToday(gridEl, { run: runTodayAction });
 
   if (filteredChars.length === 0) {
     // Подсказка первых шагов — только когда персонажей нет вовсе. Если данные есть, но фильтр
@@ -444,7 +439,7 @@ function initSyncButtons() {
  * @param {string} action
  * @param {any} payload
  */
-async function runTodayAction(action, payload) {
+export async function runTodayAction(action, payload) {
   if (action === 'check-auth-one') {
     const char = state.characters.find(c => c.id === payload);
     if (char) await refreshAllLoginStatuses([char]);

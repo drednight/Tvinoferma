@@ -1,10 +1,10 @@
 // Отображение экрана «Сегодня» (js/modules/dashboard/todayView.js):
-// три блока, действия в строках, сворачивание.
+// самостоятельная главная страница: три блока и действия в строках.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 
-let state, todayHtml, renderToday, todayCollapsed;
+let state, todayHtml, renderToday;
 
 const NOW = new Date('2026-10-05T12:00:00');
 const at = (h) => new Date(NOW.getTime() - h * 3600e3).toISOString();
@@ -14,9 +14,9 @@ const html = (deps = {}) => todayHtml(deps, state);
 
 beforeEach(async () => {
   vi.resetModules();
-  document.body.innerHTML = '<section id="characters"><div id="character-grid"></div></section>';
+  document.body.innerHTML = '<section id="today-root"></section>';
   ({ state } = await import('../js/core/state.js'));
-  ({ todayHtml, renderToday, todayCollapsed } = await import('../js/modules/dashboard/todayView.js'));
+  ({ todayHtml, renderToday } = await import('../js/modules/dashboard/todayView.js'));
   state.settings = { freshness: { balanceHours: 24, loginHours: 24, marathonHours: 24 }, ui: {} };
   state.parties = [];
   state.marathons = [];
@@ -33,7 +33,7 @@ describe('разметка экрана «Сегодня»', () => {
 
   it('показывает три блока: внимание, марафоны, запасы', () => {
     const out = html();
-    expect(out).toContain('Сегодня');
+    expect(out).toContain('Состояние фермы');
     expect(out).toContain('Требуют внимания');
     expect(out).toContain('Сегодня в марафонах');
     expect(out).toContain('Запасы');
@@ -97,48 +97,37 @@ describe('разметка экрана «Сегодня»', () => {
     expect(out).toContain('Основа');
   });
 
-  it('экран можно свернуть, и это состояние сохраняется в разметке', () => {
-    expect(todayCollapsed()).toBe(false);
-    expect(html()).toContain('▾ Свернуть');
-    state.settings.ui.todayCollapsed = true;
-    expect(todayCollapsed()).toBe(true);
-    const out = html();
-    expect(out).toContain('▸ Развернуть');
-    expect(out).not.toContain('Сегодня в марафонах');   // блоки скрыты
-  });
 });
 
 describe('отрисовка и действия', () => {
-  const grid = () => document.getElementById('character-grid');
+  const root = () => document.getElementById('today-root');
   const section = () => document.querySelector('[data-today]');
 
-  it('экран вставляется перед сеткой карточек и не заменяет её', () => {
-    renderToday(grid(), {});
-    const sec = section();
-    expect(sec).not.toBeNull();
-    // Сетка осталась на месте и идёт после экрана
-    expect(grid()).not.toBeNull();
-    expect(sec.nextElementSibling).toBe(grid());
+  it('экран рисуется в собственном контейнере', () => {
+    renderToday(root(), {});
+    expect(section()).not.toBeNull();
+    expect(section().parentElement).toBe(root());
   });
 
   it('повторная отрисовка не дублирует экран', () => {
-    renderToday(grid(), {});
-    renderToday(grid(), {});
+    renderToday(root(), {});
+    renderToday(root(), {});
     expect(document.querySelectorAll('[data-today]')).toHaveLength(1);
   });
 
-  it('на пустых данных экран убирается', () => {
-    renderToday(grid(), {});
+  it('на пустых данных показывает понятное пустое состояние', () => {
+    renderToday(root(), {});
     expect(section()).not.toBeNull();
     state.characters = [];
-    renderToday(grid(), {});
+    renderToday(root(), {});
     expect(section()).toBeNull();
+    expect(root().textContent).toContain('Добавьте первого персонажа');
   });
 
   it('кнопка действия вызывает переданный обработчик с id персонажа', () => {
     state.characters = [{ id: 'a', nick: 'Аа', isLoggedIn: false, dungeonPasses: {} }];
     const run = vi.fn();
-    renderToday(grid(), { run });
+    renderToday(root(), { run });
     document.querySelector('[data-today-act="check-auth-one"]').click();
     expect(run).toHaveBeenCalledWith('check-auth-one', 'a');
   });
@@ -151,21 +140,15 @@ describe('отрисовка и действия', () => {
       progress: {}
     }];
     const run = vi.fn();
-    renderToday(grid(), { run });
+    renderToday(root(), { run });
     document.querySelector('[data-today-act="open-marathon"]').click();
     expect(run).toHaveBeenCalledWith('open-marathon', 'm1');
   });
 
-  it('сворачивание запоминается и перерисовывает экран', async () => {
-    renderToday(grid(), {});
-    document.querySelector('[data-today-toggle]').click();
-    await vi.waitFor(() => expect(todayCollapsed()).toBe(true));
-    expect(document.querySelector('[data-today-toggle]').textContent).toContain('Развернуть');
-  });
-
-  it('без сетки ничего не падает', () => {
+  it('без контейнера ничего не падает', () => {
     expect(() => renderToday(null, {})).not.toThrow();
     const detached = document.createElement('div');
     expect(() => renderToday(detached, {})).not.toThrow();
+    expect(detached.querySelector('[data-today]')).not.toBeNull();
   });
 });

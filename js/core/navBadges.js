@@ -32,13 +32,21 @@ export function countLabel(n) {
 export function refreshNavBadges(doc = document) {
   const counts = navCounts();
   for (const [section, value] of Object.entries(counts)) {
-    const el = doc.getElementById(`tab-count-${section}`);
-    if (!el) continue;
     const label = countLabel(value);
-    el.hidden = !value;
-    if (el.textContent !== label) el.textContent = label;
-    const tab = doc.querySelector(`.tab[data-tab="${section}"]`);
-    tab?.setAttribute('aria-label', `${tab.querySelector('span:not(.tab-ico):not(.tab-count)')?.textContent || section}: ${value}`);
+    const badges = [
+      doc.getElementById(`tab-count-${section}`),
+      ...doc.querySelectorAll(`[data-count-mirror="${section}"]`)
+    ].filter(Boolean);
+    badges.forEach(el => {
+      el.toggleAttribute('hidden', !value);
+      if (el.textContent !== label) el.textContent = label;
+    });
+    doc.querySelectorAll(`.tab[data-tab="${section}"]`).forEach(tab => {
+      const title = tab.querySelector('.next-nav-copy strong')?.textContent
+        || tab.querySelector('span:not(.tab-ico):not(.tab-count)')?.textContent
+        || section;
+      tab.setAttribute('aria-label', `${title}: ${value}`);
+    });
   }
 }
 

@@ -13,6 +13,8 @@ import { initUpdateUi } from './desktop/updateUi.js';
 import { initParserHealthUi } from './settings/parserHealthUi.js';
 import { startFreshnessTicker } from './core/freshness.js';
 import { bindCharacters, renderCharacters } from './modules/characters/list.js';
+import { runTodayAction } from './modules/characters/list.js';
+import { renderToday } from './modules/dashboard/todayView.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
 import { initTaskLog } from './core/taskLog.js';
@@ -163,8 +165,8 @@ async function boot() {
     // Плашка «Статус серверов» в шапке: сначала последнее сохранённое чтение, затем обновляется само
     mountServerStatus(document.getElementById('server-status'));
 
-    // 7. Первый рендер активной вкладки (по умолчанию Персонажи)
-    renderActiveTab('characters');
+    // 7. Первый рендер активной вкладки
+    renderActiveTab('today');
 
     console.log('[BOOT] Application ready.');
 
@@ -219,8 +221,11 @@ function bindNavigation() {
       const targetSection = tab.dataset.tab;
 
       // Обновляем активную вкладку визуально
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
+      tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === targetSection));
+      const sectionTitle = document.getElementById('next-section-title');
+      if (sectionTitle) sectionTitle.textContent = tab.querySelector('strong')?.textContent
+        || tab.querySelector('span:not([aria-hidden])')?.textContent
+        || targetSection;
 
       // Переключаем видимость секций
       pages.forEach(page => {
@@ -242,6 +247,9 @@ function bindNavigation() {
 function renderActiveTab(sectionName) {
   try {
     switch (sectionName) {
+      case 'today':
+        renderToday(document.getElementById('today-root'), { run: runTodayAction });
+        break;
       case 'characters':
         renderCharacters();
         break;

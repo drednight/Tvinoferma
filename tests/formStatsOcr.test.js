@@ -18,7 +18,7 @@ async function mountForm() {
   const ui = await import('../js/core/ui.js');
   ui.showModal.mockImplementation(({ content }) => {
     const root = document.getElementById('modal-root');
-    root.innerHTML = `<div class="modal-overlay"><div class="modal-container"><div class="modal-body">${content}</div></div></div>`;
+    root.innerHTML = `<div class="modal-overlay"><div class="modal-container"><div class="modal-body">${content}</div><div class="modal-footer"></div></div></div>`;
   });
   openCharacterForm(null);
 }
@@ -38,10 +38,12 @@ beforeEach(async () => {
 const ocrButton = () => document.getElementById('btn-stats-ocr');
 
 describe('кнопка «Заполнить со скриншота»', () => {
-  it('кнопка есть в форме', async () => {
+  it('кнопка находится в футере, а не среди полей формы', async () => {
     await mountForm();
     expect(ocrButton()).not.toBeNull();
     expect(ocrButton().textContent).toContain('скриншота');
+    expect(ocrButton().closest('.modal-footer')).not.toBeNull();
+    expect(document.querySelector('.modal-body #btn-stats-ocr')).toBeNull();
   });
 
   it('клик открывает разбор скриншота (обработчик действительно навешен)', async () => {

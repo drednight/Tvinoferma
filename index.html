@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/css/core/variables.css" />
   <link rel="stylesheet" href="/css/core/base.css" />
   <link rel="stylesheet" href="/css/core/layout.css" />
+  <link rel="stylesheet" href="/css/core/newStyle.css" />
   <link rel="stylesheet" href="/css/modules/dashboard.css" />
   <link rel="stylesheet" href="/css/modules/today.css" />
   <link rel="stylesheet" href="/css/core/components.css" />
@@ -32,17 +33,60 @@
   <link rel="stylesheet" href="/css/modules/windowPicker.css" />
   <link rel="stylesheet" href="/css/modules/statsImport.css" />
 </head>
-<body>
+<body data-ui-style="next">
   <div class="app-shell">
+    <!-- Экспериментальный каркас. В классическом режиме полностью скрыт. -->
+    <aside class="next-sidebar" aria-label="Навигация нового интерфейса">
+      <div class="next-brand">
+        <div class="brand-mark">ТФ</div>
+        <div>
+          <strong>Твиноферма</strong>
+          <span>Центр управления фермой</span>
+        </div>
+      </div>
+
+      <nav class="next-nav" aria-label="Разделы приложения">
+        <p class="next-nav-label">Обзор</p>
+        <button class="tab active" data-tab="today" title="Ctrl+1">
+          <span class="next-nav-icon" aria-hidden="true">⌂</span>
+          <span class="next-nav-copy"><strong>Сегодня</strong><small>Сводка и важные действия</small></span>
+        </button>
+
+        <p class="next-nav-label">Ферма</p>
+        <button class="tab" data-tab="characters" title="Ctrl+2">
+          <span class="next-nav-icon" aria-hidden="true">●</span>
+          <span class="next-nav-copy"><strong>Персонажи</strong><small>Сегодня и аккаунты</small></span>
+          <span class="tab-count" data-count-mirror="characters" hidden></span>
+        </button>
+        <button class="tab" data-tab="parties" title="Ctrl+3">
+          <span class="next-nav-icon" aria-hidden="true">◆</span>
+          <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
+          <span class="tab-count" data-count-mirror="parties" hidden></span>
+        </button>
+        <button class="tab" data-tab="marathons" title="Ctrl+4">
+          <span class="next-nav-icon" aria-hidden="true">▲</span>
+          <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
+          <span class="tab-count" data-count-mirror="marathons" hidden></span>
+        </button>
+
+        <p class="next-nav-label next-nav-system">Система</p>
+        <button class="tab" data-tab="settings" title="Ctrl+5">
+          <span class="next-nav-icon" aria-hidden="true">⚙</span>
+          <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
+        </button>
+      </nav>
+
+      <div class="next-sidebar-foot">
+        <span class="next-version-dot" aria-hidden="true"></span>
+        <span>Твиноферма готова к работе</span>
+      </div>
+    </aside>
 
     <!-- Шапка приложения -->
     <header class="topbar">
-      <div class="brand">
-        <div class="brand-mark">ТФ</div>
-        <div class="brand-text">
-          <h1>Твиноферма</h1>
-          <p class="brand-sub">Учёт персонажей, пати и марафонов</p>
-        </div>
+      <div class="next-workspace-context" aria-live="polite">
+        <span>Рабочее пространство</span>
+        <strong id="next-section-title">Сегодня</strong>
       </div>
 
       <!-- Плашка «Статус серверов» (js/modules/servers/serverStatusView.js): только показ, данные со страницы сайта -->
@@ -52,23 +96,6 @@
         <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->
         <button id="update-badge" class="update-badge" type="button" hidden></button>
 
-        <nav class="tabs" aria-label="Разделы приложения">
-          <button class="tab active" data-tab="characters" title="Ctrl+1">
-            <span class="tab-ico" aria-hidden="true">👥</span><span>Персонажи</span>
-            <span class="tab-count" id="tab-count-characters" hidden></span>
-          </button>
-          <button class="tab" data-tab="parties" title="Ctrl+2">
-            <span class="tab-ico" aria-hidden="true">🛡</span><span>Пати</span>
-            <span class="tab-count" id="tab-count-parties" hidden></span>
-          </button>
-          <button class="tab" data-tab="marathons" title="Ctrl+3">
-            <span class="tab-ico" aria-hidden="true">🏃</span><span>Марафоны</span>
-            <span class="tab-count" id="tab-count-marathons" hidden></span>
-          </button>
-          <button class="tab" data-tab="settings" title="Ctrl+4">
-            <span class="tab-ico" aria-hidden="true">⚙</span><span>Настройки</span>
-          </button>
-        </nav>
       </div>
     </header>
 
@@ -78,8 +105,19 @@
       <!-- Плашка «Парсер устарел» (js/settings/parserHealthUi.js): появляется, когда парсер несколько раз подряд не нашёл элементы на странице сайта -->
       <div id="parser-health-banner" class="health-banner" role="alert" hidden></div>
 
+      <!-- РАЗДЕЛ: СЕГОДНЯ -->
+      <section class="page active" data-section="today">
+        <div class="section-head">
+          <div>
+            <h2>Сегодня</h2>
+            <p class="section-sub">Что требует внимания, текущие марафоны и состояние всей фермы.</p>
+          </div>
+        </div>
+        <div id="today-root"></div>
+      </section>
+
       <!-- РАЗДЕЛ: ПЕРСОНАЖИ -->
-      <section class="page active" data-section="characters">
+      <section class="page" data-section="characters">
 
         <div class="section-head">
           <div>
@@ -498,6 +536,9 @@
     <!-- Основная кнопка. Иконка меняется динамически -->
     <button id="fab-main-btn" class="fab-main" title="Добавить" aria-haspopup="menu" aria-expanded="false">
       <span class="fab-icon" id="fab-icon-display">+</span>
+    </button>
+    <button id="fab-game-windows-btn" class="fab-secondary" type="button" hidden title="Показать запущенные окна игры">
+      <span aria-hidden="true">🎮</span><span>Запущенные окна игры</span>
     </button>
   </div>
   <!-- ====================================================== -->

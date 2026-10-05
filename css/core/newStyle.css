@@ -1,0 +1,303 @@
+/* Экспериментальный каркас интерфейса.
+   Все правила ограничены data-ui-style="next": классический вариант остаётся без изменений. */
+
+.next-sidebar,
+.next-workspace-context {
+  display: none;
+}
+
+body[data-ui-style='next'] {
+  --next-sidebar-w: 248px;
+  --content-max: 1720px;
+  background: radial-gradient(circle at 46% -12%, rgba(110, 142, 248, 0.08), transparent 34rem), var(--bg);
+}
+
+body[data-ui-style='next'] .app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--next-sidebar-w) minmax(0, 1fr);
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+body[data-ui-style='next'] .next-sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px 14px;
+  border-right: 1px solid var(--border);
+  background: rgba(14, 18, 26, 0.96);
+  backdrop-filter: blur(18px);
+}
+
+.next-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 8px 22px;
+}
+.next-brand .brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+.next-brand > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.next-brand strong {
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+.next-brand span {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-nav {
+  display: grid;
+  gap: 4px;
+}
+.next-nav-label {
+  margin: 10px 10px 5px;
+  color: var(--text-faint);
+  font-size: 0.66rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.next-nav-system {
+  margin-top: 24px;
+}
+
+.next-nav .tab {
+  width: 100%;
+  min-height: 54px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.next-nav .tab.active {
+  border-color: rgba(110, 142, 248, 0.22);
+  background: linear-gradient(90deg, rgba(110, 142, 248, 0.18), rgba(110, 142, 248, 0.08));
+  box-shadow: none;
+}
+.next-nav-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  background: var(--surface-1);
+  font-size: 0.72rem;
+}
+.next-nav .tab.active .next-nav-icon {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.next-nav-copy {
+  min-width: 0;
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+.next-nav-copy strong {
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+.next-nav-copy small {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.69rem;
+  font-weight: 450;
+  text-overflow: ellipsis;
+}
+.next-nav .tab-count {
+  margin-left: auto;
+}
+
+.next-sidebar-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px 10px 2px;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+}
+.next-version-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 4px var(--success-soft);
+}
+
+body[data-ui-style='next'] .topbar {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  padding: 9px 24px;
+  flex-wrap: nowrap;
+  background: rgba(11, 14, 20, 0.82);
+}
+body[data-ui-style='next'] .topbar > .brand,
+body[data-ui-style='next'] .topbar .tabs {
+  display: none;
+}
+body[data-ui-style='next'] .next-workspace-context {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  margin-right: auto;
+}
+.next-workspace-context span {
+  color: var(--text-faint);
+  font-size: 0.67rem;
+}
+.next-workspace-context strong {
+  overflow: hidden;
+  font-size: 0.94rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-ui-style='next'] .topbar-right {
+  margin-left: auto;
+}
+
+body[data-ui-style='next'] .content {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  padding: 28px 32px 42px;
+}
+body[data-ui-style='next'] .section-head {
+  margin-bottom: 22px;
+}
+body[data-ui-style='next'] .section-head h2 {
+  font-size: 1.65rem;
+  letter-spacing: -0.025em;
+}
+body[data-ui-style='next'] .section-sub {
+  max-width: 72ch;
+}
+body[data-ui-style='next'] .panel,
+body[data-ui-style='next'] .stat,
+body[data-ui-style='next'] .filters {
+  border-radius: 12px;
+}
+body[data-ui-style='next'] .stat-strip {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+/* Боковая панель уменьшает рабочую ширину: «Сегодня» перестраивается раньше,
+   чтобы строки внимания и их кнопки никогда не обрезались. */
+@media (max-width: 1500px) {
+  body[data-ui-style='next'] .today-grid {
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.9fr);
+    grid-template-areas:
+      'attention supplies'
+      'marathons marathons';
+  }
+  body[data-ui-style='next'] .today-card:nth-child(1) {
+    grid-area: attention;
+  }
+  body[data-ui-style='next'] .today-card:nth-child(2) {
+    grid-area: marathons;
+  }
+  body[data-ui-style='next'] .today-card:nth-child(3) {
+    grid-area: supplies;
+  }
+}
+
+@media (max-width: 980px) {
+  body[data-ui-style='next'] {
+    --next-sidebar-w: 76px;
+  }
+  body[data-ui-style='next'] .next-sidebar {
+    padding-inline: 10px;
+  }
+  .next-brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .next-brand > div:last-child,
+  .next-nav-label,
+  .next-nav-copy,
+  .next-sidebar-foot span:last-child {
+    display: none;
+  }
+  .next-nav .tab {
+    justify-content: center;
+    padding-inline: 8px;
+  }
+  .next-nav .tab-count {
+    position: absolute;
+    margin: -28px -28px 0 0;
+  }
+  body[data-ui-style='next'] .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'attention' 'marathons' 'supplies';
+  }
+}
+
+@media (max-width: 680px) {
+  body[data-ui-style='next'] .app-shell {
+    display: flex;
+    padding-bottom: 70px;
+  }
+  body[data-ui-style='next'] .next-sidebar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 180;
+    width: auto;
+    height: 64px;
+    padding: 7px 10px;
+    border-top: 1px solid var(--border);
+    border-right: 0;
+  }
+  .next-brand,
+  .next-nav-label,
+  .next-sidebar-foot {
+    display: none;
+  }
+  .next-nav {
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+  }
+  .next-nav .tab {
+    min-height: 48px;
+  }
+  .next-nav-icon {
+    border: 0;
+    background: transparent;
+  }
+  body[data-ui-style='next'] .topbar {
+    min-height: 58px;
+    padding: 8px 16px;
+  }
+  body[data-ui-style='next'] .server-status {
+    display: none;
+  }
+  body[data-ui-style='next'] .content {
+    padding: 20px 16px 30px;
+  }
+}

@@ -120,10 +120,8 @@ export function openCharacterForm(char = null) {
           <span class="stats-fold-note muted">Основные, бой и защита, показатели боя, PvE и пробивание</span>
         </summary>
         <div class="stats-fold-body">
-          <!-- Разбор скриншота окна характеристик: значения попадут в поля ниже (js/modules/characters/statsImport.js) -->
           <div class="stat-head">
             <h4>Основные характеристики</h4>
-            <button type="button" class="btn secondary small" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>
           </div>
           <div class="four-cols">
             ${statInput('endurance', 'Выносливость')}
@@ -253,6 +251,7 @@ export function openCharacterForm(char = null) {
     title: isEdit ? `Редактировать: ${currentChar.nick}` : 'Новый персонаж',
     content,
     submitText: isEdit ? 'Сохранить изменения' : 'Создать персонажа',
+    cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
       try {
         const getSafeStr = (name) => String(formData.get(name) || '').trim();
@@ -365,6 +364,9 @@ export function openCharacterForm(char = null) {
     }
   });
 
-  // Разметка формы создаётся внутри showModal, поэтому кнопку разбора привязываем сразу после него
+  // Распознавание — действие формы целиком, поэтому кнопка находится в футере, а не среди полей.
+  const footer = document.querySelector('#modal-root .modal-footer');
+  footer?.insertAdjacentHTML('afterbegin',
+    '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>');
   bindStatsOcr();
 }

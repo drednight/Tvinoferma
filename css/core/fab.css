@@ -40,6 +40,26 @@
 .fab-main:hover { transform: scale(1.06); filter: brightness(1.08); box-shadow: 0 14px 32px rgba(110, 142, 248, 0.45); }
 .fab-main:active { transform: scale(0.96); }
 
+.fab-secondary {
+  order: -1;
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text);
+  font: inherit;
+  font-size: .86rem;
+  font-weight: 650;
+  box-shadow: var(--shadow-2);
+  cursor: pointer;
+}
+.fab-secondary:hover { border-color: var(--accent); background: var(--surface-2); }
+.fab-secondary[hidden] { display: none; }
+
 .fab-icon {
   transform-origin: center;
   transition: transform 0.25s var(--ease);
@@ -150,6 +170,7 @@
 /* На странице марафона и папки кнопка не нужна: там свои действия */
 body:has(.page[data-section="marathons"].active[data-view="detail"]) .fab-container,
 body:has(.page[data-section="marathons"].active[data-view="series"]) .fab-container { display: none; }
+body:has(.modal-overlay) .fab-container { display: none; }
 
 @media (max-width: 560px) {
   .fab-container { right: 16px; bottom: 16px; }

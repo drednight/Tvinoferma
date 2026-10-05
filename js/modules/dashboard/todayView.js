@@ -1,22 +1,15 @@
 // js/modules/dashboard/todayView.js
-// Экран «Сегодня» (Issue #39): стартовый вид раздела «Персонажи».
+// Экран «Сегодня» (Issue #39): самостоятельная стартовая страница приложения.
 //
 // Три блока: что требует внимания (со кнопкой действия в строке), что делать в марафонах
 // и запасы фермы. Данные собирает today.js, здесь — только показ и кнопки.
 //
-// Экран показывается над списком персонажей и не заменяет его: список остаётся ниже, потому что
-// работать с карточками по-прежнему нужно. Свернуть экран можно — это запоминается в настройках.
+// Список персонажей живёт в отдельном разделе: обзор не конкурирует с рабочими карточками.
 
 import { state } from '../../core/state.js';
-import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord } from './today.js';
-
-/** Свёрнут ли экран «Сегодня» (настройка в state.settings.ui). */
-export function todayCollapsed(appState = state) {
-  return appState?.settings?.ui?.todayCollapsed === true;
-}
 
 /**
  * Разметка экрана «Сегодня».
@@ -30,21 +23,14 @@ export function todayHtml(deps = {}, appState = state) {
 
   const attention = data.attention;
   const supplies = data.supplies;
-  const collapsed = todayCollapsed(appState);
-
   return `
     <section class="today" data-today>
       <div class="today-head">
         <div>
-          <h3>Сегодня</h3>
-          <p class="muted">Что требует внимания, что делать в марафонах и что в запасе.</p>
+          <h3>Состояние фермы</h3>
+          <p class="muted">Важные действия, активные события и доступные запасы.</p>
         </div>
-        <button type="button" class="btn ghost small" data-today-toggle
-                title="${collapsed ? 'Развернуть экран «Сегодня»' : 'Свернуть экран «Сегодня»'}">
-          ${collapsed ? '▸ Развернуть' : '▾ Свернуть'}
-        </button>
       </div>
-      ${collapsed ? '' : `
       <div class="today-grid">
         <section class="today-card">
           <h4 class="today-title">
@@ -117,33 +103,19 @@ export function todayHtml(deps = {}, appState = state) {
                 title="Открыть раздел «Пати»">${escapeHtml(p.name)} <b>${p.online}/${p.members}</b></button>`).join('')}
             </div>` : ''}
         </section>
-      </div>`}
+      </div>
     </section>`;
 }
 
 /**
- * Рисует экран «Сегодня» над списком персонажей.
- *
- * Экран вставляется перед сеткой карточек и перерисовывается вместе с ней: отдельного контейнера
- * в разметке нет, поэтому список остаётся на месте, а экран всегда соответствует данным.
- *
- * @param {HTMLElement} grid сетка карточек персонажей
+ * Рисует самостоятельную страницу «Сегодня».
+ * @param {HTMLElement} root контейнер страницы
  * @param {{ run?: (action: string, payload?: any) => void }} deps
  */
-export function renderToday(grid, deps = {}) {
-  if (!grid || !grid.parentElement) return;
-  const existing = grid.parentElement.querySelector('[data-today]');
-  const html = todayHtml(deps);
-  if (!html) {
-    existing?.remove();
-    return;
-  }
-  if (existing) {
-    existing.outerHTML = html;
-  } else {
-    grid.insertAdjacentHTML('beforebegin', html);
-  }
-  bindToday(grid.parentElement, deps);
+export function renderToday(root, deps = {}) {
+  if (!root) return;
+  root.innerHTML = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
+  bindToday(root, deps);
 }
 
 /** Кнопки экрана: действия в строках, переходы и сворачивание. */
@@ -153,17 +125,8 @@ function bindToday(root, deps = {}) {
   section.dataset.bound = 'true';
 
   section.addEventListener('click', async (e) => {
-    const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-today-act], [data-today-toggle]'));
+    const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-today-act]'));
     if (!btn) return;
-
-    // Сворачивание экрана: запоминаем, чтобы вид не сбрасывался при каждом запуске
-    if (btn.hasAttribute('data-today-toggle')) {
-      state.settings.ui = { ...(state.settings.ui || {}), todayCollapsed: !todayCollapsed() };
-      await persist();
-      const grid = root.querySelector('#character-grid');
-      renderToday(grid, deps);
-      return;
-    }
 
     const action = btn.dataset.todayAct;
     const charId = btn.dataset.todayChar;
