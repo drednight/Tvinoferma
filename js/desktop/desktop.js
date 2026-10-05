@@ -3,7 +3,7 @@
 
 import { state } from '../core/state.js';
 import { toast } from '../core/ui.js';
-import { launchablePartyNames, decorateNotice } from '../modules/launcher/launch.js';
+import { launchablePartyNames, decorateNotice, hasGameCenterPath } from '../modules/launcher/launch.js';
 import { charactersInParty } from '../modules/parties/membership.js';
 
 export const HOTKEYS = [
@@ -22,6 +22,12 @@ export const HOTKEYS = [
 let backgroundTimer = null;
 
 async function runScript(action) {
+  if (typeof action === 'string' && action.startsWith('launch-favorite:')) {
+    const id = action.slice('launch-favorite:'.length);
+    const character = state.characters.find(c => String(c.id) === id);
+    const { launchOne } = await import('../modules/launcher/partyLaunch.js');
+    return launchOne(character);
+  }
   if (typeof action === 'string' && action.startsWith('launch-party:')) {
     const { launchPartyByName } = await import('../modules/launcher/partyLaunch.js');
     return launchPartyByName(action.slice('launch-party:'.length));
@@ -120,11 +126,14 @@ let trayPartiesKey = null;
 export async function syncTrayParties() {
   if (!window.__TAURI_INTERNALS__) return;
   const names = launchablePartyNames(state.parties, state.characters, charactersInParty);
-  const key = JSON.stringify(names);
+  const favorites = state.characters
+    .filter(c => c.favorite === true && hasGameCenterPath(c))
+    .map(c => `${c.id}\u001f${c.nick}`);
+  const key = JSON.stringify([names, favorites]);
   if (key === trayPartiesKey) return;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('set_tray_parties', { names });
+    await invoke('set_tray_parties', { names, favorites });
     trayPartiesKey = key;
   } catch (e) { console.warn('[TRAY]', e); }
 }

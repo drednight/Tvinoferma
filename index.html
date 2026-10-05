@@ -69,16 +69,13 @@
           <span class="tab-count" data-count-mirror="marathons" hidden></span>
         </button>
 
-        <p class="next-nav-label next-nav-system">Система</p>
-        <button class="tab" data-tab="settings" title="Ctrl+5">
+      </nav>
+      <div class="next-sidebar-bottom">
+        <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
+        <button class="tab next-settings-tab" data-tab="settings" title="Ctrl+5">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
-      </nav>
-
-      <div class="next-sidebar-foot">
-        <span class="next-version-dot" aria-hidden="true"></span>
-        <span>Твиноферма готова к работе</span>
       </div>
     </aside>
 
@@ -88,9 +85,6 @@
         <span>Рабочее пространство</span>
         <strong id="next-section-title">Сегодня</strong>
       </div>
-
-      <!-- Плашка «Статус серверов» (js/modules/servers/serverStatusView.js): только показ, данные со страницы сайта -->
-      <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
 
       <div class="topbar-right">
         <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->

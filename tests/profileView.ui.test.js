@@ -28,6 +28,19 @@ beforeEach(async () => {
 });
 
 describe('раскрытая карточка', () => {
+  it('звезда добавляет и удаляет персонажа из избранного', async () => {
+    const char = mkChar({ favorite: false });
+    openCharacterProfile(char); await wait();
+    const button = $('#btn-favorite-from-profile');
+    expect(button.textContent).toBe('☆');
+    button.click();
+    await vi.waitFor(() => expect(char.favorite).toBe(true));
+    expect(button.textContent).toBe('★');
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    button.click();
+    await vi.waitFor(() => expect(char.favorite).toBe(false));
+  });
+
   it('основная пати отдельной строкой, ниже одна строка «доп. пати» с раскрывающимся списком', async () => {
     openCharacterProfile(mkChar()); await wait();
     expect(document.body.textContent).toContain('Пати: Основа');

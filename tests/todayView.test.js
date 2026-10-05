@@ -1,6 +1,6 @@
 // Отображение экрана «Сегодня» (js/modules/dashboard/todayView.js):
 // самостоятельная главная страница: три блока и действия в строках.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 
@@ -13,6 +13,8 @@ const day = (o) => { const d = new Date(NOW); d.setDate(d.getDate() + o); return
 const html = (deps = {}) => todayHtml(deps, state);
 
 beforeEach(async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
   vi.resetModules();
   document.body.innerHTML = '<section id="today-root"></section>';
   ({ state } = await import('../js/core/state.js'));
@@ -23,6 +25,10 @@ beforeEach(async () => {
   state.characters = [
     { id: 'a', nick: 'Аа', class: 'Воин', isLoggedIn: true, ancientCoins: 100, dungeonPasses: { weapon: 1, armor: 2, relic: 3 }, lastCoinUpdate: at(1) }
   ];
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('разметка экрана «Сегодня»', () => {

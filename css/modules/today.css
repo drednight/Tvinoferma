@@ -102,3 +102,128 @@
 .today-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
 .today-chip.is-button { cursor: pointer; color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); font: inherit; font-size: 0.75rem; }
 .today-chip.is-button:hover { background: rgba(110, 142, 248, 0.24); }
+
+/* Месячный планер */
+.planner {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.planner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin-bottom: 16px;
+}
+.planner-head h3 { margin-bottom: 2px; }
+.planner-head p { font-size: 0.84rem; }
+.planner-nav { display: flex; align-items: center; gap: 8px; }
+.planner-nav strong { min-width: 146px; text-align: center; text-transform: capitalize; }
+.planner-weekdays,
+.planner-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+.planner-weekdays { margin-bottom: 6px; }
+.planner-weekdays span {
+  padding: 0 8px;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  text-align: right;
+}
+.planner-day {
+  min-width: 0;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 14, 21, 0.55);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--speed), background var(--speed), transform var(--speed);
+}
+.planner-day:hover {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.planner-day.is-empty {
+  min-height: 100px;
+  border-style: dashed;
+  opacity: 0.25;
+}
+.planner-day.is-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.planner-day-number {
+  align-self: flex-end;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.planner-day.is-today .planner-day-number {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.planner-day-events { display: grid; gap: 3px; min-width: 0; }
+.planner-event {
+  overflow: hidden;
+  padding: 2px 6px;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.planner-event.is-green, .planner-color.is-green { border-color: var(--success); background: var(--success-soft); }
+.planner-event.is-yellow, .planner-color.is-yellow { border-color: var(--warning); background: var(--warning-soft); }
+.planner-event.is-red, .planner-color.is-red { border-color: var(--danger); background: var(--danger-soft); }
+.planner-event.is-purple, .planner-color.is-purple { border-color: var(--accent-2); background: rgba(180, 126, 255, 0.14); }
+.planner-event.is-gray, .planner-color.is-gray { border-color: var(--text-faint); background: rgba(255, 255, 255, 0.05); }
+.planner-event.is-done { opacity: 0.52; text-decoration: line-through; }
+.planner-more { color: var(--text-faint); font-size: 0.67rem; }
+
+.planner-day-list { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
+.planner-day-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.planner-day-row.is-done .planner-day-copy { opacity: 0.55; text-decoration: line-through; }
+.planner-color { width: 6px; height: 34px; flex: none; border-left: 6px solid var(--accent); border-radius: 3px; }
+.planner-day-copy { min-width: 0; display: grid; flex: 1; gap: 2px; }
+.planner-day-copy b, .planner-day-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.planner-day-empty { margin-bottom: 16px; }
+.planner-form { display: grid; gap: 13px; }
+
+@media (max-width: 900px) {
+  .planner-head { align-items: stretch; flex-direction: column; }
+  .planner-nav { justify-content: space-between; }
+  .planner-day { min-height: 76px; }
+  .planner-event { font-size: 0; min-height: 7px; padding: 0; }
+  .planner-more { display: none; }
+}
+@media (max-width: 560px) {
+  .planner { padding: 12px; overflow-x: auto; }
+  .planner-weekdays, .planner-grid { min-width: 560px; }
+}

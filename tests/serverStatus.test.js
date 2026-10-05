@@ -146,11 +146,11 @@ describe('плашка', () => {
     expect(view.serverStatusMeta(old)).toEqual({ text: '⚠ не обновилось, данные: 3 ч назад', warn: true });
   });
 
-  it('в шапке стоит между названием и вкладками; сама обновляется после чтения', async () => {
+  it('стоит в нижней части новой боковой панели перед настройками; сама обновляется после чтения', async () => {
     const html = readFileSync('index.html', 'utf8');
-    const top = html.slice(html.indexOf('<header class="topbar">'), html.indexOf('</header>'));
-    expect(top.indexOf('class="brand"')).toBeLessThan(top.indexOf('id="server-status"'));
-    expect(top.indexOf('id="server-status"')).toBeLessThan(top.indexOf('class="topbar-right"'));
+    const sidebar = html.slice(html.indexOf('<aside class="next-sidebar"'), html.indexOf('</aside>'));
+    expect(sidebar.indexOf('id="server-status"')).toBeGreaterThan(-1);
+    expect(sidebar.indexOf('id="server-status"')).toBeLessThan(sidebar.indexOf('data-tab="settings"'));
     document.body.innerHTML = '<div id="server-status"></div>';
     const stop = view.mountServerStatus(document.getElementById('server-status'));
     expect(document.querySelector('.srv-age').textContent).toBe('нет данных');

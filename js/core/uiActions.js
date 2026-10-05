@@ -84,7 +84,6 @@ export function updateFabVisibility(sectionName) {
     const windowsBtn = document.getElementById('fab-game-windows-btn');
     
     if (!container || !fabBtn) return;
-    if (windowsBtn) windowsBtn.hidden = sectionName !== 'characters';
 
     let isVisible;
     let tooltipText = '';
@@ -108,6 +107,7 @@ export function updateFabVisibility(sectionName) {
     } else {
         container.classList.remove('visible');
     }
+    if (windowsBtn) windowsBtn.hidden = sectionName !== 'parties';
 }
 
 /**

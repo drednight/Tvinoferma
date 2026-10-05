@@ -21,14 +21,20 @@ pub fn show_main(app: &AppHandle) {
 
 /// Сколько пати показываем в меню трея (длинный список в меню неудобен).
 const MAX_PARTIES: usize = 30;
+const MAX_FAVORITES: usize = 30;
 /// Префикс пункта «запустить пати»: после него идёт название пати (JS находит пати по названию).
 const LAUNCH_PREFIX: &str = "launch-party:";
+const FAVORITE_PREFIX: &str = "launch-favorite:";
 /// Пункты «Ввести промокод» и «Передать предметы в игру»: им нужно окно приложения (выбор персонажей и предметов)
 const PROMO_ACTION: &str = "promo";
 const TRANSFER_ACTION: &str = "transfer";
 
 /// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, марафоны), «Выход».
-fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::Result<Menu<R>> {
+fn build_menu<R: Runtime, M: Manager<R>>(
+    app: &M,
+    parties: &[String],
+    favorites: &[String],
+) -> tauri::Result<Menu<R>> {
     let show = MenuItem::with_id(app, "show", "Открыть Твиноферму", true, None::<&str>)?;
     let auth = MenuItem::with_id(
         app,
@@ -91,6 +97,31 @@ fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::
         &party_refs,
     )?;
 
+    let favorite_items = favorites
+        .iter()
+        .take(MAX_FAVORITES)
+        .filter_map(|value| value.split_once('\u{1f}'))
+        .map(|(id, name)| {
+            MenuItem::with_id(
+                app,
+                format!("{}{}", FAVORITE_PREFIX, id),
+                format!("▶ {}", name),
+                true,
+                None::<&str>,
+            )
+        })
+        .collect::<tauri::Result<Vec<MenuItem<R>>>>()?;
+    let favorite_refs: Vec<&dyn IsMenuItem<R>> = favorite_items
+        .iter()
+        .map(|item| item as &dyn IsMenuItem<R>)
+        .collect();
+    let favorites_menu = Submenu::with_items(
+        app,
+        "⭐ Избранное",
+        !favorite_refs.is_empty(),
+        &favorite_refs,
+    )?;
+
     let close_game = MenuItem::with_id(
         app,
         "close-game",
@@ -102,12 +133,12 @@ fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
     Menu::with_items(
         app,
-        &[&show, &launch, &close_game, &scripts, &separator, &quit],
+        &[&show, &favorites_menu, &launch, &close_game, &scripts, &separator, &quit],
     )
 }
 
 pub fn setup(app: &App) -> tauri::Result<()> {
-    let menu = build_menu(app, &[])?;
+    let menu = build_menu(app, &[], &[])?;
 
     let mut builder = TrayIconBuilder::with_id("main-tray")
         .tooltip("Твиноферма")
@@ -157,10 +188,14 @@ pub fn set_close_to_tray(settings: State<'_, TraySettings>, enabled: bool) {
 
 /// Список пати для меню трея: интерфейс присылает названия пати, где есть кого запускать.
 #[tauri::command]
-pub fn set_tray_parties(app: AppHandle, names: Vec<String>) -> Result<(), String> {
+pub fn set_tray_parties(
+    app: AppHandle,
+    names: Vec<String>,
+    favorites: Vec<String>,
+) -> Result<(), String> {
     let tray = app
         .tray_by_id("main-tray")
         .ok_or_else(|| "Иконка в трее не создана".to_string())?;
-    let menu = build_menu(&app, &names).map_err(|e| e.to_string())?;
+    let menu = build_menu(&app, &names, &favorites).map_err(|e| e.to_string())?;
     tray.set_menu(Some(menu)).map_err(|e| e.to_string())
 }

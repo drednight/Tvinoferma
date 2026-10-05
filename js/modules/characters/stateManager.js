@@ -21,6 +21,7 @@ export function createEmptyCharacter() {
   return {
     id: null, // назначается из ника при сохранении (core/ids.js)
     nick: '',
+    favorite: false,
     class: '',
     partyIds: [],
     mainPartyId: null,

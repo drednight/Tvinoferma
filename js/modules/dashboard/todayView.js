@@ -10,6 +10,7 @@ import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord } from './today.js';
+import { plannerHtml, bindPlanner } from './plannerView.js';
 
 /**
  * Разметка экрана «Сегодня».
@@ -52,7 +53,7 @@ export function todayHtml(deps = {}, appState = state) {
                         ${item.marathonId ? `data-today-marathon="${escapeHtml(item.marathonId)}"` : ''}>${escapeHtml(item.actionLabel)}</button>
               </li>`).join('')}
           </ul>
-          ${attention.length > 12 ? `<p class="muted today-more">Показаны первые 12. Остальные — в списке персонажей ниже.</p>` : ''}`
+          ${attention.length > 12 ? `<p class="muted today-more">Показаны первые 12. Остальные доступны в разделе «Персонажи».</p>` : ''}`
             : '<p class="muted today-empty">Всё в порядке: входы активны, балансы свежие, отстающих в марафонах нет.</p>'}
         </section>
 
@@ -114,8 +115,11 @@ export function todayHtml(deps = {}, appState = state) {
  */
 export function renderToday(root, deps = {}) {
   if (!root) return;
-  root.innerHTML = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
+  const render = () => renderToday(root, deps);
+  const summary = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
+  root.innerHTML = `${summary}${plannerHtml(state)}`;
   bindToday(root, deps);
+  bindPlanner(root, { ...deps, render });
 }
 
 /** Кнопки экрана: действия в строках, переходы и сворачивание. */

@@ -60,7 +60,12 @@ export function openCharacterProfile(char) {
                : `<span style="font-size:2rem; font-weight:bold; color:var(--muted);">${(char.class || '?')[0]}</span>`}
           </div>
           <div>
-            <h2 style="margin:0; color:var(--accent);">${escapeHtml(char.nick)}</h2>
+            <div class="pf-title-row">
+              <h2 style="margin:0; color:var(--accent);">${escapeHtml(char.nick)}</h2>
+              <button id="btn-favorite-from-profile" class="pf-favorite${char.favorite ? ' is-active' : ''}" type="button"
+                aria-pressed="${char.favorite ? 'true' : 'false'}"
+                title="${char.favorite ? 'Убрать из избранного' : 'Добавить в избранное'}">${char.favorite ? '★' : '☆'}</button>
+            </div>
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
             <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
@@ -316,6 +321,18 @@ export function openCharacterProfile(char) {
     if(closeBtn) {
       closeBtn.onclick = () => closeModal();
     }
+
+    const favoriteBtn = document.getElementById('btn-favorite-from-profile');
+    favoriteBtn?.addEventListener('click', async () => {
+      char.favorite = !char.favorite;
+      char.updatedAt = new Date().toISOString();
+      favoriteBtn.classList.toggle('is-active', char.favorite);
+      favoriteBtn.textContent = char.favorite ? '★' : '☆';
+      favoriteBtn.setAttribute('aria-pressed', String(char.favorite));
+      favoriteBtn.setAttribute('title', char.favorite ? 'Убрать из избранного' : 'Добавить в избранное');
+      await persist();
+      toast(char.favorite ? 'Добавлено в избранное' : 'Удалено из избранного', 'success');
+    });
 
     // Edit Button
     const editBtn = document.getElementById('btn-edit-from-profile');

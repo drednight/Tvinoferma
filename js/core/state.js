@@ -7,6 +7,7 @@ import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
 import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
+import { normalizePlannerEntry } from '../modules/dashboard/planner.js';
 
 /** Максимальная длина примечания к персонажу (символов). */
 export const NOTES_MAX_LENGTH = 5000;
@@ -22,6 +23,7 @@ export const state = {
   characters: [],
   marathons: [],
   marathonTemplates: [],
+  plannerEntries: [],
   settings: clone(DEFAULT_SETTINGS),
   ui: {
     activeTab: 'characters',
@@ -102,6 +104,7 @@ export function normalizeCharacter(input = {}) {
   return {
     id: input.id ? String(input.id) : null, // пустой id назначается из ника в normalizeState
     nick: String(input.nick || ''),
+    favorite: input.favorite === true,
     class: String(input.class || ''),
     partyIds: normalizePartyIds(input.partyIds), // id всех партий; миграция v5 переводит старое поле `party`
     mainPartyId: resolveMainPartyId(input.partyIds, input.mainPartyId), // основная пати (входит в partyIds)
@@ -220,6 +223,9 @@ export function normalizeState(raw) {
       ? input.marathons.map(m => migrateMarathon(m, input.characters || [])).filter(Boolean)
       : [],
     marathonTemplates: Array.isArray(input?.marathonTemplates) ? input.marathonTemplates : [],
+    plannerEntries: Array.isArray(input?.plannerEntries)
+      ? input.plannerEntries.map(normalizePlannerEntry).filter(entry => entry.title)
+      : [],
     settings: mergeSettings(input?.settings),
     ui: {
       activeTab: 'characters',
