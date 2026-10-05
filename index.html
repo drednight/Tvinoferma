@@ -6,18 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Твиноферма</title>
 
-  <!-- Стили -->
+  <!-- Стили: сначала токены (css/core/variables.css), затем база, каркас и элементы, затем разделы -->
   <link rel="stylesheet" href="/css/core/variables.css" />
   <link rel="stylesheet" href="/css/core/base.css" />
   <link rel="stylesheet" href="/css/core/layout.css" />
   <link rel="stylesheet" href="/css/modules/dashboard.css" />
+  <link rel="stylesheet" href="/css/modules/today.css" />
   <link rel="stylesheet" href="/css/core/components.css" />
   <link rel="stylesheet" href="/css/modules/characters.css" />
+  <link rel="stylesheet" href="/css/modules/onboarding.css" />
   <link rel="stylesheet" href="/css/core/modal.css" />
+  <link rel="stylesheet" href="/css/core/commandPalette.css" />
   <link rel="stylesheet" href="/css/modules/marathons.css" />
   <link rel="stylesheet" href="/css/modules/promo.css" />
-  
-  <!-- НОВЫЙ СТИЛЬ ДЛЯ FAB И МЕНЮ -->
+
+  <!-- Плашки состояния, док задач, круглая кнопка «+» -->
   <link rel="stylesheet" href="/css/core/fab.css" />
   <link rel="stylesheet" href="/css/core/update.css" />
   <link rel="stylesheet" href="/css/core/health.css" />
@@ -26,17 +29,19 @@
   <link rel="stylesheet" href="/css/modules/launcher.css" />
   <link rel="stylesheet" href="/css/core/taskLog.css" />
   <link rel="stylesheet" href="/css/modules/parties.css" />
+  <link rel="stylesheet" href="/css/modules/windowPicker.css" />
+  <link rel="stylesheet" href="/css/modules/statsImport.css" />
 </head>
 <body>
   <div class="app-shell">
-    
+
     <!-- Шапка приложения -->
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">ТФ</div>
-        <div>
+        <div class="brand-text">
           <h1>Твиноферма</h1>
-          <p class="muted">Учёт персонажей, пати и марафонов</p>
+          <p class="brand-sub">Учёт персонажей, пати и марафонов</p>
         </div>
       </div>
 
@@ -47,11 +52,22 @@
         <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->
         <button id="update-badge" class="update-badge" type="button" hidden></button>
 
-        <nav class="tabs">
-          <button class="tab active" data-tab="characters">Персонажи</button>
-          <button class="tab" data-tab="parties">Пати</button>
-          <button class="tab" data-tab="marathons">Марафоны</button>
-          <button class="tab" data-tab="settings">Настройки</button>
+        <nav class="tabs" aria-label="Разделы приложения">
+          <button class="tab active" data-tab="characters" title="Ctrl+1">
+            <span class="tab-ico" aria-hidden="true">👥</span><span>Персонажи</span>
+            <span class="tab-count" id="tab-count-characters" hidden></span>
+          </button>
+          <button class="tab" data-tab="parties" title="Ctrl+2">
+            <span class="tab-ico" aria-hidden="true">🛡</span><span>Пати</span>
+            <span class="tab-count" id="tab-count-parties" hidden></span>
+          </button>
+          <button class="tab" data-tab="marathons" title="Ctrl+3">
+            <span class="tab-ico" aria-hidden="true">🏃</span><span>Марафоны</span>
+            <span class="tab-count" id="tab-count-marathons" hidden></span>
+          </button>
+          <button class="tab" data-tab="settings" title="Ctrl+4">
+            <span class="tab-ico" aria-hidden="true">⚙</span><span>Настройки</span>
+          </button>
         </nav>
       </div>
     </header>
@@ -61,106 +77,79 @@
 
       <!-- Плашка «Парсер устарел» (js/settings/parserHealthUi.js): появляется, когда парсер несколько раз подряд не нашёл элементы на странице сайта -->
       <div id="parser-health-banner" class="health-banner" role="alert" hidden></div>
-      
+
       <!-- РАЗДЕЛ: ПЕРСОНАЖИ -->
       <section class="page active" data-section="characters">
-        
-        <!-- Тулбар с фильтрами и действиями -->
+
+        <div class="section-head">
+          <div>
+            <h2>Персонажи</h2>
+            <p class="section-sub">Все аккаунты фермы: вход, баланс монет, проходки и контакты в одном списке.</p>
+          </div>
+          <div class="section-head-actions">
+            <button id="btn-select-mode" class="btn secondary" title="Выбрать несколько персонажей для массовых действий">☑ Выбрать</button>
+            <div class="action-menu-wrapper">
+              <button id="btn-scripts-menu" class="btn primary" type="button" aria-haspopup="true" aria-expanded="false" title="Запустить скрипты синхронизации">⚡ Скрипты</button>
+              <!-- Выпадающее меню (скрыто по умолчанию) -->
+              <div id="scripts-dropdown" class="dropdown-menu" role="menu" style="display:none;">
+                <button class="dropdown-item" role="menuitem" data-action="check-auth">🔐 Проверить авторизацию</button>
+                <button class="dropdown-item" role="menuitem" data-action="update-balance">💰 Обновить балансы</button>
+                <button class="dropdown-item" role="menuitem" data-action="promo">🎁 Активировать промокод</button>
+                <button class="dropdown-item" role="menuitem" data-action="transfer">📦 Передать предметы в игру</button>
+                <button class="dropdown-item" role="menuitem" data-action="update-marathons">🏃 Обновить марафоны</button>
+                <div class="dropdown-sep"></div>
+                <button class="dropdown-item" role="menuitem" data-action="close-game" title="Закрыть все запущенные окна игры">🛑 Закрыть все окна игры</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Панель фильтров -->
         <div class="toolbar">
-          
-          <!-- Левая часть: Фильтры -->
-          <div class="filters" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
-            <input id="search-input" class="input" type="search" placeholder="Поиск по нику..." style="min-width:150px;" />
-            
-            <select id="class-filter" class="select">
-              <option value="">Все классы</option>
-            </select>
-            
-            <select id="party-filter" class="select">
+          <div class="filters">
+            <input id="search-input" class="input" type="search" placeholder="Поиск по нику или #тегу…" autocomplete="off" />
+            <select id="class-filter" class="select" title="Фильтр по классу"><option value="">Все классы</option></select>
+            <select id="party-filter" class="select" title="Фильтр по пати">
               <option value="">Все пати</option>
               <option value="__none__">Без пати</option>
             </select>
-
             <select id="auth-filter" class="select" title="Фильтр по статусу входа в PW Online">
               <option value="">Все статусы</option>
               <option value="online">🟢 Авторизован</option>
               <option value="offline">🔴 Не авторизован</option>
             </select>
-
-            <select id="tag-filter" class="select" title="Фильтр по тегу">
-              <option value="">Все теги</option>
-            </select>
-          </div>
-          
-          <!-- Правая часть: Действия (Меню скриптов) -->
-          <div class="actions" style="display:flex; gap:10px; margin-left:auto; align-items:center;">
-            
-            <button id="btn-select-mode" class="btn secondary" title="Выбрать несколько персонажей для массовых действий">☑ Выбрать</button>
-
-            <!-- Меню скриптов -->
-            <div class="action-menu-wrapper" style="position:relative;">
-                <button id="btn-scripts-menu" class="btn icon-only secondary" title="Запустить скрипты синхронизации">
-                    ⚡ Скрипты
-                </button>
-                
-                <!-- Выпадающее меню (скрыто по умолчанию) -->
-                <div id="scripts-dropdown" class="dropdown-menu" style="display:none;">
-                    <button class="dropdown-item" data-action="check-auth">
-                        🔐 Проверить авторизацию
-                    </button>
-                    <button class="dropdown-item" data-action="update-balance">
-                        💰 Обновить балансы
-                    </button>
-                    <button class="dropdown-item" data-action="promo">
-                        🎁 Активировать промокод
-                    </button>
-                    <button class="dropdown-item" data-action="transfer">
-                        📦 Передать предметы в игру
-                    </button>
-                    <!-- === НОВАЯ КНОПКА ДЛЯ МАРАФОНОВ === -->
-                    <button class="dropdown-item" data-action="update-marathons">
-                        🏃 Обновить марафоны
-                    </button>
-                    <button class="dropdown-item" data-action="close-game" title="Закрыть все запущенные окна игры">
-                        🛑 Закрыть все окна игры
-                    </button>
-                </div>
-            </div>
-
+            <select id="tag-filter" class="select" title="Фильтр по тегу"><option value="">Все теги</option></select>
+            <!-- Появляется, только когда включён хотя бы один фильтр -->
+            <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>
         </div>
 
-        <!-- KPI Блок -->
-        <div class="kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px; margin-bottom:20px;">
-          
-          <div class="kpi-card" style="border-left: 4px solid var(--accent); background: var(--panel); padding:15px; border-radius:8px;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Всего персонажей</span>
-            <strong id="kpi-total-chars" style="font-size:1.5rem; display:block; color:var(--text-primary);">0</strong>
+        <!-- Показатели раздела: считаются по текущей выборке (js/modules/characters/list.js) -->
+        <div class="stat-strip">
+          <div class="stat is-accent">
+            <span class="stat-label">Персонажей в выборке</span>
+            <strong class="stat-value" id="kpi-total-chars">0</strong>
           </div>
-          
-          <div class="kpi-card" style="border-left: 4px solid #bb9af7; background: var(--panel); padding:15px; border-radius:8px;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Активных пати</span>
-            <strong id="kpi-active-parties" style="font-size:1.5rem; display:block; color:#bb9af7;">0</strong>
+          <div class="stat is-ok">
+            <span class="stat-label">Авторизованы</span>
+            <strong class="stat-value" id="kpi-online-count">0</strong>
           </div>
-          
-          <div class="kpi-card" style="border-left: 4px solid #565f89; background: var(--panel); padding:15px; border-radius:8px;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Без пати</span>
-            <strong id="kpi-no-party" style="font-size:1.5rem; display:block; color:#565f89;">0</strong>
+          <div class="stat is-bad">
+            <span class="stat-label">Нужен вход</span>
+            <strong class="stat-value" id="kpi-offline-count">0</strong>
           </div>
-
-          <div class="kpi-card" style="border-left: 4px solid gold; background: var(--panel); padding:15px; border-radius:8px; grid-column: span 2;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Сумма древних монет (в выборке)</span>
-            <strong id="kpi-coins" style="font-size:1.8rem; color:gold; display:block;">0</strong>
+          <div class="stat is-gold">
+            <span class="stat-label">Древние монеты</span>
+            <strong class="stat-value" id="kpi-coins">0</strong>
+            <span class="stat-note">сумма в выборке</span>
           </div>
-
-          <div class="kpi-card" style="border-left: 4px solid #9ece6a; background: var(--panel); padding:15px; border-radius:8px;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Онлайн (Авторизовано)</span>
-            <strong id="kpi-online-count" style="font-size:1.5rem; color:#9ece6a; display:block;">0</strong>
+          <div class="stat is-violet">
+            <span class="stat-label">Активных пати</span>
+            <strong class="stat-value" id="kpi-active-parties">0</strong>
           </div>
-
-          <div class="kpi-card" style="border-left: 4px solid #f7768e; background: var(--panel); padding:15px; border-radius:8px;">
-            <span class="kpi-label" style="font-size:0.8rem; color:var(--muted); display:block; margin-bottom:5px;">Оффлайн (Требуется вход)</span>
-            <strong id="kpi-offline-count" style="font-size:1.5rem; color:#f7768e; display:block;">0</strong>
+          <div class="stat is-plain">
+            <span class="stat-label">Без пати</span>
+            <strong class="stat-value" id="kpi-no-party">0</strong>
           </div>
         </div>
 
@@ -173,21 +162,30 @@
 
       <!-- РАЗДЕЛ: ПАТИ -->
       <section class="page" data-section="parties">
-        <div class="pt-head-row">
-          <h2>Управление пати</h2>
-          <!-- Сводка рисуется в renderer.js; кнопка создания пати — круглая «+» справа внизу -->
-          <div id="party-summary" class="pt-summary"></div>
+        <div class="section-head pt-head-row">
+          <div>
+            <h2>Пати</h2>
+            <p class="section-sub">Группы аккаунтов: состав, порядок запуска, общий баланс и запуск игры одной кнопкой.</p>
+          </div>
+          <div class="pt-head-actions">
+            <!-- Сводка рисуется в renderer.js; кнопка создания пати — круглая «+» справа внизу.
+                 Запуск и закрытие окон живут в карточках пати: там они относятся к конкретной пати. -->
+            <div id="party-summary" class="pt-summary"></div>
+          </div>
         </div>
         <div id="party-list" class="pt-grid"></div>
       </section>
 
       <!-- РАЗДЕЛ: МАРАФОНЫ -->
       <section class="page" data-section="marathons">
-        <div class="toolbar">
-          <h2>Марафоны и события</h2>
+        <div class="section-head">
+          <div>
+            <h2>Марафоны</h2>
+            <p class="section-sub">Задания, прогресс по персонажам и сверка с сайтом. Папки — для событий одной серии.</p>
+          </div>
           <!-- Создание папки и марафона — через круглую кнопку «+» справа внизу (js/core/uiActions.js) -->
         </div>
-        
+
         <div id="marathon-list" class="list">
            <div class="empty-state">Марафонов пока нет.</div>
         </div>
@@ -195,8 +193,11 @@
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
-        <div class="toolbar">
-          <h2>Настройки и Данные</h2>
+        <div class="section-head">
+          <div>
+            <h2>Настройки</h2>
+            <p class="section-sub">Данные и резервные копии, скрипты, запуск игры, уведомления и оформление.</p>
+          </div>
         </div>
 
         <div class="panel" style="margin-bottom: 16px;">
@@ -210,7 +211,7 @@
           <div class="setting-row">
             <div>
               <strong>Папка хранения данных</strong>
-              <p class="muted" id="data-dir">Загрузка...</p>
+              <p class="muted mono" id="data-dir">Загрузка...</p>
             </div>
             <button class="btn ghost small" id="copy-data-dir-btn">📋 Скопировать путь</button>
           </div>
@@ -396,6 +397,8 @@
           </summary>
           <div class="settings-checks">
             <label><input type="checkbox" data-setting="launcher.decorateWindows" /> Подписывать окна игры: название «Ник — Класс» и значок класса персонажа (меняется только вид окна и панели задач)</label>
+            <label style="margin-left: 24px;"><input type="checkbox" data-setting="launcher.decorateIcons" /> Ставить значок класса на окно игры</label>
+            <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
           </div>
           <div class="row gap" style="margin-top: 12px; align-items:center; flex-wrap:wrap;">
@@ -404,7 +407,7 @@
           </div>
           <div class="row gap" style="margin-top: 12px;">
             <button id="close-game-windows-btn" class="btn ghost" title="Закрыть все запущенные окна игры (elementclient_64.exe)">🛑 Закрыть все окна игры</button>
-            <button id="inspect-game-windows-btn" class="btn ghost" title="Показать окна запущенной игры и проверить, можно ли менять их название и значок">🔍 Проверить окна игры</button>
+            <button id="pick-game-windows-btn" class="btn ghost" title="Показать запущенные окна игры и закрыть выбранные">🎮 Запущенные окна…</button>
           </div>
         </details>
         <details class="panel fold">
@@ -465,6 +468,14 @@
               </div>
               <button id="clear-all-characters-btn" class="btn danger" data-danger="characters" type="button" title="Удалить ВСЕХ персонажей">🗑 Удалить персонажей</button>
             </div>
+            <!-- Полный сброс: приложение возвращается к состоянию сразу после установки -->
+            <div class="danger-item">
+              <div>
+                <strong>Вернуть к заводским настройкам</strong>
+                <p class="muted">Удаляется всё: персонажи, пати, марафоны, настройки, журналы и история монет, пароли в хранилище ОС, запомненные входы в GameCenter, сессии и профили браузера персонажей. Приложение станет таким же, как сразу после установки. Копии на диске тоже удаляются, поэтому откатить это действие нельзя — если данные нужны, сначала сделайте экспорт.</p>
+              </div>
+              <button id="factory-reset-btn" class="btn danger" data-factory-reset="1" type="button" title="Удалить все данные и вернуть приложение к чистому состоянию">🧨 Вернуть к заводским настройкам</button>
+            </div>
           </details>
         </details>
 
@@ -485,7 +496,7 @@
       <button type="button" class="fab-menu-item" role="menuitem" data-fab-action="marathon"><span class="fab-menu-ico">🏃</span><span>Создать марафон</span></button>
     </div>
     <!-- Основная кнопка. Иконка меняется динамически -->
-    <button id="fab-main-btn" class="fab-main" title="Добавить">
+    <button id="fab-main-btn" class="fab-main" title="Добавить" aria-haspopup="menu" aria-expanded="false">
       <span class="fab-icon" id="fab-icon-display">+</span>
     </button>
   </div>

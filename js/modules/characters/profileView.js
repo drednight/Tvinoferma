@@ -7,7 +7,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
 import { freshnessOf, freshnessChipHtml, marathonSyncList, formatWhen, formatHoursSpan, thresholdHours } from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
-import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
+import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
@@ -114,9 +114,11 @@ export function openCharacterProfile(char) {
           </div>
         </details>
 
-        <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json -->
-        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" ${hasGameCenterPath(char) ? 'open' : ''}>
+        <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json.
+             Свёрнут по умолчанию: в профиле это редкая настройка, а не ежедневное действие. -->
+        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;">
           <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">🎮 Запуск игры</summary>
+          <p class="muted" style="font-size:0.78rem; margin:6px 0 0;">Настройка GameCenter этого аккаунта. Запустить игру можно кнопкой «Играть» внизу профиля.</p>
           <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
             <div id="pf-gc-list" class="muted" style="font-size:0.85rem;">${escapeHtml(gcListText(char))}</div>
             <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
@@ -327,8 +329,14 @@ export function openCharacterProfile(char) {
     // Delete Button
     const delBtn = document.getElementById('btn-delete-from-profile');
     if(delBtn) {
-      delBtn.onclick = () => {
-        if(confirmDialog(`Удалить персонажа "${char.nick}"? Это действие необратимо.`)) {
+      delBtn.onclick = async () => {
+        const ok = await confirmModal({
+          title: `Удалить персонажа «${char.nick}»?`,
+          text: 'Действие необратимо. Вместе с персонажем удаляются его пароли в хранилище ОС, запомненные входы GameCenter и история монет.',
+          okText: 'Удалить персонажа',
+          danger: true
+        });
+        if(ok) {
            // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
            accountKeysOf(char).forEach(key => import('../launcher/launch.js').then(m => m.forgetAccount(key)).catch(() => {}));
            import('../../core/state.js').then(({ state }) => {

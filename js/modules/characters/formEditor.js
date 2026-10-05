@@ -1,7 +1,7 @@
 // js/modules/characters/formEditor.js
 
 import { state, normalizeTags } from '../../core/state.js';
-import { persist } from '../../core/storage.js';
+import { persist, isTauri } from '../../core/storage.js';
 import { escapeHtml, nowISO } from '../../core/utils.js';
 import { roundCoins, applyCoinBalance } from '../../core/coins.js';
 import { showModal, toast } from '../../core/ui.js';
@@ -113,66 +113,71 @@ export function openCharacterForm(char = null) {
         </div>
       </details>
 
-      <!-- Основные характеристики -->
-      <div class="info-block" style="margin-top:16px;"><h4>Основные характеристики</h4>
-        <div class="four-cols">
-          ${statInput('endurance', 'Выносливость')}
-          ${statInput('intelligence', 'Интеллект')}
-          ${statInput('strength', 'Сила')}
-          ${statInput('agility', 'Ловкость')}
-        </div>
-      </div>
+      <!-- ХАРАКТЕРИСТИКИ: одним сворачиваемым блоком, чтобы форма не была простыней -->
+      <details class="info-block stats-fold" style="margin-top:16px;" open>
+        <summary>
+          <span class="stats-fold-title">📊 Характеристики</span>
+          <span class="stats-fold-note muted">Основные, бой и защита, показатели боя, PvE и пробивание</span>
+        </summary>
+        <div class="stats-fold-body">
+          <!-- Разбор скриншота окна характеристик: значения попадут в поля ниже (js/modules/characters/statsImport.js) -->
+          <div class="stat-head">
+            <h4>Основные характеристики</h4>
+            <button type="button" class="btn secondary small" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>
+          </div>
+          <div class="four-cols">
+            ${statInput('endurance', 'Выносливость')}
+            ${statInput('intelligence', 'Интеллект')}
+            ${statInput('strength', 'Сила')}
+            ${statInput('agility', 'Ловкость')}
+          </div>
 
-      <!-- Бой и Защита -->
-      <div class="info-block" style="margin-top:16px;"><h4>Бой и Защита</h4>
-        <div class="four-cols">
-          ${statInput('hp', 'Здоровье (текущее)')}
-          ${statInput('hpMax', 'Здоровье (макс)')}
-          ${statInput('mp', 'Маг. энергия (текущее)')}
-          ${statInput('mpMax', 'Маг. энергия (макс)')}
-        </div>
-        <div class="four-cols" style="margin-top:8px;">
-          ${statInput('physAttack', 'Физ. атака')}
-          ${statInput('physDefense', 'Физ. защита')}
-          ${statInput('magAttack', 'Маг. атака')}
-          ${statInput('magDefense', 'Маг. защита')}
-        </div>
-      </div>
+          <h4 class="stats-sub">Бой и Защита</h4>
+          <div class="four-cols">
+            ${statInput('hp', 'Здоровье (текущее)')}
+            ${statInput('hpMax', 'Здоровье (макс)')}
+            ${statInput('mp', 'Маг. энергия (текущее)')}
+            ${statInput('mpMax', 'Маг. энергия (макс)')}
+          </div>
+          <div class="four-cols">
+            ${statInput('physAttack', 'Физ. атака')}
+            ${statInput('physDefense', 'Физ. защита')}
+            ${statInput('magAttack', 'Маг. атака')}
+            ${statInput('magDefense', 'Маг. защита')}
+          </div>
 
-      <!-- Показатели боя -->
-      <div class="info-block" style="margin-top:16px;"><h4>Показатели боя</h4>
-        <div class="three-cols">
-          ${statInput('critChance', 'Шанс крит. удара (%)')}
-          ${statInput('critDamage', 'Крит. урон (%)')}
-          ${statInput('atkSpeed', 'Скорость атаки')}
-        </div>
-        <div class="three-cols" style="margin-top:8px;">
-          ${statInput('evasion', 'Уклонение')}
-          ${statInput('accuracy', 'Меткость')}
-          ${statInput('pa', 'Показатель атаки (ПА)')}
-        </div>
-        <div class="three-cols" style="margin-top:8px;">
-          ${statInput('pz', 'Показатель защиты (ПЗ)')}
-          ${statInput('morale', 'Боевой дух')}
-          ${statInput('power', 'Сила')}
-        </div>
-        <div class="two-cols" style="margin-top:8px;">
-          ${statInput('stealth', 'Скрытность')}
-          ${statInput('detection', 'Обнаружение')}
-        </div>
-      </div>
+          <h4 class="stats-sub">Показатели боя</h4>
+          <div class="three-cols">
+            ${statInput('critChance', 'Шанс крит. удара (%)')}
+            ${statInput('critDamage', 'Крит. урон (%)')}
+            ${statInput('atkSpeed', 'Скорость атаки')}
+          </div>
+          <div class="three-cols">
+            ${statInput('evasion', 'Уклонение')}
+            ${statInput('accuracy', 'Меткость')}
+            ${statInput('pa', 'Показатель атаки (ПА)')}
+          </div>
+          <div class="three-cols">
+            ${statInput('pz', 'Показатель защиты (ПЗ)')}
+            ${statInput('morale', 'Боевой дух')}
+            ${statInput('power', 'Сила')}
+          </div>
+          <div class="two-cols">
+            ${statInput('stealth', 'Скрытность')}
+            ${statInput('detection', 'Обнаружение')}
+          </div>
 
-      <!-- PvE и Пробивание -->
-      <div class="info-block" style="margin-top:16px;"><h4>PvE и Пробивание</h4>
-        <div class="two-cols">
-          ${statInput('pvePa', 'Урон по монстрам (PvE PA)')}
-          ${statInput('pvePz', 'Защита от монстров (PvE PZ)')}
+          <h4 class="stats-sub">PvE и Пробивание</h4>
+          <div class="two-cols">
+            ${statInput('pvePa', 'Урон по монстрам (PvE PA)')}
+            ${statInput('pvePz', 'Защита от монстров (PvE PZ)')}
+          </div>
+          <div class="two-cols">
+            ${statInput('physPenetration', 'Физ. пробивание')}
+            ${statInput('magPenetration', 'Маг. пробивание')}
+          </div>
         </div>
-        <div class="two-cols" style="margin-top:8px;">
-          ${statInput('physPenetration', 'Физ. пробивание')}
-          ${statInput('magPenetration', 'Маг. пробивание')}
-        </div>
-      </div>
+      </details>
 
       <!-- Проходки в данжи -->
       <div class="info-block" style="margin-top:16px;"><h4>Проходки в данжи</h4>
@@ -209,6 +214,40 @@ export function openCharacterForm(char = null) {
     });
     sel.addEventListener('change', sync);
   }, 0);
+
+  // Разбор скриншота окна характеристик. Разметка формы появляется только внутри showModal
+  // (ниже), поэтому обработчик вешается после её вызова — иначе кнопки в документе ещё нет.
+  // Значения подставляем в поля по имени (stat-<ключ>); чего нет в ответе, то не трогаем.
+  const bindStatsOcr = () => {
+    const btn = document.getElementById('btn-stats-ocr');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', () => {
+      import('./statsImport.js').then(({ openStatsImport }) => openStatsImport({
+        onApply: (values) => {
+          let applied = 0;
+          for (const [key, value] of Object.entries(values)) {
+            // Ищем поле в пределах формы. Ключи статов — простые латинские имена,
+            // поэтому обходимся без CSS.escape (его нет в старых движках и в jsdom).
+            const input = /** @type {HTMLInputElement | null} */ (
+              document.querySelector(`#modal-root input[name="stat-${key}"]`)
+            );
+            if (!input) continue;
+            input.value = String(value);
+            applied++;
+            // Подсвечиваем подставленные поля, чтобы было видно, что именно изменилось
+            input.classList.add('is-filled');
+            setTimeout(() => input.classList.remove('is-filled'), 2500);
+          }
+          toast(applied ? `Характеристик перенесено: ${applied}` : 'Нечего переносить', applied ? 'success' : 'warning');
+        }
+      })).catch(err => {
+        console.error('[STATS OCR]', err);
+        // Причина чаще всего одна: разбор скриншотов есть только в приложении
+        toast(isTauri() ? 'Не удалось открыть разбор скриншота' : 'Разбор скриншота работает только в приложении', 'error');
+      });
+    });
+  };
 
   showModal({
     title: isEdit ? `Редактировать: ${currentChar.nick}` : 'Новый персонаж',
@@ -325,4 +364,7 @@ export function openCharacterForm(char = null) {
       }
     }
   });
+
+  // Разметка формы создаётся внутри showModal, поэтому кнопку разбора привязываем сразу после него
+  bindStatsOcr();
 }

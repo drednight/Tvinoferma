@@ -2,11 +2,11 @@
 
 import { getAdapter, saveNow, forceRenderAndPersist, persist, createBackup, isTauri } from '../core/storage.js';
 import { state, serializeState } from '../core/state.js';
-import { escapeHtml, copyToClipboard } from '../core/utils.js';
+import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
 import { runReminderCheck } from '../desktop/notifications.js';
-import { toast, confirmDialog, confirmModal, showModal } from '../core/ui.js';
+import { toast, confirmModal } from '../core/ui.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
 import { openExportDialog } from '../data/export.js';
@@ -243,20 +243,10 @@ export function bindSettings() {
     await closeAllGameWindows({ confirm: true });
   });
 
-  document.getElementById('inspect-game-windows-btn')?.addEventListener('click', async () => {
-    const { inspectGameWindows, inspectReportText } = await import('../modules/launcher/launch.js');
-    try {
-      const text = inspectReportText(await inspectGameWindows());
-      showModal({
-        title: '🔍 Окна игры',
-        content: `<pre style="white-space:pre-wrap; user-select:text; max-height:55vh; overflow:auto; margin:0; font-size:.8rem;">${escapeHtml(text)}</pre>`,
-        submitText: '📋 Скопировать',
-        cancelText: 'Закрыть',
-        onSubmit: async () => { toast(await copyToClipboard(text) ? 'Скопировано' : 'Не удалось скопировать', 'info'); return false; }
-      });
-    } catch (e) {
-      toast(`Не удалось проверить окна: ${e?.message || e}`, 'error');
-    }
+  // Список запущенных окон игры: закрыть выбранные, по пати или все
+  document.getElementById('pick-game-windows-btn')?.addEventListener('click', async () => {
+    const { openWindowPicker } = await import('../modules/launcher/windowPicker.js');
+    await openWindowPicker();
   });
 
   // Журналы (единый модуль логов): список рисуется при первом раскрытии панели, заголовок обновляется всегда
@@ -299,7 +289,13 @@ export function bindSettings() {
 
     if (restoreBtn) {
       const name = restoreBtn.dataset.backupRestore;
-      if (confirmDialog(`Восстановить из ${name}?`)) {
+      const ok = await confirmModal({
+        title: 'Восстановить из копии?',
+        text: `Данные будут заменены содержимым копии «${name}». Текущее состояние сохранится отдельной копией, приложение перезапустится.`,
+        okText: 'Восстановить',
+        danger: true
+      });
+      if (ok) {
         try {
           await adapter.restoreBackup(name);
           window.location.reload();
@@ -311,7 +307,13 @@ export function bindSettings() {
 
     if (deleteBtn) {
       const name = deleteBtn.dataset.backupDelete;
-      if (confirmDialog(`Удалить бэкап ${name}?`)) {
+      const ok = await confirmModal({
+        title: 'Удалить резервную копию?',
+        text: `Копия «${name}» будет удалена безвозвратно. Восстановить из неё данные больше не получится.`,
+        okText: 'Удалить копию',
+        danger: true
+      });
+      if (ok) {
         try {
           await adapter.deleteBackup(name);
           toast('Удалено', 'success');
@@ -384,6 +386,21 @@ export function bindSettings() {
   document.getElementById('danger-zone')?.addEventListener('click', (e) => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-danger]'));
     if (btn?.dataset.danger && DANGER_ACTIONS[btn.dataset.danger]) runDanger(btn.dataset.danger);
+  });
+
+  // Полный сброс: приложение возвращается к состоянию сразу после установки.
+  // Подтверждение отдельное и явное: действие необратимо, потому что копии тоже удаляются.
+  document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
+    const { resetSummary, resetWarning, performFactoryReset } = await import('./factoryReset.js');
+    const summary = resetSummary(state);
+    const ok = await confirmModal({
+      title: 'Вернуть к заводским настройкам?',
+      text: resetWarning(summary),
+      okText: 'Удалить всё и сбросить',
+      danger: true
+    });
+    if (!ok) return;
+    await performFactoryReset(state);
   });
 
   // Open/Copy Data Dir

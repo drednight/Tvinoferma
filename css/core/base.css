@@ -1,14 +1,39 @@
-* {
+/* css/core/base.css
+   База: типографика, фон приложения, доступность, скроллбары.
+   Здесь нет оформления конкретных разделов — только то, что одинаково для всего окна. */
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-html,
+html {
+  scroll-padding-top: calc(var(--topbar-h) + 16px);
+}
+
 body {
   margin: 0;
   min-height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-family: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Мягкие цветные пятна вместо плоского фона: окно выглядит объёмнее, текст не страдает */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 12% -10%, var(--bg-glow-1), transparent 65%),
+    radial-gradient(760px 460px at 100% 0%, var(--bg-glow-2), transparent 60%);
 }
 
 button,
@@ -16,27 +41,99 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
 }
 
 a {
   color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
 }
 
 h1,
 h2,
 h3,
+h4,
 p {
   margin: 0;
 }
 
-.muted {
-  color: var(--muted);
+h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.28rem; font-weight: 700; letter-spacing: -0.015em; }
+h3 { font-size: 1rem; font-weight: 650; }
+h4 { font-size: 0.94rem; font-weight: 650; }
+
+/* Заголовок раздела: слева название и пояснение, справа — действия */
+.section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
+.section-head h2 { margin: 0; }
+.section-head .section-sub {
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+.section-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.muted { color: var(--text-dim); }
+.faint { color: var(--text-faint); }
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 
 .empty-state {
   padding: 28px;
   border: 1px dashed var(--border);
-  border-radius: var(--radius);
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-lg);
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.015);
+  text-align: center;
+}
+
+/* Видимый фокус для клавиатуры: единый вид во всём приложении */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-xs);
+}
+
+/* Аккуратные полосы прокрутки вместо системных светлых (Issue #71) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

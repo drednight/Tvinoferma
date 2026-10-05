@@ -16,7 +16,7 @@
 //! Безопасность: запускается только файл с именем `GameCenter.exe`, а ссылка запуска
 //! должна начинаться с `vkplay://` и не содержать пробелов — произвольные программы отсюда не стартуют.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -106,6 +106,30 @@ mod win {
         fn CloseHandle(handle: *mut c_void) -> i32;
         fn GetLastError() -> u32;
         fn GetCurrentProcess() -> *mut c_void;
+        fn GetProcessTimes(
+            process: *mut c_void,
+            creation: *mut FileTime,
+            exit: *mut FileTime,
+            kernel: *mut FileTime,
+            user: *mut FileTime,
+        ) -> i32;
+    }
+
+    /// FILETIME из Win32: время в единицах по 100 нс с 1601 года.
+    #[repr(C)]
+    #[derive(Default, Clone, Copy)]
+    pub struct FileTime {
+        pub low: u32,
+        pub high: u32,
+    }
+
+    impl FileTime {
+        /// Время в миллисекундах с 1970 года (для сопоставления с `Date.now()` в интерфейсе).
+        pub fn unix_ms(self) -> u64 {
+            const WINDOWS_TO_UNIX_MS: u64 = 11_644_473_600_000;
+            let ticks = (u64::from(self.high) << 32) | u64::from(self.low);
+            ticks / 10_000 - WINDOWS_TO_UNIX_MS
+        }
     }
 
     #[link(name = "advapi32")]
@@ -402,6 +426,42 @@ mod win {
         read(|b, n| unsafe { GetWindowTextW(hwnd as Hwnd, b, n) })
     }
 
+    /// Когда процесс был запущен, мс с 1970. `None` — процесс недоступен (например, запущен от администратора).
+    pub fn process_start_ms(pid: u32) -> Option<u64> {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return None;
+            }
+            let mut creation = FileTime::default();
+            let mut exit = FileTime::default();
+            let mut kernel = FileTime::default();
+            let mut user = FileTime::default();
+            let ok = GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user) != 0;
+            CloseHandle(handle);
+            if !ok || creation.unix_ms() == 0 {
+                return None;
+            }
+            Some(creation.unix_ms())
+        }
+    }
+
+    /// Видимое окно верхнего уровня, принадлежащее процессу: `(hwnd, заголовок)`.
+    /// Нужно, чтобы показать в списке окон игры то, что видит пользователь.
+    pub fn main_window_of(pid: u32) -> Option<(usize, String)> {
+        let mut found = None;
+        for w in all_windows() {
+            if w.pid != pid || !w.visible || w.title.is_empty() {
+                continue;
+            }
+            // Берём первое видимое с заголовком: у клиента игры главное окно одно
+            found = Some((w.hwnd, w.title));
+            break;
+        }
+        found
+    }
+
     /// Возвращает окну значки, которые у него уже были (проверка права менять значки без изменения вида).
     pub fn restore_icons(hwnd: usize, small: usize, big: usize) -> Result<(), u32> {
         set_icons(hwnd, small, big)
@@ -471,6 +531,12 @@ mod win {
     }
     pub fn title_of(_hwnd: usize) -> String {
         String::new()
+    }
+    pub fn process_start_ms(_pid: u32) -> Option<u64> {
+        None
+    }
+    pub fn main_window_of(_pid: u32) -> Option<(usize, String)> {
+        None
     }
     pub fn restore_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
         Err(1)
@@ -641,9 +707,13 @@ fn new_client_pid(before: &HashSet<u32>, now: &[u32]) -> Option<u32> {
     now.iter().copied().find(|pid| !before.contains(pid))
 }
 
-/// Окно клиента, которое стоит подписывать: видимое, с заголовком и принадлежит нужному процессу.
+/// Окно клиента, которое стоит подписывать: видимое и принадлежит нужному процессу.
+///
+/// Заголовок намеренно **не требуется**: сразу после старта окно клиента уже видимо, но заголовок
+/// у него ещё пустой — раньше такие окна пропускались, и подпись не ставилась совсем. Пустой
+/// заголовок у окна этого процесса — как раз то, что нужно заполнить.
 fn is_client_window(w: &win::WinInfo, pid: u32) -> bool {
-    w.pid == pid && w.visible && !w.title.is_empty()
+    w.pid == pid && w.visible
 }
 
 /// Чем закончилась попытка подписать окно клиента.
@@ -684,6 +754,10 @@ struct DecorateProgress {
 }
 
 /// Один проход по окнам: подписывает окна клиента `pid`. `Some(код)` — дальше пробовать бессмысленно (нет доступа).
+///
+/// `has_icons` проверяет, есть ли у окна свой значок прямо сейчас. Проверка нужна потому, что игра
+/// перезаписывает вид окна при загрузке и входе в мир: если поставить значок один раз и больше
+/// не проверять, он пропадёт — раньше так и было.
 fn decorate_step(
     progress: &mut DecorateProgress,
     windows: &[win::WinInfo],
@@ -691,6 +765,7 @@ fn decorate_step(
     title: &str,
     set_title: &mut impl FnMut(usize, &str) -> Result<(), u32>,
     set_icons: &mut impl FnMut(usize) -> Result<(), u32>,
+    has_icons: &impl Fn(usize) -> bool,
 ) -> Option<u32> {
     for w in windows.iter().filter(|w| is_client_window(w, pid)) {
         progress.seen = true;
@@ -707,23 +782,25 @@ fn decorate_step(
                 }
             }
         }
-        if touched || !progress.with_icons.contains(&w.hwnd) {
+        // Значок проверяем по факту, а не по «уже ставили»: игра может его сбросить,
+        // и тогда значок нужно поставить заново
+        if !has_icons(w.hwnd) {
             if let Err(code) = set_icons(w.hwnd) {
                 progress.last_error = code;
                 if code == ERROR_ACCESS_DENIED {
                     return Some(code);
                 }
             }
-            if !progress.with_icons.contains(&w.hwnd) {
-                progress.with_icons.push(w.hwnd);
-            }
+        }
+        if touched && !progress.with_icons.contains(&w.hwnd) {
+            progress.with_icons.push(w.hwnd);
         }
     }
     None
 }
 
 /// Подписывает окно(а) клиента и ставит значок. Окно появляется не сразу (загрузка), поэтому ищем его в фоне;
-/// после первой подписи ещё `DECORATE_KEEP` следим за заголовком: игра может переписать его при загрузке.
+/// после первой подписи ещё `DECORATE_KEEP` следим за заголовком и значком: игра может переписать их при загрузке.
 /// Итог (`Ok`, `Denied`, …) сообщается один раз через `report`.
 fn decorate_client(
     pid: u32,
@@ -747,6 +824,14 @@ fn decorate_client(
             &title,
             &mut |hwnd, t| win::set_title(hwnd, t),
             &mut |hwnd| win::set_icons(hwnd, small_icon, big_icon),
+            // Свой значок у окна есть? Если игра его сбросила — поставим заново
+            &|hwnd| {
+                if small_icon == 0 && big_icon == 0 {
+                    return true; // значки не запрашивали: проверять нечего
+                }
+                let d = win::details(hwnd);
+                (small_icon == 0 || d.small_icon != 0) && (big_icon == 0 || d.big_icon != 0)
+            },
         );
         if let Some(code) = denied {
             report(Decorated::Denied, code);
@@ -1265,6 +1350,314 @@ pub async fn launcher_running_clients() -> Result<Vec<u32>, String> {
         .map_err(|e| e.to_string())?
 }
 
+/// Один запущенный клиент игры для списка «какие окна закрыть».
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningClient {
+    /// Идентификатор процесса
+    pub pid: u32,
+    /// Имя образа (`elementclient_64.exe`)
+    pub image: String,
+    /// Когда процесс запущен, мс с 1970; `None` — узнать не удалось (процесс от администратора)
+    pub started_at: Option<u64>,
+    /// Заголовок главного окна (у окон, подписанных Твинофермой, это «Ник — Класс»)
+    pub title: String,
+    /// Идентификатор окна
+    pub hwnd: Option<u64>,
+    /// Запущена ли игра от имени администратора (`None` — не удалось определить)
+    pub elevated: Option<bool>,
+}
+
+/// Запущенные клиенты игры с подробностями для списка окон.
+///
+/// Ник и класс Твиноферма не хранит в процессе: она подписывает окно клиента заголовком «Ник — Класс»
+/// (см. `launcher_start`). Поэтому ник берётся из заголовка окна, а у окон, запущенных не из Твинофермы,
+/// заголовок будет игровым — интерфейс покажет такой клиент как «PID 1234».
+#[tauri::command]
+pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let list = client_processes()?;
+        Ok::<Vec<RunningClient>, String>(
+            list.into_iter()
+                .map(|(image, pid)| {
+                    let window = win::main_window_of(pid);
+                    RunningClient {
+                        pid,
+                        image,
+                        started_at: win::process_start_ms(pid),
+                        title: window.as_ref().map(|(_, t)| t.clone()).unwrap_or_default(),
+                        hwnd: window.map(|(h, _)| h as u64),
+                        elevated: win::process_elevated(pid),
+                    }
+                })
+                .collect(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Закрыть выбранные клиенты игры по PID. Возвращает отчёт в том же виде, что закрытие всех окон.
+/// PID — только числа, поэтому подставлять их в вызов безопасно.
+#[tauri::command]
+pub async fn launcher_close_clients_pids(pids: Vec<u32>) -> Result<CloseReport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let all = client_processes()?;
+        // Закрываем только те PID, которые действительно клиенты игры: остальное игнорируем
+        let wanted: Vec<(String, u32)> = all
+            .into_iter()
+            .filter(|(_, pid)| pids.contains(pid))
+            .collect();
+        Ok::<CloseReport, String>(close_with(wanted, win::is_elevated(), win::kill_process))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Что должно быть подписано у одного окна игры.
+#[derive(Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorateTarget {
+    /// PID клиента игры
+    pub pid: u32,
+    /// Ожидаемое название окна («Ник — Класс»)
+    pub title: String,
+    /// Значок для заголовка окна (RGBA), если его нужно поставить
+    #[serde(default)]
+    pub icon_small: Option<Vec<u8>>,
+    /// Значок для панели задач (RGBA)
+    #[serde(default)]
+    pub icon_big: Option<Vec<u8>>,
+}
+
+/// Значок класса по имени класса — для ручной смены значка у запущенного окна.
+/// Ищется в папке значков рядом с приложением; `None` — класса нет в списке или файл не читается.
+fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
+    // Список классов и имена файлов повторяют `js/core/constants.js` (CLASS_ICON_MAP).
+    // Держим их здесь, чтобы команда смены значка работала без участия интерфейса.
+    const ICONS: &[(&str, &str)] = &[
+        ("Оборотень", "tank.png"),
+        ("Друид", "dru.png"),
+        ("Странник", "mk.png"),
+        ("Воин", "var.png"),
+        ("Маг", "mag.png"),
+        ("Стрелок", "gan.png"),
+        ("Жрец", "prist.png"),
+        ("Лучник", "luk.png"),
+        ("Паладин", "pal.png"),
+        ("Убийца", "sin.png"),
+        ("Шаман", "sham.png"),
+        ("Бард", "bard.png"),
+        ("Мистик", "mist.png"),
+        ("Страж", "sik.png"),
+        ("Дух Крови", "dk.png"),
+        ("Жнец", "kosa.png"),
+        ("Призрак", "gost.png"),
+        ("Канглонг", "canglong.png"),
+    ];
+    let file = ICONS.iter().find(|(name, _)| *name == class)?.1;
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    // Значки лежат рядом с исполняемым файлом (в сборке Tauri — resources) и в папке разработки
+    for base in [
+        dir.to_path_buf(),
+        dir.join("assets").join("icons").join("classes"),
+        dir.join("public")
+            .join("assets")
+            .join("icons")
+            .join("classes"),
+    ] {
+        let path = base.join(file);
+        if let Ok(bytes) = std::fs::read(&path) {
+            return Some(bytes);
+        }
+    }
+    None
+}
+
+/// Меняет название и значок уже запущенного окна игры по требованию пользователя
+/// (кнопка «Изменить» в списке запущенных окон).
+///
+/// `class` — класс персонажа для значка; пустая строка — значок не менять.
+#[tauri::command]
+pub async fn launcher_apply_window_style(
+    pid: u32,
+    title: Option<String>,
+    class: Option<String>,
+    clear_icon: Option<bool>,
+) -> Result<DecorateResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let windows: Vec<_> = win::all_windows()
+            .into_iter()
+            .filter(|w| w.pid == pid && w.visible)
+            .collect();
+        if windows.is_empty() {
+            return Ok(DecorateResult {
+                pid,
+                status: "missing".into(),
+                title: String::new(),
+            });
+        }
+
+        let want_title = title.as_deref().and_then(clean_title);
+        let want_class = class.as_deref().map(str::trim).filter(|c| !c.is_empty());
+        // Значок из файла класса: изображение читаем и превращаем в HICON двух размеров
+        let icons = want_class.and_then(|cls| {
+            let bytes = class_icon_bytes(cls)?;
+            let img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+            let small = resize_icon(&img, WINDOW_ICON_SMALL);
+            let big = resize_icon(&img, WINDOW_ICON_BIG);
+            Some((icon_from_rgba(Some(&small)), icon_from_rgba(Some(&big))))
+        });
+
+        let mut applied = false;
+        let mut denied = false;
+        let mut last = String::new();
+        for w in &windows {
+            if let Some(t) = want_title.as_deref() {
+                if win::set_title(w.hwnd, t).is_err() {
+                    denied = true;
+                    continue;
+                }
+                applied = true;
+            }
+            match (&icons, clear_icon.unwrap_or(false)) {
+                // Пользователь выбрал класс: ставим его значок
+                (Some((small, big)), _) => {
+                    if win::set_icons(w.hwnd, *small, *big).is_err() {
+                        denied = true;
+                        continue;
+                    }
+                    applied = true;
+                }
+                // «Убрать значок»: возвращаем окну пустые значки (Windows возьмёт значок файла игры)
+                (None, true) => {
+                    if win::set_icons(w.hwnd, 0, 0).is_err() {
+                        denied = true;
+                        continue;
+                    }
+                    applied = true;
+                }
+                (None, false) => {}
+            }
+            last = win::title_of(w.hwnd);
+        }
+
+        Ok(DecorateResult {
+            pid,
+            status: if denied && !applied {
+                "failed"
+            } else if applied {
+                "fixed"
+            } else {
+                "ok"
+            }
+            .into(),
+            title: last,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Размер стороны значка окна (совпадает с интерфейсом: см. `WINDOW_ICON_*` в launch.js).
+const WINDOW_ICON_SMALL: usize = 16;
+const WINDOW_ICON_BIG: usize = 48;
+
+/// Уменьшает картинку класса до нужного размера значка (RGBA).
+fn resize_icon(img: &image::RgbaImage, size: usize) -> Vec<u8> {
+    let resized = image::imageops::resize(
+        img,
+        size as u32,
+        size as u32,
+        image::imageops::FilterType::Lanczos3,
+    );
+    resized.into_raw()
+}
+
+/// Итог повторной подписи одного окна.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DecorateResult {
+    pub pid: u32,
+    /// `ok` — название и (если задан) значок на месте; `fixed` — удалось поправить; `failed`/`missing` — нет
+    pub status: String,
+    /// Что сейчас в заголовке окна
+    pub title: String,
+}
+
+/// Заново ставит название и значок уже запущенным окнам клиентов.
+///
+/// Нужно после запуска пати: окно клиента появляется не сразу, а игра при загрузке может переписать
+/// заголовок. `launcher_start` подписывает окно в фоне и о результате не сообщает, поэтому интерфейс
+/// после запуска всех аккаунтов проверяет итог этой командой и повторяет попытку для тех, где не вышло.
+#[tauri::command]
+pub async fn launcher_decorate_clients(
+    targets: Vec<DecorateTarget>,
+) -> Result<Vec<DecorateResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut out = Vec::new();
+        for target in targets {
+            let title = match clean_title(&target.title) {
+                Some(t) => t,
+                None => continue,
+            };
+            let small = icon_from_rgba(target.icon_small.as_deref());
+            let big = icon_from_rgba(target.icon_big.as_deref());
+            // Заголовок может быть ещё пустым: окно клиента видно сразу, а подпись ставится позже
+            let windows: Vec<_> = win::all_windows()
+                .into_iter()
+                .filter(|w| w.pid == target.pid && w.visible)
+                .collect();
+            if windows.is_empty() {
+                out.push(DecorateResult {
+                    pid: target.pid,
+                    status: "missing".into(),
+                    title: String::new(),
+                });
+                continue;
+            }
+            let mut fixed = false;
+            let mut denied = false;
+            let mut last_title = String::new();
+            for w in &windows {
+                last_title = w.title.clone();
+                // Заголовок: ставим, если отличается от нужного
+                if w.title != title && win::set_title(w.hwnd, &title).is_err() {
+                    denied = true;
+                    continue;
+                }
+                // Значок: ставим, если задан и у окна его нет
+                let has_small = win::details(w.hwnd).small_icon != 0;
+                let has_big = win::details(w.hwnd).big_icon != 0;
+                if ((small != 0 && !has_small) || (big != 0 && !has_big))
+                    && win::set_icons(w.hwnd, small, big).is_err()
+                {
+                    denied = true;
+                    continue;
+                }
+                fixed = true;
+                last_title = win::title_of(w.hwnd);
+            }
+            let status = if denied && !fixed {
+                "failed"
+            } else if fixed {
+                "fixed"
+            } else {
+                "ok"
+            };
+            out.push(DecorateResult {
+                pid: target.pid,
+                status: status.into(),
+                title: last_title,
+            });
+        }
+        Ok::<Vec<DecorateResult>, String>(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Код ошибки Windows «Отказано в доступе»: клиент запущен от имени администратора, а Твиноферма — нет
 /// (для окон это запрет интерфейсной изоляции UIPI).
 const ERROR_ACCESS_DENIED: u32 = 5;
@@ -1640,7 +2033,9 @@ mod tests {
         };
         assert!(is_client_window(&w(7, "完美世界国际版", true), 7));
         assert!(!is_client_window(&w(8, "完美世界国际版", true), 7)); // чужой процесс
-        assert!(!is_client_window(&w(7, "", true), 7)); // служебное окно без заголовка
+                                                                      // Окно клиента видно сразу после старта, но заголовок у него ещё пустой: его и нужно подписать,
+                                                                      // поэтому пустой заголовок больше не причина пропустить окно
+        assert!(is_client_window(&w(7, "", true), 7));
         assert!(!is_client_window(&w(7, "IME", false), 7)); // невидимое
     }
 
@@ -1676,11 +2071,61 @@ mod tests {
                 iconed.push(h);
                 Ok(())
             },
+            // Значка у окна ещё нет — его надо поставить
+            &|_| false,
         );
         assert_eq!(denied, None);
         assert_eq!(titled, vec![(1, "Ник — Класс".to_string())]); // чужое окно не тронуто
         assert_eq!(iconed, vec![1]);
         assert!(progress.seen && !progress.verified); // совпадение видно только на следующем проходе
+    }
+
+    #[test]
+    fn icons_are_reapplied_after_the_game_resets_them() {
+        // Игра сбрасывает вид окна при загрузке и входе в мир: значок нужно ставить заново,
+        // а не один раз за весь запуск (раньше он пропадал именно из-за этого)
+        let mut progress = DecorateProgress::default();
+        let mut iconed = 0;
+        // Счётчик живёт в Cell: замыкание-постановщик значков держит изменяемую ссылку,
+        // поэтому читать обычную переменную рядом нельзя
+        for has in [true, false, false] {
+            let counter = std::cell::Cell::new(0);
+            decorate_step(
+                &mut progress,
+                &[client_window(1, 100, "Ник — Класс")],
+                100,
+                "Ник — Класс",
+                &mut |_, _| Ok(()),
+                &mut |_| {
+                    counter.set(counter.get() + 1);
+                    Ok(())
+                },
+                &|_| has,
+            );
+            iconed += counter.get();
+        }
+        // Первый проход: значок на месте — не трогали. Дальше игра его сбросила — поставили дважды
+        assert_eq!(iconed, 2);
+    }
+
+    #[test]
+    fn empty_title_window_is_signed() {
+        // Окно клиента появляется раньше заголовка: подпись должна ставиться и в этот момент
+        let mut progress = DecorateProgress::default();
+        let mut titled: Vec<String> = Vec::new();
+        decorate_step(
+            &mut progress,
+            &[client_window(1, 100, "")],
+            100,
+            "Ник — Класс",
+            &mut |_, t| {
+                titled.push(t.to_string());
+                Ok(())
+            },
+            &mut |_| Ok(()),
+            &|_| true,
+        );
+        assert_eq!(titled, vec!["Ник — Класс".to_string()]);
     }
 
     #[test]
@@ -1702,13 +2147,16 @@ mod tests {
                     icons += 1;
                     Ok(())
                 },
+                &|_| false,
             )
         };
         step(&mut progress, "Perfect World"); // первая подпись
-        step(&mut progress, "Ник — Класс"); // заголовок совпал: ничего не делаем
+        step(&mut progress, "Ник — Класс"); // заголовок совпал: название не трогаем
         assert!(progress.verified);
-        step(&mut progress, "Perfect World"); // игра переписала заголовок: ставим снова, значок тоже
-        assert_eq!((titles, icons), (2, 2));
+        step(&mut progress, "Perfect World"); // игра переписала заголовок: ставим снова
+        assert_eq!(titles, 2);
+        // Значок проверяется по факту (`has_icons` всегда false), поэтому ставится в каждом проходе
+        assert_eq!(icons, 3);
     }
 
     #[test]
@@ -1721,6 +2169,7 @@ mod tests {
             "Ник — Класс",
             &mut |_, _| Err(ERROR_ACCESS_DENIED),
             &mut |_| Ok(()),
+            &|_| false,
         );
         assert_eq!(denied, Some(ERROR_ACCESS_DENIED));
         assert_eq!(progress.last_error, ERROR_ACCESS_DENIED);
@@ -1736,6 +2185,7 @@ mod tests {
             "Ник — Класс",
             &mut |_, _| Err(1460),
             &mut |_| Ok(()),
+            &|_| false,
         );
         assert_eq!(denied, None);
         assert_eq!(progress.last_error, 1460);

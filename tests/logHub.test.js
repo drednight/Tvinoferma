@@ -1,8 +1,8 @@
 // Единый модуль логов (core/logHub.js, «Настройки → Журналы»): общий список, фильтры, очистка, подключение видов логов.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ confirm: vi.fn(() => true), toast: vi.fn() }));
-vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmDialog: mocks.confirm }));
+const mocks = vi.hoisted(() => ({ confirm: vi.fn(async () => true), toast: vi.fn() }));
+vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
 vi.mock('../js/core/state.js', () => ({ state: { characters: [] } }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 
@@ -30,7 +30,7 @@ const row = (key, at, status = 'ok', extra = {}) => ({ key, at, title: `Запи
 beforeEach(async () => {
   vi.resetModules();
   window.localStorage.clear();
-  mocks.confirm.mockReset().mockReturnValue(true);
+  mocks.confirm.mockReset().mockResolvedValue(true);
   mocks.toast.mockReset();
   document.body.innerHTML = '<div id="modal-root"></div><details id="p" open><div id="root"></div></details>';
   hub = await import('../js/core/logHub.js');
@@ -117,16 +117,18 @@ describe('интерфейс', () => {
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
   });
 
-  it('очистка: только выбранный вид, с подтверждением; на «Все» недоступна', () => {
+  it('очистка: только выбранный вид, с подтверждением; на «Все» недоступна', async () => {
     const { a, b } = setup();
     hub.mountLogHub($('#root'));
     expect($('[data-lh-clear]').disabled).toBe(true);
     document.querySelector('[data-lh-source="a"]').click();
-    mocks.confirm.mockReturnValueOnce(false);
+    // Подтверждение асинхронное (confirmModal): после клика ждём, пока оно разрешится
+    mocks.confirm.mockResolvedValueOnce(false);
     $('[data-lh-clear]').click();
+    await vi.waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1));
     expect(a.clear).not.toHaveBeenCalled();
     $('[data-lh-clear]').click();
-    expect(a.clear).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(a.clear).toHaveBeenCalledTimes(1));
     expect(b.clear).not.toHaveBeenCalled();
     expect(hub.collectLogs().items.map(i => i.key)).toEqual(['b2', 'b1']);
     expect($('[data-lh-clear]').disabled).toBe(true);    // у вида больше нет записей

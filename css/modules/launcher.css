@@ -1,46 +1,129 @@
-/* Окно «GameCenter и персонажи» (js/modules/launcher/gcSettingsModal.js) */
-.gcm { display: flex; flex-direction: column; gap: 18px; }
-.gcm-sec h4 { margin: 0 0 6px; }
-.gcm-sec p { margin: 0 0 10px; font-size: 0.85rem; line-height: 1.4; }
-.gcm-empty { padding: 8px 0; }
+/* css/modules/launcher.css
+   Окно «GameCenter и персонажи» (js/modules/launcher/gcSettingsModal.js):
+   список GameCenter, выбор основного и привязка персонажей с фильтром по пати. */
 
+.gcm { display: flex; flex-direction: column; gap: 18px; }
+
+.gcm-sec h4 { margin: 0 0 6px; }
+.gcm-sec p { margin: 0 0 10px; font-size: 0.85rem; line-height: 1.45; }
+.gcm-empty { padding: 10px 0; }
+
+/* --- Список GameCenter --- */
 .gcm-gc {
   display: grid;
-  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) auto;
-  grid-template-areas: "name path btns" "name who btns";
-  gap: 2px 12px;
+  grid-template-columns: 34px minmax(120px, 180px) minmax(0, 1fr) auto auto;
+  gap: 4px 12px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 9px 11px;
   margin-bottom: 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: border-color var(--speed) var(--ease);
 }
-.gcm-gc-name { grid-area: name; }
-.gcm-gc-path { grid-area: path; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; direction: rtl; text-align: left; }
-.gcm-gc-who { grid-area: who; font-size: 0.8rem; }
-.gcm-gc-btns { grid-area: btns; display: flex; gap: 6px; }
+.gcm-gc:hover { border-color: var(--border-strong); }
+.gcm-gc-ico {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  font-size: 0.95rem;
+}
+.gcm-gc-name { font-weight: 600; }
+.gcm-gc-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  direction: rtl;
+  text-align: left;
+  color: var(--text-faint);
+}
+.gcm-gc-who { font-size: 0.75rem; font-weight: 600; }
+.gcm-gc-btns { display: flex; gap: 6px; }
 
 .gcm-actions { margin-top: 4px; }
 .gcm-import {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 10px; padding: 8px 10px; border: 1px dashed var(--border); border-radius: 8px; font-size: 0.85rem;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--gap);
+  margin-top: 10px; padding: 9px 11px;
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); font-size: 0.85rem;
 }
 .gcm-import[hidden] { display: none; }
-.gcm-pref { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.gcm-pref { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.9rem; }
+.gcm-pref .select { min-width: 200px; }
 
-#gcm-filter { width: 100%; margin-bottom: 10px; }
-.gcm-char { padding: 8px 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; }
-.gcm-char-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* --- Панель фильтров персонажей --- */
+.gcm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+}
+.gcm-filters #gcm-filter { flex: 1 1 200px; min-width: 140px; }
+.gcm-filters #gcm-party { max-width: 220px; }
+.gcm-only { display: flex; align-items: center; gap: 6px; font-size: 0.84rem; cursor: pointer; white-space: nowrap; }
+.gcm-only input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.gcm-shown { font-size: 0.78rem; white-space: nowrap; }
+
+/* --- Карточка персонажа --- */
+.gcm-char {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+/* Персонаж с прикреплённым GameCenter: заметная полоска слева */
+.gcm-char.is-bound { border-left: 3px solid var(--accent); }
+
+.gcm-char-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .gcm-ico { width: 22px; height: 22px; object-fit: contain; flex: 0 0 22px; }
+.gcm-char-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.gcm-char-name b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gcm-char-name small { white-space: nowrap; }
+.gcm-char-parties { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.gcm-tag {
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.gcm-tag.is-main { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent); }
+.gcm-tag.is-none { opacity: 0.7; }
+.gcm-count {
+  min-width: 20px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .gcm-bind { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .gcm-bind .select { min-width: 160px; }
-.gcm-acc { font-size: 0.82rem; }
+.gcm-acc { font-size: 0.82rem; color: var(--text-dim); }
 .gcm-acc.is-saved { color: var(--accent); }
-.gcm-badge { font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.gcm-badge {
+  font-size: 0.7rem; padding: 1px 7px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border); color: var(--text-dim);
+}
 .gcm-own { font-size: 0.8rem; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gcm-add { max-width: 260px; }
+.gcm-add { max-width: 280px; }
 
-@media (max-width: 720px) {
-  .gcm-gc { grid-template-columns: 1fr; grid-template-areas: "name" "path" "who" "btns"; }
+@media (max-width: 780px) {
+  .gcm-gc { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .gcm-gc-path, .gcm-gc-who { grid-column: 2 / -1; }
+  .gcm-filters #gcm-party { max-width: none; }
 }

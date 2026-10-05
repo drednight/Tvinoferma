@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Диалог передачи предметов и вид «Передачи» в «Настройки → Журналы» (Issue #26)
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(() => true), toast: vi.fn(), backup: vi.fn(async () => 'b') }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(async () => true), toast: vi.fn(), backup: vi.fn(async () => 'b') }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}), createBackup: mocks.backup }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({ scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }) }));
 vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));   // без реальных пауз
-vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmDialog: mocks.confirm }));
+vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms = 50) => new Promise(r => setTimeout(r, ms));
@@ -31,7 +31,7 @@ beforeEach(async () => {
   vi.resetModules();
   window.localStorage.clear();
   mocks.invoke.mockReset();
-  mocks.confirm.mockReset().mockReturnValue(true);
+  mocks.confirm.mockReset().mockResolvedValue(true);
   mocks.toast.mockReset();
   mocks.backup.mockClear();
   document.body.innerHTML = '<div id="modal-root"></div><p id="transfer-log-summary"></p><div id="transfer-log-root"></div>';
@@ -182,8 +182,9 @@ describe('форма', () => {
     // забыть
     $('[data-act="back"]').click();
     $('#tr-forget').click();
-    expect(mocks.confirm).toHaveBeenCalled();
-    expect(Object.keys(loadLimits())).toHaveLength(0);
+    // Подтверждение асинхронное (confirmModal), поэтому дожидаемся результата
+    await vi.waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
+    await vi.waitFor(() => expect(Object.keys(loadLimits())).toHaveLength(0));
     expect($('#tr-forget').disabled).toBe(true);
   });
 

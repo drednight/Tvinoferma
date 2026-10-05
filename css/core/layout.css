@@ -1,7 +1,9 @@
-/* css/layout.css */
+/* css/core/layout.css
+   Каркас окна: шапка с навигацией, содержимое, панель фильтров, сетка, панели настроек.
 
-/* Колонка (а не сетка): липкая шапка работает только внутри блока, который выше неё. В сетке её область — одна строка шапки,
-   и шапка «прилипнуть» не может */
+   Почему колонка, а не сетка: липкая шапка работает только внутри блока, который выше неё.
+   В сетке область шапки — одна строка, и «прилипнуть» она не может. */
+
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -9,227 +11,332 @@
 }
 .app-shell > .content { flex: 1 1 auto; }
 
-/* При переходе к элементу (scrollIntoView, якоря) он не прячется под шапкой */
-html { scroll-padding-top: calc(var(--topbar-h, 72px) + 16px); }
-
-/* Шапка с навигацией всегда на виду: остаётся сверху при прокрутке любой вкладки.
-   z-index ниже окон (1000), меню и дока задач, выше карточек. */
+/* --- Шапка --- */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 100;
-  padding: 12px 24px;
+  padding: 10px 22px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(18, 23, 34, .97), rgba(15, 17, 21, .97));
-  backdrop-filter: blur(10px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, .35);
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px) saturate(1.2);
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--gap-md);
   align-items: center;
   flex-wrap: wrap;
 }
 
 .brand {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .brand-mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #0b0d12;
+  color: var(--on-accent);
   font-weight: 800;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 18px rgba(110, 142, 248, 0.28);
+  flex-shrink: 0;
 }
 
-.brand h1 {
-  font-size: 1.2rem;
+.brand-text { min-width: 0; }
+.brand-sub {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+.topbar-right {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* --- Навигация: один сегментированный блок вместо отдельных «пилюль» --- */
 .tabs {
   display: flex;
-  gap: 8px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
   flex-wrap: wrap;
 }
 
 .tab {
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  padding: 10px 14px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 7px 15px;
+  border-radius: var(--radius-pill);
   cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
 }
-
+.tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
 .tab.active {
-  border-color: var(--accent);
-  background: rgba(122, 162, 247, 0.12);
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
 }
+.tab-ico { font-size: 0.95rem; line-height: 1; }
 
+/* Счётчик записей в разделе: видно, где есть данные, не открывая вкладку */
+.tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.tab.active .tab-count { background: var(--accent-soft); color: var(--accent); }
+.tab-count[hidden] { display: none; }
+
+/* --- Содержимое --- */
 .content {
-  padding: 24px;
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 22px;
 }
 
-.page {
-  display: none;
-}
+.page { display: none; }
+.page.active { display: block; }
 
-.page.active {
-  display: block;
-}
-
+/* --- Панель фильтров --- */
 .toolbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 16px;
+  align-items: flex-end;
+  gap: var(--gap-md);
   flex-wrap: wrap;
-  margin-bottom: 18px;
+  margin-bottom: var(--gap-md);
 }
 
 .filters {
   display: flex;
-  gap: 10px;
+  gap: var(--gap-sm);
   flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 460px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
 }
+.filters .input { flex: 1 1 200px; min-width: 160px; }
+.filters .select { max-width: 210px; }
+/* Кнопка «Сбросить» появляется, только когда есть что сбрасывать (js/modules/characters/list.js) */
+.filters-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  transition: color var(--speed) var(--ease), border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+.filters-clear:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.05); }
+.filters-clear[hidden] { display: none; }
 
 .actions {
   display: flex;
-  gap: 10px;
+  gap: var(--gap-sm);
   flex-wrap: wrap;
+  align-items: flex-end;
 }
 
-/* --- ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ --- */
+/* --- Полоса показателей раздела --- */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: var(--gap);
+  margin-bottom: 18px;
+}
+.stat {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+/* Тонкая цветная линия сверху: цвет показателя виден, но не спорит с текстом */
+.stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--stat-c, var(--accent));
+  opacity: 0.85;
+}
+.stat-label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  margin-bottom: 6px;
+}
+.stat-value {
+  display: block;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--stat-t, var(--text));
+  font-variant-numeric: tabular-nums;
+}
+.stat-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+}
+.stat.is-accent { --stat-c: var(--accent); }
+.stat.is-violet { --stat-c: var(--accent-2); --stat-t: var(--accent-2); }
+.stat.is-gold   { --stat-c: var(--gold); --stat-t: var(--gold); }
+.stat.is-ok     { --stat-c: var(--success); --stat-t: var(--success); }
+.stat.is-bad    { --stat-c: var(--danger); --stat-t: var(--danger); }
+.stat.is-plain  { --stat-c: var(--border-strong); }
+
+/* --- Готовые сетки --- */
 .card-grid {
   display: grid;
-  
-  /* Адаптивная сетка: 
-     auto-fit позволяет элементам растягиваться на всю ширину.
-     minmax(280px, 1fr) гарантирует минимум 280px на колонку, 
-     но если места больше — колонки расширятся. 
-     Это решает проблему пустот справа и наложения. */
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  
-  gap: 16px;
-  
-  /* Выравниваем по началу, чтобы короткие карточки не тянули соседей вверх */
-  align-items: start; 
-  
+  grid-template-columns: repeat(auto-fill, minmax(304px, 1fr));
+  gap: var(--gap-md);
+  align-items: start;
   width: 100%;
-}
-
-/* Ограничение макс. 5 колонок на очень широких экранах (>1920px) */
-@media (min-width: 1920px) {
-  .card-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
 }
 
 .list {
   display: grid;
-  gap: 12px;
+  gap: var(--gap);
 }
+.list.compact { margin-top: 14px; }
 
-.list.compact {
-  margin-top: 14px;
-}
-
+/* --- Панель и строка настройки --- */
 .panel {
-  background: var(--panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-1);
 }
 
-.row {
-  display: flex;
-  align-items: center;
-}
-
-.row.gap {
-  gap: 10px;
-  flex-wrap: wrap;
-}
+.row { display: flex; align-items: center; }
+.row.gap { gap: var(--gap-sm); flex-wrap: wrap; }
 
 .setting-row {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--gap-md);
   align-items: center;
-  padding: 14px 0;
+  padding: 13px 0;
   border-bottom: 1px solid var(--border);
 }
+.setting-row:last-child { border-bottom: none; }
+.setting-row strong { font-weight: 600; }
+.setting-row .muted { font-size: 0.82rem; max-width: 68ch; }
 
-.setting-row:last-child {
-  border-bottom: none;
-}
-/* Сворачиваемая панель настроек: в свёрнутом виде видны только название и описание */
+/* Сворачиваемая панель: в свёрнутом виде видны название и описание */
 .panel.fold > summary {
   position: relative;
-  padding-right: 28px;
+  padding-right: 30px;
   cursor: pointer;
   list-style: none;
 }
 .panel.fold > summary::-webkit-details-marker { display: none; }
 .panel.fold > summary::after {
-  content: '▸';
+  content: '';
   position: absolute;
-  top: 2px;
-  right: 4px;
-  color: var(--muted);
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-faint);
+  border-bottom: 2px solid var(--text-faint);
+  transform: rotate(45deg);
+  transition: transform var(--speed) var(--ease);
 }
-.panel.fold[open] > summary::after { content: '▾'; }
-.panel.fold > summary h3 { margin: 0 0 4px; }
+.panel.fold[open] > summary::after { transform: rotate(225deg); top: 11px; }
+.panel.fold > summary h3 { margin: 0 0 3px; }
 .panel.fold > summary p { margin: 0; }
-.panel.fold[open] > summary { margin-bottom: 12px; }
+.panel.fold[open] > summary { margin-bottom: 14px; }
+.panel.fold:hover { border-color: var(--border-strong); }
 
-/* Единый журнал (core/logHub.js): список с прокруткой, чтобы настройки не раздувались */
+/* Единый журнал (core/logHub.js) */
 .lh-list { max-height: 360px; overflow-y: auto; }
 .lh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.lh-chip { border: 1px solid var(--border, rgba(255,255,255,.12)); background: transparent; color: inherit; border-radius: 999px; padding: 4px 12px; cursor: pointer; font-size: .85rem; }
-.lh-chip:hover { border-color: var(--accent, #7aa2f7); }
-.lh-chip.active { background: var(--accent, #7aa2f7); border-color: var(--accent, #7aa2f7); color: #0b0d14; }
-.lh-chip.active .muted { color: inherit; opacity: .75; }
+.lh-chip { border: 1px solid var(--border); background: transparent; color: inherit; border-radius: var(--radius-pill); padding: 4px 12px; cursor: pointer; font-size: 0.85rem; }
+.lh-chip:hover { border-color: var(--accent); }
+.lh-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
+.lh-chip.active .muted { color: inherit; opacity: 0.75; }
 .lh-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
 .lh-filters .input { flex: 1 1 220px; min-width: 0; }
-.lh-count { margin-bottom: 6px; font-size: .85rem; }
+.lh-count { margin-bottom: 6px; font-size: 0.85rem; }
 .lh-actions { margin-top: 10px; flex-wrap: wrap; align-items: center; }
 .lh-more { margin-top: 6px; }
 
-/* Настройки: две колонки свёрнутых карточек. Раскрытая карточка растёт вниз только в своей колонке. */
-.settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.settings-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+/* Настройки: две колонки свёрнутых карточек, раскрытая растёт вниз только в своей колонке */
+.settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-md); align-items: start; }
+.settings-col { display: flex; flex-direction: column; gap: var(--gap-md); min-width: 0; }
 .settings-col > .panel { margin: 0; }
 @media (max-width: 900px) { .settings-cols { grid-template-columns: minmax(0, 1fr); } }
 
-/* Свёрнутая карточка: описание в одну строку (с «…»), поэтому все карточки одинаковой высоты
-   и ряды в двух колонках выровнены. В раскрытой карточке описание показано полностью. */
-.settings-col > .panel.fold > summary { min-height: 56px; }
+/* Свёрнутая карточка: описание в одну строку, поэтому карточки одной высоты и ряды выровнены */
+.settings-col > .panel.fold > summary { min-height: 54px; }
 .settings-col > .panel.fold:not([open]) > summary p {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 24px;   /* место под стрелку */
+  padding-right: 24px;
 }
 
-
-/* Опасные действия: у каждого действия название, описание и кнопка */
-.panel.fold.danger-zone { border-color: rgba(247, 118, 142, .3); margin-top: 16px; }
+/* Опасные действия */
+.panel.fold.danger-zone { border-color: rgba(247, 118, 142, 0.32); margin-top: var(--gap-md); }
 .panel.fold.danger-zone > summary h3 { color: var(--danger); }
 .danger-item {
-  display: flex; justify-content: space-between; align-items: center; gap: 16px;
-  padding: 12px 0; border-top: 1px solid rgba(247, 118, 142, .15);
+  display: flex; justify-content: space-between; align-items: center; gap: var(--gap-md);
+  padding: 13px 0; border-top: 1px solid rgba(247, 118, 142, 0.15);
 }
 .danger-item > div { min-width: 0; }
-.danger-item p { margin: 4px 0 0; max-width: 70ch; }
+.danger-item p { margin: 4px 0 0; max-width: 70ch; font-size: 0.82rem; }
 .danger-item .btn { flex: 0 0 auto; white-space: nowrap; min-width: 200px; }
-.danger-more { margin-top: 4px; border-top: 1px dashed rgba(247, 118, 142, .25); }
-.danger-more > summary { padding: 10px 0 2px; cursor: pointer; color: var(--muted); font-size: .85rem; }
+.danger-more { margin-top: 4px; border-top: 1px dashed rgba(247, 118, 142, 0.25); }
+.danger-more > summary { padding: 10px 0 2px; cursor: pointer; color: var(--text-dim); font-size: 0.85rem; }
 .danger-more > summary:hover { color: var(--danger); }
-@media (max-width: 700px) { .danger-item { flex-direction: column; align-items: stretch; } }
+
+@media (max-width: 760px) {
+  .content { padding: 16px; }
+  .topbar { padding: 10px 14px; }
+  .danger-item { flex-direction: column; align-items: stretch; }
+  .danger-item .btn { min-width: 0; }
+}

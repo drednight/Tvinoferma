@@ -16,6 +16,7 @@
     "typecheck": "tsc -p jsconfig.json",
     "format": "prettier --write",
     "format:check": "prettier --check",
+    "shots": "node scripts/ui-shots.mjs",
     "check": "npm run lint && npm run typecheck && npm test"
   },
   "dependencies": {

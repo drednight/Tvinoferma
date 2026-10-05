@@ -1,356 +1,350 @@
-/* css/cards.css */
+/* css/modules/characters.css
+   Карточка персонажа: шапка (значок класса, ник, состояние, пати, монеты), статистика,
+   контакты и подвал с проходками и кнопками запуска.
+
+   Цвет состояния карточки приходит из разметки переменной --state-c (js/modules/characters/list.js):
+   так цвет статуса задаётся в одном месте — в модели авторизации. */
 
 .character-card {
-  /* КРИТИЧНО: Запретить разрыв карточки между колонками */
-  break-inside: avoid;
-  -webkit-column-break-inside: avoid;
-  page-break-inside: avoid;
-  
-  /* Отступ снизу, так как gap в columns работает только горизонтально */
-  margin-bottom: 16px; 
-  
-  /* Ширина 100%, чтобы занять всю доступную ширину колонки */
+  --state-c: var(--border-strong);
+  position: relative;
+  overflow: hidden;
   width: 100%;
-  
-  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-  
-  /* Flexbox для внутреннего содержимого */
-  display: flex;
-  flex-direction: column;
-}
-
-/* КОМПАКТНАЯ ЧАСТЬ: ФИКСИРОВАННАЯ ВЫСОТА */
-.card-compact {
-  padding: 16px;
+  box-shadow: var(--shadow-1);
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  
-  /* ЖЕСТКАЯ ВЫСОТА ДЛЯ СТАБИЛЬНОСТИ СЕТКИ 
-     Подбери значение, которое устраивает всех персонажей.
-     280px обычно хватает для: Иконка+Пати, Ник, LVL, Небо, Email, Пароль, Проходки. */
-  height: 300px; 
-  
-  /* Переполнение скрыто, чтобы длинный текст не ломал макет */
-  overflow: hidden;
+  transition: transform var(--speed) var(--ease), border-color var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
 }
 
-/* При раскрытии убираем фиксированную высоту, позволяя расти */
-.character-card.expanded .card-compact {
-  height: auto;
-  overflow: visible;
+/* Полоска слева: состояние входа видно с первого взгляда, не перекрывая содержимое */
+.character-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--state-c);
 }
 
-.card-head {
+.character-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-2);
+}
+
+/* --- Шапка --- */
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
-  flex-shrink: 0; /* Шапка не должна сжиматься */
+  gap: var(--gap);
+  padding: 13px 14px 11px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent);
 }
 
-.class-icon-container {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  overflow: hidden;
-  background: #1a1f2e;
-  border: 1px solid var(--border);
-  flex-shrink: 0;
-  position: relative;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+.card-head-main {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.char-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   display: grid;
   place-items: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
 }
+.char-avatar img { width: 100%; height: 100%; object-fit: contain; }
+.char-avatar span { font-weight: 800; color: var(--text-dim); font-size: 1rem; }
 
-.class-icon-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+.char-ident { min-width: 0; }
+.char-nick {
+  margin: 0 0 2px;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.char-sub {
   display: block;
-  margin: 0;
-  padding: 0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.class-icon-fallback {
-  font-weight: 800;
-  color: var(--accent);
-  font-size: 1.4rem;
-}
-
-.badge-group {
-  text-align: right;
+.card-head-side {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
-}
-
-.card-title {
-  min-width: 0;
-  flex-grow: 1; /* Занимает все свободное место между шапкой и контактами */
-  display: flex;
-  flex-direction: column;
-  justify-content: center; /* Центрирует текст по вертикали в этом блоке */
-}
-
-.card-title h3 {
-  font-size: 1.1rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-bottom: 4px;
-}
-
-.card-meta {
-  display: grid;
-  gap: 4px;
-  font-size: 0.9rem;
-}
-
-.muted-text {
-  color: var(--muted);
-}
-
-.contact-lines {
-  display: grid;
-  gap: 8px;
-  margin-top: auto; /* Прижимает контакты к нижней части фиксированной зоны перед проходками */
-}
-
-.contact-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  font-size: 0.9rem;
-}
-
-.contact-label {
-  color: var(--muted);
   flex-shrink: 0;
+  max-width: 52%;
 }
-
-.contact-value-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-grow: 1;
-  justify-content: flex-end;
-}
-
-.contact-value {
-  cursor: pointer;
-  border-bottom: 1px dashed transparent;
-  word-break: break-all;
+.card-party {
+  font-size: 0.72rem;
+  padding: 2px 8px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.contact-value:hover {
-  border-bottom-color: var(--accent);
+.card-coins {
+  font-size: 0.82rem;
+  padding: 3px 9px;
+  gap: 5px;
 }
+.card-coins strong { font-variant-numeric: tabular-nums; }
 
-.contact-value.empty {
-  color: var(--muted);
-  cursor: default;
-}
-
-.icon-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 2px 4px;
-  border-radius: 4px;
-  line-height: 1;
-}
-
-.icon-btn:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.passes-container {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+/* --- Тело --- */
+.card-body {
+  flex: 1 1 auto;
+  padding: 12px 14px 12px 16px;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  flex-shrink: 0; /* Проходки всегда видны внизу, не сжимаются */
+  flex-direction: column;
+  gap: var(--gap);
 }
+
+.card-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  text-align: center;
+  font-size: 0.75rem;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.18);
+}
+.card-stats > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.card-stats .muted { font-size: 0.68rem; }
+.card-stats strong { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+
+.card-contacts { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; }
+
+.contact-row-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 9px;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid transparent;
+  transition: border-color var(--speed) var(--ease);
+}
+.contact-row-mini:hover { border-color: var(--border); }
+.contact-key { font-size: 0.68rem; letter-spacing: 0.04em; flex-shrink: 0; }
+.contact-row-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
+.contact-value {
+  cursor: pointer;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--text);
+  border-bottom: 1px dashed transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 22ch;
+}
+.contact-value:hover { border-bottom-color: var(--accent); }
+
+.mini-toggle-eye { padding: 2px; opacity: 0.45; display: flex; align-items: center; }
+.mini-toggle-eye:hover { opacity: 1; }
+
+/* --- Подвал --- */
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 9px 14px 9px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.card-passes { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .pass-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 3px 7px;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
+.pass-icon-img { width: 16px; height: 16px; object-fit: contain; display: block; }
+.pass-icon-fallback { font-size: 0.95rem; line-height: 1; }
 
-.pass-icon-img {
-  width: 16px;
-  height: 16px;
-  object-fit: contain;
-  vertical-align: middle;
-  display: block;
-  margin: 0;
+/* --- Кнопки действий на маленькой карточке --- */
+.card-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+.card-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 30px;
   padding: 0;
-}
-
-.pass-icon-fallback {
-  font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.95rem;
   line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease), transform 0.1s var(--ease);
 }
+.card-act:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.card-act:disabled { opacity: 0.45; cursor: not-allowed; }
+.card-act.play {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: rgba(158, 206, 106, 0.42);
+}
+.card-act.play:hover:not(:disabled) { background: rgba(158, 206, 106, 0.26); border-color: var(--success); }
+/* Путь к GameCenter не указан: кнопка тусклая, пунктиром — по клику откроется карточка с блоком «Запуск игры» */
+.card-act.play.is-unset { color: var(--text-dim); background: transparent; border: 1px dashed var(--border-strong); }
 
-/* РАСКРЫТАЯ ЧАСТЬ */
+/* --- Раскрытая карточка (профиль) --- */
 .card-expanded {
   border-top: 1px solid var(--border);
   padding: 16px;
   background: rgba(255, 255, 255, 0.015);
   display: grid;
-  gap: 16px;
-  animation: slideDown 0.2s ease-out forwards;
+  gap: var(--gap-md);
+  animation: slideDown var(--speed) var(--ease) forwards;
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
+  from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.expanded-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 12px;
-}
+.expanded-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--gap); }
 
 .info-block {
-  background: var(--panel-2);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px;
 }
+.info-block h4 { margin-bottom: 10px; font-size: 0.94rem; font-weight: 650; }
 
-.info-block h4 {
-  margin-bottom: 10px;
-  font-size: 0.95rem;
-  color: var(--text);
-  font-weight: 700;
-}
+.coin-controls { display: flex; gap: var(--gap-sm); flex-wrap: wrap; margin-top: 8px; }
 
-.coin-controls {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.history-list {
-  display: grid;
-  gap: 8px;
-  max-height: 200px;
-  overflow-y: auto;
-  margin-top: 8px;
-}
-
+.history-list { display: grid; gap: 8px; max-height: 200px; overflow-y: auto; margin-top: 8px; }
 .history-item {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: var(--panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   font-size: 0.85rem;
 }
+.history-item .delta.positive { color: var(--success); font-weight: 700; }
+.history-item .delta.negative { color: var(--danger); font-weight: 700; }
 
-.history-item .delta.positive {
-  color: var(--success);
-  font-weight: 700;
-}
-
-.history-item .delta.negative {
-  color: var(--danger);
-  font-weight: 700;
-}
-
-.actions-row {
-  display: flex;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
+.actions-row { display: flex; gap: var(--gap-sm); justify-content: flex-end; margin-top: 12px; }
 
 .party-item,
 .backup-item {
-  background: var(--panel);
+  background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 13px 16px;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--gap);
   align-items: center;
 }
-
 .party-item .meta,
-.backup-item .meta {
-  display: grid;
-  gap: 4px;
-}
+.backup-item .meta { display: grid; gap: 4px; }
+
 /* ===== Окно «История Древних монет» ===== */
 .ch-entry { grid-template-columns: 150px 22px 1fr; }
-.ch-up { color: var(--success, #9ece6a); }
-.ch-down { color: var(--danger, #f7768e); }
+.ch-up { color: var(--success); }
+.ch-down { color: var(--danger); }
 
-/* Меню «🔄 Проверить» в футере профиля (раскрывается вверх; кнопка по высоте как соседние) */
+/* Меню «🔄 Проверить» в футере профиля (раскрывается вверх) */
 .pf-menu { position: relative; display: flex; }
 .pf-menu > .btn { flex: 1; }
-.pf-menu-list { position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 230px; display: flex; flex-direction: column; gap: 2px; padding: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,.35); z-index: 30; }
-.pf-menu-list[hidden] { display: none; }
-.pf-menu-list button { text-align: left; padding: 8px 10px; background: transparent; border: 0; border-radius: 6px; color: inherit; cursor: pointer; font: inherit; }
-.pf-menu-list button:hover:not(:disabled) { background: rgba(255,255,255,.07); }
-.pf-menu-list button:disabled { opacity: .5; cursor: default; }
-
-/* ===== Кнопки действий на маленькой карточке персонажа ===== */
-.card-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
-.card-act {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 30px; padding: 0;
-  border: 1px solid var(--border); border-radius: 8px;
-  background: var(--panel-2); color: var(--text);
-  font-size: 0.95rem; line-height: 1; cursor: pointer;
-  transition: border-color .15s, background .15s, transform .15s;
+.pf-menu-list {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-2);
+  z-index: 30;
 }
-.card-act:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
-.card-act:disabled { opacity: .45; }
-.card-act.play { color: var(--success, #9ece6a); background: rgba(158, 206, 106, .12); border-color: rgba(158, 206, 106, .45); }
-.card-act.play:hover:not(:disabled) { background: rgba(158, 206, 106, .26); border-color: var(--success, #9ece6a); }
-/* путь к GameCenter не указан: кнопка тусклая, пунктиром — по клику откроется карточка с блоком «Запуск игры» */
-.card-act.play.is-unset { color: var(--muted); background: transparent; border: 1px dashed var(--border); }
+.pf-menu-list[hidden] { display: none; }
+.pf-menu-list button {
+  text-align: left;
+  padding: 8px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+}
+.pf-menu-list button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.07); }
+.pf-menu-list button:disabled { opacity: 0.5; cursor: default; }
 
 /* ===== Нижняя панель профиля: [🗑] [Играть · Сайт · История · Проверить ▾] [Править · Закрыть] ===== */
 .pf-footer {
-  flex-shrink: 0; position: sticky; bottom: 0; z-index: 5;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  padding-top: 15px; border-top: 1px solid var(--border); background: var(--panel);
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding-top: 15px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-1);
 }
-.pf-footer .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding: 8px 12px; font-size: 0.92rem; }
+.pf-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+}
 .pf-footer-main { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 auto; justify-content: center; }
 .pf-footer-end { display: flex; gap: 6px; margin-left: auto; }
 .pf-delete { padding: 8px 11px; }
-.pf-play { color: #0b0d12; font-weight: 700; border-color: transparent; background: linear-gradient(135deg, #9ece6a, #73daca); }
+.pf-play {
+  color: var(--on-accent);
+  font-weight: 700;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--success), #73daca);
+}
 .pf-play:hover { filter: brightness(1.08); border-color: transparent; }

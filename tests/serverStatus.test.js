@@ -173,7 +173,7 @@ describe('запуск приложения', () => {
 describe('без журнала и уведомлений', () => {
   it('чтение статуса серверов не создаёт задач и не показывает уведомлений — ни при успехе, ни при сбое', async () => {
     const toast = vi.fn();
-    vi.doMock('../js/core/ui.js', () => ({ toast, confirmDialog: vi.fn() }));
+    vi.doMock('../js/core/ui.js', () => ({ toast, confirmModal: vi.fn(async () => true) }));
     const log = await import('../js/core/taskLog.js');
     const changes = vi.fn();
     log.onTaskChange(changes);

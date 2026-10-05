@@ -7,7 +7,7 @@ import { formatCoins, roundCoins } from '../../core/coins.js';
 import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
-import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL } from './membership.js';
+import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
 import { hasGameCenterPath } from '../launcher/launch.js';
 import { getClassIconSrc } from '../../core/constants.js';
 
@@ -38,8 +38,9 @@ function getGroupedParties() {
         if (!map.has(p.name)) map.set(p.name, []);
     });
 
-    // Персонаж попадает в каждую свою пати (в нескольких сразу), без пати — в отдельную группу
-    state.parties.forEach(p => map.set(p.name, charactersInParty(state.characters, p.id)));
+    // Персонаж попадает в каждую свою пати (в нескольких сразу), без пати — в отдельную группу.
+    // Порядок участников внутри пати задаётся перетаскиванием и хранится у персонажа (char.partyOrder).
+    state.parties.forEach(p => map.set(p.name, charactersInPartyOrdered(state.characters, p.id)));
     const unassigned = state.characters.filter(c => hasNoParty(c, state.parties));
     if (unassigned.length) map.set(NO_PARTY_LABEL, unassigned);
 
@@ -76,8 +77,15 @@ function memberRowHtml(m, party) {
     const authView = getAuthView(m);
     const isOnline = m.isLoggedIn === true;
     const src = getClassIconSrc(m.class);
+    // Порядок задаётся перетаскиванием: ручка слева, номер показывает место в очереди запуска
+    const index = (party ? charactersInPartyOrdered(state.characters, party.id) : []).indexOf(m);
+    const handle = party
+        ? `<span class="pt-drag" draggable="true" title="Перетащите, чтобы изменить порядок запуска" aria-label="Изменить порядок">⠿</span>
+           ${index >= 0 ? `<span class="pt-num" title="Порядок запуска">${index + 1}</span>` : ''}`
+        : '';
     return `
-        <li class="pt-member party-member-row" data-char-id="${m.id}">
+        <li class="pt-member party-member-row" data-char-id="${m.id}"${party ? ` data-party-id="${escapeHtml(party.id)}"` : ''}>
+            ${handle}
             <span class="pt-ava ${isOnline ? 'is-online' : ''}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>
             <span class="pt-member-name"><strong>${escapeHtml(m.nick)}</strong><small class="muted">${escapeHtml(m.class || '')}</small></span>
             ${party && !isMainParty(m, party.id) ? '<span class="pt-badge" title="Для этого персонажа это дополнительная пати: его монеты считаются в основной">доп.</span>' : ''}
@@ -119,6 +127,7 @@ function partyCardHtml(name, members) {
                         title="${launchReady ? 'Запустить игру для участников по очереди (GameCenter выбирается по большинству участников)' : 'Ни у кого в пати не указан GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
                     ▶ Запустить <small>${launchReady}/${members.length}</small>
                 </button>
+                ${members.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав и название пати">⚙</button>` : ''}
             </div>
             <div class="party-body-wrapper pt-body">
@@ -173,6 +182,87 @@ export function renderPartiesGrid() {
 
     bindPartyEvents(container);
     initDragAndDrop(container);
+    initMemberDrag(container);
+}
+
+/**
+ * Перетаскивание персонажей внутри пати: задаёт порядок запуска игры.
+ * Порядок сохраняется у персонажа (`char.partyOrder`) и переживает перезапуск приложения.
+ *
+ * Куда встанет персонаж, зависит от половины строки, на которую навели: верхняя половина —
+ * перед ней, нижняя — после. Поэтому перетаскивание на соседнюю строку сдвигает на одну
+ * позицию, а не переносит в конец списка.
+ */
+function initMemberDrag(container) {
+    let draggedId = null;
+    let draggedPartyId = null;
+    /** Над какой строкой сейчас курсор и в какую её половину — от этого зависит место вставки. */
+    let dropTarget = null;
+
+    const clearMarks = () => container.querySelectorAll('.pt-member-over, .pt-member-over-after').forEach(el => {
+        el.classList.remove('pt-member-over', 'pt-member-over-after');
+    });
+
+    container.addEventListener('dragstart', (e) => {
+        const handle = e.target.closest?.('.pt-drag');
+        if (!handle) return;
+        const row = handle.closest('.pt-member');
+        if (!row) return;
+        draggedId = row.dataset.charId;
+        draggedPartyId = row.dataset.partyId;
+        row.classList.add('pt-member-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', draggedId);
+        e.stopPropagation();   // иначе начнётся перетаскивание самой карточки пати
+    });
+
+    container.addEventListener('dragend', () => {
+        draggedId = null;
+        draggedPartyId = null;
+        dropTarget = null;
+        container.querySelectorAll('.pt-member-dragging').forEach(el => el.classList.remove('pt-member-dragging'));
+        clearMarks();
+    });
+
+    container.addEventListener('dragover', (e) => {
+        if (!draggedId) return;
+        const row = e.target.closest?.('.pt-member');
+        // Перетаскивать можно только внутри своей пати
+        if (!row || row.dataset.partyId !== draggedPartyId || row.dataset.charId === draggedId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // Нижняя половина строки — вставка после неё, верхняя — перед ней
+        const box = row.getBoundingClientRect();
+        const after = e.clientY > box.top + box.height / 2;
+        if (dropTarget?.row === row && dropTarget.after === after) return;
+        clearMarks();
+        row.classList.add(after ? 'pt-member-over-after' : 'pt-member-over');
+        dropTarget = { row, after };
+    });
+
+    container.addEventListener('drop', async (e) => {
+        if (!draggedId) return;
+        const row = e.target.closest?.('.pt-member');
+        if (!row || row.dataset.partyId !== draggedPartyId || row.dataset.charId === draggedId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const box = row.getBoundingClientRect();
+        const after = e.clientY > box.top + box.height / 2;
+        const partyId = draggedPartyId;
+        const fromId = draggedId;
+        const changed = movePartyMember(state.characters, partyId, fromId, row.dataset.charId, { after });
+        draggedId = null;
+        draggedPartyId = null;
+        dropTarget = null;
+        if (!changed) return;
+        // Порядок — часть данных персонажа: сохраняем сразу, чтобы он пережил перезапуск
+        const now = new Date().toISOString();
+        for (const c of state.characters) {
+            if (c.partyOrder?.[partyId]) c.updatedAt = now;
+        }
+        await persist();
+        renderPartiesGrid();
+    });
 }
 
 function bindPartyEvents(container) {
@@ -208,6 +298,14 @@ function bindPartyEvents(container) {
                 ? charactersInParty(state.characters, party.id)
                 : state.characters.filter(c => hasNoParty(c, state.parties));
             import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
+            return;
+        }
+
+        // 1b. Клик по кнопке "Закрыть окна пати": закрывает окна участников этой пати
+        const closeBtn = target.closest('.close-party-action-btn');
+        if (closeBtn) {
+            e.stopPropagation();
+            import('../launcher/partyLaunch.js').then(m => m.closePartyWindows(closeBtn.dataset.partyName));
             return;
         }
 

@@ -28,6 +28,7 @@ mod launcher;
 mod marathons;
 mod parsers;
 mod pool;
+mod stats_ocr;
 mod tray;
 mod windows;
 
@@ -114,6 +115,8 @@ pub fn run() {
             commands::secrets::secrets_get_many,
             commands::secrets::secrets_set_many,
             commands::secrets::secrets_delete_many,
+            // полный сброс: «Вернуть к заводским настройкам»
+            commands::factory_reset::factory_reset,
             // трей
             tray::set_close_to_tray,
             tray::set_tray_parties,
@@ -140,6 +143,16 @@ pub fn run() {
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,
             launcher::launcher_has_account,
+            // список запущенных окон игры и закрытие выбранных
+            launcher::launcher_running_details,
+            launcher::launcher_close_clients_pids,
+            // повторная подпись окон (название и значок) после запуска
+            launcher::launcher_decorate_clients,
+            // ручная смена названия и значка у запущенного окна
+            launcher::launcher_apply_window_style,
+            // разбор скриншота с характеристиками персонажа
+            stats_ocr::stats_ocr_available,
+            stats_ocr::stats_ocr_read,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

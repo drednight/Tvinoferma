@@ -2,7 +2,7 @@
 
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
-import { showModal, toast, confirmDialog, closeModal } from '../../core/ui.js';
+import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { escapeHtml, uid } from '../../core/utils.js';
 import { renderCharacters } from '../characters/list.js';
 import { renderPartiesGrid } from './renderer.js';
@@ -156,8 +156,14 @@ export function openEditPartyModal(currentName) {
     setTimeout(() => {
         const delBtn = document.getElementById('delete-this-party-btn');
         if (delBtn) {
-            delBtn.onclick = () => {
-                if (confirmDialog(`Удалить группу "${currentName}"?\nВсе участники станут без пати.`)) {
+            delBtn.onclick = async () => {
+                const ok = await confirmModal({
+                    title: `Удалить группу «${currentName}»?`,
+                    text: 'Все участники станут без пати. Персонажи, их монеты и марафоны не меняются.',
+                    okText: 'Удалить группу',
+                    danger: true
+                });
+                if (ok) {
                     state.parties = state.parties.filter(p => p.id !== party.id);
                     const now = new Date().toISOString();
                     state.characters.forEach(c => { if (setMembership(c, party.id, false)) c.updatedAt = now; });

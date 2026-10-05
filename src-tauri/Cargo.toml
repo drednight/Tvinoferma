@@ -26,5 +26,21 @@ urlencoding = "2.1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 aes-gcm = "0.10"
 
+# Разбор скриншота с характеристиками персонажа: встроенный в Windows распознаватель текста.
+# Windows.Media.Ocr знает русский язык, доустанавливать ничего не нужно; на других системах
+# команда просто сообщает, что разбор недоступен.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Globalization",
+    "Graphics_Imaging",
+    "Media_Ocr",
+    "Storage",
+    "Storage_Streams",
+] }
+# Ожидание асинхронного распознавания (`Async::join`)
+windows-future = "0.3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

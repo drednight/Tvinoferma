@@ -70,6 +70,11 @@ export function decorateEnabled() {
   return state.settings?.launcher?.decorateWindows !== false;
 }
 
+/** Ставить ли значок класса (Настройки → Запуск игры). Название «Ник — Класс» от этого не зависит. */
+export function decorateIconsEnabled() {
+  return state.settings?.launcher?.decorateIcons !== false;
+}
+
 /** @type {Map<string, Promise<number[] | null>>} */
 const iconCache = new Map();
 
@@ -108,13 +113,16 @@ export function classIconRgba(className, size) {
 
 /**
  * Что передать в Rust, чтобы окно клиента получило название и значок класса.
+ * Значок можно не ставить (Настройки → Запуск игры → «Ставить значок класса»): тогда окно получает
+ * только название, а значок остаётся игровым.
  * @param {any} character
- * @param {{ loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
+ * @param {{ loadIcon?: (className: string, size: number) => Promise<number[] | null>, icons?: boolean }} [deps]
  */
 export async function windowDecor(character, deps = {}) {
   const load = deps.loadIcon || classIconRgba;
   const cls = String(character?.class || '').trim();
-  const [iconSmall, iconBig] = cls
+  const withIcons = deps.icons ?? decorateIconsEnabled();
+  const [iconSmall, iconBig] = cls && withIcons
     ? await Promise.all([load(cls, WINDOW_ICON_SMALL), load(cls, WINDOW_ICON_BIG)])
     : [null, null];
   return { windowTitle: windowTitle(character) || null, iconSmall, iconBig };
@@ -233,6 +241,46 @@ export function runningClients(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_running_clients');
 }
 
+/**
+ * Запущенные клиенты игры с подробностями: PID, когда запущен, заголовок окна, права.
+ * Заголовок у окон, запущенных из Твинофермы, — «Ник — Класс» (так их подписывает `launcher_start`),
+ * поэтому ник и класс восстанавливаются из него. У окон, запущенных не из Твинофермы, заголовок игровой,
+ * и такой клиент показывается просто как «PID 1234».
+ * @returns {Promise<Array<{pid: number, image: string, startedAt: number|null, title: string, hwnd: number|null, elevated: boolean|null}>>}
+ */
+export function runningClientDetails(deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_running_details');
+}
+
+/** Закрыть выбранные клиенты игры по PID. Отчёт — как у закрытия всех окон. */
+export function closeClientsByPid(pids, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_close_clients_pids', { pids });
+}
+
+/**
+ * Меняет название и значок запущенного окна игры по требованию пользователя.
+ * @param {{ pid: number, title?: string|null, class?: string|null, clearIcon?: boolean }} opts
+ *   `class` — класс, чей значок поставить; `clearIcon` — вернуть окну значок файла игры.
+ */
+export function applyWindowStyle(opts, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_apply_window_style', {
+    pid: opts.pid,
+    title: opts.title ?? null,
+    class: opts.class ?? null,
+    clearIcon: opts.clearIcon ?? false
+  });
+}
+
+/** Текст итога ручной смены вида окна. */
+export function applyStyleText(result) {
+  switch (result?.status) {
+    case 'missing': return 'Окно игры не найдено: возможно, оно уже закрыто';
+    case 'failed': return 'Windows не даёт менять это окно: игра запущена от администратора, а Твиноферма — нет';
+    case 'fixed': return 'Окно обновлено';
+    default: return 'Изменений не потребовалось';
+  }
+}
+
 /** Закрыть все клиенты игры. Возвращает, сколько было закрыто. */
 export function closeAllClients(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_close_clients');
@@ -241,6 +289,48 @@ export function closeAllClients(deps = {}) {
 /** Проверка окон игры: какие окна есть, можно ли менять им заголовок и значок, от чьего имени запущена игра. */
 export function inspectGameWindows(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_inspect_windows');
+}
+
+/**
+ * Проверяет, что окна запущенных клиентов действительно получили название и значок,
+ * и повторяет подпись там, где не получилось.
+ *
+ * Зачем: окно клиента появляется не сразу после запуска, а игра при загрузке может переписать заголовок.
+ * `launcher_start` подписывает окно в фоне и о результате не сообщает, поэтому после запуска всех аккаунтов
+ * итог проверяется по факту, и для неподписанных окон попытка повторяется.
+ *
+ * @param {Array<{ pid: number, title: string, iconSmall?: number[]|null, iconBig?: number[]|null }>} targets
+ * @param {{ invoke?: Function }} [deps]
+ * @returns {Promise<{ ok: number, fixed: number, missing: number, failed: number, details: string[] }>}
+ */
+export async function redecorateClients(targets, deps = {}) {
+  const invoke = deps.invoke || tauriInvoke;
+  const list = (targets || []).filter(t => t && t.pid && t.title);
+  /** @type {{ ok: number, fixed: number, missing: number, failed: number, details: string[] }} */
+  const out = { ok: 0, fixed: 0, missing: 0, failed: 0, details: [] };
+  if (!list.length) return out;
+  try {
+    const results = await invoke('launcher_decorate_clients', { targets: list });
+    for (const r of results || []) {
+      if (r.status === 'ok') out.ok++;
+      else if (r.status === 'fixed') out.fixed++;
+      else if (r.status === 'missing') out.missing++;
+      else { out.failed++; out.details.push(`PID ${r.pid}: название и значок не применились`); }
+    }
+  } catch (e) {
+    out.details.push(`Проверка окон не удалась: ${String(e?.message || e)}`);
+  }
+  return out;
+}
+
+/** Текст итога перепроверки: пусто, если всё в порядке. */
+export function redecorateText(result) {
+  if (!result) return '';
+  const parts = [];
+  if (result.fixed) parts.push(`подписано окон: ${result.fixed}`);
+  if (result.failed) parts.push(`не удалось подписать: ${result.failed}`);
+  if (result.missing) parts.push(`окон не найдено: ${result.missing}`);
+  return parts.length ? `Проверка названий и значков — ${parts.join(', ')}` : '';
 }
 
 /** Заголовок, который Rust ставит окну на мгновение при проверке (см. PROBE_TITLE в launcher.rs). */
@@ -392,7 +482,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
         ...decor
       });
       if (!last && delayMs > 0) await sleep(delayMs); // следующий аккаунт стартует после паузы
-      return { cancelled: false, info: info || {} };
+      return { cancelled: false, info: info || {}, decor, character };
     },
     {
       limiter: createLimiter(1), // строго по одному
@@ -414,13 +504,37 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
 
   return results.map(r => {
     const cancelled = !!(r.cancelled || r.result?.cancelled);
+    const info = r.result?.info;
     return {
       id: r.item.character.id,
       nick: r.item.character.nick || r.item.character.id,
       ok: !r.error && !cancelled,
       cancelled,
       error: r.error ? String(r.error?.message || r.error) : undefined,
-      info: r.result?.info
+      info,
+      // Что нужно для проверки подписи окна: PID клиента и ожидаемое название со значком
+      clientPid: info?.clientPid ? Number(info.clientPid) : null,
+      decor: r.result?.decor || null
     };
   });
+}
+
+/**
+ * После запуска проверяет, что все окна получили название и значок, и повторяет попытку там, где не вышло.
+ * Возвращает текст для журнала задачи или пустую строку, если всё в порядке.
+ * @param {Array<{ ok?: boolean, clientPid?: number|null, decor?: { windowTitle?: string|null, iconSmall?: number[]|null, iconBig?: number[]|null }|null }>} results
+ * @param {{ invoke?: Function }} [deps]
+ */
+export async function verifyLaunchedDecor(results, deps = {}) {
+  const targets = (results || [])
+    .filter(r => r.ok && r.clientPid && r.decor?.windowTitle)
+    .map(r => ({
+      pid: r.clientPid,
+      title: r.decor.windowTitle,
+      iconSmall: r.decor.iconSmall || null,
+      iconBig: r.decor.iconBig || null
+    }));
+  if (!targets.length) return '';
+  const res = await redecorateClients(targets, deps);
+  return redecorateText(res);
 }

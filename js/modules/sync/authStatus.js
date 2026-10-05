@@ -6,9 +6,9 @@ import { state } from '../../core/state.js';
 import { errorText } from '../../core/taskLog.js';
 
 export const AUTH_VIEW = {
-  online:   { icon: '🟢', color: '#9ece6a', text: 'Онлайн',     title: 'Аккаунт авторизован' },
-  offline:  { icon: '🔴', color: '#f7768e', text: 'Оффлайн',    title: 'Требуется вход или истекла сессия' },
-  checking: { icon: '🟡', color: '#e0af68', text: 'Проверка…',  title: 'Идёт проверка авторизации' }
+  online:   { icon: '🟢', color: '#9ece6a', cls: 'is-on',   text: 'Онлайн',     title: 'Аккаунт авторизован' },
+  offline:  { icon: '🔴', color: '#f7768e', cls: 'is-off',  text: 'Оффлайн',    title: 'Требуется вход или истекла сессия' },
+  checking: { icon: '🟡', color: '#e0af68', cls: 'is-busy', text: 'Проверка…',  title: 'Идёт проверка авторизации' }
 };
 
 export function getAuthState(char) {

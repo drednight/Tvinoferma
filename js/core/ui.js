@@ -196,6 +196,12 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
   });
 }
 
-export function confirmDialog(message) {
-  return window.confirm(message);
+/**
+ * Строка подтверждения в стиле приложения. Все подтверждения идут через `confirmModal`:
+ * системные окна `alert`/`confirm` выглядят чужеродно и не подчиняются теме приложения.
+ * Функция оставлена только как напоминание — использовать её не нужно.
+ * @deprecated используйте confirmModal
+ */
+export function confirmDialog() {
+  throw new Error('confirmDialog удалён: используйте confirmModal из core/ui.js');
 }

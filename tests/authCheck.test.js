@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({ calls: [], release: null, gate: null, balCalls
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => ({})) }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), showModal: vi.fn(), closeModal: vi.fn(), confirmDialog: vi.fn(() => true) }));
+vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), showModal: vi.fn(), closeModal: vi.fn(), confirmModal: vi.fn(async () => true) }));
 vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn() }));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({ onCharMarathonData: vi.fn(), syncAllActiveMarathons: vi.fn() }));

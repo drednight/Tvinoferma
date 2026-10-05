@@ -14,7 +14,7 @@ export function bindParties() {
             openCreatePartyModal();
         });
     }
-    
+
     // Первый рендер
     renderPartiesGrid();
 }

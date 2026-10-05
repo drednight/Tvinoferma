@@ -1,7 +1,9 @@
-/* ===== Кнопка «Доступно обновление» в шапке и окно обновления (issue #70) ===== */
+/* css/core/update.css
+   Кнопка «Доступно обновление» в шапке и окно обновления (issue #70). */
+
 .topbar-right {
   display: flex;
-  gap: 12px;
+  gap: var(--gap);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -10,29 +12,31 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
+  padding: 9px 15px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #0b0d12;
+  color: var(--on-accent);
   font-weight: 700;
+  font-size: 0.86rem;
   cursor: pointer;
+  box-shadow: 0 6px 18px rgba(110, 142, 248, 0.3);
   animation: update-pulse 2.4s ease-in-out infinite;
 }
 .update-badge[hidden] { display: none; }
 .update-badge:hover { filter: brightness(1.08); }
 .update-badge.is-busy { animation: none; cursor: progress; opacity: 0.9; }
-.update-badge.is-error { background: var(--danger); border-color: var(--danger); animation: none; }
+.update-badge.is-error { background: var(--danger); color: #fff; animation: none; }
 
 @keyframes update-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(122, 162, 247, 0.55); }
-  50% { box-shadow: 0 0 0 9px rgba(122, 162, 247, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(110, 142, 248, 0.5); }
+  50% { box-shadow: 0 0 0 9px rgba(110, 142, 248, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .update-badge { animation: none; }
 }
 
-.upd-versions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.upd-versions { display: flex; gap: var(--gap); align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .upd-h { margin: 8px 0 6px; }
 .upd-notes {
   margin: 0;
@@ -42,12 +46,12 @@
   word-break: break-word;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
   font-family: inherit;
   font-size: 0.85rem;
 }
 .upd-progress { margin-top: 12px; }
-.upd-bar { height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden; margin-bottom: 4px; }
+.upd-bar { height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: var(--radius-pill); overflow: hidden; margin-bottom: 4px; }
 .upd-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.25s ease-out; }
-.upd-error { color: var(--danger); margin: 10px 0 0; }
+.upd-error { color: var(--danger); margin: 10px 0 0; font-size: 0.86rem; }

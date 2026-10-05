@@ -22,6 +22,7 @@ import { toast } from './core/ui.js';
 import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
 import { mountServerStatus } from './modules/servers/serverStatusView.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
+import { initNavBadges, refreshNavBadges } from './core/navBadges.js';
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
 import { initUiActions, updateFabVisibility } from './core/uiActions.js'; 
@@ -135,8 +136,9 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind Settings:', e);
     }
 
-    // 4. Привязка навигации по вкладкам
+    // 4. Привязка навигации по вкладкам и счётчиков разделов
     bindNavigation();
+    initNavBadges();
     console.log('[BOOT] Navigation bound.');
 
     // 5. Инициализация UI Actions (FAB, Меню скриптов)
@@ -256,6 +258,7 @@ function renderActiveTab(sectionName) {
       default:
         console.warn(`[NAV] Unknown section: ${sectionName}`);
     }
+    refreshNavBadges();   // число записей могло измениться во время отрисовки раздела
   } catch (err) {
     console.error(`[RENDER ERROR in ${sectionName}]`, err);
     toast(`Ошибка отображения раздела "${sectionName}". Подробности в консоли.`, 'error');

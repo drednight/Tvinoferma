@@ -9,7 +9,7 @@ import {
 // «Когда что проверено» в профиле персонажа; на маленьких карточках списка проверок нет.
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), showModal: vi.fn(), closeModal: vi.fn(), confirmDialog: vi.fn(() => true) }));
+vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), showModal: vi.fn(), closeModal: vi.fn(), confirmModal: vi.fn(async () => true) }));
 vi.mock('../js/modules/characters/index.js', () => ({ openCharacterProfile: vi.fn(), openCharacterForm: vi.fn() }));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({ refreshAllBalances: vi.fn(), refreshAllLoginStatuses: vi.fn(), openSyncHelper: vi.fn() }));

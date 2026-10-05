@@ -3,7 +3,7 @@
 // Rust-команда: activate_promo (src-tauri/src/automation/promo.rs). Журнал: promoLog.js. Правила: docs/COMPLIANCE.md.
 
 import { state } from '../../core/state.js';
-import { toast, confirmDialog } from '../../core/ui.js';
+import { toast, confirmModal } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { startTask } from '../../core/taskLog.js';
 import { errorText } from '../../core/errorCodes.js';
@@ -274,16 +274,22 @@ export function openPromoDialog({ ids = [] } = {}) {
   });
 
   /** Предпросмотр и подтверждение; возвращает false, если запускать нечего или пользователь отказался. */
-  function confirmRun(codes, chars, carry = [], { dry = false } = {}) {
+  async function confirmRun(codes, chars, carry = [], { dry = false } = {}) {
     const plans = planRun(loadLog(), codes, chars);
     const unclear = new Set(carry.filter(r => r.clicked && r.status === 'unknown').map(r => `${r.charId}|${codeKey(r.code)}`));
     const todo = plans.reduce((n, p) => n + p.todo.filter(c => !unclear.has(`${c.id}|${codeKey(p.code)}`)).length, 0);
     const skipped = plans.reduce((n, p) => n + p.done.length, 0);
     if (!todo) { toast('Все выбранные персонажи уже получили эти коды', 'info'); return false; }
     if (dry) return true;          // пробный запуск ничего не нажимает: подтверждение не нужно
-    return confirmDialog(
-      `${codes.length === 1 ? `Код ${codes[0]}` : `Коды (${codes.length}): ${codes.join(', ')}`} — персонажей: ${chars.length}.\n`
-      + `${skipped ? `Уже введены, пропущу: ${skipped}.\n` : ''}Будет выполнено вводов: ${todo}.\nДействие необратимо. Продолжить?`);
+    const head = codes.length === 1 ? `Код ${codes[0]}` : `Коды (${codes.length}): ${codes.join(', ')}`;
+    return confirmModal({
+      title: 'Активировать промокоды?',
+      text: `${head} — персонажей: ${chars.length}. `
+        + `${skipped ? `Уже введены, будут пропущены: ${skipped}. ` : ''}`
+        + `Будет выполнено вводов: ${todo}. Действие необратимо.`,
+      okText: `Активировать (${todo})`,
+      danger: true
+    });
   }
 
   dlg.foot.addEventListener('click', async (e) => {
@@ -292,16 +298,16 @@ export function openPromoDialog({ ids = [] } = {}) {
     if (act === 'close') { dlg.close(); return; }
     if (act === 'back') { renderForm(); return; }
     if (act === 'dry-again') {
-      if (confirmRun(lastCodes, lastChars, [], { dry: true })) await start(lastCodes, lastChars, { dry: true });
+      if (await confirmRun(lastCodes, lastChars, [], { dry: true })) await start(lastCodes, lastChars, { dry: true });
       return;
     }
     if (act === 'real') {
-      if (confirmRun(lastCodes, lastChars)) await start(lastCodes, lastChars);
+      if (await confirmRun(lastCodes, lastChars)) await start(lastCodes, lastChars);
       return;
     }
     if (act === 'retry') {
       const carry = lastRows;
-      if (confirmRun(lastCodes, lastChars, carry)) await start(lastCodes, lastChars, { carry });
+      if (await confirmRun(lastCodes, lastChars, carry)) await start(lastCodes, lastChars, { carry });
       return;
     }
     if (act === 'start' || act === 'dry') {
@@ -312,7 +318,7 @@ export function openPromoDialog({ ids = [] } = {}) {
       if (!p.codes.length) { toast('Введите хотя бы один промокод', 'warning'); return; }
       const chars = selectedChars();
       if (!chars.length) { toast('Выберите хотя бы одного персонажа', 'warning'); return; }
-      if (confirmRun(p.codes, chars, [], { dry })) await start(p.codes, chars, { dry });
+      if (await confirmRun(p.codes, chars, [], { dry })) await start(p.codes, chars, { dry });
     }
   });
 

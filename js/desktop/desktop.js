@@ -7,6 +7,7 @@ import { launchablePartyNames, decorateNotice } from '../modules/launcher/launch
 import { charactersInParty } from '../modules/parties/membership.js';
 
 export const HOTKEYS = [
+  { keys: 'Ctrl+K', text: 'Командная палитра: команды, персонажи, пати' },
   { keys: 'Ctrl+1…4', text: 'Вкладки: Персонажи / Пати / Марафоны / Настройки' },
   { keys: 'Ctrl+F', text: 'Поиск по нику' },
   { keys: 'Ctrl+N', text: 'Новый персонаж / пати (как кнопка «+»)' },
@@ -50,6 +51,17 @@ export function initHotkeys({ switchTab }) {
     if (!ctrl) return;
     const key = e.key.toLowerCase();
     const modalOpen = !!document.querySelector('.modal-overlay');
+    // Палитра — единственное сочетание, которое работает и при открытом окне:
+    // она нужна как раз тогда, когда пользователь уже что-то открыл
+    const { isPaletteOpen, openCommandPalette } = await import('../core/commandPalette.js');
+
+    if (!e.shiftKey && (key === 'k' || key === 'л')) {
+      e.preventDefault();
+      if (isPaletteOpen()) return;
+      const { createCommandRunner } = await import('../core/commandRunner.js');
+      openCommandPalette({ switchTab, run: createCommandRunner({ switchTab }) });
+      return;
+    }
 
     if (!e.shiftKey && ['1', '2', '3', '4'].includes(key) && !modalOpen) {
       e.preventDefault();

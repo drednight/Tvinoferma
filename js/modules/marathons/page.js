@@ -7,7 +7,7 @@ import { freshnessOf, freshnessChipHtml } from '../../core/freshness.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
-import { confirmDialog, toast } from '../../core/ui.js';
+import { confirmModal, toast } from '../../core/ui.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 import { openOverlay } from './overlay.js';
@@ -619,7 +619,12 @@ function bindDetail(root, m) {
   act('edit', () => openMarathonWizard({ marathon: m }));
   act('move', () => openFolderPicker(m));
   act('complete', async () => {
-    if (!confirmDialog(`Завершить «${m.title}»? Награды будут зафиксированы.`)) return;
+    const ok = await confirmModal({
+      title: `Завершить «${m.title}»?`,
+      text: 'Награды будут зафиксированы, марафон перейдёт в завершённые. Прогресс на сайте не меняется.',
+      okText: 'Завершить'
+    });
+    if (!ok) return;
     m.awards = freezeAwards(m, state.characters);
     m.participantIds.forEach(cid => {
       const c = charById(cid);
@@ -635,7 +640,13 @@ function bindDetail(root, m) {
     await persist(); renderMarathons();
   });
   act('delete', async () => {
-    if (!confirmDialog(`Удалить марафон «${m.title}»?`)) return;
+    const ok = await confirmModal({
+      title: `Удалить марафон «${m.title}»?`,
+      text: 'Удаляются отметки заданий, настройки и статистика монет этого марафона. Персонажи и их монеты не меняются. Прогресс на сайте не затрагивается — марафон можно найти и создать заново.',
+      okText: 'Удалить марафон',
+      danger: true
+    });
+    if (!ok) return;
     state.marathons = state.marathons.filter(x => x.id !== m.id);
     const series = m.seriesId ? findM(m.seriesId) : null;
     if (series) series.childIds = series.childIds.filter(id => id !== m.id);

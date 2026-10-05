@@ -120,8 +120,14 @@ function setupScriptsMenu() {
     menuBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const isVisible = dropdown.style.display === 'block';
-        dropdown.style.display = isVisible ? 'none' : 'block';
+        setScriptsMenuOpen(!isVisible);
     });
+
+    /** Открыть/закрыть меню скриптов: подсказка для клавиатуры и скринридера идёт вместе с видимостью. */
+    function setScriptsMenuOpen(open) {
+        dropdown.style.display = open ? 'block' : 'none';
+        menuBtn.setAttribute('aria-expanded', String(open));
+    }
 
     dropdown.addEventListener('click', async (e) => {
         const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('.dropdown-item'));
@@ -129,7 +135,7 @@ function setupScriptsMenu() {
 
         e.stopPropagation();
         const action = item.dataset.action;
-        dropdown.style.display = 'none';
+        setScriptsMenuOpen(false);
 
         try {
             if (action === 'check-auth') {
@@ -159,7 +165,7 @@ function setupScriptsMenu() {
     window.addEventListener('click', (e) => {
         const target = /** @type {Node} */ (e.target);
         if (!menuBtn.contains(target) && !dropdown.contains(target)) {
-            dropdown.style.display = 'none';
+            setScriptsMenuOpen(false);
         }
     });
 }

@@ -4,7 +4,7 @@ import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
-import { toast, showModal, confirmDialog } from '../../core/ui.js';
+import { toast, showModal, confirmModal } from '../../core/ui.js';
 import { renderParties } from '../parties/index.js';
 
 // Импортируем константы
@@ -18,6 +18,8 @@ import { hasGameCenterPath } from '../launcher/launch.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
+import { onboardingHtml } from './onboarding.js';
+import { renderToday } from '../dashboard/todayView.js';
 import {
   NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
 } from '../parties/membership.js';
@@ -82,6 +84,30 @@ function initFilters() {
   classSelect.onchange = applyFilters;
   partySelect.onchange = applyFilters;
   authSelect.onchange = applyFilters; 
+
+  // «Сбросить»: заметно, когда хотя бы один фильтр включён; одним нажатием возвращает весь список
+  const clearBtn = document.getElementById('filters-clear');
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      searchInput.value = '';
+      classSelect.value = '';
+      partySelect.value = '';
+      authSelect.value = '';
+      if (tagSelect) tagSelect.value = '';
+      renderFilteredGrid();
+      searchInput.focus();
+    };
+  }
+  updateClearButton();
+}
+
+/** Показывает кнопку сброса, только если есть активный фильтр (иначе она занимает место зря). */
+function updateClearButton() {
+  const btn = document.getElementById('filters-clear');
+  if (!btn) return;
+  const active = ['search-input', 'class-filter', 'party-filter', 'auth-filter', 'tag-filter']
+    .some(id => (document.getElementById(id)?.value || '') !== '');
+  btn.hidden = !active;
 }
 
 /** Все теги персонажей (без учёта регистра), по алфавиту. */
@@ -123,13 +149,22 @@ function renderFilteredGrid() {
     auth: selectedAuth
   });
 
+  updateClearButton();
   // ОБНОВЛЯЕМ KPI НА ОСНОВЕ ОТФИЛЬТРОВАННЫХ ДАННЫХ
   updateKPIs(filteredChars);
   visibleIds = filteredChars.map(c => c.id);
   renderBulkBar();
 
+  // Экран «Сегодня» над списком: что требует внимания, марафоны и запасы (Issue #39).
+  // Показывается всегда, когда есть персонажи, — это ответ на вопрос «что делать сегодня».
+  renderToday(gridEl, { run: runTodayAction });
+
   if (filteredChars.length === 0) {
-    gridEl.innerHTML = '<div class="empty-state">Ничего не найдено по заданным фильтрам.</div>';
+    // Подсказка первых шагов — только когда персонажей нет вовсе. Если данные есть, но фильтр
+    // ничего не нашёл, показываем именно это: иначе пользователь решит, что данные пропали.
+    const onb = onboardingHtml(state);
+    gridEl.innerHTML = onb || '<div class="empty-state">Ничего не найдено по заданным фильтрам.<br/><small class="muted">Измените условия или нажмите «Сбросить».</small></div>';
+    bindOnboardingEvents(gridEl);
     return;
   }
 
@@ -191,7 +226,6 @@ function generateCardHTML(char) {
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
     const authView = getAuthView(char);
     const statusColor = authView.color;
-    const statusIcon = authView.icon;
     const statusText = authView.text;
     const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
 
@@ -205,76 +239,72 @@ function generateCardHTML(char) {
       : '';
 
     return `
-      <article class="card character-card clickable-card${selected ? ' is-selected' : ''}" data-char-id="${char.id}" style="display:flex; flex-direction:column; height:auto; min-height:280px; overflow:hidden; cursor:pointer; transition: transform 0.2s, box-shadow 0.2s; border-left: 3px solid ${statusColor};">
-        
-        <header class="card-header" style="padding:12px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; background:var(--panel-2);">
-          <div style="display:flex; gap:10px; align-items:center; flex-grow:1;">
+      <article class="card character-card clickable-card${selected ? ' is-selected' : ''}" data-char-id="${char.id}" style="--state-c:${statusColor}">
+
+        <header class="card-header">
+          <div class="card-head-main">
             ${selectBox}
-            <div style="width:36px; height:36px; background:rgba(255,255,255,0.05); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; border:1px solid var(--border); flex-shrink:0;">
+            <div class="char-avatar">
               ${avatarContent}
             </div>
-            <div style="overflow:hidden;">
-              <h3 style="margin:0; font-size:1rem; color:var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px;">${escapeHtml(char.nick)}</h3>
-              <small class="muted" style="font-size:0.75rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(char.class)} • Ур. ${char.level}</small>
-              <small class="muted" style="font-size:0.75rem; display:block; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${skyInfo}</small>
+            <div class="char-ident">
+              <h3 class="char-nick">${escapeHtml(char.nick)}</h3>
+              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}</small>
+              <small class="muted char-sub">${skyInfo}</small>
             </div>
           </div>
-          
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
+
+          <div class="card-head-side">
              <!-- ИНДИКАТОР СТАТУСА -->
-             <div style="display:flex; align-items:center; gap:4px; font-size:0.7rem; color:${statusColor}; margin-bottom:2px;" title="${statusTitle}">
-                <span>${statusIcon}</span>
-                <span>${statusText}</span>
+             <div class="state ${authView.cls}" title="${statusTitle}">
+                <span class="state-dot"></span><span>${statusText}</span>
              </div>
 
-             <span class="badge muted" style="background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px; font-size:0.7rem; white-space:nowrap;">
-               ${partyLabel}
-             </span>
-             
+             <span class="badge party card-party">${partyLabel}</span>
+
              <!-- БЛОК МОНЕТ (БЕЗ ДАТЫ СИНХРОНИЗАЦИИ) -->
-             <div style="display:flex; align-items:center; gap:4px; background: rgba(255, 215, 0, 0.1); padding:2px 8px; border-radius:10px; border:1px solid rgba(255, 215, 0, 0.2);">
-               <span style="color:gold; font-size:0.8rem;">🪙</span>
-               <strong style="color:gold; font-size:0.85rem; font-weight:600;">${coinsDisplay}</strong>
+             <div class="badge coins card-coins">
+               <span aria-hidden="true">🪙</span><strong>${coinsDisplay}</strong>
              </div>
           </div>
         </header>
 
-        <div class="card-body" style="flex-grow:1; padding:12px; display:flex; flex-direction:column; gap:12px;">
+        <div class="card-body">
            ${tagsHtml}
-           
-           <div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:4px; text-align:center; font-size:0.75rem; background:rgba(0,0,0,0.15); padding:6px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
-              <div><span class="muted">HP</span><br/><strong>${fmtStat(stats.hp)}</strong></div>
-              <div><span class="muted">PA</span><br/><strong>${fmtStat(stats.pa)}</strong></div>
-              <div><span class="muted">PZ</span><br/><strong>${fmtStat(stats.pz)}</strong></div>
-              <div><span class="muted">PvE-PA</span><br/><strong>${fmtStat(stats.pvePa)}</strong></div>
-              <div><span class="muted">PvE-PZ</span><br/><strong>${fmtStat(stats.pvePz)}</strong></div>
+
+           <div class="card-stats">
+              <div><span class="muted">HP</span><strong>${fmtStat(stats.hp)}</strong></div>
+              <div><span class="muted">PA</span><strong>${fmtStat(stats.pa)}</strong></div>
+              <div><span class="muted">PZ</span><strong>${fmtStat(stats.pz)}</strong></div>
+              <div><span class="muted">PvE-PA</span><strong>${fmtStat(stats.pvePa)}</strong></div>
+              <div><span class="muted">PvE-PZ</span><strong>${fmtStat(stats.pvePz)}</strong></div>
            </div>
 
-           <div style="display:flex; flex-direction:column; gap:6px; font-size:0.8rem;">
-              <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-mini">
-                 <span class="muted" style="font-size:0.7rem;">EMAIL:</span>
-                 <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="contact-value mini-copy-trigger" data-type="email" data-original="${escapeHtml(char.contacts?.email || '')}" style="cursor:pointer; color:var(--text-primary); font-family:monospace;">${hasEmail ? emailMasked : '-'}</span>
-                    <button class="icon-btn mini-toggle-eye" data-target="email" style="opacity:0.4; transition: opacity 0.2s; pointer-events:${hasEmail ? 'auto' : 'none'}; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+           <div class="card-contacts">
+              <div class="contact-row-mini">
+                 <span class="muted contact-key">EMAIL</span>
+                 <div class="contact-row-actions">
+                    <span class="contact-value mini-copy-trigger" data-type="email" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.email || '')}">${hasEmail ? emailMasked : '-'}</span>
+                    <button class="icon-btn mini-toggle-eye" data-target="email" style="pointer-events:${hasEmail ? 'auto' : 'none'};" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
                  </div>
               </div>
 
-              <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-mini">
-                 <span class="muted" style="font-size:0.7rem;">PASS:</span>
-                 <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="contact-value mini-copy-trigger" data-type="password" data-original="${escapeHtml(char.contacts?.password || '')}" style="cursor:pointer; color:var(--text-primary); font-family:monospace;">${hasPass ? passMasked : '-'}</span>
-                    <button class="icon-btn mini-toggle-eye" data-target="password" style="opacity:0.4; transition: opacity 0.2s; pointer-events:${hasPass ? 'auto' : 'none'}; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+              <div class="contact-row-mini">
+                 <span class="muted contact-key">PASS</span>
+                 <div class="contact-row-actions">
+                    <span class="contact-value mini-copy-trigger" data-type="password" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.password || '')}">${hasPass ? passMasked : '-'}</span>
+                    <button class="icon-btn mini-toggle-eye" data-target="password" style="pointer-events:${hasPass ? 'auto' : 'none'};" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
                  </div>
               </div>
            </div>
         </div>
 
-        <footer class="card-footer" style="padding:8px 12px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--panel);">
+        <footer class="card-footer">
            <!-- Левая часть: Проходки -->
-           <div style="display:flex; gap:6px;">
+           <div class="card-passes">
               ${passesHtml}
            </div>
-           
+
            <!-- Правая часть: компактные кнопки — запуск игры и вход на сайт (подписи — во всплывающих подсказках) -->
            <div class="card-actions">
               <button class="card-act play${hasGameCenterPath(char) ? '' : ' is-unset'}"
@@ -409,8 +439,67 @@ function initSyncButtons() {
     }
 }
 
-function bindCharacterEvents(container) {
-  container.onclick = async (e) => {
+/**
+ * Действия кнопок экрана «Сегодня»: проверка входа, обновление баланса, переходы.
+ * @param {string} action
+ * @param {any} payload
+ */
+async function runTodayAction(action, payload) {
+  if (action === 'check-auth-one') {
+    const char = state.characters.find(c => c.id === payload);
+    if (char) await refreshAllLoginStatuses([char]);
+    return;
+  }
+  if (action === 'balance-one') {
+    const char = state.characters.find(c => c.id === payload);
+    if (char) await refreshAllBalances([char]);
+    return;
+  }
+  if (action === 'open-marathon') {
+    document.querySelector('.tab[data-tab="marathons"]')?.click();
+    const { openMarathon } = await import('../marathons/page.js');
+    openMarathon(payload);
+    return;
+  }
+  if (action === 'open-party') {
+    document.querySelector('.tab[data-tab="parties"]')?.click();
+    return;
+  }
+}
+
+/**
+ * Кнопки подсказки первых шагов: ведут к нужному действию.
+ * Разметка подсказки перерисовывается вместе с сеткой, поэтому обработчик навешивается каждый раз.
+ */function bindOnboardingEvents(container) {
+  container.querySelectorAll('[data-onb]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const action = /** @type {HTMLElement} */ (btn).dataset.onb;
+      if (action === 'new-character') { openCharacterForm(null); return; }
+      if (action === 'new-party') {
+        const { openCreatePartyModal } = await import('../parties/manager.js');
+        openCreatePartyModal();
+        return;
+      }
+      if (action === 'open-help') {
+        showModal({
+          title: 'Как войти на сайт игры',
+          content: `
+            <ol class="onb-help">
+              <li>Откройте карточку персонажа и заполните Email и пароль — они сразу уходят в защищённое хранилище учётных данных ОС.</li>
+              <li>Нажмите <b>«🌐 Открыть сайт»</b>: откроется окно браузера персонажа с отдельной сессией, поэтому аккаунты не мешают друг другу.</li>
+              <li>Войдите на сайте игры обычным способом — приложение ничего не нажимает за вас.</li>
+              <li>Сессия сохранится. Дальше кнопка <b>«🔐 Проверить вход»</b> покажет, кто ещё авторизован, а кто требует повторного входа.</li>
+            </ol>
+            <p class="muted">Если сессия истекла, приложение подскажет это в карточке персонажа и в фильтре «Все статусы».</p>`,
+          submitText: null,
+          cancelText: 'Понятно'
+        });
+      }
+    });
+  });
+}
+
+function bindCharacterEvents(container) {  container.onclick = async (e) => {
     const target = e.target;
 
     // 0. Режим выбора: клик по карточке переключает выбор
@@ -722,13 +811,20 @@ async function onBulkAction(e) {
       sync();
       break;
     }
-    case 'delete':
-      if (confirmDialog(`Удалить ${chars.length} персонажей? Это действие необратимо.`)) {
+    case 'delete': {
+      const ok = await confirmModal({
+        title: `Удалить персонажей: ${chars.length}?`,
+        text: 'Действие необратимо. Вместе с персонажами удаляются их пароли в хранилище ОС, запомненные входы GameCenter и история монет.',
+        okText: `Удалить (${chars.length})`,
+        danger: true
+      });
+      if (ok) {
         const ids = new Set(chars.map(c => c.id));
         state.characters = state.characters.filter(c => !ids.has(c.id));
         state.ui.selection.clear();
         saveAndRender(`Удалено: ${ids.size}`);
       }
       break;
+    }
   }
 }

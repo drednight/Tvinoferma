@@ -82,6 +82,22 @@ function normalizeGcAccounts(map) {
   return out;
 }
 
+/**
+ * Порядок персонажа внутри пати: `{ [partyId]: номер }`.
+ * Номера — целые от 1; мусор и нули отбрасываются, чтобы порядок не сбивался после импорта.
+ */
+function normalizePartyOrder(map) {
+  /** @type {Record<string, number>} */
+  const out = {};
+  if (!map || typeof map !== 'object') return out;
+  for (const [partyId, value] of Object.entries(map)) {
+    const n = Number(value);
+    if (!partyId || !Number.isFinite(n) || n < 1) continue;
+    out[partyId] = Math.round(n);
+  }
+  return out;
+}
+
 export function normalizeCharacter(input = {}) {
   return {
     id: input.id ? String(input.id) : null, // пустой id назначается из ника в normalizeState
@@ -89,6 +105,8 @@ export function normalizeCharacter(input = {}) {
     class: String(input.class || ''),
     partyIds: normalizePartyIds(input.partyIds), // id всех партий; миграция v5 переводит старое поле `party`
     mainPartyId: resolveMainPartyId(input.partyIds, input.mainPartyId), // основная пати (входит в partyIds)
+    // Порядок внутри пати (перетаскивание на вкладке «Пати»): { [partyId]: номер }
+    partyOrder: normalizePartyOrder(input.partyOrder),
     notes: String(input.notes ?? '').slice(0, NOTES_MAX_LENGTH),
     level: Number(input.level) || 1,
     sky: {

@@ -55,6 +55,27 @@ describe('название и значок окна клиента', () => {
     expect(normalizeState({ characters: [], settings: { launcher: { decorateWindows: false } } }).settings.launcher.decorateWindows).toBe(false);
   });
 
+  it('значки можно не ставить: окно получает только название «Ник — Класс»', async () => {
+    const asked = [];
+    const loadIcon = async (cls, size) => { asked.push([cls, size]); return [size]; };
+    const r = await windowDecor({ nick: 'T', class: 'Маг' }, { loadIcon, icons: false });
+    expect(r).toEqual({ windowTitle: 'T — Маг', iconSmall: null, iconBig: null });
+    expect(asked).toEqual([]);   // значки даже не читаются с диска
+  });
+
+  it('выключенные значки уходят в Rust пустыми и при запуске', async () => {
+    const seen = [];
+    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    await launchCharacters([ch('a', 'Воин')], { delayMs: 0 }, { invoke, loadIcon: async () => [1], icons: false });
+    expect(seen[0]).toMatchObject({ windowTitle: 'Ник a — Воин', iconSmall: null, iconBig: null });
+  });
+
+  it('настройка значков включена по умолчанию, сохраняется и есть в разметке', () => {
+    expect(normalizeState({ characters: [], settings: {} }).settings.launcher.decorateIcons).toBe(true);
+    expect(normalizeState({ characters: [], settings: { launcher: { decorateIcons: false } } }).settings.launcher.decorateIcons).toBe(false);
+    expect(readFileSync('index.html', 'utf8')).toContain('data-setting="launcher.decorateIcons"');
+  });
+
   it('параметры команды совпадают у интерфейса и Rust', () => {
     const rust = readFileSync('src-tauri/src/launcher.rs', 'utf8');
     for (const name of ['window_title: Option<String>', 'icon_small: Option<Vec<u8>>', 'icon_big: Option<Vec<u8>>']) {

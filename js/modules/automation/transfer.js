@@ -4,7 +4,7 @@
 // Rust-команды: read_transfer_page, transfer_items (src-tauri/src/automation/transfer.rs). Правила: docs/COMPLIANCE.md.
 
 import { state } from '../../core/state.js';
-import { toast, confirmDialog } from '../../core/ui.js';
+import { toast, confirmModal } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { startTask } from '../../core/taskLog.js';
 import { errorText } from '../../core/errorCodes.js';
@@ -33,7 +33,12 @@ async function ensureBackup() {
     backedUp = true;
     return true;
   } catch (e) {
-    return confirmDialog(`Не удалось создать резервную копию данных (${e?.message || e}).\nПродолжить передачу без неё?`);
+    return confirmModal({
+      title: 'Продолжить без резервной копии?',
+      text: `Не удалось создать резервную копию данных (${e?.message || e}). Передача предметов изменит данные, и откатить её без копии будет нечем.`,
+      okText: 'Продолжить без копии',
+      danger: true
+    });
   }
 }
 
@@ -522,10 +527,18 @@ export function openTransferDialog({ ids = [] } = {}) {
     if (act === 'refresh-all' && !running) await scan([...state.characters].sort(byNick));
     if (act === 'forget-limits' && !running) {
       const n = Object.keys(loadLimits()).length;
-      if (n && confirmDialog(`Забыть запомненные ограничения (${n})?\nАкции, которые сайт принимает только на определённый сервер, снова будут отмечаться на всех серверах; приложение запомнит их заново, если сайт откажет.`)) {
-        clearLimits();
-        updateAll();
-        toast('Запомненные ограничения стёрты', 'info');
+      if (n) {
+        const ok = await confirmModal({
+          title: `Забыть запомненные ограничения (${n})?`,
+          text: 'Акции, которые сайт принимает только на определённый сервер, снова будут отмечаться на всех серверах; приложение запомнит их заново, если сайт откажет.',
+          okText: 'Забыть',
+          danger: true
+        });
+        if (ok) {
+          clearLimits();
+          updateAll();
+          toast('Запомненные ограничения стёрты', 'info');
+        }
       }
     }
     if (act === 'refresh-one' && !running) {

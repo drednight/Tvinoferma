@@ -1,6 +1,7 @@
 //! Команды хранилища: state.json, резервные копии, учётные данные в keychain ОС.
 
 pub mod backup;
+pub mod factory_reset;
 pub mod secrets;
 pub mod state;
 

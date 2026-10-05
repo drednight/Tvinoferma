@@ -7,7 +7,7 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin } from './launch.js';
+import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
 
 let active = null; // { signal } идущего запуска
@@ -88,6 +88,14 @@ export async function launchGroup(title, characters, opts = {}) {
     if (noLogin > 0 && results.length > 1) {
       task.log(`Без запомненного входа запущено: ${noLogin}. Такие окна открываются под аккаунтом, который сейчас выбран в GameCenter. Запомните вход: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter»`, 'warn');
     }
+    // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
+    // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
+    try {
+      const decorNote = await verifyLaunchedDecor(results);
+      if (decorNote) task.log(decorNote, 'warn');
+    } catch (e) {
+      console.warn('[LAUNCH] decorate verify failed:', e);
+    }
     const ok = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok && !r.cancelled).length;
     const cancelled = results.filter(r => r.cancelled).length;
@@ -128,6 +136,59 @@ export async function launchPartyByName(name) {
   const party = partyByName(state.parties, name);
   if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
   return launchGroup(`Запуск игры: ${party.name}`, charactersInParty(state.characters, party.id));
+}
+
+/**
+ * Закрывает окна игры участников пати.
+ *
+ * Зачем отдельно от «Закрыть все»: после запуска пати её окна и нужно закрыть — чужие аккаунты
+ * трогать не надо. Если окон нашлось больше, чем участников пати (кто-то запущен вручную),
+ * показывается список, где можно выбрать, что именно закрыть.
+ *
+ * @param {string} partyName название пати
+ * @returns {Promise<number>} сколько окон закрыто
+ */
+export async function closePartyWindows(partyName) {
+  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  const { partyByName, charactersInParty } = await import('../parties/membership.js');
+  const { runningClientDetails, closeClientsByPid } = await import('./launch.js');
+  const { windowRows, rowLabel } = await import('./windowList.js');
+
+  const party = partyByName(state.parties, partyName);
+  if (!party) { toast(`Пати «${partyName}» не найдена`, 'error'); return 0; }
+  const members = charactersInParty(state.characters, party.id);
+  if (!members.length) { toast(`В пати «${party.name}» нет персонажей`, 'info'); return 0; }
+
+  let rows;
+  try {
+    rows = windowRows(await runningClientDetails(), state.characters);
+  } catch (e) {
+    toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
+    return 0;
+  }
+
+  const mine = rows.filter(r => r.known && members.some(m => m.id === r.charId));
+  if (!mine.length) {
+    toast(`Окна пати «${party.name}» не запущены`, 'info');
+    return 0;
+  }
+
+  const ok = await confirmModal({
+    title: `Закрыть окна пати «${party.name}»?`,
+    text: `Будет закрыто окон: ${mine.length} — ${mine.map(rowLabel).join(', ')}. Всё, что не сохранено в игре, будет потеряно.`,
+    okText: `Закрыть (${mine.length})`,
+    danger: true
+  });
+  if (!ok) return 0;
+
+  try {
+    const report = await closeClientsByPid(mine.map(r => r.pid));
+    showCloseReport(report);
+    return Number(report?.closed) || 0;
+  } catch (e) {
+    toast(`Не удалось закрыть окна пати: ${errText(e)}`, 'error');
+    return 0;
+  }
 }
 
 /**

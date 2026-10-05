@@ -12,7 +12,7 @@
 // Запись: { key, at (ISO), title, status: 'ok'|'warn'|'error'|'running', summary?, who? }.
 
 import { escapeHtml } from './utils.js';
-import { confirmDialog, toast } from './ui.js';
+import { confirmModal, toast } from './ui.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 
 /** @type {Map<string, object>} */
@@ -155,7 +155,13 @@ export function mountLogHub(root, { source = 'all' } = {}) {
     }
     const cur = sources.get(st.source);
     if (e.target.closest('[data-lh-clear]') && cur?.clear) {
-      if (!confirmDialog(cur.clearConfirm || `Очистить логи: ${cur.title}?`)) return;
+      const ok = await confirmModal({
+        title: 'Очистить логи?',
+        text: cur.clearConfirm || `Все записи журнала «${cur.title}» будут удалены. Данные персонажей и марафонов не меняются.`,
+        okText: 'Очистить',
+        danger: true
+      });
+      if (!ok) return;
       cur.clear();
       draw();
       toast('Логи очищены', 'success');

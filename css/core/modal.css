@@ -1,117 +1,115 @@
+/* css/core/modal.css
+   Окна приложения: базовое окно, сравнение карточек при импорте и подтверждение.
+   Все окна — одна колонка «шапка / тело / подвал», тело прокручивается. */
+
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background-color: rgba(0, 0, 0, 0.75); /* Затемнение фона */
+  inset: 0;
+  background: rgba(6, 8, 13, 0.68);
+  backdrop-filter: blur(3px);
   z-index: 1000;
-  
   display: flex;
   justify-content: center;
-  align-items: center; /* Центрируем по вертикали */
-  
-  padding: 20px; /* Отступ от краев экрана */
+  align-items: center;
+  padding: 20px;
+  animation: overlayIn var(--speed) var(--ease);
 }
+@keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
 
 .modal-container {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius); /* Единое скругление всего окна */
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
   width: 100%;
   max-width: 800px;
-  max-height: calc(100vh - 40px); /* Не больше высоты экрана минус паддинги overlay */
-  
+  max-height: calc(100vh - 40px);
   display: flex;
-  flex-direction: column; /* Шапка, тело, подвал идут сверху вниз */
-  
-  overflow: hidden; /* Важно: обрезаем контент внутри контейнера, чтобы работали внутренние скроллы */
+  flex-direction: column;
+  overflow: hidden;
+  animation: dialogIn 0.2s var(--ease);
 }
-
+@keyframes dialogIn { from { opacity: 0; transform: translateY(10px) scale(0.99); } to { opacity: 1; transform: none; } }
 
 .modal {
   width: min(860px, 100%);
   max-height: min(90vh, 900px);
   overflow: auto;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  box-shadow: var(--shadow);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
 }
 
-.modal form {
-  display: grid;
-}
+.modal form { display: grid; }
 
 .modal-header {
-  padding: 16px 20px;
+  padding: 15px 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: var(--panel-2); /* Фон чуть темнее тела */
-  
-  /* Убираем sticky из header, так как теперь он часть Flexbox колонки */
-  position: static; 
+  gap: var(--gap);
+  background: var(--surface-2);
+  position: static;
 }
+.modal-header h3 { font-size: 1.02rem; font-weight: 650; }
 
 .modal-body {
-  padding: 20px;
-  flex-grow: 1; /* Занимает все свободное место между header и footer */
-  overflow-y: auto; /* Внутренний скролл только для тела формы */
+  padding: 18px 20px;
+  flex-grow: 1;
+  overflow-y: auto;
 }
 
 .modal-footer {
-  padding: 16px 20px 24px 20px; /* Больше места снизу */
-  
-  /* Убираем жесткую линию сверху, делаем ее прозрачной или очень тонкой/светлой */
-  border-top: none; 
-  
-  /* Критически важно: Скругляем НИЖНИЕ углы, так как это конец окна */
-  border-bottom-left-radius: var(--radius); 
-  border-bottom-right-radius: var(--radius);
-  
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  
-  /* Фон должен совпадать с общим фоном окна (--panel), а не быть темнее (--panel-2) */
-  background: var(--panel); 
-  
-  /* Тень сверху, чтобы визуально отделять от контента без линии */
-  box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+  gap: var(--gap-sm);
+  background: var(--surface-1);
 }
 
 .modal-error {
   margin-top: 12px;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
-  background: rgba(247, 118, 142, 0.1);
-  border: 1px solid rgba(247, 118, 142, 0.25);
+  background: var(--danger-soft);
+  border: 1px solid rgba(247, 118, 142, 0.28);
   color: var(--danger);
+  font-size: 0.86rem;
 }
+
 /* --- Сравнение карточек при импорте (js/data/compare.js) --- */
 .cmp-modal { max-width: 1000px; }
-.cmp-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
-.cmp-table-wrap { overflow: auto; max-height: calc(100vh - 260px); border: 1px solid var(--border); border-radius: 8px; }
-.cmp-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-.cmp-table th, .cmp-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
-.cmp-table thead th { position: sticky; top: 0; background: var(--panel-2, var(--panel)); z-index: 1; }
-.cmp-table td.cmp-label { width: 26%; color: var(--muted); }
+.cmp-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--gap-sm); margin-bottom: 10px; }
+.cmp-table-wrap { overflow: auto; max-height: calc(100vh - 260px); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.cmp-table th, .cmp-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.cmp-table thead th { position: sticky; top: 0; background: var(--surface-2); z-index: 1; }
+.cmp-table td.cmp-label { width: 26%; color: var(--text-dim); }
 .cmp-table td.cmp-val { width: 37%; word-break: break-word; }
 .cmp-table td.cmp-val label { display: flex; gap: 6px; align-items: flex-start; cursor: pointer; }
-.cmp-table tr.cmp-diff td.cmp-label { color: var(--text-primary, inherit); font-weight: 600; }
+.cmp-table tr.cmp-diff td.cmp-label { color: var(--text); font-weight: 600; }
 .cmp-table tr.cmp-diff { background: rgba(224, 175, 104, 0.06); }
-.cmp-table td.cmp-val.chosen { background: rgba(122, 162, 247, 0.16); }
+.cmp-table td.cmp-val.chosen { background: var(--accent-soft); }
 .cmp-table tr.cmp-group th { background: rgba(255, 255, 255, 0.04); font-weight: 600; }
 .cmp-group-actions { float: right; display: inline-flex; gap: 4px; }
-.cmp-same { float: right; font-weight: normal; font-size: 0.8rem; }
-.cmp-merge { display: block; font-weight: normal; font-size: 0.8rem; margin-top: 2px; cursor: pointer; }
-.cmp-footer { flex-wrap: wrap; gap: 8px; }
+.cmp-same { float: right; font-weight: normal; font-size: 0.78rem; }
+.cmp-merge { display: block; font-weight: normal; font-size: 0.78rem; margin-top: 2px; cursor: pointer; }
+.cmp-footer { flex-wrap: wrap; gap: var(--gap-sm); }
 .cmp-spacer { flex: 1; }
-.imp-list { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: var(--panel-2, transparent); }
+.imp-list { max-height: 180px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px; background: var(--surface-2); }
 .imp-list label { display: block; padding: 2px 0; }
 .imp-section { margin-bottom: 14px; }
 
 /* Подтверждение в стиле приложения (confirmModal): компактное окно поверх остальных */
 .tf-confirm-overlay { z-index: 2000; }
-.tf-confirm { width: min(440px, 92vw); max-height: none; }
-.tf-confirm .modal-body { color: var(--text); }
+.tf-confirm { width: min(460px, 92vw); max-height: none; }
+.tf-confirm .modal-body { color: var(--text); line-height: 1.55; }
+
+@media (max-width: 720px) {
+  .modal-overlay { padding: 12px; }
+  .modal-body { padding: 14px; }
+  .modal-footer { padding: 12px 14px 16px; flex-wrap: wrap; }
+}

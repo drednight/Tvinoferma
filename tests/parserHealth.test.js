@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   })
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: (...a) => mocks.toast(...a), showModal: vi.fn(), closeModal: vi.fn(), confirmDialog: vi.fn(() => true) }));
+vi.mock('../js/core/ui.js', () => ({ toast: (...a) => mocks.toast(...a), showModal: vi.fn(), closeModal: vi.fn(), confirmModal: vi.fn(async () => true) }));
 vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn() }));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 

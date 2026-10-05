@@ -66,6 +66,71 @@ export const charactersInMainParty = (chars, partyId) => (chars || []).filter(c 
 
 export const isInParty = (char, partyId) => (char?.partyIds || []).includes(partyId);
 
+/**
+ * Порядок участников внутри пати (задаётся перетаскиванием на вкладке «Пати»).
+ * Хранится у персонажа: `char.partyOrder` — объект `{ [partyId]: число }`. Так персонаж, состоящий
+ * в нескольких пати, может стоять в каждой на своём месте, а сам порядок живёт в одном месте —
+ * рядом с остальными данными персонажа, и переживает перезапуск приложения.
+ * Меньшее значение — выше в списке.
+ */
+export function partyOrderOf(char, partyId) {
+  const value = char?.partyOrder?.[partyId];
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+/**
+ * Персонажи пати в заданном порядке: сначала те, кому порядок назначен (по возрастанию),
+ * затем остальные по алфавиту. Возвращает новый массив.
+ */
+export function charactersInPartyOrdered(chars, partyId) {
+  return [...charactersInParty(chars, partyId)].sort((a, b) => {
+    const oa = partyOrderOf(a, partyId);
+    const ob = partyOrderOf(b, partyId);
+    if (oa !== null && ob !== null && oa !== ob) return oa - ob;
+    if (oa !== null && ob === null) return -1;
+    if (oa === null && ob !== null) return 1;
+    return String(a.nick || '').localeCompare(String(b.nick || ''), 'ru');
+  });
+}
+
+/**
+ * Записывает порядок участников пати по списку id (первый — самый верхний).
+ * Возвращает true, если что-то изменилось. Персонажи, которых нет в списке, порядок не теряют.
+ */
+export function applyPartyOrder(chars, partyId, orderedIds) {
+  const position = new Map((orderedIds || []).map((id, i) => [String(id), i + 1]));
+  let changed = false;
+  for (const c of chars || []) {
+    const next = position.get(String(c.id));
+    if (next === undefined) continue;
+    c.partyOrder = { ...(c.partyOrder || {}), [partyId]: next };
+    changed = true;
+  }
+  return changed;
+}
+
+/**
+ * Переносит участника пати в позицию другого участника.
+ *
+ * `after` — вставлять после того, на кого навели, а не до него. Наведение на верхнюю половину
+ * строки вставляет перед ней (персонаж встаёт на её место, а она сдвигается вниз), на нижнюю —
+ * после. Так перетаскивание вниз на соседнюю строку сдвигает на одну позицию, а не переносит в конец.
+ *
+ * После переноса порядок перенумеровывается подряд (1, 2, 3…), поэтому он остаётся предсказуемым.
+ */
+export function movePartyMember(chars, partyId, fromId, toId, { after = false } = {}) {
+  const ordered = charactersInPartyOrdered(chars, partyId).map(c => c.id);
+  const from = ordered.indexOf(fromId);
+  const to = ordered.indexOf(toId);
+  if (from < 0 || to < 0 || from === to) return false;
+  // Цель ищем уже без перетаскиваемого: иначе его собственное место сдвигало бы расчёт
+  const rest = ordered.filter(id => id !== fromId);
+  const targetIdx = rest.indexOf(toId);
+  if (targetIdx < 0) return false;
+  rest.splice(after ? targetIdx + 1 : targetIdx, 0, fromId);
+  return applyPartyOrder(chars, partyId, rest);
+}
+
 /** Персонаж без единой существующей партии. */
 export const hasNoParty = (char, parties) => partiesOf(char, parties).length === 0;
 
