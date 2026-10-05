@@ -3,7 +3,7 @@
 
 import { state } from '../core/state.js';
 import { toast } from '../core/ui.js';
-import { launchablePartyNames } from '../modules/launcher/launch.js';
+import { launchablePartyNames, decorateNotice } from '../modules/launcher/launch.js';
 import { charactersInParty } from '../modules/parties/membership.js';
 
 export const HOTKEYS = [
@@ -125,6 +125,14 @@ export async function initDesktop() {
   await listen('game-closed', async (e) => {
     const { showCloseReport } = await import('../modules/launcher/partyLaunch.js');
     showCloseReport(e.payload);
+  });
+  // Окно игры подписывается уже после запуска; если не вышло (например, игра от администратора) — говорим почему, один раз за сеанс
+  const told = new Set();
+  await listen('launcher-decorate', (e) => {
+    const text = decorateNotice(e.payload);
+    if (!text || told.has(e.payload.status)) return;
+    told.add(e.payload.status);
+    toast(text, 'error', 15000);
   });
   window.addEventListener('tf-persisted', () => { syncTrayParties(); });
   await applyDesktopSettings();

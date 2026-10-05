@@ -244,6 +244,48 @@ export function closeAllClientsElevated(deps = {}) {
 }
 
 /**
+ * Ответ Rust на запуск (`launcher_start`).
+ * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
+ */
+
+/**
+ * Предупреждения по итогам одного запуска — их видно в логе задачи. Пусто, если всё в порядке.
+ * @param {LaunchInfo | undefined} info
+ * @returns {string[]}
+ */
+export function launchWarnings(info) {
+  const out = [];
+  if (!info) return out;
+  if (info.closedOtherGc > 0) out.push(`Закрыт GameCenter из другой папки (${info.closedOtherGc}): GameCenter работает в одном экземпляре и открыл бы игру под своим аккаунтом`);
+  if (info.gcCloseFailed > 0) out.push('GameCenter запущен от администратора, закрыть его не удалось: игра может открыться под его аккаунтом. Запустите Твиноферму от администратора');
+  return out;
+}
+
+/**
+ * Что сказать пользователю, когда Rust закончил подписывать окно игры (событие `launcher-decorate`).
+ * @param {{ title?: string, status?: string, code?: number } | undefined} ev
+ * @returns {string | null} `null` — всё хорошо, говорить нечего
+ */
+export function decorateNotice(ev) {
+  const title = ev?.title ? `«${ev.title}»` : 'игры';
+  switch (ev?.status) {
+    case 'denied':
+      return `Окно ${title} не подписано: игра запущена от имени администратора, а Твиноферма — нет, и Windows не даёт менять чужие окна. Запустите Твиноферму от имени администратора.`;
+    case 'failed':
+      return `Окно ${title} не удалось подписать (код Windows ${ev.code || '—'}).`;
+    case 'missing':
+      return `Окно ${title} не появилось за 90 с — название и значок не поставлены.`;
+    default:
+      return null;
+  }
+}
+
+/** Сколько запусков прошло без запомненного входа: такие окна открываются под тем аккаунтом, что сейчас выбран в GameCenter. */
+export function withoutSavedLogin(entries) {
+  return (entries || []).filter(e => e.ok && e.info && e.info.switched === false).length;
+}
+
+/**
  * Запустить игру для списка аккаунтов по очереди (по одному, с паузой между запусками).
  * Персонажи без GameCenter пропускаются (их можно узнать через launchPlan).
  *
@@ -256,7 +298,7 @@ export function closeAllClientsElevated(deps = {}) {
  *   gcId?: string,
  *   decorate?: boolean,
  *   onStart?: (character: any) => void,
- *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string }, done: number, total: number) => void
+ *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string, info?: LaunchInfo }, done: number, total: number) => void
  * }} [opts]
  * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext, loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
  */
@@ -279,7 +321,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       const target = resolveGameCenter(character, ctx);
       // Название окна «Ник — Класс» и значок: Rust применит их к новому окну клиента в фоне
       const decor = decorate ? await windowDecor(character, deps) : { windowTitle: null, iconSmall: null, iconBig: null };
-      await invoke('launcher_start', {
+      const info = await invoke('launcher_start', {
         path: target?.path,
         charId: target?.key,
         nick: target?.nick || null,
@@ -288,7 +330,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
         ...decor
       });
       if (!last && delayMs > 0) await sleep(delayMs); // следующий аккаунт стартует после паузы
-      return { cancelled: false };
+      return { cancelled: false, info: info || {} };
     },
     {
       limiter: createLimiter(1), // строго по одному
@@ -301,7 +343,8 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           id: character.id,
           nick: character.nick || character.id,
           ok: !entry.error,
-          error: entry.error ? String(entry.error?.message || entry.error) : undefined
+          error: entry.error ? String(entry.error?.message || entry.error) : undefined,
+          info: entry.result?.info
         }, done, total);
       }
     }
@@ -314,7 +357,8 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       nick: r.item.character.nick || r.item.character.id,
       ok: !r.error && !cancelled,
       cancelled,
-      error: r.error ? String(r.error?.message || r.error) : undefined
+      error: r.error ? String(r.error?.message || r.error) : undefined,
+      info: r.result?.info
     };
   });
 }

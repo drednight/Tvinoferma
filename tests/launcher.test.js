@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated } from '../js/modules/launcher/launch.js';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
@@ -180,5 +180,48 @@ describe('launcher: итог запуска, трей', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(await p).toBe(false);
     expect(document.querySelector('.tf-confirm-overlay')).toBeNull();
+  });
+});
+
+describe('launcher: подпись окон и закрытие чужих GameCenter', () => {
+  it('подпись, которая не удалась, объясняется человеческими словами', () => {
+    expect(decorateNotice({ title: 'Ник — Маг', status: 'ok' })).toBeNull();
+    expect(decorateNotice({ title: 'Ник — Маг', status: 'denied', code: 5 })).toMatch(/администратора/);
+    expect(decorateNotice({ title: 'Ник — Маг', status: 'denied', code: 5 })).toContain('«Ник — Маг»');
+    expect(decorateNotice({ title: 'Ник', status: 'failed', code: 1460 })).toContain('1460');
+    expect(decorateNotice({ title: 'Ник', status: 'missing' })).toContain('90 с');
+    expect(decorateNotice(undefined)).toBeNull();
+  });
+
+  it('предупреждения запуска: закрытый чужой GameCenter и GameCenter от администратора', () => {
+    expect(launchWarnings(undefined)).toEqual([]);
+    expect(launchWarnings({ closedOtherGc: 0, gcCloseFailed: 0 })).toEqual([]);
+    expect(launchWarnings({ closedOtherGc: 1 })[0]).toContain('другой папки');
+    expect(launchWarnings({ gcCloseFailed: 1 })[0]).toContain('от администратора');
+  });
+
+  it('считаются запуски без запомненного входа', () => {
+    const ok = (switched) => ({ ok: true, info: { switched } });
+    expect(withoutSavedLogin([ok(true), ok(false), ok(false), { ok: false, info: { switched: false } }, { ok: true }])).toBe(2);
+    expect(withoutSavedLogin(undefined)).toBe(0);
+  });
+
+  it('ответ Rust (info) доходит до итога запуска', async () => {
+    const info = { switched: true, closedOtherGc: 1 };
+    const [r] = await launchCharacters(
+      [ch('a', 'D:\\GC1')],
+      { delayMs: 0, decorate: false },
+      { invoke: async () => info }
+    );
+    expect(r.info).toEqual(info);
+  });
+});
+
+describe('launcher.rs: GameCenter из других папок и итог подписи', () => {
+  const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
+  it('перед запуском закрываются чужие GameCenter, а итог подписи уходит событием', () => {
+    expect(rs).toContain('close_gamecenters(&exe, magic.is_some())');
+    expect(rs).toContain('"launcher-decorate"');
+    expect(rs).toContain('closed_other_gc');
   });
 });
