@@ -238,6 +238,68 @@ export function closeAllClients(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_close_clients');
 }
 
+/** Проверка окон игры: какие окна есть, можно ли менять им заголовок и значок, от чьего имени запущена игра. */
+export function inspectGameWindows(deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_inspect_windows');
+}
+
+/** Заголовок, который Rust ставит окну на мгновение при проверке (см. PROBE_TITLE в launcher.rs). */
+export const PROBE_TITLE = 'Твиноферма — проверка';
+
+/**
+ * Выводы по отчёту проверки окон: что мешает подписать окно и что с этим делать.
+ * @param {any} report ответ `launcher_inspect_windows`
+ * @returns {string[]}
+ */
+export function inspectVerdict(report) {
+  const clients = report?.clients || [];
+  if (!clients.length) return ['Запущенных окон игры не найдено — запустите игру и повторите проверку.'];
+  const out = [];
+  const selfAdmin = !!report.selfElevated;
+  for (const c of clients) {
+    const wins = (c.windows || []).filter(w => w.visible && w.title);
+    if (c.elevated && !selfAdmin) {
+      out.push(`PID ${c.pid}: игра запущена от администратора, а Твиноферма — нет. Windows не даёт менять чужие окна (название и значок). Запустите Твиноферму от имени администратора (ПКМ по ярлыку → «Запуск от имени администратора»; в режиме разработки — терминал от администратора).`);
+      continue;
+    }
+    if (!wins.length) { out.push(`PID ${c.pid}: нет видимого окна с заголовком — менять нечего (игра ещё грузится?).`); continue; }
+    for (const w of wins) {
+      if (w.titleError) out.push(`PID ${c.pid}, окно ${w.hwnd}: заголовок не принимается (код Windows ${w.titleError}).`);
+      else if (w.titleAfter !== PROBE_TITLE) out.push(`PID ${c.pid}, окно ${w.hwnd}: заголовок принят, но прочитано «${w.titleAfter}» — игра обрабатывает его по-своему.`);
+      if (w.iconError) out.push(`PID ${c.pid}, окно ${w.hwnd}: значок не принимается (код Windows ${w.iconError}).`);
+      if (w.tool || w.owned) out.push(`PID ${c.pid}, окно ${w.hwnd}: это ${w.tool ? 'окно-инструмент' : 'окно с владельцем'} — панель задач такие не показывает.`);
+      if (w.hung) out.push(`PID ${c.pid}, окно ${w.hwnd}: окно не отвечает — Windows не принимает от него сообщения.`);
+    }
+  }
+  if (!out.length) {
+    out.push('Заголовок и значок окон менять можно. Если на панели задач иконка общая: Параметры → Персонализация → Панель задач → «Группировать кнопки на панели задач» → «Никогда»; тогда у каждого окна будет свой значок и подпись.');
+  }
+  return out;
+}
+
+/** Читаемый отчёт проверки окон (его можно скопировать и прислать разработчику). */
+export function inspectReportText(report) {
+  const lines = [];
+  const clients = report?.clients || [];
+  lines.push(`Твиноферма: ${report?.selfElevated ? 'запущена от администратора' : 'обычные права'}`);
+  lines.push(`Клиентов игры: ${clients.length}`);
+  const who = (v) => v === true ? 'от администратора' : v === false ? 'обычные права' : 'права не определены';
+  for (const c of clients) {
+    lines.push('', `PID ${c.pid} — ${who(c.elevated)}`);
+    if (!c.windows?.length) lines.push('  окон нет');
+    for (const w of c.windows || []) {
+      const flags = [w.visible ? 'видимое' : 'скрытое', w.tool && 'инструмент', w.owned && 'есть владелец', w.app && 'в панели задач принудительно', w.hung && 'не отвечает'].filter(Boolean).join(', ');
+      lines.push(`  ${w.hwnd} «${w.title}» (${w.class}) — ${flags}`);
+      if (w.visible && w.title) {
+        lines.push(`    заголовок: ${w.titleError ? `отказ, код ${w.titleError}` : 'смена удалась'}; после пробы прочитано «${w.titleAfter}»`);
+        lines.push(`    значки: ${w.hasSmallIcon || w.hasBigIcon ? `свои (${w.hasSmallIcon ? 'малый' : '—'}, ${w.hasBigIcon ? 'большой' : '—'})` : 'своих нет (берётся значок из файла игры)'}; смена ${w.iconError ? `отказ, код ${w.iconError}` : 'удалась'}`);
+      }
+    }
+  }
+  lines.push('', 'Вывод:', ...inspectVerdict(report).map(v => `• ${v}`));
+  return lines.join('\n');
+}
+
 /** Закрыть клиенты игры с правами администратора (Windows покажет запрос UAC). Возвращает отчёт, как closeAllClients. */
 export function closeAllClientsElevated(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_close_clients_elevated');
