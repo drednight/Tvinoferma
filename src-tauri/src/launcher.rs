@@ -503,7 +503,7 @@ fn resolve_gamecenter_exe(input: &str) -> Result<PathBuf, String> {
 }
 
 /// Чтобы при запуске служебных утилит не мигало консольное окно.
-fn hidden(cmd: &mut Command) -> &mut Command {
+pub(crate) fn hidden(cmd: &mut Command) -> &mut Command {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -1428,6 +1428,11 @@ pub fn launcher_find_dialogs() -> Vec<String> {
         })
         .map(|w| format!("{} | {} | {}", w.hwnd, w.class, w.title))
         .collect()
+}
+
+/// Запущена ли Твиноферма с правами администратора.
+pub(crate) fn self_elevated() -> bool {
+    win::is_elevated()
 }
 
 // ---------------------------------------------------------------------------
