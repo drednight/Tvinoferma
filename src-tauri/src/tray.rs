@@ -23,8 +23,11 @@ pub fn show_main(app: &AppHandle) {
 const MAX_PARTIES: usize = 30;
 /// Префикс пункта «запустить пати»: после него идёт название пати (JS находит пати по названию).
 const LAUNCH_PREFIX: &str = "launch-party:";
+/// Пункты «Ввести промокод» и «Передать предметы в игру»: им нужно окно приложения (выбор персонажей и предметов)
+const PROMO_ACTION: &str = "promo";
+const TRANSFER_ACTION: &str = "transfer";
 
-/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Скрипты», «Закрыть все окна игры», «Выход».
+/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, марафоны), «Выход».
 fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::Result<Menu<R>> {
     let show = MenuItem::with_id(app, "show", "Открыть Твиноферму", true, None::<&str>)?;
     let auth = MenuItem::with_id(
@@ -48,8 +51,21 @@ fn build_menu<R: Runtime, M: Manager<R>>(app: &M, parties: &[String]) -> tauri::
         true,
         None::<&str>,
     )?;
+    let promo = MenuItem::with_id(app, PROMO_ACTION, "🎁 Ввести промокод", true, None::<&str>)?;
+    let transfer = MenuItem::with_id(
+        app,
+        TRANSFER_ACTION,
+        "📦 Передать предметы в игру",
+        true,
+        None::<&str>,
+    )?;
     // Все скрипты спрятаны в подменю: в основном меню только «Открыть», «Запустить пати», «Скрипты» и «Выход»
-    let scripts = Submenu::with_items(app, "📜 Скрипты", true, &[&auth, &balance, &marathons])?;
+    let scripts = Submenu::with_items(
+        app,
+        "📜 Скрипты",
+        true,
+        &[&auth, &balance, &promo, &transfer, &marathons],
+    )?;
 
     let party_items = parties
         .iter()
@@ -109,6 +125,10 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                 });
             }
             action => {
+                // Промокод и передача предметов — это диалоги: показываем окно, чтобы их было видно
+                if action == PROMO_ACTION || action == TRANSFER_ACTION {
+                    show_main(app);
+                }
                 // Скрипты выполняет интерфейс — пересылаем ему действие
                 let _ = app.emit_to("main", "tray-action", action.to_string());
             }

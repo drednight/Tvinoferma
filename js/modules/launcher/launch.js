@@ -154,17 +154,26 @@ export function launchSummary(r) {
 }
 
 /**
- * Текст итога закрытия окон по отчёту Rust: `{ found, closed, failed, error }`.
- * @param {{ found?: number, closed?: number, failed?: number, error?: string }} r
+ * Текст итога закрытия окон по отчёту Rust: `{ found, closed, failed, denied, elevated, details, error }`.
+ * @param {{ found?: number, closed?: number, failed?: number, denied?: number, elevated?: boolean, details?: string[], error?: string }} r
  */
 export function closeReportText(r) {
   if (r?.error) return `Не удалось найти окна игры: ${r.error}`;
   const found = Number(r?.found) || 0;
   const closed = Number(r?.closed) || 0;
   const failed = Number(r?.failed) || 0;
+  const denied = Number(r?.denied) || 0;
   if (!found) return 'Окон игры не запущено';
   if (!failed) return `Закрыто окон игры: ${closed}`;
-  return `Закрыто ${closed} из ${found}. Остальные не поддались: возможно, игра запущена от имени администратора — запустите Твиноферму так же`;
+  const head = `Закрыто ${closed} из ${found}.`;
+  if (denied && !r?.elevated) return `${head} Игра запущена от имени администратора — нужны права администратора`;
+  const why = (r?.details || [])[0];
+  return why ? `${head} ${why}` : `${head} Остальные не поддались`;
+}
+
+/** Можно ли предложить закрыть оставшиеся окна с правами администратора (отказано в доступе, а мы сами не администратор). */
+export function canCloseElevated(r) {
+  return !r?.error && (Number(r?.denied) || 0) > 0 && !r?.elevated;
 }
 
 /** Пати, которые есть смысл запускать из трея: в них есть хотя бы один персонаж с путём к GameCenter. */
@@ -227,6 +236,11 @@ export function runningClients(deps = {}) {
 /** Закрыть все клиенты игры. Возвращает, сколько было закрыто. */
 export function closeAllClients(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_close_clients');
+}
+
+/** Закрыть клиенты игры с правами администратора (Windows покажет запрос UAC). Возвращает отчёт, как closeAllClients. */
+export function closeAllClientsElevated(deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_close_clients_elevated');
 }
 
 /**

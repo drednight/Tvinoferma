@@ -11,6 +11,7 @@
 //
 // Выбор GameCenter при запуске (resolveGameCenter): если у персонажа есть предпочитаемый GameCenter — берётся он,
 // иначе — первый из прикреплённых («только из доступного»), иначе — свой путь из карточки.
+// Для пати предпочитаемый выбирает pickMajorityGc: тот GameCenter, которым пользуется больше всего участников.
 
 /**
  * @typedef {{ id: string, name: string, path: string }} GameCenter
@@ -111,6 +112,31 @@ export function resolveGameCenter(char, ctx = {}) {
     };
   }
   return null;
+}
+
+/**
+ * GameCenter, которым пользуется больше всего персонажей группы (пати). Именно из него запускается вся пати;
+ * у кого его нет — запускается из того, что есть (см. resolveGameCenter).
+ * При равенстве побеждает «Запускать в первую очередь» из настроек, затем тот, что выше в списке.
+ * @param {any[]} characters
+ * @param {GcContext} [ctx]
+ * @returns {{ gc: GameCenter, count: number, total: number, distinct: number } | null} null — ни у кого нет GameCenter из списка
+ */
+export function pickMajorityGc(characters, ctx = {}) {
+  /** @type {Map<string, number>} */
+  const counts = new Map();
+  let total = 0;
+  for (const c of characters || []) {
+    const mine = attachedGcs(c, ctx.gameCenters);
+    if (!mine.length) continue;
+    total++;
+    for (const gc of mine) counts.set(gc.id, (counts.get(gc.id) || 0) + 1);
+  }
+  if (!counts.size) return null;
+  const top = Math.max(...counts.values());
+  const leaders = (ctx.gameCenters || []).filter(g => counts.get(g.id) === top);
+  const gc = leaders.find(g => g.id === ctx.preferredId) || leaders[0];
+  return gc ? { gc, count: top, total, distinct: counts.size } : null;
 }
 
 /** Копия `launch` персонажа с изменениями (оригинальный объект не трогаем). */

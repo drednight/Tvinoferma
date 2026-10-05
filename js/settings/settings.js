@@ -6,7 +6,9 @@ import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
 import { runReminderCheck } from '../desktop/notifications.js';
-import { toast, confirmDialog } from '../core/ui.js';
+import { toast, confirmDialog, confirmModal } from '../core/ui.js';
+import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
+import { balanceSettingsColumns } from './columns.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import '../core/taskLog.js';   // подключает вид логов «Скрипты» к единому модулю логов
@@ -212,6 +214,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  balanceSettingsColumns();
   bindSettingInputs();
 
   document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {
@@ -332,21 +335,37 @@ export function bindSettings() {
     }
   });
 
-  // Clear All Characters
-  document.getElementById('clear-all-characters-btn')?.addEventListener('click', () => {
-    if (!state.characters.length) {
-      toast('Список пуст', 'info');
-      return;
+  // Опасные действия: описание каждого действия, подтверждение с числом записей и резервная копия перед удалением
+  const runDanger = async (kind) => {
+    const action = DANGER_ACTIONS[kind];
+    const count = action.count(state);
+    if (!count) { toast(`Удалять нечего: ${action.what} нет`, 'info'); return; }
+    const ok = await confirmModal({
+      title: `${action.title}?`,
+      text: `Будет удалено: ${count} (${action.what}). ${action.description} Перед удалением создастся резервная копия — её можно восстановить в «Резервных копиях».`,
+      okText: `Удалить (${count})`,
+      danger: true
+    });
+    if (!ok) return;
+    try { if (getAdapter()) { await saveNow(); await createBackup(`before-delete-${kind}`); } }
+    catch (e) { console.warn('[DANGER] backup failed', e); }
+    if (kind === 'parties') clearParties(state);
+    else if (kind === 'marathons') clearMarathons(state);
+    else {
+      const { accountKeysOf } = await import('../modules/launcher/gameCenters.js');
+      const { accountKeys } = clearCharacters(state, accountKeysOf);
+      if (isTauri() && accountKeys.length) {
+        const { forgetAccount } = await import('../modules/launcher/launch.js');
+        await Promise.all(accountKeys.map(k => forgetAccount(k).catch(() => {})));
+      }
     }
-    if (confirmDialog('Удалить ВСЕХ персонажей? Это действие необратимо.')) {
-      state.characters = [];
-      state.ui.expandedCharacterId = null;
-      
-      // ВАЖНО: Используем forceRenderAndPersist для очистки и обновления UI
-      forceRenderAndPersist().then(() => {
-        toast('Все персонажи удалены', 'success');
-      });
-    }
+    // forceRenderAndPersist сохраняет данные и перерисовывает все вкладки
+    await forceRenderAndPersist();
+    toast(`Удалено: ${count} (${action.what})`, 'success');
+  };
+  document.getElementById('danger-zone')?.addEventListener('click', (e) => {
+    const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-danger]'));
+    if (btn?.dataset.danger && DANGER_ACTIONS[btn.dataset.danger]) runDanger(btn.dataset.danger);
   });
 
   // Open/Copy Data Dir

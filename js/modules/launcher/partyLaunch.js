@@ -7,8 +7,8 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, closeReportText, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext } from './launch.js';
-import { resolveGameCenter, accountKey, setGcAccount } from './gameCenters.js';
+import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext } from './launch.js';
+import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
 
 let active = null; // { signal } идущего запуска
 
@@ -38,7 +38,8 @@ const errText = (e) => String(e?.message || e || 'неизвестная оши�
  * Запускает игру для списка персонажей по очереди.
  * @param {string} title заголовок задачи в журнале
  * @param {any[]} characters
- * @param {{ gcId?: string }} [opts] gcId — GameCenter, из которого запускать в этот раз (у кого его нет — из доступного)
+ * @param {{ gcId?: string }} [opts] gcId — GameCenter, из которого запускать в этот раз (у кого его нет — из доступного).
+ *   Не указан — берётся GameCenter, которым пользуется больше всего участников (pickMajorityGc).
  */
 export async function launchGroup(title, characters, opts = {}) {
   if (active) {
@@ -62,10 +63,20 @@ export async function launchGroup(title, characters, opts = {}) {
   active = { signal };
   skipped.forEach(c => task.log(`${c.nick}: пропущен — не указан GameCenter`, 'warn'));
 
+  // Один GameCenter на всю пати — тот, которым пользуется большинство; остальные запускаются из того, что у них есть
+  let gcId = opts.gcId;
+  if (!gcId && ready.length > 1) {
+    const major = pickMajorityGc(ready, launchContext());
+    if (major) {
+      gcId = major.gc.id;
+      if (major.distinct > 1) task.log(`GameCenter «${major.gc.name}» — у ${major.count} из ${major.total}: запускаем из него, у остальных — из доступного`);
+    }
+  }
+
   try {
     const results = await launchCharacters(ready, {
       signal,
-      gcId: opts.gcId,
+      gcId,
       onStart: (c) => task.setStep(`${c.nick}: запуск…`),
       onDone: (e, done, total) => {
         task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
@@ -145,11 +156,45 @@ export async function closeAllGameWindows({ confirm = true } = {}) {
 export function showCloseReport(report) {
   const text = closeReportText(report);
   const isError = !!(report?.error || report?.failed);
-  if (typeof document !== 'undefined' && document.hasFocus()) { toast(text, isError ? 'error' : 'success'); return; }
+  const focused = typeof document !== 'undefined' && document.hasFocus();
+  if (canCloseElevated(report)) offerElevatedClose(report, focused);
+  if (focused) { toast(text, isError ? 'error' : 'success'); return; }
   import('../../desktop/notifications.js')
     .then(m => m.notify('Твиноферма', text))
     .then(sent => { if (!sent) toast(text, isError ? 'error' : 'success'); })
     .catch(() => toast(text, isError ? 'error' : 'success'));
+}
+
+let elevatedOfferPending = false;
+
+/**
+ * Игра запущена от администратора, и обычная Твиноферма её закрыть не может. Предлагаем закрыть с правами администратора
+ * (Windows спросит разрешение). Если приложение свёрнуто (например, закрывали из трея), вопрос появится, когда его откроют.
+ */
+function offerElevatedClose(report, focused) {
+  if (elevatedOfferPending) return;
+  elevatedOfferPending = true;
+  const ask = async () => {
+    try {
+      const left = Number(report.denied) || 0;
+      const ok = await confirmModal({
+        title: 'Нужны права администратора',
+        text: `Окон игры, которые не удалось закрыть: ${left}. Игра запущена от имени администратора. Закрыть их с правами администратора? Windows попросит подтверждение.`,
+        okText: 'Закрыть как администратор',
+        danger: true
+      });
+      if (!ok) return;
+      const result = await closeAllClientsElevated();
+      const isError = !!result?.failed;
+      toast(closeReportText(result), isError ? 'error' : 'success');
+    } catch (e) {
+      toast(`Не удалось закрыть окна игры: ${errText(e)}`, 'error');
+    } finally {
+      elevatedOfferPending = false;
+    }
+  };
+  if (focused) { ask(); return; }
+  window.addEventListener('focus', () => { ask(); }, { once: true });
 }
 
 /** Сохраняет путь к GameCenter у персонажа (в приложении путь проверяется). */

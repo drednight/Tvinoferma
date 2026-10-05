@@ -16,6 +16,7 @@ import { bindCharacters, renderCharacters } from './modules/characters/list.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
 import { initTaskLog } from './core/taskLog.js';
+import { initStickyHeader } from './core/stickyHeader.js';
 import { bindSettings, renderSettings } from './settings/settings.js';
 import { toast } from './core/ui.js';
 import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
@@ -142,6 +143,7 @@ async function boot() {
     // Важно: это должно быть ПОСЛЕ рендера основных элементов, чтобы найти их в DOM
     try {
         initUiActions();
+        initStickyHeader();
         console.log('[BOOT] UI Actions (FAB/Menus) initialized.');
     } catch (e) {
         console.error('[BOOT ERROR] Failed to init UI Actions:', e);

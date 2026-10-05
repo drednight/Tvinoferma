@@ -53,3 +53,43 @@ export function isTaskActiveOnDate(task, dateStr, allMarathonDates) {
   
   return false;
 }
+
+
+/** Целых дней от `from` до `to` (YYYY-MM-DD, локальные даты). Отрицательное — `to` раньше. */
+export function daysBetween(from, to) {
+  const a = new Date(from + 'T00:00:00');
+  const b = new Date(to + 'T00:00:00');
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+const daysWord = (n) => {
+  const k = Math.abs(n) % 100;
+  const d = k % 10;
+  if (k > 10 && k < 20) return 'дней';
+  if (d === 1) return 'день';
+  if (d >= 2 && d <= 4) return 'дня';
+  return 'дней';
+};
+
+/**
+ * Подпись на карточке марафона: сколько осталось / когда начнётся / сколько прошло с конца.
+ * Пустая строка — подписи нет (марафон отмечен завершённым или у него нет даты окончания).
+ * @param {{ status?: string, startDate?: string, endDate?: string }} m
+ * @param {string} today YYYY-MM-DD
+ * @returns {{ text: string, tone: 'info' | 'warn' | 'late' | '' }}
+ */
+export function phaseHint(m, today) {
+  if (!m || m.status === 'completed') return { text: '', tone: '' };
+  if (m.startDate && today < m.startDate) {
+    const n = daysBetween(today, m.startDate);
+    return { text: n === 1 ? 'начнётся завтра' : `начнётся через ${n} ${daysWord(n)}`, tone: 'info' };
+  }
+  if (!m.endDate) return { text: '', tone: '' };
+  const left = daysBetween(today, m.endDate);
+  if (left < 0) {
+    const n = -left;
+    return { text: n === 1 ? 'закончился вчера' : `закончился ${n} ${daysWord(n)} назад`, tone: 'late' };
+  }
+  if (left === 0) return { text: 'последний день', tone: 'warn' };
+  return { text: `осталось ${left} ${daysWord(left)}`, tone: left <= 2 ? 'warn' : 'info' };
+}

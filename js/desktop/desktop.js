@@ -25,6 +25,14 @@ async function runScript(action) {
     const { launchPartyByName } = await import('../modules/launcher/partyLaunch.js');
     return launchPartyByName(action.slice('launch-party:'.length));
   }
+  if (action === 'promo') {
+    const { openPromoDialog } = await import('../modules/automation/promo.js');
+    return openPromoDialog();
+  }
+  if (action === 'transfer') {
+    const { openTransferDialog } = await import('../modules/automation/transfer.js');
+    return openTransferDialog();
+  }
   const sync = await import('../modules/sync/syncManager.js');
   if (action === 'check-auth') return sync.refreshAllLoginStatuses();
   if (action === 'update-balance') return sync.refreshAllBalances();

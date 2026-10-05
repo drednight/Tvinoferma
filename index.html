@@ -24,6 +24,8 @@
   <link rel="stylesheet" href="/css/core/freshness.css" />
   <link rel="stylesheet" href="/css/core/serverStatus.css" />
   <link rel="stylesheet" href="/css/modules/launcher.css" />
+  <link rel="stylesheet" href="/css/core/taskLog.css" />
+  <link rel="stylesheet" href="/css/modules/parties.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -171,23 +173,19 @@
 
       <!-- РАЗДЕЛ: ПАТИ -->
       <section class="page" data-section="parties">
-        <div class="toolbar">
+        <div class="pt-head-row">
           <h2>Управление пати</h2>
-          <!-- Кнопка добавления убрана, так как есть FAB -->
-          <!-- <button id="add-party-btn" class="btn primary">+ Новая пати</button> -->
+          <!-- Сводка рисуется в renderer.js; кнопка создания пати — круглая «+» справа внизу -->
+          <div id="party-summary" class="pt-summary"></div>
         </div>
-        <div id="party-list" class="list"></div>
+        <div id="party-list" class="pt-grid"></div>
       </section>
 
       <!-- РАЗДЕЛ: МАРАФОНЫ -->
       <section class="page" data-section="marathons">
         <div class="toolbar">
           <h2>Марафоны и события</h2>
-          
-          <div style="display:flex; gap:10px; margin-left:auto;">
-             <button id="add-folder-btn" class="btn secondary" title="Папка для группы марафонов (по месяцам, неделям — как удобно)">📁 Новая папка</button>
-             <button id="add-marathon-btn" class="btn primary">+ Создать</button>
-          </div>
+          <!-- Создание папки и марафона — через круглую кнопку «+» справа внизу (js/core/uiActions.js) -->
         </div>
         
         <div id="marathon-list" class="list">
@@ -320,8 +318,6 @@
             <div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="1" data-setting="freshness.serverStatusMinutes" /><span class="muted hours-hint">мин</span></div>
           </div>
         </details>
-          </div>
-          <div class="settings-col">
         <details class="panel fold" id="parser-health-panel">
           <summary>
             <h3>🩺 Состояние парсеров</h3>
@@ -333,6 +329,8 @@
             <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
           </div>
         </details>
+          </div>
+          <div class="settings-col">
         <details class="panel fold">
           <summary>
             <h3>🔒 Безопасность</h3>
@@ -429,15 +427,38 @@
           </div>
         </div>
 
-        <div class="panel" style="border-color: rgba(247, 118, 142, 0.3); margin-top: 16px;">
-          <h3 style="color: var(--danger);">Опасные действия</h3>
-          <div class="row gap">
-             <button id="clear-all-characters-btn" class="btn danger" title="Удалить ВСЕХ персонажей">
-              🗑 Очистить всех персонажей
-            </button>
-            <span class="muted">(Действие необратимо!)</span>
+        <!-- Опасные действия: свёрнуты по умолчанию, у каждого действия есть описание (js/settings/dangerZone.js) -->
+        <details class="panel fold danger-zone" id="danger-zone">
+          <summary>
+            <h3>⚠️ Опасные действия</h3>
+            <p class="muted">Массовое удаление пати, марафонов и персонажей. Перед удалением автоматически создаётся резервная копия.</p>
+          </summary>
+          <div class="danger-item">
+            <div>
+              <strong>Удалить все пати</strong>
+              <p class="muted">Удаляются все пати. Персонажи остаются, но у всех будет статус «Без пати». Марафоны и монеты не меняются.</p>
+            </div>
+            <button id="clear-all-parties-btn" class="btn danger" data-danger="parties" type="button">🗑 Удалить пати</button>
           </div>
-        </div>
+          <div class="danger-item">
+            <div>
+              <strong>Удалить все марафоны</strong>
+              <p class="muted">Удаляются все марафоны и папки вместе с отметками заданий и статистикой монет. Персонажи и пати остаются, прогресс на сайте не меняется.</p>
+            </div>
+            <button id="clear-all-marathons-btn" class="btn danger" data-danger="marathons" type="button">🗑 Удалить марафоны</button>
+          </div>
+          <!-- Самое разрушительное действие спрятано глубже: его не нажать случайно -->
+          <details class="danger-more">
+            <summary>Показать самое опасное</summary>
+            <div class="danger-item">
+              <div>
+                <strong>Удалить всех персонажей</strong>
+                <p class="muted">Удаляются ВСЕ персонажи: данные, пароли в хранилище ОС, запомненные входы в GameCenter, история монет. Пати остаются пустыми, у марафонов исчезают участники.</p>
+              </div>
+              <button id="clear-all-characters-btn" class="btn danger" data-danger="characters" type="button" title="Удалить ВСЕХ персонажей">🗑 Удалить персонажей</button>
+            </div>
+          </details>
+        </details>
 
       </section>
 
@@ -450,6 +471,11 @@
 
   <!-- === НОВЫЙ БЛОК: CONTEXTUAL FLOATING ACTION BUTTONS === -->
   <div class="fab-container" id="global-fab-container">
+    <!-- Меню круглой кнопки на вкладке «Марафоны»: создать папку или марафон (js/core/uiActions.js) -->
+    <div class="fab-menu" id="fab-menu" role="menu" hidden>
+      <button type="button" class="fab-menu-item" role="menuitem" data-fab-action="folder"><span class="fab-menu-ico">📁</span><span>Создать папку</span></button>
+      <button type="button" class="fab-menu-item" role="menuitem" data-fab-action="marathon"><span class="fab-menu-ico">🏃</span><span>Создать марафон</span></button>
+    </div>
     <!-- Основная кнопка. Иконка меняется динамически -->
     <button id="fab-main-btn" class="fab-main" title="Добавить">
       <span class="fab-icon" id="fab-icon-display">+</span>
