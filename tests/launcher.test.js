@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice } from '../js/modules/launcher/launch.js';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice, inspectVerdict, inspectReportText, PROBE_TITLE } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
@@ -223,5 +223,53 @@ describe('launcher.rs: GameCenter из других папок и итог по�
     expect(rs).toContain('close_gamecenters(&exe, magic.is_some())');
     expect(rs).toContain('"launcher-decorate"');
     expect(rs).toContain('closed_other_gc');
+  });
+});
+
+describe('launcher: проверка окон игры', () => {
+  const win = (over = {}) => ({ hwnd: '0x1', class: 'ElementClient Window', title: 'Perfect World', visible: true, tool: false, owned: false, hung: false, app: false, hasSmallIcon: true, hasBigIcon: true, titleError: null, titleAfter: PROBE_TITLE, iconError: null, ...over });
+  const report = (client, selfElevated = false) => ({ selfElevated, clients: [{ pid: 10, elevated: false, windows: [win()], ...client }] });
+
+  it('нет игры — просим запустить', () => {
+    expect(inspectVerdict({ selfElevated: false, clients: [] })[0]).toContain('не найдено');
+  });
+
+  it('игра от администратора, Твиноферма нет — главная причина названа прямо', () => {
+    const v = inspectVerdict(report({ elevated: true }));
+    expect(v).toHaveLength(1);
+    expect(v[0]).toContain('от администратора');
+    expect(v[0]).toContain('Запустите Твиноферму от имени администратора');
+    // у обоих права администратора — причина другая, так что вывод её не повторяет
+    expect(inspectVerdict(report({ elevated: true }, true)).join(' ')).not.toContain('Запустите Твиноферму от имени');
+  });
+
+  it('всё в порядке: подсказка про группировку кнопок панели задач', () => {
+    const v = inspectVerdict(report({}));
+    expect(v).toHaveLength(1);
+    expect(v[0]).toContain('Группировать кнопки');
+  });
+
+  it('называет конкретную неполадку окна', () => {
+    expect(inspectVerdict(report({ windows: [win({ titleError: 1460 })] })).join(' ')).toContain('1460');
+    expect(inspectVerdict(report({ windows: [win({ titleAfter: 'Perfect World' })] })).join(' ')).toContain('обрабатывает его по-своему');
+    expect(inspectVerdict(report({ windows: [win({ iconError: 5 })] })).join(' ')).toContain('значок не принимается');
+    expect(inspectVerdict(report({ windows: [win({ tool: true })] })).join(' ')).toContain('окно-инструмент');
+    expect(inspectVerdict(report({ windows: [win({ hung: true })] })).join(' ')).toContain('не отвечает');
+    expect(inspectVerdict(report({ windows: [win({ visible: false })] })).join(' ')).toContain('нет видимого окна');
+  });
+
+  it('текст отчёта содержит права, окна, значки и вывод', () => {
+    const text = inspectReportText(report({}));
+    expect(text).toContain('Твиноферма: обычные права');
+    expect(text).toContain('PID 10 — обычные права');
+    expect(text).toContain('«Perfect World»');
+    expect(text).toContain('значки: свои (малый, большой)');
+    expect(text).toContain('Вывод:');
+    expect(inspectReportText(report({ windows: [win({ hasSmallIcon: false, hasBigIcon: false })] }))).toContain('своих нет');
+  });
+
+  it('Rust ставит пробный заголовок, который ждёт интерфейс', () => {
+    const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
+    expect(rs).toContain(`const PROBE_TITLE: &str = "${PROBE_TITLE}"`);
   });
 });

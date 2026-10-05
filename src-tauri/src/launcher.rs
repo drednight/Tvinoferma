@@ -94,6 +94,9 @@ mod win {
             result: *mut usize,
         ) -> isize;
         fn CreateIconIndirect(info: *const IconInfo) -> *mut c_void;
+        fn IsHungAppWindow(hwnd: Hwnd) -> i32;
+        fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
+        fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
     }
 
     #[link(name = "kernel32")]
@@ -284,14 +287,14 @@ mod win {
         }
     }
 
-    /// Запущена ли сама Твиноферма с правами администратора.
-    pub fn is_elevated() -> bool {
+    /// Есть ли у токена процесса права администратора. `Err(код)` — токен открыть не удалось.
+    fn token_elevated(process: *mut c_void) -> Result<bool, u32> {
         const TOKEN_QUERY: u32 = 0x0008;
         const TOKEN_ELEVATION: u32 = 20;
         unsafe {
             let mut token: *mut c_void = std::ptr::null_mut();
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-                return false;
+            if OpenProcessToken(process, TOKEN_QUERY, &mut token) == 0 {
+                return Err(GetLastError());
             }
             let mut elevation: u32 = 0;
             let mut returned: u32 = 0;
@@ -302,9 +305,106 @@ mod win {
                 std::mem::size_of::<u32>() as u32,
                 &mut returned,
             ) != 0;
+            let err = if ok { 0 } else { GetLastError() };
             CloseHandle(token);
-            ok && elevation != 0
+            if ok {
+                Ok(elevation != 0)
+            } else {
+                Err(err)
+            }
         }
+    }
+
+    /// Запущена ли сама Твиноферма с правами администратора.
+    pub fn is_elevated() -> bool {
+        unsafe { token_elevated(GetCurrentProcess()).unwrap_or(false) }
+    }
+
+    /// Запущен ли чужой процесс с правами администратора. `None` — узнать не удалось.
+    /// Если токен процесса нам недоступен (отказано в доступе), это само по себе значит «выше нас»: `Some(true)`.
+    pub fn process_elevated(pid: u32) -> Option<bool> {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        const ERROR_ACCESS_DENIED: u32 = 5;
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if h.is_null() {
+                return (GetLastError() == ERROR_ACCESS_DENIED).then_some(true);
+            }
+            let res = token_elevated(h);
+            CloseHandle(h);
+            match res {
+                Ok(v) => Some(v),
+                Err(ERROR_ACCESS_DENIED) => Some(true),
+                Err(_) => None,
+            }
+        }
+    }
+
+    /// Что Windows знает об окне: влияет на то, покажут ли его панель задач и Диспетчер задач.
+    pub struct WinDetails {
+        /// Окно-инструмент (`WS_EX_TOOLWINDOW`): в панели задач не показывается
+        pub tool: bool,
+        /// Окно приложения (`WS_EX_APPWINDOW`): показывается в панели задач принудительно
+        pub app: bool,
+        /// У окна есть владелец: такие окна панель задач тоже пропускает
+        pub owned: bool,
+        /// Окно «не отвечает»
+        pub hung: bool,
+        /// Малый и большой значок, которые сейчас у окна (0 — своих нет, берётся значок класса окна)
+        pub small_icon: usize,
+        pub big_icon: usize,
+    }
+
+    /// Значок окна через `WM_GETICON` (0 — малый, 1 — большой). 0 — своего значка нет или окно не ответило.
+    fn get_icon(hwnd: usize, kind: usize) -> usize {
+        const WM_GETICON: u32 = 0x007F;
+        const SMTO_ABORTIFHUNG: u32 = 0x0002;
+        let mut result: usize = 0;
+        unsafe {
+            let ok = SendMessageTimeoutW(
+                hwnd as Hwnd,
+                WM_GETICON,
+                kind,
+                0,
+                SMTO_ABORTIFHUNG,
+                700,
+                &mut result,
+            );
+            if ok != 0 {
+                result
+            } else {
+                0
+            }
+        }
+    }
+
+    pub fn details(hwnd: usize) -> WinDetails {
+        const GWL_EXSTYLE: i32 = -20;
+        const GW_OWNER: u32 = 4;
+        const WS_EX_TOOLWINDOW: u32 = 0x0000_0080;
+        const WS_EX_APPWINDOW: u32 = 0x0004_0000;
+        let h = hwnd as Hwnd;
+        unsafe {
+            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+            WinDetails {
+                tool: ex & WS_EX_TOOLWINDOW != 0,
+                app: ex & WS_EX_APPWINDOW != 0,
+                owned: !GetWindow(h, GW_OWNER).is_null(),
+                hung: IsHungAppWindow(h) != 0,
+                small_icon: get_icon(hwnd, 0),
+                big_icon: get_icon(hwnd, 1),
+            }
+        }
+    }
+
+    /// Текущий заголовок окна.
+    pub fn title_of(hwnd: usize) -> String {
+        read(|b, n| unsafe { GetWindowTextW(hwnd as Hwnd, b, n) })
+    }
+
+    /// Возвращает окну значки, которые у него уже были (проверка права менять значки без изменения вида).
+    pub fn restore_icons(hwnd: usize, small: usize, big: usize) -> Result<(), u32> {
+        set_icons(hwnd, small, big)
     }
 
     /// Нажатие Enter в окне (сообщения клавиатуры отправляются прямо в окно, фокус не нужен).
@@ -347,6 +447,33 @@ mod win {
     }
     pub fn is_elevated() -> bool {
         false
+    }
+    pub fn process_elevated(_pid: u32) -> Option<bool> {
+        None
+    }
+    pub struct WinDetails {
+        pub tool: bool,
+        pub app: bool,
+        pub owned: bool,
+        pub hung: bool,
+        pub small_icon: usize,
+        pub big_icon: usize,
+    }
+    pub fn details(_hwnd: usize) -> WinDetails {
+        WinDetails {
+            tool: false,
+            app: false,
+            owned: false,
+            hung: false,
+            small_icon: 0,
+            big_icon: 0,
+        }
+    }
+    pub fn title_of(_hwnd: usize) -> String {
+        String::new()
+    }
+    pub fn restore_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
+        Err(1)
     }
 }
 
@@ -1301,6 +1428,118 @@ pub fn launcher_find_dialogs() -> Vec<String> {
         })
         .map(|w| format!("{} | {} | {}", w.hwnd, w.class, w.title))
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Диагностика окон игры
+// ---------------------------------------------------------------------------
+
+/// Заголовок, который на секунду ставится окну при проверке (потом возвращается прежний).
+const PROBE_TITLE: &str = "Твиноферма — проверка";
+
+/// Одно окно клиента игры и результат пробы «поставить заголовок и значки».
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowProbe {
+    hwnd: String,
+    class: String,
+    title: String,
+    visible: bool,
+    /// Окно-инструмент, окно с владельцем, «не отвечает», принудительно в панели задач
+    tool: bool,
+    owned: bool,
+    hung: bool,
+    app: bool,
+    /// Есть ли у окна свои значки (малый, большой); иначе панель задач берёт значок из файла игры
+    has_small_icon: bool,
+    has_big_icon: bool,
+    /// Проба: `None` — удалось, иначе код ошибки Windows (5 — нет доступа)
+    title_error: Option<u32>,
+    /// Заголовок, который прочитан сразу после пробы (должен совпасть с `PROBE_TITLE`)
+    title_after: String,
+    icon_error: Option<u32>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientProbe {
+    pid: u32,
+    /// Запущен ли клиент от администратора (`None` — узнать не удалось)
+    elevated: Option<bool>,
+    windows: Vec<WindowProbe>,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct InspectReport {
+    /// Запущена ли сама Твиноферма от администратора
+    self_elevated: bool,
+    clients: Vec<ClientProbe>,
+}
+
+/// Окна клиента, которые интересны панели задач: видимые или с заголовком (служебные безымянные окна пропускаем).
+fn probe_worthy(w: &win::WinInfo, pid: u32) -> bool {
+    w.pid == pid && (w.visible || !w.title.is_empty())
+}
+
+fn probe_window(w: &win::WinInfo) -> WindowProbe {
+    let d = win::details(w.hwnd);
+    let mut title_error = None;
+    let mut title_after = w.title.clone();
+    let mut icon_error = None;
+    if w.visible && !w.title.is_empty() {
+        title_error = win::set_title(w.hwnd, PROBE_TITLE).err();
+        title_after = win::title_of(w.hwnd);
+        // вернуть прежний заголовок и (если были) значки: проба ничего не должна менять
+        let _ = win::set_title(w.hwnd, &w.title);
+        icon_error = win::restore_icons(w.hwnd, d.small_icon, d.big_icon).err();
+    }
+    WindowProbe {
+        hwnd: format!("{:#x}", w.hwnd),
+        class: w.class.clone(),
+        title: w.title.clone(),
+        visible: w.visible,
+        tool: d.tool,
+        owned: d.owned,
+        hung: d.hung,
+        app: d.app,
+        has_small_icon: d.small_icon != 0,
+        has_big_icon: d.big_icon != 0,
+        title_error,
+        title_after,
+        icon_error,
+    }
+}
+
+fn inspect_windows() -> Result<InspectReport, String> {
+    let pids = client_pids()?;
+    let all = win::all_windows();
+    let clients = pids
+        .into_iter()
+        .map(|pid| ClientProbe {
+            pid,
+            elevated: win::process_elevated(pid),
+            windows: all
+                .iter()
+                .filter(|w| probe_worthy(w, pid))
+                .take(12)
+                .map(probe_window)
+                .collect(),
+        })
+        .collect();
+    Ok(InspectReport {
+        self_elevated: win::is_elevated(),
+        clients,
+    })
+}
+
+/// Проверка окон игры: какие окна есть у каждого клиента, можно ли менять им заголовок и значок,
+/// запущена ли игра от администратора. Окнам на мгновение ставится проверочный заголовок и возвращается прежний.
+#[tauri::command]
+pub async fn launcher_inspect_windows() -> Result<InspectReport, String> {
+    tauri::async_runtime::spawn_blocking(inspect_windows)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

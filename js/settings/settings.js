@@ -2,11 +2,11 @@
 
 import { getAdapter, saveNow, forceRenderAndPersist, persist, createBackup, isTauri } from '../core/storage.js';
 import { state, serializeState } from '../core/state.js';
-import { escapeHtml } from '../core/utils.js';
+import { escapeHtml, copyToClipboard } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
 import { runReminderCheck } from '../desktop/notifications.js';
-import { toast, confirmDialog, confirmModal } from '../core/ui.js';
+import { toast, confirmDialog, confirmModal, showModal } from '../core/ui.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
 import { openExportDialog } from '../data/export.js';
@@ -241,6 +241,22 @@ export function bindSettings() {
   document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {
     const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
     await closeAllGameWindows({ confirm: true });
+  });
+
+  document.getElementById('inspect-game-windows-btn')?.addEventListener('click', async () => {
+    const { inspectGameWindows, inspectReportText } = await import('../modules/launcher/launch.js');
+    try {
+      const text = inspectReportText(await inspectGameWindows());
+      showModal({
+        title: '🔍 Окна игры',
+        content: `<pre style="white-space:pre-wrap; user-select:text; max-height:55vh; overflow:auto; margin:0; font-size:.8rem;">${escapeHtml(text)}</pre>`,
+        submitText: '📋 Скопировать',
+        cancelText: 'Закрыть',
+        onSubmit: async () => { toast(await copyToClipboard(text) ? 'Скопировано' : 'Не удалось скопировать', 'info'); return false; }
+      });
+    } catch (e) {
+      toast(`Не удалось проверить окна: ${e?.message || e}`, 'error');
+    }
   });
 
   // Журналы (единый модуль логов): список рисуется при первом раскрытии панели, заголовок обновляется всегда
