@@ -21,7 +21,9 @@ const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error:
 
 export { ERROR_TEXT, errorText };
 
-let tasks = loadJournal();
+// Журнал читается после объявления `class Task` (см. конец класса): `loadJournal` создаёт Task,
+// а до объявления класса это ReferenceError, который глотался — журнал после перезапуска был пустым
+let tasks = [];
 const subscribers = new Set();
 let listenerReady = false;
 
@@ -115,6 +117,8 @@ class Task {
     return this;
   }
 }
+
+tasks = loadJournal();
 
 export function startTask(title, opts = {}) {
   ensureRustListener();
