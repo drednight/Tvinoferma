@@ -1,6 +1,6 @@
 [package]
 name = "tvinoferma"
-version = "1.0.0"
+version = "1.0.1"
 description = "Менеджер персонажей Твинофермы"
 authors = ["#Дреднайт"]
 license = "MIT"
