@@ -5,7 +5,7 @@
 1. **Что сделано** — новый вариант оформления и мелких функций, которые уже работают.
 2. **Что предлагается** — как могли бы выглядеть и вести себя функции, которые уже используются, и те, что запланированы в [ROADMAP.md](../ROADMAP.md).
 
-Скриншоты «до» и «после»: `docs/screenshots/before/` и `docs/screenshots/after/`.
+Скриншоты: актуальные — в `docs/screenshots/`, снимки «до» переезда на новый стиль — в `docs/screenshots/before/`.
 Проверить и откатить: раздел [«Как проверить и как откатить»](#как-проверить-и-как-откатить).
 
 ---
@@ -362,11 +362,12 @@ npm run dev            # только интерфейс в браузере: ht
 ### Проверка на демонстрационных данных (воспроизводимо)
 
 ```powershell
-npm run shots                          # снимки в docs/screenshots/
-node scripts/ui-shots.mjs --out docs/screenshots/after --width 900 --height 800
+npm run shots                          # снимки разделов в docs/screenshots/
+npm run shots -- --out docs/screenshots --width 900 --height 800
 ```
 
-Стенд печатает отчёт аудита вёрстки и сохраняет PNG по разделам. Скриншоты «до» сняты тем же стендом
+Стенд печатает отчёт аудита вёрстки и сохраняет PNG по разделам. Если dev-сервер уже запущен
+(`npm run tauri dev`), стенд снимает с него и не занимает порт. Скриншоты «до» сняты тем же стендом
 до изменений, поэтому их можно сравнить попиксельно (Windows PowerShell, модуль `System.Drawing` уже есть):
 
 ```powershell
@@ -385,7 +386,7 @@ function Compare-Shot($a, $b) {
   "{0}: изменилось {1}%" -f (Split-Path $a -Leaf), [Math]::Round(100 * $diff / $sampled, 1)
 }
 foreach ($f in 'characters','parties','marathons','settings','character-profile') {
-  Compare-Shot "docs\screenshots\before\$f.png" "docs\screenshots\after\$f.png"
+  Compare-Shot "docs\screenshots\before\$f.png" "docs\screenshots\$f.png"
 }
 ```
 
