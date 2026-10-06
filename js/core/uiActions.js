@@ -31,35 +31,51 @@ function setupFabLogic() {
     if (!fabBtn) return;
 
     const menu = document.getElementById('fab-menu');
-    const submenu = document.getElementById('fab-scripts-submenu');
+    const container = document.getElementById('global-fab-container');
+    const mainLevel = menu?.querySelector('.fab-orbs:not(.fab-submenu)');
+    // Пункты со списком: действие пункта → id подменю. Новые списки добавляются сюда.
+    const SUBMENUS = { scripts: 'fab-scripts-submenu' };
+
+    /** Показывает ровно один уровень меню: главный (null) или подменю с указанным id. Остальные закрываются. */
+    const showLevel = (submenuId = null) => {
+        if (!menu) return;
+        if (mainLevel) /** @type {HTMLElement} */ (mainLevel).hidden = !!submenuId;
+        menu.querySelectorAll('.fab-submenu').forEach((el) => {
+            const open = el.id === submenuId;
+            /** @type {HTMLElement} */ (el).hidden = !open;
+            el.classList.toggle('is-open', open);
+        });
+        // aria-expanded у пунктов-списков отражает, какой список открыт
+        Object.entries(SUBMENUS).forEach(([action, id]) => {
+            menu.querySelector(`[data-fab-action="${action}"]`)?.setAttribute('aria-expanded', String(id === submenuId));
+        });
+    };
+    const currentLevel = () => menu?.querySelector('.fab-submenu:not([hidden])')?.id || null;
     const setMenu = (open) => {
         if (!menu) return;
         menu.hidden = !open;
         fabBtn.classList.toggle('is-open', open);
         fabBtn.setAttribute('aria-expanded', String(open));
-        if (!open) showSubmenu(false);
+        showLevel(null);   // при каждом открытии и закрытии начинаем с главного уровня
     };
-    /** Уровень «Скрипты»: показывается вместо главного уровня орбов. */
-    const showSubmenu = (open) => {
-        if (!submenu) return;
-        submenu.classList.toggle('is-open', open);
-        submenu.hidden = !open;
-        menu?.querySelector('[data-fab-action="scripts"]')?.setAttribute('aria-expanded', String(open));
-    };
+    // Раздел сменился или кнопка скрыта: сворачиваем меню (событие шлёт updateFabVisibility)
+    container?.addEventListener('fab:close', () => setMenu(false));
+    showLevel(null);
 
-    // Орбы: действия разделов, переход на уровень скриптов, возврат и сами скрипты
+    // Пункты: действия разделов, открытие списков, возврат и сами скрипты
     menu?.addEventListener('click', async (e) => {
         const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest?.('[data-fab-action], [data-script-action], [data-script-back]'));
         if (!item) return;
 
-        // «Скрипты»: вместо раскрытия рядом — подмена главного уровня подменю
-        if (item.dataset.fabAction === 'scripts') {
-            showSubmenu(true);
+        // Пункт со списком: прошлый список закрывается, нужный открывается
+        const listId = SUBMENUS[item.dataset.fabAction || ''];
+        if (listId) {
+            showLevel(currentLevel() === listId ? null : listId);
             return;
         }
-        // «Назад» на уровне скриптов
+        // «Назад» на уровне списка
         if (item.dataset.scriptBack) {
-            showSubmenu(false);
+            showLevel(null);
             return;
         }
         if (item.dataset.scriptAction) {
@@ -69,7 +85,6 @@ function setupFabLogic() {
         }
 
         setMenu(false);
-        showSubmenu(false);
         const action = item.dataset.fabAction;
         if (action === 'folder' || action === 'marathon') {
             const { createFolderFromFab, createMarathonFromFab } = await import('../modules/marathons/page.js');
@@ -91,7 +106,12 @@ function setupFabLogic() {
     document.addEventListener('click', (e) => {
         if (menu && !menu.hidden && !(/** @type {HTMLElement} */ (e.target)).closest('#global-fab-container')) setMenu(false);
     });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setMenu(false); });
+    // Esc: сначала закрывает открытый список (возврат на главный уровень), затем само меню
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !menu || menu.hidden) return;
+        if (currentLevel()) showLevel(null);
+        else setMenu(false);
+    });
     // Ушли с вкладки — меню закрываем
     document.addEventListener('click', (e) => {
         if ((/** @type {HTMLElement} */ (e.target)).closest?.('.tab')) setMenu(false);
@@ -153,14 +173,10 @@ export function updateFabVisibility(sectionName) {
     const isVisible = sectionName in labels;
 
     container.classList.toggle('visible', isVisible);
-    // Орбы, не относящиеся к разделу, прячет CSS по data-section; data-orbs расставляет
-    // видимые по дуге без «дырок» от скрытых позиций
-    container.dataset.section = isVisible ? sectionName : '';
-    if (menu && isVisible) {
-        const visible = menu.querySelectorAll(`.fab-orb.is-for-${sectionName}:not([data-fab-action="scripts"])`).length
-          + (sectionName === 'characters' ? 1 : 0); // «Скрипты» открывает подменю — тоже орб
-        menu.dataset.orbs = String(sectionName === 'characters' ? 3 : visible);
-    }
+    // Пункты, не относящиеся к разделу, прячет CSS по data-section
+    const nextSection = isVisible ? sectionName : '';
+    if (container.dataset.section !== nextSection) container.dispatchEvent(new Event('fab:close'));
+    container.dataset.section = nextSection;
     if (isVisible) fabBtn.setAttribute('title', labels[sectionName]);
 }
 

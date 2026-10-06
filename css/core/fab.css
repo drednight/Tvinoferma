@@ -7,7 +7,7 @@
   position: fixed;
   bottom: 26px;
   right: 26px;
-  z-index: 1000;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
   gap: var(--gap);
@@ -48,59 +48,59 @@
 }
 .fab-main.is-open .fab-icon { transform: rotate(135deg); }
 
-/* --- Speed-dial: орбы с подписями --- */
-/* Поле орбов — квадрат над кнопкой; кнопка в его правом нижнем углу */
+/* --- Speed-dial: столбик пунктов строго над кнопкой ---
+   Пункты идут вертикально с одинаковым шагом: иконка стоит над центром кнопки, подпись — слева от неё.
+   Никаких абсолютных координат: пункты не выходят за область меню, не наезжают друг на друга и не
+   перекрывают соседние кнопки. Одновременно виден только один уровень (главный или подменю). */
 .fab-menu {
   position: absolute;
   right: 0;
-  bottom: 56px;
-  width: 340px;
-  height: 260px;
-  pointer-events: none;
+  bottom: 68px;                     /* кнопка 56px + зазор 12px */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-height: calc(100vh - 110px);
+  pointer-events: none;             /* кликабельны только сами пункты */
 }
 .fab-menu[hidden] { display: none; }
 
-.fab-orbs { position: absolute; inset: 0; }
-.fab-submenu { display: none; }
-.fab-submenu.is-open { display: block; }
-/* Уровень скриптов заменяет главный: у открытого подменю виден фон, у главного орбы скрыты */
-.fab-menu.has-submenu .fab-orbs:not(.fab-submenu) { display: none; }
+/* Уровень меню: первый пункт разметки стоит ближе всего к кнопке */
+.fab-orbs {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  max-height: inherit;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 2px 6px 2px 2px;         /* правый отступ 6px: центр иконки 44px совпадает с центром кнопки 56px */
+  animation: fab-level-in 0.16s var(--ease);
+}
+.fab-orbs::-webkit-scrollbar { display: none; }
+.fab-orbs[hidden] { display: none !important; }
+@keyframes fab-level-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 .fab-orb {
-  position: absolute;
-  transform: translate(50%, 50%);
   display: flex;
-  flex-direction: column;
+  flex-direction: row-reverse;      /* иконка справа (над кнопкой), подпись слева */
   align-items: center;
-  gap: 3px;
-  padding: 4px 6px;
+  gap: 10px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
   cursor: pointer;
   pointer-events: auto;
-  opacity: 0;
-  transition: opacity 0.16s var(--ease);
 }
-.fab-menu:not([hidden]) .fab-orb { opacity: 1; }
-
-/* Позиции орбов по дуге от кнопки (правый нижний угол): углы 180°…90°.
-   Раскладка через CSS-переменные, чтобы порядок пунктов читался в разметке. */
-.fab-orb:nth-of-type(1) { --orb-x: 22px;  --orb-y: -216px; }
-.fab-orb:nth-of-type(2) { --orb-x: 44px;  --orb-y: -170px; }
-.fab-orb:nth-of-type(3) { --orb-x: 78px;  --orb-y: -132px; }
-.fab-orb:nth-of-type(4) { --orb-x: 118px; --orb-y: -100px; }
-.fab-orb:nth-of-type(5) { --orb-x: 162px; --orb-y: -78px;  }
-.fab-orb:nth-of-type(6) { --orb-x: 208px; --orb-y: -66px;  }
-.fab-orb:nth-of-type(7) { --orb-x: 254px; --orb-y: -62px;  }
-.fab-orb:nth-of-type(8) { --orb-x: 298px; --orb-y: -66px;  }
-.fab-orb:nth-of-type(9) { --orb-x: 258px; --orb-y: -98px;  }
-.fab-orb { right: auto; bottom: auto; left: var(--orb-x, 20px); top: var(--orb-y, -60px); }
 
 .fab-orb-ico {
   display: grid;
   place-items: center;
+  flex: 0 0 auto;
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -114,29 +114,26 @@
 .fab-orb:focus-visible .fab-orb-ico {
   border-color: var(--accent);
   background: var(--surface-2);
-  transform: scale(1.1);
+  transform: scale(1.08);
 }
 .fab-orb-ico.is-plain {
-  width: 40px;
-  height: 40px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   font-size: 0.95rem;
 }
 .fab-orb-label {
-  max-width: 92px;
-  padding: 1px 8px;
+  padding: 4px 11px;
   border-radius: var(--radius-pill);
   background: var(--surface-1);
   border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
   color: var(--text-dim);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 600;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.fab-orb:hover .fab-orb-label { color: var(--text); border-color: var(--border-strong); }
+.fab-orb:hover .fab-orb-label,
+.fab-orb:focus-visible .fab-orb-label { color: var(--text); border-color: var(--border-strong); }
 
 /* --- Выпадающее меню скриптов (настройки), прежний стиль сохранён --- */
 .action-menu-wrapper { position: relative; }
@@ -193,25 +190,7 @@ body:has(.modal-overlay) .fab-container { display: none; }
 .fab-container[data-section="parties"] .is-for-parties { display: flex; }
 .fab-container[data-section="marathons"] .is-for-marathons { display: flex; }
 
-/* Позиции орбов при разном числе пунктов: дуга собирается компактно.
-   data-orbs ставит uiActions.updateFabVisibility после того, как скрыл лишние. */
-.fab-menu[data-orbs="1"] .fab-orb:nth-of-type(1) { --orb-x: 6px;   --orb-y: -108px; }
-.fab-menu[data-orbs="2"] .fab-orb:nth-of-type(1) { --orb-x: 6px;   --orb-y: -150px; }
-.fab-menu[data-orbs="2"] .fab-orb:nth-of-type(2) { --orb-x: 52px;  --orb-y: -108px; }
-.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(1) { --orb-x: 14px;  --orb-y: -168px; }
-.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(2) { --orb-x: 66px;  --orb-y: -138px; }
-.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(3) { --orb-x: 112px; --orb-y: -102px; }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(7) { --orb-x: 24px;  --orb-y: -196px; }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(6) { --orb-x: 22px;  --orb-y: -148px; }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(5) { --orb-x: 28px;  --orb-y: -100px; }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(4) { --orb-x: 44px;  --orb-y: -54px;  }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(3) { --orb-x: 72px;  --orb-y: -18px;  }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(2) { --orb-x: 108px; --orb-y: 6px;    }
-.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(1) { --orb-x: 148px; --orb-y: 14px;   }
-
 @media (max-width: 560px) {
   .fab-container { right: 16px; bottom: 16px; }
-  .fab-menu { width: 260px; height: 210px; }
   .dropdown-menu { min-width: 240px; }
-  .fab-orb-label { display: none; }
 }
