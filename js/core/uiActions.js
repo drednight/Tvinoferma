@@ -161,7 +161,6 @@ async function runScriptAction(action) {
 export function updateFabVisibility(sectionName) {
     const container = document.getElementById('global-fab-container');
     const fabBtn = document.getElementById('fab-main-btn');
-    const menu = document.getElementById('fab-menu');
 
     if (!container || !fabBtn) return;
 
