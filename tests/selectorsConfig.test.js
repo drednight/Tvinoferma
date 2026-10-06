@@ -42,7 +42,7 @@ describe('selectors.json и скрипты согласованы', () => {
     const known = new Set(keysOf(cfg).map((k) => k.split(':')[1]));
     [...parserScripts, 'common.js'].forEach((f) => {
       const src = readFileSync(`${SCRIPTS}/${f}`, 'utf8');
-      const names = [...src.matchAll(/'((?:common|balance|auth|titles|marathon|news|promo|transfer)\.[A-Za-z]+)'/g)].map((m) => m[1]);
+      const names = [...src.matchAll(/'((?:common|balance|auth|titles|marathon|news|promo|transfer|shop)\.[A-Za-z]+)'/g)].map((m) => m[1]);
       names.forEach((n) => expect(known.has(n), `${f}: «${n}» нет в selectors.json`).toBe(true));
     });
   });

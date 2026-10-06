@@ -40,6 +40,10 @@ async function runScript(action) {
     const { openTransferDialog } = await import('../modules/automation/transfer.js');
     return openTransferDialog();
   }
+  if (action === 'shop') {
+    const { openShopDialog } = await import('../modules/automation/shop.js');
+    return openShopDialog();
+  }
   const sync = await import('../modules/sync/syncManager.js');
   if (action === 'check-auth') return sync.refreshAllLoginStatuses();
   if (action === 'update-balance') return sync.refreshAllBalances();

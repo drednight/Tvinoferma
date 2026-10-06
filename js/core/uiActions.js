@@ -146,6 +146,9 @@ async function runScriptAction(action) {
         } else if (action === 'transfer') {
             const { openTransferDialog } = await import('../modules/automation/transfer.js');
             openTransferDialog();
+        } else if (action === 'shop') {
+            const { openShopDialog } = await import('../modules/automation/shop.js');
+            openShopDialog();
         } else {
             console.warn(`[UI] Unknown script action: ${action}`);
         }

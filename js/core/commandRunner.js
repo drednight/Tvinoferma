@@ -126,6 +126,11 @@ export function createCommandRunner({ switchTab }) {
           openTransferDialog();
           return;
         }
+        case 'shop': {
+          const { openShopDialog } = await import('../modules/automation/shop.js');
+          openShopDialog();
+          return;
+        }
         case 'save': {
           const { saveNow } = await import('./storage.js');
           await saveNow();

@@ -1,0 +1,45 @@
+/* css/modules/shop.css
+   Диалог «🪙 Покупка за Древние монеты»: карточки предметов, фильтры, таблица аккаунтов, итоги. */
+
+.shop-scan { margin-bottom: 8px; font-size: 0.9em; color: var(--text-dim); }
+.shop-muted { color: var(--text-dim); font-size: 0.85em; }
+.shop-warn { color: var(--warning); font-size: 0.85em; }
+.shop-empty { padding: 16px; text-align: center; color: var(--text-dim); }
+
+/* Карточки предметов */
+.shop-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.shop-card {
+  display: flex; flex-direction: column; gap: 3px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+.shop-card.shop-picked { border-color: var(--accent, #7aa2f7); }
+.shop-card.shop-locked { opacity: 0.6; }
+.shop-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.shop-locked .shop-pick { cursor: not-allowed; }
+.shop-price { font-size: 0.9em; }
+.shop-desc summary { cursor: pointer; color: var(--text-dim); font-size: 0.85em; }
+.shop-desc div { margin-top: 4px; font-size: 0.85em; line-height: 1.35; }
+
+/* Фильтры */
+.shop-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0 6px; }
+.shop-quick .input { flex: 1 1 160px; min-width: 120px; }
+.shop-quick select.input { flex: 0 1 180px; }
+.shop-count { margin: 4px 2px; font-size: 0.9em; color: var(--text-dim); }
+
+/* Таблица аккаунтов */
+.shop-scroll { overflow: auto; max-height: min(46vh, 460px); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.shop-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.shop-table th, .shop-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.shop-table thead th { position: sticky; top: 0; background: var(--surface-2); color: var(--text-dim); font-weight: 600; z-index: 1; }
+.shop-dim { opacity: 0.7; }
+.shop-qty, .shop-all { width: 76px; padding: 3px 6px; }
+.shop-all { margin-top: 4px; font-weight: 400; }
+.shop-calc { margin-top: 3px; font-size: 0.85em; }
+.shop-limit { margin-top: 2px; font-size: 0.8em; color: var(--text-dim); }
+.shop-limit-out { color: var(--warning); }
+.shop-total { white-space: nowrap; }
+.shop-summary { margin-top: 10px; font-size: 0.95em; }
+.shop-progress { margin-bottom: 8px; font-weight: 600; }
+.shop-res-warn { color: var(--warning); }
+.shop-res-error { color: var(--danger); }
+.shop-res-ok { color: var(--success); }

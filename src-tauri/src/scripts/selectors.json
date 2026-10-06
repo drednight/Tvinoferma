@@ -64,7 +64,20 @@
     "transfer.statusItem": [".servers_container ul li", ".server_status_container li"],
     "transfer.statusOnline": [".server_status_1"],
     "transfer.statusOffline": [".server_status_0"],
-    "transfer.statusRecommend": [".recommend strong"]
+    "transfer.statusRecommend": [".recommend strong"],
+    "shop.item": ["li.chest_info_container"],
+    "shop.title": [".chest_title"],
+    "shop.price": [".chest_price"],
+    "shop.priceValue": ["strong"],
+    "shop.buyLink": ["a.chest_buy_link", ".chest_shop_block a"],
+    "shop.blocked": [".chest_disabled_block"],
+    "shop.infoText": [".img_item_cont > span", ".img_item_cont span"],
+    "shop.image": [".img_item_cont img"],
+    "shop.modal": [".modalDialog"],
+    "shop.modalConfirm": [".modalDialog a.buy", ".modalDialog .buy"],
+    "shop.modalTitle": [".modalDialog .modalTitle"],
+    "shop.account": ["#content_top_2 h2 a strong", "#content_top_2 strong", ".auth_h strong"],
+    "shop.historyRows": ["table.promo_history_points tr"]
   },
   "texts": {
     "common.challengeTitle": ["Проверка безопасности"],
@@ -116,6 +129,11 @@
     "transfer.historyDate": ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"],
     "transfer.historyPromo": ["^\\((.*)\\)$"],
     "transfer.onlyServer": ["только на сервер\\s*[«\"“]([^»\"”]+)[»\"”]"],
+    "shop.available": ["Доступно\\s+Вам:?\\s*(\\d+)"],
+    "shop.maxMonth": ["Максимальное\\s+количество\\s+в\\s+месяц:?\\s*(\\d+)"],
+    "shop.itemId": ["[?&]id=(\\d+)"],
+    "shop.kind": ["[?&]use_(chest|item)=1"],
+    "shop.buyHref": ["do=buy"],
     "news.date": [
       "Обсудить\\s+(\\d{2}\\.\\d{2}\\.\\d{4})",
       "(\\d{2}\\.\\d{2}\\.\\d{4})"

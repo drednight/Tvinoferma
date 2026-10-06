@@ -25,8 +25,8 @@ describe('parseCoins', () => {
   });
 });
 
-describe('копия parseCoins в src-tauri/src/scripts/balance.js', () => {
-  const src = readFileSync(resolve(process.cwd(), 'src-tauri/src/scripts/balance.js'), 'utf8');
+describe.each(['balance.js', 'shop.js'])('копия parseCoins в src-tauri/src/scripts/%s', (file) => {
+  const src = readFileSync(resolve(process.cwd(), `src-tauri/src/scripts/${file}`), 'utf8');
   const body = src.slice(src.indexOf('/*PARSE_START*/'), src.indexOf('/*PARSE_END*/'));
   const siteParse = new Function(`${body}; return parseCoins;`)();
   it('даёт те же результаты, что и js/core/coins.js', () => {

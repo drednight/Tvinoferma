@@ -102,6 +102,9 @@ pub fn run() {
             windows::rename_char_profiles,
             // скрипты сайта
             automation::promo::activate_promo,
+            automation::shop::read_shop,
+            automation::shop::read_shop_history,
+            automation::shop::buy_shop_item,
             automation::transfer::read_transfer_page,
             automation::transfer::read_server_status,
             automation::transfer::transfer_items,
