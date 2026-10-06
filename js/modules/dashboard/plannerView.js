@@ -4,7 +4,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
-import { weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT, ALLDAY_ROW_HEIGHT, ALLDAY_PAD, WEEK_DAYS } from './weekView.js';
+import { weekDays, weekRangeTitle, weekLayout, weekMarathonLanes, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
 import { mskMinutes } from '../../core/msk.js';
@@ -56,39 +56,38 @@ export function plannerTimeLegendHtml() {
   </div>`;
 }
 
-/** Метки часов слева от мини-шкалы: 00, 06, 12, 18 — по ним глаз читает время без подписей на полосках. */
-const MINI_TICKS = [0, 6, 12, 18];
-
 /**
- * Мини-шкала дня в ячейке календаря: записи стоят по времени начала, высота блока — длительность.
- * Записи без времени (и марафон, который занимает весь день) идут сверху отдельной строкой.
+ * Ячейка дня в месячной сетке: только названия записей.
+ *
+ * Почему без шкалы времени: в клетке месяца сутки занимают десятки пикселей, и полоски
+ * сливались в неразличимые чёрточки. Точное время видно в окне дня, которое открывается
+ * нажатием на клетку, — там шкала во всю высоту и наложения разведены по дорожкам.
+ * Названия показываем списком: марафон, ивенты дня, свои записи.
  */
 function dayCellHtml(date, events, dungeon, isToday) {
-  const { allDay, blocks } = timelineBlocks(events);
   const day = Number(date.slice(-2));
-  const all = [...allDay.map(x => x.event)];
-  // Тултип клетки перечисляет записи с временем: точные минуты читаются без открытия дня
-  const timedLines = blocks.map(b => `${b.startTime}–${b.endTime} ${b.event.title}`);
-  const cellTitle = [`${dungeon.date}: данж дня — ${dungeon.name}`, ...timedLines].join('\n');
-  const nowPct = isToday ? (mskMinutes() / DAY_MINUTES) * 100 : null;
+  // Порядок как в плане дня: марафон (весь день) → ивенты по времени → свои записи
+  const titles = events.map(e => ({
+    title: e.title,
+    color: e.color || 'blue',
+    marathon: e.source === 'marathon',
+    done: e.done === true
+  }));
+  const nowMin = isToday ? mskMinutes() : null;
+  const cellTitle = [
+    `${dungeon.date}: данж дня — ${dungeon.name}`,
+    ...events.map(e => (e.time ? `${e.time} ${e.title}` : e.title)),
+    nowMin === null ? '' : `сейчас ${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}`
+  ].filter(Boolean).join('\n');
   return `<button class="planner-day is-${dungeon.key}${isToday ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
             type="button" data-planner-date="${date}"
             title="${escapeHtml(cellTitle)}"
             aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
     <span class="planner-day-number">${day}</span>
-    <span class="planner-day-allday">
-      ${all.slice(0, 2).map(e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
-        title="${escapeHtml(e.title)}${e.source === 'recurring' ? ' (постоянный ивент)' : ''}">${escapeHtml(e.title)}</span>`).join('')}
-      ${all.length > 2 ? `<span class="planner-more" title="${all.slice(2).map(x => escapeHtml(x.title)).join(' • ')}">+${all.length - 2}</span>` : ''}
-    </span>
-    <span class="planner-day-scale" aria-hidden="true">
-      <span class="planner-scale-ticks">${MINI_TICKS.map(h => `<i style="top:${(h / 24 * 100).toFixed(2)}%">${String(h).padStart(2, '0')}</i>`).join('')}</span>
-      <span class="planner-scale-lanes">
-        ${blocks.map(b => `<span class="planner-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'marathon' ? ' is-marathon' : ''}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
-          style="top:${b.topPct.toFixed(3)}%;height:${b.heightPct.toFixed(3)}%;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
-          title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"></span>`).join('')}
-        ${nowPct === null ? '' : `<span class="planner-now" style="top:${nowPct.toFixed(3)}%"></span>`}
-      </span>
+    <span class="planner-day-list">
+      ${titles.slice(0, 4).map(e => `<span class="planner-chip is-${escapeHtml(e.color)}${e.marathon ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+        title="${escapeHtml(e.title)}">${e.marathon ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
+      ${titles.length > 4 ? `<span class="planner-more" title="${titles.slice(4).map(x => escapeHtml(x.title)).join(' • ')}">ещё ${titles.length - 4}</span>` : ''}
     </span>
   </button>`;
 }
@@ -110,42 +109,54 @@ function weekHtml(appState) {
   const layout = weekLayout(events);
   const hours = weekHours();
   const nowMin = mskMinutes();
-  // Марафон и другие события «на весь день» — сплошными полосами на всю ширину недели
-  const allDay = packAllDayRows(weekAllDaySpans(events));
-  const rows = Math.max(1, allDay.rows);
-  // Высоту области «весь день» считает weekView: та же формула нужна и разметке, и тестам
-  const allDayH = allDayHeight(rows);
+  // Марафоны идут вертикально внутри колонки, от отметки 00:00 до конца суток:
+  // раньше полоса лежала поверх шапки и перекрывала даты
+  const marathon = weekMarathonLanes(events);
+  const marathonLanes = marathon.lanes;
+  const ownAllDay = layout.map(day => day.allDay.filter(e => e.source !== 'marathon'));
+  // Область «весь день» нужна только под свои записи без времени; минимум — одна строка
+  const ownRows = Math.max(1, ...ownAllDay.map(list => list.length));
+  const allDayH = allDayHeight(ownRows);
+  const trackH = HOUR_HEIGHT * 24;
 
   return `
     <div class="cal-week"
-         style="--allday-rows:${rows}"
-         aria-label="Неделя: 7 дней, время сверху вниз, сутки ${HOUR_HEIGHT * 24} пикселей">
+         style="--allday-rows:${ownRows}"
+         aria-label="Неделя: 7 дней, время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         <div class="cal-week-allday" style="height:${allDayH}px">
-          <span class="cal-week-allday-label">весь день</span>
+          <span class="cal-week-allday-label">без времени</span>
         </div>
-        ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.isMajor ? h.label : ''}</div>`).join('')}
+        ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.label}</div>`).join('')}
       </div>
       <div class="cal-week-days">
         ${days.map((d, i) => {
           const dungeon = dungeonInfoForDate(d.date);
           const day = layout[i] || { allDay: [], blocks: [] };
-          // Записи без времени (не марафон) остаются плашками в шапке своего дня
-          const own = day.allDay.filter(e => e.source !== 'marathon');
+          const own = ownAllDay[i];
+          const dayEvents = events[i];
+          const cellTitle = [
+            `${d.date}: данж дня — ${dungeon.name}`,
+            ...dayEvents.map(e => (e.time ? `${e.time} ${e.title}` : e.title))
+          ].join('\n');
           return `<div class="cal-day is-${dungeon.key}${d.isToday ? ' is-today' : ''}${d.isWeekend ? ' is-weekend' : ''}">
-          <button type="button" class="cal-day-head" data-planner-date="${d.date}"
-                  title="${d.date}: данж дня — ${dungeon.name}${events[i].length ? ` · записей: ${events[i].length}` : ''}">
+          <button type="button" class="cal-day-head" data-planner-date="${d.date}" title="${escapeHtml(cellTitle)}">
             <small>${d.weekdayName}</small>
             <b>${d.day}</b>
             <span class="cal-day-dng is-${dungeon.key}" title="Данж дня: ${dungeon.name}">${dungeon.icon}</span>
           </button>
           <div class="cal-day-allday" style="height:${allDayH}px">
-            ${own.slice(0, rows).map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}"
+            ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}"
               title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>`).join('')}
-            ${own.length > rows ? `<span class="cal-more" title="${own.slice(rows).map(x => escapeHtml(x.title)).join(' • ')}">+${own.length - rows}</span>` : ''}
           </div>
-          <div class="cal-day-track" style="height:${HOUR_HEIGHT * 24}px">
+          <div class="cal-day-track" style="height:${trackH}px" data-planner-date="${d.date}"
+               title="${escapeHtml(cellTitle)}">
             ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
+            ${marathon.days[i].map(m => `<div class="cal-marathon is-${escapeHtml(m.event.color || 'purple')}${m.event.done ? ' is-done' : ''}"
+              style="left:${m.leftPct.toFixed(2)}%;width:${m.widthPct.toFixed(2)}%"
+              title="${escapeHtml(m.event.title)} · марафон, весь день${marathonLanes > 1 ? ' (несколько марафонов делят день)' : ''}">
+              <b>${escapeHtml(m.event.title)}</b>
+            </div>`).join('')}
             ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
               style="top:${b.top.toFixed(1)}px;height:${b.height.toFixed(1)}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
               title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
@@ -156,13 +167,6 @@ function weekHtml(appState) {
           </div>
         </div>`;
         }).join('')}
-      </div>
-      <div class="cal-week-spans" style="height:${allDayH}px">
-        ${allDay.spans.map(s => `<div class="cal-span is-${escapeHtml(s.color)}${s.source === 'marathon' ? ' is-marathon' : ''}${s.done ? ' is-done' : ''}"
-          style="left:${(s.startIndex / WEEK_DAYS * 100).toFixed(3)}%;width:${(s.span / WEEK_DAYS * 100).toFixed(3)}%;top:${s.row * ALLDAY_ROW_HEIGHT + ALLDAY_PAD}px"
-          title="${escapeHtml(s.title)}${s.source === 'marathon' ? ' · марафон, идёт подряд несколько дней' : ''}">
-          ${s.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(s.title)}
-        </div>`).join('')}
       </div>
     </div>`;
 }
@@ -240,6 +244,7 @@ export function bindPlanner(root, deps = {}) {
       deps.render?.();
       return;
     }
+    // В неделе нажатие на любое место колонки (шапка с датой, шкала дня, запись) открывает день
     openPlannerDay(target.dataset.plannerDate, deps);
   });
 }
@@ -275,7 +280,8 @@ function eventRow(event) {
  */
 function dayScaleHtml(events) {
   const { allDay, blocks } = timelineBlocks(events);
-  const marks = hourMarks(3);
+  // Подписи каждые 6 часов (00 / 06 / 12 / 18 / 24): шкала читается, окно не растягивается
+  const marks = hourMarks(6);
   const allDayEvents = allDay.map(x => x.event);
   return `<div class="planner-scale-wrap">
     ${allDayEvents.length ? `<div class="planner-scale-allday">

@@ -131,11 +131,14 @@ export function timelineBlocks(events) {
   return { allDay, blocks, lanes: laneCount };
 }
 
-/** Часы для подписей шкалы: 00:00, 03:00, … 24:00. */
-export function hourMarks(stepHours = 3) {
-  const step = Math.max(1, Math.round(Number(stepHours) || 3));
+/** Часы для подписей шкалы: 00:00, 06:00, … 24:00 (шаг по умолчанию — 6 часов). */
+export function hourMarks(stepHours = 6) {
+  const step = Math.max(1, Math.round(Number(stepHours) || 6));
   /** @type {string[]} */
   const out = [];
-  for (let h = 0; h <= 24; h += step) out.push(`${String(h % 24).padStart(2, '0')}:00`);
+  for (let h = 0; h <= 24; h += step) {
+    // Последняя отметка — «24:00», а не «00:00»: иначе одна и та же подпись стоит сверху и снизу
+    out.push(h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`);
+  }
   return out;
 }

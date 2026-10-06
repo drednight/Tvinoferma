@@ -203,12 +203,60 @@ export function packAllDayRows(spans) {
   return { rows: rows.length, spans: placed };
 }
 
+/**
+ * Марафоны по дням недели, разложенные по «дорожкам» внутри колонки.
+ *
+ * Марафон занимает **всю шкалу дня** — от отметки 00:00 и до конца суток, поэтому полоса
+ * идёт вертикально внутри колонки, а не поверх шапки с датами (раньше она их перекрывала).
+ * В соседних днях полосы стыкуются вплотную, поэтому один марафон выглядит сплошной линией
+ * через все свои дни.
+ *
+ * Если в один день идёт несколько марафонов, они **делят колонку по ширине**: поровну,
+ * как и записи, начинающиеся в одно время. Порядок дорожек задаётся первым появлением
+ * марафона, поэтому полоса не «перескакивает» с места на место между днями.
+ *
+ * @param {Array<Array<any>>} eventsByDate записи каждого дня полосы
+ * @returns {{ lanes: number, days: Array<Array<{ event: any, leftPct: number, widthPct: number }>> }}
+ */
+export function weekMarathonLanes(eventsByDate) {
+  const days = Array.isArray(eventsByDate) ? eventsByDate : [];
+  /** Порядок марафонов: по первому появлению, чтобы дорожки совпадали во всех днях. */
+  const order = new Map();
+  const perDay = days.map(events => {
+    /** @type {Map<string, any>} */
+    const found = new Map();
+    for (const event of (events || [])) {
+      if (event?.source !== 'marathon') continue;
+      const key = String(event.marathonId || event.id);
+      if (!order.has(key)) order.set(key, order.size);
+      found.set(key, event);
+    }
+    return found;
+  });
+
+  const laneCount = Math.max(1, order.size);
+  return {
+    lanes: laneCount,
+    days: perDay.map(found => [...found.entries()]
+      // Дорожка у каждого марафона своя и одна и та же во всех днях
+      .map(([key, event]) => ({ key, event, lane: order.get(key) }))
+      .sort((a, b) => a.lane - b.lane)
+      .map(({ event, lane }) => ({
+        event,
+        lane,
+        leftPct: (lane / laneCount) * 100,
+        widthPct: 100 / laneCount
+      })))
+  };
+}
+
 /** Все часы суток для оси времени: 24 строки по `HOUR_HEIGHT`. */
 export function weekHours() {
   return Array.from({ length: 24 }, (_, h) => ({
     hour: h,
-    label: `${String(h).padStart(2, '0')}:00`,
-    isMajor: h % 3 === 0
+    // Подписи каждые 6 часов: шкала читается и не пестрит (00 / 06 / 12 / 18 / 24)
+    label: h % 6 === 0 ? `${String(h).padStart(2, '0')}:00` : '',
+    isMajor: h % 6 === 0
   }));
 }
 
