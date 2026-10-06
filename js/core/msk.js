@@ -67,6 +67,13 @@ export function mskTime(value = new Date()) {
   return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
 }
 
+/** Время по Москве «ЧЧ:ММ:СС» — для часов в боковой панели. */
+export function mskTimeSeconds(value = new Date()) {
+  const p = mskParts(value);
+  if (!p.year) return '';
+  return `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}:${String(p.second).padStart(2, '0')}`;
+}
+
 /** Минут от полуночи по Москве: по ним сравниваются «сейчас» и время начала события. */
 export function mskMinutes(value = new Date()) {
   const p = mskParts(value);

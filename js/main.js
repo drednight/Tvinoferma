@@ -23,6 +23,7 @@ import { bindSettings, renderSettings } from './settings/settings.js';
 import { toast } from './core/ui.js';
 import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
 import { mountServerStatus } from './modules/servers/serverStatusView.js';
+import { mountMskClock } from './modules/servers/mskClock.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
 import { initNavBadges, refreshNavBadges } from './core/navBadges.js';
 
@@ -164,6 +165,8 @@ async function boot() {
 
     // Плашка «Статус серверов» в шапке: сначала последнее сохранённое чтение, затем обновляется само
     mountServerStatus(document.getElementById('server-status'));
+    // Часы по Москве над плашкой: ЧЧ:ММ:СС, тикают раз в секунду
+    mountMskClock(document.getElementById('msk-clock'));
 
     // 7. Первый рендер активной вкладки
     renderActiveTab('today');

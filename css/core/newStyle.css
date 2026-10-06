@@ -259,6 +259,7 @@ body[data-ui-style='next'] .stat-strip {
     margin: -28px -28px 0 0;
   }
   .next-sidebar .server-status,
+  .next-sidebar .msk-clock,
   .next-sidebar-divider {
     display: none;
   }
@@ -316,7 +317,8 @@ body[data-ui-style='next'] .stat-strip {
     min-height: 72px;
     padding: 9px 16px;
   }
-  body[data-ui-style='next'] .next-sidebar .server-status {
+  body[data-ui-style='next'] .next-sidebar .server-status,
+  body[data-ui-style='next'] .next-sidebar .msk-clock {
     display: none;
   }
   body[data-ui-style='next'] .content {

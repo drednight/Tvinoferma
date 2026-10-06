@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  mskParts, mskDate, mskTime, mskMinutes, mskWeekday, mskAddDays, mskDateTime, mskText,
+  mskParts, mskDate, mskTime, mskTimeSeconds, mskMinutes, mskWeekday, mskAddDays, mskDateTime, mskText,
   mskStamp, mskStampSeconds, weekdayOfDate
 } from '../js/core/msk.js';
 
@@ -17,6 +17,12 @@ describe('московское время', () => {
   it('полночь — «00:00», а не «24:00»', () => {
     expect(mskTime(new Date('2026-06-10T21:00:00Z'))).toBe('00:00');
     expect(mskMinutes(new Date('2026-06-10T21:00:00Z'))).toBe(0);
+  });
+
+  it('время с секундами «ЧЧ:ММ:СС» — по Москве, с нулями слева', () => {
+    expect(mskTimeSeconds(new Date('2026-06-10T17:20:05Z'))).toBe('20:20:05');
+    expect(mskTimeSeconds(new Date('2026-06-10T21:00:00Z'))).toBe('00:00:00');
+    expect(mskTimeSeconds(new Date('не дата'))).toBe('');
   });
 
   it('зимой смещение то же: UTC+3 круглый год', () => {
