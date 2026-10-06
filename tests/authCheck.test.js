@@ -42,9 +42,12 @@ beforeEach(async () => {
 describe('authDetails: результат и время последней проверки', () => {
   it('не проверялся / онлайн / оффлайн с понятной причиной', () => {
     expect(authDetails({ id: 'a' })).toBe('Оффлайн · ещё не проверялся');
-    expect(authDetails({ id: 'a', isLoggedIn: true, lastLoginCheck: '2026-10-02T15:20:00' })).toMatch(/^Онлайн · проверено 02\.10\.2026 15:20$/);
-    expect(authDetails({ id: 'a', isLoggedIn: false, lastLoginReason: 'not_logged_in', lastLoginCheck: '2026-10-02T15:20:00' }))
-      .toBe('Оффлайн: не выполнен вход на сайт · проверено 02.10.2026 15:20');
+    // Время проверки показывается по Москве, поэтому момент задаётся явным UTC:
+    // 15:20 UTC = 18:20 МСК. Без «Z» JS счёл бы строку местным временем и на CI (UTC)
+    // получилось бы другое значение — тест зависел бы от пояса машины.
+    expect(authDetails({ id: 'a', isLoggedIn: true, lastLoginCheck: '2026-10-02T15:20:00Z' })).toMatch(/^Онлайн · проверено 02\.10\.2026 18:20$/);
+    expect(authDetails({ id: 'a', isLoggedIn: false, lastLoginReason: 'not_logged_in', lastLoginCheck: '2026-10-02T15:20:00Z' }))
+      .toBe('Оффлайн: не выполнен вход на сайт · проверено 02.10.2026 18:20');
   });
 });
 
