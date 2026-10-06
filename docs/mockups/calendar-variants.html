@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Календарь: два варианта компактного вида</title>
+<link rel="stylesheet" href="/css/core/variables.css">
+<style>
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  h1 { font-size: 1.15rem; margin: 0 0 4px; }
+  h2 { font-size: 1rem; margin: 0 0 2px; }
+  .lead { color: var(--text-dim); font-size: 0.85rem; margin: 0 0 22px; }
+  .variant { margin-bottom: 34px; }
+  .variant-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .tag { font-size: 0.7rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); }
+  .tag.rec { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
+  .variant-note { color: var(--text-dim); font-size: 0.8rem; margin: 0 0 10px; max-width: 92ch; }
+  .card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-1); box-shadow: var(--shadow-1); padding: 14px; }
+
+  /* ---------- Общая шапка календаря ---------- */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .cal-title { font-weight: 650; font-size: 0.95rem; text-transform: capitalize; }
+  .cal-nav { display: flex; align-items: center; gap: 6px; }
+  .btn { font: inherit; padding: 3px 10px; border-radius: var(--radius-xs); border: 1px solid var(--border); background: var(--surface-2); color: var(--text-dim); cursor: pointer; font-size: 0.78rem; }
+  .btn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
+  .switch .btn { border: 0; border-radius: 0; }
+  .dng-legend { display: flex; gap: 12px; font-size: 0.74rem; color: var(--text-dim); margin-bottom: 10px; flex-wrap: wrap; }
+  .dng-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .dng-w i { background: rgba(224,90,105,.85); } .dng-a i { background: rgba(158,206,106,.85); } .dng-r i { background: rgba(110,142,248,.85); }
+
+  /* ================= ВАРИАНТ A: неделя 7 колонок × 24 часа ================= */
+  .week { --hour: 30px; display: grid; grid-template-columns: 58px repeat(7, minmax(0, 1fr)); }
+  .week-head { position: sticky; top: 0; }
+  .week-day-head { text-align: center; padding: 6px 2px; border-bottom: 1px solid var(--border); }
+  .week-day-head small { display: block; color: var(--text-faint); font-size: 0.68rem; }
+  .week-day-head b { font-size: 0.86rem; }
+  .week-day-head.is-today b { color: var(--accent); }
+  .week-allday { display: flex; flex-direction: column; gap: 3px; padding: 4px 3px; border-bottom: 1px solid var(--border); min-height: 24px; }
+  .chip { font-size: 0.6rem; padding: 1px 5px; border-radius: 3px; border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip.mar { border-left-color: #b47eff; background: rgba(180,126,255,.2); color: var(--text); }
+
+  .week-time { position: relative; }
+  .week-hour { height: var(--hour); box-sizing: border-box; border-top: 1px solid var(--border); color: var(--text-faint); font-size: 0.66rem; text-align: right; padding-right: 6px; font-variant-numeric: tabular-nums; }
+  .week-hour:first-child { border-top: 0; }
+
+  .week-col { position: relative; border-left: 1px solid var(--border); }
+  .week-col.is-today { background: rgba(110,142,248,.055); }
+  .week-col-line { height: var(--hour); box-sizing: border-box; border-top: 1px solid var(--border); }
+  .week-col-line:first-child { border-top: 0; }
+  .week-col-line.half { border-top-style: dotted; border-top-color: color-mix(in srgb, var(--border) 55%, transparent); }
+
+  .ev { position: absolute; left: 3px; right: 3px; box-sizing: border-box; overflow: hidden; border-left: 3px solid var(--accent); border-radius: 4px; background: var(--accent-soft); padding: 2px 5px; font-size: 0.66rem; line-height: 1.25; color: var(--text-dim); }
+  .ev b { display: block; font-size: 0.7rem; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev small { color: var(--text-faint); font-size: 0.62rem; font-variant-numeric: tabular-nums; }
+  .ev.rec { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.15) 0 4px, transparent 4px 8px); }
+  .ev.yellow { border-left-color: var(--warning); background-color: var(--warning-soft); }
+  .ev.green { border-left-color: var(--success); background-color: var(--success-soft); }
+  .ev.red { border-left-color: var(--danger); background-color: var(--danger-soft); }
+  .ev.purple { border-left-color: #b47eff; background-color: rgba(180,126,255,.22); }
+  .now-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+  .now-line::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .week-scroll { max-height: none; overflow: visible; }
+
+  /* ================= ВАРИАНТ B: 7 мини-шкал в ряд ================= */
+  .mini { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .mini-day { border: 1px solid var(--border); border-radius: var(--radius-sm); background: rgba(10,14,21,.55); padding: 6px 6px 5px; display: flex; flex-direction: column; gap: 4px; min-height: 210px; }
+  .mini-day.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent-line); }
+  .mini-num { align-self: flex-end; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; color: var(--text-dim); font-size: 0.8rem; font-weight: 700; }
+  .mini-day.is-today .mini-num { background: var(--accent); color: var(--on-accent); }
+  .mini-allday { display: flex; flex-wrap: wrap; gap: 2px; }
+  .mini-scale { position: relative; flex: 1 1 auto; min-height: 132px; border-radius: 3px;
+    background: repeating-linear-gradient(to bottom, rgba(255,255,255,.07) 0 1px, transparent 1px 25%), rgba(0,0,0,.16); }
+  .mini-blk { position: absolute; box-sizing: border-box; min-height: 4px; border-left: 2px solid var(--accent); border-radius: 2px; background: var(--accent-soft); }
+  .mini-blk.rec { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.16) 0 3px, transparent 3px 6px); }
+  .mini-blk.yellow { border-left-color: var(--warning); background-color: var(--warning-soft); }
+  .mini-blk.green { border-left-color: var(--success); background-color: var(--success-soft); }
+  .mini-blk.red { border-left-color: var(--danger); background-color: var(--danger-soft); }
+  .mini-blk.purple { border-left-color: #b47eff; background-color: rgba(180,126,255,.22); }
+  .mini-dng { display: flex; align-items: center; gap: 4px; font-size: 0.6rem; color: var(--text-faint); }
+  .mini-dng i { width: 8px; height: 8px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Календарь: два варианта компактного вида</h1>
+<p class="lead">Оба варианта на одних данных: 7 дней (вчера → +5), постоянные ивенты, марафон и свои записи. Данные вымышленные.</p>
+
+<!-- ================= ВАРИАНТ A ================= -->
+<section class="variant">
+  <div class="variant-head">
+    <h2>Вариант A — «Неделя»: 7 колонок × 24 часа</h2>
+    <span class="tag rec">рекомендую</span>
+  </div>
+  <p class="variant-note">Время идёт сверху вниз, как в Google Calendar и Outlook. День виден целиком и в контексте недели: сразу понятно, где окна свободны. Красная линия — текущее время, сегодняшняя колонка подсвечена.</p>
+  <div class="card">
+    <div class="cal-head">
+      <div class="cal-title">6 — 12 октября 2026</div>
+      <div class="cal-nav">
+        <button class="btn">←</button>
+        <button class="btn">Сегодня</button>
+        <button class="btn">→</button>
+        <span class="switch"><button class="btn on">Неделя</button><button class="btn">Месяц</button></span>
+      </div>
+    </div>
+    <div class="dng-legend">
+      <span class="dng-w"><i></i>Оружие</span><span class="dng-a"><i></i>Доспех</span><span class="dng-r"><i></i>Реликвия</span>
+      <span style="color:var(--text-faint)">цвет полосы дня = данж дня</span>
+    </div>
+
+    <div class="week-scroll">
+      <div class="week">
+        <!-- шапка -->
+        <div></div>
+        <div class="week-day-head"><small>вт</small><b>6</b></div>
+        <div class="week-day-head is-today"><small>ср</small><b>7</b></div>
+        <div class="week-day-head"><small>чт</small><b>8</b></div>
+        <div class="week-day-head"><small>пт</small><b>9</b></div>
+        <div class="week-day-head"><small>сб</small><b>10</b></div>
+        <div class="week-day-head"><small>вс</small><b>11</b></div>
+        <div class="week-day-head"><small>пн</small><b>12</b></div>
+
+        <!-- весь день / без времени -->
+        <div class="week-allday" style="grid-column:1; align-items:flex-end"><span class="chip" style="border:0;background:none;color:var(--text-faint)">весь день</span></div>
+        <div class="week-allday" style="grid-column:2"><span class="chip mar">🏁 Летний марафон</span><span class="chip">Заметка: проверить почту</span></div>
+        <div class="week-allday" style="grid-column:3"><span class="chip mar">🏁 Летний марафон</span></div>
+        <div class="week-allday" style="grid-column:4"><span class="chip mar">🏁 Летний марафон</span></div>
+        <div class="week-allday" style="grid-column:5"><span class="chip mar">🏁 Летний марафон</span></div>
+        <div class="week-allday" style="grid-column:6"><span class="chip mar">🏁 Летний марафон</span></div>
+        <div class="week-allday" style="grid-column:7"><span class="chip mar">🏁 Летний марафон</span></div>
+        <div class="week-allday" style="grid-column:8"><span class="chip mar">🏁 Летний марафон</span></div>
+
+        <!-- ось времени -->
+        <div class="week-time">
+          <div class="week-hour">00:00</div><div class="week-hour">01:00</div><div class="week-hour">02:00</div>
+          <div class="week-hour">03:00</div><div class="week-hour">04:00</div><div class="week-hour">05:00</div>
+          <div class="week-hour">06:00</div><div class="week-hour">07:00</div><div class="week-hour">08:00</div>
+          <div class="week-hour">09:00</div><div class="week-hour">10:00</div><div class="week-hour">11:00</div>
+          <div class="week-hour">12:00</div><div class="week-hour">13:00</div><div class="week-hour">14:00</div>
+          <div class="week-hour">15:00</div><div class="week-hour">16:00</div><div class="week-hour">17:00</div>
+          <div class="week-hour">18:00</div><div class="week-hour">19:00</div><div class="week-hour">20:00</div>
+          <div class="week-hour">21:00</div><div class="week-hour">22:00</div><div class="week-hour">23:00</div>
+        </div>
+
+        <!-- колонки дней: 24 часа по 44px -->
+        <div class="week-col" id="col1"></div>
+        <div class="week-col is-today" id="col2"></div>
+        <div class="week-col" id="col3"></div>
+        <div class="week-col" id="col4"></div>
+        <div class="week-col" id="col5"></div>
+        <div class="week-col" id="col6"></div>
+        <div class="week-col" id="col7"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ВАРИАНТ B ================= -->
+<section class="variant">
+  <div class="variant-head">
+    <h2>Вариант B — «7 мини-шкал в ряд»</h2>
+    <span class="tag">меньше изменений</span>
+  </div>
+  <p class="variant-note">Семь отдельных суток рядом: каждая колонка — своя шкала. Компактно по высоте и близко к текущему виду, но сравнить время между днями сложнее, а свободные окна не читаются.</p>
+  <div class="card">
+    <div class="cal-head">
+      <div class="cal-title">6 — 12 октября 2026</div>
+      <div class="cal-nav">
+        <button class="btn">←</button>
+        <button class="btn">Сегодня</button>
+        <button class="btn">→</button>
+        <span class="switch"><button class="btn on">Неделя</button><button class="btn">Месяц</button></span>
+      </div>
+    </div>
+    <div class="dng-legend">
+      <span class="dng-w"><i></i>Оружие</span><span class="dng-a"><i></i>Доспех</span><span class="dng-r"><i></i>Реликвия</span>
+    </div>
+    <div class="mini" id="mini"></div>
+  </div>
+</section>
+
+<script>
+  // --- Данные ---
+  const HOUR = 30;
+  const days = [
+    { n: 6,  wd: 'вт', dng: 'relic',  today: false },
+    { n: 7,  wd: 'ср', dng: 'weapon', today: true  },
+    { n: 8,  wd: 'чт', dng: 'armor',  today: false },
+    { n: 9,  wd: 'пт', dng: 'relic',  today: false },
+    { n: 10, wd: 'сб', dng: 'weapon', today: false },
+    { n: 11, wd: 'вс', dng: 'armor',  today: false },
+    { n: 12, wd: 'пн', dng: 'relic',  today: false }
+  ];
+  // индекс дня -> записи
+  const events = {
+    0: [{ t: 'Докачать небо', s: '21:00', e: '22:30', c: 'blue' }],
+    1: [
+      { t: 'Ритм Гильдии', s: '19:30', e: '20:00', c: 'green', rec: true },
+      { t: 'Запретное учение', s: '20:00', e: '21:30', c: 'purple', rec: true },
+      { t: 'Своё дело: аукцион', s: '10:00', e: '11:00', c: 'blue' }
+    ],
+    2: [
+      { t: 'Арена Героев', s: '19:00', e: '24:00', c: 'yellow', rec: true },
+      { t: 'Сбор с пати', s: '18:00', e: '19:00', c: 'blue' }
+    ],
+    3: [{ t: 'Битва Династий', s: '20:20', e: '22:20', c: 'red', rec: true }],
+    4: [{ t: 'Фарм проходок', s: '14:00', e: '17:00', c: 'blue' }],
+    5: [],
+    6: []
+  };
+  const toMin = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+
+  // --- Вариант A: колонки ---
+  const nowMin = 20 * 60 + 35;   // «сейчас» 20:35
+  days.forEach((day, i) => {
+    const col = document.getElementById('col' + (i + 1));
+    // часовые линии (каждый час, половинные — пунктиром)
+    let lines = '';
+    for (let h = 1; h < 24; h++) {
+      lines += '<div class="week-col-line' + (h % 2 ? '' : ' half') + '"></div>';
+    }
+    // блоки записей
+    const blocks = (events[i] || []).map(ev => {
+      const top = (toMin(ev.s) / 60) * HOUR;
+      const end = Math.min(toMin(ev.e), 1440);
+      const h = Math.max(((end - toMin(ev.s)) / 60) * HOUR, 12);
+      return `<div class="ev ${ev.c}${ev.rec ? ' rec' : ''}" style="top:${top}px;height:${h}px">
+        <b>${ev.t}</b><small>${ev.s}–${ev.e}</small></div>`;
+    }).join('');
+    // линия «сейчас» только в сегодняшней колонке
+    const now = day.today ? `<div class="now-line" style="top:${(nowMin / 60) * HOUR}px"></div>` : '';
+    col.innerHTML = lines + blocks + now;
+  });
+
+  // --- Вариант B: мини-шкалы ---
+  const mini = document.getElementById('mini');
+  const dngColor = { relic: 'rgba(110,142,248,.85)', weapon: 'rgba(224,90,105,.85)', armor: 'rgba(158,206,106,.85)' };
+  mini.innerHTML = days.map((day, i) => {
+    const blocks = (events[i] || []).map(ev => {
+      const start = toMin(ev.s);
+      const end = Math.min(toMin(ev.e), 1440);
+      return `<div class="mini-blk ${ev.c}${ev.rec ? ' rec' : ''}" style="top:${(start / 1440 * 100).toFixed(2)}%;height:${Math.max((end - start) / 1440 * 100, 1.5).toFixed(2)}%"></div>`;
+    }).join('');
+    const allday = i >= 1 && i <= 6 ? '<span class="chip mar">🏁 Марафон</span>' : (i === 1 ? '<span class="chip">Заметка</span>' : '');
+    return `<div class="mini-day${day.today ? ' is-today' : ''}">
+      <div class="mini-num">${day.n}</div>
+      <div class="mini-allday">${i === 1 ? '<span class="chip mar">🏁 Марафон</span><span class="chip">Заметка</span>' : (i >= 1 ? '<span class="chip mar">🏁 Марафон</span>' : '')}</div>
+      <div class="mini-scale">${blocks}</div>
+      <div class="mini-dng"><i style="background:${dngColor[day.dng]}"></i>${day.wd} · данж дня</div>
+    </div>`;
+  }).join('');
+</script>
+</body>
+</html>
