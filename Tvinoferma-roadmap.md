@@ -1,6 +1,6 @@
 # Роадмап Tvinoferma
 
-Репозиторий: [drednight/Tvinoferma](https://github.com/drednight/Tvinoferma). Стек: Tauri 2 (Rust) + JS без фреймворка, версия 0.2.2, автообновление и CI уже настроены. Статусы ниже сверены с кодом на ветке `main`.
+Репозиторий: [drednight/Tvinoferma](https://github.com/drednight/Tvinoferma). Стек: Tauri 2 (Rust) + JS без фреймворка, версия 1.0.0, автообновление и CI уже настроены. Статусы ниже сверены с кодом на ветке `main`.
 
 ## Где мы сейчас: исходный план vs код
 

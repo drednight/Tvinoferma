@@ -1,6 +1,6 @@
 # Роадмап Tvinoferma (версия 3, объединённая)
 
-> Репозиторий: [drednight/Tvinoferma](https://github.com/drednight/Tvinoferma) · Стек: Tauri 2 (Rust) + JavaScript без фреймворка · Версия в `Cargo.toml`: 0.2.2 · Автообновление и CI уже настроены.
+> Репозиторий: [drednight/Tvinoferma](https://github.com/drednight/Tvinoferma) · Стек: Tauri 2 (Rust) + JavaScript без фреймворка · Версия в `Cargo.toml`: 1.0.0 · Автообновление и CI уже настроены.
 >
 > Документ объединяет три источника:
 > 1. **Ваш исходный план** (v2.0 / v2.2) — метка `план`.
