@@ -20,6 +20,10 @@ import {
   rewardPotential, calendarStates
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate, phaseHint } from './dates.js';
+import { mskDate } from '../../core/msk.js';
+
+// «Сегодня» по Москве: сроки марафонов и дневное окно задания считаются по игровому дню
+const todayStr = () => mskDate();
 
 const view = { type: 'list', id: null };
 const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set() };
@@ -266,7 +270,7 @@ function syncAgeHtml(m) {
 function marathonCard(m, { inFolder = false } = {}) {
   const t = marathonTotals(m);
   const phase = marathonPhase(m);
-  const hint = phaseHint(m, new Date().toLocaleDateString('sv'));
+  const hint = phaseHint(m, todayStr());
   return `
     <article class="mr-card mr-ph-${phase}" data-open="${m.id}">
       <header>
@@ -718,7 +722,7 @@ function openCellCard(m, charId, taskId) {
     const x = computeCell(m, charId, taskId);
     const cell = ensureCell(m.progress, charId, taskId);
     const all = getAllDatesInRange(m.startDate, m.endDate);
-    const today = new Date().toLocaleDateString('sv');
+    const today = todayStr();
     const firstDow = (new Date(all[0] + 'T00:00:00').getDay() + 6) % 7; // Пн = 0
     const calState = calendarStates(m, task, cell, today);
     const sortedRewards = [...task.rewards].sort((a, b) => a.threshold - b.threshold);

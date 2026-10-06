@@ -7,13 +7,14 @@
 // Модуль без DOM: на вход состояние и время, на выход строки. Поэтому он покрыт тестами.
 
 import { freshnessOf } from '../../core/freshness.js';
+import { mskDate } from '../../core/msk.js';
 import { marathonPhase, computeCell } from '../marathons/model.js';
 import { isTaskActiveOnDate, getAllDatesInRange } from '../marathons/dates.js';
 import { charactersInParty, NO_PARTY_LABEL, hasNoParty } from '../parties/membership.js';
 
-/** Сегодняшняя дата в виде «ГГГГ-ММ-ДД» (местное время, как в остальном приложении). */
+/** Сегодняшняя дата в виде «ГГГГ-ММ-ДД» по московскому времени — как игровой день. */
 export function todayStr(now = new Date()) {
-  return now.toLocaleDateString('sv');
+  return mskDate(now);
 }
 
 /** Сколько дней до даты (отрицательное — дата прошла). */

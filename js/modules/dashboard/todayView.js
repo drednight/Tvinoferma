@@ -12,7 +12,20 @@ import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord, todayStr } from './today.js';
 import { plannerHtml, bindPlanner, openPlannerDay } from './plannerView.js';
 import { plannerEventsForDate } from './planner.js';
+import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
+
+/**
+ * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
+ * «без времени». Диапазон считает `timeline.js` — та же функция, что строит блоки шкалы,
+ * поэтому список и календарь не расходятся.
+ */
+export function eventTimeText(event) {
+  if (!event?.time) return event?.source === 'marathon' ? 'марафон · весь день' : 'без времени';
+  const end = eventEndTime(event);
+  const span = end && end !== event.time ? `${event.time}–${end}` : event.time;
+  return event.source === 'recurring' ? `${span} · ивент` : span;
+}
 
 /**
  * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и все записи на сегодня.
@@ -55,7 +68,7 @@ export function todaySideHtml(appState = state) {
             <span class="planner-color is-${escapeHtml(e.color || 'blue')}"></span>
             <span class="today-row-text">
               <b>${escapeHtml(e.title)}</b>
-              <small class="muted">${escapeHtml(e.time || (e.source === 'marathon' ? 'марафон' : 'без времени'))}${e.done ? ' · готово' : ''}</small>
+              <small class="muted">${escapeHtml(eventTimeText(e))}${e.done ? ' · готово' : ''}</small>
             </span>
             ${e.source === 'marathon' ? `
               <button type="button" class="btn secondary small" data-today-act="open-marathon" data-today-marathon="${escapeHtml(e.marathonId)}"

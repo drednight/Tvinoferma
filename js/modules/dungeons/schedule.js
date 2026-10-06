@@ -7,6 +7,8 @@
 //
 // Модуль без DOM: на вход даты, на выход данные для показа. Поэтому он покрыт тестами.
 
+import { mskAddDays } from '../../core/msk.js';
+
 /** Порядок цикла. Их же ключи проходок (`char.dungeonPasses`). */
 export const DUNGEON_CYCLE = ['relic', 'weapon', 'armor'];
 
@@ -32,11 +34,9 @@ export function daysBetween(dateA, dateB) {
   return Math.round((b - a) / 86400000);
 }
 
-/** Сдвиг даты на n дней (n может быть отрицательным). */
+/** Сдвиг даты на n дней (n может быть отрицательным). Календарная арифметика без часовых поясов. */
 export function shiftDate(date, n) {
-  const base = new Date(`${date}T00:00:00`);
-  base.setDate(base.getDate() + (Number(n) || 0));
-  return base.toLocaleDateString('sv');
+  return mskAddDays(date, n);
 }
 
 /**

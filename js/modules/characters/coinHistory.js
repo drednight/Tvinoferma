@@ -7,11 +7,13 @@ import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { formatCoins, formatDelta, normalizeCoinHistory, needsCoinRecheck } from '../../core/coins.js';
+import { mskStampSeconds } from '../../core/msk.js';
 
 const fmtDate = (iso) => {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return 'Неизвестно';
-  return `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })}`;
+  // Время по Москве: в истории монет сравнивают с игровыми событиями, а не с часами машины
+  return mskStampSeconds(d);
 };
 
 function entryHtml(h) {

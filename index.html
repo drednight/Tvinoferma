@@ -357,11 +357,21 @@
             <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
             <label><input type="checkbox" data-setting="notifications.marathonEnding" /> Марафон заканчивается (≤ 2 дней)</label>
             <label><input type="checkbox" data-setting="notifications.dailyReminder" /> Ежедневное напоминание о заданиях после
-              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч</label>
+              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч (МСК)</label>
           </div>
+          <div class="setting-row" style="margin-top: 10px;">
+            <div>
+              <strong>Постоянные ивенты</strong>
+              <p class="muted">Игровые события идут каждую неделю. Отметьте, о каких напоминать, и за сколько до начала.
+                Время — московское, как в игре. Расписание: Битва Династий — пн и пт 20:20–22:20; Ритм Гильдии — ср 19:30–20:00;
+                Запретное учение — ср 20:00–21:30; Арена Героев — чт 19:00–24:00.</p>
+            </div>
+          </div>
+          <div class="event-notify-list" id="event-notify-list"></div>
           <div class="row gap" style="margin-top: 12px;">
             <button id="test-notifications-btn" class="btn ghost">🔔 Проверить сейчас</button>
           </div>
+          <p class="muted" id="notify-diagnostics" style="margin-top: 8px;"></p>
         </details>
         <details class="panel fold">
           <summary>

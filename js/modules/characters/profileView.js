@@ -5,6 +5,7 @@ import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/m
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
+import { mskStamp } from '../../core/msk.js';
 import { freshnessOf, freshnessChipHtml, marathonSyncList, formatWhen, formatHoursSpan, thresholdHours } from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
@@ -513,7 +514,7 @@ function coinBlockHtml(char) {
   let last = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
   const d = char.lastCoinUpdate ? new Date(char.lastCoinUpdate) : null;
   if (d && !isNaN(d.getTime())) {
-    last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+    last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${mskStamp(d)}</span>`;
   }
   return `
     <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>

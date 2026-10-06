@@ -3,9 +3,11 @@
 //
 // Режимы (settings.updates.mode):
 //   startup — один раз при запуске приложения
-//   daily   — каждый день в 00:00 (по местному времени); если приложение было закрыто, проверка при запуске
+//   daily   — каждый день в 00:00 (по московскому времени); если приложение было закрыто, проверка при запуске
 //   weekly  — каждый понедельник в 00:00; если приложение было закрыто, проверка при запуске
 //   never   — автопроверка выключена (кнопка «Проверить обновления» работает всегда)
+
+import { mskStamp } from '../core/msk.js';
 
 export const UPDATE_MODES = ['startup', 'daily', 'weekly', 'never'];
 
@@ -57,5 +59,6 @@ export function nextCheckText(mode, now = new Date()) {
   if (mode === 'never') return 'Автопроверка выключена';
   if (mode === 'startup') return 'Следующая проверка: при следующем запуске';
   const d = nextBoundary(mode, now);
-  return `Следующая проверка: ${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  // Время следующей проверки — по Москве: пользователь сверяет его с игровым расписанием
+  return `Следующая проверка: ${mskStamp(d)}`;
 }
