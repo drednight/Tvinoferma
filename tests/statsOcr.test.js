@@ -252,7 +252,8 @@ describe('полный разбор скриншота', () => {
     ];
     const res = readStats(lines);
     expect(res.stats).toEqual({ hp: 42350, atkSpeed: 0.8, critChance: 12 });
-    expect(res.missed).toHaveLength(STAT_FIELDS.length - 3);
+    // Поля с `ignore` («Боевая сила») в список ненайденных не попадают
+    expect(res.missed).toHaveLength(STAT_FIELDS.filter(f => !f.ignore).length - 3);
     expect(res.missed).toContain('Меткость');
   });
 
