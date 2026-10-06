@@ -250,19 +250,29 @@ export function weekMarathonLanes(eventsByDate) {
   };
 }
 
-/**
- * Шаг подписей оси времени в часах. Между двумя подписями остаётся `HOUR_LABEL_STEP` ячеек:
- * при 3 ось читается и не пестрит (00 / 03 / 06 / … / 21).
- */
+/** Шаг подписей оси времени в часах: 00:00, 03:00, 06:00 … 21:00. */
 export const HOUR_LABEL_STEP = 3;
+/** Сколько ячеек лежит между двумя подписями оси. */
+export const CELLS_PER_LABEL = 2;
+/** Длительность одной ячейки сетки в часах (3 ч / 2 ячейки = 1,5 ч). */
+export const CELL_HOURS = HOUR_LABEL_STEP / CELLS_PER_LABEL;
+/** Высота одной ячейки сетки в пикселях. Сутки по-прежнему равны 24 × `HOUR_HEIGHT`. */
+export const CELL_HEIGHT = CELL_HOURS * HOUR_HEIGHT;
 
-/** Все часы суток для оси времени: 24 строки по `HOUR_HEIGHT`, подписаны каждые `HOUR_LABEL_STEP` часов. */
+/**
+ * Ячейки сетки для оси времени и колонок: между подписями ровно `CELLS_PER_LABEL` ячейки.
+ * Блоки записей считаются в пикселях от начала суток и от сетки не зависят.
+ */
 export function weekHours() {
-  return Array.from({ length: 24 }, (_, h) => ({
-    hour: h,
-    label: h % HOUR_LABEL_STEP === 0 ? `${String(h).padStart(2, '0')}:00` : '',
-    isMajor: h % HOUR_LABEL_STEP === 0
-  }));
+  const count = Math.round(24 / CELL_HOURS);
+  return Array.from({ length: count }, (_, i) => {
+    const isMajor = i % CELLS_PER_LABEL === 0;
+    return {
+      hour: i * CELL_HOURS,
+      label: isMajor ? `${String(i * CELL_HOURS).padStart(2, '0')}:00` : '',
+      isMajor
+    };
+  });
 }
 
 /**

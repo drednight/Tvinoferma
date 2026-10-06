@@ -506,7 +506,7 @@
    Время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы.
    Сутки показаны целиком, без прокрутки: неделя читается одним взглядом.
    Высота часа задана переменной (js: HOUR_HEIGHT) — ось и блоки считаются от неё, иначе разъедутся. */
-.planner.is-week { --hour-h: 26px; }
+.planner.is-week { --hour-h: 26px; --cell-h: 39px; }
 
 .planner-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
 .planner-switch .btn { border: 0; border-radius: 0; }
@@ -535,7 +535,7 @@
 .cal-week-allday-label { color: var(--text-faint); font-size: 0.58rem; }
 /* Подпись часа стоит на своей линии, а не по центру строки — так её читают как отметку времени */
 .cal-hour {
-  height: var(--hour-h);
+  height: var(--cell-h);
   box-sizing: border-box;
   position: relative;
   color: var(--text-faint);
@@ -615,7 +615,7 @@
 
 /* Дорожка дня: часовые линии и блоки записей */
 .cal-day-track { position: relative; flex: 1 1 auto; }
-.cal-line { height: var(--hour-h); box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.cal-line { height: var(--cell-h); box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
 .cal-line.is-major { border-top-color: var(--border); }
 .cal-line:first-child { border-top: 0; }
 

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight,
-  weekHours, nowLineTop, HOUR_HEIGHT, ALLDAY_ROW_HEIGHT, WEEK_DAYS, DAY_MINUTES
+  weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, WEEK_DAYS, DAY_MINUTES
 } from '../js/modules/dashboard/weekView.js';
 import { timelineBlocks } from '../js/modules/dashboard/timeline.js';
 
@@ -97,14 +97,16 @@ describe('раскладка недели', () => {
   });
 
   it('высота суток согласована и не требует прокрутки', () => {
-    const hours = weekHours();
-    expect(hours).toHaveLength(24);
-    expect(hours[0].label).toBe('00:00');
-    expect(hours[23].label).toBe('');
-    // Подписи каждые 3 часа: между подписями ровно три ячейки — иначе ось становится шумной
-    expect(hours.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
+    const cells = weekHours();
+    // Ячейка 1,5 ч: между двумя подписями ровно две ячейки
+    expect(cells).toHaveLength(16);
+    expect(cells[0].label).toBe('00:00');
+    expect(cells[1].label).toBe('');
+    expect(cells[2].label).toBe('03:00');
+    expect(cells.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
     // Сутки целиком укладываются в 624 px: неделя видна одним взглядом, без прокрутки часов
     expect(24 * HOUR_HEIGHT).toBe(624);
+    expect(cells.length * CELL_HEIGHT).toBe(624);
     expect(HOUR_HEIGHT).toBeLessThan(30);
   });
 });

@@ -113,9 +113,11 @@ function weekHtml(appState) {
   // всю колонку и не закрывают часовую шкалу. Марафон идёт первым — он важнее заметок
   const ownAllDay = layout.map(day => [...day.allDay].sort((a, b) =>
     Number(b.source === 'marathon') - Number(a.source === 'marathon')));
-  // Область «весь день» растёт по самому насыщенному дню недели; минимум — одна строка
-  const ownRows = Math.max(1, ...ownAllDay.map(list => list.length));
-  const allDayH = allDayHeight(ownRows);
+  // Область «весь день» растёт по самому насыщенному дню недели; если записей нет ни в одном дне — скрыта
+  const ownRows = Math.max(0, ...ownAllDay.map(list => list.length));
+  // Ячейка «весь день» стоит над 00:00 и нужна, только если на неделе есть такие записи
+  const hasAllDay = ownRows > 0;
+  const allDayH = hasAllDay ? allDayHeight(ownRows) : 0;
   const trackH = HOUR_HEIGHT * 24;
 
   return `
@@ -123,9 +125,9 @@ function weekHtml(appState) {
          style="--allday-rows:${ownRows}"
          aria-label="Неделя: 7 дней, время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
-        <div class="cal-week-allday" style="height:${allDayH}px">
+        ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">
           <span class="cal-week-allday-label">весь день</span>
-        </div>
+        </div>` : ''}
         ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.label}</div>`).join('')}
       </div>
       <div class="cal-week-days">
@@ -144,10 +146,10 @@ function weekHtml(appState) {
             <b>${d.day}</b>
             <span class="cal-day-dng is-${dungeon.key}" title="Данж дня: ${dungeon.name}">${dungeon.icon}</span>
           </button>
-          <div class="cal-day-allday" style="height:${allDayH}px">
+          ${hasAllDay ? `<div class="cal-day-allday" style="height:${allDayH}px">
             ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
               title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
-          </div>
+          </div>` : ''}
           <div class="cal-day-track" style="height:${trackH}px" data-planner-date="${d.date}"
                title="${escapeHtml(cellTitle)}">
             ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}

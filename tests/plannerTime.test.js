@@ -220,10 +220,26 @@ describe('неделя: «весь день» подписан под датой
     expect(col.querySelector('.cal-day-track .cal-chip')).toBeNull();
   });
 
-  it('ось времени подписана каждые 3 часа, между подписями три ячейки', () => {
+  it('ось времени подписана каждые 3 часа, между подписями две ячейки', () => {
     state.settings.ui.plannerView = 'week';
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     const labels = [...doc.querySelectorAll('.cal-hour')].map(h => h.textContent.trim()).filter(Boolean);
     expect(labels).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
+  });
+
+  it('ячейка «весь день» над 00:00 скрыта, если на неделе нет таких записей', () => {
+    state.settings.ui.plannerView = 'week';
+    const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+    expect(doc.querySelector('.cal-week-allday')).toBeNull();
+    expect(doc.querySelector('.cal-day-allday')).toBeNull();
+    expect(doc.querySelectorAll('.cal-line')).toHaveLength(7 * 16);
+  });
+
+  it('ячейка «весь день» появляется, когда есть марафон или запись без времени', () => {
+    state.settings.ui.plannerView = 'week';
+    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+    expect(doc.querySelector('.cal-week-allday')).not.toBeNull();
+    expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(7);
   });
 });
