@@ -161,8 +161,9 @@ export function openCharacterProfile(char) {
         <div class="info-block" style="margin-bottom:16px;">
           <h4>Бой и Защита</h4>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Здоровье', stats.hpMax ? `${stats.hp}/${stats.hpMax}` : stats.hp)}
-             ${statRow('Маг. энергия', stats.mpMax ? `${stats.mp}/${stats.mpMax}` : stats.mp)}
+             ${statRow('Здоровье', stats.hp)}
+             ${statRow('Маг. энергия', stats.mp)}
+             ${statRow('Бонус к уровню', stats.levelBonus ? `${stats.levelBonus}%` : '-')}
              ${statRow('Физ. атака', stats.physAttack)}
              ${statRow('Физ. защита', stats.physDefense)}
              ${statRow('Маг. атака', stats.magAttack)}
@@ -182,8 +183,6 @@ export function openCharacterProfile(char) {
              ${statRow('Показатель защиты (ПЗ)', stats.pz)}
              ${statRow('Боевой дух', stats.morale)}
              ${statRow('Сила', stats.power)}
-             ${statRow('Скрытность', stats.stealth)}
-             ${statRow('Обнаружение', stats.detection)}
           </div>
         </div>
 

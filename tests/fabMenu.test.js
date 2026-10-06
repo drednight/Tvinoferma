@@ -28,13 +28,14 @@ const menu = () => document.getElementById('fab-menu');
 const fab = () => document.getElementById('fab-main-btn');
 
 describe('кнопка «+» на вкладке «Марафоны»', () => {
-  it('видна на вкладке и открывает меню из двух пунктов', () => {
+  it('видна на вкладке и открывает speed-dial с орбами марафонов (остальные прячет CSS)', () => {
     expect(document.getElementById('global-fab-container').classList.contains('visible')).toBe(true);
     expect(menu().hidden).toBe(true);
     fab().click();
     expect(menu().hidden).toBe(false);
     expect(fab().classList.contains('is-open')).toBe(true);
-    expect([...menu().querySelectorAll('.fab-menu-item')].map(b => b.textContent.trim())).toEqual(['📁Создать папку', '🏃Создать марафон']);
+    expect([...menu().querySelectorAll('.fab-orb')].map(b => b.textContent.trim())).toEqual(
+      expect.arrayContaining([expect.stringContaining('Папка'), expect.stringContaining('Марафон')]));
   });
 
   it('«Создать папку» и «Создать марафон» вызывают свои диалоги и закрывают меню', async () => {

@@ -15,23 +15,18 @@
 .today-head h3 { margin-bottom: 2px; }
 .today-head p { font-size: 0.85rem; }
 
-/* Три блока: внимание, марафоны, запасы. На узком окне — в одну колонку */
+/* Два блока: внимание и сводка. Карточки в ряд всегда одной высоты (stretch):
+   заголовки и содержимое выровнены, нижний край не «пляшет». */
 .today-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
-  grid-template-areas:
-    'attention summary'
-    'marathons summary';
   gap: var(--gap-md);
   align-items: stretch;
 }
-.today-card:nth-child(1) { grid-area: attention; }
-.today-card:nth-child(2) { grid-area: marathons; }
-.today-card:nth-child(3) { grid-area: summary; }
 @media (max-width: 1050px) {
   .today-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'attention' 'marathons' 'summary';
+    grid-template-areas: 'attention' 'summary';
   }
 }
 
@@ -42,6 +37,8 @@
   background: var(--surface-2);
   min-width: 0;
 }
+/* Внутри карточки список тянется: кнопки строк прижаты к своим строкам, низ карточки ровный */
+.today-card .today-list { max-height: none; }
 .today-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 0.92rem; }
 .today-count {
   min-width: 20px;
@@ -55,7 +52,7 @@
 }
 .today-count.is-warn { background: var(--warning-soft); color: var(--warning); }
 
-.today-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.today-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; align-content: start; }
 
 /* Строка внимания: точка состояния, текст и кнопка действия прямо в строке */
 .today-row {
@@ -122,6 +119,145 @@
   background: var(--surface-1);
   box-shadow: var(--shadow-1);
 }
+
+/* Календарь + боковая панель «Сегодня»: слева календарь, справа данж дня и записи дня.
+   stretch — колонки одной высоты: панель не ниже и не выше календаря. */
+.today-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.85fr);
+  gap: var(--gap-md);
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+.today-cols .planner { margin-bottom: 0; display: flex; flex-direction: column; }
+.today-cols .planner-grid { flex: 1 1 auto; align-content: start; }
+.today-cols + .today { margin-top: 0; }
+.today-side .today-side-list { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 1100px) {
+  .today-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Цвета категорий данжа: Оружие — красный, Доспех — зелёный, Реликвия — синий.
+   Переменные общие для календаря и панели «Сегодня». */
+.planner, .today-side {
+  --dng-red: 224, 90, 105;
+  --dng-green: 158, 206, 106;
+  --dng-blue: 110, 142, 248;
+}
+
+/* --- Легенда над сеткой: что за цвет у ячейки дня --- */
+.planner-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+.planner-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.planner-legend-item b { font-size: 0.85rem; line-height: 1; }
+.planner-legend-item::before {
+  content: '';
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(var(--dng-red), 0.9);
+}
+.planner-legend-item.is-weapon::before { background: rgba(var(--dng-red), 0.9); }
+.planner-legend-item.is-armor::before { background: rgba(var(--dng-green), 0.9); }
+.planner-legend-item.is-relic::before { background: rgba(var(--dng-blue), 0.9); }
+.planner-legend-label { color: var(--text-faint); }
+
+.today-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+.today-side .today-title { margin-bottom: 0; }
+.today-side-date { display: block; width: 100%; font-size: 0.72rem; font-weight: 450; }
+.today-side-list { max-height: 260px; }
+.today-side-open { align-self: flex-start; }
+
+/* Данж дня: цвет карточки — категория сегодняшнего ежедневного задания */
+.today-dungeon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid rgba(var(--dng-blue), 0.9);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.today-dungeon.is-weapon { border-left-color: rgba(var(--dng-red), 0.95); background: rgba(var(--dng-red), 0.08); }
+.today-dungeon.is-armor { border-left-color: rgba(var(--dng-green), 0.95); background: rgba(var(--dng-green), 0.08); }
+.today-dungeon.is-relic { border-left-color: rgba(var(--dng-blue), 0.95); background: rgba(var(--dng-blue), 0.08); }
+.today-dungeon.is-weapon .today-dungeon-ico { background: rgba(var(--dng-red), 0.16); }
+.today-dungeon.is-armor .today-dungeon-ico { background: rgba(var(--dng-green), 0.16); }
+.today-dungeon.is-relic .today-dungeon-ico { background: rgba(var(--dng-blue), 0.16); }
+.today-dungeon-ico {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.2rem;
+}
+.today-dungeon-copy { display: grid; gap: 1px; min-width: 0; }
+.today-dungeon-copy b { font-size: 0.92rem; }
+.today-dungeon-copy small { font-size: 0.74rem; }
+
+/* Полоса цикла на неделю: вчера → +5 дней. Цвет рамки дня — его данж */
+.today-dungeon-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.today-strip-day {
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  padding: 5px 2px;
+  border: 1px solid var(--border);
+  border-top: 3px solid rgba(var(--dng-blue), 0.75);
+  border-radius: var(--radius-xs);
+  background: rgba(10, 14, 21, 0.55);
+  text-align: center;
+  min-width: 0;
+}
+.today-strip-day small { color: var(--text-faint); font-size: 0.58rem; text-transform: lowercase; }
+.today-strip-day b { font-size: 0.85rem; line-height: 1; }
+.today-strip-day.is-weapon { border-top-color: rgba(var(--dng-red), 0.85); }
+.today-strip-day.is-armor { border-top-color: rgba(var(--dng-green), 0.85); }
+.today-strip-day.is-relic { border-top-color: rgba(var(--dng-blue), 0.85); }
+.today-strip-day .today-strip-name {
+  font-size: 0.56rem;
+  line-height: 1.1;
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-strip-day.is-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.today-strip-day.is-today .today-strip-name { color: var(--text); font-weight: 650; }
+
+/* Строки записей в панели: цветная метка календаря вместо точки состояния */
+.today-side .planner-color { width: 4px; height: 26px; border-left-width: 4px; }
+
+.planner-day-list { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
 .planner-head {
   display: flex;
   align-items: flex-start;
@@ -152,8 +288,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 5px 6px;
+  padding: 6px 6px 5px;
   border: 1px solid var(--border);
+  border-top: 3px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(10, 14, 21, 0.55);
   color: var(--text);
@@ -161,14 +298,22 @@
   cursor: pointer;
   transition: border-color var(--speed), background var(--speed), transform var(--speed);
 }
+/* Верхняя строчка ячейки — цвет данжа этого дня */
+.planner-day.is-weapon { border-top-color: rgba(var(--dng-red), 0.9); }
+.planner-day.is-armor { border-top-color: rgba(var(--dng-green), 0.9); }
+.planner-day.is-relic { border-top-color: rgba(var(--dng-blue), 0.9); }
 .planner-day:hover {
   border-color: var(--accent);
   background: var(--surface-2);
   transform: translateY(-1px);
 }
+.planner-day:hover.is-weapon { border-top-color: rgba(var(--dng-red), 1); }
+.planner-day:hover.is-armor { border-top-color: rgba(var(--dng-green), 1); }
+.planner-day:hover.is-relic { border-top-color: rgba(var(--dng-blue), 1); }
 .planner-day.is-empty {
   min-height: 58px;
   border-style: dashed;
+  border-top: 1px solid var(--border);
   opacity: 0.25;
 }
 .planner-day.is-today {
@@ -191,15 +336,17 @@
   color: var(--on-accent);
 }
 .planner-day-events { display: grid; gap: 3px; min-width: 0; }
+/* Полоска события: текст виден (шрифт 0.6rem), название — по наведению и в окне дня */
 .planner-event {
   overflow: hidden;
-  min-height: 5px;
+  min-height: 12px;
   padding: 1px 5px;
   border-left: 3px solid var(--accent);
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--text-dim);
-  font-size: 0;
+  font-size: 0.6rem;
+  line-height: 1.6;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -232,8 +379,10 @@
   .planner-head { align-items: stretch; flex-direction: column; }
   .planner-nav { justify-content: space-between; }
   .planner-day { min-height: 52px; }
-  .planner-event { min-height: 5px; padding: 0; }
+  .planner-event { min-height: 11px; font-size: 0.56rem; padding: 0 3px; }
   .planner-more { display: none; }
+  .today-dungeon-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .today-strip-day .today-strip-name { display: none; }
 }
 @media (max-width: 560px) {
   .planner { padding: 12px; overflow-x: auto; }

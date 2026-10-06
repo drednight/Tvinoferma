@@ -13,7 +13,7 @@ const submit = () => /** @type {HTMLButtonElement} */ (modal().querySelector('.m
 beforeEach(async () => {
   vi.resetModules();
   document.body.innerHTML = `
-    <button id="btn-select-mode"></button><div id="bulk-bar" hidden></div><div id="character-grid"></div>
+    <div id="bulk-bar" hidden></div><div id="character-grid"></div>
     <div id="modal-root"></div><div id="toast-root"></div>
     ${['total-chars', 'active-parties', 'no-party', 'coins', 'online-count', 'offline-count'].map(k => `<b id="kpi-${k}"></b>`).join('')}
     <select id="class-filter"></select><select id="party-filter"></select><select id="auth-filter"></select><select id="tag-filter"></select><input id="search-input" />`;

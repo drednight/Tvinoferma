@@ -1,5 +1,6 @@
 /* css/core/fab.css
-   Круглая кнопка «+» справа внизу, её меню и выпадающее меню скриптов в шапке раздела. */
+   Круглая кнопка «+» справа внизу — speed-dial: орбы с подписями раскрываются вокруг кнопки,
+   состав зависит от активной вкладки (data-section на контейнере). */
 
 /* --- Контейнер кнопки --- */
 .fab-container {
@@ -40,25 +41,6 @@
 .fab-main:hover { transform: scale(1.06); filter: brightness(1.08); box-shadow: 0 14px 32px rgba(110, 142, 248, 0.45); }
 .fab-main:active { transform: scale(0.96); }
 
-.fab-secondary {
-  min-height: 46px;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-1);
-  color: var(--text);
-  font: inherit;
-  font-size: .86rem;
-  font-weight: 650;
-  box-shadow: var(--shadow-2);
-  cursor: pointer;
-}
-.fab-secondary:hover { border-color: var(--accent); background: var(--surface-2); }
-.fab-secondary[hidden] { display: none; }
-
 .fab-icon {
   transform-origin: center;
   transition: transform 0.25s var(--ease);
@@ -66,65 +48,97 @@
 }
 .fab-main.is-open .fab-icon { transform: rotate(135deg); }
 
-/* Тултип слева от кнопки */
-.fab-tooltip {
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 0.84rem;
-  white-space: nowrap;
-  box-shadow: var(--shadow-2);
-  border: 1px solid var(--border);
-  opacity: 0;
-  transform: translateX(10px);
-  transition: opacity var(--speed), transform var(--speed);
-  pointer-events: none;
-}
-.fab-container:hover .fab-tooltip { opacity: 1; transform: translateX(0); }
-
-/* --- Меню круглой кнопки: создать папку или марафон --- */
+/* --- Speed-dial: орбы с подписями --- */
+/* Поле орбов — квадрат над кнопкой; кнопка в его правом нижнем углу */
 .fab-menu {
   position: absolute;
   right: 0;
-  bottom: 70px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-end;
+  bottom: 56px;
+  width: 340px;
+  height: 260px;
+  pointer-events: none;
 }
 .fab-menu[hidden] { display: none; }
-.fab-menu-item {
-  display: inline-flex;
+
+.fab-orbs { position: absolute; inset: 0; }
+.fab-submenu { display: none; }
+.fab-submenu.is-open { display: block; }
+/* Уровень скриптов заменяет главный: у открытого подменю виден фон, у главного орбы скрыты */
+.fab-menu.has-submenu .fab-orbs:not(.fab-submenu) { display: none; }
+
+.fab-orb {
+  position: absolute;
+  transform: translate(50%, 50%);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 7px 16px 7px 7px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border-strong);
-  background: var(--surface-1);
+  gap: 3px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.9rem;
-  white-space: nowrap;
   cursor: pointer;
-  box-shadow: var(--shadow-2);
-  animation: fabMenuIn 0.18s var(--ease) both;
-  transition: transform var(--speed) var(--ease), border-color var(--speed) var(--ease);
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 0.16s var(--ease);
 }
-.fab-menu-item:nth-child(1) { animation-delay: 0.04s; }
-.fab-menu-ico {
+.fab-menu:not([hidden]) .fab-orb { opacity: 1; }
+
+/* Позиции орбов по дуге от кнопки (правый нижний угол): углы 180°…90°.
+   Раскладка через CSS-переменные, чтобы порядок пунктов читался в разметке. */
+.fab-orb:nth-of-type(1) { --orb-x: 22px;  --orb-y: -216px; }
+.fab-orb:nth-of-type(2) { --orb-x: 44px;  --orb-y: -170px; }
+.fab-orb:nth-of-type(3) { --orb-x: 78px;  --orb-y: -132px; }
+.fab-orb:nth-of-type(4) { --orb-x: 118px; --orb-y: -100px; }
+.fab-orb:nth-of-type(5) { --orb-x: 162px; --orb-y: -78px;  }
+.fab-orb:nth-of-type(6) { --orb-x: 208px; --orb-y: -66px;  }
+.fab-orb:nth-of-type(7) { --orb-x: 254px; --orb-y: -62px;  }
+.fab-orb:nth-of-type(8) { --orb-x: 298px; --orb-y: -66px;  }
+.fab-orb:nth-of-type(9) { --orb-x: 258px; --orb-y: -98px;  }
+.fab-orb { right: auto; bottom: auto; left: var(--orb-x, 20px); top: var(--orb-y, -60px); }
+
+.fab-orb-ico {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-2);
+  font-size: 1.05rem;
+  transition: transform 0.16s var(--ease), border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.fab-orb:hover .fab-orb-ico,
+.fab-orb:focus-visible .fab-orb-ico {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  transform: scale(1.1);
+}
+.fab-orb-ico.is-plain {
+  width: 40px;
+  height: 40px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   font-size: 0.95rem;
 }
-.fab-menu-item:hover { border-color: var(--accent); transform: translateX(-3px); }
-@keyframes fabMenuIn { from { opacity: 0; transform: translateY(10px) scale(0.95); } to { opacity: 1; transform: none; } }
+.fab-orb-label {
+  max-width: 92px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fab-orb:hover .fab-orb-label { color: var(--text); border-color: var(--border-strong); }
 
-/* --- Выпадающее меню скриптов --- */
+/* --- Выпадающее меню скриптов (настройки), прежний стиль сохранён --- */
 .action-menu-wrapper { position: relative; }
 
 .dropdown-menu {
@@ -171,7 +185,33 @@ body:has(.page[data-section="marathons"].active[data-view="detail"]) .fab-contai
 body:has(.page[data-section="marathons"].active[data-view="series"]) .fab-container { display: none; }
 body:has(.modal-overlay) .fab-container { display: none; }
 
+/* Видны только орбы активного раздела */
+.fab-orb.is-for-characters,
+.fab-orb.is-for-parties,
+.fab-orb.is-for-marathons { display: none; }
+.fab-container[data-section="characters"] .is-for-characters { display: flex; }
+.fab-container[data-section="parties"] .is-for-parties { display: flex; }
+.fab-container[data-section="marathons"] .is-for-marathons { display: flex; }
+
+/* Позиции орбов при разном числе пунктов: дуга собирается компактно.
+   data-orbs ставит uiActions.updateFabVisibility после того, как скрыл лишние. */
+.fab-menu[data-orbs="1"] .fab-orb:nth-of-type(1) { --orb-x: 6px;   --orb-y: -108px; }
+.fab-menu[data-orbs="2"] .fab-orb:nth-of-type(1) { --orb-x: 6px;   --orb-y: -150px; }
+.fab-menu[data-orbs="2"] .fab-orb:nth-of-type(2) { --orb-x: 52px;  --orb-y: -108px; }
+.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(1) { --orb-x: 14px;  --orb-y: -168px; }
+.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(2) { --orb-x: 66px;  --orb-y: -138px; }
+.fab-menu[data-orbs="3"] .fab-orb:nth-of-type(3) { --orb-x: 112px; --orb-y: -102px; }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(7) { --orb-x: 24px;  --orb-y: -196px; }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(6) { --orb-x: 22px;  --orb-y: -148px; }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(5) { --orb-x: 28px;  --orb-y: -100px; }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(4) { --orb-x: 44px;  --orb-y: -54px;  }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(3) { --orb-x: 72px;  --orb-y: -18px;  }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(2) { --orb-x: 108px; --orb-y: 6px;    }
+.fab-menu[data-orbs="7"] .fab-orb:nth-of-type(1) { --orb-x: 148px; --orb-y: 14px;   }
+
 @media (max-width: 560px) {
   .fab-container { right: 16px; bottom: 16px; }
+  .fab-menu { width: 260px; height: 210px; }
   .dropdown-menu { min-width: 240px; }
+  .fab-orb-label { display: none; }
 }

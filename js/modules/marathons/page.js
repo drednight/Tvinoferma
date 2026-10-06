@@ -288,7 +288,9 @@ function marathonCard(m, { inFolder = false } = {}) {
 
 function seriesCard(s) {
   const kids = seriesChildren(s, state.marathons);
-  const coins = kids.reduce((sum, k) => sum + marathonTotals(k).coins, 0);
+  const totals = kids.map(k => marathonTotals(k));
+  const coins = totals.reduce((sum, t) => sum + t.coins, 0);
+  const maxCoins = totals.reduce((sum, t) => sum + t.maxCoins, 0);
   const phase = seriesPhase(s, state.marathons);
   return `
     <article class="mr-card mr-series mr-ph-${phase}" data-open="${s.id}">
@@ -297,12 +299,15 @@ function seriesCard(s) {
         <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
       </header>
       ${s.description ? `<div class="mr-card-meta"><span>${escapeHtml(s.description)}</span></div>` : ''}
-      <div class="mr-series-kids">${kids.slice(0, 4).map(k => {
-        const t = marathonTotals(k);
+      <div class="mr-series-kids">${kids.slice(0, 4).map((k, i) => {
+        const t = totals[i];
         return `<div class="mr-kid"><span>${escapeHtml(k.source?.stageName || k.title)}</span>${progressBar(t.percent, 'mr-bar-sm')}<small>${t.percent}%</small></div>`;
       }).join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
       ${kids.length ? '' : '<div class="muted mr-card-meta">Папка пуста</div>'}
-      <div class="mr-stats"><span class="muted">Марафонов: ${kids.length}</span><span class="mr-gold mr-coins">${coin(coins)}</span></div>
+      <div class="mr-stats">
+        <span class="muted">Марафонов: ${kids.length}</span>
+        <span class="mr-gold mr-coins" title="Сумма заработанных монет по всем марафонам папки${maxCoins ? `; максимально возможного — по наградам каждого марафона` : ''}">${coin(coins)}${maxCoins ? ` <small class="muted">/ ${formatCoins(maxCoins)} возможных</small>` : ''}</span>
+      </div>
     </article>`;
 }
 

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 
-let state, todayHtml, renderToday;
+let state, todayHtml, renderToday, todaySideHtml;
 
 const NOW = new Date('2026-10-05T12:00:00');
 const at = (h) => new Date(NOW.getTime() - h * 3600e3).toISOString();
@@ -18,7 +18,7 @@ beforeEach(async () => {
   vi.resetModules();
   document.body.innerHTML = '<section id="today-root"></section>';
   ({ state } = await import('../js/core/state.js'));
-  ({ todayHtml, renderToday } = await import('../js/modules/dashboard/todayView.js'));
+  ({ todayHtml, todaySideHtml, renderToday } = await import('../js/modules/dashboard/todayView.js'));
   state.settings = { freshness: { balanceHours: 24, loginHours: 24, marathonHours: 24 }, ui: {} };
   state.parties = [];
   state.marathons = [];
@@ -37,11 +37,11 @@ describe('разметка экрана «Сегодня»', () => {
     expect(html()).toBe('');
   });
 
-  it('показывает три блока: внимание, марафоны, запасы', () => {
+  it('показывает два блока: внимание и сводка; марафоны живут в панели справа', () => {
     const out = html();
-    expect(out).toContain('Обзор дня');
+    expect(out).toContain('Информация');
     expect(out).toContain('Требуют внимания');
-    expect(out).toContain('Сегодня в марафонах');
+    expect(out).not.toContain('Сегодня в марафонах');
     expect(out).toContain('Сводка');
   });
 
@@ -72,18 +72,18 @@ describe('разметка экрана «Сегодня»', () => {
     expect(out).toContain('авторизованы: 1 из 1');
   });
 
-  it('идущий марафон показывается со сроком и кнопкой', () => {
+  it('марафон с записями дня показывается в боковой панели с кнопкой «Открыть»', () => {
     state.marathons = [{
       id: 'm1', kind: 'single', title: 'Лето', status: 'active',
       startDate: day(-5), endDate: day(3), participantIds: ['a'],
       tasks: [{ id: 't1', title: 'Вход', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }],
       progress: {}
     }];
-    const out = html();
+    const out = todaySideHtml(state);
     expect(out).toContain('Лето');
-    expect(out).toContain('осталось 3 дня');
+    expect(out).toContain('Данж дня');
     expect(out).toContain('data-today-act="open-marathon"');
-    expect(out).toContain('отстают 1');
+    expect(out).toContain('data-today-marathon="m1"');
   });
 
   it('ближайшие окончания и пати попадают в блок запасов', () => {

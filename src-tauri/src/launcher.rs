@@ -1430,8 +1430,11 @@ pub struct DecorateTarget {
     pub icon_big: Option<Vec<u8>>,
 }
 
-/// Значок класса по имени класса — для ручной смены значка у запущенного окна.
-/// Ищется в папке значков рядом с приложением; `None` — класса нет в списке или файл не читается.
+/// Значок класса для ручной смены значка у запущенного окна.
+///
+/// Пиксели RGBA обычно присылает интерфейс (`icon_small`/`icon_big`, конвертация в canvas):
+/// у окна браузера PNG есть всегда, а рядом с exe — не всегда. Если пикселей нет, PNG ищется
+/// в папке значков; `None` — класса нет в списке или файл не читается.
 fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
     // Список классов и имена файлов повторяют `js/core/constants.js` (CLASS_ICON_MAP).
     // Держим их здесь, чтобы команда смены значка работала без участия интерфейса.
@@ -1458,33 +1461,42 @@ fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
     let file = ICONS.iter().find(|(name, _)| *name == class)?.1;
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    // Значки лежат рядом с исполняемым файлом (в сборке Tauri — resources) и в папке разработки
-    for base in [
-        dir.to_path_buf(),
-        dir.join("assets").join("icons").join("classes"),
-        dir.join("public")
-            .join("assets")
-            .join("icons")
-            .join("classes"),
-    ] {
-        let path = base.join(file);
-        if let Ok(bytes) = std::fs::read(&path) {
-            return Some(bytes);
+    // Значки лежат рядом с исполняемым файлом (в сборке Tauri — resources) и в папке разработки.
+    // Ищем и по дереву вверх: разметка релиза может быть глубже, чем ждём.
+    let mut base = dir.to_path_buf();
+    loop {
+        for sub in [
+            None,
+            Some(Path::new("assets").join("icons").join("classes")),
+            Some(Path::new("public").join("assets").join("icons").join("classes")),
+        ] {
+            let path = match sub {
+                Some(p) => base.join(p),
+                None => base.to_path_buf(),
+            };
+            if let Ok(bytes) = std::fs::read(path.join(file)) {
+                return Some(bytes);
+            }
+        }
+        if !base.pop() {
+            return None;
         }
     }
-    None
 }
 
 /// Меняет название и значок уже запущенного окна игры по требованию пользователя
 /// (кнопка «Изменить» в списке запущенных окон).
 ///
-/// `class` — класс персонажа для значка; пустая строка — значок не менять.
+/// `class` — класс персонажа для значка; `icon_small`/`icon_big` — пиксели значка от интерфейса
+/// (RGBA из canvas); пустая строка класса — значок не менять; `clear_icon` — вернуть значок файла игры.
 #[tauri::command]
 pub async fn launcher_apply_window_style(
     pid: u32,
     title: Option<String>,
     class: Option<String>,
     clear_icon: Option<bool>,
+    icon_small: Option<Vec<u8>>,
+    icon_big: Option<Vec<u8>>,
 ) -> Result<DecorateResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let windows: Vec<_> = win::all_windows()
@@ -1501,10 +1513,15 @@ pub async fn launcher_apply_window_style(
 
         let want_title = title.as_deref().and_then(clean_title);
         let want_class = class.as_deref().map(str::trim).filter(|c| !c.is_empty());
-        // Значок из файла класса: изображение читаем и превращаем в HICON двух размеров
+        // Пиксели значка: от интерфейса, иначе PNG класса из папки значков.
+        // Изображение превращается в HICON двух размеров.
         let icons = want_class.and_then(|cls| {
-            let bytes = class_icon_bytes(cls)?;
-            let img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+            let img = match (icon_small.as_deref(), icon_big.as_deref()) {
+                (Some(a), _) if icon_side(a.len()).is_some() => image::load_from_memory(a).ok()?,
+                (_, Some(b)) if icon_side(b.len()).is_some() => image::load_from_memory(b).ok()?,
+                _ => image::load_from_memory(&class_icon_bytes(cls)?).ok()?,
+            }
+            .to_rgba8();
             let small = resize_icon(&img, WINDOW_ICON_SMALL);
             let big = resize_icon(&img, WINDOW_ICON_BIG);
             Some((icon_from_rgba(Some(&small)), icon_from_rgba(Some(&big))))

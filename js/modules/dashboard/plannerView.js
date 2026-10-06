@@ -3,12 +3,24 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
+import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 
 let shownMonth = new Date();
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const KIND = { task: 'Задача', event: 'Событие', note: 'Заметка' };
+
+/**
+ * Легенда над сеткой: цвет ячейки — категория данжа дня; заодно раскрывает цвета полосок,
+ * чтобы их смысл читался без наведения.
+ */
+export function plannerLegendHtml() {
+  return `<div class="planner-legend">
+    <span class="planner-legend-label">Данж дня:</span>
+    ${DUNGEON_CYCLE.map(key => `<span class="planner-legend-item is-${key}" title="Ежедневное задание этого дня"><b aria-hidden="true">${DUNGEON_ICONS[key]}</b> ${DUNGEON_NAMES[key]}</span>`).join('')}
+  </div>`;
+}
 
 export function plannerHtml(appState = state) {
   const year = shownMonth.getFullYear();
@@ -20,7 +32,7 @@ export function plannerHtml(appState = state) {
       <div class="planner-head">
         <div>
           <h3>Календарь</h3>
-          <p class="muted">События приложения и ваши планы.</p>
+          <p class="muted">События приложения и ваши планы. Полоска в ячейке — данж дня по ежедневному заданию.</p>
         </div>
         <div class="planner-nav">
           <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
@@ -29,20 +41,23 @@ export function plannerHtml(appState = state) {
           <button class="btn secondary small" type="button" data-planner-today>Сегодня</button>
         </div>
       </div>
+      ${plannerLegendHtml()}
       <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="planner-grid">
         ${cells.map(date => {
           if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';
           const events = plannerEventsForDate(appState, date);
           const day = Number(date.slice(-2));
-          return `<button class="planner-day${date === today ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
-                    type="button" data-planner-date="${date}" aria-label="${date}, записей: ${events.length}">
+          const dungeon = dungeonInfoForDate(date);
+          return `<button class="planner-day is-${dungeon.color}${date === today ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
+                    type="button" data-planner-date="${date}"
+                    title="${dungeon.date}: данж дня — ${dungeon.name}"
+                    aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
             <span class="planner-day-number">${day}</span>
             <span class="planner-day-events">
-              ${events.slice(0, 3).map(e => `<span class="planner-event is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}">
-                ${e.source === 'marathon' ? '🏃 ' : ''}${escapeHtml(e.title)}
-              </span>`).join('')}
-              ${events.length > 3 ? `<span class="planner-more">ещё ${events.length - 3}</span>` : ''}
+              ${events.slice(0, 3).map(e => `<span class="planner-event is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}"
+                title="${e.title}">${escapeHtml(e.title)}</span>`).join('')}
+              ${events.length > 3 ? `<span class="planner-more" title="${events.slice(3).map(x => x.title).join(' • ')}">ещё ${events.length - 3}</span>` : ''}
             </span>
           </button>`;
         }).join('')}

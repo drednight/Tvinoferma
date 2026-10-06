@@ -66,11 +66,24 @@ describe('кнопка «Заполнить со скриншота»', () => {
     ocrButton().click();
     await vi.waitFor(() => expect(mocks.openStatsImport).toHaveBeenCalled());
     // Значения приходят из окна разбора уже подтверждёнными пользователем
-    mocks.apply({ hpMax: 42350, accuracy: 1512 });
-    const hp = document.querySelector('input[name="stat-hpMax"]');
+    mocks.apply({ hp: 42350, accuracy: 1512 });
+    const hp = document.querySelector('input[name="stat-hp"]');
     const acc = document.querySelector('input[name="stat-accuracy"]');
     expect(hp.value).toBe('42350');
     expect(acc.value).toBe('1512');
+  });
+
+  it('перенесённое выше текущего — зелёное, ниже — красное, равное — нейтральное', async () => {
+    await mountForm();
+    // Текущие значения пишем в поля до разбора
+    document.querySelector('input[name="stat-strength"]').value = '100';
+    document.querySelector('input[name="stat-accuracy"]').value = '700';
+    ocrButton().click();
+    await vi.waitFor(() => expect(mocks.openStatsImport).toHaveBeenCalled());
+    mocks.apply({ strength: 200, accuracy: 500, evasion: 0 });
+    expect(document.querySelector('input[name="stat-strength"]').classList.contains('is-up')).toBe(true);
+    expect(document.querySelector('input[name="stat-accuracy"]').classList.contains('is-down')).toBe(true);
+    expect(document.querySelector('input[name="stat-evasion"]').classList.contains('is-filled')).toBe(true);
   });
 
   it('поля, которых нет в ответе, не обнуляются', async () => {
@@ -78,16 +91,17 @@ describe('кнопка «Заполнить со скриншота»', () => {
     const before = document.querySelector('input[name="stat-strength"]').value;
     ocrButton().click();
     await vi.waitFor(() => expect(mocks.openStatsImport).toHaveBeenCalled());
-    mocks.apply({ hpMax: 100 });
+    mocks.apply({ hp: 100 });
     expect(document.querySelector('input[name="stat-strength"]').value).toBe(before);
   });
 
-  it('перенесённые поля подсвечиваются', async () => {
+  it('перенесённое поле получает класс направления (изменённое — is-up)', async () => {
     await mountForm();
     ocrButton().click();
     await vi.waitFor(() => expect(mocks.openStatsImport).toHaveBeenCalled());
-    mocks.apply({ pa: 2340 });
-    expect(document.querySelector('input[name="stat-pa"]').classList.contains('is-filled')).toBe(true);
+    mocks.apply({ pa: 2340 });   // было 0 → выше: зелёная подсветка
+    const pa = document.querySelector('input[name="stat-pa"]');
+    expect(pa.classList.contains('is-up')).toBe(true);
   });
 });
 
@@ -115,8 +129,15 @@ describe('характеристики одним сворачиваемым б�
 
   it('поля всех характеристик на месте', async () => {
     await mountForm();
-    for (const key of ['endurance', 'hpMax', 'physAttack', 'critChance', 'pvePa', 'magPenetration']) {
+    for (const key of ['endurance', 'hp', 'levelBonus', 'physAttack', 'critChance', 'pvePa', 'magPenetration']) {
       expect(document.querySelector(`input[name="stat-${key}"]`), key).not.toBeNull();
+    }
+  });
+
+  it('скрытность, обнаружение и максимальные значения убраны', async () => {
+    await mountForm();
+    for (const key of ['stealth', 'detection', 'hpMax', 'mpMax']) {
+      expect(document.querySelector(`input[name="stat-${key}"]`), key).toBeNull();
     }
   });
 });

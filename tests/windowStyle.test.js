@@ -14,6 +14,8 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   closeClientsByPid: vi.fn(),
   closeAllClients: vi.fn(),
   applyWindowStyle: mocks.applyStyle,
+  WINDOW_ICON_SMALL: 16,
+  WINDOW_ICON_BIG: 48,
   applyStyleText: (r) => ({ missing: 'Окно игры не найдено: возможно, оно уже закрыто', failed: 'нет доступа', fixed: 'Окно обновлено', ok: 'Изменений не потребовалось' }[r?.status] || '')
 }));
 vi.mock('../js/core/storage.js', () => ({ isTauri: () => true, persist: vi.fn(async () => {}) }));
@@ -131,12 +133,15 @@ describe('связка с Rust', () => {
     expect(rust).toContain('clear_icon: Option<bool>');
   });
 
-  it('интерфейс передаёт те же поля в camelCase', () => {
+  it('интерфейс передаёт те же поля в camelCase (плюс пиксели значка от canvas)', () => {
     // Вызов идёт через обёртку tauriInvoke, поэтому проверяем имя команды и поля
     expect(js).toContain('launcher_apply_window_style');
     expect(js).toContain('clearIcon: opts.clearIcon ?? false');
     expect(js).toMatch(/title: opts\.title \?\? null/);
-    expect(js).toMatch(/class: opts\.class \?\? null/);
+    expect(js).toMatch(/class: cls/);
+    // Пиксели значка готовит интерфейс (classIconRgba): у Rust не всегда есть PNG рядом с exe
+    expect(js).toMatch(/iconSmall,/);
+    expect(js).toMatch(/iconBig/);
   });
 
   it('значки классов есть и в Rust, и в интерфейсе — списки должны совпадать', () => {

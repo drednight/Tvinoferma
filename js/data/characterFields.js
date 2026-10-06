@@ -43,8 +43,8 @@ export const FIELD_GROUPS = [
   { id: 'statsMain', title: 'Основные характеристики', fields: [
     stat('endurance', 'Выносливость'), stat('intelligence', 'Интеллект'),
     stat('strength', 'Сила'), stat('agility', 'Ловкость'),
-    stat('hp', 'Здоровье (текущее)'), stat('hpMax', 'Здоровье (макс)'),
-    stat('mp', 'Маг. энергия (текущее)'), stat('mpMax', 'Маг. энергия (макс)')
+    stat('hp', 'Здоровье'), stat('mp', 'Маг. энергия'),
+    stat('levelBonus', 'Бонус к уровню (%)')
   ] },
   { id: 'statsCombat', title: 'Бой и защита', fields: [
     stat('physAttack', 'Физ. атака'), stat('physDefense', 'Физ. защита'),
@@ -54,8 +54,7 @@ export const FIELD_GROUPS = [
   ] },
   { id: 'statsBattle', title: 'Показатели боя', fields: [
     stat('pa', 'Показатель атаки (ПА)'), stat('pz', 'Показатель защиты (ПЗ)'),
-    stat('morale', 'Боевой дух'), stat('power', 'Сила (показатель боя)'),
-    stat('stealth', 'Скрытность'), stat('detection', 'Обнаружение')
+    stat('morale', 'Боевой дух'), stat('power', 'Сила (показатель боя)')
   ] },
   { id: 'statsPve', title: 'PvE и пробивание', fields: [
     stat('pvePa', 'Урон по монстрам (PvE PA)'), stat('pvePz', 'Защита от монстров (PvE PZ)'),

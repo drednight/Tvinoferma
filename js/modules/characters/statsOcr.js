@@ -29,10 +29,9 @@ export const STAT_FIELDS = /** @type {StatField[]} */ ([
   { key: 'intelligence', label: 'Интеллект', aliases: ['интеллект', 'интел'] },
   { key: 'strength', label: 'Сила', aliases: ['сила'] },
   { key: 'agility', label: 'Ловкость', aliases: ['ловкость', 'ловк'] },
-  { key: 'hpMax', label: 'Здоровье (макс)', aliases: ['здоровье макс', 'макс здоровье', 'здоровье'] },
-  { key: 'hp', label: 'Здоровье (текущее)', aliases: ['здоровье текущее', 'текущее здоровье'] },
-  { key: 'mpMax', label: 'Маг. энергия (макс)', aliases: ['маг энергия макс', 'макс энергия', 'маг энергия'] },
-  { key: 'mp', label: 'Маг. энергия (текущее)', aliases: ['маг энергия текущее', 'текущая энергия'] },
+  { key: 'hp', label: 'Здоровье', aliases: ['здоровье'] },
+  { key: 'mp', label: 'Маг. энергия', aliases: ['маг энергия', 'магическая энергия', 'энергия'] },
+  { key: 'levelBonus', label: 'Бонус к уровню', kind: 'percent', aliases: ['бонус к уровню', 'бонус уровню'] },
   { key: 'physAttack', label: 'Физ. атака', aliases: ['физическая атака', 'физ атака'] },
   { key: 'physDefense', label: 'Физ. защита', aliases: ['физическая защита', 'физ защита'] },
   { key: 'magAttack', label: 'Маг. атака', aliases: ['магическая атака', 'маг атака'] },
@@ -46,8 +45,6 @@ export const STAT_FIELDS = /** @type {StatField[]} */ ([
   { key: 'pz', label: 'Показатель защиты', aliases: ['показатель защиты'] },
   { key: 'morale', label: 'Боевой дух', kind: 'percent', aliases: ['боевой дух'] },
   { key: 'power', label: 'Сила (боевая)', aliases: ['боевая сила', 'сила атаки'] },
-  { key: 'stealth', label: 'Скрытность', aliases: ['скрытность'] },
-  { key: 'detection', label: 'Обнаружение', aliases: ['обнаружение'] },
   { key: 'pvePa', label: 'Урон по монстрам (PvE PA)', aliases: ['урон по монстрам', 'pve pa', 'пве па'] },
   { key: 'pvePz', label: 'Защита от монстров (PvE PZ)', aliases: ['защита от монстров', 'pve pz', 'пве пз'] },
   { key: 'physPenetration', label: 'Физ. пробивание', aliases: ['физическое пробивание', 'физ пробивание'] },
@@ -66,11 +63,13 @@ export function normalizeLabel(text) {
 /**
  * Число из строки, как его показывает игра.
  * «42 350» → 42350, «12%» → 12, «0.80» → 0.8, «1,5» → 1.5.
+ * Диапазоны и пары «текущее/максимальное» берутся по правому числу — это итоговое значение:
+ *   «96587/96587» → 96587, «155668-166963» → 166963.
  * `null` — числа в строке нет (значит, это подпись или посторонний текст).
  */
 export function parseNumber(text, kind = 'int') {
   const cleaned = String(text || '')
-    .replace(/[^\d.,-]/g, '')
+    .replace(/[^\d.,/-]/g, '')
     .replace(/\s/g, '');
   if (!cleaned || !/\d/.test(cleaned)) return null;
   // Десятичные бывают только у дробных характеристик («0.80»): у остальных точка и запятая —
@@ -82,6 +81,9 @@ export function parseNumber(text, kind = 'int') {
       normalized = `${cleaned.slice(0, lastSep).replace(/[.,]/g, '')}.${cleaned.slice(lastSep + 1)}`;
     }
   }
+  // «a/b» и «a-b»: значение — правое число пары (итог или верхняя граница)
+  const pair = /(\d[\d.,]*)[/-](\d[\d.,]*)$/.exec(normalized);
+  if (pair) normalized = pair[2];
   const value = Number(normalized.replace(/[.,]/g, ''));
   const result = kind === 'int' ? value : Number(normalized);
   if (!Number.isFinite(result)) return null;
