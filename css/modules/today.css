@@ -507,7 +507,7 @@
    Сутки показаны целиком, без прокрутки: неделя читается одним взглядом.
    Высота часа задана переменной (js: HOUR_HEIGHT) — ось и блоки считаются от неё, иначе разъедутся. */
 /* Высота ячейки приходит из weekView.js (CELL_HEIGHT) через style у .cal-week; здесь запасное значение */
-.planner.is-week { --hour-h: 20px; --cell-h: 40px; }
+.planner.is-week { --hour-h: 15px; --cell-h: 30px; }
 
 .planner-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
 .planner-switch .btn { border: 0; border-radius: 0; }
