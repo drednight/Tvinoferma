@@ -39,6 +39,22 @@
 }
 /* Внутри карточки список тянется: кнопки строк прижаты к своим строкам, низ карточки ровный */
 .today-card .today-list { max-height: none; }
+
+/* «Требуют внимания»: окно ровно в 5 строк, остальные записи — прокруткой вниз */
+.today-card .today-attention-list {
+  --att-row-h: 46px;
+  --att-gap: 6px;
+  gap: var(--att-gap);
+  max-height: calc(5 * var(--att-row-h) + 4 * var(--att-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+.today-attention-list .today-row { box-sizing: border-box; height: var(--att-row-h); flex: 0 0 auto; }
+.today-attention-list::-webkit-scrollbar { width: 8px; }
+.today-attention-list::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); border-radius: 4px; }
+.today-attention-list::-webkit-scrollbar-thumb { background: var(--accent-line, rgba(110, 142, 248, 0.45)); border-radius: 4px; }
+.today-attention-list::-webkit-scrollbar-thumb:hover { background: var(--accent, #6e8ef8); }
 .today-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 0.92rem; }
 .today-count {
   min-width: 20px;
@@ -160,13 +176,19 @@
 .planner-legend-item::before {
   content: '';
   width: 12px;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(var(--dng-red), 0.9);
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(var(--dng-red), 0.45);
+  background: rgba(var(--dng-red), 0.22);
 }
-.planner-legend-item.is-weapon::before { background: rgba(var(--dng-red), 0.9); }
-.planner-legend-item.is-armor::before { background: rgba(var(--dng-green), 0.9); }
-.planner-legend-item.is-relic::before { background: rgba(var(--dng-blue), 0.9); }
+.planner-legend-item.is-weapon::before { border-color: rgba(var(--dng-red), 0.45); background: rgba(var(--dng-red), 0.22); }
+.planner-legend-item.is-armor::before { border-color: rgba(var(--dng-green), 0.45); background: rgba(var(--dng-green), 0.22); }
+.planner-legend-item.is-relic::before { border-color: rgba(var(--dng-blue), 0.45); background: rgba(var(--dng-blue), 0.22); }
+
+/* Название категории данжа — в её цвете (легенда, «Данж дня», полоса недели) */
+.dng-name.is-weapon { color: rgb(var(--dng-red)); }
+.dng-name.is-armor { color: rgb(var(--dng-green)); }
+.dng-name.is-relic { color: rgb(var(--dng-blue)); }
 .planner-legend-label { color: var(--text-faint); }
 
 .today-side {
@@ -181,6 +203,10 @@
   min-width: 0;
 }
 .today-side .today-title { margin-bottom: 0; }
+/* Панель «Сегодня» заливается приглушённым цветом данжа дня */
+.today-side.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.10), rgba(var(--dng-red), 0.10)), var(--surface-1); }
+.today-side.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.09), rgba(var(--dng-green), 0.09)), var(--surface-1); }
+.today-side.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.10), rgba(var(--dng-blue), 0.10)), var(--surface-1); }
 .today-side-date { display: block; width: 100%; font-size: 0.72rem; font-weight: 450; }
 .today-side-list { max-height: 260px; }
 .today-side-open { align-self: flex-start; }
@@ -192,13 +218,12 @@
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-left: 3px solid rgba(var(--dng-blue), 0.9);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
 }
-.today-dungeon.is-weapon { border-left-color: rgba(var(--dng-red), 0.95); background: rgba(var(--dng-red), 0.08); }
-.today-dungeon.is-armor { border-left-color: rgba(var(--dng-green), 0.95); background: rgba(var(--dng-green), 0.08); }
-.today-dungeon.is-relic { border-left-color: rgba(var(--dng-blue), 0.95); background: rgba(var(--dng-blue), 0.08); }
+.today-dungeon.is-weapon { background: rgba(var(--dng-red), 0.16); }
+.today-dungeon.is-armor { background: rgba(var(--dng-green), 0.14); }
+.today-dungeon.is-relic { background: rgba(var(--dng-blue), 0.16); }
 .today-dungeon.is-weapon .today-dungeon-ico { background: rgba(var(--dng-red), 0.16); }
 .today-dungeon.is-armor .today-dungeon-ico { background: rgba(var(--dng-green), 0.16); }
 .today-dungeon.is-relic .today-dungeon-ico { background: rgba(var(--dng-blue), 0.16); }
@@ -228,7 +253,6 @@
   gap: 1px;
   padding: 5px 2px;
   border: 1px solid var(--border);
-  border-top: 3px solid rgba(var(--dng-blue), 0.75);
   border-radius: var(--radius-xs);
   background: rgba(10, 14, 21, 0.55);
   text-align: center;
@@ -236,9 +260,9 @@
 }
 .today-strip-day small { color: var(--text-faint); font-size: 0.58rem; text-transform: lowercase; }
 .today-strip-day b { font-size: 0.85rem; line-height: 1; }
-.today-strip-day.is-weapon { border-top-color: rgba(var(--dng-red), 0.85); }
-.today-strip-day.is-armor { border-top-color: rgba(var(--dng-green), 0.85); }
-.today-strip-day.is-relic { border-top-color: rgba(var(--dng-blue), 0.85); }
+.today-strip-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.16), rgba(var(--dng-red), 0.16)), rgba(10, 14, 21, 0.55); }
+.today-strip-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.14), rgba(var(--dng-green), 0.14)), rgba(10, 14, 21, 0.55); }
+.today-strip-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.16), rgba(var(--dng-blue), 0.16)), rgba(10, 14, 21, 0.55); }
 .today-strip-day .today-strip-name {
   font-size: 0.56rem;
   line-height: 1.1;
@@ -248,11 +272,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.today-strip-day .today-strip-name.dng-name.is-weapon { color: rgb(var(--dng-red)); }
+.today-strip-day .today-strip-name.dng-name.is-armor { color: rgb(var(--dng-green)); }
+.today-strip-day .today-strip-name.dng-name.is-relic { color: rgb(var(--dng-blue)); }
 .today-strip-day.is-today {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
-.today-strip-day.is-today .today-strip-name { color: var(--text); font-weight: 650; }
+.today-strip-day.is-today .today-strip-name { font-weight: 650; }
 
 /* Строки записей в панели: цветная метка календаря вместо точки состояния */
 .today-side .planner-color { width: 4px; height: 26px; border-left-width: 4px; }
@@ -290,7 +317,6 @@
   gap: 4px;
   padding: 6px 6px 5px;
   border: 1px solid var(--border);
-  border-top: 3px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(10, 14, 21, 0.55);
   color: var(--text);
@@ -298,18 +324,18 @@
   cursor: pointer;
   transition: border-color var(--speed), background var(--speed), transform var(--speed);
 }
-/* Верхняя строчка ячейки — цвет данжа этого дня */
-.planner-day.is-weapon { border-top-color: rgba(var(--dng-red), 0.9); }
-.planner-day.is-armor { border-top-color: rgba(var(--dng-green), 0.9); }
-.planner-day.is-relic { border-top-color: rgba(var(--dng-blue), 0.9); }
+/* Заливка ячейки — приглушённый цвет данжа этого дня */
+.planner-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.16), rgba(var(--dng-red), 0.16)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.14), rgba(var(--dng-green), 0.14)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.16), rgba(var(--dng-blue), 0.16)), rgba(10, 14, 21, 0.55); }
 .planner-day:hover {
   border-color: var(--accent);
   background: var(--surface-2);
   transform: translateY(-1px);
 }
-.planner-day:hover.is-weapon { border-top-color: rgba(var(--dng-red), 1); }
-.planner-day:hover.is-armor { border-top-color: rgba(var(--dng-green), 1); }
-.planner-day:hover.is-relic { border-top-color: rgba(var(--dng-blue), 1); }
+.planner-day.is-weapon:hover { background: linear-gradient(rgba(var(--dng-red), 0.26), rgba(var(--dng-red), 0.26)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-armor:hover { background: linear-gradient(rgba(var(--dng-green), 0.24), rgba(var(--dng-green), 0.24)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-relic:hover { background: linear-gradient(rgba(var(--dng-blue), 0.26), rgba(var(--dng-blue), 0.26)), rgba(10, 14, 21, 0.55); }
 .planner-day.is-empty {
   min-height: 58px;
   border-style: dashed;

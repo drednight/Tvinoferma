@@ -25,7 +25,7 @@ export function todaySideHtml(appState = state) {
   const events = plannerEventsForDate(appState, today);
 
   return `
-    <aside class="today-side" data-today-side>
+    <aside class="today-side is-${dToday.color}" data-today-side>
       <h4 class="today-title"><span aria-hidden="true">📍</span> Сегодня
         <small class="muted today-side-date">${new Date(`${today}T00:00:00`).toLocaleDateString('ru', { day: 'numeric', month: 'long', weekday: 'long' })}</small>
       </h4>
@@ -33,7 +33,7 @@ export function todaySideHtml(appState = state) {
       <div class="today-dungeon is-${dToday.color}" title="Ежедневное задание меняется по циклу: Реликвия → Оружие → Доспех">
         <span class="today-dungeon-ico" aria-hidden="true">${dToday.icon}</span>
         <span class="today-dungeon-copy">
-          <b>Данж дня: ${escapeHtml(dToday.name)}</b>
+          <b>Данж дня: <span class="dng-name is-${dToday.color}">${escapeHtml(dToday.name)}</span></b>
           <small class="muted">Полоса ниже — ближайшая неделя, цвет дня — его данж</small>
         </span>
       </div>
@@ -42,7 +42,7 @@ export function todaySideHtml(appState = state) {
           <span class="today-strip-day is-${d.color}${d.date === today ? ' is-today' : ''}" title="${d.date}: ${d.name}">
             <small>${new Date(`${d.date}T00:00:00`).toLocaleDateString('ru', { weekday: 'narrow' })}</small>
             <b aria-hidden="true">${d.icon}</b>
-            <span class="today-strip-name">${escapeHtml(d.name)}</span>
+            <span class="today-strip-name dng-name is-${d.color}">${escapeHtml(d.name)}</span>
           </span>`).join('')}
       </div>
 
@@ -95,8 +95,8 @@ export function todayHtml(deps = {}, appState = state) {
             Требуют внимания
             ${attention.length ? `<span class="today-count is-warn">${attention.length}</span>` : ''}
           </h4>
-          ${attention.length ? `<ul class="today-list">
-            ${attention.slice(0, 12).map(item => `
+          ${attention.length ? `<ul class="today-list today-attention-list">
+            ${attention.map(item => `
               <li class="today-row">
                 <span class="today-dot is-${escapeHtml(item.tone)}" aria-hidden="true"></span>
                 <span class="today-row-text">
@@ -109,7 +109,7 @@ export function todayHtml(deps = {}, appState = state) {
                         ${item.marathonId ? `data-today-marathon="${escapeHtml(item.marathonId)}"` : ''}>${escapeHtml(item.actionLabel)}</button>
               </li>`).join('')}
           </ul>
-          ${attention.length > 12 ? `<p class="muted today-more">Показаны первые 12. Остальные доступны в разделе «Персонажи».</p>` : ''}`
+          ${attention.length > 5 ? `<p class="muted today-more">Показано 5 из ${attention.length}: прокрутите список вниз.</p>` : ''}`
             : '<p class="muted today-empty">Всё в порядке: входы активны, балансы свежие, отстающих в марафонах нет.</p>'}
         </section>
 

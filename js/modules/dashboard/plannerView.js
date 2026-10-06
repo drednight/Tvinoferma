@@ -18,7 +18,7 @@ const KIND = { task: 'Задача', event: 'Событие', note: 'Замет�
 export function plannerLegendHtml() {
   return `<div class="planner-legend">
     <span class="planner-legend-label">Данж дня:</span>
-    ${DUNGEON_CYCLE.map(key => `<span class="planner-legend-item is-${key}" title="Ежедневное задание этого дня"><b aria-hidden="true">${DUNGEON_ICONS[key]}</b> ${DUNGEON_NAMES[key]}</span>`).join('')}
+    ${DUNGEON_CYCLE.map(key => `<span class="planner-legend-item is-${key}" title="Ежедневное задание этого дня"><b aria-hidden="true">${DUNGEON_ICONS[key]}</b> <span class="dng-name is-${key}">${DUNGEON_NAMES[key]}</span></span>`).join('')}
   </div>`;
 }
 
@@ -32,7 +32,7 @@ export function plannerHtml(appState = state) {
       <div class="planner-head">
         <div>
           <h3>Календарь</h3>
-          <p class="muted">События приложения и ваши планы. Полоска в ячейке — данж дня по ежедневному заданию.</p>
+          <p class="muted">События приложения и ваши планы. Цвет ячейки — данж дня по ежедневному заданию.</p>
         </div>
         <div class="planner-nav">
           <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
