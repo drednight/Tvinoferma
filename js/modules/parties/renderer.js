@@ -181,8 +181,24 @@ export function renderPartiesGrid() {
     container.innerHTML = sortedKeys.map(name => partyCardHtml(name, partyMap.get(name))).join('');
 
     bindPartyEvents(container);
-    initDragAndDrop(container);
-    initMemberDrag(container);
+    // Контейнер `#party-list` живёт всё время, а перерисовка вызывается часто. Обработчики drag-and-drop
+    // вешаются через addEventListener, поэтому без снятия старых они копились: после нескольких
+    // перерисовок один `drop` запускал десятки сохранений и перерисовок, каждая из которых добавляла
+    // ещё обработчики, — приложение зависало (hotfix 1.0.1)
+    const signal = resetDndBindings(container);
+    initDragAndDrop(container, signal);
+    initMemberDrag(container, signal);
+}
+
+/**
+ * Снимает обработчики прошлой отрисовки и возвращает сигнал для новых.
+ * @param {HTMLElement & { _tfDndAbort?: AbortController }} container
+ * @returns {AbortSignal}
+ */
+function resetDndBindings(container) {
+    container._tfDndAbort?.abort();
+    container._tfDndAbort = new AbortController();
+    return container._tfDndAbort.signal;
 }
 
 /**
@@ -193,7 +209,7 @@ export function renderPartiesGrid() {
  * перед ней, нижняя — после. Поэтому перетаскивание на соседнюю строку сдвигает на одну
  * позицию, а не переносит в конец списка.
  */
-function initMemberDrag(container) {
+function initMemberDrag(container, signal) {
     let draggedId = null;
     let draggedPartyId = null;
     /** Над какой строкой сейчас курсор и в какую её половину — от этого зависит место вставки. */
@@ -214,7 +230,7 @@ function initMemberDrag(container) {
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', draggedId);
         e.stopPropagation();   // иначе начнётся перетаскивание самой карточки пати
-    });
+    }, { signal });
 
     container.addEventListener('dragend', () => {
         draggedId = null;
@@ -222,7 +238,7 @@ function initMemberDrag(container) {
         dropTarget = null;
         container.querySelectorAll('.pt-member-dragging').forEach(el => el.classList.remove('pt-member-dragging'));
         clearMarks();
-    });
+    }, { signal });
 
     container.addEventListener('dragover', (e) => {
         if (!draggedId) return;
@@ -238,14 +254,14 @@ function initMemberDrag(container) {
         clearMarks();
         row.classList.add(after ? 'pt-member-over-after' : 'pt-member-over');
         dropTarget = { row, after };
-    });
+    }, { signal });
 
     container.addEventListener('drop', async (e) => {
         if (!draggedId) return;
         const row = e.target.closest?.('.pt-member');
         if (!row || row.dataset.partyId !== draggedPartyId || row.dataset.charId === draggedId) return;
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         const box = row.getBoundingClientRect();
         const after = e.clientY > box.top + box.height / 2;
         const partyId = draggedPartyId;
@@ -262,7 +278,7 @@ function initMemberDrag(container) {
         }
         await persist();
         renderPartiesGrid();
-    });
+    }, { signal });
 }
 
 function bindPartyEvents(container) {
@@ -346,7 +362,7 @@ function bindPartyEvents(container) {
 /**
  * Инициализация логики Drag and Drop (Исправленная версия)
  */
-function initDragAndDrop(container) {
+function initDragAndDrop(container, signal) {
     let draggedElement = null;
     let draggedName = null;
 
@@ -368,7 +384,7 @@ function initDragAndDrop(container) {
             // Передаем имя пати в данные
             e.dataTransfer.setData('text/plain', draggedName);
         }
-    });
+    }, { signal });
 
     // 2. Конец перетаскивания (очистка всего)
     container.addEventListener('dragend', () => {
@@ -379,10 +395,12 @@ function initDragAndDrop(container) {
         }
         // Удаляем подсветку со всех возможных целей
         document.querySelectorAll('.party-card-drop-target').forEach(el => el.classList.remove('party-card-drop-target'));
-    });
+    }, { signal });
 
     // 3. Наведение на другую карточку (Критически важный момент)
     container.addEventListener('dragover', (e) => {
+        // Перетаскивание персонажа внутри пати сюда не относится
+        if (!draggedName) return;
         // Обязательно preventDefault, иначе drop не сработает!
         e.preventDefault(); 
         e.dataTransfer.dropEffect = 'move';
@@ -404,7 +422,7 @@ function initDragAndDrop(container) {
             // Если вышли за пределы или на себя - убираем подсветку
              document.querySelectorAll('.party-card-drop-target').forEach(el => el.classList.remove('party-card-drop-target'));
         }
-    });
+    }, { signal });
 
     // 4. Уход мыши с области (опционально, для чистоты)
     container.addEventListener('dragleave', (e) => {
@@ -412,14 +430,15 @@ function initDragAndDrop(container) {
         if (!container.contains(e.relatedTarget)) {
              document.querySelectorAll('.party-card-drop-target').forEach(el => el.classList.remove('party-card-drop-target'));
         }
-    });
+    }, { signal });
 
     // 5. Бросок (Drop)
     container.addEventListener('drop', async (e) => {
         e.preventDefault(); // Запрещаем стандартное поведение браузера
         
         // Получаем имя перетаскиваемого объекта из данных
-        const sourceName = e.dataTransfer.getData('text/plain');
+        // Имя берём из состояния перетаскивания: в dataTransfer при переносе персонажа лежит его id
+        const sourceName = draggedName;
         if (!sourceName) return;
 
         // Находим целевую карточку
@@ -437,7 +456,7 @@ function initDragAndDrop(container) {
 
         // Выполняем обмен
         await swapPartyOrder(sourceName, targetName);
-    });
+    }, { signal });
 }
 
 /**

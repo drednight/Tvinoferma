@@ -10,6 +10,7 @@ vi.mock('../js/modules/marathons/siteSync.js', () => ({
 
 import { createPartyWith } from '../js/modules/parties/membership.js';
 import { phaseHint, daysBetween } from '../js/modules/marathons/dates.js';
+import { mskDate, mskAddDays } from '../js/core/msk.js';
 import { initStickyHeader } from '../js/core/stickyHeader.js';
 
 describe('создание пати для выбранных персонажей', () => {
@@ -139,7 +140,8 @@ describe('вкладка «Пати»', () => {
 
 describe('вкладка «Марафоны»', () => {
   let state, model, page;
-  const day = (offset) => { const d = new Date(); d.setDate(d.getDate() + offset); return d.toLocaleDateString('sv'); };
+  // Приложение считает дни по Москве, поэтому и тест берёт «сегодня» по МСК, а не по часовому поясу машины
+  const day = (offset) => mskAddDays(mskDate(), offset);
   beforeEach(async () => {
     vi.resetModules();
     document.body.innerHTML = '<div class="page" data-section="marathons"><div id="marathon-list"></div></div><div id="modal-root"></div>';
