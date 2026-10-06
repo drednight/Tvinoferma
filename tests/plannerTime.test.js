@@ -34,27 +34,25 @@ const cell = (html, date) => {
   return doc.querySelector(`[data-planner-date="${date}"]`);
 };
 
-describe('календарь: раскладка записей по времени', () => {
-  it('запись со временем стоит на шкале по началу, а не строкой сверху', () => {
-    // 12:00 = 720 из 1440 минут → ровно половина шкалы; 120 минут = 8.333% высоты
+describe('календарь: записи в ячейке месяца', () => {
+  // В клетке месяца только названия записей; шкалу времени с точными блоками показывает окно дня
+  const chips = day => [...day.querySelectorAll('.planner-chip')].map(c => c.textContent.trim());
+
+  it('своя запись со временем показана названием, а время — в подсказке клетки', () => {
     state.plannerEntries = [entry({ id: 'p1', title: 'Своё дело', date: '2026-10-05', time: '12:00', durationMinutes: 120, color: 'blue' })];
     const day = cell(plannerHtml(state), '2026-10-05');
-    const blocks = [...day.querySelectorAll('.planner-block')];
-    const block = blocks.find(b => b.getAttribute('title').includes('Своё дело'));
-    expect(block).not.toBeNull();
-    expect(block.getAttribute('style')).toContain('top:50.000%');
-    expect(block.getAttribute('style')).toContain('height:8.333%');
-    // В этот день идёт ещё и постоянный ивент — он тоже на шкале, но своей дорожкой времени
-    expect(blocks.map(b => b.getAttribute('title'))).toEqual(expect.arrayContaining([expect.stringContaining('Битва Династий')]));
-    expect(day.querySelector('.planner-day-allday').textContent.trim()).toBe('');
+    expect(chips(day)).toEqual(expect.arrayContaining(['Своё дело']));
+    expect(day.getAttribute('title')).toContain('12:00 Своё дело');
+    // Мини-шкалы и блоков в месячной клетке нет
+    expect(day.querySelector('.planner-block')).toBeNull();
   });
 
-  it('запись без времени идёт сверху, а не на шкале', () => {
-    // 2026-10-06 — вторник: постоянных ивентов нет, на шкале ничего лишнего
+  it('запись без времени показана названием, подсказка без времени', () => {
     state.plannerEntries = [entry({ id: 'p1', title: 'Без времени', date: '2026-10-06', time: '', color: 'green' })];
     const day = cell(plannerHtml(state), '2026-10-06');
-    expect(day.querySelector('.planner-day-allday').textContent).toContain('Без времени');
-    expect(day.querySelector('.planner-block')).toBeNull();
+    expect(chips(day)).toEqual(['Без времени']);
+    expect(day.getAttribute('title')).toContain('Без времени');
+    expect(day.getAttribute('title')).not.toMatch(/\d\d:\d\d Без времени/);
   });
 
   it('марафон занимает весь день и показан отдельной меткой', () => {
@@ -62,42 +60,43 @@ describe('календарь: раскладка записей по време�
     const day = cell(plannerHtml(state), '2026-10-06');
     const chip = day.querySelector('.planner-chip.is-marathon');
     expect(chip.textContent).toContain('Лето');
-    expect([...day.querySelectorAll('.planner-block')].some(b => b.getAttribute('title').includes('Лето'))).toBe(false);
   });
 
   it('постоянный ивент попадает в ячейку своего дня со временем', () => {
     // 2026-10-07 — среда: Ритм Гильдии 19:30 и Запретное учение 20:00
     const day = cell(plannerHtml(state), '2026-10-07');
-    const titles = [...day.querySelectorAll('.planner-block')].map(b => b.getAttribute('title'));
-    expect(titles.some(t => t.includes('Ритм Гильдии') && t.includes('19:30'))).toBe(true);
-    expect(titles.some(t => t.includes('Запретное учение') && t.includes('20:00'))).toBe(true);
+    const titles = chips(day);
+    expect(titles.some(t => t.includes('Ритм Гильдии'))).toBe(true);
+    expect(titles.some(t => t.includes('Запретное учение'))).toBe(true);
+    expect(day.getAttribute('title')).toContain('19:30 Ритм Гильдии');
+    expect(day.getAttribute('title')).toContain('20:00 Запретное учение');
   });
 
   it('в понедельник идёт Битва Династий, в субботу — ничего', () => {
     const mon = cell(plannerHtml(state), '2026-10-05');
-    expect(mon.querySelector('.planner-block').getAttribute('title')).toContain('Битва Династий');
+    expect(chips(mon).join(' ')).toContain('Битва Династий');
     const sat = cell(plannerHtml(state), '2026-10-10');
-    expect(sat.querySelector('.planner-block')).toBeNull();
     expect(sat.querySelector('.planner-chip')).toBeNull();
   });
 
-  it('пустой день не рисует ни блоков, ни меток', () => {
+  it('пустой день не рисует меток', () => {
     const day = cell(plannerHtml(state), '2026-10-11');
-    expect(day.querySelectorAll('.planner-block')).toHaveLength(0);
     expect(day.querySelectorAll('.planner-chip')).toHaveLength(0);
   });
 
-  it('мини-шкала подписана часами 00 / 06 / 12 / 18, а подсказка клетки перечисляет записи со временем', () => {
+  it('подсказка клетки перечисляет записи со временем', () => {
     const mon = cell(plannerHtml(state), '2026-10-05');
-    expect([...mon.querySelectorAll('.planner-scale-ticks i')].map(i => i.textContent)).toEqual(['00', '06', '12', '18']);
-    expect(mon.getAttribute('title')).toContain('20:20–22:20 Битва Династий');
+    expect(mon.getAttribute('title')).toContain('20:20 Битва Династий');
   });
 
-  it('линия «сейчас» (МСК) есть только в клетке сегодняшнего дня', () => {
-    // 12:00 UTC = 15:00 МСК = 900 из 1440 минут = 62.5% шкалы
+  it('метка «сегодня» и подсказка «сейчас» (МСК) есть только в клетке сегодняшнего дня', () => {
+    // 12:00 UTC = 15:00 МСК
     const today = cell(plannerHtml(state), '2026-10-05');
-    expect(today.querySelector('.planner-now').getAttribute('style')).toContain('top:62.500%');
-    expect(cell(plannerHtml(state), '2026-10-06').querySelector('.planner-now')).toBeNull();
+    expect(today.classList.contains('is-today')).toBe(true);
+    expect(today.getAttribute('title')).toContain('сейчас 15:00');
+    const other = cell(plannerHtml(state), '2026-10-06');
+    expect(other.classList.contains('is-today')).toBe(false);
+    expect(other.getAttribute('title')).not.toContain('сейчас');
   });
 
   it('над сеткой есть легенда полосок: как читать шкалу, свои записи, расписание, «сейчас»', () => {
@@ -114,9 +113,9 @@ describe('окно дня: полная шкала 00:00–24:00', () => {
     state.plannerEntries = [entry({ id: 'p1', title: 'Рейд', date: '2026-10-05', time: '20:00', durationMinutes: 90, color: 'red' })];
     openPlannerDay('2026-10-05', {});
     const root = document.getElementById('modal-root');
-    expect(root.querySelectorAll('.planner-scale-mark')).toHaveLength(9);
+    expect(root.querySelectorAll('.planner-scale-mark')).toHaveLength(5);
     expect(root.querySelector('.planner-scale-marks').textContent).toContain('00:00');
-    expect(root.querySelector('.planner-scale-marks').textContent).toContain('21:00');
+    expect(root.querySelector('.planner-scale-marks').textContent).toContain('18:00');
     const block = [...root.querySelectorAll('.planner-scale-block')].find(b => b.textContent.includes('Рейд'));
     expect(block.getAttribute('title')).toContain('20:00–21:30');
     expect(block.querySelector('b').textContent).toBe('Рейд');
@@ -201,5 +200,30 @@ describe('переключатель вида календаря', () => {
     const html = plannerHtml(state);
     // 2026-10-05 — «сегодня», полоса начинается со вчера: 4 — 10 октября
     expect(html).toContain('4 — 10 октября 2026');
+  });
+});
+
+describe('неделя: «весь день» подписан под датой', () => {
+  const dayCol = (html, date) => {
+    const doc = new DOMParser().parseFromString(`<div>${html}</div>`, 'text/html');
+    return doc.querySelector(`.cal-day-head[data-planner-date="${date}"]`).closest('.cal-day');
+  };
+
+  it('марафон и запись без времени — плашки под датой, колонку дня не заливают', () => {
+    state.settings.ui.plannerView = 'week';
+    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.plannerEntries = [entry({ id: 'p1', title: 'Без времени', date: '2026-10-06', time: '', color: 'green' })];
+    const col = dayCol(plannerHtml(state), '2026-10-06');
+    const chips = [...col.querySelectorAll('.cal-day-allday .cal-chip')].map(c => c.textContent.trim());
+    expect(chips).toEqual(['🏁 Лето', 'Без времени']);
+    expect(col.querySelector('.cal-marathon')).toBeNull();
+    expect(col.querySelector('.cal-day-track .cal-chip')).toBeNull();
+  });
+
+  it('ось времени подписана каждые 3 часа, между подписями три ячейки', () => {
+    state.settings.ui.plannerView = 'week';
+    const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+    const labels = [...doc.querySelectorAll('.cal-hour')].map(h => h.textContent.trim()).filter(Boolean);
+    expect(labels).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
   });
 });

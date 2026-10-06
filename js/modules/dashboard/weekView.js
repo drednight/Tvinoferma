@@ -250,13 +250,18 @@ export function weekMarathonLanes(eventsByDate) {
   };
 }
 
-/** Все часы суток для оси времени: 24 строки по `HOUR_HEIGHT`. */
+/**
+ * Шаг подписей оси времени в часах. Между двумя подписями остаётся `HOUR_LABEL_STEP` ячеек:
+ * при 3 ось читается и не пестрит (00 / 03 / 06 / … / 21).
+ */
+export const HOUR_LABEL_STEP = 3;
+
+/** Все часы суток для оси времени: 24 строки по `HOUR_HEIGHT`, подписаны каждые `HOUR_LABEL_STEP` часов. */
 export function weekHours() {
   return Array.from({ length: 24 }, (_, h) => ({
     hour: h,
-    // Подписи каждые 6 часов: шкала читается и не пестрит (00 / 06 / 12 / 18 / 24)
-    label: h % 6 === 0 ? `${String(h).padStart(2, '0')}:00` : '',
-    isMajor: h % 6 === 0
+    label: h % HOUR_LABEL_STEP === 0 ? `${String(h).padStart(2, '0')}:00` : '',
+    isMajor: h % HOUR_LABEL_STEP === 0
   }));
 }
 

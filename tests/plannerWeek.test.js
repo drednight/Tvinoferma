@@ -100,8 +100,8 @@ describe('раскладка недели', () => {
     const hours = weekHours();
     expect(hours).toHaveLength(24);
     expect(hours[0].label).toBe('00:00');
-    expect(hours[23].label).toBe('23:00');
-    // Подписи каждые 3 часа — иначе ось становится шумной
+    expect(hours[23].label).toBe('');
+    // Подписи каждые 3 часа: между подписями ровно три ячейки — иначе ось становится шумной
     expect(hours.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
     // Сутки целиком укладываются в 624 px: неделя видна одним взглядом, без прокрутки часов
     expect(24 * HOUR_HEIGHT).toBe(624);

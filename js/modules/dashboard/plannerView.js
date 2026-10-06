@@ -4,7 +4,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
-import { weekDays, weekRangeTitle, weekLayout, weekMarathonLanes, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT } from './weekView.js';
+import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
 import { mskMinutes } from '../../core/msk.js';
@@ -109,12 +109,11 @@ function weekHtml(appState) {
   const layout = weekLayout(events);
   const hours = weekHours();
   const nowMin = mskMinutes();
-  // Марафоны идут вертикально внутри колонки, от отметки 00:00 до конца суток:
-  // раньше полоса лежала поверх шапки и перекрывала даты
-  const marathon = weekMarathonLanes(events);
-  const marathonLanes = marathon.lanes;
-  const ownAllDay = layout.map(day => day.allDay.filter(e => e.source !== 'marathon'));
-  // Область «весь день» нужна только под свои записи без времени; минимум — одна строка
+  // Записи «на весь день» (марафоны и записи без времени) подписаны под датой дня: так они не красят
+  // всю колонку и не закрывают часовую шкалу. Марафон идёт первым — он важнее заметок
+  const ownAllDay = layout.map(day => [...day.allDay].sort((a, b) =>
+    Number(b.source === 'marathon') - Number(a.source === 'marathon')));
+  // Область «весь день» растёт по самому насыщенному дню недели; минимум — одна строка
   const ownRows = Math.max(1, ...ownAllDay.map(list => list.length));
   const allDayH = allDayHeight(ownRows);
   const trackH = HOUR_HEIGHT * 24;
@@ -125,7 +124,7 @@ function weekHtml(appState) {
          aria-label="Неделя: 7 дней, время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         <div class="cal-week-allday" style="height:${allDayH}px">
-          <span class="cal-week-allday-label">без времени</span>
+          <span class="cal-week-allday-label">весь день</span>
         </div>
         ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.label}</div>`).join('')}
       </div>
@@ -146,17 +145,12 @@ function weekHtml(appState) {
             <span class="cal-day-dng is-${dungeon.key}" title="Данж дня: ${dungeon.name}">${dungeon.icon}</span>
           </button>
           <div class="cal-day-allday" style="height:${allDayH}px">
-            ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}"
-              title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>`).join('')}
+            ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+              title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
           </div>
           <div class="cal-day-track" style="height:${trackH}px" data-planner-date="${d.date}"
                title="${escapeHtml(cellTitle)}">
             ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
-            ${marathon.days[i].map(m => `<div class="cal-marathon is-${escapeHtml(m.event.color || 'purple')}${m.event.done ? ' is-done' : ''}"
-              style="left:${m.leftPct.toFixed(2)}%;width:${m.widthPct.toFixed(2)}%"
-              title="${escapeHtml(m.event.title)} · марафон, весь день${marathonLanes > 1 ? ' (несколько марафонов делят день)' : ''}">
-              <b>${escapeHtml(m.event.title)}</b>
-            </div>`).join('')}
             ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
               style="top:${b.top.toFixed(1)}px;height:${b.height.toFixed(1)}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
               title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
