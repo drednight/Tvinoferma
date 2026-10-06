@@ -4,7 +4,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
-import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT } from './weekView.js';
+import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
 import { mskMinutes } from '../../core/msk.js';
@@ -122,7 +122,7 @@ function weekHtml(appState) {
 
   return `
     <div class="cal-week"
-         style="--allday-rows:${ownRows}"
+         style="--allday-rows:${ownRows};--hour-h:${HOUR_HEIGHT}px;--cell-h:${CELL_HEIGHT}px"
          aria-label="Неделя: 7 дней, время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">

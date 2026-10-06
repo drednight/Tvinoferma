@@ -105,9 +105,9 @@ describe('раскладка недели', () => {
     expect(cells[2].label).toBe('');
     expect(cells[3].label).toBe('06:00');
     expect(cells.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '06:00', '12:00', '18:00']);
-    // Сутки целиком укладываются в 624 px: неделя видна одним взглядом, без прокрутки часов
-    expect(24 * HOUR_HEIGHT).toBe(624);
-    expect(cells.length * CELL_HEIGHT).toBe(624);
+    // Сутки целиком укладываются в 480 px: неделя видна одним взглядом, без прокрутки часов
+    expect(24 * HOUR_HEIGHT).toBe(480);
+    expect(cells.length * CELL_HEIGHT).toBe(480);
     expect(HOUR_HEIGHT).toBeLessThan(30);
   });
 });
