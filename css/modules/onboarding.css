@@ -53,6 +53,48 @@
 /* Справка «Как войти на сайт игры» */
 .onb-help { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 0.9rem; line-height: 1.5; }
 
+/* --- Приветственное окно первого запуска: три шага карточками в ряд ---
+   В окне места больше, чем на странице, поэтому шаги идут рядом: видно весь путь сразу,
+   а не «простыню» строк. На узком экране карточки встают в столбик. */
+.onb-modal { padding: 0; border: 0; background: none; box-shadow: none; }
+.onb-modal .onb-head { margin-bottom: 16px; }
+.onb-modal .onb-head p { font-size: 0.86rem; }
+
+.onb-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  counter-reset: onb;
+}
+.onb-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.onb-card:hover { border-color: var(--border-strong); }
+.onb-card-top { display: flex; align-items: center; gap: 9px; }
+.onb-card-top .onb-ico { font-size: 1.6rem; line-height: 1; }
+.onb-card b { font-size: 0.95rem; }
+.onb-card p { font-size: 0.82rem; margin: 0; flex: 1 1 auto; }
+/* Кнопка прижата к низу: карточки одной высоты, кнопки на одной линии */
+.onb-card .btn { margin-top: auto; align-self: flex-start; }
+
+@media (max-width: 760px) {
+  .onb-cards { grid-template-columns: minmax(0, 1fr); }
+  .onb-card p { flex: 0 0 auto; }
+}
+
+/* Строка с кнопкой повторного открытия инструкции */
+#welcome-row { margin: 0 0 12px; align-items: center; }
+
 @media (max-width: 720px) {
   .onb-step { grid-template-columns: 26px minmax(0, 1fr); }
   .onb-ico { display: none; }

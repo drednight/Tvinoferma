@@ -4,7 +4,7 @@ import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
-import { toast, showModal, confirmModal } from '../../core/ui.js';
+import { toast, showModal, closeModal, confirmModal } from '../../core/ui.js';
 import { renderParties } from '../parties/index.js';
 
 // Импортируем константы
@@ -46,6 +46,21 @@ export function renderCharacters() {
   
   // 2. Затем рендерим сетку с учетом фильтров
   renderFilteredGrid(); 
+  maybeShowWelcome();
+}
+
+/**
+ * Приветственное окно при первом запуске: только когда персонажей нет и его ещё не закрывали.
+ * Показываем с небольшой задержкой, чтобы оно появилось после первой отрисовки страницы,
+ * а не перекрывало пустой экран в момент загрузки.
+ */
+let welcomeShown = false;
+async function maybeShowWelcome() {
+  if (welcomeShown) return;
+  const { shouldShowOnboarding } = await import('./onboarding.js');
+  if (!shouldShowOnboarding(state)) return;
+  welcomeShown = true;
+  setTimeout(() => { openWelcome(); }, 400);
 }
 
 /**
@@ -466,7 +481,8 @@ export async function runTodayAction(action, payload) {
 /**
  * Кнопки подсказки первых шагов: ведут к нужному действию.
  * Разметка подсказки перерисовывается вместе с сеткой, поэтому обработчик навешивается каждый раз.
- */function bindOnboardingEvents(container) {
+ */
+export function bindOnboardingEvents(container) {
   container.querySelectorAll('[data-onb]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const action = /** @type {HTMLElement} */ (btn).dataset.onb;
@@ -476,23 +492,56 @@ export async function runTodayAction(action, payload) {
         openCreatePartyModal();
         return;
       }
-      if (action === 'open-help') {
-        showModal({
-          title: 'Как войти на сайт игры',
-          content: `
-            <ol class="onb-help">
-              <li>Откройте карточку персонажа и заполните Email и пароль — они сразу уходят в защищённое хранилище учётных данных ОС.</li>
-              <li>Нажмите <b>«🌐 Открыть сайт»</b>: откроется окно браузера персонажа с отдельной сессией, поэтому аккаунты не мешают друг другу.</li>
-              <li>Войдите на сайте игры обычным способом — приложение ничего не нажимает за вас.</li>
-              <li>Сессия сохранится. Дальше кнопка <b>«🔐 Проверить вход»</b> покажет, кто ещё авторизован, а кто требует повторного входа.</li>
-            </ol>
-            <p class="muted">Если сессия истекла, приложение подскажет это в карточке персонажа и в фильтре «Все статусы».</p>`,
-          submitText: null,
-          cancelText: 'Понятно'
-        });
-      }
+      if (action === 'open-help') openLoginHelp();
     });
   });
+}
+
+/** Справка «Как войти на сайт игры»: один текст на приветственное окно и на страницу. */
+export function openLoginHelp() {
+  showModal({
+    title: 'Как войти на сайт игры',
+    content: `
+      <ol class="onb-help">
+        <li>Откройте карточку персонажа и заполните Email и пароль — они сразу уходят в защищённое хранилище учётных данных ОС.</li>
+        <li>Нажмите <b>«🌐 Открыть сайт»</b>: откроется окно браузера персонажа с отдельной сессией, поэтому аккаунты не мешают друг другу.</li>
+        <li>Войдите на сайте игры обычным способом — приложение ничего не нажимает за вас.</li>
+        <li>Сессия сохранится. Дальше кнопка <b>«🔐 Проверить вход»</b> покажет, кто ещё авторизован, а кто требует повторного входа.</li>
+      </ol>
+      <p class="muted">Если сессия истекла, приложение подскажет это в карточке персонажа и в фильтре «Все статусы».</p>`,
+    submitText: null,
+    cancelText: 'Понятно'
+  });
+}
+
+/**
+ * Приветственное окно при первом запуске.
+ *
+ * Показывается один раз: когда персонажей нет и пользователь его ещё не закрывал. Закрытие
+ * отмечается в настройках, поэтому само оно больше не появится — но остаётся доступным
+ * по кнопке «С чего начать», чтобы инструкцию можно было перечитать.
+ */
+export async function openWelcome() {
+  const { onboardingModalHtml, markOnboardingSeen } = await import('./onboarding.js');
+  // Отмечаем показанным сразу при открытии. В `onClose` полагаться нельзя: он вызывается
+  // только у кнопки отмены, а у «Начать» его нет — окно закрывалось бы, не запомнив показ.
+  await markOnboardingSeen();
+  showModal({
+    title: 'Добро пожаловать в Твиноферму',
+    content: onboardingModalHtml(),
+    submitText: 'Начать',
+    cancelText: 'Позже',
+    // Без onSubmit кнопка «Начать» не закрывала окно: `showModal` вызывал несуществующий
+    // обработчик и падал в alert. Здесь просто подтверждаем закрытие.
+    onSubmit: () => true
+  });
+  const modal = document.getElementById('modal-root');
+  bindOnboardingEvents(modal);
+  // Кнопка шага внутри окна закрывает его: пользователь уже пошёл делать дело
+  modal.querySelectorAll('[data-onb]').forEach(btn => {
+    btn.addEventListener('click', () => { closeModal(); });
+  });
+  // Esc и «Позже» тоже закрывают окно, ничего дополнительно записывать не нужно
 }
 
 function bindCharacterEvents(container) {  container.onclick = async (e) => {

@@ -96,6 +96,9 @@ export function showModal({
           });
           
           if (result !== false) {
+            // Кнопка «Начать»/«Сохранить» тоже должна известить о закрытии, как кнопка отмены:
+            // иначе окна, которым важно запомнить факт закрытия, молча теряли это событие
+            if (typeof onClose === 'function') onClose();
             closeModal();
           }
         } catch (err) {

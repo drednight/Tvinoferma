@@ -1,9 +1,17 @@
-// Подсказка первых шагов на пустых данных (Issue #45, js/modules/characters/onboarding.js).
-import { describe, it, expect, vi } from 'vitest';
+// Приветственное окно и подсказка первых шагов на пустых данных
+// (Issue #45, js/modules/characters/onboarding.js).
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mocks = vi.hoisted(() => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/core/state.js', () => ({ state: { characters: [] } }));
+vi.mock('../js/core/storage.js', () => ({ persist: mocks.persist }));
 
-import { shouldShowOnboarding, onboardingHtml, ONBOARDING_STEPS } from '../js/modules/characters/onboarding.js';
+import {
+  shouldShowOnboarding, onboardingHtml, onboardingModalHtml, markOnboardingSeen,
+  ONBOARDING_STEPS, ONBOARDING_INTRO
+} from '../js/modules/characters/onboarding.js';
+
+beforeEach(() => { mocks.persist.mockClear(); });
 
 describe('когда показывать подсказку', () => {
   it('на пустых данных — да', () => {
@@ -13,6 +21,61 @@ describe('когда показывать подсказку', () => {
 
   it('как только появился персонаж — нет', () => {
     expect(shouldShowOnboarding({ characters: [{ id: 'a' }] })).toBe(false);
+  });
+
+  it('после первого показа само окно не возвращается', () => {
+    // Иначе приветствие всплывало бы при каждом запуске, пока нет персонажей
+    expect(shouldShowOnboarding({ characters: [], settings: { ui: { onboardingSeen: true } } })).toBe(false);
+    expect(shouldShowOnboarding({ characters: [], settings: { ui: { onboardingSeen: false } } })).toBe(true);
+  });
+});
+
+describe('приветственное окно', () => {
+  it('три шага карточками, а не списком строк', () => {
+    const html = onboardingModalHtml();
+    expect(html).toContain('onb-cards');
+    expect((html.match(/class="onb-card"/g) || []).length).toBe(ONBOARDING_STEPS.length);
+    // Карточки не должны иметь класс строчного списка — это разные виды
+    expect(html).not.toContain('onb-steps');
+  });
+
+  it('объясняет, что это за приложение', () => {
+    const html = onboardingModalHtml();
+    expect(html).toContain(ONBOARDING_INTRO);
+    expect(ONBOARDING_INTRO).toContain('Perfect World');
+  });
+
+  it('в каждой карточке есть номер, иконка, название, объяснение и кнопка', () => {
+    const html = onboardingModalHtml();
+    for (const step of ONBOARDING_STEPS) {
+      expect(html).toContain(step.title);
+      expect(html).toContain(`data-onb="${step.action}"`);
+      expect(html).toContain(step.icon);
+    }
+    expect((html.match(/onb-num/g) || []).length).toBe(ONBOARDING_STEPS.length);
+  });
+
+  it('подсказывает, что окно можно открыть снова', () => {
+    expect(onboardingModalHtml()).toContain('С чего начать');
+    expect(onboardingModalHtml()).toContain('открыть снова');
+  });
+});
+
+describe('отметка о показе', () => {
+  it('записывается один раз и сохраняется', async () => {
+    const appState = { settings: { ui: {} } };
+    await markOnboardingSeen(appState);
+    expect(appState.settings.ui.onboardingSeen).toBe(true);
+    expect(mocks.persist).toHaveBeenCalledTimes(1);
+    // Повторный вызов ничего не пишет: состояние уже отмечено
+    await markOnboardingSeen(appState);
+    expect(mocks.persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('не падает, если раздела ui ещё нет', async () => {
+    const appState = { settings: {} };
+    await markOnboardingSeen(appState);
+    expect(appState.settings.ui.onboardingSeen).toBe(true);
   });
 });
 

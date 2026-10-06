@@ -142,6 +142,11 @@ async function boot() {
     // 4. Привязка навигации по вкладкам и счётчиков разделов
     bindNavigation();
     initNavBadges();
+    // Повторный вызов приветственного окна: инструкция должна быть доступна и позже
+    document.getElementById('welcome-btn')?.addEventListener('click', async () => {
+      const { openWelcome } = await import('./modules/characters/list.js');
+      openWelcome();
+    });
     console.log('[BOOT] Navigation bound.');
 
     // 5. Инициализация UI Actions (FAB, Меню скриптов)
@@ -257,8 +262,7 @@ function renderActiveTab(sectionName) {
         break;
       case 'characters':
         renderCharacters();
-        break;
-      case 'parties':
+        break;      case 'parties':
         renderParties();
         break;
       case 'marathons':
