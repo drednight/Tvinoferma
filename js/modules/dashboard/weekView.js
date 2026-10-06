@@ -250,11 +250,11 @@ export function weekMarathonLanes(eventsByDate) {
   };
 }
 
-/** Шаг подписей оси времени в часах: 00:00, 03:00, 06:00 … 21:00. */
-export const HOUR_LABEL_STEP = 3;
+/** Шаг подписей оси времени в часах: 00:00, 06:00, 12:00, 18:00. */
+export const HOUR_LABEL_STEP = 6;
 /** Сколько ячеек лежит между двумя подписями оси. */
-export const CELLS_PER_LABEL = 2;
-/** Длительность одной ячейки сетки в часах (3 ч / 2 ячейки = 1,5 ч). */
+export const CELLS_PER_LABEL = 3;
+/** Длительность одной ячейки сетки в часах (6 ч / 3 ячейки = 2 ч). */
 export const CELL_HOURS = HOUR_LABEL_STEP / CELLS_PER_LABEL;
 /** Высота одной ячейки сетки в пикселях. Сутки по-прежнему равны 24 × `HOUR_HEIGHT`. */
 export const CELL_HEIGHT = CELL_HOURS * HOUR_HEIGHT;

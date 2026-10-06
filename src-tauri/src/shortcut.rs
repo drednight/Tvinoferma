@@ -56,14 +56,19 @@ fn start_menu_dirs() -> Vec<PathBuf> {
 /// Найти ярлыки с нужным именем в папке меню «Пуск» (на пару уровней вглубь:
 /// установщик кладёт ярлык в подпапку с именем приложения).
 fn find(dir: &Path, name: &str, depth: usize, found: &mut Vec<PathBuf>) {
-    let Ok(list) = std::fs::read_dir(dir) else { return };
+    let Ok(list) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in list.flatten() {
         let path = entry.path();
         if path.is_dir() {
             if depth > 0 {
                 find(&path, name, depth - 1, found);
             }
-        } else if path.file_name().is_some_and(|n| n.eq_ignore_ascii_case(name)) {
+        } else if path
+            .file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case(name))
+        {
             found.push(path);
         }
     }
@@ -91,7 +96,10 @@ pub fn ensure_russian_shortcut() {
                     }
                 }
                 ShortcutAction::RemoveLatin => match std::fs::remove_file(path) {
-                    Ok(()) => println!("[SHORTCUT] лишний латинский ярлык удалён: {}", path.display()),
+                    Ok(()) => println!(
+                        "[SHORTCUT] лишний латинский ярлык удалён: {}",
+                        path.display()
+                    ),
                     Err(e) => println!("[SHORTCUT] не удалось удалить лишний ярлык: {e}"),
                 },
                 ShortcutAction::Nothing => {}

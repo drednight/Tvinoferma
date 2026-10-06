@@ -98,12 +98,13 @@ describe('раскладка недели', () => {
 
   it('высота суток согласована и не требует прокрутки', () => {
     const cells = weekHours();
-    // Ячейка 1,5 ч: между двумя подписями ровно две ячейки
-    expect(cells).toHaveLength(16);
+    // Ячейка 2 ч: между двумя подписями ровно три ячейки
+    expect(cells).toHaveLength(12);
     expect(cells[0].label).toBe('00:00');
     expect(cells[1].label).toBe('');
-    expect(cells[2].label).toBe('03:00');
-    expect(cells.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
+    expect(cells[2].label).toBe('');
+    expect(cells[3].label).toBe('06:00');
+    expect(cells.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '06:00', '12:00', '18:00']);
     // Сутки целиком укладываются в 624 px: неделя видна одним взглядом, без прокрутки часов
     expect(24 * HOUR_HEIGHT).toBe(624);
     expect(cells.length * CELL_HEIGHT).toBe(624);

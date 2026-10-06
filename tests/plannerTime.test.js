@@ -220,11 +220,11 @@ describe('неделя: «весь день» подписан под датой
     expect(col.querySelector('.cal-day-track .cal-chip')).toBeNull();
   });
 
-  it('ось времени подписана каждые 3 часа, между подписями две ячейки', () => {
+  it('ось времени подписана каждые 6 часов, между подписями три ячейки', () => {
     state.settings.ui.plannerView = 'week';
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     const labels = [...doc.querySelectorAll('.cal-hour')].map(h => h.textContent.trim()).filter(Boolean);
-    expect(labels).toEqual(['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00']);
+    expect(labels).toEqual(['00:00', '06:00', '12:00', '18:00']);
   });
 
   it('ячейка «весь день» над 00:00 скрыта, если на неделе нет таких записей', () => {
@@ -232,7 +232,7 @@ describe('неделя: «весь день» подписан под датой
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     expect(doc.querySelector('.cal-week-allday')).toBeNull();
     expect(doc.querySelector('.cal-day-allday')).toBeNull();
-    expect(doc.querySelectorAll('.cal-line')).toHaveLength(7 * 16);
+    expect(doc.querySelectorAll('.cal-line')).toHaveLength(7 * 12);
   });
 
   it('ячейка «весь день» появляется, когда есть марафон или запись без времени', () => {

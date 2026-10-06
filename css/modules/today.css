@@ -506,7 +506,7 @@
    Время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы.
    Сутки показаны целиком, без прокрутки: неделя читается одним взглядом.
    Высота часа задана переменной (js: HOUR_HEIGHT) — ось и блоки считаются от неё, иначе разъедутся. */
-.planner.is-week { --hour-h: 26px; --cell-h: 39px; }
+.planner.is-week { --hour-h: 26px; --cell-h: 52px; }
 
 .planner-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
 .planner-switch .btn { border: 0; border-radius: 0; }
