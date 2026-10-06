@@ -133,7 +133,15 @@ fn build_menu<R: Runtime, M: Manager<R>>(
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
     Menu::with_items(
         app,
-        &[&show, &favorites_menu, &launch, &close_game, &scripts, &separator, &quit],
+        &[
+            &show,
+            &favorites_menu,
+            &launch,
+            &close_game,
+            &scripts,
+            &separator,
+            &quit,
+        ],
     )
 }
 

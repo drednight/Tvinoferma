@@ -50,12 +50,18 @@ pub async fn tf_notify<R: Runtime>(
     #[cfg(windows)]
     if let Err(e) = registered() {
         // Регистрация — условие показа: без неё Windows отбросит уведомление
-        return Err(format!("не удалось зарегистрировать приложение в Windows: {e}"));
+        return Err(format!(
+            "не удалось зарегистрировать приложение в Windows: {e}"
+        ));
     }
 
     app.notification()
         .builder()
-        .title(if title.is_empty() { APP_NAME.to_string() } else { title })
+        .title(if title.is_empty() {
+            APP_NAME.to_string()
+        } else {
+            title
+        })
         .body(body)
         .show()
         .map_err(|e| e.to_string())
@@ -76,13 +82,22 @@ fn registered() -> Result<(), String> {
     let mut key = HKEY::default();
 
     // RegCreateKeyW создаёт ключ вместе с родительскими (Classes, AppUserModelId — есть в любой Windows)
-    let status = unsafe { RegCreateKeyW(HKEY_CURRENT_USER, windows::core::PCWSTR(subkey.as_ptr()), &mut key) };
+    let status = unsafe {
+        RegCreateKeyW(
+            HKEY_CURRENT_USER,
+            windows::core::PCWSTR(subkey.as_ptr()),
+            &mut key,
+        )
+    };
     if status != ERROR_SUCCESS {
         return Err(format!("RegCreateKeyW: код {}", status.0));
     }
 
     let set = |key: HKEY, name: windows::core::PCWSTR, value: &str| -> Result<(), String> {
-        let data = value.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let data = value
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>();
         let bytes = unsafe {
             std::slice::from_raw_parts(data.as_ptr() as *const u8, std::mem::size_of_val(&data[..]))
         };
@@ -104,7 +119,9 @@ fn registered() -> Result<(), String> {
         }
     });
 
-    unsafe { let _ = RegCloseKey(key); }
+    unsafe {
+        let _ = RegCloseKey(key);
+    }
     result
 }
 

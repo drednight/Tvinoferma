@@ -1485,7 +1485,12 @@ fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
         for sub in [
             None,
             Some(Path::new("assets").join("icons").join("classes")),
-            Some(Path::new("public").join("assets").join("icons").join("classes")),
+            Some(
+                Path::new("public")
+                    .join("assets")
+                    .join("icons")
+                    .join("classes"),
+            ),
         ] {
             let path = match sub {
                 Some(p) => base.join(p),
@@ -1511,7 +1516,11 @@ fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
 ///
 /// `None` — значок собрать не удалось: тогда окно не трогаем вовсе. Важно не вернуть «нулевые»
 /// значки, иначе Windows снимет текущий значок и окно останется вообще без иконки.
-fn style_icons(small_rgba: Option<&[u8]>, big_rgba: Option<&[u8]>, class: &str) -> Option<(usize, usize)> {
+fn style_icons(
+    small_rgba: Option<&[u8]>,
+    big_rgba: Option<&[u8]>,
+    class: &str,
+) -> Option<(usize, usize)> {
     if class.is_empty() {
         return None;
     }
@@ -1522,7 +1531,9 @@ fn style_icons(small_rgba: Option<&[u8]>, big_rgba: Option<&[u8]>, class: &str) 
         return Some((small, big));
     }
     // Пикселей нет (картинка не прочиталась) — пробуем PNG класса рядом с exe
-    let img = image::load_from_memory(&class_icon_bytes(class)?).ok()?.to_rgba8();
+    let img = image::load_from_memory(&class_icon_bytes(class)?)
+        .ok()?
+        .to_rgba8();
     let small = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_SMALL)));
     let big = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_BIG)));
     (small != 0 || big != 0).then_some((small, big))
@@ -1559,7 +1570,8 @@ pub async fn launcher_apply_window_style(
         let want_class = class.as_deref().map(str::trim).filter(|c| !c.is_empty());
         // Пиксели от интерфейса — основной источник; PNG класса — запасной (см. `style_icons`).
         // `None` значит «значок не собрали»: тогда окно оставляем с прежним значком.
-        let icons = want_class.and_then(|cls| style_icons(icon_small.as_deref(), icon_big.as_deref(), cls));
+        let icons =
+            want_class.and_then(|cls| style_icons(icon_small.as_deref(), icon_big.as_deref(), cls));
 
         let mut applied = false;
         let mut denied = false;
@@ -2086,7 +2098,8 @@ mod tests {
         // Пиксели для заголовка и панели задач приходят разного размера — каждый идёт в свой значок
         let small = vec![10u8; 16 * 16 * 4];
         let big = vec![20u8; 48 * 48 * 4];
-        let (s, b) = style_icons(Some(&small), Some(&big), "Воин").expect("значок должен собраться из пикселей");
+        let (s, b) = style_icons(Some(&small), Some(&big), "Воин")
+            .expect("значок должен собраться из пикселей");
         assert_ne!(s, 0, "малый значок (заголовок) должен быть создан");
         assert_ne!(b, 0, "большой значок (панель задач) должен быть создан");
     }
@@ -2125,7 +2138,9 @@ mod tests {
         // Путь от папки пакета (`src-tauri`), где запускаются тесты Cargo.
         let png = std::fs::read("../public/assets/icons/classes/var.png")
             .expect("значок класса «Воин» должен лежать в репозитории");
-        let img = image::load_from_memory(&png).expect("PNG должен читаться").to_rgba8();
+        let img = image::load_from_memory(&png)
+            .expect("PNG должен читаться")
+            .to_rgba8();
         let small = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_SMALL)));
         let big = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_BIG)));
         assert_ne!(small, 0, "малый значок из PNG должен собраться");
