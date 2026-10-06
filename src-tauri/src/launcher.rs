@@ -282,14 +282,28 @@ mod win {
 
     /// Ставит окну малый (заголовок) и большой (панель задач, Alt+Tab) значки. 0 — этот значок не меняем.
     pub fn set_icons(hwnd: usize, small: usize, big: usize) -> Result<(), u32> {
-        const WM_SETICON: u32 = 0x0080;
         if small != 0 {
-            send(hwnd, WM_SETICON, 0, small as isize)?; // ICON_SMALL
+            send_icon(hwnd, 0, small)?; // ICON_SMALL
         }
         if big != 0 {
-            send(hwnd, WM_SETICON, 1, big as isize)?; // ICON_BIG
+            send_icon(hwnd, 1, big)?; // ICON_BIG
         }
         Ok(())
+    }
+
+    /// Снимает с окна поставленные значки: Windows возвращается к значку класса окна
+    /// (для клиента игры — к значку exe). Отдельная функция нужна потому, что в `set_icons`
+    /// ноль означает «не менять»: вызов `set_icons(hwnd, 0, 0)` не делал вообще ничего,
+    /// хотя интерфейс сообщал пользователю об успехе.
+    pub fn clear_icons(hwnd: usize) -> Result<(), u32> {
+        send_icon(hwnd, 0, 0)?; // ICON_SMALL
+        send_icon(hwnd, 1, 0) // ICON_BIG
+    }
+
+    /// Одно сообщение `WM_SETICON`: `kind` 0 — малый значок, 1 — большой. Значок 0 снимает прежний.
+    fn send_icon(hwnd: usize, kind: usize, icon: usize) -> Result<(), u32> {
+        const WM_SETICON: u32 = 0x0080;
+        send(hwnd, WM_SETICON, kind, icon as isize)
     }
 
     /// Завершает процесс по PID. `Err(код)` — код ошибки Windows (5 — отказано в доступе: процесс запущен от имени администратора).
@@ -500,6 +514,9 @@ mod win {
         0
     }
     pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
+        Err(1)
+    }
+    pub fn clear_icons(_hwnd: usize) -> Result<(), u32> {
         Err(1)
     }
     pub fn kill_process(_pid: u32) -> Result<(), u32> {
@@ -1484,6 +1501,33 @@ fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
     }
 }
 
+/// Значки окна (малый для заголовка, большой для панели задач) для смены вида по требованию.
+///
+/// Два источника, и порядок важен: сначала **сырые пиксели RGBA** от интерфейса (canvas всегда
+/// может прочитать PNG класса), и только если их нет — PNG из папки значков. Пиксели нельзя
+/// скормить `image::load_from_memory`: это декодер файлов (PNG/JPEG), а не сырых буферов, и он
+/// вернёт ошибку. Раньше код путал эти пути, из-за чего при выборе класса значок не ставился,
+/// а название менялось — то есть «иконка не обновляется».
+///
+/// `None` — значок собрать не удалось: тогда окно не трогаем вовсе. Важно не вернуть «нулевые»
+/// значки, иначе Windows снимет текущий значок и окно останется вообще без иконки.
+fn style_icons(small_rgba: Option<&[u8]>, big_rgba: Option<&[u8]>, class: &str) -> Option<(usize, usize)> {
+    if class.is_empty() {
+        return None;
+    }
+    // Пиксели от интерфейса: каждый размер идёт в свой значок как есть, без пересжатия
+    let small = icon_from_rgba(small_rgba);
+    let big = icon_from_rgba(big_rgba);
+    if small != 0 || big != 0 {
+        return Some((small, big));
+    }
+    // Пикселей нет (картинка не прочиталась) — пробуем PNG класса рядом с exe
+    let img = image::load_from_memory(&class_icon_bytes(class)?).ok()?.to_rgba8();
+    let small = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_SMALL)));
+    let big = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_BIG)));
+    (small != 0 || big != 0).then_some((small, big))
+}
+
 /// Меняет название и значок уже запущенного окна игры по требованию пользователя
 /// (кнопка «Изменить» в списке запущенных окон).
 ///
@@ -1513,19 +1557,9 @@ pub async fn launcher_apply_window_style(
 
         let want_title = title.as_deref().and_then(clean_title);
         let want_class = class.as_deref().map(str::trim).filter(|c| !c.is_empty());
-        // Пиксели значка: от интерфейса, иначе PNG класса из папки значков.
-        // Изображение превращается в HICON двух размеров.
-        let icons = want_class.and_then(|cls| {
-            let img = match (icon_small.as_deref(), icon_big.as_deref()) {
-                (Some(a), _) if icon_side(a.len()).is_some() => image::load_from_memory(a).ok()?,
-                (_, Some(b)) if icon_side(b.len()).is_some() => image::load_from_memory(b).ok()?,
-                _ => image::load_from_memory(&class_icon_bytes(cls)?).ok()?,
-            }
-            .to_rgba8();
-            let small = resize_icon(&img, WINDOW_ICON_SMALL);
-            let big = resize_icon(&img, WINDOW_ICON_BIG);
-            Some((icon_from_rgba(Some(&small)), icon_from_rgba(Some(&big))))
-        });
+        // Пиксели от интерфейса — основной источник; PNG класса — запасной (см. `style_icons`).
+        // `None` значит «значок не собрали»: тогда окно оставляем с прежним значком.
+        let icons = want_class.and_then(|cls| style_icons(icon_small.as_deref(), icon_big.as_deref(), cls));
 
         let mut applied = false;
         let mut denied = false;
@@ -1547,9 +1581,9 @@ pub async fn launcher_apply_window_style(
                     }
                     applied = true;
                 }
-                // «Убрать значок»: возвращаем окну пустые значки (Windows возьмёт значок файла игры)
+                // «Убрать значок»: снимаем поставленные, Windows вернёт значок файла игры
                 (None, true) => {
-                    if win::set_icons(w.hwnd, 0, 0).is_err() {
+                    if win::clear_icons(w.hwnd).is_err() {
                         denied = true;
                         continue;
                     }
@@ -2027,6 +2061,84 @@ mod tests {
             rgba_to_bgra_premultiplied(&rgba),
             vec![0, 0, 255, 255, 0, 100, 0, 128, 0, 0, 0, 0]
         );
+    }
+
+    #[test]
+    fn canvas_pixels_are_not_an_image_file() {
+        // Пиксели от интерфейса (`classIconRgba` из canvas) — это сырой RGBA, а не PNG/JPEG.
+        // Декодеру файлов их скормить нельзя: раньше код пытался именно это, `load_from_memory`
+        // возвращал ошибку, и значок молча не ставился — окно получало только название.
+        let rgba = vec![200u8; 16 * 16 * 4];
+        assert!(
+            image::load_from_memory(&rgba).is_err(),
+            "сырые пиксели не должны приниматься за файл картинки"
+        );
+        // А из этих же пикселей значок Windows собирается нормально
+        assert_ne!(
+            icon_from_rgba(Some(&rgba)),
+            0,
+            "сырые пиксели должны давать значок"
+        );
+    }
+
+    #[test]
+    fn style_icons_take_pixels_from_the_interface() {
+        // Пиксели для заголовка и панели задач приходят разного размера — каждый идёт в свой значок
+        let small = vec![10u8; 16 * 16 * 4];
+        let big = vec![20u8; 48 * 48 * 4];
+        let (s, b) = style_icons(Some(&small), Some(&big), "Воин").expect("значок должен собраться из пикселей");
+        assert_ne!(s, 0, "малый значок (заголовок) должен быть создан");
+        assert_ne!(b, 0, "большой значок (панель задач) должен быть создан");
+    }
+
+    #[test]
+    fn clearing_an_icon_actually_sends_a_zero() {
+        // «Вернуть значок игры» должно снимать поставленный значок. В `set_icons` ноль значит
+        // «не менять», поэтому снятие живёт в отдельной функции — иначе действие молча ничего
+        // не делало, а пользователю сообщалось об успехе.
+        let src = include_str!("launcher.rs");
+        assert!(
+            src.contains("pub fn clear_icons(hwnd: usize) -> Result<(), u32>"),
+            "снятие значка должно быть отдельной функцией"
+        );
+        assert!(
+            src.contains("send_icon(hwnd, 0, 0)?; // ICON_SMALL"),
+            "снятие обязано отправить нулевой малый значок"
+        );
+        assert!(
+            src.contains("send_icon(hwnd, 1, 0) // ICON_BIG"),
+            "снятие обязано отправить нулевой большой значок"
+        );
+        // Ветка «убрать значок» должна идти через снятие: обнулять значки через `set_icons`
+        // бессмысленно, там ноль означает «не менять». Ищем именно вызов в рабочем коде.
+        assert!(src.contains("win::clear_icons(w.hwnd)"));
+        let set_icons_zero = format!("win::set_icons(w.hwnd, {})", "0, 0");
+        assert!(
+            !src.contains(&set_icons_zero),
+            "снятие значка не должно идти через set_icons с нулями"
+        );
+    }
+
+    #[test]
+    fn class_png_is_a_real_fallback() {
+        // Запасной путь должен работать на настоящем файле значка, а не только «не падать».
+        // Путь от папки пакета (`src-tauri`), где запускаются тесты Cargo.
+        let png = std::fs::read("../public/assets/icons/classes/var.png")
+            .expect("значок класса «Воин» должен лежать в репозитории");
+        let img = image::load_from_memory(&png).expect("PNG должен читаться").to_rgba8();
+        let small = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_SMALL)));
+        let big = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_BIG)));
+        assert_ne!(small, 0, "малый значок из PNG должен собраться");
+        assert_ne!(big, 0, "большой значок из PNG должен собраться");
+    }
+
+    #[test]
+    fn style_icons_without_pixels_fall_back_to_the_class_png() {
+        // Пикселей нет и PNG класса рядом с exe нет — значок собрать нечем, окно не трогаем.
+        // Важно именно `None`, а не пара нулей: нули заставили бы Windows снять текущий значок.
+        assert_eq!(style_icons(None, None, "НетТакогоКласса"), None);
+        // Класс не задан — значок не меняем вовсе
+        assert_eq!(style_icons(None, None, ""), None);
     }
 
     #[test]

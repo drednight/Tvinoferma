@@ -152,4 +152,26 @@ describe('связка с Rust', () => {
       expect(rust, cls).toContain(`("${cls}"`);
     }
   });
+
+  it('пиксели от canvas не отдаются декодеру файлов (иначе значок не ставился)', () => {
+    // Пиксели интерфейса — сырой RGBA. `image::load_from_memory` — декодер PNG/JPEG: он на них
+    // возвращал ошибку, значок молча не ставился, а название менялось. Это и было «иконка
+    // не обновляется в панели задач». Единственный законный вызов — для файла PNG класса.
+    const calls = [...rust.matchAll(/load_from_memory\(&?([A-Za-z_][\w]*)/g)].map(m => m[1]);
+    expect(calls).toContain('class_icon_bytes');
+    expect(calls).not.toContain('icon_small');
+    expect(calls).not.toContain('icon_big');
+    expect(calls).not.toContain('small_rgba');
+    expect(calls).not.toContain('a');
+    expect(calls).not.toContain('b');
+    // Значок из пикселей собирается отдельной функцией, которая умеет сырой RGBA
+    expect(rust).toContain('fn style_icons(');
+    expect(rust).toMatch(/style_icons\(icon_small\.as_deref\(\), icon_big\.as_deref\(\), cls\)/);
+  });
+
+  it('если значок собрать не удалось, окно не лишается прежнего значка', () => {
+    // `None` (а не пара нулей) — иначе Windows сняла бы текущий значок окна
+    expect(rust).toMatch(/fn style_icons\([\s\S]{0,400}?-> Option<\(usize, usize\)>/);
+    expect(rust).toContain('want_class.and_then(|cls| style_icons(');
+  });
 });
