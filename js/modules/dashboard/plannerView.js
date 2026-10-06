@@ -1,17 +1,24 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
-import { mskMinutes } from '../../core/msk.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
+import { weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT, ALLDAY_ROW_HEIGHT, ALLDAY_PAD, WEEK_DAYS } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
+// Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
+import { mskMinutes } from '../../core/msk.js';
 
 let shownMonth = new Date();
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const KIND = { task: 'Задача', event: 'Событие', note: 'Заметка' };
+
+/** Вид календаря: компактная неделя или месяц. Хранится в настройках. */
+export function plannerView() {
+  return state.settings?.ui?.plannerView === 'month' ? 'month' : 'week';
+}
 
 /** Длительности для формы: шкала дня строит высоту блока по этому значению. */
 const DURATION_CHOICES = [
@@ -86,35 +93,122 @@ function dayCellHtml(date, events, dungeon, isToday) {
   </button>`;
 }
 
+/**
+ * Вид «Неделя»: 7 колонок (вчера, сегодня, +5 дней), общая ось времени сверху вниз.
+ *
+ * Почему так: время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы —
+ * этого не даёт месячная сетка из отдельных мини-шкал. Блоки считает `weekLayout`
+ * (внутри — тот же `timelineBlocks`, что и в месяце: логика раскладки одна на оба вида).
+ *
+ * Сутки показаны целиком, без прокрутки: неделя должна читаться одним взглядом, а не листаться.
+ * Поэтому высота часа меньше, чем в окне дня, где важна точность.
+ */
+function weekHtml(appState) {
+  const today = localDate();
+  const days = weekDays(today);
+  const events = days.map(d => plannerEventsForDate(appState, d.date));
+  const layout = weekLayout(events);
+  const hours = weekHours();
+  const nowMin = mskMinutes();
+  // Марафон и другие события «на весь день» — сплошными полосами на всю ширину недели
+  const allDay = packAllDayRows(weekAllDaySpans(events));
+  const rows = Math.max(1, allDay.rows);
+  // Высоту области «весь день» считает weekView: та же формула нужна и разметке, и тестам
+  const allDayH = allDayHeight(rows);
+
+  return `
+    <div class="cal-week"
+         style="--allday-rows:${rows}"
+         aria-label="Неделя: 7 дней, время сверху вниз, сутки ${HOUR_HEIGHT * 24} пикселей">
+      <div class="cal-week-side">
+        <div class="cal-week-allday" style="height:${allDayH}px">
+          <span class="cal-week-allday-label">весь день</span>
+        </div>
+        ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.isMajor ? h.label : ''}</div>`).join('')}
+      </div>
+      <div class="cal-week-days">
+        ${days.map((d, i) => {
+          const dungeon = dungeonInfoForDate(d.date);
+          const day = layout[i] || { allDay: [], blocks: [] };
+          // Записи без времени (не марафон) остаются плашками в шапке своего дня
+          const own = day.allDay.filter(e => e.source !== 'marathon');
+          return `<div class="cal-day is-${dungeon.key}${d.isToday ? ' is-today' : ''}${d.isWeekend ? ' is-weekend' : ''}">
+          <button type="button" class="cal-day-head" data-planner-date="${d.date}"
+                  title="${d.date}: данж дня — ${dungeon.name}${events[i].length ? ` · записей: ${events[i].length}` : ''}">
+            <small>${d.weekdayName}</small>
+            <b>${d.day}</b>
+            <span class="cal-day-dng is-${dungeon.key}" title="Данж дня: ${dungeon.name}">${dungeon.icon}</span>
+          </button>
+          <div class="cal-day-allday" style="height:${allDayH}px">
+            ${own.slice(0, rows).map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.done ? ' is-done' : ''}"
+              title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</span>`).join('')}
+            ${own.length > rows ? `<span class="cal-more" title="${own.slice(rows).map(x => escapeHtml(x.title)).join(' • ')}">+${own.length - rows}</span>` : ''}
+          </div>
+          <div class="cal-day-track" style="height:${HOUR_HEIGHT * 24}px">
+            ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
+            ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
+              style="top:${b.top.toFixed(1)}px;height:${b.height.toFixed(1)}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
+              title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
+              data-planner-date="${d.date}">
+              <b>${escapeHtml(b.event.title)}</b><small>${b.startTime}–${b.endTime}</small>
+            </div>`).join('')}
+            ${d.isToday ? `<div class="cal-now" style="top:${nowLineTop(nowMin).toFixed(1)}px" title="Сейчас"></div>` : ''}
+          </div>
+        </div>`;
+        }).join('')}
+      </div>
+      <div class="cal-week-spans" style="height:${allDayH}px">
+        ${allDay.spans.map(s => `<div class="cal-span is-${escapeHtml(s.color)}${s.source === 'marathon' ? ' is-marathon' : ''}${s.done ? ' is-done' : ''}"
+          style="left:${(s.startIndex / WEEK_DAYS * 100).toFixed(3)}%;width:${(s.span / WEEK_DAYS * 100).toFixed(3)}%;top:${s.row * ALLDAY_ROW_HEIGHT + ALLDAY_PAD}px"
+          title="${escapeHtml(s.title)}${s.source === 'marathon' ? ' · марафон, идёт подряд несколько дней' : ''}">
+          ${s.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(s.title)}
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 export function plannerHtml(appState = state) {
   const year = shownMonth.getFullYear();
   const month = shownMonth.getMonth();
   const today = localDate();
   const cells = monthMatrix(year, month);
+  const view = plannerView();
+  const days = weekDays(today);
+  const title = view === 'week' ? weekRangeTitle(days) : `${MONTHS[month]} ${year}`;
+
   return `
-    <section class="planner" data-planner>
+    <section class="planner is-${view}" data-planner data-view="${view}">
       <div class="planner-head">
         <div>
           <h3>Календарь</h3>
-          <p class="muted">События приложения и ваши планы. Цвет ячейки — данж дня по ежедневному заданию,
+          <p class="muted">События приложения и ваши планы. Цвет — данж дня по ежедневному заданию,
             записи стоят по времени начала (МСК), марафон занимает весь день.</p>
         </div>
         <div class="planner-nav">
-          <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
-          <strong>${MONTHS[month]} ${year}</strong>
-          <button class="btn ghost small" type="button" data-planner-nav="1" aria-label="Следующий месяц">→</button>
+          ${view === 'month' ? `
+            <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
+            <strong>${title}</strong>
+            <button class="btn ghost small" type="button" data-planner-nav="1" aria-label="Следующий месяц">→</button>` :
+            `<strong>${title}</strong>`}
           <button class="btn secondary small" type="button" data-planner-today>Сегодня</button>
+          <span class="planner-switch" role="group" aria-label="Вид календаря">
+            <button class="btn ghost small${view === 'week' ? ' is-on' : ''}" type="button" data-planner-view="week"
+                    aria-pressed="${view === 'week'}" title="Неделя: время сверху вниз, видно свободные часы">Неделя</button>
+            <button class="btn ghost small${view === 'month' ? ' is-on' : ''}" type="button" data-planner-view="month"
+                    aria-pressed="${view === 'month'}" title="Месяц: вся сетка месяца">Месяц</button>
+          </span>
         </div>
       </div>
       ${plannerLegendHtml()}
-      ${plannerTimeLegendHtml()}
-      <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
-      <div class="planner-grid">
-        ${cells.map(date => {
-          if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';
-          return dayCellHtml(date, plannerEventsForDate(appState, date), dungeonInfoForDate(date), date === today);
-        }).join('')}
-      </div>
+      ${view === 'month' ? plannerTimeLegendHtml() : ''}
+      ${view === 'week' ? weekHtml(appState) : `
+        <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
+        <div class="planner-grid">
+          ${cells.map(date => {
+            if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';
+            return dayCellHtml(date, plannerEventsForDate(appState, date), dungeonInfoForDate(date), date === today);
+          }).join('')}
+        </div>`}
     </section>`;
 }
 
@@ -122,7 +216,18 @@ export function bindPlanner(root, deps = {}) {
   const planner = root?.querySelector?.('[data-planner]');
   if (!planner || planner.dataset.bound) return;
   planner.dataset.bound = 'true';
-  planner.addEventListener('click', (event) => {
+  planner.addEventListener('click', async (event) => {
+    const viewBtn = event.target.closest('[data-planner-view]');
+    if (viewBtn) {
+      // Вид запоминаем в настройках: выбранный однажды, он остаётся при следующем запуске
+      const next = viewBtn.dataset.plannerView === 'month' ? 'month' : 'week';
+      if (state.settings.ui.plannerView !== next) {
+        state.settings.ui.plannerView = next;
+        await persist();
+      }
+      deps.render?.();
+      return;
+    }
     const target = event.target.closest('[data-planner-nav], [data-planner-today], [data-planner-date]');
     if (!target) return;
     if (target.dataset.plannerNav) {

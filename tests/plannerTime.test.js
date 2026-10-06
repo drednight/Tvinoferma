@@ -1,5 +1,6 @@
 // Отображение календаря с раскладкой по времени (js/modules/dashboard/plannerView.js):
-// мини-шкала дня в ячейке, полная шкала 00:00–24:00 в окне дня, постоянные ивенты без правки.
+// месячная сетка с мини-шкалой дня, полная шкала 00:00–24:00 в окне дня, постоянные ивенты без правки.
+// Вид «Неделя» и переключатель проверяются отдельно — в tests/plannerWeek.test.js.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
@@ -16,7 +17,8 @@ beforeEach(async () => {
   ({ state } = await import('../js/core/state.js'));
   ({ plannerHtml, openPlannerDay } = await import('../js/modules/dashboard/plannerView.js'));
   ({ plannerEventsForDate, normalizePlannerEntry: entry } = await import('../js/modules/dashboard/planner.js'));
-  state.settings = { freshness: {} };
+  // Здесь проверяется месячная сетка: вид задаём явно, иначе по умолчанию откроется неделя
+  state.settings = { freshness: {}, ui: { plannerView: 'month' } };
   state.plannerEntries = [];
   state.marathons = [];
 });
@@ -155,5 +157,49 @@ describe('план дня собирается из всех источнико�
     expect(all.map(e => e.title)).toEqual(expect.arrayContaining(['Своё', 'Ритм Гильдии', 'Запретное учение', 'Лето']));
     expect(all.some(e => e.source === 'marathon')).toBe(true);
     expect(all.some(e => e.source === 'recurring')).toBe(true);
+  });
+});
+
+describe('переключатель вида календаря', () => {
+  it('по умолчанию открывается компактная неделя', async () => {
+    state.settings = { freshness: {}, ui: {} };
+    const html = plannerHtml(state);
+    expect(html).toContain('data-view="week"');
+    expect(html).toContain('class="cal-week"');
+    // Месячной сетки в этом виде нет — она появляется только при выборе «Месяц»
+    expect(html).not.toContain('planner-grid');
+  });
+
+  it('вид «Месяц» рисует прежнюю сетку', () => {
+    state.settings = { freshness: {}, ui: { plannerView: 'month' } };
+    const html = plannerHtml(state);
+    expect(html).toContain('data-view="month"');
+    expect(html).toContain('planner-grid');
+    expect(html).not.toContain('cal-week');
+  });
+
+  it('в шапке есть обе кнопки, выбранная помечена', () => {
+    state.settings = { freshness: {}, ui: {} };
+    const week = plannerHtml(state);
+    expect(week).toContain('data-planner-view="week"');
+    expect(week).toContain('data-planner-view="month"');
+    // Нажатая кнопка отмечена и доступна для чтения скринридером
+    expect(week).toMatch(/data-planner-view="week"[^>]*aria-pressed="true"/);
+    expect(week).toMatch(/data-planner-view="month"[^>]*aria-pressed="false"/);
+  });
+
+  it('в неделе нет стрелок месяца, а в месяце они есть', () => {
+    state.settings = { freshness: {}, ui: {} };
+    expect(plannerHtml(state)).not.toContain('data-planner-nav');
+    state.settings = { freshness: {}, ui: { plannerView: 'month' } };
+    expect(plannerHtml(state)).toContain('data-planner-nav="-1"');
+    expect(plannerHtml(state)).toContain('data-planner-nav="1"');
+  });
+
+  it('неделя показывает заголовок полосы дней', () => {
+    state.settings = { freshness: {}, ui: {} };
+    const html = plannerHtml(state);
+    // 2026-10-05 — «сегодня», полоса начинается со вчера: 4 — 10 октября
+    expect(html).toContain('4 — 10 октября 2026');
   });
 });

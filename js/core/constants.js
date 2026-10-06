@@ -119,7 +119,9 @@ export const DEFAULT_SETTINGS = {
     }
   },
   ui: {
-    theme: 'dark'
+    theme: 'dark',
+    // Вид календаря на странице «Сегодня»: компактная неделя или месяц (js/modules/dashboard/plannerView.js)
+    plannerView: 'week'
   },
   // Учётные данные — в хранилище ОС (Windows Credential Manager / Keychain), а не в state.json
   security: {

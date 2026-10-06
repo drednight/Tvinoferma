@@ -325,7 +325,13 @@ async function main() {
           plannerDays: document.querySelectorAll('.planner-day:not(.is-empty)').length,
           plannerScales: document.querySelectorAll('.planner-day-scale').length,
           plannerBlocks: document.querySelectorAll('.planner-block').length,
-          plannerChips: document.querySelectorAll('.planner-chip').length
+          plannerChips: document.querySelectorAll('.planner-chip').length,
+          // Вид «Неделя»: колонки дней, блоки на общей шкале, часы оси и линия «сейчас»
+          weekDays: document.querySelectorAll('.cal-day').length,
+          weekBlocks: document.querySelectorAll('.cal-block').length,
+          weekHours: document.querySelectorAll('.cal-hour').length,
+          weekNowLine: document.querySelectorAll('.cal-now').length,
+          weekTitle: (document.querySelector('[data-planner] .planner-nav strong')?.textContent || '').trim()
         };
 
         // Геометрия календаря: блоки записи должны стоять на шкале ПО ВРЕМЕНИ, а не подряд сверху.
@@ -368,6 +374,70 @@ async function main() {
           if (out.calendar.checked.length >= 6) break;
         }
 
+        // Геометрия вида «Неделя»: у блоков разное время начала — значит, разный верх,
+        // и он совпадает с порядком по времени. Высота — по длительности, не одинаковая.
+        out.week = { checked: [], problems: [] };
+        for (const day of document.querySelectorAll('.cal-day')) {
+          const blocks = [...day.querySelectorAll('.cal-block')];
+          if (blocks.length < 2) continue;
+          const tops = blocks.map(b => parseFloat(String(b.style.top)) || 0);
+          const heights = blocks.map(b => parseFloat(String(b.style.height)) || 0);
+          const times = blocks.map(b => (b.getAttribute('title') || '').slice(0, 5));
+          out.week.checked.push({ blocks: blocks.length, tops, heights, times });
+          if (new Set(tops).size < 2) {
+            out.week.problems.push('неделя: блоки стоят на одной высоте — раскладка по времени не работает');
+          }
+          for (let i = 1; i < blocks.length; i++) {
+            if (tops[i] < tops[i - 1]) { out.week.problems.push('неделя: блоки идут не по порядку времени'); break; }
+          }
+          if (new Set(heights).size < 2 && blocks.length >= 2) {
+            out.week.problems.push('неделя: у блоков одинаковая высота — длительность не учитывается');
+          }
+        }
+        // Ось времени должна быть ровно 24 часа, а блоки — не вылезать за сутки
+        if (document.querySelectorAll('.cal-hour').length && document.querySelectorAll('.cal-hour').length !== 24) {
+          out.week.problems.push('неделя: ось времени не 24 часа');
+        }
+        const trackH = document.querySelector('.cal-day-track')?.getBoundingClientRect().height || 0;
+        for (const b of document.querySelectorAll('.cal-block')) {
+          const r = b.getBoundingClientRect();
+          if (r.bottom > (document.querySelector('.cal-day-track')?.getBoundingClientRect().bottom || Infinity) + 1) {
+            out.week.problems.push('неделя: блок выходит за пределы суток');
+            break;
+          }
+        }
+        out.week.trackHeight = Math.round(trackH);
+        // Неделя не должна прокручиваться: сутки видны целиком. Проверяем, что внутренней
+        // прокрутки нет ни у сетки, ни у страницы внутри блока календаря.
+        const calWeek = document.querySelector('.cal-week');
+        if (calWeek) {
+          const cs = getComputedStyle(calWeek);
+          if (calWeek.scrollHeight > calWeek.clientHeight + 1 && cs.overflowY === 'auto') {
+            out.week.problems.push('неделя: появилась вертикальная прокрутка');
+          }
+          if (cs.overflowY === 'auto' || cs.overflowY === 'scroll') {
+            out.week.problems.push('неделя: у блока календаря задана прокрутка по вертикали');
+          }
+          out.week.calWeekHeight = Math.round(calWeek.getBoundingClientRect().height);
+          out.week.overflowY = cs.overflowY;
+        }
+        // Марафон должен идти сплошной полосой: одна полоса шире одного дня
+        out.week.spans = [...document.querySelectorAll('.cal-span')].map(s => {
+          const r = s.getBoundingClientRect();
+          const dayW = (document.querySelector('.cal-day')?.getBoundingClientRect().width) || 1;
+          return {
+            title: (s.getAttribute('title') || '').slice(0, 40),
+            isMarathon: s.classList.contains('is-marathon'),
+            daysWide: Math.round(r.width / dayW * 10) / 10,
+            height: Math.round(r.height)
+          };
+        });
+        const marathonSpans = out.week.spans.filter(s => s.isMarathon);
+        if (!marathonSpans.length) out.week.problems.push('неделя: марафон не показан сплошной полосой');
+        for (const s of marathonSpans) {
+          if (s.daysWide < 2) out.week.problems.push('неделя: полоса марафона не тянется через дни');
+        }
+
         return out;
       })()`,
       returnByValue: true
@@ -383,6 +453,10 @@ async function main() {
     console.log('  содержимое разделов:', JSON.stringify(a.content));
     console.log('  календарь, блоки по времени:', JSON.stringify(a.calendar?.checked ?? []));
     console.log(`  проблемы раскладки календаря: ${a.calendar?.problems?.length ?? 0}`, a.calendar?.problems?.length ? JSON.stringify(a.calendar.problems, null, 1) : '');
+    console.log('  неделя, блоки:', JSON.stringify(a.week?.checked ?? []));
+    console.log('  неделя, полосы «весь день»:', JSON.stringify(a.week?.spans ?? []));
+    console.log(`  высота суток: ${a.week?.trackHeight ?? 0}px, высота календаря: ${a.week?.calWeekHeight ?? 0}px, overflow-y: ${a.week?.overflowY ?? '?'}`);
+    console.log(`  проблемы вида «Неделя»: ${a.week?.problems?.length ?? 0}`, a.week?.problems?.length ? JSON.stringify(a.week.problems, null, 1) : '');
     if (THEME !== 'dark') console.log('  тема:', THEME);
 
     // Дополнительно — командная палитра (Ctrl+K): она должна открываться и искать команды

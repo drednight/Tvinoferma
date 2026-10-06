@@ -1,4 +1,4 @@
-/* css/modules/today.css
+﻿/* css/modules/today.css
    Экран «Сегодня» (Issue #39): что требует внимания, марафоны и запасы.
    Стоит над списком персонажей и не заменяет его. */
 
@@ -499,6 +499,188 @@
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 4px, transparent 4px 8px);
 }
 .planner-block.is-done { opacity: 0.45; }
+
+/* --- Вид «Неделя»: 7 колонок и общая ось времени сверху вниз ---
+   Время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы.
+   Сутки показаны целиком, без прокрутки: неделя читается одним взглядом.
+   Высота часа задана переменной (js: HOUR_HEIGHT) — ось и блоки считаются от неё, иначе разъедутся. */
+.planner.is-week { --hour-h: 26px; }
+
+.planner-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
+.planner-switch .btn { border: 0; border-radius: 0; }
+.planner-switch .btn.is-on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+
+.cal-week {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 14, 21, 0.4);
+  overflow: hidden;
+}
+
+/* Ось времени: 24 строки по высоте часа */
+.cal-week-side { background: var(--surface-1); }
+.cal-week-allday {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 6px 3px 0;
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+}
+.cal-week-allday-label { color: var(--text-faint); font-size: 0.58rem; }
+/* Подпись часа стоит на своей линии, а не по центру строки — так её читают как отметку времени */
+.cal-hour {
+  height: var(--hour-h);
+  box-sizing: border-box;
+  position: relative;
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding-right: 7px;
+}
+.cal-hour.is-major::before {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 5px;
+  height: 1px;
+  background: var(--border-strong, var(--border));
+}
+
+.cal-week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
+
+.cal-day { position: relative; border-left: 1px solid var(--border); min-width: 0; display: flex; flex-direction: column; }
+.cal-day.is-weekend { background: rgba(255, 255, 255, 0.015); }
+.cal-day.is-today { background: rgba(110, 142, 248, 0.07); }
+
+.cal-day-head {
+  height: 34px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.cal-day-head:hover { background: var(--surface-2); color: var(--text); }
+.cal-day-head small { color: var(--text-faint); font-size: 0.64rem; text-transform: lowercase; }
+.cal-day-head b { font-size: 0.82rem; }
+.cal-day.is-today .cal-day-head { color: var(--accent); }
+.cal-day.is-today .cal-day-head b { background: var(--accent); color: var(--on-accent); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }
+.cal-day-dng { font-size: 0.68rem; }
+
+/* Плашки своих записей без времени (марафон здесь не показывается — он идёт полосой выше) */
+.cal-day-allday {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px;
+  border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.cal-chip {
+  overflow: hidden;
+  padding: 1px 4px;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 0.58rem;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-chip.is-done { opacity: 0.5; text-decoration: line-through; }
+.cal-more { color: var(--text-faint); font-size: 0.58rem; }
+
+/* Дорожка дня: часовые линии и блоки записей */
+.cal-day-track { position: relative; flex: 1 1 auto; }
+.cal-line { height: var(--hour-h); box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.cal-line.is-major { border-top-color: var(--border); }
+.cal-line:first-child { border-top: 0; }
+
+.cal-block {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 1px 4px;
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.cal-block:hover { filter: brightness(1.18); }
+.cal-block b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.62rem; color: var(--text); }
+.cal-block small { color: var(--text-faint); font-size: 0.56rem; font-variant-numeric: tabular-nums; }
+.cal-block.is-green { border-left-color: var(--success); background: var(--success-soft); }
+.cal-block.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
+.cal-block.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
+.cal-block.is-purple { border-left-color: var(--accent-2); background: rgba(180, 126, 255, 0.22); }
+.cal-block.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
+/* Постоянный ивент — штриховкой: видно, что запись не своя, а по расписанию */
+.cal-block.is-recurring { background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 4px, transparent 4px 8px); }
+.cal-block.is-done { opacity: 0.45; }
+
+.cal-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+.cal-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+
+/* --- Сплошные полосы «весь день» на всю ширину недели ---
+   Марафон идёт несколько дней подряд, поэтому показан одной непрерывной линией,
+   а не семью отдельными плашками: по кусочкам нельзя понять, что событие одно.
+   Полоса начинается ровно над своим первым днём и тянется до последнего. */
+.cal-week-spans {
+  position: absolute;
+  top: 0;
+  left: 46px;      /* ширина оси времени: полосы начинаются над колонками дней */
+  right: 0;
+  pointer-events: none;
+}
+.cal-span {
+  position: absolute;
+  box-sizing: border-box;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 6px;
+  border-left: 3px solid var(--accent-2);
+  border-radius: 4px;
+  background: rgba(180, 126, 255, 0.22);
+  color: var(--text);
+  font-size: 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+/* Марафон выше остальных полос: он главный в этой строке */
+.cal-span.is-marathon { height: 22px; line-height: 20px; font-weight: 600; }
+.cal-span.is-green { border-left-color: var(--success); background: var(--success-soft); }
+.cal-span.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
+.cal-span.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
+.cal-span.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
+.cal-span.is-done { opacity: 0.5; text-decoration: line-through; }
+
+@media (max-width: 1100px) {
+  /* Колонки не сжимаем в кашу: даём горизонтальную прокрутку, а не ломаем сетку */
+  .cal-week { grid-template-columns: 42px minmax(0, 1fr); }
+  .cal-week-days { min-width: 560px; }
+  .cal-week-spans { left: 42px; }
+}
+
 
 /* --- Полная шкала дня 00:00–24:00 в окне дня --- */
 .planner-scale-wrap { margin-bottom: 14px; }
