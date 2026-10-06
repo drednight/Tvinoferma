@@ -226,6 +226,8 @@ function bindNavigation() {
       if (sectionTitle) sectionTitle.textContent = tab.querySelector('strong')?.textContent
         || tab.querySelector('span:not([aria-hidden])')?.textContent
         || targetSection;
+      const sectionSubtitle = document.getElementById('next-section-subtitle');
+      if (sectionSubtitle) sectionSubtitle.textContent = tab.dataset.subtitle || '';
 
       // Переключаем видимость секций
       pages.forEach(page => {

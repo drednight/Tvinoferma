@@ -20,7 +20,7 @@ export function plannerHtml(appState = state) {
       <div class="planner-head">
         <div>
           <h3>Календарь</h3>
-          <p class="muted">Марафоны, события приложения и ваши планы.</p>
+          <p class="muted">События приложения и ваши планы.</p>
         </div>
         <div class="planner-nav">
           <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>

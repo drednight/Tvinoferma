@@ -752,7 +752,7 @@ async function onBulkAction(e) {
         content: `
           <div class="field"><label>Пати</label><select class="select" name="party" id="bulk-party-select">${options}</select></div>
           <div class="field" id="bulk-party-new"><label>Название новой пати</label>
-            <input class="input" name="newName" id="bulk-party-name" placeholder="Например: Ферма-2" maxlength="40" autocomplete="off" />
+            <input class="input" name="newName" id="bulk-party-name" placeholder="Например: Группа-2" maxlength="40" autocomplete="off" />
             <small class="muted">В неё попадут выбранные персонажи (${chars.length}).</small>
           </div>
           <div class="field"><label>Действие</label>

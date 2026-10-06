@@ -2,7 +2,7 @@
    Все правила ограничены data-ui-style="next": классический вариант остаётся без изменений. */
 
 .next-sidebar,
-.next-workspace-context {
+.next-page-heading {
   display: none;
 }
 
@@ -16,7 +16,7 @@ body[data-ui-style='next'] .app-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: var(--next-sidebar-w) minmax(0, 1fr);
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 82px minmax(0, 1fr);
 }
 
 body[data-ui-style='next'] .next-sidebar {
@@ -67,18 +67,6 @@ body[data-ui-style='next'] .next-sidebar {
   display: grid;
   gap: 4px;
 }
-.next-nav-label {
-  margin: 10px 10px 5px;
-  color: var(--text-faint);
-  font-size: 0.66rem;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.next-nav-system {
-  margin-top: 24px;
-}
-
 .next-nav .tab,
 .next-sidebar-bottom .tab {
   width: 100%;
@@ -138,11 +126,11 @@ body[data-ui-style='next'] .next-sidebar {
 
 .next-sidebar-bottom {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   margin-top: auto;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
+.next-sidebar-divider { height: 1px; margin: 3px 0; background: var(--border); }
 .next-sidebar-bottom .tab {
   width: 100%;
   justify-content: flex-start;
@@ -156,27 +144,39 @@ body[data-ui-style='next'] .next-sidebar {
 }
 .next-sidebar .srv-plaque {
   width: 100%;
-  padding: 9px 10px;
+  padding: 10px 11px;
   border-radius: 10px;
-  background: var(--surface-1);
+  border-color: rgba(110, 142, 248, 0.2);
+  background: linear-gradient(135deg, rgba(110, 142, 248, 0.1), rgba(18, 22, 31, 0.92));
 }
 .next-sidebar .srv-head {
-  align-items: center;
+  display: grid;
+  gap: 2px;
+  align-items: start;
+}
+.next-sidebar .srv-head b {
+  color: var(--text);
+  font-size: 0.76rem;
 }
 .next-sidebar .srv-list {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 3px;
   gap: 5px;
 }
 .next-sidebar .srv {
-  justify-content: space-between;
-  white-space: normal;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(255,255,255,.04);
+  font-size: .7rem;
 }
 
 body[data-ui-style='next'] .topbar {
   grid-column: 2;
   grid-row: 1;
   min-width: 0;
-  padding: 9px 24px;
+  min-height: 82px;
+  padding: 12px 32px;
   flex-wrap: nowrap;
   background: rgba(11, 14, 20, 0.82);
 }
@@ -184,19 +184,24 @@ body[data-ui-style='next'] .topbar > .brand,
 body[data-ui-style='next'] .topbar .tabs {
   display: none;
 }
-body[data-ui-style='next'] .next-workspace-context {
+body[data-ui-style='next'] .next-page-heading {
   min-width: 0;
   display: grid;
-  gap: 1px;
+  gap: 3px;
   margin-right: auto;
 }
-.next-workspace-context span {
-  color: var(--text-faint);
-  font-size: 0.67rem;
-}
-.next-workspace-context strong {
+.next-page-heading h2 {
   overflow: hidden;
-  font-size: 0.94rem;
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.next-page-heading .section-sub {
+  overflow: hidden;
+  margin: 0;
+  font-size: .8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -213,6 +218,10 @@ body[data-ui-style='next'] .content {
 body[data-ui-style='next'] .section-head {
   margin-bottom: 22px;
 }
+body[data-ui-style='next'] .section-actions-only {
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
 body[data-ui-style='next'] .section-head h2 {
   font-size: 1.65rem;
   letter-spacing: -0.025em;
@@ -228,26 +237,6 @@ body[data-ui-style='next'] .filters {
 body[data-ui-style='next'] .stat-strip {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
-/* Боковая панель уменьшает рабочую ширину: «Сегодня» перестраивается раньше,
-   чтобы строки внимания и их кнопки никогда не обрезались. */
-@media (max-width: 1500px) {
-  body[data-ui-style='next'] .today-grid {
-    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.9fr);
-    grid-template-areas:
-      'attention supplies'
-      'marathons marathons';
-  }
-  body[data-ui-style='next'] .today-card:nth-child(1) {
-    grid-area: attention;
-  }
-  body[data-ui-style='next'] .today-card:nth-child(2) {
-    grid-area: marathons;
-  }
-  body[data-ui-style='next'] .today-card:nth-child(3) {
-    grid-area: supplies;
-  }
-}
-
 @media (max-width: 980px) {
   body[data-ui-style='next'] {
     --next-sidebar-w: 76px;
@@ -260,7 +249,6 @@ body[data-ui-style='next'] .stat-strip {
     padding-inline: 0;
   }
   .next-brand > div:last-child,
-  .next-nav-label,
   .next-nav-copy,
   .next-sidebar-bottom .next-nav-copy {
     display: none;
@@ -274,9 +262,13 @@ body[data-ui-style='next'] .stat-strip {
     position: absolute;
     margin: -28px -28px 0 0;
   }
+  .next-sidebar .server-status,
+  .next-sidebar-divider {
+    display: none;
+  }
   body[data-ui-style='next'] .today-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'attention' 'marathons' 'supplies';
+    grid-template-areas: 'attention' 'marathons' 'summary';
   }
 }
 
@@ -297,8 +289,7 @@ body[data-ui-style='next'] .stat-strip {
     flex-direction: row;
     gap: 6px;
   }
-  .next-brand,
-  .next-nav-label {
+  .next-brand {
     display: none;
   }
   .next-nav {
@@ -326,8 +317,8 @@ body[data-ui-style='next'] .stat-strip {
     background: transparent;
   }
   body[data-ui-style='next'] .topbar {
-    min-height: 58px;
-    padding: 8px 16px;
+    min-height: 72px;
+    padding: 9px 16px;
   }
   body[data-ui-style='next'] .next-sidebar .server-status {
     display: none;

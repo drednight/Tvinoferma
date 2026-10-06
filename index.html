@@ -41,29 +41,27 @@
         <div class="brand-mark">ТФ</div>
         <div>
           <strong>Твиноферма</strong>
-          <span>Центр управления фермой</span>
+          <span>Управление аккаунтами</span>
         </div>
       </div>
 
       <nav class="next-nav" aria-label="Разделы приложения">
-        <p class="next-nav-label">Обзор</p>
-        <button class="tab active" data-tab="today" title="Ctrl+1">
+        <button class="tab active" data-tab="today" data-subtitle="Важные действия, события и общая сводка." title="Ctrl+1">
           <span class="next-nav-icon" aria-hidden="true">⌂</span>
           <span class="next-nav-copy"><strong>Сегодня</strong><small>Сводка и важные действия</small></span>
         </button>
 
-        <p class="next-nav-label">Ферма</p>
-        <button class="tab" data-tab="characters" title="Ctrl+2">
+        <button class="tab" data-tab="characters" data-subtitle="Вход, баланс монет, характеристики и контакты." title="Ctrl+2">
           <span class="next-nav-icon" aria-hidden="true">●</span>
           <span class="next-nav-copy"><strong>Персонажи</strong><small>Сегодня и аккаунты</small></span>
           <span class="tab-count" data-count-mirror="characters" hidden></span>
         </button>
-        <button class="tab" data-tab="parties" title="Ctrl+3">
+        <button class="tab" data-tab="parties" data-subtitle="Состав, порядок запуска, общий баланс и окна игры." title="Ctrl+3">
           <span class="next-nav-icon" aria-hidden="true">◆</span>
           <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
           <span class="tab-count" data-count-mirror="parties" hidden></span>
         </button>
-        <button class="tab" data-tab="marathons" title="Ctrl+4">
+        <button class="tab" data-tab="marathons" data-subtitle="Задания, прогресс персонажей и сверка с сайтом." title="Ctrl+4">
           <span class="next-nav-icon" aria-hidden="true">▲</span>
           <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
           <span class="tab-count" data-count-mirror="marathons" hidden></span>
@@ -72,7 +70,8 @@
       </nav>
       <div class="next-sidebar-bottom">
         <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
-        <button class="tab next-settings-tab" data-tab="settings" title="Ctrl+5">
+        <div class="next-sidebar-divider" aria-hidden="true"></div>
+        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+5">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
@@ -81,9 +80,9 @@
 
     <!-- Шапка приложения -->
     <header class="topbar">
-      <div class="next-workspace-context" aria-live="polite">
-        <span>Рабочее пространство</span>
-        <strong id="next-section-title">Сегодня</strong>
+      <div class="next-page-heading" aria-live="polite">
+        <h2 id="next-section-title">Сегодня</h2>
+        <p class="section-sub" id="next-section-subtitle">Важные действия, события и общая сводка.</p>
       </div>
 
       <div class="topbar-right">
@@ -101,23 +100,13 @@
 
       <!-- РАЗДЕЛ: СЕГОДНЯ -->
       <section class="page active" data-section="today">
-        <div class="section-head">
-          <div>
-            <h2>Сегодня</h2>
-            <p class="section-sub">Что требует внимания, текущие марафоны и состояние всей фермы.</p>
-          </div>
-        </div>
         <div id="today-root"></div>
       </section>
 
       <!-- РАЗДЕЛ: ПЕРСОНАЖИ -->
       <section class="page" data-section="characters">
 
-        <div class="section-head">
-          <div>
-            <h2>Персонажи</h2>
-            <p class="section-sub">Все аккаунты фермы: вход, баланс монет, проходки и контакты в одном списке.</p>
-          </div>
+        <div class="section-head section-actions-only">
           <div class="section-head-actions">
             <button id="btn-select-mode" class="btn secondary" title="Выбрать несколько персонажей для массовых действий">☑ Выбрать</button>
             <div class="action-menu-wrapper">
@@ -194,11 +183,7 @@
 
       <!-- РАЗДЕЛ: ПАТИ -->
       <section class="page" data-section="parties">
-        <div class="section-head pt-head-row">
-          <div>
-            <h2>Пати</h2>
-            <p class="section-sub">Группы аккаунтов: состав, порядок запуска, общий баланс и запуск игры одной кнопкой.</p>
-          </div>
+        <div class="section-head pt-head-row section-actions-only">
           <div class="pt-head-actions">
             <!-- Сводка рисуется в renderer.js; кнопка создания пати — круглая «+» справа внизу.
                  Запуск и закрытие окон живут в карточках пати: там они относятся к конкретной пати. -->
@@ -210,14 +195,6 @@
 
       <!-- РАЗДЕЛ: МАРАФОНЫ -->
       <section class="page" data-section="marathons">
-        <div class="section-head">
-          <div>
-            <h2>Марафоны</h2>
-            <p class="section-sub">Задания, прогресс по персонажам и сверка с сайтом. Папки — для событий одной серии.</p>
-          </div>
-          <!-- Создание папки и марафона — через круглую кнопку «+» справа внизу (js/core/uiActions.js) -->
-        </div>
-
         <div id="marathon-list" class="list">
            <div class="empty-state">Марафонов пока нет.</div>
         </div>
@@ -225,13 +202,6 @@
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
-        <div class="section-head">
-          <div>
-            <h2>Настройки</h2>
-            <p class="section-sub">Данные и резервные копии, скрипты, запуск игры, уведомления и оформление.</p>
-          </div>
-        </div>
-
         <div class="panel" style="margin-bottom: 16px;">
           <h3>Информация о системе</h3>
           <div class="setting-row">
@@ -527,12 +497,12 @@
       <button type="button" class="fab-menu-item" role="menuitem" data-fab-action="folder"><span class="fab-menu-ico">📁</span><span>Создать папку</span></button>
       <button type="button" class="fab-menu-item" role="menuitem" data-fab-action="marathon"><span class="fab-menu-ico">🏃</span><span>Создать марафон</span></button>
     </div>
+    <button id="fab-game-windows-btn" class="fab-secondary" type="button" hidden title="Показать запущенные окна игры">
+      <span aria-hidden="true">🎮</span><span>Запущенные окна игры</span>
+    </button>
     <!-- Основная кнопка. Иконка меняется динамически -->
     <button id="fab-main-btn" class="fab-main" title="Добавить" aria-haspopup="menu" aria-expanded="false">
       <span class="fab-icon" id="fab-icon-display">+</span>
-    </button>
-    <button id="fab-game-windows-btn" class="fab-secondary" type="button" hidden title="Показать запущенные окна игры">
-      <span aria-hidden="true">🎮</span><span>Запущенные окна игры</span>
     </button>
   </div>
   <!-- ====================================================== -->

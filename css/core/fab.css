@@ -41,7 +41,6 @@
 .fab-main:active { transform: scale(0.96); }
 
 .fab-secondary {
-  order: -1;
   min-height: 46px;
   display: inline-flex;
   align-items: center;

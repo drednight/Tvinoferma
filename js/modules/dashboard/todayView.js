@@ -2,7 +2,7 @@
 // Экран «Сегодня» (Issue #39): самостоятельная стартовая страница приложения.
 //
 // Три блока: что требует внимания (со кнопкой действия в строке), что делать в марафонах
-// и запасы фермы. Данные собирает today.js, здесь — только показ и кнопки.
+// и общая сводка. Данные собирает today.js, здесь — только показ и кнопки.
 //
 // Список персонажей живёт в отдельном разделе: обзор не конкурирует с рабочими карточками.
 
@@ -28,8 +28,8 @@ export function todayHtml(deps = {}, appState = state) {
     <section class="today" data-today>
       <div class="today-head">
         <div>
-          <h3>Состояние фермы</h3>
-          <p class="muted">Важные действия, активные события и доступные запасы.</p>
+          <h3>Обзор дня</h3>
+          <p class="muted">Важные действия, активные события и общие показатели.</p>
         </div>
       </div>
       <div class="today-grid">
@@ -75,16 +75,11 @@ export function todayHtml(deps = {}, appState = state) {
         </section>
 
         <section class="today-card">
-          <h4 class="today-title"><span aria-hidden="true">📦</span> Запасы</h4>
+          <h4 class="today-title"><span aria-hidden="true">📊</span> Сводка</h4>
           <div class="today-supplies">
             <div class="today-supply">
               <span class="muted">Древние монеты</span>
               <b class="is-gold">${formatCoins(supplies.coins)} 🪙</b>
-            </div>
-            <div class="today-supply">
-              <span class="muted">Проходки в данжи</span>
-              <b>${supplies.passes}</b>
-              <small class="muted">оружие ${supplies.passesByType.weapon} · броня ${supplies.passesByType.armor} · реликвии ${supplies.passesByType.relic}</small>
             </div>
             <div class="today-supply">
               <span class="muted">Персонажей</span>
@@ -117,7 +112,7 @@ export function renderToday(root, deps = {}) {
   if (!root) return;
   const render = () => renderToday(root, deps);
   const summary = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
-  root.innerHTML = `${summary}${plannerHtml(state)}`;
+  root.innerHTML = `${plannerHtml(state)}${summary}`;
   bindToday(root, deps);
   bindPlanner(root, { ...deps, render });
 }

@@ -39,10 +39,10 @@ describe('разметка экрана «Сегодня»', () => {
 
   it('показывает три блока: внимание, марафоны, запасы', () => {
     const out = html();
-    expect(out).toContain('Состояние фермы');
+    expect(out).toContain('Обзор дня');
     expect(out).toContain('Требуют внимания');
     expect(out).toContain('Сегодня в марафонах');
-    expect(out).toContain('Запасы');
+    expect(out).toContain('Сводка');
   });
 
   it('когда всё в порядке, блок внимания говорит об этом прямо', () => {
@@ -68,11 +68,7 @@ describe('разметка экрана «Сегодня»', () => {
   it('запасы: монеты, проходки по видам и число персонажей', () => {
     const out = html();
     expect(out).toContain('100');
-    expect(out).toContain('Проходки в данжи');
-    expect(out).toContain('<b>6</b>');            // 1 + 2 + 3
-    expect(out).toContain('оружие 1');
-    expect(out).toContain('броня 2');
-    expect(out).toContain('реликвии 3');
+    expect(out).not.toContain('Проходки в данжи');
     expect(out).toContain('авторизованы: 1 из 1');
   });
 

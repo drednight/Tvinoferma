@@ -184,7 +184,7 @@ export function attentionItems(state, { now = new Date() } = {}) {
 }
 
 /**
- * Запасы фермы: монеты, проходки в данжи и ближайшие даты окончания событий.
+ * Общая сводка: монеты, проходки и ближайшие даты окончания событий.
  * @returns {{ coins: number, passes: number, passesByType: Record<string, number>, endingSoon: Array<{ id: string, title: string, days: number }> }}
  */
 export function supplies(state, { now = new Date(), soonDays = 7 } = {}) {

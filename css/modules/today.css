@@ -18,12 +18,22 @@
 /* Три блока: внимание, марафоны, запасы. На узком окне — в одну колонку */
 .today-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
+  grid-template-areas:
+    'attention summary'
+    'marathons summary';
   gap: var(--gap-md);
-  align-items: start;
+  align-items: stretch;
 }
-@media (max-width: 1200px) { .today-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 760px) { .today-grid { grid-template-columns: minmax(0, 1fr); } }
+.today-card:nth-child(1) { grid-area: attention; }
+.today-card:nth-child(2) { grid-area: marathons; }
+.today-card:nth-child(3) { grid-area: summary; }
+@media (max-width: 1050px) {
+  .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'attention' 'marathons' 'summary';
+  }
+}
 
 .today-card {
   padding: 12px 14px;
@@ -105,7 +115,8 @@
 
 /* Месячный планер */
 .planner {
-  padding: 18px;
+  margin-bottom: 14px;
+  padding: 13px 14px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-1);
@@ -116,10 +127,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--gap);
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 .planner-head h3 { margin-bottom: 2px; }
-.planner-head p { font-size: 0.84rem; }
+.planner-head p { font-size: 0.76rem; }
 .planner-nav { display: flex; align-items: center; gap: 8px; }
 .planner-nav strong { min-width: 146px; text-align: center; text-transform: capitalize; }
 .planner-weekdays,
@@ -137,11 +148,11 @@
 }
 .planner-day {
   min-width: 0;
-  min-height: 100px;
+  min-height: 58px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  padding: 8px;
+  gap: 4px;
+  padding: 5px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(10, 14, 21, 0.55);
@@ -156,7 +167,7 @@
   transform: translateY(-1px);
 }
 .planner-day.is-empty {
-  min-height: 100px;
+  min-height: 58px;
   border-style: dashed;
   opacity: 0.25;
 }
@@ -166,8 +177,8 @@
 }
 .planner-day-number {
   align-self: flex-end;
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -182,12 +193,13 @@
 .planner-day-events { display: grid; gap: 3px; min-width: 0; }
 .planner-event {
   overflow: hidden;
-  padding: 2px 6px;
+  min-height: 5px;
+  padding: 1px 5px;
   border-left: 3px solid var(--accent);
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--text-dim);
-  font-size: 0.68rem;
+  font-size: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -197,7 +209,7 @@
 .planner-event.is-purple, .planner-color.is-purple { border-color: var(--accent-2); background: rgba(180, 126, 255, 0.14); }
 .planner-event.is-gray, .planner-color.is-gray { border-color: var(--text-faint); background: rgba(255, 255, 255, 0.05); }
 .planner-event.is-done { opacity: 0.52; text-decoration: line-through; }
-.planner-more { color: var(--text-faint); font-size: 0.67rem; }
+.planner-more { color: var(--text-faint); font-size: 0.62rem; }
 
 .planner-day-list { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
 .planner-day-row {
@@ -219,8 +231,8 @@
 @media (max-width: 900px) {
   .planner-head { align-items: stretch; flex-direction: column; }
   .planner-nav { justify-content: space-between; }
-  .planner-day { min-height: 76px; }
-  .planner-event { font-size: 0; min-height: 7px; padding: 0; }
+  .planner-day { min-height: 52px; }
+  .planner-event { min-height: 5px; padding: 0; }
   .planner-more { display: none; }
 }
 @media (max-width: 560px) {
