@@ -55,6 +55,11 @@ async function boot() {
       const migration = migrateState(raw);
       if (migration.newer) {
         toast(`Данные созданы более новой версией приложения (схема v${migration.from}, поддерживается v${SCHEMA_VERSION}). Обновите приложение.`, 'warning');
+        // Старая версия при сохранении перепишет файл в своём формате и может потерять новые поля —
+        // поэтому до любой записи оставляем копию исходного файла
+        if (isTauri()) {
+          try { await createBackup(`newer-schema-v${migration.from}`); } catch (e) { console.warn('[BOOT] Backup of newer data failed:', e); }
+        }
       } else if (migration.applied.length) {
         console.log(`[BOOT] Migrating state v${migration.from} → v${migration.to}`);
         if (isTauri()) {

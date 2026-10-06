@@ -6,11 +6,12 @@ const checkMock = vi.fn();
 const relaunchMock = vi.fn();
 const toastMock = vi.fn();
 const saveNowMock = vi.fn();
+const createBackupMock = vi.fn();
 
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: (...a) => checkMock(...a) }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: (...a) => relaunchMock(...a) }));
 vi.mock('../js/core/ui.js', () => ({ toast: (...a) => toastMock(...a) }));
-vi.mock('../js/core/storage.js', () => ({ saveNow: (...a) => saveNowMock(...a) }));
+vi.mock('../js/core/storage.js', () => ({ saveNow: (...a) => saveNowMock(...a), createBackup: (...a) => createBackupMock(...a) }));
 
 const fakeUpdate = (over = {}) => ({
   version: '0.3.0',
@@ -74,7 +75,7 @@ describe('updateState: подписи и признаки', () => {
 describe('updater: проверка и установка', () => {
   let confirmSpy;
   beforeEach(async () => {
-    checkMock.mockReset(); relaunchMock.mockReset(); toastMock.mockReset(); saveNowMock.mockReset();
+    checkMock.mockReset(); relaunchMock.mockReset(); toastMock.mockReset(); saveNowMock.mockReset(); createBackupMock.mockReset();
     window.__TAURI_INTERNALS__ = {};
     confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
     document.body.innerHTML = '';
@@ -139,10 +140,30 @@ describe('updater: проверка и установка', () => {
     expect(progress).toContain('downloading:0');
     expect(progress).toContain('downloading:50');
     expect(progress).toContain('installing:100');
-    expect(saveNowMock).toHaveBeenCalledTimes(1);
+    // saveNow дважды: перед копией и перед перезапуском
+    expect(saveNowMock).toHaveBeenCalledTimes(2);
     expect(relaunchMock).toHaveBeenCalledTimes(1);
-    expect(saveNowMock.mock.invocationCallOrder[0]).toBeLessThan(relaunchMock.mock.invocationCallOrder[0]);
+    expect(saveNowMock.mock.invocationCallOrder[1]).toBeLessThan(relaunchMock.mock.invocationCallOrder[0]);
     expect(confirmSpy).not.toHaveBeenCalled();
+  });
+
+  it('перед установкой делается резервная копия с версиями в имени', async () => {
+    const upd = fakeUpdate();
+    checkMock.mockResolvedValue(upd);
+    await mod.checkForUpdates({ silent: true });
+    await mod.installUpdate();
+    expect(createBackupMock).toHaveBeenCalledWith('pre-update-v0.2.0-to-v0.3.0');
+    expect(createBackupMock.mock.invocationCallOrder[0]).toBeLessThan(upd.downloadAndInstall.mock.invocationCallOrder[0]);
+  });
+
+  it('сбой резервной копии не блокирует установку', async () => {
+    createBackupMock.mockRejectedValue(new Error('disk full'));
+    const upd = fakeUpdate();
+    checkMock.mockResolvedValue(upd);
+    await mod.checkForUpdates({ silent: true });
+    expect(await mod.installUpdate()).toBe(true);
+    expect(upd.downloadAndInstall).toHaveBeenCalledTimes(1);
+    expect(relaunchMock).toHaveBeenCalledTimes(1);
   });
 
   it('без найденного обновления installUpdate ничего не делает', async () => {

@@ -129,3 +129,52 @@ describe('normalizeTags', () => {
     expect(normalizeTags('a,  b , ,A, c  d')).toEqual(['a', 'b', 'c d']);
   });
 });
+
+describe('миграция v7: путь GameCenter у каждого аккаунта', () => {
+  it('у каждого персонажа появляется launch.gcPath, пробелы обрезаются, существующий путь сохраняется', () => {
+    const raw = {
+      schemaVersion: 6,
+      characters: [{ id: 'a' }, { id: 'b', launch: { gcPath: '  D:\\GC  ' } }, { id: 'c', launch: null }]
+    };
+    const { state, applied } = migrateState(raw);
+    expect(applied).toEqual([7]);
+    expect(state.characters.map(c => c.launch.gcPath)).toEqual(['', 'D:\\GC', '']);
+    expect(raw.characters[0].launch).toBeUndefined(); // исходные данные не мутируются
+  });
+});
+
+describe('цепочка миграций для релиза 1.0', () => {
+  it('самый старый формат (пустой объект) доходит до текущей схемы без падений', () => {
+    const { state, from, to, applied } = migrateState({});
+    expect(from).toBe(1);
+    expect(to).toBe(SCHEMA_VERSION);
+    expect(applied).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(state.characters).toEqual([]);
+    expect(state.parties).toEqual([]);
+    expect(state.marathons).toEqual([]);
+  });
+
+  it('персонаж со старыми полями (party, ник с #) сохраняется со всеми данными', () => {
+    const raw = { version: 2, characters: [{ id: 'Dragon#1', nick: 'Dragon#1', party: 'Рейд', notes: 'важно' }], parties: [] };
+    const { state } = migrateState(raw);
+    const [c] = state.characters;
+    expect(c.id).toBe('Dragon_1');
+    expect(c.notes).toBe('важно');
+    expect(state.parties.map(p => p.name)).toEqual(['Рейд']);
+    expect(c.partyIds).toEqual([state.parties[0].id]);
+    expect(c.party).toBeUndefined();
+  });
+
+  it('мусор вместо данных не ломает загрузку', () => {
+    for (const bad of [null, undefined, 42, 'text', []]) {
+      expect(() => migrateState(bad)).not.toThrow();
+    }
+  });
+
+  it('нормализация после миграции не теряет персонажей и марафоны на крупной фикстуре', () => {
+    const { state } = migrateState(fixture('state-v2.json'));
+    const normalized = normalizeState(state);
+    expect(normalized.characters.length).toBe(state.characters.length);
+    expect(normalized.marathons.length).toBe(state.marathons.length);
+  });
+});

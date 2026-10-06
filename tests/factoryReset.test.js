@@ -1,6 +1,6 @@
 // Полный сброс (js/settings/factoryReset.js): сбор ключей хранилища ОС и текст предупреждения.
 // Ошибка здесь дорога: неполный список ключей оставит пароли после «чистой установки».
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   contactKeysOf, accountKeysOfAll, secretsToRemove, resetSummary, resetWarning
@@ -82,5 +82,43 @@ describe('сводка и предупреждение', () => {
     const text = resetWarning(resetSummary({}));
     expect(text).not.toContain('Будет удалено');
     expect(text).toContain('откатить это действие нельзя');
+  });
+});
+
+describe('performFactoryReset: порядок и обработка ошибок', () => {
+  const invokeMock = vi.fn();
+  const toastMock = vi.fn();
+  let perform;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    invokeMock.mockReset(); toastMock.mockReset();
+    vi.doMock('@tauri-apps/api/core', () => ({ invoke: (...a) => invokeMock(...a) }));
+    vi.doMock('../js/core/ui.js', () => ({ toast: (...a) => toastMock(...a) }));
+    window.__TAURI_INTERNALS__ = {};
+    ({ performFactoryReset: perform } = await import('../js/settings/factoryReset.js'));
+  });
+  afterEach(() => { delete window.__TAURI_INTERNALS__; vi.doUnmock('@tauri-apps/api/core'); vi.doUnmock('../js/core/ui.js'); });
+
+  it('вне приложения сброс не выполняется и ничего не удаляет', async () => {
+    delete window.__TAURI_INTERNALS__;
+    expect(await perform({ characters: characters() })).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('только в приложении'), 'error');
+  });
+
+  it('в Rust уходит полный список ключей хранилища ОС', async () => {
+    invokeMock.mockResolvedValue({ problems: [] });
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    expect(await perform({ characters: characters() })).toBe(true);
+    expect(invokeMock).toHaveBeenCalledWith('factory_reset', { keys: expect.arrayContaining(['Ауразак', 'Ауразак@gc-1', 'Мираж@gc-2']) });
+    vi.unstubAllGlobals();
+  });
+
+  it('ошибка Rust: сообщение пользователю, окно не перезагружается', async () => {
+    invokeMock.mockRejectedValue(new Error('файл занят'));
+    expect(await perform({ characters: characters() })).toBe(false);
+    expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('файл занят'), 'error');
   });
 });

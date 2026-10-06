@@ -75,6 +75,13 @@ export async function installUpdate() {
   installing = true;
   setUpdateState({ status: 'downloading', progress: null, error: null });
   try {
+    // Страховка перед обновлением: свежая резервная копия данных. Сбой копии установку не блокирует,
+    // иначе проблемы с диском навсегда закрыли бы путь к исправлениям
+    try {
+      const { saveNow, createBackup } = await import('../core/storage.js');
+      await saveNow();
+      await createBackup(`pre-update-v${pending.currentVersion || 'x'}-to-v${pending.version || 'x'}`);
+    } catch (e) { console.warn('[UPDATER] pre-update backup failed', e); }
     let total = 0;
     let received = 0;
     await pending.downloadAndInstall((event) => {
