@@ -84,6 +84,27 @@ describe('календарь: раскладка записей по време�
     expect(day.querySelectorAll('.planner-block')).toHaveLength(0);
     expect(day.querySelectorAll('.planner-chip')).toHaveLength(0);
   });
+
+  it('мини-шкала подписана часами 00 / 06 / 12 / 18, а подсказка клетки перечисляет записи со временем', () => {
+    const mon = cell(plannerHtml(state), '2026-10-05');
+    expect([...mon.querySelectorAll('.planner-scale-ticks i')].map(i => i.textContent)).toEqual(['00', '06', '12', '18']);
+    expect(mon.getAttribute('title')).toContain('20:20–22:20 Битва Династий');
+  });
+
+  it('линия «сейчас» (МСК) есть только в клетке сегодняшнего дня', () => {
+    // 12:00 UTC = 15:00 МСК = 900 из 1440 минут = 62.5% шкалы
+    const today = cell(plannerHtml(state), '2026-10-05');
+    expect(today.querySelector('.planner-now').getAttribute('style')).toContain('top:62.500%');
+    expect(cell(plannerHtml(state), '2026-10-06').querySelector('.planner-now')).toBeNull();
+  });
+
+  it('над сеткой есть легенда полосок: как читать шкалу, свои записи, расписание, «сейчас»', () => {
+    const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+    const legend = doc.querySelector('.planner-legend-time');
+    expect(legend.textContent).toContain('сутки сверху вниз');
+    expect(legend.querySelector('.planner-legend-sample.is-recurring')).not.toBeNull();
+    expect(legend.querySelector('.planner-legend-now')).not.toBeNull();
+  });
 });
 
 describe('окно дня: полная шкала 00:00–24:00', () => {

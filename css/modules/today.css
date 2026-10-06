@@ -191,6 +191,40 @@
 .dng-name.is-relic { color: rgb(var(--dng-blue)); }
 .planner-legend-label { color: var(--text-faint); }
 
+/* Вторая строка легенды: как читать полоски времени в клетках */
+.planner-legend-time .planner-legend-item::before { display: none; }
+.planner-legend-ruler {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 14px;
+  height: 26px;
+  color: var(--text-faint);
+  font-size: 0.5rem;
+  font-style: normal;
+  line-height: 1;
+  border-left: 1px solid var(--border-strong, var(--border));
+  padding-left: 2px;
+}
+.planner-legend-ruler i { font-style: normal; }
+.planner-legend-sample {
+  width: 22px;
+  height: 8px;
+  flex: none;
+  border-left: 3px solid var(--accent);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.planner-legend-sample.is-recurring {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 3px, transparent 3px 6px);
+}
+.planner-legend-now {
+  width: 22px;
+  height: 0;
+  flex: none;
+  border-top: 1.5px solid var(--danger);
+}
+
 .today-side {
   display: flex;
   flex-direction: column;
@@ -384,30 +418,78 @@
 .planner-day-scale {
   position: relative;
   flex: 1 1 auto;
-  /* Высота шкалы — компромисс: сутки целиком в ячейке календаря, но вечерние ивенты не сливаются
-     в одну точку. Точные минуты видны в окне дня, где шкала во всю высоту экрана. */
-  min-height: 46px;
+  display: flex;
+  gap: 3px;
+  /* Сутки целиком в клетке, но полоски не сливаются: 1 час ≈ 4px. Точные минуты — в подсказке клетки
+     и в окне дня, где шкала во всю высоту экрана. */
+  min-height: 92px;
+}
+/* Метки часов слева: 00 / 06 / 12 / 18 — по ним читается время полоски без подписей */
+.planner-scale-ticks {
+  position: relative;
+  flex: 0 0 13px;
+  color: var(--text-faint);
+  font-size: 0.5rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.planner-scale-ticks i {
+  position: absolute;
+  left: 0;
+  font-style: normal;
+  transform: translateY(-50%);
+}
+.planner-scale-ticks i:first-child { transform: none; }
+/* Поле полосок: каждые 6 часов линия ярче (совпадает с метками), каждые 3 часа — слабая */
+.planner-scale-lanes {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
   border-radius: 3px;
-  /* Полоски часов: каждые 6 часов — ярче, чтобы глаз читал время без подписей */
   background:
-    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 25%),
-    rgba(0, 0, 0, 0.16);
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 0 1px, transparent 1px 25%),
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 12.5%),
+    rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 .planner-block {
   position: absolute;
   box-sizing: border-box;
-  /* Пол в 4px: короткая запись должна быть видна, а не схлопнуться в волосок */
-  min-height: 4px;
-  border-left: 2px solid var(--accent);
+  /* Пол в 5px: короткая запись должна быть видна, а не схлопнуться в волосок */
+  min-height: 5px;
+  border-left: 3px solid var(--accent);
   border-radius: 2px;
   background: var(--accent-soft);
+  /* Тёмный контур отделяет соседние по времени полоски друг от друга */
+  box-shadow: 0 0 0 1px rgba(8, 11, 17, 0.85);
   overflow: hidden;
 }
-.planner-block.is-green { border-left-color: var(--success); background: var(--success-soft); }
-.planner-block.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
-.planner-block.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
-.planner-block.is-purple { border-left-color: var(--accent-2); background: rgba(180, 126, 255, 0.22); }
-.planner-block.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
+/* Линия «сейчас» (МСК) в клетке сегодняшнего дня */
+.planner-now {
+  position: absolute;
+  left: -4px;
+  right: 0;
+  height: 0;
+  border-top: 1.5px solid var(--danger);
+  pointer-events: none;
+}
+.planner-now::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+/* Заливка полосок плотнее фона (50%), иначе на тёмном поле они еле видны */
+.planner-block { background: color-mix(in srgb, var(--accent) 50%, transparent); }
+.planner-block.is-green { border-left-color: var(--success); background: color-mix(in srgb, var(--success) 50%, transparent); }
+.planner-block.is-yellow { border-left-color: var(--warning); background: color-mix(in srgb, var(--warning) 50%, transparent); }
+.planner-block.is-red { border-left-color: var(--danger); background: color-mix(in srgb, var(--danger) 50%, transparent); }
+.planner-block.is-purple { border-left-color: var(--accent-2); background: color-mix(in srgb, var(--accent-2) 50%, transparent); }
+.planner-block.is-gray { border-left-color: var(--text-faint); background: color-mix(in srgb, var(--text-faint) 45%, transparent); }
 /* Постоянный ивент: штриховка — видно, что запись не своя, а по расписанию */
 .planner-block.is-recurring {
   background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 3px, transparent 3px 6px);
@@ -542,7 +624,7 @@
   .planner-head { align-items: stretch; flex-direction: column; }
   .planner-nav { justify-content: space-between; }
   .planner-day { min-height: 52px; }
-  .planner-day-scale { min-height: 38px; }
+  .planner-day-scale { min-height: 64px; }
   .planner-more { display: none; }
   .today-dungeon-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); }
   .today-strip-day .today-strip-name { display: none; }

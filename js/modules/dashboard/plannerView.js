@@ -1,6 +1,7 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
+import { mskMinutes } from '../../core/msk.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
@@ -35,6 +36,23 @@ export function plannerLegendHtml() {
 }
 
 /**
+ * Подсказка к полоскам: как читать мини-шкалу в клетке. Образцы — те же классы, что рисуют настоящие полоски,
+ * поэтому легенда не разойдётся с календарём.
+ */
+export function plannerTimeLegendHtml() {
+  return `<div class="planner-legend planner-legend-time" aria-label="Как читать полоски времени">
+    <span class="planner-legend-label">Полоски в клетке:</span>
+    <span class="planner-legend-item" title="Шкала суток идёт сверху вниз: 00 — полночь, 12 — полдень, 24 — следующая полночь"><span class="planner-legend-ruler" aria-hidden="true"><i>00</i><i>12</i><i>24</i></span> сутки сверху вниз, время МСК</span>
+    <span class="planner-legend-item" title="Чем длиннее полоска, тем дольше идёт запись"><span class="planner-legend-sample is-own" aria-hidden="true"></span> своя запись (длина = длительность)</span>
+    <span class="planner-legend-item" title="Постоянный ивент по расписанию"><span class="planner-legend-sample is-recurring" aria-hidden="true"></span> ивент по расписанию</span>
+    <span class="planner-legend-item" title="Линия «сейчас» есть только в клетке сегодняшнего дня"><span class="planner-legend-now" aria-hidden="true"></span> сейчас</span>
+  </div>`;
+}
+
+/** Метки часов слева от мини-шкалы: 00, 06, 12, 18 — по ним глаз читает время без подписей на полосках. */
+const MINI_TICKS = [0, 6, 12, 18];
+
+/**
  * Мини-шкала дня в ячейке календаря: записи стоят по времени начала, высота блока — длительность.
  * Записи без времени (и марафон, который занимает весь день) идут сверху отдельной строкой.
  */
@@ -42,9 +60,13 @@ function dayCellHtml(date, events, dungeon, isToday) {
   const { allDay, blocks } = timelineBlocks(events);
   const day = Number(date.slice(-2));
   const all = [...allDay.map(x => x.event)];
+  // Тултип клетки перечисляет записи с временем: точные минуты читаются без открытия дня
+  const timedLines = blocks.map(b => `${b.startTime}–${b.endTime} ${b.event.title}`);
+  const cellTitle = [`${dungeon.date}: данж дня — ${dungeon.name}`, ...timedLines].join('\n');
+  const nowPct = isToday ? (mskMinutes() / DAY_MINUTES) * 100 : null;
   return `<button class="planner-day is-${dungeon.key}${isToday ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
             type="button" data-planner-date="${date}"
-            title="${dungeon.date}: данж дня — ${dungeon.name}${events.length ? ` · записей: ${events.length}` : ''}"
+            title="${escapeHtml(cellTitle)}"
             aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
     <span class="planner-day-number">${day}</span>
     <span class="planner-day-allday">
@@ -53,9 +75,13 @@ function dayCellHtml(date, events, dungeon, isToday) {
       ${all.length > 2 ? `<span class="planner-more" title="${all.slice(2).map(x => escapeHtml(x.title)).join(' • ')}">+${all.length - 2}</span>` : ''}
     </span>
     <span class="planner-day-scale" aria-hidden="true">
-      ${blocks.map(b => `<span class="planner-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'marathon' ? ' is-marathon' : ''}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
-        style="top:${b.topPct.toFixed(3)}%;height:${b.heightPct.toFixed(3)}%;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
-        title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"></span>`).join('')}
+      <span class="planner-scale-ticks">${MINI_TICKS.map(h => `<i style="top:${(h / 24 * 100).toFixed(2)}%">${String(h).padStart(2, '0')}</i>`).join('')}</span>
+      <span class="planner-scale-lanes">
+        ${blocks.map(b => `<span class="planner-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'marathon' ? ' is-marathon' : ''}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
+          style="top:${b.topPct.toFixed(3)}%;height:${b.heightPct.toFixed(3)}%;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
+          title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"></span>`).join('')}
+        ${nowPct === null ? '' : `<span class="planner-now" style="top:${nowPct.toFixed(3)}%"></span>`}
+      </span>
     </span>
   </button>`;
 }
@@ -81,6 +107,7 @@ export function plannerHtml(appState = state) {
         </div>
       </div>
       ${plannerLegendHtml()}
+      ${plannerTimeLegendHtml()}
       <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
       <div class="planner-grid">
         ${cells.map(date => {
