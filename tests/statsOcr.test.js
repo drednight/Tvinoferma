@@ -28,6 +28,15 @@ describe('распознавание подписей', () => {
     expect(matchField('Сила')?.key).toBe('strength');
   });
 
+  it('«Боевая сила» не переносится в характеристики и не подменяет «Силу»', () => {
+    const res = readStats([
+      line('Сила', 0.03, 0.10, 0.2), line('1 500', 0.62, 0.10, 0.15),
+      line('Боевая сила', 0.03, 0.15, 0.2), line('99 999', 0.62, 0.15, 0.15)
+    ]);
+    expect(res.stats).toEqual({ strength: 1500 });
+    expect(res.missed).not.toContain('Сила (боевая)');
+  });
+
   it('«показатель атаки» не путается с «атакой»', () => {
     expect(matchField('Показатель атаки')?.key).toBe('pa');
     expect(matchField('Магическая атака')?.key).toBe('magAttack');

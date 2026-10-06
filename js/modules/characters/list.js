@@ -12,6 +12,7 @@ import { PASS_TYPES, getClassIconSrc } from '../../core/constants.js';
 
 // Импортируем модульную систему персонажей
 import { openCharacterProfile, openCharacterForm } from './index.js';
+import { levelBonusLabel } from './stateManager.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { hasGameCenterPath } from '../launcher/launch.js';
@@ -244,7 +245,7 @@ function generateCardHTML(char) {
             </div>
             <div class="char-ident">
               <h3 class="char-nick">${escapeHtml(char.nick)}</h3>
-              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}</small>
+              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</small>
               <small class="muted char-sub">${skyInfo}</small>
             </div>
           </div>

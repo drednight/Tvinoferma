@@ -203,10 +203,6 @@
   min-width: 0;
 }
 .today-side .today-title { margin-bottom: 0; }
-/* Панель «Сегодня» заливается приглушённым цветом данжа дня */
-.today-side.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.10), rgba(var(--dng-red), 0.10)), var(--surface-1); }
-.today-side.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.09), rgba(var(--dng-green), 0.09)), var(--surface-1); }
-.today-side.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.10), rgba(var(--dng-blue), 0.10)), var(--surface-1); }
 .today-side-date { display: block; width: 100%; font-size: 0.72rem; font-weight: 450; }
 .today-side-list { max-height: 260px; }
 .today-side-open { align-self: flex-start; }

@@ -26,10 +26,11 @@ export async function statsOcrAvailable() {
 
 /**
  * Открывает окно разбора скриншота.
- * @param {{ onApply: (values: Record<string, number>) => void }} opts `onApply` получает подтверждённые характеристики
+ * @param {{ onApply: (values: Record<string, number>) => void, current?: Record<string, number> }} opts
+ *   `onApply` получает подтверждённые характеристики, `current` — сохранённые сейчас (для сравнения «было → стало»)
  * @returns {Promise<any>} закрытое окно
  */
-export async function openStatsImport({ onApply } = {}) {
+export async function openStatsImport({ onApply, current = {} } = {}) {
   const ov = openOverlay({ title: '📷 Распознать характеристики со скриншота', wide: true });
 
   /** @type {Array<{key: string, label: string, value: number, line: string, confidence: number}>} */
@@ -89,15 +90,19 @@ export async function openStatsImport({ onApply } = {}) {
         <span class="muted">Проверьте значения: распознавание может путать цифры. Снимите галочку там, где число неверное.</span>
       </div>
       <div class="si-grid">
-        ${found.map(item => `
+        ${found.map(item => {
+          const old = savedValue(current, item.key);
+          return `
           <label class="si-item">
             <input type="checkbox" checked data-key="${escapeHtml(item.key)}" />
             <span class="si-item-label">
               <b>${escapeHtml(item.label)}</b>
               <small class="muted" title="Что распознано в строке скриншота">распознано: ${escapeHtml(item.line)}</small>
+              <small class="muted si-old" title="Значение, сохранённое в карточке сейчас">было: ${old === null ? '—' : old.toLocaleString('ru-RU')}</small>
             </span>
-            <input class="input si-item-value" type="number" step="any" min="0" value="${item.value}" data-key="${escapeHtml(item.key)}" />
-          </label>`).join('')}
+            <input class="input si-item-value ${compareClass(old, item.value)}" type="number" step="any" min="0" value="${item.value}" data-key="${escapeHtml(item.key)}" data-old="${old ?? ''}" />
+          </label>`;
+        }).join('')}
       </div>
       ${missed.length ? `<details class="si-missed"><summary>Не распознано: ${missed.length}</summary>
         <p class="muted">${missed.map(escapeHtml).join(', ')}. Эти поля останутся как были.</p></details>` : ''}`;
@@ -147,6 +152,16 @@ export async function openStatsImport({ onApply } = {}) {
     }
   });
 
+  // Правка числа в окне перекрашивает его относительно сохранённого значения
+  ov.body.addEventListener('input', (e) => {
+    const input = /** @type {HTMLInputElement} */ (e.target);
+    if (!input?.classList?.contains('si-item-value')) return;
+    input.classList.remove('is-up', 'is-down');
+    const old = input.dataset.old === '' ? null : Number(input.dataset.old);
+    const cls = compareClass(old, parseNumber(input.value, 'decimal') ?? NaN);
+    if (cls) input.classList.add(cls);
+  });
+
   fileInput.addEventListener('change', () => {
     const file = fileInput.files?.[0];
     fileInput.value = '';
@@ -179,6 +194,23 @@ export async function openStatsImport({ onApply } = {}) {
   ov.el.addEventListener('remove', () => document.removeEventListener('paste', onPaste));
 
   return ov;
+}
+
+/** Сохранённое значение стата: число > 0 или null (если характеристика ещё не заполнена). */
+const savedValue = (current, key) => {
+  const n = Number(current?.[key]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+/**
+ * Подсветка нового значения относительно сохранённого:
+ * сохранённое выше нового — красный (is-down), ниже — зелёный (is-up), равно или нет сохранённого — без подсветки.
+ */
+export function compareClass(oldValue, newValue) {
+  if (oldValue === null || oldValue === undefined || !Number.isFinite(newValue)) return '';
+  if (oldValue > newValue) return 'is-down';
+  if (oldValue < newValue) return 'is-up';
+  return '';
 }
 
 function bindClose(ov) {

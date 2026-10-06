@@ -25,7 +25,7 @@ export function todaySideHtml(appState = state) {
   const events = plannerEventsForDate(appState, today);
 
   return `
-    <aside class="today-side is-${dToday.key}" data-today-side>
+    <aside class="today-side" data-today-side>
       <h4 class="today-title"><span aria-hidden="true">📍</span> Сегодня
         <small class="muted today-side-date">${new Date(`${today}T00:00:00`).toLocaleDateString('ru', { day: 'numeric', month: 'long', weekday: 'long' })}</small>
       </h4>

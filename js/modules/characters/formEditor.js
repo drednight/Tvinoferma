@@ -154,10 +154,9 @@ export function openCharacterForm(char = null) {
             ${statInput('accuracy', 'Меткость')}
             ${statInput('pa', 'Показатель атаки (ПА)')}
           </div>
-          <div class="three-cols">
+          <div class="two-cols">
             ${statInput('pz', 'Показатель защиты (ПЗ)')}
             ${statInput('morale', 'Боевой дух')}
-            ${statInput('power', 'Сила')}
           </div>
 
           <h4 class="stats-sub">PvE и Пробивание</h4>
@@ -219,6 +218,7 @@ export function openCharacterForm(char = null) {
     btn.dataset.bound = 'true';
     btn.addEventListener('click', () => {
       import('./statsImport.js').then(({ openStatsImport }) => openStatsImport({
+        current: stats,
         onApply: (values) => {
           let applied = 0;
           for (const [key, value] of Object.entries(values)) {

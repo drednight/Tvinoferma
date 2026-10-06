@@ -10,6 +10,7 @@ import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
+import { levelBonusLabel } from './stateManager.js';
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { hasGameCenterPath, loginStatusText, launchContext } from '../launcher/launch.js';
@@ -67,7 +68,7 @@ export function openCharacterProfile(char) {
                 title="${char.favorite ? 'Убрать из избранного' : 'Добавить в избранное'}">${char.favorite ? '★' : '☆'}</button>
             </div>
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
-            <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}</p>
+            <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
             <p class="muted" style="margin:4px 0;" id="profile-auth-line">${authLineHtml(char)}</p>
             <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}</p>
@@ -182,7 +183,6 @@ export function openCharacterProfile(char) {
              ${statRow('Показатель атаки (ПА)', stats.pa)}
              ${statRow('Показатель защиты (ПЗ)', stats.pz)}
              ${statRow('Боевой дух', stats.morale)}
-             ${statRow('Сила', stats.power)}
           </div>
         </div>
 

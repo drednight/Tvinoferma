@@ -11,7 +11,7 @@ export const DEFAULT_STATS = {
   levelBonus: 0,
   physAttack: 0, physDefense: 0, magAttack: 0, magDefense: 0,
   critChance: 0, critDamage: 0, atkSpeed: 0, evasion: 0, accuracy: 0,
-  pa: 0, pz: 0, morale: 0, power: 0,
+  pa: 0, pz: 0, morale: 0,
   pvePa: 0, pvePz: 0, physPenetration: 0, magPenetration: 0
 };
 
@@ -38,4 +38,13 @@ export function createEmptyCharacter() {
     createdAt: nowISO(),
     updatedAt: nowISO()
   };
+}
+
+/**
+ * Бонус к уровню для показа рядом с уровнем: «12 БУ». Пустая строка, если бонуса нет.
+ * @param {{ stats?: { levelBonus?: number } } | null | undefined} char
+ */
+export function levelBonusLabel(char) {
+  const n = Number(char?.stats?.levelBonus) || 0;
+  return n > 0 ? `${n} БУ` : '';
 }

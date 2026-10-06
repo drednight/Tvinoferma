@@ -54,7 +54,7 @@ export const FIELD_GROUPS = [
   ] },
   { id: 'statsBattle', title: 'Показатели боя', fields: [
     stat('pa', 'Показатель атаки (ПА)'), stat('pz', 'Показатель защиты (ПЗ)'),
-    stat('morale', 'Боевой дух'), stat('power', 'Сила (показатель боя)')
+    stat('morale', 'Боевой дух')
   ] },
   { id: 'statsPve', title: 'PvE и пробивание', fields: [
     stat('pvePa', 'Урон по монстрам (PvE PA)'), stat('pvePz', 'Защита от монстров (PvE PZ)'),

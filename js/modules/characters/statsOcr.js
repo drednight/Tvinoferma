@@ -16,7 +16,7 @@ import { DEFAULT_STATS } from './stateManager.js';
 
 /**
  * @typedef {{ text: string, x: number, y: number, w: number, h: number }} OcrLine координаты — доли 0…1
- * @typedef {{ key: string, label: string, kind?: 'int' | 'percent' | 'decimal', aliases?: string[] }} StatField
+ * @typedef {{ key: string, label: string, kind?: 'int' | 'percent' | 'decimal', aliases?: string[], ignore?: boolean }} StatField
  */
 
 /**
@@ -44,7 +44,8 @@ export const STAT_FIELDS = /** @type {StatField[]} */ ([
   { key: 'pa', label: 'Показатель атаки', aliases: ['показатель атаки'] },
   { key: 'pz', label: 'Показатель защиты', aliases: ['показатель защиты'] },
   { key: 'morale', label: 'Боевой дух', kind: 'percent', aliases: ['боевой дух'] },
-  { key: 'power', label: 'Сила (боевая)', aliases: ['боевая сила', 'сила атаки'] },
+  // Не переносится в карточку: подпись нужна, чтобы «Боевая сила» не принималась за «Силу».
+  { key: 'power', label: 'Сила (боевая)', ignore: true, aliases: ['боевая сила', 'сила атаки'] },
   { key: 'pvePa', label: 'Урон по монстрам (PvE PA)', aliases: ['урон по монстрам', 'pve pa', 'пве па'] },
   { key: 'pvePz', label: 'Защита от монстров (PvE PZ)', aliases: ['защита от монстров', 'pve pz', 'пве пз'] },
   { key: 'physPenetration', label: 'Физ. пробивание', aliases: ['физическое пробивание', 'физ пробивание'] },
@@ -253,7 +254,9 @@ export function joinByRow(lines, { fields = STAT_FIELDS, rowTolerance = 0.02 } =
   for (const item of [...merged, ...out]) {
     if (!byKey.has(item.key)) byKey.set(item.key, item);
   }
-  return [...byKey.values()];
+  // Поля с `ignore` служат только «заглушкой» для подписи и в результат не попадают
+  const ignored = new Set(fields.filter(f => f.ignore).map(f => f.key));
+  return [...byKey.values()].filter(item => !ignored.has(item.key));
 }
 
 /**
@@ -266,7 +269,7 @@ export function readStats(lines) {
   /** @type {Record<string, number>} */
   const stats = {};
   for (const item of found) stats[item.key] = item.value;
-  const missed = STAT_FIELDS.filter(f => !(f.key in stats)).map(f => f.label);
+  const missed = STAT_FIELDS.filter(f => !f.ignore && !(f.key in stats)).map(f => f.label);
   return { found, missed, stats };
 }
 
