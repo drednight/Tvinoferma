@@ -25,24 +25,24 @@ export function todaySideHtml(appState = state) {
   const events = plannerEventsForDate(appState, today);
 
   return `
-    <aside class="today-side is-${dToday.color}" data-today-side>
+    <aside class="today-side is-${dToday.key}" data-today-side>
       <h4 class="today-title"><span aria-hidden="true">📍</span> Сегодня
         <small class="muted today-side-date">${new Date(`${today}T00:00:00`).toLocaleDateString('ru', { day: 'numeric', month: 'long', weekday: 'long' })}</small>
       </h4>
 
-      <div class="today-dungeon is-${dToday.color}" title="Ежедневное задание меняется по циклу: Реликвия → Оружие → Доспех">
+      <div class="today-dungeon is-${dToday.key}" title="Ежедневное задание меняется по циклу: Реликвия → Оружие → Доспех">
         <span class="today-dungeon-ico" aria-hidden="true">${dToday.icon}</span>
         <span class="today-dungeon-copy">
-          <b>Данж дня: <span class="dng-name is-${dToday.color}">${escapeHtml(dToday.name)}</span></b>
+          <b>Данж дня: <span class="dng-name is-${dToday.key}">${escapeHtml(dToday.name)}</span></b>
           <small class="muted">Полоса ниже — ближайшая неделя, цвет дня — его данж</small>
         </span>
       </div>
       <div class="today-dungeon-strip" role="img" aria-label="Данжи на неделю: вчера и пять дней вперёд">
         ${strip.map(d => `
-          <span class="today-strip-day is-${d.color}${d.date === today ? ' is-today' : ''}" title="${d.date}: ${d.name}">
+          <span class="today-strip-day is-${d.key}${d.date === today ? ' is-today' : ''}" title="${d.date}: ${d.name}">
             <small>${new Date(`${d.date}T00:00:00`).toLocaleDateString('ru', { weekday: 'narrow' })}</small>
             <b aria-hidden="true">${d.icon}</b>
-            <span class="today-strip-name dng-name is-${d.color}">${escapeHtml(d.name)}</span>
+            <span class="today-strip-name dng-name is-${d.key}">${escapeHtml(d.name)}</span>
           </span>`).join('')}
       </div>
 

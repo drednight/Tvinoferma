@@ -49,7 +49,7 @@ export function plannerHtml(appState = state) {
           const events = plannerEventsForDate(appState, date);
           const day = Number(date.slice(-2));
           const dungeon = dungeonInfoForDate(date);
-          return `<button class="planner-day is-${dungeon.color}${date === today ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
+          return `<button class="planner-day is-${dungeon.key}${date === today ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
                     type="button" data-planner-date="${date}"
                     title="${dungeon.date}: данж дня — ${dungeon.name}"
                     aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
