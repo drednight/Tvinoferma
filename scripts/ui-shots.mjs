@@ -45,6 +45,9 @@ const BROWSERS = [
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function findBrowser() {
+  // Путь можно задать переменной окружения: BROWSER_PATH=/usr/bin/chromium node scripts/ui-shots.mjs
+  const fromEnv = process.env.BROWSER_PATH;
+  if (fromEnv && existsSync(fromEnv)) return fromEnv;
   const found = BROWSERS.find((p) => existsSync(p));
   if (!found) throw new Error('Не найден Edge/Chrome. Укажите путь вручную в scripts/ui-shots.mjs');
   return found;
@@ -149,6 +152,8 @@ async function main() {
       '--disable-extensions',
       '--force-device-scale-factor=1',
       '--force-color-profile=srgb',
+      // Доп. флаги браузера, например в контейнере: BROWSER_ARGS="--no-sandbox --disable-gpu"
+      ...(process.env.BROWSER_ARGS ? process.env.BROWSER_ARGS.split(' ').filter(Boolean) : []),
       URL_BASE
     ], { stdio: 'ignore' });
 
