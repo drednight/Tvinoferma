@@ -132,10 +132,9 @@ export function openCharacterForm(char = null) {
 
           <h4 class="stats-sub">Бой и Защита</h4>
           <div class="four-cols">
-            ${statInput('hp', 'Здоровье (текущее)')}
-            ${statInput('hpMax', 'Здоровье (макс)')}
-            ${statInput('mp', 'Маг. энергия (текущее)')}
-            ${statInput('mpMax', 'Маг. энергия (макс)')}
+            ${statInput('hp', 'Здоровье')}
+            ${statInput('mp', 'Маг. энергия')}
+            ${statInput('levelBonus', 'Бонус к уровню (%)')}
           </div>
           <div class="four-cols">
             ${statInput('physAttack', 'Физ. атака')}
@@ -155,14 +154,9 @@ export function openCharacterForm(char = null) {
             ${statInput('accuracy', 'Меткость')}
             ${statInput('pa', 'Показатель атаки (ПА)')}
           </div>
-          <div class="three-cols">
+          <div class="two-cols">
             ${statInput('pz', 'Показатель защиты (ПЗ)')}
             ${statInput('morale', 'Боевой дух')}
-            ${statInput('power', 'Сила')}
-          </div>
-          <div class="two-cols">
-            ${statInput('stealth', 'Скрытность')}
-            ${statInput('detection', 'Обнаружение')}
           </div>
 
           <h4 class="stats-sub">PvE и Пробивание</h4>
@@ -216,12 +210,15 @@ export function openCharacterForm(char = null) {
   // Разбор скриншота окна характеристик. Разметка формы появляется только внутри showModal
   // (ниже), поэтому обработчик вешается после её вызова — иначе кнопки в документе ещё нет.
   // Значения подставляем в поля по имени (stat-<ключ>); чего нет в ответе, то не трогаем.
+  // Перенесённое окрашивается: зелёный — распознанное выше текущего, красный — ниже,
+  // без цвета — совпадает (is-up/is-down снимаются, когда пользователь правит поле руками).
   const bindStatsOcr = () => {
     const btn = document.getElementById('btn-stats-ocr');
     if (!btn || btn.dataset.bound) return;
     btn.dataset.bound = 'true';
     btn.addEventListener('click', () => {
       import('./statsImport.js').then(({ openStatsImport }) => openStatsImport({
+        current: stats,
         onApply: (values) => {
           let applied = 0;
           for (const [key, value] of Object.entries(values)) {
@@ -231,11 +228,17 @@ export function openCharacterForm(char = null) {
               document.querySelector(`#modal-root input[name="stat-${key}"]`)
             );
             if (!input) continue;
+            const before = Number(input.value) || 0;
             input.value = String(value);
             applied++;
-            // Подсвечиваем подставленные поля, чтобы было видно, что именно изменилось
-            input.classList.add('is-filled');
-            setTimeout(() => input.classList.remove('is-filled'), 2500);
+            // Подсвечиваем направление изменения: видно, что OCR завысил или занизил
+            input.classList.remove('is-filled', 'is-up', 'is-down');
+            if (value > before) input.classList.add('is-up');
+            else if (value < before) input.classList.add('is-down');
+            else input.classList.add('is-filled');
+            input.addEventListener('input', () => {
+              input.classList.remove('is-filled', 'is-up', 'is-down');
+            }, { once: true });
           }
           toast(applied ? `Характеристик перенесено: ${applied}` : 'Нечего переносить', applied ? 'success' : 'warning');
         }

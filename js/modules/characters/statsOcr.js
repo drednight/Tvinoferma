@@ -16,7 +16,7 @@ import { DEFAULT_STATS } from './stateManager.js';
 
 /**
  * @typedef {{ text: string, x: number, y: number, w: number, h: number }} OcrLine координаты — доли 0…1
- * @typedef {{ key: string, label: string, kind?: 'int' | 'percent' | 'decimal', aliases?: string[] }} StatField
+ * @typedef {{ key: string, label: string, kind?: 'int' | 'percent' | 'decimal', aliases?: string[], ignore?: boolean }} StatField
  */
 
 /**
@@ -29,10 +29,9 @@ export const STAT_FIELDS = /** @type {StatField[]} */ ([
   { key: 'intelligence', label: 'Интеллект', aliases: ['интеллект', 'интел'] },
   { key: 'strength', label: 'Сила', aliases: ['сила'] },
   { key: 'agility', label: 'Ловкость', aliases: ['ловкость', 'ловк'] },
-  { key: 'hpMax', label: 'Здоровье (макс)', aliases: ['здоровье макс', 'макс здоровье', 'здоровье'] },
-  { key: 'hp', label: 'Здоровье (текущее)', aliases: ['здоровье текущее', 'текущее здоровье'] },
-  { key: 'mpMax', label: 'Маг. энергия (макс)', aliases: ['маг энергия макс', 'макс энергия', 'маг энергия'] },
-  { key: 'mp', label: 'Маг. энергия (текущее)', aliases: ['маг энергия текущее', 'текущая энергия'] },
+  { key: 'hp', label: 'Здоровье', aliases: ['здоровье'] },
+  { key: 'mp', label: 'Маг. энергия', aliases: ['маг энергия', 'магическая энергия', 'энергия'] },
+  { key: 'levelBonus', label: 'Бонус к уровню', kind: 'percent', aliases: ['бонус к уровню', 'бонус уровню'] },
   { key: 'physAttack', label: 'Физ. атака', aliases: ['физическая атака', 'физ атака'] },
   { key: 'physDefense', label: 'Физ. защита', aliases: ['физическая защита', 'физ защита'] },
   { key: 'magAttack', label: 'Маг. атака', aliases: ['магическая атака', 'маг атака'] },
@@ -45,9 +44,8 @@ export const STAT_FIELDS = /** @type {StatField[]} */ ([
   { key: 'pa', label: 'Показатель атаки', aliases: ['показатель атаки'] },
   { key: 'pz', label: 'Показатель защиты', aliases: ['показатель защиты'] },
   { key: 'morale', label: 'Боевой дух', kind: 'percent', aliases: ['боевой дух'] },
-  { key: 'power', label: 'Сила (боевая)', aliases: ['боевая сила', 'сила атаки'] },
-  { key: 'stealth', label: 'Скрытность', aliases: ['скрытность'] },
-  { key: 'detection', label: 'Обнаружение', aliases: ['обнаружение'] },
+  // Не переносится в карточку: подпись нужна, чтобы «Боевая сила» не принималась за «Силу».
+  { key: 'power', label: 'Сила (боевая)', ignore: true, aliases: ['боевая сила', 'сила атаки'] },
   { key: 'pvePa', label: 'Урон по монстрам (PvE PA)', aliases: ['урон по монстрам', 'pve pa', 'пве па'] },
   { key: 'pvePz', label: 'Защита от монстров (PvE PZ)', aliases: ['защита от монстров', 'pve pz', 'пве пз'] },
   { key: 'physPenetration', label: 'Физ. пробивание', aliases: ['физическое пробивание', 'физ пробивание'] },
@@ -66,11 +64,13 @@ export function normalizeLabel(text) {
 /**
  * Число из строки, как его показывает игра.
  * «42 350» → 42350, «12%» → 12, «0.80» → 0.8, «1,5» → 1.5.
+ * Диапазоны и пары «текущее/максимальное» берутся по правому числу — это итоговое значение:
+ *   «96587/96587» → 96587, «155668-166963» → 166963.
  * `null` — числа в строке нет (значит, это подпись или посторонний текст).
  */
 export function parseNumber(text, kind = 'int') {
   const cleaned = String(text || '')
-    .replace(/[^\d.,-]/g, '')
+    .replace(/[^\d.,/-]/g, '')
     .replace(/\s/g, '');
   if (!cleaned || !/\d/.test(cleaned)) return null;
   // Десятичные бывают только у дробных характеристик («0.80»): у остальных точка и запятая —
@@ -82,6 +82,9 @@ export function parseNumber(text, kind = 'int') {
       normalized = `${cleaned.slice(0, lastSep).replace(/[.,]/g, '')}.${cleaned.slice(lastSep + 1)}`;
     }
   }
+  // «a/b» и «a-b»: значение — правое число пары (итог или верхняя граница)
+  const pair = /(\d[\d.,]*)[/-](\d[\d.,]*)$/.exec(normalized);
+  if (pair) normalized = pair[2];
   const value = Number(normalized.replace(/[.,]/g, ''));
   const result = kind === 'int' ? value : Number(normalized);
   if (!Number.isFinite(result)) return null;
@@ -251,7 +254,9 @@ export function joinByRow(lines, { fields = STAT_FIELDS, rowTolerance = 0.02 } =
   for (const item of [...merged, ...out]) {
     if (!byKey.has(item.key)) byKey.set(item.key, item);
   }
-  return [...byKey.values()];
+  // Поля с `ignore` служат только «заглушкой» для подписи и в результат не попадают
+  const ignored = new Set(fields.filter(f => f.ignore).map(f => f.key));
+  return [...byKey.values()].filter(item => !ignored.has(item.key));
 }
 
 /**
@@ -264,7 +269,7 @@ export function readStats(lines) {
   /** @type {Record<string, number>} */
   const stats = {};
   for (const item of found) stats[item.key] = item.value;
-  const missed = STAT_FIELDS.filter(f => !(f.key in stats)).map(f => f.label);
+  const missed = STAT_FIELDS.filter(f => !f.ignore && !(f.key in stats)).map(f => f.label);
   return { found, missed, stats };
 }
 

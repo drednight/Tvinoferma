@@ -10,6 +10,8 @@
 //   downloading   — идёт загрузка (progress 0–100 или null, если размер неизвестен)
 //   installing    — загрузка завершена, идёт установка и перезапуск
 //   error         — не удалось скачать/установить (кнопка остаётся, можно повторить)
+
+import { mskStamp } from '../core/msk.js';
 //   check_error   — не удалось проверить (кнопки нет)
 
 const initial = () => ({
@@ -92,5 +94,6 @@ export function statusText(s = current, { supported = true } = {}) {
 export function checkedAtText(s = current) {
   if (!s.lastCheckedAt) return '';
   const d = new Date(s.lastCheckedAt);
-  return isNaN(d.getTime()) ? '' : `Последняя проверка: ${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  // Дата проверки обновлений — по Москве, как и остальное время в приложении
+  return isNaN(d.getTime()) ? '' : `Последняя проверка: ${mskStamp(d)}`;
 }

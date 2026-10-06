@@ -259,15 +259,23 @@ export function closeClientsByPid(pids, deps = {}) {
 
 /**
  * Меняет название и значок запущенного окна игры по требованию пользователя.
+ * Значок класса конвертируется здесь (canvas → RGBA): у Rust не всегда есть PNG рядом с exe,
+ * а у окна браузера он точно есть. `clearIcon` — вернуть окну значок файла игры.
  * @param {{ pid: number, title?: string|null, class?: string|null, clearIcon?: boolean }} opts
- *   `class` — класс, чей значок поставить; `clearIcon` — вернуть окну значок файла игры.
  */
-export function applyWindowStyle(opts, deps = {}) {
-  return (deps.invoke || tauriInvoke)('launcher_apply_window_style', {
+export async function applyWindowStyle(opts, deps = {}) {
+  const invoke = deps.invoke || tauriInvoke;
+  const cls = opts.clearIcon ? null : (opts.class || null);
+  const [iconSmall, iconBig] = cls
+    ? await Promise.all([classIconRgba(cls, WINDOW_ICON_SMALL), classIconRgba(cls, WINDOW_ICON_BIG)])
+    : [null, null];
+  return invoke('launcher_apply_window_style', {
     pid: opts.pid,
     title: opts.title ?? null,
-    class: opts.class ?? null,
-    clearIcon: opts.clearIcon ?? false
+    class: cls,
+    clearIcon: opts.clearIcon ?? false,
+    iconSmall,
+    iconBig
   });
 }
 

@@ -1,12 +1,13 @@
 /* css/core/fab.css
-   Круглая кнопка «+» справа внизу, её меню и выпадающее меню скриптов в шапке раздела. */
+   Круглая кнопка «+» справа внизу — speed-dial: орбы с подписями раскрываются вокруг кнопки,
+   состав зависит от активной вкладки (data-section на контейнере). */
 
 /* --- Контейнер кнопки --- */
 .fab-container {
   position: fixed;
   bottom: 26px;
   right: 26px;
-  z-index: 1000;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
   gap: var(--gap);
@@ -40,25 +41,6 @@
 .fab-main:hover { transform: scale(1.06); filter: brightness(1.08); box-shadow: 0 14px 32px rgba(110, 142, 248, 0.45); }
 .fab-main:active { transform: scale(0.96); }
 
-.fab-secondary {
-  min-height: 46px;
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-1);
-  color: var(--text);
-  font: inherit;
-  font-size: .86rem;
-  font-weight: 650;
-  box-shadow: var(--shadow-2);
-  cursor: pointer;
-}
-.fab-secondary:hover { border-color: var(--accent); background: var(--surface-2); }
-.fab-secondary[hidden] { display: none; }
-
 .fab-icon {
   transform-origin: center;
   transition: transform 0.25s var(--ease);
@@ -66,65 +48,94 @@
 }
 .fab-main.is-open .fab-icon { transform: rotate(135deg); }
 
-/* Тултип слева от кнопки */
-.fab-tooltip {
-  background: var(--surface-2);
-  color: var(--text);
-  padding: 6px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 0.84rem;
-  white-space: nowrap;
-  box-shadow: var(--shadow-2);
-  border: 1px solid var(--border);
-  opacity: 0;
-  transform: translateX(10px);
-  transition: opacity var(--speed), transform var(--speed);
-  pointer-events: none;
-}
-.fab-container:hover .fab-tooltip { opacity: 1; transform: translateX(0); }
-
-/* --- Меню круглой кнопки: создать папку или марафон --- */
+/* --- Speed-dial: столбик пунктов строго над кнопкой ---
+   Пункты идут вертикально с одинаковым шагом: иконка стоит над центром кнопки, подпись — слева от неё.
+   Никаких абсолютных координат: пункты не выходят за область меню, не наезжают друг на друга и не
+   перекрывают соседние кнопки. Одновременно виден только один уровень (главный или подменю). */
 .fab-menu {
   position: absolute;
   right: 0;
-  bottom: 70px;
+  bottom: 68px;                     /* кнопка 56px + зазор 12px */
   display: flex;
   flex-direction: column;
-  gap: 10px;
   align-items: flex-end;
+  max-height: calc(100vh - 110px);
+  pointer-events: none;             /* кликабельны только сами пункты */
 }
 .fab-menu[hidden] { display: none; }
-.fab-menu-item {
-  display: inline-flex;
+
+/* Уровень меню: первый пункт разметки стоит ближе всего к кнопке */
+.fab-orbs {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-end;
+  gap: 10px;
+  max-height: inherit;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 2px 6px 2px 2px;         /* правый отступ 6px: центр иконки 44px совпадает с центром кнопки 56px */
+  animation: fab-level-in 0.16s var(--ease);
+}
+.fab-orbs::-webkit-scrollbar { display: none; }
+.fab-orbs[hidden] { display: none !important; }
+@keyframes fab-level-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fab-orb {
+  display: flex;
+  flex-direction: row-reverse;      /* иконка справа (над кнопкой), подпись слева */
   align-items: center;
   gap: 10px;
-  padding: 7px 16px 7px 7px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border-strong);
-  background: var(--surface-1);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 0.9rem;
-  white-space: nowrap;
   cursor: pointer;
-  box-shadow: var(--shadow-2);
-  animation: fabMenuIn 0.18s var(--ease) both;
-  transition: transform var(--speed) var(--ease), border-color var(--speed) var(--ease);
+  pointer-events: auto;
 }
-.fab-menu-item:nth-child(1) { animation-delay: 0.04s; }
-.fab-menu-ico {
+
+.fab-orb-ico {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-2);
+  font-size: 1.05rem;
+  transition: transform 0.16s var(--ease), border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+.fab-orb:hover .fab-orb-ico,
+.fab-orb:focus-visible .fab-orb-ico {
+  border-color: var(--accent);
+  background: var(--surface-2);
+  transform: scale(1.08);
+}
+.fab-orb-ico.is-plain {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   font-size: 0.95rem;
 }
-.fab-menu-item:hover { border-color: var(--accent); transform: translateX(-3px); }
-@keyframes fabMenuIn { from { opacity: 0; transform: translateY(10px) scale(0.95); } to { opacity: 1; transform: none; } }
+.fab-orb-label {
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fab-orb:hover .fab-orb-label,
+.fab-orb:focus-visible .fab-orb-label { color: var(--text); border-color: var(--border-strong); }
 
-/* --- Выпадающее меню скриптов --- */
+/* --- Выпадающее меню скриптов (настройки), прежний стиль сохранён --- */
 .action-menu-wrapper { position: relative; }
 
 .dropdown-menu {
@@ -170,6 +181,14 @@
 body:has(.page[data-section="marathons"].active[data-view="detail"]) .fab-container,
 body:has(.page[data-section="marathons"].active[data-view="series"]) .fab-container { display: none; }
 body:has(.modal-overlay) .fab-container { display: none; }
+
+/* Видны только орбы активного раздела */
+.fab-orb.is-for-characters,
+.fab-orb.is-for-parties,
+.fab-orb.is-for-marathons { display: none; }
+.fab-container[data-section="characters"] .is-for-characters { display: flex; }
+.fab-container[data-section="parties"] .is-for-parties { display: flex; }
+.fab-container[data-section="marathons"] .is-for-marathons { display: flex; }
 
 @media (max-width: 560px) {
   .fab-container { right: 16px; bottom: 16px; }

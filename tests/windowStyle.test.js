@@ -14,6 +14,8 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   closeClientsByPid: vi.fn(),
   closeAllClients: vi.fn(),
   applyWindowStyle: mocks.applyStyle,
+  WINDOW_ICON_SMALL: 16,
+  WINDOW_ICON_BIG: 48,
   applyStyleText: (r) => ({ missing: 'Окно игры не найдено: возможно, оно уже закрыто', failed: 'нет доступа', fixed: 'Окно обновлено', ok: 'Изменений не потребовалось' }[r?.status] || '')
 }));
 vi.mock('../js/core/storage.js', () => ({ isTauri: () => true, persist: vi.fn(async () => {}) }));
@@ -131,12 +133,15 @@ describe('связка с Rust', () => {
     expect(rust).toContain('clear_icon: Option<bool>');
   });
 
-  it('интерфейс передаёт те же поля в camelCase', () => {
+  it('интерфейс передаёт те же поля в camelCase (плюс пиксели значка от canvas)', () => {
     // Вызов идёт через обёртку tauriInvoke, поэтому проверяем имя команды и поля
     expect(js).toContain('launcher_apply_window_style');
     expect(js).toContain('clearIcon: opts.clearIcon ?? false');
     expect(js).toMatch(/title: opts\.title \?\? null/);
-    expect(js).toMatch(/class: opts\.class \?\? null/);
+    expect(js).toMatch(/class: cls/);
+    // Пиксели значка готовит интерфейс (classIconRgba): у Rust не всегда есть PNG рядом с exe
+    expect(js).toMatch(/iconSmall,/);
+    expect(js).toMatch(/iconBig/);
   });
 
   it('значки классов есть и в Rust, и в интерфейсе — списки должны совпадать', () => {
@@ -146,5 +151,27 @@ describe('связка с Rust', () => {
       expect(jsClasses, cls).toContain(`'${cls}'`);
       expect(rust, cls).toContain(`("${cls}"`);
     }
+  });
+
+  it('пиксели от canvas не отдаются декодеру файлов (иначе значок не ставился)', () => {
+    // Пиксели интерфейса — сырой RGBA. `image::load_from_memory` — декодер PNG/JPEG: он на них
+    // возвращал ошибку, значок молча не ставился, а название менялось. Это и было «иконка
+    // не обновляется в панели задач». Единственный законный вызов — для файла PNG класса.
+    const calls = [...rust.matchAll(/load_from_memory\(&?([A-Za-z_][\w]*)/g)].map(m => m[1]);
+    expect(calls).toContain('class_icon_bytes');
+    expect(calls).not.toContain('icon_small');
+    expect(calls).not.toContain('icon_big');
+    expect(calls).not.toContain('small_rgba');
+    expect(calls).not.toContain('a');
+    expect(calls).not.toContain('b');
+    // Значок из пикселей собирается отдельной функцией, которая умеет сырой RGBA
+    expect(rust).toContain('fn style_icons(');
+    expect(rust).toMatch(/style_icons\(icon_small\.as_deref\(\), icon_big\.as_deref\(\), cls\)/);
+  });
+
+  it('если значок собрать не удалось, окно не лишается прежнего значка', () => {
+    // `None` (а не пара нулей) — иначе Windows сняла бы текущий значок окна
+    expect(rust).toMatch(/fn style_icons\([\s\S]{0,400}?-> Option<\(usize, usize\)>/);
+    expect(rust).toContain('want_class.and_then(|cls| style_icons(');
   });
 });

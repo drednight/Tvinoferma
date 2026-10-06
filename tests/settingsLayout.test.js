@@ -81,7 +81,7 @@ describe('опасные действия: разметка', () => {
   it('на вкладке «Марафоны» сверху больше нет кнопок «Новая папка» и «Создать»', () => {
     expect(doc.getElementById('add-folder-btn')).toBeNull();
     expect(doc.getElementById('add-marathon-btn')).toBeNull();
-    expect(doc.querySelectorAll('#fab-menu [data-fab-action]').length).toBe(2);
+    expect([...doc.querySelectorAll('#fab-menu [data-fab-action="folder"], #fab-menu [data-fab-action="marathon"]')].length).toBe(2);
   });
 });
 

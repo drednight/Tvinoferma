@@ -8,7 +8,7 @@
 //
 // Данные в снимках вымышленные: ников и паролей реальных игроков тут нет.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,7 @@ const HEIGHT = Number(arg('height', '960'));
 const PORT = 9333;
 
 const TABS = [
+  ['today', 'today'],
   ['characters', 'characters'],
   ['parties', 'parties'],
   ['marathons', 'marathons'],
@@ -88,19 +89,49 @@ async function waitForDevServer(url, timeoutMs = 90000) {
   throw new Error(`Dev-сервер не ответил за ${timeoutMs} мс: ${url}`);
 }
 
+/** Уже поднят ли dev-сервер по этому адресу (например, запущен `npm run tauri dev`). */
+async function devServerAlive(url) {
+  try {
+    const res = await fetch(url, { redirect: 'follow' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   const profileDir = join(ROOT, 'node_modules/.cache/ui-shots-profile');
   rmSync(profileDir, { recursive: true, force: true });
 
-  console.log('[ui-shots] старт Vite…');
-  const dev = spawn(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['vite', '--port', '1420', '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'ignore',
-    shell: process.platform === 'win32'
-  });
-  const stopDev = () => { try { dev.kill(); } catch { /* уже остановлен */ } };
+  // Порт может быть занят уже запущенным `npm run tauri dev` — тогда свой сервер не поднимаем,
+  // а снимаем снимки с того, что работает. Иначе стенд падал бы с «Port 1420 is already in use».
+  const devAlreadyRunning = await devServerAlive(URL_BASE);
+  /** @type {import('node:child_process').ChildProcess | null} */
+  let dev = null;
+  const stopDev = () => {
+    if (!dev) return;   // чужой сервер не трогаем: его запустил пользователь
+    try { dev.kill(); } catch { /* уже остановлен */ }
+    if (process.platform === 'win32' && dev.pid) {
+      try { spawnSync('taskkill', ['/PID', String(dev.pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* уже остановлен */ }
+    }
+  };
   process.on('exit', stopDev);
+  process.on('SIGINT', () => { stopDev(); process.exit(130); });
+
+  if (devAlreadyRunning) {
+    console.log('[ui-shots] dev-сервер уже работает, снимаем с него:', URL_BASE);
+  } else {
+    console.log('[ui-shots] старт Vite…');
+    // Запускаем Vite самим Node, а не через `npx` с shell: на Windows оболочка `cmd.exe` становится
+    // родителем процесса, `kill()` убивает только её, а Vite продолжает держать порт 1420 после
+    // завершения скрипта. Тогда следующий запуск (`npm run tauri dev`) падает с «Port already in use».
+    const viteBin = join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+    dev = spawn(process.execPath, [viteBin, '--port', '1420', '--strictPort'], {
+      cwd: ROOT,
+      stdio: 'ignore'
+    });
+  }
 
   let browser = null;
   try {
@@ -288,8 +319,54 @@ async function main() {
           tabCounters: [...document.querySelectorAll('.tab-count')].map(el => el.hidden ? null : el.textContent),
           // Экран «Сегодня»: сколько строк требуют внимания и сколько марафонов идёт
           todayCards: document.querySelectorAll('[data-today] .today-card').length,
-          todayAttention: document.querySelectorAll('[data-today] .today-row').length
+          todayAttention: document.querySelectorAll('[data-today] .today-row').length,
+          // Календарь: ячейки со шкалой дня и блоки записей по времени (должны быть видны,
+          // иначе раскладка по времени сломалась и записи снова идут просто списком)
+          plannerDays: document.querySelectorAll('.planner-day:not(.is-empty)').length,
+          plannerScales: document.querySelectorAll('.planner-day-scale').length,
+          plannerBlocks: document.querySelectorAll('.planner-block').length,
+          plannerChips: document.querySelectorAll('.planner-chip').length
         };
+
+        // Геометрия календаря: блоки записи должны стоять на шкале ПО ВРЕМЕНИ, а не подряд сверху.
+        // Сравниваем объявленные проценты, а не пиксели: сутки в ячейке занимают десятки пикселей,
+        // поэтому два блока в 30 минутах друг от друга физически отличаются меньше чем на пиксель —
+        // это предел разрешения мини-шкалы, а не ошибка раскладки. Точные минуты видны в окне дня.
+        out.calendar = { checked: [], problems: [] };
+        for (const day of document.querySelectorAll('.planner-day:not(.is-empty)')) {
+          const blocks = [...day.querySelectorAll('.planner-block')];
+          if (blocks.length < 2) continue;
+          const scale = day.querySelector('.planner-day-scale');
+          const scaleBox = scale.getBoundingClientRect();
+          const tops = blocks.map(b => parseFloat(String(b.style.top)) || 0);
+          const date = day.dataset.plannerDate;
+          // Позиции в процентах должны быть разными И совпадать с порядком по времени начала
+          const titles = blocks.map(b => (b.getAttribute('title') || '').slice(0, 5));
+          out.calendar.checked.push({ date, blocks: blocks.length, tops, titles });
+
+          if (new Set(tops).size < 2) {
+            out.calendar.problems.push('день ' + date + ': блоки объявлены на одной позиции — раскладка по времени не работает');
+          }
+          // Верх блока должен расти вместе со временем начала
+          for (let i = 1; i < blocks.length; i++) {
+            if (tops[i] < tops[i - 1]) {
+              out.calendar.problems.push('день ' + date + ': блоки идут не по порядку времени');
+              break;
+            }
+          }
+          for (const b of blocks) {
+            const r = b.getBoundingClientRect();
+            if (r.top < scaleBox.top - 1 || r.bottom > scaleBox.bottom + 1) {
+              out.calendar.problems.push('день ' + date + ': блок выходит за шкалу дня');
+              break;
+            }
+          }
+          const chip = day.querySelector('.planner-chip');
+          if (chip && chip.getBoundingClientRect().bottom > scaleBox.top + 1) {
+            out.calendar.problems.push('день ' + date + ': плашка «весь день» накладывается на шкалу');
+          }
+          if (out.calendar.checked.length >= 6) break;
+        }
 
         return out;
       })()`,
@@ -304,6 +381,8 @@ async function main() {
     report('unlabeled', 'кнопки без подписи');
     report('truncated', 'обрезанный текст');
     console.log('  содержимое разделов:', JSON.stringify(a.content));
+    console.log('  календарь, блоки по времени:', JSON.stringify(a.calendar?.checked ?? []));
+    console.log(`  проблемы раскладки календаря: ${a.calendar?.problems?.length ?? 0}`, a.calendar?.problems?.length ? JSON.stringify(a.calendar.problems, null, 1) : '');
     if (THEME !== 'dark') console.log('  тема:', THEME);
 
     // Дополнительно — командная палитра (Ctrl+K): она должна открываться и искать команды

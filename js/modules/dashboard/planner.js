@@ -1,22 +1,32 @@
-// Данные месячного планера: ручные записи и события приложения.
+// Данные месячного планера: ручные записи, события приложения и постоянные ивенты.
+
+import { mskDate } from '../../core/msk.js';
+import { recurringEventsForDate } from './recurringEvents.js';
+import { DEFAULT_DURATION_MINUTES } from './timeline.js';
 
 const COLORS = new Set(['blue', 'green', 'yellow', 'red', 'purple', 'gray']);
 const PRIORITIES = new Set(['low', 'normal', 'high']);
 const KINDS = new Set(['task', 'event', 'note']);
 const RECURRENCES = new Set(['none', 'daily', 'weekly', 'monthly']);
 
+/**
+ * Календарная дата записи. Считается по Москве: у пользователя в другом часовом поясе
+ * «сегодня» в планировщике должно совпадать с игровым днём (см. js/core/msk.js).
+ */
 export function localDate(value = new Date()) {
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('sv');
+  return mskDate(value);
 }
 
 export function normalizePlannerEntry(input = {}) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(input.date || '')) ? String(input.date) : localDate();
+  const duration = Math.round(Number(input.durationMinutes));
   return {
     id: String(input.id || crypto.randomUUID?.() || `planner-${Date.now()}`),
     title: String(input.title || '').trim().slice(0, 160),
     date,
     time: /^\d{2}:\d{2}$/.test(String(input.time || '')) ? String(input.time) : '',
+    // Длительность нужна шкале дня: высота блока = сколько идёт запись
+    durationMinutes: Number.isFinite(duration) && duration > 0 ? Math.min(duration, 1440) : DEFAULT_DURATION_MINUTES,
     kind: KINDS.has(input.kind) ? input.kind : 'task',
     priority: PRIORITIES.has(input.priority) ? input.priority : 'normal',
     reminderMinutes: Math.max(0, Math.round(Number(input.reminderMinutes) || 0)),
@@ -34,8 +44,11 @@ export function monthMatrix(year, month) {
   const last = new Date(year, month + 1, 0);
   const mondayOffset = (first.getDay() + 6) % 7;
   const cells = Array(mondayOffset).fill(null);
+  // Дата собирается строкой, а не через `Date` в местном поясе: иначе на машине не в Москве
+  // ячейка первого числа уехала бы на день назад
+  const prefix = `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-`;
   for (let day = 1; day <= last.getDate(); day++) {
-    cells.push(localDate(new Date(year, month, day)));
+    cells.push(`${prefix}${String(day).padStart(2, '0')}`);
   }
   while (cells.length % 7) cells.push(null);
   return cells;
@@ -71,7 +84,9 @@ export function plannerEventsForDate(appState, date) {
       marathonId: m.id,
       phase: date === m.startDate ? 'start' : date === m.endDate ? 'end' : 'active'
     }));
-  return [...manual, ...marathons].sort((a, b) =>
+  // Постоянные ивенты приходят из расписания, а не из состояния: их нельзя изменить или удалить
+  const recurring = recurringEventsForDate(date);
+  return [...manual, ...recurring, ...marathons].sort((a, b) =>
     (a.done === true) - (b.done === true)
     || ({ high: 0, normal: 1, low: 2 }[a.priority] ?? 1) - ({ high: 0, normal: 1, low: 2 }[b.priority] ?? 1)
     || String(a.time || '').localeCompare(String(b.time || ''))

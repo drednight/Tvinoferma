@@ -218,10 +218,6 @@ body[data-ui-style='next'] .content {
 body[data-ui-style='next'] .section-head {
   margin-bottom: 22px;
 }
-body[data-ui-style='next'] .section-actions-only {
-  justify-content: flex-end;
-  margin-bottom: 16px;
-}
 body[data-ui-style='next'] .section-head h2 {
   font-size: 1.65rem;
   letter-spacing: -0.025em;
@@ -268,7 +264,7 @@ body[data-ui-style='next'] .stat-strip {
   }
   body[data-ui-style='next'] .today-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'attention' 'marathons' 'summary';
+    grid-template-areas: 'attention' 'summary';
   }
 }
 

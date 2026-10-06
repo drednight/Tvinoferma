@@ -136,7 +136,16 @@ export const DEFAULT_SETTINGS = {
     marathonBehind: true,   // «не успевает» по заданиям марафона
     marathonEnding: true,   // марафон заканчивается через ≤ 2 дня, есть невыполненные задания
     dailyReminder: true,    // ежедневное напоминание о заданиях
-    dailyHour: 20
+    dailyHour: 20,
+    // Постоянные игровые ивенты: по каждому — напоминать ли и за сколько минут до начала.
+    // Ключи совпадают с `id` в js/modules/dashboard/recurringEvents.js
+    // (тест tests/recurringEvents.test.js следит, чтобы списки не разошлись).
+    events: {
+      'dynasty-battle': { enabled: true, leadMinutes: 10 },
+      'guild-rhythm': { enabled: true, leadMinutes: 10 },
+      'forbidden-teaching': { enabled: true, leadMinutes: 10 },
+      'hero-arena': { enabled: true, leadMinutes: 10 }
+    }
   },
   // Видимые окна браузера персонажей
   browser: {

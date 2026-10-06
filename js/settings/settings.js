@@ -5,7 +5,8 @@ import { state, serializeState } from '../core/state.js';
 import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
-import { runReminderCheck } from '../desktop/notifications.js';
+import { runNotificationTest } from '../desktop/notifications.js';
+import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
 import { toast, confirmModal } from '../core/ui.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
@@ -153,11 +154,63 @@ export async function renderSettings() {
     else el.value = value ?? '';
   });
   updateHoursHints();
+  renderEventNotifications();
 
   const hk = document.getElementById('hotkeys-list');
   if (hk && !hk.childElementCount) {
     hk.innerHTML = HOTKEYS.map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
   }
+}
+
+/** Варианты «за сколько предупредить» — те же значения, что проверяет notifications.js. */
+const LEAD_CHOICES = [
+  { minutes: 5, label: 'За 5 минут' },
+  { minutes: 10, label: 'За 10 минут' },
+  { minutes: 15, label: 'За 15 минут' },
+  { minutes: 30, label: 'За 30 минут' },
+  { minutes: 60, label: 'За 1 час' }
+];
+
+/**
+ * Список постоянных ивентов с галочкой и выбором «за сколько».
+ *
+ * Список рисуется из расписания (`RECURRING_EVENTS`), а не из разметки: добавили ивент в модуль —
+ * он сразу появился в настройках, и рассинхрона «ивент есть, а напоминания нет» не будет.
+ */
+function renderEventNotifications() {
+  const root = document.getElementById('event-notify-list');
+  if (!root) return;
+  const settings = state.settings?.notifications?.events || {};
+  root.innerHTML = RECURRING_EVENTS.map(event => {
+    const conf = settings[event.id] || { enabled: true, leadMinutes: 10 };
+    return `<div class="event-notify-row" data-event="${escapeHtml(event.id)}">
+      <label class="event-notify-check">
+        <input type="checkbox" data-event-enabled="${escapeHtml(event.id)}"${conf.enabled !== false ? ' checked' : ''} />
+        <span>
+          <b><i class="event-notify-dot is-${escapeHtml(event.color)}" aria-hidden="true"></i>${escapeHtml(event.title)}</b>
+          <small class="muted">${escapeHtml(recurringEventScheduleText(event))} (МСК)</small>
+        </span>
+      </label>
+      <select class="select setting-num" data-event-lead="${escapeHtml(event.id)}" aria-label="За сколько предупредить: ${escapeHtml(event.title)}">
+        ${LEAD_CHOICES.map(o => `<option value="${o.minutes}"${Number(conf.leadMinutes) === o.minutes ? ' selected' : ''}>${o.label}</option>`).join('')}
+      </select>
+    </div>`;
+  }).join('');
+
+  root.querySelectorAll('[data-event-enabled]').forEach(el => {
+    el.addEventListener('change', () => saveEventNotification(el.dataset.eventEnabled, { enabled: el.checked }));
+  });
+  root.querySelectorAll('[data-event-lead]').forEach(el => {
+    el.addEventListener('change', () => saveEventNotification(el.dataset.eventLead, { leadMinutes: Number(el.value) }));
+  });
+}
+
+/** Сохранение одной настройки ивента: остальные ивенты и прочие настройки не затрагиваются. */
+async function saveEventNotification(id, patch) {
+  const notifications = state.settings.notifications || (state.settings.notifications = {});
+  const events = notifications.events || (notifications.events = {});
+  events[id] = { ...(events[id] || { enabled: true, leadMinutes: 10 }), ...patch };
+  await persist();
 }
 
 /** Подписи к полям «часов»: 24 → «= 1 день», 30 → «= 1 день 6 часов». */
@@ -218,8 +271,19 @@ export function bindSettings() {
   bindSettingInputs();
 
   document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {
-    const sent = await runReminderCheck({ force: true });
-    toast(sent.length ? `Отправлено уведомлений: ${sent.length}` : 'Сейчас нечего напоминать — всё идёт по плану.', 'info');
+    const result = await runNotificationTest();
+    // Различаем «нечего напоминать» и «напоминать есть о чём, но Windows не показала» — это разные проблемы
+    const text = !result.sent
+      ? 'Сейчас нечего напоминать — всё идёт по плану.'
+      : result.delivered === result.sent
+        ? `Отправлено уведомлений: ${result.sent}`
+        : `Отправлено ${result.delivered} из ${result.sent}: остальные Windows не показала.`;
+    toast(text, result.delivered === result.sent ? 'info' : 'warning');
+    const diagnostics = document.getElementById('notify-diagnostics');
+    if (!diagnostics) return;
+    diagnostics.textContent = result.diagnostics.reasons.length
+      ? `⚠️ ${result.diagnostics.reasons.join(' ')}`
+      : '✅ Уведомления доступны: Windows разрешает их показывать.';
   });
 
   // Запуск игры: список GameCenter с названиями и привязка персонажей (окно собирается в js/modules/launcher/gcSettingsModal.js)

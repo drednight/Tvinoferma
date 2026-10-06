@@ -178,6 +178,30 @@ function normalizeLauncherSettings(input = {}) {
   return merged;
 }
 
+/**
+ * Настройки уведомлений. Отдельная обработка нужна из-за вложенного списка ивентов:
+ * обычное поверхностное слияние затирало бы умолчания ивентов, которых нет в старом state.json,
+ * и напоминание о них молча не работало бы.
+ * Валидность «минут до начала» проверяет `eventNotificationSettings` при чтении.
+ */
+function normalizeNotificationSettings(input = {}) {
+  const merged = { ...DEFAULT_SETTINGS.notifications, ...(input || {}) };
+  /** @type {Record<string, { enabled: boolean, leadMinutes: number }>} */
+  const events = {};
+  for (const [id, def] of Object.entries(DEFAULT_SETTINGS.notifications.events || {})) {
+    const raw = input?.events?.[id] || {};
+    const minutes = Number(raw.leadMinutes);
+    events[id] = {
+      enabled: raw.enabled !== false,
+      leadMinutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : def.leadMinutes
+    };
+  }
+  // Приведение типа: набор ивентов задаётся расписанием (recurringEvents.js), поэтому в типе
+  // перечислены конкретные ключи, а объект собирается циклом
+  merged.events = /** @type {typeof DEFAULT_SETTINGS.notifications.events} */ (events);
+  return merged;
+}
+
 function mergeSettings(input = {}) {
   return {
     ...clone(DEFAULT_SETTINGS),
@@ -196,7 +220,7 @@ function mergeSettings(input = {}) {
     ui: { ...DEFAULT_SETTINGS.ui, ...(input.ui || {}) },
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
-    notifications: { ...DEFAULT_SETTINGS.notifications, ...(input.notifications || {}) },
+    notifications: normalizeNotificationSettings(input.notifications),
     browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
     launcher: normalizeLauncherSettings(input.launcher),
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },

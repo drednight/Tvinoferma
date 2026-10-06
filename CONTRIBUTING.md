@@ -22,7 +22,7 @@ npm ci
 | `npm run tauri dev` | Приложение целиком (окно Tauri + Rust). Первая сборка Rust долгая, дальше быстрее |
 | `npm run dev` | Только интерфейс в браузере (`http://localhost:1420`). Rust-команд нет: скрытые окна, пароли в хранилище ОС и обновления не работают |
 | `npm run build` | Сборка интерфейса в `dist/` |
-| `npm run shots` | Снимки интерфейса и проверка вёрстки в headless Edge: `node scripts/ui-shots.mjs --out docs/screenshots/after`. Данные — вымышленные из `tests/fixtures/ui-demo-state.json` |
+| `npm run shots` | Снимки интерфейса и проверка вёрстки в headless Edge: `node scripts/ui-shots.mjs --out docs/screenshots`. Если `npm run tauri dev` уже запущен, стенд снимает с него и не занимает порт. Данные — вымышленные из `tests/fixtures/ui-demo-state.json` |
 
 ## Проверки перед коммитом
 

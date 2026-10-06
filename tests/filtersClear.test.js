@@ -16,7 +16,6 @@ const body = `
   <select id="auth-filter"><option value="">Все статусы</option><option value="online">онлайн</option></select>
   <select id="tag-filter"><option value="">Все теги</option></select>
   <button id="filters-clear" hidden></button>
-  <button id="btn-select-mode"></button>
   <div id="bulk-bar" hidden></div>
   <div id="character-grid"></div>
   <b id="kpi-total-chars"></b><b id="kpi-active-parties"></b><b id="kpi-no-party"></b>

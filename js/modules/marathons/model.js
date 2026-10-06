@@ -3,6 +3,7 @@
 // Ничего не рендерит и не сохраняет — только чистые функции над объектами марафона.
 
 import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
+import { mskDate } from '../../core/msk.js';
 
 export const SCHEMA_VERSION = 2;
 
@@ -14,7 +15,8 @@ export const STATUS_LABELS = {
 };
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
-const todayStr = () => new Date().toLocaleDateString('sv');
+// Сроки марафонов считаются по московскому времени: тот же игровой день, что в календаре и уведомлениях
+const todayStr = () => mskDate();
 
 /* ------------------------------------------------------------------ */
 /*  Создание и миграция                                                */

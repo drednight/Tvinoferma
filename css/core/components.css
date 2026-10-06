@@ -135,11 +135,19 @@
   position: fixed;
   right: 20px;
   bottom: 20px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 10px;
   z-index: 1000;
   pointer-events: none;
 }
+/* Пустой контейнер не должен участвовать в композиции кадра: фиксированный прозрачный блок под
+   круглой кнопкой «+» давал фантомные глифы «-1» (пропадали/появлялись при переключении слоёв в
+   инспекторе). Пока тостов нет — хоста для рендера нет вовсе; при появлении .toast display вернётся. */
+#toast-root:empty,
+.toast-host:empty { display: none; }
+.toast { display: block; }
 
 .toast {
   min-width: 240px;

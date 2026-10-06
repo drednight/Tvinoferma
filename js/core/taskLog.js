@@ -9,6 +9,7 @@ import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { registerLogSource } from './logHub.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
+import { mskStampSeconds } from './msk.js';
 import { state } from './state.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
@@ -42,7 +43,8 @@ function saveJournal() {
 }
 
 const nowIso = () => new Date().toISOString();
-const timeOf = (iso) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Время в журнале задач — по Москве: по нему сверяют работу скриптов с игровыми событиями
+const timeOf = (iso) => mskStampSeconds(new Date(iso));
 
 class Task {
   constructor(title = '', opts = {}) {

@@ -12,6 +12,7 @@ import { PASS_TYPES, getClassIconSrc } from '../../core/constants.js';
 
 // Импортируем модульную систему персонажей
 import { openCharacterProfile, openCharacterForm } from './index.js';
+import { levelBonusLabel } from './stateManager.js';
 
 // НОВЫЕ ИМПОРТЫ ДЛЯ СИНХРОНИЗАЦИИ
 import { hasGameCenterPath } from '../launcher/launch.js';
@@ -244,7 +245,7 @@ function generateCardHTML(char) {
             </div>
             <div class="char-ident">
               <h3 class="char-nick">${escapeHtml(char.nick)}</h3>
-              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}</small>
+              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</small>
               <small class="muted char-sub">${skyInfo}</small>
             </div>
           </div>
@@ -590,7 +591,8 @@ export function bindCharacters() {
     });
   }
 
-  document.getElementById('btn-select-mode')?.addEventListener('click', () => setSelectionMode(!state.ui.selectionMode));
+  // Кнопка «Выбрать» переехала в меню круглой кнопки «+» (js/core/uiActions.js, data-fab-action="select-mode").
+  // Ссылка на старую кнопку удалена — element быть больше не может, optional chaining больше не нужен.
   document.getElementById('bulk-bar')?.addEventListener('click', onBulkAction);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.ui.selectionMode && !document.querySelector('.modal-overlay')) setSelectionMode(false);
@@ -610,7 +612,7 @@ export { openCharacterProfile, openCharacterForm };
 export function setSelectionMode(on) {
   state.ui.selectionMode = !!on;
   if (!on) state.ui.selection.clear();
-  document.getElementById('btn-select-mode')?.classList.toggle('active', !!on);
+  // Состояние режима выбора видно на самой сетке (чекбоксы карточек); отдельная кнопка больше не нужна
   renderFilteredGrid();
 }
 

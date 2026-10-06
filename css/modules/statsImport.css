@@ -56,10 +56,21 @@
 .stat-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); flex-wrap: wrap; margin-bottom: 10px; }
 .stat-head h4 { margin: 0; }
 
-/* Поле, которое только что заполнили со скриншота: подсветка гаснет сама */
+/* Поле, которое только что заполнили со скриншота: зелёный — распознанное выше текущего,
+   красный — ниже, обычная подсветка — не изменилось. Подсветка снимается правкой поля. */
 input.is-filled {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+}
+input.is-up {
   border-color: var(--success);
   background: var(--success-soft);
+  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+}
+input.is-down {
+  border-color: var(--danger);
+  background: var(--danger-soft);
   transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
 }
 

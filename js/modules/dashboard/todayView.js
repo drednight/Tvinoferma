@@ -9,8 +9,77 @@
 import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
-import { todayData, daysWord } from './today.js';
-import { plannerHtml, bindPlanner } from './plannerView.js';
+import { todayData, daysWord, todayStr } from './today.js';
+import { plannerHtml, bindPlanner, openPlannerDay } from './plannerView.js';
+import { plannerEventsForDate } from './planner.js';
+import { eventEndTime } from './timeline.js';
+import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
+
+/**
+ * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
+ * «без времени». Диапазон считает `timeline.js` — та же функция, что строит блоки шкалы,
+ * поэтому список и календарь не расходятся.
+ */
+export function eventTimeText(event) {
+  if (!event?.time) return event?.source === 'marathon' ? 'марафон · весь день' : 'без времени';
+  const end = eventEndTime(event);
+  const span = end && end !== event.time ? `${event.time}–${end}` : event.time;
+  return event.source === 'recurring' ? `${span} · ивент` : span;
+}
+
+/**
+ * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и все записи на сегодня.
+ * @param {any} [appState]
+ */
+export function todaySideHtml(appState = state) {
+  const today = todayStr();
+  const dToday = dungeonInfoForDate(today);
+  const strip = dungeonStrip(shiftDate(today, -1), shiftDate(today, 5));
+  const events = plannerEventsForDate(appState, today);
+
+  return `
+    <aside class="today-side" data-today-side>
+      <h4 class="today-title"><span aria-hidden="true">📍</span> Сегодня
+        <small class="muted today-side-date">${new Date(`${today}T00:00:00`).toLocaleDateString('ru', { day: 'numeric', month: 'long', weekday: 'long' })}</small>
+      </h4>
+
+      <div class="today-dungeon is-${dToday.key}" title="Ежедневное задание меняется по циклу: Реликвия → Оружие → Доспех">
+        <span class="today-dungeon-ico" aria-hidden="true">${dToday.icon}</span>
+        <span class="today-dungeon-copy">
+          <b>Данж дня: <span class="dng-name is-${dToday.key}">${escapeHtml(dToday.name)}</span></b>
+          <small class="muted">Полоса ниже — ближайшая неделя, цвет дня — его данж</small>
+        </span>
+      </div>
+      <div class="today-dungeon-strip" role="img" aria-label="Данжи на неделю: вчера и пять дней вперёд">
+        ${strip.map(d => `
+          <span class="today-strip-day is-${d.key}${d.date === today ? ' is-today' : ''}" title="${d.date}: ${d.name}">
+            <small>${new Date(`${d.date}T00:00:00`).toLocaleDateString('ru', { weekday: 'narrow' })}</small>
+            <b aria-hidden="true">${d.icon}</b>
+            <span class="today-strip-name dng-name is-${d.key}">${escapeHtml(d.name)}</span>
+          </span>`).join('')}
+      </div>
+
+      <h4 class="today-title"><span aria-hidden="true">🗓</span> Записи на день
+        ${events.length ? `<span class="today-count">${events.length}</span>` : ''}
+      </h4>
+      ${events.length ? `<ul class="today-list today-side-list">
+        ${events.slice(0, 8).map(e => `
+          <li class="today-row">
+            <span class="planner-color is-${escapeHtml(e.color || 'blue')}"></span>
+            <span class="today-row-text">
+              <b>${escapeHtml(e.title)}</b>
+              <small class="muted">${escapeHtml(eventTimeText(e))}${e.done ? ' · готово' : ''}</small>
+            </span>
+            ${e.source === 'marathon' ? `
+              <button type="button" class="btn secondary small" data-today-act="open-marathon" data-today-marathon="${escapeHtml(e.marathonId)}"
+                title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>` : ''}
+          </li>`).join('')}
+      </ul>
+      ${events.length > 8 ? `<p class="muted today-more">Показаны первые 8 из ${events.length}.</p>` : ''}
+      <button type="button" class="btn secondary small today-side-open" data-open-day="${today}">Открыть день в календаре</button>`
+        : '<p class="muted today-empty">На этот день записей нет.</p>'}
+    </aside>`;
+}
 
 /**
  * Разметка экрана «Сегодня».
@@ -28,7 +97,7 @@ export function todayHtml(deps = {}, appState = state) {
     <section class="today" data-today>
       <div class="today-head">
         <div>
-          <h3>Обзор дня</h3>
+          <h3>Информация</h3>
           <p class="muted">Важные действия, активные события и общие показатели.</p>
         </div>
       </div>
@@ -39,8 +108,8 @@ export function todayHtml(deps = {}, appState = state) {
             Требуют внимания
             ${attention.length ? `<span class="today-count is-warn">${attention.length}</span>` : ''}
           </h4>
-          ${attention.length ? `<ul class="today-list">
-            ${attention.slice(0, 12).map(item => `
+          ${attention.length ? `<ul class="today-list today-attention-list">
+            ${attention.map(item => `
               <li class="today-row">
                 <span class="today-dot is-${escapeHtml(item.tone)}" aria-hidden="true"></span>
                 <span class="today-row-text">
@@ -53,25 +122,8 @@ export function todayHtml(deps = {}, appState = state) {
                         ${item.marathonId ? `data-today-marathon="${escapeHtml(item.marathonId)}"` : ''}>${escapeHtml(item.actionLabel)}</button>
               </li>`).join('')}
           </ul>
-          ${attention.length > 12 ? `<p class="muted today-more">Показаны первые 12. Остальные доступны в разделе «Персонажи».</p>` : ''}`
+          ${attention.length > 5 ? `<p class="muted today-more">Показано 5 из ${attention.length}: прокрутите список вниз.</p>` : ''}`
             : '<p class="muted today-empty">Всё в порядке: входы активны, балансы свежие, отстающих в марафонах нет.</p>'}
-        </section>
-
-        <section class="today-card">
-          <h4 class="today-title"><span aria-hidden="true">🏃</span> Сегодня в марафонах
-            ${data.marathons.length ? `<span class="today-count">${data.marathons.length}</span>` : ''}
-          </h4>
-          ${data.marathons.length ? `<ul class="today-list">
-            ${data.marathons.map(m => `
-              <li class="today-row">
-                <span class="today-row-text">
-                  <b>${escapeHtml(m.title)}</b>
-                  <small class="muted">Заданий: ${m.tasks} · участников: ${m.participants}${m.done ? ` · всё выполнили: ${m.done}` : ''} · ${escapeHtml(m.hint)}</small>
-                </span>
-                ${m.behind ? `<span class="today-flag is-warn" title="Столько персонажей ещё не выполнили задания">отстают ${m.behind}</span>` : '<span class="today-flag is-ok">по плану</span>'}
-                <button type="button" class="btn secondary small" data-today-act="open-marathon" data-today-marathon="${escapeHtml(m.id)}">Открыть</button>
-              </li>`).join('')}
-          </ul>` : '<p class="muted today-empty">Идущих марафонов нет.</p>'}
         </section>
 
         <section class="today-card">
@@ -112,9 +164,16 @@ export function renderToday(root, deps = {}) {
   if (!root) return;
   const render = () => renderToday(root, deps);
   const summary = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
-  root.innerHTML = `${plannerHtml(state)}${summary}`;
+  root.innerHTML = `<div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div>${summary}`;
   bindToday(root, deps);
   bindPlanner(root, { ...deps, render });
+  root.querySelector('[data-today-side]')?.addEventListener('click', (e) => {
+    // Записи-марафоны открываются прямо из панели
+    const act = e.target.closest?.('[data-today-act="open-marathon"]');
+    if (act) { deps.run?.('open-marathon', act.dataset.todayMarathon); return; }
+    const btn = e.target.closest?.('[data-open-day]');
+    if (btn) openPlannerDay(btn.dataset.openDay, { ...deps, render });
+  });
 }
 
 /** Кнопки экрана: действия в строках, переходы и сворачивание. */

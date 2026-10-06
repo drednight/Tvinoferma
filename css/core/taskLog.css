@@ -21,6 +21,10 @@
 }
 /* flex: none — иначе при нехватке высоты карточки сжимаются и налезают друг на друга */
 #tf-task-dock .tl-card { flex: none; pointer-events: auto; margin: 0; box-shadow: var(--shadow-3); }
+/* Пустой док (fixed + overflow у правого края FAB) — тот же источник фантомных глифов, что и #toast-root:
+   пока задач нет, контейнера для рендера нет вовсе. */
+#tf-task-dock:empty { display: none; }
+#tf-task-dock .tl-card { display: block; }
 
 .tl-card {
   --tl-color: var(--accent);

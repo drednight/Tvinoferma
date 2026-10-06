@@ -4,6 +4,7 @@
 
 import { state } from '../../core/state.js';
 import { errorText } from '../../core/taskLog.js';
+import { mskStamp } from '../../core/msk.js';
 
 export const AUTH_VIEW = {
   online:   { icon: '🟢', color: '#9ece6a', cls: 'is-on',   text: 'Онлайн',     title: 'Аккаунт авторизован' },
@@ -28,7 +29,8 @@ export function setAuthChecking(charId, isChecking) {
 
 const fmtCheck = (iso) => {
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? '' : `${d.toLocaleDateString('ru-RU')} ${d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+  // Пометка «проверено …» — по Москве: сессии живут по игровому времени
+  return isNaN(d.getTime()) ? '' : mskStamp(d);
 };
 
 /**

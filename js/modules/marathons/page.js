@@ -20,6 +20,10 @@ import {
   rewardPotential, calendarStates
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate, phaseHint } from './dates.js';
+import { mskDate } from '../../core/msk.js';
+
+// «Сегодня» по Москве: сроки марафонов и дневное окно задания считаются по игровому дню
+const todayStr = () => mskDate();
 
 const view = { type: 'list', id: null };
 const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set() };
@@ -266,7 +270,7 @@ function syncAgeHtml(m) {
 function marathonCard(m, { inFolder = false } = {}) {
   const t = marathonTotals(m);
   const phase = marathonPhase(m);
-  const hint = phaseHint(m, new Date().toLocaleDateString('sv'));
+  const hint = phaseHint(m, todayStr());
   return `
     <article class="mr-card mr-ph-${phase}" data-open="${m.id}">
       <header>
@@ -288,7 +292,9 @@ function marathonCard(m, { inFolder = false } = {}) {
 
 function seriesCard(s) {
   const kids = seriesChildren(s, state.marathons);
-  const coins = kids.reduce((sum, k) => sum + marathonTotals(k).coins, 0);
+  const totals = kids.map(k => marathonTotals(k));
+  const coins = totals.reduce((sum, t) => sum + t.coins, 0);
+  const maxCoins = totals.reduce((sum, t) => sum + t.maxCoins, 0);
   const phase = seriesPhase(s, state.marathons);
   return `
     <article class="mr-card mr-series mr-ph-${phase}" data-open="${s.id}">
@@ -297,12 +303,15 @@ function seriesCard(s) {
         <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
       </header>
       ${s.description ? `<div class="mr-card-meta"><span>${escapeHtml(s.description)}</span></div>` : ''}
-      <div class="mr-series-kids">${kids.slice(0, 4).map(k => {
-        const t = marathonTotals(k);
+      <div class="mr-series-kids">${kids.slice(0, 4).map((k, i) => {
+        const t = totals[i];
         return `<div class="mr-kid"><span>${escapeHtml(k.source?.stageName || k.title)}</span>${progressBar(t.percent, 'mr-bar-sm')}<small>${t.percent}%</small></div>`;
       }).join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
       ${kids.length ? '' : '<div class="muted mr-card-meta">Папка пуста</div>'}
-      <div class="mr-stats"><span class="muted">Марафонов: ${kids.length}</span><span class="mr-gold mr-coins">${coin(coins)}</span></div>
+      <div class="mr-stats">
+        <span class="muted">Марафонов: ${kids.length}</span>
+        <span class="mr-gold mr-coins" title="Сумма заработанных монет по всем марафонам папки${maxCoins ? `; максимально возможного — по наградам каждого марафона` : ''}">${coin(coins)}${maxCoins ? ` <small class="muted">/ ${formatCoins(maxCoins)} возможных</small>` : ''}</span>
+      </div>
     </article>`;
 }
 
@@ -713,7 +722,7 @@ function openCellCard(m, charId, taskId) {
     const x = computeCell(m, charId, taskId);
     const cell = ensureCell(m.progress, charId, taskId);
     const all = getAllDatesInRange(m.startDate, m.endDate);
-    const today = new Date().toLocaleDateString('sv');
+    const today = todayStr();
     const firstDow = (new Date(all[0] + 'T00:00:00').getDay() + 6) % 7; // Пн = 0
     const calState = calendarStates(m, task, cell, today);
     const sortedRewards = [...task.rewards].sort((a, b) => a.threshold - b.threshold);

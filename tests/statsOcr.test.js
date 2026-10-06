@@ -16,8 +16,9 @@ const line = (text, x, y, w = 0.2, h = 0.02) => ({ text, x, y, w, h });
 
 describe('распознавание подписей', () => {
   it('узнаёт подпись по точному названию и по псевдониму', () => {
-    expect(matchField('Здоровье (макс)')?.key).toBe('hpMax');
-    expect(matchField('здоровье макс')?.key).toBe('hpMax');
+    expect(matchField('Здоровье')?.key).toBe('hp');
+    expect(matchField('Маг. энергия')?.key).toBe('mp');
+    expect(matchField('Бонус к уровню')?.key).toBe('levelBonus');
     expect(matchField('Физическая атака')?.key).toBe('physAttack');
     expect(matchField('Показатель атаки')?.key).toBe('pa');
   });
@@ -25,6 +26,15 @@ describe('распознавание подписей', () => {
   it('длинное название важнее короткого: «боевая сила» не превращается в «сила»', () => {
     expect(matchField('Боевая сила')?.key).toBe('power');
     expect(matchField('Сила')?.key).toBe('strength');
+  });
+
+  it('«Боевая сила» не переносится в характеристики и не подменяет «Силу»', () => {
+    const res = readStats([
+      line('Сила', 0.03, 0.10, 0.2), line('1 500', 0.62, 0.10, 0.15),
+      line('Боевая сила', 0.03, 0.15, 0.2), line('99 999', 0.62, 0.15, 0.15)
+    ]);
+    expect(res.stats).toEqual({ strength: 1500 });
+    expect(res.missed).not.toContain('Сила (боевая)');
   });
 
   it('«показатель атаки» не путается с «атакой»', () => {
@@ -39,8 +49,8 @@ describe('распознавание подписей', () => {
   });
 
   it('знаки и регистр не мешают', () => {
-    expect(normalizeLabel('  Здоровье (макс):  ')).toBe('здоровье макс');
-    expect(matchField('ЗДОРОВЬЕ (МАКС):')?.key).toBe('hpMax');
+    expect(normalizeLabel('  Здоровье:  ')).toBe('здоровье');
+    expect(matchField('ЗДОРОВЬЕ:')?.key).toBe('hp');
   });
 });
 
@@ -50,7 +60,7 @@ describe('подписи с ошибками распознавания', () => 
     ['Фвическая атака', 'physAttack'],
     ['Фувическая атака', 'physAttack'],
     ['Фвическая защита', 'physDefense'],
-    ['Здоровье', 'hpMax'],
+    ['Здоровье', 'hp'],
     ['Скорость атаки', 'atkSpeed'],
     ['Магическая атака', 'magAttack'],
     ['Показатель защиты', 'pz'],
@@ -101,7 +111,7 @@ describe('подпись и значение в одной строке', () => 
       line('Здоровье 42 350', 0.03, 0.10, 0.5),
       line('Меткость: 1 512', 0.03, 0.15, 0.5)
     ]);
-    expect(res.stats).toEqual({ hpMax: 42350, accuracy: 1512 });
+    expect(res.stats).toEqual({ hp: 42350, accuracy: 1512 });
   });
 
   it('слитная строка не мешает разбору двух колонок', () => {
@@ -110,7 +120,7 @@ describe('подпись и значение в одной строке', () => 
       line('Физическая атака', 0.03, 0.15, 0.25),
       line('1 245', 0.62, 0.15, 0.15)
     ]);
-    expect(res.stats).toEqual({ hpMax: 42350, physAttack: 1245 });
+    expect(res.stats).toEqual({ hp: 42350, physAttack: 1245 });
   });
 });
 
@@ -119,6 +129,15 @@ describe('чтение чисел', () => {  it('разряды через пр�
     expect(parseNumber('42\u00a0350')).toBe(42350);
     expect(parseNumber('1.245')).toBe(1245);
     expect(parseNumber('2 105')).toBe(2105);
+  });
+
+  it('пара «текущее/макс» и диапазон: берётся правое число', () => {
+    // «96587/96587» — берём число после «/»; «155668-166963» — после «-»
+    expect(parseNumber('96587/96587')).toBe(96587);
+    expect(parseNumber('155668-166963')).toBe(166963);
+    expect(parseNumber('42 350 / 47 900')).toBe(47900);
+    // одиночный «-» перед числом — знак, не диапазон
+    expect(parseNumber('-350')).toBe(-350);
   });
 
   it('проценты и знаки вокруг числа', () => {
@@ -156,19 +175,19 @@ describe('сопоставление подписи и значения', () => 
 
   it('находит значения для подписей по строке', () => {
     const found = joinByRow(pairs([
-      ['Здоровье (макс)', '42 350'],
+      ['Здоровье', '42 350'],
       ['Физическая атака', '1 245'],
       ['Меткость', '1 512']
     ]));
     const byKey = Object.fromEntries(found.map(f => [f.key, f.value]));
-    expect(byKey).toEqual({ hpMax: 42350, physAttack: 1245, accuracy: 1512 });
+    expect(byKey).toEqual({ hp: 42350, physAttack: 1245, accuracy: 1512 });
     expect(found.every(f => f.confidence === 1)).toBe(true);
   });
 
   it('порядок строк от OCR не важен: подписи и значения могут идти блоками', () => {
     // Именно так ведёт себя настоящий OCR: сначала все подписи, потом все значения
     const lines = [
-      line('Здоровье (макс)', 0.03, 0.10, 0.25),
+      line('Здоровье', 0.03, 0.10, 0.25),
       line('Физическая атака', 0.03, 0.15, 0.25),
       line('Меткость', 0.03, 0.20, 0.25),
       line('42 350', 0.62, 0.10, 0.15),
@@ -176,7 +195,7 @@ describe('сопоставление подписи и значения', () => 
       line('1 512', 0.62, 0.20, 0.15)
     ];
     const byKey = Object.fromEntries(joinByRow(lines).map(f => [f.key, f.value]));
-    expect(byKey).toEqual({ hpMax: 42350, physAttack: 1245, accuracy: 1512 });
+    expect(byKey).toEqual({ hp: 42350, physAttack: 1245, accuracy: 1512 });
   });
 
   it('значение из другой строки не подставляется', () => {
@@ -189,7 +208,7 @@ describe('сопоставление подписи и значения', () => 
 
   it('значение левее подписи не берётся: так не путаются две колонки окна', () => {
     const found = joinByRow([
-      line('Здоровье (макс)', 0.55, 0.10, 0.25),
+      line('Здоровье', 0.55, 0.10, 0.25),
       line('42 350', 0.05, 0.10, 0.15)   // слева, из левой колонки окна
     ]);
     expect(found).toHaveLength(0);
@@ -208,10 +227,10 @@ describe('сопоставление подписи и значения', () => 
   it('подпись без значения пропускается', () => {
     const found = joinByRow([
       line('Меткость', 0.03, 0.10, 0.25),
-      line('Здоровье (макс)', 0.03, 0.15, 0.25),
+      line('Здоровье', 0.03, 0.15, 0.25),
       line('42 350', 0.62, 0.15, 0.15)
     ]);
-    expect(found.map(f => f.key)).toEqual(['hpMax']);
+    expect(found.map(f => f.key)).toEqual(['hp']);
   });
 
   it('пустой ввод не ломает разбор', () => {
@@ -224,7 +243,7 @@ describe('сопоставление подписи и значения', () => 
 describe('полный разбор скриншота', () => {
   it('возвращает найденное, непонятое и готовые характеристики', () => {
     const lines = [
-      line('Здоровье (макс)', 0.03, 0.10, 0.25),
+      line('Здоровье', 0.03, 0.10, 0.25),
       line('42 350', 0.62, 0.10, 0.15),
       line('Скорость атаки', 0.03, 0.15, 0.25),
       line('0.80', 0.62, 0.15, 0.15),
@@ -232,8 +251,9 @@ describe('полный разбор скриншота', () => {
       line('12%', 0.62, 0.20, 0.15)
     ];
     const res = readStats(lines);
-    expect(res.stats).toEqual({ hpMax: 42350, atkSpeed: 0.8, critChance: 12 });
-    expect(res.missed).toHaveLength(STAT_FIELDS.length - 3);
+    expect(res.stats).toEqual({ hp: 42350, atkSpeed: 0.8, critChance: 12 });
+    // Поля с `ignore` («Боевая сила») в список ненайденных не попадают
+    expect(res.missed).toHaveLength(STAT_FIELDS.filter(f => !f.ignore).length - 3);
     expect(res.missed).toContain('Меткость');
   });
 
@@ -249,19 +269,19 @@ describe('полный разбор скриншота', () => {
 
 describe('перенос в форму персонажа', () => {
   it('распознанное перекрывает текущее, остальное сохраняется', () => {
-    const current = { hpMax: 100, accuracy: 500, pa: 1 };
-    const merged = mergeStats(current, [{ key: 'hpMax', value: 42350 }]);
-    expect(merged.hpMax).toBe(42350);
+    const current = { hp: 100, accuracy: 500, pa: 1 };
+    const merged = mergeStats(current, [{ key: 'hp', value: 42350 }]);
+    expect(merged.hp).toBe(42350);
     expect(merged.accuracy).toBe(500);   // не распознали — не обнуляем
     expect(merged.pa).toBe(1);
   });
 
   it('неизвестные ключи игнорируются, пустой список ничего не меняет', () => {
-    const merged = mergeStats({ hpMax: 5 }, [{ key: 'нетТакого', value: 1 }]);
-    expect(merged.hpMax).toBe(5);
+    const merged = mergeStats({ hp: 5 }, [{ key: 'нетТакого', value: 1 }]);
+    expect(merged.hp).toBe(5);
     expect(merged).not.toHaveProperty('нетТакого');
-    expect(mergeStats({ hpMax: 5 }, [])).toMatchObject({ hpMax: 5 });
-    expect(mergeStats({ hpMax: 5 }, null)).toMatchObject({ hpMax: 5 });
+    expect(mergeStats({ hp: 5 }, [])).toMatchObject({ hp: 5 });
+    expect(mergeStats({ hp: 5 }, null)).toMatchObject({ hp: 5 });
   });
 
   it('сводка склоняет слова и сообщает о пустом результате', () => {

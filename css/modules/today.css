@@ -15,23 +15,18 @@
 .today-head h3 { margin-bottom: 2px; }
 .today-head p { font-size: 0.85rem; }
 
-/* Три блока: внимание, марафоны, запасы. На узком окне — в одну колонку */
+/* Два блока: внимание и сводка. Карточки в ряд всегда одной высоты (stretch):
+   заголовки и содержимое выровнены, нижний край не «пляшет». */
 .today-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr);
-  grid-template-areas:
-    'attention summary'
-    'marathons summary';
   gap: var(--gap-md);
   align-items: stretch;
 }
-.today-card:nth-child(1) { grid-area: attention; }
-.today-card:nth-child(2) { grid-area: marathons; }
-.today-card:nth-child(3) { grid-area: summary; }
 @media (max-width: 1050px) {
   .today-grid {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'attention' 'marathons' 'summary';
+    grid-template-areas: 'attention' 'summary';
   }
 }
 
@@ -42,6 +37,24 @@
   background: var(--surface-2);
   min-width: 0;
 }
+/* Внутри карточки список тянется: кнопки строк прижаты к своим строкам, низ карточки ровный */
+.today-card .today-list { max-height: none; }
+
+/* «Требуют внимания»: окно ровно в 5 строк, остальные записи — прокруткой вниз */
+.today-card .today-attention-list {
+  --att-row-h: 46px;
+  --att-gap: 6px;
+  gap: var(--att-gap);
+  max-height: calc(5 * var(--att-row-h) + 4 * var(--att-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+}
+.today-attention-list .today-row { box-sizing: border-box; height: var(--att-row-h); flex: 0 0 auto; }
+.today-attention-list::-webkit-scrollbar { width: 8px; }
+.today-attention-list::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); border-radius: 4px; }
+.today-attention-list::-webkit-scrollbar-thumb { background: var(--accent-line, rgba(110, 142, 248, 0.45)); border-radius: 4px; }
+.today-attention-list::-webkit-scrollbar-thumb:hover { background: var(--accent, #6e8ef8); }
 .today-title { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 0.92rem; }
 .today-count {
   min-width: 20px;
@@ -55,7 +68,7 @@
 }
 .today-count.is-warn { background: var(--warning-soft); color: var(--warning); }
 
-.today-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; }
+.today-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 320px; overflow-y: auto; align-content: start; }
 
 /* Строка внимания: точка состояния, текст и кнопка действия прямо в строке */
 .today-row {
@@ -122,6 +135,152 @@
   background: var(--surface-1);
   box-shadow: var(--shadow-1);
 }
+
+/* Календарь + боковая панель «Сегодня»: слева календарь, справа данж дня и записи дня.
+   stretch — колонки одной высоты: панель не ниже и не выше календаря. */
+.today-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.85fr);
+  gap: var(--gap-md);
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+.today-cols .planner { margin-bottom: 0; display: flex; flex-direction: column; }
+.today-cols .planner-grid { flex: 1 1 auto; align-content: start; }
+.today-cols + .today { margin-top: 0; }
+.today-side .today-side-list { flex: 1 1 auto; min-height: 0; }
+@media (max-width: 1100px) {
+  .today-cols { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Цвета категорий данжа: Оружие — красный, Доспех — зелёный, Реликвия — синий.
+   Переменные общие для календаря и панели «Сегодня». */
+.planner, .today-side {
+  --dng-red: 224, 90, 105;
+  --dng-green: 158, 206, 106;
+  --dng-blue: 110, 142, 248;
+}
+
+/* --- Легенда над сеткой: что за цвет у ячейки дня --- */
+.planner-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 8px;
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+.planner-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.planner-legend-item b { font-size: 0.85rem; line-height: 1; }
+.planner-legend-item::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid rgba(var(--dng-red), 0.45);
+  background: rgba(var(--dng-red), 0.22);
+}
+.planner-legend-item.is-weapon::before { border-color: rgba(var(--dng-red), 0.45); background: rgba(var(--dng-red), 0.22); }
+.planner-legend-item.is-armor::before { border-color: rgba(var(--dng-green), 0.45); background: rgba(var(--dng-green), 0.22); }
+.planner-legend-item.is-relic::before { border-color: rgba(var(--dng-blue), 0.45); background: rgba(var(--dng-blue), 0.22); }
+
+/* Название категории данжа — в её цвете (легенда, «Данж дня», полоса недели) */
+.dng-name.is-weapon { color: rgb(var(--dng-red)); }
+.dng-name.is-armor { color: rgb(var(--dng-green)); }
+.dng-name.is-relic { color: rgb(var(--dng-blue)); }
+.planner-legend-label { color: var(--text-faint); }
+
+.today-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+.today-side .today-title { margin-bottom: 0; }
+.today-side-date { display: block; width: 100%; font-size: 0.72rem; font-weight: 450; }
+.today-side-list { max-height: 260px; }
+.today-side-open { align-self: flex-start; }
+
+/* Данж дня: цвет карточки — категория сегодняшнего ежедневного задания */
+.today-dungeon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.today-dungeon.is-weapon { background: rgba(var(--dng-red), 0.16); }
+.today-dungeon.is-armor { background: rgba(var(--dng-green), 0.14); }
+.today-dungeon.is-relic { background: rgba(var(--dng-blue), 0.16); }
+.today-dungeon.is-weapon .today-dungeon-ico { background: rgba(var(--dng-red), 0.16); }
+.today-dungeon.is-armor .today-dungeon-ico { background: rgba(var(--dng-green), 0.16); }
+.today-dungeon.is-relic .today-dungeon-ico { background: rgba(var(--dng-blue), 0.16); }
+.today-dungeon-ico {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.2rem;
+}
+.today-dungeon-copy { display: grid; gap: 1px; min-width: 0; }
+.today-dungeon-copy b { font-size: 0.92rem; }
+.today-dungeon-copy small { font-size: 0.74rem; }
+
+/* Полоса цикла на неделю: вчера → +5 дней. Цвет рамки дня — его данж */
+.today-dungeon-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.today-strip-day {
+  display: grid;
+  place-items: center;
+  gap: 1px;
+  padding: 5px 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: rgba(10, 14, 21, 0.55);
+  text-align: center;
+  min-width: 0;
+}
+.today-strip-day small { color: var(--text-faint); font-size: 0.58rem; text-transform: lowercase; }
+.today-strip-day b { font-size: 0.85rem; line-height: 1; }
+.today-strip-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.16), rgba(var(--dng-red), 0.16)), rgba(10, 14, 21, 0.55); }
+.today-strip-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.14), rgba(var(--dng-green), 0.14)), rgba(10, 14, 21, 0.55); }
+.today-strip-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.16), rgba(var(--dng-blue), 0.16)), rgba(10, 14, 21, 0.55); }
+.today-strip-day .today-strip-name {
+  font-size: 0.56rem;
+  line-height: 1.1;
+  color: var(--text-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.today-strip-day .today-strip-name.dng-name.is-weapon { color: rgb(var(--dng-red)); }
+.today-strip-day .today-strip-name.dng-name.is-armor { color: rgb(var(--dng-green)); }
+.today-strip-day .today-strip-name.dng-name.is-relic { color: rgb(var(--dng-blue)); }
+.today-strip-day.is-today {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.today-strip-day.is-today .today-strip-name { font-weight: 650; }
+
+/* Строки записей в панели: цветная метка календаря вместо точки состояния */
+.today-side .planner-color { width: 4px; height: 26px; border-left-width: 4px; }
+
+.planner-day-list { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
 .planner-head {
   display: flex;
   align-items: flex-start;
@@ -152,7 +311,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 5px 6px;
+  padding: 6px 6px 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(10, 14, 21, 0.55);
@@ -161,14 +320,22 @@
   cursor: pointer;
   transition: border-color var(--speed), background var(--speed), transform var(--speed);
 }
+/* Заливка ячейки — приглушённый цвет данжа этого дня */
+.planner-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.16), rgba(var(--dng-red), 0.16)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.14), rgba(var(--dng-green), 0.14)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.16), rgba(var(--dng-blue), 0.16)), rgba(10, 14, 21, 0.55); }
 .planner-day:hover {
   border-color: var(--accent);
   background: var(--surface-2);
   transform: translateY(-1px);
 }
+.planner-day.is-weapon:hover { background: linear-gradient(rgba(var(--dng-red), 0.26), rgba(var(--dng-red), 0.26)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-armor:hover { background: linear-gradient(rgba(var(--dng-green), 0.24), rgba(var(--dng-green), 0.24)), rgba(10, 14, 21, 0.55); }
+.planner-day.is-relic:hover { background: linear-gradient(rgba(var(--dng-blue), 0.26), rgba(var(--dng-blue), 0.26)), rgba(10, 14, 21, 0.55); }
 .planner-day.is-empty {
   min-height: 58px;
   border-style: dashed;
+  border-top: 1px solid var(--border);
   opacity: 0.25;
 }
 .planner-day.is-today {
@@ -190,25 +357,168 @@
   background: var(--accent);
   color: var(--on-accent);
 }
-.planner-day-events { display: grid; gap: 3px; min-width: 0; }
-.planner-event {
+/* --- Мини-шкала дня в ячейке календаря ---
+   Записи без времени и марафон — строкой сверху; записи со временем — блоки на шкале суток,
+   высота блока = длительность, поэтому по ячейке видно, что во сколько начинается. */
+.planner-day-allday { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.planner-chip {
+  max-width: 100%;
   overflow: hidden;
-  min-height: 5px;
   padding: 1px 5px;
   border-left: 3px solid var(--accent);
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--text-dim);
-  font-size: 0;
+  font-size: 0.58rem;
+  line-height: 1.5;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.planner-event.is-green, .planner-color.is-green { border-color: var(--success); background: var(--success-soft); }
-.planner-event.is-yellow, .planner-color.is-yellow { border-color: var(--warning); background: var(--warning-soft); }
-.planner-event.is-red, .planner-color.is-red { border-color: var(--danger); background: var(--danger-soft); }
-.planner-event.is-purple, .planner-color.is-purple { border-color: var(--accent-2); background: rgba(180, 126, 255, 0.14); }
-.planner-event.is-gray, .planner-color.is-gray { border-color: var(--text-faint); background: rgba(255, 255, 255, 0.05); }
-.planner-event.is-done { opacity: 0.52; text-decoration: line-through; }
+.planner-chip.is-marathon {
+  background: rgba(180, 126, 255, 0.2);
+  border-left-color: var(--accent-2);
+  color: var(--text);
+}
+.planner-chip.is-done { opacity: 0.5; text-decoration: line-through; }
+
+.planner-day-scale {
+  position: relative;
+  flex: 1 1 auto;
+  /* Высота шкалы — компромисс: сутки целиком в ячейке календаря, но вечерние ивенты не сливаются
+     в одну точку. Точные минуты видны в окне дня, где шкала во всю высоту экрана. */
+  min-height: 46px;
+  border-radius: 3px;
+  /* Полоски часов: каждые 6 часов — ярче, чтобы глаз читал время без подписей */
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 25%),
+    rgba(0, 0, 0, 0.16);
+}
+.planner-block {
+  position: absolute;
+  box-sizing: border-box;
+  /* Пол в 4px: короткая запись должна быть видна, а не схлопнуться в волосок */
+  min-height: 4px;
+  border-left: 2px solid var(--accent);
+  border-radius: 2px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+.planner-block.is-green { border-left-color: var(--success); background: var(--success-soft); }
+.planner-block.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
+.planner-block.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
+.planner-block.is-purple { border-left-color: var(--accent-2); background: rgba(180, 126, 255, 0.22); }
+.planner-block.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
+/* Постоянный ивент: штриховка — видно, что запись не своя, а по расписанию */
+.planner-block.is-recurring {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 3px, transparent 3px 6px);
+}
+.planner-block.is-marathon {
+  border-left-width: 3px;
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 4px, transparent 4px 8px);
+}
+.planner-block.is-done { opacity: 0.45; }
+
+/* --- Полная шкала дня 00:00–24:00 в окне дня --- */
+.planner-scale-wrap { margin-bottom: 14px; }
+.planner-scale-allday {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+}
+.planner-scale-allday-label { color: var(--text-faint); font-size: 0.7rem; }
+.planner-scale { display: flex; gap: 8px; height: 420px; }
+.planner-scale-marks {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 44px;
+  flex: none;
+  padding: 0 0 1px;
+}
+.planner-scale-mark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 0.66rem;
+  font-variant-numeric: tabular-nums;
+}
+.planner-scale-mark i { display: block; width: 5px; height: 1px; background: var(--border-strong, var(--border)); }
+.planner-scale-track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background:
+    repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 12.5%),
+    rgba(0, 0, 0, 0.18);
+}
+.planner-scale-block {
+  position: absolute;
+  box-sizing: border-box;
+  min-height: 16px;
+  padding: 2px 6px;
+  overflow: hidden;
+  border-left: 3px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: 0.66rem;
+  line-height: 1.25;
+}
+.planner-scale-block b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.7rem; }
+.planner-scale-block small { display: block; color: var(--text-faint); font-size: 0.62rem; font-variant-numeric: tabular-nums; }
+.planner-scale-block.is-green { border-left-color: var(--success); background: var(--success-soft); }
+.planner-scale-block.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
+.planner-scale-block.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
+.planner-scale-block.is-purple { border-left-color: var(--accent-2); background: rgba(180, 126, 255, 0.22); }
+.planner-scale-block.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
+.planner-scale-block.is-recurring {
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 4px, transparent 4px 8px);
+}
+.planner-scale-block.is-done { opacity: 0.45; }
+.planner-lock { color: var(--text-faint); font-size: 0.7rem; flex: 0 0 auto; }
+.planner-day-row.is-source-recurring { border-style: dashed; }
+.planner-day-row.is-source-marathon { border-color: var(--accent-line); }
+@media (max-width: 560px) {
+  .planner-scale { height: 320px; }
+}
+
+/* --- Настройки уведомлений о постоянных ивентах --- */
+.event-notify-list { display: grid; gap: 8px; margin-top: 10px; }
+.event-notify-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.event-notify-check { display: flex; align-items: center; gap: 9px; min-width: 0; cursor: pointer; }
+.event-notify-check b { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; }
+.event-notify-check small { display: block; font-size: 0.74rem; }
+.event-notify-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; }
+.event-notify-dot.is-red { background: var(--danger); }
+.event-notify-dot.is-green { background: var(--success); }
+.event-notify-dot.is-yellow { background: var(--warning); }
+.event-notify-dot.is-purple { background: var(--accent-2); }
+.event-notify-row .select { flex: 0 0 auto; width: auto; min-width: 130px; }
+
+/* Цвета записей: метка в списке дня и полоски событий */
+.planner-color.is-green { border-color: var(--success); background: var(--success-soft); }
+.planner-color.is-yellow { border-color: var(--warning); background: var(--warning-soft); }
+.planner-color.is-red { border-color: var(--danger); background: var(--danger-soft); }
+.planner-color.is-purple { border-color: var(--accent-2); background: rgba(180, 126, 255, 0.14); }
+.planner-color.is-gray { border-color: var(--text-faint); background: rgba(255, 255, 255, 0.05); }
 .planner-more { color: var(--text-faint); font-size: 0.62rem; }
 
 .planner-day-list { list-style: none; display: grid; gap: 8px; margin: 0 0 16px; padding: 0; }
@@ -232,8 +542,10 @@
   .planner-head { align-items: stretch; flex-direction: column; }
   .planner-nav { justify-content: space-between; }
   .planner-day { min-height: 52px; }
-  .planner-event { min-height: 5px; padding: 0; }
+  .planner-day-scale { min-height: 38px; }
   .planner-more { display: none; }
+  .today-dungeon-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .today-strip-day .today-strip-name { display: none; }
 }
 @media (max-width: 560px) {
   .planner { padding: 12px; overflow-x: auto; }

@@ -26,6 +26,7 @@ mod cookie_bank;
 mod injection;
 mod launcher;
 mod marathons;
+mod notify;
 mod parsers;
 mod pool;
 mod stats_ocr;
@@ -153,6 +154,9 @@ pub fn run() {
             // разбор скриншота с характеристиками персонажа
             stats_ocr::stats_ocr_available,
             stats_ocr::stats_ocr_read,
+            // системные уведомления Windows: регистрация приложения как источника и показ
+            notify::tf_notify,
+            notify::tf_notify_check,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

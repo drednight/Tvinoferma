@@ -5,11 +5,13 @@ import { mainPartyName, additionalPartiesOf, NO_PARTY_LABEL } from '../parties/m
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
+import { mskStamp } from '../../core/msk.js';
 import { freshnessOf, freshnessChipHtml, marathonSyncList, formatWhen, formatHoursSpan, thresholdHours } from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
+import { levelBonusLabel } from './stateManager.js';
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { hasGameCenterPath, loginStatusText, launchContext } from '../launcher/launch.js';
@@ -67,7 +69,7 @@ export function openCharacterProfile(char) {
                 title="${char.favorite ? 'Убрать из избранного' : 'Добавить в избранное'}">${char.favorite ? '★' : '☆'}</button>
             </div>
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
-            <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}</p>
+            <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
             <p class="muted" style="margin:4px 0;" id="profile-auth-line">${authLineHtml(char)}</p>
             <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}</p>
@@ -161,8 +163,9 @@ export function openCharacterProfile(char) {
         <div class="info-block" style="margin-bottom:16px;">
           <h4>Бой и Защита</h4>
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Здоровье', stats.hpMax ? `${stats.hp}/${stats.hpMax}` : stats.hp)}
-             ${statRow('Маг. энергия', stats.mpMax ? `${stats.mp}/${stats.mpMax}` : stats.mp)}
+             ${statRow('Здоровье', stats.hp)}
+             ${statRow('Маг. энергия', stats.mp)}
+             ${statRow('Бонус к уровню', stats.levelBonus ? `${stats.levelBonus}%` : '-')}
              ${statRow('Физ. атака', stats.physAttack)}
              ${statRow('Физ. защита', stats.physDefense)}
              ${statRow('Маг. атака', stats.magAttack)}
@@ -181,9 +184,6 @@ export function openCharacterProfile(char) {
              ${statRow('Показатель атаки (ПА)', stats.pa)}
              ${statRow('Показатель защиты (ПЗ)', stats.pz)}
              ${statRow('Боевой дух', stats.morale)}
-             ${statRow('Сила', stats.power)}
-             ${statRow('Скрытность', stats.stealth)}
-             ${statRow('Обнаружение', stats.detection)}
           </div>
         </div>
 
@@ -514,7 +514,7 @@ function coinBlockHtml(char) {
   let last = '<span class="muted" style="font-size:0.7rem;">Не синхр.</span>';
   const d = char.lastCoinUpdate ? new Date(char.lastCoinUpdate) : null;
   if (d && !isNaN(d.getTime())) {
-    last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>`;
+    last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${mskStamp(d)}</span>`;
   }
   return `
     <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
