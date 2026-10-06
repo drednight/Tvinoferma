@@ -34,7 +34,14 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Твиноферма ${{ github.ref_name }}'
-          releaseBody: 'Установщик для Windows: .msi или -setup.exe. Установленное приложение обновится само.'
+          # Этот текст попадает и в описание релиза, и в `notes` файла latest.json — его видит
+          # пользователь в окне «Доступно обновление». Поэтому пишем по-человечески, а подробности
+          # остаются в описании релиза (его дополняем вручную из CHANGELOG).
+          releaseBody: |
+            Установщик для Windows: `.msi` или `-setup.exe`. Установленное приложение обновится само —
+            «Настройки → Обновления → Проверить обновления». Данные и сессии не теряются.
+
+            Что нового — в описании релиза и в [CHANGELOG.md](https://github.com/drednight/Tvinoferma/blob/main/CHANGELOG.md).
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
