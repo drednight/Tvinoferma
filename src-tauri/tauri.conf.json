@@ -39,9 +39,10 @@
     ],
     "windows": {
       "wix": {
-        "language": "ru-RU"
-  }
-}
+        "language": "ru-RU",
+        "upgradeCode": "5dbcc9ea-3fb8-5bc2-bef0-11e504fb947e"
+      }
+    }
   },
   "plugins": {
     "updater": {

@@ -29,6 +29,7 @@ mod marathons;
 mod notify;
 mod parsers;
 mod pool;
+mod shortcut;
 mod stats_ocr;
 mod tray;
 mod windows;
@@ -45,6 +46,12 @@ pub fn run() {
         .manage(tray::TraySettings::default())
         .manage(windows::BrowserSettings::default())
         .setup(|app| {
+            // Регистрируем приложение как источник уведомлений сразу: тогда оно находится
+            // в поиске Windows и появляется в «Параметры → Уведомления» ещё до первого уведомления
+            notify::register_at_startup();
+            // Ярлык установщик называет по productName («Tvinoferma»), поэтому переименовываем
+            // в русское имя: иначе поиск Windows не находит приложение по слову «Твиноферма»
+            shortcut::ensure_russian_shortcut();
             #[cfg(desktop)]
             {
                 app.handle()
