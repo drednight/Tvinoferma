@@ -163,6 +163,18 @@ describe('окно: аккаунты', () => {
     expect(nicks()).toEqual(['Вв', 'Аа']);
   });
 
+  it('внутри групп — по балансу: чем меньше монет, тем ниже (а не по алфавиту)', async () => {
+    state.characters.push({ id: 'd', nick: 'Яя', isLoggedIn: true, ancientCoins: 0 });
+    ACCOUNT_OF.d = 'U3';
+    site.U3 = { balance: 20, left: { light: 4, asura: 4, camp: 4, sovereign: 4 } };
+    try {
+      prefill();
+      openShopDialog();
+      await wait();
+      expect(nicks()).toEqual(['Вв', 'Яя', 'Аа']);          // 54, 20, и 5 монет — ниже всех
+    } finally { delete ACCOUNT_OF.d; }
+  });
+
   it('без входа: внизу, отметить нельзя, сайт не читается', async () => {
     state.characters.push({ id: 'z', nick: 'Яя', isLoggedIn: false, ancientCoins: 3 });
     ACCOUNT_OF.z = 'U2';

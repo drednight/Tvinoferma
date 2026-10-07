@@ -113,6 +113,11 @@ describe('расчёт количества и остатка', () => {
     const out = sortByAffordability(list, { can: x => x.b >= 10, nick: x => x.n });
     expect(out.map(x => x.n)).toEqual(['Боря', 'Яна', 'Аня', 'Вера']);
   });
+  it('с балансом: внутри групп чем меньше монет, тем ниже; при равенстве — по нику', () => {
+    const list = [{ n: 'Яна', b: 100 }, { n: 'Аня', b: 1 }, { n: 'Боря', b: 50 }, { n: 'Вера', b: 2 }, { n: 'Гена', b: 50 }];
+    const out = sortByAffordability(list, { can: x => x.b >= 10, nick: x => x.n, balance: x => x.b });
+    expect(out.map(x => x.n)).toEqual(['Яна', 'Боря', 'Гена', 'Вера', 'Аня']);
+  });
 });
 
 describe('срок обновления лимита', () => {

@@ -132,11 +132,15 @@ export function planAccount({ balance, orders }) {
 /** Хватит ли монет хотя бы на один предмет из списка (учитывается только то, что можно купить). */
 export const canAffordAny = (balance, items) => (items || []).some(i => i?.buyable && i.price != null && roundCoins(balance) + 1e-6 >= i.price);
 
-/** Сначала те, кто может позволить хотя бы один предмет, затем остальные; внутри групп — по нику. */
-export function sortByAffordability(list, { can, nick }) {
+/**
+ * Сначала те, кто может позволить хотя бы один предмет, затем остальные. Внутри групп: если передан `balance` — по убыванию
+ * баланса (чем меньше монет, тем ниже), при равенстве и без `balance` — по нику.
+ */
+export function sortByAffordability(list, { can, nick, balance = null }) {
   const byNick = (a, b) => String(nick(a)).localeCompare(String(nick(b)), 'ru');
-  const yes = list.filter(x => can(x)).sort(byNick);
-  const no = list.filter(x => !can(x)).sort(byNick);
+  const cmp = (a, b) => (balance ? (Number(balance(b)) || 0) - (Number(balance(a)) || 0) : 0) || byNick(a, b);
+  const yes = list.filter(x => can(x)).sort(cmp);
+  const no = list.filter(x => !can(x)).sort(cmp);
   return [...yes, ...no];
 }
 

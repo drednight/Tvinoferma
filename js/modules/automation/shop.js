@@ -68,6 +68,7 @@ export function openShopDialog({ ids = [] } = {}) {
     title: '🪙 Покупка за Древние монеты', wide: true,
     onClose: () => { closed = true; clearTimeout(renderTimer); if (running) running.cancelled = true; if (scanSignal) scanSignal.cancelled = true; }
   });
+  dlg.body.classList.add('shop-body');
   const alive = () => !closed && dlg.el.isConnected;
   const q = (sel) => dlg.body.querySelector(sel);
 
@@ -124,14 +125,17 @@ export function openShopDialog({ ids = [] } = {}) {
 
   const canBuyAny = (g) => g.state === 'ready' && canAffordAny(g.balance, SHOP_ITEMS.map(d => g.items[d.key]));
 
-  /** Сначала те, кому хватает монет хотя бы на один предмет списка; затем остальные; аккаунты без входа и с ошибкой чтения — внизу. */
+  /**
+   * Порядок строк: сначала те, кому хватает монет хотя бы на один предмет списка, затем остальные; внутри групп — по балансу
+   * (больше монет — выше, чем меньше, тем ниже), при равенстве — по нику. Аккаунты без входа и с ошибкой чтения — внизу.
+   */
   function sortGroups(list) {
     const ready = list.filter(g => g.state === 'ready');
     const rest = list.filter(g => g.state !== 'ready').sort((a, b) => {
       const rank = (g) => (g.state === 'pending' || g.state === 'nodata' ? 0 : 1);
-      return rank(a) - rank(b) || byNick(a, b);
+      return rank(a) - rank(b) || b.balance - a.balance || byNick(a, b);
     });
-    return [...sortByAffordability(ready, { can: canBuyAny, nick: (g) => g.nick }), ...rest];
+    return [...sortByAffordability(ready, { can: canBuyAny, nick: (g) => g.nick, balance: (g) => g.balance }), ...rest];
   }
 
   /** Данные предмета с сайта: свежее чтение, иначе то, что запомнено с прошлого раза. */
@@ -277,8 +281,11 @@ export function openShopDialog({ ids = [] } = {}) {
     if (!view.length) return '<div class="shop-empty">Никого не найдено</div>';
     const head = defs.map(d => {
       const it = siteItem(d.key);
-      return `<th>${d.icon} ${escapeHtml(d.name)}<div class="shop-muted">${it?.price != null ? `${fmt(it.price)} мон.` : ''}</div>
-        <input class="input shop-all" type="number" min="0" step="1" placeholder="всем" data-all="${d.key}" title="Количество для всех отмеченных аккаунтов"></th>`;
+      const short = d.name.replace(/\s*\([^)]*\)\s*$/, '');
+      const price = it?.price != null ? `${fmt(it.price)} мон.${unitOf(d, it) === 'сундук.' ? ' / сундук' : ''}` : '—';
+      return `<th class="shop-col"><div class="shop-th" title="${escapeHtml(d.name)}"><div class="shop-th-name">${d.icon} ${escapeHtml(short)}</div>
+        <div class="shop-th-price">${escapeHtml(price)}</div>
+        <input class="input shop-all" type="number" min="0" step="1" placeholder="всем" data-all="${d.key}" title="Количество для всех отмеченных аккаунтов"></div></th>`;
     }).join('');
     return `<table class="shop-table"><thead><tr><th></th><th>Аккаунт</th><th>Монеты</th>${head}<th>Итого / остаток</th></tr></thead>
       <tbody>${view.map((g, i) => rowHtml(g, i, defs)).join('')}</tbody></table>
