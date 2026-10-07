@@ -4,13 +4,14 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::webview::NewWindowResponse;
 use tauri::{
     command, AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 const POPUP_PATCH: &str = include_str!("scripts/popup_patch.js");
+static NEXT_POPUP_ID: AtomicU64 = AtomicU64::new(1);
 /// Снимает клиентский лимит сайта «не более 6 предметов» на странице передачи предметов (только видимые окна).
 const PROMO_ITEMS_UNLIMITED: &str = include_str!("scripts/promo_items_unlimited.js");
 
@@ -57,25 +58,23 @@ fn profile_dir(app: &AppHandle, key: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Защита от всплывающих окон для окон персонажей. Попап (`window.open`, `target="_blank"`)
-/// ломает вход через VK Play: сессия и `window.opener` остаются в другом окне.
-/// 1) `popup_patch.js` вшит как initialization_script и срабатывает в каждом документе окна
-///    (раньше он выполнялся один раз через `eval` и пропадал после первого перехода);
-/// 2) обработчик нового окна переводит http(s)-запрос в это же окно, остальное запрещает;
-/// 3) `promo_items_unlimited.js` (если не выключен в настройках) снимает лимит сайта «6 предметов» на странице передачи.
+/// Обычные всплывающие ссылки открываются в том же окне, OAuth-попапы сохраняются:
+/// VK ID использует `window.opener` для возврата с `oauth2.htm`.
 fn guard_popups<'a, M: Manager<tauri::Wry>>(
     builder: WebviewWindowBuilder<'a, tauri::Wry, M>,
     app: &AppHandle,
     label: &str,
+    profile_key: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
     let unlimited = unlimited_items_enabled(app);
     let app = app.clone();
     let label = label.to_string();
+    let profile_key = profile_key.to_string();
     let mut builder = builder.initialization_script(POPUP_PATCH);
     if unlimited {
         builder = builder.initialization_script(PROMO_ITEMS_UNLIMITED);
     }
-    builder.on_new_window(move |url, _features| {
+    builder.on_new_window(move |url, features| {
         // В лог попадает только адрес без параметров: в них бывают коды входа
         println!(
             "[WINDOW] {}: запрос нового окна -> {}{}",
@@ -83,6 +82,40 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
             url.host_str().unwrap_or("?"),
             url.path()
         );
+        if is_oauth_popup_url(&url) {
+            let popup_label = format!(
+                "popup-{}-{}",
+                label,
+                NEXT_POPUP_ID.fetch_add(1, Ordering::Relaxed)
+            );
+            let data_dir = match profile_dir(&app, &profile_key) {
+                Ok(dir) => dir,
+                Err(error) => {
+                    eprintln!(
+                        "[WINDOW] {}: не удалось подготовить OAuth-профиль: {}",
+                        label, error
+                    );
+                    return NewWindowResponse::Deny;
+                }
+            };
+            let mut popup_builder =
+                WebviewWindowBuilder::new(&app, &popup_label, WebviewUrl::External(url.clone()))
+                    .title("Авторизация")
+                    .inner_size(1000.0, 750.0)
+                    .window_features(features)
+                    .data_directory(data_dir);
+            popup_builder = guard_popups(popup_builder, &app, &label, &profile_key);
+            return match popup_builder.build() {
+                Ok(window) => NewWindowResponse::Create { window },
+                Err(error) => {
+                    eprintln!(
+                        "[WINDOW] {}: не удалось открыть OAuth-окно: {}",
+                        label, error
+                    );
+                    NewWindowResponse::Deny
+                }
+            };
+        }
         if matches!(url.scheme(), "http" | "https") {
             if let Some(win) = app.get_webview_window(&label) {
                 tauri::async_runtime::spawn(async move {
@@ -92,6 +125,19 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
         }
         NewWindowResponse::Deny
     })
+}
+
+fn is_oauth_popup_url(url: &Url) -> bool {
+    if url.as_str() == "about:blank" {
+        return true;
+    }
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    let host = url.host_str().unwrap_or_default();
+    ["vk.com", "vk.ru", "vkplay.ru", "pwonline.ru"]
+        .iter()
+        .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
 }
 
 /// Окно осталось на служебной странице прошлой задачи (`#TF_...`) или не на сайте.
@@ -105,16 +151,31 @@ fn is_stale_page(win: &WebviewWindow) -> bool {
     }
 }
 
-fn center_window(app: &AppHandle, win: &WebviewWindow, width: f64, height: f64) {
-    if let Ok(Some(monitor)) = app.primary_monitor() {
-        let scale = monitor.scale_factor();
-        let x = ((monitor.size().width as f64 - width) / 2.0) + 50.0;
-        let y = (monitor.size().height as f64 - height) / 2.0;
-        let _ = win.set_position(tauri::PhysicalPosition::new(
-            (x * scale) as i32,
-            (y * scale) as i32,
-        ));
-    }
+fn center_window(app: &AppHandle, win: &WebviewWindow) -> Result<(), String> {
+    let (anchor_position, anchor_size) = if let Some(main) = app.get_webview_window("main") {
+        (
+            main.inner_position().map_err(|e| e.to_string())?,
+            main.inner_size().map_err(|e| e.to_string())?,
+        )
+    } else if let Some(monitor) = app.primary_monitor().map_err(|e| e.to_string())? {
+        (*monitor.position(), *monitor.size())
+    } else {
+        return Err("No application window or monitor available for centering".into());
+    };
+    let window_size = win.outer_size().map_err(|e| e.to_string())?;
+    let position = centered_position(anchor_position, anchor_size, window_size);
+    win.set_position(position).map_err(|e| e.to_string())
+}
+
+fn centered_position(
+    anchor_position: tauri::PhysicalPosition<i32>,
+    anchor_size: tauri::PhysicalSize<u32>,
+    window_size: tauri::PhysicalSize<u32>,
+) -> tauri::PhysicalPosition<i32> {
+    tauri::PhysicalPosition::new(
+        anchor_position.x + (anchor_size.width as i32 - window_size.width as i32) / 2,
+        anchor_position.y + (anchor_size.height as i32 - window_size.height as i32) / 2,
+    )
 }
 
 /// Открывает ВИДИМОЕ окно браузера (для ручного входа/действия)
@@ -158,13 +219,16 @@ pub async fn open_sync_window(
         .inner_size(1200.0, 800.0)
         .resizable(true)
         .data_directory(profile_dir(&app, &char_id)?);
-    let mut builder = guard_popups(builder, &app, &label);
+    let mut builder = guard_popups(builder, &app, &label, &char_id);
     // Панель «Помощник входа» рисуется скриптом поверх страницы и переживает переходы
     if let Some(script) = panel_script.as_deref() {
         builder = builder.initialization_script(script);
     }
     let win = builder.build().map_err(|e| e.to_string())?;
-    center_window(&app, &win, 1200.0, 800.0);
+    if let Err(error) = center_window(&app, &win) {
+        let _ = win.destroy();
+        return Err(error);
+    }
     Ok(label)
 }
 
@@ -263,7 +327,7 @@ pub async fn get_or_create_hidden_window(
         .resizable(false)
         .visible(false)
         .data_directory(profile_dir(app, key)?);
-    guard_popups(builder, app, &label)
+    guard_popups(builder, app, &label, key)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -299,5 +363,47 @@ pub async fn pick_scan_window(
 pub fn dispose(window: &WebviewWindow, created_here: bool, close_after: bool) {
     if created_here && close_after {
         let _ = window.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{centered_position, is_oauth_popup_url};
+    use tauri::Url;
+
+    #[test]
+    fn allows_vk_id_and_oauth_callback_popup_hosts() {
+        for url in [
+            "https://id.vk.ru/auth",
+            "https://id.vk.com/auth",
+            "https://oauth.vk.ru/oauth2.htm",
+            "https://account.vkplay.ru/login",
+            "https://pwonline.ru/oauth2.htm",
+            "about:blank",
+        ] {
+            assert!(is_oauth_popup_url(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn rejects_unrelated_popup_hosts_and_schemes() {
+        for url in [
+            "https://vk.ru.example.com/",
+            "https://example.com/oauth2.htm",
+            "file:///tmp/oauth2.htm",
+        ] {
+            assert!(!is_oauth_popup_url(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    #[test]
+    fn centers_browser_window_on_application_content_without_offset() {
+        let position = centered_position(
+            tauri::PhysicalPosition::new(200, 100),
+            tauri::PhysicalSize::new(1400, 900),
+            tauri::PhysicalSize::new(1200, 800),
+        );
+
+        assert_eq!(position, tauri::PhysicalPosition::new(300, 150));
     }
 }
