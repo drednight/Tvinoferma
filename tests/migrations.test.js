@@ -17,17 +17,19 @@ describe('migrateState', () => {
     const { state, from, applied, newer } = migrateState(raw);
     expect(from).toBe(2);
     expect(newer).toBe(false);
-    expect(applied).toEqual([3, 4, 5, 6, 7]);
+    expect(applied).toEqual([3, 4, 5, 6, 7, 8]);
     expect(state.schemaVersion).toBe(SCHEMA_VERSION);
     expect(state.version).toBeUndefined();
     expect(state.exportedAt).toBeUndefined();
     expect(state.characters.every(c => Array.isArray(c.tags))).toBe(true);
+    expect(state.archivedCharacters).toEqual([]);
+    expect(state.archivedParties).toEqual([]);
     expect(raw.version).toBe(2); // исходные данные не мутируются
   });
 
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8]);
     expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
     expect(state.parties.every(p => typeof p.id === 'string' && p.id)).toBe(true);
   });
@@ -37,6 +39,29 @@ describe('migrateState', () => {
     const r = migrateState(raw);
     expect(r.newer).toBe(true);
     expect(r.state).toBe(raw);
+  });
+
+  it('v7 получает пустые архивы, а normalizeState сохраняет связи архивной пати', () => {
+    const upgraded = migrateState({ schemaVersion: 7, characters: [], parties: [] });
+    expect(upgraded.state.archivedCharacters).toEqual([]);
+    expect(upgraded.state.archivedParties).toEqual([]);
+
+    const normalized = normalizeState({
+      schemaVersion: SCHEMA_VERSION,
+      parties: [{ id: 'active-party', name: 'Активная' }],
+      archivedParties: [{
+        id: 'archived-party',
+        name: 'Архивная',
+        memberLinks: [{ characterId: 'archived-char', isMain: true, order: null }]
+      }],
+      characters: [{ id: 'active-char', nick: 'Активный', partyIds: ['archived-party'] }],
+      archivedCharacters: [{ id: 'archived-char', nick: 'Архивный', partyIds: ['archived-party'] }]
+    });
+    expect(normalized.archivedParties[0].memberLinks).toEqual([
+      { characterId: 'archived-char', isMain: true, order: null }
+    ]);
+    expect(normalized.characters[0].partyIds).toEqual(['archived-party']);
+    expect(normalized.archivedCharacters[0].partyIds).toEqual(['archived-party']);
   });
 
   it('повторная миграция ничего не делает', () => {
@@ -61,7 +86,7 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
 
   it('party (название) → partyIds (id), поле party удаляется, notes по умолчанию пустые', () => {
     const { state, applied } = migrateState(v4());
-    expect(applied).toEqual([5, 6, 7]);
+    expect(applied).toEqual([5, 6, 7, 8]);
     const id = (name) => state.parties.find(p => p.name === name).id;
     expect(state.parties.every(p => p.id)).toBe(true);
     expect(state.parties.find(p => p.name === 'Основа').id).toBe('p1');
@@ -137,7 +162,7 @@ describe('миграция v7: путь GameCenter у каждого аккау�
       characters: [{ id: 'a' }, { id: 'b', launch: { gcPath: '  D:\\GC  ' } }, { id: 'c', launch: null }]
     };
     const { state, applied } = migrateState(raw);
-    expect(applied).toEqual([7]);
+    expect(applied).toEqual([7, 8]);
     expect(state.characters.map(c => c.launch.gcPath)).toEqual(['', 'D:\\GC', '']);
     expect(raw.characters[0].launch).toBeUndefined(); // исходные данные не мутируются
   });
@@ -148,7 +173,7 @@ describe('цепочка миграций для релиза 1.0', () => {
     const { state, from, to, applied } = migrateState({});
     expect(from).toBe(1);
     expect(to).toBe(SCHEMA_VERSION);
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8]);
     expect(state.characters).toEqual([]);
     expect(state.parties).toEqual([]);
     expect(state.marathons).toEqual([]);

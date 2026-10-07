@@ -28,16 +28,18 @@ function entryHtml(h) {
 
 export function openCoinHistory(charOrId) {
   const id = typeof charOrId === 'string' ? charOrId : charOrId?.id;
-  const char = state.characters.find(c => c.id === id) || (typeof charOrId === 'object' ? charOrId : null);
+  const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === id)
+    || (typeof charOrId === 'object' ? charOrId : null);
   if (!char) return;
 
+  const archived = state.archivedCharacters.some(item => item.id === char.id);
   const history = normalizeCoinHistory(char.coinHistory);
   const ov = openOverlay({ title: `🪙 История Древних монет: ${char.nick}`, wide: true });
   const last = char.lastCoinUpdate ? fmtDate(char.lastCoinUpdate) : 'ещё не проверялся';
 
   const stale = needsCoinRecheck(char);
   ov.body.innerHTML = `
-    ${stale ? '<p class="tf-warn" data-coin-warn>⚠ Баланс и записи ниже сделаны до исправления разбора: значение с запятой (28,5) могло записаться как 285. Нажмите «Перепроверить» — баланс будет прочитан с сайта заново, в историю добавится запись о разнице.</p>' : ''}
+    ${stale ? `<p class="tf-warn" data-coin-warn>⚠ Баланс и записи ниже сделаны до исправления разбора: значение с запятой (28,5) могло записаться как 285.${archived ? ' Персонаж в архиве, поэтому автоматическая перепроверка отключена.' : ' Нажмите «Перепроверить» — баланс будет прочитан с сайта заново, в историю добавится запись о разнице.'}</p>` : ''}
     <div class="tl-summary">
       <strong>🪙 ${formatCoins(char.ancientCoins || 0)}</strong>
       <span class="muted">Последняя проверка: ${escapeHtml(last)}</span>
@@ -46,7 +48,7 @@ export function openCoinHistory(charOrId) {
     <div class="tl-entries tl-full">${history.length ? history.map(entryHtml).join('') : '<div class="muted" style="padding:8px;">История пуста: баланс ещё не менялся.</div>'}</div>
     <p class="muted" style="font-size:0.78rem; margin:8px 0 0;">Если при проверке баланс не изменился, запись не добавляется — обновляется только дата последней проверки.</p>`;
 
-  ov.foot.innerHTML = `<span></span><div class="row gap">${stale ? '<button type="button" class="btn primary" data-recheck>🔄 Перепроверить</button>' : ''}<button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
+  ov.foot.innerHTML = `<span></span><div class="row gap">${stale && !archived ? '<button type="button" class="btn primary" data-recheck>🔄 Перепроверить</button>' : ''}<button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   const recheck = ov.foot.querySelector('[data-recheck]');
   if (recheck) recheck.onclick = async () => {

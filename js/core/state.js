@@ -21,6 +21,8 @@ export const state = {
   savedAt: null,
   parties: [],
   characters: [],
+  archivedParties: [],
+  archivedCharacters: [],
   marathons: [],
   marathonTemplates: [],
   plannerEntries: [],
@@ -170,6 +172,22 @@ function normalizeParty(input = {}) {
   };
 }
 
+function normalizeArchivedParty(input = {}) {
+  const party = normalizeParty(input);
+  return {
+    ...party,
+    memberLinks: Array.isArray(input.memberLinks)
+      ? input.memberLinks.filter(link => link && link.characterId).map(link => ({
+        characterId: String(link.characterId),
+        isMain: link.isMain === true,
+        order: link.order !== null && link.order !== undefined && Number.isFinite(Number(link.order))
+          ? Number(link.order)
+          : null
+      }))
+      : []
+  };
+}
+
 function normalizeLauncherSettings(input = {}) {
   const merged = { ...DEFAULT_SETTINGS.launcher, ...(input || {}) };
   merged.gameCenters = normalizeGameCenters(merged.gameCenters);
@@ -242,6 +260,12 @@ export function normalizeState(raw) {
     characters: Array.isArray(input?.characters)
       ? input.characters.map(normalizeCharacter)
       : [],
+    archivedCharacters: Array.isArray(input?.archivedCharacters)
+      ? input.archivedCharacters.map(normalizeCharacter)
+      : [],
+    archivedParties: Array.isArray(input?.archivedParties)
+      ? input.archivedParties.map(normalizeArchivedParty).filter(p => p.name)
+      : [],
     // Марафоны приводятся к схеме v2 (старые records/stages конвертируются автоматически)
     marathons: Array.isArray(input?.marathons)
       ? input.marathons.map(m => migrateMarathon(m, input.characters || [])).filter(Boolean)
@@ -265,6 +289,10 @@ export function normalizeState(raw) {
   // 1a. id персонажей: у каждого есть, уникальны, для новых — из ника
   const taken = [];
   normalized.characters.forEach(c => {
+    if (!c.id || taken.some(id => id.toLowerCase() === c.id.toLowerCase())) c.id = characterIdFor(c.nick, taken);
+    taken.push(c.id);
+  });
+  normalized.archivedCharacters.forEach(c => {
     if (!c.id || taken.some(id => id.toLowerCase() === c.id.toLowerCase())) c.id = characterIdFor(c.nick, taken);
     taken.push(c.id);
   });
@@ -292,9 +320,16 @@ export function normalizeState(raw) {
 
     normalized.parties = tempParties;
   }
+  if (Array.isArray(input?.archivedParties)) {
+    normalized.archivedParties = input.archivedParties
+      .map(normalizeArchivedParty)
+      .filter(p => p.name)
+      .sort((a, b) => a.order - b.order);
+  }
 
   // 3. Ссылки персонажей на несуществующие партии (удалённые, потерянные при импорте) убираем
-  sweepPartyIds(normalized.characters, normalized.parties);
+  const allParties = [...normalized.parties, ...normalized.archivedParties];
+  sweepPartyIds([...normalized.characters, ...normalized.archivedCharacters], allParties);
 
   return normalized;
 }

@@ -126,6 +126,10 @@
             <!-- Появляется, только когда включён хотя бы один фильтр -->
             <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>
+          <div class="row gap" style="margin: 10px 0;">
+            <button id="show-active-characters" class="btn secondary small" type="button">Персонажи <span id="active-character-count">0</span></button>
+            <button id="show-archived-characters" class="btn ghost small" type="button">Архив <span id="archived-character-count">0</span></button>
+          </div>
         </div>
 
         <!-- Показатели раздела: считаются по текущей выборке (js/modules/characters/list.js) -->
@@ -178,6 +182,10 @@
             <!-- Сводка рисуется в renderer.js; создание пати и запуск окон — в меню круглой кнопки «+» -->
             <div id="party-summary" class="pt-summary"></div>
           </div>
+        </div>
+        <div class="row gap" style="margin: 10px 0;">
+          <button id="show-active-parties" class="btn secondary small" type="button">Пати <span id="active-party-count">0</span></button>
+          <button id="show-archived-parties" class="btn ghost small" type="button">Архив <span id="archived-party-count">0</span></button>
         </div>
         <div id="party-list" class="pt-grid"></div>
       </section>

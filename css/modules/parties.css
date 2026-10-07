@@ -108,6 +108,7 @@
 }
 .pt-ava img { width: 100%; height: 100%; object-fit: cover; }
 .pt-ava.is-online { border-color: var(--success); }
+.pt-ava.is-archived { filter: grayscale(1); opacity: 0.55; }
 .pt-ava-more { background: var(--surface-2); color: var(--text); margin-left: -8px; }
 .pt-empty-note { font-size: 0.8rem; }
 .pt-online { flex: 1; max-width: 110px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
@@ -152,6 +153,8 @@
 .pt-members { list-style: none; margin: 0; padding: 4px 8px 10px 13px; border-top: 1px solid var(--border); }
 .pt-member { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
 .pt-member:hover { background: rgba(255, 255, 255, 0.05); }
+.pt-member.is-archived { cursor: default; opacity: 0.7; }
+.pt-member.is-archived:hover { background: transparent; }
 .pt-member-name { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
 .pt-member-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pt-member-name small { white-space: nowrap; }

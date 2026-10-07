@@ -10,9 +10,11 @@ import { getAuthView } from '../sync/authStatus.js';
 import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
 import { hasGameCenterPath } from '../launcher/launch.js';
 import { getClassIconSrc } from '../../core/constants.js';
+import { toast } from '../../core/ui.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
+let showingPartyArchive = false;
 
 /**
  * Рассчитывает статистику для массива участников
@@ -38,8 +40,7 @@ function getGroupedParties() {
         if (!map.has(p.name)) map.set(p.name, []);
     });
 
-    // Персонаж попадает в каждую свою пати (в нескольких сразу), без пати — в отдельную группу.
-    // Порядок участников внутри пати задаётся перетаскиванием и хранится у персонажа (char.partyOrder).
+    // Персонажи из архива выводятся в отдельной копии пати во вкладке архива.
     state.parties.forEach(p => map.set(p.name, charactersInPartyOrdered(state.characters, p.id)));
     const unassigned = state.characters.filter(c => hasNoParty(c, state.parties));
     if (unassigned.length) map.set(NO_PARTY_LABEL, unassigned);
@@ -67,13 +68,23 @@ function avatarStackHtml(members) {
     const rest = members.length - shown.length;
     const icons = shown.map(m => {
         const src = getClassIconSrc(m.class);
-        const online = m.isLoggedIn === true;
-        return `<span class="pt-ava ${online ? 'is-online' : ''}" title="${escapeHtml(m.nick)} · ${escapeHtml(m.class || '')}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>`;
+        const archived = state.archivedCharacters.some(char => char.id === m.id);
+        const online = !archived && m.isLoggedIn === true;
+        return `<span class="pt-ava ${online ? 'is-online' : ''} ${archived ? 'is-archived' : ''}" title="${escapeHtml(m.nick)} · ${escapeHtml(m.class || '')}${archived ? ' · в архиве' : ''}">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>`;
     }).join('');
     return `<span class="pt-stack">${icons}${rest > 0 ? `<span class="pt-ava pt-ava-more">+${rest}</span>` : ''}</span>`;
 }
 
 function memberRowHtml(m, party) {
+    const archived = state.archivedCharacters.some(char => char.id === m.id);
+    if (archived) {
+        const src = getClassIconSrc(m.class);
+        return `
+        <li class="pt-member party-member-row is-archived" data-char-id="${escapeHtml(m.id)}" data-party-id="${escapeHtml(party.id)}">
+            <span class="pt-ava is-archived">${src ? `<img src="${src}" alt="" loading="lazy" />` : escapeHtml(Array.from(m.nick || '?')[0])}</span>
+            <span class="pt-member-name"><strong>${escapeHtml(m.nick)}</strong><small class="muted">${escapeHtml(m.class || '')} · в архиве</small></span>
+        </li>`;
+    }
     const authView = getAuthView(m);
     const isOnline = m.isLoggedIn === true;
     const src = getClassIconSrc(m.class);
@@ -97,13 +108,18 @@ function memberRowHtml(m, party) {
 function partyCardHtml(name, members) {
     const isExpanded = expandedParties.has(name);
     const party = partyByName(state.parties, name);
-    const stats = calculatePartyStats(members, party);
-    const mainCount = party ? charactersInMainParty(members, party.id).length : members.length;
-    const countLabel = party && mainCount !== members.length ? `${members.length} чел. (осн. ${mainCount})` : `${members.length} чел.`;
+    const activeMembers = members.filter(m => !state.archivedCharacters.some(char => char.id === m.id));
+    const archivedCount = members.length - activeMembers.length;
+    const stats = calculatePartyStats(activeMembers, party);
+    const mainCount = party ? charactersInMainParty(activeMembers, party.id).length : activeMembers.length;
+    const activeCountLabel = party && mainCount !== activeMembers.length
+        ? `${activeMembers.length} чел. (осн. ${mainCount})`
+        : `${activeMembers.length} чел.`;
+    const countLabel = `${activeCountLabel}${archivedCount ? ` · ${archivedCount} в архиве` : ''}`;
     const isDraggable = name !== NO_PARTY_LABEL;
     const hue = isDraggable ? partyHue(name) : null;
-    const launchReady = members.filter(m => hasGameCenterPath(m)).length;
-    const onlinePct = members.length ? Math.round(stats.onlineCount / members.length * 100) : 0;
+    const launchReady = activeMembers.filter(m => hasGameCenterPath(m)).length;
+    const onlinePct = activeMembers.length ? Math.round(stats.onlineCount / activeMembers.length * 100) : 0;
     const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
     const style = hue === null ? '--pt-h:220;--pt-s:8%' : `--pt-h:${hue};--pt-s:70%`;
 
@@ -113,22 +129,23 @@ function partyCardHtml(name, members) {
                 <span class="pt-badge-icon" aria-hidden="true">${isDraggable ? escapeHtml(partyInitials(name)) : '∅'}</span>
                 <div class="pt-title">
                     <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
-                    <span class="pt-sub">${countLabel}${members.length ? ` · онлайн ${stats.onlineCount}` : ''}</span>
+                    <span class="pt-sub">${countLabel}${activeMembers.length ? ` · онлайн ${stats.onlineCount}` : ''}</span>
                 </div>
                 <div class="pt-coins" title="Монеты считаются по основной пати персонажей">${stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : ''}</div>
                 <span class="toggle-arrow pt-arrow" aria-hidden="true"></span>
             </header>
             <div class="pt-glance">
                 ${members.length ? avatarStackHtml(members) : '<span class="muted pt-empty-note">Пока никого</span>'}
-                <div class="pt-online" title="Онлайн: ${stats.onlineCount} из ${members.length}"><span style="width:${onlinePct}%"></span></div>
+                <div class="pt-online" title="Онлайн: ${stats.onlineCount} из ${activeMembers.length} активных"><span style="width:${onlinePct}%"></span></div>
             </div>
             <div class="pt-actions">
                 <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${launchReady ? '' : 'disabled'}
-                        title="${launchReady ? 'Запустить игру для участников по очереди (GameCenter выбирается по большинству участников)' : 'Ни у кого в пати не указан GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
-                    ▶ Запустить <small>${launchReady}/${members.length}</small>
+                        title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : 'Нет активных персонажей с указанным GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
+                    ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>
-                ${members.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
+                ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав и название пати">⚙</button>` : ''}
+                ${isDraggable ? `<button class="pt-btn pt-btn-icon archive-party-action-btn" type="button" data-party-id="${escapeHtml(party.id)}" title="Переместить пати в архив">📦</button>` : ''}
             </div>
             <div class="party-body-wrapper pt-body">
                 <div class="pt-body-inner">
@@ -141,6 +158,51 @@ function partyCardHtml(name, members) {
 export function renderPartiesGrid() {
     const container = document.getElementById('party-list');
     if (!container) return;
+
+    document.getElementById('active-party-count')?.replaceChildren(String(state.parties.length));
+    const archivedPartyMirrors = state.parties
+        .map(party => ({
+            party,
+            members: charactersInPartyOrdered(state.archivedCharacters, party.id)
+        }))
+        .filter(item => item.members.length > 0);
+    document.getElementById('archived-party-count')?.replaceChildren(String(state.archivedParties.length + archivedPartyMirrors.length));
+    document.getElementById('show-active-parties')?.classList.toggle('secondary', !showingPartyArchive);
+    document.getElementById('show-active-parties')?.classList.toggle('ghost', showingPartyArchive);
+    document.getElementById('show-archived-parties')?.classList.toggle('secondary', showingPartyArchive);
+    document.getElementById('show-archived-parties')?.classList.toggle('ghost', !showingPartyArchive);
+
+    if (showingPartyArchive) {
+        container._tfDndAbort?.abort();
+        const chars = [...state.characters, ...state.archivedCharacters];
+        const archivedPartyCards = [
+            ...state.archivedParties.map(party => ({ party, members: (party.memberLinks || []).map(link => chars.find(char => char.id === link.characterId)).filter(Boolean), mirror: false })),
+            ...archivedPartyMirrors.map(({ party, members }) => ({ party, members, mirror: true }))
+        ];
+        container.className = 'pt-grid';
+        container.innerHTML = archivedPartyCards.length
+            ? archivedPartyCards.map(({ party, members, mirror }) => {
+                return `<article class="party-card-modern pt-card">
+                    <header class="party-card-header pt-head">
+                      <span class="pt-badge-icon" aria-hidden="true">${escapeHtml(partyInitials(party.name))}</span>
+                      <div class="pt-title"><h3>${escapeHtml(party.name)}</h3><span class="pt-sub">${members.length} чел. · ${mirror ? 'архивные участники активной пати' : 'пати в архиве'}</span></div>
+                    </header>
+                    <div class="pt-body-inner"><ul class="pt-members">${members.length
+                      ? members.map(char => {
+                          const archived = state.archivedCharacters.some(item => item.id === char.id);
+                          return `<li class="pt-member${archived ? ' is-archived' : ''}">
+                            <span class="pt-member-name"><strong>${escapeHtml(char.nick)}</strong><small class="muted">${escapeHtml(char.class || '')}${archived ? ' · архив' : ''}</small></span>
+                            ${mirror ? `<button class="pt-btn restore-archived-member-btn" type="button" data-char-id="${escapeHtml(char.id)}">↩ Восстановить</button>` : ''}
+                          </li>`;
+                        }).join('')
+                      : '<li class="muted">Состав пуст</li>'}</ul></div>
+                    ${mirror ? '' : `<div class="pt-actions"><button class="pt-btn restore-party-action-btn" type="button" data-party-id="${escapeHtml(party.id)}">↩ Восстановить пати</button></div>`}
+                  </article>`;
+            }).join('')
+            : '<div class="empty-state">Архив пати пуст.</div>';
+        bindPartyArchiveEvents(container);
+        return;
+    }
 
     const partyMap = getGroupedParties();
 
@@ -173,7 +235,9 @@ export function renderPartiesGrid() {
 
     if (sortedKeys.length === 0) {
         container.className = 'pt-grid';
-        container.innerHTML = '<div class="empty-state">Пока нет пати. Нажмите «+» справа внизу, чтобы создать первую.</div>';
+        container.innerHTML = state.archivedParties.length
+            ? '<div class="empty-state">Активных пати нет. Переключитесь на «Архив», чтобы посмотреть или восстановить архивные пати.</div>'
+            : '<div class="empty-state">Пока нет пати. Нажмите «+» справа внизу, чтобы создать первую.</div>';
         return;
     }
 
@@ -188,6 +252,42 @@ export function renderPartiesGrid() {
     const signal = resetDndBindings(container);
     initDragAndDrop(container, signal);
     initMemberDrag(container, signal);
+}
+
+export function setPartyArchiveView(archived) {
+    showingPartyArchive = archived;
+    renderPartiesGrid();
+}
+
+function bindPartyArchiveEvents(container) {
+    container.onclick = async event => {
+        const memberButton = event.target.closest('.restore-archived-member-btn');
+        if (memberButton) {
+            memberButton.disabled = true;
+            try {
+                const { restoreCharacter } = await import('../archive/archive.js');
+                await restoreCharacter(memberButton.dataset.charId);
+            } catch (error) {
+                console.error('[ARCHIVE] Archived party member restore failed:', error);
+                toast(`Не удалось восстановить персонажа: ${error?.message || error}`, 'error');
+            } finally {
+                memberButton.disabled = false;
+            }
+            return;
+        }
+        const button = event.target.closest('.restore-party-action-btn');
+        if (!button) return;
+        button.disabled = true;
+        try {
+            const { restoreParty } = await import('../archive/archive.js');
+            await restoreParty(button.dataset.partyId);
+        } catch (error) {
+            console.error('[ARCHIVE] Party restore failed:', error);
+            toast(`Не удалось восстановить пати: ${error?.message || error}`, 'error');
+        } finally {
+            button.disabled = false;
+        }
+    };
 }
 
 /**
@@ -284,6 +384,22 @@ function initMemberDrag(container, signal) {
 function bindPartyEvents(container) {
     container.onclick = async (e) => {
         const target = e.target;
+
+        const archiveBtn = target.closest('.archive-party-action-btn');
+        if (archiveBtn) {
+            e.stopPropagation();
+            archiveBtn.disabled = true;
+            try {
+                const { archiveParty } = await import('../archive/archive.js');
+                await archiveParty(archiveBtn.dataset.partyId);
+            } catch (error) {
+                console.error('[ARCHIVE] Party archive failed:', error);
+                toast(`Не удалось переместить пати в архив: ${error?.message || error}`, 'error');
+            } finally {
+                archiveBtn.disabled = false;
+            }
+            return;
+        }
 
         // 1. Toggle Expand/Collapse
         const header = target.closest('.party-card-header');

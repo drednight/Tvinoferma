@@ -314,12 +314,13 @@ export function isCheckInProgress(charId) {
  * ОТКРЫТЬ ПОМОЩНИКА ВХОДА (Браузер + панель контактов внутри окна)
  */
 export async function openSyncHelper(characterId) {
-    const char = state.characters.find(c => c.id === characterId);
+    const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === characterId);
     if (!char) {
         toast('Персонаж не найден', 'error');
         return;
     }
-    if (isCheckInProgress(char.id)) {
+    const archived = state.archivedCharacters.some(c => c.id === char.id);
+    if (!archived && isCheckInProgress(char.id)) {
         toast(`Идёт проверка входа для ${char.nick} — дождитесь окончания, потом откройте сайт`, 'info');
         return;
     }
@@ -335,12 +336,12 @@ export async function openSyncHelper(characterId) {
     } catch (err) {
         console.error(err);
         toast('Не удалось открыть окно браузера', 'error');
-        showCredentialsModal(char);   // запасной вариант: контакты в модалке
+        showCredentialsModal(char, { archived });   // запасной вариант: контакты в модалке
     }
 }
 
 // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ МОДАЛКИ КОНТАКТОВ ---
-function showCredentialsModal(char) {
+function showCredentialsModal(char, { archived = false } = {}) {
     const contacts = char.contacts || {};
     const email = contacts.email || '';
     const password = contacts.password || '';
@@ -376,17 +377,17 @@ function showCredentialsModal(char) {
                 ${copyField('Телефон', phone, 'phone')}
             </div>
 
-            <!-- ПОДСКАЗКА ПРО БЕЛЫЙ ЭКРАН -->
-            <div style="background:rgba(255, 193, 7, 0.1); border:1px solid rgba(255, 193, 7, 0.3); padding:10px; border-radius:6px; font-size:0.85rem; color:#ffc107; display:flex; align-items:flex-start; gap:8px;">
-                <span style="font-size:1.2rem;">ℹ️</span>
-                <div>
-                    <strong>Важно при авторизации:</strong><br/>
-                    Если после входа через VK Play осталась белая страница <code>oauth2.htm</code>:<br/>
-                    1. Подождите несколько секунд.<br/>
-                    2. Нажмите кнопку «Проверить авторизацию».<br/>
-                    3. Закройте окно только после статуса 🟢 Онлайн.
-                </div>
-            </div>
+            ${archived ? '' : `<!-- ПОДСКАЗКА ПРО БЕЛЫЙ ЭКРАН -->
+              <div style="background:rgba(255, 193, 7, 0.1); border:1px solid rgba(255, 193, 7, 0.3); padding:10px; border-radius:6px; font-size:0.85rem; color:#ffc107; display:flex; align-items:flex-start; gap:8px;">
+                  <span style="font-size:1.2rem;">ℹ️</span>
+                  <div>
+                      <strong>Важно при авторизации:</strong><br/>
+                      Если после входа через VK Play осталась белая страница <code>oauth2.htm</code>:<br/>
+                      1. Подождите несколько секунд.<br/>
+                      2. Нажмите кнопку «Проверить авторизацию».<br/>
+                      3. Закройте окно только после статуса 🟢 Онлайн.
+                  </div>
+              </div>`}
             
             <!-- УПРАВЛЕНИЕ ОКНОМ БРАУЗЕРА -->
             <div style="display:flex; gap:10px;">
@@ -425,7 +426,7 @@ function showCredentialsModal(char) {
         };
 
         document.getElementById('btn-reopen-window-modal')?.addEventListener('click', async () => {
-            if (isCheckInProgress(char.id)) { toast('Идёт проверка входа — дождитесь окончания', 'info'); return; }
+            if (!archived && isCheckInProgress(char.id)) { toast('Идёт проверка входа — дождитесь окончания', 'info'); return; }
             await invoke('open_sync_window', { 
                 charId: char.id, 
                 url: 'https://pwonline.ru/',

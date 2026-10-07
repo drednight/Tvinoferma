@@ -52,6 +52,18 @@ describe('secrets', () => {
     expect(Object.keys(v.store)).toEqual(['a']);
   });
 
+  it('архивные персонажи сохраняют контакты в хранилище ОС', async () => {
+    const v = fakeVault();
+    __setInvoke(v.invoke);
+    const archived = [{ id: 'archived', contacts: contacts('archive@x.ru', 'secret') }];
+    await hydrateSecrets(archived);
+    const disk = await prepareForDisk({ characters: [], archivedCharacters: archived });
+    expect(disk.archivedCharacters[0].contacts).toBeNull();
+    expect(JSON.parse(v.store.archived)).toMatchObject({ email: 'archive@x.ru', password: 'secret' });
+    await prepareForDisk({ characters: [], archivedCharacters: [] });
+    expect(v.store.archived).toBeUndefined();
+  });
+
   it('если хранилище недоступно — снимок не меняется (контакты не теряются)', async () => {
     const v = fakeVault({}, { available: false });
     __setInvoke(v.invoke);

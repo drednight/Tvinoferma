@@ -26,6 +26,7 @@ import {
 
 // Персонажи, видимые после фильтров (для «выбрать все»)
 let visibleIds = [];
+let showingCharacterArchive = false;
 
 /**
  * Хелпер для маскирования текста
@@ -45,8 +46,29 @@ export function renderCharacters() {
   initSyncButtons(); 
   
   // 2. Затем рендерим сетку с учетом фильтров
-  renderFilteredGrid(); 
+  document.getElementById('active-character-count')?.replaceChildren(String(state.characters.length));
+  document.getElementById('archived-character-count')?.replaceChildren(String(state.archivedCharacters.length));
+  document.getElementById('show-active-characters')?.classList.toggle('secondary', !showingCharacterArchive);
+  document.getElementById('show-active-characters')?.classList.toggle('ghost', showingCharacterArchive);
+  document.getElementById('show-archived-characters')?.classList.toggle('secondary', showingCharacterArchive);
+  document.getElementById('show-archived-characters')?.classList.toggle('ghost', !showingCharacterArchive);
+  if (showingCharacterArchive) renderArchivedCharacters();
+  else renderFilteredGrid();
   maybeShowWelcome();
+}
+
+function renderArchivedCharacters() {
+  const grid = document.getElementById('character-grid');
+  if (!grid) return;
+  visibleIds = [];
+  const bulk = document.getElementById('bulk-bar');
+  if (bulk) bulk.hidden = true;
+  if (!state.archivedCharacters.length) {
+    grid.innerHTML = '<div class="empty-state">Архив персонажей пуст.</div>';
+    return;
+  }
+  grid.innerHTML = state.archivedCharacters.map(char => generateCardHTML(char, { archived: true })).join('');
+  bindCharacterEvents(grid, { archived: true });
 }
 
 /**
@@ -171,6 +193,10 @@ function renderFilteredGrid() {
   renderBulkBar();
 
   if (filteredChars.length === 0) {
+    if (!state.characters.length && state.archivedCharacters.length) {
+      gridEl.innerHTML = `<div class="empty-state">Активных персонажей нет. В архиве: ${state.archivedCharacters.length}. Переключитесь на «Архив», чтобы восстановить персонажа.</div>`;
+      return;
+    }
     // Подсказка первых шагов — только когда персонажей нет вовсе. Если данные есть, но фильтр
     // ничего не нашёл, показываем именно это: иначе пользователь решит, что данные пропали.
     const onb = onboardingHtml(state);
@@ -199,7 +225,7 @@ function renderFilteredGrid() {
 /**
  * Генерация HTML одной карточки персонажа
  */
-function generateCardHTML(char) {
+function generateCardHTML(char, { archived = false } = {}) {
     const iconSrc = getClassIconSrc(char.class);
     const avatarContent = iconSrc 
       ? `<img src="${iconSrc}" alt="${escapeHtml(char.class)}" style="width:100%; height:100%; object-fit:contain;" />`
@@ -228,29 +254,40 @@ function generateCardHTML(char) {
     }).join('');
 
     const coinsDisplay = formatCoins(char.ancientCoins || 0) + (needsCoinRecheck(char) ? ' <span title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить»." style="color:#f7768e; cursor:help;">⚠</span>' : '');
+    const archivedPartyLinks = archived
+      ? state.archivedParties.flatMap(party => (party.memberLinks || [])
+          .filter(link => link.characterId === char.id)
+          .map(link => ({ party, link })))
+      : [];
     const mainName = mainPartyName(char, state.parties);
     const extraNames = additionalPartiesOf(char, state.parties).map(p => p.name);
-    const partyLabel = mainName
+    const activePartyLabel = mainName
       ? `${escapeHtml(mainName)}${extraNames.length ? ` <span title="Дополнительные: ${escapeHtml(extraNames.join(', '))}">+${extraNames.length}</span>` : ''}`
       : NO_PARTY_LABEL;
+    const archivedPartyLabel = archivedPartyLinks
+      .map(({ party, link }) => `${escapeHtml(party.name)}${link.isMain ? ' · основная' : ''} · архив`)
+      .join(', ');
+    const partyLabel = [activePartyLabel !== NO_PARTY_LABEL ? activePartyLabel : '', archivedPartyLabel]
+      .filter(Boolean).join(', ') || NO_PARTY_LABEL;
 
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
     const authView = getAuthView(char);
     const statusColor = authView.color;
     const statusText = authView.text;
     const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
+    const checkingAuth = !archived && state.ui?.authCheck?.[char.id] === 'checking';
 
     const tagsHtml = (char.tags || []).length
       ? `<div class="tag-list">${char.tags.map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
-    const selecting = state.ui.selectionMode;
+    const selecting = !archived && state.ui.selectionMode;
     const selected = selecting && state.ui.selection.has(char.id);
     const selectBox = selecting
       ? `<span class="select-box" title="Выбрать"><input type="checkbox" class="char-select" tabindex="-1" ${selected ? 'checked' : ''}/></span>`
       : '';
 
     return `
-      <article class="card character-card clickable-card${selected ? ' is-selected' : ''}" data-char-id="${char.id}" style="--state-c:${statusColor}">
+      <article class="card character-card clickable-card${selected ? ' is-selected' : ''}${archived ? ' archived-character-card' : ''}" data-char-id="${escapeHtml(char.id)}" style="--state-c:${statusColor}">
 
         <header class="card-header">
           <div class="card-head-main">
@@ -267,9 +304,11 @@ function generateCardHTML(char) {
 
           <div class="card-head-side">
              <!-- ИНДИКАТОР СТАТУСА -->
-             <div class="state ${authView.cls}" title="${statusTitle}">
-                <span class="state-dot"></span><span>${statusText}</span>
-             </div>
+             ${archived
+               ? '<span class="badge">В архиве</span>'
+               : `<div class="state ${authView.cls}" title="${statusTitle}">
+                    <span class="state-dot"></span><span>${statusText}</span>
+                  </div>`}
 
              <span class="badge party card-party">${partyLabel}</span>
 
@@ -329,10 +368,15 @@ function generateCardHTML(char) {
                       class="card-act"
                       type="button"
                       aria-label="Открыть сайт"
-                      style="${state.ui?.authCheck?.[char.id] === 'checking' ? 'cursor:not-allowed;' : ''}"
-                      title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
-                      ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''}
+                      style="${checkingAuth ? 'cursor:not-allowed;' : ''}"
+                      title="${checkingAuth ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
+                      ${checkingAuth ? 'disabled' : ''}
                       onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
+              ${archived
+                ? `<button class="card-act restore-character-action" type="button" aria-label="Восстановить"
+                          title="Вернуть персонажа в активный список">↩</button>`
+                : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
+                          title="Переместить персонажа в архив">📦</button>`}
            </div>
         </footer>
       </article>
@@ -544,11 +588,44 @@ export async function openWelcome() {
   // Esc и «Позже» тоже закрывают окно, ничего дополнительно записывать не нужно
 }
 
-function bindCharacterEvents(container) {  container.onclick = async (e) => {
+function bindCharacterEvents(container, { archived = false } = {}) {  container.onclick = async (e) => {
     const target = e.target;
 
+    const restoreBtn = target.closest('.restore-character-action');
+    if (restoreBtn) {
+      e.stopPropagation();
+      restoreBtn.disabled = true;
+      try {
+        const { restoreCharacter } = await import('../archive/archive.js');
+        await restoreCharacter(restoreBtn.closest('[data-char-id]')?.dataset.charId);
+      } catch (error) {
+        console.error('[ARCHIVE] Character restore failed:', error);
+        toast(`Не удалось восстановить персонажа: ${error?.message || error}`, 'error');
+      } finally {
+        restoreBtn.disabled = false;
+      }
+      return;
+    }
+
+    const archiveBtn = target.closest('.archive-character-action');
+    if (archiveBtn) {
+      e.stopPropagation();
+      const id = archiveBtn.closest('[data-char-id]')?.dataset.charId;
+      archiveBtn.disabled = true;
+      try {
+        const { archiveCharacters } = await import('../archive/archive.js');
+        await archiveCharacters([id]);
+      } catch (error) {
+        console.error('[ARCHIVE] Character archive failed:', error);
+        toast(`Не удалось переместить персонажа в архив: ${error?.message || error}`, 'error');
+      } finally {
+        archiveBtn.disabled = false;
+      }
+      return;
+    }
+
     // 0. Режим выбора: клик по карточке переключает выбор
-    if (state.ui.selectionMode) {
+    if (!archived && state.ui.selectionMode) {
       const card = target.closest('.clickable-card');
       if (card && !target.closest('button') && !target.closest('.contact-value')) {
         toggleSelected(card.dataset.charId);
@@ -606,7 +683,7 @@ function bindCharacterEvents(container) {  container.onclick = async (e) => {
     const card = target.closest('.clickable-card');
     if (card && !target.closest('button') && !target.closest('.contact-value')) {
        const id = card.dataset.charId;
-       const char = state.characters.find(c => c.id === id);
+       const char = (archived ? state.archivedCharacters : state.characters).find(c => c.id === id);
        if (char) {
          openCharacterProfile(char); // Вызываем функцию из модуля
        }
@@ -616,7 +693,7 @@ function bindCharacterEvents(container) {  container.onclick = async (e) => {
 
 // Глобальная функция для вызова из inline onclick кнопки "Открыть сайт"
 window.handleOpenSite = (charId) => {
-    const char = state.characters.find(c => c.id === charId);
+    const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
     if (char) {
         openSyncHelper(charId);
     } else {
@@ -626,13 +703,24 @@ window.handleOpenSite = (charId) => {
 
 // Кнопка «▶ Играть» на карточке
 window.handleLaunchChar = async (charId) => {
-    const char = state.characters.find(c => c.id === charId);
+    const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
     if (!char) { toast('Персонаж не найден', 'error'); return; }
     const { launchOne } = await import('../launcher/partyLaunch.js');
     launchOne(char);
 };
 
 export function bindCharacters() {
+  for (const [id, archived] of [['show-active-characters', false], ['show-archived-characters', true]]) {
+    const button = document.getElementById(id);
+    if (button && !button.dataset.bound) {
+      button.dataset.bound = 'true';
+      button.addEventListener('click', () => {
+        showingCharacterArchive = archived;
+        if (state.ui.selectionMode) setSelectionMode(false);
+        renderCharacters();
+      });
+    }
+  }
   const addBtn = document.getElementById('add-character-btn');
   if (addBtn) {
     addBtn.addEventListener('click', () => {
@@ -713,6 +801,7 @@ function renderBulkBar() {
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>
     <button class="btn secondary small" data-bulk="party" ${dis}>👥 В пати</button>
+    <button class="btn secondary small" data-bulk="archive" ${dis}>📦 В архив</button>
     <button class="btn danger small" data-bulk="delete" ${dis}>🗑 Удалить</button>
     <button class="btn ghost small" data-bulk="close" title="Esc">✕ Готово</button>
   `;
@@ -875,6 +964,17 @@ async function onBulkAction(e) {
         state.characters = state.characters.filter(c => !ids.has(c.id));
         state.ui.selection.clear();
         saveAndRender(`Удалено: ${ids.size}`);
+      }
+      break;
+    }
+    case 'archive': {
+      try {
+        const { archiveCharacters } = await import('../archive/archive.js');
+        await archiveCharacters(chars.map(char => char.id));
+        setSelectionMode(false);
+      } catch (error) {
+        console.error('[ARCHIVE] Bulk character archive failed:', error);
+        toast(`Не удалось переместить персонажей в архив: ${error?.message || error}`, 'error');
       }
       break;
     }

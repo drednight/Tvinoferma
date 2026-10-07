@@ -90,10 +90,11 @@ export async function hydrateSecrets(characters, { tauri = true, aliases = {} } 
  */
 export async function prepareForDisk(snapshot) {
   if (!vault.ready || !useVault() || !Array.isArray(snapshot?.characters)) return snapshot;
+  const characters = [...snapshot.characters, ...(snapshot.archivedCharacters || [])];
 
   const toSet = {};
   const ids = new Set();
-  snapshot.characters.forEach(c => {
+  characters.forEach(c => {
     ids.add(c.id);
     const json = contactsJson(c.contacts);
     if ((vault.known.get(c.id) || '') !== json) toSet[c.id] = json;
@@ -108,6 +109,7 @@ export async function prepareForDisk(snapshot) {
   return {
     ...snapshot,
     secretsInVault: true,
-    characters: snapshot.characters.map(c => ({ ...c, contacts: null }))
+    characters: snapshot.characters.map(c => ({ ...c, contacts: null })),
+    archivedCharacters: (snapshot.archivedCharacters || []).map(c => ({ ...c, contacts: null }))
   };
 }

@@ -8,7 +8,7 @@
 
 import { planCharacterIds, remapIdsDeep } from './ids.js';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -97,6 +97,13 @@ export const MIGRATIONS = {
       ...c,
       launch: { gcPath: String(c?.launch?.gcPath || '').trim() }
     }));
+    return s;
+  },
+
+  // v7 → v8: отдельные списки архивных персонажей и партий
+  8: (s) => {
+    s.archivedCharacters = Array.isArray(s.archivedCharacters) ? s.archivedCharacters : [];
+    s.archivedParties = Array.isArray(s.archivedParties) ? s.archivedParties : [];
     return s;
   }
 };

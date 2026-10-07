@@ -336,9 +336,11 @@ export function openCharacterForm(char = null) {
 
         let idNote = '';
         if (isEdit) {
-          const idx = state.characters.findIndex(c => c.id === currentChar.id);
+          const archived = state.archivedCharacters.some(c => c.id === currentChar.id);
+          const targetCharacters = archived ? state.archivedCharacters : state.characters;
+          const idx = targetCharacters.findIndex(c => c.id === currentChar.id);
           if (idx !== -1) {
-             state.characters[idx] = newCharData;
+             targetCharacters[idx] = newCharData;
           } else {
              throw new Error("Персонаж не найден для обновления");
           }

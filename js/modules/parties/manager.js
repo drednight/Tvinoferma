@@ -34,7 +34,7 @@ export function openCreatePartyModal() {
                 return false;
             }
             
-            if (partyByName(state.parties, name)) {
+            if (partyByName([...state.parties, ...state.archivedParties], name)) {
                 setError('Такая группа уже существует.');
                 return false;
             }
@@ -166,7 +166,9 @@ export function openEditPartyModal(currentName) {
                 if (ok) {
                     state.parties = state.parties.filter(p => p.id !== party.id);
                     const now = new Date().toISOString();
-                    state.characters.forEach(c => { if (setMembership(c, party.id, false)) c.updatedAt = now; });
+                    [...state.characters, ...state.archivedCharacters].forEach(c => {
+                        if (setMembership(c, party.id, false)) c.updatedAt = now;
+                    });
                     persist().then(() => {
                         closeModal();
                         renderPartiesGrid();

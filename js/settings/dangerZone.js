@@ -14,7 +14,7 @@ export const DANGER_ACTIONS = {
     what: 'пати',
     button: '🗑 Удалить пати',
     description: 'Удаляются все пати. Персонажи остаются, но у всех будет статус «Без пати» (и запуск игры «по пати» станет недоступен). Марафоны и монеты не меняются.',
-    count: (/** @type {any} */ s) => (s.parties || []).length
+    count: (/** @type {any} */ s) => (s.parties || []).length + (s.archivedParties || []).length
   },
   marathons: {
     title: 'Удалить все марафоны',
@@ -27,8 +27,8 @@ export const DANGER_ACTIONS = {
     title: 'Удалить всех персонажей',
     what: 'персонажей',
     button: '🗑 Удалить всех персонажей',
-    description: 'Удаляются ВСЕ персонажи: данные, пароли в хранилище ОС, запомненные входы в GameCenter, история монет. Пати остаются пустыми, у марафонов исчезают участники. Самое разрушительное действие.',
-    count: (/** @type {any} */ s) => (s.characters || []).length
+    description: 'Удаляются ВСЕ активные и архивные персонажи: данные, пароли в хранилище ОС, запомненные входы в GameCenter, история монет. Пати остаются пустыми, у марафонов исчезают участники. Самое разрушительное действие.',
+    count: (/** @type {any} */ s) => (s.characters || []).length + (s.archivedCharacters || []).length
   }
 };
 
@@ -37,10 +37,11 @@ export const DANGER_ACTIONS = {
  * @returns {number} сколько пати удалено
  */
 export function clearParties(state) {
-  const n = (state.parties || []).length;
+  const n = (state.parties || []).length + (state.archivedParties || []).length;
   const now = new Date().toISOString();
   state.parties = [];
-  for (const c of state.characters || []) {
+  state.archivedParties = [];
+  for (const c of [...(state.characters || []), ...(state.archivedCharacters || [])]) {
     if ((c.partyIds || []).length || c.mainPartyId) {
       c.partyIds = [];
       c.mainPartyId = null;
@@ -66,9 +67,12 @@ export function clearMarathons(state) {
  * @returns {{ count: number, accountKeys: string[] }} сколько удалено и какие запомненные входы GameCenter нужно стереть из хранилища ОС
  */
 export function clearCharacters(state, accountKeysOf = (/** @type {any} */ _c) => /** @type {string[]} */ ([])) {
-  const count = (state.characters || []).length;
-  const accountKeys = (state.characters || []).flatMap(accountKeysOf);
+  const characters = [...(state.characters || []), ...(state.archivedCharacters || [])];
+  const count = characters.length;
+  const accountKeys = characters.flatMap(accountKeysOf);
   state.characters = [];
+  state.archivedCharacters = [];
+  for (const party of state.archivedParties || []) party.memberLinks = [];
   if (state.ui) state.ui.expandedCharacterId = null;
   return { count, accountKeys };
 }

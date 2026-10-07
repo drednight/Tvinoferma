@@ -2,10 +2,15 @@
 // потому что раньше он вешался до создания разметки и не находил кнопку.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ openStatsImport: vi.fn(), apply: null }));
+const mocks = vi.hoisted(() => ({ openStatsImport: vi.fn(), apply: null, submit: null }));
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => true, saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ showModal: vi.fn(), toast: vi.fn(), confirmModal: vi.fn(async () => true) }));
+vi.mock('../js/core/ui.js', () => ({
+  showModal: vi.fn(options => { mocks.submit = options.onSubmit; }),
+  toast: vi.fn(), confirmModal: vi.fn(async () => true)
+}));
+vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn(), allTags: () => [] }));
+vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 vi.mock('../js/modules/characters/statsImport.js', () => ({
   openStatsImport: mocks.openStatsImport,
   statsOcrAvailable: vi.fn(async () => true)
@@ -29,6 +34,7 @@ beforeEach(async () => {
   document.body.innerHTML = '<div id="modal-root"></div>';
   ({ state } = await import('../js/core/state.js'));
   state.characters = [];
+  state.archivedCharacters = [];
   state.parties = [];
   ({ openCharacterForm } = await import('../js/modules/characters/formEditor.js'));
   // Открытие окна разбора запоминает колбэк переноса, чтобы его можно было вызвать вручную
@@ -120,6 +126,33 @@ describe('характеристики одним сворачиваемым б�
       .map(el => el.querySelector('h4')?.textContent || el.querySelector('summary')?.textContent || '')
       .filter(Boolean);
     expect(outside.some(t => /характеристик|Бой и Защита|Показатели боя|PvE/i.test(t))).toBe(false);
+  });
+
+  describe('редактирование архивного персонажа', () => {
+    it('сохраняет изменения в архиве, не возвращая персонажа в активный список', async () => {
+      const archived = {
+        id: 'archived', nick: 'Архивный', class: 'Маг', level: 10, partyIds: [], mainPartyId: null,
+        stats: {}, dungeonPasses: {}, contacts: {}, tags: [], ancientCoins: 0
+      };
+      state.archivedCharacters = [archived];
+      const ui = await import('../js/core/ui.js');
+      ui.showModal.mockImplementation(options => { mocks.submit = options.onSubmit; });
+      openCharacterForm(archived);
+      const values = new Map([
+        ['nick', 'Архивный изменённый'], ['class', 'Маг'], ['level', '20'], ['mainParty', ''],
+        ['sky-name', ''], ['sky-level', ''], ['tags', 'сохранённый'], ['contact-email', ''],
+        ['contact-password', ''], ['contact-recovery', ''], ['contact-phone', ''], ['coins', '0'],
+        ['pass-weapon', '4'], ['pass-armor', '2'], ['pass-relic', '1']
+      ]);
+      const formData = { get: key => values.get(key) ?? null, getAll: () => [] };
+
+      expect(await mocks.submit(formData, { setError: vi.fn() })).toBe(true);
+      expect(state.archivedCharacters[0]).toMatchObject({
+        id: 'archived', nick: 'Архивный изменённый', level: 20, tags: ['сохранённый'],
+        dungeonPasses: { weapon: 4, armor: 2, relic: 1 }
+      });
+      expect(state.characters).toEqual([]);
+    });
   });
 
   it('блок раскрыт по умолчанию: характеристики нужны чаще, чем скрываются', async () => {

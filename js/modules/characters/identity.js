@@ -9,7 +9,7 @@ import { isTauri } from '../../core/storage.js';
 
 /** id для нового персонажа. */
 export function newCharacterId(nick) {
-  return characterIdFor(nick, state.characters.map(c => c.id));
+  return characterIdFor(nick, [...state.characters, ...state.archivedCharacters].map(c => c.id));
 }
 
 /**
@@ -18,7 +18,7 @@ export function newCharacterId(nick) {
  */
 export async function syncIdWithNick(char) {
   const prevId = char.id;
-  const nextId = characterIdFor(char.nick, state.characters.map(c => c.id), prevId);
+  const nextId = characterIdFor(char.nick, [...state.characters, ...state.archivedCharacters].map(c => c.id), prevId);
   if (!prevId || nextId === prevId) return { id: prevId, changed: false };
 
   if (isTauri()) {
@@ -43,6 +43,11 @@ export function renameCharacterReferences(prevId, nextId) {
   const remap = new Map([[prevId, nextId]]);
   state.marathons = remapIdsDeep(state.marathons, remap);
   state.marathonTemplates = remapIdsDeep(state.marathonTemplates || [], remap);
+  state.archivedParties.forEach(party => {
+    party.memberLinks = (party.memberLinks || []).map(link =>
+      link.characterId === prevId ? { ...link, characterId: nextId } : link
+    );
+  });
   const ui = state.ui;
   ['authCheck', 'revealedContacts'].forEach(key => {
     if (ui[key] && prevId in ui[key]) { ui[key][nextId] = ui[key][prevId]; delete ui[key][prevId]; }

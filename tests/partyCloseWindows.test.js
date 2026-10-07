@@ -28,7 +28,7 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm, showModal: vi.fn(), closeModal: vi.fn() }));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 
-let state, renderParties;
+let state, renderParties, setPartyArchiveView;
 
 const cards = () => [...document.querySelectorAll('.pt-card')];
 const cardOf = (name) => cards().find(c => c.dataset.partyName === name);
@@ -39,7 +39,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   document.body.innerHTML = '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div><div id="toast-root"></div>';
   ({ state } = await import('../js/core/state.js'));
-  ({ renderPartiesGrid: renderParties } = await import('../js/modules/parties/renderer.js'));
+  ({ renderPartiesGrid: renderParties, setPartyArchiveView } = await import('../js/modules/parties/renderer.js'));
   state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
   state.characters = [
     { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC' } },
@@ -63,6 +63,24 @@ describe('кнопка закрытия окон в карточке пати', 
     expect(closeBtn('Основа')).not.toBeNull();
     expect(closeBtn('Фарм')).not.toBeNull();
     expect(closeBtn('Без пати')).not.toBeNull();
+  });
+
+  it('показывает архивных участников в копии пати в архиве, не включая их в активную пати', () => {
+    state.archivedCharacters = [
+      { id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC' } }
+    ];
+    renderParties();
+
+    const card = cardOf('Основа');
+    expect(card.querySelector('.pt-member.is-archived')).toBeNull();
+    expect(card.querySelector('.launch-party-action-btn small').textContent).toBe('1/1');
+
+    setPartyArchiveView(true);
+    const mirror = cards()[0];
+    expect(mirror.textContent).toContain('Архивный');
+    expect(mirror.textContent).toContain('архивные участники активной пати');
+    expect(mirror.textContent).not.toContain('Аа');
+    expect(mirror.querySelector('.restore-archived-member-btn')).not.toBeNull();
   });
 
   it('клик вызывает закрытие окон именно этой пати', async () => {

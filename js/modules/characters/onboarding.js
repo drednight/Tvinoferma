@@ -16,7 +16,7 @@ const SEEN_KEY = 'onboardingSeen';
  * Показывать ли приветствие: только на пустых данных и только один раз.
  */
 export function shouldShowOnboarding(appState = state) {
-  if ((appState.characters || []).length > 0) return false;
+  if ((appState.characters || []).length > 0 || (appState.archivedCharacters || []).length > 0) return false;
   return appState.settings?.ui?.[SEEN_KEY] !== true;
 }
 
@@ -79,7 +79,7 @@ export function onboardingModalHtml() {
  * @param {any} [appState]
  */
 export function onboardingHtml(appState = state) {
-  if ((appState.characters || []).length > 0) return '';
+  if ((appState.characters || []).length > 0 || (appState.archivedCharacters || []).length > 0) return '';
   return `
     <div class="onb">
       <div class="onb-head">

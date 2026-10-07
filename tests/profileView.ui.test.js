@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Раскрытая карточка персонажа: меню «Проверить», доп. пати ниже основной, пометка баланса (issues #1, #4, #21)
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), balance: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), balance: vi.fn(), editForm: vi.fn(), site: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/modules/characters/formEditor.js', () => ({ openCharacterForm: vi.fn() }));
+vi.mock('../js/modules/characters/formEditor.js', () => ({ openCharacterForm: mocks.editForm }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({
-  openSyncHelper: vi.fn(), refreshAuthFor: mocks.auth, refreshBalanceFor: mocks.balance
+  openSyncHelper: mocks.site, refreshAuthFor: mocks.auth, refreshBalanceFor: mocks.balance
 }));
 
 const $ = (s) => document.querySelector(s);
@@ -24,6 +24,10 @@ beforeEach(async () => {
   ({ state } = await import('../js/core/state.js'));
   ({ applyCoinBalance } = await import('../js/core/coins.js'));
   state.parties = [{ id: 'p1', name: 'Основа' }, { id: 'p2', name: 'Фарм' }, { id: 'p3', name: 'Арена' }];
+  state.archivedCharacters = [];
+  state.archivedParties = [];
+  mocks.editForm.mockClear();
+  mocks.site.mockClear();
   ({ openCharacterProfile } = await import('../js/modules/characters/profileView.js'));
 });
 
@@ -105,6 +109,25 @@ describe('раскрытая карточка', () => {
   it('без дополнительных пати строки нет', async () => {
     openCharacterProfile(mkChar({ partyIds: ['p1'] })); await wait();
     expect(document.querySelector('[data-extra-party]')).toBeNull();
+  });
+
+  it('архивный профиль позволяет редактирование и браузер, но не проверки', async () => {
+    const archived = mkChar({ partyIds: [], mainPartyId: null, dungeonPasses: { weapon: 3, armor: 2, relic: 1 } });
+    state.archivedCharacters = [archived];
+    openCharacterProfile(archived); await wait();
+
+    expect($('#profile-auth-line').textContent).toContain('отключены');
+    expect($('#pf-check-menu')).toBeNull();
+    expect($('#btn-launch-from-profile')).not.toBeNull();
+    expect($('#btn-open-sync-helper-footer')).not.toBeNull();
+    expect($('#modal-root').textContent).toContain('3');
+    expect($('#modal-root').textContent).toContain('2');
+    expect($('#modal-root').textContent).toContain('1');
+
+    $('#btn-open-sync-helper-footer').click();
+    expect(mocks.site).toHaveBeenCalledWith(archived.id);
+    $('#btn-edit-from-profile').click();
+    expect(mocks.editForm).toHaveBeenCalledWith(archived);
   });
 
   it('проверка входа — в футере, меню «Проверить» рядом с «Открыть сайт» и «История»', async () => {

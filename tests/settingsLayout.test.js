@@ -126,6 +126,17 @@ describe('опасные действия: логика', () => {
     expect(state.ui.expandedCharacterId).toBeNull();
   });
 
+  it('опасные действия учитывают архивные записи и чистят связи архивной пати', () => {
+    state.archivedCharacters = [{ id: 'archived', launch: { gcAccounts: { g2: { nick: 'y' } } } }];
+    state.archivedParties = [{ id: 'ap', memberLinks: [{ characterId: 'archived' }] }];
+    expect(DANGER_ACTIONS.characters.count(state)).toBe(3);
+    expect(DANGER_ACTIONS.parties.count(state)).toBe(3);
+    const removed = clearCharacters(state, c => Object.keys(c.launch?.gcAccounts || {}).map(g => `${c.id}@${g}`));
+    expect(removed).toEqual({ count: 3, accountKeys: ['c1@g1', 'archived@g2'] });
+    expect(state.archivedCharacters).toEqual([]);
+    expect(state.archivedParties[0].memberLinks).toEqual([]);
+  });
+
   it('у каждого действия есть описание, название и счётчик', () => {
     for (const a of Object.values(DANGER_ACTIONS)) {
       expect(a.description.length).toBeGreaterThan(60);

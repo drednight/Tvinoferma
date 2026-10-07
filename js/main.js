@@ -88,7 +88,10 @@ async function boot() {
     }
 
     // 1c. Учётные данные из хранилища ОС (и перенос туда открытых паролей из старого state.json)
-    const secrets = await hydrateSecrets(state.characters, { tauri: isTauri(), aliases: idAliases });
+    const secrets = await hydrateSecrets(
+      [...state.characters, ...state.archivedCharacters],
+      { tauri: isTauri(), aliases: idAliases }
+    );
     if (secrets.migrated > 0) {
       needsSave = true;
       toast(`Учётные данные ${secrets.migrated} персонажей перенесены в защищённое хранилище ОС.`, 'success');

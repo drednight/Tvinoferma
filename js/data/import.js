@@ -123,6 +123,8 @@ export function openImportDialog(raw) {
       if (mode === 'replace') {
         await backupBeforeImport();
         state.characters = incoming.characters;
+        state.archivedCharacters = incoming.archivedCharacters;
+        state.archivedParties = incoming.archivedParties;
         // Пати берём из файла всегда, когда они есть: на них ссылаются partyIds персонажей
         if (hasKey(source, 'parties') || incoming.parties.length) state.parties = incoming.parties;
         if (hasKey(source, 'marathons')) state.marathons = incoming.marathons;
@@ -169,7 +171,7 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
 
   // 2. Применение
   let changed = 0, addedCount = 0;
-  const taken = () => state.characters.map(c => c.id);
+  const taken = () => [...state.characters, ...state.archivedCharacters].map(c => c.id);
   const addAsNew = (c) => {
     const copy = normalizeCharacter({ ...c, id: characterIdFor(c.nick, taken()) });
     state.characters.push(copy);

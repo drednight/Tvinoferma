@@ -34,6 +34,14 @@ function gcListText(char) {
 }
 
 export function openCharacterProfile(char) {
+  const isArchived = state.archivedCharacters.some(item => item.id === char.id);
+  const archivedPartyLinks = isArchived
+    ? state.archivedParties.flatMap(party => (party.memberLinks || [])
+        .filter(link => link.characterId === char.id)
+        .map(link => ({ party, link })))
+    : [];
+  const activeMainParty = mainPartyName(char, state.parties);
+  const archivedMainParty = archivedPartyLinks.find(({ link }) => link.isMain);
   const stats = char.stats || {};
   const passes = char.dungeonPasses || {};
   const sky = char.sky || {};
@@ -71,8 +79,8 @@ export function openCharacterProfile(char) {
             <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
             <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</p>
             <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
-            <p class="muted" style="margin:4px 0;" id="profile-auth-line">${authLineHtml(char)}</p>
-            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(mainPartyName(char, state.parties) || NO_PARTY_LABEL)}</p>
+            <p class="muted" style="margin:4px 0;" id="profile-auth-line">${isArchived ? '📦 Персонаж в архиве · автоматические проверки для него отключены' : authLineHtml(char)}</p>
+            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(activeMainParty || archivedMainParty?.party.name || NO_PARTY_LABEL)}${!activeMainParty && archivedMainParty ? ' · архив' : ''}</p>
             ${extraPartiesHtml(char)}
           </div>
           
@@ -218,15 +226,15 @@ export function openCharacterProfile(char) {
                <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
                Играть
             </button>
-            <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
+            <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
             <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет">🪙 История</button>
-            <div class="pf-menu" id="pf-check-menu">
+            ${isArchived ? '<span class="muted" title="Персонажи архива исключены из проверок">Проверки отключены</span>' : `<div class="pf-menu" id="pf-check-menu">
                <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
                <div class="pf-menu-list" hidden>
                   <button type="button" data-pf-check="auth">🔐 Вход на сайт</button>
                   <button type="button" data-pf-check="coins" data-pf-coins>${needsCoinRecheck(char) ? '🪙 Перепроверить баланс' : '🪙 Баланс Древних монет'}</button>
                </div>
-            </div>
+            </div>`}
          </div>
 
          <div class="pf-footer-end">
@@ -359,6 +367,10 @@ export function openCharacterProfile(char) {
            import('../../core/state.js').then(({ state }) => {
              import('../../core/storage.js').then(({ persist }) => {
                state.characters = state.characters.filter(c => c.id !== char.id);
+               state.archivedCharacters = state.archivedCharacters.filter(c => c.id !== char.id);
+               state.archivedParties.forEach(party => {
+                 party.memberLinks = (party.memberLinks || []).filter(link => link.characterId !== char.id);
+               });
                persist().then(() => {
                  closeModal();
                  import('./list.js').then(mod => mod.renderCharacters());
@@ -526,10 +538,16 @@ function coinBlockHtml(char) {
 /** Одна строка «↳ доп. пати: N» под основной; список, в каких ещё пати состоит персонаж, раскрывается по клику. */
 function extraPartiesHtml(char) {
   const extra = additionalPartiesOf(char, state.parties);
-  if (!extra.length) return '';
+  const archivedExtra = state.archivedCharacters.some(item => item.id === char.id)
+    ? state.archivedParties.flatMap(party => (party.memberLinks || [])
+        .filter(link => link.characterId === char.id && !link.isMain)
+        .map(() => `${party.name} · архив`))
+    : [];
+  const labels = [...extra.map(party => party.name), ...archivedExtra];
+  if (!labels.length) return '';
   return `
     <details class="pf-extra-parties" data-extra-party style="margin:2px 0 4px 22px; font-size:0.9em;">
-      <summary class="muted" style="cursor:pointer;">↳ доп. пати: ${extra.length}</summary>
-      <ul class="muted" style="margin:4px 0 0; padding-left:18px;">${extra.map(p => `<li>${escapeHtml(p.name)}</li>`).join('')}</ul>
+      <summary class="muted" style="cursor:pointer;">↳ доп. пати: ${labels.length}</summary>
+      <ul class="muted" style="margin:4px 0 0; padding-left:18px;">${labels.map(name => `<li>${escapeHtml(name)}</li>`).join('')}</ul>
     </details>`;
 }

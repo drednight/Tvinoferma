@@ -1,6 +1,6 @@
 // js/modules/parties/index.js
 
-import { renderPartiesGrid } from './renderer.js';
+import { renderPartiesGrid, setPartyArchiveView } from './renderer.js';
 import { openCreatePartyModal } from './manager.js';
 
 /**
@@ -13,6 +13,16 @@ export function bindParties() {
         addBtn.addEventListener('click', () => {
             openCreatePartyModal();
         });
+    }
+
+    for (const [id, archived] of [['show-active-parties', false], ['show-archived-parties', true]]) {
+        const button = document.getElementById(id);
+        if (button && !button.dataset.bound) {
+            button.dataset.bound = 'true';
+            button.addEventListener('click', () => {
+                setPartyArchiveView(archived);
+            });
+        }
     }
 
     // Первый рендер
