@@ -22,6 +22,7 @@
   <link rel="stylesheet" href="/css/modules/marathons.css" />
   <link rel="stylesheet" href="/css/modules/promo.css" />
   <link rel="stylesheet" href="/css/modules/shop.css" />
+  <link rel="stylesheet" href="/css/modules/runes.css" />
 
   <!-- Плашки состояния, док задач, круглая кнопка «+» -->
   <link rel="stylesheet" href="/css/core/fab.css" />
@@ -68,13 +69,17 @@
           <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
           <span class="tab-count" data-count-mirror="marathons" hidden></span>
         </button>
+        <button class="tab" data-tab="runes" data-subtitle="Подборки PvE и PvP рун от игроков." title="Ctrl+5">
+          <span class="next-nav-icon" aria-hidden="true">◇</span>
+          <span class="next-nav-copy"><strong>Руны</strong><small>Подборки игроков</small></span>
+        </button>
 
       </nav>
       <div class="next-sidebar-bottom">
         <div id="msk-clock" class="msk-clock" role="timer" aria-label="Московское время"></div>
         <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
         <div class="next-sidebar-divider" aria-hidden="true"></div>
-        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+5">
+        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+6">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
@@ -196,6 +201,11 @@
         <div id="marathon-list" class="list">
            <div class="empty-state">Марафонов пока нет.</div>
         </div>
+      </section>
+
+      <!-- РАЗДЕЛ: РУНЫ -->
+      <section class="page" data-section="runes">
+        <div id="runes-root"></div>
       </section>
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->

@@ -17,6 +17,7 @@ import { runTodayAction } from './modules/characters/list.js';
 import { renderToday } from './modules/dashboard/todayView.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
+import { bindRunes, renderRunes } from './modules/runes/index.js';
 import { initTaskLog } from './core/taskLog.js';
 import { initStickyHeader } from './core/stickyHeader.js';
 import { bindSettings, renderSettings } from './settings/settings.js';
@@ -138,6 +139,12 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind/render Marathons:', e);
       const marList = document.getElementById('marathon-list');
       if(marList) marList.innerHTML = '<div class="empty-state" style="color:red;">Ошибка загрузки марафонов.</div>';
+    }
+
+    try {
+      bindRunes();
+    } catch (e) {
+      console.error('[BOOT ERROR] Failed to bind Runes:', e);
     }
 
     try {
@@ -276,6 +283,9 @@ function renderActiveTab(sectionName) {
       case 'marathons':
         resetMarathonView();   // клик по вкладке всегда возвращает к списку марафонов
         renderMarathons();
+        break;
+      case 'runes':
+        renderRunes();
         break;
       case 'settings':
         renderSettings();
