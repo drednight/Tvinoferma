@@ -34,7 +34,7 @@ jobs:
         env:
           REF_NAME: ${{ github.ref_name }}
         run: node scripts/release-notes.mjs "$REF_NAME" --github-output
-      - uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v1
         id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
