@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">Учебный список марафонов</title>
+  <desc id="desc">Пример марафона с вымышленным названием, этапами и прогрессом.</desc>
+  <rect width="960" height="480" rx="24" fill="#0b0e15"/>
+  <text x="38" y="48" fill="#f2f4fb" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Марафоны · этапы и прогресс</text>
+  <rect x="32" y="72" width="896" height="374" rx="18" fill="#171c27" stroke="#354052"/>
+  <g font-family="Segoe UI, sans-serif">
+    <text x="58" y="112" fill="#edf0f8" font-size="20" font-weight="700">Марафон «Путь искателя»</text>
+    <text x="898" y="112" text-anchor="end" fill="#9ba8bd" font-size="13">Демонстрационный пример</text>
+    <rect x="58" y="136" width="844" height="72" rx="12" fill="#202737"/>
+    <text x="78" y="164" fill="#dfe4f0" font-size="15" font-weight="700">Общий прогресс</text>
+    <text x="882" y="164" text-anchor="end" fill="#aab5ff" font-size="14">3 из 5 этапов</text>
+    <rect x="78" y="177" width="804" height="12" rx="6" fill="#343d50"/>
+    <rect x="78" y="177" width="482" height="12" rx="6" fill="#8897ff"/>
+    <g font-size="14">
+      <rect x="58" y="228" width="844" height="48" rx="10" fill="#26332b"/>
+      <text x="78" y="258" fill="#9ece6a">✓</text><text x="108" y="258" fill="#e0eadc">Собрать группу</text><text x="882" y="258" text-anchor="end" fill="#9ba8bd">Завершено</text>
+      <rect x="58" y="286" width="844" height="48" rx="10" fill="#26332b"/>
+      <text x="78" y="316" fill="#9ece6a">✓</text><text x="108" y="316" fill="#e0eadc">Подготовить снаряжение</text><text x="882" y="316" text-anchor="end" fill="#9ba8bd">Завершено</text>
+      <rect x="58" y="344" width="844" height="48" rx="10" fill="#30384d" stroke="#7382d9"/>
+      <text x="78" y="374" fill="#aab5ff">●</text><text x="108" y="374" fill="#eef1f8">Пройти испытание</text><text x="882" y="374" text-anchor="end" fill="#c3cbff">В процессе</text>
+      <rect x="58" y="402" width="844" height="28" rx="9" fill="#202737"/>
+      <text x="78" y="422" fill="#8995aa">○　Забрать награду</text><text x="882" y="422" text-anchor="end" fill="#8995aa">Ожидает</text>
+    </g>
+  </g>
+</svg>

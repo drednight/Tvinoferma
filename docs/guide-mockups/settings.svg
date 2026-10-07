@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">Инструменты и настройки приложения</title>
+  <desc id="desc">Демонстрационный экран настроек с резервными копиями, журналами и разделом безопасности.</desc>
+  <rect width="960" height="480" rx="24" fill="#0b0e15"/>
+  <text x="38" y="48" fill="#f2f4fb" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Настройки · данные, инструменты и диагностика</text>
+  <g font-family="Segoe UI, sans-serif">
+    <rect x="32" y="72" width="896" height="374" rx="18" fill="#171c27" stroke="#354052"/>
+    <g transform="translate(56 98)">
+      <rect width="264" height="146" rx="14" fill="#202737"/>
+      <text x="20" y="34" fill="#edf0f8" font-size="17" font-weight="700">Резервные копии</text>
+      <text x="20" y="62" fill="#9ba8bd" font-size="13">Создайте копию данных перед изменениями.</text>
+      <rect x="20" y="88" width="140" height="36" rx="9" fill="#8897ff"/>
+      <text x="90" y="111" text-anchor="middle" fill="#121522" font-size="13" font-weight="700">Создать бэкап</text>
+    </g>
+    <g transform="translate(348 98)">
+      <rect width="264" height="146" rx="14" fill="#202737"/>
+      <text x="20" y="34" fill="#edf0f8" font-size="17" font-weight="700">Экспорт и импорт</text>
+      <text x="20" y="62" fill="#9ba8bd" font-size="13">Переносите данные через файл резервной копии.</text>
+      <rect x="20" y="88" width="102" height="36" rx="9" fill="#30384a"/>
+      <text x="71" y="111" text-anchor="middle" fill="#e0e5ef" font-size="13">Экспорт</text>
+      <rect x="132" y="88" width="112" height="36" rx="9" fill="#30384a"/>
+      <text x="188" y="111" text-anchor="middle" fill="#e0e5ef" font-size="13">Импорт</text>
+    </g>
+    <g transform="translate(640 98)">
+      <rect width="264" height="146" rx="14" fill="#202737"/>
+      <text x="20" y="34" fill="#edf0f8" font-size="17" font-weight="700">Журналы</text>
+      <text x="20" y="62" fill="#9ba8bd" font-size="13">История событий для поиска причин ошибок.</text>
+      <rect x="20" y="88" width="224" height="36" rx="9" fill="#111722"/>
+      <circle cx="38" cy="106" r="5" fill="#9ece6a"/>
+      <text x="52" y="111" fill="#cbd4e5" font-size="13">Последний запуск · без ошибок</text>
+    </g>
+    <rect x="56" y="270" width="848" height="142" rx="14" fill="#202737"/>
+    <text x="78" y="306" fill="#edf0f8" font-size="17" font-weight="700">Безопасность</text>
+    <text x="78" y="334" fill="#9ba8bd" font-size="13">Храните резервные копии и секреты в безопасном месте. Не отправляйте их в поддержку.</text>
+    <rect x="78" y="356" width="14" height="14" rx="3" fill="#8897ff"/>
+    <text x="104" y="369" fill="#cbd4e5" font-size="13">Проверяйте содержимое файла перед импортом.</text>
+    <text x="78" y="394" fill="#9ba8bd" font-size="12">Все названия и значения на иллюстрации вымышлены.</text>
+  </g>
+</svg>

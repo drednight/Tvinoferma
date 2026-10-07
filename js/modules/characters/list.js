@@ -48,6 +48,8 @@ export function renderCharacters() {
   // 2. Затем рендерим сетку с учетом фильтров
   document.getElementById('active-character-count')?.replaceChildren(String(state.characters.length));
   document.getElementById('archived-character-count')?.replaceChildren(String(state.archivedCharacters.length));
+  const welcomeRow = document.getElementById('welcome-row');
+  if (welcomeRow) welcomeRow.hidden = state.characters.length > 0;
   document.getElementById('show-active-characters')?.classList.toggle('secondary', !showingCharacterArchive);
   document.getElementById('show-active-characters')?.classList.toggle('ghost', showingCharacterArchive);
   document.getElementById('show-archived-characters')?.classList.toggle('secondary', showingCharacterArchive);
@@ -526,10 +528,11 @@ export async function runTodayAction(action, payload) {
  * Кнопки подсказки первых шагов: ведут к нужному действию.
  * Разметка подсказки перерисовывается вместе с сеткой, поэтому обработчик навешивается каждый раз.
  */
-export function bindOnboardingEvents(container) {
+export function bindOnboardingEvents(container, { closeBeforeAction = false } = {}) {
   container.querySelectorAll('[data-onb]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const action = /** @type {HTMLElement} */ (btn).dataset.onb;
+      if (closeBeforeAction) closeModal();
       if (action === 'new-character') { openCharacterForm(null); return; }
       if (action === 'new-party') {
         const { openCreatePartyModal } = await import('../parties/manager.js');
@@ -580,11 +583,7 @@ export async function openWelcome() {
     onSubmit: () => true
   });
   const modal = document.getElementById('modal-root');
-  bindOnboardingEvents(modal);
-  // Кнопка шага внутри окна закрывает его: пользователь уже пошёл делать дело
-  modal.querySelectorAll('[data-onb]').forEach(btn => {
-    btn.addEventListener('click', () => { closeModal(); });
-  });
+  bindOnboardingEvents(modal, { closeBeforeAction: true });
   // Esc и «Позже» тоже закрывают окно, ничего дополнительно записывать не нужно
 }
 
@@ -710,6 +709,16 @@ window.handleLaunchChar = async (charId) => {
 };
 
 export function bindCharacters() {
+  const welcomeButton = document.getElementById('welcome-btn');
+  if (welcomeButton && !welcomeButton.dataset.bound) {
+    welcomeButton.dataset.bound = 'true';
+    welcomeButton.addEventListener('click', () => {
+      openWelcome().catch(error => {
+        console.error('[ONBOARDING] Could not open welcome guide:', error);
+        toast(`Не удалось открыть справку: ${error?.message || error}`, 'error');
+      });
+    });
+  }
   for (const [id, archived] of [['show-active-characters', false], ['show-archived-characters', true]]) {
     const button = document.getElementById(id);
     if (button && !button.dataset.bound) {

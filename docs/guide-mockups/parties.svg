@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 480" role="img" aria-labelledby="title desc">
+  <title id="title">Демонстрационная пати</title>
+  <desc id="desc">Вымышленная группа с порядком персонажей и кнопками действий.</desc>
+  <rect width="960" height="480" rx="24" fill="#0b0e15"/>
+  <text x="38" y="48" fill="#f2f4fb" font-family="Segoe UI, sans-serif" font-size="24" font-weight="700">Пати · состав и порядок</text>
+  <rect x="32" y="72" width="896" height="374" rx="18" fill="#171c27" stroke="#354052"/>
+  <text x="58" y="112" fill="#edf0f8" font-family="Segoe UI, sans-serif" font-size="20" font-weight="700">Северный дозор</text>
+  <text x="898" y="112" text-anchor="end" fill="#9ba8bd" font-family="Segoe UI, sans-serif" font-size="14">3 персонажа · вымышленные данные</text>
+  <g font-family="Segoe UI, sans-serif" font-size="14">
+    <g transform="translate(56 138)">
+      <rect width="844" height="68" rx="12" fill="#202737"/><circle cx="34" cy="34" r="20" fill="#31464b"/>
+      <text x="34" y="40" text-anchor="middle" fill="#d9fff1">1</text><text x="70" y="30" fill="#eef1f8" font-size="16" font-weight="700">Лисий_Фонарь</text>
+      <text x="70" y="51" fill="#9ba8bd">Воин · Ур. 105</text><text x="818" y="40" text-anchor="end" fill="#9ece6a">Готов к запуску</text>
+    </g>
+    <g transform="translate(56 218)">
+      <rect width="844" height="68" rx="12" fill="#202737"/><circle cx="34" cy="34" r="20" fill="#483b54"/>
+      <text x="34" y="40" text-anchor="middle" fill="#ffe1ff">2</text><text x="70" y="30" fill="#eef1f8" font-size="16" font-weight="700">Мятный_Комета</text>
+      <text x="70" y="51" fill="#9ba8bd">Маг · Ур. 99</text><text x="818" y="40" text-anchor="end" fill="#9ba8bd">Перетащите для сортировки</text>
+    </g>
+    <g transform="translate(56 298)">
+      <rect width="844" height="68" rx="12" fill="#202737"/><circle cx="34" cy="34" r="20" fill="#51493a"/>
+      <text x="34" y="40" text-anchor="middle" fill="#fff0c8">3</text><text x="70" y="30" fill="#eef1f8" font-size="16" font-weight="700">Журавль_Из_Сна</text>
+      <text x="70" y="51" fill="#9ba8bd">Жрец · Ур. 100</text><text x="818" y="40" text-anchor="end" fill="#9ba8bd">Перетащите для сортировки</text>
+    </g>
+  </g>
+  <rect x="56" y="386" width="180" height="38" rx="10" fill="#30384a"/>
+  <text x="146" y="410" text-anchor="middle" fill="#e0e5ef" font-family="Segoe UI, sans-serif" font-size="13">＋ Добавить в пати</text>
+  <rect x="700" y="386" width="200" height="38" rx="10" fill="#8897ff"/>
+  <text x="800" y="410" text-anchor="middle" fill="#121522" font-family="Segoe UI, sans-serif" font-size="13" font-weight="700">▶ Запустить пати</text>
+</svg>

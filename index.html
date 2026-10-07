@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/css/core/components.css" />
   <link rel="stylesheet" href="/css/modules/characters.css" />
   <link rel="stylesheet" href="/css/modules/onboarding.css" />
+  <link rel="stylesheet" href="/css/modules/guides.css" />
   <link rel="stylesheet" href="/css/core/modal.css" />
   <link rel="stylesheet" href="/css/core/commandPalette.css" />
   <link rel="stylesheet" href="/css/modules/marathons.css" />
@@ -199,6 +200,21 @@
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
+        <details class="panel fold guide-library" id="guide-library">
+          <summary>
+            <h3>📖 Инструкции и гайды</h3>
+            <p class="muted">Пошаговые объяснения функций приложения и безопасные учебные иллюстрации.</p>
+          </summary>
+          <div class="guide-library-content">
+            <label class="guide-search">
+              <span class="sr-only">Поиск по гайдам</span>
+              <input id="guide-search" class="input" type="search" placeholder="Найти функцию или действие…" />
+            </label>
+            <nav id="guide-categories" class="guide-categories" aria-label="Категории гайдов"></nav>
+            <div id="guide-list" class="guide-list" aria-live="polite"></div>
+          </div>
+        </details>
+
         <div class="panel" style="margin-bottom: 16px;">
           <h3>Информация о системе</h3>
           <div class="setting-row">

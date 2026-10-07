@@ -10,6 +10,7 @@ import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboa
 import { toast, confirmModal } from '../core/ui.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
+import { bindGuides } from './guides.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
 import '../core/taskLog.js';   // подключает вид логов «Скрипты» к единому модулю логов
@@ -268,6 +269,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  bindGuides();
   balanceSettingsColumns();
   bindSettingInputs();
 

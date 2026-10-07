@@ -94,6 +94,7 @@
 
 /* Строка с кнопкой повторного открытия инструкции */
 #welcome-row { margin: 0 0 12px; align-items: center; }
+#welcome-row[hidden] { display: none; }
 
 @media (max-width: 720px) {
   .onb-step { grid-template-columns: 26px minmax(0, 1fr); }
