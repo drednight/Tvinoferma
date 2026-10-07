@@ -1,0 +1,35 @@
+name: Release tag guard
+
+# После публикации релиза проверяет, что тег релиза совпадает с тегом в ссылках latest.json.
+# Если GitHub привязал релиз к «untagged-…», исправляет тег, иначе автообновление получит 404.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Тег релиза совпадает со ссылками в latest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          asset=$(gh api "repos/$REPO/releases/$RELEASE_ID" --jq '.assets[] | select(.name=="latest.json") | .id')
+          if [ -z "$asset" ]; then echo "В релизе нет latest.json — проверять нечего."; exit 0; fi
+          gh api -H "Accept: application/octet-stream" "repos/$REPO/releases/assets/$asset" > latest.json
+          want=$(jq -r '[.platforms[].url] | first | capture("/download/(?<t>[^/]+)/").t' latest.json)
+          echo "Тег релиза: $TAG; тег в ссылках latest.json: $want"
+          if [ "$want" != "$TAG" ]; then
+            gh api --method PATCH "repos/$REPO/releases/$RELEASE_ID" -f tag_name="$want"
+            case "$TAG" in
+              untagged-*) gh api --method DELETE "repos/$REPO/git/refs/tags/$TAG" || true ;;
+            esac
+            echo "Тег релиза исправлен на $want."
+          fi
