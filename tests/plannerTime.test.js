@@ -99,7 +99,9 @@ describe('календарь: записи в ячейке месяца', () => 
     expect(other.getAttribute('title')).not.toContain('сейчас');
   });
 
-  it('над сеткой есть легенда полосок: как читать шкалу, свои записи, расписание, «сейчас»', () => {
+  it('легенда времени есть только в недельном виде, а не в месячном', () => {
+    expect(new DOMParser().parseFromString(plannerHtml(state), 'text/html').querySelector('.planner-legend-time')).toBeNull();
+    state.settings.ui.plannerView = 'week';
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     const legend = doc.querySelector('.planner-legend-time');
     expect(legend.textContent).toContain('сутки сверху вниз');

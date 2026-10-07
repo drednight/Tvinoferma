@@ -199,11 +199,12 @@ describe('updater: проверка и установка', () => {
     mod.stopUpdateScheduler();
   });
 
-  it('планировщик, режим never: ничего не проверяет', async () => {
+  it('старый режим never: обязательная проверка при запуске, без повторов', async () => {
     vi.useFakeTimers();
+    checkMock.mockResolvedValue(null);
     mod.startUpdateScheduler({ getMode: () => 'never', getLastChecked: () => null });
     await vi.advanceTimersByTimeAsync(2 * 24 * 60 * 60 * 1000);
-    expect(checkMock).not.toHaveBeenCalled();
+    expect(checkMock).toHaveBeenCalledTimes(1);
     mod.stopUpdateScheduler();
   });
 
@@ -219,6 +220,29 @@ describe('updater: проверка и установка', () => {
     expect(checkMock).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000);    // перешли в 00:00
     expect(checkMock).toHaveBeenCalledTimes(2);
+    mod.stopUpdateScheduler();
+  });
+
+  it.each(['daily', 'weekly'])('режим %s: свежая прошлая проверка не отменяет проверку при запуске', async (mode) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 7, 12));
+    checkMock.mockResolvedValue(fakeUpdate());
+    const last = new Date().toISOString();
+    mod.startUpdateScheduler({ getMode: () => mode, getLastChecked: () => last });
+    await vi.advanceTimersByTimeAsync(mod.FIRST_CHECK_DELAY_MS);
+    expect(checkMock).toHaveBeenCalledTimes(1);
+    expect(state.getUpdateState().status).toBe('available');
+    expect(relaunchMock).not.toHaveBeenCalled();
+    expect(toastMock).not.toHaveBeenCalled();
+    mod.stopUpdateScheduler();
+  });
+
+  it('планировщик не запускает проверку в браузерном режиме', async () => {
+    vi.useFakeTimers();
+    delete window.__TAURI_INTERNALS__;
+    mod.startUpdateScheduler();
+    await vi.advanceTimersByTimeAsync(mod.FIRST_CHECK_DELAY_MS);
+    expect(checkMock).not.toHaveBeenCalled();
     mod.stopUpdateScheduler();
   });
 

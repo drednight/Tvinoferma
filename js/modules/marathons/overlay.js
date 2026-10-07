@@ -2,6 +2,7 @@
 // Лёгкое модальное окно для мастера марафона и карточки ячейки (без жёсткой формы showModal).
 
 import { escapeHtml } from '../../core/utils.js';
+import { registerModal, isTopModal } from '../../core/modalLifecycle.js';
 
 export function openOverlay({ title = '', wide = false, onClose } = {}) {
   const root = document.getElementById('modal-root') || document.body;
@@ -19,6 +20,7 @@ export function openOverlay({ title = '', wide = false, onClose } = {}) {
     </div>`;
   root.appendChild(overlay);
 
+  let closed = false;
   const api = {
     el: overlay,
     sub: overlay.querySelector('.tf-dialog-sub'),
@@ -26,12 +28,16 @@ export function openOverlay({ title = '', wide = false, onClose } = {}) {
     foot: overlay.querySelector('.tf-dialog-foot'),
     setTitle(t) { overlay.querySelector('.tf-dialog-title').textContent = t; },
     close() {
+      if (closed) return;
+      closed = true;
+      unregister();
       document.removeEventListener('keydown', onKey);
       overlay.remove();
       onClose?.();
     }
   };
-  const onKey = (e) => { if (e.key === 'Escape') api.close(); };
+  const onKey = (e) => { if (e.key === 'Escape' && isTopModal(overlay)) api.close(); };
+  const unregister = registerModal(overlay, () => api.close());
   document.addEventListener('keydown', onKey);
   overlay.querySelector('.tf-close').onclick = () => api.close();
   return api;

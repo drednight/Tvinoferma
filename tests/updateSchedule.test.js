@@ -10,8 +10,9 @@ describe('resolveUpdateMode', () => {
   it('берёт mode, если он задан', () => {
     expect(resolveUpdateMode({ updates: { mode: 'weekly', checkOnStartup: false } })).toBe('weekly');
   });
-  it('старые данные: checkOnStartup=false → never, иначе startup', () => {
-    expect(resolveUpdateMode({ updates: { checkOnStartup: false } })).toBe('never');
+  it('старые данные: отключённая проверка и старый never → startup', () => {
+    expect(resolveUpdateMode({ updates: { checkOnStartup: false } })).toBe('startup');
+    expect(resolveUpdateMode({ updates: { mode: 'never' } })).toBe('startup');
     expect(resolveUpdateMode({ updates: { checkOnStartup: true } })).toBe('startup');
     expect(resolveUpdateMode({})).toBe('startup');
     expect(resolveUpdateMode({ updates: { mode: 'bogus' } })).toBe('startup');
@@ -55,7 +56,7 @@ describe('isCheckDue', () => {
 
 describe('nextCheckText', () => {
   it('подписи по режимам', () => {
-    expect(nextCheckText('never')).toMatch(/выключена/);
+    expect(nextCheckText('never')).toMatch(/запуске/);
     expect(nextCheckText('startup')).toMatch(/запуске/);
     expect(nextCheckText('daily', at(2026, 10, 7, 10))).toMatch(/08\.10\.2026/);
   });

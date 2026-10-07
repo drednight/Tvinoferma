@@ -340,3 +340,23 @@
   .danger-item { flex-direction: column; align-items: stretch; }
   .danger-item .btn { min-width: 0; }
 }
+
+/* Смысловые разделы настроек: навигация и порядок одинаковы на широком и узком экране. */
+.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+.settings-nav a { text-decoration: none; min-height: 44px; }
+.settings-group { margin-bottom: 32px; scroll-margin-top: 140px; min-width: 0; }
+.settings-group-head { margin-bottom: 12px; }
+.settings-group-head h3 { margin: 0 0 4px; font-size: 1.25rem; }
+.settings-group-head p { margin: 0; }
+#danger-zone { scroll-margin-top: 140px; }
+.settings-group .mono { overflow-wrap: anywhere; }
+.settings-group .setting-row { flex-wrap: wrap; }
+.settings-group .setting-row > div { min-width: 0; }
+@media (max-width: 700px) {
+  .settings-group .setting-row { align-items: flex-start; }
+  .settings-group select { max-width: 100%; }
+  .settings-nav { gap: 6px; }
+}
+
+/* Таблица диагностики прокручивается внутри панели, а не раздвигает всю страницу. */
+#parser-health-list { min-width: 0; max-width: 100%; overflow-x: auto; }

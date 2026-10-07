@@ -48,14 +48,24 @@ export const localStorageAdapter = {
   /**
    * Создание бэкапа (сохранение отдельной записи с таймстампом)
    */
-  async createBackup() {
+  async createBackup({ maxCount = 10 } = {}) {
     const currentData = await this.loadState();
     if (!currentData) throw new Error('No data to backup');
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupKey = `${BACKUP_PREFIX}${timestamp}`;
+    const baseKey = `${BACKUP_PREFIX}${timestamp}`;
+    const existing = Object.keys(localStorage).filter(key => key === baseKey || key.startsWith(`${baseKey}-`));
+    const sequence = existing.reduce((max, key) => {
+      const suffix = key.slice(baseKey.length + 1);
+      return /^\d+$/.test(suffix) ? Math.max(max, Number(suffix)) : max;
+    }, 0);
+    const backupKey = existing.length ? `${baseKey}-${String(sequence + 1).padStart(6, '0')}` : baseKey;
     
+    // Сначала сохраняем новую копию. При нехватке места прежние копии не удаляются.
     localStorage.setItem(backupKey, JSON.stringify(currentData));
+    const limit = Number.isFinite(Number(maxCount)) ? Math.max(1, Math.floor(Number(maxCount))) : 10;
+    const keys = await this.listBackups();
+    keys.slice(limit).forEach(key => localStorage.removeItem(key));
     return backupKey; // Возвращаем ключ вместо имени файла
   },
 

@@ -147,3 +147,39 @@ describe('опасные действия: логика', () => {
     expect(DANGER_ACTIONS.marathons.count({})).toBe(0);
   });
 });
+
+
+describe('смысловые группы настроек', () => {
+  it('панели находятся в своих разделах, навигация ведёт к существующим блокам', () => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    for (const [group, ids] of Object.entries({
+      app: ['settings-system', 'settings-launcher', 'settings-browser', 'settings-tray', 'settings-notifications'],
+      sync: ['settings-scripts', 'settings-freshness', 'parser-health-panel', 'log-hub-panel'],
+      updates: ['settings-update-panel'], data: ['settings-backups', 'settings-transfer', 'settings-security'],
+      help: ['guide-library', 'settings-hotkeys'],
+    })) {
+      for (const id of ids) expect(doc.querySelector(`#settings-${group} #${id}`)).not.toBeNull();
+    }
+    for (const link of doc.querySelectorAll('.settings-nav a')) expect(doc.querySelector(link.getAttribute('href'))).not.toBeNull();
+    expect(doc.querySelector('#danger-zone').closest('.settings-group')).toBeNull();
+    expect(doc.querySelector('[data-setting="updates.mode"] option[value="never"]')).toBeNull();
+    const ids = [...doc.querySelectorAll('[id]')].map(el => el.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('балансировка не переносит панели между смысловыми группами', () => {
+    document.body.innerHTML = `<div class="settings-cols" id="first"><div class="settings-col"><div class="panel" id="a"></div></div><div class="settings-col"><div class="panel" id="b"></div><div class="panel" id="c"></div></div></div><div class="settings-cols" id="second"><div class="settings-col"><div class="panel" id="d"></div></div><div class="settings-col"></div></div>`;
+    expect(balanceSettingsColumns()).toEqual([2, 1, 1, 0]);
+    expect([...document.querySelectorAll('#first .panel')].map(el => el.id)).toEqual(['a', 'b', 'c']);
+    expect(document.querySelector('#second #d')).not.toBeNull();
+  });
+});
+
+describe('информация о системе', () => {
+  it('свёрнута по умолчанию, путь и режим доступны после раскрытия', () => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');const panel = doc.getElementById('settings-system');
+    expect(panel.tagName).toBe('DETAILS');expect(panel.hasAttribute('open')).toBe(false);
+    expect(panel.querySelector('summary h3').textContent).toBe('Информация о системе');
+    for (const id of ['storage-runtime','data-dir','copy-data-dir-btn']) expect(panel.querySelector(`#${id}`)).not.toBeNull();
+  });
+});

@@ -24,6 +24,23 @@ npm ci
 | `npm run build` | Сборка интерфейса в `dist/` |
 | `npm run shots` | Снимки интерфейса и проверка вёрстки в headless Edge: `node scripts/ui-shots.mjs --out docs/screenshots`. Если `npm run tauri dev` уже запущен, стенд снимает с него и не занимает порт. Данные — вымышленные из `tests/fixtures/ui-demo-state.json` |
 
+Скриншоты для встроенных гайдов: `npm run shots -- --guides`. Снимки в формате WebP сохраняются в
+`public/assets/guides/` и входят в сборку; используются только вымышленные данные. В Linux укажите
+`BROWSER_PATH` (путь к Chromium). Для обновления отдельных снимков используйте, например,
+`npm run shots -- --guides --only character-form,gamecenters`.
+
+Для гайдов скриптов снимайте сами диалоги:
+`npm run shots -- --guides --only promo-dialog,transfer-dialog,shop-dialog,sync-task --height 1100`.
+Стенд `scripts/ui-demo-scripts.mjs` открывает настоящие формы на вымышленных данных,
+подменяет чтение магазина локальным ответом и не запускает операции на сайте.
+Не заменяйте эти снимки страницей персонажей; после съёмки проверьте их глазами.
+
+Тексты встроенной справки находятся в `js/settings/guideData.js`, отображение — в
+`js/settings/guides.js`, оформление — в `css/modules/guides.css`. При изменении функции сверяйте
+названия кнопок, шаги, ограничения и связанный снимок. Сохраняйте стабильные `id` инструкций:
+по ним работают быстрые переходы и связанные темы. `tests/settingsGuides.test.js` проверяет
+полноту данных, ссылки между статьями, поиск, выбор темы, увеличение снимков и возврат фокуса.
+
 ## Проверки перед коммитом
 
 ```powershell
@@ -71,7 +88,7 @@ CI (`.github/workflows/ci.yml`) запускает то же самое на Git
 Полная инструкция — [docs/RELEASE.md](docs/RELEASE.md). Кратко:
 
 ```powershell
-npm run version:bump 0.4.0   # версия сразу в package.json, tauri.conf.json, Cargo.toml, Cargo.lock
+npm run version:bump 0.4.0   # версия сразу в package.json, package-lock.json, tauri.conf.json, Cargo.toml, Cargo.lock
 git add -A
 git commit -m "Версия 0.4.0"
 git push

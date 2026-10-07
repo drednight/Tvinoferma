@@ -1,6 +1,6 @@
 // Поднимает версию приложения во всех местах сразу:
 //   npm run version:bump 0.2.0
-// package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock
+// package.json, package-lock.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml, src-tauri/Cargo.lock
 import fs from 'node:fs';
 
 const version = process.argv[2];
@@ -18,6 +18,14 @@ const edit = (file, fn) => {
 };
 
 edit('package.json', s => s.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`));
+if (fs.existsSync('package-lock.json')) {
+  edit('package-lock.json', s => {
+    const lock = JSON.parse(s);
+    lock.version = version;
+    if (lock.packages?.['']) lock.packages[''].version = version;
+    return `${JSON.stringify(lock, null, 2)}\n`;
+  });
+}
 edit('src-tauri/tauri.conf.json', s => s.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`));
 edit('src-tauri/Cargo.toml', s => s.replace(/(\[package\][^[]*?\nversion\s*=\s*")[^"]+(")/, `$1${version}$2`));
 if (fs.existsSync('src-tauri/Cargo.lock')) {

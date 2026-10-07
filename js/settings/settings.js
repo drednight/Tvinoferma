@@ -256,7 +256,7 @@ function bindSettingInputs() {
         updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
-      if (path === 'updates.mode') setSetting('updates.checkOnStartup', value !== 'never');   // совместимость со старыми версиями
+      if (path === 'updates.mode') setSetting('updates.checkOnStartup', true);   // совместимость со старыми версиями
       await persist();
       if (path === 'updates.mode') { refreshUpdateSchedule(); rescheduleUpdates(); }
       if (path.startsWith('tray.') || path.startsWith('browser.')) await applyDesktopSettings();

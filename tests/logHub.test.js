@@ -81,7 +81,7 @@ describe('сбор записей', () => {
   it('заголовок панели: сколько записей, сколько с проблемами, какая последняя', () => {
     expect(hub.logHubSummary()).toContain('Записей пока нет');
     setup();
-    const s = hub.logHubSummary();
+    const s = hub.logHubSummary({ sessionOnly: false });
     expect(s).toContain('Записей: 4');
     expect(s).toContain('с проблемами: 2');
     expect(s).toContain('Запись b2');
@@ -91,7 +91,7 @@ describe('сбор записей', () => {
 describe('интерфейс', () => {
   it('кнопки видов со счётчиками, список, нажатие на запись открывает подробности у самого вида', () => {
     const { a } = setup();
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     expect([...document.querySelectorAll('.lh-chip')].map(c => c.textContent.replace(/\s+/g, ' ').trim())).toEqual(['📚 Все 4', '🅰️ Вид a 2', '🅱️ Вид b 2']);
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(4);
     document.querySelector('[data-lh-key="a2"]').click();
@@ -100,7 +100,7 @@ describe('интерфейс', () => {
 
   it('выбор вида, поиск и «только проблемы»', () => {
     setup();
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     document.querySelector('[data-lh-source="b"]').click();
     expect([...document.querySelectorAll('[data-lh-key]')].map(r => r.dataset.lhKey)).toEqual(['b2', 'b1']);
     const q = $('[data-lh-query]'); q.value = 'b1'; q.dispatchEvent(new Event('input', { bubbles: true }));
@@ -112,14 +112,14 @@ describe('интерфейс', () => {
 
   it('начальный вид задаётся (кнопка «Журнал» в диалоге передачи)', () => {
     setup();
-    hub.mountLogHub($('#root'), { source: 'a' });
+    hub.mountLogHub($('#root'), { source: 'a', sessionOnly: false });
     expect($('.lh-chip.active').textContent).toContain('Вид a');
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
   });
 
   it('очистка: только выбранный вид, с подтверждением; на «Все» недоступна', async () => {
     const { a, b } = setup();
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     expect($('[data-lh-clear]').disabled).toBe(true);
     document.querySelector('[data-lh-source="a"]').click();
     // Подтверждение асинхронное (confirmModal): после клика ждём, пока оно разрешится
@@ -137,7 +137,7 @@ describe('интерфейс', () => {
   it('дополнительные кнопки вида (например, архив CSV) показываются на его вкладке', () => {
     const run = vi.fn();
     hub.registerLogSource(makeSource('a', [row('a1', '2026-10-01T00:00:00Z')], { actions: () => [{ id: 'csv', label: '⬇ Архив', run }] }));
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     expect($('[data-lh-action="csv"]')).toBeNull();
     document.querySelector('[data-lh-source="a"]').click();
     $('[data-lh-action="csv"]').click();
@@ -147,7 +147,7 @@ describe('интерфейс', () => {
   it('длинный список выводится порциями по 100', () => {
     const rows = Array.from({ length: 250 }, (_, i) => row(`r${i}`, new Date(Date.UTC(2026, 9, 1, 0, 0, i)).toISOString()));
     hub.registerLogSource(makeSource('a', rows));
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(100);
     $('[data-lh-more]').click();
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(200);
@@ -163,7 +163,7 @@ describe('интерфейс', () => {
     expect(text).toMatch(/Вид a · ⚠️ Запись a2 — итог a2/);
     const write = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true });
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     $('[data-lh-copy]').click(); await wait();
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0][0].split('\n')).toHaveLength(4);
@@ -171,7 +171,7 @@ describe('интерфейс', () => {
 
   it('новая запись в источнике сама обновляет список (не чаще раза в 250 мс); свёрнутая панель не перерисовывается', async () => {
     const { a } = setup();
-    hub.mountLogHub($('#root'));
+    hub.mountLogHub($('#root'), { sessionOnly: false });
     a.rows = [...a.rows, row('a3', '2026-10-05T10:00:00Z')];
     a.emit(); a.emit(); a.emit();
     await wait(320);
@@ -217,5 +217,41 @@ describe('вид «Скрипты» (taskLog.js)', () => {
     hub.getLogSources().find(s => s.id === 'task').clear();
     expect(hub.collectLogs({ source: 'task' }).items.map(i => i.title)).toEqual(['Марафоны']);
     running.finish('ok');
+  });
+});
+
+
+describe('журнал текущей сессии', () => {
+  it('при запуске история скрыта, новые записи видны; переключатель возвращает историю без удаления', () => {
+    const old = row('old', '2000-01-01T00:00:00Z');
+    const src = makeSource('session', [old]);
+    hub.registerLogSource(src);
+    src.rows.push(row('new', new Date().toISOString()));
+    hub.mountLogHub($('#root'));
+    expect([...document.querySelectorAll('[data-lh-key]')].map(el => el.dataset.lhKey)).toEqual(['new']);
+    expect(hub.logHubSummary()).toContain('Записей: 1');
+    const history = $('[data-lh-history]');
+    expect(history.checked).toBe(false);
+    history.checked = true;
+    history.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
+    history.checked = false;
+    history.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(1);
+    expect(src.rows).toContain(old);
+    expect(src.clear).not.toHaveBeenCalled();
+  });
+
+  it('прошлые задачи остаются в localStorage, но не попадают в текущий запуск', async () => {
+    const key = 'tf_task_journal_v1';
+    const saved = JSON.stringify([{ id: 'previous', title: 'Прошлая сессия', startedAt: '2000-01-01T00:00:00Z', status: 'done', entries: [] }]);
+    localStorage.setItem(key, saved);
+    const { startTask } = await import('../js/core/taskLog.js');
+    hub.mountLogHub($('#root'));
+    expect(document.querySelector('[data-lh-key="previous"]')).toBeNull();
+    expect(localStorage.getItem(key)).toBe(saved);
+    startTask('Текущая сессия', { dock: false }).finish('Готово');
+    expect(hub.collectLogs({ sessionOnly: true }).items.map(it => it.title)).toEqual(['Текущая сессия']);
+    expect(JSON.parse(localStorage.getItem(key)).map(it => it.title)).toContain('Прошлая сессия');
   });
 });

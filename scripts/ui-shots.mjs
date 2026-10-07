@@ -3,6 +3,7 @@
 // кладёт в localStorage демонстрационные данные (tests/fixtures/ui-demo-state.json) и фотографирует вкладки.
 //
 // Запуск: node scripts/ui-shots.mjs [--out docs/screenshots] [--url http://localhost:1420] [--theme dark]
+// Для гайдов: node scripts/ui-shots.mjs --guides (WebP в public/assets/guides).
 // Требуется установленный Microsoft Edge (или Chrome) — приложение живёт в WebView2, поэтому снимки
 // в Edge ближе всего к тому, что видит пользователь.
 //
@@ -20,14 +21,34 @@ const arg = (name, fallback) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : fallback;
 };
 
-const OUT = resolve(ROOT, arg('out', 'docs/screenshots'));
+const GUIDES = args.includes('--guides');
+const OUT = resolve(ROOT, arg('out', GUIDES ? 'public/assets/guides' : 'docs/screenshots'));
 const URL_BASE = arg('url', 'http://localhost:1420');
 const THEME = arg('theme', 'dark');
+const ONLY = arg('only', '').split(',').filter(Boolean);
 const WIDTH = Number(arg('width', '1440'));
 const HEIGHT = Number(arg('height', '960'));
 const PORT = 9333;
 
-const TABS = [
+const TABS = GUIDES ? [
+  ['characters', 'characters'],
+  ['parties', 'parties'],
+  ['today', 'today'],
+  ['marathons', 'marathons'],
+  ['characters', 'scripts', 'scripts'],
+  ['characters', 'character-form', 'character-form'],
+  ...['promo-dialog', 'transfer-dialog', 'shop-dialog', 'sync-task'].map(name => ['characters', name, name]),
+  ['characters', 'character-profile', 'character-profile'],
+  ['marathons', 'marathon-wizard', 'marathon-wizard'],
+  ['today', 'planner-entry', 'planner-entry'],
+  ['settings', 'gamecenters', 'gamecenters'],
+  ['settings', 'settings-app', '#settings-app'],
+  ['settings', 'settings-data', '#settings-data'],
+  ['settings', 'settings-sync', '#settings-sync'],
+  ['settings', 'settings-updates', '#settings-update-panel'],
+  ['settings', 'settings-security', '#settings-security'],
+  ['settings', 'settings-danger', '#danger-zone'],
+] : [
   ['today', 'today'],
   ['characters', 'characters'],
   ['parties', 'parties'],
@@ -55,7 +76,21 @@ function findBrowser() {
 
 function demoState() {
   const fixture = join(ROOT, 'tests/fixtures/ui-demo-state.json');
-  return readFileSync(fixture, 'utf8');
+  const data = JSON.parse(readFileSync(fixture, 'utf8'));
+  data.settings ||= {};
+  data.settings.ui = { ...data.settings.ui, onboardingSeen: true };
+  // Фикстура учебная: назначаем задания участникам и приводим дату сверки к текущему формату.
+  for (const m of data.marathons || []) {
+    if (m.kind === 'series') continue;
+    if (typeof m.lastSync === 'string') m.lastSync = { at: m.lastSync, changes: [], errors: [] };
+    for (const id of m.participantIds || []) {
+      if (!m.assignments?.[id]) {
+        m.assignments ||= {};
+        m.assignments[id] = (m.tasks || []).map(t => t.id);
+      }
+    }
+  }
+  return JSON.stringify(data);
 }
 
 /** Минимальный CDP-клиент поверх встроенного в Node WebSocket. */
@@ -150,11 +185,12 @@ async function main() {
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-extensions',
+      '--disable-dev-shm-usage',
       '--force-device-scale-factor=1',
       '--force-color-profile=srgb',
       // Доп. флаги браузера, например в контейнере: BROWSER_ARGS="--no-sandbox --disable-gpu"
       ...(process.env.BROWSER_ARGS ? process.env.BROWSER_ARGS.split(' ').filter(Boolean) : []),
-      URL_BASE
+      'about:blank'
     ], { stdio: 'ignore' });
 
     let targets = null;
@@ -199,23 +235,24 @@ async function main() {
       console.warn('[ui-shots] приложение не отрисовалось за отведённое время');
     };
 
-    // Демо-данные кладём в localStorage того же origin и перезагружаем страницу
-    await send('Runtime.evaluate', {
-      expression: `localStorage.setItem('tvinoferma_state_v1', ${JSON.stringify(demoState())});
+    // Данные и сбор ошибок устанавливаются ДО загрузки модулей приложения.
+    // Иначе первый пустой boot() мог сохраниться поверх фикстуры прямо перед перезагрузкой.
+    await send('Page.addScriptToEvaluateOnNewDocument', {
+      source: `localStorage.setItem('tvinoferma_state_v1', ${JSON.stringify(demoState())});
         window.__tfErrors = [];
         window.addEventListener('error', (e) => window.__tfErrors.push('error: ' + (e.message || e.type)));
-        window.addEventListener('unhandledrejection', (e) => window.__tfErrors.push('rejection: ' + (e.reason && e.reason.message || e.reason)));
-        true`,
-      returnByValue: true
+        window.addEventListener('unhandledrejection', (e) => window.__tfErrors.push('rejection: ' + (e.reason && e.reason.message || e.reason)));`
     });
     await send('Page.navigate', { url: URL_BASE });
     await sleep(1500);
     await settle();
 
+    await send('Runtime.evaluate', { expression: `import('/js/core/ui.js').then(({ closeModal }) => { closeModal(); return true; })`, awaitPromise: true });
+
     // Ошибки страницы: приложение должно не только отрисоваться, но и работать без сбоев
     const errs = await send('Runtime.evaluate', { expression: 'window.__tfErrors || []', returnByValue: true });
     if (errs.result.value?.length) {
-      console.log('[ui-shots] ошибки страницы:', JSON.stringify(errs.result.value, null, 1));
+      throw new Error(`Ошибки страницы: ${JSON.stringify(errs.result.value)}`);
     } else {
       console.log('[ui-shots] ошибок страницы нет');
     }
@@ -236,6 +273,8 @@ async function main() {
       returnByValue: true
     });
     console.log('[ui-shots] состояние:', JSON.stringify(boot.result.value));
+    const expectedChars = JSON.parse(demoState()).characters.length;
+    if (boot.result.value?.fixtureChars !== expectedChars || boot.result.value?.cards !== expectedChars) throw new Error('Демонстрационные персонажи не загрузились');
 
     if (THEME !== 'dark') {
       await send('Runtime.evaluate', {
@@ -245,17 +284,67 @@ async function main() {
       await sleep(200);
     }
 
-    for (const [tab, file] of TABS) {
+    const formShots = {
+      ...Object.fromEntries(['promo-dialog', 'transfer-dialog', 'shop-dialog', 'sync-task'].map(name => [name, `import('/scripts/ui-demo-scripts.mjs').then(({ openScriptPreview }) => openScriptPreview('${name}'))`])),
+      'character-form': `import('/js/modules/characters/formEditor.js').then(({ openCharacterForm }) => openCharacterForm())`,
+      'character-profile': `(async () => { const { state } = await import('/js/core/state.js'); const { openCharacterProfile } = await import('/js/modules/characters/profileView.js'); openCharacterProfile(state.characters[0]); })()`,
+      'marathon-wizard': `import('/js/modules/marathons/wizard.js').then(({ openMarathonWizard }) => { openMarathonWizard(); document.querySelector('[data-src="manual"]').click(); document.querySelector('[data-act="next"]').click(); })`,
+      'planner-entry': `(async () => { const { mskDate } = await import('/js/core/msk.js'); const { openPlannerDay } = await import('/js/modules/dashboard/plannerView.js'); openPlannerDay(mskDate()); document.querySelector('[data-planner-add]').click(); })()`,
+      'gamecenters': `import('/js/modules/launcher/gcSettingsModal.js').then(({ openGameCentersModal }) => openGameCentersModal())`,
+    };
+    for (const [tab, file, target] of TABS.filter(([, file]) => !ONLY.length || ONLY.includes(file))) {
       await send('Runtime.evaluate', {
-        expression: `document.querySelector('.tab[data-tab="${tab}"]')?.click(); window.scrollTo(0, 0); true`,
+        expression: `import('/js/core/ui.js').then(({ closeModal }) => { document.querySelectorAll('.tf-close').forEach(button => button.click()); closeModal(); window.__tfShotCleanup?.(); window.__tfShotCleanup = null; return true; })`,
+        awaitPromise: true
+      });
+      await send('Runtime.evaluate', {
+        expression: `document.querySelector('.topbar').style.visibility = ''; document.querySelector('.tab[data-tab="${tab}"]')?.click(); window.scrollTo(0, 0); true`,
         returnByValue: true
       });
       await sleep(700);
-      const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-      const path = join(OUT, `${file}.png`);
+      let clip;
+      if (formShots[target]) {
+        const opened = await send('Runtime.evaluate', { expression: formShots[target], awaitPromise: true });
+        if (opened.exceptionDetails) throw new Error(`Не удалось открыть ${target}: ${opened.exceptionDetails.text}`);
+        await sleep(600);
+        const measured = await send('Runtime.evaluate', {
+          expression: `(() => { const el = document.querySelector('.modal-container'); if (!el) throw new Error('Форма не открылась'); const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`, returnByValue: true
+        });
+        if (measured.exceptionDetails || !measured.result?.value) throw new Error(`Форма ${target} не открылась`);
+        clip = measured.result.value;
+      } else if (target === 'scripts') {
+        await send('Runtime.evaluate', { expression: `document.getElementById('fab-main-btn')?.click(); document.querySelector('[data-fab-action="scripts"]')?.click(); true` });
+        await sleep(400);
+      } else if (target) {
+        const region = await send('Runtime.evaluate', {
+          expression: `(() => {
+            document.querySelectorAll('[data-section="settings"] details').forEach(el => { el.open = false; });
+            const el = document.querySelector(${JSON.stringify(target)});
+            if (!el) throw new Error('Не найден раздел снимка: ' + ${JSON.stringify(target)});
+            if (el.tagName === 'DETAILS') el.open = true;
+            // В группе данных показываем действия резервного копирования; в приложении — запуск игры.
+            el.querySelector('#settings-backups, #settings-launcher, #log-hub-panel')?.setAttribute('open', '');
+            document.querySelector('.topbar').style.visibility = 'hidden';
+            const r = el.getBoundingClientRect();
+            return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 };
+          })()`, returnByValue: true
+        });
+        clip = region.result.value;
+        if (!clip?.width || !clip?.height) throw new Error('Пустой раздел снимка: ' + target);
+        await sleep(500); // toggle панелей успевает отрисовать журнал и изменить высоту блока
+        const measured = await send('Runtime.evaluate', {
+          expression: `(() => { const r = document.querySelector(${JSON.stringify(target)}).getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`,
+          returnByValue: true
+        });
+        clip = measured.result.value;
+      }
+      const shot = await send('Page.captureScreenshot', { format: GUIDES ? 'webp' : 'png', ...(GUIDES ? { quality: 90 } : {}), captureBeyondViewport: !!clip, ...(clip ? { clip } : {}) });
+      const path = join(OUT, `${file}.${GUIDES ? 'webp' : 'png'}`);
       writeFileSync(path, Buffer.from(shot.data, 'base64'));
       console.log('[ui-shots]', path.replace(ROOT + '\\', ''));
     }
+
+    if (GUIDES) { ws.close(); return; }
 
     // Аудит вёрстки: переполнения, наложения, слишком мелкий текст, недоступные кнопки.
     // Проверка машинная — она не заменяет взгляд, но ловит то, что легко пропустить на снимке.

@@ -1,344 +1,140 @@
-const categories = [
-  { id: 'start', label: 'Начало работы' },
-  { id: 'characters', label: 'Персонажи и архив' },
-  { id: 'parties', label: 'Пати' },
-  { id: 'today', label: 'Сегодня' },
-  { id: 'marathons', label: 'Марафоны' },
-  { id: 'tools', label: 'Инструменты' },
-  { id: 'settings', label: 'Настройки и данные' },
-];
+import { openOverlay } from '../modules/marathons/overlay.js';
+import { escapeHtml } from '../core/utils.js';
+import { GUIDE_CATEGORIES, GUIDES, guideSearchText } from './guideData.js';
 
-const guides = [
-  {
-    category: 'start',
-    title: 'Быстрый старт',
-    summary: 'Первый запуск: добавьте персонажа, настройте его и проверьте доступные действия.',
-    steps: [
-      'Откройте раздел «Персонажи» и нажмите кнопку добавления персонажа.',
-      'Заполните имя и необходимые поля. Сохраните карточку.',
-      'Откройте профиль карточки, чтобы добавить заметки, статистику и проходки.',
-      'Если нужно запускать игру или сайт, проверьте соответствующие настройки в приложении.',
-    ],
-  },
-  {
-    category: 'start',
-    title: 'Навигация и меню быстрых действий',
-    summary: 'Где находятся основные разделы и как быстро открыть создание объектов.',
-    steps: [
-      'Переключайтесь между разделами боковой навигацией: «Сегодня», «Персонажи», «Пати», «Марафоны» и «Настройки».',
-      'Кнопка быстрых действий (FAB) открывает меню создания и запуска распространённых операций.',
-      'Если окно перекрывает содержимое, закройте его кнопкой закрытия или нажмите за его пределами.',
-    ],
-  },
-  {
-    category: 'characters',
-    title: 'Создание и редактирование персонажа',
-    summary: 'Добавление карточки, изменение полей и просмотр подробного профиля.',
-    steps: [
-      'В разделе «Персонажи» создайте карточку и укажите имя персонажа.',
-      'Откройте карточку или профиль, чтобы посмотреть данные и доступные действия.',
-      'Используйте редактирование карточки для изменения сохранённых полей; подтвердите сохранение.',
-      'Карточки и поля можно найти с помощью поиска и фильтров над списком.',
-    ],
-  },
-  {
-    category: 'characters',
-    title: 'Действия карточки: профиль, игра и сайт',
-    summary: 'Как открыть подробности персонажа и воспользоваться его быстрыми действиями.',
-    steps: [
-      'Разверните карточку персонажа, чтобы увидеть её дополнительные действия.',
-      'Откройте профиль для статистики, заметок, проходок и других сохранённых данных.',
-      'Кнопка игры запускает настроенный сценарий входа; кнопка сайта открывает браузер для выбранного персонажа.',
-      'Если действие недоступно или завершается ошибкой, проверьте настройки игры/браузера и журнал событий.',
-    ],
-  },
-  {
-    category: 'characters',
-    title: 'Архив персонажей',
-    summary: 'В архиве хранятся карточки, которые не участвуют в активной работе приложения.',
-    steps: [
-      'Переместите персонажа в архив через меню действий его карточки.',
-      'Архивный персонаж не проходит автоматические проверки и не входит в общий активный пул для скриптов.',
-      'Архивные карточки остаются доступными: их можно открыть, редактировать и просматривать сохранённые данные.',
-      'Чтобы вернуть персонажа в работу, воспользуйтесь действием восстановления в архиве.',
-    ],
-  },
-  {
-    category: 'parties',
-    title: 'Создание пати и состав',
-    summary: 'Соберите группу, добавьте персонажей и поддерживайте порядок участников.',
-    steps: [
-      'В разделе «Пати» создайте группу и задайте ей понятное название.',
-      'Добавьте в неё нужных активных персонажей.',
-      'Перетащите участников, чтобы изменить порядок, если такая сортировка доступна в списке.',
-      'Перед запуском проверьте состав и настройки группы.',
-    ],
-  },
-  {
-    category: 'parties',
-    title: 'Запуск пати и окна игры',
-    summary: 'Запустите группу и управляйте открытыми игровыми окнами.',
-    steps: [
-      'Нажмите «Запустить пати» на нужной группе.',
-      'Если используются игровые центры или профили запуска, предварительно настройте их в «Настройки» → «Запуск игры».',
-      'Для контроля окон используйте действия выбора окон и закрытия окон игры в настройках.',
-      'При сбое проверьте журнал: он поможет отличить ошибку запуска от недоступности внешнего сервиса.',
-    ],
-  },
-  {
-    category: 'parties',
-    title: 'Архив пати и архивные участники',
-    summary: 'Архив группы хранит её копию; архивирование пати не архивирует персонажей.',
-    steps: [
-      'Архивируйте пати отдельно от персонажей — участники останутся в активном списке.',
-      'Когда персонаж из активной пати отправляется в архив, в архиве сохраняется копия пати с архивным участником.',
-      'Такая копия нужна для контекста и не заменяет исходную активную пати.',
-      'Восстановите персонажа из архивной карточки, если хотите снова использовать его в активной работе.',
-    ],
-  },
-  {
-    category: 'today',
-    title: 'Календарь и события',
-    summary: 'Используйте раздел «Сегодня» для просмотра дат и запланированных событий.',
-    steps: [
-      'Откройте «Сегодня», чтобы увидеть календарь и сводку.',
-      'Выберите дату, чтобы посмотреть связанные с ней записи.',
-      'Добавляйте или редактируйте события доступными действиями на странице.',
-      'Проверяйте выбранный месяц и дату, если нужная запись не отображается.',
-    ],
-  },
-  {
-    category: 'today',
-    title: 'Сводка на сегодня',
-    summary: 'Быстро оцените состояние данных и важные записи текущего дня.',
-    steps: [
-      'Сводка отображает информацию, которая относится к текущей дате и состоянию приложения.',
-      'Откройте связанную запись или соответствующий раздел, чтобы посмотреть подробности.',
-      'Если ожидаемая запись отсутствует, проверьте календарь и фильтры.',
-    ],
-  },
-  {
-    category: 'marathons',
-    title: 'Создание марафона и этапов',
-    summary: 'Разбейте цель на этапы и следите за их выполнением.',
-    steps: [
-      'В разделе «Марафоны» создайте марафон и укажите его название.',
-      'Добавьте этапы с понятными названиями и сохраните изменения.',
-      'При необходимости разложите марафоны по папкам.',
-      'Отмечайте этапы по мере выполнения и проверяйте общий прогресс.',
-    ],
-  },
-  {
-    category: 'marathons',
-    title: 'Прогресс и организация марафонов',
-    summary: 'Поддерживайте актуальный прогресс и порядок в списке.',
-    steps: [
-      'Откройте марафон, чтобы увидеть его этапы и текущее состояние.',
-      'Обновляйте отметки по факту выполнения, чтобы не терять актуальный прогресс.',
-      'Используйте папки для группировки марафонов по теме или периоду.',
-      'Перед удалением внимательно проверьте выбранную запись и подтверждение действия.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Массовые действия и скрипты',
-    summary: 'Применяйте инструменты к выбранным активным персонажам.',
-    steps: [
-      'Выберите нужных персонажей в активном списке; перед запуском проверьте выделение.',
-      'Откройте меню быстрых действий и выберите нужную операцию.',
-      'Читайте запросы подтверждения: массовое действие может затронуть сразу несколько записей.',
-      'Архивные персонажи не участвуют в общем активном пуле персонажей для скриптов.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Проверка входа и обновление балансов',
-    summary: 'Запустите проверку сразу для активных персонажей через меню «Скрипты».',
-    steps: [
-      'На странице персонажей откройте круглую кнопку «+», затем пункт «Скрипты».',
-      'Выберите «Вход» для проверки авторизации или «Балансы» для обновления монет.',
-      'Дождитесь уведомления о завершении и при необходимости откройте журнал скриптов.',
-      'Архивные карточки не входят в активный пул таких операций.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Активация промокода',
-    summary: 'Откройте форму промокода из подменю «Скрипты» и проверьте результат в журнале.',
-    steps: [
-      'В разделе «Персонажи» откройте кнопку «+» → «Скрипты» → «Промокод».',
-      'Заполните форму и проверьте выбранных персонажей и введённый код перед запуском.',
-      'Дождитесь завершения операции. Результаты и детали доступны в панели «Журналы» настроек.',
-      'Если код не сработал, проверьте сообщение результата и актуальность входа персонажа.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Передача предметов',
-    summary: 'Откройте инструмент передачи из меню скриптов и проверьте параметры до запуска.',
-    steps: [
-      'На странице персонажей откройте «+» → «Скрипты» → «Передача».',
-      'Укажите требуемые данные в форме операции и перепроверьте отправителя, получателя и предметы.',
-      'Подтвердите запуск и дождитесь результата.',
-      'Подробности выполненных передач можно найти в панели «Журналы» настроек.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Подарки за Древние монеты',
-    summary: 'Инструмент покупки подарков доступен в подменю скриптов.',
-    steps: [
-      'На странице персонажей откройте «+» → «Скрипты» → «Подарки».',
-      'Проверьте выбранного персонажа, доступный баланс и параметры покупки.',
-      'Запускайте покупку только после проверки итогового действия.',
-      'Результат можно посмотреть в журнале подарков в настройках.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Обновление прогресса марафонов',
-    summary: 'Сверьте прогресс марафонов с сайтом через пункт меню скриптов.',
-    steps: [
-      'Откройте «+» → «Скрипты» → «Марафоны».',
-      'Дождитесь уведомления о завершении обновления.',
-      'Перейдите в раздел «Марафоны» и проверьте обновлённые карточки.',
-      'При ошибке проверьте статус входа и свежесть данных в профиле персонажа.',
-    ],
-  },
-  {
-    category: 'tools',
-    title: 'Управление игровыми окнами',
-    summary: 'Посмотрите запущенные окна, закройте выбранные или завершите все с подтверждением.',
-    steps: [
-      'Откройте «Настройки» → «Запуск игры» → «Запущенные окна…», чтобы выбрать отдельные окна.',
-      'Для завершения всех окон используйте «Закрыть все окна игры» и внимательно прочитайте подтверждение.',
-      'Пункт «Закрыть» также доступен из подменю «Скрипты».',
-      'Не закрывайте окна, в которых выполняется важное действие.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Резервное копирование и восстановление',
-    summary: 'Сделайте копию данных перед важными изменениями и храните её безопасно.',
-    steps: [
-      'В настройках создайте резервную копию и дождитесь сообщения об успешном завершении.',
-      'Храните файл в надёжном месте; не отправляйте его вместе с обращением в поддержку.',
-      'Перед импортом проверьте выбранный файл и убедитесь, что готовы заменить или объединить текущие данные согласно диалогу.',
-      'После восстановления проверьте основные разделы и несколько карточек.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Журналы и диагностика',
-    summary: 'Найдите запись о действии, если запуск или другая функция завершились с ошибкой.',
-    steps: [
-      'Откройте панель журналов в настройках.',
-      'Раскройте нужный журнал и найдите записи по времени возникновения проблемы.',
-      'Сверьте текст ошибки с настройками связанной функции.',
-      'Перед передачей журналов третьим лицам убедитесь, что в них нет личных данных.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Настройки игры, браузера и уведомлений',
-    summary: 'Настройте интеграции и проверьте системные разрешения.',
-    steps: [
-      'Откройте нужную панель настроек и меняйте параметры по одному.',
-      'Для игровых профилей используйте управление игровыми центрами и привязками персонажей.',
-      'Проверьте тестовое уведомление, если хотите убедиться, что Windows разрешает показывать уведомления.',
-      'После изменения перезапустите соответствующее действие и проверьте результат.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Обновления и горячие клавиши',
-    summary: 'Проверьте версию приложения и узнайте, какие сочетания клавиш доступны.',
-    steps: [
-      'Раскройте панель «Обновления», чтобы проверить новую версию вручную или настроить расписание.',
-      'Перед установкой обновления сохраните важные данные и не выключайте приложение во время установки.',
-      'Раскройте панель «Горячие клавиши», чтобы увидеть актуальные сочетания.',
-      'Если приложение было закрыто в запланированное время, проверка обновлений выполнится при следующем запуске.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Безопасность и состояние парсеров',
-    summary: 'Проверяйте состояние внешних интеграций и бережно обращайтесь с учётными данными.',
-    steps: [
-      'Откройте панели «Безопасность» и «Состояние парсеров» в настройках.',
-      'Если парсер сообщает о проблеме, повторите действие позже и проверьте журналы.',
-      'Не отправляйте резервные копии, пароли или приватные ключи в чаты и публичные обращения.',
-      'Для учётных данных используйте предусмотренное приложением защищённое хранение.',
-    ],
-  },
-  {
-    category: 'settings',
-    title: 'Опасные действия и полный сброс',
-    summary: 'Удаление данных необратимо без резервной копии — проверьте выбор перед подтверждением.',
-    steps: [
-      'Панель «Опасные действия» находится внизу настроек.',
-      'Перед удалением персонажей, пати или марафонов создайте резервную копию.',
-      'Читайте текст подтверждения и убедитесь, что выбрана именно та операция.',
-      'Заводской сброс удаляет все данные приложения; выполняйте его только если действительно хотите начать заново.',
-    ],
-  },
-];
+const byId = new Map(GUIDES.map(guide => [guide.id, guide]));
+const categoryLabel = id => GUIDE_CATEGORIES.find(category => category.id === id)?.label || '';
+const plural = new Intl.PluralRules('ru');
+const countText = count => `${count} ${({ one: 'инструкция', few: 'инструкции', many: 'инструкций', other: 'инструкции' })[plural.select(count)]}`;
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, char => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  })[char]);
-}
-
-function renderGuide(guide, index) {
-  const steps = guide.steps.map(step => `<li>${escapeHtml(step)}</li>`).join('');
-
-  return `<details class="guide-item"${index === 0 ? ' open' : ''}>
-    <summary><span class="guide-item-title">${escapeHtml(guide.title)}</span><span class="guide-item-summary">${escapeHtml(guide.summary)}</span></summary>
-    <div class="guide-content"><ol>${steps}</ol></div>
+function screenshotHtml(screen) {
+  if (!screen) return '';
+  return `<details class="guide-image-details">
+    <summary>Посмотреть скриншот интерфейса</summary>
+    <figure class="guide-screenshot">
+      <button type="button" class="guide-screenshot-button" data-guide-image="${escapeHtml(screen.src)}" data-guide-label="${escapeHtml(screen.alt)}" aria-label="Увеличить скриншот: ${escapeHtml(screen.alt)}">
+        <img src="${escapeHtml(screen.src)}" alt="${escapeHtml(screen.alt)}" loading="lazy" decoding="async" />
+        <span class="guide-image-zoom">Увеличить</span>
+      </button>
+      <figcaption>${escapeHtml(screen.alt)}. Снимок на вымышленных данных.</figcaption>
+    </figure>
   </details>`;
 }
 
+function articleHtml(guide) {
+  const notice = guide.notice;
+  return `<article class="guide-article">
+    <header class="guide-article-head">
+      <div class="guide-meta"><span>${escapeHtml(categoryLabel(guide.category))}</span><span>${guide.steps.length} ${({ one: 'шаг', few: 'шага', many: 'шагов', other: 'шага' })[plural.select(guide.steps.length)]}</span>${guide.desktop ? '<span>Для установленного приложения</span>' : ''}</div>
+      <h3 id="guide-reader-title">${escapeHtml(guide.title)}</h3>
+      <p class="guide-intro">${escapeHtml(guide.summary)}</p>
+    </header>
+    <div class="guide-route"><strong>Где открыть</strong><p>${escapeHtml(guide.where)}</p></div>
+    ${guide.before ? `<aside class="guide-callout is-info"><strong>Перед началом</strong><p>${escapeHtml(guide.before)}</p></aside>` : ''}
+    <section class="guide-steps-section" aria-label="Пошаговая инструкция">
+      <h4>Как сделать</h4>
+      <ol class="guide-steps">${guide.steps.map(item => `<li><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.text)}</p></li>`).join('')}</ol>
+    </section>
+    <aside class="guide-callout is-result"><strong>Что получится</strong><p>${escapeHtml(guide.result)}</p></aside>
+    ${notice ? `<aside class="guide-callout is-${notice.tone}"><strong>${notice.tone === 'danger' || notice.tone === 'warning' ? '⚠ ' : ''}${escapeHtml(notice.title)}</strong><p>${escapeHtml(notice.text)}</p></aside>` : ''}
+    ${guide.trouble?.length ? `<section class="guide-trouble"><h4>Если не получилось</h4>${guide.trouble.map(item => `<div><strong>${escapeHtml(item.problem)}</strong><p>${escapeHtml(item.solution)}</p></div>`).join('')}</section>` : ''}
+    ${screenshotHtml(guide.screen)}
+    ${guide.related?.length ? `<footer class="guide-related"><h4>Дальше по теме</h4><div>${guide.related.map(id => `<button type="button" data-guide-open="${id}">${escapeHtml(byId.get(id).title)} <span aria-hidden="true">→</span></button>`).join('')}</div></footer>` : ''}
+  </article>`;
+}
+
+/** Каталог ничего не запускает и не меняет настройки: кнопки ведут только к инструкциям. */
 export function bindGuides() {
+  const library = document.getElementById('guide-library');
   const list = document.getElementById('guide-list');
   const filters = document.getElementById('guide-categories');
   const search = document.getElementById('guide-search');
-  if (!list || !filters || !search) return;
+  const reader = document.getElementById('guide-reader');
+  const status = document.getElementById('guide-status');
+  const reset = document.getElementById('guide-reset');
+  if (!library || !list || !filters || !search || !reader || !status || !reset || library.dataset.guideBound) return;
+  library.dataset.guideBound = 'true';
 
-  let selectedCategory = 'all';
-  filters.innerHTML = [
-    '<button type="button" class="guide-category is-active" data-category="all" aria-pressed="true">Все</button>',
-    ...categories.map(category => `<button type="button" class="guide-category" data-category="${category.id}" aria-pressed="false">${escapeHtml(category.label)}</button>`),
-  ].join('');
+  const st = { category: 'start', selected: 'first-character', query: '' };
+  const searchIndex = new Map(GUIDES.map(guide => [guide.id, guideSearchText(guide)]));
 
   const render = () => {
-    const query = search.value.trim().toLocaleLowerCase('ru');
-    const visible = guides.filter(guide => {
-      const categoryMatches = selectedCategory === 'all' || guide.category === selectedCategory;
-      const content = `${guide.title} ${guide.summary} ${guide.steps.join(' ')}`.toLocaleLowerCase('ru');
-      return categoryMatches && (!query || content.includes(query));
-    });
-
-    list.innerHTML = visible.length
-      ? visible.map(renderGuide).join('')
-      : '<p class="guide-empty muted">По вашему запросу ничего не найдено. Попробуйте изменить поиск или категорию.</p>';
+    const words = st.query.toLocaleLowerCase('ru').replaceAll('ё', 'е').split(/\s+/).filter(Boolean);
+    const matched = GUIDES.filter(guide => words.every(word => searchIndex.get(guide.id).includes(word)));
+    const visible = matched.filter(guide => st.category === 'all' || guide.category === st.category);
+    const categories = [{ id: 'all', label: 'Все темы' }, ...GUIDE_CATEGORIES];
+    filters.innerHTML = categories.map(category => {
+      const count = category.id === 'all' ? matched.length : matched.filter(guide => guide.category === category.id).length;
+      return `<button type="button" class="guide-category${st.category === category.id ? ' is-active' : ''}" data-category="${category.id}" aria-pressed="${st.category === category.id}">${escapeHtml(category.label)} <span class="guide-category-count">${count}</span></button>`;
+    }).join('');
+    status.textContent = `${st.query ? 'Найдено: ' : ''}${countText(visible.length)}${st.category === 'all' ? ' во всех темах' : ` · ${categoryLabel(st.category)}`}`;
+    reset.hidden = !st.query && st.category === 'start';
+    if (!visible.length) {
+      list.innerHTML = '<p class="guide-empty">В этой теме нет подходящих инструкций.</p>';
+      reader.innerHTML = '<div class="guide-empty-state"><h3 id="guide-reader-title">Ничего не найдено</h3><p>Попробуйте другое слово или выберите «Все темы». Поиск учитывает не только названия, но и шаги инструкции.</p><button type="button" class="btn" data-guide-reset>Сбросить поиск и фильтры</button></div>';
+      return;
+    }
+    if (!visible.some(guide => guide.id === st.selected)) st.selected = visible[0].id;
+    list.innerHTML = visible.map(guide => `<button type="button" class="guide-index-item${guide.id === st.selected ? ' is-active' : ''}" data-guide-id="${guide.id}"${guide.id === st.selected ? ' aria-current="page"' : ''}>
+      <strong>${escapeHtml(guide.title)}</strong><span>${escapeHtml(guide.summary)}</span>
+    </button>`).join('');
+    reader.innerHTML = articleHtml(byId.get(st.selected));
   };
 
-  filters.addEventListener('click', event => {
-    const button = event.target.closest('[data-category]');
-    if (!button || !filters.contains(button)) return;
-    selectedCategory = button.dataset.category;
-    filters.querySelectorAll('[data-category]').forEach(item => {
-      const active = item === button;
-      item.classList.toggle('is-active', active);
-      item.setAttribute('aria-pressed', String(active));
-    });
+  const focusReader = () => {
+    reader.focus({ preventScroll: true });
+    if (window.innerWidth <= 760) reader.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+  };
+  const openGuide = id => {
+    const guide = byId.get(id);
+    if (!guide) return;
+    st.category = guide.category;
+    st.selected = guide.id;
+    st.query = '';
+    search.value = '';
+    render();
+    focusReader();
+  };
+  const resetFilters = () => {
+    st.category = 'start'; st.selected = 'first-character'; st.query = ''; search.value = '';
+    render(); search.focus();
+  };
+
+  library.addEventListener('click', event => {
+    const target = event.target.closest?.('button');
+    if (!target || !library.contains(target)) return;
+    if (target.hasAttribute('data-guide-reset')) { resetFilters(); return; }
+    if (target.dataset.guideImage) {
+      const ov = openOverlay({ title: target.dataset.guideLabel, wide: true, onClose: () => target.focus() });
+      ov.body.innerHTML = `<div class="guide-image-viewport" tabindex="0" aria-label="Скриншот: ${escapeHtml(target.dataset.guideLabel)}"><img class="guide-screenshot-full" src="${escapeHtml(target.dataset.guideImage)}" alt="${escapeHtml(target.dataset.guideLabel)}" /></div><p class="guide-image-hint">Для мелких подписей включите «Масштаб 100%» и прокручивайте изображение.</p>`;
+      ov.foot.classList.add('guide-image-actions');
+      ov.foot.innerHTML = '<button type="button" class="btn" data-guide-zoom aria-pressed="false">Масштаб 100%</button><button type="button" class="btn primary" data-close>Закрыть</button>';
+      const viewport = ov.body.querySelector('.guide-image-viewport');
+      const zoom = ov.foot.querySelector('[data-guide-zoom]');
+      zoom.onclick = () => {
+        const enlarged = viewport.classList.toggle('is-zoomed');
+        zoom.setAttribute('aria-pressed', String(enlarged));
+        zoom.textContent = enlarged ? 'Вписать в окно' : 'Масштаб 100%';
+        viewport.scrollTop = 0; viewport.scrollLeft = 0;
+      };
+      ov.foot.querySelector('[data-close]').onclick = () => ov.close();
+      ov.foot.querySelector('[data-close]').focus();
+      return;
+    }
+    if (target.dataset.guideOpen) { openGuide(target.dataset.guideOpen); return; }
+    if (target.dataset.guideId) {
+      st.selected = target.dataset.guideId; render(); focusReader(); return;
+    }
+    if (target.dataset.category) {
+      st.category = target.dataset.category; render();
+      filters.querySelector(`[data-category="${st.category}"]`)?.focus();
+    }
+  });
+  search.addEventListener('input', () => {
+    st.query = search.value.trim();
+    // Поиск начинается по всей библиотеке; после ввода его можно сузить кнопкой темы.
+    st.category = 'all';
     render();
   });
-  search.addEventListener('input', render);
   render();
 }

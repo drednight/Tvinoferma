@@ -225,7 +225,8 @@ export function taskCardHtml(t, { closable = false } = {}) {
 function notify(t) {
   // точечное обновление всех карточек этой задачи на странице
   document.querySelectorAll(`[data-task-card="${t.id}"]`).forEach(el => {
-    const closable = !!el.querySelector('[data-task-close]');
+    if (el.closest('.tl-log-progress')) return; // полный журнал обновляется пачками
+    const closable = el.closest('#tf-task-dock') ? t.status !== 'running' : !!el.querySelector('[data-task-close]');
     el.outerHTML = taskCardHtml(t, { closable });
   });
   if (t.dock) renderDock();
@@ -243,6 +244,9 @@ export function renderDock() {
   const embedded = new Set([...document.querySelectorAll('[data-task-card]')]
     .filter(el => !dock.contains(el)).map(el => el.dataset.taskCard));
   const visible = tasks.filter(t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt)).slice(0, 4);
+  // notify уже обновил изменившуюся карточку. Не пересоздаём весь док на каждую строку лога.
+  const current = [...dock.children].map(el => el.getAttribute('data-task-card'));
+  if (current.length === visible.length && visible.every((t, i) => t.id === current[i])) return;
   dock.innerHTML = visible.map(t => taskCardHtml(t, { closable: t.status !== 'running' })).join('');
 }
 
@@ -251,8 +255,15 @@ export function openTaskLog(id) {
   const t = tasks.find(x => x.id === id);
   if (!t) return;
   const ov = openOverlay({ title: `📄 ${t.title}`, wide: true });
+  ov.sub.classList.add('tl-log-progress');
+  let renderTimer = null;
+  let onlyProblems = false;
   const dur = t.finishedAt ? Math.round((new Date(t.finishedAt) - new Date(t.startedAt)) / 1000) : null;
   const draw = () => {
+    ov.sub.innerHTML = taskCardHtml(t);
+    // Полный лог уже открыт: не предлагаем открыть ещё одну копию или свернуть те же строки.
+    ov.sub.querySelector('[data-task-log]')?.remove();
+    ov.sub.querySelector('[data-task-toggle]')?.remove();
     ov.body.innerHTML = `
       <div class="tl-summary">
         <span>${STATUS_ICON[t.status]} ${t.status === 'running' ? 'Выполняется' : 'Завершено'}</span>
@@ -260,12 +271,13 @@ export function openTaskLog(id) {
         ${t.summary ? `<strong>${escapeHtml(t.summary)}</strong>` : ''}
       </div>
       <div class="tl-filter row gap">
-        <label class="tf-radio"><input type="checkbox" data-only-problems/> Только ошибки и предупреждения</label>
+        <label class="tf-radio"><input type="checkbox" data-only-problems${onlyProblems ? ' checked' : ''}/> Только ошибки и предупреждения</label>
       </div>
-      <div class="tl-entries tl-full">${t.entries.map(entryHtml).join('')}</div>`;
+      <div class="tl-entries tl-full">${t.entries.filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error').map(entryHtml).join('')}</div>`;
     ov.body.querySelector('[data-only-problems]').onchange = (e) => {
+      onlyProblems = e.target.checked;
       ov.body.querySelector('.tl-full').innerHTML = t.entries
-        .filter(x => !e.target.checked || x.level === 'warn' || x.level === 'error').map(entryHtml).join('');
+        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error').map(entryHtml).join('');
     };
   };
   draw();
@@ -276,8 +288,13 @@ export function openTaskLog(id) {
     try { await navigator.clipboard.writeText(text); ov.foot.querySelector('[data-copy]').textContent = '✔ Скопировано'; }
     catch (_) { ov.foot.querySelector('[data-copy]').textContent = 'Не удалось скопировать'; }
   };
-  const unsub = onTaskChange(x => { if (x.id === t.id && document.body.contains(ov.el)) draw(); });
-  const origClose = ov.close; ov.close = () => { unsub(); origClose(); };
+  const unsub = onTaskChange(x => {
+    if (x.id !== t.id || !ov.el.isConnected) return;
+    if (t.status !== 'running') { clearTimeout(renderTimer); renderTimer = null; draw(); return; }
+    if (renderTimer !== null) return;
+    renderTimer = setTimeout(() => { renderTimer = null; if (ov.el.isConnected) draw(); }, 100);
+  });
+  const origClose = ov.close; ov.close = () => { clearTimeout(renderTimer); unsub(); origClose(); };
 }
 
 /* ------------------------------------------------------------------ */

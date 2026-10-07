@@ -20,6 +20,7 @@ export const HOTKEYS = [
 ];
 
 let backgroundTimer = null;
+let backgroundChecking = false;
 
 async function runScript(action) {
   if (typeof action === 'string' && action.startsWith('launch-favorite:')) {
@@ -117,9 +118,14 @@ export async function applyDesktopSettings() {
   const minutes = Number(tray.backgroundAuthMinutes) || 0;
   if (minutes > 0 && window.__TAURI_INTERNALS__) {
     backgroundTimer = setInterval(async () => {
-      const { verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
-      verifySavedLoginsOnStartup({ title: '🔐 Фоновая проверка входа', quiet: true })
-        .catch(e => console.warn('[BACKGROUND AUTH]', e));
+      // Пачка может идти дольше интервала. Не копим новые пачки и не мешаем ручной проверке.
+      if (backgroundChecking || Object.keys(state.ui?.authCheck || {}).length) return;
+      backgroundChecking = true;
+      try {
+        const { verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
+        await verifySavedLoginsOnStartup({ title: '🔐 Фоновая проверка входа', quiet: true });
+      } catch (e) { console.warn('[BACKGROUND AUTH]', e); }
+      finally { backgroundChecking = false; }
     }, minutes * 60 * 1000);
   }
 }

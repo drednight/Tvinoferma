@@ -198,7 +198,7 @@ async function boot() {
       })().catch(e => console.error('[BOOT] Startup checks failed:', e));
     }
 
-        // 9. Обновления: кнопка в шапке и в настройках; тихая проверка при запуске и раз в 6 часов
+    // 9. Обновления: обязательная тихая проверка при каждом запуске; дополнительные проверки по расписанию
     initUpdateUi();
     initParserHealthUi();
     startFreshnessTicker(() => state.settings);   // «5 мин назад» пересчитывается раз в минуту

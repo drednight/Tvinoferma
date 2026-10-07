@@ -132,9 +132,8 @@ function armBoundary() {
 
 /**
  * Тихая автопроверка по расписанию (updateSchedule.js):
- *  - startup: один раз через 5 с после запуска;
- *  - daily/weekly: в 00:00 и, если пропустили срок, при запуске или в ближайшие 10 минут;
- *  - never: ничего.
+ *  - при любом режиме: один раз через 5 с после запуска, без автоматической установки;
+ *  - daily/weekly: дополнительно в 00:00 и, если пропустили срок, в ближайшие 10 минут.
  * @param {{ getMode?: () => string, getLastChecked?: () => (string|null|undefined) }} opts
  */
 export function startUpdateScheduler({ getMode = () => 'startup', getLastChecked = () => getUpdateState().lastCheckedAt } = {}) {
@@ -142,8 +141,8 @@ export function startUpdateScheduler({ getMode = () => 'startup', getLastChecked
   if (!isSupported()) return;
   schedule = { getMode, getLastChecked };
   timers.push(setTimeout(() => {
-    const mode = getMode();
-    if (mode === 'startup' || dueNow()) checkForUpdates({ silent: true });
+    // Проверяем при каждом запуске, даже если сегодня уже проверяли или сохранён старый режим never.
+    checkForUpdates({ silent: true });
   }, FIRST_CHECK_DELAY_MS));
   timers.push(setInterval(() => { if (dueNow()) checkForUpdates({ silent: true }); }, CATCHUP_INTERVAL_MS));
   armBoundary();

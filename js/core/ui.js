@@ -1,6 +1,7 @@
 // js/core/ui.js
 
 import { escapeHtml } from './utils.js';
+import { registerModal, closeModalRoot, isTopModal } from './modalLifecycle.js';
 
 /**
  * Универсальная функция показа модального окна
@@ -20,7 +21,7 @@ export function showModal({
   if (!root) return;
 
   // ОЧИСТКА ПРЕДЫДУЩЕЙ МОДАЛКИ
-  root.innerHTML = ''; 
+  closeModal();
 
   // Создаем оверлей
   const overlay = document.createElement('div');
@@ -59,8 +60,7 @@ export function showModal({
       btnCancel.className = 'btn ghost';
       btnCancel.textContent = String(cancelText);
       btnCancel.onclick = () => {
-        if (typeof onClose === 'function') onClose();
-        closeModal();
+        close();
       };
       footer.appendChild(btnCancel);
     }
@@ -98,8 +98,7 @@ export function showModal({
           if (result !== false) {
             // Кнопка «Начать»/«Сохранить» тоже должна известить о закрытии, как кнопка отмены:
             // иначе окна, которым важно запомнить факт закрытия, молча теряли это событие
-            if (typeof onClose === 'function') onClose();
-            closeModal();
+            close();
           }
         } catch (err) {
           console.error('[MODAL SUBMIT ERROR]', err);
@@ -121,22 +120,25 @@ export function showModal({
   // ВАЖНО: Запрет выхода по клику на фон убран.
   // Теперь окно можно закрыть ТОЛЬКО через кнопки или Esc.
 
-  // Добавляем поддержку закрытия по клавише Escape
+  let closed = false;
   const handleEsc = (e) => {
-    if (e.key === 'Escape') {
-       if (typeof onClose === 'function') onClose();
-       closeModal();
-       document.removeEventListener('keydown', handleEsc); // Удаляем слушатель после закрытия
-    }
+    if (e.key === 'Escape' && isTopModal(overlay)) close();
   };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    unregister();
+    document.removeEventListener('keydown', handleEsc);
+    overlay.remove();
+    if (typeof onClose === 'function') onClose();
+  };
+  const unregister = registerModal(overlay, close);
   document.addEventListener('keydown', handleEsc);
 }
 
 export function closeModal() {
   const root = document.getElementById('modal-root');
-  if (root) {
-    root.innerHTML = '';
-  }
+  if (root) closeModalRoot(root);
 }
 
 export function toast(message, type = 'info', durationMs = 3000) {

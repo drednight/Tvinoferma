@@ -200,23 +200,20 @@
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
-        <details class="panel fold guide-library" id="guide-library">
-          <summary>
-            <h3>📖 Инструкции и гайды</h3>
-            <p class="muted">Пошаговые объяснения функций приложения и безопасные учебные иллюстрации.</p>
-          </summary>
-          <div class="guide-library-content">
-            <label class="guide-search">
-              <span class="sr-only">Поиск по гайдам</span>
-              <input id="guide-search" class="input" type="search" placeholder="Найти функцию или действие…" />
-            </label>
-            <nav id="guide-categories" class="guide-categories" aria-label="Категории гайдов"></nav>
-            <div id="guide-list" class="guide-list" aria-live="polite"></div>
-          </div>
-        </details>
-
-        <div class="panel" style="margin-bottom: 16px;">
-          <h3>Информация о системе</h3>
+        <nav class="settings-nav" aria-label="Разделы настроек">
+          <a class="btn ghost" href="#settings-app">Приложение</a>
+          <a class="btn ghost" href="#settings-sync">Синхронизация</a>
+          <a class="btn ghost" href="#settings-updates">Обновления</a>
+          <a class="btn ghost" href="#settings-data">Данные и безопасность</a>
+          <a class="btn ghost" href="#settings-help">Справка</a>
+          <a class="btn ghost" href="#danger-zone">Опасные действия</a>
+        </nav>
+        <section class="settings-group" id="settings-app" aria-labelledby="settings-app-title">
+          <header class="settings-group-head"><h3 id="settings-app-title">Приложение</h3><p class="muted">Запуск игры, окна, трей и уведомления.</p></header>
+          <div class="settings-cols">
+            <div class="settings-col">
+<details class="panel fold" id="settings-system">
+          <summary><h3>Информация о системе</h3><p class="muted">Режим работы и папка хранения данных.</p></summary>
           <div class="setting-row">
             <div>
               <strong>Режим работы</strong>
@@ -230,157 +227,64 @@
             </div>
             <button class="btn ghost small" id="copy-data-dir-btn">📋 Скопировать путь</button>
           </div>
-        </div>
-
-        <div class="settings-cols">
-          <div class="settings-col">
-        <details class="panel fold">
-          <summary>
-            <h3>☁️ Резервные копии</h3>
-            <p class="muted" id="backup-summary">Загрузка списка резервных копий…</p>
-          </summary>
-          <div class="row gap" style="margin-bottom: 12px;">
-            <button id="create-backup-btn" class="btn" title="Сохранить снимок данных в отдельный файл">☁️ Создать бэкап</button>
-            <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
-            <button id="all-backups-btn" class="btn" hidden>📚 Полный список бэкапов</button>
-          </div>
-          <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
-          <div id="backup-list" class="list compact"></div>
         </details>
-        <details class="panel fold">
+<details class="panel fold" id="settings-launcher">
           <summary>
-            <h3>📦 Перенос данных</h3>
-            <p class="muted">Экспорт в JSON (полный и выборочный) и импорт с сравнением карточек.</p>
+            <h3>🎮 Запуск игры</h3>
+            <p class="muted">Запуск окон игры из карточек, пати и трея.</p>
           </summary>
-          <div class="row gap" style="margin-bottom: 12px;">
-            <button id="export-all-btn" class="btn">📤 Экспорт всех данных (JSON)</button>
-            <button id="advanced-export-btn" class="btn primary">
-              📤 Гибкий экспорт (Выбор полей)
-            </button>
-            <label class="btn ghost" style="cursor: pointer;">
-              📥 Импорт JSON
-              <input id="import-file" type="file" accept="application/json,.json" hidden />
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="launcher.decorateWindows" /> Подписывать окна игры: название «Ник — Класс» и значок класса персонажа (меняется только вид окна и панели задач)</label>
+            <label style="margin-left: 24px;"><input type="checkbox" data-setting="launcher.decorateIcons" /> Ставить значок класса на окно игры</label>
+            <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
+            <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+          </div>
+          <div class="row gap" style="margin-top: 12px; align-items:center; flex-wrap:wrap;">
+            <button id="gc-manage-btn" class="btn secondary" title="Список GameCenter с названиями, какой запускать и какие GameCenter у каких персонажей">⚙ GameCenter и персонажи…</button>
+            <span id="gc-summary" class="muted"></span>
+          </div>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="close-game-windows-btn" class="btn ghost" title="Закрыть все запущенные окна игры (elementclient_64.exe)">🛑 Закрыть все окна игры</button>
+            <button id="pick-game-windows-btn" class="btn ghost" title="Показать запущенные окна игры и закрыть выбранные">🎮 Запущенные окна…</button>
+          </div>
+        </details>
+<details class="panel fold" id="settings-browser">
+          <summary>
+            <h3>🌐 Окно браузера персонажа</h3>
+            <p class="muted">Что приложение подправляет на страницах сайта, когда вы открываете их сами.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
+          </div>
+        </details>
+            </div>
+            <div class="settings-col">
+<details class="panel fold" id="settings-tray">
+          <summary>
+            <h3>🖥 Трей и фоновые проверки</h3>
+            <p class="muted">Закрытие окна в трей и автоматическая проверка входа в фоне.</p>
+          </summary>
+          <div class="settings-checks">
+            <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
+            <label>Фоновая проверка входа:
+              <select class="select" data-setting="tray.backgroundAuthMinutes">
+                <option value="0">выключена</option>
+                <option value="15">каждые 15 мин</option>
+                <option value="30">каждые 30 мин</option>
+                <option value="60">каждый час</option>
+                <option value="180">каждые 3 часа</option>
+              </select>
             </label>
           </div>
-          <p class="muted">
-            • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
-            • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
-            • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
-          </p>
-        </details>
-        <details class="panel fold" id="log-hub-panel">
-          <summary>
-            <h3>📚 Журналы</h3>
-            <p class="muted" id="log-hub-summary">Записей пока нет: они появятся после первых проверок, промокодов и передач.</p>
-          </summary>
-          <p class="muted" style="margin-bottom: 8px;">Все логи в одном месте: скрипты (вход, балансы, марафоны), промокоды и передача предметов. Выберите вид, найдите запись поиском, нажмите на неё — откроются подробности. Если что-то пошло не так, скопируйте лог или сохраните список в файл и отправьте разработчику. Пароли и почты в логи не попадают. Данные лежат только на этом компьютере.</p>
-          <div id="log-hub-root"></div>
-        </details>
-        <details class="panel fold">
-          <summary>
-            <h3>⬆️ Обновления</h3>
-            <p class="muted">Версия <span id="app-version">—</span> · проверка вручную и по расписанию.</p>
-          </summary>
-          <div class="setting-row">
-            <div>
-              <p class="muted" id="update-status">Обновления скачиваются из GitHub Releases.</p>
-              <p class="muted" id="update-checked-at" style="font-size:0.8rem; margin-top:2px;"></p>
-              <p class="muted" id="update-next-check" style="font-size:0.8rem; margin-top:2px;"></p>
-            </div>
-            <div class="row gap">
-              <button id="check-updates-btn" class="btn" type="button">Проверить обновления</button>
-              <button id="install-update-btn" class="btn primary" type="button" hidden></button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div>
-              <strong>Автоматическая проверка</strong>
-              <p class="muted">Ежедневная — в 00:00, еженедельная — по понедельникам в 00:00. Если программа была закрыта, проверка пройдёт при следующем запуске.</p>
-            </div>
-            <select data-setting="updates.mode" data-value-type="string">
-              <option value="startup">При запуске программы</option>
-              <option value="daily">Ежедневно (00:00)</option>
-              <option value="weekly">Еженедельно (пн, 00:00)</option>
-              <option value="never">Не проверять автоматически</option>
-            </select>
+          <!-- Автозапуск вместе с Windows (js/desktop/autostart.js); вне приложения блок скрыт -->
+          <div class="settings-checks" id="autostart-block" hidden style="margin-top: 12px;">
+            <label><input type="checkbox" id="autostart-enabled" /> Запускать Твиноферму вместе с Windows</label>
+            <label style="margin-left: 24px;"><input type="checkbox" id="autostart-minimized" /> Сразу в трей, без окна</label>
+            <label style="margin-left: 24px;" title="Нужно, если игра запущена от администратора: иначе Windows не даёт Твиноферме менять название и значок окон игры и закрывать их без запроса. Windows спросит разрешение один раз."><input type="checkbox" id="autostart-admin" /> От имени администратора (Windows спросит разрешение один раз)</label>
+            <p class="muted" id="autostart-note" style="margin: 0;"></p>
           </div>
         </details>
-        <details class="panel fold">
-          <summary>
-            <h3>⌨️ Горячие клавиши</h3>
-            <p class="muted">Список сочетаний клавиш приложения.</p>
-          </summary>
-          <div id="hotkeys-list" class="hotkeys-list"></div>
-        </details>
-        <details class="panel fold">
-          <summary>
-            <h3>⏳ Свежесть данных</h3>
-            <p class="muted">Через сколько времени данные считаются устаревшими (подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов) и как часто обновляется статус серверов.</p>
-          </summary>
-          <div class="setting-row">
-            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.balanceHours" /><span class="muted hours-hint" data-hours-for="freshness.balanceHours"></span></div>
-          </div>
-          <div class="setting-row">
-            <div><strong>🔐 Статус входа</strong><p class="muted">Часов с последней проверки авторизации.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.loginHours" /><span class="muted hours-hint" data-hours-for="freshness.loginHours"></span></div>
-          </div>
-          <div class="setting-row">
-            <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
-          </div>
-          <div class="setting-row">
-            <div><strong>🖥 Статус серверов</strong><p class="muted">Как часто перечитывать страницу «Статус серверов» (плашка в шапке). Читается и при запуске приложения, до проверки входа персонажей. Сайт обновляет её раз в 10 минут; 0 — только при запуске.</p></div>
-            <div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="1" data-setting="freshness.serverStatusMinutes" /><span class="muted hours-hint">мин</span></div>
-          </div>
-        </details>
-        <details class="panel fold" id="parser-health-panel">
-          <summary>
-            <h3>🩺 Состояние парсеров</h3>
-            <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
-          </summary>
-          <div id="parser-health-list"></div>
-          <div class="setting-row">
-            <p class="muted" id="parser-health-config"></p>
-            <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
-          </div>
-        </details>
-          </div>
-          <div class="settings-col">
-        <details class="panel fold">
-          <summary>
-            <h3>🔒 Безопасность</h3>
-            <p class="muted">Хранение email, паролей и телефонов в хранилище учётных данных ОС.</p>
-          </summary>
-          <div class="setting-row">
-            <div>
-              <strong>Учётные данные в хранилище ОС</strong>
-              <p class="muted" id="vault-status">Проверка…</p>
-            </div>
-            <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
-          </div>
-        </details>
-        <details class="panel fold">
-          <summary>
-            <h3>⚡ Скрипты</h3>
-            <p class="muted">Сколько окон открывать одновременно и сколько раз повторять при ошибке.</p>
-          </summary>
-          <div class="setting-row">
-            <div>
-              <strong>Одновременно открытых окон</strong>
-              <p class="muted">Сколько персонажей проверяется параллельно (вход, балансы, марафоны).</p>
-            </div>
-            <input class="input setting-num" type="number" min="1" max="8" data-setting="scripts.concurrency" />
-          </div>
-          <div class="setting-row">
-            <div>
-              <strong>Повторов при ошибке</strong>
-              <p class="muted">Если сайт не ответил или показал «Проверку безопасности».</p>
-            </div>
-            <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
-          </div>
-        </details>
-        <details class="panel fold">
+<details class="panel fold" id="settings-notifications">
           <summary>
             <h3>🔔 Уведомления</h3>
             <p class="muted">Какие системные напоминания показывать и кнопка проверки.</p>
@@ -406,65 +310,208 @@
           </div>
           <p class="muted" id="notify-diagnostics" style="margin-top: 8px;"></p>
         </details>
-        <details class="panel fold">
+            </div>
+          </div>
+        </section>
+        <section class="settings-group" id="settings-sync" aria-labelledby="settings-sync-title">
+          <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Фоновые проверки, свежесть данных и диагностика.</p></header>
+          <div class="settings-cols">
+            <div class="settings-col">
+<details class="panel fold" id="settings-scripts">
           <summary>
-            <h3>🌐 Окно браузера персонажа</h3>
-            <p class="muted">Что приложение подправляет на страницах сайта, когда вы открываете их сами.</p>
+            <h3>⚡ Скрипты</h3>
+            <p class="muted">Сколько окон открывать одновременно и сколько раз повторять при ошибке.</p>
           </summary>
-          <div class="settings-checks">
-            <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
+          <div class="setting-row">
+            <div>
+              <strong>Одновременно открытых окон</strong>
+              <p class="muted">Сколько персонажей проверяется параллельно (вход, балансы, марафоны).</p>
+            </div>
+            <input class="input setting-num" type="number" min="1" max="8" data-setting="scripts.concurrency" />
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>Повторов при ошибке</strong>
+              <p class="muted">Если сайт не ответил или показал «Проверку безопасности».</p>
+            </div>
+            <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
           </div>
         </details>
-        <details class="panel fold">
+<details class="panel fold" id="settings-freshness">
           <summary>
-            <h3>🎮 Запуск игры</h3>
-            <p class="muted">Запуск окон игры из карточек, пати и трея.</p>
+            <h3>⏳ Свежесть данных</h3>
+            <p class="muted">Через сколько времени данные считаются устаревшими (подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов) и как часто обновляется статус серверов.</p>
           </summary>
-          <div class="settings-checks">
-            <label><input type="checkbox" data-setting="launcher.decorateWindows" /> Подписывать окна игры: название «Ник — Класс» и значок класса персонажа (меняется только вид окна и панели задач)</label>
-            <label style="margin-left: 24px;"><input type="checkbox" data-setting="launcher.decorateIcons" /> Ставить значок класса на окно игры</label>
-            <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
-            <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+          <div class="setting-row">
+            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.balanceHours" /><span class="muted hours-hint" data-hours-for="freshness.balanceHours"></span></div>
           </div>
-          <div class="row gap" style="margin-top: 12px; align-items:center; flex-wrap:wrap;">
-            <button id="gc-manage-btn" class="btn secondary" title="Список GameCenter с названиями, какой запускать и какие GameCenter у каких персонажей">⚙ GameCenter и персонажи…</button>
-            <span id="gc-summary" class="muted"></span>
+          <div class="setting-row">
+            <div><strong>🔐 Статус входа</strong><p class="muted">Часов с последней проверки авторизации.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.loginHours" /><span class="muted hours-hint" data-hours-for="freshness.loginHours"></span></div>
           </div>
-          <div class="row gap" style="margin-top: 12px;">
-            <button id="close-game-windows-btn" class="btn ghost" title="Закрыть все запущенные окна игры (elementclient_64.exe)">🛑 Закрыть все окна игры</button>
-            <button id="pick-game-windows-btn" class="btn ghost" title="Показать запущенные окна игры и закрыть выбранные">🎮 Запущенные окна…</button>
+          <div class="setting-row">
+            <div><strong>🏆 Прогресс марафона</strong><p class="muted">Часов с последней сверки с сайтом.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
+          </div>
+          <div class="setting-row">
+            <div><strong>🖥 Статус серверов</strong><p class="muted">Как часто перечитывать страницу «Статус серверов» (плашка в шапке). Читается и при запуске приложения, до проверки входа персонажей. Сайт обновляет её раз в 10 минут; 0 — только при запуске.</p></div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="1" data-setting="freshness.serverStatusMinutes" /><span class="muted hours-hint">мин</span></div>
           </div>
         </details>
-        <details class="panel fold">
+            </div>
+            <div class="settings-col">
+<details class="panel fold" id="parser-health-panel">
           <summary>
-            <h3>🖥 Трей и фоновые проверки</h3>
-            <p class="muted">Закрытие окна в трей и автоматическая проверка входа в фоне.</p>
+            <h3>🩺 Состояние парсеров</h3>
+            <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
           </summary>
-          <div class="settings-checks">
-            <label><input type="checkbox" data-setting="tray.closeToTray" /> Закрытие окна сворачивает в трей (выход — через меню иконки)</label>
-            <label>Фоновая проверка входа:
-              <select class="select" data-setting="tray.backgroundAuthMinutes">
-                <option value="0">выключена</option>
-                <option value="15">каждые 15 мин</option>
-                <option value="30">каждые 30 мин</option>
-                <option value="60">каждый час</option>
-                <option value="180">каждые 3 часа</option>
-              </select>
+          <div id="parser-health-list"></div>
+          <div class="setting-row">
+            <p class="muted" id="parser-health-config"></p>
+            <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
+          </div>
+        </details>
+<details class="panel fold" id="log-hub-panel">
+          <summary>
+            <h3>📚 Журналы</h3>
+            <p class="muted" id="log-hub-summary">Записей пока нет: они появятся после первых проверок, промокодов и передач.</p>
+          </summary>
+          <p class="muted" style="margin-bottom: 8px;">По умолчанию показаны только записи текущего запуска. История не удаляется: включите «Показать прошлые сеансы», чтобы открыть прежние логи. Все логи в одном месте: скрипты (вход, балансы, марафоны), промокоды и передача предметов. Выберите вид, найдите запись поиском, нажмите на неё — откроются подробности. Если что-то пошло не так, скопируйте лог или сохраните список в файл и отправьте разработчику. Пароли и почты в логи не попадают. Данные лежат только на этом компьютере.</p>
+          <div id="log-hub-root"></div>
+        </details>
+            </div>
+          </div>
+        </section>
+        <section class="settings-group" id="settings-updates" aria-labelledby="settings-updates-title">
+          <header class="settings-group-head"><h3 id="settings-updates-title">Обновления</h3><p class="muted">Проверка новой версии обязательна при каждом запуске.</p></header>
+          <div class="settings-cols">
+            <div class="settings-col">
+<details class="panel fold" id="settings-update-panel">
+          <summary>
+            <h3>⬆️ Обновления</h3>
+            <p class="muted">Версия <span id="app-version">—</span> · проверка при каждом запуске, вручную и по расписанию.</p>
+          </summary>
+          <div class="setting-row">
+            <div>
+              <p class="muted" id="update-status">Обновления скачиваются из GitHub Releases.</p>
+              <p class="muted" id="update-checked-at" style="font-size:0.8rem; margin-top:2px;"></p>
+              <p class="muted" id="update-next-check" style="font-size:0.8rem; margin-top:2px;"></p>
+            </div>
+            <div class="row gap">
+              <button id="check-updates-btn" class="btn" type="button">Проверить обновления</button>
+              <button id="install-update-btn" class="btn primary" type="button" hidden></button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <strong>Дополнительные проверки</strong>
+              <p class="muted">При каждом запуске приложение обязательно проверяет новую версию. Дополнительно можно проверять ежедневно в 00:00 или по понедельникам в 00:00 (МСК). Установка — только по вашей кнопке.</p>
+            </div>
+            <select data-setting="updates.mode" data-value-type="string">
+              <option value="startup">Только при запуске</option>
+              <option value="daily">Ежедневно (00:00)</option>
+              <option value="weekly">Еженедельно (пн, 00:00)</option>
+
+            </select>
+          </div>
+        </details>
+            </div>
+            <div class="settings-col">
+            </div>
+          </div>
+        </section>
+        <section class="settings-group" id="settings-data" aria-labelledby="settings-data-title">
+          <header class="settings-group-head"><h3 id="settings-data-title">Данные и безопасность</h3><p class="muted">Резервные копии, перенос и хранение учётных данных.</p></header>
+          <div class="settings-cols">
+            <div class="settings-col">
+<details class="panel fold" id="settings-backups">
+          <summary>
+            <h3>☁️ Резервные копии</h3>
+            <p class="muted" id="backup-summary">Загрузка списка резервных копий…</p>
+          </summary>
+          <div class="row gap" style="margin-bottom: 12px;">
+            <button id="create-backup-btn" class="btn" title="Сохранить снимок данных в отдельный файл">☁️ Создать бэкап</button>
+            <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
+            <button id="all-backups-btn" class="btn" hidden>📚 Полный список бэкапов</button>
+          </div>
+          <p class="muted" style="margin-bottom: 8px;">Показаны 5 последних копий.</p>
+          <div id="backup-list" class="list compact"></div>
+        </details>
+<details class="panel fold" id="settings-transfer">
+          <summary>
+            <h3>📦 Перенос данных</h3>
+            <p class="muted">Экспорт в JSON (полный и выборочный) и импорт с сравнением карточек.</p>
+          </summary>
+          <div class="row gap" style="margin-bottom: 12px;">
+            <button id="export-all-btn" class="btn">📤 Экспорт всех данных (JSON)</button>
+            <button id="advanced-export-btn" class="btn primary">
+              📤 Гибкий экспорт (Выбор полей)
+            </button>
+            <label class="btn ghost" style="cursor: pointer;">
+              📥 Импорт JSON
+              <input id="import-file" type="file" accept="application/json,.json" hidden />
             </label>
           </div>
-          <!-- Автозапуск вместе с Windows (js/desktop/autostart.js); вне приложения блок скрыт -->
-          <div class="settings-checks" id="autostart-block" hidden style="margin-top: 12px;">
-            <label><input type="checkbox" id="autostart-enabled" /> Запускать Твиноферму вместе с Windows</label>
-            <label style="margin-left: 24px;"><input type="checkbox" id="autostart-minimized" /> Сразу в трей, без окна</label>
-            <label style="margin-left: 24px;" title="Нужно, если игра запущена от администратора: иначе Windows не даёт Твиноферме менять название и значок окон игры и закрывать их без запроса. Windows спросит разрешение один раз."><input type="checkbox" id="autostart-admin" /> От имени администратора (Windows спросит разрешение один раз)</label>
-            <p class="muted" id="autostart-note" style="margin: 0;"></p>
+          <p class="muted">
+            • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
+            • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
+            • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
+          </p>
+        </details>
+            </div>
+            <div class="settings-col">
+<details class="panel fold" id="settings-security">
+          <summary>
+            <h3>🔒 Безопасность</h3>
+            <p class="muted">Хранение email, паролей и телефонов в хранилище учётных данных ОС.</p>
+          </summary>
+          <div class="setting-row">
+            <div>
+              <strong>Учётные данные в хранилище ОС</strong>
+              <p class="muted" id="vault-status">Проверка…</p>
+            </div>
+            <label class="switch-row"><input type="checkbox" data-setting="security.useVault" /> Включено</label>
           </div>
         </details>
+            </div>
           </div>
-        </div>
-
-        <!-- Опасные действия: свёрнуты по умолчанию, у каждого действия есть описание (js/settings/dangerZone.js) -->
-        <details class="panel fold danger-zone" id="danger-zone">
+        </section>
+        <section class="settings-group" id="settings-help" aria-labelledby="settings-help-title">
+          <header class="settings-group-head"><h3 id="settings-help-title">Справка</h3><p class="muted">Пошаговые инструкции со скриншотами и горячие клавиши.</p></header>
+<details class="panel fold guide-library" id="guide-library">
+  <summary><h3>📖 Помощь по приложению</h3><p class="muted">Понятные инструкции: куда нажать, что проверить и какой результат ожидать.</p></summary>
+  <div class="guide-library-content">
+    <header class="guide-library-head"><span class="guide-eyebrow">Твиноферма · пошаговая справка</span><h3>Что хотите сделать?</h3><p>Выберите задачу или найдите её по слову. Все инструкции доступны без интернета; функции сайта требуют подключения.</p></header>
+    <nav class="guide-shortcuts" aria-label="Быстрый выбор инструкции">
+      <button type="button" data-guide-open="first-character"><span>01</span><strong>Начать с персонажа</strong><small>Карточка и вход на сайт</small></button>
+      <button type="button" data-guide-open="gamecenter"><span>02</span><strong>Настроить запуск игры</strong><small>GameCenter и аккаунты</small></button>
+      <button type="button" data-guide-open="logs"><span>03</span><strong>Разобраться с ошибкой</strong><small>Журнал и диагностика</small></button>
+    </nav>
+    <div class="guide-toolbar"><label class="guide-search" for="guide-search"><span>Поиск по справке</span><input id="guide-search" class="input" type="search" placeholder="Например: войти на сайт, перенести данные…" /></label><button type="button" id="guide-reset" class="btn ghost" data-guide-reset hidden>Сбросить</button></div>
+    <nav id="guide-categories" class="guide-categories" aria-label="Темы инструкций"></nav>
+    <p id="guide-status" class="guide-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    <div class="guide-workspace">
+      <nav id="guide-list" class="guide-list" aria-label="Выбор инструкции"></nav>
+      <div id="guide-reader" class="guide-reader" role="region" aria-labelledby="guide-reader-title" tabindex="-1"></div>
+    </div>
+  </div>
+</details>
+          <div class="settings-cols">
+            <div class="settings-col">
+<details class="panel fold" id="settings-hotkeys">
+          <summary>
+            <h3>⌨️ Горячие клавиши</h3>
+            <p class="muted">Список сочетаний клавиш приложения.</p>
+          </summary>
+          <div id="hotkeys-list" class="hotkeys-list"></div>
+        </details>
+            </div>
+            <div class="settings-col">
+            </div>
+          </div>
+        </section>
+<details class="panel fold danger-zone" id="danger-zone">
           <summary>
             <h3>⚠️ Опасные действия</h3>
             <p class="muted">Массовое удаление пати, марафонов и персонажей. Перед удалением автоматически создаётся резервная копия.</p>
@@ -503,7 +550,6 @@
             </div>
           </details>
         </details>
-
       </section>
 
     </main>

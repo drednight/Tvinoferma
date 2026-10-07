@@ -17,6 +17,8 @@ import { openOverlay } from '../modules/marathons/overlay.js';
 
 /** @type {Map<string, object>} */
 const sources = new Map();
+// Начало текущего запуска. История остаётся в хранилищах источников.
+const sessionStartedAt = Date.now();
 
 const STATUS_ICON = { ok: '✅', warn: '⚠️', error: '❌', running: '⏳' };
 const ROW_CLASS = { ok: 'done', warn: 'warn', error: 'error', running: 'running' };
@@ -42,15 +44,15 @@ const listOf = (src) => {
 
 /**
  * Собранный список с фильтрами. `counts` считается без учёта фильтра по виду (для подписей кнопок).
- * @param {{ source?: string, onlyProblems?: boolean, query?: string }} [f]
+ * @param {{ source?: string, onlyProblems?: boolean, query?: string, sessionOnly?: boolean }} [f]
  */
-export function collectLogs({ source = 'all', onlyProblems = false, query = '' } = {}) {
+export function collectLogs({ source = 'all', onlyProblems = false, query = '', sessionOnly = false } = {}) {
   const q = query.trim().toLowerCase();
   const byFilter = (it) => (!onlyProblems || isProblem(it)) && (!q || [it.title, it.summary, it.who].join(' ').toLowerCase().includes(q));
   const counts = { all: 0 };
   const all = [];
   getLogSources().forEach(src => {
-    const rows = listOf(src).filter(byFilter);
+    const rows = listOf(src).filter(it => !sessionOnly || new Date(it.at).getTime() >= sessionStartedAt).filter(byFilter);
     counts[src.id] = rows.length;
     counts.all += rows.length;
     all.push(...rows);
@@ -61,8 +63,8 @@ export function collectLogs({ source = 'all', onlyProblems = false, query = '' }
 }
 
 /** Короткая строка для заголовка панели. */
-export function logHubSummary() {
-  const { items } = collectLogs();
+export function logHubSummary({ sessionOnly = true } = {}) {
+  const { items } = collectLogs({ sessionOnly });
   if (!items.length) return 'Записей пока нет: они появятся после первых проверок, промокодов и передач.';
   const problems = items.filter(isProblem).length;
   const last = items[0];
@@ -94,15 +96,16 @@ function download(text, filename) {
 /**
  * Рисует журнал в контейнер (Настройки или отдельное окно).
  * @param {HTMLElement} root
- * @param {{ source?: string }} [opts] source — вид, выбранный сразу
+ * @param {{ source?: string, sessionOnly?: boolean }} [opts] source — вид, выбранный сразу
  * @returns {() => void} отписка
  */
-export function mountLogHub(root, { source = 'all' } = {}) {
-  const st = { source: sources.has(source) ? source : 'all', onlyProblems: false, query: '', limit: PAGE };
+export function mountLogHub(root, { source = 'all', sessionOnly = true } = {}) {
+  const st = { source: sources.has(source) ? source : 'all', sessionOnly, onlyProblems: false, query: '', limit: PAGE };
 
   root.innerHTML = `
     <div class="lh-chips" data-lh-chips></div>
     <div class="lh-filters">
+      <label class="tf-radio"><input type="checkbox" data-lh-history ${sessionOnly ? '' : 'checked'} /> Показать прошлые сеансы</label>
       <input class="input" type="search" data-lh-query placeholder="Поиск: ник, код, предмет, задача" />
       <label class="tf-radio"><input type="checkbox" data-lh-problems /> Только с ошибками и предупреждениями</label>
     </div>
@@ -133,7 +136,7 @@ export function mountLogHub(root, { source = 'all' } = {}) {
 
     const cur = sources.get(st.source);
     const extra = cur?.actions?.() || [];
-    const canClear = !!cur?.clear && listOf(cur).length > 0;
+    const canClear = !!cur?.clear && collectLogs({ ...st, source: cur.id }).items.length > 0;
     $('[data-lh-actions]').innerHTML = `
       <button type="button" class="btn ghost danger" data-lh-clear ${canClear ? '' : 'disabled'} title="${cur?.clear ? '' : 'Выберите вид логов, чтобы очистить именно его'}">🧹 Очистить${cur ? `: ${escapeHtml(cur.title)}` : ''}</button>
       ${extra.map(a => `<button type="button" class="btn ghost" data-lh-action="${escapeHtml(a.id)}" ${a.disabled ? 'disabled' : ''}>${escapeHtml(a.label)}</button>`).join('')}
@@ -182,6 +185,7 @@ export function mountLogHub(root, { source = 'all' } = {}) {
     if (e.target.matches('[data-lh-query]')) { st.query = e.target.value; st.limit = PAGE; draw(); }
   });
   root.addEventListener('change', (e) => {
+    if (e.target.matches('[data-lh-history]')) { st.sessionOnly = !e.target.checked; st.limit = PAGE; draw(); }
     if (e.target.matches('[data-lh-problems]')) { st.onlyProblems = e.target.checked; st.limit = PAGE; draw(); }
   });
 

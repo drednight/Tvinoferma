@@ -200,7 +200,7 @@ export function plannerHtml(appState = state) {
         </div>
       </div>
       ${plannerLegendHtml()}
-      ${view === 'month' ? plannerTimeLegendHtml() : ''}
+      ${view === 'week' ? plannerTimeLegendHtml() : ''}
       ${view === 'week' ? weekHtml(appState) : `
         <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
         <div class="planner-grid">

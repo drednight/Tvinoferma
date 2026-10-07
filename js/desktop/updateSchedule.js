@@ -5,29 +5,28 @@
 //   startup — один раз при запуске приложения
 //   daily   — каждый день в 00:00 (по московскому времени); если приложение было закрыто, проверка при запуске
 //   weekly  — каждый понедельник в 00:00; если приложение было закрыто, проверка при запуске
-//   never   — автопроверка выключена (кнопка «Проверить обновления» работает всегда)
+// При запуске проверка обязательна для всех режимов; старый never читается как startup.
 
 import { mskStamp } from '../core/msk.js';
 
-export const UPDATE_MODES = ['startup', 'daily', 'weekly', 'never'];
+export const UPDATE_MODES = ['startup', 'daily', 'weekly'];
 
 export const UPDATE_MODE_LABEL = {
-  startup: 'при запуске программы',
-  daily: 'ежедневно в 00:00',
-  weekly: 'еженедельно (понедельник, 00:00)',
-  never: 'не проверять автоматически'
+  startup: 'только при запуске программы',
+  daily: 'при запуске и ежедневно в 00:00',
+  weekly: 'при запуске и еженедельно (понедельник, 00:00)'
 };
 
 export const isScheduledMode = (mode) => mode === 'daily' || mode === 'weekly';
 
 /**
  * Режим из настроек. Старые данные хранят только флаг checkOnStartup:
- * false → «не проверять», иначе → «при запуске».
+ * Флаг checkOnStartup больше не отключает обязательную проверку при запуске.
  */
 export function resolveUpdateMode(settings) {
   const u = settings?.updates || {};
   if (UPDATE_MODES.includes(u.mode)) return u.mode;
-  return u.checkOnStartup === false ? 'never' : 'startup';
+  return 'startup';
 }
 
 /** Последняя плановая граница не позже now: сегодняшняя полночь или понедельник 00:00. */
@@ -56,8 +55,7 @@ export function isCheckDue(mode, lastCheckedAt, now = new Date()) {
 
 /** Строка «Следующая проверка: …» для настроек. */
 export function nextCheckText(mode, now = new Date()) {
-  if (mode === 'never') return 'Автопроверка выключена';
-  if (mode === 'startup') return 'Следующая проверка: при следующем запуске';
+  if (!isScheduledMode(mode)) return 'Следующая проверка: при следующем запуске';
   const d = nextBoundary(mode, now);
   // Время следующей проверки — по Москве: пользователь сверяет его с игровым расписанием
   return `Следующая проверка: ${mskStamp(d)}`;
