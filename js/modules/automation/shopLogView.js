@@ -46,7 +46,7 @@ const entryText = (e) => [
 export function openShopEntry(index) {
   const e = loadShopLog()[index];
   if (!e) return null;
-  const ov = openOverlay({ title: '🪙 Покупка за Древние монеты', wide: true });
+  const ov = openOverlay({ title: '🪙 Активация подарка', wide: true });
   ov.body.innerHTML = detailsHtml(e);
   ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
@@ -57,10 +57,10 @@ export function openShopEntry(index) {
   return ov;
 }
 
-/** Вид логов «Покупки» в едином модуле логов (logHub.js). */
+/** Вид логов «Подарки» в едином модуле логов (logHub.js). */
 export const shopLogSource = {
   id: 'shop',
-  title: 'Покупки',
+  title: 'Подарки',
   icon: '🪙',
   list: () => loadShopLog().map(e => ({
     key: entryKey(e), at: e.at, title: `${e.item} · ${e.bought} из ${e.requested}`,
@@ -73,12 +73,12 @@ export const shopLogSource = {
     if (i >= 0) openShopEntry(i);
   },
   clear: () => clearShopLog(),
-  clearConfirm: 'Очистить журнал покупок? Приложение забудет, что и когда покупалось. На сайте «История монет» останется.',
+  clearConfirm: 'Очистить журнал активации подарков? Приложение забудет, что и когда покупалось. На сайте «История монет» останется.',
   subscribe: (fn) => { window.addEventListener('tf-shop-log', fn); return () => window.removeEventListener('tf-shop-log', fn); }
 };
 registerLogSource(shopLogSource);
 
-/** Окно со всеми покупками (кнопка «Журнал» в диалоге): единый журнал, вид «Покупки». */
+/** Окно со всеми покупками (кнопка «Журнал» в диалоге): единый журнал, вид «Подарки». */
 export function openShopLog() {
-  return openLogHub({ source: 'shop', title: '📜 Журнал покупок' });
+  return openLogHub({ source: 'shop', title: '📜 Журнал активации подарков' });
 }

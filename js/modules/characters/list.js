@@ -708,7 +708,7 @@ function renderBulkBar() {
     <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
     <button class="btn secondary small" data-bulk="promo" ${dis}>🎁 Промокод</button>
     <button class="btn secondary small" data-bulk="transfer" ${dis}>📦 Передать предметы</button>
-    <button class="btn secondary small" data-bulk="shop" ${dis} title="Купить предметы за Древние монеты">🪙 Покупка</button>
+    <button class="btn secondary small" data-bulk="shop" ${dis} title="Активация подарков: покупка за Древние монеты">🪙 Подарки</button>
     <button class="btn secondary small" data-bulk="launch" ${dis} title="Запустить игру для выбранных по очереди">▶ Запустить</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>
     <button class="btn secondary small" data-bulk="tag-remove" ${dis}>🏷 Убрать тег</button>

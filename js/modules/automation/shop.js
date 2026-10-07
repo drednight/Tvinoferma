@@ -1,5 +1,5 @@
 // js/modules/automation/shop.js
-// 🪙 Покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
+// 🪙 Активация подарков: покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
 // Цены, наличие, описание и лимиты всегда читаются с сайта при открытии окна (команда read_shop); данные прошлого чтения
 // показываются сразу, пока идёт новое. Покупка: shopRunner.js (команда buy_shop_item), хранение: shopStore.js,
 // чистая логика: shopCore.js. Правила: docs/COMPLIANCE.md.
@@ -38,7 +38,7 @@ const SCAN_FAIL = {
 };
 
 /**
- * Открывает диалог покупки за Древние монеты.
+ * Открывает диалог «Активация подарков» (покупка за Древние монеты).
  * @param {{ ids?: string[] }} [opts] ids — персонажи, отмеченные заранее (например, в режиме «Выбрать»)
  */
 export function openShopDialog({ ids = [] } = {}) {
@@ -65,7 +65,7 @@ export function openShopDialog({ ids = [] } = {}) {
   let last = null;                         // итог последнего запуска: { rows, accounts, dry, stopped, checking, balances }
 
   const dlg = openOverlay({
-    title: '🪙 Покупка за Древние монеты', wide: true,
+    title: '🪙 Активация подарков', wide: true,
     onClose: () => { closed = true; clearTimeout(renderTimer); if (running) running.cancelled = true; if (scanSignal) scanSignal.cancelled = true; }
   });
   dlg.body.classList.add('shop-body');
@@ -433,7 +433,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const { invoke } = await import('@tauri-apps/api/core');
 
     const total = accounts.reduce((n, a) => n + a.orders.length, 0);
-    const task = startTask(`🪙 Покупка${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`, { total, cancelable: true });
+    const task = startTask(`🪙 Активация подарков${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`, { total, cancelable: true });
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });

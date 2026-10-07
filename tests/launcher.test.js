@@ -140,15 +140,21 @@ describe('launcher: итог запуска, трей', () => {
     expect(readFileSync('src-tauri/src/lib.rs', 'utf8')).toContain('tray::set_tray_parties');
   });
 
-  it('трей → «Скрипты»: промокод и передача предметов доходят до интерфейса', () => {
+  it('трей → «Скрипты»: промокод, передача предметов и активация подарков доходят до интерфейса', () => {
     const rust = readFileSync('src-tauri/src/tray.rs', 'utf8');
     const desk = readFileSync('js/desktop/desktop.js', 'utf8');
     expect(rust).toContain('PROMO_ACTION: &str = "promo"');
     expect(rust).toContain('TRANSFER_ACTION: &str = "transfer"');
+    expect(rust).toContain('SHOP_ACTION: &str = "shop"');
+    expect(rust).toContain('🪙 Активация подарков');
+    expect(rust).toContain('&[&auth, &balance, &promo, &transfer, &shop, &marathons]');
+    expect(rust).toContain('action == SHOP_ACTION');
     expect(rust).toContain('Ввести промокод');
     expect(rust).toContain('Передать предметы в игру');
     expect(desk).toContain("action === 'promo'");
     expect(desk).toContain("action === 'transfer'");
+    expect(desk).toContain("action === 'shop'");
+    expect(desk).toContain('openShopDialog');
     expect(desk).toContain('openPromoDialog');
     expect(desk).toContain('openTransferDialog');
   });

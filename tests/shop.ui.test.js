@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Диалог «Покупка за Древние монеты» и вид «Покупки» в «Настройки → Журналы»
+// Диалог «Активация подарков» (покупка за Древние монеты) и вид «Подарки» в «Настройки → Журналы»
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(async () => true), toast: vi.fn(), refresh: vi.fn(), rerender: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));

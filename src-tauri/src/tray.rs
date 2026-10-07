@@ -25,11 +25,12 @@ const MAX_FAVORITES: usize = 30;
 /// Префикс пункта «запустить пати»: после него идёт название пати (JS находит пати по названию).
 const LAUNCH_PREFIX: &str = "launch-party:";
 const FAVORITE_PREFIX: &str = "launch-favorite:";
-/// Пункты «Ввести промокод» и «Передать предметы в игру»: им нужно окно приложения (выбор персонажей и предметов)
+/// Пункты «Ввести промокод», «Передать предметы в игру» и «Активация подарков»: им нужно окно приложения (выбор персонажей и предметов)
 const PROMO_ACTION: &str = "promo";
 const TRANSFER_ACTION: &str = "transfer";
+const SHOP_ACTION: &str = "shop";
 
-/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, марафоны), «Выход».
+/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, активация подарков, марафоны), «Выход».
 fn build_menu<R: Runtime, M: Manager<R>>(
     app: &M,
     parties: &[String],
@@ -65,12 +66,19 @@ fn build_menu<R: Runtime, M: Manager<R>>(
         true,
         None::<&str>,
     )?;
+    let shop = MenuItem::with_id(
+        app,
+        SHOP_ACTION,
+        "🪙 Активация подарков",
+        true,
+        None::<&str>,
+    )?;
     // Все скрипты спрятаны в подменю: в основном меню только «Открыть», «Запустить пати», «Скрипты» и «Выход»
     let scripts = Submenu::with_items(
         app,
         "📜 Скрипты",
         true,
-        &[&auth, &balance, &promo, &transfer, &marathons],
+        &[&auth, &balance, &promo, &transfer, &shop, &marathons],
     )?;
 
     let party_items = parties
@@ -164,8 +172,8 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                 });
             }
             action => {
-                // Промокод и передача предметов — это диалоги: показываем окно, чтобы их было видно
-                if action == PROMO_ACTION || action == TRANSFER_ACTION {
+                // Промокод, передача предметов и активация подарков — это диалоги: показываем окно, чтобы их было видно
+                if action == PROMO_ACTION || action == TRANSFER_ACTION || action == SHOP_ACTION {
                     show_main(app);
                 }
                 // Скрипты выполняет интерфейс — пересылаем ему действие

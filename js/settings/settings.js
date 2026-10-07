@@ -19,9 +19,9 @@ import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
-import '../modules/automation/promoLogView.js';      // виды логов «Промокоды», «Передачи» и «Покупки»
+import '../modules/automation/promoLogView.js';      // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
-import '../modules/automation/shopLogView.js';       // вид логов «Покупки» (Древние монеты)
+import '../modules/automation/shopLogView.js';       // вид логов «Подарки» (покупка за Древние монеты)
 
 export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
 
