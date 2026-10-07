@@ -327,7 +327,8 @@ export function openShopDialog({ ids = [] } = {}) {
     q('#shop-items').innerHTML = SHOP_ITEMS.map(d => cardHtml(d, groups)).join('');
     q('#shop-table').innerHTML = tableHtml();
     const failed = groups.filter(g => ['nologin', 'challenge', 'error'].includes(g.state) && g.rep).length;
-    q('#shop-scan').innerHTML = scanning ? `⏳ Читаю сайт: ${scanDone} из ${scanTotal} аккаунтов…`
+    const pct = scanTotal ? Math.round(scanDone / scanTotal * 100) : 0;
+    q('#shop-scan').innerHTML = scanning ? `⏳ Проверка на сайте: <b>${pct}%</b> (${scanDone} из ${scanTotal} аккаунтов)<div class="shop-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`
       : scanAt ? `✅ Данные с сайта на ${escapeHtml(clock(scanAt))}${failed ? ` · не прочитано: ${failed}` : ''}`
         : (scanTotal ? `⚠ Не удалось прочитать сайт${failed ? `: ${failed}` : ''} — показаны данные прошлого чтения, если они есть` : '⚠ Нет персонажей с входом: чтение сайта невозможно');
     updatePlans();
@@ -412,8 +413,14 @@ export function openShopDialog({ ids = [] } = {}) {
   const itemName = (key) => SHOP_ITEMS.find(d => d.key === key)?.name || key;
   const cellKey = (a, key) => `${a.siteKey}|${key}`;
 
+  /** «37% (3 из 8)» и полоса готовности. */
+  function progressText(done, total) {
+    const pct = total ? Math.round(done / total * 100) : 0;
+    return `<b>${pct}%</b> (${done} из ${total})<div class="shop-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
+  }
+
   function runningHtml(accounts) {
-    return `<div class="shop-progress" id="shop-progress">0 из ${accounts.reduce((n, a) => n + a.orders.length, 0)}</div>
+    return `<div class="shop-progress" id="shop-progress">${progressText(0, accounts.reduce((n, a) => n + a.orders.length, 0))}</div>
       <div class="shop-scroll"><table class="shop-table"><thead><tr><th>Аккаунт</th><th>Предмет</th><th>Состояние</th></tr></thead><tbody>${
   accounts.map(a => a.orders.map(o => `<tr><td><b>${escapeHtml(a.char.nick)}</b></td><td>${escapeHtml(itemName(o.key))} × ${o.qty}</td>
     <td data-run="${escapeHtml(cellKey(a, o.key))}"><span class="shop-muted">⏳ в очереди</span></td></tr>`).join('')).join('')}</tbody></table></div>`;
@@ -460,7 +467,7 @@ export function openShopDialog({ ids = [] } = {}) {
           const info = resultInfo(row.status);
           setCell(cellKey({ siteKey: row.siteKey }, row.itemKey), `<span title="${escapeHtml(row.detail || '')}">${info.icon} ${escapeHtml(resultLabel(row))}</span>`);
           const p = q('#shop-progress');
-          if (p) p.textContent = `${done} из ${all}`;
+          if (p) p.innerHTML = progressText(done, all);
         }
       });
     } finally {

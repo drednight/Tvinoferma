@@ -138,6 +138,29 @@ describe('окно: предметы', () => {
   });
 });
 
+describe('окно: ход проверки на сайте', () => {
+  it('пока идёт проверка — проценты готовности и полоса; по окончании — «Данные с сайта»', async () => {
+    const gates = [];
+    const base = mocks.invoke.getMockImplementation();
+    mocks.invoke.mockImplementation((cmd, args) => (cmd === 'read_shop'
+      ? new Promise(res => { gates.push(() => res(scanPayload(ACCOUNT_OF[args.charId]))); })
+      : base(cmd, args)));
+    openShopDialog();
+    await wait();
+    expect(gates).toHaveLength(3);
+    expect($('#shop-scan').textContent).toContain('0%');
+    expect($('#shop-scan .shop-bar')).not.toBeNull();
+    gates[0]();
+    await wait();
+    expect($('#shop-scan').textContent).toContain('33%');
+    expect($('#shop-scan').textContent).toContain('1 из 3');
+    gates[1](); gates[2]();
+    await wait();
+    expect($('#shop-scan').textContent).toContain('Данные с сайта');
+    expect($('#shop-scan .shop-bar')).toBeNull();
+  });
+});
+
 describe('окно: аккаунты', () => {
   it('аккаунт один раз: известные члены одного аккаунта — одна строка, читается один представитель', async () => {
     prefill();

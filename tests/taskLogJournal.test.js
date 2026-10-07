@@ -26,6 +26,20 @@ describe('журнал задач после перезапуска', () => {
     expect(items.map(x => x.title)).toContain('Проверка баланса');
   });
 
+  it('при запуске плашки прошлых задач не показываются, а в журнале остаются; новая задача плашку получает', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    startTask('Прошлая проверка').finish('Готово', 'warn');   // записана в журнал сразу, плашка ещё не скрылась
+
+    vi.resetModules();
+    document.body.innerHTML = '';
+    const mod = await import('../js/core/taskLog.js');
+    expect((await taskItems()).map(x => x.title)).toContain('Прошлая проверка');
+    mod.startTask('Новая проверка');
+    const dock = document.getElementById('tf-task-dock');
+    expect(dock.textContent).toContain('Новая проверка');
+    expect(dock.textContent).not.toContain('Прошлая проверка');
+  });
+
   it('повреждённый журнал в localStorage не ломает запуск', async () => {
     localStorage.setItem('tf_task_journal_v1', '{не json');
     await import('../js/core/taskLog.js');

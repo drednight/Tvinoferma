@@ -50,3 +50,7 @@
 .shop-res-warn { color: var(--warning); }
 .shop-res-error { color: var(--danger); }
 .shop-res-ok { color: var(--success); }
+
+/* Полоса готовности (чтение сайта, покупка) */
+.shop-bar { height: 6px; margin-top: 4px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.shop-bar > span { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }

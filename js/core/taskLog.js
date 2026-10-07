@@ -31,7 +31,9 @@ function loadJournal() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     // записи ручных операций (kind: 'operation') из промежуточной версии в логи скриптов не входят
-    return Array.isArray(raw) ? raw.filter(t => t.kind !== 'operation').map(t => Object.assign(new Task(), t)) : [];
+    // Плашки прошлых запусков при старте не показываются (они остаются только в журнале): `_hidden` до перезапуска мог не сохраниться,
+    // т.к. журнал пишется в finish() раньше, чем плашка сама скрывается
+    return Array.isArray(raw) ? raw.filter(t => t.kind !== 'operation').map(t => Object.assign(new Task(), t, { _hidden: true })) : [];
   } catch (_) { return []; }
 }
 function saveJournal() {
