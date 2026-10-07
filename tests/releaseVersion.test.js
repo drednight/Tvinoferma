@@ -11,7 +11,7 @@ describe('версия релиза', () => {
     expect(json('package-lock.json').version).toBe(version);expect(json('package-lock.json').packages[''].version).toBe(version);
     expect(json('src-tauri/tauri.conf.json').version).toBe(version);
     expect(readFileSync('src-tauri/Cargo.toml','utf8')).toMatch(new RegExp(`\\[package\\][^]*?version = "${version.replaceAll('.', '\\.')}"`));
-    expect(readFileSync('src-tauri/Cargo.lock','utf8')).toContain(`name = "tvinoferma"\nversion = "${version}"`);
+    expect(readFileSync('src-tauri/Cargo.lock','utf8').replace(/\r\n/g, '\n')).toContain(`name = "tvinoferma"\nversion = "${version}"`);
   });
   it('команда bump обновляет lock-файл, не меняя версии зависимостей', () => {
     const dir=mkdtempSync(join(tmpdir(),'tf-version-'));
