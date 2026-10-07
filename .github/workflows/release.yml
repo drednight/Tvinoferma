@@ -26,7 +26,16 @@ jobs:
           workspaces: src-tauri -> target
       - run: npm ci
       - run: npm test
+      # «Что нового» берётся из раздела версии в CHANGELOG.md — это изменения с прошлого релиза.
+      # Нет раздела (забыли переименовать [Unreleased]) — сборка останавливается до компиляции.
+      - name: Текст «Что нового» из CHANGELOG.md
+        id: notes
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: node scripts/release-notes.mjs "$REF_NAME" --github-output
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -34,15 +43,23 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Твиноферма ${{ github.ref_name }}'
-          # Этот текст попадает и в описание релиза, и в `notes` файла latest.json — его видит
-          # пользователь в окне «Доступно обновление». Поэтому пишем по-человечески, а подробности
-          # остаются в описании релиза (его дополняем вручную из CHANGELOG).
-          releaseBody: |
-            Установщик для Windows: `.msi` или `-setup.exe`. Установленное приложение обновится само —
-            «Настройки → Обновления → Проверить обновления». Данные и сессии не теряются.
-
-            Что нового — в описании релиза и в [CHANGELOG.md](https://github.com/drednight/Tvinoferma/blob/main/CHANGELOG.md).
+          # Этот текст попадает и в описание черновика, и в `notes` файла latest.json — его видит
+          # пользователь в окне «Доступно обновление». Собирается из CHANGELOG.md (шаг выше).
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
           args: --config src-tauri/tauri.release.conf.json
+      # Полное описание релиза (если есть docs/RELEASE-NOTES-X.Y.Z.md) заменяет короткий текст в
+      # описании черновика. Файл latest.json уже собран, его `notes` остаются короткими.
+      - name: Полное описание релиза
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          file="docs/RELEASE-NOTES-${{ steps.notes.outputs.version }}.md"
+          if [ -f "$file" ] && [ -n "${{ steps.tauri.outputs.releaseId }}" ]; then
+            gh api --method PATCH "repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}" -F "body=@$file"
+          else
+            echo "Файла $file нет — описание релиза остаётся коротким."
+          fi
