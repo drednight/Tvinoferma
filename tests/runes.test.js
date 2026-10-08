@@ -26,7 +26,7 @@ describe('каталог рун', () => {
     const storage = { setItem: vi.fn(), getItem: vi.fn() };
     const fetchImpl = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ schemaVersion: 1, runes: [rune()] }) });
     const result = await loadRuneCatalog({ fetchImpl, storage });
-    expect(fetchImpl).toHaveBeenCalledWith(RUNE_CATALOG_URL, { cache: 'no-store' });
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^${RUNE_CATALOG_URL}\\?v=\\d+$`)), { cache: 'no-store' });
     expect(result.catalog.runes).toHaveLength(1);
     expect(result.fromCache).toBe(false);
     expect(result.source).toBe('github');
@@ -42,7 +42,7 @@ describe('каталог рун', () => {
   });
 
   it('использует встроенный каталог, если GitHub недоступен и кэша нет', async () => {
-    const fetchImpl = async url => url === RUNE_CATALOG_URL
+    const fetchImpl = async url => url.startsWith(RUNE_CATALOG_URL)
       ? { ok: false, status: 404 }
       : { ok: true, json: async () => ({ schemaVersion: 1, runes: [] }) };
     const result = await loadRuneCatalog({ fetchImpl, storage: { getItem: () => null } });

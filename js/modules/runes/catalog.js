@@ -50,7 +50,8 @@ function readCache(storage) {
 export async function loadRuneCatalog({ fetchImpl = globalThis.fetch, storage = globalThis.localStorage } = {}) {
 	try {
 		if (!fetchImpl) throw new Error('Сеть недоступна.');
-		const response = await fetchImpl(RUNE_CATALOG_URL, { cache: 'no-store' });
+		const catalogUrl = `${RUNE_CATALOG_URL}?v=${Date.now()}`;
+		const response = await fetchImpl(catalogUrl, { cache: 'no-store' });
 		if (!response.ok) throw new Error(`GitHub вернул HTTP ${response.status}.`);
 		const catalog = validateRuneCatalog(await response.json());
 		const cachedAt = new Date().toISOString();

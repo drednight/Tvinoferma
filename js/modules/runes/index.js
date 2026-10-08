@@ -76,7 +76,7 @@ export function renderRunes() {
 		</div>
 		<div class="runes-table-wrap">
 			<table class="runes-table">
-				<thead><tr><th>Класс</th><th>PvE руны</th><th>PvP руны</th><th>Доп. руны</th><th>Автор</th><th>Примечание</th><th>Добавлено</th></tr></thead>
+				<thead><tr><th>Дата</th><th>Автор</th><th>Класс</th><th>PvE руны</th><th>PvP руны</th><th class="runes-additional-heading">Благословение белой Владычицы</th><th>Примечание</th></tr></thead>
 				<tbody>${runes.length ? runes.map(runeRow).join('') : `<tr><td class="runes-empty" colspan="7">${view.status === 'loading' ? 'Подключаемся к GitHub…' : view.status === 'error' ? 'Каталог пока недоступен.' : 'Для выбранного фильтра раскладок пока нет.'}</td></tr>`}</tbody>
 			</table>
 		</div>
@@ -126,11 +126,11 @@ function openRuneSubmission() {
 function runeRow(rune) {
 	const icon = getClassIconSrc(rune.class);
 	return `<tr>
+		<td>${escapeHtml(formatDate(rune.addedAt))}</td>
+		<td>${escapeHtml(rune.author) || '<span class="muted">—</span>'}</td>
 		<th scope="row" class="runes-class-cell">${icon ? `<img src="${icon}" alt="" loading="lazy"/>` : ''}<span>${escapeHtml(rune.class)}</span></th>
 		${copyCell(rune.pve)}${copyCell(rune.pvp)}${copyCell(rune.additional)}
-		<td>${escapeHtml(rune.author) || '<span class="muted">—</span>'}</td>
 		<td class="runes-note">${escapeHtml(rune.note) || '<span class="muted">—</span>'}</td>
-		<td>${escapeHtml(formatDate(rune.addedAt))}</td>
 	</tr>`;
 }
 

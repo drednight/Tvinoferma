@@ -29,6 +29,6 @@ if (fs.existsSync('package-lock.json')) {
 edit('src-tauri/tauri.conf.json', s => s.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`));
 edit('src-tauri/Cargo.toml', s => s.replace(/(\[package\][^[]*?\nversion\s*=\s*")[^"]+(")/, `$1${version}$2`));
 if (fs.existsSync('src-tauri/Cargo.lock')) {
-  edit('src-tauri/Cargo.lock', s => s.replace(/(\[\[package\]\]\nname = "tvinoferma"\nversion = ")[^"]+(")/, `$1${version}$2`));
+  edit('src-tauri/Cargo.lock', s => s.replace(/(\[\[package\]\]\r?\nname = "tvinoferma"\r?\nversion = ")[^"]+/, `$1${version}`));
 }
 console.log(`\nДальше:\n  git commit -am "Версия ${version}"\n  git tag v${version}\n  git push && git push origin v${version}`);
