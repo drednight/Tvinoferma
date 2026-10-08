@@ -1,7 +1,9 @@
 {
   "schemaVersion": 1,
-  "runes": []
+  "runes": [
+    {"id":"rune-9eadf9a7-7a98-4b97-a4ca-a3d268152e0a","class":"Оборотень","pve":"1","pvp":"1","additional":"1","author":"1","note":"1","addedAt":"2026-10-08"},
+    {"id":"rune-ac59b01f-e147-427a-9881-6cc8c319da6d","class":"Лучник","pve":"BqrZ7wOqsdshioHbQerw2WGqsZmEAcqghaIBidHawQGIwdnhAcqQ3IECqMHcoQLKkNnBAqrojOMC","pvp":"BqqhhQKqsdshqrCZRKjB3GGqkdyBAcrY76MBiNHawQGJwdnhAYqB24ECyuDboQLKkNnBAurojOMC","additional":"BqqhhQKqsdshqpHcQarB3GHKkNmBAarY76MBitHawQGKwdnhAYqB24EC6vDZoQKqsZnEAsrojOMC","author":"#Дреднайт","note":"Скидываю свою текущую раскладку рун","addedAt":"2026-10-08"}
+
+  ]
 }
 
-{"id":"rune-9eadf9a7-7a98-4b97-a4ca-a3d268152e0a","class":"Оборотень","pve":"1","pvp":"1","additional":"1","author":"1","note":"1","addedAt":"2026-10-08"},
-{"id":"rune-ac59b01f-e147-427a-9881-6cc8c319da6d","class":"Лучник","pve":"BqrZ7wOqsdshioHbQerw2WGqsZmEAcqghaIBidHawQGIwdnhAcqQ3IECqMHcoQLKkNnBAqrojOMC","pvp":"BqqhhQKqsdshqrCZRKjB3GGqkdyBAcrY76MBiNHawQGJwdnhAYqB24ECyuDboQLKkNnBAurojOMC","additional":"BqqhhQKqsdshqpHcQarB3GHKkNmBAarY76MBitHawQGKwdnhAYqB24EC6vDZoQKqsZnEAsrojOMC","author":"#Дреднайт","note":"Скидываю свою текущую раскладку рун","addedAt":"2026-10-08"}
