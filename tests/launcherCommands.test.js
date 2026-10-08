@@ -15,6 +15,7 @@ const jsReset = readFileSync('js/settings/factoryReset.js', 'utf8');
 describe('новые команды зарегистрированы в Rust', () => {
   it.each([
     'launcher::launcher_running_details',
+    'launcher::launcher_self_elevated',
     'launcher::launcher_close_clients_pids',
     'launcher::launcher_decorate_clients',
     'stats_ocr::stats_ocr_available',
@@ -22,6 +23,11 @@ describe('новые команды зарегистрированы в Rust', (
     'commands::factory_reset::factory_reset'
   ])('%s', (name) => {
     expect(rustLib).toContain(name);
+  });
+
+  it('права Твинофермы: имя команды совпадает у Rust и интерфейса, команда без параметров', () => {
+    expect(rustLauncher).toMatch(/#\[tauri::command\]\s*pub fn launcher_self_elevated\(\) -> bool/);
+    expect(jsLaunch).toContain("'launcher_self_elevated'");
   });
 
   it('модуль разбора скриншота подключён к приложению', () => {

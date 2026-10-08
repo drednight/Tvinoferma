@@ -112,6 +112,20 @@ describe('launcher: итог запуска, трей', () => {
       .toBe('Запущено 5 окон за 30 с, с ошибкой: 1, отменено: 2, без пути к GameCenter: 1');
   });
 
+  it('итог с уже запущенными окнами: пропуск называется явно, «всё уже запущено» — отдельной фразой', () => {
+    expect(launchSummary({ ok: 2, running: 1, ms: 8000 })).toBe('Запущено 2 окна за 8 с, уже запущено, пропущено: 1');
+    expect(launchSummary({ ok: 0, running: 3, ms: 0 })).toBe('Все окна уже запущены (3), запускать нечего');
+    expect(launchSummary({ ok: 0, running: 1, skipped: 2, ms: 0 })).toContain('без пути к GameCenter: 2');
+  });
+
+  it('в результатах запуска есть время ожидания клиента: у успешных и у неудачных', async () => {
+    const invoke = async (cmd, args) => { if (args.path === 'bad') throw new Error('нет'); return {}; };
+    const ends = [];
+    const res = await launchCharacters([ch('a', 'one'), ch('b', 'bad')], { delayMs: 0, onDone: (e) => ends.push(e.ms) }, { invoke });
+    expect(res.map(r => typeof r.ms)).toEqual(['number', 'number']);
+    expect(ends.every(ms => ms >= 0)).toBe(true);
+  });
+
   it('в меню трея попадают только пати, где есть кого запускать, в порядке вкладки «Пати»', () => {
     const parties = [{ id: 'p2', name: 'Вторая', order: 2 }, { id: 'p1', name: 'Первая', order: 1 }, { id: 'p3', name: 'Пустая', order: 3 }];
     const chars = [
@@ -134,6 +148,11 @@ describe('launcher: итог запуска, трей', () => {
     expect(rust).toContain('LAUNCH_PREFIX: &str = "launch-party:"');
     expect(desk).toContain("'launch-party:'");
     expect(rust).toContain('"close-game"');
+    expect(rust).toContain('GAME_WINDOWS_ACTION: &str = "game-windows"');
+    expect(rust).toContain('🪟 Запущенные окна игры');
+    expect(rust).toContain('action == GAME_WINDOWS_ACTION');
+    expect(desk).toContain("action === 'game-windows'");
+    expect(desk).toContain('openWindowPicker');
     expect(rust).toContain('"game-closed"');
     expect(desk).toContain("'game-closed'");
     expect(rust).toContain('set_tray_parties');

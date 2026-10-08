@@ -6,6 +6,7 @@ import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
 import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
+import { normalizePreflightMode } from '../modules/launcher/preflight.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
 import { normalizePlannerEntry } from '../modules/dashboard/planner.js';
 
@@ -200,6 +201,8 @@ function normalizeLauncherSettings(input = {}) {
   merged.delaySec = rawDelay !== '' && rawDelay !== null && rawDelay !== undefined && Number.isFinite(delay)
     ? Math.min(120, Math.max(0, delay))
     : DEFAULT_SETTINGS.launcher.delaySec;
+  merged.skipRunning = merged.skipRunning !== false;
+  merged.preflight = normalizePreflightMode(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
   merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
   return merged;

@@ -30,8 +30,10 @@ const PROMO_ACTION: &str = "promo";
 const TRANSFER_ACTION: &str = "transfer";
 const SHOP_ACTION: &str = "shop";
 const CARAVAN_ACTION: &str = "caravan";
+/// Пункт «Запущенные окна игры»: открывает список окон в приложении, поэтому ему тоже нужно показать главное окно
+const GAME_WINDOWS_ACTION: &str = "game-windows";
 
-/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, активация подарков, сундук караванщика, марафоны), «Выход».
+/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Запущенные окна игры», «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, активация подарков, сундук караванщика, марафоны), «Выход».
 fn build_menu<R: Runtime, M: Manager<R>>(
     app: &M,
     parties: &[String],
@@ -140,6 +142,13 @@ fn build_menu<R: Runtime, M: Manager<R>>(
         &favorite_refs,
     )?;
 
+    let game_windows = MenuItem::with_id(
+        app,
+        GAME_WINDOWS_ACTION,
+        "🪟 Запущенные окна игры",
+        true,
+        None::<&str>,
+    )?;
     let close_game = MenuItem::with_id(
         app,
         "close-game",
@@ -155,6 +164,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(
             &show,
             &favorites_menu,
             &launch,
+            &game_windows,
             &close_game,
             &scripts,
             &separator,
@@ -187,6 +197,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                     || action == TRANSFER_ACTION
                     || action == SHOP_ACTION
                     || action == CARAVAN_ACTION
+                    || action == GAME_WINDOWS_ACTION
                 {
                     show_main(app);
                 }

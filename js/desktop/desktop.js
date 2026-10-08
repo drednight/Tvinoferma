@@ -28,11 +28,11 @@ async function runScript(action) {
     const id = action.slice('launch-favorite:'.length);
     const character = state.characters.find(c => String(c.id) === id);
     const { launchOne } = await import('../modules/launcher/partyLaunch.js');
-    return launchOne(character);
+    return launchOne(character, { interactive: false });
   }
   if (typeof action === 'string' && action.startsWith('launch-party:')) {
     const { launchPartyByName } = await import('../modules/launcher/partyLaunch.js');
-    return launchPartyByName(action.slice('launch-party:'.length));
+    return launchPartyByName(action.slice('launch-party:'.length), { interactive: false });
   }
   if (action === 'promo') {
     const { openPromoDialog } = await import('../modules/automation/promo.js');
@@ -45,6 +45,10 @@ async function runScript(action) {
   if (action === 'shop') {
     const { openShopDialog } = await import('../modules/automation/shop.js');
     return openShopDialog();
+  }
+  if (action === 'game-windows') {
+    const { openWindowPicker } = await import('../modules/launcher/windowPicker.js');
+    return openWindowPicker();
   }
   if (action === 'caravan') {
     const { openCaravanDialog } = await import('../modules/automation/caravan.js');

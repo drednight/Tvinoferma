@@ -7,8 +7,11 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchPlan, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor } from './launch.js';
-import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter } from './launch.js';
+import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, newGcId, suggestGcName } from './gameCenters.js';
+import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes, chooseGcToAttach, attachGcTo } from './preflight.js';
+import { openPreflight } from './preflightDialog.js';
+import { recordLaunchRun } from './launchLog.js';
 
 let active = null; // { signal } идущего запуска
 
@@ -34,12 +37,50 @@ async function reportDone(text, isError) {
 
 const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
 
+/** Проверки перед запуском по текущему состоянию системы (какие окна уже открыты, есть ли права администратора). */
+async function runPreflight(characters) {
+  const facts = await readLaunchFacts();
+  const l = state.settings?.launcher || {};
+  return launchPreflight({
+    characters, ctx: launchContext(), clients: facts.clients, selfElevated: facts.selfElevated,
+    skipRunning: l.skipRunning !== false, decorate: decorateEnabled()
+  });
+}
+
+/**
+ * «Исправить»: прикрепляет GameCenter персонажам, у которых его нет. Берётся тот, которым пользуется большинство группы
+ * (иначе «запускать в первую очередь», иначе первый в списке); если список пуст — просит указать GameCenter.exe и добавляет его в список.
+ * @returns {Promise<boolean>} получилось ли (false — отказались или путь не подошёл)
+ */
+async function fixMissingGameCenter(noGc, group) {
+  const ctx = launchContext();
+  let gc = chooseGcToAttach(group, ctx);
+  if (!gc) {
+    const path = await pickGameCenter();
+    if (!path) return false;
+    try { await checkGameCenterPath(path); }
+    catch (e) { toast(errText(e), 'error'); return false; }
+    gc = { id: newGcId(ctx.gameCenters), name: suggestGcName(path, ctx.gameCenters), path };
+    state.settings.launcher.gameCenters = [...ctx.gameCenters, gc];
+  }
+  attachGcTo(noGc, gc.id);
+  await persist();
+  toast(`GameCenter «${gc.name}» прикреплён: ${noGc.length} перс.`, 'success');
+  return true;
+}
+
 /**
  * Запускает игру для списка персонажей по очереди.
+ *
+ * Перед стартом идут проверки (preflight.js): персонаж, чьё окно уже открыто, пропускается — очередь сразу переходит к следующему;
+ * у кого нет GameCenter — пропускается; при серьёзных проблемах (или всегда — по настройке) показывается экран проверок
+ * с кнопкой «Исправить и запустить». Итог запуска пишется в историю (launchLog.js, «Настройки → Журналы → Запуски»).
+ *
  * @param {string} title заголовок задачи в журнале
  * @param {any[]} characters
- * @param {{ gcId?: string }} [opts] gcId — GameCenter, из которого запускать в этот раз (у кого его нет — из доступного).
+ * @param {{ gcId?: string, interactive?: boolean }} [opts] gcId — GameCenter, из которого запускать в этот раз (у кого его нет — из доступного).
  *   Не указан — берётся GameCenter, которым пользуется больше всего участников (pickMajorityGc).
+ *   interactive: false — без экрана проверок (запуск из трея: окно приложения может быть скрыто).
  */
 export async function launchGroup(title, characters, opts = {}) {
   if (active) {
@@ -50,30 +91,45 @@ export async function launchGroup(title, characters, opts = {}) {
     toast('Запуск игры работает только в приложении (в браузере недоступен)', 'error');
     return null;
   }
-  const { ready, skipped } = launchPlan(characters);
-  if (!ready.length) {
-    toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
-    return null;
-  }
-
-  const startedAt = Date.now();
   const signal = { cancelled: false };
-  const task = startTask(title, { total: ready.length, cancelable: true });
-  task.onCancel(() => { signal.cancelled = true; });
-  active = { signal };
-  skipped.forEach(c => task.log(`${c.nick}: пропущен — не указан GameCenter`, 'warn'));
-
-  // Один GameCenter на всю пати — тот, которым пользуется большинство; остальные запускаются из того, что у них есть
-  let gcId = opts.gcId;
-  if (!gcId && ready.length > 1) {
-    const major = pickMajorityGc(ready, launchContext());
-    if (major) {
-      gcId = major.gc.id;
-      if (major.distinct > 1) task.log(`GameCenter «${major.gc.name}» — у ${major.count} из ${major.total}: запускаем из него, у остальных — из доступного`);
-    }
-  }
-
+  active = { signal };   // место занято и пока открыт экран проверок
+  let task = null;
   try {
+    let pre = await runPreflight(characters);
+    const mode = state.settings?.launcher?.preflight;
+    if (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
+      const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
+      if (!choice) return null;
+      if (choice === 'fix' && availableFixes(pre, launchContext()).some(f => f.id === 'attachGc')) {
+        if (!await fixMissingGameCenter(pre.noGc, characters)) return null;
+      }
+      pre = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
+    }
+    const ready = pre.toLaunch;
+    const skipped = pre.noGc;
+    if (!ready.length) {
+      if (pre.alreadyRunning.length && !skipped.length) toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
+      else toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
+      return null;
+    }
+
+    const startedAt = Date.now();
+    task = startTask(title, { total: ready.length, cancelable: true });
+    task.onCancel(() => { signal.cancelled = true; });
+    preflightLog(pre).forEach(l => task.log(l.text, l.level));
+
+    // Один GameCenter на всю пати — тот, которым пользуется большинство; остальные запускаются из того, что у них есть
+    let gcId = opts.gcId;
+    let gcName = '';
+    if (!gcId && ready.length > 1) {
+      const major = pickMajorityGc(ready, launchContext());
+      if (major) {
+        gcId = major.gc.id;
+        gcName = major.gc.name;
+        if (major.distinct > 1) task.log(`GameCenter «${major.gc.name}» — у ${major.count} из ${major.total}: запускаем из него, у остальных — из доступного`);
+      }
+    }
+
     const results = await launchCharacters(ready, {
       signal,
       gcId,
@@ -99,13 +155,15 @@ export async function launchGroup(title, characters, opts = {}) {
     const ok = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok && !r.cancelled).length;
     const cancelled = results.filter(r => r.cancelled).length;
-    const summary = launchSummary({ ok, failed, cancelled, skipped: skipped.length, ms: Date.now() - startedAt });
+    const ms = Date.now() - startedAt;
+    const summary = launchSummary({ ok, failed, cancelled, skipped: skipped.length, running: pre.alreadyRunning.length, ms });
     task.finish(summary, failed ? 'warn' : undefined);
     reportDone(summary, failed > 0);
+    saveRunToHistory({ title, results, pre, ms, gcName });
     return results;
   } catch (e) {
-    task.log(errText(e), 'error');
-    task.finish('Запуск прерван из-за ошибки', 'error');
+    task?.log(errText(e), 'error');
+    task?.finish('Запуск прерван из-за ошибки', 'error');
     toast(`Запуск не удался: ${errText(e)}`, 'error');
     return null;
   } finally {
@@ -113,8 +171,31 @@ export async function launchGroup(title, characters, opts = {}) {
   }
 }
 
+/** Итог запуска → история запусков («Настройки → Журналы → Запуски»). Сбой записи запуску не мешает. */
+function saveRunToHistory({ title, results, pre, ms, gcName }) {
+  try {
+    const items = [
+      ...results.map(r => ({
+        id: r.id, nick: r.nick,
+        status: r.cancelled ? 'cancelled' : r.ok ? 'ok' : 'failed',
+        ms: r.cancelled ? null : r.ms, error: r.error || null,
+        noLogin: r.ok && r.info?.switched === false
+      })),
+      ...pre.alreadyRunning.map(r => ({ id: String(r.char.id), nick: r.char.nick, status: 'running' })),
+      ...pre.noGc.map(c => ({ id: String(c.id), nick: c.nick, status: 'nogc' }))
+    ];
+    recordLaunchRun({
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      at: new Date(Date.now() - ms).toISOString(), title, ms, delayMs: launchDelayMs(), gc: gcName,
+      requested: pre.total, items
+    });
+  } catch (e) {
+    console.warn('[LAUNCH] history write failed:', e);
+  }
+}
+
 /** Запуск одного персонажа (кнопка «▶» на карточке). Без пути к GameCenter открывает его карточку на блоке «Запуск игры». */
-export async function launchOne(char) {
+export async function launchOne(char, opts = {}) {
   if (!char) return null;
   if (!hasGameCenterPath(char)) {
     toast('Укажите GameCenter этого аккаунта', 'error');
@@ -127,15 +208,15 @@ export async function launchOne(char) {
     }, 0);
     return null;
   }
-  return launchGroup(`Запуск игры: ${char.nick}`, [char]);
+  return launchGroup(`Запуск игры: ${char.nick}`, [char], opts);
 }
 
 /** Запуск пати по названию (меню трея и вкладка «Пати»). */
-export async function launchPartyByName(name) {
+export async function launchPartyByName(name, opts = {}) {
   const { partyByName, charactersInParty } = await import('../parties/membership.js');
   const party = partyByName(state.parties, name);
   if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
-  return launchGroup(`Запуск игры: ${party.name}`, charactersInParty(state.characters, party.id));
+  return launchGroup(`Запуск игры: ${party.name}`, charactersInParty(state.characters, party.id), opts);
 }
 
 /**

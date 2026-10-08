@@ -23,6 +23,7 @@ import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 import '../modules/automation/promoLogView.js';      // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js';       // вид логов «Подарки» (покупка за Древние монеты)
+import '../modules/launcher/launchLogView.js';      // вид логов «Запуски» (история и статистика запуска игры)
 
 export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
 

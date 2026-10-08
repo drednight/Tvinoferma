@@ -163,10 +163,14 @@ export function windowsWord(n) {
 
 /**
  * Итог запуска одной строкой: «Запущено 3 окна за 1 мин 12 с» (+ ошибки, отмена, пропущенные без пути).
- * @param {{ ok: number, failed?: number, cancelled?: number, skipped?: number, ms: number }} r
+ * Окна, которые уже были запущены и поэтому пропущены, идут отдельным счётчиком `running`.
+ * @param {{ ok: number, failed?: number, cancelled?: number, skipped?: number, running?: number, ms: number }} r
  */
 export function launchSummary(r) {
-  const parts = [`Запущено ${r.ok} ${windowsWord(r.ok)} за ${formatDuration(r.ms)}`];
+  const parts = [];
+  if (r.ok || !r.running) parts.push(`Запущено ${r.ok} ${windowsWord(r.ok)} за ${formatDuration(r.ms)}`);
+  else if (!r.failed && !r.cancelled && !r.skipped) return `Все окна уже запущены (${r.running}), запускать нечего`;
+  if (r.running) parts.push(`уже запущено, пропущено: ${r.running}`);
   if (r.failed) parts.push(`с ошибкой: ${r.failed}`);
   if (r.cancelled) parts.push(`отменено: ${r.cancelled}`);
   if (r.skipped) parts.push(`без пути к GameCenter: ${r.skipped}`);
@@ -262,6 +266,30 @@ export function runningClients(deps = {}) {
  */
 export function runningClientDetails(deps = {}) {
   return (deps.invoke || tauriInvoke)('launcher_running_details');
+}
+
+/** Запущена ли сама Твиноферма с правами администратора (`false`, если узнать не удалось). */
+export function selfElevated(deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_self_elevated');
+}
+
+/**
+ * Что нужно знать о системе перед запуском: запущенные клиенты игры и права Твинофермы.
+ * Любой сбой не мешает запуску: `clients: null` значит «какие окна запущены, неизвестно» (тогда ничего не пропускается).
+ * @returns {Promise<{ clients: Array<{ pid: number, title: string, elevated: boolean|null }> | null, selfElevated: boolean | null }>}
+ */
+export async function readLaunchFacts(deps = {}) {
+  let clients = null;
+  let elevated = null;
+  try {
+    const list = await runningClientDetails(deps);
+    if (Array.isArray(list)) clients = list;
+  } catch { /* список окон недоступен: запускаем как обычно */ }
+  try {
+    const v = await selfElevated(deps);
+    if (typeof v === 'boolean') elevated = v;
+  } catch { /* права не определены */ }
+  return { clients, selfElevated: elevated };
 }
 
 /** Закрыть выбранные клиенты игры по PID. Отчёт — как у закрытия всех окон. */
@@ -470,7 +498,7 @@ export function withoutSavedLogin(entries) {
  *   gcId?: string,
  *   decorate?: boolean,
  *   onStart?: (character: any) => void,
- *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string, info?: LaunchInfo }, done: number, total: number) => void
+ *   onDone?: (entry: { id: string, nick: string, ok: boolean, error?: string, info?: LaunchInfo, ms?: number | null }, done: number, total: number) => void
  * }} [opts]
  * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext, loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
  */
@@ -483,6 +511,8 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
   const ctx = gcId ? { ...base, preferredId: gcId } : base;
   const list = launchable(characters, ctx);
   const jobs = list.map((character, i) => ({ character, last: i === list.length - 1 }));
+  /** Сколько Твиноферма ждала клиента игры у каждого (без паузы между запусками); у неудачных — до ошибки. */
+  const times = new Map();
 
   const results = await runQueue(
     jobs,
@@ -493,14 +523,20 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       const target = resolveGameCenter(character, ctx);
       // Название окна «Ник — Класс» и значок: Rust применит их к новому окну клиента в фоне
       const decor = decorate ? await windowDecor(character, deps) : { windowTitle: null, iconSmall: null, iconBig: null };
-      const info = await invoke('launcher_start', {
-        path: target?.path,
-        charId: target?.key,
-        nick: target?.nick || null,
-        url: url || null,
-        waitSecs: waitSecs ?? null,
-        ...decor
-      });
+      const t0 = Date.now();
+      let info;
+      try {
+        info = await invoke('launcher_start', {
+          path: target?.path,
+          charId: target?.key,
+          nick: target?.nick || null,
+          url: url || null,
+          waitSecs: waitSecs ?? null,
+          ...decor
+        });
+      } finally {
+        times.set(character.id, Date.now() - t0);
+      }
       if (!last && delayMs > 0) await sleep(delayMs); // следующий аккаунт стартует после паузы
       return { cancelled: false, info: info || {}, decor, character };
     },
@@ -516,7 +552,8 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           nick: character.nick || character.id,
           ok: !entry.error,
           error: entry.error ? String(entry.error?.message || entry.error) : undefined,
-          info: entry.result?.info
+          info: entry.result?.info,
+          ms: times.get(character.id) ?? null
         }, done, total);
       }
     }
@@ -532,6 +569,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       cancelled,
       error: r.error ? String(r.error?.message || r.error) : undefined,
       info,
+      ms: times.get(r.item.character.id) ?? null,
       // Что нужно для проверки подписи окна: PID клиента и ожидаемое название со значком
       clientPid: info?.clientPid ? Number(info.clientPid) : null,
       decor: r.result?.decor || null

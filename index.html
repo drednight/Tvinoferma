@@ -248,6 +248,14 @@
             <label style="margin-left: 24px;"><input type="checkbox" data-setting="launcher.decorateIcons" /> Ставить значок класса на окно игры</label>
             <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+            <label title="Если окно этого персонажа («Ник — Класс») уже открыто, запуск для него пропускается и очередь идёт к следующему. Работает, пока включено «Подписывать окна игры»."><input type="checkbox" data-setting="launcher.skipRunning" /> Пропускать персонажей, у которых окно игры уже запущено</label>
+            <label title="Перед запуском пати Твиноферма проверяет: нет ли GameCenter, запомнен ли вход, не запущены ли окна от администратора.">Проверки перед запуском:
+              <select class="input" data-setting="launcher.preflight" data-value-type="string">
+                <option value="issues">показывать при проблемах</option>
+                <option value="always">показывать всегда</option>
+                <option value="off">не показывать</option>
+              </select>
+            </label>
             <label title="Следующее окно игры запускается через столько секунд после предыдущего. 0 — без паузы. Если окна «спотыкаются» при массовом запуске, увеличьте паузу.">Пауза между запусками окон, сек:
               <input class="input setting-num" type="number" min="0" max="120" step="0.5" data-setting="launcher.delaySec" />
             </label>
