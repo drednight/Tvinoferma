@@ -40,7 +40,16 @@
 
 Не хватает страниц: пустого списка предметов, ответа сайта на ошибку передачи (нет места, больше 6 предметов) и окна подтверждения; при появлении добавить рядом тесты.
 
-**Мини-игра «Коллекция» (`collection.js`, `tests/collectionPanel.test.js`):** `site-collection.html` — страница `/minigames.php?game=collection&doo=display`
+**Сундук караванщика (`caravan.js`, `tests/caravanScript.test.js`):** страницы настоящие, обезличенные (аккаунт — `u_1000000001`; номера сундуков сохранены).
+
+| Файл | Страница |
+| --- | --- |
+| `site-promoitems-caravan.html` | `/promo_items.php`: 4 «Сундука караванщика» (`cart_id` 43915985, 43921742, 43931627, 43955414, со сроком «до …») и 4 «Подарочных мешка» |
+| `site-chest-activate.html` | `/promo_items.php?do=activate&cart_id=43915985`: форма сундука, 4 предмета с чекбоксами `chest_items[]`, кнопка отправки |
+
+Не хватает страницы-ответа после нажатия «Перевести» и пустого инвентаря: скрипт их не разбирает (итог — повторное чтение списка), но при появлении добавить тесты.
+
+**Мини-игра «Коллекция (`collection.js`, `tests/collectionPanel.test.js`):** `site-collection.html` — страница `/minigames.php?game=collection&doo=display`
 без скриптов. Само поле игры рисует `collection.js` сайта, поэтому в фикстуре только пустой `<div id="collection" data-info=… data-turn=…>`
 (скрипт очистки сохраняет эти два атрибута) и описание призов. Сервер игры в тестах подменён `tests/helpers/collectionServer.js`
 (`doo=info`, `turn`, `get_item`, `get_next`; формат info — `{ rows: { row1…row6 }, quantity }`). Не хватает реальных ответов `turn`/`get_item`/`get_next`

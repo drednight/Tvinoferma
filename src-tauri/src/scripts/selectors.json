@@ -77,7 +77,13 @@
     "shop.modalConfirm": [".modalDialog a.buy", ".modalDialog .buy"],
     "shop.modalTitle": [".modalDialog .modalTitle"],
     "shop.account": ["#content_top_2 h2 a strong", "#content_top_2 strong", ".auth_h strong"],
-    "shop.historyRows": ["table.promo_history_points tr"]
+    "shop.historyRows": ["table.promo_history_points tr"],
+
+    "caravan.link": ["a[href*=\"do=activate\"]"],
+    "caravan.form": ["form[action*=\"do=activate\"]"],
+    "caravan.itemLabel": ["label"],
+    "caravan.itemBox": ["input[type=\"checkbox\"][name=\"chest_items[]\"]"],
+    "caravan.submit": ["input.chest_submit_button", "form[action*=\"do=activate\"] input[type=\"submit\"]"]
   },
   "texts": {
     "common.challengeTitle": ["Проверка безопасности"],
@@ -118,7 +124,9 @@
     "transfer.warningTitle": ["Предупреждение"],
     "transfer.historyAccount": ["Игровой аккаунт:"],
     "transfer.historyChar": ["Персонаж:"],
-    "transfer.historyServer": ["Сервер:"]
+    "transfer.historyServer": ["Сервер:"],
+
+    "caravan.chestName": ["Сундук караванщика"]
   },
   "regex": {
     "promo.reward": [
@@ -129,6 +137,7 @@
     "transfer.historyDate": ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"],
     "transfer.historyPromo": ["^\\((.*)\\)$"],
     "transfer.onlyServer": ["только на сервер\\s*[«\"“]([^»\"”]+)[»\"”]"],
+    "caravan.cartId": ["[?&]cart_id=(\\d+)"],
     "shop.available": ["Доступно\\s+Вам:?\\s*(\\d+)"],
     "shop.maxMonth": ["Максимальное\\s+количество\\s+в\\s+месяц:?\\s*(\\d+)"],
     "shop.itemId": ["[?&]id=(\\d+)"],

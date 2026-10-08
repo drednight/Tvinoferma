@@ -91,6 +91,7 @@ export function buildCommands(state, deps = {}) {
   push({ id: 'act-marathon-sync', title: '🏆 Обновить марафоны', group: 'Действия', keywords: ['прогресс', 'сверка', 'сверка с сайтом'], run: () => deps.run?.('update-marathons') });
   push({ id: 'act-promo', title: '🎁 Активировать промокод', group: 'Действия', keywords: ['код', 'бонус'], run: () => deps.run?.('promo') });
   push({ id: 'act-transfer', title: '📦 Передать предметы в игру', group: 'Действия', keywords: ['подарок', 'перевод'], run: () => deps.run?.('transfer') });
+  push({ id: 'act-caravan', title: '🧰 Сундук караванщика (открыть сундуки в инвентаре)', group: 'Действия', keywords: ['сундук', 'сундуки', 'караванщик', 'караванщика', 'инвентарь', 'открыть', 'перевести'], run: () => deps.run?.('caravan') });
   push({ id: 'act-shop', title: '🪙 Активация подарков (покупка за Древние монеты)', group: 'Действия', keywords: ['активация', 'магазин', 'подарки', 'подарок', 'камень', 'знак', 'сундук', 'купить'], run: () => deps.run?.('shop') });
   push({ id: 'act-windows', title: '🎮 Запущенные окна игры', group: 'Действия', keywords: ['закрыть', 'клиенты', 'процессы'], run: () => deps.run?.('windows') });
   push({ id: 'act-close-game', title: '🛑 Закрыть все окна игры', group: 'Действия', keywords: ['закрыть', 'клиенты'], run: () => deps.run?.('close-game') });

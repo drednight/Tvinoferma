@@ -131,6 +131,11 @@ export function createCommandRunner({ switchTab }) {
           openShopDialog();
           return;
         }
+        case 'caravan': {
+          const { openCaravanDialog } = await import('../modules/automation/caravan.js');
+          openCaravanDialog();
+          return;
+        }
         case 'save': {
           const { saveNow } = await import('./storage.js');
           await saveNow();

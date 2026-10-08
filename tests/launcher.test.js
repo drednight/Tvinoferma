@@ -147,8 +147,13 @@ describe('launcher: итог запуска, трей', () => {
     expect(rust).toContain('TRANSFER_ACTION: &str = "transfer"');
     expect(rust).toContain('SHOP_ACTION: &str = "shop"');
     expect(rust).toContain('🪙 Активация подарков');
-    expect(rust).toContain('&[&auth, &balance, &promo, &transfer, &shop, &marathons]');
+    expect(rust).toContain('&auth, &balance, &promo, &transfer, &shop, &caravan, &marathons');
     expect(rust).toContain('action == SHOP_ACTION');
+    expect(rust).toContain('CARAVAN_ACTION: &str = "caravan"');
+    expect(rust).toContain('🧰 Сундук караванщика');
+    expect(rust).toContain('action == CARAVAN_ACTION');
+    expect(desk).toContain("action === 'caravan'");
+    expect(desk).toContain('openCaravanDialog');
     expect(rust).toContain('Ввести промокод');
     expect(rust).toContain('Передать предметы в игру');
     expect(desk).toContain("action === 'promo'");

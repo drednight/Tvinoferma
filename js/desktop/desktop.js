@@ -46,6 +46,10 @@ async function runScript(action) {
     const { openShopDialog } = await import('../modules/automation/shop.js');
     return openShopDialog();
   }
+  if (action === 'caravan') {
+    const { openCaravanDialog } = await import('../modules/automation/caravan.js');
+    return openCaravanDialog();
+  }
   const sync = await import('../modules/sync/syncManager.js');
   if (action === 'check-auth') return sync.refreshAllLoginStatuses();
   if (action === 'update-balance') return sync.refreshAllBalances();

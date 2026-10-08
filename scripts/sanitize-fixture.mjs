@@ -23,7 +23,7 @@ export function scrub(text) {
   return text
     .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, 'user@example.com')
     .replace(/\bu_\d{6,}\b/g, `u_${FAKE_ID}`)
-    .replace(/(avatar\/|id=|user[_-]?id["':= ]+)\d{6,}/gi, `$1${FAKE_ID}`)
+    .replace(/(avatar\/|(?<!cart_)id=|user[_-]?id["':= ]+)\d{6,}/gi, `$1${FAKE_ID}`)
     .replace(/\b\d{9}\b(?=\.(?:jpe?g|png))/g, FAKE_ID)
     // токены и подписи в адресах: ?token=…, &sid=…, &hash=…
     .replace(/([?&;](?:amp;)?(?:token|securitytoken|sid|hash|key|sign|signature|session)=)[^&"'\s<>]+/gi, '$1X');

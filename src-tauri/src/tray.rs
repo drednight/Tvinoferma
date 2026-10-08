@@ -29,8 +29,9 @@ const FAVORITE_PREFIX: &str = "launch-favorite:";
 const PROMO_ACTION: &str = "promo";
 const TRANSFER_ACTION: &str = "transfer";
 const SHOP_ACTION: &str = "shop";
+const CARAVAN_ACTION: &str = "caravan";
 
-/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, активация подарков, марафоны), «Выход».
+/// Меню трея: «Открыть», «Запустить пати» (по списку пати), «Закрыть все окна игры», «Скрипты» (проверка входа, балансы, промокод, передача предметов, активация подарков, сундук караванщика, марафоны), «Выход».
 fn build_menu<R: Runtime, M: Manager<R>>(
     app: &M,
     parties: &[String],
@@ -73,12 +74,21 @@ fn build_menu<R: Runtime, M: Manager<R>>(
         true,
         None::<&str>,
     )?;
+    let caravan = MenuItem::with_id(
+        app,
+        CARAVAN_ACTION,
+        "🧰 Сундук караванщика",
+        true,
+        None::<&str>,
+    )?;
     // Все скрипты спрятаны в подменю: в основном меню только «Открыть», «Запустить пати», «Скрипты» и «Выход»
     let scripts = Submenu::with_items(
         app,
         "📜 Скрипты",
         true,
-        &[&auth, &balance, &promo, &transfer, &shop, &marathons],
+        &[
+            &auth, &balance, &promo, &transfer, &shop, &caravan, &marathons,
+        ],
     )?;
 
     let party_items = parties
@@ -172,8 +182,12 @@ pub fn setup(app: &App) -> tauri::Result<()> {
                 });
             }
             action => {
-                // Промокод, передача предметов и активация подарков — это диалоги: показываем окно, чтобы их было видно
-                if action == PROMO_ACTION || action == TRANSFER_ACTION || action == SHOP_ACTION {
+                // Промокод, передача предметов, активация подарков и сундук караванщика — это диалоги: показываем окно, чтобы их было видно
+                if action == PROMO_ACTION
+                    || action == TRANSFER_ACTION
+                    || action == SHOP_ACTION
+                    || action == CARAVAN_ACTION
+                {
                     show_main(app);
                 }
                 // Скрипты выполняет интерфейс — пересылаем ему действие
