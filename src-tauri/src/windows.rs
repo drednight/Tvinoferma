@@ -14,16 +14,20 @@ const POPUP_PATCH: &str = include_str!("scripts/popup_patch.js");
 static NEXT_POPUP_ID: AtomicU64 = AtomicU64::new(1);
 /// Снимает клиентский лимит сайта «не более 6 предметов» на странице передачи предметов (только видимые окна).
 const PROMO_ITEMS_UNLIMITED: &str = include_str!("scripts/promo_items_unlimited.js");
+/// Панель «Коллекция» на странице мини-игры (Issue #72, только видимые окна): запуск только по кнопке пользователя.
+const COLLECTION_PANEL: &str = include_str!("scripts/collection.js");
 
 /// Настройки видимых окон браузера (из «Настроек» приложения).
 pub struct BrowserSettings {
     pub unlimited_items: AtomicBool,
+    pub collection_panel: AtomicBool,
 }
 
 impl Default for BrowserSettings {
     fn default() -> Self {
         Self {
             unlimited_items: AtomicBool::new(true),
+            collection_panel: AtomicBool::new(true),
         }
     }
 }
@@ -38,6 +42,61 @@ fn unlimited_items_enabled(app: &AppHandle) -> bool {
 #[command]
 pub fn set_unlimited_items(settings: State<'_, BrowserSettings>, enabled: bool) {
     settings.unlimited_items.store(enabled, Ordering::Relaxed);
+}
+
+fn collection_panel_enabled(app: &AppHandle) -> bool {
+    app.try_state::<BrowserSettings>()
+        .map(|s| s.collection_panel.load(Ordering::Relaxed))
+        .unwrap_or(true)
+}
+
+/// «Панель Коллекции» в видимых окнах: действует на окна, открытые после изменения.
+#[command]
+pub fn set_collection_panel(settings: State<'_, BrowserSettings>, enabled: bool) {
+    settings.collection_panel.store(enabled, Ordering::Relaxed);
+}
+
+/// Начало hash с отчётами панели «Коллекция». Не «TF_»: иначе `is_stale_page` сочтёт окно служебной страницей.
+const COLLECTION_HASH: &str = "#TFCOL1_";
+
+/// Отчёты панели из адреса окна `#TFCOL1_<encodeURIComponent({"data":{"reports":[..]},"error":null})>`.
+/// К каждому отчёту добавляется `char` — id персонажа из метки окна. Больше 5 отчётов за раз не берём.
+fn collection_reports_from_url(url: &str, char_id: &str) -> Vec<serde_json::Value> {
+    let Some((None, data)) = crate::parsers::read_hash_payload(url, COLLECTION_HASH) else {
+        return Vec::new();
+    };
+    let Some(list) = data.get("reports").and_then(|r| r.as_array()) else {
+        return Vec::new();
+    };
+    list.iter()
+        .take(5)
+        .filter_map(|r| {
+            let mut obj = r.as_object()?.clone();
+            obj.insert("char".into(), serde_json::Value::String(char_id.to_string()));
+            Some(serde_json::Value::Object(obj))
+        })
+        .collect()
+}
+
+/// Забирает отчёты панели «Коллекция» из видимых окон персонажей и убирает hash — для окна это «принято».
+/// Только читает адрес окон приложения; ничего не открывает и не нажимает на сайте.
+#[command]
+pub fn take_collection_reports(app: AppHandle) -> Vec<serde_json::Value> {
+    let mut out = Vec::new();
+    for (label, win) in app.webview_windows() {
+        let Some(char_id) = label.strip_prefix("sync-win-") else {
+            continue;
+        };
+        let Ok(url) = win.url() else { continue };
+        if !url.fragment().is_some_and(|f| f.starts_with("TFCOL1_")) {
+            continue;
+        }
+        out.extend(collection_reports_from_url(url.as_str(), char_id));
+        let _ = win.eval(
+            "if (location.hash.indexOf('#TFCOL1_') === 0) history.replaceState(null, '', location.pathname + location.search);",
+        );
+    }
+    out
 }
 
 pub fn window_label(key: &str) -> String {
@@ -67,12 +126,16 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
     profile_key: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
     let unlimited = unlimited_items_enabled(app);
+    let collection = collection_panel_enabled(app);
     let app = app.clone();
     let label = label.to_string();
     let profile_key = profile_key.to_string();
     let mut builder = builder.initialization_script(POPUP_PATCH);
     if unlimited {
         builder = builder.initialization_script(PROMO_ITEMS_UNLIMITED);
+    }
+    if collection {
+        builder = builder.initialization_script(COLLECTION_PANEL);
     }
     builder.on_new_window(move |url, features| {
         // В лог попадает только адрес без параметров: в них бывают коды входа
@@ -207,6 +270,9 @@ pub async fn open_sync_window(
         let _ = win.eval(POPUP_PATCH);
         if unlimited_items_enabled(&app) {
             let _ = win.eval(PROMO_ITEMS_UNLIMITED);
+        }
+        if collection_panel_enabled(&app) {
+            let _ = win.eval(COLLECTION_PANEL);
         }
         if let Some(script) = panel_script.as_deref() {
             let _ = win.eval(script);
@@ -368,7 +434,7 @@ pub fn dispose(window: &WebviewWindow, created_here: bool, close_after: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{centered_position, is_oauth_popup_url};
+    use super::{centered_position, collection_reports_from_url, is_oauth_popup_url};
     use tauri::Url;
 
     #[test]
@@ -405,5 +471,34 @@ mod tests {
         );
 
         assert_eq!(position, tauri::PhysicalPosition::new(300, 150));
+    }
+
+    #[test]
+    fn reads_collection_reports_and_adds_character_id() {
+        let json = r#"{"data":{"reports":[{"id":"a1","opened":9},{"id":"b2","opened":3}]},"error":null}"#;
+        let url = format!(
+            "https://pwonline.ru/minigames.php?game=collection&doo=display#TFCOL1_{}",
+            urlencoding::encode(json)
+        );
+        let reports = collection_reports_from_url(&url, "Temnyy_Mag");
+        assert_eq!(reports.len(), 2);
+        assert_eq!(reports[0]["id"], "a1");
+        assert_eq!(reports[1]["opened"], 3);
+        assert_eq!(reports[0]["char"], "Temnyy_Mag");
+    }
+
+    #[test]
+    fn ignores_foreign_broken_and_oversized_collection_hashes() {
+        let page = "https://pwonline.ru/minigames.php?game=collection&doo=display";
+        assert!(collection_reports_from_url(page, "x").is_empty());
+        assert!(collection_reports_from_url(&format!("{page}#TF_BAL_V5_%7B%7D"), "x").is_empty());
+        assert!(collection_reports_from_url(&format!("{page}#TFCOL1_%7Bbroken"), "x").is_empty());
+        let many: Vec<String> = (0..8).map(|i| format!("{{\"id\":\"r{i}\"}}")).collect();
+        let json = format!("{{\"data\":{{\"reports\":[{}]}},\"error\":null}}", many.join(","));
+        let url = format!("{page}#TFCOL1_{}", urlencoding::encode(&json));
+        assert_eq!(collection_reports_from_url(&url, "x").len(), 5);
+        // отчёт с ошибкой не принимается
+        let err = format!("{page}#TFCOL1_{}", urlencoding::encode(r#"{"data":null,"error":"x"}"#));
+        assert!(collection_reports_from_url(&err, "x").is_empty());
     }
 }

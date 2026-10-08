@@ -3,6 +3,7 @@
 
 import { state } from '../core/state.js';
 import { toast } from '../core/ui.js';
+import { startCollectionSync } from '../modules/automation/collectionSync.js';
 import { launchablePartyNames, decorateNotice, hasGameCenterPath } from '../modules/launcher/launch.js';
 import { charactersInParty } from '../modules/parties/membership.js';
 
@@ -112,6 +113,11 @@ export async function applyDesktopSettings() {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('set_unlimited_items', { enabled: state.settings?.browser?.unlimitedGiftItems !== false });
     } catch (e) { console.warn('[BROWSER]', e); }
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_collection_panel', { enabled: state.settings?.browser?.collectionPanel !== false });
+    } catch (e) { console.warn('[BROWSER]', e); }
+    startCollectionSync(state.settings?.browser?.collectionPanel !== false);
   }
 
   if (backgroundTimer) { clearInterval(backgroundTimer); backgroundTimer = null; }

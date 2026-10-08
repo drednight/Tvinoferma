@@ -40,6 +40,12 @@
 
 Не хватает страниц: пустого списка предметов, ответа сайта на ошибку передачи (нет места, больше 6 предметов) и окна подтверждения; при появлении добавить рядом тесты.
 
+**Мини-игра «Коллекция» (`collection.js`, `tests/collectionPanel.test.js`):** `site-collection.html` — страница `/minigames.php?game=collection&doo=display`
+без скриптов. Само поле игры рисует `collection.js` сайта, поэтому в фикстуре только пустой `<div id="collection" data-info=… data-turn=…>`
+(скрипт очистки сохраняет эти два атрибута) и описание призов. Сервер игры в тестах подменён `tests/helpers/collectionServer.js`
+(`doo=info`, `turn`, `get_item`, `get_next`; формат info — `{ rows: { row1…row6 }, quantity }`). Не хватает реальных ответов `turn`/`get_item`/`get_next`
+(скрипт их не разбирает, а смотрит новое состояние) и страницы окончания акции.
+
 Тесты: `tests/parsers.test.js` (скрипты на страницах) и `tests/fixturesPrivacy.test.js` (в фикстурах нет личных данных).
 
 В тестах есть три вида проверок:

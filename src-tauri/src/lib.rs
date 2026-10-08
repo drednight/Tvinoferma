@@ -133,6 +133,8 @@ pub fn run() {
             tray::set_tray_parties,
             // видимые окна браузера
             windows::set_unlimited_items,
+            windows::set_collection_panel,
+            windows::take_collection_reports,
             // куки-банк
             cookie_bank::bank_status,
             cookie_bank::bank_verify,

@@ -13,3 +13,4 @@
 export { openPromoDialog } from './promo.js';
 export { openTransferDialog } from './transfer.js';
 export { openShopDialog } from './shop.js';
+export { startCollectionSync, pollCollectionReports } from './collectionSync.js';

@@ -43,7 +43,7 @@ while (walker.nextNode()) comments.push(walker.currentNode);
 comments.forEach((c) => c.remove());
 document.querySelectorAll('*').forEach((el) => {
   for (const a of [...el.attributes]) {
-    if (/^(on|data-(?!dp-))/.test(a.name) || a.name === 'style' || a.name === 'nonce') el.removeAttribute(a.name);
+    if (/^(on|data-(?!dp-|info$|turn$))/.test(a.name) || a.name === 'style' || a.name === 'nonce') el.removeAttribute(a.name);
     else if (a.value.length > 400) el.setAttribute(a.name, '');
   }
 });
