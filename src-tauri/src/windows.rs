@@ -72,7 +72,10 @@ fn collection_reports_from_url(url: &str, char_id: &str) -> Vec<serde_json::Valu
         .take(5)
         .filter_map(|r| {
             let mut obj = r.as_object()?.clone();
-            obj.insert("char".into(), serde_json::Value::String(char_id.to_string()));
+            obj.insert(
+                "char".into(),
+                serde_json::Value::String(char_id.to_string()),
+            );
             Some(serde_json::Value::Object(obj))
         })
         .collect()
@@ -475,7 +478,8 @@ mod tests {
 
     #[test]
     fn reads_collection_reports_and_adds_character_id() {
-        let json = r#"{"data":{"reports":[{"id":"a1","opened":9},{"id":"b2","opened":3}]},"error":null}"#;
+        let json =
+            r#"{"data":{"reports":[{"id":"a1","opened":9},{"id":"b2","opened":3}]},"error":null}"#;
         let url = format!(
             "https://pwonline.ru/minigames.php?game=collection&doo=display#TFCOL1_{}",
             urlencoding::encode(json)
@@ -494,11 +498,17 @@ mod tests {
         assert!(collection_reports_from_url(&format!("{page}#TF_BAL_V5_%7B%7D"), "x").is_empty());
         assert!(collection_reports_from_url(&format!("{page}#TFCOL1_%7Bbroken"), "x").is_empty());
         let many: Vec<String> = (0..8).map(|i| format!("{{\"id\":\"r{i}\"}}")).collect();
-        let json = format!("{{\"data\":{{\"reports\":[{}]}},\"error\":null}}", many.join(","));
+        let json = format!(
+            "{{\"data\":{{\"reports\":[{}]}},\"error\":null}}",
+            many.join(",")
+        );
         let url = format!("{page}#TFCOL1_{}", urlencoding::encode(&json));
         assert_eq!(collection_reports_from_url(&url, "x").len(), 5);
         // отчёт с ошибкой не принимается
-        let err = format!("{page}#TFCOL1_{}", urlencoding::encode(r#"{"data":null,"error":"x"}"#));
+        let err = format!(
+            "{page}#TFCOL1_{}",
+            urlencoding::encode(r#"{"data":null,"error":"x"}"#)
+        );
         assert!(collection_reports_from_url(&err, "x").is_empty());
     }
 }
