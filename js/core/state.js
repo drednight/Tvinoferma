@@ -193,6 +193,15 @@ function normalizeLauncherSettings(input = {}) {
   merged.gameCenters = normalizeGameCenters(merged.gameCenters);
   const preferred = String(merged.preferredGcId || '');
   merged.preferredGcId = merged.gameCenters.some(g => g.id === preferred) ? preferred : '';
+  // Пауза между запусками окон: число секунд от 0 до 120, иначе умолчание
+  /** @type {any} */
+  const rawDelay = merged.delaySec;
+  const delay = Number(rawDelay);
+  merged.delaySec = rawDelay !== '' && rawDelay !== null && rawDelay !== undefined && Number.isFinite(delay)
+    ? Math.min(120, Math.max(0, delay))
+    : DEFAULT_SETTINGS.launcher.delaySec;
+  merged.layoutDir = String(merged.layoutDir ?? '').trim();
+  merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
   return merged;
 }
 

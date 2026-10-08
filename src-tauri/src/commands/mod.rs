@@ -2,6 +2,7 @@
 
 pub mod backup;
 pub mod factory_reset;
+pub mod layout;
 pub mod secrets;
 pub mod state;
 

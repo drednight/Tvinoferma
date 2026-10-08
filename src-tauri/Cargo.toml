@@ -41,7 +41,15 @@ windows = { version = "0.62", features = [
 ] }
 # Ожидание асинхронного распознавания (`Async::join`)
 windows-future = "0.3"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"
+
+# Релизная сборка: меньше установщик и exe. Время сборки в CI вырастет (полный LTO, один codegen-unit).
+# panic = "abort" не включён намеренно: сейчас паника в фоновой задаче не роняет всё приложение.
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+strip = true

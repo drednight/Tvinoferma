@@ -70,6 +70,18 @@ export function decorateEnabled() {
   return state.settings?.launcher?.decorateWindows !== false;
 }
 
+/**
+ * Пауза между запусками окон, мс (Настройки → Запуск игры → «Пауза между запусками»).
+ * Если настройки нет или она испорчена — {@link DEFAULT_LAUNCH_DELAY_MS}.
+ * @param {any} [settings]
+ */
+export function launchDelayMs(settings = state.settings) {
+  const raw = settings?.launcher?.delaySec;
+  const sec = Number(raw);
+  if (raw === undefined || raw === null || raw === '' || !Number.isFinite(sec)) return DEFAULT_LAUNCH_DELAY_MS;
+  return Math.round(Math.min(120, Math.max(0, sec)) * 1000);
+}
+
 /** Ставить ли значок класса (Настройки → Запуск игры). Название «Ник — Класс» от этого не зависит. */
 export function decorateIconsEnabled() {
   return state.settings?.launcher?.decorateIcons !== false;
@@ -463,7 +475,7 @@ export function withoutSavedLogin(entries) {
  * @param {{ invoke?: (cmd: string, args?: any) => Promise<any>, ctx?: import('./gameCenters.js').GcContext, loadIcon?: (className: string, size: number) => Promise<number[] | null> }} [deps]
  */
 export async function launchCharacters(characters, opts = {}, deps = {}) {
-  const { delayMs = DEFAULT_LAUNCH_DELAY_MS, waitSecs, url, signal, onStart, onDone, gcId } = opts;
+  const { delayMs = launchDelayMs(), waitSecs, url, signal, onStart, onDone, gcId } = opts;
   const decorate = opts.decorate ?? decorateEnabled();
   const invoke = deps.invoke || tauriInvoke;
   // gcId — GameCenter, из которого запускать в этот раз (например, «папка 2»); у кого его нет — запускается из доступного

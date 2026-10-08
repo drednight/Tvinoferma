@@ -338,8 +338,8 @@ async function main() {
         });
         clip = measured.result.value;
       }
-      const shot = await send('Page.captureScreenshot', { format: GUIDES ? 'webp' : 'png', ...(GUIDES ? { quality: 90 } : {}), captureBeyondViewport: !!clip, ...(clip ? { clip } : {}) });
-      const path = join(OUT, `${file}.${GUIDES ? 'webp' : 'png'}`);
+      const shot = await send('Page.captureScreenshot', { format: 'webp', quality: 90, captureBeyondViewport: !!clip, ...(clip ? { clip } : {}) });
+      const path = join(OUT, `${file}.webp`);
       writeFileSync(path, Buffer.from(shot.data, 'base64'));
       console.log('[ui-shots]', path.replace(ROOT + '\\', ''));
     }
@@ -576,9 +576,9 @@ async function main() {
       returnByValue: true
     });
     console.log('[ui-shots] командная палитра:', JSON.stringify(palette.result.value));
-    const palShot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-    writeFileSync(join(OUT, 'command-palette.png'), Buffer.from(palShot.data, 'base64'));
-    console.log('[ui-shots]', join(OUT, 'command-palette.png').replace(ROOT + '\\', ''));
+    const palShot = await send('Page.captureScreenshot', { format: 'webp', quality: 90, captureBeyondViewport: false });
+    writeFileSync(join(OUT, 'command-palette.webp'), Buffer.from(palShot.data, 'base64'));
+    console.log('[ui-shots]', join(OUT, 'command-palette.webp').replace(ROOT + '\\', ''));
     // Закрываем палитру, чтобы она не попала на снимок профиля
     await send('Runtime.evaluate', {
       expression: `document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`,
@@ -593,9 +593,9 @@ async function main() {
       returnByValue: true
     });
     await sleep(900);
-    const modal = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
-    writeFileSync(join(OUT, 'character-profile.png'), Buffer.from(modal.data, 'base64'));
-    console.log('[ui-shots]', join(OUT, 'character-profile.png').replace(ROOT + '\\', ''));
+    const modal = await send('Page.captureScreenshot', { format: 'webp', quality: 90, captureBeyondViewport: false });
+    writeFileSync(join(OUT, 'character-profile.webp'), Buffer.from(modal.data, 'base64'));
+    console.log('[ui-shots]', join(OUT, 'character-profile.webp').replace(ROOT + '\\', ''));
     ws.close();
   } finally {
     stopDev();

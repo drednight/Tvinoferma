@@ -248,6 +248,9 @@
             <label style="margin-left: 24px;"><input type="checkbox" data-setting="launcher.decorateIcons" /> Ставить значок класса на окно игры</label>
             <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
+            <label title="Следующее окно игры запускается через столько секунд после предыдущего. 0 — без паузы. Если окна «спотыкаются» при массовом запуске, увеличьте паузу.">Пауза между запусками окон, сек:
+              <input class="input setting-num" type="number" min="0" max="120" step="0.5" data-setting="launcher.delaySec" />
+            </label>
           </div>
           <div class="row gap" style="margin-top: 12px; align-items:center; flex-wrap:wrap;">
             <button id="gc-manage-btn" class="btn secondary" title="Список GameCenter с названиями, какой запускать и какие GameCenter у каких персонажей">⚙ GameCenter и персонажи…</button>
@@ -294,6 +297,27 @@
             <label style="margin-left: 24px;" title="Нужно, если игра запущена от администратора: иначе Windows не даёт Твиноферме менять название и значок окон игры и закрывать их без запроса. Windows спросит разрешение один раз."><input type="checkbox" id="autostart-admin" /> От имени администратора (Windows спросит разрешение один раз)</label>
             <p class="muted" id="autostart-note" style="margin: 0;"></p>
           </div>
+        </details>
+<details class="panel fold" id="settings-layout">
+          <summary>
+            <h3>🧩 Layout игры</h3>
+            <p class="muted">Один ваш файл раскладки интерфейса — на все остальные в папке Layout.</p>
+          </summary>
+          <p class="muted" style="margin-top: 0;">Укажите папку Layout и свой файл-образец (например, <code>2069946672.ini</code>). Кнопка «Применить» скопирует его поверх остальных <code>.ini</code> в этой папке и поставит на них «только для чтения». Перед заменой закройте окна игры. Прежние файлы сохраняются в резервной копии. <code>systemsettings.ini</code> не меняется.</p>
+          <div class="settings-checks">
+            <label>Папка Layout
+              <span class="row gap" style="align-items:center; flex-wrap:wrap;"><input class="input" type="text" id="layout-dir" data-setting="launcher.layoutDir" data-value-type="string" placeholder="C:\…\userdata\…\layout" style="min-width: 260px; flex: 1 1 260px;" /><button id="layout-dir-btn" class="btn secondary" type="button">📁 Выбрать…</button></span>
+            </label>
+            <label>Файл-образец
+              <span class="row gap" style="align-items:center; flex-wrap:wrap;"><input class="input" type="text" id="layout-template" data-setting="launcher.layoutTemplate" data-value-type="string" placeholder="Файл .ini, который копируется на остальные" style="min-width: 260px; flex: 1 1 260px;" /><button id="layout-template-btn" class="btn secondary" type="button">📄 Выбрать…</button></span>
+            </label>
+          </div>
+          <p class="muted" id="layout-summary" style="margin: 8px 0 0;"></p>
+          <div class="row gap" style="margin-top: 12px;">
+            <button id="layout-apply-btn" class="btn primary" type="button" title="Скопировать образец поверх остальных .ini и поставить «только для чтения»">Применить ко всем файлам</button>
+            <button id="layout-unlock-btn" class="btn ghost" type="button" title="Снять «только для чтения», чтобы игра снова могла сохранять свою раскладку">Снять «только для чтения»</button>
+          </div>
+          <p class="muted" id="layout-result" style="margin: 8px 0 0;"></p>
         </details>
 <details class="panel fold" id="settings-notifications">
           <summary>

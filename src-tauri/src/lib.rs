@@ -13,6 +13,7 @@
 //! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
 //! - `autostart` — запуск вместе с Windows (запись в `Run`, режим «в трее»);
+//! - `layout_sync` — копирование образца layout поверх остальных `.ini` папки Layout (команды — `commands/layout.rs`);
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
 //! Скрипты, которые внедряются в страницы сайта, лежат в `src/scripts/*.js`.
@@ -25,6 +26,7 @@ mod commands;
 mod cookie_bank;
 mod injection;
 mod launcher;
+mod layout_sync;
 mod marathons;
 mod notify;
 mod parsers;
@@ -147,6 +149,12 @@ pub fn run() {
             launcher::launcher_check_path,
             launcher::launcher_gc_info,
             launcher::launcher_pick_gamecenter,
+            // Layout: образец раскладки поверх остальных файлов папки
+            commands::layout::layout_pick_folder,
+            commands::layout::layout_pick_file,
+            commands::layout::layout_scan,
+            commands::layout::layout_apply,
+            commands::layout::layout_unlock,
             launcher::launcher_start,
             launcher::launcher_running_clients,
             launcher::launcher_close_clients,

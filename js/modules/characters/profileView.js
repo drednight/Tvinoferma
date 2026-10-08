@@ -209,9 +209,9 @@ export function openCharacterProfile(char) {
         <div class="info-block" style="margin-bottom:16px;">
           <h4>Проходки в данжи</h4>
           <div style="display:flex; gap:20px;">
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-weapon.png" style="width:24px;height:24px;"/> <strong>${passes.weapon || 0}</strong></div>
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-armor.png" style="width:24px;height:24px;"/> <strong>${passes.armor || 0}</strong></div>
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-relic.png" style="width:24px;height:24px;"/> <strong>${passes.relic || 0}</strong></div>
+            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-weapon.webp" style="width:24px;height:24px;"/> <strong>${passes.weapon || 0}</strong></div>
+            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-armor.webp" style="width:24px;height:24px;"/> <strong>${passes.armor || 0}</strong></div>
+            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-relic.webp" style="width:24px;height:24px;"/> <strong>${passes.relic || 0}</strong></div>
           </div>
         </div>
 

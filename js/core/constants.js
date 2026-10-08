@@ -28,24 +28,24 @@ export const CLASSES = [
 
 // Маппинг: Название класса -> Имя файла
 export const CLASS_ICON_MAP = {
-  'Оборотень': 'tank.png',
-  'Друид': 'dru.png',
-  'Странник': 'mk.png',
-  'Воин': 'var.png',
-  'Маг': 'mag.png',
-  'Стрелок': 'gan.png',
-  'Жрец': 'prist.png',
-  'Лучник': 'luk.png',
-  'Паладин': 'pal.png',
-  'Убийца': 'sin.png',
-  'Шаман': 'sham.png',
-  'Бард': 'bard.png',
-  'Мистик': 'mist.png',
-  'Страж': 'sik.png',
-  'Дух Крови': 'dk.png',
-  'Жнец': 'kosa.png',
-  'Призрак': 'gost.png',
-  'Канглонг': 'canglong.png'
+  'Оборотень': 'tank.webp',
+  'Друид': 'dru.webp',
+  'Странник': 'mk.webp',
+  'Воин': 'var.webp',
+  'Маг': 'mag.webp',
+  'Стрелок': 'gan.webp',
+  'Жрец': 'prist.webp',
+  'Лучник': 'luk.webp',
+  'Паладин': 'pal.webp',
+  'Убийца': 'sin.webp',
+  'Шаман': 'sham.webp',
+  'Бард': 'bard.webp',
+  'Мистик': 'mist.webp',
+  'Страж': 'sik.webp',
+  'Дух Крови': 'dk.webp',
+  'Жнец': 'kosa.webp',
+  'Призрак': 'gost.webp',
+  'Канглонг': 'canglong.webp'
 };
 
 // Функция-помощник для получения URL иконки или fallback-буквы
@@ -74,9 +74,9 @@ export const SKY_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 
 export const PASS_TYPES = [
-  { key: 'weapon', label: 'Оружие', icon: '⚔️', img: '/assets/icons/dungeons/pass-weapon.png' },
-  { key: 'armor', label: 'Доспех', icon: '🛡️', img: '/assets/icons/dungeons/pass-armor.png' },
-  { key: 'relic', label: 'Реликвия', icon: '💎', img: '/assets/icons/dungeons/pass-relic.png' }
+  { key: 'weapon', label: 'Оружие', icon: '⚔️', img: '/assets/icons/dungeons/pass-weapon.webp' },
+  { key: 'armor', label: 'Доспех', icon: '🛡️', img: '/assets/icons/dungeons/pass-armor.webp' },
+  { key: 'relic', label: 'Реликвия', icon: '💎', img: '/assets/icons/dungeons/pass-relic.webp' }
 ];
 
 export const DEFAULT_SETTINGS = {
@@ -160,7 +160,10 @@ export const DEFAULT_SETTINGS = {
     gameCenters: [],   // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
     preferredGcId: '', // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
     decorateWindows: true,  // после запуска назвать окно клиента «Ник — Класс» и поставить значок класса
-    decorateIcons: true     // ставить значок класса; выключено — окно получает только название «Ник — Класс»
+    decorateIcons: true,    // ставить значок класса; выключено — окно получает только название «Ник — Класс»
+    delaySec: 3,            // пауза между запусками окон игры, секунды (0 — без паузы)
+    layoutDir: '',          // папка Layout игры (Настройки → Запуск игры → «Layout»)
+    layoutTemplate: ''      // файл-образец layout, который копируется поверх остальных .ini в папке
   },
   tray: {
     closeToTray: false,

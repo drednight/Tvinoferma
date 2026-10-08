@@ -303,6 +303,8 @@ export function bindSettings() {
     openGameCentersModal({ onClose: refreshGcSummary });
   });
 
+  import('../modules/launcher/layoutSync.js').then(m => m.bindLayoutPanel()).catch(e => console.warn('[LAYOUT]', e));
+
   import('../desktop/autostart.js').then(m => m.bindAutostart()).catch(e => console.warn('[AUTOSTART]', e));
 
   document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {

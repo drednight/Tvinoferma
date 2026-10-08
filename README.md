@@ -9,7 +9,7 @@
 > открывает официальные страницы в своём браузере и **читает** их.
 
 <p align="center">
-  <img src="docs/screenshots/today.png" alt="Экран «Сегодня»: что требует внимания, календарь с записями по времени и панель дня" width="900">
+  <img src="docs/screenshots/today.webp" alt="Экран «Сегодня»: что требует внимания, календарь с записями по времени и панель дня" width="900">
 </p>
 
 ---
@@ -45,7 +45,7 @@
 Главная страница отвечает на вопрос «что делать сейчас?», а не показывает список карточек.
 
 <p align="center">
-  <img src="docs/screenshots/today.png" alt="Экран «Сегодня»" width="900">
+  <img src="docs/screenshots/today.webp" alt="Экран «Сегодня»" width="900">
 </p>
 
 - **Требуют внимания** — истёкшие сессии, отставания в марафонах, давно не проверенный баланс.
@@ -58,7 +58,7 @@
 ### 👤 Персонажи
 
 <p align="center">
-  <img src="docs/screenshots/characters.png" alt="Список персонажей" width="900">
+  <img src="docs/screenshots/characters.webp" alt="Список персонажей" width="900">
 </p>
 
 - **Карточки** с ником, классом, уровнем, небом, тегами, заметками и балансом монет.
@@ -73,7 +73,7 @@
 <summary>Как выглядит профиль персонажа</summary>
 
 <p align="center">
-  <img src="docs/screenshots/character-profile.png" alt="Профиль персонажа" width="900">
+  <img src="docs/screenshots/character-profile.webp" alt="Профиль персонажа" width="900">
 </p>
 
 </details>
@@ -81,7 +81,7 @@
 ### 👥 Пати (группы аккаунтов)
 
 <p align="center">
-  <img src="docs/screenshots/parties.png" alt="Раздел «Пати»" width="900">
+  <img src="docs/screenshots/parties.webp" alt="Раздел «Пати»" width="900">
 </p>
 
 - Карточки пати показывают состав, общий баланс древних монет и кто сейчас онлайн.
@@ -94,7 +94,7 @@
 ### 🏁 Марафоны
 
 <p align="center">
-  <img src="docs/screenshots/marathons.png" alt="Раздел «Марафоны»" width="900">
+  <img src="docs/screenshots/marathons.webp" alt="Раздел «Марафоны»" width="900">
 </p>
 
 - **Мастер добавления:** найдите марафон на сайте по названию или добавьте вручную.
@@ -169,7 +169,7 @@
 ### ⌨️ Командная палитра
 
 <p align="center">
-  <img src="docs/screenshots/command-palette.png" alt="Командная палитра" width="900">
+  <img src="docs/screenshots/command-palette.webp" alt="Командная палитра" width="900">
 </p>
 
 `Ctrl+K` — одна строка поиска по всему приложению: команды, персонажи, пати, марафоны.

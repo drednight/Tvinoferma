@@ -14,7 +14,7 @@ describe('название и значок окна клиента', () => {
   });
 
   it('у каждого класса из списка есть значок', () => {
-    for (const c of CLASSES) expect(CLASS_ICON_MAP[c], c).toMatch(/\.png$/);
+    for (const c of CLASSES) expect(CLASS_ICON_MAP[c], c).toMatch(/\.webp$/);
   });
 
   it('значки запрашиваются в двух размерах; без класса значков нет', async () => {

@@ -1450,30 +1450,30 @@ pub struct DecorateTarget {
 /// Значок класса для ручной смены значка у запущенного окна.
 ///
 /// Пиксели RGBA обычно присылает интерфейс (`icon_small`/`icon_big`, конвертация в canvas):
-/// у окна браузера PNG есть всегда, а рядом с exe — не всегда. Если пикселей нет, PNG ищется
+/// у окна браузера значок есть всегда, а рядом с exe — не всегда. Если пикселей нет, файл значка ищется
 /// в папке значков; `None` — класса нет в списке или файл не читается.
 fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
     // Список классов и имена файлов повторяют `js/core/constants.js` (CLASS_ICON_MAP).
     // Держим их здесь, чтобы команда смены значка работала без участия интерфейса.
     const ICONS: &[(&str, &str)] = &[
-        ("Оборотень", "tank.png"),
-        ("Друид", "dru.png"),
-        ("Странник", "mk.png"),
-        ("Воин", "var.png"),
-        ("Маг", "mag.png"),
-        ("Стрелок", "gan.png"),
-        ("Жрец", "prist.png"),
-        ("Лучник", "luk.png"),
-        ("Паладин", "pal.png"),
-        ("Убийца", "sin.png"),
-        ("Шаман", "sham.png"),
-        ("Бард", "bard.png"),
-        ("Мистик", "mist.png"),
-        ("Страж", "sik.png"),
-        ("Дух Крови", "dk.png"),
-        ("Жнец", "kosa.png"),
-        ("Призрак", "gost.png"),
-        ("Канглонг", "canglong.png"),
+        ("Оборотень", "tank.webp"),
+        ("Друид", "dru.webp"),
+        ("Странник", "mk.webp"),
+        ("Воин", "var.webp"),
+        ("Маг", "mag.webp"),
+        ("Стрелок", "gan.webp"),
+        ("Жрец", "prist.webp"),
+        ("Лучник", "luk.webp"),
+        ("Паладин", "pal.webp"),
+        ("Убийца", "sin.webp"),
+        ("Шаман", "sham.webp"),
+        ("Бард", "bard.webp"),
+        ("Мистик", "mist.webp"),
+        ("Страж", "sik.webp"),
+        ("Дух Крови", "dk.webp"),
+        ("Жнец", "kosa.webp"),
+        ("Призрак", "gost.webp"),
+        ("Канглонг", "canglong.webp"),
     ];
     let file = ICONS.iter().find(|(name, _)| *name == class)?.1;
     let exe = std::env::current_exe().ok()?;
@@ -1509,7 +1509,7 @@ fn class_icon_bytes(class: &str) -> Option<Vec<u8>> {
 /// Значки окна (малый для заголовка, большой для панели задач) для смены вида по требованию.
 ///
 /// Два источника, и порядок важен: сначала **сырые пиксели RGBA** от интерфейса (canvas всегда
-/// может прочитать PNG класса), и только если их нет — PNG из папки значков. Пиксели нельзя
+/// может прочитать значок класса), и только если их нет — файл значка из папки значков. Пиксели нельзя
 /// скормить `image::load_from_memory`: это декодер файлов (PNG/JPEG), а не сырых буферов, и он
 /// вернёт ошибку. Раньше код путал эти пути, из-за чего при выборе класса значок не ставился,
 /// а название менялось — то есть «иконка не обновляется».
@@ -1530,7 +1530,7 @@ fn style_icons(
     if small != 0 || big != 0 {
         return Some((small, big));
     }
-    // Пикселей нет (картинка не прочиталась) — пробуем PNG класса рядом с exe
+    // Пикселей нет (картинка не прочиталась) — пробуем значок класса (WebP) рядом с exe
     let img = image::load_from_memory(&class_icon_bytes(class)?)
         .ok()?
         .to_rgba8();
@@ -2077,7 +2077,7 @@ mod tests {
 
     #[test]
     fn canvas_pixels_are_not_an_image_file() {
-        // Пиксели от интерфейса (`classIconRgba` из canvas) — это сырой RGBA, а не PNG/JPEG.
+        // Пиксели от интерфейса (`classIconRgba` из canvas) — это сырой RGBA, а не PNG/JPEG/WebP.
         // Декодеру файлов их скормить нельзя: раньше код пытался именно это, `load_from_memory`
         // возвращал ошибку, и значок молча не ставился — окно получало только название.
         let rgba = vec![200u8; 16 * 16 * 4];
@@ -2136,20 +2136,20 @@ mod tests {
     fn class_png_is_a_real_fallback() {
         // Запасной путь должен работать на настоящем файле значка, а не только «не падать».
         // Путь от папки пакета (`src-tauri`), где запускаются тесты Cargo.
-        let png = std::fs::read("../public/assets/icons/classes/var.png")
+        let png = std::fs::read("../public/assets/icons/classes/var.webp")
             .expect("значок класса «Воин» должен лежать в репозитории");
         let img = image::load_from_memory(&png)
-            .expect("PNG должен читаться")
+            .expect("WebP должен читаться")
             .to_rgba8();
         let small = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_SMALL)));
         let big = icon_from_rgba(Some(&resize_icon(&img, WINDOW_ICON_BIG)));
-        assert_ne!(small, 0, "малый значок из PNG должен собраться");
-        assert_ne!(big, 0, "большой значок из PNG должен собраться");
+        assert_ne!(small, 0, "малый значок из WebP должен собраться");
+        assert_ne!(big, 0, "большой значок из WebP должен собраться");
     }
 
     #[test]
     fn style_icons_without_pixels_fall_back_to_the_class_png() {
-        // Пикселей нет и PNG класса рядом с exe нет — значок собрать нечем, окно не трогаем.
+        // Пикселей нет и файла значка класса рядом с exe нет — значок собрать нечем, окно не трогаем.
         // Важно именно `None`, а не пара нулей: нули заставили бы Windows снять текущий значок.
         assert_eq!(style_icons(None, None, "НетТакогоКласса"), None);
         // Класс не задан — значок не меняем вовсе
