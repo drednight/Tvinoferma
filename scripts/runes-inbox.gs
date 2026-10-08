@@ -4,12 +4,12 @@ const VALID_CLASSES = [
   'Оборотень', 'Друид', 'Странник', 'Воин', 'Маг', 'Стрелок', 'Жрец', 'Лучник',
   'Паладин', 'Убийца', 'Шаман', 'Бард', 'Мистик', 'Страж', 'Дух Крови', 'Жнец', 'Призрак', 'Канглонг'
 ];
-const HEADERS = ['Дата получения', 'Класс', 'Автор', 'PvE руны', 'PvP руны', 'Дополнительные руны', 'Примечание', 'Статус'];
+const HEADERS = ['Дата получения', 'Класс', 'Автор', 'PvE руны', 'PvP руны', 'Дополнительные руны', 'Примечание', 'Статус', 'ID', 'JSON-объект для runes'];
 
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Руны')
-    .addItem('Оформить таблицу заявок', 'setupInboxSheet')
+    .addItem('Обновить оформление и JSON', 'setupInboxSheet')
     .addToUi();
 }
 
@@ -22,10 +22,13 @@ function doPost(event) {
     try {
       const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
       const sheet = spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME);
-      if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+      ensureHeaders_(sheet);
+      const receivedAt = new Date();
+      const entry = createCatalogEntry_(submission, `rune-${Utilities.getUuid()}`, receivedAt);
       sheet.appendRow([
-        new Date(), submission.class, safeCell(submission.author), safeCell(submission.pve),
-        safeCell(submission.pvp), safeCell(submission.additional), safeCell(submission.note), 'На проверке'
+        receivedAt, submission.class, safeCell(submission.author), safeCell(submission.pve),
+        safeCell(submission.pvp), safeCell(submission.additional), safeCell(submission.note), 'На проверке',
+        entry.id, JSON.stringify(entry)
       ]);
       formatInboxSheet_(sheet);
     } finally {
@@ -54,16 +57,57 @@ function validateSubmission(data) {
 function setupInboxSheet() {
   const spreadsheet = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME);
-  if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+  ensureHeaders_(sheet);
+  refreshCatalogEntries_(sheet);
   formatInboxSheet_(sheet);
+}
+
+function ensureHeaders_(sheet) {
+  if (sheet.getLastRow() === 0) sheet.appendRow(HEADERS);
+  else sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+}
+
+function refreshCatalogEntries_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+  const rows = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+  const idAndJson = rows.map(row => {
+    if (!row[1]) return [row[8] || '', row[9] || ''];
+    const id = row[8] || `rune-${Utilities.getUuid()}`;
+    const receivedAt = row[0] instanceof Date ? row[0] : new Date(row[0] || Date.now());
+    const submission = {
+      class: String(row[1]), author: String(row[2] || ''), pve: String(row[3] || ''),
+      pvp: String(row[4] || ''), additional: String(row[5] || ''), note: String(row[6] || '')
+    };
+    return [id, JSON.stringify(createCatalogEntry_(submission, id, receivedAt))];
+  });
+  sheet.getRange(2, 9, idAndJson.length, 2).setValues(idAndJson);
+}
+
+function createCatalogEntry_(submission, id, receivedAt) {
+  return {
+    id,
+    class: submission.class,
+    pve: submission.pve,
+    pvp: submission.pvp,
+    additional: submission.additional,
+    author: submission.author,
+    note: submission.note,
+    addedAt: Utilities.formatDate(receivedAt, Session.getScriptTimeZone(), 'yyyy-MM-dd')
+  };
 }
 
 function formatInboxSheet_(sheet) {
   const columns = HEADERS.length;
   const rows = sheet.getMaxRows();
   const allRows = sheet.getRange(1, 1, rows, columns);
-  if (sheet.getBandings().length === 0) allRows.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREEN);
-  const banding = sheet.getBandings()[0];
+  let bandings = sheet.getBandings();
+  if (!bandings.length || bandings[0].getRange().getNumColumns() !== columns) {
+    bandings.forEach(item => item.remove());
+    allRows.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREEN);
+    bandings = sheet.getBandings();
+  }
+  const banding = bandings[0];
   if (banding) {
     banding.setHeaderRowColor('#183b2b');
     banding.setFirstRowColor('#ffffff');
@@ -85,7 +129,7 @@ function formatInboxSheet_(sheet) {
     .setWrap(true)
     .setBorder(null, null, true, null, false, false, '#c9a85d', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
-  [155, 135, 165, 230, 230, 235, 330, 150].forEach((width, index) => sheet.setColumnWidth(index + 1, width));
+  [155, 135, 165, 230, 230, 235, 330, 150, 250, 480].forEach((width, index) => sheet.setColumnWidth(index + 1, width));
   if (rows > 1) {
     sheet.getRange(2, 1, rows - 1, columns)
       .setFontFamily('Arial')
@@ -94,6 +138,7 @@ function formatInboxSheet_(sheet) {
       .setVerticalAlignment('top')
       .setWrap(true);
     sheet.getRange(2, 1, rows - 1, 1).setNumberFormat('dd.mm.yyyy hh:mm');
+    sheet.getRange(2, 10, rows - 1, 1).setFontFamily('Consolas').setFontSize(9).setFontColor('#345f46');
     const statusRange = sheet.getRange(2, 8, rows - 1, 1);
     const statusValidation = SpreadsheetApp.newDataValidation()
       .requireValueInList(['На проверке', 'Одобрено', 'Отклонено'], true)
@@ -109,7 +154,11 @@ function formatInboxSheet_(sheet) {
       ]);
     }
   }
-  if (!sheet.getFilter()) sheet.getRange(1, 1, rows, columns).createFilter();
+  const filter = sheet.getFilter();
+  if (!filter || filter.getRange().getNumColumns() !== columns) {
+    filter?.remove();
+    allRows.createFilter();
+  }
   if (sheet.getLastRow() > 1) sheet.autoResizeRows(2, sheet.getLastRow() - 1);
 }
 
