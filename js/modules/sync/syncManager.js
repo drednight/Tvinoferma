@@ -19,7 +19,7 @@ import { getCharacterBalance } from './getBalance.js';
 import { runQueue, browserSlots, isRetryableCode } from './queue.js';
 import { setAuthChecking, authDetails } from './authStatus.js';
 import { onCharMarathonData, syncAllActiveMarathons } from '../marathons/siteSync.js';
-import { logScope, errorText, startTask } from '../../core/taskLog.js';
+import { logScope, errorText, startTask, taskSignal } from '../../core/taskLog.js';
 import { recordParserResult } from '../../core/parserHealth.js';
 
 let activeListeners = [];
@@ -223,8 +223,11 @@ export { rerender as rerenderLists };
 export async function runAuthChecks(chars, { title = '🔐 Проверка авторизации', baseTimeout = 4, closeAfter = false, silent = false } = {}) {
     const { retries, retryDelayMs } = scriptSettings();
     const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1 });
-    const signal = { cancelled: false };
-    task?.onCancel(() => { signal.cancelled = true; });
+    // Пауза останавливает очередь, стоп обрывает и уже выполняющийся скрипт (taskSignal)
+    const signal = task ? taskSignal(task) : { cancelled: false, paused: false };
+    // Персонажи, работу по которым прервали: их результат не применяется
+    const cancelledScopes = new Set();
+    task?.onStop?.(() => chars.forEach(c => cancelledScopes.add(c.id)));
     task?.watch(...chars.map(c => `char:${c.id}`));
     task?.setStep(`${chars.length} персонажей, по ${browserSlots.max} одновременно, повторов до ${retries}`);
     chars.forEach(c => setAuthChecking(c.id, true));
@@ -239,6 +242,8 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
         shouldRetry: (res, err) => !!err || (res?.status !== 'online' && isRetryableCode(res?.reason)),
         onDone: ({ item, result, error }, done, total) => {
             const scope = `char:${item.id}`;
+            // Остановленный с кнопки результат не применяем: персонаж не «оффлайн», его не проверили
+            if (cancelledScopes.has(item.id)) { cancelledScopes.delete(item.id); task?.progress(done, total, item.nick); return; }
             if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error', scope);
             const applied = result ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
             // Вход подтвердился (часто с повтора): ошибки прошлых попыток этого персонажа

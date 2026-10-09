@@ -412,7 +412,7 @@ function generateCardHTML(char, { archived = false } = {}) {
         </header>
 
         <div class="card-body">
-           ${tagsHtml}
+           <div class="card-tags">${tagsHtml}</div>
 
            <div class="card-stats">
               <div><span class="muted">HP</span><strong>${fmtStat(stats.hp)}</strong></div>

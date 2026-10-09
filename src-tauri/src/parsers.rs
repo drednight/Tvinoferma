@@ -1,8 +1,64 @@
 //! Общая инфраструктура парсеров: журнал шагов, ожидание ответа скрипта в hash,
 //! обработка «Проверки безопасности» сайта.
 
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, Url, WebviewWindow};
+
+/// Scope'ы, работу по которым велено прервать (кнопка «стоп»).
+///
+/// Без этого «стоп» лишь переставал выдавать работу очереди, а уже выполняющийся скрипт
+/// продолжал крутиться до своего таймаута — до 12 секунд на персонажа. Теперь цикл ожидания
+/// ответа проверяет список на каждом круге (раз в 100 мс) и выходит сразу.
+fn cancelled_scopes() -> &'static Mutex<Vec<String>> {
+    static LIST: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    LIST.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Пометить scope отменённым. Список ограничен: он живёт, пока скрипт не ушёл.
+pub fn cancel_scope(scope: &str) {
+    let scope = scope.trim();
+    if scope.is_empty() {
+        return;
+    }
+    if let Ok(mut list) = cancelled_scopes().lock() {
+        if list.len() > 256 {
+            list.clear();
+        }
+        if !list.iter().any(|s| s == scope) {
+            list.push(scope.to_string());
+        }
+    }
+}
+
+/// Снять отметку: та же работа запускается снова и отменять её больше не надо.
+pub fn clear_scope(scope: &str) {
+    if let Ok(mut list) = cancelled_scopes().lock() {
+        list.retain(|s| s != scope);
+    }
+}
+
+pub fn is_scope_cancelled(scope: &str) -> bool {
+    cancelled_scopes()
+        .lock()
+        .map(|list| list.iter().any(|s| s == scope))
+        .unwrap_or(false)
+}
+
+/// Прервать работу по scope прямо сейчас (кнопка «стоп»). Останавливается уже
+/// выполняющийся скрипт, а не только выдача новой работы.
+#[tauri::command]
+pub async fn cancel_scope_command(scope: String) -> Result<(), String> {
+    cancel_scope(&scope);
+    Ok(())
+}
+
+/// Снять отметку об отмене: та же работа запускается снова.
+#[tauri::command]
+pub async fn resume_scope_command(scope: String) -> Result<(), String> {
+    clear_scope(&scope);
+    Ok(())
+}
 
 /// Общий слой скриптов (`window.__TF`): поиск по списку селекторов с запасными вариантами, тексты, регулярные выражения.
 const COMMON_JS: &str = include_str!("scripts/common.js");
@@ -149,6 +205,11 @@ pub async fn eval_and_wait(
     );
 
     while Instant::now() < deadline {
+        // «Стоп» нажимают посреди работы: выходим сразу, а не дожидаемся таймаута.
+        if is_scope_cancelled(scope) {
+            tf_log(&app, scope, "warn", "Остановлено с кнопки «стоп»");
+            return None;
+        }
         let need_eval = last_eval
             .map(|t| t.elapsed() >= Duration::from_millis(1500))
             .unwrap_or(true);

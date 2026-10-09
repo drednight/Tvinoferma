@@ -171,6 +171,9 @@ pub fn run() {
             // автозапуск вместе с Windows
             autostart::autostart_status,
             autostart::autostart_set,
+            // мгновенная остановка выполняющегося скрипта
+            parsers::cancel_scope_command,
+            parsers::resume_scope_command,
             // запуск GameCenter
             launcher::launcher_check_path,
             launcher::launcher_gc_info,

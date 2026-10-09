@@ -3,28 +3,107 @@
    Док — панель в левом нижнем углу (справа остаётся круглая кнопка «+»). У каждой задачи:
    кольцо с процентом, название и текущий шаг, кнопки (■ остановить, 📄 лог, ▾ подробности), полоса прогресса. */
 
+/* Док задач — модуль шапки: сама плашка физически лежит в топбаре и не выезжает за его края,
+   а раскрытый список подробностей свисает вниз на страницу. Раньше док висел поверх окна
+   в левом нижнем углу и наезжал на кнопку «Настройки», а свернуть его было нечем.
+   Обводка — как у плашки «Статус серверов». Виден всегда, даже когда задач нет. */
 #tf-task-dock {
-  position: fixed;
-  left: 20px;
-  bottom: 20px;
-  z-index: 9000;
+  position: relative;
   display: flex;
-  flex-direction: column-reverse;
-  gap: 10px;
-  width: 360px;
-  max-width: calc(100vw - 40px);
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
+  flex-direction: column;
+  gap: 8px;
+  width: 320px;
+  max-width: min(320px, 40vw);
   pointer-events: none;
 }
+
+/* Плашка логов повторяет квадрат «Московского времени» (тот же border/radius/фон) и
+   занимает всю высоту топбара: заголовок с точкой, подписью и меткой, шкала прогресса
+   и управление скриптом. Раскрытый список выпадает вниз отдельным модулем. */
+#tf-task-dock {
+  position: relative;
+  align-self: stretch;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: 288px;
+  max-width: min(288px, 38vw);
+  pointer-events: none;
+}
+
+.tf-dock-slot-bar {
+  pointer-events: auto;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  gap: 5px;
+  padding: 7px 12px 8px;
+}
+/* Плашка прижата к правому краю и на всю высоту топбара: поля топбара (12/32) убираем
+   отрицательными отступами, иначе она торчит за верхнюю и нижнюю границы. */
+body[data-ui-style='next'] #tf-task-dock {
+  align-self: stretch;
+  height: auto;
+  margin: -12px -32px -12px 0;
+}
+#tf-task-dock.is-idle .tf-dock-slot-bar { opacity: 0.72; }
+
+.tf-dock-dot.is-busy { animation: msk-clock-pulse 2s ease-in-out infinite; }
+.tf-dock-dot.is-paused { animation: none; opacity: 0.45; background: var(--warning); }
+
+.tf-dock-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tf-dock-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.25s ease-out; }
+#tf-task-dock:not(.is-idle) .tf-dock-bar > span { background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent)); background-size: 200% 100%; animation: tl-shimmer 1.6s linear infinite; }
+
+.tf-dock-ctrl { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.tf-dock-ctrl .tl-icon-btn { flex: none; }
+.tf-dock-queue {
+  padding: 1px 6px;
+  border: 1px solid var(--accent-line, rgba(110, 142, 248, 0.3));
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft, rgba(110, 142, 248, 0.12));
+  color: var(--accent);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.tf-dock-toggle {
+  margin-right: auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+.tf-dock-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* Выпадающий список и раскрытый лог — отдельным модулем под плашкой: в шапке им места нет,
+   поэтому они позиционированы и не растягивают топбар. */
+.tf-dock-slot-list, .tf-dock-slot-log { display: none; }
+#tf-task-dock.is-open .tf-dock-slot-list { display: grid; }
+.tf-dock-slot-list, .tf-dock-slot-log {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 9000;
+  gap: 8px;
+  width: 320px;
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+#tf-task-dock.is-open .tf-dock-slot-log { display: grid; }
+.tf-dock-log-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-1); }
 /* flex: none — иначе при нехватке высоты карточки сжимаются и налезают друг на друга */
 #tf-task-dock .tl-card { flex: none; pointer-events: auto; margin: 0; box-shadow: var(--shadow-3); }
-/* Пустой док (fixed + overflow у правого края FAB) — тот же источник фантомных глифов, что и #toast-root:
-   пока задач нет, контейнера для рендера нет вовсе. */
-#tf-task-dock:empty { display: none; }
-#tf-task-dock .tl-card { display: block; }
+/* Плашка видна всегда, даже когда задач нет (требование пользователя): квадрат приглушён,
+   но на месте — иначе журнал приходилось бы искать. */
+#tf-task-dock .tl-card { flex: none; pointer-events: auto; box-shadow: var(--shadow-3); }
 
 .tl-card {
   --tl-color: var(--accent);

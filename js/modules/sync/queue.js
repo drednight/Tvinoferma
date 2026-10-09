@@ -53,7 +53,7 @@ export const isRetryableCode = (code) => !!code && (RETRYABLE.has(code) || Strin
  *   shouldRetry?: (result: R|undefined, error: any, attempt: number) => boolean,
  *   onStart?: (item: T, attempt: number) => void,
  *   onDone?: (entry: { item: T, result?: R, error?: any, attempts: number }, done: number, total: number) => void,
- *   signal?: { cancelled: boolean }
+ *   signal?: { cancelled: boolean, paused?: boolean, onPause?: (fn: () => void) => void }
  * }} [opts]
  * @returns {Promise<Array<{ item: T, result?: R, error?: any, attempts: number, cancelled?: boolean }>>}
  */
@@ -68,10 +68,17 @@ export async function runQueue(items, worker, opts = {}) {
   const total = items.length;
   let done = 0;
 
+  /** Пауза перед следующей попыткой: уже выполняющийся скрипт дожидает, остальные ждут. */
+  const waitWhilePaused = async () => {
+    while (signal?.paused && !signal.cancelled) await sleep(200);
+  };
+
   const runOne = async (item) => {
     let attempt = 0;
     let result, error;
     while (true) {
+      if (signal?.cancelled) return { item, attempts: attempt, cancelled: true };
+      await waitWhilePaused();
       if (signal?.cancelled) return { item, attempts: attempt, cancelled: true };
       onStart?.(item, attempt);
       result = undefined; error = undefined;
@@ -83,6 +90,7 @@ export async function runQueue(items, worker, opts = {}) {
       attempt++;
       if (attempt > retries || !shouldRetry(result, error, attempt - 1)) break;
       await sleep(retryDelayMs * attempt);
+      await waitWhilePaused();
     }
     const entry = { item, result, error, attempts: attempt };
     done++;
