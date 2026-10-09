@@ -213,10 +213,12 @@ export async function launchOne(char, opts = {}) {
 
 /** Запуск пати по названию (меню трея и вкладка «Пати»). */
 export async function launchPartyByName(name, opts = {}) {
-  const { partyByName, charactersInParty } = await import('../parties/membership.js');
+  const { partyByName, charactersInPartyOrdered } = await import('../parties/membership.js');
   const party = partyByName(state.parties, name);
   if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
-  return launchGroup(`Запуск игры: ${party.name}`, charactersInParty(state.characters, party.id), opts);
+  // Именно порядок пати, а не общий порядок списка персонажей: его задаёт перетаскивание
+  // участников в карточке («⠿» → «изменить порядок запуска»), и запускаться надо в нём же.
+  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), opts);
 }
 
 /**

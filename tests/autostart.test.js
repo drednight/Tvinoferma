@@ -16,8 +16,21 @@ describe('автозапуск: тексты', () => {
     expect(autostartNote(info({ enabled: true, minimized: false, current: true }))).toContain('с окном');
     expect(autostartNote(info({ enabled: true, current: false, path: 'D:\\Old\\t.exe' }))).toContain('D:\\Old\\t.exe');
     expect(autostartNote(info({ supported: false }))).toContain('только в Windows');
-    expect(autostartNote(info({ enabled: true, minimized: true, current: true, admin: true }))).toContain('запустится от администратора');
     expect(autostartNote(info({ selfElevated: true }))).toContain('запущена от администратора');
+  });
+
+  it('где искать запись: обычный режим — в Диспетчере задач, от администратора — в Планировщике', () => {
+    // Обычный режим: запись в реестре, её видно в диспетчере задач
+    const plain = autostartNote(info({ enabled: true, minimized: true, current: true }));
+    expect(plain).toContain('Диспетчер задач → Автозагрузка');
+    expect(plain).toContain('Tvinoferma');
+
+    // От администратора: задание Планировщика, в «Автозагрузке» диспетчера его не будет —
+    // без этой подсказки кажется, что автозапуск не работает
+    const admin = autostartNote(info({ enabled: true, minimized: true, current: true, admin: true }));
+    expect(admin).toContain('Планировщик заданий');
+    expect(admin).toContain('не видно');
+    expect(admin).toContain('от администратора');
   });
 });
 

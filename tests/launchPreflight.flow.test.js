@@ -42,6 +42,30 @@ const dlg = () => document.querySelector('.tf-dialog');
 const click = (act) => document.querySelector(`[data-act="${act}"]`).click();
 const win = (nick) => ({ pid: 500, title: `${nick} — Воин`, elevated: false });
 
+describe('порядок запуска по пати', () => {
+  it('персонажи запускаются в том порядке, который задан в карточке пати, а не в общем списке', async () => {
+    state.parties = [{ id: 'p1', name: 'Папка 1' }];
+    // Общий список персонажей: Аа, Бб, Вв. Порядок в пати задаёт перетаскивание: Вв, Аа, Бб
+    state.characters = [A(), B(), C()].map(c => ({ ...c, partyIds: ['p1'], partyOrder: { p1: 0 } }));
+    state.characters[2].partyOrder = { p1: 1 };
+    state.characters[0].partyOrder = { p1: 2 };
+    state.characters[1].partyOrder = { p1: 3 };
+
+    await partyLaunch.launchPartyByName('Папка 1');
+    expect(started()).toEqual(['c', 'a', 'b']);
+  });
+
+  it('у кого порядок не задан — запускаются по алфавиту, но после заданных', async () => {
+    state.parties = [{ id: 'p1', name: 'Папка 1' }];
+    state.characters = [A(), B(), C()].map(c => ({ ...c, partyIds: ['p1'] }));
+    state.characters[0].partyOrder = { p1: 2 };   // Аа — единственный с заданным порядком
+
+    await partyLaunch.launchPartyByName('Папка 1');
+    // Заданные идут первыми (иначе перетаскивание теряло бы смысл), остальные — по алфавиту
+    expect(started()).toEqual(['a', 'b', 'c']);
+  });
+});
+
 describe('уже запущенные окна', () => {
   it('запущенный пропускается, очередь сразу идёт дальше; без экрана проверок', async () => {
     facts.windows = [win('Бб')];
