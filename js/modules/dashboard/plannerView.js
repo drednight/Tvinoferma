@@ -7,12 +7,14 @@ import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATIO
 import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
-import { mskMinutes } from '../../core/msk.js';
+import { mskMinutes, weekdayOfDate } from '../../core/msk.js';
 
 let shownMonth = new Date();
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+/** Дни недели для шапки месячной сетки, с понедельника (так же, как её строит `monthMatrix`). */
+const MONTH_WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const KIND = { task: 'Задача', event: 'Событие', note: 'Заметка' };
 
 /** Вид календаря: компактная неделя или месяц. Хранится в настройках. */
@@ -66,6 +68,7 @@ export function plannerTimeLegendHtml() {
  */
 function dayCellHtml(date, events, dungeon, isToday) {
   const day = Number(date.slice(-2));
+  const isWeekend = weekdayOfDate(date) >= 5;
   // Порядок как в плане дня: марафон (весь день) → ивенты по времени → свои записи
   const titles = events.map(e => ({
     title: e.title,
@@ -79,21 +82,21 @@ function dayCellHtml(date, events, dungeon, isToday) {
     ...events.map(e => (e.time ? `${e.time} ${e.title}` : e.title)),
     nowMin === null ? '' : `сейчас ${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}`
   ].filter(Boolean).join('\n');
-  return `<button class="planner-day is-${dungeon.key}${isToday ? ' is-today' : ''}${events.length ? ' has-events' : ''}"
+  return `<button class="planner-day is-${dungeon.key}${isToday ? ' is-today' : ''}${isWeekend ? ' is-weekend' : ''}${events.length ? ' has-events' : ''}"
             type="button" data-planner-date="${date}"
             title="${escapeHtml(cellTitle)}"
             aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
     <span class="planner-day-number">${day}</span>
     <span class="planner-day-list">
-      ${titles.slice(0, 4).map(e => `<span class="planner-chip is-${escapeHtml(e.color)}${e.marathon ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+      ${titles.slice(0, 3).map(e => `<span class="planner-chip is-${escapeHtml(e.color)}${e.marathon ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
         title="${escapeHtml(e.title)}">${e.marathon ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
-      ${titles.length > 4 ? `<span class="planner-more" title="${titles.slice(4).map(x => escapeHtml(x.title)).join(' • ')}">ещё ${titles.length - 4}</span>` : ''}
+      ${titles.length > 3 ? `<span class="planner-more" title="${titles.slice(3).map(x => escapeHtml(x.title)).join(' • ')}">ещё ${titles.length - 3}</span>` : ''}
     </span>
   </button>`;
 }
 
 /**
- * Вид «Неделя»: 7 колонок (вчера, сегодня, +5 дней), общая ось времени сверху вниз.
+ * Вид «5 дней»: 5 колонок (вчера, сегодня, +3 дня), общая ось времени сверху вниз.
  *
  * Почему так: время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы —
  * этого не даёт месячная сетка из отдельных мини-шкал. Блоки считает `weekLayout`
@@ -123,7 +126,7 @@ function weekHtml(appState) {
   return `
     <div class="cal-week"
          style="--allday-rows:${ownRows};--hour-h:${HOUR_HEIGHT}px;--cell-h:${CELL_HEIGHT}px"
-         aria-label="Неделя: 7 дней, время сверху вниз, сутки ${trackH} пикселей">
+         aria-label="Ближайшие 5 дней: время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">
           <span class="cal-week-allday-label">весь день</span>
@@ -157,7 +160,7 @@ function weekHtml(appState) {
               style="top:${b.top.toFixed(1)}px;height:${b.height.toFixed(1)}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
               title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
               data-planner-date="${d.date}">
-              <b>${escapeHtml(b.event.title)}</b><small>${b.startTime}–${b.endTime}</small>
+              <small>${b.startTime}–${b.endTime}</small><b>${escapeHtml(b.event.title)}</b>
             </div>`).join('')}
             ${d.isToday ? `<div class="cal-now" style="top:${nowLineTop(nowMin).toFixed(1)}px" title="Сейчас"></div>` : ''}
           </div>
@@ -179,11 +182,7 @@ export function plannerHtml(appState = state) {
   return `
     <section class="planner is-${view}" data-planner data-view="${view}">
       <div class="planner-head">
-        <div>
-          <h3>Календарь</h3>
-          <p class="muted">События приложения и ваши планы. Цвет — данж дня по ежедневному заданию,
-            записи стоят по времени начала (МСК), марафон занимает весь день.</p>
-        </div>
+        <h3>Календарь</h3>
         <div class="planner-nav">
           ${view === 'month' ? `
             <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
@@ -193,16 +192,16 @@ export function plannerHtml(appState = state) {
           <button class="btn secondary small" type="button" data-planner-today>Сегодня</button>
           <span class="planner-switch" role="group" aria-label="Вид календаря">
             <button class="btn ghost small${view === 'week' ? ' is-on' : ''}" type="button" data-planner-view="week"
-                    aria-pressed="${view === 'week'}" title="Неделя: время сверху вниз, видно свободные часы">Неделя</button>
+                    aria-pressed="${view === 'week'}" title="Ближайшие дни: время сверху вниз, видно свободные часы">5 дней</button>
             <button class="btn ghost small${view === 'month' ? ' is-on' : ''}" type="button" data-planner-view="month"
                     aria-pressed="${view === 'month'}" title="Месяц: вся сетка месяца">Месяц</button>
           </span>
         </div>
       </div>
-      ${plannerLegendHtml()}
-      ${view === 'week' ? plannerTimeLegendHtml() : ''}
       ${view === 'week' ? weekHtml(appState) : `
-        <div class="planner-weekdays">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d => `<span>${d}</span>`).join('')}</div>
+        ${plannerLegendHtml()}
+        <div class="planner-weekdays">${MONTH_WEEKDAY_LABELS.map((d, i) =>
+          `<span${i >= 5 ? ' class="is-weekend"' : ''}>${d}</span>`).join('')}</div>
         <div class="planner-grid">
           ${cells.map(date => {
             if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';

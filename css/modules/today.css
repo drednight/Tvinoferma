@@ -163,23 +163,28 @@
   --dng-blue: 110, 142, 248;
 }
 
-/* --- Легенда над сеткой: что за цвет у ячейки дня --- */
+/* --- Легенда данжа дня: только в месячном виде, где цвет клетки сам по себе ничего не значит ---
+   Компактная строка с подсказкой, а не панель: в недельном виде она не показывается вовсе. */
 .planner-legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin: 0 0 8px;
-  font-size: 0.76rem;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-1);
+  font-size: 0.72rem;
   color: var(--text-dim);
 }
-.planner-legend-item { display: inline-flex; align-items: center; gap: 5px; }
-.planner-legend-item b { font-size: 0.85rem; line-height: 1; }
+.planner-legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.planner-legend-item b { font-size: 0.8rem; line-height: 1; }
 .planner-legend-item::before {
   content: '';
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
   border: 1px solid rgba(var(--dng-red), 0.45);
   background: rgba(var(--dng-red), 0.22);
 }
@@ -359,54 +364,83 @@
   font-size: 0.72rem;
   text-align: right;
 }
+/* Выходные в шапке месяца чуть контрастнее: их видно сразу, а не ищешь глазами */
+.planner-weekdays span.is-weekend { color: var(--text-dim); }
+/* --- Ячейка месяца ---
+   Цвет данжа раньше заливал всю ячейку, и сетка выглядела пёстрой: три фона подряд, а
+   плашки записей в нём тонули. Теперь заливка — тонкая полоса сверху плюс приглушённый
+   фон, а номер дня стоит в углу плашкой. Читаемость важнее «цветного календаря». */
 .planner-day {
+  position: relative;
   min-width: 0;
-  min-height: 58px;
+  min-height: 74px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px 6px 5px;
+  padding: 7px 6px 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: rgba(10, 14, 21, 0.55);
+  background: var(--surface-1);
   color: var(--text);
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
   transition: border-color var(--speed), background var(--speed), transform var(--speed);
 }
-/* Заливка ячейки — приглушённый цвет данжа этого дня */
-.planner-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.16), rgba(var(--dng-red), 0.16)), rgba(10, 14, 21, 0.55); }
-.planner-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.14), rgba(var(--dng-green), 0.14)), rgba(10, 14, 21, 0.55); }
-.planner-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.16), rgba(var(--dng-blue), 0.16)), rgba(10, 14, 21, 0.55); }
+/* Полоса цвета данжа — по верхней кромке, а не заливка всей ячейки */
+.planner-day::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--border);
+}
+.planner-day.is-weapon::before { background: rgb(var(--dng-red)); }
+.planner-day.is-armor::before { background: rgb(var(--dng-green)); }
+.planner-day.is-relic::before { background: rgb(var(--dng-blue)); }
+.planner-day.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.07), rgba(var(--dng-red), 0.07)), var(--surface-1); }
+.planner-day.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.06), rgba(var(--dng-green), 0.06)), var(--surface-1); }
+.planner-day.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.07), rgba(var(--dng-blue), 0.07)), var(--surface-1); }
 .planner-day:hover {
   border-color: var(--accent);
   background: var(--surface-2);
   transform: translateY(-1px);
 }
-.planner-day.is-weapon:hover { background: linear-gradient(rgba(var(--dng-red), 0.26), rgba(var(--dng-red), 0.26)), rgba(10, 14, 21, 0.55); }
-.planner-day.is-armor:hover { background: linear-gradient(rgba(var(--dng-green), 0.24), rgba(var(--dng-green), 0.24)), rgba(10, 14, 21, 0.55); }
-.planner-day.is-relic:hover { background: linear-gradient(rgba(var(--dng-blue), 0.26), rgba(var(--dng-blue), 0.26)), rgba(10, 14, 21, 0.55); }
 .planner-day.is-empty {
-  min-height: 58px;
+  min-height: 74px;
   border-style: dashed;
-  border-top: 1px solid var(--border);
   opacity: 0.25;
 }
+.planner-day.is-empty::before { display: none; }
 .planner-day.is-today {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
+/* Выходные чуть приглушены: заливка данжа остаётся главным сигналом, а недели — врозь */
+.planner-day.is-weekend { background: var(--surface-2); }
+.planner-day.is-weekend.is-weapon { background: linear-gradient(rgba(var(--dng-red), 0.05), rgba(var(--dng-red), 0.05)), var(--surface-2); }
+.planner-day.is-weekend.is-armor { background: linear-gradient(rgba(var(--dng-green), 0.04), rgba(var(--dng-green), 0.04)), var(--surface-2); }
+.planner-day.is-weekend.is-relic { background: linear-gradient(rgba(var(--dng-blue), 0.05), rgba(var(--dng-blue), 0.05)), var(--surface-2); }
+
+/* Номер дня — своей строкой сверху, а не поверх ячейки.
+   Раньше он стоял плашкой в углу и налезал на первую запись: подписи вроде «Битва Династий»
+   перекрывались числом. Теперь номер занимает своё место, и записи начинаются под ним. */
 .planner-day-number {
   align-self: flex-end;
-  width: 22px;
-  height: 22px;
+  flex: none;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
+.planner-day.is-weekend .planner-day-number { color: var(--text-faint); }
+.planner-day.has-events .planner-day-number { color: var(--text); }
 .planner-day.is-today .planner-day-number {
   background: var(--accent);
   color: var(--on-accent);
@@ -415,19 +449,27 @@
    Записи без времени и марафон — строкой сверху; записи со временем — блоки на шкале суток,
    высота блока = длительность, поэтому по ячейке видно, что во сколько начинается. */
 .planner-day-allday { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
-.planner-chip {
+/* Подписи записей в клетке месяца: своя строка, без налезания на номер дня */
+/* Список записей под номером дня: сетка, чтобы подписи шли друг под другом, а не в одну строку */
+.planner-day > .planner-day-list { display: grid; gap: 3px; min-width: 0; margin-top: 2px; }
+
+/* Подписи записей в клетке месяца: своя строка, без налезания на номер дня */
+.planner-day .planner-chip {
+  display: block;
   max-width: 100%;
   overflow: hidden;
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-left: 3px solid var(--accent);
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--text-dim);
-  font-size: 0.58rem;
-  line-height: 1.5;
+  font-size: 0.6rem;
+  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Цвет плашки оставляем: он различает свои записи, марафон и ивенты по расписанию.
+   Пересечения с номером дня уже нет — номер стоит своей строкой выше. */
 .planner-chip.is-marathon {
   background: rgba(180, 126, 255, 0.2);
   border-left-color: var(--accent-2);
@@ -524,8 +566,9 @@
    Время общее для всех колонок, поэтому видно и загруженность дня, и свободные часы.
    Сутки показаны целиком, без прокрутки: неделя читается одним взглядом.
    Высота часа задана переменной (js: HOUR_HEIGHT) — ось и блоки считаются от неё, иначе разъедутся. */
-/* Высота ячейки приходит из weekView.js (CELL_HEIGHT) через style у .cal-week; здесь запасное значение */
-.planner.is-week { --hour-h: 15px; --cell-h: 30px; }
+/* Высота ячейки приходит из weekView.js (CELL_HEIGHT) через style у .cal-week; здесь запасное значение.
+   Час 17px вместо 15px: линии сетки идут реже, а подписи в блоках («15:00–16:00») перестают слипаться. */
+.planner.is-week { --hour-h: 17px; --cell-h: 34px; }
 
 .planner-switch { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-xs); overflow: hidden; }
 .planner-switch .btn { border: 0; border-radius: 0; }
@@ -573,7 +616,7 @@
   background: var(--border-strong, var(--border));
 }
 
-.cal-week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
+.cal-week-days { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-width: 0; }
 
 .cal-day { position: relative; border-left: 1px solid var(--border); min-width: 0; display: flex; flex-direction: column; }
 .cal-day.is-weekend { background: rgba(255, 255, 255, 0.015); }
@@ -655,24 +698,38 @@
 }
 .cal-block:hover { filter: brightness(1.18); }
 .cal-block b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.62rem; color: var(--text); }
-.cal-block small { color: var(--text-faint); font-size: 0.56rem; font-variant-numeric: tabular-nums; }
+/* Время — первой строкой блока: на коротких плашках название обрезается, а время
+   считывается всегда и должно быть на виду. Поэтому оно контрастнее названия. */
+.cal-block small {
+  display: block;
+  color: var(--text);
+  font-weight: 650;
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
 .cal-block.is-green { border-left-color: var(--success); background: var(--success-soft); }
 .cal-block.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
 .cal-block.is-red { border-left-color: var(--danger); background: var(--danger-soft); }
 .cal-block.is-purple { border-left-color: var(--accent-2); background: rgba(180, 126, 255, 0.22); }
 .cal-block.is-gray { border-left-color: var(--text-faint); background: rgba(255, 255, 255, 0.08); }
-/* Постоянный ивент — штриховкой: видно, что запись не своя, а по расписанию */
-.cal-block.is-recurring { background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 4px, transparent 4px 8px); }
+/* Постоянный ивент раньше был штриховкой — но она шла прямо под подписью времени
+   («15:00–16:00»), и время на полосатых плашках не читалось. Теперь «по расписанию»
+   показывает сама рамка: пунктир и значок ♻ слева от времени. Время выделено цветом и
+   весом, чтобы читалось поверх любого фона. */
+.cal-block.is-recurring { border-left-style: dashed; }
+.cal-block small { color: var(--text); font-weight: 600; font-size: 0.58rem; opacity: 0.85; }
 .cal-block.is-done { opacity: 0.45; }
 
 .cal-now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
 .cal-now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 
 
-@media (max-width: 1100px) {
-  /* Колонки не сжимаем в кашу: даём горизонтальную прокрутку, а не ломаем сетку */
+@media (max-width: 900px) {
+  /* Пять колонок на узком экране сливаются в кашу: даём горизонтальную прокрутку, а не ломаем сетку.
+     Порог опущен с 1100px, потому что колонок стало на две меньше, а места под подписи нужно больше. */
   .cal-week { grid-template-columns: 42px minmax(0, 1fr); }
-  .cal-week-days { min-width: 560px; }
+  .cal-week-days { min-width: 520px; }
 }
 
 

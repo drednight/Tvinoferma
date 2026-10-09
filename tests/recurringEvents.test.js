@@ -17,7 +17,7 @@ describe('постоянные ивенты', () => {
   it('расписание соответствует игровому: дни недели и московское время', () => {
     const byId = Object.fromEntries(RECURRING_EVENTS.map(e => [e.id, e]));
     expect(byId['dynasty-battle']).toMatchObject({ days: [0, 4], start: '20:20', end: '22:20' });
-    expect(byId['guild-rhythm']).toMatchObject({ days: [2], start: '19:30', end: '20:00' });
+    expect(byId['guild-rhythm']).toMatchObject({ days: [2], start: '19:30', end: '19:59' });
     expect(byId['forbidden-teaching']).toMatchObject({ days: [2], start: '20:00', end: '21:30' });
     expect(byId['hero-arena']).toMatchObject({ days: [3], start: '19:00', end: '24:00' });
   });
@@ -75,7 +75,7 @@ describe('постоянные ивенты', () => {
 
   it('подпись расписания называет дни и время', () => {
     expect(recurringEventScheduleText(recurringEventById('dynasty-battle'))).toBe('Понедельник, Пятница, 20:20–22:20');
-    expect(recurringEventScheduleText(recurringEventById('guild-rhythm'))).toBe('Среда, 19:30–20:00');
+    expect(recurringEventScheduleText(recurringEventById('guild-rhythm'))).toBe('Среда, 19:30–19:59');
   });
 
   it('в настройках уведомлений есть запись на каждый ивент — списки не разошлись', () => {

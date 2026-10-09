@@ -99,14 +99,34 @@ describe('календарь: записи в ячейке месяца', () => 
     expect(other.getAttribute('title')).not.toContain('сейчас');
   });
 
-  it('легенда времени есть только в недельном виде, а не в месячном', () => {
-    expect(new DOMParser().parseFromString(plannerHtml(state), 'text/html').querySelector('.planner-legend-time')).toBeNull();
+  it('легенды не занимают место над календарём: времени нет ни в одном виде', () => {
+    // Недельный вид сам всё показывает (шкала, полоски, линия «сейчас»), а в месячном
+    // клетки без шкалы — легенда только отнимала высоту
+    for (const view of ['week', 'month']) {
+      state.settings.ui.plannerView = view;
+      const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+      expect(doc.querySelector('.planner-legend-time'), view).toBeNull();
+    }
+  });
+
+  it('в месячном остаётся легенда данжа дня — без неё не читается цвет клетки', () => {
+    const doc = new DOMParser().parseFromString(plannerHtml(state), 'text/html');
+    const legend = doc.querySelector('.planner-legend');
+    expect(legend.textContent).toContain('Данж дня');
+    expect(legend.querySelectorAll('.planner-legend-item').length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('в недельном виде легенды нет вовсе: вид и так читается', () => {
     state.settings.ui.plannerView = 'week';
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
-    const legend = doc.querySelector('.planner-legend-time');
-    expect(legend.textContent).toContain('сутки сверху вниз');
-    expect(legend.querySelector('.planner-legend-sample.is-recurring')).not.toBeNull();
-    expect(legend.querySelector('.planner-legend-now')).not.toBeNull();
+    expect(doc.querySelector('.planner-legend')).toBeNull();
+  });
+
+  it('длинное пояснение под «Календарь» убрано: место занимает сетка', () => {
+    const doc = new DOMParser().parseFromString(plannerHtml(state), 'text/html');
+    const head = doc.querySelector('.planner-head');
+    expect(head.querySelector('p')).toBeNull();
+    expect(head.querySelector('h3').textContent).toBe('Календарь');
   });
 });
 
@@ -200,8 +220,9 @@ describe('переключатель вида календаря', () => {
   it('неделя показывает заголовок полосы дней', () => {
     state.settings = { freshness: {}, ui: {} };
     const html = plannerHtml(state);
-    // 2026-10-05 — «сегодня», полоса начинается со вчера: 4 — 10 октября
-    expect(html).toContain('4 — 10 октября 2026');
+    // 2026-10-05 — «сегодня», полоса начинается со вчера: 4 — 8 октября
+    // 2026-10-05 — «сегодня», полоса из 5 дней начинается со вчера: 4 — 8 октября
+    expect(html).toContain('4 — 8 октября 2026');
   });
 });
 
@@ -234,7 +255,7 @@ describe('неделя: «весь день» подписан под датой
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     expect(doc.querySelector('.cal-week-allday')).toBeNull();
     expect(doc.querySelector('.cal-day-allday')).toBeNull();
-    expect(doc.querySelectorAll('.cal-line')).toHaveLength(7 * 12);
+    expect(doc.querySelectorAll('.cal-line')).toHaveLength(5 * 12);   // 5 колонок по 12 ячеек сетки
   });
 
   it('ячейка «весь день» появляется, когда есть марафон или запись без времени', () => {
@@ -242,6 +263,6 @@ describe('неделя: «весь день» подписан под датой
     state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     expect(doc.querySelector('.cal-week-allday')).not.toBeNull();
-    expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(7);
+    expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(5);   // столько же, сколько колонок
   });
 });

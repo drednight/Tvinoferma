@@ -1,5 +1,5 @@
 // Вид календаря «Неделя» (js/modules/dashboard/weekView.js):
-// полоса из 7 дней, раскладка по времени в пикселях, сплошные полосы марафона.
+// полоса из 5 дней (вчера + сегодня + 3), раскладка по времени в пикселях, сплошные полосы марафона.
 // Сутки показаны целиком, без прокрутки, поэтому высота часа невелика.
 import { describe, expect, it } from 'vitest';
 import {
@@ -11,20 +11,23 @@ import {
 const WED = '2026-10-07';
 
 describe('полоса недели', () => {
-  it('семь дней, начиная со вчера', () => {
+  it('пять дней, начиная со вчера: вчера, сегодня и три вперёд', () => {
     const days = weekDays(WED);
+    // Пять колонок вместо семи: на семи подписи вида «Битва Династий / 20:20–22:20»
+    // обрезались, колонка на обычном экране выходила около 95 px
+    expect(WEEK_DAYS).toBe(5);
     expect(days).toHaveLength(WEEK_DAYS);
     expect(days.map(d => d.date)).toEqual([
       '2026-10-06', // вт — вчера
       '2026-10-07', // ср — сегодня
-      '2026-10-08', '2026-10-09', '2026-10-10', '2026-10-11', '2026-10-12'
+      '2026-10-08', '2026-10-09', '2026-10-10'
     ]);
   });
 
   it('сегодняшний день помечен, выходные отмечены', () => {
     const days = weekDays(WED);
     expect(days.find(d => d.isToday)?.date).toBe(WED);
-    expect(days.filter(d => d.isWeekend).map(d => d.date)).toEqual(['2026-10-10', '2026-10-11']);
+    expect(days.filter(d => d.isWeekend).map(d => d.date)).toEqual(['2026-10-10']);
   });
 
   it('день недели в подписи совпадает с датой', () => {
@@ -32,19 +35,19 @@ describe('полоса недели', () => {
     const names = Object.fromEntries(days.map(d => [d.date, d.weekdayName]));
     expect(names['2026-10-06']).toBe('вт');
     expect(names['2026-10-07']).toBe('ср');
-    expect(names['2026-10-12']).toBe('пн');
+    expect(names['2026-10-10']).toBe('сб');
   });
 
   it('полоса переходит через границу месяца и года', () => {
     expect(weekDays('2026-11-01').map(d => d.date)).toEqual([
-      '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06'
+      '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04'
     ]);
     expect(weekDays('2026-01-01')[0].date).toBe('2025-12-31');
   });
 
   it('заголовок полосы: один месяц и переход через месяц', () => {
-    expect(weekRangeTitle(weekDays(WED))).toBe('6 — 12 октября 2026');
-    expect(weekRangeTitle(weekDays('2026-11-01'))).toBe('31 октября — 6 ноября 2026');
+    expect(weekRangeTitle(weekDays(WED))).toBe('6 — 10 октября 2026');
+    expect(weekRangeTitle(weekDays('2026-11-01'))).toBe('31 октября — 4 ноября 2026');
   });
 });
 
@@ -137,10 +140,11 @@ describe('раскладка недели', () => {
     expect(cells[2].label).toBe('');
     expect(cells[3].label).toBe('06:00');
     expect(cells.filter(h => h.isMajor).map(h => h.label)).toEqual(['00:00', '06:00', '12:00', '18:00']);
-    // Сутки целиком укладываются в 360 px: неделя видна одним взглядом, без прокрутки часов
-    expect(24 * HOUR_HEIGHT).toBe(360);
-    expect(cells.length * CELL_HEIGHT).toBe(360);
-    expect(HOUR_HEIGHT).toBeLessThan(30);
+    // Сутки целиком укладываются в 408 px (час 17px): неделя видна одним взглядом, без прокрутки часов
+    expect(24 * HOUR_HEIGHT).toBe(408);
+    expect(cells.length * CELL_HEIGHT).toBe(408);
+    // Час остаётся достаточно низким, чтобы сутки поместились в экран без прокрутки часов
+    expect(HOUR_HEIGHT).toBeLessThanOrEqual(24);
   });
 });
 
