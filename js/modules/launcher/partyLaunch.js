@@ -7,7 +7,7 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter } from './launch.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter, windowDecor, decorateElevated } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, newGcId, suggestGcName } from './gameCenters.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes, chooseGcToAttach, attachGcTo } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
@@ -52,6 +52,39 @@ async function runPreflight(characters) {
  * (иначе «запускать в первую очередь», иначе первый в списке); если список пуст — просит указать GameCenter.exe и добавляет его в список.
  * @returns {Promise<boolean>} получилось ли (false — отказались или путь не подошёл)
  */
+/**
+ * Подписывает окна игры, запущенной от администратора, — короткоживущим помощником.
+ *
+ * Раньше единственный выход был перезапустить Твиноферму от администратора. Теперь Windows
+ * спрашивает разрешение один раз, помощник делает работу и выходит, а Твиноферма продолжает
+ * работать с обычными правами. Отказ пользователя — не ошибка: окна останутся без подписи.
+ *
+ * @param {import('./preflight.js').Preflight} pre
+ * @returns {Promise<boolean>} удалось ли (при отказе — false, но это не поломка)
+ */
+async function fixElevatedWindows(pre) {
+  const targets = [];
+  for (const row of pre.elevatedRows || []) {
+    const decor = await windowDecor(row.char);
+    if (!decor?.windowTitle) continue;
+    targets.push({ pid: row.pid, title: decor.windowTitle, iconSmall: decor.iconSmall, iconBig: decor.iconBig });
+  }
+  if (!targets.length) {
+    toast('Не нашёл, что подписать: у окон игры нет названия в виде «Ник — Класс»', 'warning');
+    return false;
+  }
+  const res = await decorateElevated(targets);
+  if (res.denied) {
+    toast('Без прав администратора окна останутся без названия и значка. Запустите Твиноферму от администратора, если это нужно.', 'warning');
+    return false;
+  }
+  const done = res.ok + res.fixed;
+  toast(done
+    ? `Окна подписаны с правами администратора: ${done}`
+    : 'Не удалось подписать окна даже с правами администратора', done ? 'success' : 'error');
+  return done > 0;
+}
+
 async function fixMissingGameCenter(noGc, group) {
   const ctx = launchContext();
   let gc = chooseGcToAttach(group, ctx);
@@ -100,8 +133,12 @@ export async function launchGroup(title, characters, opts = {}) {
     if (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
       if (!choice) return null;
-      if (choice === 'fix' && availableFixes(pre, launchContext()).some(f => f.id === 'attachGc')) {
-        if (!await fixMissingGameCenter(pre.noGc, characters)) return null;
+      if (choice === 'fix') {
+        const fixes = availableFixes(pre, launchContext());
+        if (fixes.some(f => f.id === 'attachGc') && !await fixMissingGameCenter(pre.noGc, characters)) return null;
+        // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
+        // Твиноферма при этом не перезапускается — права нужны только на это действие.
+        if (fixes.some(f => f.id === 'elevate')) await fixElevatedWindows(pre);
       }
       pre = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
     }

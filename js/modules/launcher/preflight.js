@@ -71,8 +71,15 @@ export function launchPreflight({ characters, ctx = {}, clients = null, selfElev
 
   const noSavedLogin = toLaunch.filter(c => !resolveGameCenter(c, ctx)?.saved);
   const siteNoLogin = toLaunch.filter(c => c.isLoggedIn === false);
-  const elevatedClients = (clients || []).filter(c => c?.elevated === true).length;
-  const adminMismatch = elevatedClients > 0 && selfElevated === false;
+  // Окна игры от администратора: их нужно сопоставить с персонажами, иначе «Исправить» не знает,
+// что именно подписывать. Само сопоставление — то же, что для уже запущенных окон.
+const elevatedRows = clients ? matchRunningClients(withGc, clients.filter(c => c?.elevated === true)) : new Map();
+const elevatedMatched = [...elevatedRows.entries()].map(([id, info]) => {
+  const char = withGc.find(c => String(c.id) === id);
+  return char ? { char, ...info } : null;
+}).filter(Boolean);
+const elevatedClients = (clients || []).filter(c => c?.elevated === true).length;
+const adminMismatch = elevatedClients > 0 && selfElevated === false;
   const unknownClients = clients ? clients.filter(c => !parseWindowTitle(String(c?.title || ''))).length : 0;
 
   /**
@@ -87,6 +94,8 @@ export function launchPreflight({ characters, ctx = {}, clients = null, selfElev
   return {
     toLaunch, alreadyRunning, noGc, noSavedLogin, siteNoLogin,
     elevatedClients, selfElevated, adminMismatch, unknownClients,
+    /** Окна игры от администратора, сопоставленные с персонажами: их можно подписать помощником. */
+    elevatedRows: elevatedMatched,
     /** Узнали ли мы, какие окна запущены (иначе «уже запущено» не проверялось). */
     runningKnown: clients !== null, decorate,
     problems, hasProblems: problems.length > 0,
@@ -132,7 +141,7 @@ export function preflightLog(pre) {
  * Что можно исправить одной кнопкой «Исправить и запустить».
  * @param {Preflight} pre
  * @param {{ gameCenters?: Array<{ id: string, name: string }> }} [ctx]
- * @returns {Array<{ id: 'attachGc', text: string }>}
+ * @returns {Array<{ id: 'attachGc'|'elevate', text: string }>}
  */
 export function availableFixes(pre, ctx = {}) {
   const fixes = [];
@@ -143,6 +152,15 @@ export function availableFixes(pre, ctx = {}) {
       text: has
         ? `Прикрепить GameCenter из списка персонажам без него (${pre.noGc.length})`
         : `Указать GameCenter.exe и прикрепить его персонажам без него (${pre.noGc.length})`
+    });
+  }
+  // Окна игры от администратора: раньше выход был один — перезапуск Твинофермы от администратора.
+  // Теперь то же делает короткоживущий помощник: Windows спросит разрешение один раз,
+  // основной процесс остаётся обычным. Поэтому это идёт в «Исправить», а не в текст-просьбу.
+  if (pre.adminMismatch) {
+    fixes.push({
+      id: /** @type {'elevate'} */ ('elevate'),
+      text: `Подписать окна игры от администратора (${pre.elevatedClients}) — спросят разрешение Windows`
     });
   }
   return fixes;

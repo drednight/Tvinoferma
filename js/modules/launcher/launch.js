@@ -376,6 +376,42 @@ export async function redecorateClients(targets, deps = {}) {
   return out;
 }
 
+/**
+ * Подписывает окна клиентов с правами администратора — без перезапуска Твинофермы.
+ *
+ * Нужна, когда игра запущена от администратора, а Твиноферма — обычным пользователем:
+ * Windows запрещает менять чужие окна. Приложение запускает у себя короткоживущего помощника
+ * (`src-tauri/src/elevate.rs`) — он получает права на минуту, подписывает окна и выходит.
+ * Основной процесс остаётся обычным, перезапускать его не нужно.
+ *
+ * @param {Array<{pid: number, title: string, iconSmall?: number[]|null, iconBig?: number[]|null}>} targets
+ * @returns {Promise<{ ok: number, fixed: number, missing: number, failed: number, denied: boolean, details: string[] }>}
+ */
+export async function decorateElevated(targets, deps = {}) {
+  const invoke = deps.invoke || tauriInvoke;
+  const list = (targets || []).filter(t => t && t.pid && t.title);
+  /** @type {{ ok: number, fixed: number, missing: number, failed: number, denied: boolean, details: string[] }} */
+  const out = { ok: 0, fixed: 0, missing: 0, failed: 0, denied: false, details: [] };
+  if (!list.length) return out;
+  try {
+    const res = await invoke('launcher_run_elevated', { job: { action: 'decorate', targets: list } });
+    if (res?.status === 'denied') {
+      out.denied = true;
+      out.details.push('Запрос прав администратора отклонён');
+      return out;
+    }
+    for (const r of res?.decorate || []) {
+      if (r.status === 'ok') out.ok++;
+      else if (r.status === 'fixed') out.fixed++;
+      else if (r.status === 'missing') out.missing++;
+      else { out.failed++; out.details.push(`PID ${r.pid}: не удалось подписать даже с правами администратора`); }
+    }
+  } catch (e) {
+    out.details.push(`Работа от администратора не удалась: ${String(e?.message || e)}`);
+  }
+  return out;
+}
+
 /** Текст итога перепроверки: пусто, если всё в порядке. */
 export function redecorateText(result) {
   if (!result) return '';

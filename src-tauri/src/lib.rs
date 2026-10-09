@@ -13,6 +13,7 @@
 //! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
 //! - `autostart` — запуск вместе с Windows (запись в `Run`, режим «в трее»);
+//! - `elevate` — помощник с правами администратора: подписать окна игры от администратора без перезапуска;
 //! - `layout_sync` — копирование образца layout поверх остальных `.ini` папки Layout (команды — `commands/layout.rs`);
 //! - `launcher`  — запуск GameCenter (VK Play) для аккаунта, подтверждение «Запустить новую копию клиента», закрытие клиентов игры.
 //!
@@ -24,6 +25,7 @@ mod autostart;
 mod balance;
 mod commands;
 mod cookie_bank;
+mod elevate;
 mod injection;
 mod launcher;
 mod layout_sync;
@@ -41,6 +43,11 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Запуск-помощник: подписать окна или закрыть клиенты от администратора и выйти.
+    // Проверяем до сборки Tauri — помощнику ни окно, ни трей, ни журнал не нужны.
+    if elevate::run_as_helper_if_requested() {
+        return;
+    }
     tauri::Builder::default()
         // Плагин одиночного экземпляра обязан идти первым: он проверяет именованный мьютекс
         // в `setup` плагинов, то есть до создания окон из `tauri.conf.json`. Регистрируй
@@ -181,6 +188,7 @@ pub fn run() {
             launcher::launcher_find_dialogs,
             launcher::launcher_inspect_windows,
             launcher::launcher_self_elevated,
+            elevate::launcher_run_elevated,
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,
             launcher::launcher_has_account,

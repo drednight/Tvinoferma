@@ -114,6 +114,10 @@ mod win {
         fn CloseHandle(handle: *mut c_void) -> i32;
         fn GetLastError() -> u32;
         fn GetCurrentProcess() -> *mut c_void;
+        // Ожидание завершения помощника: приложение должно знать код его возврата,
+        // иначе отказ в UAC (1223) неотличим от успеха
+        fn WaitForSingleObject(handle: *mut c_void, ms: u32) -> u32;
+        fn GetExitCodeProcess(process: *mut c_void, code: *mut u32) -> i32;
         fn GetProcessTimes(
             process: *mut c_void,
             creation: *mut FileTime,
@@ -600,10 +604,77 @@ mod win {
             PostMessageW(h, WM_KEYUP, VK_RETURN, 0xC01C_0001u32 as isize);
         }
     }
+
+    /// Запуск программы с правами администратора (глагол «runas»): Windows покажет запрос UAC.
+    ///
+    /// Код возврата — результат процесса: 1223 означает, что пользователь отказал.
+    /// `None` — сама оболочка не смогла запустить.
+    pub fn shell_run_elevated(exe: &str, flag: &str, token: &str) -> Option<i32> {
+        type Hinstance = *mut c_void;
+        #[link(name = "shell32")]
+        unsafe extern "system" {
+            fn ShellExecuteExW(info: *mut ShellExecuteInfoW) -> i32;
+        }
+        /// Минимальная структура SHELLEXECUTEINFOW: нужны поля до `lpVerb`.
+        #[repr(C)]
+        struct ShellExecuteInfoW {
+            cb_size: u32,
+            f_mask: u32,
+            hwnd: Hinstance,
+            lp_verb: *const u16,
+            lp_file: *const u16,
+            lp_parameters: *const u16,
+            lp_directory: *const u16,
+            n_show: i32,
+            // …дальше lpIDList, lpClass, hkeyClass, dwHotKey, hIcon, hProcess — нам не нужны
+            rest: [usize; 9],
+        }
+        const SEE_MASK_NOCLOSEPROCESS: u32 = 0x0000_0040;
+        const SW_HIDE: i32 = 0;
+        let verb = wide("runas");
+        let file = wide(exe);
+        let params = wide(&format!("{} {}", flag, token));
+        let mut info = ShellExecuteInfoW {
+            cb_size: std::mem::size_of::<ShellExecuteInfoW>() as u32,
+            f_mask: SEE_MASK_NOCLOSEPROCESS,
+            hwnd: std::ptr::null_mut(),
+            lp_verb: verb.as_ptr(),
+            lp_file: file.as_ptr(),
+            lp_parameters: params.as_ptr(),
+            lp_directory: std::ptr::null(),
+            n_show: SW_HIDE,
+            rest: [0; 9],
+        };
+        unsafe {
+            if ShellExecuteExW(&mut info) <= 0 {
+                return None;
+            }
+            let process = info.rest[5] as Hinstance; // hProcess по раскладке структуры
+            WaitForSingleObject(process, 60_000);
+            let mut code: u32 = 0;
+            GetExitCodeProcess(process, &mut code);
+            CloseHandle(process);
+            Some(code as i32)
+        }
+    }
+
+    /// Строка UTF-16 с нулём на конце.
+    fn wide(s: &str) -> Vec<u16> {
+        use std::os::windows::ffi::OsStrExt;
+        std::ffi::OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    }
 }
 
 #[cfg(not(windows))]
 mod win {
+    /// Запуск от администратора — только Windows; на других системах прав администратора нет
+    pub fn shell_run_elevated(_exe: &str, _flag: &str, _token: &str) -> Option<i32> {
+        None
+    }
+
     pub struct WinInfo {
         pub hwnd: usize,
         pub pid: u32,
@@ -1592,7 +1663,10 @@ pub async fn launcher_close_clients_pids(pids: Vec<u32>) -> Result<CloseReport, 
 }
 
 /// Что должно быть подписано у одного окна игры.
-#[derive(Deserialize, Clone, Debug)]
+///
+/// `Serialize` нужен помощнику от администратора (`elevate`): он читает задание из файла и
+/// должен записать его в том же виде, в каком его ждёт основной процесс.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DecorateTarget {
     /// PID клиента игры
@@ -1799,7 +1873,10 @@ fn resize_icon(img: &image::RgbaImage, size: usize) -> Vec<u8> {
 }
 
 /// Итог повторной подписи одного окна.
-#[derive(Serialize, Clone, Debug, PartialEq)]
+///
+/// `Deserialize` нужен помощнику от администратора (`elevate`): он читает задание и пишет
+/// ответ тем же типом, что и обычная команда, — иначе пришлось бы держать две одинаковые структуры.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DecorateResult {
     pub pid: u32,
@@ -1818,67 +1895,10 @@ pub struct DecorateResult {
 pub async fn launcher_decorate_clients(
     targets: Vec<DecorateTarget>,
 ) -> Result<Vec<DecorateResult>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut out = Vec::new();
-        for target in targets {
-            let title = match clean_title(&target.title) {
-                Some(t) => t,
-                None => continue,
-            };
-            let small = icon_from_rgba(target.icon_small.as_deref());
-            let big = icon_from_rgba(target.icon_big.as_deref());
-            // Заголовок может быть ещё пустым: окно клиента видно сразу, а подпись ставится позже
-            let windows: Vec<_> = win::all_windows()
-                .into_iter()
-                .filter(|w| w.pid == target.pid && w.visible)
-                .collect();
-            if windows.is_empty() {
-                out.push(DecorateResult {
-                    pid: target.pid,
-                    status: "missing".into(),
-                    title: String::new(),
-                });
-                continue;
-            }
-            let mut fixed = false;
-            let mut denied = false;
-            let mut last_title = String::new();
-            for w in &windows {
-                last_title = w.title.clone();
-                // Заголовок: ставим, если отличается от нужного
-                if w.title != title && win::set_title(w.hwnd, &title).is_err() {
-                    denied = true;
-                    continue;
-                }
-                // Значок: ставим, если задан и у окна его нет
-                let has_small = win::details(w.hwnd).small_icon != 0;
-                let has_big = win::details(w.hwnd).big_icon != 0;
-                if ((small != 0 && !has_small) || (big != 0 && !has_big))
-                    && win::set_icons(w.hwnd, small, big).is_err()
-                {
-                    denied = true;
-                    continue;
-                }
-                fixed = true;
-                last_title = win::title_of(w.hwnd);
-            }
-            let status = if denied && !fixed {
-                "failed"
-            } else if fixed {
-                "fixed"
-            } else {
-                "ok"
-            };
-            out.push(DecorateResult {
-                pid: target.pid,
-                status: status.into(),
-                title: last_title,
-            });
-        }
-        Ok::<Vec<DecorateResult>, String>(out)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    // Работа — в `decorate_targets`: тем же кодом пользуется помощник от администратора
+    tauri::async_runtime::spawn_blocking(move || decorate_targets(&targets))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Код ошибки Windows «Отказано в доступе»: клиент запущен от имени администратора, а Твиноферма — нет
@@ -2049,6 +2069,81 @@ pub fn launcher_find_dialogs() -> Vec<String> {
 /// Запущена ли Твиноферма с правами администратора.
 pub(crate) fn self_elevated() -> bool {
     win::is_elevated()
+}
+
+/// Запускает эту же программу с правами администратора и ждёт её.
+///
+/// `args` — ключи помощника (см. `elevate`). Windows покажет запрос UAC один раз; если
+/// пользователь отказал, вернётся код `1223`. Основной процесс при этом не перезапускается:
+/// права нужны только отдельному короткому процессу.
+///
+/// Через `ShellExecuteW`, а не `Command::new`: запуск с повышенными правами другим способом
+/// не предусмотрен — это делает оболочка Windows по глаголу «runas».
+pub fn run_elevated_self(exe: &str, flag: &str, token: &str) -> Option<i32> {
+    win::shell_run_elevated(exe, flag, token)
+}
+
+/// Подписывает окна клиентов: заголовок «Ник — Класс» и значок класса.
+///
+/// Вынесено из команды, чтобы тем же кодом пользовался помощник с правами администратора
+/// (`elevate::run_job`) — иначе «подписать от администратора» было бы другой реализацией.
+pub fn decorate_targets(targets: &[DecorateTarget]) -> Vec<DecorateResult> {
+    let mut out = Vec::new();
+    for target in targets {
+        let Some(title) = clean_title(&target.title) else {
+            continue;
+        };
+        let small = icon_from_rgba(target.icon_small.as_deref());
+        let big = icon_from_rgba(target.icon_big.as_deref());
+        // Заголовок может быть ещё пустым: окно клиента видно сразу, а подпись ставится позже
+        let windows: Vec<_> = win::all_windows()
+            .into_iter()
+            .filter(|w| w.pid == target.pid && w.visible)
+            .collect();
+        if windows.is_empty() {
+            out.push(DecorateResult {
+                pid: target.pid,
+                status: "missing".into(),
+                title: String::new(),
+            });
+            continue;
+        }
+        let mut fixed = false;
+        let mut denied = false;
+        let mut last_title = String::new();
+        for w in &windows {
+            last_title = w.title.clone();
+            // Заголовок: ставим, если отличается от нужного
+            if w.title != title && win::set_title(w.hwnd, &title).is_err() {
+                denied = true;
+                continue;
+            }
+            // Значок: ставим, если задан и у окна его нет
+            let has_small = win::details(w.hwnd).small_icon != 0;
+            let has_big = win::details(w.hwnd).big_icon != 0;
+            if ((small != 0 && !has_small) || (big != 0 && !has_big))
+                && win::set_icons(w.hwnd, small, big).is_err()
+            {
+                denied = true;
+                continue;
+            }
+            fixed = true;
+            last_title = win::title_of(w.hwnd);
+        }
+        let status = if denied && !fixed {
+            "failed"
+        } else if fixed {
+            "fixed"
+        } else {
+            "ok"
+        };
+        out.push(DecorateResult {
+            pid: target.pid,
+            status: status.into(),
+            title: last_title,
+        });
+    }
+    out
 }
 
 /// Запущена ли Твиноферма с правами администратора (для проверок перед запуском: окна игры от администратора
