@@ -218,6 +218,11 @@
 }
 .ptc-preview-text { font-weight: 650; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Список доступных персонажей в настройках пати: кто ещё не состоит ни в одной пати.
+   Помечены и поставлены первыми — иначе незадействованные теряются среди участников. */
+.member-row.is-free strong { color: var(--success); }
+.member-free-note { color: var(--success); }
+
 /* Опасная зона настроек пати: архив и удаление. Удаление — красное, архив — обычное: он обратим. */
 .pt-danger {
   display: grid;

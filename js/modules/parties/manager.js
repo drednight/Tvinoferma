@@ -7,7 +7,7 @@ import { escapeHtml, uid } from '../../core/utils.js';
 import { renderCharacters } from '../characters/list.js';
 import { renderPartiesGrid, partyInitials } from './renderer.js';
 import { getAuthView } from '../sync/authStatus.js';
-import { partyByName, charactersInParty, isInParty, isMainParty, setMembership } from './membership.js';
+import { partyByName, charactersInParty, isInParty, isMainParty, setMembership, hasNoParty } from './membership.js';
 import { PARTY_COLORS, hexToHsl, hslToHex, partyHue } from './color.js';
 
 /**
@@ -176,16 +176,27 @@ export function openEditPartyModal(currentName) {
     
     // Для простоты UX: показываем всех персонажей с чекбоксами.
     // Те, кто в группе — отмечены. Снятие галочки убирает из группы.
-    const allCharsForCheckbox = state.characters.map(c => {
+    // Без пати — первыми: их ищем, когда набираем состав, а участники других групп в конце
+    const orderedChars = [
+        ...state.characters.filter(c => hasNoParty(c, state.parties)),
+        ...state.characters.filter(c => !hasNoParty(c, state.parties))
+    ];
+    const allCharsForCheckbox = orderedChars.map(c => {
         const isInCurrentGroup = isInParty(c, party.id);
         const statusIcon = getAuthView(c).icon;
+        // «Без пати» видно сразу: незадействованные персонажи не тонут среди тех, кто уже в группе
+        const free = hasNoParty(c, state.parties);
+        const place = isInCurrentGroup
+            ? (isMainParty(c, party.id) ? ' · основная' : ' · доп.')
+            : (free ? ' · без пати' : '');
         return `
-            <label style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
+            <label class="member-row${free ? ' is-free' : ''}" style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />
-                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small>${isInCurrentGroup ? (isMainParty(c, party.id) ? ' <small class="muted">· основная</small>' : ' <small class="muted">· доп.</small>') : ''}</span>
+                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small><small class="muted">${place}</small></span>
             </label>
         `;
     }).join('');
+    const freeCount = state.characters.filter(c => hasNoParty(c, state.parties)).length;
 
     const content = `
         <div style="display:flex; flex-direction:column; gap:15px;">
@@ -199,7 +210,7 @@ export function openEditPartyModal(currentName) {
             <!-- 2. Состав -->
             <div>
                 <label style="display:block; margin-bottom:8px; font-weight:bold;">Состав группы (${currentMembers.length} чел.)</label>
-                <p class="muted" style="font-size:0.8rem; margin-bottom:8px;">Отметьте галочкой тех, кто должен быть в этой группе. У персонажа одна основная пати (по ней считаются монеты) и сколько угодно дополнительных; основную меняют в карточке персонажа.</p>
+                <p class="muted" style="font-size:0.8rem; margin-bottom:8px;">Отметьте галочкой тех, кто должен быть в этой группе. У персонажа одна основная пати (по ней считаются монеты) и сколько угодно дополнительных; основную меняют в карточке персонажа.${freeCount ? ` <b class="member-free-note">Без пати: ${freeCount}</b> — таких видно первыми по списку, чтобы незадействованные не терялись среди участников других групп.` : ''}</p>
                 
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); padding: 8px; border-radius: 4px; background: var(--panel-2);">
                     ${allCharsForCheckbox}
