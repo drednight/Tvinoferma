@@ -153,9 +153,14 @@ export function openTransferDialog({ ids = [] } = {}) {
   function renderForm() {
     dlg.sub.textContent = '';
     dlg.body.innerHTML = `
+      <details class="tr-servers" id="tr-servers">
+        <summary title="Серверы нужны не для перевода, а чтобы в списках рядом с ними были зелёные/красные точки. Открывать здесь нечего — обновление страницы серверов есть ниже.">🖥 Статус серверов</summary>
+        <div class="tr-top">
+          <div class="server-status" id="tr-server-status">${serverStatusHtml(getServerStatus())}</div>
+          <button class="btn secondary small" data-act="refresh-servers" title="Прочитать заново страницу «Статус серверов» (аккаунты не нужны)">🔄 Обновить сервера</button>
+        </div>
+      </details>
       <div class="tr-top">
-        <div class="server-status" id="tr-server-status">${serverStatusHtml(getServerStatus())}</div>
-        <button class="btn secondary small" data-act="refresh-servers" title="Прочитать заново страницу «Статус серверов» (аккаунты не нужны)">🔄 Обновить сервера</button>
         <button class="btn secondary small" data-act="refresh-all" title="Прочитать у ВСЕХ браузеров приложения серверы, персонажей и то, что ждёт передачи (галочки не нужны)">🔄 Обновить информацию по всем персонажам</button>
       </div>
       <p class="promo-muted promo-hint">Предметы передаются <b>с сайта в игру</b>: всё, что ждёт передачи на аккаунте браузера, уходит персонажу, выбранному в строке, на выбранном там сервере.

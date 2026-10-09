@@ -35,6 +35,20 @@
 .tr-top .srv-plaque { width: 100%; }
 @media (max-width: 900px) { .server-status { flex-basis: 100%; order: 3; } }
 
+/* --- Сворачиваемый блок «Статус серверов» в окне передачи (js/modules/automation/transfer.js) ---
+   Сам список серверов в передаче не участвует (сервер выбирается в каждой строке), поэтому
+   свёрнут: видно только заголовок, точки «в сети/не в сети» в списках строк работают как раньше. */
+.tr-servers { margin-bottom: 10px; }
+.tr-servers > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 4px 0;
+  list-style: revert;
+}
+.tr-servers > summary:hover { color: var(--text); }
+.tr-servers[open] > summary { margin-bottom: 8px; }
+
 /* --- Часы по Москве над плашкой «Статус серверов» (js/modules/servers/mskClock.js) ---
    Цифры моноширинные (tabular-nums): ширина не прыгает при смене секунды. */
 .msk-clock {

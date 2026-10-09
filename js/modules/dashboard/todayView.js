@@ -30,11 +30,15 @@ export function eventTimeText(event) {
 }
 
 /**
- * Блок «Запущенные окна игры» на вкладке «Сегодня»: какие окна открыты и что с ними можно сделать.
+ * Блок «Запущенные окна игры» на вкладке «Сегодня»: какие окна открыты и чем с ними можно сделать.
  *
  * Список окон живёт в Rust, а разметка здесь собирается синхронно, поэтому сначала выводится
  * пустой контейнер, а строки добавляет `fillRunningWindowsBlock` после опроса (см. runningWindows.js).
- * Когда окон нет, блок показывает короткую подсказку и кнопку открытия списка окон.
+ * Когда окон нет, блок показывает короткую подсказку.
+ *
+ * Общих кнопок «Все окна…» и «Закрыть все» здесь намеренно нет (жалоба пользователя):
+ * это место для обзора, а не для управления. Полный список окон с выбором остаётся в FAB
+ * на вкладке «Пати», в меню трея, в командной палитре и в настройках.
  * @returns {string}
  */
 export function runningWindowsBlockHtml() {
@@ -44,10 +48,6 @@ export function runningWindowsBlockHtml() {
     </h4>
     <div class="rwn" data-running-windows>
       <p class="muted today-empty">Проверяем запущенные окна…</p>
-    </div>
-    <div class="rwn-actions">
-      <button type="button" class="btn ghost small" data-today-act="windows-list" title="Открыть список всех запущенных окон игры">Все окна…</button>
-      <button type="button" class="btn danger small" data-today-act="windows-close-all">Закрыть все</button>
     </div>`;
 }
 
@@ -70,8 +70,6 @@ export function fillRunningWindowsBlock(root) {
       counter.hidden = !rows.length;
       counter.textContent = String(rows.length);
     }
-    const closeAll = root.querySelector('[data-today-act="windows-close-all"]');
-    if (closeAll) closeAll.toggleAttribute('disabled', !rows.length);
     if (!rows.length) {
       box.innerHTML = '<p class="muted today-empty">Запущенных окон игры нет.</p>';
       return;
@@ -249,57 +247,36 @@ export function renderToday(root, deps = {}) {
 }
 
 /**
- * Действия блока «Запущенные окна игры».
+ * Действие блока «Запущенные окна игры»: закрыть одно окно.
  *
- * Списки окон и подписи уже импортированы (ими же рисуется блок), а команды закрытия и окно
- * со списком подгружаются по клику — они нужны только здесь.
+ * Списки окон и подписи уже импортированы (ими же рисуется блок), а команды закрытия
+ * подгружаются по клику — они нужны только здесь.
  *
  * @param {string} action
  * @param {string} [pid]
  */
 async function runWindowsAction(action, pid) {
+  if (action !== 'windows-close-one') return;
   try {
-    if (action === 'windows-list') {
-      const { openWindowPicker } = await import('../launcher/windowPicker.js');
-      await openWindowPicker({ onClosed: () => refreshRunningWindows() });
-      return;
-    }
-
-    const { closeClientsByPid, closeAllClients } = await import('../launcher/launch.js');
+    const id = Number(pid);
+    if (!id) return;
+    const row = runningWindows().find(r => r.pid === id);
+    const { closeClientsByPid } = await import('../launcher/launch.js');
     const { showCloseReport } = await import('../launcher/partyLaunch.js');
-    const { confirmModal, toast } = await import('../../core/ui.js');
+    const { confirmModal } = await import('../../core/ui.js');
 
-    if (action === 'windows-close-one') {
-      const id = Number(pid);
-      if (!id) return;
-      const row = runningWindows().find(r => r.pid === id);
-      const ok = await confirmModal({
-        title: `Закрыть окно игры: ${row ? rowLabel(row) : `PID ${id}`}?`,
-        text: 'Всё, что не сохранено в игре, будет потеряно.',
-        okText: 'Закрыть окно',
-        danger: true
-      });
-      if (!ok) return;
-      showCloseReport(await closeClientsByPid([id]));
-      await refreshRunningWindows();
-      return;
-    }
-    if (action === 'windows-close-all') {
-      const rows = runningWindows();
-      if (!rows.length) { toast('Запущенных окон игры нет', 'info'); return; }
-      const ok = await confirmModal({
-        title: 'Закрыть все окна игры?',
-        text: `Будет закрыто окон: ${rows.length}. Всё, что не сохранено в игре, будет потеряно.`,
-        okText: `Закрыть (${rows.length})`,
-        danger: true
-      });
-      if (!ok) return;
-      showCloseReport(await closeAllClients());
-      await refreshRunningWindows();
-    }
+    const ok = await confirmModal({
+      title: `Закрыть окно игры: ${row ? rowLabel(row) : `PID ${id}`}?`,
+      text: 'Всё, что не сохранено в игре, будет потеряно.',
+      okText: 'Закрыть окно',
+      danger: true
+    });
+    if (!ok) return;
+    showCloseReport(await closeClientsByPid([id]));
+    await refreshRunningWindows();
   } catch (err) {
     const { toast } = await import('../../core/ui.js');
-    toast(`Не удалось выполнить действие с окнами: ${String(err?.message || err)}`, 'error');
+    toast(`Не удалось закрыть окно: ${String(err?.message || err)}`, 'error');
   }
 }
 

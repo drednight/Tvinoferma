@@ -4,7 +4,7 @@ import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, roundCoins } from '../../core/coins.js';
-import { openEditPartyModal, openPartyColorModal } from './manager.js'; 
+import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
 import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
@@ -142,12 +142,7 @@ function partyCardHtml(name, members) {
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
-                ${isDraggable ? `<button class="pt-btn pt-btn-icon party-color-action-btn" type="button" data-party-name="${escapeHtml(name)}"
-                        title="${party?.color ? `Цвет пати: ${escapeHtml(party.color)}. Изменить` : 'Выбрать цвет пати'}"
-                        aria-label="Цвет пати"
-                        ${party?.color ? `style="--swatch:${escapeHtml(party.color)}"` : ''}>🎨</button>` : ''}
-                ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав и название пати">⚙</button>` : ''}
-                ${isDraggable ? `<button class="pt-btn pt-btn-icon archive-party-action-btn" type="button" data-party-id="${escapeHtml(party.id)}" title="Переместить пати в архив">📦</button>` : ''}
+                ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав, название и цвет пати">⚙</button>` : ''}
             </div>
             <div class="party-body-wrapper pt-body">
                 <div class="pt-body-inner">
@@ -389,22 +384,6 @@ function bindPartyEvents(container) {
     container.onclick = async (e) => {
         const target = e.target;
 
-        const archiveBtn = target.closest('.archive-party-action-btn');
-        if (archiveBtn) {
-            e.stopPropagation();
-            archiveBtn.disabled = true;
-            try {
-                const { archiveParty } = await import('../archive/archive.js');
-                await archiveParty(archiveBtn.dataset.partyId);
-            } catch (error) {
-                console.error('[ARCHIVE] Party archive failed:', error);
-                toast(`Не удалось переместить пати в архив: ${error?.message || error}`, 'error');
-            } finally {
-                archiveBtn.disabled = false;
-            }
-            return;
-        }
-
         // 1. Toggle Expand/Collapse
         const header = target.closest('.party-card-header');
         if (header && !target.closest('button')) {
@@ -445,20 +424,12 @@ function bindPartyEvents(container) {
             return;
         }
 
-        // 2. Клик по кнопке "Настроить"
+        // 2. Клик по кнопке "Настроить" (название, состав, цвет, архив)
         const editBtn = target.closest('.edit-party-action-btn');
         if (editBtn) {
             e.stopPropagation();
             const partyName = editBtn.dataset.partyName;
             openEditPartyModal(partyName);
-            return;
-        }
-
-        // 2a. Клик по кнопке "Цвет пати"
-        const colorBtn = target.closest('.party-color-action-btn');
-        if (colorBtn) {
-            e.stopPropagation();
-            openPartyColorModal(colorBtn.dataset.partyName);
             return;
         }
 

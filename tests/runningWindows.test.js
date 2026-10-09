@@ -172,10 +172,21 @@ describe('блок «Окна игры» на вкладке «Сегодня»'
     expect(box).not.toBeNull();
     expect(box.textContent).toContain('Запущенных окон игры нет');
     expect(document.querySelector('[data-running-count]').hidden).toBe(true);
-    expect(document.querySelector('[data-today-act="windows-close-all"]').hasAttribute('disabled')).toBe(true);
+    expect(document.querySelector('[data-running-count]').hidden).toBe(true);
   });
 
-  it('список окон и кнопки действий появляются после опроса', async () => {
+  it('в блоке нет кнопок общего управления: полный список окон живёт в FAB, трее и настройках', async () => {
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+    await runningWindows.refreshRunningWindows();
+    todayView.renderToday(document.getElementById('today-root'), {});
+    await vi.waitFor(() => expect(document.querySelectorAll('.rwn-row')).toHaveLength(1));
+    expect(document.querySelector('[data-today-act="windows-list"]')).toBeNull();
+    expect(document.querySelector('[data-today-act="windows-close-all"]')).toBeNull();
+    // У конкретного окна кнопка закрытия остаётся
+    expect(document.querySelector('[data-today-act="windows-close-one"]')).not.toBeNull();
+  });
+
+  it('список окон и кнопка закрытия появляются после опроса', async () => {
     // Окно, запущенное не из Твинофермы: заголовок игровой, ника нет — показываем как PID
     const foreign = { pid: 200, image: 'elementclient_64.exe', title: 'Perfect World', elevated: false };
     invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа'), foreign] : {}));
@@ -188,8 +199,8 @@ describe('блок «Окна игры» на вкладке «Сегодня»'
     expect(rows[1].textContent).toContain('PID 200');
     expect(document.querySelector('[data-running-count]').hidden).toBe(false);
     expect(document.querySelector('[data-running-count]').textContent).toBe('2');
-    expect(document.querySelector('[data-today-act="windows-close-all"]').hasAttribute('disabled')).toBe(false);
   });
+
 
   it('кнопка закрытия окна передаёт его PID', async () => {
     const ui = await import('../js/core/ui.js');

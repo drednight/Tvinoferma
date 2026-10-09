@@ -69,9 +69,25 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
   const selectedChars = () => state.characters.filter(c => selected.has(c.id)).sort(byNick);
 
+  /**
+   * Персонажи без входа на сайт — по данным приложения, то есть уже проверенные и найденные
+   * без входа (`isLoggedIn === false`). Статус «ещё не проверялся» (undefined) не мешает:
+   * проверка может пройти, а запрещать запуск на пустом месте нельзя.
+   */
+  const withoutLogin = (chars) => chars.filter(c => c.isLoggedIn === false);
+
   function updateCount() {
     const el = dlg.body.querySelector('#caravan-count');
     if (el) el.textContent = `Выбрано: ${selected.size} из ${state.characters.length}`;
+    // Подсказка прямо в форме: вход нужен, чтобы инвентарь вообще открылся
+    const warn = dlg.body.querySelector('#caravan-nologin');
+    if (warn) {
+      const skipped = withoutLogin(selectedChars());
+      warn.innerHTML = skipped.length
+        ? `⚠ Без входа на сайт: ${escapeHtml(skipped.map(c => c.nick).join(', '))}. Их инвентарь не откроется — при запуске они будут пропущены. Войдите в игру у этих персонажей: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter».`
+        : '';
+      warn.hidden = !skipped.length;
+    }
     dlg.foot.querySelectorAll('[data-act="start"],[data-act="dry"]').forEach(b => { b.disabled = !selected.size; });
   }
 
@@ -88,6 +104,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
         <button class="btn ghost small" data-q="none">Снять выбор</button>
       </div>
       <div class="promo-list" id="caravan-list">${listHtml()}</div>
+      <div class="promo-warn" id="caravan-nologin" hidden></div>
       <div class="promo-count" id="caravan-count"></div>`;
     dlg.foot.innerHTML = `
       <span style="flex:1"></span>
@@ -207,26 +224,54 @@ export function openCaravanDialog({ ids = [] } = {}) {
     danger: true
   });
 
+  /**
+   * Пропускает персонажей без подтверждённого входа: у них сайт не откроет инвентарь,
+   * и в журнале осталась бы строка «нет входа» вместо результата.
+   * `null` — запускать нечего (отказ или не осталось ни одного подходящего персонажа).
+   */
+  async function dropWithoutLogin(chars) {
+    const skipped = withoutLogin(chars);
+    if (!skipped.length) return chars;
+    const left = chars.filter(c => c.isLoggedIn !== false);
+    if (!left.length) {
+      toast('У всех выбранных нет входа на сайт — инвентарь открыть не удастся. Войдите в игру у этих персонажей и повторите проверку.', 'warning');
+      return null;
+    }
+    const ok = await confirmModal({
+      title: 'У части персонажей нет входа',
+      text: `Пропущу ${skipped.length} из ${chars.length}: ${skipped.map(c => c.nick).join(', ')}. Без входа на сайт инвентарь не открыть. Войдите в игру у этих персонажей: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter».`,
+      okText: `Продолжить без них (${left.length})`
+    });
+    return ok ? left : null;
+  }
+
   dlg.foot.addEventListener('click', async (e) => {
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (!act) return;
     if (act === 'close') { dlg.close(); return; }
     if (act === 'back') { renderForm(); return; }
-    if (act === 'dry-again') { await start(lastChars, { dry: true }); return; }
+    if (act === 'dry-again') {
+      const again = await dropWithoutLogin(lastChars);
+      if (again?.length) await start(again, { dry: true });
+      return;
+    }
     if (act === 'real') {
-      const chars = lastChars.filter(c => (lastRows.find(r => r.charId === c.id)?.found || 0) > 0);
-      if (chars.length && await confirmRun(chars)) await start(chars);
+      const found = lastChars.filter(c => (lastRows.find(r => r.charId === c.id)?.found || 0) > 0);
+      const chars = found.length ? await dropWithoutLogin(found) : null;
+      if (chars?.length && await confirmRun(chars)) await start(chars);
       return;
     }
     if (act === 'retry') {
-      const again = lastChars.filter(c => isRerunnable(lastRows.find(r => r.charId === c.id)));
-      if (!again.length) return;
-      if (await confirmRun(again)) await start(again);
+      const rerun = lastChars.filter(c => isRerunnable(lastRows.find(r => r.charId === c.id)));
+      const again = rerun.length ? await dropWithoutLogin(rerun) : null;
+      if (again?.length && await confirmRun(again)) await start(again);
       return;
     }
     if (act === 'start' || act === 'dry') {
-      const chars = selectedChars();
-      if (!chars.length) { toast('Выберите хотя бы одного персонажа', 'warning'); return; }
+      const picked = selectedChars();
+      if (!picked.length) { toast('Выберите хотя бы одного персонажа', 'warning'); return; }
+      const chars = await dropWithoutLogin(picked);
+      if (!chars?.length) return;
       if (act === 'dry') { await start(chars, { dry: true }); return; }
       if (await confirmRun(chars)) await start(chars);
     }

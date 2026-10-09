@@ -77,13 +77,36 @@ class Task {
     if (this.status !== 'running') return 100;
     return this.total ? Math.min(100, Math.round(this.done / this.total * 100)) : 0;
   }
-  log(message, level = 'info') {
-    this.entries.push({ at: nowIso(), level, message: String(message) });
+  log(message, level = 'info', scope = '') {
+    this.entries.push({ at: nowIso(), level, message: String(message), scope: scope || '' });
     if (this.entries.length > MAX_ENTRIES) this.entries.splice(0, this.entries.length - MAX_ENTRIES);
     if (level === 'warn') this.warnings++;
     if (level === 'error') this.errors++;
     if (level === 'step') this.step = String(message);
     notify(this);
+    return this;
+  }
+  /**
+   * Снять ошибки и предупреждения scope, если тот же scope позже отработал успешно.
+   *
+   * Нужна для повторов: первая попытка проверки входа могла написать в журнал «таймаут» или
+   * «ошибка разбора», а повтор прошёл — и без этого в логе оставалось впечатление поломки.
+   * Ошибки других персонажей и общие строки задачи не трогаем: снимаем только то, что
+   * относится к этому scope. Счётчики на плашке пересчитываются, иначе она продолжала бы
+   * показывать «ошибок: 1» при пустом логе.
+   *
+   * @param {string} scope например `char:<id>`
+   * @param {string} [note] что заменило ошибку; по умолчанию — «проверка прошла»
+   */
+  resolveProblems(scope, note) {
+    const bad = this.entries.filter(e => e.scope === scope && (e.level === 'warn' || e.level === 'error'));
+    if (!bad.length) return this;
+    this.entries = this.entries.filter(e => !bad.includes(e));
+    this.errors = Math.max(0, this.errors - bad.filter(e => e.level === 'error').length);
+    this.warnings = Math.max(0, this.warnings - bad.filter(e => e.level === 'warn').length);
+    // `finish` берёт статус из счётчиков, поэтому итог тоже должен быть зелёным
+    if (this.status === 'warn' && !this.errors && !this.warnings) this.status = 'done';
+    this.log(withNick(scope, note || 'ошибки сняты — проверка прошла'), 'info', scope);
     return this;
   }
   setStep(message) { return this.log(message, 'step'); }
@@ -139,7 +162,7 @@ export function logScope(scope, message, level = 'info') {
   const nick = nickOfScope(scope);
   tasks.filter(t => t.status === 'running' && t.scopes.includes(scope)).forEach(t => {
     if (nick) t.actor = { nick, text: text.slice(nick.length + 2) };
-    t.log(text, level);
+    t.log(text, level, scope);
   });
 }
 

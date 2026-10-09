@@ -111,21 +111,27 @@ describe('форма', () => {
     expect(rowOf('a').querySelector('.tr-server').value).toBe('');
   });
 
-  it('сверху нет выбора сервера «для всех»: вместо него плашка «Статус серверов» без управляющих элементов', () => {
+  it('сверху нет выбора сервера «для всех»: вместо него свёрнутая плашка «Статус серверов» без управляющих элементов', () => {
     preload();
     openTransferDialog({ ids: ['a'] });
     expect($('#tr-server-all')).toBeNull();
+    // Плашка свёрнута: серверы в передаче не выбираются, они нужны только для точек в списках
+    const box = $('#tr-servers');
+    expect(box.open).toBe(false);
+    expect(box.querySelector('summary').textContent).toContain('Статус серверов');
     const plaque = $('.tr-top .server-status');
     expect(plaque.querySelector('b').textContent).toBe('Статус серверов');
     expect(plaque.querySelectorAll('button, select, input, a')).toHaveLength(0);
     expect(plaque.textContent).toContain('нет данных');
   });
 
-  it('«Обновить сервера» — рядом с плашкой, галочки не нужны: читается только «Статус серверов» (без аккаунтов)', async () => {
+  it('«Обновить сервера» спрятано в свёрнутом блоке и читает только «Статус серверов» (без аккаунтов)', async () => {
     mocks.invoke.mockImplementation(async (cmd, a) => answer(cmd, a));
     preload();
     openTransferDialog({ ids: [] });
-    expect($('.tr-top [data-act="refresh-servers"]')).not.toBeNull();
+    // Кнопка осталась, но спрятана в свёрнутом блоке и на экране не занимает места
+    expect($('#tr-servers [data-act="refresh-servers"]')).not.toBeNull();
+    expect($('#tr-servers').open).toBe(false);
     $('[data-act="refresh-servers"]').click();
     await wait(300);
     expect(mocks.invoke.mock.calls.map(c => c[0])).toEqual(['read_server_status']);

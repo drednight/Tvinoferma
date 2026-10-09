@@ -24,8 +24,65 @@ import { recordParserResult } from '../../core/parserHealth.js';
 let activeListeners = [];
 
 /**
- * Инициализация слушателей событий Tauri IPC
+ * Метка окна браузера → id персонажа.
+ *
+ * Метки двух видов: основное окно `sync-win-<id>` и окно авторизации `popup-sync-win-<id>-<N>`,
+ * где `N` — порядковый номер окна. Раньше закрытие окна авторизации не давало эффекта:
+ * `replace('sync-win-','')` давал `popup-<id>-<N>`, персонажа с таким id нет — и проверка
+ * входа после входа не запускалась.
+ *
+ * Номер отбрасывается только у попапа и только если он числовой: сам id персонажа дефисы
+ * в себе содержать может (например `a-b`), а «`a-b`» у основного окна — это id, а не хвост.
+ * @param {string} label
+ * @returns {string | null} id персонажа или `null`, если метка не наша
  */
+export function charIdFromWindowLabel(label) {
+    const raw = String(label || '');
+    const popup = raw.startsWith('popup-sync-win-');
+    const rest = popup ? raw.slice('popup-sync-win-'.length)
+        : raw.startsWith('sync-win-') ? raw.slice('sync-win-'.length) : null;
+    if (rest === null) return null;
+    const cut = rest.lastIndexOf('-');
+    const id = popup && cut > 0 && /^\d+$/.test(rest.slice(cut + 1))
+        ? rest.slice(0, cut)
+        : rest;
+    return id || null;
+}
+
+/**
+ * Закрытие окна браузера.
+ *
+ * Закрытие окна ≠ выход с сайта: сессия лежит в профиле персонажа. Поэтому и при закрытии
+ * основного окна, и при закрытии окна авторизации запускается фоновая перепроверка входа —
+ * удобно: вошёл в окне → закрыл → статус подтвердился сам.
+ *
+ * Экспортируется для тестов: сама подписка на событие живёт в `initSyncListeners`.
+ * @param {string} label метка закрытого окна
+ */
+export async function handleBrowserWindowClosed(label) {
+    const charId = charIdFromWindowLabel(label);
+    const char = charId ? state.characters.find(c => c.id === charId) : null;
+    if (!char) return;
+
+    setAuthChecking(char.id, true);
+    renderCharacters();
+    renderParties();
+    // Даём окну закрыться полностью: пока оно живо, новая попытка ждёт тот же профиль
+    await new Promise(r => setTimeout(r, 1000));
+    await runAuthChecks([char], { baseTimeout: 8, closeAfter: true, silent: true });
+
+    // Окно авторизации после успеха часто остаётся белым: страница возврата не смогла
+    // отдать результат и не закрылась. Вход уже подтверждён — закрываем её, чтобы она
+    // не висела у пользователя перед глазами.
+    if (char.isLoggedIn === true && label.startsWith('popup-sync-win-')) {
+        const { closeAuthPopups } = await import('./checkAuth.js');
+        const closed = await closeAuthPopups(char.id);
+        if (closed > 0) {
+            toast(`Вход выполнен, окно авторизации закрыто: ${char.nick || char.id}`, 'success');
+        }
+    }
+}
+
 export async function initSyncListeners() {
     // Очищаем старые слушатели, если есть
     activeListeners.forEach(unlisten => unlisten());
@@ -70,23 +127,9 @@ export async function initSyncListeners() {
     });
     activeListeners.push(unlistenMarathon);
 
-    // 4. Закрытие окна браузера
+    // 4. Закрытие окна браузера (основного или окна авторизации)
     const unlistenCloseBrowser = await listen('browser-window-closed', async (event) => {
-        const { label } = event.payload;
-        const charId = label.replace('sync-win-', '');
-        const charIndex = state.characters.findIndex(c => c.id === charId);
-        
-        if (charIndex !== -1 && label.startsWith('sync-win-')) {
-             // Куки сохраняются в профиле персонажа, поэтому закрытие окна ≠ выход.
-             // Вместо «оффлайн» сразу перепроверяем авторизацию в фоне
-             // (удобно: вошли в окне → закрыли → статус подтвердился сам).
-             const char = state.characters[charIndex];
-             setAuthChecking(char.id, true);
-             renderCharacters();
-             renderParties();
-             await new Promise(r => setTimeout(r, 1000)); // даём окну закрыться полностью
-             await runAuthChecks([char], { baseTimeout: 8, closeAfter: true, silent: true });
-        }
+        await handleBrowserWindowClosed(event.payload?.label);
     });
     activeListeners.push(unlistenCloseBrowser);
 }
@@ -181,8 +224,12 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
         retries, retryDelayMs, signal,
         shouldRetry: (res, err) => !!err || (res?.status !== 'online' && isRetryableCode(res?.reason)),
         onDone: ({ item, result, error }, done, total) => {
-            if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error');
+            const scope = `char:${item.id}`;
+            if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error', scope);
             const applied = result && !result.skipped ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
+            // Вход подтвердился (часто с повтора): ошибки прошлых попыток этого персонажа
+            // в журнале больше не нужны, иначе задача остаётся жёлтой с «ошибок: 1».
+            if (!error && result?.status === 'online') task?.resolveProblems(scope, 'вход подтверждён');
             task?.progress(done, total, item.nick);
             persist().then(() => { if (applied?.changed !== false) rerender(); });
         }
@@ -259,8 +306,11 @@ export async function refreshAllBalances(chars = state.characters, { title, only
         shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
         onDone: ({ item, result, error }, done, total) => {
             if (result?.skipped) return;
-            if (error) task.log(`${item.nick}: ${error?.message || error}`, 'error');
+            const scope = `char:${item.id}`;
+            if (error) task.log(`${item.nick}: ${error?.message || error}`, 'error', scope);
             const applied = result ? applyBalanceResult(result) : null;
+            // Баланс получен (часто с повтора) — снимаем ошибки прошлых попыток персонажа
+            if (!error && result && !result.error) task.resolveProblems(scope, 'баланс получен');
             if (result && !result.error) updated++; else failed++;
             task.progress(done, total, item.nick);
             if (applied?.changed) persist().then(rerender);

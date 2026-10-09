@@ -71,6 +71,66 @@ describe('форма «Сундук караванщика»', () => {
   });
 });
 
+describe('персонажи без входа на сайт', () => {
+  const noLogin = () => state.characters.map(c => c.id === 'c' ? { ...c, isLoggedIn: true } : { ...c, isLoggedIn: false });
+
+  it('в форме видна подсказка с ними по именам', () => {
+    state.characters = noLogin();
+    openCaravanDialog({ ids: ['a', 'b', 'c'] });
+    const warn = $('#caravan-nologin');
+    expect(warn.hidden).toBe(false);
+    expect(warn.textContent).toContain('Аа, Бб');
+    expect(warn.textContent).toContain('Запомнить текущий вход');
+  });
+
+  it('без входа у всех выбор не запускается, объясняем почему', async () => {
+    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
+    state.characters = [{ id: 'a', nick: 'Аа', isLoggedIn: false }];
+    openCaravanDialog({ ids: ['a'] });
+    $('[data-act="start"]').click();
+    await wait(100);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.toast.mock.calls[0][0]).toContain('нет входа на сайт');
+  });
+
+  it('при запуске пропускает их и спрашивает, продолжать ли без них', async () => {
+    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
+    state.characters = noLogin();
+    openCaravanDialog({ ids: ['a', 'b', 'c'] });
+    $('[data-act="start"]').click();
+    await wait(200);
+    expect(mocks.confirm).toHaveBeenCalledTimes(2);          // «пропустить?» и подтверждение открытия
+    expect(mocks.confirm.mock.calls[0][0].text).toContain('Пропущу 2 из 3');
+    expect(mocks.confirm.mock.calls[0][0].text).toContain('Аа, Бб');
+    expect(mocks.confirm.mock.calls[1][0].text).toContain('Персонажей: 1');
+    const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'open_caravan_chests');
+    expect(calls.map(c => c[1].charId)).toEqual(['c']);
+  });
+
+  it('отказ пропустить — не запускаем ничего', async () => {
+    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
+    mocks.confirm.mockResolvedValueOnce(false);
+    state.characters = noLogin();
+    openCaravanDialog({ ids: ['a', 'c'] });
+    $('[data-act="start"]').click();
+    await wait(100);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('у кого вход есть — лишних вопросов нет', async () => {
+    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
+    state.characters = [{ id: 'a', nick: 'Аа' }, { id: 'c', nick: 'Вв', isLoggedIn: true }];
+    openCaravanDialog({ ids: ['a', 'c'] });
+    expect($('#caravan-nologin').hidden).toBe(true);
+    $('[data-act="start"]').click();
+    await wait(150);
+    expect(mocks.confirm).toHaveBeenCalledTimes(1);
+    const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'open_caravan_chests');
+    expect(calls.map(c => c[1].charId).sort()).toEqual(['a', 'c']);
+  });
+});
+
 describe('запуск', () => {
   it('«Проверить инвентари» спрашивает подтверждение и вызывает команду для выбранных', async () => {
     mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));

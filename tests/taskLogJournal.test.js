@@ -58,6 +58,60 @@ describe('точечное обновление плашек задач', () => 
   });
 });
 
+describe('отзыв ошибок после успеха', () => {
+  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = ''; });
+
+  it('ошибки и предупреждения персонажа исчезают, если тот же scope отработал успешно', async () => {
+    const { startTask, logScope } = await import('../js/core/taskLog.js');
+    const task = startTask('Проверка входа');
+    task.watch('char:a', 'char:b');
+    logScope('char:a', 'Аа: таймаут страницы', 'error');
+    logScope('char:a', 'Аа: не дождался ответа', 'warn');
+    logScope('char:b', 'Вв: таймаут страницы', 'error');
+    expect(task.errors).toBe(2); expect(task.warnings).toBe(1);
+
+    // Повтор прошёл: ошибки Аа больше не актуальны, ошибки Вв — ещё да
+    task.resolveProblems('char:a');
+
+    const text = task.entries.map(e => e.message).join('\n');
+    expect(text).not.toContain('Аа: таймаут страницы');
+    expect(text).not.toContain('не дождался ответа');
+    expect(text).toContain('Вв: таймаут страницы');
+    expect(task.errors).toBe(1); expect(task.warnings).toBe(0);
+    // В логе остаётся след, что строки сняли, — иначе непонятно, куда делись строки
+    expect(text).toContain('ошибки сняты');
+  });
+
+  it('задача без ошибок после отзыва остаётся зелёной, а не жёлтой', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const task = startTask('Проверка входа');
+    task.log('Аа: ошибка разбора', 'error', 'char:a');
+    task.log('ошибки', 'error');
+    expect(task.status).toBe('running');
+
+    task.resolveProblems('char:a');
+    // Общая строка «ошибки» осталась — значит и статус остаётся прежним
+    expect(task.errors).toBe(1);
+
+    const clean = startTask('Проверка балансов');
+    clean.log('Аа: таймаут', 'error', 'char:a');
+    clean.resolveProblems('char:a');
+    clean.finish('Готово');
+    expect(clean.status).toBe('done');
+    expect(clean.summary).toBe('Готово');
+  });
+
+  it('повтор по areas не трогает чужие строки и ничего не пишет, если ошибок не было', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const task = startTask('Проверка входа');
+    task.log('Вв: таймаут', 'error', 'char:b');
+    const before = task.entries.length;
+    task.resolveProblems('char:a');   // у Аа ошибок не было
+    expect(task.entries).toHaveLength(before);
+    expect(task.errors).toBe(1);
+  });
+});
+
 describe('ход выполнения в полном логе', () => {
   beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = '<div id="modal-root"></div>'; });
   it('показывает актуальный прогресс и отмену без повторного открытия того же лога', async () => {

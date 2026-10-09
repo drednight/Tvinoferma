@@ -118,6 +118,8 @@ pub fn run() {
             windows::check_window_exists,
             windows::execute_script_in_window,
             windows::rename_char_profiles,
+            // закрыть только окна авторизации (окно входа уже подтверждено)
+            windows::close_auth_popups,
             // скрипты сайта
             automation::promo::activate_promo,
             automation::caravan::open_caravan_chests,

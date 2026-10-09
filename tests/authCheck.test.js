@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Ручная проверка входа и отмена массовой проверки (issue #21)
-const mocks = vi.hoisted(() => ({ calls: [], release: null, gate: null, balCalls: [] }));
+const mocks = vi.hoisted(() => ({ calls: [], release: null, gate: null, balCalls: [], closed: 0 }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => ({})) }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
@@ -17,6 +17,7 @@ vi.mock('../js/modules/sync/getBalance.js', () => ({
   })
 }));
 vi.mock('../js/modules/sync/checkAuth.js', () => ({
+  closeAuthPopups: vi.fn(async () => mocks.closed),
   checkCharacterAuth: vi.fn(async (charId) => {
     mocks.calls.push(charId);
     if (mocks.gate) await mocks.gate;               // первая проверка «висит», пока тест не отпустит
@@ -31,7 +32,7 @@ const mk = (id) => ({ id, nick: id, isLoggedIn: true, lastLoginCheck: null });
 
 beforeEach(async () => {
   vi.resetModules();
-  mocks.calls.length = 0; mocks.balCalls.length = 0; mocks.gate = null;
+  mocks.calls.length = 0; mocks.balCalls.length = 0; mocks.gate = null; mocks.closed = 0;
   ({ state } = await import('../js/core/state.js'));
   state.settings = { scripts: { concurrency: 1, retries: 0, retryDelayMs: 0 } };
   sync = await import('../js/modules/sync/syncManager.js');
@@ -136,5 +137,60 @@ describe('открытие сайта вручную', () => {
     state.ui.authCheck = {};
     await sync.openSyncHelper('a');
     expect(invoke).toHaveBeenCalledWith('open_sync_window', expect.anything());
+  });
+});
+
+describe('закрытие окна браузера', () => {
+  it('метка окна и метка окна авторизации дают id персонажа', () => {
+    expect(sync.charIdFromWindowLabel('sync-win-DragonSlayer_1')).toBe('DragonSlayer_1');
+    // Раньше закрытие окна авторизации не давало эффекта: id получался «popup-<id>-<N>»
+    expect(sync.charIdFromWindowLabel('popup-sync-win-DragonSlayer_1-1')).toBe('DragonSlayer_1');
+    expect(sync.charIdFromWindowLabel('popup-sync-win-a-b-12')).toBe('a-b');
+    // Ник с дефисом: у основного окна «-b» — часть id, а не номер окна
+    expect(sync.charIdFromWindowLabel('sync-win-a-b')).toBe('a-b');
+    expect(sync.charIdFromWindowLabel('main')).toBeNull();
+    expect(sync.charIdFromWindowLabel('sync-win-')).toBeNull();
+  });
+
+  it('закрытие окна авторизации перепроверяет вход и закрывает оставшиеся окна', async () => {
+    const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    const { toast } = await import('../js/core/ui.js');
+    mocks.closed = 1;
+    state.characters = [mk('a')];
+
+    await sync.handleBrowserWindowClosed('popup-sync-win-a-1');
+
+    // Вход подтверждён → перепроверка выполнена и лишние окна авторизации закрыты
+    await vi.waitFor(() => expect(mocks.calls).toEqual(['a']));
+    await vi.waitFor(() => expect(closeAuthPopups).toHaveBeenCalledWith('a'));
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('Вход выполнен'), 'success');
+  });
+
+  it('если вход не подтверждён, окна авторизации не трогаем', async () => {
+    const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    state.characters = [mk('bad')];
+
+    await sync.handleBrowserWindowClosed('popup-sync-win-bad-1');
+
+    await vi.waitFor(() => expect(mocks.calls).toEqual(['bad']));
+    expect(state.characters[0].isLoggedIn).toBe(false);
+    expect(closeAuthPopups).not.toHaveBeenCalled();
+  });
+
+  it('закрытие основного окна тоже перепроверяет вход, но окна авторизации не закрывает', async () => {
+    const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    state.characters = [mk('a')];
+
+    await sync.handleBrowserWindowClosed('sync-win-a');
+
+    await vi.waitFor(() => expect(mocks.calls).toEqual(['a']));
+    expect(closeAuthPopups).not.toHaveBeenCalled();
+  });
+
+  it('чужое окно не вызывает проверку', async () => {
+    state.characters = [mk('a')];
+    await sync.handleBrowserWindowClosed('main');
+    await sync.handleBrowserWindowClosed('popup-sync-win-другой-1');
+    expect(mocks.calls).toEqual([]);
   });
 });

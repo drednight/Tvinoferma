@@ -2,7 +2,7 @@
    Вкладка «Пати»: карточки с цветной полоской, значком, стопкой персонажей, полосой «онлайн» и кнопкой запуска.
    Цвет карточки задаётся переменными --pt-h / --pt-s / --pt-l: это оттенок, насыщенность и светлота.
    По умолчанию оттенок считается по названию пати, но пользователь может выбрать свой цвет
-   кнопкой 🎨 — тогда js/modules/parties/renderer.js (partyStyleVars) переводит выбранный
+   в настройках пати — тогда js/modules/parties/renderer.js (partyStyleVars) переводит выбранный
    `#rrggbb` в те же три переменные, и вид карточки остаётся прежним. */
 
 .pt-head-row { align-items: flex-end; }
@@ -150,24 +150,11 @@
 .pt-card.is-none .pt-btn-launch { background: var(--surface-2); border-color: var(--border); color: var(--text-dim); }
 .pt-btn-icon { width: 36px; padding: 0; font-size: 1rem; }
 
-/* Кнопка выбора цвета пати: показываем текущий выбранный цвет «под» значком,
-   чтобы её не приходилось нажимать, чтобы вспомнить, какой цвет стоит. */
-.party-color-action-btn { position: relative; }
-.party-color-action-btn[style*="--swatch"]::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 4px;
-  width: 14px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--swatch);
-  transform: translateX(-50%);
-}
+/* Кнопка выбора цвета пати была в карточке — теперь цвет меняется в настройках пати. */
 
-/* --- Выбор цвета пати (окно «Цвет пати») --- */
-.ptc { display: grid; gap: 12px; }
-.ptc-lead { font-size: 0.8rem; margin: 0; }
+/* --- Выбор цвета пати (поле в окне настроек пати) --- */
+.ptc { display: grid; gap: 10px; }
+.ptc-label { font-weight: 600; font-size: 0.86rem; }
 .ptc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ptc-hex { width: 120px; font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
 .ptc-native {
@@ -230,6 +217,15 @@
   font-size: 0.8rem;
 }
 .ptc-preview-text { font-weight: 650; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Опасная зона настроек пати: архив и удаление. Удаление — красное, архив — обычное: он обратим. */
+.pt-danger {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 2px;
+}
 
 /* Список участников раскрывается плавно (grid 0fr → 1fr) */
 .pt-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.25s var(--ease); }

@@ -68,12 +68,20 @@ export function openCreatePartyModal() {
  *
  * @param {string} currentName название пати
  */
-export function openPartyColorModal(currentName) {
-    const party = partyByName(state.parties, currentName);
-    if (!party) { toast('Пати не найдена.', 'error'); return; }
-
-    const current = normalizePartyColor(party.color);
-    // Текущий оттенок от названия — «начальное значение», пока свой цвет не выбран
+/**
+ * Поле «Цвет пати» для окна настроек пати: палитра, свой цвет и возврат к оттенку по названию.
+ *
+ * Сделано частью настроек, а не отдельным окном: раньше цвет выбирался кнопкой 🎨 прямо
+ * в карточке, и настройки пати о нём ничего не знали. Теперь всё, что можно сделать с пати,
+ * собрано в одном месте.
+ *
+ * @param {string} currentName название пати
+ * @param {{ color?: string | null }} party
+ * @returns {string} разметка поля
+ */
+export function partyColorFieldHtml(currentName, party) {
+    const current = normalizePartyColor(party?.color);
+    // Текущий оттенок по названию — «начальное значение», пока свой цвет не выбран
     const auto = hslToHex({ h: partyHue(currentName), s: 70, l: 65 });
     const initial = current || auto;
     const previewHsl = hexToHsl(initial) || { h: 220, s: 70, l: 65 };
@@ -83,15 +91,15 @@ export function openPartyColorModal(currentName) {
                 style="--c:${color}" data-color="${color}"
                 title="${color}" aria-label="Цвет ${color}"></button>`).join('');
 
-    const content = `
-        <div class="ptc">
-            <p class="muted ptc-lead">Цвет полоски, значка и подсветки карточки «${escapeHtml(currentName)}». Стиль карточки останется прежним — поменяется только цвет.</p>
+    return `
+        <div class="ptc" data-party-color>
+            <label class="ptc-label">Цвет карточки пати</label>
             <div class="ptc-row">
                 <label class="ptc-native">
                     <input type="color" id="ptc-native" value="${initial}" aria-label="Свой цвет" />
                     <span>Свой цвет</span>
                 </label>
-                <input class="input ptc-hex" id="ptc-hex" value="${current || ''}" placeholder="#5865F2" maxlength="7" spellcheck="false" />
+                <input class="input ptc-hex" id="ptc-hex" value="${current || ''}" placeholder="по названию" maxlength="7" spellcheck="false" />
                 <button type="button" class="btn ghost small" id="ptc-reset" ${current ? '' : 'disabled'}>По названию</button>
             </div>
             <div class="ptc-swatches">${swatches}</div>
@@ -100,38 +108,26 @@ export function openPartyColorModal(currentName) {
                 <span class="ptc-preview-badge">${escapeHtml(partyInitials(currentName))}</span>
                 <span class="ptc-preview-text">${escapeHtml(currentName)}</span>
             </div>
+            <small class="muted">Меняется полоска, значок и подсветка карточки. Без своего цвета берётся оттенок от названия пати.</small>
         </div>`;
+}
 
-    showModal({
-        title: `Цвет пати: ${currentName}`,
-        content,
-        submitText: 'Сохранить',
-        cancelText: 'Отмена',
-        onSubmit() {
-            const hex = document.getElementById('ptc-hex')?.value.trim();
-            // Пусто или некорректное значение = вернуть автоматический оттенок по названию
-            const value = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
-            if (value === current) { toast('Цвет не изменился.', 'info'); return true; }
-            party.color = value;
-            party.updatedAt = new Date().toISOString();
-            persist().then(() => {
-                renderPartiesGrid();
-                renderCharacters();
-                toast(value ? `Цвет пати «${currentName}»: ${value}` : 'Цвет пати сброшен: оттенок по названию', 'success');
-            }).catch(() => toast('Не удалось сохранить цвет пати', 'error'));
-            return true;
-        }
-    });
-
-    // Живой предпросмотр и подстановка выбранного цвета: кнопка «Сохранить» сама не должна
-    // ни зависеть от валидности, ни требовать лишнего клика по полю.
-    // `showModal` собирает окно синхронно, поэтому обработчики вешаем сразу — без setTimeout,
-    // иначе первые касания окна (и тесты) остались бы без реакции.
-    const modal = document.getElementById('modal-root');
-    const hexInput = document.getElementById('ptc-hex');
-    const native = /** @type {HTMLInputElement | null} */ (document.getElementById('ptc-native'));
-    const preview = document.getElementById('ptc-preview');
-    const reset = document.getElementById('ptc-reset');
+/**
+ * Живой предпросмотр поля цвета: выбор сразу видно в «образце» карточки.
+ *
+ * `showModal` собирает окно синхронно, поэтому обработчики вешаем сразу — без setTimeout,
+ * иначе первые касания окна (и тесты) остались бы без реакции. Само значение цвета при
+ * сохранении читается из поля напрямую (см. `openEditPartyModal`), а не отсюда.
+ *
+ * @param {HTMLElement} root где искать поле (`#modal-root`)
+ */
+export function bindPartyColorField(root) {
+    const field = root?.querySelector('[data-party-color]');
+    if (!field) return;
+    const hexInput = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-hex'));
+    const native = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-native'));
+    const preview = /** @type {HTMLElement | null} */ (field.querySelector('#ptc-preview'));
+    const reset = /** @type {HTMLButtonElement | null} */ (field.querySelector('#ptc-reset'));
     if (!hexInput || !native || !preview) return;
 
     const paint = (value) => {
@@ -146,32 +142,32 @@ export function openPartyColorModal(currentName) {
         hexInput.value = value;
         native.value = value;
         paint(value);
-        modal.querySelectorAll('.ptc-swatch').forEach(s =>
+        field.querySelectorAll('.ptc-swatch').forEach(s =>
             s.classList.toggle('is-on', s.dataset.color === value));
-        reset?.toggleAttribute('disabled', value === current);
     };
 
     native.addEventListener('input', () => pick(native.value));
     hexInput.addEventListener('input', () => {
         const v = hexInput.value.trim();
         if (/^#[0-9a-f]{6}$/i.test(v)) pick(v.toLowerCase());
-        else paint(native.value);
     });
-    modal.querySelectorAll('.ptc-swatch').forEach(s => {
-        s.addEventListener('click', () => pick(s.dataset.color));
+    field.querySelectorAll('.ptc-swatch').forEach(s => {
+        s.addEventListener('click', () => pick(/** @type {string} */ (s.dataset.color)));
     });
-    // «По названию»: поле очищается — по нему `onSubmit` и понимает, что цвет сброшен
+    // «По названию»: поле очищается — по нему при сохранении и узнаётся, что цвет сброшен
     reset?.addEventListener('click', () => {
         hexInput.value = '';
-        paint(auto);
-        modal.querySelectorAll('.ptc-swatch').forEach(s => s.classList.remove('is-on'));
-        reset.toggleAttribute('disabled', true);
+        paint(native.value);
+        field.querySelectorAll('.ptc-swatch').forEach(s => s.classList.remove('is-on'));
     });
-    paint(initial);
 }
 
 /**
- * Комплексное редактирование пати: имя, состав, удаление
+ * Комплексное редактирование пати: название, состав, цвет и архив.
+ *
+ * Раньше цвет (кнопка 🎨) и архив (📦) жили прямо в карточке пати, а в настройках о них
+ * ничего не было. Теперь всё, что можно сделать с пати, в одном окне: карточка оставила
+ * только «Запустить», «Закрыть окна» и «Настроить».
  */
 export function openEditPartyModal(currentName) {
     const party = partyByName(state.parties, currentName);
@@ -209,9 +205,15 @@ export function openEditPartyModal(currentName) {
                     ${allCharsForCheckbox}
                 </div>
             </div>
+
+            <!-- 3. Цвет карточки -->
+            ${partyColorFieldHtml(currentName, party)}
             
             <!-- Опасная зона -->
-            <div style="border-top:1px solid var(--border); padding-top:10px; margin-top:10px;">
+            <div class="pt-danger">
+                 <button id="archive-this-party-btn" class="btn outline" style="width:100%;">
+                    📦 Переместить в архив (состав сохранится, её можно вернуть)
+                 </button>
                  <button id="delete-this-party-btn" class="btn danger outline" style="width:100%;">
                     🗑 Удалить эту группу (участники останутся в других группах)
                  </button>
@@ -252,6 +254,11 @@ export function openEditPartyModal(currentName) {
 
             // Переименование меняет только название: персонажи ссылаются на id
             party.name = newName;
+            // Цвет читаем из поля при сохранении, а не по событию ввода: так он сохранится
+            // и если значение подставилось мимо события (вставка, автозаполнение).
+            // Пусто или некорректное значение = вернуть автоматический оттенок по названию.
+            const hex = String(document.getElementById('ptc-hex')?.value || '').trim();
+            party.color = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
             party.updatedAt = now;
 
             persist().then(() => {
@@ -264,31 +271,56 @@ export function openEditPartyModal(currentName) {
         }
     });
 
-    // Обработчик удаления всей группы
-    setTimeout(() => {
-        const delBtn = document.getElementById('delete-this-party-btn');
-        if (delBtn) {
-            delBtn.onclick = async () => {
-                const ok = await confirmModal({
-                    title: `Удалить группу «${currentName}»?`,
-                    text: 'Все участники станут без пати. Персонажи, их монеты и марафоны не меняются.',
-                    okText: 'Удалить группу',
-                    danger: true
+    // Живой предпросмотр цвета: пока пользователь выбирает, образец карточки меняется сразу.
+    // Окно собрано синхронно, поэтому обработчики можно вешать сразу — без setTimeout.
+    bindPartyColorField(document.getElementById('modal-root'));
+
+    // Обработчики опасных зон: перенос в архив и удаление.
+    // Назначаем сразу, без setTimeout: showModal собирает окно синхронно, а отложенное
+    // назначение оставляло кнопки «мёртвыми» на первом касании.
+    const archiveBtn = document.getElementById('archive-this-party-btn');
+    if (archiveBtn) {
+        archiveBtn.onclick = async () => {
+            const ok = await confirmModal({
+                title: `Переместить «${currentName}» в архив?`,
+                text: 'Пати уберётся из активного списка, состав сохранится. Вернуть её можно из раздела «Архив» на вкладке «Пати».',
+                okText: 'В архив'
+            });
+            if (!ok) return;
+            // Закрываем настройки до архивации: после archiveParty пати в списке уже нет,
+            // и оставшееся окно настроек выглядело бы как ошибка.
+            closeModal();
+            try {
+                const { archiveParty } = await import('../archive/archive.js');
+                await archiveParty(party.id);
+            } catch (error) {
+                console.error('[ARCHIVE] Party archive failed:', error);
+                toast(`Не удалось переместить пати в архив: ${error?.message || error}`, 'error');
+            }
+        };
+    }
+    const delBtn = document.getElementById('delete-this-party-btn');
+    if (delBtn) {
+        delBtn.onclick = async () => {
+            const ok = await confirmModal({
+                title: `Удалить группу «${currentName}»?`,
+                text: 'Все участники станут без пати. Персонажи, их монеты и марафоны не меняются.',
+                okText: 'Удалить группу',
+                danger: true
+            });
+            if (ok) {
+                state.parties = state.parties.filter(p => p.id !== party.id);
+                const now = new Date().toISOString();
+                [...state.characters, ...state.archivedCharacters].forEach(c => {
+                    if (setMembership(c, party.id, false)) c.updatedAt = now;
                 });
-                if (ok) {
-                    state.parties = state.parties.filter(p => p.id !== party.id);
-                    const now = new Date().toISOString();
-                    [...state.characters, ...state.archivedCharacters].forEach(c => {
-                        if (setMembership(c, party.id, false)) c.updatedAt = now;
-                    });
-                    persist().then(() => {
-                        closeModal();
-                        renderPartiesGrid();
-                        renderCharacters();
-                        toast('Группа удалена.', 'success');
-                    });
-                }
-            };
-        }
-    }, 100);
+                persist().then(() => {
+                    closeModal();
+                    renderPartiesGrid();
+                    renderCharacters();
+                    toast('Группа удалена.', 'success');
+                });
+            }
+        };
+    }
 }
