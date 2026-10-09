@@ -103,6 +103,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Цвет бейджа пати берётся из выбранного пользователем цвета (или оттенка по названию),
+   который приходит в карточку переменной `--party-c` (js/modules/characters/list.js). */
+.card-party.has-color {
+  color: var(--party-c, var(--accent));
+  border-color: color-mix(in srgb, var(--party-c, var(--accent)) 45%, transparent);
+  background: color-mix(in srgb, var(--party-c, var(--accent)) 12%, transparent);
+}
 .card-coins {
   font-size: 0.82rem;
   padding: 3px 9px;
@@ -167,32 +174,42 @@
 .mini-toggle-eye { padding: 2px; opacity: 0.45; display: flex; align-items: center; }
 .mini-toggle-eye:hover { opacity: 1; }
 
-/* --- Подвал --- */
+/* --- Подвал ---
+   Проходки и кнопки всегда в одну строку. Раньше здесь стоял `flex-wrap: wrap`, и когда карточка
+   становилась чуть уже (полноэкранный режим: при `--content-max` влезает больше колонок, и колонка
+   делит ту же ширину), третья проходка уезжала на вторую строку — особенно заметно у персонажей
+   с трёхзначными числами проходок. Теперь переноса нет ни при какой ширине.
+   Минимальную ширину колонки задаёт `#character-grid` в css/core/layout.css. */
 .card-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--gap-sm);
-  padding: 9px 14px 9px 16px;
+  padding: 9px 12px 9px 14px;
   border-top: 1px solid var(--border);
+  flex-wrap: nowrap;
 }
 
-.card-passes { display: flex; gap: 6px; flex-wrap: wrap; }
+/* Проходки не переносятся и не сжимаются; `overflow: hidden` — страховка на случай
+   не поместившихся чисел: лучше обрезать край, чем сломать подвал и вытолкнуть кнопки. */
+.card-passes { display: flex; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
 
 .pass-item {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 .pass-icon-img { width: 16px; height: 16px; object-fit: contain; display: block; }
 .pass-icon-fallback { font-size: 0.95rem; line-height: 1; }
+
 
 /* --- Кнопки действий на маленькой карточке --- */
 .card-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
@@ -222,6 +239,9 @@
 .card-act.play:hover:not(:disabled) { background: rgba(158, 206, 106, 0.26); border-color: var(--success); }
 /* Путь к GameCenter не указан: кнопка тусклая, пунктиром — по клику откроется карточка с блоком «Запуск игры» */
 .card-act.play.is-unset { color: var(--text-dim); background: transparent; border: 1px dashed var(--border-strong); }
+/* Закрыть окно игры: кнопка появляется у персонажа, чьё окно сейчас запущено */
+.card-act.close-game-window-action { color: var(--danger); border-color: rgba(247, 118, 142, 0.42); background: var(--danger-soft); }
+.card-act.close-game-window-action:hover:not(:disabled) { background: rgba(247, 118, 142, 0.26); border-color: var(--danger); }
 
 /* --- Раскрытая карточка (профиль) --- */
 .pf-title-row {

@@ -14,6 +14,8 @@ import { plannerHtml, bindPlanner, openPlannerDay } from './plannerView.js';
 import { plannerEventsForDate } from './planner.js';
 import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
+import { runningWindows, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
+import { rowLabel, formatUptime } from '../launcher/windowList.js';
 
 /**
  * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
@@ -27,6 +29,71 @@ export function eventTimeText(event) {
   return event.source === 'recurring' ? `${span} · ивент` : span;
 }
 
+/**
+ * Блок «Запущенные окна игры» на вкладке «Сегодня»: какие окна открыты и что с ними можно сделать.
+ *
+ * Список окон живёт в Rust, а разметка здесь собирается синхронно, поэтому сначала выводится
+ * пустой контейнер, а строки добавляет `fillRunningWindowsBlock` после опроса (см. runningWindows.js).
+ * Когда окон нет, блок показывает короткую подсказку и кнопку открытия списка окон.
+ * @returns {string}
+ */
+export function runningWindowsBlockHtml() {
+  return `
+    <h4 class="today-title"><span aria-hidden="true">🎮</span> Окна игры
+      <span class="today-count" data-running-count hidden></span>
+    </h4>
+    <div class="rwn" data-running-windows>
+      <p class="muted today-empty">Проверяем запущенные окна…</p>
+    </div>
+    <div class="rwn-actions">
+      <button type="button" class="btn ghost small" data-today-act="windows-list" title="Открыть список всех запущенных окон игры">Все окна…</button>
+      <button type="button" class="btn danger small" data-today-act="windows-close-all">Закрыть все</button>
+    </div>`;
+}
+
+/**
+ * Наполняет блок «Запущенные окна игры» последним известным списком окон и подписывается на изменения.
+ *
+ * Список окон общий для приложения (`runningWindows.js`): он же нужен кнопке закрытия окна
+ * в карточке персонажа, поэтому здесь не делается отдельный запрос к Rust — блок сначала
+ * показывает кэш, а строки обновляются, когда список перечитают.
+ *
+ * @param {HTMLElement} root контейнер страницы «Сегодня»
+ */
+export function fillRunningWindowsBlock(root) {
+  const box = root.querySelector('[data-running-windows]');
+  if (!box) return;
+
+  const draw = (rows) => {
+    const counter = root.querySelector('[data-running-count]');
+    if (counter) {
+      counter.hidden = !rows.length;
+      counter.textContent = String(rows.length);
+    }
+    const closeAll = root.querySelector('[data-today-act="windows-close-all"]');
+    if (closeAll) closeAll.toggleAttribute('disabled', !rows.length);
+    if (!rows.length) {
+      box.innerHTML = '<p class="muted today-empty">Запущенных окон игры нет.</p>';
+      return;
+    }
+    box.innerHTML = `<ul class="today-list rwn-list">${rows.map(row => `
+      <li class="today-row rwn-row">
+        <span class="rwn-dot ${row.known ? 'is-known' : ''}" aria-hidden="true"></span>
+        <span class="today-row-text">
+          <b title="${escapeHtml(rowLabel(row))}">${escapeHtml(rowLabel(row))}</b>
+          <small class="muted">${row.uptimeMs == null ? 'время работы неизвестно' : `работает ${formatUptime(row.uptimeMs)}`}${row.elevated ? ' · админ' : ''}</small>
+        </span>
+        <button type="button" class="btn ghost small" data-today-act="windows-close-one" data-today-pid="${row.pid}"
+                title="Закрыть это окно игры">🛑 Закрыть</button>
+      </li>`).join('')}</ul>`;
+  };
+
+  draw(runningWindows());
+  // Блок живёт, пока открыта страница: после ухода с вкладки подписку снимаем
+  const off = onRunningWindows(draw);
+  const page = box.closest('.page');
+  page?.addEventListener('tf-leave', off, { once: true });
+}
 /**
  * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и все записи на сегодня.
  * @param {any} [appState]
@@ -78,6 +145,8 @@ export function todaySideHtml(appState = state) {
       ${events.length > 8 ? `<p class="muted today-more">Показаны первые 8 из ${events.length}.</p>` : ''}
       <button type="button" class="btn secondary small today-side-open" data-open-day="${today}">Открыть день в календаре</button>`
         : '<p class="muted today-empty">На этот день записей нет.</p>'}
+
+      <div class="rwn-block">${runningWindowsBlockHtml()}</div>
     </aside>`;
 }
 
@@ -172,8 +241,66 @@ export function renderToday(root, deps = {}) {
     const act = e.target.closest?.('[data-today-act="open-marathon"]');
     if (act) { deps.run?.('open-marathon', act.dataset.todayMarathon); return; }
     const btn = e.target.closest?.('[data-open-day]');
-    if (btn) openPlannerDay(btn.dataset.openDay, { ...deps, render });
+    if (btn) { openPlannerDay(btn.dataset.openDay, { ...deps, render }); return; }
+    const win = e.target.closest?.('[data-today-act^="windows-"]');
+    if (win) { e.preventDefault(); runWindowsAction(win.dataset.todayAct, win.dataset.todayPid); }
   });
+  fillRunningWindowsBlock(root);
+}
+
+/**
+ * Действия блока «Запущенные окна игры».
+ *
+ * Списки окон и подписи уже импортированы (ими же рисуется блок), а команды закрытия и окно
+ * со списком подгружаются по клику — они нужны только здесь.
+ *
+ * @param {string} action
+ * @param {string} [pid]
+ */
+async function runWindowsAction(action, pid) {
+  try {
+    if (action === 'windows-list') {
+      const { openWindowPicker } = await import('../launcher/windowPicker.js');
+      await openWindowPicker({ onClosed: () => refreshRunningWindows() });
+      return;
+    }
+
+    const { closeClientsByPid, closeAllClients } = await import('../launcher/launch.js');
+    const { showCloseReport } = await import('../launcher/partyLaunch.js');
+    const { confirmModal, toast } = await import('../../core/ui.js');
+
+    if (action === 'windows-close-one') {
+      const id = Number(pid);
+      if (!id) return;
+      const row = runningWindows().find(r => r.pid === id);
+      const ok = await confirmModal({
+        title: `Закрыть окно игры: ${row ? rowLabel(row) : `PID ${id}`}?`,
+        text: 'Всё, что не сохранено в игре, будет потеряно.',
+        okText: 'Закрыть окно',
+        danger: true
+      });
+      if (!ok) return;
+      showCloseReport(await closeClientsByPid([id]));
+      await refreshRunningWindows();
+      return;
+    }
+    if (action === 'windows-close-all') {
+      const rows = runningWindows();
+      if (!rows.length) { toast('Запущенных окон игры нет', 'info'); return; }
+      const ok = await confirmModal({
+        title: 'Закрыть все окна игры?',
+        text: `Будет закрыто окон: ${rows.length}. Всё, что не сохранено в игре, будет потеряно.`,
+        okText: `Закрыть (${rows.length})`,
+        danger: true
+      });
+      if (!ok) return;
+      showCloseReport(await closeAllClients());
+      await refreshRunningWindows();
+    }
+  } catch (err) {
+    const { toast } = await import('../../core/ui.js');
+    toast(`Не удалось выполнить действие с окнами: ${String(err?.message || err)}`, 'error');
+  }
 }
 
 /** Кнопки экрана: действия в строках, переходы и сворачивание. */

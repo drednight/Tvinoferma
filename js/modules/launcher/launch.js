@@ -17,9 +17,15 @@ import { getClassIconSrc } from '../../core/constants.js';
 /** Пауза между запусками аккаунтов (после появления нового клиента), мс. */
 export const DEFAULT_LAUNCH_DELAY_MS = 3000;
 
-async function tauriInvoke(cmd, args) {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke(cmd, args);
+/**
+ * Мост в Tauri. Модуль импортируется один раз и запоминается: при параллельных вызовах
+ * (например, проверки перед запуском спрашивают сразу два факта) повторный `import()`
+ * того же модуля возвращает промис, который ещё не разрешён, и команда уходит в ошибку.
+ */
+let tauriCore = null;
+function tauriInvoke(cmd, args) {
+  if (!tauriCore) tauriCore = import('@tauri-apps/api/core');
+  return tauriCore.then(({ invoke }) => invoke(cmd, args));
 }
 
 /** GameCenter из настроек (общий список с названиями) и предпочитаемый — для выбора, откуда запускать персонажа. */
@@ -279,17 +285,16 @@ export function selfElevated(deps = {}) {
  * @returns {Promise<{ clients: Array<{ pid: number, title: string, elevated: boolean|null }> | null, selfElevated: boolean | null }>}
  */
 export async function readLaunchFacts(deps = {}) {
-  let clients = null;
-  let elevated = null;
-  try {
-    const list = await runningClientDetails(deps);
-    if (Array.isArray(list)) clients = list;
-  } catch { /* список окон недоступен: запускаем как обычно */ }
-  try {
-    const v = await selfElevated(deps);
-    if (typeof v === 'boolean') elevated = v;
-  } catch { /* права не определены */ }
-  return { clients, selfElevated: elevated };
+  // Оба факта независимы, поэтому спрашиваем их одновременно: каждый вызов — это перебор
+  // процессов и окон, и по очереди они удваивали время ожидания перед запуском пати.
+  const [clients, elevated] = await Promise.all([
+    runningClientDetails(deps).catch(() => null),
+    selfElevated(deps).catch(() => null)
+  ]);
+  return {
+    clients: Array.isArray(clients) ? clients : null,
+    selfElevated: typeof elevated === 'boolean' ? elevated : null
+  };
 }
 
 /** Закрыть выбранные клиенты игры по PID. Отчёт — как у закрытия всех окон. */

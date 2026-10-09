@@ -12,9 +12,10 @@ import { subscribeUpdate, setUpdateState } from './desktop/updateState.js';
 import { initUpdateUi } from './desktop/updateUi.js';
 import { initParserHealthUi } from './settings/parserHealthUi.js';
 import { startFreshnessTicker } from './core/freshness.js';
-import { bindCharacters, renderCharacters } from './modules/characters/list.js';
+import { bindCharacters, renderCharacters, initRunningWindowsTracking } from './modules/characters/list.js';
 import { runTodayAction } from './modules/characters/list.js';
 import { renderToday } from './modules/dashboard/todayView.js';
+import { refreshRunningWindows } from './modules/launcher/runningWindows.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
 import { bindRunes, renderRunes } from './modules/runes/index.js';
@@ -114,6 +115,7 @@ async function boot() {
     
     try {
       bindCharacters(); 
+      initRunningWindowsTracking();
       console.log('[BOOT] Characters bound.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Characters:', e);
@@ -252,9 +254,14 @@ function bindNavigation() {
       const sectionSubtitle = document.getElementById('next-section-subtitle');
       if (sectionSubtitle) sectionSubtitle.textContent = tab.dataset.subtitle || '';
 
-      // Переключаем видимость секций
+      // Скрываем ранее открытые разделы и даём им знать, что их покинули:
+      // на «Сегодня» и «Персонажах» по этому событию снимаются подписки на список окон игры
       pages.forEach(page => {
+        const wasActive = page.classList.contains('active');
         page.classList.toggle('active', page.dataset.section === targetSection);
+        if (wasActive && page.dataset.section !== targetSection) {
+          page.dispatchEvent(new CustomEvent('tf-leave'));
+        }
       });
 
       // Вызываем рендер конкретной секции
@@ -274,9 +281,14 @@ function renderActiveTab(sectionName) {
     switch (sectionName) {
       case 'today':
         renderToday(document.getElementById('today-root'), { run: runTodayAction });
+        // Список окон игры нужен и на «Сегодня» (блок запущенных окон), и на «Персонажах»
+        // (кнопка закрытия окна в карточке). Он общий и меняется после запуска/закрытия,
+        // поэтому обновляем его при каждом переходе на эти вкладки.
+        if (isTauri()) refreshRunningWindows().catch(() => {});
         break;
       case 'characters':
         renderCharacters();
+        if (isTauri()) refreshRunningWindows().catch(() => {});
         break;      case 'parties':
         renderParties();
         break;

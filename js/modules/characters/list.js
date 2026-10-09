@@ -20,9 +20,12 @@ import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 import { onboardingHtml } from './onboarding.js';
+import { windowOfCharacter, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
+import { formatUptime } from '../launcher/windowList.js';
 import {
-  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, additionalPartiesOf, totalCoins as totalCoinsOf
+  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, mainPartyOf, additionalPartiesOf, totalCoins as totalCoinsOf
 } from '../parties/membership.js';
+import { partyColorCss } from '../parties/color.js';
 
 // Персонажи, видимые после фильтров (для «выбрать все»)
 let visibleIds = [];
@@ -57,6 +60,24 @@ export function renderCharacters() {
   if (showingCharacterArchive) renderArchivedCharacters();
   else renderFilteredGrid();
   maybeShowWelcome();
+}
+
+/**
+ * Запуск окон влияет на карточки: у персонажа появляется кнопка закрытия его окна.
+ * Поэтому при входе на вкладку список окон опрашивается заново (кэш мог устареть),
+ * а когда он меняется — перерисовывается только список, если вкладка сейчас активна.
+ */
+let runningWindowsBound = false;
+export function initRunningWindowsTracking() {
+  if (runningWindowsBound) return;
+  runningWindowsBound = true;
+  onRunningWindows(() => {
+    const grid = document.getElementById('character-grid');
+    // Перерисовываем только когда видна вкладка «Персонажи» и не открыт архив:
+    // иначе перезаписываем то, что пользователь как раз смотрит в другой вкладке.
+    if (!grid || !grid.closest('.page')?.classList.contains('active') || showingCharacterArchive) return;
+    renderFilteredGrid();
+  });
 }
 
 function renderArchivedCharacters() {
@@ -225,6 +246,72 @@ function renderFilteredGrid() {
 }
 
 /**
+ * Кнопка закрытия окна игры прямо в карточке персонажа (жалоба пользователей: закрытие окна было
+ * спрятано в настройках). Показывается только когда окно этого персонажа сейчас запущено —
+ * определяем по последнему опросу Rust (`runningWindows.js`), поэтому кнопка не мешает
+ * на остальных карточках. В архиве кнопки нет: архивные персонажи не запускаются.
+ * @param {any} char
+ * @param {boolean} archived
+ */
+function gameWindowBtn(char, archived) {
+  if (archived) return '';
+  const win = windowOfCharacter(char.id);
+  if (!win) return '';
+  const nick = char.nick ? escapeHtml(char.nick) : 'этого персонажа';
+  return `<button class="card-act close-game-window-action" type="button" aria-label="Закрыть окно игры"
+                  title="Закрыть окно игры: ${nick}${win.uptimeMs != null ? ` (работает ${formatUptime(win.uptimeMs)})` : ''}. Всё, что не сохранено в игре, будет потеряно">🛑</button>`;
+}
+
+/**
+ * Закрытие окна игры конкретного персонажа по кнопке в его карточке.
+ *
+ * Список окон берётся из общего кэша, но перед закрытием опрашивается заново: игрок мог
+ * закрыть окно вручную, и тогда PID уже не существует. Итог закрытия показывается тем же
+ * способом, что и при закрытии пати, — вместе с предложением повторить с правами администратора.
+ * @param {string} charId
+ * @param {HTMLElement} btn кнопка, на время запроса блокируется
+ * @returns {Promise<number>} сколько окон закрыто
+ */
+async function closeCharacterGameWindow(charId, btn) {
+  const char = state.characters.find(c => c.id === charId);
+  if (!char) return 0;
+  // Свежий список: кэш мог устареть, пока окно открывали и закрывали
+  await refreshRunningWindows();
+  const win = windowOfCharacter(charId);
+  if (!win) {
+    toast(`Окно игры «${char.nick || charId}» уже закрыто`, 'info');
+    renderCharacters();
+    return 0;
+  }
+
+  const ok = await confirmModal({
+    title: `Закрыть окно игры: ${win.nick || char.nick}?`,
+    text: 'Всё, что не сохранено в игре, будет потеряно.',
+    okText: 'Закрыть окно',
+    danger: true
+  });
+  if (!ok) return 0;
+
+  btn.disabled = true;
+  try {
+    const [{ closeClientsByPid }, { showCloseReport }] = await Promise.all([
+      import('../launcher/launch.js'),
+      import('../launcher/partyLaunch.js')
+    ]);
+    const report = await closeClientsByPid([win.pid]);
+    showCloseReport(report);
+    return Number(report?.closed) || 0;
+  } catch (e) {
+    toast(`Не удалось закрыть окно: ${String(e?.message || e)}`, 'error');
+    return 0;
+  } finally {
+    await refreshRunningWindows();
+    btn.disabled = false;
+    renderCharacters();
+  }
+}
+
+/**
  * Генерация HTML одной карточки персонажа
  */
 function generateCardHTML(char, { archived = false } = {}) {
@@ -246,10 +333,10 @@ function generateCardHTML(char, { archived = false } = {}) {
     const passes = char.dungeonPasses || {};
     const passesHtml = PASS_TYPES.map(pt => {
       const count = passes[pt.key] || 0;
-      const imgPath = pt.img; 
+      const imgPath = pt.img;
       return `
-        <div class="pass-item" title="${pt.label}: ${count}" style="display:flex; align-items:center; gap:4px; background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px; font-size:0.75rem;">
-          <img src="${imgPath}" alt="${pt.label}" style="width:16px; height:16px; object-fit:contain;" onerror="this.style.display='none'"/>
+        <div class="pass-item" title="${pt.label}: ${count}">
+          <img class="pass-icon-img" src="${imgPath}" alt="${pt.label}" onerror="this.style.display='none'"/>
           <span>${count}</span>
         </div>
       `;
@@ -271,6 +358,9 @@ function generateCardHTML(char, { archived = false } = {}) {
       .join(', ');
     const partyLabel = [activePartyLabel !== NO_PARTY_LABEL ? activePartyLabel : '', archivedPartyLabel]
       .filter(Boolean).join(', ') || NO_PARTY_LABEL;
+    // Цвет бейджа пати: свой выбранный цвет пати, иначе автоматический оттенок по названию
+    const mainParty = mainPartyOf(char, state.parties);
+    const partyColor = mainParty ? partyColorCss(mainParty) : '';
 
     // ЛОГИКА ИНДИКАТОРА СТАТУСА
     const authView = getAuthView(char);
@@ -312,7 +402,7 @@ function generateCardHTML(char, { archived = false } = {}) {
                     <span class="state-dot"></span><span>${statusText}</span>
                   </div>`}
 
-             <span class="badge party card-party">${partyLabel}</span>
+             <span class="badge party card-party${partyColor ? ' has-color' : ''}"${partyColor ? ` style="--party-c:${partyColor}"` : ''}>${partyLabel}</span>
 
              <!-- БЛОК МОНЕТ (БЕЗ ДАТЫ СИНХРОНИЗАЦИИ) -->
              <div class="badge coins card-coins">
@@ -366,15 +456,17 @@ function generateCardHTML(char, { archived = false } = {}) {
                       onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
               </button>
-              <button id="btn-open-site-${char.id}"
-                      class="card-act"
-                      type="button"
-                      aria-label="Открыть сайт"
-                      style="${checkingAuth ? 'cursor:not-allowed;' : ''}"
-                      title="${checkingAuth ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
-                      ${checkingAuth ? 'disabled' : ''}
-                      onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
-              ${archived
+               <button id="btn-open-site-${char.id}"
+                       class="card-act"
+                       type="button"
+                       aria-label="Открыть сайт"
+                       style="${checkingAuth ? 'cursor:not-allowed;' : ''}"
+                       title="${checkingAuth ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
+                       ${checkingAuth ? 'disabled' : ''}
+                       onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
+               ${gameWindowBtn(char, archived)}
+               ${archived
+
                 ? `<button class="card-act restore-character-action" type="button" aria-label="Восстановить"
                           title="Вернуть персонажа в активный список">↩</button>`
                 : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
@@ -604,6 +696,13 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
         restoreBtn.disabled = false;
       }
       return;
+    }
+
+    const closeWinBtn = target.closest('.close-game-window-action');
+    if (closeWinBtn) {
+        e.stopPropagation();
+        await closeCharacterGameWindow(closeWinBtn.closest('[data-char-id]')?.dataset.charId, closeWinBtn);
+        return;
     }
 
     const archiveBtn = target.closest('.archive-character-action');

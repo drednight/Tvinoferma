@@ -172,7 +172,15 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
                     .data_directory(data_dir);
             popup_builder = guard_popups(popup_builder, &app, &label, &profile_key);
             return match popup_builder.build() {
-                Ok(window) => NewWindowResponse::Create { window },
+                Ok(window) => {
+                    // Окно авторизации создаётся из обработчика нового окна, поэтому Windows
+                    // оставляет на переднем плане родительское окно, а попап уходит за него —
+                    // пользователь его не видит и не понимает, что нужно ввести пароль.
+                    // Поэтому поднимаем попап поверх и отдаём ему фокус. «Всегда сверху» ставим
+                    // только на пару секунд: постоянное TOPMOST мешало бы переключаться на игру.
+                    raise_above_parent(&app, &window, &label);
+                    NewWindowResponse::Create { window }
+                }
                 Err(error) => {
                     eprintln!(
                         "[WINDOW] {}: не удалось открыть OAuth-окно: {}",
@@ -244,6 +252,43 @@ fn centered_position(
     )
 }
 
+/// Сколько окно авторизации остаётся «поверх всего», мс.
+const POPUP_TOP_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Поднимает окно поверх родительского и отдаёт ему фокус.
+///
+/// Зачем: окно авторизации (OAuth) создаётся из обработчика «страница открыла новое окно».
+/// Windows при этом оставляет на переднем плане родительское окно, и попап оказывается под ним —
+/// пользователь не видит окно входа (жалобы пользователей). Здесь окно показывается,
+/// ставится по центру родителя и забирает фокус.
+///
+/// Постоянный «всегда сверху» не ставим: из-за него нельзя было бы уйти в окно игры поверх
+/// этого окна. Флаг держится `POPUP_TOP_FOR`, затем снимается — этого хватает, чтобы окно
+/// оказалось перед родительским и получило фокус.
+fn raise_above_parent(app: &AppHandle, popup: &WebviewWindow, parent_label: &str) {
+    let _ = popup.show();
+    // Сайт может прислать в `window.open` свои координаты — показываем окно по центру родителя
+    if let Some(parent) = app.get_webview_window(parent_label) {
+        if let (Ok(pos), Ok(size)) = (parent.inner_position(), parent.inner_size()) {
+            if let Ok(own) = popup.outer_size() {
+                let _ = popup.set_position(centered_position(pos, size, own));
+            }
+        }
+    }
+    let _ = popup.set_always_on_top(true);
+    let _ = popup.set_focus();
+
+    let handle = app.clone();
+    let label = popup.label().to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(POPUP_TOP_FOR);
+        // Окно могли закрыть раньше — тогда снимать флаг уже не у чего
+        if let Some(win) = handle.get_webview_window(&label) {
+            let _ = win.set_always_on_top(false);
+        }
+    });
+}
+
 /// Открывает ВИДИМОЕ окно браузера (для ручного входа/действия)
 #[command]
 pub async fn open_sync_window(
@@ -301,18 +346,26 @@ pub async fn open_sync_window(
     Ok(label)
 }
 
-/// Закрывает окно браузера по ID персонажа (вместе с его попапами)
-#[command]
-pub async fn close_sync_window(app: AppHandle, char_id: String) -> Result<(), String> {
-    let base_label = window_label(&char_id);
-    if let Some(win) = app.get_webview_window(&base_label) {
-        win.close().map_err(|e| e.to_string())?;
-    }
+/// Закрывает все окна-всплывашки окна `base_label` (OAuth-попапы авторизации).
+///
+/// Вызывается и явной командой, и при закрытии самого окна персонажа: иначе попап остаётся
+/// жить отдельно, а в нём `window.opener` уже не работает — страница возврата виснет белой.
+pub fn close_popups_of(app: &AppHandle, base_label: &str) {
     let popup_prefix = format!("popup-{}", base_label);
     for (_, window) in app.webview_windows() {
         if window.label().starts_with(&popup_prefix) {
             let _ = window.close();
         }
+    }
+}
+
+/// Закрывает окно браузера по ID персонажа (вместе с его попапами)
+#[command]
+pub async fn close_sync_window(app: AppHandle, char_id: String) -> Result<(), String> {
+    let base_label = window_label(&char_id);
+    close_popups_of(&app, &base_label);
+    if let Some(win) = app.get_webview_window(&base_label) {
+        win.close().map_err(|e| e.to_string())?;
     }
     Ok(())
 }

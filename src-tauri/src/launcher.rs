@@ -25,8 +25,8 @@ use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 const GAMECENTER_EXE: &str = "GameCenter.exe";
-/// Клиенты игры: `elementclient_64.exe`, а также `elementclient.exe` и подобные образы
-const CLIENT_FILTER: &str = "IMAGENAME eq elementclient*";
+/// Начало имени образа клиента игры: `elementclient_64.exe`, `elementclient.exe` и подобные
+const CLIENT_PREFIX: &str = "elementclient";
 /// Perfect World в VK Play (id проекта 0.61)
 const DEFAULT_URL: &str = "vkplay://play/0.61";
 /// Класс окон-вопросов GameCenter
@@ -35,8 +35,16 @@ const DIALOG_CLASS: &str = "TYesNoForm";
 const DIALOG_TITLE: &str = "VK Play";
 /// Сколько ждать это окно после старта GameCenter, если клиент уже был запущен
 const DIALOG_WAIT: Duration = Duration::from_secs(30);
+/// Как часто повторять Enter в окно вопроса (один клик может не дойти)
+const DIALOG_PRESS_GAP: Duration = Duration::from_millis(700);
+/// Как часто опрашивать процессы, ожидая новый клиент игры.
+/// Опрос теперь почти бесплатный (снимок процессов, а не запуск `tasklist`), поэтому шаг мельче.
+const CLIENT_POLL_STEP: Duration = Duration::from_millis(250);
+/// Сколько ждать, пока закрытые GameCenter действительно завершатся
+const GC_EXIT_WAIT: Duration = Duration::from_millis(1500);
 /// Сколько ждать новый клиент игры, секунд (если не задано в вызове)
 const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
+
 /// Сколько искать окно нового клиента, чтобы подписать его и поставить значок
 const DECORATE_WAIT: Duration = Duration::from_secs(90);
 /// Сколько ещё следить за окном после первой подписи (игра может сама сменить заголовок при загрузке и входе в мир)
@@ -113,6 +121,18 @@ mod win {
             kernel: *mut FileTime,
             user: *mut FileTime,
         ) -> i32;
+        // Снимок списка процессов: замена `tasklist` (тот запускал отдельный процесс на каждый
+        // опрос, а в цикле ожидания клиента игры это сотни запусков на одну пати)
+        fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> *mut c_void;
+        fn Process32FirstW(snapshot: *mut c_void, entry: *mut ProcessEntry32W) -> i32;
+        fn Process32NextW(snapshot: *mut c_void, entry: *mut ProcessEntry32W) -> i32;
+        // Полный путь образа процесса: нужен, чтобы отличить «свой» GameCenter от чужих
+        fn QueryFullProcessImageNameW(
+            process: *mut c_void,
+            flags: u32,
+            name: *mut u16,
+            size: *mut u32,
+        ) -> i32;
     }
 
     /// FILETIME из Win32: время в единицах по 100 нс с 1601 года.
@@ -129,6 +149,91 @@ mod win {
             const WINDOWS_TO_UNIX_MS: u64 = 11_644_473_600_000;
             let ticks = (u64::from(self.high) << 32) | u64::from(self.low);
             ticks / 10_000 - WINDOWS_TO_UNIX_MS
+        }
+    }
+
+    /// PROCESSENTRY32W из Win32. Порядок и типы полей важны: структура читается как есть,
+    /// поэтому `#[repr(C)]` и `th32DefaultHeapID: usize` (на 64 битах — 8 байт, на 32 — 4).
+    #[repr(C)]
+    pub struct ProcessEntry32W {
+        pub dw_size: u32,
+        pub cnt_usage: u32,
+        pub th32_process_id: u32,
+        pub th32_default_heap_id: usize,
+        pub th32_module_id: u32,
+        pub cnt_threads: u32,
+        pub th32_parent_process_id: u32,
+        pub pc_pri_class_base: i32,
+        pub dw_flags: u32,
+        pub sz_exe_file: [u16; 260],
+    }
+
+    /// Чистая структура нужного размера: Windows требует заполнить только `dw_size`,
+    /// остальные байты значения не имеют, но должны быть нулями.
+    impl ProcessEntry32W {
+        fn blank() -> Self {
+            // SAFETY: тип — простая структура из целых чисел и массива u16, всё нулевое — корректное значение
+            unsafe { std::mem::zeroed() }
+        }
+    }
+
+    /// Снимок списка процессов: только имена и PID.
+    const TH32CS_SNAPPROCESS: u32 = 0x0000_0002;
+    /// `INVALID_HANDLE_VALUE` — снимок не создался.
+    const INVALID_HANDLE_VALUE: isize = -1;
+
+    /// Все процессы системы: (имя образа, PID).
+    ///
+    /// Быстрый способ: снимок делается прямо в нашем процессе за доли миллисекунды.
+    /// Раньше здесь запускался `tasklist` — внешний процесс, 0.2–0.5 с на каждый опрос, а
+    /// в цикле ожидания клиента игры он опрашивался каждые полсекунды.
+    pub fn all_processes() -> Vec<(String, u32)> {
+        let mut list: Vec<(String, u32)> = Vec::new();
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snapshot as isize == INVALID_HANDLE_VALUE {
+                return list;
+            }
+            let size = std::mem::size_of::<ProcessEntry32W>() as u32;
+            let mut entry = ProcessEntry32W {
+                dw_size: size,
+                ..ProcessEntry32W::blank()
+            };
+            if Process32FirstW(snapshot, &mut entry) != 0 {
+                loop {
+                    let name = String::from_utf16_lossy(&entry.sz_exe_file);
+                    list.push((
+                        name.trim_end_matches('\0').to_string(),
+                        entry.th32_process_id,
+                    ));
+                    entry.dw_size = size;
+                    if Process32NextW(snapshot, &mut entry) == 0 {
+                        break;
+                    }
+                }
+            }
+            CloseHandle(snapshot);
+        }
+        list
+    }
+
+    /// Полный путь образа процесса. `None` — не удалось (например, процесс от администратора,
+    /// а мы нет): тогда считаем, что это «чужой» GameCenter, и закрыть его не сможем.
+    pub fn process_image_path(pid: u32) -> Option<String> {
+        const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return None;
+            }
+            let mut buf = vec![0u16; 32768];
+            let mut len = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut len) != 0;
+            CloseHandle(handle);
+            if !ok {
+                return None;
+            }
+            Some(String::from_utf16_lossy(&buf[..len as usize]))
         }
     }
 
@@ -461,19 +566,22 @@ mod win {
         }
     }
 
-    /// Видимое окно верхнего уровня, принадлежащее процессу: `(hwnd, заголовок)`.
-    /// Нужно, чтобы показать в списке окон игры то, что видит пользователь.
-    pub fn main_window_of(pid: u32) -> Option<(usize, String)> {
-        let mut found = None;
+    /// Главные окна всех процессов сразу: `{ pid: (hwnd, заголовок) }`.
+    ///
+    /// Список запущенных окон игры нужен перед каждым запуском пати (проверки перед запуском,
+    /// кнопка закрытия окна в карточке, вкладка «Сегодня»). Раньше для каждого клиента окна
+    /// перебирались отдельно — при десяти открытых окнах это десять полных обходов всех окон
+    /// системы. Теперь обход один.
+    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
+        let mut map = std::collections::HashMap::new();
         for w in all_windows() {
-            if w.pid != pid || !w.visible || w.title.is_empty() {
+            if !w.visible || w.title.is_empty() {
                 continue;
             }
             // Берём первое видимое с заголовком: у клиента игры главное окно одно
-            found = Some((w.hwnd, w.title));
-            break;
+            map.entry(w.pid).or_insert((w.hwnd, w.title));
         }
-        found
+        map
     }
 
     /// Возвращает окну значки, которые у него уже были (проверка права менять значки без изменения вида).
@@ -505,6 +613,12 @@ mod win {
     }
     pub fn all_windows() -> Vec<WinInfo> {
         Vec::new()
+    }
+    pub fn all_processes() -> Vec<(String, u32)> {
+        Vec::new()
+    }
+    pub fn process_image_path(_pid: u32) -> Option<String> {
+        None
     }
     pub fn press_enter(_hwnd: usize) {}
     pub fn set_title(_hwnd: usize, _title: &str) -> Result<(), u32> {
@@ -552,8 +666,8 @@ mod win {
     pub fn process_start_ms(_pid: u32) -> Option<u64> {
         None
     }
-    pub fn main_window_of(_pid: u32) -> Option<(usize, String)> {
-        None
+    pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
+        std::collections::HashMap::new()
     }
     pub fn restore_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
         Err(1)
@@ -595,28 +709,23 @@ pub(crate) fn hidden(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
-/// Имя образа и PID из вывода `tasklist /FO CSV /NH`: `"elementclient_64.exe","22368","Console",...`
-fn parse_processes(out: &str) -> Vec<(String, u32)> {
-    out.lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if !line.starts_with('"') {
-                return None; // «INFO: задачи не найдены» и пустые строки
-            }
-            let mut parts = line.trim_matches('"').split("\",\"");
-            let name = parts.next()?.to_string();
-            let pid = parts.next()?.parse().ok()?;
-            Some((name, pid))
-        })
-        .collect()
+/// Клиент игры: образ называется `elementclient_64.exe`, `elementclient.exe` и подобными.
+/// Проверка по началу имени повторяет фильтр `tasklist /FI "IMAGENAME eq elementclient*"`.
+fn is_client_image(name: &str) -> bool {
+    name.get(..CLIENT_PREFIX.len())
+        .is_some_and(|head| head.eq_ignore_ascii_case(CLIENT_PREFIX))
 }
 
 /// Все запущенные клиенты игры: (имя образа, PID).
+///
+/// Снимок процессов делается прямо здесь (см. `win::all_processes`). Раньше запускался
+/// `tasklist` — внешний процесс на 0.2–0.5 с, а в цикле ожидания нового клиента игры он
+/// опрашивался каждые полсекунды: на запуск десяти окон это сотни запусков и десятки секунд.
 fn client_processes() -> Result<Vec<(String, u32)>, String> {
-    let out = hidden(Command::new("tasklist").args(["/FI", CLIENT_FILTER, "/FO", "CSV", "/NH"]))
-        .output()
-        .map_err(|e| e.to_string())?;
-    Ok(parse_processes(&String::from_utf8_lossy(&out.stdout)))
+    Ok(win::all_processes()
+        .into_iter()
+        .filter(|(name, _)| is_client_image(name))
+        .collect())
 }
 
 /// PID всех запущенных клиентов игры.
@@ -644,27 +753,57 @@ fn find_dialogs() -> Vec<usize> {
         .collect()
 }
 
-/// Ждёт окно «Клиент игры уже запущен» и подтверждает запуск новой копии (Enter).
-/// Возвращает `true`, если окно появилось и Enter был отправлен.
-fn confirm_new_client_dialog() -> bool {
-    let deadline = Instant::now() + DIALOG_WAIT;
-    while Instant::now() < deadline {
-        if !find_dialogs().is_empty() {
-            // Enter может не дойти с первого раза — повторяем, пока окно не исчезнет
-            for _ in 0..5 {
-                for hwnd in find_dialogs() {
-                    win::press_enter(hwnd);
-                }
-                sleep(Duration::from_millis(800));
-                if find_dialogs().is_empty() {
-                    break;
-                }
-            }
-            return true;
+/// Нажимает Enter во всех окнах вопроса GameCenter. Один клик может не дойти (окно ещё
+/// перехватывает фокус), поэтому Enter повторяется, пока окно не исчезнет.
+fn press_dialog_enter() {
+    for _ in 0..5 {
+        let dialogs = find_dialogs();
+        if dialogs.is_empty() {
+            return;
         }
-        sleep(Duration::from_millis(300));
+        for hwnd in dialogs {
+            win::press_enter(hwnd);
+        }
+        sleep(DIALOG_PRESS_GAP);
     }
-    false
+}
+
+/// Дожидается нового клиента игры, попутно подтверждая окно «Клиент игры уже запущен».
+///
+/// Раньше это были два последовательных ожидания: сначала полностью ждалось окно вопроса
+/// (до 30 с), и только потом начинался поиск нового процесса клиента. Оба ожидания независимы,
+/// поэтому идут одним циклом: как только клиент появился, возврат происходит сразу.
+///
+/// Окно вопроса нажимается не чаще, чем раз в `DIALOG_PRESS_GAP`: спамить Enter нельзя,
+/// а в окно «Попытка авторизации…» его посылать нельзя вовсе (см. `is_gc_dialog`).
+///
+/// Возвращает `(pid нового клиента, нажали ли Enter в окно вопроса)`.
+fn await_new_client(
+    before: &HashSet<u32>,
+    wait: Duration,
+    expect_dialog: bool,
+) -> Option<(u32, bool)> {
+    let dialog_deadline = Instant::now() + DIALOG_WAIT;
+    let client_deadline = Instant::now() + wait;
+    let mut dialog_clicked = false;
+    let mut last_press: Option<Instant> = None;
+    loop {
+        if expect_dialog && Instant::now() < dialog_deadline {
+            let due = last_press.is_none_or(|t| t.elapsed() >= DIALOG_PRESS_GAP);
+            if due && !find_dialogs().is_empty() {
+                dialog_clicked = true;
+                last_press = Some(Instant::now());
+                press_dialog_enter();
+            }
+        }
+        if let Some(pid) = new_client_pid(before, &client_pids().unwrap_or_default()) {
+            return Some((pid, dialog_clicked));
+        }
+        if Instant::now() >= client_deadline {
+            return None;
+        }
+        sleep(CLIENT_POLL_STEP);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,13 +1204,18 @@ struct GcClosed {
     failed: u32,
 }
 
-/// Разбор строки «закрыто_чужих не_удалось», которую печатает скрипт закрытия.
-fn parse_gc_closed(out: &str) -> GcClosed {
-    let mut it = out.split_whitespace().filter_map(|w| w.parse::<u32>().ok());
-    GcClosed {
-        others: it.next().unwrap_or(0),
-        failed: it.next().unwrap_or(0),
-    }
+/// PID всех запущенных GameCenter.
+fn gamecenter_pids() -> Vec<u32> {
+    win::all_processes()
+        .into_iter()
+        .filter(|(name, _)| name.eq_ignore_ascii_case(GAMECENTER_EXE))
+        .map(|(_, pid)| pid)
+        .collect()
+}
+
+/// Путь образа GameCenter. `None` — узнать не удалось (обычно процесс от администратора).
+fn gamecenter_path(pid: u32) -> Option<String> {
+    win::process_image_path(pid).map(|p| p.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(p))
 }
 
 /// Закрывает GameCenter перед запуском. Запущенные клиенты игры продолжают работать.
@@ -1080,27 +1224,45 @@ fn parse_gc_closed(out: &str) -> GcClosed {
 /// новый просто передаёт ему ссылку запуска, и игра стартует под тем аккаунтом, что открыт там.
 /// Поэтому GameCenter из **других** папок закрываются всегда, а из этого `exe` — только если `close_own`
 /// (когда подставляется сохранённый вход).
+///
+/// Раньше здесь запускался PowerShell с `Get-CimInstance Win32_Process` — 1–2.5 с на КАЖДЫЙ аккаунт
+/// (WMI самый медленный способ узнать про процессы). Теперь это прямой перебор: миллисекунды.
 fn close_gamecenters(exe: &Path, close_own: bool) -> Result<GcClosed, String> {
-    let script = "$me = $env:TF_GC_EXE; $own = $env:TF_GC_OWN -eq '1'; $others = 0; $failed = 0; \
-                  Get-CimInstance Win32_Process -Filter \"Name='GameCenter.exe'\" | ForEach-Object { \
-                    $mine = ($_.ExecutablePath -ieq $me); \
-                    if ($mine -and -not $own) { return }; \
-                    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop; if (-not $mine) { $others++ } } \
-                    catch { $failed++ } \
-                  }; \
-                  Write-Output \"$others $failed\"";
-    let out = hidden(
-        Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", script])
-            .env("TF_GC_EXE", plain_path(exe))
-            .env("TF_GC_OWN", if close_own { "1" } else { "0" }),
-    )
-    .output()
-    .map_err(|e| format!("powershell: {}", e))?;
-    if out.status.success() {
-        Ok(parse_gc_closed(&String::from_utf8_lossy(&out.stdout)))
-    } else {
-        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    let me = plain_path(exe);
+    let mut report = GcClosed::default();
+    for pid in gamecenter_pids() {
+        // Путь не прочитали: считаем чужим — так безопаснее (свой GameCenter при этом останется)
+        let path = gamecenter_path(pid).unwrap_or_default();
+        let mine = !path.is_empty() && path.eq_ignore_ascii_case(&me);
+        if mine && !close_own {
+            continue;
+        }
+        match win::kill_process(pid) {
+            Ok(()) => {}
+            // 87 — процесс уже завершился между перебором и закрытием: для нас это то же «закрыт»
+            Err(87) => {}
+            Err(_) => {
+                report.failed += 1;
+                continue;
+            }
+        }
+        if !mine {
+            report.others += 1;
+        }
+    }
+    Ok(report)
+}
+
+/// Ждёт, пока закрытые GameCenter действительно завершатся (нужно, чтобы он освободил
+/// единственный экземпляр). Раньше здесь стоял фиксированный `sleep(1500 мс)` на каждый запуск;
+/// на практике процессы заканчиваются за 0.2–0.5 с, поэтому ждём по факту, но не дольше прежнего.
+fn wait_gamecenters_gone() {
+    let deadline = Instant::now() + GC_EXIT_WAIT;
+    loop {
+        if gamecenter_pids().is_empty() || Instant::now() >= deadline {
+            return;
+        }
+        sleep(Duration::from_millis(100));
     }
 }
 
@@ -1292,8 +1454,9 @@ pub async fn launcher_start(
         let magic = id.map(get_magic).transpose()?.flatten();
         // Чужие GameCenter закрываем всегда, свой — только если подставляем в него сохранённый вход
         let closed = close_gamecenters(&exe, magic.is_some())?;
+        // Ждём освобождения единственного экземпляра GameCenter, но по факту, а не фиксированные 1.5 с
         if magic.is_some() || closed.others > 0 {
-            sleep(Duration::from_millis(1500));
+            wait_gamecenters_gone();
         }
         let switched = match magic {
             Some(magic) => {
@@ -1311,22 +1474,17 @@ pub async fn launcher_start(
             .map_err(|e| format!("{}: {}", exe.display(), e))?;
         let pid = child.id();
 
-        let dialog_clicked = !before.is_empty() && confirm_new_client_dialog();
-
-        let deadline = Instant::now() + wait;
-        let client_pid = loop {
-            if let Some(pid) = new_client_pid(&before, &client_pids()?) {
-                break pid;
-            }
-            if Instant::now() >= deadline {
-                return Err(format!(
+        // Окно вопроса «Запустить новую копию клиента» и появление нового клиента ждём одним
+        // циклом: раньше сначала полностью ждалось окно вопроса, и только потом начинался
+        // поиск процесса клиента — на каждый аккаунт это лишние секунды ожидания.
+        let (client_pid, dialog_clicked) = await_new_client(&before, wait, !before.is_empty())
+            .ok_or_else(|| {
+                format!(
                     "Клиент игры не запустился за {} с (GameCenter: {})",
                     wait.as_secs(),
                     exe.display()
-                ));
-            }
-            sleep(Duration::from_millis(500));
-        };
+                )
+            })?;
 
         // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт
         if let Some(title) = window_title.as_deref().and_then(clean_title) {
@@ -1394,16 +1552,18 @@ pub struct RunningClient {
 pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let list = client_processes()?;
+        // Все окна системы перебираются один раз на весь список, а не по одному на клиента
+        let windows = win::main_windows_by_pid();
         Ok::<Vec<RunningClient>, String>(
             list.into_iter()
                 .map(|(image, pid)| {
-                    let window = win::main_window_of(pid);
+                    let window = windows.get(&pid);
                     RunningClient {
                         pid,
                         image,
                         started_at: win::process_start_ms(pid),
                         title: window.as_ref().map(|(_, t)| t.clone()).unwrap_or_default(),
-                        hwnd: window.map(|(h, _)| h as u64),
+                        hwnd: window.map(|(h, _)| *h as u64),
                         elevated: win::process_elevated(pid),
                     }
                 })
@@ -2358,20 +2518,6 @@ mod tests {
     }
 
     #[test]
-    fn gamecenter_close_report_is_parsed() {
-        assert_eq!(
-            parse_gc_closed("2 1\r\n"),
-            GcClosed {
-                others: 2,
-                failed: 1
-            }
-        );
-        assert_eq!(parse_gc_closed("0 0"), GcClosed::default());
-        assert_eq!(parse_gc_closed(""), GcClosed::default());
-        assert_eq!(parse_gc_closed("мусор"), GcClosed::default());
-    }
-
-    #[test]
     fn picker_output_is_a_single_path() {
         assert_eq!(parse_picker_output(""), None);
         assert_eq!(parse_picker_output("\r\n"), None);
@@ -2382,18 +2528,24 @@ mod tests {
     }
 
     #[test]
-    fn parses_tasklist_output() {
-        let out = "\"elementclient_64.exe\",\"22368\",\"Console\",\"1\",\"500 000 K\"\r\n\
-                   \"elementclient.exe\",\"1204\",\"Console\",\"1\",\"480 000 K\"\r\n";
-        assert_eq!(
-            parse_processes(out),
-            vec![
-                ("elementclient_64.exe".to_string(), 22368),
-                ("elementclient.exe".to_string(), 1204)
-            ]
-        );
-        assert!(parse_processes("INFO: No tasks are running.\r\n").is_empty());
-        assert!(parse_processes("").is_empty());
+    fn clients_are_recognised_by_image_name_prefix() {
+        assert!(is_client_image("elementclient_64.exe"));
+        assert!(is_client_image("elementclient.exe"));
+        // Регистр не важен: `tasklist` тоже сравнивал без учёта регистра
+        assert!(is_client_image("ElementClient_64.exe"));
+        // Совпадение по началу имени, а не по вхождению (как фильтр `elementclient*`)
+        assert!(is_client_image("elementclient"));
+        assert!(!is_client_image("GameCenter.exe"));
+        assert!(!is_client_image("мой elementclient.exe"));
+        assert!(!is_client_image(""));
+    }
+
+    #[test]
+    fn gamecenters_are_recognised_by_image_name() {
+        let name = |n: &str| n.eq_ignore_ascii_case(GAMECENTER_EXE);
+        assert!(name("GameCenter.exe"));
+        assert!(name("gamecenter.EXE"));
+        assert!(!name("GameCenterApi.exe"));
     }
 
     #[test]

@@ -20,6 +20,8 @@ serde_json = "1"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
+# Один экземпляр приложения: повторный запуск поднимает уже открытое окно, а не создаёт второе
+tauri-plugin-single-instance = "2"
 tokio = { version = "1", features = ["time"] }
 urlencoding = "2.1"
 # Хранилище учётных данных ОС: Windows Credential Manager / macOS Keychain / Secret Service (Linux)

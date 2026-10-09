@@ -1,6 +1,9 @@
 /* css/modules/parties.css
    Вкладка «Пати»: карточки с цветной полоской, значком, стопкой персонажей, полосой «онлайн» и кнопкой запуска.
-   Цвет карточки задаётся переменными --pt-h / --pt-s (оттенок считается по названию пати, js/modules/parties/renderer.js). */
+   Цвет карточки задаётся переменными --pt-h / --pt-s / --pt-l: это оттенок, насыщенность и светлота.
+   По умолчанию оттенок считается по названию пати, но пользователь может выбрать свой цвет
+   кнопкой 🎨 — тогда js/modules/parties/renderer.js (partyStyleVars) переводит выбранный
+   `#rrggbb` в те же три переменные, и вид карточки остаётся прежним. */
 
 .pt-head-row { align-items: flex-end; }
 .pt-head-actions { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; }
@@ -27,7 +30,8 @@
 }
 
 .pt-card {
-  --pt-c: hsl(var(--pt-h) var(--pt-s) 65%);
+  /* Светлота приходит из пати; запасное значение — прежние 65%, чтобы старые карточки не «слетели» */
+  --pt-c: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%));
   position: relative;
   overflow: hidden;
   display: flex;
@@ -35,7 +39,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background:
-    radial-gradient(120% 90% at 0% 0%, hsl(var(--pt-h) var(--pt-s) 60% / 0.12), transparent 62%),
+    radial-gradient(120% 90% at 0% 0%, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.12), transparent 62%),
     var(--surface-1);
   box-shadow: var(--shadow-1);
   transition: transform var(--speed) var(--ease), border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
@@ -43,7 +47,7 @@
 .pt-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--pt-c); }
 .pt-card:hover {
   transform: translateY(-2px);
-  border-color: hsl(var(--pt-h) var(--pt-s) 60% / 0.5);
+  border-color: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.5);
   box-shadow: var(--shadow-2);
 }
 
@@ -64,7 +68,7 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) 60%), hsl(calc(var(--pt-h) + 40) var(--pt-s) 48%));
+  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)), hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%)));
   color: #0b0d12;
   font-weight: 800;
   font-size: 0.86rem;
@@ -145,6 +149,87 @@
 }
 .pt-card.is-none .pt-btn-launch { background: var(--surface-2); border-color: var(--border); color: var(--text-dim); }
 .pt-btn-icon { width: 36px; padding: 0; font-size: 1rem; }
+
+/* Кнопка выбора цвета пати: показываем текущий выбранный цвет «под» значком,
+   чтобы её не приходилось нажимать, чтобы вспомнить, какой цвет стоит. */
+.party-color-action-btn { position: relative; }
+.party-color-action-btn[style*="--swatch"]::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--swatch);
+  transform: translateX(-50%);
+}
+
+/* --- Выбор цвета пати (окно «Цвет пати») --- */
+.ptc { display: grid; gap: 12px; }
+.ptc-lead { font-size: 0.8rem; margin: 0; }
+.ptc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ptc-hex { width: 120px; font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
+.ptc-native {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.ptc-native input[type='color'] {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+.ptc-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 6px; }
+.ptc-swatch {
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--c);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s var(--ease), box-shadow var(--speed) var(--ease);
+}
+.ptc-swatch:hover { transform: translateY(-2px); }
+.ptc-swatch.is-on { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text); }
+
+/* Предпросмотр: та же карточка из трёх элементов, что и настоящая (полоска, значок, название) */
+.ptc-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(120% 90% at 0% 0%, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.12), transparent 62%),
+    var(--surface-1);
+}
+.ptc-preview-stripe { position: absolute; inset: 0 auto 0 0; width: 3px; background: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)); }
+.ptc-preview-badge {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)), hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%)));
+  color: #0b0d12;
+  font-weight: 800;
+  font-size: 0.8rem;
+}
+.ptc-preview-text { font-weight: 650; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Список участников раскрывается плавно (grid 0fr → 1fr) */
 .pt-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.25s var(--ease); }

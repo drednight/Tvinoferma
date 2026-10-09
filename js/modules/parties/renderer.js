@@ -4,13 +4,18 @@ import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, roundCoins } from '../../core/coins.js';
-import { openEditPartyModal } from './manager.js'; 
+import { openEditPartyModal, openPartyColorModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
 import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
+import { partyStyleVars } from './color.js';
 import { hasGameCenterPath } from '../launcher/launch.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { toast } from '../../core/ui.js';
+
+// Функции цвета живут в color.js: ими пользуются ещё и список персонажей и окно настроек.
+// `partyHue` реэкспортируется — на него ссылаются тесты (viewsRedesign).
+export { partyHue } from './color.js';
 
 // Локальное состояние раскрытых групп
 let expandedParties = new Set();
@@ -49,12 +54,6 @@ function getGroupedParties() {
 }
 
 /** Оттенок пати (0–359) по названию: у каждой пати свой стабильный цвет полоски и значка. */
-export function partyHue(name) {
-    let h = 0;
-    for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) % 360;
-    return h;
-}
-
 /** Две буквы для значка пати: «Alpha Strike» → «AS», «Основная пати» → «ОП», «222» → «22». */
 export function partyInitials(name) {
     const words = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -117,11 +116,10 @@ function partyCardHtml(name, members) {
         : `${activeMembers.length} чел.`;
     const countLabel = `${activeCountLabel}${archivedCount ? ` · ${archivedCount} в архиве` : ''}`;
     const isDraggable = name !== NO_PARTY_LABEL;
-    const hue = isDraggable ? partyHue(name) : null;
     const launchReady = activeMembers.filter(m => hasGameCenterPath(m)).length;
     const onlinePct = activeMembers.length ? Math.round(stats.onlineCount / activeMembers.length * 100) : 0;
     const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
-    const style = hue === null ? '--pt-h:220;--pt-s:8%' : `--pt-h:${hue};--pt-s:70%`;
+    const style = partyStyleVars(name, party);
 
     return `
         <article class="party-card-modern pt-card ${isExpanded ? 'is-expanded' : ''} ${isDraggable ? '' : 'is-none'}" data-party-name="${escapeHtml(name)}" style="${style}">
@@ -144,6 +142,10 @@ function partyCardHtml(name, members) {
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
+                ${isDraggable ? `<button class="pt-btn pt-btn-icon party-color-action-btn" type="button" data-party-name="${escapeHtml(name)}"
+                        title="${party?.color ? `Цвет пати: ${escapeHtml(party.color)}. Изменить` : 'Выбрать цвет пати'}"
+                        aria-label="Цвет пати"
+                        ${party?.color ? `style="--swatch:${escapeHtml(party.color)}"` : ''}>🎨</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав и название пати">⚙</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon archive-party-action-btn" type="button" data-party-id="${escapeHtml(party.id)}" title="Переместить пати в архив">📦</button>` : ''}
             </div>
@@ -182,7 +184,9 @@ export function renderPartiesGrid() {
         container.className = 'pt-grid';
         container.innerHTML = archivedPartyCards.length
             ? archivedPartyCards.map(({ party, members, mirror }) => {
-                return `<article class="party-card-modern pt-card">
+                // Цвет задаём и в архиве: иначе `hsl(var(--pt-h) …)` здесь невалиден и карточка
+                // остаётся серой, хотя у пати есть и свой выбранный цвет, и оттенок по названию.
+                return `<article class="party-card-modern pt-card" style="${partyStyleVars(party.name, party)}">
                     <header class="party-card-header pt-head">
                       <span class="pt-badge-icon" aria-hidden="true">${escapeHtml(partyInitials(party.name))}</span>
                       <div class="pt-title"><h3>${escapeHtml(party.name)}</h3><span class="pt-sub">${members.length} чел. · ${mirror ? 'архивные участники активной пати' : 'пати в архиве'}</span></div>
@@ -447,6 +451,14 @@ function bindPartyEvents(container) {
             e.stopPropagation();
             const partyName = editBtn.dataset.partyName;
             openEditPartyModal(partyName);
+            return;
+        }
+
+        // 2a. Клик по кнопке "Цвет пати"
+        const colorBtn = target.closest('.party-color-action-btn');
+        if (colorBtn) {
+            e.stopPropagation();
+            openPartyColorModal(colorBtn.dataset.partyName);
             return;
         }
 

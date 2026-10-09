@@ -42,6 +42,17 @@ use tauri::{Emitter, Manager, WindowEvent};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Плагин одиночного экземпляра обязан идти первым: он проверяет именованный мьютекс
+        // в `setup` плагинов, то есть до создания окон из `tauri.conf.json`. Регистрируй
+        // его раньше остальных плагинов — иначе второй запуск успеет создать своё окно
+        // и значок в трее, и в трее будет висеть два процесса (жалобы пользователей).
+        //
+        // Текущий экземпляр лежит в трее (окно скрыто), поэтому появление второго запуска
+        // должно не просто показать окно, а вернуть его из трея: развернуть, поднять
+        // поверх остальных и забрать фокус.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            tray::show_main(app);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -81,6 +92,11 @@ pub fn run() {
                 // Скрытые окна персонажей не должны держать приложение после закрытия главного окна
                 WindowEvent::Destroyed if label == "main" => {
                     window.app_handle().exit(0);
+                }
+                // Окно персонажа закрыли — закрываем и его окна авторизации (OAuth-попапы).
+                // Иначе попап остаётся жить отдельно, а в нём уже не работает `window.opener`.
+                WindowEvent::Destroyed if label.starts_with("sync-win-") => {
+                    windows::close_popups_of(window.app_handle(), label);
                 }
                 WindowEvent::CloseRequested { .. }
                     if label.starts_with("sync-win-") || label.starts_with("popup-sync-win-") =>

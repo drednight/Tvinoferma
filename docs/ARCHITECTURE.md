@@ -49,6 +49,16 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 | `cookie_bank.rs` | Куки сессий pwonline.ru, зашифрованные AES-256-GCM; ключ лежит в хранилище ОС |
 | `commands/` | `state.json` (атомарная запись), резервные копии, пароли в хранилище ОС (`keyring`) |
 | `tray.rs` | Иконка в трее |
+
+Один экземпляр приложения: плагин `tauri-plugin-single-instance` проверяет именованный мьютекс в
+`setup` плагинов — до создания окон из `tauri.conf.json`, поэтому он регистрируется **первым** в
+`lib.rs`. Повторный запуск передаёт себя работающему и закрывается, а тот поднимает своё окно
+из трея (`tray::show_main`).
+
+Скорость запуска окон игры держится на прямых вызовах Win32: список процессов — `CreateToolhelp32Snapshot`
+(не `tasklist`), закрытие GameCenter — `TerminateProcess` (не PowerShell с WMI), список окон — один
+`EnumWindows` на весь ответ. Внешние процессы в этом пути остались только для выбора файла
+(`launcher_pick_gamecenter`) и повышения прав.
 | `scripts/*.js` | Скрипты, которые внедряются в страницы сайта (`include_str!`). Только читают DOM |
 | `scripts/selectors.json` | Все селекторы, тексты («Вы не авторизованы») и регулярные выражения парсеров: имя → список «основной, запасные…» |
 | `scripts/common.js` | Общий слой `window.__TF`: поиск по списку селекторов, проверка «Проверки безопасности». Перед каждым скриптом `parsers.rs` (`with_common`) подставляет в него `selectors.json` |
@@ -62,7 +72,8 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 | `core/` | Состояние (`state.js`), хранение (`storage.js` и адаптеры), миграции `state.json` (`migrations.js`), пароли (`secrets.js`), монеты (`coins.js`), идентификаторы (`ids.js`), модальные окна и уведомления (`ui.js`), журнал задач и отмена (`taskLog.js`), тексты кодов ошибок (`errorCodes.js`), состояние парсеров (`parserHealth.js`), свежесть данных (`freshness.js`), выбор даты (`datePicker.js`) |
 | `data/` | Экспорт, импорт, сравнение и слияние персонажей |
 | `modules/sync/` | Очередь фоновых задач (`queue.js`: лимит окон, повторы), проверка входа, баланс, `syncManager.js` |
-| `modules/characters/`, `modules/parties/` | Список, карточка, форма персонажа; пати |
+| `modules/characters/`, `modules/parties/` | Список, карточка, форма персонажа; пати (цвет пати — `parties/color.js`) |
+| `modules/launcher/runningWindows.js` | Общий кэш запущенных окон игры: один опрос Rust на приложение (кнопка «🛑» в карточке персонажа и блок «Окна игры» на вкладке «Сегодня» берут один и тот же список) |
 | `modules/marathons/` | Марафоны: модель (`model.js`), сверка с сайтом (`siteSync.js`), мастер добавления (`wizard.js`), страница (`page.js`), разбор новости (`newsParser.js`, `newsList.js`), слияние источников (`mergeSources.js`) |
 | `desktop/`, `settings/` | Уведомления, автообновление (`updater.js`, `updateState.js`, `updateUi.js`), окно приложения; настройки, плашка «Парсер устарел» и таблица «Состояние парсеров» (`parserHealthUi.js`) |
 | `modules/{arena,automation,bank,dungeons,injection,runes,cloud}` | Заготовки будущих разделов, помечены ссылками на Issues |

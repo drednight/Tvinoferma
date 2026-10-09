@@ -1,13 +1,14 @@
 // js/modules/parties/manager.js
 
-import { state } from '../../core/state.js';
+import { state, normalizePartyColor } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { escapeHtml, uid } from '../../core/utils.js';
 import { renderCharacters } from '../characters/list.js';
-import { renderPartiesGrid } from './renderer.js';
+import { renderPartiesGrid, partyInitials } from './renderer.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { partyByName, charactersInParty, isInParty, isMainParty, setMembership } from './membership.js';
+import { PARTY_COLORS, hexToHsl, hslToHex, partyHue } from './color.js';
 
 /**
  * Открывает модальное окно для создания новой пати
@@ -56,6 +57,117 @@ export function openCreatePartyModal() {
             return true;
         }
     });
+}
+
+/**
+ * Выбор цвета пати (кнопка 🎨 в карточке пати).
+ *
+ * Зачем: просьба пользователей — красить пати в свои цвета, а не только в автоматический оттенок
+ * от названия. Вид карточки не меняется: выбранный цвет подставляется в те же переменные
+ * `--pt-h/--pt-s/--pt-l`, что и автоматический оттенок (см. `partyStyleVars` в renderer.js).
+ *
+ * @param {string} currentName название пати
+ */
+export function openPartyColorModal(currentName) {
+    const party = partyByName(state.parties, currentName);
+    if (!party) { toast('Пати не найдена.', 'error'); return; }
+
+    const current = normalizePartyColor(party.color);
+    // Текущий оттенок от названия — «начальное значение», пока свой цвет не выбран
+    const auto = hslToHex({ h: partyHue(currentName), s: 70, l: 65 });
+    const initial = current || auto;
+    const previewHsl = hexToHsl(initial) || { h: 220, s: 70, l: 65 };
+
+    const swatches = PARTY_COLORS.map(color => `
+        <button type="button" class="ptc-swatch${color === current ? ' is-on' : ''}"
+                style="--c:${color}" data-color="${color}"
+                title="${color}" aria-label="Цвет ${color}"></button>`).join('');
+
+    const content = `
+        <div class="ptc">
+            <p class="muted ptc-lead">Цвет полоски, значка и подсветки карточки «${escapeHtml(currentName)}». Стиль карточки останется прежним — поменяется только цвет.</p>
+            <div class="ptc-row">
+                <label class="ptc-native">
+                    <input type="color" id="ptc-native" value="${initial}" aria-label="Свой цвет" />
+                    <span>Свой цвет</span>
+                </label>
+                <input class="input ptc-hex" id="ptc-hex" value="${current || ''}" placeholder="#5865F2" maxlength="7" spellcheck="false" />
+                <button type="button" class="btn ghost small" id="ptc-reset" ${current ? '' : 'disabled'}>По названию</button>
+            </div>
+            <div class="ptc-swatches">${swatches}</div>
+            <div class="ptc-preview" id="ptc-preview" style="--pt-h:${previewHsl.h};--pt-s:${previewHsl.s}%;--pt-l:${previewHsl.l}%">
+                <span class="ptc-preview-stripe"></span>
+                <span class="ptc-preview-badge">${escapeHtml(partyInitials(currentName))}</span>
+                <span class="ptc-preview-text">${escapeHtml(currentName)}</span>
+            </div>
+        </div>`;
+
+    showModal({
+        title: `Цвет пати: ${currentName}`,
+        content,
+        submitText: 'Сохранить',
+        cancelText: 'Отмена',
+        onSubmit() {
+            const hex = document.getElementById('ptc-hex')?.value.trim();
+            // Пусто или некорректное значение = вернуть автоматический оттенок по названию
+            const value = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
+            if (value === current) { toast('Цвет не изменился.', 'info'); return true; }
+            party.color = value;
+            party.updatedAt = new Date().toISOString();
+            persist().then(() => {
+                renderPartiesGrid();
+                renderCharacters();
+                toast(value ? `Цвет пати «${currentName}»: ${value}` : 'Цвет пати сброшен: оттенок по названию', 'success');
+            }).catch(() => toast('Не удалось сохранить цвет пати', 'error'));
+            return true;
+        }
+    });
+
+    // Живой предпросмотр и подстановка выбранного цвета: кнопка «Сохранить» сама не должна
+    // ни зависеть от валидности, ни требовать лишнего клика по полю.
+    // `showModal` собирает окно синхронно, поэтому обработчики вешаем сразу — без setTimeout,
+    // иначе первые касания окна (и тесты) остались бы без реакции.
+    const modal = document.getElementById('modal-root');
+    const hexInput = document.getElementById('ptc-hex');
+    const native = /** @type {HTMLInputElement | null} */ (document.getElementById('ptc-native'));
+    const preview = document.getElementById('ptc-preview');
+    const reset = document.getElementById('ptc-reset');
+    if (!hexInput || !native || !preview) return;
+
+    const paint = (value) => {
+        const hsl = hexToHsl(value);
+        if (!hsl) return;
+        preview.style.setProperty('--pt-h', String(hsl.h));
+        preview.style.setProperty('--pt-s', `${hsl.s}%`);
+        preview.style.setProperty('--pt-l', `${hsl.l}%`);
+    };
+    /** Выбран конкретный цвет: поле, образец и предпросмотр показывают одно и то же. */
+    const pick = (value) => {
+        hexInput.value = value;
+        native.value = value;
+        paint(value);
+        modal.querySelectorAll('.ptc-swatch').forEach(s =>
+            s.classList.toggle('is-on', s.dataset.color === value));
+        reset?.toggleAttribute('disabled', value === current);
+    };
+
+    native.addEventListener('input', () => pick(native.value));
+    hexInput.addEventListener('input', () => {
+        const v = hexInput.value.trim();
+        if (/^#[0-9a-f]{6}$/i.test(v)) pick(v.toLowerCase());
+        else paint(native.value);
+    });
+    modal.querySelectorAll('.ptc-swatch').forEach(s => {
+        s.addEventListener('click', () => pick(s.dataset.color));
+    });
+    // «По названию»: поле очищается — по нему `onSubmit` и понимает, что цвет сброшен
+    reset?.addEventListener('click', () => {
+        hexInput.value = '';
+        paint(auto);
+        modal.querySelectorAll('.ptc-swatch').forEach(s => s.classList.remove('is-on'));
+        reset.toggleAttribute('disabled', true);
+    });
+    paint(initial);
 }
 
 /**

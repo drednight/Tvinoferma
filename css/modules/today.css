@@ -243,6 +243,26 @@
 .today-side-list { max-height: 260px; }
 .today-side-open { align-self: flex-start; }
 
+/* Блок «Запущенные окна игры»: список окон с кнопкой закрытия каждого и «Закрыть все».
+   Список ограничен по высоте, иначе десяток открытых окон растягивал бы панель «Сегодня». */
+.rwn-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.rwn .today-empty { font-size: 0.8rem; }
+.rwn-list { max-height: 190px; gap: 4px; }
+.rwn-row { padding: 5px 8px; gap: 8px; }
+.rwn-row .today-row-text b { font-size: 0.84rem; }
+.rwn-row .today-row-text small { font-size: 0.72rem; }
+/* Точка слева: узнанное окно (сопоставлено с персонажем) — обычный цвет, чужое — приглушённый */
+.rwn-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: var(--text-faint); }
+.rwn-dot.is-known { background: var(--success); }
+.rwn-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.rwn-actions .btn { white-space: nowrap; }
+
 /* Данж дня: цвет карточки — категория сегодняшнего ежедневного задания */
 .today-dungeon {
   display: flex;

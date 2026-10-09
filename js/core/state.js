@@ -163,11 +163,23 @@ export function normalizeCharacter(input = {}) {
   };
 }
 
+/**
+ * Цвет пати, выбранный пользователем: `#rrggbb` или null («считать по названию»).
+ * Любое другое значение отбрасывается — иначе битый файл state.json покрасит карточку
+ * в произвольный цвет (или вообще сломает разметку).
+ */
+export function normalizePartyColor(value) {
+  const raw = String(value ?? '').trim();
+  return /^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null;
+}
+
 function normalizeParty(input = {}) {
   return {
     id: input.id || crypto.randomUUID?.() || String(Date.now()), // Добавили ID для стабильности
     name: String(input.name || '').trim(),
     order: Number(input.order) || null, // ✅ СОХРАНЯЕМ ПОЛЕ ORDER
+    // Свой цвет пати; null — взять оттенок по названию (как раньше)
+    color: normalizePartyColor(input.color),
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
   };
