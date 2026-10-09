@@ -10,12 +10,11 @@ import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord, todayStr } from './today.js';
-import { plannerHtml, bindPlanner, openPlannerDay } from './plannerView.js';
+import { plannerHtml, bindPlanner, openPlannerDay, openPlannerEntryForm } from './plannerView.js';
 import { plannerEventsForDate } from './planner.js';
 import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
-import { runningWindows, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
-import { rowLabel, formatUptime } from '../launcher/windowList.js';
+import { persist } from '../../core/storage.js';
 
 /**
  * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
@@ -30,70 +29,11 @@ export function eventTimeText(event) {
 }
 
 /**
- * Блок «Запущенные окна игры» на вкладке «Сегодня»: какие окна открыты и чем с ними можно сделать.
+ * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и туду лист.
  *
- * Список окон живёт в Rust, а разметка здесь собирается синхронно, поэтому сначала выводится
- * пустой контейнер, а строки добавляет `fillRunningWindowsBlock` после опроса (см. runningWindows.js).
- * Когда окон нет, блок показывает короткую подсказку.
+ * Раньше здесь был ещё и блок «Окна игры», но управление окнами ушло в «Инструменты»,
+ * а на «Сегодня» остался обзор без пользы.
  *
- * Общих кнопок «Все окна…» и «Закрыть все» здесь намеренно нет (жалоба пользователя):
- * это место для обзора, а не для управления. Полный список окон с выбором остаётся в FAB
- * на вкладке «Пати», в меню трея, в командной палитре и в настройках.
- * @returns {string}
- */
-export function runningWindowsBlockHtml() {
-  return `
-    <h4 class="today-title"><span aria-hidden="true">🎮</span> Окна игры
-      <span class="today-count" data-running-count hidden></span>
-    </h4>
-    <div class="rwn" data-running-windows>
-      <p class="muted today-empty">Проверяем запущенные окна…</p>
-    </div>`;
-}
-
-/**
- * Наполняет блок «Запущенные окна игры» последним известным списком окон и подписывается на изменения.
- *
- * Список окон общий для приложения (`runningWindows.js`): он же нужен кнопке закрытия окна
- * в карточке персонажа, поэтому здесь не делается отдельный запрос к Rust — блок сначала
- * показывает кэш, а строки обновляются, когда список перечитают.
- *
- * @param {HTMLElement} root контейнер страницы «Сегодня»
- */
-export function fillRunningWindowsBlock(root) {
-  const box = root.querySelector('[data-running-windows]');
-  if (!box) return;
-
-  const draw = (rows) => {
-    const counter = root.querySelector('[data-running-count]');
-    if (counter) {
-      counter.hidden = !rows.length;
-      counter.textContent = String(rows.length);
-    }
-    if (!rows.length) {
-      box.innerHTML = '<p class="muted today-empty">Запущенных окон игры нет.</p>';
-      return;
-    }
-    box.innerHTML = `<ul class="today-list rwn-list">${rows.map(row => `
-      <li class="today-row rwn-row">
-        <span class="rwn-dot ${row.known ? 'is-known' : ''}" aria-hidden="true"></span>
-        <span class="today-row-text">
-          <b title="${escapeHtml(rowLabel(row))}">${escapeHtml(rowLabel(row))}</b>
-          <small class="muted">${row.uptimeMs == null ? 'время работы неизвестно' : `работает ${formatUptime(row.uptimeMs)}`}${row.elevated ? ' · админ' : ''}</small>
-        </span>
-        <button type="button" class="btn ghost small" data-today-act="windows-close-one" data-today-pid="${row.pid}"
-                title="Закрыть это окно игры">🛑 Закрыть</button>
-      </li>`).join('')}</ul>`;
-  };
-
-  draw(runningWindows());
-  // Блок живёт, пока открыта страница: после ухода с вкладки подписку снимаем
-  const off = onRunningWindows(draw);
-  const page = box.closest('.page');
-  page?.addEventListener('tf-leave', off, { once: true });
-}
-/**
- * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и все записи на сегодня.
  * @param {any} [appState]
  */
 export function todaySideHtml(appState = state) {
@@ -124,28 +64,65 @@ export function todaySideHtml(appState = state) {
           </span>`).join('')}
       </div>
 
-      <h4 class="today-title"><span aria-hidden="true">🗓</span> Записи на день
-        ${events.length ? `<span class="today-count">${events.length}</span>` : ''}
-      </h4>
-      ${events.length ? `<ul class="today-list today-side-list">
-        ${events.slice(0, 8).map(e => `
-          <li class="today-row">
-            <span class="planner-color is-${escapeHtml(e.color || 'blue')}"></span>
-            <span class="today-row-text">
-              <b>${escapeHtml(e.title)}</b>
-              <small class="muted">${escapeHtml(eventTimeText(e))}${e.done ? ' · готово' : ''}</small>
-            </span>
-            ${e.source === 'marathon' ? `
-              <button type="button" class="btn secondary small" data-today-act="open-marathon" data-today-marathon="${escapeHtml(e.marathonId)}"
-                title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>` : ''}
-          </li>`).join('')}
-      </ul>
-      ${events.length > 8 ? `<p class="muted today-more">Показаны первые 8 из ${events.length}.</p>` : ''}
-      <button type="button" class="btn secondary small today-side-open" data-open-day="${today}">Открыть день в календаре</button>`
-        : '<p class="muted today-empty">На этот день записей нет.</p>'}
+      ${todoListHtml(events, today)}
 
-      <div class="rwn-block">${runningWindowsBlockHtml()}</div>
     </aside>`;
+}
+
+/** Подпись статуса в туду листе: что видно на кнопке справа. */
+const STATUS_TEXT = { todo: 'Ожидает', doing: 'В работе', done: 'Выполнено' };
+/** Следующий статус по клику: ждёт → в работе → выполнено → обратно в ожидает. */
+const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
+
+/**
+ * Туду лист: записи дня как список дел.
+ *
+ * Это не отдельное хранилище, а те же записи календаря — просто показанные как дела:
+ * чекбокс слева (снимает и ставит «выполнено»), название, справа статус. «В работе»
+ * отдельным кликом: из галочки его вывести нельзя, это промежуточное состояние.
+ *
+ * Свои записи — с чекбоксом и статусом. Марафоны и постоянные ивенты в списке остаются
+ * читаемыми строками: их нельзя отметить или удалить, они приходят из расписания.
+ *
+ * @param {Array<any>} events записи дня, как их отдаёт `plannerEventsForDate`
+ * @param {string} today дата дня списка, МСК
+ * @returns {string}
+ */
+export function todoListHtml(events, today) {
+  const left = events.filter(e => e.source === 'manual' && e.status !== 'done').length;
+  return `
+    <h4 class="today-title"><span aria-hidden="true">☑</span> Туду лист
+      ${left ? `<span class="today-count">${left}</span>` : ''}
+    </h4>
+    ${events.length ? `<ul class="today-list todo-list">
+      ${events.map(e => {
+        const own = e.source === 'manual';
+        const status = e.status || 'todo';
+        return `<li class="todo-row${own ? '' : ' is-readonly'} is-${escapeHtml(status)}" data-todo-id="${escapeHtml(e.id)}">
+          ${own
+            ? `<label class="todo-check" title="${status === 'done' ? 'Снять отметку' : 'Отметить выполненным'}">
+                 <input type="checkbox" data-todo-toggle="${escapeHtml(e.id)}" ${status === 'done' ? 'checked' : ''} />
+               </label>`
+            : `<span class="todo-check is-empty" aria-hidden="true"></span>`}
+          <span class="todo-text">
+            <b>${escapeHtml(e.title)}</b>
+            <small class="muted">${escapeHtml(eventTimeText(e))}</small>
+          </span>
+          ${own
+            ? `<button type="button" class="todo-status is-${escapeHtml(status)}" data-todo-status="${escapeHtml(e.id)}"
+                 title="Следующий статус: ${escapeHtml(STATUS_TEXT[STATUS_NEXT[status]])}">${escapeHtml(STATUS_TEXT[status])}</button>`
+            : e.source === 'marathon'
+              ? `<button type="button" class="btn secondary small" data-today-act="open-marathon"
+                   data-today-marathon="${escapeHtml(e.marathonId)}" title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>`
+              : ''}
+        </li>`;
+      }).join('')}
+    </ul>`
+    : '<p class="muted today-empty">На этот день дел нет.</p>'}
+    <div class="todo-actions">
+      <button type="button" class="btn secondary small" data-todo-add="${escapeHtml(today)}">＋ Добавить</button>
+      <button type="button" class="btn ghost small" data-open-day="${escapeHtml(today)}">Открыть день в календаре</button>
+    </div>`;
 }
 
 /**
@@ -240,45 +217,51 @@ export function renderToday(root, deps = {}) {
     if (act) { deps.run?.('open-marathon', act.dataset.todayMarathon); return; }
     const btn = e.target.closest?.('[data-open-day]');
     if (btn) { openPlannerDay(btn.dataset.openDay, { ...deps, render }); return; }
-    const win = e.target.closest?.('[data-today-act^="windows-"]');
-    if (win) { e.preventDefault(); runWindowsAction(win.dataset.todayAct, win.dataset.todayPid); }
+    const add = e.target.closest?.('[data-todo-add]');
+    if (add) { addTodoFor(add.dataset.todoAdd, { ...deps, render }); return; }
+    const status = e.target.closest?.('[data-todo-status]');
+    if (status) { setTodoStatus(status.dataset.todoStatus, render); return; }
   });
-  fillRunningWindowsBlock(root);
+  // Галочка живёт в label, а не в кнопке: кликается целиком и не мешает выделению текста
+  root.querySelector('[data-today-side]')?.addEventListener('change', (e) => {
+    const box = e.target.closest?.('[data-todo-toggle]');
+    if (box) setTodoStatus(box.dataset.todoToggle, render, box.checked ? 'done' : 'todo');
+  });
 }
 
 /**
- * Действие блока «Запущенные окна игры»: закрыть одно окно.
+ * Отметка в туду листе: галочка ставит и снимает «выполнено», кнопка справа перебирает
+ * статус по кругу. Только свои записи — марафоны и ивенты из расписания не трогаем.
  *
- * Списки окон и подписи уже импортированы (ими же рисуется блок), а команды закрытия
- * подгружаются по клику — они нужны только здесь.
- *
- * @param {string} action
- * @param {string} [pid]
+ * @param {string} id
+ * @param {() => void} render
+ * @param {string} [status] конкретный статус; без него берётся следующий по кругу
  */
-async function runWindowsAction(action, pid) {
-  if (action !== 'windows-close-one') return;
-  try {
-    const id = Number(pid);
-    if (!id) return;
-    const row = runningWindows().find(r => r.pid === id);
-    const { closeClientsByPid } = await import('../launcher/launch.js');
-    const { showCloseReport } = await import('../launcher/partyLaunch.js');
-    const { confirmModal } = await import('../../core/ui.js');
-
-    const ok = await confirmModal({
-      title: `Закрыть окно игры: ${row ? rowLabel(row) : `PID ${id}`}?`,
-      text: 'Всё, что не сохранено в игре, будет потеряно.',
-      okText: 'Закрыть окно',
-      danger: true
-    });
-    if (!ok) return;
-    showCloseReport(await closeClientsByPid([id]));
-    await refreshRunningWindows();
-  } catch (err) {
-    const { toast } = await import('../../core/ui.js');
-    toast(`Не удалось закрыть окно: ${String(err?.message || err)}`, 'error');
-  }
+async function setTodoStatus(id, render, status) {
+  const entry = state.plannerEntries.find(item => item.id === id);
+  if (!entry) return;
+  const next = status || STATUS_NEXT[entry.status || 'todo'] || 'todo';
+  if (entry.status === next) return;
+  entry.status = next;
+  entry.updatedAt = new Date().toISOString();
+  await persist();
+  render();
 }
+
+/**
+ * Новое дело на день.
+ *
+ * Форма та же, что у записей календаря, и время в ней по умолчанию пустое — дело из
+ * туду листа не привязано к часу: с временем оно рисовалось бы блоком на шкале, а
+ * пользователю тут нужен просто список дел.
+ *
+ * @param {string} date
+ * @param {{ render?: () => void }} deps
+ */
+function addTodoFor(date, deps = {}) {
+  openPlannerEntryForm(date, deps);
+}
+
 
 /** Кнопки экрана: действия в строках, переходы и сворачивание. */
 function bindToday(root, deps = {}) {

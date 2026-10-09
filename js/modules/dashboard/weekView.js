@@ -207,7 +207,7 @@ export function weekAllDaySpans(eventsByDate) {
           color: event.color || 'blue',
           source: event.source || 'manual',
           id: event.id,
-          done: event.done === true,
+          done: event.status === 'done',
           marathonId: event.marathonId,
           indices: []
         };

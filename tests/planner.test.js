@@ -10,16 +10,37 @@ describe('месячный планер', () => {
     expect(cells.filter(Boolean).at(-1)).toBe('2026-10-31');
   });
 
-  it('нормализует расширенные поля записи', () => {
-    expect(normalizePlannerEntry({
+it('нормализует расширенные поля записи', () => {
+expect(normalizePlannerEntry({
       id: 'x', title: '  Сделать  ', date: '2026-10-05', kind: 'note',
       priority: 'high', reminderMinutes: 60, recurrence: 'weekly',
       recurrenceEnd: '2026-12-01', color: 'red', done: true, durationMinutes: 90
     })).toMatchObject({
       id: 'x', title: 'Сделать', date: '2026-10-05', kind: 'note',
       priority: 'high', reminderMinutes: 60, recurrence: 'weekly',
-      recurrenceEnd: '2026-12-01', color: 'red', done: true, durationMinutes: 90
+      recurrenceEnd: '2026-12-01', color: 'red', status: 'done', durationMinutes: 90
     });
+  });
+
+  it('статус отметки: поле, а не вывод из галочки; старый done переносится один раз', () => {
+    // «В работе» нельзя вывести из «выполнено» — это промежуточное состояние
+    expect(normalizePlannerEntry({ status: 'doing' }).status).toBe('doing');
+    expect(normalizePlannerEntry({ status: 'done' }).status).toBe('done');
+    expect(normalizePlannerEntry({}).status).toBe('todo');
+    expect(normalizePlannerEntry({ status: 'ерунда' }).status).toBe('todo');
+    // Данные, сохранённые до появления статуса
+    expect(normalizePlannerEntry({ done: true }).status).toBe('done');
+    expect(normalizePlannerEntry({ done: false }).status).toBe('todo');
+    // Два источника истины на один факт не заводятся: булева done в записи не остаётся
+    expect(normalizePlannerEntry({ done: true })).not.toHaveProperty('done');
+    expect(normalizePlannerEntry({ status: 'done' }).done).toBeUndefined();
+  });
+
+  it('в туду листе сначала «в работе», потом «ожидает», выполненные — в конце', () => {
+    const mk = (title, status) => normalizePlannerEntry({ title, date: '2026-10-05', status });
+    const state = { plannerEntries: [mk('Сделано', 'done'), mk('Ждёт', 'todo'), mk('Делаю', 'doing')] };
+    expect(plannerEventsForDate(state, '2026-10-05').filter(e => e.source === 'manual').map(e => e.title))
+      .toEqual(['Делаю', 'Ждёт', 'Сделано']);
   });
 
   it('длительность записи: по умолчанию час, битое значение не проходит', () => {

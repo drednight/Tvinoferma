@@ -8,6 +8,31 @@ const COLORS = new Set(['blue', 'green', 'yellow', 'red', 'purple', 'gray']);
 const PRIORITIES = new Set(['low', 'normal', 'high']);
 const KINDS = new Set(['task', 'event', 'note']);
 const RECURRENCES = new Set(['none', 'daily', 'weekly', 'monthly']);
+const STATUSES = new Set(['todo', 'doing', 'done']);
+
+/** Порядок статусов в списке дел: сначала то, над чем работают, потом ожидающее, в конце выполненное. */
+const STATUS_ORDER = { doing: 0, todo: 1, done: 2 };
+
+/**
+ * Статус записи в туду листе.
+ *
+ * Это поле, а не вывод из галочки: «в работе» нельзя получить из «выполнено» — это
+ * промежуточное состояние, и без него лист выродился бы в обычный чек-лист.
+ * Старое булево `done` из сохранённых данных переносится сюда один раз при нормализации,
+ * поэтому два источника истины не заводятся.
+ *
+ * @param {{ status?: string, done?: boolean }} [input]
+ * @returns {'todo'|'doing'|'done'}
+ */
+export function entryStatus(input = {}) {
+  if (STATUSES.has(input.status)) return String(input.status);
+  return input.done === true ? 'done' : 'todo';
+}
+
+/** Запись выполнена. Единственный ответ на вопрос «а не сделано ли это». */
+export function isEntryDone(entry) {
+  return entry?.status === 'done';
+}
 
 /**
  * Календарная дата записи. Считается по Москве: у пользователя в другом часовом поясе
@@ -33,7 +58,7 @@ export function normalizePlannerEntry(input = {}) {
     recurrence: RECURRENCES.has(input.recurrence) ? input.recurrence : 'none',
     recurrenceEnd: /^\d{4}-\d{2}-\d{2}$/.test(String(input.recurrenceEnd || '')) ? String(input.recurrenceEnd) : '',
     color: COLORS.has(input.color) ? input.color : 'blue',
-    done: input.done === true,
+    status: entryStatus(input),
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
   };
@@ -87,7 +112,8 @@ export function plannerEventsForDate(appState, date) {
   // Постоянные ивенты приходят из расписания, а не из состояния: их нельзя изменить или удалить
   const recurring = recurringEventsForDate(date);
   return [...manual, ...recurring, ...marathons].sort((a, b) =>
-    (a.done === true) - (b.done === true)
+    // У псевдо-записей марафонов и постоянных ивентов статуса нет — они попадают в середину
+    (STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1)
     || ({ high: 0, normal: 1, low: 2 }[a.priority] ?? 1) - ({ high: 0, normal: 1, low: 2 }[b.priority] ?? 1)
     || String(a.time || '').localeCompare(String(b.time || ''))
     || a.title.localeCompare(b.title, 'ru'));

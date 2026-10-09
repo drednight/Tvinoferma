@@ -248,6 +248,51 @@
 .today-side-list { max-height: 260px; }
 .today-side-open { align-self: flex-start; }
 
+/* --- Туду лист ---
+   Строки дел: чекбокс слева, название, справа статус. Чекбокс и статус независимы:
+   галочка ставит и снимает «выполнено», а «в работе» выбирается кнопкой — из галочки
+   это состояние вывести нельзя. Список ограничен по высоте, иначе двадцать дел
+   растянули бы панель «Сегодня» сильнее календаря. */
+.todo-list { max-height: 300px; gap: 2px; }
+.todo-row {
+  --todo-color: var(--text-faint);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+}
+.todo-row.is-todo { --todo-color: var(--text-dim); }
+.todo-row.is-doing { --todo-color: var(--accent); background: var(--accent-soft, rgba(110, 142, 248, 0.1)); }
+.todo-row.is-done { --todo-color: var(--success); }
+.todo-row.is-done .todo-text b { color: var(--text-dim); text-decoration: line-through; }
+.todo-row.is-readonly { opacity: 0.75; }
+
+.todo-check { display: grid; place-items: center; }
+.todo-check input { width: 15px; height: 15px; accent-color: var(--success); cursor: pointer; }
+.todo-check.is-empty { width: 15px; height: 15px; border-radius: 3px; background: color-mix(in srgb, var(--todo-color) 35%, transparent); }
+
+.todo-text { display: grid; gap: 1px; min-width: 0; }
+.todo-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.84rem; font-weight: 600; }
+.todo-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.7rem; }
+
+.todo-status {
+  flex: none;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--todo-color) 45%, transparent);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--todo-color);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.todo-status:hover { background: color-mix(in srgb, var(--todo-color) 16%, transparent); }
+
+.todo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
 /* Блок «Запущенные окна игры»: список окон с кнопкой закрытия каждого.
    Список ограничен по высоте, иначе десяток открытых окон растягивал бы панель «Сегодня». */
 .rwn-block {

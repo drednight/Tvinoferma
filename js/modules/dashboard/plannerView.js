@@ -1,4 +1,4 @@
-import { state } from '../../core/state.js';
+﻿import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
@@ -74,7 +74,7 @@ function dayCellHtml(date, events, dungeon, isToday) {
     title: e.title,
     color: e.color || 'blue',
     marathon: e.source === 'marathon',
-    done: e.done === true
+    done: e.status === 'done'
   }));
   const nowMin = isToday ? mskMinutes() : null;
   const cellTitle = [
@@ -257,12 +257,12 @@ function eventRow(event) {
     event.recurrence && event.recurrence !== 'none' ? 'Повторяется' : ''].filter(Boolean).join(' · ');
   // Постоянный ивент приходит из расписания: его нельзя отметить «готово» или удалить
   const actions = event.source === 'manual' ? `
-      <button class="btn ghost small" type="button" data-planner-done="${escapeHtml(event.id)}">${event.done ? 'Вернуть' : 'Готово'}</button>
+      <button class="btn ghost small" type="button" data-planner-done="${escapeHtml(event.id)}">${event.status === 'done' ? 'Вернуть' : 'Готово'}</button>
       <button class="btn danger small" type="button" data-planner-delete="${escapeHtml(event.id)}" aria-label="Удалить">×</button>`
     : event.source === 'marathon'
       ? `<button class="btn secondary small" type="button" data-planner-marathon="${escapeHtml(event.marathonId)}">Открыть</button>`
       : `<span class="planner-lock" title="Постоянный ивент: идёт каждую неделю по расписанию">расписание</span>`;
-  return `<li class="planner-day-row${event.done ? ' is-done' : ''} is-source-${escapeHtml(event.source || 'manual')}">
+  return `<li class="planner-day-row${event.status === 'done' ? ' is-done' : ''} is-source-${escapeHtml(event.source || 'manual')}">
     <span class="planner-color is-${escapeHtml(event.color || 'blue')}"></span>
     <span class="planner-day-copy"><b>${escapeHtml(event.title)}</b><small class="muted">${escapeHtml(meta)}</small></span>
     ${actions}
@@ -281,7 +281,7 @@ function dayScaleHtml(events) {
   return `<div class="planner-scale-wrap">
     ${allDayEvents.length ? `<div class="planner-scale-allday">
       <span class="planner-scale-allday-label">Весь день / без времени</span>
-      ${allDayEvents.map(e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+      ${allDayEvents.map(e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.status === 'done' ? ' is-done' : ''}"
         title="${e.time ? `с ${e.time}` : 'без времени'} · ${escapeHtml(e.title)}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
     </div>` : ''}
     <div class="planner-scale">
@@ -289,7 +289,7 @@ function dayScaleHtml(events) {
         ${marks.map(m => `<span class="planner-scale-mark"><i></i>${m}</span>`).join('')}
       </div>
       <div class="planner-scale-track">
-        ${blocks.map(b => `<div class="planner-scale-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
+        ${blocks.map(b => `<div class="planner-scale-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.status === 'done' ? ' is-done' : ''}"
           style="top:${b.topPct.toFixed(3)}%;height:${b.heightPct.toFixed(3)}%;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
           title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}">
           <b>${escapeHtml(b.event.title)}</b><small>${b.startTime}–${b.endTime}</small>
@@ -316,7 +316,7 @@ export function openPlannerDay(date, deps = {}) {
   modal.querySelectorAll('[data-planner-done]').forEach(button => button.addEventListener('click', async () => {
     const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDone);
     if (!entry) return;
-    entry.done = !entry.done;
+    entry.status = entry.status === 'done' ? 'todo' : 'done';
     entry.updatedAt = new Date().toISOString();
     await persist();
     openPlannerDay(date, deps);
@@ -338,7 +338,7 @@ export function openPlannerDay(date, deps = {}) {
   }));
 }
 
-function openPlannerEntryForm(date, deps = {}) {
+export function openPlannerEntryForm(date, deps = {}) {
   showModal({
     title: 'Новая запись',
     content: `<form class="planner-form">

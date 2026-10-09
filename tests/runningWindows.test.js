@@ -1,5 +1,5 @@
 // Запущенные окна игры в интерфейсе: общий кэш (js/modules/launcher/runningWindows.js),
-// кнопка закрытия окна в карточке персонажа и блок «Окна игры» на вкладке «Сегодня».
+// кнопка закрытия окна в карточке персонажа и список окон в разделе «Инструменты».
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 const invoke = vi.fn(async () => []);
@@ -30,6 +30,7 @@ const char = (id, nick) => ({ id, nick, class: 'Воин', dungeonPasses: {}, an
 // Разметка вкладки «Персонажи» целиком: карточка рисуется вместе с панелью KPI и фильтрами.
 const body = `
   <section class="page active" data-section="today"><div id="today-root"></div></section>
+  <section class="page" data-section="tools"><div id="tools-root"></div></section>
   <section class="page" data-section="characters">
     <input id="search-input" class="input" />
     <select id="class-filter"><option value="">Все классы</option></select>
@@ -164,26 +165,28 @@ describe('кнопка закрытия окна в карточке персо�
   });
 });
 
-describe('блок «Окна игры» на вкладке «Сегодня»', () => {
-  it('без запущенных окон говорит об этом и не показывает счётчик', async () => {
+describe('список окон игры в разделе «Инструменты»', () => {
+  // Блок «Окна игры» с вкладки «Сегодня» ушёл: управление окнами живёт в «Инструментах».
+  // Проверяем то же поведение в новом месте — кэш окон общий, разметка своя.
+  const renderToolsSection = async () => {
+    const tools = await import('../js/modules/tools/index.js');
+    tools.bindTools();
+    tools.renderTools();
+  };
+
+  it('на «Сегодня» блока окон больше нет', async () => {
     await runningWindows.refreshRunningWindows();
     todayView.renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('[data-running-windows]');
-    expect(box).not.toBeNull();
-    expect(box.textContent).toContain('Запущенных окон игры нет');
-    expect(document.querySelector('[data-running-count]').hidden).toBe(true);
-    expect(document.querySelector('[data-running-count]').hidden).toBe(true);
+    expect(document.querySelector('[data-running-windows]')).toBeNull();
+    expect(document.querySelector('.rwn-block')).toBeNull();
   });
 
-  it('в блоке нет кнопок общего управления: полный список окон живёт в FAB, трее и настройках', async () => {
-    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+  it('без запущенных окон говорит об этом', async () => {
     await runningWindows.refreshRunningWindows();
-    todayView.renderToday(document.getElementById('today-root'), {});
-    await vi.waitFor(() => expect(document.querySelectorAll('.rwn-row')).toHaveLength(1));
-    expect(document.querySelector('[data-today-act="windows-list"]')).toBeNull();
-    expect(document.querySelector('[data-today-act="windows-close-all"]')).toBeNull();
-    // У конкретного окна кнопка закрытия остаётся
-    expect(document.querySelector('[data-today-act="windows-close-one"]')).not.toBeNull();
+    await renderToolsSection();
+    const box = document.querySelector('[data-tools-windows]');
+    expect(box).not.toBeNull();
+    expect(box.textContent).toContain('Запущенных окон игры нет');
   });
 
   it('список окон и кнопка закрытия появляются после опроса', async () => {
@@ -191,16 +194,13 @@ describe('блок «Окна игры» на вкладке «Сегодня»'
     const foreign = { pid: 200, image: 'elementclient_64.exe', title: 'Perfect World', elevated: false };
     invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа'), foreign] : {}));
     await runningWindows.refreshRunningWindows();
-    todayView.renderToday(document.getElementById('today-root'), {});
-    await vi.waitFor(() => expect(document.querySelectorAll('.rwn-row')).toHaveLength(2));
+    await renderToolsSection();
     const rows = [...document.querySelectorAll('.rwn-row')];
+    expect(rows).toHaveLength(2);
     // Сначала узнанные окна, затем безымянные
     expect(rows[0].textContent).toContain('Аа — Воин');
     expect(rows[1].textContent).toContain('PID 200');
-    expect(document.querySelector('[data-running-count]').hidden).toBe(false);
-    expect(document.querySelector('[data-running-count]').textContent).toBe('2');
   });
-
 
   it('кнопка закрытия окна передаёт его PID', async () => {
     const ui = await import('../js/core/ui.js');
@@ -210,9 +210,9 @@ describe('блок «Окна игры» на вкладке «Сегодня»'
       return {};
     });
     await runningWindows.refreshRunningWindows();
-    todayView.renderToday(document.getElementById('today-root'), {});
-    await vi.waitFor(() => expect(document.querySelector('[data-today-act="windows-close-one"]')).not.toBeNull());
-    document.querySelector('[data-today-act="windows-close-one"]').click();
+    await renderToolsSection();
+    await vi.waitFor(() => expect(document.querySelector('[data-tools-act="close-one-window"]')).not.toBeNull());
+    document.querySelector('[data-tools-act="close-one-window"]').click();
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('launcher_close_clients_pids', { pids: [100] }));
     expect(ui.confirmModal).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
   });
@@ -220,9 +220,9 @@ describe('блок «Окна игры» на вкладке «Сегодня»'
   it('после ухода с вкладки подписка снимается: список не рисуется в фоне', async () => {
     invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
     await runningWindows.refreshRunningWindows();
-    todayView.renderToday(document.getElementById('today-root'), {});
+    await renderToolsSection();
     await vi.waitFor(() => expect(document.querySelectorAll('.rwn-row')).toHaveLength(1));
-    const page = document.querySelector('.page[data-section="today"]');
+    const page = document.querySelector('.page[data-section="tools"]');
     page.dispatchEvent(new CustomEvent('tf-leave'));
     const before = document.querySelectorAll('.rwn-row').length;
     invoke.mockImplementation(async cmd =>

@@ -15,6 +15,7 @@
 
 import { escapeHtml } from '../../core/utils.js';
 import { runningWindows, onRunningWindows, refreshRunningWindows } from '../launcher/runningWindows.js';
+import { rowLabel, formatUptime } from '../launcher/windowList.js';
 import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
 
 /**
@@ -36,10 +37,7 @@ const SCRIPTS = [
 const root = () => document.getElementById('tools-root');
 
 function uptimeText(ms) {
-  if (ms == null) return 'время работы неизвестно';
-  const min = Math.floor(ms / 60000);
-  if (min < 60) return `работает ${min} мин`;
-  return `работает ${Math.floor(min / 60)} ч ${min % 60} мин`;
+  return ms == null ? 'время работы неизвестно' : `работает ${formatUptime(ms)}`;
 }
 
 export function renderTools() {
@@ -91,7 +89,7 @@ function fillWindows() {
       <li class="today-row rwn-row">
         <span class="rwn-dot ${r.known ? 'is-known' : ''}" aria-hidden="true"></span>
         <span class="today-row-text">
-          <b title="${escapeHtml(r.nick || r.title || '')}">${escapeHtml(r.title || r.nick || `Окно ${r.pid}`)}</b>
+          <b title="${escapeHtml(rowLabel(r))}">${escapeHtml(rowLabel(r))}</b>
           <small class="muted">${escapeHtml(uptimeText(r.uptimeMs))}${r.elevated ? ' · админ' : ''}</small>
         </span>
         <button type="button" class="btn ghost small" data-tools-act="close-one-window" data-pid="${r.pid}"
