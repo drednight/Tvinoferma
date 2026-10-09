@@ -38,9 +38,20 @@ export function parseTimings(results) {
   });
 }
 
+/**
+ * Строки, по которым есть что усреднять.
+ *
+ * Пропущенные (открыто окно персонажа) и упавшие проверки времени не имеют: Rust в этом
+ * случае timings не отдаёт вовсе. Если их не отбросить, средние покажут половину
+ * настоящего времени, а подсказка «дольше всего» укажет не на тот этап.
+ */
+export function measuredRows(rows) {
+  return (rows || []).filter(r => r?.status !== 'skipped' && r?.status !== 'error');
+}
+
 /** Средние по этапам, мс. Пустой набор — нули, а не NaN. */
 export function stageAverages(rows) {
-  const list = rows || [];
+  const list = measuredRows(rows);
   if (!list.length) return { windowMs: 0, navigateMs: 0, parseMs: 0, cookiesMs: 0, totalMs: 0 };
   const sum = key => list.reduce((a, r) => a + (r[key] || 0), 0);
   return {
@@ -58,11 +69,22 @@ const ms = v => `${(v / 1000).toFixed(1)} с`;
 export function timingReport(rows) {
   if (!rows?.length) return 'Замеров нет: ни один персонаж не проверился.';
   const avg = stageAverages(rows);
+  const measured = measuredRows(rows);
+  // Без единого замера средних нет: показывать нули и «дольше всего» не о чем
+  if (!measured.length) {
+    return `${rows.map(r => `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`).join('\n')}\n`
+      + 'Время не замерено: всех персонажей пропустили (открыто окно) или проверка упала.';
+  }
   const lines = rows.map(r =>
     `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''} — итого ${ms(r.totalMs)}; `
     + `окно ${ms(r.windowMs)}, переход ${ms(r.navigateMs)}, разбор ${ms(r.parseMs)}, куки ${ms(r.cookiesMs)}`);
-  lines.push('', `Среднее по ${rows.length}: итого ${ms(avg.totalMs)}; окно ${ms(avg.windowMs)}, `
+  lines.push('', `Среднее по ${measured.length}: итого ${ms(avg.totalMs)}; окно ${ms(avg.windowMs)}, `
     + `переход ${ms(avg.navigateMs)}, разбор ${ms(avg.parseMs)}, куки ${ms(avg.cookiesMs)}`);
+  // Пропуски и ошибки в среднее не входят, но и молчать о них нельзя: иначе кажется,
+  // что замерено меньше персонажей, чем на самом деле
+  if (measured.length < rows.length) {
+    lines.push(`Без времени: ${rows.length - measured.length} (пропущено или ошибка) — в среднее не входят.`);
+  }
   // Подсказка по самому долгому этапу: обычно он и есть причина
   const worst = Object.entries({ окно: avg.windowMs, переход: avg.navigateMs, разбор: avg.parseMs, куки: avg.cookiesMs })
     .sort((a, b) => b[1] - a[1])[0];
@@ -78,7 +100,8 @@ export function timingReport(rows) {
  */
 export async function measureAuth(charIds, { timeoutSeconds = 4, deps = {} } = {}) {
   const rows = [];
-  const run = deps.check || ((id) => checkCharacterAuth(id, { timeoutSeconds, closeAfter: true, invoke: deps.invoke }));
+  // Замеры идут по одному: параллельные окна мешали бы друг другу и завышали бы «окно» и «переход»
+  const run = deps.check || ((id) => checkCharacterAuth(id, { timeoutSeconds, closeAfter: true }));
   for (const id of charIds || []) {
     try {
       rows.push(...parseTimings([await run(id)]));
@@ -101,7 +124,7 @@ export async function measureAuth(charIds, { timeoutSeconds = 4, deps = {} } = {
  * без ожидания сайта. Если мерить только офлайн, получится «тормозит сайт», хотя тормозит
  * приложение.
  *
- * @param {{ state?: any, timeoutSeconds?: number, limit?: number, onlyUnconfirmed?: boolean }} [opts]
+ * @param {{ state?: any, timeoutSeconds?: number, limit?: number, onlyUnconfirmed?: boolean, deps?: object }} [opts]
  */
 export async function measureAllAuth(opts = {}) {
   const { state } = opts.state ? { state: opts.state } : await import('../../core/state.js');
@@ -114,7 +137,7 @@ export async function measureAllAuth(opts = {}) {
   // По умолчанию берём первые 10: этого хватает, чтобы увидеть картину.
   const limit = opts.limit ?? 10;
   const picked = list.slice(0, limit);
-  const res = await measureAuth(picked.map(c => c.id), { timeoutSeconds: opts.timeoutSeconds ?? 4 });
+  const res = await measureAuth(picked.map(c => c.id), { timeoutSeconds: opts.timeoutSeconds ?? 4, deps: opts.deps });
   if (picked.length < list.length) {
     res.report += `\n\nЗамерены первые ${picked.length} из ${list.length}. Для остальных: measureAllAuth({ limit: ${list.length} })`;
   }

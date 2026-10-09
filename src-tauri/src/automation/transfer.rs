@@ -223,7 +223,7 @@ async fn history_after_warning(
     scope: &str,
 ) -> Outcome {
     let hist = match navigate_clean(task.window(), HISTORY_URL).await {
-        Ok(()) => classify_result(
+        Ok(_) => classify_result(
             eval_and_wait(
                 task.window(),
                 &xfer_script(&json!({ "mode": "result" })),

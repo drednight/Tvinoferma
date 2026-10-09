@@ -33,15 +33,48 @@ pub fn tf_log(app: &AppHandle, scope: &str, level: &str, message: impl Into<Stri
     );
 }
 
-/// Убирает hash прошлого ответа и переходит на страницу.
-/// Без очистки `window.url()` сразу после `navigate` может вернуть старый адрес
-/// с результатом предыдущей проверки.
-pub async fn navigate_clean(window: &WebviewWindow, url: &str) -> Result<(), String> {
+/// Метка готовности страницы в hash (пишется через `replaceState`, как и остальные ответы парсеров)
+const READY_PREFIX: &str = "#TF_READY_";
+
+/// Дом готов к разбору: в hash после метки лежит `document.readyState`.
+///
+/// Ждём не `complete`, а `interactive` (DOM разобран). Парсерам нужны текст и элементы,
+/// а не картинки и шрифты: страница с двумя десятками ресурсов до `complete` не доходит
+/// никогда (особенно страница входа с баннерами), и ждать её бессмысленно.
+/// Недорисованные страницы парсер и так узнаёт по `pending`/`challenge` и повторяет скрипт.
+fn is_ready(url_str: &str) -> bool {
+    match url_str.find(READY_PREFIX) {
+        Some(pos) => !url_str[pos + READY_PREFIX.len()..].starts_with("loading"),
+        None => false,
+    }
+}
+
+/// Убирает hash прошлого ответа и переходит на страницу. Возвращает, сколько мс ждали готовности.
+///
+/// Раньше здесь была слепая пауза `sleep(1500ms)`: она одинаково и для быстрой страницы,
+/// и для медленной, поэтому в замерах «переход» всегда был ровно 1.5 с и ничего не говорил.
+/// Теперь ждём разбора DOM (`readyState` не `loading`), но не дольше тех же 1.5 с —
+/// медленная страница не должна висеть вечно.
+pub async fn navigate_clean(window: &WebviewWindow, url: &str) -> Result<u64, String> {
+    let started = Instant::now();
     let _ = window.eval("history.replaceState(null, '', location.pathname + location.search);");
     let target = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
     window.navigate(target).map_err(|e| e.to_string())?;
-    tokio::time::sleep(Duration::from_millis(1500)).await;
-    Ok(())
+    let deadline = started + Duration::from_millis(1500);
+    let probe = format!(
+        "try{{history.replaceState(null,'',location.pathname+location.search+'{READY_PREFIX}'+document.readyState)}}catch(e){{}}"
+    );
+    loop {
+        let _ = window.eval(&probe);
+        // DOM разобран — читаем; «loading» ждём дальше, но не дольше потолка
+        if window.url().map(|u| is_ready(u.as_str())).unwrap_or(false) {
+            return Ok(started.elapsed().as_millis() as u64);
+        }
+        if Instant::now() >= deadline {
+            return Ok(started.elapsed().as_millis() as u64);
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 /// Читает результат парсера из hash вида `#PREFIX<encodeURIComponent(JSON)>`,
@@ -123,7 +156,10 @@ pub async fn eval_and_wait(
             let _ = window.eval(&full_script);
             last_eval = Some(Instant::now());
         }
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        // Пауза между опросами url: чем она меньше, тем точнее виден реальный разбор.
+        // Раньше здесь было 400 мс, и быстрый ответ парсера читался только на втором-третьем
+        // круге — в замерах это выглядело как «разбор 0.4 с» при фактическом 0.05 с.
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         let Ok(url) = window.url() else { continue };
         let Some((error, data)) = read_hash_payload(url.as_str(), prefix) else {
@@ -176,8 +212,25 @@ pub async fn eval_and_wait(
 #[cfg(test)]
 mod tests {
     use super::{
-        read_hash_payload, soft_timeout_result, with_common, SELECTORS_JSON, SELECTORS_MARKER,
+        is_ready, read_hash_payload, soft_timeout_result, with_common, SELECTORS_JSON,
+        SELECTORS_MARKER,
     };
+
+    #[test]
+    fn ready_state_read_from_hash() {
+        // DOM разобран — можно читать. Ждём не картинки: парсерам они не нужны
+        assert!(is_ready("https://pwonline.ru/usercp.php#TF_READY_complete"));
+        assert!(is_ready(
+            "https://pwonline.ru/usercp.php#TF_READY_interactive"
+        ));
+        // Страница ещё грузится — ждём дальше
+        assert!(!is_ready("https://pwonline.ru/usercp.php#TF_READY_loading"));
+        // Метки нет вовсе: скрипт не успел записать (или это старый hash другого парсера)
+        assert!(!is_ready("https://pwonline.ru/usercp.php"));
+        assert!(!is_ready(
+            "https://pwonline.ru/usercp.php#TF_AUTH_V2_online"
+        ));
+    }
 
     #[test]
     fn reads_payload_from_hash() {

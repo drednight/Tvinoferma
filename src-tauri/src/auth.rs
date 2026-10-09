@@ -33,8 +33,8 @@ pub async fn check_login_status_http(
     let started = std::time::Instant::now();
     let (window, created_here) = get_or_create_hidden_window(&app, &char_id, USERCP_URL).await?;
     let after_window = started.elapsed().as_millis() as u64;
-    navigate_clean(&window, USERCP_URL).await?;
-    let after_navigate = started.elapsed().as_millis() as u64;
+    // Переход возвращает своё время: ждём готовности страницы, а не слепую паузу
+    let navigate_ms = navigate_clean(&window, USERCP_URL).await?;
 
     let (status, reason) =
         match eval_and_wait(&window, SCRIPT, "#TF_AUTH_V2_", timeout, &scope).await {
@@ -59,10 +59,13 @@ pub async fn check_login_status_http(
     let after_cookies = started.elapsed().as_millis() as u64;
     dispose(&window, created_here, close_after.unwrap_or(false));
 
+    // Этапы считаются от начала проверки, но «переход» берём из navigate_clean: там своё
+    // реальное время ожидания страницы, а не слепая пауза
+    let after_navigate = after_window + navigate_ms;
     let timings = serde_json::json!({
         "totalMs": after_cookies,
         "windowMs": after_window,
-        "navigateMs": after_navigate.saturating_sub(after_window),
+        "navigateMs": navigate_ms,
         "parseMs": after_parse.saturating_sub(after_navigate),
         "cookiesMs": after_cookies.saturating_sub(after_parse),
         "windowCreated": created_here,
@@ -90,8 +93,8 @@ pub async fn check_login_status_http(
         reason,
         after_cookies,
         after_window,
-        after_navigate - after_window,
-        after_parse - after_navigate,
+        navigate_ms,
+        after_parse.saturating_sub(after_navigate),
         after_cookies - after_parse,
     );
     let payload = serde_json::json!({
