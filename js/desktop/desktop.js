@@ -9,7 +9,7 @@ import { charactersInParty } from '../modules/parties/membership.js';
 
 export const HOTKEYS = [
   { keys: 'Ctrl+K', text: 'Командная палитра: команды, персонажи, пати' },
-  { keys: 'Ctrl+1…6', text: 'Разделы: Сегодня / Персонажи / Пати / Марафоны / Руны / Настройки' },
+  { keys: 'Ctrl+1…7', text: 'Разделы: Сегодня / Персонажи / Пати / Марафоны / Руны / Инструменты / Настройки' },
   { keys: 'Ctrl+F', text: 'Поиск по нику' },
   { keys: 'Ctrl+N', text: 'Новый персонаж / пати (как кнопка «+»)' },
   { keys: 'Ctrl+S', text: 'Сохранить сейчас' },
@@ -83,9 +83,9 @@ export function initHotkeys({ switchTab }) {
       return;
     }
 
-    if (!e.shiftKey && ['1', '2', '3', '4', '5', '6'].includes(key) && !modalOpen) {
+    if (!e.shiftKey && ['1', '2', '3', '4', '5', '6', '7'].includes(key) && !modalOpen) {
       e.preventDefault();
-      switchTab(['today', 'characters', 'parties', 'marathons', 'runes', 'settings'][Number(key) - 1]);
+      switchTab(['today', 'characters', 'parties', 'marathons', 'runes', 'tools', 'settings'][Number(key) - 1]);
     } else if (!e.shiftKey && (key === 'f' || key === 'а') && !modalOpen) {
       e.preventDefault();
       switchTab('characters');

@@ -437,6 +437,8 @@ export function openShopDialog({ ids = [] } = {}) {
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
+    await task.waitTurn();
     task.watch(...accounts.map(a => `char:${a.char.id}`));
     task.setStep(`${accounts.length} акк., по ${browserSlots.max} одновременно`);
 
@@ -498,7 +500,9 @@ export function openShopDialog({ ids = [] } = {}) {
       const sm = await import('../sync/syncManager.js');
       const reps = accounts.map(a => state.characters.find(c => c.id === a.char.id) || a.char);
       const before = new Map(reps.map(c => [c.id, c.lastCoinUpdate || null]));
-      await sm.refreshAllBalances(reps, { title: '💰 Баланс после покупки', onlyLoggedIn: false });
+      // noQueue: мы уже внутри идущего скрипта активации — эта проверка его часть,
+        // и ждать в очереди за ним самим собой она не может
+      await sm.refreshAllBalances(reps, { title: '💰 Баланс после покупки', onlyLoggedIn: false, noQueue: true });
       let copied = false;
       accounts.forEach(a => {
         const rep = reps.find(c => c.id === a.char.id);

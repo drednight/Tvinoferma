@@ -1,11 +1,9 @@
 // @ts-check
 // js/core/uiActions.js
 // Круглая кнопка «+» справа внизу — speed-dial: орбы с подписями раскрываются вокруг кнопки.
-// Состав орбов зависит от активной вкладки:
-//   Персонажи — создать персонажа, режим выбора, скрипты;
-//   Пати — создать пати, создать персонажа, запущенные окна игры;
-//   Марафоны — создать папку или марафон.
-// Орб «Скрипты» заменяет орбы главным уровнем на подменю со скриптами, «Назад» возвращает.
+// FAB остался только для создания: персонаж, режим выбора, пати, папка, марафон.
+// Скрипты и управление окнами игры переехали в отдельный раздел «Инструменты»
+// (js/modules/tools/index.js) — там они видны сразу, без второго нажатия.
 // Верхних кнопок «Выбрать»/«Скрипты» и отдельного FAB «Запущенные окна игры» больше нет.
 
 import { openCharacterForm } from '../modules/characters/index.js';
@@ -32,58 +30,20 @@ function setupFabLogic() {
 
     const menu = document.getElementById('fab-menu');
     const container = document.getElementById('global-fab-container');
-    const mainLevel = menu?.querySelector('.fab-orbs:not(.fab-submenu)');
-    // Пункты со списком: действие пункта → id подменю. Новые списки добавляются сюда.
-    const SUBMENUS = { scripts: 'fab-scripts-submenu' };
 
-    /** Показывает ровно один уровень меню: главный (null) или подменю с указанным id. Остальные закрываются. */
-    const showLevel = (submenuId = null) => {
-        if (!menu) return;
-        if (mainLevel) /** @type {HTMLElement} */ (mainLevel).hidden = !!submenuId;
-        menu.querySelectorAll('.fab-submenu').forEach((el) => {
-            const open = el.id === submenuId;
-            /** @type {HTMLElement} */ (el).hidden = !open;
-            el.classList.toggle('is-open', open);
-        });
-        // aria-expanded у пунктов-списков отражает, какой список открыт
-        Object.entries(SUBMENUS).forEach(([action, id]) => {
-            menu.querySelector(`[data-fab-action="${action}"]`)?.setAttribute('aria-expanded', String(id === submenuId));
-        });
-    };
-    const currentLevel = () => menu?.querySelector('.fab-submenu:not([hidden])')?.id || null;
     const setMenu = (open) => {
         if (!menu) return;
         menu.hidden = !open;
         fabBtn.classList.toggle('is-open', open);
         fabBtn.setAttribute('aria-expanded', String(open));
-        showLevel(null);   // при каждом открытии и закрытии начинаем с главного уровня
     };
     // Раздел сменился или кнопка скрыта: сворачиваем меню (событие шлёт updateFabVisibility)
     container?.addEventListener('fab:close', () => setMenu(false));
-    showLevel(null);
 
-    // Пункты: действия разделов, открытие списков, возврат и сами скрипты
+    // Пункты: создание пати, персонажа, папки, марафона и режим выбора
     menu?.addEventListener('click', async (e) => {
-        const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest?.('[data-fab-action], [data-script-action], [data-script-back]'));
+        const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest?.('[data-fab-action]'));
         if (!item) return;
-
-        // Пункт со списком: прошлый список закрывается, нужный открывается
-        const listId = SUBMENUS[item.dataset.fabAction || ''];
-        if (listId) {
-            showLevel(currentLevel() === listId ? null : listId);
-            return;
-        }
-        // «Назад» на уровне списка
-        if (item.dataset.scriptBack) {
-            showLevel(null);
-            return;
-        }
-        if (item.dataset.scriptAction) {
-            setMenu(false);
-            await runScriptAction(item.dataset.scriptAction);
-            return;
-        }
-
         setMenu(false);
         const action = item.dataset.fabAction;
         if (action === 'folder' || action === 'marathon') {
@@ -97,20 +57,16 @@ function setupFabLogic() {
             setSelectionMode(true);
         } else if (action === 'create-party') {
             openCreatePartyModal();
-        } else if (action === 'game-windows') {
-            const { openWindowPicker } = await import('../modules/launcher/windowPicker.js');
-            await openWindowPicker();
         }
     });
 
     document.addEventListener('click', (e) => {
         if (menu && !menu.hidden && !(/** @type {HTMLElement} */ (e.target)).closest('#global-fab-container')) setMenu(false);
     });
-    // Esc: сначала закрывает открытый список (возврат на главный уровень), затем само меню
+    // Esc закрывает меню целиком: подменю в нём больше нет
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape' || !menu || menu.hidden) return;
-        if (currentLevel()) showLevel(null);
-        else setMenu(false);
+        setMenu(false);
     });
     // Ушли с вкладки — меню закрываем
     document.addEventListener('click', (e) => {
@@ -122,8 +78,12 @@ function setupFabLogic() {
     });
 }
 
-/** Действия из подменю «Скрипты» (бывшее выпадающее меню в шапке «Персонажей»). */
-async function runScriptAction(action) {
+/**
+ * Запуск скрипта по его id. Раньше вызывалось из подменю «Скрипты» круглой кнопки,
+ * теперь — из раздела «Инструменты» (js/modules/tools/index.js).
+ * @param {string} action
+ */
+export async function runScriptAction(action) {
     try {
         if (action === 'check-auth') {
             toast('Запуск проверки авторизации...', 'info');
@@ -171,8 +131,8 @@ export function updateFabVisibility(sectionName) {
     if (!container || !fabBtn) return;
 
     const labels = {
-        characters: 'Персонаж, выбор, скрипты',
-        parties: 'Пати, персонаж, окна игры',
+        characters: 'Персонаж или режим выбора',
+        parties: 'Пати или персонаж',
         marathons: 'Папка или марафон'
     };
     const isVisible = sectionName in labels;

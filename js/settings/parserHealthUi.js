@@ -78,6 +78,16 @@ async function copyDiagnostics(which) {
   toast(ok ? 'Диагностика скопирована. Пароли и почты в неё не попадают.' : 'Не удалось скопировать диагностику', ok ? 'success' : 'error');
 }
 
+/**
+ * Наполнить панель состояния парсеров, если она есть на странице.
+ *
+ * Раздел «Инструменты» рисуется при переходе на вкладку, то есть позже подписки
+ * на изменения: без этого вызова таблица осталась бы пустой до первого события.
+ */
+export function refreshParserHealthPanel() {
+  render(getParserHealth());
+}
+
 /** Подключает плашку и раздел настроек. Вызывать один раз при старте. Возвращает функцию отключения. */
 export function initParserHealthUi() {
   const onClick = (e) => {
@@ -91,9 +101,10 @@ export function initParserHealthUi() {
       return;
     }
     if (target.closest('[data-health-open]')) {
-      document.querySelector('.tab[data-tab="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // «Состояние парсеров» живёт в разделе «Инструменты»: это диагностика, а не настройка
+      document.querySelector('.tab[data-tab="tools"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const panel = document.getElementById('parser-health-panel');
-      if (panel instanceof HTMLDetailsElement) panel.open = true;   // панель в настройках свёрнута по умолчанию
+      if (panel instanceof HTMLDetailsElement) panel.open = true;   // панель свёрнута по умолчанию
       panel?.scrollIntoView({ block: 'start' });
     }
   };

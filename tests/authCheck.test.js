@@ -277,16 +277,25 @@ describe('отмена массовой проверки', () => {
     let open; mocks.gate = new Promise(r => { open = r; });
     const pending = sync.runAuthChecks(chars, { title: 'тест', baseTimeout: 1 });
     await vi.waitFor(() => expect(mocks.calls).toEqual(['a']));        // concurrency = 1: идёт только первая
-    const btn = document.querySelector('[data-task-cancel]');           // кнопка «⛔ Отмена» в карточке задачи
-    expect(btn).not.toBeNull();
+// Останавливаем так же, как пользователь: кнопкой «■» на плашке скриптов в шапке.
+    // В выпадающем списке задач кнопок нет намеренно — он только показывает состояние.
+    const btn = await vi.waitFor(() => {
+      const el = document.querySelector('[data-dock-stop]');
+      expect(el).not.toBeNull();
+      return el;
+    });
     btn.click();
     open();
     const res = await pending;
     expect(res.cancelled).toBe(true);
     expect(mocks.calls).toEqual(['a']);                                    // b, c, d даже не запускались
     expect(res.skipped).toBe(3);
-    expect(chars.map(c => c.isLoggedIn)).toEqual([true, true, true, true]); // статусы пропущенных не тронуты
-    expect(chars[0].lastLoginCheck).toBeTruthy();
+    // Б, В, Г не трогаем вообще. А прерван на середине, поэтому результат не применяется:
+    // прежний статус остаётся, отметки о проверке нет.
+    expect(chars.slice(1).map(c => c.isLoggedIn)).toEqual([true, true, true]);
+    expect(chars.slice(1).every(c => !c.lastLoginCheck)).toBe(true);
+    expect(chars[0].isLoggedIn).toBe(true);
+    expect(chars[0].lastLoginCheck).toBeFalsy();
     expect(state.ui.authCheck).toEqual({});                                // «Проверка…» снято у всех
 
   });
@@ -299,7 +308,12 @@ describe('отмена массового обновления балансов'
     let open; mocks.gate = new Promise(r => { open = r; });
     const pending = sync.refreshAllBalances(chars);
     await vi.waitFor(() => expect(mocks.balCalls).toEqual(['a']));
-    document.querySelector('[data-task-cancel]').click();
+    const btn = await vi.waitFor(() => {
+      const el = document.querySelector('[data-dock-stop]');
+      expect(el).not.toBeNull();
+      return el;
+    });
+    btn.click();
     open();
     const res = await pending;
     expect(res.cancelled).toBe(true);

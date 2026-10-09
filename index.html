@@ -35,6 +35,7 @@
   <link rel="stylesheet" href="/css/modules/parties.css" />
   <link rel="stylesheet" href="/css/modules/windowPicker.css" />
   <link rel="stylesheet" href="/css/modules/statsImport.css" />
+  <link rel="stylesheet" href="/css/modules/tools.css" />
 </head>
 <body data-ui-style="next">
   <div class="app-shell">
@@ -73,13 +74,17 @@
           <span class="next-nav-icon" aria-hidden="true">◇</span>
           <span class="next-nav-copy"><strong>Руны</strong><small>Подборки игроков</small></span>
         </button>
+        <button class="tab" data-tab="tools" data-subtitle="Скрипты, окна игры и состояние парсеров." title="Ctrl+6">
+          <span class="next-nav-icon" aria-hidden="true">⚡</span>
+          <span class="next-nav-copy"><strong>Инструменты</strong><small>Скрипты и окна игры</small></span>
+        </button>
 
       </nav>
       <div class="next-sidebar-bottom">
         <div id="msk-clock" class="msk-clock" role="timer" aria-label="Московское время"></div>
         <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
         <div class="next-sidebar-divider" aria-hidden="true"></div>
-        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+6">
+        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+7">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
@@ -206,6 +211,26 @@
       <!-- РАЗДЕЛ: РУНЫ -->
       <section class="page" data-section="runes">
         <div id="runes-root"></div>
+      </section>
+
+      <!-- РАЗДЕЛ: ИНСТРУМЕНТЫ -->
+      <section class="page" data-section="tools">
+        <div id="tools-root"></div>
+        <!-- Панель парсеров в разметке, а не в скрипте: она нужна всегда, даже если раздел
+             ещё не открывали, и её свёрнутое состояние проверяется тестами. -->
+        <section class="tools-block">
+          <details class="panel fold" id="parser-health-panel">
+            <summary>
+              <h3>🩺 Состояние парсеров</h3>
+              <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
+            </summary>
+            <div id="parser-health-list"></div>
+            <div class="setting-row">
+              <p class="muted" id="parser-health-config"></p>
+              <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
+            </div>
+          </details>
+        </section>
       </section>
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
@@ -411,17 +436,6 @@
         </details>
             </div>
             <div class="settings-col">
-<details class="panel fold" id="parser-health-panel">
-          <summary>
-            <h3>🩺 Состояние парсеров</h3>
-            <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
-          </summary>
-          <div id="parser-health-list"></div>
-          <div class="setting-row">
-            <p class="muted" id="parser-health-config"></p>
-            <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
-          </div>
-        </details>
 <details class="panel fold" id="log-hub-panel">
           <summary>
             <h3>📚 Журналы</h3>
@@ -617,26 +631,12 @@
         <!-- Персонажи -->
         <button type="button" class="fab-orb is-for-characters" role="menuitem" data-fab-action="create-character" title="Создать персонажа"><span class="fab-orb-ico">🧙</span><span class="fab-orb-label">Персонаж</span></button>
         <button type="button" class="fab-orb is-for-characters" role="menuitem" data-fab-action="select-mode" title="Выбрать несколько персонажей для массовых действий"><span class="fab-orb-ico">☑</span><span class="fab-orb-label">Выбрать</span></button>
-        <button type="button" class="fab-orb is-for-characters" role="menuitem" data-fab-action="scripts" title="Скрипты: вход, балансы, промокоды"><span class="fab-orb-ico">⚡</span><span class="fab-orb-label">Скрипты</span></button>
         <!-- Пати -->
         <button type="button" class="fab-orb is-for-parties" role="menuitem" data-fab-action="create-party" title="Создать пати"><span class="fab-orb-ico">🛡</span><span class="fab-orb-label">Пати</span></button>
         <button type="button" class="fab-orb is-for-parties" role="menuitem" data-fab-action="create-character" title="Создать персонажа"><span class="fab-orb-ico">🧙</span><span class="fab-orb-label">Персонаж</span></button>
-        <button type="button" class="fab-orb is-for-parties" role="menuitem" data-fab-action="game-windows" title="Показать запущенные окна игры"><span class="fab-orb-ico">🎮</span><span class="fab-orb-label">Окна игры</span></button>
         <!-- Марафоны -->
         <button type="button" class="fab-orb is-for-marathons" role="menuitem" data-fab-action="folder" title="Создать папку"><span class="fab-orb-ico">📁</span><span class="fab-orb-label">Папка</span></button>
         <button type="button" class="fab-orb is-for-marathons" role="menuitem" data-fab-action="marathon" title="Создать марафон"><span class="fab-orb-ico">🏃</span><span class="fab-orb-label">Марафон</span></button>
-      </div>
-      <!-- Уровень «Скрипты»: открывается вместо главного уровня, орб «Назад» возвращает -->
-      <div class="fab-orbs fab-submenu" id="fab-scripts-submenu" role="menu" hidden>
-        <button type="button" class="fab-orb" role="menuitem" data-script-back="1" title="Вернуться к главному меню"><span class="fab-orb-ico is-plain">↩</span><span class="fab-orb-label">Назад</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="check-auth" title="Проверить вход у всех персонажей"><span class="fab-orb-ico is-plain">🔐</span><span class="fab-orb-label">Вход</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="update-balance" title="Обновить балансы монет"><span class="fab-orb-ico is-plain">💰</span><span class="fab-orb-label">Балансы</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="promo" title="Активировать промокод"><span class="fab-orb-ico is-plain">🎁</span><span class="fab-orb-label">Промокод</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="transfer" title="Передать предметы в игру"><span class="fab-orb-ico is-plain">📦</span><span class="fab-orb-label">Передача</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="shop" title="Активация подарков: покупка за Древние монеты"><span class="fab-orb-ico is-plain">🪙</span><span class="fab-orb-label">Подарки</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="caravan" title="Сундук караванщика: открыть сундуки в инвентаре"><span class="fab-orb-ico is-plain">🧰</span><span class="fab-orb-label">Сундук Караванщика</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="update-marathons" title="Обновить марафоны"><span class="fab-orb-ico is-plain">🏃</span><span class="fab-orb-label">Марафоны</span></button>
-        <button type="button" class="fab-orb" role="menuitem" data-script-action="close-game" title="Закрыть все окна игры"><span class="fab-orb-ico is-plain">🛑</span><span class="fab-orb-label">Закрыть</span></button>
       </div>
     </div>
     <!-- Основная кнопка. Иконка меняется динамически -->

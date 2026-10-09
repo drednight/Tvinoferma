@@ -32,8 +32,10 @@ describe('настройка «Статус серверов» (Свежесть
     expect(DEFAULT_SETTINGS.freshness.serverStatusMinutes).toBe(10);
     const html = readFileSync('index.html', 'utf8');
     expect(html).toMatch(/data-setting="freshness\.serverStatusMinutes"/);
-    const fold = html.slice(html.indexOf('Свежесть данных'));
-    expect(fold.indexOf('freshness.serverStatusMinutes')).toBeLessThan(fold.indexOf('Состояние парсеров'));
+    // Поле лежит именно в панели «Свежесть данных». Раньше проверка была «раньше панели
+    // парсеров», но та уехала в «Инструменты», и порядок в файле больше ничего не значит.
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    expect(doc.querySelector('#settings-freshness [data-setting="freshness.serverStatusMinutes"]')).not.toBeNull();
   });
 
   it('isStatusDue: данных нет — пора; свежие — нет; 0 — никогда; недавняя попытка тоже считается', () => {

@@ -19,6 +19,7 @@ import { refreshRunningWindows } from './modules/launcher/runningWindows.js';
 import { bindParties, renderParties } from './modules/parties/index.js';
 import { bindMarathons, renderMarathons, resetMarathonView } from './modules/marathons/page.js';
 import { bindRunes, renderRunes } from './modules/runes/index.js';
+import { bindTools, renderTools } from './modules/tools/index.js';
 import { initTaskLog } from './core/taskLog.js';
 import { initStickyHeader } from './core/stickyHeader.js';
 import { bindSettings, renderSettings } from './settings/settings.js';
@@ -147,6 +148,12 @@ async function boot() {
       bindRunes();
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Runes:', e);
+    }
+
+    try {
+      bindTools();
+    } catch (e) {
+      console.error('[BOOT ERROR] Failed to bind Tools:', e);
     }
 
     try {
@@ -298,6 +305,11 @@ function renderActiveTab(sectionName) {
         break;
       case 'runes':
         renderRunes();
+        break;
+      case 'tools':
+        renderTools();
+        // Список окон игры нужен и здесь (управление окнами), и на «Сегодня», и в карточке
+        if (isTauri()) refreshRunningWindows().catch(() => {});
         break;
       case 'settings':
         renderSettings();

@@ -68,6 +68,7 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const extra = customPages();
   const task = startTask('🔍 Поиск марафонов на сайте', { dock, total: 100 }).watch('scan');
+  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(scanner ? `Профиль для поиска: ${scanner.nick} (вход выполнен)` : 'Нет персонажа со входом — сайт может не показать марафон', scanner ? 'info' : 'warn');
   task.log(`Страницы: ${[...SITE_PAGES.map(p => p.label), ...extra].join(', ')}`);
@@ -95,6 +96,7 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
 export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const task = startTask('📥 Загрузка заданий марафона', { dock }).watch('detail');
+  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Страница: ${url}`);
   task.log(scanner ? `Профиль: ${scanner.nick}` : 'Без профиля со входом', scanner ? 'info' : 'warn');
@@ -129,6 +131,7 @@ export const isNewsUrl = (url) => /news\.php\?.*article=\d+/i.test(String(url ||
  */
 export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   const task = startTask('📰 Разбор новости о марафоне', { dock }).watch('news');
+  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Новость: ${url}`);
   const wait = new Promise(r => { newsWaiter = r; });
@@ -171,6 +174,7 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
  */
 export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, onTask } = {}) {
   const task = startTask('🔎 Поиск новости о марафоне', { dock }).watch('news');
+  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   const loaded = [];
   let firstError = null;
@@ -260,6 +264,8 @@ export async function syncMarathons(marathons, callbacks = {}) {
   const task = startTask(marathons.length === 1 ? `🔄 Сверка: ${marathons[0].title}` : `🔄 Сверка марафонов (${marathons.length})`, { cancelable: true });
   const signal = { cancelled: false };
   task.onCancel(() => { signal.cancelled = true; });
+  // Ждём своей очереди: пока идёт другой скрипт, запросы не отправляем
+  await task.waitTurn();
   callbacks.onTask?.(task);
   const byUrl = new Map();
   const noUrl = [];

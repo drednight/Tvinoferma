@@ -104,6 +104,28 @@ describe('док задач в шапке', () => {
     expect(dock.querySelector('[data-dock-stop]')).not.toBeNull();
   });
 
+  it('по умолчанию док свёрнут: в шапке только плашка, список — по кнопке', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const first = startTask('Обновление балансов', { total: 2, cancelable: true });
+    startTask('Проверка авторизации', { total: 2, cancelable: true });   // в очереди
+    const dock = document.getElementById('tf-task-dock');
+    // Плашка текущего скрипта видна всегда — свёрнут именно выпадающий список
+    expect(dock.classList.contains('is-open')).toBe(false);
+    expect(dock.querySelector('.msk-clock-label').textContent).toBe('Обновление балансов');
+    const toggle = dock.querySelector('[data-dock-fold]');
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.title).toBe('Развернуть');
+
+    toggle.click();
+    expect(dock.classList.contains('is-open')).toBe(true);
+    expect(dock.querySelector('.tf-dock-row').textContent).toContain('Обновление балансов');
+    expect(dock.querySelector('[data-dock-fold]').title).toBe('Свернуть');
+
+    dock.querySelector('[data-dock-fold]').click();
+    expect(dock.classList.contains('is-open')).toBe(false);
+    first.finish('Готово');
+  });
+
   it('кнопка обновления в топбаре ближе к центру, чем логи', async () => {
     document.body.innerHTML = '<div class="topbar-right"><button id="update-badge"></button></div>';
     const { startTask } = await import('../js/core/taskLog.js');
@@ -133,7 +155,7 @@ describe('док задач в шапке', () => {
     expect(task.cancelled).toBe(true);
   });
 
-  it('«Открыть лог» не открывает новое окно: логи копятся в очереди', async () => {
+  it('«📄» открывает журнал всех логов в окне, а не разворачивает панель под доком', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
     const first = startTask('Проверка входа', { total: 2 });
     first.log('строка журнала');
@@ -141,30 +163,152 @@ describe('док задач в шапке', () => {
     const second = startTask('Балансы', { total: 2 });
     second.log('строка второго');
     const dock = document.getElementById('tf-task-dock');
-    const bar = () => dock.querySelector('.tf-dock-slot-bar');
 
-    // Без заявки в очереди кнопка показывает то, что под рукой: выполняющийся скрипт
-    bar().querySelector('[data-dock-open-log]').click();
-    expect(dock.querySelector('.tf-dock-slot-log').textContent).toContain('строка второго');
+    // Панели лога под доком больше нет: она наезжала на страницу и обрезалась по высоте
+    expect(dock.querySelector('.tf-dock-slot-log')).toBeNull();
 
-    // Пока один лог открыт, заявка на другой не переключает его, а встаёт в очередь
-    dock.querySelector(`[data-task-log="${first.id}"]`).click();
-    expect(dock.querySelector('.tf-dock-slot-log').textContent).toContain('строка второго');
-    expect(bar().querySelector('.tf-dock-queue')).not.toBeNull();
+    dock.querySelector('[data-dock-open-log]').click();
+    const dialog = document.querySelector('.tf-dialog');
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector('.tf-dialog-title').textContent).toBe('📚 Логи скриптов');
+    // В окне — сразу все записи журнала, а не лог одной задачи
+    const rows = dialog.querySelectorAll('[data-lh-key]');
+    expect([...rows].map(r => r.textContent).join(' ')).toContain('Проверка входа');
+    expect([...rows].map(r => r.textContent).join(' ')).toContain('Балансы');
 
-    dock.querySelector('[data-dock-log-close]').click();
-    expect(dock.querySelector('.tf-dock-slot-log').textContent).toBe('');
+    dialog.querySelector('.tf-close').click();
+    expect(document.querySelector('.tf-dialog')).toBeNull();
+  });
+
+  it('клик по строке списка открывает лог этой задачи', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const first = startTask('Проверка входа', { total: 2 });
+    first.log('строка журнала');
+    first.finish('Готово');
+    const dock = document.getElementById('tf-task-dock');
+    dock.querySelector(`[data-dock-log-row="${first.id}"]`).click();
+    const dialog = document.querySelector('.tf-dialog');
+    expect(dialog.querySelector('.tf-dialog-title').textContent).toContain('Проверка входа');
+    expect(dialog.textContent).toContain('строка журнала');
+    dialog.querySelector('.tf-close').click();
   });
 });
 
 describe('точечное обновление плашек задач', () => {
   beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = ''; });
   it('новая строка не пересоздаёт чужие плашки, завершение добавляет кнопку скрытия', async () => {
-    const { startTask } = await import('../js/core/taskLog.js');
+    // Проверяем на карточке задачи, встроенной в страницу: в списке шапки карточек больше нет,
+    // там тихие строки без кнопок (см. док «список задач под плашкой»).
+    const { startTask, taskCardHtml } = await import('../js/core/taskLog.js');
     const first = startTask('Первая задача'), second = startTask('Вторая задача');
+    document.body.innerHTML = `<div id="holder">${taskCardHtml(first)}${taskCardHtml(second)}</div>`;
     const other = document.querySelector(`[data-task-card="${second.id}"]`);
-    first.log('Новый шаг');expect(document.querySelector(`[data-task-card="${second.id}"]`)).toBe(other);
-    first.finish('Готово');expect(document.querySelector(`[data-task-close="${first.id}"]`)).not.toBeNull();
+    first.log('Новый шаг');
+    expect(document.querySelector(`[data-task-card="${second.id}"]`)).toBe(other);
+    first.finish('Готово');
+    expect(document.querySelector(`[data-task-close="${first.id}"]`)).not.toBeNull();
+  });
+
+  it('список под плашкой — строки без кнопок: имя скрипта, его дело и ход работы', async () => {
+    const { startTask, renderDock } = await import('../js/core/taskLog.js');
+    const task = startTask('Проверка входа', { total: 4, cancelable: true });
+    task.progress(2, 4, 'Аа');
+    renderDock();
+    const dock = document.getElementById('tf-task-dock');
+    const row = dock.querySelector('.tf-dock-row');
+    expect(row.textContent).toContain('Проверка входа');
+    expect(row.textContent).toContain('Аа');           // чем скрипт занят
+    expect(row.textContent).toContain('50%');
+    expect(row.textContent).toContain('2/4');
+    // Кнопок в строке нет: управление скриптом живёт на плашке в шапке
+    expect(row.querySelector('button')).toBeNull();
+    expect(row.querySelector('[data-task-cancel]')).toBeNull();
+  });
+
+  it('второй скрипт встаёт в очередь: сверху идущий, ниже «в очереди»', async () => {
+    const { startTask, renderDock } = await import('../js/core/taskLog.js');
+    const first = startTask('Обновление балансов', { total: 4, cancelable: true });
+    first.progress(1, 4, 'ДМ 29');
+    const second = startTask('Проверка авторизации', { total: 2, cancelable: true });
+    renderDock();
+    const dock = document.getElementById('tf-task-dock');
+    const rows = [...dock.querySelectorAll('.tf-dock-row')];
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain('Обновление балансов');   // идущий — сверху
+    expect(rows[0].textContent).toContain('1/4');
+    expect(rows[1].textContent).toContain('Проверка авторизации'); // ждущий — под ним
+    expect(rows[1].textContent).toContain('в очереди');
+    // Плашка и кнопки пауза/стоп относятся только к идущему скрипту
+    expect(dock.querySelector('.msk-clock-label').textContent).toBe('Обновление балансов');
+    expect(dock.querySelector(`[data-dock-pause="${first.id}"]`)).not.toBeNull();
+    expect(dock.querySelector(`[data-dock-stop="${second.id}"]`)).toBeNull();
+
+    // Ждущий не начинает работу, пока первый не закончит
+    let started = false;
+    const turn = second.waitTurn().then(() => { started = true; });
+    await Promise.resolve();
+    expect(started).toBe(false);
+
+    first.finish('Готово');
+    await turn;
+    expect(started).toBe(true);
+    renderDock();
+    const after = [...document.getElementById('tf-task-dock').querySelectorAll('.tf-dock-row')];
+    expect(after[0].textContent).toContain('Проверка авторизации');
+    expect(after[0].textContent).not.toContain('в очереди');
+  });
+
+  it('очередь идёт по порядку запуска, а не по последнему нажатию', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const first = startTask('Первый', { total: 1, cancelable: true });
+    const second = startTask('Второй', { total: 1, cancelable: true });
+    const third = startTask('Третий', { total: 1, cancelable: true });
+    const order = [];
+    second.waitTurn().then(() => order.push('второй'));
+    third.waitTurn().then(() => order.push('третий'));
+    first.finish('Готово');
+    second.finish('Готово');
+    third.finish('Готово');
+    await Promise.resolve(); await Promise.resolve();
+    expect(order).toEqual(['второй', 'третий']);
+  });
+
+  it('скрипт, отменённый в очереди, не запускается и не блокирует следующих', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const first = startTask('Идущий', { total: 1, cancelable: true });
+    const dropped = startTask('Отменённый', { total: 1, cancelable: true });
+    const next = startTask('Следующий', { total: 1, cancelable: true });
+    dropped.cancel();                          // пользователь снял ожидание
+    expect(dropped.waiting).toBe(false);
+    let ran = false;
+    next.waitTurn().then(() => { ran = true; });
+    first.finish('Готово');
+    await Promise.resolve(); await Promise.resolve();
+    expect(ran).toBe(true);
+  });
+
+  it('задачи вне дока очередь не занимают: мастер марафона работает сразу', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    startTask('Док-скрипт', { total: 1, cancelable: true });
+    const plain = startTask('Мастер марафона', { dock: false, total: 1 });
+    expect(plain.waiting).toBe(false);
+    let started = false;
+    plain.waitTurn().then(() => { started = true; });
+    await Promise.resolve();
+    expect(started).toBe(true);
+  });
+
+  it('пауза видна в списке словами, а не только сменой кнопки', async () => {
+    const { startTask, renderDock } = await import('../js/core/taskLog.js');
+    const task = startTask('Балансы', { total: 2, cancelable: true });
+    task.progress(1, 2, 'Бб');
+    renderDock();
+    const dock = document.getElementById('tf-task-dock');
+    expect(dock.querySelector('.tf-dock-row').textContent).toContain('Бб');
+    task.togglePause();
+    renderDock();
+    expect(dock.querySelector('.tf-dock-row').textContent).toContain('на паузе');
   });
 });
 

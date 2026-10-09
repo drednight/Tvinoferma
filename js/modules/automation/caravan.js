@@ -130,10 +130,12 @@ export function openCaravanDialog({ ids = [] } = {}) {
     const { browserSlots } = await import('../sync/queue.js');
     const { invoke } = await import('@tauri-apps/api/core');
 
-    const task = startTask(`🧰 Сундук караванщика${dry ? ' (только подсчёт)' : ''}: ${chars.length} перс.`, { total: chars.length, cancelable: true });
-    const signal = { cancelled: false };
-    running = signal;
-    task.onCancel(() => { signal.cancelled = true; });
+const task = startTask(`🧰 Сундук караванщика${dry ? ' (только подсчёт)' : ''}: ${chars.length} перс.`, { total: chars.length, cancelable: true });
+      const signal = { cancelled: false };
+      running = signal;
+      task.onCancel(() => { signal.cancelled = true; });
+      // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
+      await task.waitTurn();
     task.watch(...chars.map(c => `char:${c.id}`));
     task.setStep(`${chars.length} перс., по ${browserSlots.max} одновременно, повторов до ${retries}`);
     renderRunning(chars, signal, dry);

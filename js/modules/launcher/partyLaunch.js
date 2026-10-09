@@ -153,6 +153,8 @@ export async function launchGroup(title, characters, opts = {}) {
     const startedAt = Date.now();
     task = startTask(title, { total: ready.length, cancelable: true });
     task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
+    await task.waitTurn();
     preflightLog(pre).forEach(l => task.log(l.text, l.level));
 
     // Один GameCenter на всю пати — тот, которым пользуется большинство; остальные запускаются из того, что у них есть

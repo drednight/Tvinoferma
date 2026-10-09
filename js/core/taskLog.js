@@ -8,7 +8,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { escapeHtml } from './utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
-import { registerLogSource } from './logHub.js';
+import { registerLogSource, openLogHub } from './logHub.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
 import { mskStampSeconds } from './msk.js';
 import { state } from './state.js';
@@ -59,7 +59,7 @@ class Task {
     this.dock = opts.dock !== false;
     this.startedAt = nowIso();
     this.finishedAt = null;
-    this.status = 'running';     // running | done | warn | error
+    this.status = 'running';     // running | done | warn | error (ожидание — по флагу waiting)
     this.done = 0;
     this.total = opts.total || 0;
     this.step = '';
@@ -76,10 +76,30 @@ class Task {
     this._onCancel = null;
     this._onPause = null;
     this._onStop = null;
+    this._waiters = [];          // ждут очереди: сработают, когда скрипт дойдёт до работы
+    this.waiting = false;        // стоит в очереди за другим скриптом
   }
   get percent() {
     if (this.status !== 'running') return 100;
     return this.total ? Math.min(100, Math.round(this.done / this.total * 100)) : 0;
+  }
+  /**
+   * Ждать очереди, если она есть.
+   *
+   * Скрипты выполняются по одному: пока в доке идёт другой, новый не начинает работу и
+   * ждёт. Возвращает промис, который разрешится, когда скрипт встанет выполняться
+   * (или немедленно, если очередь была свободна). Если скрипт отменили, пока он ждал,
+   * промис всё равно разрешается — вызывающий код сам увидит `signal.cancelled` и выйдет.
+   */
+  waitTurn() {
+    if (!this.waiting) return Promise.resolve();
+    return new Promise(resolve => this._waiters.push(resolve));
+  }
+  /** Отпустить ожидающих: скрипт встал в работу. */
+  _releaseWaiters() {
+    const list = this._waiters;
+    this._waiters = [];
+    list.forEach(fn => { try { fn(); } catch (_) {} });
   }
   log(message, level = 'info', scope = '') {
     this.entries.push({ at: nowIso(), level, message: String(message), scope: scope || '' });
@@ -138,17 +158,25 @@ class Task {
     if (this.status !== 'running' || this.cancelled) return this;
     this.cancelled = true;
     this.paused = false;
+    const wasWaiting = this.waiting;
+    this.waiting = false;
+    this._releaseWaiters();      // ждущий отпускается сразу: работать ему уже не о чем
     this.log('Остановлено: работа прервана на середине', 'warn');
     try { this._onCancel?.(); } catch (_) {}
     try { this._onStop?.(); } catch (_) {}
+    if (wasWaiting) startNextQueued();
     return this;
   }
 
   cancel() {
     if (this.status !== 'running' || this.cancelled) return this;
     this.cancelled = true;
+    const wasWaiting = this.waiting;
+    this.waiting = false;
+    this._releaseWaiters();
     this.log('Отмена: уже запущенные проверки завершатся, остальные будут пропущены', 'warn');
     try { this._onCancel?.(); } catch (_) {}
+    if (wasWaiting) startNextQueued();
     return this;
   }
   progress(done, total, step) {
@@ -171,11 +199,47 @@ class Task {
     this.log(summary || 'Завершено', this.status === 'error' ? 'error' : this.status === 'warn' ? 'warn' : 'ok');
     saveJournal();
     if (this.dock) setTimeout(() => { this._hidden = true; renderDock(); }, DOCK_AUTOHIDE_MS);
+    if (this.dock) startNextQueued();
     return this;
   }
 }
 
 tasks = loadJournal();
+
+/**
+ * Очередь запуска: скрипты выполняются по одному.
+ *
+ * Раньше новый скрипт начинался сразу, даже если предыдущий ещё шёл: плашка показывала
+ * один скрипт, а второй молча работал в фоне, и его нельзя было остановить — кнопки
+ * пауза и стоп относятся к текущему. Теперь новый док-скрипт встаёт в очередь и ждёт:
+ * сверху плашка и список показывают идущий скрипт, ниже — «в очереди» с тем, что он ждёт.
+ *
+ * Очередь касается только док-задач (`dock: true`) — они и есть «скрипты» в плашке.
+ * Вложенные задачи и задачи вне дока (например, мастер марафона) очередь не занимают.
+ *
+ * @returns {boolean} встал ли скрипт в очередь
+ */
+function enqueueIfBusy(task) {
+  if (!task.dock || task.waiting) return false;
+  const busy = tasks.some(t => t !== task && t.dock && t.status === 'running' && !t._hidden);
+  if (!busy) return false;
+  task.waiting = true;
+  task.log('В очереди: жду завершения текущего скрипта', 'info');
+  notify(task);
+  return true;
+}
+
+/** Пустить следующий скрипт из очереди, если очередь не пуста. */
+function startNextQueued() {
+  // `tasks.unshift`, поэтому индекс 0 — самый новый. Очередь идёт по порядку запуска:
+  // первым встаёт тот, кто ждёт дольше всех, — он и последний в списке.
+  const next = [...tasks].reverse().find(t => t.waiting);
+  if (!next) return;
+  next.waiting = false;
+  next.log('Начато: освободилось место, запускаюсь', 'info');
+  next._releaseWaiters();
+  notify(next);
+}
 
 export function startTask(title, opts = {}) {
   ensureRustListener();
@@ -183,6 +247,7 @@ export function startTask(title, opts = {}) {
   tasks.unshift(t);
   if (tasks.length > MAX_TASKS) tasks.length = MAX_TASKS;
   t.log(`Начато: ${title}`, 'info');
+  enqueueIfBusy(t);
   return t;
 }
 
@@ -304,15 +369,22 @@ function notify(t) {
   // точечное обновление всех карточек этой задачи на странице
   document.querySelectorAll(`[data-task-card="${t.id}"]`).forEach(el => {
     if (el.closest('.tl-log-progress')) return; // полный журнал обновляется пачками
-    const closable = el.closest('#tf-task-dock') ? t.status !== 'running' : !!el.querySelector('[data-task-close]');
-    el.outerHTML = taskCardHtml(t, { closable });
+    // Кнопка «скрыть» — у завершённой задачи: идущую закрывать незачем. Раньше она давалась
+    // только карточкам в доке, но с тех пор док — это список строк без кнопок, и закрыть
+    // плашку было уже нечем. Теперь решение принимает сама карточка.
+    el.outerHTML = taskCardHtml(t, { closable: t.status !== 'running' });
   });
   if (t.dock) renderDock();
   subscribers.forEach(fn => { try { fn(t); } catch (_) {} });
 }
 
-/** Свёрнут ли док. Живёт в памяти: переживать перезапуск незачем — при новом запуске док и так пуст. */
-let dockFolded = false;
+/**
+ * Свёрнут ли док. По умолчанию свёрнут: в шапке остаётся только плашка текущего скрипта
+ * (что идёт, сколько процентов, пауза/стоп/логи), а выпадающий список с очередью и
+ * подробностями появляется только по кнопке «▾» — иначе он висит над страницей
+ * без всякой просьбы. Живёт в памяти: при новом запуске док и так пуст.
+ */
+let dockFolded = true;
 
 /** Док живёт в шапке рядом с кнопкой обновления, а не поверх страницы. */
 function dockHost() {
@@ -320,33 +392,25 @@ function dockHost() {
 }
 
 /**
- * Очередь логов: id задач, чей полный лог просят показать. Отдельного окна на каждый запрос
- * не открывается — логи копятся в очереди, плашка показывает, сколько их ждёт.
+ * Журнал всех логов скриптов в отдельном окне.
+ *
+ * Раньше кнопка «📄» на плашке разворачивала лог прямо под доком. На скриншоте это выглядело
+ * плохо: панель наезжала на страницу, обрезалась по высоте и путалась с самим списком задач.
+ * Теперь логи живут в своём модальном окне — там есть все записи журнала, поиск, фильтр
+ * «только с ошибками», копирование и сохранение в файл.
  */
-const dockLogQueue = [];
-let dockLogOpen = null;
-
-/**
- * Показать лог. Если один уже открыт, новая заявка не переключает его, а встаёт в очередь:
- * пользователь сам решает, что смотреть дальше. Пустая очередь — показываем выполняющийся
- * скрипт, а если его нет, последний завершённый.
- */
-function dockOpenLog(wantedId = null) {
-  if (wantedId) {
-    if (wantedId === dockLogOpen) { dockLogOpen = null; renderDock(); return; }
-    if (dockLogOpen) { if (!dockLogQueue.includes(wantedId)) dockLogQueue.push(wantedId); renderDock(); return; }
-    dockLogOpen = wantedId;
-  } else if (dockLogOpen && !wantedId) {
-    dockLogOpen = null;                      // повторное нажатие кнопки — свернуть
-  } else {
-    dockLogOpen = (dockCurrentTask() || tasks.find(t => t.dock && t.entries.length))?.id || null;
-  }
-  renderDock();
+function openScriptLogs() {
+  openLogHub({ source: 'task', title: '📚 Логи скриптов' });
 }
 
-/** Задача, которую сейчас выполняет скрипт: она одна активна, ей и управляют пауза и стоп. */
-function dockCurrentTask() {
-  return tasks.find(t => t.dock && t.status === 'running' && !t._hidden) || null;
+/**
+ * Задача, которую сейчас выполняет скрипт: она одна активна, ей и управляют пауза и стоп.
+ *
+ * Ждущие очереди (`waiting`) исключены: у них статус тоже «running» — работа ещё не
+ * началась, и плашка с кнопками должна относиться к тому, кто действительно идёт.
+ */
+export function dockCurrentTask() {
+  return tasks.find(t => t.dock && t.status === 'running' && !t.waiting && !t._hidden) || null;
 }
 
 /**
@@ -361,7 +425,7 @@ function dockCurrentTask() {
  * пауза/стоп/логи. Раскрывается не полоса, а список под ней: он выпадает вниз отдельным
  * модулем (как квадрат «Московского времени»), поэтому высота шапки не прыгает.
  */
-function dockBarHtml(current, queued) {
+function dockBarHtml(current) {
   const pct = current ? current.percent : 0;
   const label = current ? current.title : 'Скрипты не выполняются';
   const zone = current ? (current.paused ? 'пауза' : `${pct}%`) : 'простой';
@@ -371,8 +435,6 @@ function dockBarHtml(current, queued) {
       title="${current.paused ? 'Продолжить' : 'Приостановить'}" aria-label="Пауза">${current.paused ? '▶' : '⏸'}</button>
     <button type="button" class="tl-icon-btn tl-cancel" data-dock-stop="${current.id}"
       title="Остановить сразу, не дожидаясь конца" aria-label="Стоп">■</button>` : '';
-  const queueNote = queued
-    ? `<button type="button" class="tf-dock-queue" data-dock-open-log title="Показать следующий лог">📄 ${queued}</button>` : '';
   // Плашка повторяет вид квадрата «Московского времени»: тот же заголовок с точкой,
   // подписью и плашкой-меткой, под ним — шкала прогресса и управление скриптом.
   return `
@@ -385,10 +447,56 @@ function dockBarHtml(current, queued) {
     <div class="tf-dock-ctrl">
       <button type="button" class="tf-dock-toggle" data-dock-fold title="${dockFolded ? 'Развернуть' : 'Свернуть'}"
         aria-expanded="${!dockFolded}"><span aria-hidden="true">${dockFolded ? '▾' : '▴'}</span></button>
-      ${queueNote}${controls}
-      <button type="button" class="tl-icon-btn" data-dock-open-log title="Показать логи"
+      ${controls}
+      <button type="button" class="tl-icon-btn" data-dock-open-log title="Все логи скриптов"
         aria-label="Открыть логи">📄</button>
     </div>`;
+}
+
+export /**
+ * Список задач под плашкой: что именно делает каждый скрипт прямо сейчас.
+ *
+ * Раньше здесь выпадали карточки `taskCardHtml` — с кольцом, полосой и кнопками. На верхней
+ * правой части окна это читалось как мешанина: карточки наезжали друг на друга, а кнопки
+ * (■ 📄 ▾) конкурировали с кнопками самой плашки. Теперь это просто список строк: имя
+ * скрипта, чем он занят, сколько процентов. Кнопок нет намеренно — управление скриптом
+ * (пауза, стоп, логи) осталось на плашке в шапке, где для этого есть место.
+ *
+ * @param {Array<any>} list видимые задачи
+ */
+function dockListHtml(list) {
+  if (!list.length) return '<p class="tf-dock-empty">Скрипты не выполняются</p>';
+  return list.map(t => {
+    const running = t.status === 'running';
+    const pct = t.percent;
+    // Что задача делает: текущий шаг, у очереди — «в очереди», у паузы — отдельная пометка
+    const what = t.waiting
+      ? 'в очереди — ждёт завершения текущего скрипта'
+      : t.paused
+        ? 'на паузе — текущий скрипт дойдёт до конца'
+        : (t.step || (running ? 'начинаю…' : t.summary || ''));
+    const status = t.waiting ? 'is-queued' : (t.paused ? 'is-paused' : t.status);
+    // Счётчик прогресса ждущему показывать нечего: он ещё не начал считать
+    const tail = [
+      !t.waiting && t.total ? `${t.done}/${t.total}` : '',
+      t.errors ? `ошибок ${t.errors}` : '',
+      t.warnings ? `предупреждений ${t.warnings}` : ''
+    ].filter(Boolean).join(' · ');
+    const mark = t.waiting ? '⏳' : (running ? `${pct}%` : STATUS_ICON[t.status] || '•');
+    return `<div class="tf-dock-row tl-s-${status}" data-dock-log-row="${t.id}"
+      title="${escapeHtml(`${t.title}: ${what}`)}">
+      <span class="tf-dock-row-dot" aria-hidden="true"></span>
+      <div class="tf-dock-row-body">
+        <div class="tf-dock-row-top">
+          <b>${escapeHtml(t.title)}</b>
+          <span class="tf-dock-row-pct">${mark}</span>
+        </div>
+        <div class="tf-dock-row-step">${escapeHtml(what)}</div>
+        ${running && !t.waiting ? `<span class="tf-dock-row-bar"><i style="width:${pct}%"></i></span>` : ''}
+      </div>
+      ${tail ? `<span class="tf-dock-row-tail">${escapeHtml(tail)}</span>` : ''}
+    </div>`;
+  }).join('');
 }
 
 export function renderDock() {
@@ -396,55 +504,39 @@ export function renderDock() {
   if (!dock) {
     dock = document.createElement('div');
     dock.id = 'tf-task-dock';
-    dock.innerHTML = '<div class="msk-clock tf-dock-slot-bar"></div><div class="tf-dock-slot-list"></div><div class="tf-dock-slot-log"></div>';
-    dock.addEventListener('click', (e) => {
-      const fold = e.target.closest('[data-dock-fold]');
-      if (fold) { dockFolded = !dockFolded; renderDock(); return; }
-      const pause = e.target.closest('[data-dock-pause]');
-      if (pause) { const t = tasks.find(x => x.id === pause.dataset.dockPause); if (t) { t.togglePause(); notify(t); renderDock(); } return; }
-      const stop = e.target.closest('[data-dock-stop]');
-      if (stop) { const t = tasks.find(x => x.id === stop.dataset.dockStop); if (t) { t.stop(); notify(t); renderDock(); } return; }
-      // «Открыть лог» не открывает новое окно: логи показываются в самом доке, по очереди.
-      const log = e.target.closest('[data-task-log]');
-      if (log) { dockOpenLog(log.dataset.taskLog); return; }
-      if (e.target.closest('[data-dock-open-log]')) { dockOpenLog(); return; }
-      if (e.target.closest('[data-dock-log-close]')) { dockOpenLog(); return; }
-    });
+    dock.innerHTML = '<div class="msk-clock tf-dock-slot-bar"></div><div class="tf-dock-slot-list"></div>';
     dockHost().appendChild(dock);
   }
-  // Задачи, карточка которых уже видна на странице (мастер, марафон), в доке не дублируем
+  // Задачи, карточка которых уже видна на странице (мастер, марафон), в списке не дублируем
   const embedded = new Set([...document.querySelectorAll('[data-task-card]')]
     .filter(el => !dock.contains(el)).map(el => el.dataset.taskCard));
-  const visible = tasks.filter(t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt)).slice(0, 4);
+  // Порядок в списке: сверху идущий скрипт, под ним очередь (по порядку запуска),
+  // потом завершённые (свежие сверху). `tasks.unshift`, поэтому новее — левее.
+  const visible = tasks.filter(t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt));
+  const rank = (t) => (t.status === 'running' && !t.waiting ? 0 : t.waiting ? 1 : 2);
+  visible.sort((a, b) => rank(a) - rank(b));
+  visible.length = Math.min(visible.length, 4);
   const current = dockCurrentTask();
   dock.classList.toggle('is-open', !dockFolded);
   dock.classList.toggle('is-idle', !current);
 
-  // Полоса перерисовывается целиком (в ней проценты и кнопки), карточки — точечно, из notify.
+  // Полоса перерисовывается целиком (в ней проценты и кнопки) — сравнением строк, а не всегда.
   const barSlot = /** @type {HTMLElement} */ (dock.querySelector('.tf-dock-slot-bar'));
-  const bar = dockBarHtml(current, dockLogQueue.length);
+  const bar = dockBarHtml(current);
   if (barSlot && barSlot.innerHTML !== bar) barSlot.innerHTML = bar;
 
-  // Выпадающий список карточек: пересобирается только когда изменился сам состав задач.
+  // Список под плашкой пересобирается всегда: в нём видно текущий шаг каждого скрипта,
+  // а шаг меняется на каждой строке лога — пересборка по составу задач его бы пропускала.
   const listSlot = /** @type {HTMLElement} */ (dock.querySelector('.tf-dock-slot-list'));
-  const key = visible.map(t => t.id).join(',');
-  if (listSlot && listSlot.dataset.key !== key) {
-    listSlot.dataset.key = key;
-    listSlot.innerHTML = visible.map(t => taskCardHtml(t, { closable: t.status !== 'running' })).join('');
+  if (listSlot) {
+    const key = `${dockFolded ? '1' : '0'}|${visible.map(t => `${t.id}:${t.status}:${t.step}:${t.percent}:${t.paused ? 1 : 0}:${t.waiting ? 1 : 0}:${t.done}`).join(',')}`;
+    if (listSlot.dataset.key !== key) {
+      listSlot.dataset.key = key;
+      listSlot.innerHTML = dockListHtml(visible);
+    }
   }
 
-  // Раскрытый лог — по одному, из очереди запросов.
-  const logSlot = /** @type {HTMLElement} */ (dock.querySelector('.tf-dock-slot-log'));
-  if (logSlot && logSlot.dataset.task !== (dockLogOpen || '')) {
-    logSlot.dataset.task = dockLogOpen || '';
-    const t = dockLogOpen ? tasks.find(x => x.id === dockLogOpen) : null;
-    logSlot.innerHTML = t ? `
-      <div class="tf-dock-log-head"><b>${escapeHtml(t.title)}</b>
-        <button type="button" class="tl-icon-btn" data-dock-log-close title="Свернуть лог">✕</button>
-      </div>
-      <div class="tl-entries tl-full">${t.entries.slice(-40).map(entryHtml).join('')}</div>` : '';
   }
-}
 
 /** Полный лог задачи в отдельном окне. */
 export function openTaskLog(id) {
@@ -524,8 +616,24 @@ registerLogSource({
   subscribe: onTaskChange
 });
 
-// Делегирование кликов для всех карточек задач (док, мастер, страницы)
-document.addEventListener('click', (e) => {
+// Делегирование кликов для всех карточек задач (док, мастер, страницы).
+// Слушатель висит на document, а не на узле дока: док переиспользует уже созданный
+// элемент, и слушатель на самом узле однажды остался бы с замыканием на старый модуль.
+// При пересоздании модуля (тесты, горячая перезагрузка) прежний слушатель снимается —
+// иначе один клик обрабатывался бы столько раз, сколько раз модуль импортировали.
+function onTaskLogClick(e) {
+  const fold = e.target.closest?.('[data-dock-fold]');
+  if (fold) { dockFolded = !dockFolded; renderDock(); return; }
+  const pause = e.target.closest?.('[data-dock-pause]');
+  if (pause) { const t = tasks.find(x => x.id === pause.dataset.dockPause); if (t) { t.togglePause(); notify(t); renderDock(); } return; }
+  const stop = e.target.closest?.('[data-dock-stop]');
+  if (stop) { const t = tasks.find(x => x.id === stop.dataset.dockStop); if (t) { t.stop(); notify(t); renderDock(); } return; }
+  // Клик по строке списка — открыть лог этой задачи. Кнопок в списке нет намеренно,
+  // поэтому строка сама и есть управление.
+  const row = e.target.closest?.('[data-dock-log-row]');
+  if (row) { openTaskLog(row.dataset.dockLogRow); return; }
+  // Кнопка «📄» на плашке: все логи скриптов из журнала в отдельном окне
+  if (e.target.closest?.('[data-dock-open-log]')) { openScriptLogs(); return; }
   const tg = e.target.closest?.('[data-task-toggle]');
   if (tg) { const t = tasks.find(x => x.id === tg.dataset.taskToggle); if (t) { t.open = !t.open; notify(t); } return; }
   const cn = e.target.closest?.('[data-task-cancel]');
@@ -534,4 +642,9 @@ document.addEventListener('click', (e) => {
   if (lg) { openTaskLog(lg.dataset.taskLog); return; }
   const cl = e.target.closest?.('[data-task-close]');
   if (cl) { const t = tasks.find(x => x.id === cl.dataset.taskClose); if (t) { t._hidden = true; renderDock(); } }
-});
+}
+
+const DELEGATE_KEY = '__tfTaskLogClickDelegate';
+if (document[DELEGATE_KEY]) document.removeEventListener('click', document[DELEGATE_KEY]);
+document[DELEGATE_KEY] = onTaskLogClick;
+document.addEventListener('click', onTaskLogClick);

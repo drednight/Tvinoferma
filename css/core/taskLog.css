@@ -7,13 +7,18 @@
    а раскрытый список подробностей свисает вниз на страницу. Раньше док висел поверх окна
    в левом нижнем углу и наезжал на кнопку «Настройки», а свернуть его было нечем.
    Обводка — как у плашки «Статус серверов». Виден всегда, даже когда задач нет. */
+/* Ширина плашки и выпадающего списка — одна величина.
+   Раньше плашка была 288px, а список 320px: на скриншоте список заметно вылезал вправо и
+   вниз за плашку, и выглядело это как два разных элемента. Теперь обе части берут размер
+   из `--tf-dock-w` и одинаково ограничены по ширине окна, поэтому совпадают всегда. */
 #tf-task-dock {
+  --tf-dock-w: 320px;
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: 320px;
-  max-width: min(320px, 40vw);
+  width: var(--tf-dock-w);
+  max-width: min(var(--tf-dock-w), 40vw);
   pointer-events: none;
 }
 
@@ -26,8 +31,8 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  width: 288px;
-  max-width: min(288px, 38vw);
+  width: var(--tf-dock-w);
+  max-width: min(var(--tf-dock-w), 40vw);
   pointer-events: none;
 }
 
@@ -57,15 +62,6 @@ body[data-ui-style='next'] #tf-task-dock {
 
 .tf-dock-ctrl { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .tf-dock-ctrl .tl-icon-btn { flex: none; }
-.tf-dock-queue {
-  padding: 1px 6px;
-  border: 1px solid var(--accent-line, rgba(110, 142, 248, 0.3));
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft, rgba(110, 142, 248, 0.12));
-  color: var(--accent);
-  font-size: 0.68rem;
-  cursor: pointer;
-}
 .tf-dock-toggle {
   margin-right: auto;
   display: grid;
@@ -81,29 +77,69 @@ body[data-ui-style='next'] #tf-task-dock {
   cursor: pointer;
 }
 .tf-dock-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+/* Свёрнутый док — единственное состояние по умолчанию, поэтому кнопка разворачивания
+   должна быть заметнее: приглушённый цвет читался как «здесь ничего нет». */
+.tf-dock-toggle { color: var(--text); border-color: var(--border-strong); }
+#tf-task-dock.is-open .tf-dock-toggle { color: var(--text-dim); border-color: var(--border); }
 
-/* Выпадающий список и раскрытый лог — отдельным модулем под плашкой: в шапке им места нет,
-   поэтому они позиционированы и не растягивают топбар. */
-.tf-dock-slot-list, .tf-dock-slot-log { display: none; }
+/* Выпадающий список — отдельным модулем под плашкой: в шапке ему места нет,
+   поэтому он позиционирован и не растягивает топбар. Логи скриптов открываются
+   не здесь, а отдельным модальным окном (кнопка «📄» на плашке). */
+.tf-dock-slot-list { display: none; }
 #tf-task-dock.is-open .tf-dock-slot-list { display: grid; }
-.tf-dock-slot-list, .tf-dock-slot-log {
+.tf-dock-slot-list {
   position: absolute;
   top: 100%;
   right: 0;
   z-index: 9000;
   gap: 8px;
-  width: 320px;
+  /* Ширина та же, что у плашки: список должен висеть ровно под ней, а не шире */
+  width: var(--tf-dock-w, 320px);
+  max-width: min(var(--tf-dock-w, 320px), 40vw);
   max-height: min(52vh, 460px);
   overflow-y: auto;
   pointer-events: auto;
 }
-#tf-task-dock.is-open .tf-dock-slot-log { display: grid; }
-.tf-dock-log-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-1); }
-/* flex: none — иначе при нехватке высоты карточки сжимаются и налезают друг на друга */
-#tf-task-dock .tl-card { flex: none; pointer-events: auto; margin: 0; box-shadow: var(--shadow-3); }
-/* Плашка видна всегда, даже когда задач нет (требование пользователя): квадрат приглушён,
-   но на месте — иначе журнал приходилось бы искать. */
-#tf-task-dock .tl-card { flex: none; pointer-events: auto; box-shadow: var(--shadow-3); }
+
+/* --- Список «что делает скрипт» под плашкой ---
+   Раньше здесь выпадали карточки с кольцом и кнопками (■ 📄 ▾): на правом верхнем углу
+   они наезжали друг на друга и конкурировали с кнопками плашки. Теперь это тихий список
+   строк без единой кнопки — только имя скрипта, его текущее дело и ход работы.
+   Управление (пауза, стоп, логи) осталось на плашке в шапке. */
+.tf-dock-slot-list { gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-glass); backdrop-filter: blur(12px); }
+.tf-dock-empty { margin: 0; padding: 8px 10px; color: var(--text-faint); font-size: 0.78rem; }
+.tf-dock-row {
+  --tf-row-color: var(--accent);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  /* Левая метка — статус строки: бегущий скрипт, завершённый, с ошибкой или на паузе */
+  box-shadow: inset 2px 0 0 var(--tf-row-color);
+}
+.tf-dock-row + .tf-dock-row { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.tf-dock-row.tl-s-done { --tf-row-color: var(--success); }
+.tf-dock-row.tl-s-warn { --tf-row-color: var(--warning); }
+.tf-dock-row.tl-s-error { --tf-row-color: var(--danger); }
+.tf-dock-row.is-paused { --tf-row-color: var(--warning); }
+/* Ждущий очереди: работа не идёт, точка не мигает и не пульсирует */
+.tf-dock-row.is-queued { --tf-row-color: var(--text-faint); }
+.tf-dock-row.is-queued .tf-dock-row-dot { opacity: 0.5; }
+.tf-dock-row.is-queued .tf-dock-row-top b { color: var(--text-dim); font-weight: 600; }
+.tf-dock-row.is-queued .tf-dock-row-pct { color: var(--text-faint); }
+.tf-dock-row-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tf-row-color); }
+.tf-dock-row.tl-s-running .tf-dock-row-dot { animation: msk-clock-pulse 2s ease-in-out infinite; }
+.tf-dock-row.is-paused .tf-dock-row-dot { opacity: 0.45; }
+.tf-dock-row-body { min-width: 0; display: grid; gap: 2px; }
+.tf-dock-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tf-dock-row-top b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; font-weight: 650; color: var(--text); }
+.tf-dock-row-pct { flex: none; color: var(--text-dim); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.tf-dock-row-step { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dim); font-size: 0.74rem; }
+.tf-dock-row-bar { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.tf-dock-row-bar > i { display: block; height: 100%; border-radius: 2px; background: var(--tf-row-color); transition: width 0.25s ease-out; }
+.tf-dock-row-tail { flex: none; max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-faint); font-size: 0.68rem; }
 
 .tl-card {
   --tl-color: var(--accent);

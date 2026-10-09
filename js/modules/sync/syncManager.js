@@ -223,6 +223,9 @@ export { rerender as rerenderLists };
 export async function runAuthChecks(chars, { title = '🔐 Проверка авторизации', baseTimeout = 4, closeAfter = false, silent = false } = {}) {
     const { retries, retryDelayMs } = scriptSettings();
     const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1 });
+    // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
+    await task?.waitTurn();
+    if (task?.cancelled) { task.finish('Отменено в очереди', 'warn'); return { online: 0, offline: [], results: [], cancelled: true, skipped: chars.length, busy: [] }; }
     // Пауза останавливает очередь, стоп обрывает и уже выполняющийся скрипт (taskSignal)
     const signal = task ? taskSignal(task) : { cancelled: false, paused: false };
     // Персонажи, работу по которым прервали: их результат не применяется
@@ -307,7 +310,7 @@ export async function refreshAuthFor(char) {
  * МАССОВОЕ ОБНОВЛЕНИЕ БАЛАНСА (все авторизованные или выбранные)
  * Персонажи без входа пропускаются; при таймауте / «Проверке безопасности» — повтор.
  */
-export async function refreshAllBalances(chars = state.characters, { title, onlyLoggedIn = true } = {}) {
+export async function refreshAllBalances(chars = state.characters, { title, onlyLoggedIn = true, noQueue = false } = {}) {
     const list = onlyLoggedIn ? chars.filter(c => c.isLoggedIn === true) : [...chars];
     if (list.length === 0) {
         toast('Нет активных аккаунтов (по данным приложения). Сначала нажмите "Проверить авторизацию".', 'warning');
@@ -317,6 +320,13 @@ export async function refreshAllBalances(chars = state.characters, { title, only
     const task = startTask(title || `💰 Обновление балансов (${list.length} акк.)`, { total: list.length, cancelable: list.length > 1 });
     const signal = { cancelled: false };
     task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, балансы не запрашиваем
+    // `noQueue` — вложенный вызов изнутри уже идущего скрипта (проверка баланса
+    // после покупки в shop.js): ждать там нельзя, иначе скрипт ждал бы сам себя.
+    if (!noQueue) {
+      await task.waitTurn();
+      if (task.cancelled) { task.finish('Отменено в очереди', 'warn'); return { updated: 0, failed: 0, skipped: list.length }; }
+    }
     task.watch(...list.map(c => `char:${c.id}`));
     let updated = 0, failed = 0, skipped = 0;
 

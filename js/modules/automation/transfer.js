@@ -303,6 +303,8 @@ export function openTransferDialog({ ids = [] } = {}) {
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
+    await task.waitTurn();
     task.watch(...chars.map(c => `char:${c.id}`));
     task.setStep(`${chars.length} браузеров, по ${browserSlots.max} одновременно, повторов до ${retries}`);
     renderScanning(chars, signal);
@@ -396,6 +398,8 @@ export function openTransferDialog({ ids = [] } = {}) {
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
+    await task.waitTurn();
     task.watch(...plans.map(p => `char:${p.char.id}`));
     task.setStep(`${todo.length} аккаунтов, по ${browserSlots.max} одновременно${dry ? ', без нажатия «Передать»' : ''}`);
     if (force) task.log('Включён «Обойти ограничения приложения»: запомненные ограничения по серверам не применялись', 'info');
