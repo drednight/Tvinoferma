@@ -17,10 +17,10 @@ use crate::parsers::{
     eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common, QUIET_SCOPE,
 };
 use crate::pool;
-use crate::windows::window_label;
+use crate::windows::window_is_open;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle};
 
 const SCRIPT: &str = include_str!("../scripts/transfer.js");
 const PAGE_URL: &str = "https://pwonline.ru/promo_items.php";
@@ -278,12 +278,6 @@ fn payload(
 }
 
 /// В окне, где пользователь сейчас вводит логин, задачу не запускаем: оно бы перешло на другую страницу.
-fn window_is_open(app: &AppHandle, char_id: &str) -> bool {
-    app.get_webview_window(&window_label(char_id))
-        .map(|w| w.is_visible().unwrap_or(false))
-        .unwrap_or(false)
-}
-
 /// Чтение страницы передачи (только чтение): `{ charId, status, error, roster }`.
 /// `status`: `ok` | `not_logged_in` | `challenge` | `error`. В `roster`: `siteId`, `accountName`, `shards`
 /// (серверы с персонажами), `items` (что можно передать), `chests`, `locked`, `empty`.

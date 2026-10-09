@@ -106,6 +106,18 @@ pub fn window_label(key: &str) -> String {
     format!("sync-win-{}", key)
 }
 
+/// Открыто ли окно персонажа пользователем.
+///
+/// Фоновая задача не должна трогать окно, в котором человек работает: она переключает
+/// страницу и каждые полторы секунды вбивает скрипт, а это мешает и обрывает «Сохранить
+/// страницу». Лучше пропустить персонажа и сказать об этом в журнал (передача предметов,
+/// магазин и сундуки караванщика так поступают уже давно).
+pub fn window_is_open(app: &AppHandle, char_id: &str) -> bool {
+    app.get_webview_window(&window_label(char_id))
+        .map(|w| w.is_visible().unwrap_or(false))
+        .unwrap_or(false)
+}
+
 fn profiles_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
         .path()
@@ -450,8 +462,16 @@ pub async fn execute_script_in_window(
     window.eval(&script).map_err(|e| e.to_string())
 }
 
+/// Ошибка «окно персонажа открыто пользователем» — задача обязана её пропустить, а не повторять.
+/// Проверяется в [`window_is_open`] и в [`get_or_create_hidden_window`].
+pub const ERR_WINDOW_OPEN: &str = "window_open";
+
 /// Возвращает окно `sync-win-{key}` (профиль персонажа), создавая СКРЫТОЕ при необходимости.
 /// Второе значение = true, если окно создано сейчас (его можно уничтожить после работы).
+///
+/// Видимое окно не отдаём: это окно, в котором работает пользователь, и фоновая задача
+/// переключила бы у него страницу (и сломала «Сохранить страницу»). Вместо этого —
+/// [`ERR_WINDOW_OPEN`], а вызывающий пишет в журнал «окно занято, персонаж пропущен».
 pub async fn get_or_create_hidden_window(
     app: &AppHandle,
     key: &str,
@@ -459,6 +479,9 @@ pub async fn get_or_create_hidden_window(
 ) -> Result<(WebviewWindow, bool), String> {
     let label = window_label(key);
     if let Some(w) = app.get_webview_window(&label) {
+        if w.is_visible().unwrap_or(false) {
+            return Err(ERR_WINDOW_OPEN.to_string());
+        }
         return Ok((w, false));
     }
     let parsed_url = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
@@ -480,7 +503,8 @@ pub async fn get_or_create_hidden_window(
 }
 
 /// Окно для сканирования марафонов: профиль указанного (авторизованного) персонажа,
-/// иначе любое открытое окно персонажа, иначе отдельный профиль сканера (без входа).
+/// иначе скрытое окно любого персонажа, иначе отдельный профиль сканера (без входа).
+/// Видимые окна не берём — см. [`get_or_create_hidden_window`].
 pub async fn pick_scan_window(
     app: &AppHandle,
     char_id: Option<String>,
@@ -491,7 +515,7 @@ pub async fn pick_scan_window(
         return get_or_create_hidden_window(app, &id, url).await;
     }
     for (_, window) in app.webview_windows() {
-        if window.label().starts_with("sync-win-") {
+        if window.label().starts_with("sync-win-") && !window.is_visible().unwrap_or(false) {
             return Ok((window, false));
         }
     }

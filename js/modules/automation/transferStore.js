@@ -28,12 +28,66 @@ export function loadRosters() {
 }
 export const saveRosters = (rosters) => writeJson(ROSTER_KEY, rosters);
 
-/** Записывает прочитанное со страницы сайта. */
+/**
+ * Записывает прочитанное со страницы сайта.
+ *
+ * Пустая страница («У Вас нет подарков, которые можно перевести в игру») не содержит ни
+ * серверов, ни персонажей: сайт объявляет `shards` только когда есть что передавать. Если
+ * записать её как есть, один пустой заход стёр бы всё, что нашли раньше, — и персонаж
+ * «потерял» бы серверы. Поэтому при пустом чтении сохраняем прежние серверы и персонажей,
+ * а список «что ждёт передачи» обновляем: сейчас там действительно пусто, и перенос
+ * персонажа пропускается (см. `planTransfer`, статус `nothing_to_transfer`).
+ */
 export function setRoster(charId, data, now = new Date()) {
   const all = loadRosters();
-  all[charId] = normalizeRoster(data, now);
+  const next = normalizeRoster(data, now);
+  const prev = all[charId];
+  if (next.shards.length === 0 && prev?.shards?.length) {
+    next.shards = prev.shards;
+    next.siteId = next.siteId || prev.siteId;
+    next.accountName = next.accountName || prev.accountName;
+  }
+  all[charId] = next;
   saveRosters(all);
   return all[charId];
+}
+
+/**
+ * Сверка сохранённого с тем, что показал сайт.
+ *
+ * Персонажи на аккаунте меняются: кого-то переименовали, кого-то удалили. Старые записи
+ * в этом случае вредны — приложение предлагало бы получателя, которого уже нет. Поэтому:
+ *  - выборы получателей, которых на сайте больше нет, удаляем;
+ *  - если наш персонаж был виден в прошлом чтении (`prev`), а теперь его нет — считаем,
+ *    что его переименовали или удалили, и сбрасываем его сервер и выборы.
+ *
+ * Важно: одиночное несовпадение ников ничего не значит. Ник в карточке и список на сайте
+ * могут расходиться с первого чтения (аккаунт ведёт другой персонаж, ник сменился до нас),
+ * и сбрасывать настройки по такому признаку — вредно. Поэтому сверяем только «было → стало».
+ *
+ * @param {string} charId
+ * @param {string} [charNick] ник персонажа из карточки
+ * @param {object} [prev] снимок до этого чтения (без него сверка ников не выполняется)
+ * @returns {{ gone: string[], missingChar: boolean }} что именно разошлось со снимком сайта
+ */
+export function reconcileRoster(charId, charNick, prev) {
+  const roster = loadRosters()[charId];
+  if (!roster) return { gone: [], missingChar: false };
+  const prefs = loadPrefs();
+  const keys = new Set((roster.shards || []).flatMap(s => (s.chars || []).map(c => c.key)));
+  const gone = Object.entries(prefs.picks?.[charId] || {})
+    .filter(([, key]) => !keys.has(key))
+    .map(([sid]) => sid);
+  const hasNick = (list) => !!charNick && (list || []).some(n => n && normKey(n) === normKey(charNick));
+  const names = (roster.shards || []).flatMap(s => (s.chars || []).map(c => c.name));
+  const missingChar = hasNick(prev?.shards?.flatMap(s => (s.chars || []).map(c => c.name))) && !hasNick(names);
+  if (gone.length) {
+    for (const sid of gone) delete prefs.picks[charId][sid];
+    if (!Object.keys(prefs.picks[charId]).length) delete prefs.picks[charId];
+  }
+  if (missingChar) delete prefs.servers[charId];
+  if (gone.length || missingChar) savePrefs(prefs);
+  return { gone, missingChar };
 }
 
 /** После передачи список «что ждёт» устарел: он помечается неизвестным, пока список не обновят. */

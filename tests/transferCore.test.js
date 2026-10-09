@@ -4,7 +4,7 @@ import {
   normalizeRoster, normalizeStatus, serverList, resolveRecipient, planTransfer, itemTotals, totalsText, latestBatch, isFresh,
   verifyHistory, rowFromPayload, plainRow, canAutoRetry, summarize, isRerunnable, statusInfo, compareItems, splitByLimits, normKey, charTitle
 } from '../js/modules/automation/transferCore.js';
-import { loadStatus, saveStatus, loadRosters, setRoster, clearPending, pruneRosters, loadPrefs, savePrefs, recordTransfer, loadTransferLog, clearTransferLog, LOG_MAX, loadLimits, limitsMap, saveLimits, clearLimits } from '../js/modules/automation/transferStore.js';
+import { loadStatus, saveStatus, loadRosters, setRoster, clearPending, pruneRosters, loadPrefs, savePrefs, recordTransfer, loadTransferLog, clearTransferLog, LOG_MAX, loadLimits, limitsMap, saveLimits, clearLimits, reconcileRoster } from '../js/modules/automation/transferStore.js';
 
 const K = (shard, ch) => `100_${shard}_${ch}`;
 const scan = (extra = {}) => ({
@@ -211,6 +211,44 @@ describe('строки результата', () => {
   });
 });
 
+describe('аккаунт без подарков: серверы остаются, персонаж пропускается', () => {
+  // Настоящая пустая страница не содержит ни `shards`, ни списка предметов: сайт отдаёт их,
+  // только когда есть что передавать. Раньше такой заход затирал всё найденное ранее.
+  const EMPTY_PAGE = { siteId: '', accountName: '', shards: [], items: [], chests: 0, locked: 0, empty: true };
+
+  it('пустое чтение не стирает серверы и персонажей, найденных ранее', () => {
+    setRoster('a', scan(), NOW);
+    setRoster('a', EMPTY_PAGE, NOW);
+    const r = loadRosters().a;
+    expect(r.shards.map(s => s.name)).toEqual(['Мицар', 'Фенрир']);
+    expect(r.shards.flatMap(s => s.chars.map(c => c.name)).sort()).toEqual(['#Тест', 'Второй', 'Мицарный']);
+    expect(r.siteId).toBe('77');
+    // А «что ждёт передачи» обновляется: сейчас там действительно пусто
+    expect(r.pending.items).toEqual([]);
+  });
+
+  it('первое пустое чтение (без прежних данных) не создаёт серверов', () => {
+    setRoster('b', EMPTY_PAGE, NOW);
+    expect(loadRosters().b.shards).toEqual([]);
+  });
+
+  it('персонаж без подарков сразу пропускается, а не «передаёт ноль предметов»', () => {
+    setRoster('a', EMPTY_PAGE, NOW);
+    const [plan] = planTransfer([{ id: 'a', nick: 'Аа' }], loadRosters(), { shards: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    expect(plan.run).toBe(false);
+    expect(plan.status).toBe('nothing_to_transfer');
+    expect(statusInfo(plan.status).label).toContain('нечего');
+  });
+
+  it('когда подарки появились, персонаж снова в деле', () => {
+    setRoster('a', EMPTY_PAGE, NOW);
+    setRoster('a', scan(), NOW);
+    const [plan] = planTransfer([{ id: 'a', nick: 'Аа' }], loadRosters(), { shards: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    expect(plan.run).toBe(true);
+    expect(plan.pendingCount).toBe(2);
+  });
+});
+
 describe('хранилище', () => {
   it('списки серверов: запись, пометка «устарел» после передачи, удаление списков удалённых браузеров', () => {
     setRoster('a', scan(), NOW); setRoster('b', scan(), NOW);
@@ -249,6 +287,48 @@ describe('хранилище', () => {
     expect(loadTransferLog()).toHaveLength(LOG_MAX);
     clearTransferLog();
     expect(loadTransferLog()).toEqual([]);
+  });
+});
+
+describe('сверка с сайтом: переименованные и удалённые', () => {
+  it('выбор получателя, которого на сайте больше нет, удаляется', () => {
+    setRoster('a', scan(), NOW);
+    savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2), 5: K(5, 1) } } });
+    // Сайт больше не показывает персонажа на «Мицаре»
+    setRoster('a', { ...scan(), shards: [{ id: '3', name: 'Фенрир', chars: [{ key: K(3, 2), name: '#Тест', cls: 'Лучник', level: 105 }] }] }, NOW);
+    const diff = reconcileRoster('a', '#Тест', loadRosters().a);
+    expect(diff.gone).toEqual(['5']);
+    expect(loadPrefs().picks.a).toEqual({ 3: K(3, 2) });
+    expect(loadPrefs().servers.a).toBe('3');          // сервер не трогаем
+  });
+
+  it('если все получатели исчезли, запись о выборе удаляется целиком', () => {
+    setRoster('a', scan(), NOW);
+    savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    setRoster('a', { ...scan(), shards: [] }, NOW);   // символически пусто, но shards сохранится…
+    const diff = reconcileRoster('a', '#Тест', { shards: [{ chars: [{ name: '#Тест' }] }] });
+    expect(diff.gone).toEqual([]);
+    expect(loadPrefs().picks.a).toEqual({ 3: K(3, 2) });
+  });
+
+  it('персонаж был на сайте и исчез: сервер и выборы сбрасываются', () => {
+    setRoster('a', scan(), NOW);
+    savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    const before = loadRosters().a;                  // на сайте был «#Тест»
+    setRoster('a', { ...scan(), shards: [{ id: '3', name: 'Фенрир', chars: [{ key: K(3, 9), name: 'Другой', cls: 'Жрец', level: 90 }] }] }, NOW);
+    const diff = reconcileRoster('a', '#Тест', before);
+    expect(diff.missingChar).toBe(true);
+    expect(loadPrefs().servers.a).toBeUndefined();
+    expect(loadPrefs().picks.a?.['3']).toBeUndefined();
+  });
+
+  it('одиночное несовпадение ников ничего не сбрасывает (первого чтения недостаточно)', () => {
+    setRoster('a', scan(), NOW);
+    savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    // В карточке ник другой, и раньше его на сайте тоже не было — это не «переименование»
+    const diff = reconcileRoster('a', 'Совсем другой', loadRosters().a);
+    expect(diff.missingChar).toBe(false);
+    expect(loadPrefs().servers.a).toBe('3');
   });
 });
 

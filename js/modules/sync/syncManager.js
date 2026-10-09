@@ -152,6 +152,14 @@ export function applyLoginResult(payload) {
     const { charId, status, reason } = payload || {};
     const char = state.characters.find(c => c.id === charId);
     if (!char) return null;
+    // Персонажа пропустили (например, открыто его окно): это не ответ сайта, поэтому
+    // прежний статус, время проверки и здоровье парсеров не трогаем — иначе открытое окно
+    // выглядело бы как «нет входа».
+    if (status === 'skipped') {
+        setAuthChecking(charId, false);
+        logScope(`char:${charId}`, `${char.nick}: окно занято, проверка пропущена`, 'warn');
+        return { char, changed: false };
+    }
     const isOnline = status === 'online';
     const changed = char.isLoggedIn !== isOnline;
     char.isLoggedIn = isOnline;
@@ -169,6 +177,11 @@ export function applyBalanceResult(payload, { final = true } = {}) {
     const char = state.characters.find(c => c.id === charId);
     if (!char) return null;
 
+    // Открыто окно персонажа — это не ошибка чтения: баланс не трогаем, здоровье парсеров не портим
+    if (error === 'window_open') {
+        logScope(`char:${charId}`, `${char.nick}: окно занято, персонаж пропущен`, 'warn');
+        return { char, changed: false, skipped: true };
+    }
     if (error) {
         recordParserResult('balance', error);   // ошибка: прежний баланс и история монет не меняются
         logScope(`char:${charId}`, `${char.nick}: баланс не получен — ${errorText(error)}`, 'warn');
@@ -226,7 +239,7 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
         onDone: ({ item, result, error }, done, total) => {
             const scope = `char:${item.id}`;
             if (error) task?.log(`${item.nick}: ошибка проверки — ${error}`, 'error', scope);
-            const applied = result && !result.skipped ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
+            const applied = result ? applyLoginResult(result) : (setAuthChecking(item.id, false), null);
             // Вход подтвердился (часто с повтора): ошибки прошлых попыток этого персонажа
             // в журнале больше не нужны, иначе задача остаётся жёлтой с «ошибок: 1».
             if (!error && result?.status === 'online') task?.resolveProblems(scope, 'вход подтверждён');
@@ -237,15 +250,18 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
 
     chars.forEach(c => setAuthChecking(c.id, false));
     rerender();
-    // Пропущенные из-за отмены не считаем ни «онлайн», ни «оффлайн»: их статус остался прежним
+    // Пропущенные (отмена или открытое окно) не считаем ни «онлайн», ни «оффлайн»: их статус остался прежним
     const checked = results.filter(r => !r.cancelled && !r.result?.skipped).map(r => r.item);
+    // Открытые окна отдельно: это не «нет входа» и не отмена, а сознательный пропуск
+    const busy = results.filter(r => r.result?.reason === 'window_open').map(r => r.item.nick);
     const skipped = chars.length - checked.length;
     const online = checked.filter(c => c.isLoggedIn === true).length;
     const offline = checked.filter(c => c.isLoggedIn !== true).map(c => c.nick);
     if (offline.length) task?.log(`Без входа: ${offline.join(', ')}`, 'warn');
-    if (signal.cancelled) task?.finish(`Отменено: проверено ${checked.length} из ${chars.length}, в сети ${online}`, 'warn');
-    else task?.finish(`В сети ${online} из ${chars.length}`, offline.length ? 'warn' : 'done');
-    return { online, offline, results, cancelled: signal.cancelled, skipped };
+    const busyNote = busy.length ? `, пропущено ${busy.length} (открыто окно)` : '';
+    if (signal.cancelled) task?.finish(`Отменено: проверено ${checked.length} из ${chars.length}, в сети ${online}${busyNote}`, 'warn');
+    else task?.finish(`В сети ${online} из ${checked.length}${busyNote}`, offline.length || busy.length ? 'warn' : 'done');
+    return { online, offline, results, cancelled: signal.cancelled, skipped, busy };
 }
 
 /**
@@ -258,9 +274,10 @@ export async function refreshAllLoginStatuses(chars = state.characters) {
         return;
     }
     // closeAfter: окна профилей после проверки закрываются (иначе каждое держит ~100 МБ памяти)
-    const { online, offline, cancelled, skipped } = await runAuthChecks(list, { closeAfter: true });
-    if (cancelled) { toast(`Проверка отменена: проверено ${list.length - skipped} из ${list.length}, в сети ${online}.`, 'info'); return; }
-    toast(`Проверка авторизации: в сети ${online} из ${list.length}.`, offline.length ? 'warning' : 'success');
+    const { online, offline, cancelled, skipped, busy = [] } = await runAuthChecks(list, { closeAfter: true });
+    const busyNote = busy.length ? ` Пропущено ${busy.length}: открыто окно.` : '';
+    if (cancelled) { toast(`Проверка отменена: проверено ${list.length - skipped} из ${list.length}, в сети ${online}.${busyNote}`, 'info'); return; }
+    toast(`Проверка авторизации: в сети ${online} из ${list.length - busy.length}.${busyNote}`, offline.length || busy.length ? 'warning' : 'success');
 }
 
 /**
@@ -295,7 +312,7 @@ export async function refreshAllBalances(chars = state.characters, { title, only
     const signal = { cancelled: false };
     task.onCancel(() => { signal.cancelled = true; });
     task.watch(...list.map(c => `char:${c.id}`));
-    let updated = 0, failed = 0;
+    let updated = 0, failed = 0, skipped = 0;
 
     await runQueue(list, async (char, attempt) => {
         if (signal.cancelled) return { skipped: true };      // ждал свободное окно, а пользователь уже отменил
@@ -305,26 +322,32 @@ export async function refreshAllBalances(chars = state.characters, { title, only
         retries, retryDelayMs, signal,
         shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
         onDone: ({ item, result, error }, done, total) => {
-            if (result?.skipped) return;
+            // Два разных пропуска: ждал свободное окно, а пользователь отменил (в этом случае
+            // результата нет вовсе) и открыто окно персонажа (результат есть, но читать нечего).
+            const busyWindow = result?.error === 'window_open';
+            if (result?.skipped && !busyWindow) return;
             const scope = `char:${item.id}`;
             if (error) task.log(`${item.nick}: ${error?.message || error}`, 'error', scope);
             const applied = result ? applyBalanceResult(result) : null;
             // Баланс получен (часто с повтора) — снимаем ошибки прошлых попыток персонажа
             if (!error && result && !result.error) task.resolveProblems(scope, 'баланс получен');
-            if (result && !result.error) updated++; else failed++;
+            // Открытое окно — пропуск, а не ошибка: в итоге его видно отдельно
+            if (applied?.skipped) skipped++;
+            else if (result && !result.error) updated++; else failed++;
             task.progress(done, total, item.nick);
             if (applied?.changed) persist().then(rerender);
         }
     });
 
+    const skipNote = skipped ? `, пропущено ${skipped} (открыто окно)` : '';
     if (signal.cancelled) {
-        task.finish(`Отменено: обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}`, 'warn');
+        task.finish(`Отменено: обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}${skipNote}`, 'warn');
         toast(`Обновление балансов отменено: обновлено ${updated} из ${list.length}.`, 'info');
-        return { updated, failed, cancelled: true };
+        return { updated, failed, skipped, cancelled: true };
     }
-    task.finish(`Обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}`, failed ? 'warn' : 'done');
-    toast(`Обновление балансов: ${updated} из ${list.length}.`, failed ? 'warning' : 'success');
-    return { updated, failed };
+    task.finish(`Обновлено ${updated} из ${list.length}${failed ? `, ошибок ${failed}` : ''}${skipNote}`, failed || skipped ? 'warn' : 'done');
+    toast(`Обновление балансов: ${updated} из ${list.length}${skipped ? `, пропущено ${skipped}: открыто окно` : ''}.`, failed || skipped ? 'warning' : 'success');
+    return { updated, failed, skipped };
 }
 
 /** Баланс одного персонажа (кнопка в профиле). */

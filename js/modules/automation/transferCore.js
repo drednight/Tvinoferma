@@ -24,6 +24,7 @@ export const STATUS_INFO = {
   nothing: { icon: '📭', label: 'Нечего передавать', level: 'info' },
   no_roster: { icon: '🔄', label: 'Сначала подтяните серверы и персонажей', level: 'warn' },
   no_server_chosen: { icon: '🌐', label: 'Сервер не выбран — не передавалось', level: 'warn' },
+  nothing_to_transfer: { icon: '🎁', label: 'Передавать нечего: подарков на аккаунте нет', level: 'info' },
   no_server: { icon: '🚫', label: 'На этом сервере у аккаунта нет персонажей', level: 'warn' },
   no_recipient: { icon: '❔', label: 'Получатель не выбран — не передавалось', level: 'warn' },
   same_site: { icon: '↪️', label: 'Тот же аккаунт сайта — передаётся один раз', level: 'info' },
@@ -199,6 +200,9 @@ export function planTransfer(chars, rosters, { shards = {}, shardId = '', picks 
     // Сколько ждёт передачи — по сохранённому списку (может устареть); окончательно это выяснится на странице сайта
     const known = roster?.pending && !roster.pending.stale;
     const base = { char, shardId: sid, serverName, pendingCount: known ? roster.pending.items.length : null };
+    // Передавать нечего (проверено на сайте: подарков нет) — персонаж сразу пропускаем.
+    // Серверы и персонажи при этом остаются в сохранённом списке: знание о них не устаревает.
+    if (known && !roster.pending.items.length) return { ...base, run: false, status: 'nothing_to_transfer' };
     if (roster && !sid) return { ...base, run: false, status: 'no_server_chosen' };
     const rec = resolveRecipient(roster, sid, picks?.[char.id]?.[sid]);
     if (!rec.ok) return { ...base, run: false, status: rec.status, ...(rec.stale ? { detail: 'сохранённый получатель пропал с сайта — выберите заново' } : {}) };

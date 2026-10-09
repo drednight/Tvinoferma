@@ -14,10 +14,10 @@
 use crate::automation::promo::is_valid_char_id;
 use crate::parsers::{eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common};
 use crate::pool;
-use crate::windows::window_label;
+use crate::windows::window_is_open;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle};
 
 const SCRIPT: &str = include_str!("../scripts/shop.js");
 const SHOP_URL: &str = "https://pwonline.ru/chests2.php";
@@ -84,12 +84,6 @@ fn page_was_logged_in(res: &Wait) -> bool {
         Some((Some(err), _)) => !matches!(err.as_str(), "not_logged_in" | "challenge"),
         Some((None, _)) => true,
     }
-}
-
-fn window_is_open(app: &AppHandle, char_id: &str) -> bool {
-    app.get_webview_window(&window_label(char_id))
-        .map(|w| w.is_visible().unwrap_or(false))
-        .unwrap_or(false)
 }
 
 /// Чтение магазина: `data = { state: "scan", account, balance, items }`.

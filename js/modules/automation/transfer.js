@@ -12,7 +12,7 @@ import { openOverlay } from '../marathons/overlay.js';
 import {
   serverList, charsOnServer, planTransfer, statusInfo, rowLabel, isOk, isRerunnable, summarize, itemTotals, charTitle
 } from './transferCore.js';
-import { loadRosters, loadPrefs, savePrefs, setRoster, clearPending, pruneRosters, recordTransfer, limitsMap, saveLimits, loadLimits, clearLimits } from './transferStore.js';
+import { loadRosters, loadPrefs, savePrefs, setRoster, reconcileRoster, clearPending, pruneRosters, recordTransfer, limitsMap, saveLimits, loadLimits, clearLimits } from './transferStore.js';
 import { scanRosters, runTransferBatch } from './transferRunner.js';
 import { getServerStatus, refreshServerStatus, onServerStatus } from '../servers/serverStatus.js';
 import { serverStatusHtml } from '../servers/serverStatusView.js';
@@ -309,11 +309,21 @@ export function openTransferDialog({ ids = [] } = {}) {
 
     const { invoke } = await import('@tauri-apps/api/core');
     let rows;
+    const renamed = [];      // что разошлось со снимком сайта: пропавшие получатели и персонажи
     try {
       rows = await scanRosters({
         chars, signal, invokeFn: invoke, retries, retryDelayMs, task,
         onRow: (row, done, all) => {
-          if (row.status === 'ok' && row.roster) setRoster(row.charId, row.roster);
+          if (row.status === 'ok' && row.roster) {
+            // Снимок «до» нужен для сверки: персонаж мог быть на сайте, а теперь исчез
+            const before = loadRosters()[row.charId];
+            setRoster(row.charId, row.roster);
+            const char = state.characters.find(c => c.id === row.charId);
+            const diff = row.roster.empty
+              ? { gone: [], missingChar: false }
+              : reconcileRoster(row.charId, char?.nick, before);
+            if (diff.gone.length || diff.missingChar) renamed.push({ nick: row.nick, ...diff });
+          }
           if (alive()) updateScanning(row, done, all);
         }
       });
@@ -329,9 +339,19 @@ export function openTransferDialog({ ids = [] } = {}) {
 
     scanNotes = rows.filter(r => r.status !== 'ok' && r.status !== 'cancelled')
       .map(r => `${r.nick}: ${r.status === 'not_logged_in' ? 'нет входа на сайт' : r.status === 'challenge' ? 'сайт показал проверку безопасности' : errorText(r.error)}`);
+    const empty = rows.filter(r => r.status === 'ok' && r.roster?.empty);
+    if (empty.length) scanNotes.push(`${empty.map(r => r.nick).join(', ')}: подарков нет — передавать нечего, перенос пропущен`);
+    for (const r of renamed) {
+      const parts = [];
+      if (r.gone.length) parts.push(`получателей на выбранном сервере больше нет (${r.gone.length}) — выбор сброшен`);
+      if (r.missingChar) parts.push('самого персонажа на аккаунте не видно: возможно, переименован или удалён — сервер и выборы сброшены, проверьте запись');
+      scanNotes.push(`${r.nick}: ${parts.join('; ')}`);
+    }
     const ok = rows.filter(r => r.status === 'ok').length;
     task.finish(`${signal.cancelled ? 'Остановлено. ' : ''}Прочитано ${ok} из ${rows.length}`, ok === rows.length ? 'done' : 'warn');
     rows.filter(r => r.status !== 'ok' && r.status !== 'cancelled').forEach(r => task.log(`${r.nick}: ${r.status}${r.error ? ` — ${errorText(r.error)}` : ''}`, 'error'));
+    empty.forEach(r => task.log(`${r.nick}: подарков нет, серверы и персонажи оставлены как есть — передавать нечего`, 'info'));
+    renamed.forEach(r => task.log(`${r.nick}: ${r.missingChar ? 'персонажа на аккаунте нет (переименован или удалён) — сервер и выборы сброшены' : `получателей больше нет: сброшено ${r.gone.length}`}`, 'warn'));
     rosters = loadRosters();
     if (alive()) renderForm();
   }
@@ -351,7 +371,10 @@ export function openTransferDialog({ ids = [] } = {}) {
     if (td) {
       const r = rosters[row.charId] || loadRosters()[row.charId];
       td.innerHTML = row.status === 'ok'
-        ? `✅ ${escapeHtml(r?.shards.length ? r.shards.map(s => s.name).join(', ') : 'персонажей нет')}${r?.pending ? ` · к передаче: ${r.pending.items.length}` : ''}`
+        ? row.roster?.empty
+          // Пустая корзина: серверы и персонажи остаются прежними, но передавать нечего
+          ? `🎁 <span class="promo-muted">передавать нечего</span>`
+          : `✅ ${escapeHtml(r?.shards.length ? r.shards.map(s => s.name).join(', ') : 'персонажей нет')}${r?.pending ? ` · к передаче: ${r.pending.items.length}` : ''}`
         : `❌ ${escapeHtml(row.status === 'not_logged_in' ? 'нет входа' : row.status === 'challenge' ? 'проверка безопасности' : errorText(row.error))}`;
     }
     const p = dlg.body.querySelector('#tr-progress');

@@ -159,6 +159,14 @@ describe('transfer.js: scan (только чтение)', () => {
     expect(run(empty, 'scan', {}, { shards: undefined }).data).toMatchObject({ state: 'scan', empty: true, items: [], shards: [] });
   });
 
+  it('настоящая страница «ваша корзина с подарками пуста» → пустое состояние, а не ошибка', () => {
+    // site-promoitems-empty.html — реальная страница аккаунта без подарков: нет ни переменной
+    // `shards`, ни формы передачи. Раньше это выглядело бы как «страница не прочитана».
+    const r = run(fixture('site-promoitems-empty.html'), 'scan');
+    expect(r.error).toBeNull();
+    expect(r.data).toMatchObject({ state: 'scan', empty: true, shards: [], items: [], chests: 0, locked: 0 });
+  });
+
   it('вёрстка изменилась: нет формы → pending; нет входа → not_logged_in; «Проверка безопасности» → challenge', () => {
     const noForm = editDom(fixture('site-promoitems.html'), (d) => { d.querySelector('form').className = 'x'; });
     expect(run(noForm, 'scan').error).toBe('pending');

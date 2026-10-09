@@ -1,7 +1,8 @@
 //! Баланс древних монет персонажа (chests2.php).
 
-use crate::parsers::{eval_and_wait, navigate_clean};
+use crate::parsers::{eval_and_wait, navigate_clean, tf_log};
 use crate::pool;
+use crate::windows::window_is_open;
 use tauri::{command, AppHandle, Emitter};
 
 const CHESTS_URL: &str = "https://pwonline.ru/chests2.php";
@@ -17,6 +18,13 @@ pub async fn fetch_and_parse_balance_v4(
     close_after: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let scope = format!("char:{}", char_id);
+    // Как и проверка входа: окно, в котором работает пользователь, не переключаем.
+    if window_is_open(&app, &char_id) {
+        tf_log(&app, &scope, "warn", "окно занято, персонаж пропущен");
+        let payload = serde_json::json!({ "charId": char_id, "balance": null, "error": "window_open", "skipped": true });
+        let _ = app.emit("pw-balance-result-global", payload.clone());
+        return Ok(payload);
+    }
     let task = pool::acquire(&app, &char_id, CHESTS_URL).await?;
     navigate_clean(task.window(), CHESTS_URL).await?;
 

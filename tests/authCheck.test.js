@@ -30,14 +30,33 @@ vi.mock('../js/modules/sync/checkAuth.js', () => ({
 let state, sync, authDetails, startTask;
 const mk = (id) => ({ id, nick: id, isLoggedIn: true, lastLoginCheck: null });
 
+// Ответы по умолчанию. Тесты про пропуск подменяют их, поэтому стандартные возвращаем
+// в beforeEach: иначе подмена утекла бы в следующие тесты (мок живёт весь файл).
+const defaultAuth = async (charId) => {
+  mocks.calls.push(charId);
+  if (mocks.gate) await mocks.gate;               // первая проверка «висит», пока тест не отпустит
+  return charId === 'bad'
+    ? { charId, status: 'offline', reason: 'not_logged_in' }
+    : { charId, status: 'online', reason: null };
+};
+const defaultBalance = async (charId) => {
+  mocks.balCalls.push(charId);
+  if (mocks.gate) await mocks.gate;
+  return { charId, balance: 28.5, error: null };
+};
+
 beforeEach(async () => {
   vi.resetModules();
   mocks.calls.length = 0; mocks.balCalls.length = 0; mocks.gate = null; mocks.closed = 0;
   ({ state } = await import('../js/core/state.js'));
   state.settings = { scripts: { concurrency: 1, retries: 0, retryDelayMs: 0 } };
+  (await import('../js/modules/sync/checkAuth.js')).checkCharacterAuth.mockImplementation(defaultAuth);
+  (await import('../js/modules/sync/getBalance.js')).getCharacterBalance.mockImplementation(defaultBalance);
   sync = await import('../js/modules/sync/syncManager.js');
   ({ authDetails } = await import('../js/modules/sync/authStatus.js'));
   ({ startTask } = await import('../js/core/taskLog.js'));
+  // Здоровье парсеров проверяем «с нуля»: иначе состояние прошлых тестов сделало бы проверку неверной
+  (await import('../js/core/parserHealth.js')).resetParserHealth();
 });
 
 describe('authDetails: результат и время последней проверки', () => {
@@ -64,6 +83,95 @@ describe('refreshAuthFor: ручная проверка одного персо�
     expect(bad.isLoggedIn).toBe(false);
     expect(bad.lastLoginReason).toBe('not_logged_in');
     expect(authDetails(bad)).toMatch(/Оффлайн: не выполнен вход на сайт · проверено/);
+  });
+});
+
+describe('открытое окно персонажа: пропуск вместо переключения страницы', () => {
+  it('проверка входа не трогает статус, время проверки и здоровье парсеров', async () => {
+    const char = { id: 'a', nick: 'Аа', isLoggedIn: false, lastLoginReason: 'not_logged_in', lastLoginCheck: null };
+    state.characters = [char];
+    const res = sync.applyLoginResult({ charId: 'a', status: 'skipped', reason: 'window_open', skipped: true });
+    expect(res.changed).toBe(false);
+    // Прежний статус и время не меняются: мы не проверяли, а не «нет входа»
+    expect(char.isLoggedIn).toBe(false);
+    expect(char.lastLoginReason).toBe('not_logged_in');
+    expect(char.lastLoginCheck).toBeNull();
+    const { getParserHealth } = await import('../js/core/parserHealth.js');
+    expect(getParserHealth().auth.status).toBeNull();
+  });
+
+  it('массовая проверка считает такого персонажа пропущенным, а не оффлайн', async () => {
+    const busy = { id: 'busy', nick: 'Бб', isLoggedIn: true };
+    const ok = { id: 'ok', nick: 'Ок', isLoggedIn: true };
+    state.characters = [busy, ok];
+    const { checkCharacterAuth } = await import('../js/modules/sync/checkAuth.js');
+    checkCharacterAuth.mockImplementation(async (charId) => {
+      mocks.calls.push(charId);
+      return charId === 'busy'
+        ? { charId, status: 'skipped', reason: 'window_open', skipped: true }
+        : { charId, status: 'online', reason: null };
+    });
+
+    const res = await sync.runAuthChecks([busy, ok]);
+    expect(res.busy).toEqual(['Бб']);
+    expect(res.online).toBe(1);
+    expect(res.offline).toEqual([]);          // «пропущен» ≠ «нет входа»
+    expect(busy.isLoggedIn).toBe(true);       // статус прежний
+  });
+
+  it('в журнале видно, что персонаж пропущен', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    const char = { id: 'busy', nick: 'Бб', isLoggedIn: true };
+    state.characters = [char];
+    const task = startTask('Проверка входа', { dock: false });
+    task.watch('char:busy');
+    sync.applyLoginResult({ charId: 'busy', status: 'skipped', reason: 'window_open', skipped: true });
+    expect(task.entries.some(e => e.level === 'warn' && /пропущен/.test(e.message))).toBe(true);
+    task.finish('Готово', 'warn');
+  });
+
+  it('баланс: открытое окно — пропуск, а не ошибка (прежние монеты и вход не трогаем)', async () => {
+    const char = { id: 'a', nick: 'Аа', isLoggedIn: true, ancientCoins: 100 };
+    state.characters = [char];
+    const res = sync.applyBalanceResult({ charId: 'a', balance: null, error: 'window_open', skipped: true });
+    expect(res.skipped).toBe(true);
+    expect(res.changed).toBe(false);
+    expect(char.ancientCoins).toBe(100);
+    expect(char.isLoggedIn).toBe(true);
+    const { getParserHealth } = await import('../js/core/parserHealth.js');
+    expect(getParserHealth().balance.status).toBeNull();
+  });
+
+  it('массовое обновление балансов: пропущенные отдельно от ошибок', async () => {
+    const busy = { id: 'busy', nick: 'Бб', isLoggedIn: true, ancientCoins: 5 };
+    const ok = { id: 'ok', nick: 'Ок', isLoggedIn: true, ancientCoins: 0 };
+    state.characters = [busy, ok];
+    const { getCharacterBalance } = await import('../js/modules/sync/getBalance.js');
+    getCharacterBalance.mockImplementation(async (charId) => {
+      mocks.balCalls.push(charId);
+      return charId === 'busy'
+        ? { charId, balance: null, error: 'window_open', skipped: true }
+        : { charId, balance: 28.5, error: null };
+    });
+
+    const res = await sync.refreshAllBalances([busy, ok]);
+    expect(res.skipped).toBe(1);
+    expect(res.updated).toBe(1);
+    expect(res.failed).toBe(0);
+  });
+
+  it('Rust: и проверка входа, и баланс, и любое окно скрипта не берут видимое окно', async () => {
+    const { readFileSync } = await import('node:fs');
+    const auth = readFileSync('src-tauri/src/auth.rs', 'utf8');
+    const balance = readFileSync('src-tauri/src/balance.rs', 'utf8');
+    const windows = readFileSync('src-tauri/src/windows.rs', 'utf8');
+    // Проверка входа и баланс сообщают о пропуске, а не падают
+    expect(auth).toMatch(/window_is_open[\s\S]{0,200}окно занято, персонаж пропущен/);
+    expect(balance).toMatch(/window_is_open[\s\S]{0,200}окно занято, персонаж пропущен/);
+    // Центральная функция не отдаёт видимое окно ни одному скрипту
+    expect(windows).toMatch(/get_or_create_hidden_window[\s\S]{0,900}is_visible[\s\S]{0,120}ERR_WINDOW_OPEN/);
+    // Сканирование тоже не берёт окно, в котором работает пользователь
+    expect(windows).toMatch(/pick_scan_window[\s\S]{0,600}!window\.is_visible/);
   });
 });
 

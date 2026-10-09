@@ -17,10 +17,10 @@
 use super::promo::is_valid_char_id;
 use crate::parsers::{eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common};
 use crate::pool;
-use crate::windows::window_label;
+use crate::windows::window_is_open;
 use serde_json::{json, Value};
 use std::time::Duration;
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle};
 
 const SCRIPT: &str = include_str!("../scripts/caravan.js");
 const PAGE_URL: &str = "https://pwonline.ru/promo_items.php";
@@ -163,13 +163,6 @@ fn payload(
         "opened": opened,
         "chests": chests,
     })
-}
-
-/// В окне, где пользователь сейчас вводит логин, задачу не запускаем: оно бы перешло на другую страницу.
-fn window_is_open(app: &AppHandle, char_id: &str) -> bool {
-    app.get_webview_window(&window_label(char_id))
-        .map(|w| w.is_visible().unwrap_or(false))
-        .unwrap_or(false)
 }
 
 /// Итоговый статус по результатам проверки списка после открытия.
