@@ -91,6 +91,52 @@ describe('задачи на день: разметка', () => {
   });
 });
 
+describe('туду лист: выполненные отдельно', () => {
+  it('выполненных нет — раздела «Выполненные» нет вовсе', () => {
+    const host = parse(todoListHtml([mine('Ждёт', 'todo'), mine('Делаю', 'doing')], TODAY));
+    expect(host.querySelector('.todo-done-title')).toBeNull();
+    expect(host.textContent).not.toContain('Выполненные');
+  });
+
+  it('выполненные уходят в отдельный список под рабочим и остаются в нём', () => {
+    const host = parse(todoListHtml([
+      mine('Ждёт', 'todo'), mine('Сделано', 'done'), mine('Тоже сделано', 'done')
+    ], TODAY));
+    const doneTitle = host.querySelector('.todo-done-title');
+    expect(doneTitle).not.toBeNull();
+    expect(doneTitle.textContent).toContain('Выполненные');
+    expect(doneTitle.querySelector('.today-count').textContent).toBe('2');
+    // В основном списке выполненных нет — они снизу отдельным блоком
+    const main = [...host.querySelectorAll('.todo-list:not(.todo-done-list) .todo-row b')].map(b => b.textContent);
+    expect(main).toEqual(['Ждёт']);
+    const done = [...host.querySelectorAll('.todo-done-list .todo-row b')].map(b => b.textContent);
+    expect(done).toEqual(['Сделано', 'Тоже сделано']);
+  });
+
+  it('в списке выполненных работает та же отметка: снятие возвращает задачу в работу', async () => {
+    state.plannerEntries = [mine('Сделано', 'done')];
+    renderToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('.todo-done-list [data-todo-toggle]');
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('todo'));
+    // Задача вернулась в основной список
+    expect(document.querySelector('.todo-done-title')).toBeNull();
+  });
+
+  it('счётчик в заголовке считает только невыполненные', () => {
+    const host = parse(todoListHtml([
+      mine('А', 'done'), mine('Б', 'doing'), mine('В', 'todo')
+    ], TODAY));
+    const titles = [...host.querySelectorAll('.today-title')];
+    expect(titles[0].textContent).toContain('Задачи на день');
+    expect(titles[0].querySelector('.today-count').textContent).toBe('2');
+    expect(titles[1].textContent).toContain('Выполненные');
+    expect(titles[1].querySelector('.today-count').textContent).toBe('1');
+  });
+});
+
 describe('задачи на день: действия', () => {
   it('галочка ставит «выполнено» и сохраняет', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'todo')];

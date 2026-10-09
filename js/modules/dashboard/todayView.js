@@ -22,7 +22,7 @@ import { persist } from '../../core/storage.js';
  * поэтому список и календарь не расходятся.
  */
 export function eventTimeText(event) {
-  if (!event?.time) return event?.source === 'marathon' ? 'марафон · весь день' : 'без времени';
+  if (!event?.time) return event?.source === 'marathon' ? 'марафон · весь день' : 'без конкретного времени';
   const end = eventEndTime(event);
   const span = end && end !== event.time ? `${event.time}–${end}` : event.time;
   return event.source === 'recurring' ? `${span} · ивент` : span;
@@ -75,6 +75,33 @@ const STATUS_TEXT = { todo: 'Ожидает', doing: 'В работе', done: '�
 const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
 
 /**
+ * Строка задачи в списке «Задачи на день».
+ * @param {any} e запись дня
+ * @param {boolean} own своя запись (её можно отметить) против марафона или ивента
+ */
+function todoRowHtml(e, own) {
+  const status = e.status || 'todo';
+  return `<li class="todo-row${own ? '' : ' is-readonly'} is-${escapeHtml(status)}" data-todo-id="${escapeHtml(e.id)}">
+    ${own
+      ? `<label class="todo-check" title="${status === 'done' ? 'Снять отметку' : 'Отметить выполненным'}">
+           <input type="checkbox" data-todo-toggle="${escapeHtml(e.id)}" ${status === 'done' ? 'checked' : ''} />
+         </label>`
+      : `<span class="todo-check is-empty" aria-hidden="true"></span>`}
+    <span class="todo-text">
+      <b>${escapeHtml(e.title)}</b>
+      <small class="muted">${escapeHtml(eventTimeText(e))}</small>
+    </span>
+    ${own
+      ? `<button type="button" class="todo-status is-${escapeHtml(status)}" data-todo-status="${escapeHtml(e.id)}"
+           title="Следующий статус: ${escapeHtml(STATUS_TEXT[STATUS_NEXT[status]])}">${escapeHtml(STATUS_TEXT[status])}</button>`
+      : e.source === 'marathon'
+        ? `<button type="button" class="btn secondary small" data-today-act="open-marathon"
+             data-today-marathon="${escapeHtml(e.marathonId)}" title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>`
+        : ''}
+  </li>`;
+}
+
+/**
  * «Задачи на день»: записи дня как список дел.
  *
  * Это не отдельное хранилище, а те же записи календаря — просто показанные как дела:
@@ -84,45 +111,39 @@ const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
  * Свои записи — с чекбоксом и статусом. Марафоны и постоянные ивенты в списке остаются
  * читаемыми строками: их нельзя отметить или удалить, они приходят из расписания.
  *
+ * Выполненные убраны в отдельный список под основным: в «рабочем» списке они только
+ * мешали, а так видно, что за день реально сделано. Список появляется, когда есть
+ * хоть одна выполненная задача, — пустого заголовка ради него не нужно.
+ *
  * @param {Array<any>} events записи дня, как их отдаёт `plannerEventsForDate`
  * @param {string} today дата дня списка, МСК
  * @returns {string}
  */
 export function todoListHtml(events, today) {
-  const left = events.filter(e => e.source === 'manual' && e.status !== 'done').length;
+  const mine = events.filter(e => e.source === 'manual');
+  const left = mine.filter(e => e.status !== 'done');
+  const done = mine.filter(e => e.status === 'done');
+  const others = events.filter(e => e.source !== 'manual');
   return `
     <h4 class="today-title"><span aria-hidden="true">☑</span> Задачи на день
-      ${left ? `<span class="today-count">${left}</span>` : ''}
+      ${left.length ? `<span class="today-count">${left.length}</span>` : ''}
     </h4>
-    ${events.length ? `<ul class="today-list todo-list">
-      ${events.map(e => {
-        const own = e.source === 'manual';
-        const status = e.status || 'todo';
-        return `<li class="todo-row${own ? '' : ' is-readonly'} is-${escapeHtml(status)}" data-todo-id="${escapeHtml(e.id)}">
-          ${own
-            ? `<label class="todo-check" title="${status === 'done' ? 'Снять отметку' : 'Отметить выполненным'}">
-                 <input type="checkbox" data-todo-toggle="${escapeHtml(e.id)}" ${status === 'done' ? 'checked' : ''} />
-               </label>`
-            : `<span class="todo-check is-empty" aria-hidden="true"></span>`}
-          <span class="todo-text">
-            <b>${escapeHtml(e.title)}</b>
-            <small class="muted">${escapeHtml(eventTimeText(e))}</small>
-          </span>
-          ${own
-            ? `<button type="button" class="todo-status is-${escapeHtml(status)}" data-todo-status="${escapeHtml(e.id)}"
-                 title="Следующий статус: ${escapeHtml(STATUS_TEXT[STATUS_NEXT[status]])}">${escapeHtml(STATUS_TEXT[status])}</button>`
-            : e.source === 'marathon'
-              ? `<button type="button" class="btn secondary small" data-today-act="open-marathon"
-                   data-today-marathon="${escapeHtml(e.marathonId)}" title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>`
-              : ''}
-        </li>`;
-      }).join('')}
-    </ul>`
-    : '<p class="muted today-empty">На этот день задач нет.</p>'}
+    ${left.length || others.length
+      ? `<ul class="today-list todo-list">
+          ${[...left, ...others].map(e => todoRowHtml(e, e.source === 'manual')).join('')}
+        </ul>`
+      : '<p class="muted today-empty">На этот день задач нет.</p>'}
     <div class="todo-actions">
       <button type="button" class="btn secondary small" data-todo-add="${escapeHtml(today)}">＋ Добавить</button>
       <button type="button" class="btn ghost small" data-open-day="${escapeHtml(today)}">Открыть день в календаре</button>
-    </div>`;
+    </div>
+    ${done.length ? `
+      <h4 class="today-title todo-done-title"><span aria-hidden="true">✅</span> Выполненные
+        <span class="today-count">${done.length}</span>
+      </h4>
+      <ul class="today-list todo-list todo-done-list">
+        ${done.map(e => todoRowHtml(e, true)).join('')}
+      </ul>` : ''}`;
 }
 
 /**

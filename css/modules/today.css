@@ -293,6 +293,13 @@
 
 .todo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
+/* Выполненные — отдельным списком под рабочим. Заголовок появляется вместе с ним:
+   пустой раздел «Выполненные: 0» только шумит. */
+.todo-done-title { margin-top: 12px; }
+.todo-done-list { max-height: 180px; opacity: 0.8; }
+.todo-done-list .todo-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+.todo-done-list .todo-status { cursor: pointer; }
+
 /* Блок «Запущенные окна игры»: список окон с кнопкой закрытия каждого.
    Список ограничен по высоте, иначе десяток открытых окон растягивал бы панель «Сегодня». */
 .rwn-block {
@@ -622,24 +629,36 @@
 .cal-week {
   position: relative;
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
+  /* Ось времени: 24 строки по высоте часа. Колонка шире обычной: в ней помещается
+     подпись «без конкретного времени» в три строки. Раньше здесь стояло «весь день»
+     в две строки, но это ничего не объясняло — читалось как обрывок слова. */
+  grid-template-columns: 58px minmax(0, 1fr);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(10, 14, 21, 0.4);
   overflow: hidden;
 }
 
-/* Ось времени: 24 строки по высоте часа */
 .cal-week-side { background: var(--surface-1); }
+/* Отдельная ячейка «без конкретного времени» над шкалой. Она не часть времени суток:
+   своя заливка и своя нижняя граница отделяют её от шкалы, где идут часы от 00:00. */
 .cal-week-allday {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 0 6px 3px 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2, #fff) 4%, transparent);
   box-sizing: border-box;
 }
-.cal-week-allday-label { color: var(--text-faint); font-size: 0.58rem; }
+.cal-week-allday-label {
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+}
+
 /* Подпись часа стоит на своей линии, а не по центру строки — так её читают как отметку времени */
 .cal-hour {
   height: var(--cell-h);
@@ -689,27 +708,36 @@
 .cal-day.is-today .cal-day-head b { background: var(--accent); color: var(--on-accent); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }
 .cal-day-dng { font-size: 0.68rem; }
 
-/* Плашки «на весь день» под датой: марафоны и записи без времени. Колонку они не заливают */
+/* Плашки «без конкретного времени» под датой: марафоны и записи без времени.
+   Это отдельная ячейка над шкалой, а не часть суток: своя заливка отличает её от
+   времени, а нижняя граница — это одновременно верх 00:00. Граница заметная:
+   тонкая сливалась с фоном и строка выглядела приклеенной к шкале. */
 .cal-day-allday {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 3px;
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-2, #fff) 4%, transparent);
+  border-bottom: 1px solid var(--border-strong, var(--border));
   box-sizing: border-box;
   overflow: hidden;
 }
 .cal-chip {
+  /* Две строки вместо одной: в колонке «5 дней» название задачи обрезалось, и что
+     это за дело было не разобрать. Обрезка до трёх строк — страховка от длинных названий. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  padding: 1px 4px;
+  padding: 2px 4px;
   border-left: 3px solid var(--accent);
   border-radius: 3px;
   background: var(--accent-soft);
   color: var(--text-dim);
   font-size: 0.58rem;
-  line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .cal-chip.is-green { border-left-color: var(--success); background: var(--success-soft); }
 .cal-chip.is-yellow { border-left-color: var(--warning); background: var(--warning-soft); }
@@ -720,10 +748,15 @@
 .cal-chip.is-done { opacity: 0.5; text-decoration: line-through; }
 .cal-more { color: var(--text-faint); font-size: 0.58rem; }
 
-/* Дорожка дня: часовые линии и блоки записей */
+/* Дорожка дня: часовые линии и блоки записей.
+   Верхнюю границу шкалы (00:00) рисует полоса «без конкретного времени» — если её нет,
+   дорожка дорисовывает её сам, иначе шкала начиналась бы в никуда. */
 .cal-day-track { position: relative; flex: 1 1 auto; }
+.cal-day:not(:has(.cal-day-allday)) .cal-day-track { border-top: 1px solid var(--border-strong, var(--border)); }
 .cal-line { height: var(--cell-h); box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
 .cal-line.is-major { border-top-color: var(--border); }
+/* Верхняя линия шкалы (00:00) рисуется на самой дорожке, а не первой линией:
+   иначе при наличии полосы «без конкретного времени» граница удваивалась. */
 .cal-line:first-child { border-top: 0; }
 
 .cal-block {
@@ -773,7 +806,7 @@
 @media (max-width: 900px) {
   /* Пять колонок на узком экране сливаются в кашу: даём горизонтальную прокрутку, а не ломаем сетку.
      Порог опущен с 1100px, потому что колонок стало на две меньше, а места под подписи нужно больше. */
-  .cal-week { grid-template-columns: 42px minmax(0, 1fr); }
+  .cal-week { grid-template-columns: 54px minmax(0, 1fr); }
   .cal-week-days { min-width: 520px; }
 }
 

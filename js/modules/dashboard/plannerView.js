@@ -129,7 +129,7 @@ function weekHtml(appState) {
          aria-label="Ближайшие 5 дней: время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">
-          <span class="cal-week-allday-label">весь день</span>
+          <span class="cal-week-allday-label" title="Записи, не привязанные к часу: марафоны идут весь день, у остальных время не задано">без конкретного времени</span>
         </div>` : ''}
         ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.label}</div>`).join('')}
       </div>
@@ -151,7 +151,7 @@ function weekHtml(appState) {
           </button>
           ${hasAllDay ? `<div class="cal-day-allday" style="height:${allDayH}px">
             ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
-              title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
+              title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без конкретного времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
           </div>` : ''}
           <div class="cal-day-track" style="height:${trackH}px" data-planner-date="${d.date}"
                title="${escapeHtml(cellTitle)}">
@@ -280,7 +280,7 @@ function dayScaleHtml(events) {
   const allDayEvents = allDay.map(x => x.event);
   return `<div class="planner-scale-wrap">
     ${allDayEvents.length ? `<div class="planner-scale-allday">
-      <span class="planner-scale-allday-label">Весь день / без времени</span>
+      <span class="planner-scale-allday-label">Без конкретного времени</span>
       ${allDayEvents.map(e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.status === 'done' ? ' is-done' : ''}"
         title="${e.time ? `с ${e.time}` : 'без времени'} · ${escapeHtml(e.title)}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
     </div>` : ''}
