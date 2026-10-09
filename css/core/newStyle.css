@@ -158,11 +158,15 @@ body[data-ui-style='next'] .next-sidebar {
   color: var(--text);
   font-size: 0.76rem;
 }
+/* Сетка, а не flex-wrap: при переносе каждая строка начиналась от левого края, и точки
+   вставали не друг под другом (ширина названий в строке разная). Здесь селектор с двумя
+   классами перебивал общее правило в serverStatus.css — поэтому сетку нужно задать и здесь. */
 .next-sidebar .srv-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6em, max-content));
+  justify-content: start;
   margin-top: 3px;
-  gap: 5px;
+  gap: 5px 14px;
 }
 .next-sidebar .srv {
   padding: 2px 6px;

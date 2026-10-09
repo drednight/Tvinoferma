@@ -131,7 +131,8 @@ export const DEFAULT_SETTINGS = {
   scripts: {
     concurrency: 3,      // одновременно открытых скрытых окон
     retries: 2,          // повторов при таймауте / «Проверке безопасности»
-    retryDelayMs: 2000
+    retryDelayMs: 2000,
+    authIntervalHours: 6 // через сколько часов повторно проверять вход автоматически (0 — только вручную)
   },
   notifications: {
     enabled: true,

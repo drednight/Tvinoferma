@@ -136,7 +136,10 @@ export async function applyDesktopSettings() {
       if (backgroundChecking || Object.keys(state.ui?.authCheck || {}).length) return;
       backgroundChecking = true;
       try {
-        const { verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
+        const { authCheckCandidates, verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
+        // Фоновый таймер может быть короче интервала автопроверки. Без этой проверки он
+        // будил бы задачу вхолостую: запускал очередь и тут же выходил, не проверив никого.
+        if (!authCheckCandidates().length) return;
         await verifySavedLoginsOnStartup({ title: '🔐 Фоновая проверка входа', quiet: true });
       } catch (e) { console.warn('[BACKGROUND AUTH]', e); }
       finally { backgroundChecking = false; }

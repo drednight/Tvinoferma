@@ -379,6 +379,13 @@
             </div>
             <input class="input setting-num" type="number" min="0" max="5" data-setting="scripts.retries" />
           </div>
+          <div class="setting-row">
+            <div>
+              <strong>🔐 Автопроверка входа</strong>
+              <p class="muted">Через сколько часов после последней проверки вход проверяется заново — при запуске приложения и по фоновому таймеру из трея. Персонажи, проверенные позже, пропускаются: проверка входа одного занимает около 2–3 с, а 28 персонажей — около 30 с. Ручная проверка (кнопка в карточке, «Проверить всех») интервал не смотрит и работает всегда. 0 — только вручную.</p>
+            </div>
+            <div class="hours-field"><input class="input setting-num" type="number" min="0" max="720" step="1" data-setting="scripts.authIntervalHours" /><span class="muted hours-hint" data-hours-for="scripts.authIntervalHours"></span></div>
+          </div>
         </details>
 <details class="panel fold" id="settings-freshness">
           <summary>

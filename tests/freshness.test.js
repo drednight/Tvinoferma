@@ -192,8 +192,11 @@ describe('карточки персонажей и настройки', () => {
   it('в настройках три порога в часах и частота чтения «Статус серверов» (минуты), подключённые к settings.freshness', () => {
     const inputs = [...document.querySelectorAll('[data-setting^="freshness."]')].map(i => i.dataset.setting);
     expect(inputs).toEqual(['freshness.balanceHours', 'freshness.loginHours', 'freshness.marathonHours', 'freshness.serverStatusMinutes']);
+    // Подпись «= 1 день» только у полей в часах. Кроме свежести она есть ещё у интервала
+    // автопроверки входа (scripts.authIntervalHours) — это тоже часы.
     const hints = [...document.querySelectorAll('[data-hours-for]')].map(i => i.dataset.hoursFor);
-    expect(hints).toEqual(inputs.slice(0, 3));   // подпись «= 1 день» только у часов
+    // Блок «Скрипты» в разметке идёт раньше «Свежести данных», поэтому интервал идёт первым
+    expect(hints).toEqual(['scripts.authIntervalHours', ...inputs.slice(0, 3)]);
   });
 
   it('панели «Свежесть данных» и «Состояние парсеров» свёрнуты по умолчанию; в свёрнутом виде видны название и описание', () => {

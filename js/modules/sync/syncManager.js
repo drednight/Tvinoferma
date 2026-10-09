@@ -1,6 +1,7 @@
 // js/modules/sync/syncManager.js
 
 import { state } from '../../core/state.js';
+import { DEFAULT_SETTINGS } from '../../core/constants.js';
 import { persist } from '../../core/storage.js';
 import { toast } from '../../core/ui.js';
 import { listen } from '@tauri-apps/api/event';
@@ -520,14 +521,40 @@ function showCredentialsModal(char, { archived = false } = {}) {
 }
 
 /**
+ * Кого имеет смысл проверять сейчас: персонажей, у которых с последней проверки входа
+ * прошло больше интервала («Скрипты → Автопроверка входа»), или которые ещё не проверялись.
+ *
+ * Отдельная настройка, а не порог устаревания данных: устаревание — это подсветка в профиле,
+ * интервал — про то, когда реально открывать окна. Смешивать их нельзя, иначе при пороге
+ * «24 ч» приложение молча перестаёт проверять вход там, где подсветка ещё и не горит.
+ * Интервал применяется ко всем, включая тех, у кого входа нет: сессия могла истёкнуть,
+ * а после ручного входа через браузер персонаж проверяется сам (см. handleBrowserWindowClosed).
+ *
+ * @param {any[]} chars
+ * @returns {Array<{ char: any, never: boolean, ageMs: number }>}
+ */
+export function authCheckCandidates(chars = state.characters, now = Date.now()) {
+    const hours = Number(state.settings?.scripts?.authIntervalHours ?? DEFAULT_SETTINGS.scripts.authIntervalHours);
+    const limitMs = (Number.isFinite(hours) && hours > 0 ? hours : 0) * 3600_000;
+    return (chars || [])
+        .map(c => {
+            const at = c.lastLoginCheck ? new Date(c.lastLoginCheck).getTime() : NaN;
+            const never = Number.isNaN(at);
+            return { char: c, never, ageMs: never ? Infinity : Math.max(0, now - at) };
+        })
+        // 0 — автопроверка выключена: проверяем только тех, кого ещё ни разу не проверяли
+        .filter(r => r.never || (limitMs > 0 && r.ageMs >= limitMs));
+}
+
+/**
  * АВТОПРОВЕРКА ПРИ ЗАПУСКЕ
- * Проверяет только тех, кто в прошлый раз был авторизован (isLoggedIn === true).
+ * Проверяет тех, кому подошёл интервал (или кто ещё не проверялся).
  * Пока идёт проверка, персонаж показывается жёлтым 🟡 «Проверка…».
  * Скрытые окна, созданные для проверки, закрываются сразу после неё (экономия RAM).
  */
 export async function verifySavedLoginsOnStartup({ title = '🔐 Проверка входа при запуске', quiet = false } = {}) {
-    const candidates = state.characters.filter(c => c.isLoggedIn === true);
-    if (candidates.length === 0) return { online: 0, offline: [] };
+    const candidates = authCheckCandidates().map(r => r.char);
+    if (candidates.length === 0) return { online: 0, offline: [], skippedFresh: state.characters.length };
     const res = await runAuthChecks(candidates, { title, baseTimeout: 5, closeAfter: true });
     if (res.cancelled) { toast(`Проверка входа отменена: проверено ${candidates.length - res.skipped} из ${candidates.length}.`, 'info'); return res; }
     if (res.offline.length > 0) toast(`Авторизация: ${res.online} онлайн, ${res.offline.length} требуют повторного входа.`, 'warning');

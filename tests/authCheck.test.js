@@ -27,7 +27,7 @@ vi.mock('../js/modules/sync/checkAuth.js', () => ({
   })
 }));
 
-let state, sync, authDetails, startTask;
+let state, sync, authStatus, authDetails, startTask;
 const mk = (id) => ({ id, nick: id, isLoggedIn: true, lastLoginCheck: null });
 
 // Ответы по умолчанию. Тесты про пропуск подменяют их, поэтому стандартные возвращаем
@@ -49,11 +49,13 @@ beforeEach(async () => {
   vi.resetModules();
   mocks.calls.length = 0; mocks.balCalls.length = 0; mocks.gate = null; mocks.closed = 0;
   ({ state } = await import('../js/core/state.js'));
-  state.settings = { scripts: { concurrency: 1, retries: 0, retryDelayMs: 0 } };
+  // authIntervalHours: 0 — иначе к статусу дописывается «автопроверка …» и проверки текста ниже видят лишнее
+  state.settings = { scripts: { concurrency: 1, retries: 0, retryDelayMs: 0, authIntervalHours: 0 } };
   (await import('../js/modules/sync/checkAuth.js')).checkCharacterAuth.mockImplementation(defaultAuth);
   (await import('../js/modules/sync/getBalance.js')).getCharacterBalance.mockImplementation(defaultBalance);
   sync = await import('../js/modules/sync/syncManager.js');
-  ({ authDetails } = await import('../js/modules/sync/authStatus.js'));
+  authStatus = await import('../js/modules/sync/authStatus.js');
+  ({ authDetails } = authStatus);
   ({ startTask } = await import('../js/core/taskLog.js'));
   // Здоровье парсеров проверяем «с нуля»: иначе состояние прошлых тестов сделало бы проверку неверной
   (await import('../js/core/parserHealth.js')).resetParserHealth();
@@ -83,6 +85,88 @@ describe('refreshAuthFor: ручная проверка одного персо�
     expect(bad.isLoggedIn).toBe(false);
     expect(bad.lastLoginReason).toBe('not_logged_in');
     expect(authDetails(bad)).toMatch(/Оффлайн: не выполнен вход на сайт · проверено/);
+  });
+});
+
+describe('автопроверка при запуске: интервал по времени последней проверки', () => {
+  const hoursAgo = h => new Date(Date.now() - h * 3600_000).toISOString();
+
+  beforeEach(() => {
+    state.settings.scripts = { ...state.settings.scripts, authIntervalHours: 6 };
+    state.settings.freshness = { ...(state.settings.freshness || {}), loginHours: 24 };
+  });
+
+  it('свежепроверенных не трогаем, устаревших и непроверенных — проверяем', () => {
+    state.characters = [
+      { id: 'fresh', nick: 'Свежий', isLoggedIn: true, lastLoginCheck: hoursAgo(2) },
+      { id: 'stale', nick: 'Устаревший', isLoggedIn: true, lastLoginCheck: hoursAgo(8) },
+      { id: 'never', nick: 'Новый', isLoggedIn: null, lastLoginCheck: null },
+      // Раньше отбор шёл по isLoggedIn === true, и персонаж с «нет входа» выпадал навсегда.
+      // Интервал применяется ко всем: пора проверить — значит пора.
+      { id: 'offline', nick: 'Без входа', isLoggedIn: false, lastLoginCheck: hoursAgo(8) }
+    ];
+    expect(sync.authCheckCandidates(state.characters).map(r => r.char.id)).toEqual(['stale', 'never', 'offline']);
+  });
+
+  it('интервал — отдельная настройка, а не порог устаревания данных', () => {
+    state.characters = [{ id: 'a', isLoggedIn: true, lastLoginCheck: hoursAgo(2) }];
+    // Подсветка устаревания может стоять хоть 720 ч, интервал автопроверки от неё не зависит
+    state.settings.freshness.loginHours = 720;
+    expect(sync.authCheckCandidates(state.characters)).toHaveLength(0);
+    state.settings.scripts.authIntervalHours = 1;   // пользователь поставил час
+    expect(sync.authCheckCandidates(state.characters).map(r => r.char.id)).toEqual(['a']);
+  });
+
+  it('интервал 0 — автопроверка выключена, проверяются только непроверенные', () => {
+    state.settings.scripts.authIntervalHours = 0;
+    state.characters = [
+      { id: 'old', isLoggedIn: true, lastLoginCheck: hoursAgo(500) },
+      { id: 'never', isLoggedIn: true, lastLoginCheck: null }
+    ];
+    expect(sync.authCheckCandidates(state.characters).map(r => r.char.id)).toEqual(['never']);
+  });
+
+  it('ручная проверка входа обходит интервал', async () => {
+    // Кнопка «проверить сейчас» должна работать всегда, иначе нельзя починить персонажа вручную
+    const char = { id: 'a', nick: 'Аа', isLoggedIn: true, lastLoginCheck: hoursAgo(1) };
+    state.characters = [char];
+    await sync.refreshAuthFor(char);
+    expect(mocks.calls).toEqual(['a']);
+  });
+
+  it('при запуске проверяются только кандидаты, а не все подряд', async () => {
+    const fresh = { id: 'fresh', nick: 'Свежий', isLoggedIn: true, lastLoginCheck: hoursAgo(1) };
+    const stale = { id: 'stale', nick: 'Устаревший', isLoggedIn: true, lastLoginCheck: hoursAgo(8) };
+    state.characters = [fresh, stale];
+    await sync.verifySavedLoginsOnStartup({ quiet: true });
+    expect(mocks.calls).toEqual(['stale']);
+  });
+});
+
+describe('статус входа: когда следующая автопроверка', () => {
+  const NOW = Date.parse('2026-10-09T12:00:00Z');
+  const at = hoursAgo => new Date(NOW - hoursAgo * 3600_000).toISOString();
+  const S = { scripts: { authIntervalHours: 6 } };
+
+  it('остаток интервала словами: минуты, часы, «сейчас», выключено', () => {
+    expect(authStatus.nextAutoAuthText(at(0), S, NOW)).toBe('через 6 ч');
+    expect(authStatus.nextAutoAuthText(at(5.5), S, NOW)).toBe('через 30 мин');
+    expect(authStatus.nextAutoAuthText(at(2), S, NOW)).toBe('через 4 ч');
+    expect(authStatus.nextAutoAuthText(at(9), S, NOW)).toBe('сейчас');   // интервал вышел
+    // Никогда не проверялся: ждать нечего
+    expect(authStatus.nextAutoAuthText(null, S, NOW)).toBe('сейчас');
+    // Автопроверка выключена — дописывать нечего
+    expect(authStatus.nextAutoAuthText(at(0), { scripts: { authIntervalHours: 0 } }, NOW)).toBe('');
+  });
+
+  it('в статусе персонажа видно, когда будет следующая проверка', () => {
+    state.settings.scripts = { authIntervalHours: 6 };
+    const char = { id: 'a', isLoggedIn: true, lastLoginCheck: new Date(NOW - 2 * 3600_000).toISOString() };
+    expect(authStatus.authDetails(char, NOW)).toContain('автопроверка через 4 ч');
+    // Дробный остаток не округляем до нуля: «через 0 ч» — это не «осталось 40 минут»
+    expect(authStatus.nextAutoAuthText(at(0), { scripts: { authIntervalHours: 1 } }, NOW)).toBe('через 1 ч');
+    expect(authStatus.nextAutoAuthText(at(0), { scripts: { authIntervalHours: 1.5 } }, NOW)).toBe('через 1,5 ч');
+    expect(authStatus.nextAutoAuthText(at(0), { scripts: { authIntervalHours: 0.5 } }, NOW)).toBe('через 30 мин');
   });
 });
 

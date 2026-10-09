@@ -23,8 +23,11 @@
 .srv-age { color: var(--text-faint); font-size: 0.72rem; white-space: nowrap; }
 .srv-plaque.is-warn .srv-age { color: var(--warning); }
 .srv-plaque.is-busy .srv-age { color: var(--accent); }
-.srv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
-.srv { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; white-space: nowrap; }
+/* Сетка, а не перенос строки: при flex-wrap каждая следующая строка начиналась заново от
+   левого края, и точка «Капеллы» вставала левее точки «Фенрира» — строки опирались на
+   разную ширину названий. В сетке колонки общие, поэтому точки стоят друг под другом. */
+.srv-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(6em, max-content)); gap: 4px 14px; justify-content: start; }
+.srv { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; white-space: nowrap; min-width: 0; }
 .srv-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
 .srv.is-on .srv-dot { background: var(--success); box-shadow: 0 0 0 2px rgba(158, 206, 106, 0.18); }
 .srv.is-off .srv-dot { background: var(--danger); }

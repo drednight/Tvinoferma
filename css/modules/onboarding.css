@@ -9,6 +9,10 @@
   box-shadow: var(--shadow-1);
 }
 
+/* Подсказка рисуется внутри #character-grid — сетки карточек с колонкой 360px. Без
+   растяжения на всю ширину она занимала одну колонку и текст ломался по одному слову. */
+#character-grid > .onb { grid-column: 1 / -1; }
+
 .onb-head h3 { margin-bottom: 4px; }
 .onb-head p { font-size: 0.88rem; max-width: 70ch; }
 
