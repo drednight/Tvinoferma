@@ -642,13 +642,15 @@
   position: absolute;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 1px 4px;
+  /* Воздух внутри плашки: в неделе блоки низкие (час = 15px), и при 1px подписи
+     «Битва Династий / 15:00–16:00» слипались. 2px сверху и снизу дают читаемую строку. */
+  padding: 2px 5px;
   border-left: 3px solid var(--accent);
   border-radius: 4px;
   background: var(--accent-soft);
   color: var(--text-dim);
-  font-size: 0.6rem;
-  line-height: 1.2;
+  font-size: 0.62rem;
+  line-height: 1.25;
   cursor: pointer;
 }
 .cal-block:hover { filter: brightness(1.18); }

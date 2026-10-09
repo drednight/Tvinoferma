@@ -4,9 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight,
-  weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, WEEK_DAYS, DAY_MINUTES
+  weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, WEEK_DAYS, DAY_MINUTES, MIN_BLOCK_HEIGHT
 } from '../js/modules/dashboard/weekView.js';
-import { timelineBlocks } from '../js/modules/dashboard/timeline.js';
 
 // 2026-10-07 — среда
 const WED = '2026-10-07';
@@ -63,7 +62,41 @@ describe('раскладка недели', () => {
 
   it('короткая запись не схлопывается в волосок', () => {
     const [day] = weekLayout([[ev('12:00', { durationMinutes: 5 })]]);
-    expect(day.blocks[0].height).toBeGreaterThanOrEqual(14);
+    expect(day.blocks[0].height).toBeGreaterThanOrEqual(MIN_BLOCK_HEIGHT);
+  });
+
+  it('короткая запись не накрывает следующую: растянутый блок уводит соседа в другую дорожку', () => {
+    // Причина жалобы: минимум 14 px при часе 15 px растягивал запись на 5 минут почти на час
+    // шкалы, и она закрывала всё, что начиналось сразу после неё. Обрезать до свободных
+    // 2.5 px тоже нельзя — подпись пропадала, поэтому дорожки считаются по видимым высотам.
+    const [day] = weekLayout([[
+      ev('12:00', { durationMinutes: 5 }),
+      ev('12:10', { durationMinutes: 30 })
+    ]]);
+    const [short, next] = day.blocks;
+    expect(short.height).toBe(MIN_BLOCK_HEIGHT);        // читаемо
+    expect(next.leftPct).toBe(50);                      // но не поверх: вторая дорожка
+    expect(short.leftPct).toBe(0);
+  });
+
+  it('дорожки считаются по видимым высотам: наложение по времени тоже разводится', () => {
+    const [day] = weekLayout([[
+      ev('12:00', { durationMinutes: 5 }),
+      ev('12:02', { durationMinutes: 30 })
+    ]]);
+    const [a, b] = day.blocks;
+    expect(a.leftPct).toBe(0);
+    expect(b.leftPct).toBe(50);
+    // Ни один блок не выходит за пределы своей половины колонки
+    expect(a.leftPct + a.widthPct).toBeLessThanOrEqual(50);
+    expect(b.leftPct + b.widthPct).toBeLessThanOrEqual(100);
+  });
+
+  it('нижняя граница суток: полоса не должна вылезать за них даже с минимумом', () => {
+    const [day] = weekLayout([[ev('23:30', { durationMinutes: 30 })]]);
+    const b = day.blocks[0];
+    // Полоса может упереться в полночь, но не за её пределы: иначе она налезает на «сейчас»
+    expect(b.top + b.height).toBeLessThanOrEqual(24 * HOUR_HEIGHT);
   });
 
   it('запись от полуночи стоит в самом верху', () => {
@@ -72,11 +105,10 @@ describe('раскладка недели', () => {
     expect(day.blocks[0].height).toBe(HOUR_HEIGHT);
   });
 
-  it('наложения разводятся по дорожкам — та же логика, что в месяце', () => {
+  it('наложения разводятся по дорожкам', () => {
     const events = [ev('19:00', { durationMinutes: 120 }), ev('19:30', { durationMinutes: 30 })];
     const [day] = weekLayout([events]);
-    const month = timelineBlocks(events);
-    expect(day.blocks.map(b => b.leftPct)).toEqual(month.blocks.map(b => b.leftPct));
+    expect(day.blocks.map(b => b.leftPct)).toEqual([0, 50]);
     expect(day.blocks[0].widthPct).toBe(50);
   });
 

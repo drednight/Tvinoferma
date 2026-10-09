@@ -33,6 +33,19 @@ export const HOUR_HEIGHT = 15;
 /** Высота одной дорожки «весь день»: марафон и записи без времени. */
 export const ALLDAY_ROW_HEIGHT = 26;
 
+/**
+ * Минимальная высота блока, px: короче этой записи текст не показать.
+ *
+ * Раньше здесь стояли 14 px при высоте часа 15 px, и это порождало наложения: короткая
+ * запись (например, 5 минут = 1.25 px) растягивалась до 14 px — то есть почти на час
+ * шкалы, — и накрывала следующую запись, начинавшуюся в 12:05. Дорожки считаются по
+ * реальным интервалам, поэтому растянутый блок перекрывал соседа по дорожке.
+ *
+ * Теперь 10 px (хватает на строку названия в 0.62rem с полями 2px), а главное — растянутый
+ * блок не вылезает за пределы свободного места до следующего в этой дорожке (см. `weekLayout`).
+ */
+export const MIN_BLOCK_HEIGHT = 10;
+
 /** Отступ сверху и снизу в области «весь день». */
 export const ALLDAY_PAD = 6;
 
@@ -108,16 +121,49 @@ export function weekRangeTitle(days) {
 export function weekLayout(eventsByDate) {
   return (Array.isArray(eventsByDate) ? eventsByDate : []).map(events => {
     const { allDay, blocks } = timelineBlocks(events);
+    /** @type {Array<{ event: any, top: number, natural: number, startTime: any, endTime: any, lane?: number, height?: number }>} */
+    const laid = blocks.map(b => ({
+      event: b.event,
+      top: (b.start / DAY_MINUTES) * (DAY_MINUTES / 60) * HOUR_HEIGHT,
+      natural: (b.end - b.start) / 60 * HOUR_HEIGHT,   // высота по реальному интервалу
+      startTime: b.startTime,
+      endTime: eventEndTime(b.event) || b.endTime
+    })).sort((a, b) => a.top - b.top);
+
+    // Дорожки считаем заново — по «видимым» интервалам, а не по времени.
+    //
+    // Раньше дорожки приходили из `timelineBlocks` (общий с месяцем) — по реальным
+    // интервалам, а высота снизу поднималась до минимума ради читаемости. В неделе час
+    // всего 15 px, и минимум в 14 px растягивал запись на 5 минут почти на час шкалы:
+    // блок накрывал следующую запись в своей дорожке. Обрезать блок до свободного места
+    // тоже нельзя — 10 минут разницы дают 2.5 px, и подпись пропадала.
+    //
+    // Поэтому дорожка назначается по фактической высоте блока: растянутый блок занимает
+    // место до конца, и следующий уходит в другую дорожку. Ни наложений, ни нечитаемых блоков.
+    const freeAt = [];
+    for (const b of laid) {
+      const height = Math.max(b.natural, MIN_BLOCK_HEIGHT);
+      let lane = freeAt.findIndex(end => end <= b.top);
+      if (lane === -1) lane = freeAt.push(b.top + height) - 1;
+      else freeAt[lane] = b.top + height;
+      b.lane = lane;
+      b.height = height;
+    }
+    // Обрезаем по нижнему краю суток: запись у 23:59 с минимумом высоты уезжала бы за полночь.
+    // Дорожки уже назначены, поэтому обрезка ничего не накладывает — только убирает лишнее.
+    const dayBottom = 24 * HOUR_HEIGHT;
+    for (const b of laid) b.height = Math.min(b.height, dayBottom - b.top);
+    const laneCount = Math.max(1, freeAt.length);
     return {
       allDay: allDay.map(x => x.event),
-      blocks: blocks.map(b => ({
+      blocks: laid.map(b => ({
         event: b.event,
-        top: (b.start / DAY_MINUTES) * (DAY_MINUTES / 60) * HOUR_HEIGHT,
-        height: Math.max((b.end - b.start) / 60 * HOUR_HEIGHT, 14),
-        leftPct: b.leftPct,
-        widthPct: b.widthPct,
+        top: b.top,
+        height: b.height,
+        leftPct: (b.lane / laneCount) * 100,
+        widthPct: 100 / laneCount,
         startTime: b.startTime,
-        endTime: eventEndTime(b.event) || b.endTime
+        endTime: b.endTime
       }))
     };
   });
