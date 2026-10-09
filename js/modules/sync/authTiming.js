@@ -94,15 +94,29 @@ export async function measureAuth(charIds, { timeoutSeconds = 4, deps = {} } = {
 }
 
 /**
- * Замер без указания персонажей: берёт всех, у кого вход ещё не проверялся или кто оффлайн.
- * Это удобный способ «померить массовую проверку» одной командой.
- * @param {{ state?: any, timeoutSeconds?: number }} [opts]
+ * Замер без указания персонажей: берёт всех, кроме архивных.
+ *
+ * Берём именно всех, а не только тех, у кого вход не подтверждён: замерять нужно и быстрые
+ * проверки — только они показывают, сколько времени стоит сама настройка окна и переход,
+ * без ожидания сайта. Если мерить только офлайн, получится «тормозит сайт», хотя тормозит
+ * приложение.
+ *
+ * @param {{ state?: any, timeoutSeconds?: number, limit?: number, onlyUnconfirmed?: boolean }} [opts]
  */
 export async function measureAllAuth(opts = {}) {
   const { state } = opts.state ? { state: opts.state } : await import('../../core/state.js');
-  const ids = (state.characters || [])
-    .filter(c => c.isLoggedIn !== true)
-    .map(c => c.id);
-  if (!ids.length) return { rows: [], avg: {}, report: 'Некого мерить: у всех персонажей вход подтверждён.' };
-  return measureAuth(ids, { timeoutSeconds: opts.timeoutSeconds ?? 4 });
+  const all = (state.characters || []).filter(c => !c.archived);
+  const list = opts.onlyUnconfirmed ? all.filter(c => c.isLoggedIn !== true) : all;
+  if (!list.length) {
+    return { rows: [], avg: {}, report: 'Некого мерить: в приложении нет персонажей.' };
+  }
+  // Персонажей может быть много, а каждая проверка — это окно и запрос к сайту.
+  // По умолчанию берём первые 10: этого хватает, чтобы увидеть картину.
+  const limit = opts.limit ?? 10;
+  const picked = list.slice(0, limit);
+  const res = await measureAuth(picked.map(c => c.id), { timeoutSeconds: opts.timeoutSeconds ?? 4 });
+  if (picked.length < list.length) {
+    res.report += `\n\nЗамерены первые ${picked.length} из ${list.length}. Для остальных: measureAllAuth({ limit: ${list.length} })`;
+  }
+  return res;
 }
