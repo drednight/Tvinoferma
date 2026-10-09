@@ -1,4 +1,4 @@
-// Туду лист на вкладке «Сегодня» (js/modules/dashboard/todayView.js):
+// Список задач на день на вкладке «Сегодня» (js/modules/dashboard/todayView.js):
 // записи дня как список дел — чекбокс, название, статус.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -39,7 +39,7 @@ const parse = (html) => {
   return host;
 };
 
-describe('туду лист: разметка', () => {
+describe('задачи на день: разметка', () => {
   it('у своей записи есть чекбокс, название и кнопка статуса', () => {
     const host = parse(todoListHtml([mine('Пропыть караван', 'todo')], TODAY));
     const row = host.querySelector('.todo-row');
@@ -85,13 +85,13 @@ describe('туду лист: разметка', () => {
 
   it('пустой день: подсказка и кнопки добавления', () => {
     const host = parse(todoListHtml([], TODAY));
-    expect(host.textContent).toContain('дел нет');
+    expect(host.textContent).toContain('задач нет');
     expect(host.querySelector('[data-todo-add]').dataset.todoAdd).toBe(TODAY);
     expect(host.querySelector('[data-open-day]')).not.toBeNull();
   });
 });
 
-describe('туду лист: действия', () => {
+describe('задачи на день: действия', () => {
   it('галочка ставит «выполнено» и сохраняет', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'todo')];
     renderToday(document.getElementById('today-root'), {});
@@ -140,7 +140,7 @@ describe('блок окон игры ушёл с «Сегодня»', () => {
     renderToday(document.getElementById('today-root'), {});
     expect(document.querySelector('[data-running-windows]')).toBeNull();
     expect(document.querySelector('.rwn-block')).toBeNull();
-    // Туду лист на месте
+    // Список задач на день на месте
     expect(document.querySelector('.todo-list, .today-empty')).not.toBeNull();
   });
 });

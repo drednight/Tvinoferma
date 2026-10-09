@@ -29,7 +29,7 @@ export function eventTimeText(event) {
 }
 
 /**
- * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и туду лист.
+ * Боковая панель «Сегодня» рядом с календарём: данж дня, полоса на неделю и список задач на день.
  *
  * Раньше здесь был ещё и блок «Окна игры», но управление окнами ушло в «Инструменты»,
  * а на «Сегодня» остался обзор без пользы.
@@ -69,13 +69,13 @@ export function todaySideHtml(appState = state) {
     </aside>`;
 }
 
-/** Подпись статуса в туду листе: что видно на кнопке справа. */
+/** Подпись статуса в списке задач на день: что видно на кнопке справа. */
 const STATUS_TEXT = { todo: 'Ожидает', doing: 'В работе', done: 'Выполнено' };
 /** Следующий статус по клику: ждёт → в работе → выполнено → обратно в ожидает. */
 const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
 
 /**
- * Туду лист: записи дня как список дел.
+ * «Задачи на день»: записи дня как список дел.
  *
  * Это не отдельное хранилище, а те же записи календаря — просто показанные как дела:
  * чекбокс слева (снимает и ставит «выполнено»), название, справа статус. «В работе»
@@ -91,7 +91,7 @@ const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
 export function todoListHtml(events, today) {
   const left = events.filter(e => e.source === 'manual' && e.status !== 'done').length;
   return `
-    <h4 class="today-title"><span aria-hidden="true">☑</span> Туду лист
+    <h4 class="today-title"><span aria-hidden="true">☑</span> Задачи на день
       ${left ? `<span class="today-count">${left}</span>` : ''}
     </h4>
     ${events.length ? `<ul class="today-list todo-list">
@@ -118,7 +118,7 @@ export function todoListHtml(events, today) {
         </li>`;
       }).join('')}
     </ul>`
-    : '<p class="muted today-empty">На этот день дел нет.</p>'}
+    : '<p class="muted today-empty">На этот день задач нет.</p>'}
     <div class="todo-actions">
       <button type="button" class="btn secondary small" data-todo-add="${escapeHtml(today)}">＋ Добавить</button>
       <button type="button" class="btn ghost small" data-open-day="${escapeHtml(today)}">Открыть день в календаре</button>
@@ -230,7 +230,7 @@ export function renderToday(root, deps = {}) {
 }
 
 /**
- * Отметка в туду листе: галочка ставит и снимает «выполнено», кнопка справа перебирает
+ * Отметка в списке задач на день: галочка ставит и снимает «выполнено», кнопка справа перебирает
  * статус по кругу. Только свои записи — марафоны и ивенты из расписания не трогаем.
  *
  * @param {string} id
@@ -249,11 +249,11 @@ async function setTodoStatus(id, render, status) {
 }
 
 /**
- * Новое дело на день.
+ * Новая задача на день.
  *
- * Форма та же, что у записей календаря, и время в ней по умолчанию пустое — дело из
- * туду листа не привязано к часу: с временем оно рисовалось бы блоком на шкале, а
- * пользователю тут нужен просто список дел.
+ * Форма та же, что у записей календаря, и время в ней по умолчанию пустое: задача из
+ * списка дня не привязана к часу — с временем она рисовалась бы блоком на шкале, а
+ * здесь нужен просто список дел.
  *
  * @param {string} date
  * @param {{ render?: () => void }} deps

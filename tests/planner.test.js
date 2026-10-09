@@ -36,7 +36,7 @@ expect(normalizePlannerEntry({
     expect(normalizePlannerEntry({ status: 'done' }).done).toBeUndefined();
   });
 
-  it('в туду листе сначала «в работе», потом «ожидает», выполненные — в конце', () => {
+  it('в списке задач на день сначала «в работе», потом «ожидает», выполненные — в конце', () => {
     const mk = (title, status) => normalizePlannerEntry({ title, date: '2026-10-05', status });
     const state = { plannerEntries: [mk('Сделано', 'done'), mk('Ждёт', 'todo'), mk('Делаю', 'doing')] };
     expect(plannerEventsForDate(state, '2026-10-05').filter(e => e.source === 'manual').map(e => e.title))
