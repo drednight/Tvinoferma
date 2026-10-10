@@ -690,6 +690,8 @@
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-2, #fff) 4%, transparent);
   box-sizing: border-box;
+  /* Высота приходит из разметки (ALLDAY_BAND_HEIGHT) и должна совпадать с колонками
+     дней: иначе подпись «без конкретного времени» уедет относительно самих задач. */
 }
 .cal-week-allday-label {
   color: var(--text-faint);
@@ -763,9 +765,23 @@
   background: color-mix(in srgb, var(--surface-2, #fff) 4%, transparent);
   border-bottom: 1px solid var(--border-strong, var(--border));
   box-sizing: border-box;
-  /* Дорожек не больше трёх (см. MAX_ALLDAY_ROWS): дальше область прокручивается, а не
-     отъедает шкалу суток. Появление полосы прокрутки — само по себе видно, что дел больше. */
+  /* Высота задана постоянно (100 px, см. ALLDAY_BAND_HEIGHT). Пять дел видно всегда,
+     остальные уходят под прокрутку — полоса не растёт и не отжимает шкалу суток.
+     Появление полосы прокрутки само по себе показывает, что дел больше пяти. */
   overflow-y: auto;
+}
+
+/* Внутри полосы одна строка на задачу: иначе пять дел в 100 px не поместятся, и часть
+   их всё равно уедет под прокрутку, хотя места визуально ещё есть. Полное название — в
+   подсказке при наведении, она и раньше была. */
+.cal-day-allday .cal-chip {
+  display: block;
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 15px;
+  padding-block: 0;
+  font-size: 0.62rem;
 }
 .cal-chip {
   /* Две строки вместо одной: в колонке «5 дней» название задачи обрезалось, и что

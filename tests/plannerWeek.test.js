@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight,
-  weekHours, nowLineTop, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, MAX_ALLDAY_TASKS, WEEK_DAYS, DAY_MINUTES, MIN_BLOCK_HEIGHT
+  weekHours, nowLineTop, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, ALLDAY_BAND_HEIGHT, WEEK_DAYS, DAY_MINUTES, MIN_BLOCK_HEIGHT
 } from '../js/modules/dashboard/weekView.js';
 
 // 2026-10-07 — среда
@@ -204,21 +204,15 @@ describe('сплошные полосы «весь день»: марафон о
     expect(packed.rows).toBe(2);
   });
 
-  it('высота области «без конкретного времени» растёт с числом задач, но не бесконечно', () => {
-    // Ноль задач даёт ровно одну дорожку: место под подпись остаётся всегда,
-    // иначе шапка дня прыгала бы по высоте между днями с событиями и без
-    expect(allDayHeight(0)).toBe(allDayHeight(1));
-    expect(allDayHeight(1)).toBe(ALLDAY_ROW_HEIGHT + 12);
-    expect(allDayHeight(2)).toBe(allDayHeight(1) + ALLDAY_ROW_HEIGHT);
-    expect(allDayHeight(3)).toBe(allDayHeight(2) + ALLDAY_ROW_HEIGHT);
-    // Дорожка — несколько строк текста: в колонке «5 дней» название задачи не помещалось
-    // на одной строке и обрезалось, из-за чего было не понять, какое это дело
+  it('высота области «без конкретного времени» постоянна: 100 px при любом числе задач', () => {
+    // Полоса не должна зависеть от загрузки дня: иначе колонка с шестью делами выше
+    // колонки без дел, и полоса отжимает шкалу суток. Пять дел видно, дальше прокрутка.
+    expect(ALLDAY_BAND_HEIGHT).toBe(100);
+    for (const n of [0, 1, 2, 3, 5, 6, 11, 50]) {
+      expect(allDayHeight(n)).toBe(ALLDAY_BAND_HEIGHT);
+    }
+    // Дорожка осталась в несколько строк — ею пользуется окно дня, у которого своя шкала
     expect(ALLDAY_ROW_HEIGHT).toBeGreaterThanOrEqual(32);
-    // Больше пяти задач полосу не растягивают: она прокручивается.
-    // Одиннадцать задач без времени иначе занимали треть календаря.
-    expect(allDayHeight(MAX_ALLDAY_TASKS)).toBe(MAX_ALLDAY_TASKS * ALLDAY_ROW_HEIGHT + 12);
-    expect(allDayHeight(6)).toBe(allDayHeight(MAX_ALLDAY_TASKS));
-    expect(allDayHeight(11)).toBe(allDayHeight(MAX_ALLDAY_TASKS));
   });
 
   it('блок задачи в неделе стоит в долях суток: календарь растягивается, время остаётся', () => {
