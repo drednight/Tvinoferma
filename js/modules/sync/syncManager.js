@@ -14,7 +14,7 @@ import { showModal, closeModal } from '../../core/ui.js';
 
 // Импортируем скрипты запуска задач
 import { buildPanelScript, panelDataFor } from '../../desktop/loginPanel.js';
-import { checkCharacterAuth } from './checkAuth.js';
+import { checkCharacterAuth, closeAuthPopups } from './checkAuth.js';
 import { getCharacterBalance } from './getBalance.js';
 import { runQueue, browserSlots, isRetryableCode } from './queue.js';
 import { setAuthChecking, authDetails } from './authStatus.js';
@@ -71,17 +71,31 @@ export async function handleBrowserWindowClosed(label) {
     // Даём окну закрыться полностью: пока оно живо, новая попытка ждёт тот же профиль
     await new Promise(r => setTimeout(r, 1000));
     await runAuthChecks([char], { baseTimeout: 8, closeAfter: true, silent: true });
+}
 
-    // Окно авторизации после успеха часто остаётся белым: страница возврата не смогла
-    // отдать результат и не закрылась. Вход уже подтверждён — закрываем её, чтобы она
-    // не висела у пользователя перед глазами.
-    if (char.isLoggedIn === true && label.startsWith('popup-sync-win-')) {
-        const { closeAuthPopups } = await import('./checkAuth.js');
-        const closed = await closeAuthPopups(char.id);
-        if (closed > 0) {
-            toast(`Вход выполнен, окно авторизации закрыто: ${char.nick || char.id}`, 'success');
-        }
+/**
+ * Закрыть окна авторизации после подтверждения входа.
+ *
+ * Страница возврата OAuth (`oauth2.htm`) читает код из адреса, отдаёт его родительскому
+ * окну через `window.opener` и закрывается сама. Закрывается она не всегда — остаётся
+ * белое окно, в котором не работает ничего.
+ *
+ * Раньше закрытие висело на событии закрытия окна, то есть на самом том действии,
+ * которого не происходит: окно не закрылось, поэтому события не было, поэтому закрывать
+ * было некому. Замкнутый круг. Теперь триггер — сам вход: как только персонаж online,
+ * окно возврата свою работу сделало и не нужно.
+ *
+ * @param {string} charId
+ * @param {{ nick?: string }} [char] для текста журнала
+ * @returns {Promise<number>} сколько окон закрыто
+ */
+async function closeAuthWindowsAfterLogin(charId, char) {
+    const closed = await closeAuthPopups(charId);
+    if (closed > 0) {
+        logScope(`char:${charId}`, `${char?.nick || charId}: вход подтверждён, окно авторизации закрыто`, 'ok');
+        toast(`Вход выполнен, окно авторизации закрыто: ${char?.nick || charId}`, 'success');
     }
+    return closed;
 }
 
 export async function initSyncListeners() {
@@ -252,6 +266,10 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
             // Вход подтвердился (часто с повтора): ошибки прошлых попыток этого персонажа
             // в журнале больше не нужны, иначе задача остаётся жёлтой с «ошибок: 1».
             if (!error && result?.status === 'online') task?.resolveProblems(scope, 'вход подтверждён');
+            // Вход подтверждён — окно возврата OAuth свою работу сделало (см. closeAuthWindowsAfterLogin).
+            // Проверяем не по факту смены статуса: сессия могла быть жива всё время, и `changed`
+            // был бы false, хотя белое окно осталось бы всё равно.
+            if (!error && result?.status === 'online') closeAuthWindowsAfterLogin(item.id, item);
             task?.progress(done, total, item.nick);
             persist().then(() => { if (applied?.changed !== false) rerender(); });
         }

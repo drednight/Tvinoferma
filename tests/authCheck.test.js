@@ -383,13 +383,40 @@ describe('закрытие окна браузера', () => {
     expect(closeAuthPopups).not.toHaveBeenCalled();
   });
 
-  it('закрытие основного окна тоже перепроверяет вход, но окна авторизации не закрывает', async () => {
+  // Окно возврата OAuth (`oauth2.htm`) остаётся белым, если не закрылось само. Раньше закрытие
+  // висело на событии закрытия окна — то есть на том действии, которого не происходит: окно не
+  // закрылось, события не было, закрывать некому. Теперь триггер — подтверждённый вход, поэтому
+  // безо всякой надежды на событие. Проверяем вход вручную, как это делает пользователь.
+  it('подтверждение входа закрывает белое окно возврата (окно само не закрылось)', async () => {
     const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    mocks.closed = 1;
     state.characters = [mk('a')];
 
-    await sync.handleBrowserWindowClosed('sync-win-a');
+    await sync.runAuthChecks([state.characters[0]]);
 
-    await vi.waitFor(() => expect(mocks.calls).toEqual(['a']));
+    await vi.waitFor(() => expect(closeAuthPopups).toHaveBeenCalledWith('a'));
+    expect(state.characters[0].isLoggedIn).toBe(true);
+  });
+
+  it('окно закрывается и когда статус не менялся: сессия была жива весь вход', async () => {
+    const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    mocks.closed = 1;
+    state.characters = [mk('a')];
+    state.characters[0].isLoggedIn = true;   // сессия и до входа была жива → changed === false
+
+    await sync.runAuthChecks([state.characters[0]]);
+
+    await vi.waitFor(() => expect(closeAuthPopups).toHaveBeenCalledWith('a'));
+  });
+
+  it('если входа нет, белое окно оставляем: код мог ещё прийти', async () => {
+    const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
+    mocks.closed = 1;
+    state.characters = [mk('bad')];
+
+    await sync.runAuthChecks([state.characters[0]]);
+
+    await vi.waitFor(() => expect(state.characters[0].isLoggedIn).toBe(false));
     expect(closeAuthPopups).not.toHaveBeenCalled();
   });
 
