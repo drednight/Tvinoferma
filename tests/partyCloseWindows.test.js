@@ -42,8 +42,8 @@ beforeEach(async () => {
   ({ renderPartiesGrid: renderParties, setPartyArchiveView } = await import('../js/modules/parties/renderer.js'));
   state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
   state.characters = [
-    { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC' } },
-    { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', isLoggedIn: false, launch: { gcPath: 'D:\\GC' } }
+    { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC', gcAccount: true } },
+    { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', isLoggedIn: false, launch: { gcPath: 'D:\\GC', gcAccount: true } }
   ];
 });
 
@@ -57,7 +57,7 @@ describe('кнопка закрытия окон в карточке пати', 
   });
 
   it('есть у всех непустых пати, включая «Без пати»', () => {
-    state.characters.push({ id: 'c', nick: 'Вв', class: 'Бард', partyIds: [], mainPartyId: null, launch: { gcPath: 'D:\\GC' } });
+    state.characters.push({ id: 'c', nick: 'Вв', class: 'Бард', partyIds: [], mainPartyId: null, launch: { gcPath: 'D:\\GC', gcAccount: true } });
     renderParties();
     expect(cards().map(c => c.dataset.partyName)).toContain('Без пати');
     expect(closeBtn('Основа')).not.toBeNull();
@@ -67,7 +67,7 @@ describe('кнопка закрытия окон в карточке пати', 
 
   it('показывает архивных участников в копии пати в архиве, не включая их в активную пати', () => {
     state.archivedCharacters = [
-      { id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC' } }
+      { id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC', gcAccount: true } }
     ];
     renderParties();
 

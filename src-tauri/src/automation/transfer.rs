@@ -358,11 +358,22 @@ pub async fn read_server_status(
     .await;
     match classify_servers(res) {
         Ok(data) => {
-            task.finish(None, true, false).await;
+            // Служебное окно статуса НЕ уничтожаем: следующая проверка снова его возьмёт.
+            //
+            // Раньше здесь стояло `true`, и окно создавалось и уничтожалось каждые 10 минут.
+            // Каждый такой цикл поднимает и гасит окружение WebView2: стартуют процессы
+            // msedgewebview2.exe, новое окно на мгновение становится активным — и игра
+            // сворачивалась на рабочий стол. Пользователь замечал это ровно раз в 10 минут
+            // («прога что-то делает и сворачивает игру»), а причина была не в игре и не в
+            // запросе к сайту, а в пересоздании окна.
+            //
+            // Постоянно живущее скрытое окно стоит ~60–100 МБ RAM и не трогает пользователя.
+            // Зато пересоздание каждые 10 минут гарантированно вмешивается в игру.
+            task.finish(None, false, false).await;
             Ok(reply("ok", None, data))
         }
         Err((status, error)) => {
-            task.finish(None, true, false).await;
+            task.finish(None, false, false).await;
             let err = (status == "error").then_some(error.as_str());
             Ok(reply(status, err, Value::Null))
         }

@@ -258,6 +258,7 @@ function eventRow(event) {
     event.recurrence && event.recurrence !== 'none' ? 'Повторяется' : ''].filter(Boolean).join(' · ');
   // Постоянный ивент приходит из расписания: его нельзя отметить «готово» или удалить
   const actions = event.source === 'manual' ? `
+      <button class="btn ghost small" type="button" data-planner-edit="${escapeHtml(event.id)}" title="Изменить запись">✎</button>
       <button class="btn ghost small" type="button" data-planner-done="${escapeHtml(event.id)}">${event.status === 'done' ? 'Вернуть' : 'Готово'}</button>
       <button class="btn danger small" type="button" data-planner-delete="${escapeHtml(event.id)}" aria-label="Удалить">×</button>`
     : event.source === 'marathon'
@@ -314,6 +315,13 @@ export function openPlannerDay(date, deps = {}) {
   });
   const modal = document.getElementById('modal-root');
   modal.querySelector('[data-planner-add]')?.addEventListener('click', () => openPlannerEntryForm(date, deps));
+  modal.querySelectorAll('[data-planner-edit]').forEach(button => button.addEventListener('click', () => {
+    const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerEdit);
+    if (!entry) return;
+    // `date` — день, который открыт, а не дата записи: у повторяющейся записи они разные,
+    // и форма должна предупредить, что правка затронет все повторения
+    openPlannerEntryForm(date, deps, entry);
+  }));
   modal.querySelectorAll('[data-planner-done]').forEach(button => button.addEventListener('click', async () => {
     const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDone);
     if (!entry) return;
@@ -339,41 +347,52 @@ export function openPlannerDay(date, deps = {}) {
   }));
 }
 
-export function openPlannerEntryForm(date, deps = {}) {
+export function openPlannerEntryForm(date, deps = {}, entry = null) {
+  // Правка существующей записи: форма та же, но с уже заполненными полями и сохранением
+  // в тот же объект. Раньше правки не было вовсе — опечатку в названии можно было только
+  // удалить и создать заново, теряя время, длительность и повтор.
+  const edit = !!entry;
+  const sel = (name, value, options) =>
+    `<select class="select" name="${name}">${options.map(([v, label]) =>
+      `<option value="${v}"${v === value ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+  // Повторяющаяся запись на другой день: в списке это вхождение, а не сама запись.
+  // Правка меняет основную запись и все её повторения — об этом честно сказано в форме.
+  const otherOccurrence = edit && entry.date !== date;
+
   showModal({
-    title: 'Новая запись',
+    title: edit ? 'Изменить запись' : 'Новая запись',
     content: `<form class="planner-form">
-      <label class="field">Название *<input class="input" name="title" maxlength="160" autofocus></label>
+      ${otherOccurrence ? `<p class="muted planner-form-note">Запись повторяется и в этот день тоже (${escapeHtml(entry.date)} — начало повтора). Изменения применятся ко всем её повторениям.</p>` : ''}
+      <label class="field">Название *<input class="input" name="title" maxlength="160" value="${escapeHtml(edit ? entry.title : '')}" autofocus></label>
       <div class="two-cols">
-        <label class="field">Дата<input class="input" type="date" name="date" value="${date}"></label>
-        <label class="field">Время начала (МСК)<input class="input" type="time" name="time"></label>
+        <label class="field">Дата<input class="input" type="date" name="date" value="${edit ? entry.date : date}"></label>
+        <label class="field">Время начала (МСК)<input class="input" type="time" name="time" value="${escapeHtml(edit ? entry.time : '')}"></label>
       </div>
       <div class="two-cols">
-        <label class="field">Длительность<select class="select" name="durationMinutes">
-          ${DURATION_CHOICES.map(c => `<option value="${c.minutes}"${c.minutes === DEFAULT_DURATION_MINUTES ? ' selected' : ''}>${c.label}</option>`).join('')}
-        </select></label>
-        <label class="field">Тип<select class="select" name="kind"><option value="task">Задача</option><option value="event">Событие</option><option value="note">Заметка</option></select></label>
+        <label class="field">Длительность${sel('durationMinutes', String(edit ? entry.durationMinutes : DEFAULT_DURATION_MINUTES), DURATION_CHOICES.map(c => [String(c.minutes), c.label]))}</label>
+        <label class="field">Тип${sel('kind', edit ? entry.kind : 'task', [['task', 'Задача'], ['event', 'Событие'], ['note', 'Заметка']])}</label>
       </div>
       <div class="two-cols">
-        <label class="field">Приоритет<select class="select" name="priority"><option value="normal">Обычный</option><option value="high">Высокий</option><option value="low">Низкий</option></select></label>
-        <label class="field">Напомнить<select class="select" name="reminderMinutes"><option value="0">Не напоминать</option><option value="15">За 15 минут</option><option value="60">За час</option><option value="1440">За день</option></select></label>
+        <label class="field">Приоритет${sel('priority', edit ? entry.priority : 'normal', [['normal', 'Обычный'], ['high', 'Высокий'], ['low', 'Низкий']])}</label>
+        <label class="field">Напомнить${sel('reminderMinutes', String(edit ? entry.reminderMinutes : 0), [['0', 'Не напоминать'], ['15', 'За 15 минут'], ['60', 'За час'], ['1440', 'За день']])}</label>
+      </div>
+      ${edit ? `<div class="two-cols"><label class="field">Состояние${sel('status', entry.status, [['todo', 'Не начато'], ['doing', 'В работе'], ['done', 'Готово']])}</label></div>` : ''}
+      <div class="two-cols">
+        <label class="field">Повтор${sel('recurrence', edit ? entry.recurrence : 'none', [['none', 'Не повторять'], ['daily', 'Ежедневно'], ['weekly', 'Еженедельно'], ['monthly', 'Ежемесячно']])}</label>
+        <label class="field">Повторять до<input class="input" type="date" name="recurrenceEnd" value="${escapeHtml(edit ? entry.recurrenceEnd : '')}"></label>
       </div>
       <div class="two-cols">
-        <label class="field">Повтор<select class="select" name="recurrence"><option value="none">Не повторять</option><option value="daily">Ежедневно</option><option value="weekly">Еженедельно</option><option value="monthly">Ежемесячно</option></select></label>
-        <label class="field">Повторять до<input class="input" type="date" name="recurrenceEnd"></label>
-      </div>
-      <div class="two-cols">
-        <label class="field">Цвет<select class="select" name="color"><option value="blue">Синий</option><option value="green">Зелёный</option><option value="yellow">Жёлтый</option><option value="red">Красный</option><option value="purple">Фиолетовый</option><option value="gray">Серый</option></select></label>
+        <label class="field">Цвет${sel('color', edit ? entry.color : 'blue', [['blue', 'Синий'], ['green', 'Зелёный'], ['yellow', 'Жёлтый'], ['red', 'Красный'], ['purple', 'Фиолетовый'], ['gray', 'Серый']])}</label>
       </div>
     </form>`,
-    submitText: 'Добавить',
+    submitText: edit ? 'Сохранить' : 'Добавить',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
       const title = String(formData.get('title') || '').trim();
       if (!title) { setError('Введите название записи.'); return false; }
       const time = String(formData.get('time') || '');
       if (time && timeToMinutes(time) === null) { setError('Время должно быть в формате ЧЧ:ММ.'); return false; }
-      state.plannerEntries.push(normalizePlannerEntry({
+      const fields = {
         title,
         date: formData.get('date'),
         time,
@@ -384,10 +403,17 @@ export function openPlannerEntryForm(date, deps = {}) {
         recurrence: formData.get('recurrence'),
         recurrenceEnd: formData.get('recurrenceEnd'),
         color: formData.get('color')
-      }));
+      };
+      if (edit) {
+        // Обновляем на месте: id и createdAt должны уцелеть, иначе это будет новая запись
+        Object.assign(entry, normalizePlannerEntry({ ...entry, ...fields, status: formData.get('status') || entry.status }));
+        entry.updatedAt = new Date().toISOString();
+      } else {
+        state.plannerEntries.push(normalizePlannerEntry(fields));
+      }
       await persist();
       deps.render?.();
-      toast('Запись добавлена', 'success');
+      toast(edit ? 'Запись изменена' : 'Запись добавлена', 'success');
       return true;
     }
   });

@@ -79,7 +79,7 @@ describe('вкладка «Пати»', () => {
     renderer = await import('../js/modules/parties/renderer.js');
     state.parties = [{ id: 'p1', name: 'Alpha Strike', order: 1 }, { id: 'p2', name: 'Пустая', order: 2 }];
     state.characters = [
-      { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, ancientCoins: 100, launch: { gcPath: 'D:\\GC\\GameCenter.exe' } },
+      { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, ancientCoins: 100, launch: { gcPath: 'D:\\GC\\GameCenter.exe', gcAccount: true } },
       { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: false, ancientCoins: 50 },
       { id: 'c', nick: 'Вв', class: 'Лучник', partyIds: [], mainPartyId: null, isLoggedIn: false, ancientCoins: 5 }
     ];

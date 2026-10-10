@@ -993,6 +993,16 @@
 .planner-day-empty { margin-bottom: 16px; }
 .planner-form { display: grid; gap: 13px; }
 
+/* Заметка в форме записи: повторяющаяся запись правится целиком, а не одно вхождение */
+.planner-form-note {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
 @media (max-width: 900px) {
   .planner-head { align-items: stretch; flex-direction: column; }
   .planner-nav { justify-content: space-between; }

@@ -156,13 +156,14 @@ export function preflightLog(pre) {
  */
 export function availableFixes(pre, ctx = {}) {
   const fixes = [];
-  if (pre.noGc.length) {
-    const has = (ctx.gameCenters || []).length > 0;
+  // Отсутствие GameCenter и незапомненный вход чинятся только вручную, в окне «GameCenter и
+  // персонажи». Раньше здесь был автопереход: приложение само прикрепляло GameCenter из
+  // списка. Но вход без ручного входа в сам GameCenter не запомнить, поэтому «Исправить»
+  // открывает окно — иначе кнопка обещала исправление, которого не происходит.
+  if (pre.noGc.length || pre.noSavedLogin.length) {
     fixes.push({
-      id: /** @type {'attachGc'} */ ('attachGc'),
-      text: has
-        ? `Прикрепить GameCenter из списка персонажам без него (${pre.noGc.length})`
-        : `Указать GameCenter.exe и прикрепить его персонажам без него (${pre.noGc.length})`
+      id: /** @type {'openGcWindow'} */ ('openGcWindow'),
+      text: `Открыть «GameCenter и персонажи» и доделать привязку и входы (${pre.noGc.length + pre.noSavedLogin.length})`
     });
   }
   // Окна игры от администратора: раньше выход был один — перезапуск Твинофермы от администратора.

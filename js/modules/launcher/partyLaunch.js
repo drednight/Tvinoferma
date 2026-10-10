@@ -7,9 +7,9 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter, windowDecor, decorateElevated } from './launch.js';
-import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, newGcId, suggestGcName } from './gameCenters.js';
-import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes, chooseGcToAttach, attachGcTo } from './preflight.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
+import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
+import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
 import { recordLaunchRun } from './launchLog.js';
 
@@ -85,20 +85,35 @@ async function fixElevatedWindows(pre) {
   return done > 0;
 }
 
-async function fixMissingGameCenter(noGc, group) {
-  const ctx = launchContext();
-  let gc = chooseGcToAttach(group, ctx);
-  if (!gc) {
-    const path = await pickGameCenter();
-    if (!path) return false;
-    try { await checkGameCenterPath(path); }
-    catch (e) { toast(errText(e), 'error'); return false; }
-    gc = { id: newGcId(ctx.gameCenters), name: suggestGcName(path, ctx.gameCenters), path };
-    state.settings.launcher.gameCenters = [...ctx.gameCenters, gc];
-  }
-  attachGcTo(noGc, gc.id);
-  await persist();
-  toast(`GameCenter «${gc.name}» прикреплён: ${noGc.length} перс.`, 'success');
+/**
+ * Открыть «GameCenter и персонажи» с фильтром по той пати, которую запускают.
+ *
+ * Раньше «Исправить и запустить» прикреплял GameCenter автоматически, без спроса. Но
+ * половину проблемы так не закрыть: вход в GameCenter запоминается только после ручного
+ * входа в аккаунт в самом GameCenter, и никакой код этого не сделает. Кнопка обещала
+ * исправление, которого наполовину не было, поэтому теперь она просто открывает окно.
+ *
+ * Фильтр по пати важен: пользователь пришёл чинить конкретную пати, а не весь список, и
+ * если в пати 6 человек из 40, показывать ему все 40 незачем.
+ *
+ * @param {import('./preflight.js').Preflight} pre
+ * @param {{ partyId?: string }} opts
+ * @returns {Promise<boolean>} всегда true — закрытие окна не отменяет запуск, а возвращает
+ *   на экран проверки с обновлённым списком (см. цикл в `launchGroup`).
+ */
+async function openGameCentersForFix(pre, opts) {
+  // Динамический импорт: gcSettingsModal зовёт функции отсюда же (captureLogin/forgetLogin),
+  // статический импорт замкнул бы круг на уровне модулей.
+  const { openGameCentersModal } = await import('./gcSettingsModal.js');
+  const partyId = String(opts?.partyId || '');
+  await new Promise((resolve) => {
+    openGameCentersModal({
+      partyId,
+      // Если жаловались на вход — сразу показываем именно тех, у кого его нет
+      onlyNoLogin: pre.noSavedLogin.length > 0,
+      onClose: () => resolve()
+    });
+  });
   return true;
 }
 
@@ -130,17 +145,30 @@ export async function launchGroup(title, characters, opts = {}) {
   try {
     let pre = await runPreflight(characters);
     const mode = state.settings?.launcher?.preflight;
-    if (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
+    // «Исправить и запустить» открывает окно «GameCenter и персонажи», пользователь что-то
+    // доделывает и закрывает окно — и мы снова показываем проверку с новым списком. Круг
+    // ограничен двумя способами, иначе пользователь в нём застрял бы:
+    //   — «Запустить» выходит из цикла сразу, даже если проблемы остались (пользователь
+    //     решил запустить то, что готово);
+    //   — если после правки ничего не изменилось, второй экран не показываем вовсе.
+    let fixedOnce = false;
+    while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
       if (!choice) return null;
-      if (choice === 'fix') {
-        const fixes = availableFixes(pre, launchContext());
-        if (fixes.some(f => f.id === 'attachGc') && !await fixMissingGameCenter(pre.noGc, characters)) return null;
-        // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
-        // Твиноферма при этом не перезапускается — права нужны только на это действие.
-        if (fixes.some(f => f.id === 'elevate')) await fixElevatedWindows(pre);
+      if (choice !== 'fix') break;          // «Запустить»: дальше запускаем, экран больше не нужен
+      const fixes = availableFixes(pre, launchContext());
+      if (fixes.some(f => f.id === 'openGcWindow')) {
+        if (fixedOnce) break;               // окно уже открывали, второй раз по той же просьбе — нет
+        fixedOnce = true;
+        await openGameCentersForFix(pre, opts);
       }
-      pre = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
+      // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
+      // Твиноферма при этом не перезапускается — права нужны только на это действие.
+      if (fixes.some(f => f.id === 'elevate')) await fixElevatedWindows(pre);
+      const next = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
+      const changed = next.noGc.length !== pre.noGc.length || next.noSavedLogin.length !== pre.noSavedLogin.length;
+      pre = next;
+      if (!changed) break;                  // пользователь ничего не доделал — незачем показывать то же самое
     }
     const ready = pre.toLaunch;
     const skipped = [...pre.noGc, ...pre.noSavedLogin];
@@ -257,7 +285,9 @@ export async function launchPartyByName(name, opts = {}) {
   if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
   // Именно порядок пати, а не общий порядок списка персонажей: его задаёт перетаскивание
   // участников в карточке («⠿» → «изменить порядок запуска»), и запускаться надо в нём же.
-  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), opts);
+  // `partyId` уходит в экран проверки, чтобы «Исправить» открыл «GameCenter и персонажи»
+  // уже отфильтрованными по этой пати, а не по всему списку.
+  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), { partyId: party.id, ...opts });
 }
 
 /**

@@ -15,7 +15,7 @@ import { gameCenterInfo, pickGameCenter, forgetAccount } from './launch.js';
 import { captureLogin, forgetLogin } from './partyLaunch.js';
 import {
   attachedGcs, attachGc, detachGc, replaceGc, accountKey, newGcId, suggestGcName, samePathKey,
-  removeGameCenter, importLegacyPaths, countLaunchReady, MAX_GAME_CENTERS
+  removeGameCenter, importLegacyPaths, countLaunchReady, resolveGameCenter, MAX_GAME_CENTERS
 } from './gameCenters.js';
 import { partiesOf, NO_PARTY } from '../parties/membership.js';
 
@@ -25,20 +25,23 @@ const gcs = () => launcherSettings().gameCenters;
 
 /** Запомнен ли вход персонажа хотя бы в одном из прикреплённых GameCenter. */
 export function hasAnySavedLogin(char) {
-  const attached = attachedGcs(char, gcs());
-  if (!attached.length) return false;
-  return attached.some((g) => !!char?.launch?.gcAccounts?.[g.id]);
+  return !!resolveGameCenter(char, { gameCenters: gcs() })?.saved;
 }
 
 /**
- * Персонаж нельзя запустить, если у него нет прикреплённого GameCenter.
+ * Персонаж нельзя запустить, если у него нет GameCenter или не запомнен вход в него.
  * Возвращает причину или `null`, когда с персонажем всё в порядке.
+ *
+ * Считаем ровно тем же, чем запускаем: `resolveGameCenter` умеет и список GameCenter, и
+ * «свой путь» из карточки. Своя реализация об этом забыла бы и отсекала бы персонажей,
+ * у которых путь прописан прямо в карточке.
  * @param {any} char
  * @returns {'no-gc' | 'no-login' | null}
  */
 export function launchBlocker(char) {
-  if (!attachedGcs(char, gcs()).length) return 'no-gc';
-  if (!hasAnySavedLogin(char)) return 'no-login';
+  const target = resolveGameCenter(char, { gameCenters: gcs() });
+  if (!target) return 'no-gc';
+  if (!target.saved) return 'no-login';
   return null;
 }
 
@@ -64,18 +67,21 @@ async function forgetKey(key) {
 
 /**
  * Открывает окно. `onClose` вызывается при закрытии (кнопка «Закрыть» или Esc).
- * @param {{ onClose?: () => void }} [opts]
+ * @param {{ onClose?: () => void, partyId?: string, onlyNoLogin?: boolean }} [opts]
+ *   `partyId` — сразу открыть с фильтром по этой пати (вызывается с экрана проверки перед
+ *   запуском: пользователь пришёл чинить конкретную пати, а не весь список).
+ *   `onlyNoLogin` — сразу включить фильтр «Только без запомненного входа».
  */
 export function openGameCentersModal(opts = {}) {
   /** @type {Map<string, { status: 'loading' | 'ok' | 'error', nick?: string, loggedIn?: boolean, error?: string }>} */
   const info = new Map();
   let filter = '';
   /** Фильтр по пати: '' — все, NO_PARTY — без пати, иначе id пати. */
-  let partyFilter = '';
+  let partyFilter = opts.partyId || '';
   /** Скрывать ли персонажей, у которых уже прикреплён хотя бы один GameCenter. */
   let onlyUnbound = false;
   /** Скрывать ли тех, у кого вход уже запомнен хотя бы в одном прикреплённом GameCenter. */
-  let onlyNoLogin = false;
+  let onlyNoLogin = opts.onlyNoLogin === true;
 
   showModal({
     title: '🎮 GameCenter и персонажи',
@@ -254,7 +260,7 @@ export function openGameCentersModal(opts = {}) {
         <input id="gcm-filter" class="input" type="search" placeholder="Найти по нику или классу…" aria-label="Найти персонажа" />
         <select id="gcm-party" class="select" aria-label="Фильтр по пати">${partyOptionsHtml()}</select>
         <label class="gcm-only"><input type="checkbox" id="gcm-unbound" /> Только без GameCenter</label>
-        <label class="gcm-only" title="Персонажи, у которых вход не запомнен ни в одном прикреплённом GameCenter"><input type="checkbox" id="gcm-nologin" /> Только без запомненного входа</label>
+        <label class="gcm-only" title="Персонажи, у которых вход не запомнен ни в одном прикреплённом GameCenter"><input type="checkbox" id="gcm-nologin"${onlyNoLogin ? ' checked' : ''} /> Только без запомненного входа</label>
         <span id="gcm-shown" class="muted gcm-shown"></span>
       </div>
       <div id="gcm-chars"></div>

@@ -166,12 +166,17 @@ describe('журнал, исправления', () => {
     expect(text).toContain('Вход в GameCenter не запомнен, пропускаю (1): Вв');
   });
 
-  it('исправление есть только для «нет GameCenter»; текст зависит от того, есть ли список', () => {
+  it('исправление одно и ведёт в окно: привязку и вход чинит только пользователь', () => {
     const none = launchPreflight({ characters: [ch('a', 'Аа')], ctx, clients: [] });
     expect(availableFixes(none, ctx)).toEqual([]);
     const pre = launchPreflight({ characters: [ch('a', 'Аа', { launch: {} })], ctx, clients: [] });
-    expect(availableFixes(pre, ctx)[0].text).toContain('из списка');
-    expect(availableFixes(pre, { gameCenters: [] })[0].text).toContain('Указать GameCenter.exe');
+    // Раньше здесь был автопереход «прикрепить GameCenter из списка». Он не мог закрыть
+    // вторую половину проблемы — вход без ручного входа в GameCenter не запомнить.
+    expect(availableFixes(pre, ctx)).toHaveLength(1);
+    expect(availableFixes(pre, ctx)[0].id).toBe('openGcWindow');
+    // Жалоба была на вход, а не на привязку — окно тоже откроется
+    const noLoginPre = launchPreflight({ characters: [noLogin('a', 'Аа')], ctx, clients: [] });
+    expect(availableFixes(noLoginPre, ctx)[0].id).toBe('openGcWindow');
   });
 
   it('какой GameCenter прикрепить: у большинства группы, иначе предпочитаемый, иначе первый; нет списка — null', () => {

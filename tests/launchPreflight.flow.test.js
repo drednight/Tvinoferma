@@ -5,7 +5,12 @@ const invoke = vi.fn(async () => ({}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => true }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async () => true) }));
+// showModal нужен по-настоящему: «Исправить и запустить» открывает окно «GameCenter и персонажи».
+// Раньше мок был без него, и окно просто не появлялось.
+vi.mock('../js/core/ui.js', async (orig) => {
+  const actual = await orig();
+  return { ...actual, toast: vi.fn(), confirmModal: vi.fn(async () => true) };
+});
 vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
@@ -140,57 +145,83 @@ describe('экран «Проверка перед запуском»', () => {
     expect(started()).toEqual(['a', 'b']);
   });
 
-  it('«Исправить и запустить»: GameCenter прикрепляется персонажу без него, и он тоже запускается', async () => {
-    const n = ch('n', 'Нн', []);
-    const p = partyLaunch.launchGroup('Пати', [A(), n, B()]);
+  // «Исправить» больше не прикрепляет GameCenter молча: открывает окно «GameCenter и персонажи»
+// с фильтром по запускаемой пати. Тесты закрывают это окно, как это сделал бы пользователь.
+const gcModal = () => [...document.querySelectorAll('#modal-root .modal-container')].pop();
+const closeGcModal = () => {
+  const btn = [...gcModal().querySelectorAll('button')].find(b => b.textContent.trim() === 'Закрыть');
+  btn.click();
+};
+
+it('«Исправить и запустить» открывает «GameCenter и персонажи» с фильтром по пати', async () => {
+    state.parties = [{ id: 'p1', name: 'Папка 1' }];
+    const n = { ...ch('n', 'Нн', []), partyIds: ['p1'] };
+    const a = { ...A(), partyIds: ['p1'] };
+    state.characters = [a, n];
+    const p = partyLaunch.launchPartyByName('Папка 1');
     await vi.waitFor(() => expect(dlg()).not.toBeNull());
     click('fix');
+    await vi.waitFor(() => expect(gcModal()).toBeTruthy());
+
+    const win = gcModal();
+    expect(win.textContent).toContain('GameCenter и персонажи');
+    // Фильтр по пати уже выставлен — показываем только её состав
+    expect(win.querySelector('#gcm-party').value).toBe('p1');
+    // Список показывает только персонажей этой пати, а не весь список приложения
+    expect(win.querySelectorAll('.gcm-char')).toHaveLength(2);
+
+    closeGcModal();
+    // Пользователь ничего не поменял, поэтому второй экран не показывается — иначе он
+    // крутил бы «Исправить → закрыть → Исправить» бесконечно
+    await vi.waitFor(() => expect(gcModal()).toBeFalsy());
+    expect(dlg()).toBeNull();
+    await p;
+    expect(started()).toEqual(['a']);   // готовый персонаж запущен, «Нн» пропущен
+  });
+
+  it('если жаловались на незапомненный вход — фильтр «без входа» уже включён', async () => {
+    // Персонаж с GameCenter, но без входа: проблема именно в нём
+    const n = { ...ch('n', 'Нн'), launch: { gcIds: ['gc-1'], gcAccounts: {} } };
+    const p = partyLaunch.launchGroup('Пати', [A(), n]);
+    await vi.waitFor(() => expect(dlg()).not.toBeNull());
+    click('fix');
+    await vi.waitFor(() => expect(gcModal()).toBeTruthy());
+    // Пользователь сразу видит тех, у кого надо запомнить вход
+    expect(gcModal().querySelector('#gcm-nologin').checked).toBe(true);
+    closeGcModal();
+    await vi.waitFor(() => expect(dlg()).toBeFalsy());
+    await p;
+  });
+
+  it('после закрытия окна без изменений второй экран не показывается', async () => {
+    const n = ch('n', 'Нн', []);
+    const p = partyLaunch.launchGroup('Пати', [A(), n]);
+    await vi.waitFor(() => expect(dlg()).not.toBeNull());
+    click('fix');
+    await vi.waitFor(() => expect(gcModal()).toBeTruthy());
+    closeGcModal();
+    // Показали бы тот же самый экран: пользователь ничего не поменял. Крутить окно
+    // второй раз бессмысленно, поэтому сразу запускаем готовых.
+    await vi.waitFor(() => expect(gcModal()).toBeFalsy());
+    expect(dlg()).toBeNull();
+    await p;
+    expect(started()).toEqual(['a']);
+  });
+
+  it('после правки, которой хватило, второй экран не нужен — сразу запуск', async () => {
+    const n = ch('n', 'Нн', []);
+    const p = partyLaunch.launchGroup('Пати', [A(), n]);
+    await vi.waitFor(() => expect(dlg()).not.toBeNull());
+    click('fix');
+    await vi.waitFor(() => expect(gcModal()).toBeTruthy());
+    // Пользователь прикрепил GameCenter и сохранил вход — претензий больше нет
+    n.launch = { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Нн' } } };
+    closeGcModal();
+    // Проблем не осталось, поэтому повторный экран проверки и не появляется
+    await vi.waitFor(() => expect(gcModal()).toBeFalsy());
     const results = await p;
-    expect(n.launch.gcIds).toEqual(['gc-1']);
-    expect(started()).toEqual(['a', 'n', 'b']);
-    expect(results).toHaveLength(3);
-    expect(invoke).not.toHaveBeenCalledWith('launcher_pick_gamecenter', expect.anything());
-  });
-
-  it('«Исправить и запустить» при пустом списке GameCenter: просит указать GameCenter.exe и добавляет его в список', async () => {
-    state.settings.launcher.gameCenters = [];
-    const n = ch('n', 'Нн', []);
-    const p = partyLaunch.launchGroup('Пати', [n]);
-    await vi.waitFor(() => expect(dlg()).not.toBeNull());
-    click('fix');
-    await p;
-    expect(invoke).toHaveBeenCalledWith('launcher_pick_gamecenter', undefined);
-    expect(state.settings.launcher.gameCenters).toHaveLength(1);
-    expect(state.settings.launcher.gameCenters[0].path).toBe('D:\\New\\GameCenter.exe');
-    expect(n.launch.gcIds).toEqual([state.settings.launcher.gameCenters[0].id]);
-    // Прикрепить GameCenter — ещё не значит запустить: вход в только что созданный
-    // GameCenter не запомнен (его надо сохранить, войдя в аккаунт в самом GameCenter),
-    // поэтому персонаж остаётся в пропущенных. Раньше он бы запустился под тем
-    // аккаунтом, который выбран в GameCenter по умолчанию.
-    expect(started()).toEqual([]);
-    expect(await p).toBeNull();
-  });
-
-  it('прикреплённый GameCenter без запомненного входа не запускает персонажа', async () => {
-    state.settings.launcher.gameCenters = [];
-    // Персонаж, у которого после «Исправить» есть GameCenter, но вход не запомнен
-    const n = { ...ch('n', 'Нн', []), launch: { gcIds: [], gcAccounts: {} } };
-    const p = partyLaunch.launchGroup('Пати', [n]);
-    await vi.waitFor(() => expect(dlg()).not.toBeNull());
-    click('fix');
-    await p;
-    expect(n.launch.gcIds).toHaveLength(1);
-    expect(started()).toEqual([]);   // запускать нечего: входа нет
-  });
-
-  it('«Исправить и запустить»: отказ выбрать файл — запуск отменяется', async () => {
-    state.settings.launcher.gameCenters = [];
-    invoke.mockImplementation(async (cmd) => (cmd === 'launcher_pick_gamecenter' ? null : cmd === 'launcher_running_details' ? [] : cmd === 'launcher_self_elevated' ? false : {}));
-    const p = partyLaunch.launchGroup('Пати', [ch('n', 'Нн', [])]);
-    await vi.waitFor(() => expect(dlg()).not.toBeNull());
-    click('fix');
-    expect(await p).toBeNull();
-    expect(started()).toEqual([]);
+    expect(started()).toEqual(['a', 'n']);
+    expect(results).toHaveLength(2);
   });
 
   it('клиент от администратора при Твинофере без прав — экран; с правами — экрана нет', async () => {

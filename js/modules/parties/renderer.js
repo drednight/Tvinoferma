@@ -9,7 +9,7 @@ import { openCharacterProfile } from '../characters/profileView.js';
 import { getAuthView } from '../sync/authStatus.js';
 import { charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
 import { partyStyleVars } from './color.js';
-import { hasGameCenterPath } from '../launcher/launch.js';
+import { launchBlocker } from '../launcher/gcSettingsModal.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { toast } from '../../core/ui.js';
 
@@ -116,7 +116,11 @@ function partyCardHtml(name, members) {
         : `${activeMembers.length} чел.`;
     const countLabel = `${activeCountLabel}${archivedCount ? ` · ${archivedCount} в архиве` : ''}`;
     const isDraggable = name !== NO_PARTY_LABEL;
-    const launchReady = activeMembers.filter(m => hasGameCenterPath(m)).length;
+    // Считаем тех, кого действительно можно запустить: нужен и GameCenter, и запомненный вход.
+// Раньше считалось только наличие GameCenter, и цифра обещала больше, чем запускалось:
+// вход без него не запускает (см. preflight), и пользователь удивлялся, где делся персонаж.
+// Кнопку из-за нуля не блокируем: она открывает экран проверки, где всё показано и всё чинится.
+const launchReady = activeMembers.filter(m => !launchBlocker(m)).length;
     const onlinePct = activeMembers.length ? Math.round(stats.onlineCount / activeMembers.length * 100) : 0;
     const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
     const style = partyStyleVars(name, party);
@@ -137,8 +141,8 @@ function partyCardHtml(name, members) {
                 <div class="pt-online" title="Онлайн: ${stats.onlineCount} из ${activeMembers.length} активных"><span style="width:${onlinePct}%"></span></div>
             </div>
             <div class="pt-actions">
-                <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${launchReady ? '' : 'disabled'}
-                        title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : 'Нет активных персонажей с указанным GameCenter (Настройки → Запуск игры или карточка персонажа)'}">
+                <button class="pt-btn pt-btn-launch launch-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" ${activeMembers.length ? '' : 'disabled'}
+                        title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — откроется экран проверки` : 'В пати нет активных персонажей'}">
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
