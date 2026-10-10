@@ -9,7 +9,12 @@ vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async (
 vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
-const ch = (id, nick, gcIds = ['gc-1']) => ({ id, nick, class: 'Воин', launch: { gcIds, gcAccounts: {} } });
+// Входы «запомнены» во всех GameCenter списка: иначе персонаж, которому только что
+// прикрепили GameCenter, остался бы без входа и не запустился бы.
+const ch = (id, nick, gcIds = ['gc-1']) => ({
+  id, nick, class: 'Воин',
+  launch: { gcIds, gcAccounts: { 'gc-1': { nick }, 'gc-2': { nick } } }
+});
 const A = () => ch('a', 'Аа');
 const B = () => ch('b', 'Бб');
 const C = () => ch('c', 'Вв');
@@ -158,7 +163,24 @@ describe('экран «Проверка перед запуском»', () => {
     expect(state.settings.launcher.gameCenters).toHaveLength(1);
     expect(state.settings.launcher.gameCenters[0].path).toBe('D:\\New\\GameCenter.exe');
     expect(n.launch.gcIds).toEqual([state.settings.launcher.gameCenters[0].id]);
-    expect(started()).toEqual(['n']);
+    // Прикрепить GameCenter — ещё не значит запустить: вход в только что созданный
+    // GameCenter не запомнен (его надо сохранить, войдя в аккаунт в самом GameCenter),
+    // поэтому персонаж остаётся в пропущенных. Раньше он бы запустился под тем
+    // аккаунтом, который выбран в GameCenter по умолчанию.
+    expect(started()).toEqual([]);
+    expect(await p).toBeNull();
+  });
+
+  it('прикреплённый GameCenter без запомненного входа не запускает персонажа', async () => {
+    state.settings.launcher.gameCenters = [];
+    // Персонаж, у которого после «Исправить» есть GameCenter, но вход не запомнен
+    const n = { ...ch('n', 'Нн', []), launch: { gcIds: [], gcAccounts: {} } };
+    const p = partyLaunch.launchGroup('Пати', [n]);
+    await vi.waitFor(() => expect(dlg()).not.toBeNull());
+    click('fix');
+    await p;
+    expect(n.launch.gcIds).toHaveLength(1);
+    expect(started()).toEqual([]);   // запускать нечего: входа нет
   });
 
   it('«Исправить и запустить»: отказ выбрать файл — запуск отменяется', async () => {

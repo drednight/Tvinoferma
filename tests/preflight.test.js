@@ -10,7 +10,11 @@ import { normalizeState } from '../js/core/state.js';
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
 const GC2 = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
 const ctx = { gameCenters: [GC1, GC2], preferredId: '' };
-const ch = (id, nick, over = {}) => ({ id, nick, class: 'Воин', launch: { gcIds: ['gc-1'], gcAccounts: {} }, ...over });
+// По умолчанию вход ЗАПОМНЕН: без него персонаж отсеивается проверкой (см. ниже).
+// Отдельные тесты делают персонажа без входа явно.
+const ch = (id, nick, over = {}) => ({ id, nick, class: 'Воин', launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick } } }, ...over });
+/** Персонаж с GameCenter, но без запомненного входа. */
+const noLogin = (id, nick, over = {}) => ch(id, nick, { launch: { gcIds: ['gc-1'], gcAccounts: {} }, ...over });
 const win = (nick, cls = 'Воин', over = {}) => ({ pid: 100 + nick.length, title: cls ? `${nick} — ${cls}` : nick, elevated: false, ...over });
 
 describe('matchRunningClients: чьё окно уже запущено', () => {
@@ -62,18 +66,43 @@ describe('launchPreflight', () => {
   });
 
   it('нет GameCenter — проблема; своего пути из карточки достаточно', () => {
-    const list = [ch('a', 'Аа', { launch: {} }), ch('b', 'Бб', { launch: { gcPath: 'D:\\X\\GameCenter.exe' } })];
+    // Свой путь из карточки — тоже GameCenter, но он без запомненного входа (`gcAccount`)
+    const list = [ch('a', 'Аа', { launch: {} }), ch('b', 'Бб', { launch: { gcPath: 'D:\\X\\GameCenter.exe', gcAccount: true } })];
     const pre = launchPreflight({ characters: list, ctx, clients: [] });
     expect(pre.noGc.map(c => c.id)).toEqual(['a']);
     expect(pre.toLaunch.map(c => c.id)).toEqual(['b']);
     expect(pre.problems).toEqual(['noGc']);
   });
 
-  it('вход не запомнен и нет входа на сайт — справка, не проблема', () => {
-    const list = [ch('a', 'Аа', { isLoggedIn: false }), ch('b', 'Бб', { launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'x' } } } })];
+  // Вход важен в том GameCenter, из которого пойдёт запуск, а не в любом прикреплённом:
+  // прикреплённых GameCenter бывает несколько, и запускает персонаж один из них.
+  it('вход нужен именно в том GameCenter, из которого пойдёт запуск', () => {
+    const a = ch('a', 'Аа', { launch: { gcIds: ['gc-1', 'gc-2'], gcAccounts: { 'gc-2': { nick: 'Дракон' } } } });
+    // по умолчанию берётся первый в списке (gc-1), входа в нём нет — персонаж отсеится
+    expect(launchPreflight({ characters: [a], ctx, clients: [] }).noSavedLogin.map(c => c.id)).toEqual(['a']);
+    // если пати запускается из gc-2, вход в нём есть — персонаж запускается
+    const pre = launchPreflight({ characters: [a], ctx: { ...ctx, preferredId: 'gc-2' }, clients: [] });
+    expect(pre.noSavedLogin).toEqual([]);
+    expect(pre.toLaunch.map(c => c.id)).toEqual(['a']);
+  });
+
+  it('вход не запомнен — не запускаем: без него окно откроется под чужим аккаунтом', () => {
+    const list = [noLogin('a', 'Аа', { isLoggedIn: false }), ch('b', 'Бб'), noLogin('c', 'Вв')];
     const pre = launchPreflight({ characters: list, ctx, clients: [] });
-    expect(pre.noSavedLogin.map(c => c.id)).toEqual(['a']);
-    expect(pre.siteNoLogin.map(c => c.id)).toEqual(['a']);
+    expect(pre.noSavedLogin.map(c => c.id)).toEqual(['a', 'c']);
+    expect(pre.siteNoLogin.map(c => c.id)).toEqual([]);       // уже не в запускаемых
+    // Запускается только тот, у кого вход есть
+    expect(pre.toLaunch.map(c => c.id)).toEqual(['b']);
+    expect(pre.planned.map(c => c.id)).toEqual(['a', 'b', 'c']);
+    expect(pre.problems).toEqual(['noSavedLogin']);
+    expect(pre.hasProblems).toBe(true);
+  });
+
+  it('вход запомнен в единственном прикреплённом GameCenter — персонаж запускается', () => {
+    const a = ch('a', 'Аа', { launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Дракон' } } } });
+    const pre = launchPreflight({ characters: [a], ctx, clients: [] });
+    expect(pre.noSavedLogin).toEqual([]);
+    expect(pre.toLaunch.map(c => c.id)).toEqual(['a']);
     expect(pre.hasProblems).toBe(false);
   });
 
@@ -103,6 +132,13 @@ describe('когда показывать экран', () => {
     expect(shouldShowPreflight(clean(), 'мусор')).toBe(false);   // мусор = «при проблемах»
   });
 
+  it('у всех нет входа — экран всё равно показываем, запускать некого', () => {
+    const pre = launchPreflight({ characters: [noLogin('a', 'Аа'), noLogin('b', 'Бб')], ctx, clients: [] });
+    expect(pre.toLaunch).toEqual([]);
+    expect(pre.hasProblems).toBe(true);
+    expect(shouldShowPreflight(pre, 'issues')).toBe(true);
+  });
+
   it('пропуск запущенных сам по себе экран не открывает', () => {
     const pre = launchPreflight({ characters: chars, ctx, clients: [win('Аа')] });
     expect(pre.alreadyRunning).toHaveLength(1);
@@ -120,11 +156,14 @@ describe('когда показывать экран', () => {
 });
 
 describe('журнал, исправления', () => {
-  it('строки для журнала задачи: пропущенные и без GameCenter', () => {
-    const pre = launchPreflight({ characters: [ch('a', 'Аа'), ch('b', 'Бб', { launch: {} })], ctx, clients: [win('Аа')] });
+  it('строки для журнала задачи: пропущенные, без GameCenter и без входа', () => {
+    const pre = launchPreflight({
+      characters: [ch('a', 'Аа'), ch('b', 'Бб', { launch: {} }), noLogin('c', 'Вв')], ctx, clients: [win('Аа')]
+    });
     const text = preflightLog(pre).map(l => l.text).join(' | ');
     expect(text).toContain('Уже запущены, пропускаю (1): Аа');
     expect(text).toContain('Не указан GameCenter, пропускаю (1): Бб');
+    expect(text).toContain('Вход в GameCenter не запомнен, пропускаю (1): Вв');
   });
 
   it('исправление есть только для «нет GameCenter»; текст зависит от того, есть ли список', () => {
@@ -162,12 +201,29 @@ describe('экран проверок', () => {
     characters: [ch('a', 'Аа'), ch('b', 'Бб', { launch: {} }), ch('c', 'Вв')], ctx, clients: [win('Вв')], selfElevated: false
   });
 
-  it('строки: запустятся, пропущены, нет GameCenter', () => {
+  it('строки: запустятся, пропущены, нет GameCenter, нет входа', () => {
     const rows = preflightRows(problemPre());
     expect(rows.map(r => r.icon)).toEqual(['✅', '⏭', '❌']);
     expect(rows[0].text).toContain('Аа');
     expect(rows[1].text).toContain('Вв');
     expect(rows[2].text).toContain('Бб');
+  });
+
+  it('нет входа — строка блокирующая, кнопка обещает «остальных»', async () => {
+    const pre = launchPreflight({
+      characters: [ch('a', 'Аа'), noLogin('c', 'Вв'), ch('b', 'Бб', { launch: {} })], ctx, clients: []
+    });
+    const rows = preflightRows(pre);
+    const login = rows.find(r => r.title.includes('не запомнен'));
+    expect(login.level).toBe('error');
+    expect(login.text).toContain('не запустятся');
+
+    const p = openPreflight(pre);
+    const btn = document.querySelector('[data-act="launch"]');
+    expect(btn.textContent).toContain('Запустить остальных');
+    expect(btn.textContent).toContain('(1)');          // запустится только «Аа»
+    btn.click();
+    expect(await p).toBe('launch');
   });
 
   it('кнопки: «Исправить и запустить» есть, когда есть что исправить; выбор возвращается', async () => {

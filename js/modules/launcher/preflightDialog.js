@@ -32,11 +32,13 @@ export function preflightRows(pre) {
       text: `${names(pre.noGc)}. Без него игру не запустить: эти персонажи будут пропущены.`
     });
   }
-  if (pre.noSavedLogin.length && pre.toLaunch.length > 1) {
+  if (pre.noSavedLogin.length) {
     rows.push({
-      icon: '⚠️', level: 'warn', title: `Вход в GameCenter не запомнен: ${pre.noSavedLogin.length}`,
-      text: `${names(pre.noSavedLogin)}. Их окна откроются под тем аккаунтом, который сейчас выбран в GameCenter, — у нескольких персонажей это будет один и тот же аккаунт. `
-        + 'Запомнить вход: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter».'
+      icon: '🔑', level: 'error', title: `Вход в GameCenter не запомнен: ${pre.noSavedLogin.length} — запустить нельзя`,
+      text: `${names(pre.noSavedLogin)}. Без запомненного входа GameCenter открывает окно под тем аккаунтом, `
+        + 'который выбран в нём сейчас, — для пати это почти всегда не тот аккаунт. Эти персонажи не запустятся. '
+        + 'Войдите в нужный аккаунт в самом GameCenter и запомните вход: «Инструменты» → «Окна игры» → '
+        + '«🎮 GameCenter и персонажи» → «🔑 Запомнить вход».'
     });
   }
   if (pre.adminMismatch) {
@@ -81,11 +83,17 @@ export function openPreflight(pre, { title = '', gameCenters = [] } = {}) {
       ${fixes.length ? `<div class="prl-fix">🛠 «Исправить и запустить»: ${fixes.map(f => escapeHtml(f.text)).join('; ')}.</div>` : ''}`;
     const n = pre.toLaunch.length;
     const canFixThenLaunch = fixes.length > 0;
+    // Когда часть пати выпала, главная кнопка обещает ровно то, что будет сделано:
+    // запустить остальных, а не всех подряд.
+    const skipped = pre.noGc.length + pre.noSavedLogin.length;
+    const launchLabel = skipped
+      ? `▶ Запустить остальных${n ? ` (${n})` : ''}`
+      : `▶ Запустить${n ? ` (${n})` : ''}`;
     dlg.foot.innerHTML = `
       <span style="flex:1"></span>
       <button class="btn ghost" data-act="cancel">Отмена</button>
       ${canFixThenLaunch ? '<button class="btn secondary" data-act="fix">🛠 Исправить и запустить</button>' : ''}
-      <button class="btn primary" data-act="launch" ${n ? '' : 'disabled'} title="${n ? '' : 'Запускать некого'}">▶ Запустить${n ? ` (${n})` : ''}</button>`;
+      <button class="btn primary" data-act="launch" ${n ? '' : 'disabled'} title="${n ? '' : 'Запускать некого'}">${launchLabel}</button>`;
     dlg.foot.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (!act) return;

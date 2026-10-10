@@ -67,9 +67,14 @@ export function launchPreflight({ characters, ctx = {}, clients = null, selfElev
   const running = clients ? matchRunningClients(withGc, clients) : new Map();
   const alreadyRunning = skipRunning ? withGc.filter(c => running.has(String(c.id))).map(c => ({ char: c, ...running.get(String(c.id)) })) : [];
   const skipIds = new Set(alreadyRunning.map(r => String(r.char.id)));
-  const toLaunch = withGc.filter(c => !skipIds.has(String(c.id)));
+  const planned = withGc.filter(c => !skipIds.has(String(c.id)));
 
-  const noSavedLogin = toLaunch.filter(c => !resolveGameCenter(c, ctx)?.saved);
+  // Без запомненного входа GameCenter запускает окно под тем аккаунтом, который выбран
+  // в нём сейчас. Для пати это почти всегда не тот аккаунт, поэтому такие персонажи не
+  // запускаются вовсе — пользователь подтверждает запуск остальных.
+  const noSavedLogin = planned.filter(c => !resolveGameCenter(c, ctx)?.saved);
+  const noLoginIds = new Set(noSavedLogin.map(c => String(c.id)));
+  const toLaunch = planned.filter(c => !noLoginIds.has(String(c.id)));
   const siteNoLogin = toLaunch.filter(c => c.isLoggedIn === false);
   // Окна игры от администратора: их нужно сопоставить с персонажами, иначе «Исправить» не знает,
 // что именно подписывать. Само сопоставление — то же, что для уже запущенных окон.
@@ -84,15 +89,18 @@ const adminMismatch = elevatedClients > 0 && selfElevated === false;
 
   /**
    * Серьёзные проблемы: из-за них экран проверок показывается сам (в режиме «только при проблемах»).
-   * «Вход не запомнен» сюда не входит: у многих это обычный способ работы (на одном аккаунте несколько персонажей),
-   * он виден на экране, когда тот открыт по другой причине или в режиме «всегда», и в журнале запуска.
+   * «Вход не запомнен» теперь тоже проблема: без него окно откроется под чужим аккаунтом, и
+   * запускать пати молча было бы хуже, чем спросить. Раньше это считалось обычным делом
+   * (один аккаунт на нескольких персонажей) и только предупреждалось в журнале — теперь такие
+   * персонажи пропускаются, а пользователь решает сам, запускать ли остальных.
    */
   const problems = [];
   if (noGc.length) problems.push('noGc');
+  if (noSavedLogin.length) problems.push('noSavedLogin');
   if (adminMismatch) problems.push('adminMismatch');
 
   return {
-    toLaunch, alreadyRunning, noGc, noSavedLogin, siteNoLogin,
+    toLaunch, planned, alreadyRunning, noGc, noSavedLogin, siteNoLogin,
     elevatedClients, selfElevated, adminMismatch, unknownClients,
     /** Окна игры от администратора, сопоставленные с персонажами: их можно подписать помощником. */
     elevatedRows: elevatedMatched,
@@ -113,7 +121,9 @@ const adminMismatch = elevatedClients > 0 && selfElevated === false;
 export function shouldShowPreflight(pre, mode) {
   const m = normalizePreflightMode(mode);
   if (m === 'off') return false;
-  if (!pre.toLaunch.length && !pre.noGc.length && !pre.alreadyRunning.length) return false;
+  // Показываем и когда запускать некого: если у всех нет входа, пользователь должен увидеть
+  // список и понять, что именно доделать, а не молчаливую ошибку «не указан GameCenter».
+  if (!pre.toLaunch.length && !pre.noGc.length && !pre.noSavedLogin.length && !pre.alreadyRunning.length) return false;
   return m === 'always' || pre.hasProblems;
 }
 
@@ -132,6 +142,7 @@ export function preflightLog(pre) {
   const out = [];
   if (pre.alreadyRunning.length) out.push({ level: 'info', text: `Уже запущены, пропускаю (${pre.alreadyRunning.length}): ${nicks(pre.alreadyRunning)}` });
   if (pre.noGc.length) out.push({ level: 'warn', text: `Не указан GameCenter, пропускаю (${pre.noGc.length}): ${nicks(pre.noGc)}` });
+  if (pre.noSavedLogin.length) out.push({ level: 'warn', text: `Вход в GameCenter не запомнен, пропускаю (${pre.noSavedLogin.length}): ${nicks(pre.noSavedLogin)}. Такое окно открылось бы под тем аккаунтом, который выбран в GameCenter сейчас` });
   if (pre.adminMismatch) out.push({ level: 'warn', text: 'Среди запущенных окон есть окна от администратора, а Твиноферма запущена без прав: названия и значки им не поставить' });
   if (pre.siteNoLogin.length) out.push({ level: 'info', text: `Нет входа на сайт (на запуск игры не влияет): ${nicks(pre.siteNoLogin)}` });
   return out;

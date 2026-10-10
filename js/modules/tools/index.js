@@ -67,7 +67,7 @@ export function renderTools() {
         <p class="muted">Проверяем запущенные окна…</p>
       </div>
       <div class="tools-actions">
-        <button type="button" class="btn ghost" data-tools-act="gc-binding" title="Показать, какие аккаунты привязаны к каким GameCenter, и привязать новые">🎯 Привязка GameCenter</button>
+        <button type="button" class="btn ghost" data-tools-act="gc-binding" title="Список GameCenter, привязка аккаунтов и запомненные входы">🎮 GameCenter и персонажи</button>
         <button type="button" class="btn ghost" data-tools-act="pick-windows" title="Показать все окна игры и закрыть выбранные">🎮 Показать все окна</button>
         <button type="button" class="btn ghost" data-tools-act="close-all-windows" title="Закрыть все запущенные окна игры">🛑 Закрыть все окна игры</button>
       </div>
@@ -117,8 +117,10 @@ export function bindTools() {
     const act = /** @type {HTMLElement} */ (event.target).closest?.('[data-tools-act]');
     if (!act) return;
     if (act.dataset.toolsAct === 'gc-binding') {
-      const { openGcBinding } = await import('../launcher/gcBinding.js');
-      await openGcBinding();
+      // То же окно, что и «Настройки → Запуск игры» и карточка персонажа: одна реализация,
+      // чтобы правила привязки и входов не расходились между разделами
+      const { openGameCentersModal } = await import('../launcher/gcSettingsModal.js');
+      openGameCentersModal();
     } else if (act.dataset.toolsAct === 'pick-windows') {
       const { openWindowPicker } = await import('../launcher/windowPicker.js');
       await openWindowPicker();

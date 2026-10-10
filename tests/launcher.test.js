@@ -302,4 +302,31 @@ describe('launcher: проверка окон игры', () => {
     const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
     expect(rs).toContain(`const PROBE_TITLE: &str = "${PROBE_TITLE}"`);
   });
+
+  // Жалоба пользователя: клики во время включения аккаунтов прерывали запуск окон.
+  // Отменяет запуск только кнопка «стоп» у задачи: клики обрабатываются делегатом на
+  // документе и реагируют лишь на свои data-атрибуты. Проверяем, что посторонние клики
+  // не влияют на очередь.
+  it('посторонние клики во время запуска не прерывают очередь', async () => {
+    document.body.innerHTML = `
+      <button id="nav">Раздел</button>
+      <div class="card" data-char="a">карточка персонажа</div>
+      <span id="dots">…</span>`;
+    const started = [];
+    const invoke = async (cmd, args) => {
+      started.push(args.path);
+      // Имитируем, что пользователь в это время что-то нажимает в интерфейсе
+      document.getElementById('nav')?.click();
+      document.querySelector('.card')?.click();
+      document.getElementById('dots')?.click();
+      return 1;
+    };
+    const res = await launchCharacters(
+      [ch('a', 'one'), ch('b', 'two'), ch('c', 'three')],
+      { delayMs: 0 },
+      { invoke }
+    );
+    expect(started).toEqual(['one', 'two', 'three']);
+    expect(res.every(r => r.ok)).toBe(true);
+  });
 });

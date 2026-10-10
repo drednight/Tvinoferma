@@ -7,7 +7,7 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, withoutSavedLogin, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter, windowDecor, decorateElevated } from './launch.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, pickGameCenter, windowDecor, decorateElevated } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, newGcId, suggestGcName } from './gameCenters.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes, chooseGcToAttach, attachGcTo } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
@@ -143,9 +143,11 @@ export async function launchGroup(title, characters, opts = {}) {
       pre = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
     }
     const ready = pre.toLaunch;
-    const skipped = pre.noGc;
+    const skipped = [...pre.noGc, ...pre.noSavedLogin];
     if (!ready.length) {
       if (pre.alreadyRunning.length && !skipped.length) toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
+      else if (pre.noGc.length && pre.noSavedLogin.length) toast('Не запускаю: нет GameCenter и не запомнен вход. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи»', 'error');
+      else if (pre.noSavedLogin.length) toast('Не запускаю: вход в GameCenter не запомнен ни у кого. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»', 'error');
       else toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
       return null;
     }
@@ -179,10 +181,8 @@ export async function launchGroup(title, characters, opts = {}) {
         task.progress(done, total);
       }
     });
-    const noLogin = withoutSavedLogin(results);
-    if (noLogin > 0 && results.length > 1) {
-      task.log(`Без запомненного входа запущено: ${noLogin}. Такие окна открываются под аккаунтом, который сейчас выбран в GameCenter. Запомните вход: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter»`, 'warn');
-    }
+    // Персонажи без запомненного входа отсеяны проверкой до запуска (см. preflight),
+    // поэтому здесь их быть не может: предупреждение было бы про невозможное.
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {

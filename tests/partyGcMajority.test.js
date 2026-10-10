@@ -10,7 +10,12 @@ vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sle
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
 const GC2 = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
-const ch = (id, gcIds) => ({ id, nick: id.toUpperCase(), class: '', launch: { gcIds, gcAccounts: {} } });
+// Вход запомнен в каждом прикреплённом GameCenter: иначе проверка до запуска отсеет
+// персонажа («вход не запомнен — запустить нельзя») и до выбора GameCenter дело не дойдёт.
+const ch = (id, gcIds) => ({
+  id, nick: id.toUpperCase(), class: '',
+  launch: { gcIds, gcAccounts: Object.fromEntries(gcIds.map(g => [g, { nick: id }])) }
+});
 
 let state, partyLaunch, ui;
 beforeEach(async () => {
