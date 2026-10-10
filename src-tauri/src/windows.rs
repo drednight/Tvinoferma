@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::webview::NewWindowResponse;
+use tauri::webview::PageLoadEvent;
 use tauri::{
     command, AppHandle, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
@@ -183,6 +184,43 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
                     .window_features(features)
                     .data_directory(data_dir);
             popup_builder = guard_popups(popup_builder, &app, &label, &profile_key);
+
+            // Страница возврата OAuth (`oauth2.htm`) отдаёт код родителю через `window.opener`
+            // и закрывается сама — но не закрывается, остаётся белое окно. Ждать проверки входа
+            // бессмысленно: в живом сценарии её никто не запускает, пользователь просто проходит
+            // вход и смотрит на белое окно. Поэтому закрываем окно сами, как только код пришёл
+            // в адрес и страница дорисовалась: к моменту `Finished` её скрипты уже отправили код
+            // в opener, и сообщение доедет независимо от того, закроем мы окно или нет.
+            let callback_seen = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let flag = callback_seen.clone();
+                let nav_app = app.clone();
+                let nav_label = popup_label.clone();
+                popup_builder = popup_builder.on_navigation(move |url| {
+                    if is_oauth_callback(url) {
+                        flag.store(true, Ordering::Relaxed);
+                        // Страховка: если загрузка не начнётся или не закончится, окно всё равно
+                        // закроется — белым висеть бесконечно нельзя.
+                        close_window_after(
+                            &nav_app,
+                            &nav_label,
+                            std::time::Duration::from_secs(POPUP_CALLBACK_MAX),
+                        );
+                    }
+                    true // навигацию разрешаем всегда
+                });
+            }
+            {
+                let flag = callback_seen.clone();
+                popup_builder = popup_builder.on_page_load(move |win, payload| {
+                    if payload.event() == PageLoadEvent::Finished && flag.load(Ordering::Relaxed) {
+                        // Небольшая пауза: закрывать прямо в обработчике загрузки нельзя.
+                        let app = win.app_handle().clone();
+                        let label = win.label().to_string();
+                        close_window_after(&app, &label, std::time::Duration::from_millis(300));
+                    }
+                });
+            }
             // Попап принадлежит окну персонажа: Windows держит принадлежащее окно НАД владельцем
             // в z-порядке всегда. Раньше поверх держали «всегда сверху» и снимали через
             // POPUP_TOP_FOR — но триггером ухода попапа был не ход времени, а клик в окне
@@ -248,6 +286,48 @@ fn is_oauth_popup_url(url: &Url) -> bool {
         .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
 }
 
+/// Страница возврата OAuth: адрес содержит код или токен И лежит на странице `oauth2`.
+///
+/// Это момент, когда вход фактически состоялся. Страница отдаёт код родительскому окну
+/// через `window.opener`, но сама закрывается не всегда — остаётся белое окно. Раньше мы
+/// ждали проверки входа, а её в этом сценарии никто не запускал: пользователь просто прошёл
+/// вход и увидел белое окно. Закрывать надо по факту прихода кода, а не по чужой проверке.
+///
+/// Условие намеренно строгое — три проверки, а не одна:
+/// - параметр должен называться ровно `code` или `access_token` (подстрока `code=` поймала бы
+///   и `zipcode=`, и любой другой параметр с этим куском в имени);
+/// - хост должен быть из списка OAuth (иначе `code=` на стороннем сайте закрыл бы окно);
+/// - путь должен быть страницей `oauth2` — на сайте `pwonline.ru` хост доверенный, и один
+///   только `code=` закрывал бы окно посреди входа.
+///
+/// Если провайдер поменяет путь, окно останется белым (старая проверка входа подстрахует) —
+/// это лучше, чем закрыть окно в середине входа и сломать его вовсе.
+fn is_oauth_callback(url: &Url) -> bool {
+    let key_is_token = |key: &str| key == "code" || key == "access_token";
+    let has_token = url.query_pairs().any(|(k, _)| key_is_token(&k))
+        || url
+            .fragment()
+            .map(|f| {
+                f.split('&')
+                    .any(|p| key_is_token(p.split('=').next().unwrap_or("")))
+            })
+            .unwrap_or(false);
+    has_token && is_oauth_popup_url(url) && url.path().contains("oauth2")
+}
+
+/// Закрыть окно через `delay`. Отдельный поток: вызывается из обработчиков вебвью, где
+/// закрывать окно сразу рискованно. Если окно уже закрыли — просто ничего не делаем.
+fn close_window_after(app: &AppHandle, label: &str, delay: std::time::Duration) {
+    let app = app.clone();
+    let label = label.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.close();
+        }
+    });
+}
+
 /// Окно осталось на служебной странице прошлой задачи (`#TF_...`) или не на сайте.
 fn is_stale_page(win: &WebviewWindow) -> bool {
     match win.url() {
@@ -288,6 +368,9 @@ fn centered_position(
 
 /// Сколько окно авторизации остаётся «поверх всего», мс.
 const POPUP_TOP_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+/// Страховка для окна возврата OAuth: если страница с кодом не дорисовалась, закрываем окно
+/// через столько секунд. Белое окно, которое не закрывается никогда, хуже закрытого с задержкой.
+const POPUP_CALLBACK_MAX: u64 = 15;
 
 /// Поднимает окно поверх родительского и отдаёт ему фокус.
 ///
@@ -557,7 +640,9 @@ pub fn dispose(window: &WebviewWindow, created_here: bool, close_after: bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{centered_position, collection_reports_from_url, is_oauth_popup_url};
+    use super::{
+        centered_position, collection_reports_from_url, is_oauth_callback, is_oauth_popup_url,
+    };
     use tauri::Url;
 
     #[test]
@@ -582,6 +667,42 @@ mod tests {
             "file:///tmp/oauth2.htm",
         ] {
             assert!(!is_oauth_popup_url(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    /// Страница возврата OAuth — единственный надёжный признак, что вход состоялся: код
+    /// пришёл в адрес. Проверки входа в этом сценарии не происходит, ждать её нельзя.
+    #[test]
+    fn detects_oauth_callback_with_code_in_query_or_fragment() {
+        for url in [
+            "https://oauth.vk.ru/oauth2.htm?code=abc123",
+            "https://oauth.vk.ru/oauth2.htm#code=abc123",
+            "https://oauth.vk.com/oauth2.htm?code=abc",
+            "https://pwonline.ru/oauth2.htm?code=abc123",
+            "https://oauth.vk.ru/oauth2.htm#access_token=tok",
+            "https://oauth.vk.ru/oauth2.htm?error=denied&code=abc",
+        ] {
+            assert!(is_oauth_callback(&Url::parse(url).unwrap()), "{url}");
+        }
+    }
+
+    /// Формы входа без кода быть не должно: закрывать окно раньше, чем код пришёл, нельзя.
+    /// Отдельно проверяем, что параметр опознаётся строго: `zipcode` — не `code`, а доверенный
+    /// хост с `code=` на обычной странице — не страница возврата.
+    #[test]
+    fn plain_auth_pages_are_not_callbacks() {
+        for url in [
+            "https://id.vk.ru/auth",
+            "https://oauth.vk.ru/oauth2.htm",
+            "https://id.vk.ru/auth?error=access_denied",
+            // код есть, но страница чужая
+            "https://example.com/oauth2.htm?code=abc",
+            // хост доверенный, но это не страница возврата
+            "https://pwonline.ru/main?code=abc",
+            // похожий параметр — не код
+            "https://oauth.vk.ru/oauth2.htm?zipcode=abc",
+        ] {
+            assert!(!is_oauth_callback(&Url::parse(url).unwrap()), "{url}");
         }
     }
 
