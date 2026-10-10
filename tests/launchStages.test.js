@@ -15,12 +15,12 @@ describe('итог запуска по этапам', () => {
     const text = launchStageSummary({
       gcClose: 2100, account: 120, clientWait: 15400, delay: 9000, total: 26620
     });
-    expect(text).toBe('Итого 26.6 с: закрытие GameCenter 2.1 с, запись входа в GameCenter.ini 0.1 с, ожидание окна игры 15.4 с, пауза между запусками 9 с.');
+    expect(text).toBe('Итого 26.6 с: закрытие GameCenter 2.1 с, запись входа в GameCenter.ini 0.1 с, GameCenter до клиента 15.4 с, пауза между запусками 9 с.');
   });
 
   it('нулевые этапы не показываются: иначе строка засоряется нолями', () => {
     const text = launchStageSummary({ gcClose: 0, account: 0, clientWait: 5000, delay: 0, total: 5000 });
-    expect(text).toBe('Итого 5 с: ожидание окна игры 5 с.');
+    expect(text).toBe('Итого 5 с: GameCenter до клиента 5 с.');
     expect(text).not.toContain('пауза');
     expect(text).not.toContain('закрытие');
   });
@@ -33,6 +33,6 @@ describe('итог запуска по этапам', () => {
   it('время ожидания окна игры видно отдельной строкой: это обычно и есть причина', () => {
     // Пользователю нужен ответ «где тормозит», поэтому самый долгий этап должен быть виден
     const text = launchStageSummary({ gcClose: 100, account: 50, clientWait: 30000, delay: 0, total: 30150 });
-    expect(text).toContain('ожидание окна игры 30 с');
+    expect(text).toContain('GameCenter до клиента 30 с');
   });
 });

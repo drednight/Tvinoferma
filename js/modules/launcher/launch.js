@@ -676,7 +676,9 @@ export function launchStageSummary(stages) {
   const parts = [];
   if (stages.gcClose) parts.push(`закрытие GameCenter ${stageSec(stages.gcClose)}`);
   if (stages.account) parts.push(`запись входа в GameCenter.ini ${stageSec(stages.account)}`);
-  if (stages.clientWait) parts.push(`ожидание окна игры ${stageSec(stages.clientWait)}`);
+  // Не «окно игры», а появление клиента: мы ждём процесс, а не окно (окно появляется позже,
+  // и ждать его не надо — следующий аккаунт к этому моменту уже стартует).
+  if (stages.clientWait) parts.push(`GameCenter до клиента ${stageSec(stages.clientWait)}`);
   if (stages.delay) parts.push(`пауза между запусками ${stageSec(stages.delay)}`);
   const total = stages.total ?? (stages.gcClose || 0) + (stages.account || 0) + (stages.clientWait || 0) + (stages.delay || 0);
   if (!parts.length) return null;
