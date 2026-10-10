@@ -139,10 +139,6 @@ export function panelBootstrap(DATA) {
         line.appendChild(cp);
         card.appendChild(line);
       });
-      const hint = make('details');
-      hint.appendChild(make('summary', '', 'ℹ️ Если после входа белый экран'));
-      hint.appendChild(make('div', '', 'Если после входа через VK Play осталась белая страница oauth2.htm: подождите несколько секунд, затем в Tvinoferma нажмите «Проверить авторизацию». Закройте окно только после статуса 🟢 Онлайн.'));
-      card.appendChild(hint);
       box.appendChild(card);
     };
 
