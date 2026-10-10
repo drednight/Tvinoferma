@@ -48,10 +48,10 @@ describe('launcher', () => {
       { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
       { invoke }
     );
-    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
+    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, reuseRunning: false, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
     seen.length = 0;
     await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
-    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
+    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, reuseRunning: false, windowTitle: 'b', iconSmall: null, iconBig: null });
   });
 
   it('onStart вызывается по очереди, а не для всех сразу', async () => {
@@ -250,9 +250,25 @@ describe('launcher: подпись окон и закрытие чужих GameC
 describe('launcher.rs: GameCenter из других папок и итог подписи', () => {
   const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
   it('перед запуском закрываются чужие GameCenter, а итог подписи уходит событием', () => {
-    expect(rs).toContain('close_gamecenters(&exe, magic.is_some())');
+    // Свой GameCenter закрывается только когда мы подставляем в него сохранённый вход.
+    // С появлением переключения на месте условие стало длиннее: своё закрывать нельзя,
+    // иначе переключать было бы нечего.
+    expect(rs).toContain('close_gamecenters(&exe, magic.is_some() && !switch_in_place)');
     expect(rs).toContain('"launcher-decorate"');
     expect(rs).toContain('closed_other_gc');
+  });
+
+  // Переключение аккаунта в работающем GameCenter держится на недокументированном поведении,
+  // поэтому выключено по умолчанию и решается в Rust по факту — что именно запущено сейчас.
+  it('переключение на месте разрешено только настройкой и только при запущенном своём GameCenter', () => {
+    expect(rs).toContain('reuse_running: Option<bool>');
+    expect(rs).toContain('switch_in_place = reuse_running.unwrap_or(false) && my_running && magic.is_some()');
+    expect(rs).toContain('switched_in_place: switch_in_place');
+  });
+
+  it('в настройках переключение выключено по умолчанию', () => {
+    const def = readFileSync('js/core/constants.js', 'utf8');
+    expect(def).toContain('switchInRunningGc: false');
   });
 });
 

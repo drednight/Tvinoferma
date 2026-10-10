@@ -74,6 +74,10 @@ pub struct LaunchInfo {
     closed_other_gc: u32,
     /// Сколько GameCenter закрыть не удалось (запущены от администратора): запуск может пойти из них
     gc_close_failed: u32,
+    /// Аккаунт переключили в уже запущенном GameCenter, не перезапуская его (экспериментальный
+    /// режим «переключать на месте», см. `reuse_running`). false — GameCenter перезапущен обычным
+    /// порядком. Показывается в журнале запуска, чтобы было видно, какой режим сработал.
+    switched_in_place: bool,
 }
 
 /// Окна и клавиши Windows (user32) без лишних зависимостей.
@@ -1508,6 +1512,15 @@ pub async fn launcher_start(
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
+    // `reuse_running` — экспериментальный режим «переключить аккаунт в уже запущенном
+    // GameCenter» вместо его перезапуска. Обычно порядок такой: закрыть GameCenter,
+    // переписать `GameCenter.ini`, открыть заново. Переписать файл у живого процесса нельзя —
+    // он может в любой момент записать его обратно. Поэтому вариант «переключить на месте»
+    // работает только если запущенный GameCenter перечитывает свой `.ini` по изменению, а это
+    // недокументированное поведение. Если оно не так — ошибки не будет, а второй запуск того
+    // же аккаунта, что хуже медленного запуска. Поэтому режим выключен по умолчанию.
+    // Здесь только разрешение на него: решает `gamecenter_pids()` в теле функции.
+    reuse_running: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
@@ -1523,10 +1536,23 @@ pub async fn launcher_start(
     tauri::async_runtime::spawn_blocking(move || {
         let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
         let magic = id.map(get_magic).transpose()?.flatten();
+
+        // Переключение на месте возможно только когда: режим включён, вход сохранён (иначе
+        // переключать нечего и незачем оставлять чужой аккаунт в работающем GameCenter) и
+        // наш собственный GameCenter уже запущен. Чужие GameCenter в любом случае закрываем:
+        // они перехватили бы запуск.
+        let mine = exe.clone();
+        let my_running = gamecenter_pids().iter().any(|pid| {
+            gamecenter_path(*pid)
+                .map(|p| plain_path(Path::new(&p)).eq_ignore_ascii_case(&plain_path(&mine)))
+                .unwrap_or(false)
+        });
+        let switch_in_place = reuse_running.unwrap_or(false) && my_running && magic.is_some();
+
         // Чужие GameCenter закрываем всегда, свой — только если подставляем в него сохранённый вход
-        let closed = close_gamecenters(&exe, magic.is_some())?;
+        let closed = close_gamecenters(&exe, magic.is_some() && !switch_in_place)?;
         // Ждём освобождения единственного экземпляра GameCenter, но по факту, а не фиксированные 1.5 с
-        if magic.is_some() || closed.others > 0 {
+        if !switch_in_place && (magic.is_some() || closed.others > 0) {
             wait_gamecenters_gone();
         }
         let switched = match magic {
@@ -1582,6 +1608,7 @@ pub async fn launcher_start(
             client_pid,
             closed_other_gc: closed.others,
             gc_close_failed: closed.failed,
+            switched_in_place: switch_in_place,
         })
     })
     .await

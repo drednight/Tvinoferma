@@ -93,6 +93,19 @@ export function decorateIconsEnabled() {
   return state.settings?.launcher?.decorateIcons !== false;
 }
 
+/**
+ * Эксперимент: переключать аккаунт в уже запущенном GameCenter вместо его перезапуска.
+ *
+ * По умолчанию выключено. Включать стоит только после проверки вживую: работает лишь если
+ * запущенный GameCenter перечитывает свой `GameCenter.ini` по изменению, а это
+ * недокументированное поведение. Если не перечитывает — второй персонаж тихо откроется под
+ * прошлым аккаунтом, и это выглядит как дубль окна без всякой ошибки.
+ * @param {any} [settings]
+ */
+export function switchInRunningGc(settings = state.settings) {
+  return settings?.launcher?.switchInRunningGc === true;
+}
+
 /** @type {Map<string, Promise<number[] | null>>} */
 const iconCache = new Map();
 
@@ -486,7 +499,7 @@ export function closeAllClientsElevated(deps = {}) {
 
 /**
  * Ответ Rust на запуск (`launcher_start`).
- * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number }} LaunchInfo
+ * @typedef {{ pid?: number, dialogClicked?: boolean, switched?: boolean, clientPid?: number, closedOtherGc?: number, gcCloseFailed?: number, switchedInPlace?: boolean }} LaunchInfo
  */
 
 /**
@@ -498,8 +511,9 @@ export function launchWarnings(info) {
   const out = [];
   if (!info) return out;
   if (info.closedOtherGc > 0) out.push(`Закрыт GameCenter из другой папки (${info.closedOtherGc}): GameCenter работает в одном экземпляре и открыл бы игру под своим аккаунтом`);
-  if (info.gcCloseFailed > 0) out.push('GameCenter запущен от администратора, закрыть его не удалось: игра может открыться под его аккаунтом. Запустите Твиноферму от администратора');
-  return out;
+if (info.gcCloseFailed > 0) out.push('GameCenter запущен от администратора, закрыть его не удалось: игра может открыться под его аккаунтом. Запустите Твиноферму от администратора');
+    if (info.switchedInPlace) out.push('Аккаунт переключён в уже запущенном GameCenter (экспериментальный режим). Если окно открылось не под этим персонажем — выключите «Переключать аккаунт в уже запущенном GameCenter» в настройках запуска игры');
+    return out;
 }
 
 /**
@@ -573,6 +587,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           nick: target?.nick || null,
           url: url || null,
           waitSecs: waitSecs ?? null,
+          // Эксперимент: не перезапускать GameCenter, а переключить в нём аккаунт.
+          // Решение принимает Rust — он видит, запущен ли этот GameCenter сейчас.
+          reuseRunning: switchInRunningGc(),
           ...decor
         });
       } finally {

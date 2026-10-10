@@ -214,6 +214,7 @@ function normalizeLauncherSettings(input = {}) {
     ? Math.min(120, Math.max(0, delay))
     : DEFAULT_SETTINGS.launcher.delaySec;
   merged.skipRunning = merged.skipRunning !== false;
+merged.switchInRunningGc = merged.switchInRunningGc === true;   // эксперимент: по умолчанию выключен
   merged.preflight = normalizePreflightMode(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
   merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
