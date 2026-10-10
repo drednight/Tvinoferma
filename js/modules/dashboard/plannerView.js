@@ -128,6 +128,7 @@ function weekHtml(appState) {
          style="--allday-rows:${ownRows};--hour-h:${HOUR_HEIGHT}px;--cell-h:${CELL_HEIGHT}px"
          aria-label="Ближайшие 5 дней: время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
+        <div class="cal-week-spacer" aria-hidden="true"></div>
         ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">
           <span class="cal-week-allday-label" title="Записи, не привязанные к часу: марафоны идут весь день, у остальных время не задано">без конкретного времени</span>
         </div>` : ''}

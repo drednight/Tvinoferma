@@ -266,6 +266,20 @@ describe('неделя: «весь день» подписан под датой
     expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(5);   // столько же, сколько колонок
   });
 
+  it('колонка часов начинается на уровне колонок дней, а не выше', () => {
+    // Без пустого места на высоту шапки дня подписи 00:00, 01:00 ехали на 34px вверх
+    // и налезали на плашки «без конкретного времени».
+    state.settings.ui.plannerView = 'week';
+    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
+    const side = doc.querySelector('.cal-week-side');
+    // Пустое место стоит первым — ровно на высоту шапки дня
+    expect(side.firstElementChild.className).toBe('cal-week-spacer');
+    // Полоса идёт следом, значит подписи часов ниже неё, а не поверх
+    expect(side.children[1].className).toContain('cal-week-allday');
+    expect(side.querySelector('.cal-hour').textContent).toBe('00:00');
+  });
+
   it('полоса подписана понятно: «без конкретного времени», а не «весь день»', () => {
     // «Весь день» ничего не объяснял: читалось как обрывок слова в узкой колонке.
     state.settings.ui.plannerView = 'week';
