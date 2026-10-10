@@ -253,7 +253,9 @@
    галочка ставит и снимает «выполнено», а «в работе» выбирается кнопкой — из галочки
    это состояние вывести нельзя. Список ограничен по высоте, иначе двадцать дел
    растянули бы панель «Сегодня» сильнее календаря. */
-.todo-list { max-height: 300px; gap: 2px; }
+/* Рабочий список ограничен по высоте, чтобы он не оттеснял данж и календарь; место,
+   которое останется, забирает список выполненных (см. `.todo-done-list`). */
+.todo-list { max-height: 300px; gap: 2px; flex: none; overflow-y: auto; }
 .todo-row {
   --todo-color: var(--text-faint);
   display: grid;
@@ -293,12 +295,22 @@
 
 .todo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* Выполненные — отдельным списком под рабочим. Заголовок появляется вместе с ним:
-   пустой раздел «Выполненные: 0» только шумит. */
-.todo-done-title { margin-top: 12px; }
-.todo-done-list { max-height: 180px; opacity: 0.8; }
+/* Выполненные — отдельным списком под рабочим.
+   Список добирает всё свободное место панели, а не упирается в 180 px: в панели «Сегодня»
+   его обычно больше, чем нужно, и полоса прокрутки появлялась на ровном месте.
+   Заголовок появляется вместе со списком: пустой раздел «Выполненные: 0» только шумит. */
+.todo-done-title { margin-top: 12px; flex: none; }
+.todo-done-list {
+  flex: 1 1 auto;
+  min-height: 96px;
+  max-height: none;
+  overflow-y: auto;
+  opacity: 0.8;
+}
 .todo-done-list .todo-row { grid-template-columns: auto minmax(0, 1fr) auto; }
 .todo-done-list .todo-status { cursor: pointer; }
+/* Без выполненных растягивать нечего: рабочий список остаётся вверху, пустое место под ним пусть будет */
+.today-side:not(:has(.todo-done-list)) .todo-list { max-height: none; flex: 1 1 auto; overflow-y: auto; }
 
 /* Блок «Запущенные окна игры»: список окон с кнопкой закрытия каждого.
    Список ограничен по высоте, иначе десяток открытых окон растягивал бы панель «Сегодня». */
@@ -720,7 +732,9 @@
   background: color-mix(in srgb, var(--surface-2, #fff) 4%, transparent);
   border-bottom: 1px solid var(--border-strong, var(--border));
   box-sizing: border-box;
-  overflow: hidden;
+  /* Дорожек не больше трёх (см. MAX_ALLDAY_ROWS): дальше область прокручивается, а не
+     отъедает шкалу суток. Появление полосы прокрутки — само по себе видно, что дел больше. */
+  overflow-y: auto;
 }
 .cal-chip {
   /* Две строки вместо одной: в колонке «5 дней» название задачи обрезалось, и что

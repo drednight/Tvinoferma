@@ -76,6 +76,18 @@ describe('содержимое раздела', () => {
     await vi.waitFor(() => expect(runScriptAction).toHaveBeenCalledWith('promo'));
   });
 
+  it('у каждого скрипта подпись объясняет, что он сделает', () => {
+    // Подпись «Передать предметы с сайта в игру» обещала не то, что делает скрипт:
+    // он переносит с сайта все предметы, а не выбранные.
+    expect(root.querySelectorAll('.tools-card-body small').length).toBe(8);
+    const hints = Object.fromEntries(
+      [...root.querySelectorAll('.tools-card')].map(c => [c.dataset.scriptAction, c.title])
+    );
+    expect(hints.transfer).toBe('Передать все предметы с сайта');
+    expect(hints['check-auth']).toContain('вход');
+    expect(hints['close-game']).toContain('окн');
+  });
+
   it('окна игры показаны списком с закрытием конкретного окна', () => {
     const box = root.querySelector('[data-tools-windows]');
     expect(box.textContent).toContain('ДР8');

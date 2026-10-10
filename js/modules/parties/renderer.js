@@ -7,7 +7,7 @@ import { formatCoins, roundCoins } from '../../core/coins.js';
 import { openEditPartyModal } from './manager.js'; 
 import { openCharacterProfile } from '../characters/profileView.js'; 
 import { getAuthView } from '../sync/authStatus.js';
-import { charactersInParty, charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
+import { charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins, NO_PARTY_LABEL, charactersInPartyOrdered, movePartyMember } from './membership.js';
 import { partyStyleVars } from './color.js';
 import { hasGameCenterPath } from '../launcher/launch.js';
 import { getClassIconSrc } from '../../core/constants.js';
@@ -409,8 +409,11 @@ function bindPartyEvents(container) {
             e.stopPropagation();
             const name = launchBtn.dataset.partyName;
             const party = partyByName(state.parties, name);
+            // Именно `charactersInPartyOrdered`, а не `charactersInParty`: карточка пати нарисована
+            // в порядке перетаскивания, и запускать надо в том же порядке. Раньше здесь брался сырой
+            // список из состояния — окна открывались в другой последовательности, чем на экране.
             const members = party
-                ? charactersInParty(state.characters, party.id)
+                ? charactersInPartyOrdered(state.characters, party.id)
                 : state.characters.filter(c => hasNoParty(c, state.parties));
             import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
             return;

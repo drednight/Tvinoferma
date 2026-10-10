@@ -14,7 +14,7 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
 }));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 
-let state, renderParties, order;
+let state, renderParties, order, partyLaunch;
 
 const dnd = (type, target, extra = {}) => {
   const ev = new Event(type, { bubbles: true, cancelable: true });
@@ -38,6 +38,7 @@ beforeEach(async () => {
   ({ state } = await import('../js/core/state.js'));
   ({ renderPartiesGrid: renderParties } = await import('../js/modules/parties/renderer.js'));
   ({ charactersInPartyOrdered: order } = await import('../js/modules/parties/membership.js'));
+  partyLaunch = await import('../js/modules/launcher/partyLaunch.js');
   state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
   state.characters = ['a', 'b', 'c'].map((id, i) => ({
     id, nick: id.toUpperCase(), class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', partyOrder: { p1: i + 1 }
@@ -45,6 +46,31 @@ beforeEach(async () => {
   state.characters.push({ id: 'd', nick: 'D', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2' });
   // Раскрытая карточка, чтобы строки были в DOM
   renderParties();
+});
+
+describe('кнопка «Запуск» уважает порядок участников', () => {
+  it('окна открываются в том же порядке, в каком пати нарисована на экране', async () => {
+    // Порядок в состоянии: a, b, c. Перетаскиванием задано: c, b, a
+    state.characters.forEach(c => { c.partyOrder = { p1: { a: 3, b: 2, c: 1 }[c.id] }; });
+    renderParties();
+    partyLaunch.launchGroup.mockClear();
+    document.querySelector('.launch-party-action-btn[data-party-name="Основа"]').click();
+    await flush();
+    expect(partyLaunch.launchGroup).toHaveBeenCalledTimes(1);
+    // Раньше сюда уходил сырой список из состояния — окна шли в другой последовательности
+    expect(partyLaunch.launchGroup.mock.calls[0][1].map(c => c.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('группа «без пати» запускается в порядке общего списка', async () => {
+    state.characters.push({ id: 'e', nick: 'E', class: 'Маг', partyIds: [] });
+    renderParties();
+    partyLaunch.launchGroup.mockClear();
+    const noParty = document.querySelector('.launch-party-action-btn[data-party-name="Без пати"]');
+    expect(noParty).not.toBeNull();
+    noParty.click();
+    await flush();
+    expect(partyLaunch.launchGroup.mock.calls[0][1].map(c => c.id)).toEqual(['e']);
+  });
 });
 
 describe('перетаскивание персонажа внутри пати', () => {
