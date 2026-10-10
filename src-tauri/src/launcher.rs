@@ -2,8 +2,8 @@
 //!
 //! Что делает запуск аккаунта (`launcher_start`):
 //! 1. Если для персонажа запомнен вход (`launcher_capture_account`), GameCenter этого аккаунта закрывается,
-//!    а в его `GameCenter.ini` записываются два ключа — `CurrentUserNick` и `MyComUserMagic2`
-//!    (так же, как делает PWtools). Токен `MyComUserMagic2` лежит только в хранилище ОС (keyring),
+//!    а в его `GameCenter.ini` записываются два ключа — `CurrentUserNick` и `MyComUserMagic2`.
+//!    Токен `MyComUserMagic2` лежит только в хранилище ОС (keyring),
 //!    в `state.json` и в интерфейс он не попадает.
 //! 2. Запускается `GameCenter.exe vkplay://play/0.61`.
 //! 3. Если клиент игры уже был запущен, GameCenter спрашивает «Клиент игры уже запущен»:

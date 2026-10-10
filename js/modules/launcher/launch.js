@@ -15,7 +15,7 @@ import { resolveGameCenter } from './gameCenters.js';
 import { getClassIconSrc } from '../../core/constants.js';
 
 /** Пауза между запусками аккаунтов (после появления нового клиента), мс. */
-export const DEFAULT_LAUNCH_DELAY_MS = 3000;
+export const DEFAULT_LAUNCH_DELAY_MS = 0;
 
 /**
  * Мост в Tauri. Модуль импортируется один раз и запоминается: при параллельных вызовах

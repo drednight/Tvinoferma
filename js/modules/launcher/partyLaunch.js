@@ -7,8 +7,9 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchStageSummary, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, launchContext, launchWarnings, verifyLaunchedDecor, launchStageSummary, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
+import { launchBlocker } from './gcSettingsModal.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
 import { recordLaunchRun } from './launchLog.js';
@@ -268,15 +269,23 @@ function saveRunToHistory({ title, results, pre, ms, gcName }) {
 /** Запуск одного персонажа (кнопка «▶» на карточке). Без пути к GameCenter открывает его карточку на блоке «Запуск игры». */
 export async function launchOne(char, opts = {}) {
   if (!char) return null;
-  if (!hasGameCenterPath(char)) {
-    toast('Укажите GameCenter этого аккаунта', 'error');
-    const { openCharacterProfile } = await import('../characters/profileView.js');
-    openCharacterProfile(char);
-    setTimeout(() => {
-      const fold = document.querySelector('.pf-launch');
-      if (fold) fold.open = true;
-      document.getElementById('pf-gc-path')?.focus();
-    }, 0);
+  // Проверка та же, что у пати (launchBlocker), иначе одиночный запуск вёл себя иначе:
+  // персонаж с GameCenter, но без запомненного входа проходил проверку и упирался в
+  // сообщение про пати, в котором не упомянуто, что именно не так с этим персонажем.
+  const blocker = launchBlocker(char);
+  if (blocker) {
+    if (blocker === 'no-gc') {
+      toast('Укажите GameCenter этого аккаунта', 'error');
+      const { openCharacterProfile } = await import('../characters/profileView.js');
+      openCharacterProfile(char);
+      setTimeout(() => {
+        const fold = document.querySelector('.pf-launch');
+        if (fold) fold.open = true;
+        document.getElementById('pf-gc-path')?.focus();
+      }, 0);
+    } else {
+      toast(`У ${char.nick || char.id} не запомнен вход в GameCenter — окно откроется под тем аккаунтом, который выбран в GameCenter сейчас. Запомнить: «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»`, 'warning');
+    }
     return null;
   }
   return launchGroup(`Запуск игры: ${char.nick}`, [char], opts);

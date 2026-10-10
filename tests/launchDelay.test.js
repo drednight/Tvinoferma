@@ -4,25 +4,27 @@ import { launchCharacters, launchDelayMs, DEFAULT_LAUNCH_DELAY_MS } from '../js/
 import { normalizeState } from '../js/core/state.js';
 
 describe('пауза между запусками окон', () => {
-  it('по умолчанию 3 секунд, берётся из настроек и ограничена 0–120 с', () => {
-    expect(DEFAULT_LAUNCH_DELAY_MS).toBe(3000);
-    expect(launchDelayMs({})).toBe(3000);
+  it('по умолчанию паузы нет, берётся из настроек и ограничена 0–120 с', () => {
+    // Замер 10.10.2026: три аккаунта с паузой 0 — 30.9 с. Прежние 3 с были чистой потерей:
+    // к моменту паузы окно уже запущено, и ждать нечего.
+    expect(DEFAULT_LAUNCH_DELAY_MS).toBe(0);
+    expect(launchDelayMs({})).toBe(0);
     expect(launchDelayMs({ launcher: { delaySec: 0 } })).toBe(0);
     expect(launchDelayMs({ launcher: { delaySec: 1.5 } })).toBe(1500);
     expect(launchDelayMs({ launcher: { delaySec: 999 } })).toBe(120000);
     expect(launchDelayMs({ launcher: { delaySec: -4 } })).toBe(0);
-    expect(launchDelayMs({ launcher: { delaySec: 'мусор' } })).toBe(3000);
-    expect(launchDelayMs({ launcher: { delaySec: '' } })).toBe(3000);
+    expect(launchDelayMs({ launcher: { delaySec: 'мусор' } })).toBe(0);
+    expect(launchDelayMs({ launcher: { delaySec: '' } })).toBe(0);
   });
 
   it('нормализация состояния чинит значение и сохраняет ноль', () => {
     const get = (launcher) => normalizeState({ characters: [], settings: { launcher } }).settings.launcher.delaySec;
-    expect(normalizeState({ characters: [], settings: {} }).settings.launcher.delaySec).toBe(3);
+    expect(normalizeState({ characters: [], settings: {} }).settings.launcher.delaySec).toBe(0);
     expect(get({ delaySec: 0 })).toBe(0);
     expect(get({ delaySec: 7 })).toBe(7);
     expect(get({ delaySec: 500 })).toBe(120);
-    expect(get({ delaySec: 'abc' })).toBe(3);
-    expect(get({ delaySec: null })).toBe(3);
+    expect(get({ delaySec: 'abc' })).toBe(0);
+    expect(get({ delaySec: null })).toBe(0);
   });
 
   it('явно переданная пауза главнее настройки; последнее окно не ждёт', async () => {
