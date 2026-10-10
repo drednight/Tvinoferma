@@ -78,6 +78,16 @@ pub struct LaunchInfo {
     /// режим «переключать на месте», см. `reuse_running`). false — GameCenter перезапущен обычным
     /// порядком. Показывается в журнале запуска, чтобы было видно, какой режим сработал.
     switched_in_place: bool,
+    /// Замеры этапов одного запуска, мс.
+    ///
+    /// Без них «запуск идёт долго» нечем превратить в действие: видно ли время уходит на
+    /// закрытие GameCenter, на запись входа в `GameCenter.ini` или на ожидание окна игры.
+    /// `ms_gc_close` — закрытие чужих и своего GameCenter и ожидание его выхода;
+    /// `ms_account` — запись входа в `GameCenter.ini`;
+    /// `ms_client_wait` — от запуска `GameCenter.exe` до появления окна игры.
+    ms_gc_close: u64,
+    ms_account: u64,
+    ms_client_wait: u64,
 }
 
 /// Окна и клавиши Windows (user32) без лишних зависимостей.
@@ -1549,12 +1559,17 @@ pub async fn launcher_start(
         });
         let switch_in_place = reuse_running.unwrap_or(false) && my_running && magic.is_some();
 
-        // Чужие GameCenter закрываем всегда, свой — только если подставляем в него сохранённый вход
+        // Замеры по этапам: пользователь видит в журнале, на что именно ушло время.
+        // Без них «запуск идёт долго» нечем превратить в конкретное действие.
+        let t_gc = Instant::now();
         let closed = close_gamecenters(&exe, magic.is_some() && !switch_in_place)?;
         // Ждём освобождения единственного экземпляра GameCenter, но по факту, а не фиксированные 1.5 с
         if !switch_in_place && (magic.is_some() || closed.others > 0) {
             wait_gamecenters_gone();
         }
+        let ms_gc_close = t_gc.elapsed().as_millis() as u64;
+
+        let t_ini = Instant::now();
         let switched = match magic {
             Some(magic) => {
                 switch_account(&exe, nick.as_deref(), &magic)?;
@@ -1562,7 +1577,9 @@ pub async fn launcher_start(
             }
             None => false,
         };
+        let ms_account = t_ini.elapsed().as_millis() as u64;
 
+        let t_client = Instant::now();
         let before: HashSet<u32> = client_pids()?.into_iter().collect();
         let child = Command::new(&exe)
             .current_dir(&dir)
@@ -1582,6 +1599,7 @@ pub async fn launcher_start(
                     exe.display()
                 )
             })?;
+        let ms_client = t_client.elapsed().as_millis() as u64;
 
         // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт
         if let Some(title) = window_title.as_deref().and_then(clean_title) {
@@ -1609,6 +1627,9 @@ pub async fn launcher_start(
             closed_other_gc: closed.others,
             gc_close_failed: closed.failed,
             switched_in_place: switch_in_place,
+            ms_gc_close,
+            ms_account,
+            ms_client_wait: ms_client,
         })
     })
     .await

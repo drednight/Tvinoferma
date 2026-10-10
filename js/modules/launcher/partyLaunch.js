@@ -7,7 +7,7 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
+import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, hasGameCenterPath, launchContext, launchWarnings, verifyLaunchedDecor, launchStageSummary, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
 import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
@@ -223,6 +223,10 @@ export async function launchGroup(title, characters, opts = {}) {
     const failed = results.filter(r => !r.ok && !r.cancelled).length;
     const cancelled = results.filter(r => r.cancelled).length;
     const ms = Date.now() - startedAt;
+    // Разбивка по этапам: сколько ушло на закрытие GameCenter, запись входа, ожидание окна
+    // игры и паузы. Без неё «долго» нечем превратить в действие.
+    const stageNote = launchStageSummary(results.stages);
+    if (stageNote) task.log(stageNote, 'info');
     const summary = launchSummary({ ok, failed, cancelled, skipped: skipped.length, running: pre.alreadyRunning.length, ms });
     task.finish(summary, failed ? 'warn' : undefined);
     reportDone(summary, failed > 0);

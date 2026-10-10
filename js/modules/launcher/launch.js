@@ -568,6 +568,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
   const jobs = list.map((character, i) => ({ character, last: i === list.length - 1 }));
   /** Сколько Твиноферма ждала клиента игры у каждого (без паузы между запусками); у неудачных — до ошибки. */
   const times = new Map();
+  /** Разбивка общего времени по этапам, мс. Собирается здесь, печатается в журнале в конце. */
+  const stages = { gcClose: 0, account: 0, clientWait: 0, delay: 0 };
+  let delayTotal = 0;
 
   const results = await runQueue(
     jobs,
@@ -595,7 +598,17 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       } finally {
         times.set(character.id, Date.now() - t0);
       }
-      if (!last && delayMs > 0) await sleep(delayMs); // следующий аккаунт стартует после паузы
+      if (!last && delayMs > 0) {                  // следующий аккаунт стартует после паузы
+      delayTotal += delayMs;
+      await sleep(delayMs);
+    }
+      // Замеры приходят из Rust: там видно, сколько стоило закрыть GameCenter, записать
+      // вход и дождаться окна игры. Складываем по всем аккаунтам — итог идёт в журнал.
+      if (info) {
+        stages.gcClose += Number(info.msGcClose) || 0;
+        stages.account += Number(info.msAccount) || 0;
+        stages.clientWait += Number(info.msClientWait) || 0;
+      }
       return { cancelled: false, info: info || {}, decor, character };
     },
     {
@@ -617,7 +630,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
     }
   );
 
-  return results.map(r => {
+  const out = results.map(r => {
     const cancelled = !!(r.cancelled || r.result?.cancelled);
     const info = r.result?.info;
     return {
@@ -633,6 +646,41 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       decor: r.result?.decor || null
     };
   });
+  // Разбивка по этапам — не элемент массива, а свойство: переборы и фильтры работают как раньше
+  Object.defineProperty(out, 'stages', {
+    value: { ...stages, delay: delayTotal, total: [...times.values()].reduce((a, b) => a + b, 0) + delayTotal },
+    enumerable: false
+  });
+  return out;
+}
+
+/** Секунды одной строкой: 4.5 с, 12 с, 0.3 с. */
+export function stageSec(ms) {
+  const s = Math.round((Number(ms) || 0) / 100) / 10;
+  return `${s} с`;
+}
+
+/**
+ * Итог запуска по этапам: на что ушло время.
+ *
+ * Без такой строки «долго запускается» нечем превратить в действие — с ней видно, что
+ * именно съедает время: закрытие GameCenter, запись входа, ожидание окна игры или пауза.
+ * Этапы складываются по всем аккаунтам, поэтому сумма может быть чуть больше «итого»:
+ * «итого» — это реальные часы, этапы — что внутри них.
+ *
+ * @param {{ gcClose?: number, account?: number, clientWait?: number, delay?: number, total?: number }} [stages]
+ * @returns {string | null}
+ */
+export function launchStageSummary(stages) {
+  if (!stages) return null;
+  const parts = [];
+  if (stages.gcClose) parts.push(`закрытие GameCenter ${stageSec(stages.gcClose)}`);
+  if (stages.account) parts.push(`запись входа в GameCenter.ini ${stageSec(stages.account)}`);
+  if (stages.clientWait) parts.push(`ожидание окна игры ${stageSec(stages.clientWait)}`);
+  if (stages.delay) parts.push(`пауза между запусками ${stageSec(stages.delay)}`);
+  const total = stages.total ?? (stages.gcClose || 0) + (stages.account || 0) + (stages.clientWait || 0) + (stages.delay || 0);
+  if (!parts.length) return null;
+  return `Итого ${stageSec(total)}: ${parts.join(', ')}.`;
 }
 
 /**
