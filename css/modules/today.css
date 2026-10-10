@@ -146,6 +146,9 @@
   margin-bottom: 14px;
 }
 .today-cols .planner { margin-bottom: 0; display: flex; flex-direction: column; }
+/* В виде «5 дней» календарь тянется под высокую панель «Сегодня»: колонки страницы одной
+   высоты, и лишнее место уходит в часы суток, а не остаётся пустым под шкалой. */
+.today-cols .planner > .cal-week { flex: 1 1 auto; min-height: 0; }
 .today-cols .planner-grid { flex: 1 1 auto; align-content: start; }
 .today-cols + .today { margin-top: 0; }
 /* Список записей не растягивается: кнопка «Открыть день» идёт сразу после последней записи,
@@ -160,7 +163,6 @@
 .today-cols .planner,
 .today-cols .today-side { max-height: calc(100vh - var(--topbar-h, 64px) - 40px); }
 .today-cols .today-side { overflow: hidden; }
-.today-cols .todo-list { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 @media (max-width: 1100px) {
   .today-cols { grid-template-columns: minmax(0, 1fr); }
 }
@@ -261,13 +263,20 @@
 /* --- список задач на день ---
    Строки дел: чекбокс слева, название, справа статус. Чекбокс и статус независимы:
    галочка ставит и снимает «выполнено», а «в работе» выбирается кнопкой — из галочки
-   это состояние вывести нельзя. Список ограничен по высоте, иначе двадцать дел
-   растянули бы панель «Сегодня» сильнее календаря. */
-/* Рабочий список ограничен по высоте, чтобы он не оттеснял данж и календарь; место,
-   которое останется, забирает список выполненных (см. `.todo-done-list`). */
-.todo-list { max-height: 300px; gap: 2px; flex: none; overflow-y: auto; }
+   это состояние вывести нельзя.
+
+   Сколько строк видно, задаёт разметка (`--todo-rows`, см. `todoRows`): поровну по
+   четыре, а незанятые места отходят другому списку. Высота строки фиксирована, чтобы
+   «четыре строки» всегда означали ровно четыре строки, а не «примерно четыре». */
+.todo-list {
+  flex: none;
+  max-height: calc(var(--todo-rows, 4) * var(--todo-row-h));
+  overflow-y: auto;
+  gap: 2px;
+}
 .todo-row {
   --todo-color: var(--text-faint);
+  block-size: var(--todo-row-h);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -305,17 +314,15 @@
 
 .todo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-/* Выполненные — отдельным списком под рабочим.
-   Оба списка делят высоту панели и прокручиваются по отдельности: если сделать один
-   растянутым, а другой ограниченным, полоса прокрутки появляется на ровном месте.
+/* Высота строки задачи. Фиксирована: на неё считается, сколько строк влезет в список,
+   иначе «показать четыре» означало бы «показать примерно четыре». */
+.today-side { --todo-row-h: 43px; }
+
+/* Выполненные — отдельным списком под рабочим. Оба списка ограничены числом строк
+   из разметки, поэтому полоса прокрутки появляется там, где правда есть что смотреть.
    Заголовок появляется вместе со списком: пустой раздел «Выполненные: 0» только шумит. */
 .todo-done-title { margin-top: 12px; flex: none; }
-.todo-done-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  opacity: 0.8;
-}
+.todo-done-list { opacity: 0.8; }
 .todo-done-list .todo-row { grid-template-columns: auto minmax(0, 1fr) auto; }
 .todo-done-list .todo-status { cursor: pointer; }
 /* Без выполненных растягивать нечего: рабочий список остаётся вверху, пустое место под ним пусть будет */
@@ -660,7 +667,15 @@
   overflow: hidden;
 }
 
-.cal-week-side { background: var(--surface-1); }
+/* Ось времени: 24 строки по высоте часа.
+   Колонка часов и колонки дней тянутся одинаково: если бы тянулась только одна, подписи
+   00:00 и линии суток разъехались бы. Поэтому и то и другое — flex-колонки с
+   растягивающимися строками и минимальной высотой часа. */
+.cal-week-side {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+}
 /* Пустое место на высоту шапки дня (34px, как у `.cal-day-head`).
    Без него колонка часов начиналась на 34px выше колонок дней: полоса «без конкретного
    времени» и подписи 00:00, 01:00 ехали вверх и налезали на плашки задач. */
@@ -684,9 +699,12 @@
   text-wrap: balance;
 }
 
-/* Подпись часа стоит на своей линии, а не по центру строки — так её читают как отметку времени */
+/* Подпись часа стоит на своей линии, а не по центру строки — так её читают как отметку времени.
+   Строка часа тянется вместе с шкалой: календарь растёт под высокую панель «Сегодня»,
+   и подписи должны остаться на той же высоте, что линии в колонках дней. */
 .cal-hour {
-  height: var(--cell-h);
+  flex: 1 1 var(--cell-h);
+  min-height: var(--cell-h);
   box-sizing: border-box;
   position: relative;
   color: var(--text-faint);
@@ -781,10 +799,22 @@
 
 /* Дорожка дня: часовые линии и блоки записей.
    Верхнюю границу шкалы (00:00) рисует полоса «без конкретного времени» — если её нет,
-   дорожка дорисовывает её сам, иначе шкала начиналась бы в никуда. */
-.cal-day-track { position: relative; flex: 1 1 auto; }
+   дорожка дорисовывает её сама, иначе шкала начиналась бы в никуда.
+   Линии часов тянутся вместе с дорожкой; блоки стоят в долях суток, поэтому остаются
+   на своём времени при любой высоте часа. */
+.cal-day-track {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
 .cal-day:not(:has(.cal-day-allday)) .cal-day-track { border-top: 1px solid var(--border-strong, var(--border)); }
-.cal-line { height: var(--cell-h); box-sizing: border-box; border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.cal-line {
+  flex: 1 1 var(--cell-h);
+  min-height: var(--cell-h);
+  box-sizing: border-box;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
 .cal-line.is-major { border-top-color: var(--border); }
 /* Верхняя линия шкалы (00:00) рисуется на самой дорожке, а не первой линией:
    иначе при наличии полосы «без конкретного времени» граница удваивалась. */

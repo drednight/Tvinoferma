@@ -4,7 +4,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
 import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
-import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLineTop, HOUR_HEIGHT, CELL_HEIGHT } from './weekView.js';
+import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, MIN_BLOCK_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
 import { mskMinutes, weekdayOfDate } from '../../core/msk.js';
@@ -154,16 +154,16 @@ function weekHtml(appState) {
             ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
               title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без конкретного времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
           </div>` : ''}
-          <div class="cal-day-track" style="height:${trackH}px" data-planner-date="${d.date}"
+<div class="cal-day-track" style="min-height:${trackH}px" data-planner-date="${d.date}"
                title="${escapeHtml(cellTitle)}">
-            ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
-            ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
-              style="top:${b.top.toFixed(1)}px;height:${b.height.toFixed(1)}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
-              title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
-              data-planner-date="${d.date}">
-              <small>${b.startTime}–${b.endTime}</small><b>${escapeHtml(b.event.title)}</b>
+             ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
+             ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
+               style="top:${b.topPct.toFixed(4)}%;height:${b.heightPct.toFixed(4)}%;min-height:${MIN_BLOCK_HEIGHT}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
+               title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
+               data-planner-date="${d.date}">
+               <small>${b.startTime}–${b.endTime}</small><b>${escapeHtml(b.event.title)}</b>
             </div>`).join('')}
-            ${d.isToday ? `<div class="cal-now" style="top:${nowLineTop(nowMin).toFixed(1)}px" title="Сейчас"></div>` : ''}
+            ${d.isToday ? `<div class="cal-now" style="top:${nowLinePct(nowMin).toFixed(4)}%" title="Сейчас"></div>` : ''}
           </div>
         </div>`;
         }).join('')}

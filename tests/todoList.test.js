@@ -181,6 +181,55 @@ describe('задачи на день: действия', () => {
   });
 });
 
+describe('сколько задач видно сразу', () => {
+  const rowsOf = (host, sel) => host.querySelector(sel).style.getPropertyValue('--todo-rows');
+
+  it('поровну по четыре, остальное — в прокрутку', () => {
+    const pending = ['а', 'б', 'в', 'г', 'д', 'е'].map(t => mine(t, 'todo'));
+    const done = ['1', '2', '3', '4', '5', '6', '7'].map(t => mine(t, 'done'));
+    const host = parse(todoListHtml([...pending, ...done], TODAY));
+    expect(rowsOf(host, '.todo-list')).toBe('4');
+    expect(rowsOf(host, '.todo-done-list')).toBe('4');
+  });
+
+  it('незанятые места отходят другому списку', () => {
+    // Две невыполненные — значит у выполненных свободно ещё два места
+    const host = parse(todoListHtml([
+      mine('а', 'todo'), mine('б', 'doing'),
+      ...['1', '2', '3', '4', '5', '6', '7', '8'].map(t => mine(t, 'done'))
+    ], TODAY));
+    expect(rowsOf(host, '.todo-list')).toBe('2');
+    expect(rowsOf(host, '.todo-done-list')).toBe('6');
+  });
+
+  it('обратный случай: невыполненных больше, чем выполненных', () => {
+    const host = parse(todoListHtml([
+      ...['а', 'б', 'в', 'г', 'д', 'е', 'ж'].map(t => mine(t, 'todo')),
+      mine('1', 'done'), mine('2', 'done')
+    ], TODAY));
+    // У выполненных мест меньше четырёх — освободившиеся два отходят невыполненным
+    expect(rowsOf(host, '.todo-list')).toBe('6');
+    expect(rowsOf(host, '.todo-done-list')).toBe('2');
+  });
+
+  it('дел пять или меньше — не делим, показываем всё', () => {
+    const host = parse(todoListHtml([
+      mine('а', 'todo'), mine('б', 'todo'), mine('в', 'doing'),
+      mine('1', 'done'), mine('2', 'done')
+    ], TODAY));
+    expect(rowsOf(host, '.todo-list')).toBe('3');
+    expect(rowsOf(host, '.todo-done-list')).toBe('2');
+  });
+
+  it('пустая категория отдаёт все места другой', () => {
+    const host = parse(todoListHtml(['1', '2', '3', '4', '5', '6'].map(t => mine(t, 'done')), TODAY));
+    expect(rowsOf(host, '.todo-done-list')).toBe('6');
+    // Незаполненной половины нет вовсе — вместо неё подсказка
+    expect(host.querySelector('.todo-list:not(.todo-done-list)')).toBeNull();
+    expect(host.textContent).toContain('задач нет');
+  });
+});
+
 describe('блок окон игры ушёл с «Сегодня»', () => {
   it('управление окнами живёт в «Инструментах», на «Сегодня» его больше нет', () => {
     renderToday(document.getElementById('today-root'), {});

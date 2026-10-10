@@ -74,6 +74,36 @@ const STATUS_TEXT = { todo: 'Ожидает', doing: 'В работе', done: '�
 /** Следующий статус по клику: ждёт → в работе → выполнено → обратно в ожидает. */
 const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
 
+/** Сколько задач показывать сразу в каждом списке, пока места хватает. */
+const TODO_BASE_ROWS = 4;
+
+/**
+ * Сколько строк показать в каждом из двух списков.
+ *
+ * Показываем поровну — по четыре с половиной? Нет: по четыре, остальное уходит в
+ * прокрутку. Если в одной из категорий задач меньше, чем четыре, освободившиеся места
+ * отходят другой: так в панель влезает больше информации, а пустого места не остаётся.
+ * Дел пять или меньше не делим — показываем всё.
+ *
+ * @param {number} pending сколько невыполненных
+ * @param {number} done сколько выполненных
+ * @returns {{ pending: number, done: number }}
+ */
+export function todoRows(pending, done) {
+  const total = pending + done;
+  if (total <= TODO_BASE_ROWS) return { pending, done };
+  let pendingRows = Math.min(pending, TODO_BASE_ROWS);
+  let doneRows = Math.min(done, TODO_BASE_ROWS);
+  // Места, которые остались свободными в обоих списках, отдаём той половине,
+  // где задач больше: иначе панель пустует, хотя половина списков ещё не показана.
+  const spare = (TODO_BASE_ROWS - pendingRows) + (TODO_BASE_ROWS - doneRows);
+  if (spare > 0) {
+    if (pending > done) pendingRows += Math.min(spare, pending - pendingRows);
+    else doneRows += Math.min(spare, done - doneRows);
+  }
+  return { pending: pendingRows, done: doneRows };
+}
+
 /**
  * Строка задачи в списке «Задачи на день».
  * @param {any} e запись дня
@@ -124,12 +154,13 @@ export function todoListHtml(events, today) {
   const left = mine.filter(e => e.status !== 'done');
   const done = mine.filter(e => e.status === 'done');
   const others = events.filter(e => e.source !== 'manual');
+  const rows = todoRows(left.length, done.length);
   return `
     <h4 class="today-title"><span aria-hidden="true">☑</span> Задачи на день
       ${left.length ? `<span class="today-count">${left.length}</span>` : ''}
     </h4>
     ${left.length || others.length
-      ? `<ul class="today-list todo-list">
+      ? `<ul class="today-list todo-list" style="--todo-rows:${rows.pending}">
           ${[...left, ...others].map(e => todoRowHtml(e, e.source === 'manual')).join('')}
         </ul>`
       : '<p class="muted today-empty">На этот день задач нет.</p>'}
@@ -141,7 +172,7 @@ export function todoListHtml(events, today) {
       <h4 class="today-title todo-done-title"><span aria-hidden="true">✅</span> Выполненные
         <span class="today-count">${done.length}</span>
       </h4>
-      <ul class="today-list todo-list todo-done-list">
+      <ul class="today-list todo-list todo-done-list" style="--todo-rows:${rows.done}">
         ${done.map(e => todoRowHtml(e, true)).join('')}
       </ul>` : ''}`;
 }
