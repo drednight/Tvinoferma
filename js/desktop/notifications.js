@@ -1,5 +1,5 @@
 // js/desktop/notifications.js
-// Системные уведомления (tauri-plugin-notification):
+// Системные уведомления (tauri-plugin-notification) и звук к ним:
 // - персонаж «не успевает» выполнить задание марафона (запас дней < 0) или запас ≤ 1 дня;
 // - марафон заканчивается через ≤ 2 дня, а задания не выполнены;
 // - ежедневное напоминание о заданиях в выбранный час;
@@ -9,9 +9,12 @@
 // - марафоны и дневная сводка проверяются раз в 30 минут (за день ничего не меняется);
 // - ивенты — раз в 30 секунд: напоминание «за 5 минут» при проверке раз в полчаса не сработало бы.
 //
-// Журнал отправленного лежит в localStorage: марафоны — по ключу на день, ивенты — по ключу
-// «ивент + дата», поэтому одно и то же напоминание не приходит дважды и не дублируется после
-// перезапуска приложения.
+// Журнал отправленного лежит в localStorage: по ключу «вид уведомления» на день, поэтому одно
+// и то же напоминание не приходит дважды и не дублируется после перезапуска приложения.
+//
+// Чтобы напоминания не превращались в шум, у каждого вида две отдельные галочки: показывать ли
+// всплывающее окно Windows и играть ли звук. Список видов один (`NOTIFY_KINDS`) — и настройки,
+// и отправка смотрят на него, поэтому новый вид не остаётся без галочки.
 //
 // Всё время — московское (js/core/msk.js): у пользователя в другом часовом поясе напоминание
 // должно срабатывать по игровым часам, а не по часам компьютера.
@@ -20,6 +23,7 @@ import { state } from '../core/state.js';
 import { mskDate, mskMinutes, mskParts } from '../core/msk.js';
 import { computeCell, marathonPhase } from '../modules/marathons/model.js';
 import { RECURRING_EVENTS, recurringEventsForDate, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
+import { playNotificationSound, soundSettings, soundDiagnostics } from './sound.js';
 
 const SENT_KEY = 'tf_notifications_sent_v1';
 /** Журнал уведомлений об ивентах: ключ «ивент + дата» → дата (чистим по прошествии суток). */
@@ -58,57 +62,103 @@ export function eventNotificationSettings(settings, eventId) {
 }
 
 /**
+ * Виды уведомлений: что показывать всплывающим окном Windows и чем озвучивать.
+ *
+ * Один список на весь проект — настройки (`NOTIFY_KINDS`) и отправка (`notify`) смотрят
+ * на него, поэтому новый вид не может остаться без галочки в настройках.
+ */
+export const NOTIFY_KINDS = [
+  { kind: 'behind', title: 'Персонаж не успевает задание марафона', hint: 'Запас дней ушёл в минус' },
+  { kind: 'tight', title: 'Запас задания уходит (≤ 1 дня)', hint: 'Ещё можно успеть отметиться' },
+  { kind: 'ending', title: 'Марафон заканчивается', hint: 'Осталось ≤ 2 дней, задания не выполнены' },
+  { kind: 'daily', title: 'Ежедневная сводка заданий', hint: 'Задания марафонов и дела календаря на сегодня' },
+  { kind: 'event', title: 'Игровые ивенты', hint: 'Битва Династий, Ритм Гильдии и другие' },
+  { kind: 'launch', title: 'Запуск окон игры завершён', hint: 'Одна строка «Запущено N окон за M»' },
+  { kind: 'launchError', title: 'Ошибка запуска окон игры', hint: 'Показывается и когда итог запуска выключен' },
+  { kind: 'close', title: 'Окна игры закрыты', hint: 'Одна строка о закрытии окон' }
+];
+
+/**
+ * Настройки одного вида уведомления: показывать ли всплывающее окно и играть ли звук.
+ * Нет записи в настройках — оба включателя работают (вид доступен сразу после обновления).
+ * @param {string} kind вид (`NOTIFY_KINDS`)
+ * @param {any} [settings] `state.settings`
+ */
+export function notificationKind(kind, settings) {
+  const raw = settings?.kinds?.[kind] || {};
+  return {
+    popup: raw.popup !== false,
+    sound: raw.sound !== false
+  };
+}
+
+/**
  * Чистая функция: какие уведомления о марафонах и дневной сводке нужны сейчас.
+ *
+ * По одному уведомлению на вид, а не на каждый марафон: при трёх марафонах отдельные
+ * сообщения сходятся в шум, и пользователь перестаёт их замечать. Список дел — в теле.
  * @returns {Array<{ key: string, title: string, body: string, kind: string }>}
  */
 export function collectAlerts(st, { today = todayStr(), hour = mskParts().hour, settings = st.settings?.notifications || {} } = {}) {
   const alerts = [];
   const nick = (id) => st.characters.find(c => c.id === id)?.nick || '?';
   const active = (st.marathons || []).filter(m => m.kind !== 'series' && marathonPhase(m, today) === 'active');
+  const behind = [];
+  const tight = [];
+  const ending = [];
   let openCells = 0;
 
   active.forEach(m => {
-    const behind = [];
-    const tight = [];
     let unfinished = 0;
     m.participantIds.forEach(cid => m.tasks.forEach(t => {
       const c = computeCell(m, cid, t.id, today);
       if (!c.assigned || c.state === 'done') return;
       unfinished++;
-      if (c.state === 'fail') behind.push(`${nick(cid)} — «${t.title}» (не хватает ${-c.reserve} дн.)`);
-      else if (c.state === 'warn') tight.push(`${nick(cid)} — «${t.title}»`);
+      const task = `${m.title} — ${nick(cid)} — «${t.title}»`;
+      if (c.state === 'fail') behind.push(`${task} (не хватает ${-c.reserve} дн.)`);
+      else if (c.state === 'warn') tight.push(task);
     }));
     openCells += unfinished;
-
-    if (settings.marathonBehind !== false && behind.length) {
-      alerts.push({
-        kind: 'behind', key: `behind:${m.id}`,
-        title: `⚠️ ${m.title}: не успевают ${behind.length}`,
-        body: behind.slice(0, 4).join('\n') + (behind.length > 4 ? `\n…и ещё ${behind.length - 4}` : '')
-      });
-    }
-    if (settings.marathonBehind !== false && tight.length) {
-      alerts.push({
-        kind: 'tight', key: `tight:${m.id}`,
-        title: `⏳ ${m.title}: запас ≤ 1 дня у ${tight.length}`,
-        body: tight.slice(0, 4).join('\n') + (tight.length > 4 ? `\n…и ещё ${tight.length - 4}` : '')
-      });
-    }
     const left = daysBetween(today, m.endDate);
-    if (settings.marathonEnding !== false && left >= 0 && left <= 2 && unfinished > 0) {
-      alerts.push({
-        kind: 'ending', key: `ending:${m.id}`,
-        title: `🏁 ${m.title}: ${left === 0 ? 'последний день' : `осталось ${left} дн.`}`,
-        body: `Не выполнено заданий: ${unfinished}`
-      });
+    if (left >= 0 && left <= 2 && unfinished > 0) {
+      ending.push(`${m.title}: ${left === 0 ? 'последний день' : `осталось ${left} дн.`}, невыполненных ${unfinished}`);
     }
   });
 
-  if (settings.dailyReminder !== false && hour >= Number(settings.dailyHour ?? 20) && openCells > 0) {
+  // Дела на день из календаря: дневная сводка — это не только марафоны, иначе про
+  // собственные дела человек узнавал, только открыв приложение
+  const dayTasks = (st.plannerEntries || []).filter(entry => entry.date === today && entry.status !== 'done');
+
+  const rows = (list) => list.slice(0, 4).join('\n') + (list.length > 4 ? `\n…и ещё ${list.length - 4}` : '');
+  const kind = (kind) => notificationKind(kind, settings);
+  if (kind('behind').popup && behind.length) {
+    alerts.push({
+      kind: 'behind', key: 'behind',
+      title: `⚠️ Не успевают задания: ${behind.length}`,
+      body: rows(behind)
+    });
+  }
+  if (kind('tight').popup && tight.length) {
+    alerts.push({
+      kind: 'tight', key: 'tight',
+      title: `⏳ Запас ≤ 1 дня: ${tight.length}`,
+      body: rows(tight)
+    });
+  }
+  if (kind('ending').popup && ending.length) {
+    alerts.push({
+      kind: 'ending', key: 'ending',
+      title: `🏁 Марафоны заканчиваются: ${ending.length}`,
+      body: rows(ending)
+    });
+  }
+  if (kind('daily').popup && hour >= Number(settings.dailyHour ?? 20) && (openCells > 0 || dayTasks.length > 0)) {
+    const parts = [`Идёт марафонов: ${active.length}, невыполненных заданий: ${openCells}.`];
+    if (dayTasks.length) parts.push(`Дел на сегодня: ${dayTasks.length}.`);
     alerts.push({
       kind: 'daily', key: 'daily',
       title: '📅 Ежедневные задания',
-      body: `Идёт марафонов: ${active.length}, невыполненных заданий: ${openCells}. Не забудьте отметиться!`
+      body: `${parts.join(' ')} Не забудьте отметиться!`
     });
   }
   return alerts;
@@ -182,8 +232,36 @@ function api() {
  * приложение источником уведомлений: в установленной версии это делал ярлык установщика,
  * а в сборке для разработки (`cargo run` / `npm run tauri dev`) такой записи нет, и всплывающее
  * сообщение молча пропадало. Если своя команда недоступна, остаётся плагинная доставка.
+ *
+ * Третий аргумент — вид уведомления (`NOTIFY_KINDS`): он решает, показывать ли всплывающее
+ * окно и играть ли звук. Без вида уведомление показывает всё, что может: вид `null` —
+ * это вызов из кода, который сам решает, нужно ли сообщение (итог запуска окон, ошибки).
+ *
+ * @param {string} title
+ * @param {string} body
+ * @param {string | null} [kind] вид из `NOTIFY_KINDS`
+ * @returns {Promise<boolean>} показали ли хоть что-то; `false` — Windows отказала, покажите подпись
  */
-export async function notify(title, body) {
+export async function notify(title, body, kind = null) {
+  const settings = state.settings?.notifications || {};
+  const conf = kind ? notificationKind(kind, settings) : { popup: true, sound: soundSettings(settings).enabled };
+  const wantPopup = settings.enabled !== false && conf.popup;
+  const wantSound = settings.enabled !== false && conf.sound;
+  if (!wantPopup && !wantSound) return true; // этот вид выключен: сообщать нечего, и это не отказ
+
+  let delivered = true;
+  if (wantPopup) {
+    delivered = await send(title, body);
+  }
+  if (wantSound) {
+    // Звук не влияет на итог: всплывающее окно уже показано, а отсутствие звука — настройка
+    // или запрет движка (js/desktop/sound.js), оба случаях показывать всё равно надо.
+    await playNotificationSound(kind || 'calm', settings);
+  }
+  return delivered;
+}
+
+async function send(title, body) {
   if (!window.__TAURI_INTERNALS__) return false;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -215,7 +293,7 @@ export async function runReminderCheck({ force = false } = {}) {
   for (const a of fresh) {
     // `delivered` нужен кнопке «Проверить сейчас»: иначе она рапортует об отправке,
     // когда Windows уведомление отбросила, и причина остаётся невидимой
-    a.delivered = await notify(a.title, a.body);
+    a.delivered = await notify(a.title, a.body, a.kind);
     if (a.delivered) sent[a.key] = today;
   }
   saveSent(SENT_KEY, sent, today);
@@ -233,7 +311,7 @@ export async function runEventCheck({ force = false, now = new Date() } = {}) {
   const fresh = collectEventAlerts({ today, nowMinutes: mskMinutes(now), settings: state.settings?.notifications })
     .filter(a => force || sent[a.key] !== today);
   for (const a of fresh) {
-    a.delivered = await notify(a.title, a.body);
+    a.delivered = await notify(a.title, a.body, a.kind);
     if (a.delivered) sent[a.key] = today;
   }
   saveSent(EVENT_SENT_KEY, sent, today);
@@ -245,7 +323,7 @@ export async function runEventCheck({ force = false, now = new Date() } = {}) {
  * Возвращает человекочитаемые причины, а не молчаливый отказ.
  */
 export async function notificationDiagnostics() {
-  const out = { tauri: !!window.__TAURI_INTERNALS__, permission: 'unknown', reasons: /** @type {string[]} */ ([]) };
+  const out = { tauri: !!window.__TAURI_INTERNALS__, permission: 'unknown', sound: soundDiagnostics(), reasons: /** @type {string[]} */ ([]) };
   if (!out.tauri) {
     out.reasons.push('Приложение открыто в браузере (Vite): системные уведомления Windows в этом режиме не работают — нужна установленная версия или `npm run tauri dev`.');
     return out;
@@ -263,6 +341,10 @@ export async function notificationDiagnostics() {
   if (state.settings?.notifications?.enabled === false) {
     out.reasons.push('Системные уведомления выключены в настройках (раздел «Уведомления»).');
   }
+  // Про звук говорим отдельно: всплывающие при этом работают, и путать причины нельзя
+  if (soundSettings(state.settings?.notifications).enabled && out.sound.reason) {
+    out.reasons.push(out.sound.reason);
+  }
   return out;
 }
 
@@ -275,9 +357,12 @@ export async function runNotificationTest() {
   const marathon = await runReminderCheck({ force: true });
   const events = await runEventCheck({ force: true });
   const all = [...marathon, ...events];
+  const silent = all.filter(a => a.delivered && !notificationKind(a.kind, state.settings?.notifications).popup).length;
   return {
     sent: all.length,
     delivered: all.filter(a => a.delivered).length,
+    // Показаны только звуком: всплывающее окно для этого вида выключено
+    soundOnly: silent,
     marathon: marathon.length,
     events: events.length,
     diagnostics: diag

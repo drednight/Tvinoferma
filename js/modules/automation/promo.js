@@ -14,6 +14,7 @@ import {
 } from './promoCore.js';
 import { loadLog, planRun, recordRun, recentRecords, findRecord, RECENT_N } from './promoLog.js';
 import { runPromoBatch } from './promoRunner.js';
+import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -53,6 +54,7 @@ export function openPromoDialog({ ids = [] } = {}) {
   let lastDry = false;     // последний запуск был пробным
 
   const dlg = openOverlay({ title: '🎁 Активация промокодов', wide: true, onClose: () => { if (running) running.cancelled = true; } });
+  dlg.foot.classList.add('sd-foot');
   const alive = () => dlg.el.isConnected;
 
   /* ---------------------------- форма ---------------------------- */
@@ -68,32 +70,39 @@ export function openPromoDialog({ ids = [] } = {}) {
 
   function listHtml() {
     const list = visibleChars();
-    if (!list.length) return '<div class="promo-empty">Никого не найдено</div>';
+    if (!list.length) return '<div class="promo-empty empty-state">Никого не найдено</div>';
     return list.map(c => {
       const parties = partiesOf(c, state.parties).map(p => p.name).join(', ');
       return `<label class="promo-item"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-        <span>${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted">${escapeHtml(parties)}</span></label>`;
+        <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
     }).join('');
   }
 
   function renderForm() {
-    dlg.sub.textContent = '';
+    dlg.sub.textContent = 'Коды активируются на сайте: приложение откроет страницу активации у каждого выбранного персонажа, активирует коды и покажет награды.';
     dlg.body.innerHTML = `
-      <div class="field"><label for="promo-code">Промокоды</label>
-        <textarea class="input" id="promo-code" rows="2" autocomplete="off" spellcheck="false" placeholder="Например: PWZNANIYA26, PWMIZAR2026HB">${escapeHtml(codesRaw)}</textarea>
-        <p class="promo-muted promo-hint">До ${MAX_CODES} промокодов за раз. Разделяйте запятой, пробелом или переносом строки; каждый код вводится отдельно.</p>
-        <div class="promo-codes-info" id="promo-codes-info"></div></div>
-      <div class="promo-quick">
-        <input class="input" id="promo-search" placeholder="Поиск: ник, пати, тег" value="${escapeHtml(search)}">
-        <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
-        <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
-        <button class="btn ghost small" data-q="none">Снять выбор</button>
-      </div>
-      <div class="promo-list" id="promo-list">${listHtml()}</div>
-      <div class="promo-count" id="promo-count"></div>`;
+      ${noteHtml({
+        icon: '🎯', title: 'Что сделает это окно',
+        text: 'Каждый отмеченный персонаж по очереди открывает страницу активации промокодов на сайте, и там активируются указанные коды. '
+          + 'Коды, которые персонаж уже получал раньше, пропускаются. Пробный запуск только ищет кнопку «Активировать» и ничего не нажимает.'
+      })}
+      ${sectionHtml('Промокоды', { step: '1', hint: `до ${MAX_CODES} за раз`, labelFor: 'promo-code', body: `
+        <div class="field">
+          <textarea class="input" id="promo-code" rows="2" autocomplete="off" spellcheck="false" placeholder="Например: PWZNANIYA26, PWMIZAR2026HB">${escapeHtml(codesRaw)}</textarea>
+          <p class="promo-muted promo-hint">До ${MAX_CODES} промокодов за раз. Разделяйте запятой, пробелом или переносом строки; каждый код вводится отдельно.</p>
+          <div class="promo-codes-info" id="promo-codes-info"></div>
+        </div>` })}
+      ${sectionHtml('Персонажи', { step: '2', aside: `<span class="sd-count" id="promo-count"></span><span class="sd-count-meta" id="promo-count-meta"></span>`, body: `
+        <div class="promo-quick">
+          <input class="input" id="promo-search" aria-label="Поиск персонажа" placeholder="Поиск: ник, пати, тег" value="${escapeHtml(search)}">
+          <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
+          <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
+          <button class="btn ghost small" data-q="none">Снять выбор</button>
+        </div>
+        <div class="promo-list" id="promo-list">${listHtml()}</div>` })}`;
     dlg.foot.innerHTML = `
-      <span style="flex:1"></span>
-      <button class="btn ghost" data-act="close">Закрыть</button>
+      <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="dry" title="Откроет страницу кода и найдёт кнопку «Активировать», но не нажмёт её: ничего не вводится и не сохраняется">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start">▶ Запустить</button>`;
     updateCount();
@@ -105,6 +114,8 @@ export function openPromoDialog({ ids = [] } = {}) {
   function updateCount() {
     const el = dlg.body.querySelector('#promo-count');
     if (el) el.textContent = `Выбрано: ${selected.size} из ${state.characters.length}`;
+    const meta = dlg.body.querySelector('#promo-count-meta');
+    if (meta) meta.textContent = `🟢 с входом: ${selectedChars().filter(c => c.isLoggedIn === true).length}`;
     updateCodesInfo();
   }
 
@@ -201,8 +212,8 @@ export function openPromoDialog({ ids = [] } = {}) {
 
   function renderRunning(codes, chars, signal, dry = false) {
     dlg.sub.textContent = dry ? '👁 Пробный запуск: страницы открываются, кнопка ищется, но не нажимается.' : 'Идёт ввод: персонажи обрабатываются несколько одновременно, коды у каждого — по очереди.';
-    dlg.body.innerHTML = `<div class="promo-progress" id="promo-progress">0 из ${codes.length * chars.length}</div>${tableHtml(codes, chars, new Map())}`;
-    dlg.foot.innerHTML = `<span class="promo-muted" style="flex:1">«Стоп» не начинает новых вводов; уже начатые завершатся, введённое сохранится.</span>
+    dlg.body.innerHTML = `${progressHtml('promo-progress', 0, codes.length * chars.length)}${tableHtml(codes, chars, new Map())}`;
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых вводов; уже начатые завершатся, введённое сохранится.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = (e) => { signal.cancelled = true; e.currentTarget.disabled = true; e.currentTarget.textContent = '⏳ Останавливаю…'; };
   }
@@ -211,9 +222,25 @@ export function openPromoDialog({ ids = [] } = {}) {
     const cellKey = `${row.charId}|${codeKey(row.code)}`;
     const td = [...dlg.body.querySelectorAll('[data-cell]')].find(el => el.dataset.cell === cellKey);
     if (td) td.innerHTML = cellHtml(row);
-    const p = dlg.body.querySelector('#promo-progress');
-    if (p) p.textContent = `${done} из ${total}`;
+    setProgress(dlg.body, 'promo-progress', done, total);
   }
+
+  /** Итог запуска чистыми чипами — только то, что действительно было. */
+  const resultChips = (s, dry) => chipsHtml(dry
+    ? [
+      { icon: '👁', label: 'кнопка найдена', value: s.dry, tone: 'ok' },
+      { icon: '⏭', label: 'уже введены', value: s.skipped },
+      { icon: '⛔', label: 'отклонено сайтом', value: s.invalid, tone: 'warn' },
+      { icon: '❌', label: 'проблем', value: s.failed, tone: 'err' }
+    ]
+    : [
+      { icon: '✅', label: 'введено', value: s.entered, tone: 'ok' },
+      { icon: '⏭', label: 'уже были раньше', value: s.skipped },
+      { icon: '⛔', label: 'отклонено сайтом', value: s.invalid, tone: 'warn' },
+      { icon: '❓', label: 'не распознано', value: s.unknown, tone: 'warn' },
+      { icon: '❌', label: 'ошибок', value: s.failed, tone: 'err' },
+      { icon: '⏭', label: 'не выполнено', value: s.notRun }
+    ]);
 
   /* ------------------------- результаты -------------------------- */
 
@@ -232,12 +259,13 @@ export function openPromoDialog({ ids = [] } = {}) {
       const rewards = c.rewards || findRecord(log, c.code)?.reward;
       return `<div class="promo-code-sum"><code>${escapeHtml(c.code)}</code> — введено ${c.entered}, уже было ${c.alreadyUsed}${c.invalid ? `, отклонено ${c.invalid}` : ''}${c.other ? `, не введено ${c.other}` : ''}${rewardsHtml(rewards)}</div>`;
     });
-    dlg.body.innerHTML = `${banners.join('')}${tableHtml(lastCodes, lastChars, byKey)}
-      <div class="promo-sums">${codeLines.join('')}</div>
+    dlg.body.innerHTML = `${banners.join('')}${resultChips(s, false)}
+      ${sectionHtml('Результат по персонажам', { body: tableHtml(lastCodes, lastChars, byKey) })}
+      ${sectionHtml('Итог по кодам', { body: `<div class="promo-sums">${codeLines.join('')}</div>` })}
       ${s.unknown ? '<p class="promo-warn">❓ «Результат не распознан» — кнопка нажата, но ответ сайта не удалось понять. Проверьте этих персонажей вручную; автоматически они не повторяются.</p>' : ''}`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
-      <span style="flex:1"></span>
+      <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="retry">🔁 Повторить ввод${s.rerun ? ` (${s.rerun})` : ''}</button>
       <button class="btn primary" data-act="close">Закрыть</button>`;
   }
@@ -248,11 +276,12 @@ export function openPromoDialog({ ids = [] } = {}) {
     const byKey = new Map(lastRows.map(r => [`${r.charId}|${codeKey(r.code)}`, r]));
     dlg.sub.textContent = `${stopped ? '⏹ Остановлено. ' : ''}👁 Пробный запуск: кнопка найдена ${s.dry} из ${s.total}.`
       + `${s.skipped ? ` Уже введены раньше: ${s.skipped}.` : ''}${s.failed ? ` Проблем: ${s.failed}.` : ''}${s.invalid ? ` Отклонено сайтом: ${s.invalid}.` : ''}`;
-    dlg.body.innerHTML = `${tableHtml(lastCodes, lastChars, byKey)}
+    dlg.body.innerHTML = `${resultChips(s, true)}
+      ${sectionHtml('Результат по персонажам', { body: tableHtml(lastCodes, lastChars, byKey) })}
       <p class="promo-muted">Ничего не нажато, не введено и не записано в журнал промокодов. Если везде «кнопка найдена» — можно запускать по-настоящему.</p>`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
-      <span style="flex:1"></span>
+      <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="dry-again">👁 Ещё раз</button>
       <button class="btn primary" data-act="real">▶ Запустить по-настоящему</button>`;
   }

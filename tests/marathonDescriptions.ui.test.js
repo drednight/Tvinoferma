@@ -30,21 +30,21 @@ beforeEach(async () => {
 });
 
 describe('описания заданий на странице марафона', () => {
-  it('блок «Описания заданий» показывает короткий текст, источник и счётчик', () => {
+  it('блок «Описания заданий» показывает текст целиком, источник и счётчик', () => {
     const box = document.querySelector('.mr-descs');
     expect(box).not.toBeNull();
     expect(box.textContent).toContain('(1 из 2)');
     expect(box.textContent).toContain('из новости');
-    expect(box.querySelector('[data-desc-task="t1"] .mr-desc-text').textContent.endsWith('…')).toBe(true);
+    // Описание всегда показывается целиком: кнопки «показать полностью» больше нет
+    expect(box.querySelector('[data-desc-task="t1"] .mr-desc-text').textContent).toBe(LONG);
     expect(box.querySelector('[data-desc-task="t2"]').textContent).toContain('Описания нет');
   });
 
-  it('«Показать полностью» раскрывает и сворачивает описание', () => {
-    document.querySelector('[data-desc-toggle]').click();
-    expect(document.querySelector('[data-desc-task="t1"] .mr-desc-text').textContent).toBe(LONG);
-    expect(document.querySelector('[data-desc-toggle]').textContent).toBe('Свернуть');
-    document.querySelector('[data-desc-toggle]').click();
-    expect(document.querySelector('[data-desc-task="t1"] .mr-desc-text').textContent.endsWith('…')).toBe(true);
+  it('кнопки свёртывания описания нет: текст всегда на виду', () => {
+    const box = document.querySelector('.mr-descs');
+    expect(box.querySelector('[data-desc-toggle]')).toBeNull();
+    expect(box.textContent).not.toContain('Показать полностью');
+    expect(box.textContent).not.toContain('Свернуть');
   });
 
   it('в блоке нет кнопок правки: описание меняется в редакторе марафона', () => {

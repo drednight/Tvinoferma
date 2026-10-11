@@ -24,6 +24,9 @@ const notifyEnabled = () => state.settings?.launcher?.notify !== false;
 /**
  * Один итог на весь запуск: в окне приложения — всплывающая подпись, если приложение свёрнуто (например, запуск из трея) —
  * системное уведомление. Никаких сообщений по каждому окну.
+ *
+ * Вид уведомления («итог запуска» / «ошибка запуска») решает, показывать ли всплывающее окно
+ * и играть ли звук — см. «Настройки → Уведомления».
  */
 async function reportDone(text, isError) {
   if (!isError && !notifyEnabled()) return;
@@ -31,7 +34,7 @@ async function reportDone(text, isError) {
   if (focused) { toast(text, isError ? 'error' : 'success'); return; }
   try {
     const { notify } = await import('../../desktop/notifications.js');
-    if (await notify('Твиноферма', text)) return;   // false — нет разрешения на уведомления: покажем подпись ниже
+    if (await notify('Твиноферма', text, isError ? 'launchError' : 'launch')) return;   // false — нет разрешения на уведомления: покажем подпись ниже
   } catch { /* системные уведомления недоступны */ }
   toast(text, isError ? 'error' : 'success');
 }
@@ -391,7 +394,7 @@ export function showCloseReport(report) {
   if (canCloseElevated(report)) offerElevatedClose(report, focused);
   if (focused) { toast(text, isError ? 'error' : 'success'); return; }
   import('../../desktop/notifications.js')
-    .then(m => m.notify('Твиноферма', text))
+    .then(m => m.notify('Твиноферма', text, isError ? 'launchError' : 'close'))
     .then(sent => { if (!sent) toast(text, isError ? 'error' : 'success'); })
     .catch(() => toast(text, isError ? 'error' : 'success'));
 }

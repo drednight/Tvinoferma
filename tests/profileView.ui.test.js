@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 // Раскрытая карточка персонажа: меню «Проверить», доп. пати ниже основной, пометка баланса (issues #1, #4, #21)
-const mocks = vi.hoisted(() => ({ auth: vi.fn(), balance: vi.fn(), editForm: vi.fn(), site: vi.fn() }));
+const mocks = vi.hoisted(() => ({ auth: vi.fn(), balance: vi.fn(), editForm: vi.fn(), site: vi.fn(), byTag: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/characters/formEditor.js', () => ({ openCharacterForm: mocks.editForm }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({
   openSyncHelper: mocks.site, refreshAuthFor: mocks.auth, refreshBalanceFor: mocks.balance
 }));
+vi.mock('../js/modules/characters/list.js', () => ({ showCharactersWithTag: mocks.byTag }));
 
 const $ = (s) => document.querySelector(s);
 const wait = (ms = 150) => new Promise(r => setTimeout(r, ms));
@@ -172,5 +174,50 @@ describe('раскрытая карточка', () => {
     openCharacterProfile(mkChar()); await wait();
     $('[data-pf-check="coins"]').click(); await wait(20);
     expect($('[data-coin-warn]')).not.toBeNull();
+  });
+
+  it('окно широкое, характеристики и контакты — двумя столбцами', async () => {
+    openCharacterProfile(mkChar()); await wait();
+    expect($('.modal-container').classList.contains('modal-wide')).toBe(true);
+    const cols = $('.pf-cols');
+    expect(cols).not.toBeNull();
+    // Контакты слева, характеристики справа: оба столбца в DOM до подвала
+    expect(cols.children).toHaveLength(2);
+    expect(cols.children[0].querySelector('.pf-contacts')).not.toBeNull();
+    expect(cols.children[1].querySelector('.pf-stats')).not.toBeNull();
+    const css = readFileSync('css/modules/profile.css', 'utf8');
+    // Колонки две, и левая (действия и контакты) уже правой с характеристиками:
+    // раньше обе были равными, характеристики уезжали вправо и тянулись через всё окно
+    expect(css).toMatch(/\.pf-cols \{[^}]*grid-template-columns:\s*minmax\(320px, 0\.85fr\) minmax\(0, 1\.15fr\)/);
+    // Характеристики — плитки в сетке, которая сама подбирает число колонок под ширину окна
+    expect(css).toMatch(/\.pf-stats \{[^}]*grid-template-columns:\s*repeat\(auto-fill, minmax\(152px, 1fr\)\)/);
+    expect(css).toMatch(/\.pf-stat \{[^}]*display:\s*grid/);   // подпись сверху, значение снизу
+  });
+
+  it('один глаз открывает и скрывает все контакты', async () => {
+    openCharacterProfile(mkChar({ contacts: { email: 'a@b.com', password: 'secret', recoveryEmail: 'r@b.com', phone: '+7' } })); await wait();
+    const eyes = [...document.querySelectorAll('.profile-toggle-eye')];
+    expect(eyes).toHaveLength(4);
+    const toggle = $('#pf-contacts-toggle-all');
+    expect(toggle.textContent).toBe('Показать все');
+    toggle.click(); await wait();
+    expect(document.querySelector('.contact-value[data-type="password"]').textContent).toBe('secret');
+    expect(toggle.textContent).toBe('Скрыть все');
+    toggle.click(); await wait();
+    expect(document.querySelector('.contact-value[data-type="password"]').textContent).toContain('•');
+  });
+
+  it('тег в профиле ведёт к списку персонажей с этим тегом', async () => {
+    openCharacterProfile(mkChar({ tags: ['мейн', 'ферма'] })); await wait();
+    const chips = [...document.querySelectorAll('.pf-tag')];
+    expect(chips.map(c => c.textContent)).toEqual(['#мейн', '#ферма']);
+    chips[1].click();
+    await vi.waitFor(() => expect(mocks.byTag).toHaveBeenCalledWith('ферма'));
+  });
+
+  it('нет контактов — строка показывает прочерк и не даёт нажать глаз', async () => {
+    openCharacterProfile(mkChar({ contacts: {} })); await wait();
+    const row = document.querySelector('.contact-row-profile.is-empty');
+    expect(row.querySelector('.contact-value').textContent).toBe('—');
   });
 });

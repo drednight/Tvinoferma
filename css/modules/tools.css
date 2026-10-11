@@ -15,21 +15,35 @@
 
 .tools-block-head { margin-bottom: 12px; }
 .tools-block-head h3 { margin: 0 0 2px; font-size: 1rem; }
-.tools-block-head p { margin: 0; font-size: 0.82rem; }
+/* Вкладка занимает всю ширину окна, поэтому длинная строка описания растянулась бы на весь
+   экран и перестала бы читаться. 72ch — та же граница, что у .section-sub. */
+.tools-block-head p { margin: 0; font-size: 0.82rem; max-width: 72ch; }
 
 /* --- Скрипты: крупные карточки-действия ---
    Плитка, а не строка списка: это восемь равноправных запусков, и их надо видеть все
-   сразу, не прокручивая. Подпись под названием объясняет, что сделает скрипт. */
+   сразу, не прокручивая. Подпись под названием объясняет, что сделает скрипт.
+
+   Ровно четыре колонки, а не auto-fill: вкладка занимает всю ширину окна, и на широком
+   экране auto-fill добавлял бы пятую, шестую колонку, расползаясь в ленту, где подписи
+   читались бы одной длинной строкой. Колонки набирают всю доступную ширину
+   (minmax(0, 1fr), не max-content), а их число падает только на узких окнах. */
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
 }
+@media (max-width: 1400px) { .tools-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .tools-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .tools-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .tools-card {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* Карточка занимает колонку целиком по высоте: соседняя колонка выше — эта всё равно
+     дотягивается, и плитка остаётся ровной. */
+  height: 100%;
   min-height: 58px;
   padding: 10px 12px;
   text-align: left;
@@ -44,10 +58,22 @@
 .tools-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .tools-card-ico { flex: none; font-size: 1.25rem; line-height: 1; }
-.tools-card-body { display: grid; gap: 2px; min-width: 0; }
-.tools-card-body b { font-size: 0.88rem; font-weight: 650; }
-.tools-card-body small { color: var(--text-dim); font-size: 0.74rem; }
+.tools-card-body { display: grid; gap: 2px; min-width: 0; align-content: center; }
+.tools-card-body b { font-size: 0.88rem; font-weight: 650; overflow-wrap: break-word; }
+/* Подпись ограничена по ширине символов: на широкой карточке (четыре колонки на большом
+   окне) иначе она вытягивалась бы в одну строку на всю ширину карточки. */
+.tools-card-body small { color: var(--text-dim); font-size: 0.74rem; max-width: 34ch; overflow-wrap: break-word; }
 
 /* --- Окна игры --- */
 .tools-row { margin-bottom: 10px; }
-.tools-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Пустое состояние списка окон: одна строка текста в блоке выглядит как забытая заглушка.
+   Пунктирная рамка, как у .empty-state, показывает, что это «окон нет», а не ошибка. */
+.tools-row > p.muted {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  text-align: center;
+}
+.tools-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }

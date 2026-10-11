@@ -37,17 +37,19 @@ const TABS = GUIDES ? [
   ['marathons', 'marathons'],
   ['characters', 'scripts', 'scripts'],
   ['characters', 'character-form', 'character-form'],
-  ...['promo-dialog', 'transfer-dialog', 'shop-dialog', 'sync-task'].map(name => ['characters', name, name]),
+  ...['promo-dialog', 'transfer-dialog', 'shop-dialog', 'caravan-dialog', 'sync-task'].map(name => ['characters', name, name]),
   ['characters', 'character-profile', 'character-profile'],
   ['marathons', 'marathon-wizard', 'marathon-wizard'],
   ['today', 'planner-entry', 'planner-entry'],
   ['settings', 'gamecenters', 'gamecenters'],
-  ['settings', 'settings-app', '#settings-app'],
+  ['settings', 'settings-app', '#settings-system'],
+  ['settings', 'settings-launcher', '#settings-launcher'],
   ['settings', 'settings-data', '#settings-data'],
   ['settings', 'settings-sync', '#settings-sync'],
   ['settings', 'settings-updates', '#settings-update-panel'],
   ['settings', 'settings-security', '#settings-security'],
   ['settings', 'settings-danger', '#danger-zone'],
+  ['settings', 'notifications', '#settings-notifications'],
 ] : [
   ['today', 'today'],
   ['characters', 'characters'],
@@ -285,7 +287,7 @@ async function main() {
     }
 
     const formShots = {
-      ...Object.fromEntries(['promo-dialog', 'transfer-dialog', 'shop-dialog', 'sync-task'].map(name => [name, `import('/scripts/ui-demo-scripts.mjs').then(({ openScriptPreview }) => openScriptPreview('${name}'))`])),
+      ...Object.fromEntries(['promo-dialog', 'transfer-dialog', 'shop-dialog', 'caravan-dialog', 'sync-task'].map(name => [name, `import('/scripts/ui-demo-scripts.mjs').then(({ openScriptPreview }) => openScriptPreview('${name}'))`])),
       'character-form': `import('/js/modules/characters/formEditor.js').then(({ openCharacterForm }) => openCharacterForm())`,
       'character-profile': `(async () => { const { state } = await import('/js/core/state.js'); const { openCharacterProfile } = await import('/js/modules/characters/profileView.js'); openCharacterProfile(state.characters[0]); })()`,
       'marathon-wizard': `import('/js/modules/marathons/wizard.js').then(({ openMarathonWizard }) => { openMarathonWizard(); document.querySelector('[data-src="manual"]').click(); document.querySelector('[data-act="next"]').click(); })`,

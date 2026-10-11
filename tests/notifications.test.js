@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { collectAlerts, collectEventAlerts, eventNotificationSettings, leadText } from '../js/desktop/notifications.js';
+import { readFileSync } from 'node:fs';
+import {
+  collectAlerts,
+  collectEventAlerts,
+  eventNotificationSettings,
+  leadText,
+  notificationKind,
+  NOTIFY_KINDS
+} from '../js/desktop/notifications.js';
+import { soundSettings, SOUND_TONES } from '../js/desktop/sound.js';
 import { createMarathon } from '../js/modules/marathons/model.js';
 import { normalizeState } from '../js/core/state.js';
+import { DEFAULT_SETTINGS } from '../js/core/constants.js';
 import { RECURRING_EVENTS } from '../js/modules/dashboard/recurringEvents.js';
 
 const st = (progress = {}) => ({
@@ -17,9 +27,9 @@ describe('collectAlerts', () => {
   it('не успевает → уведомление behind', () => {
     const alerts = collectAlerts(st(), { today: '2026-06-08', hour: 10 });
     const behind = alerts.find(a => a.kind === 'behind');
-    expect(behind.title).toMatch(/не успевают 1/);
-    expect(behind.body).toMatch(/Hero — «Сны» \(не хватает 2 дн\.\)/);
-    expect(alerts.find(a => a.kind === 'ending').title).toMatch(/осталось 2 дн/);
+    expect(behind.title).toMatch(/не успевают задания: 1/i);
+    expect(behind.body).toMatch(/Летний — Hero — «Сны» \(не хватает 2 дн\.\)/);
+    expect(alerts.find(a => a.kind === 'ending').title).toMatch(/марафоны заканчиваются: 1/i);
   });
 
   it('запас ≤ 1 дня → tight; ежедневное напоминание после заданного часа', () => {
@@ -31,8 +41,41 @@ describe('collectAlerts', () => {
     const done = st({ c1: { t1: { site: 5, adjust: 0, marks: [], history: {} } } });
     expect(collectAlerts(done, { today: '2026-06-09', hour: 23 })).toEqual([]);
     const off = st();
-    off.settings.notifications = { marathonBehind: false, marathonEnding: false, dailyReminder: false };
-    expect(collectAlerts(off, { today: '2026-06-09', hour: 23 })).toEqual([]);
+    const offKind = { popup: false, sound: false };
+    off.settings.notifications = {
+      kinds: { behind: { ...offKind }, tight: { ...offKind }, ending: { ...offKind }, daily: { ...offKind } }
+    };
+    expect(collectAlerts(off, { today: '2026-06-08', hour: 23 })).toEqual([]);
+    // С выключенными только марафонными видами остаются дневная сводка и «заканчивается»
+    off.settings.notifications = { kinds: { behind: { ...offKind }, tight: { ...offKind } } };
+    expect(collectAlerts(off, { today: '2026-06-08', hour: 23 }).map(a => a.kind).sort()).toEqual(['daily', 'ending']);
+  });
+
+  it('один марафон — одно уведомление на вид, а не сообщение на каждый марафон', () => {
+    // Три марафона с отставанием это одно сообщение со списком, а не три всплывающие окна
+    const many = st();
+    many.marathons = ['m1', 'm2', 'm3'].map(id => createMarathon({
+      id, title: `Марафон ${id}`, startDate: '2026-06-01', endDate: '2026-06-10', participantIds: ['c1'],
+      tasks: [{ id: 't1', title: 'Сны', targetChecks: 5 }], assignments: { c1: ['t1'] }
+    }));
+    const alerts = collectAlerts(many, { today: '2026-06-08', hour: 10 });
+    expect(alerts.filter(a => a.kind === 'behind')).toHaveLength(1);
+    expect(alerts.find(a => a.kind === 'behind').body.split('\n')).toHaveLength(3);
+  });
+
+  it('длинный список дел обрезается, а не превращается в простыню', () => {
+    const many = st();
+    many.characters = Array.from({ length: 6 }, (_, i) => ({ id: `c${i}`, nick: `Ник${i}` }));
+    many.marathons = [createMarathon({
+      id: 'm1', title: 'Летний', startDate: '2026-06-01', endDate: '2026-06-10',
+      participantIds: many.characters.map(c => c.id),
+      tasks: [{ id: 't1', title: 'Сны', targetChecks: 5 }],
+      assignments: Object.fromEntries(many.characters.map(c => [c.id, ['t1']]))
+    })];
+    const alerts = collectAlerts(many, { today: '2026-06-08', hour: 10 });
+    const behind = alerts.find(a => a.kind === 'behind');
+    expect(behind.body.split('\n')).toHaveLength(5);
+    expect(behind.body).toContain('…и ещё 2');
   });
 
   it('час для ежедневного напоминания берётся по Москве', () => {
@@ -41,6 +84,90 @@ describe('collectAlerts', () => {
     const early = collectAlerts(st(), { today: '2026-06-06', hour: 18 });
     expect(late.map(a => a.kind)).toContain('daily');
     expect(early.map(a => a.kind)).not.toContain('daily');
+  });
+
+  it('дневная сводка считает и задания марафонов, и дела календаря на сегодня', () => {
+    const withTasks = st({ c1: { t1: { site: 5, adjust: 0, marks: [], history: {} } } });   // марафонные задания закрыты
+    withTasks.plannerEntries = [
+      { date: '2026-06-06', status: 'todo', title: 'Сдать промокод' },
+      { date: '2026-06-06', status: 'done', title: 'Уже сделано' },
+      { date: '2026-06-07', status: 'todo', title: 'На завтра' }
+    ];
+    const daily = collectAlerts(withTasks, { today: '2026-06-06', hour: 21 }).find(a => a.kind === 'daily');
+    expect(daily.body).toContain('Дел на сегодня: 1');
+    expect(daily.body).toContain('Идёт марафонов: 1');
+    // Без марафонов и без дел сводка молчит: пустое напоминание — это шум
+    const empty = st({ c1: { t1: { site: 5, adjust: 0, marks: [], history: {} } } });
+    expect(collectAlerts(empty, { today: '2026-06-06', hour: 21 }).map(a => a.kind)).not.toContain('daily');
+  });
+});
+
+describe('виды уведомлений: галочки', () => {
+  it('нет записи в настройках — вид работает целиком', () => {
+    expect(notificationKind('behind', {})).toEqual({ popup: true, sound: true });
+    expect(notificationKind('behind', { kinds: {} })).toEqual({ popup: true, sound: true });
+  });
+
+  it('выбор пользователя сохраняется', () => {
+    expect(notificationKind('behind', { kinds: { behind: { popup: false, sound: false } } }))
+      .toEqual({ popup: false, sound: false });
+  });
+
+  it('всякий вид имеет и всплывающее окно, и звук', () => {
+    for (const item of NOTIFY_KINDS) {
+      expect(item.kind, item.title).toBeTruthy();
+      expect(item.title, item.kind).toBeTruthy();
+      expect(item.hint, item.kind).toBeTruthy();
+      expect(notificationKind(item.kind, {}), item.kind).toEqual({ popup: true, sound: true });
+    }
+    // «нет своего вида» в списке не остаётся: виды собираются из одного места
+    expect(new Set(NOTIFY_KINDS.map(k => k.kind)).size).toBe(NOTIFY_KINDS.length);
+  });
+});
+
+describe('настройки звука', () => {
+  it('звук уведомлений включается на восемь десятых, а звук дневной сводки настроен', () => {
+    expect(soundSettings({})).toEqual({ enabled: true, volume: 80, tone: 'clear' });
+    expect(soundSettings(undefined)).toEqual({ enabled: true, volume: 80, tone: 'clear' });
+    // Дневная сводка — напоминание, ради которого стоит оторваться: звук у неё включён
+    expect(notificationKind('daily', {}).sound).toBe(true);
+    expect(DEFAULT_SETTINGS.notifications.kinds.daily.sound).toBe(true);
+  });
+
+  it('громкость приводится к 0..100', () => {
+    expect(soundSettings({ sound: { enabled: false, volume: 300 } }).volume).toBe(100);
+    expect(soundSettings({ sound: { volume: -5 } }).volume).toBe(0);
+    expect(soundSettings({ sound: { volume: 'сорок' } }).volume).toBe(80);
+    expect(soundSettings({ sound: { enabled: false } }).enabled).toBe(false);
+  });
+
+  it('набор звука выбирается, неизвестный отбрасывается в пользу набора по умолчанию', () => {
+    expect(soundSettings({ sound: { tone: 'signal' } }).tone).toBe('signal');
+    // Набор из более новой версии приложения не должен ломать настройки
+    expect(soundSettings({ sound: { tone: 'мелодия' } }).tone).toBe('clear');
+    expect(DEFAULT_SETTINGS.notifications.sound.tone).toBe('clear');
+    // Каждый набор пригоден для показа: у него есть название, пояснение и ноты
+    for (const tone of SOUND_TONES) {
+      expect(tone.id).toBeTruthy();
+      expect(tone.title).toBeTruthy();
+      expect(tone.hint).toBeTruthy();
+      expect(tone.notes.length).toBeGreaterThan(0);
+      for (const note of tone.notes) {
+        expect(note.freq).toBeGreaterThan(0);
+        expect(note.dur).toBeGreaterThan(0);
+      }
+    }
+    // Список уникален по id: иначе один набор нельзя будет выбрать
+    expect(new Set(SOUND_TONES.map(t => t.id)).size).toBe(SOUND_TONES.length);
+  });
+
+  it('в настройках есть список наборов, кнопка «Послушать» и настройка набора', () => {
+    const html = readFileSync('index.html', 'utf8');
+    expect(html).toContain('data-setting="notifications.sound.tone"');
+    expect(html).toContain('id="sound-preview"');
+    const js = readFileSync('js/settings/settings.js', 'utf8');
+    expect(js).toContain('previewNotificationSound');
+    expect(js).toContain('SOUND_TONES');
   });
 });
 
@@ -97,9 +224,29 @@ describe('напоминания о постоянных ивентах', () => 
   });
 });
 
+describe('настройки уведомлений в разметке', () => {
+  const html = readFileSync('index.html', 'utf8');
+  it('звук и таблица видов есть, старые галочки ушли', () => {
+    expect(html).toContain('data-setting="notifications.sound.enabled"');
+    expect(html).toContain('data-setting="notifications.sound.volume"');
+    expect(html).toContain('id="notify-kinds"');
+    expect(html).toContain('id="event-notify-list"');
+    // Одна старая галочка держала несколько видов: вместо неё таблица «всплывающее / звук»
+    expect(html).not.toContain('data-setting="notifications.marathonBehind"');
+    expect(html).not.toContain('data-setting="notifications.dailyReminder"');
+  });
+
+  it('таблица видов рисуется из NOTIFY_KINDS, а не из разметки', () => {
+    const js = readFileSync('js/settings/settings.js', 'utf8');
+    expect(js).toContain('data-kind-popup=');
+    expect(js).toContain('data-kind-sound=');
+    expect(js).toContain('NOTIFY_KINDS');
+  });
+});
+
 describe('настройки уведомлений в состоянии', () => {
   it('старый state.json без настроек ивентов получает их по умолчанию', () => {
-    // Иначе напоминания о новом ивенте молча не работали бы у тех, кто обновился
+    // Иначе напоминание о новом ивенте молча не работало бы у тех, кто обновился
     const s = normalizeState({ characters: [], settings: { notifications: { dailyHour: 21 } } });
     expect(s.settings.notifications.dailyHour).toBe(21);
     for (const event of RECURRING_EVENTS) {
@@ -125,5 +272,41 @@ describe('настройки уведомлений в состоянии', () =
     expect(s.settings.notifications.events['guild-rhythm'].leadMinutes).toBe(10);
     // `eventNotificationSettings` дополнительно отсекает значения вне списка вариантов
     expect(eventNotificationSettings(s.settings.notifications, 'guild-rhythm').leadMinutes).toBe(10);
+  });
+
+  it('новые настройки появляются у всех, кто обновляется', () => {
+    const s = normalizeState({ characters: [], settings: {} });
+    const n = s.settings.notifications;
+    expect(n.sound).toEqual({ enabled: true, volume: 80, tone: 'clear' });
+    expect(n.kinds.event).toEqual({ popup: true, sound: true });
+    // Старые галочки уходят: иначе в настройках остался бы мёртвый ключ
+    expect(n.marathonBehind).toBeUndefined();
+    expect(n.dailyReminder).toBeUndefined();
+  });
+
+  it('старые галочки переносятся в виды, а не сбрасываются', () => {
+    const s = normalizeState({
+      characters: [],
+      settings: { notifications: { marathonBehind: false, marathonEnding: false, dailyReminder: false } }
+    });
+    const k = s.settings.notifications.kinds;
+    // Одна старая галочка держала два вида: «не успевает» и «запас ≤ 1 дня»
+    expect(k.behind.popup).toBe(false);
+    expect(k.tight.popup).toBe(false);
+    expect(k.ending.popup).toBe(false);
+    expect(k.daily.popup).toBe(false);
+    // Звук старая галочка не выключала: звука тогда не было вовсе
+    expect(k.behind.sound).toBe(true);
+    // Остальные виды не задеты
+    expect(k.event.popup).toBe(true);
+  });
+
+  it('битый час и громкость приводятся к допустимым', () => {
+    const s = normalizeState({
+      characters: [],
+      settings: { notifications: { dailyHour: 99, sound: { volume: 900 } } }
+    });
+    expect(s.settings.notifications.dailyHour).toBe(23);
+    expect(s.settings.notifications.sound.volume).toBe(100);
   });
 });

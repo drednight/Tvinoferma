@@ -117,7 +117,7 @@ describe('характеристики одним сворачиваемым б�
     const fold = document.querySelector('details.stats-fold');
     expect(fold).not.toBeNull();
     const text = fold.textContent;
-    for (const part of ['Основные характеристики', 'Бой и Защита', 'Показатели боя', 'PvE и Пробивание']) {
+    for (const part of ['Основные характеристики', 'Бой и защита', 'Показатели боя', 'PvE']) {
       expect(text, part).toContain(part);
     }
     // Ни одна группа характеристик не осталась отдельным блоком вне свёртки:

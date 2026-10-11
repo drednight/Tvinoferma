@@ -9,6 +9,7 @@ import { renderCharacters, allTags } from './list.js';
 import { renderParties } from '../parties/index.js';
 import { CLASSES, SKIES, SKY_LEVELS } from '../../core/constants.js';
 import { createEmptyCharacter, DEFAULT_STATS } from './stateManager.js';
+import { rememberStatsBefore, statChange } from './statsHistory.js';
 import { newCharacterId, syncIdWithNick } from './identity.js';
 import { vaultStatus } from '../../core/secrets.js';
 import { normalizePartyIds } from '../parties/membership.js';
@@ -42,153 +43,156 @@ export function openCharacterForm(char = null) {
   const skyLevelOptions = SKY_LEVELS.map(l => `<option value="${l}" ${sky.level == l ? 'selected' : ''}>${l}</option>`).join('');
   const noneSkyLevelOption = `<option value="" ${!sky.level ? 'selected' : ''}>—</option>`;
 
-  const statInput = (key, label) => `
-    <div class="field">
+  const statInput = (key, label) => {
+    // Под полем — прошлое значение и разница с ним. Показываем, только если история есть:
+    // пустая строка «было —» только занимала бы место и путала.
+    const change = statChange(currentChar, key);
+    const prev = change
+      ? `<small class="cf-prev" data-prev="${key}" data-prev-value="${change.previous}">
+           было ${change.previous.toLocaleString('ru-RU')}<span class="cf-prev-delta"></span>
+         </small>`
+      : '';
+    return `
+    <div class="field cf-stat">
       <label>${label}</label>
       <input class="input" type="number" name="stat-${key}" value="${stats[key]}" min="0" />
+      ${prev}
     </div>
   `;
+  };
+
+  // Группа характеристик: подзаголовок и сетка плиток. Раньше каждая группа была
+  // отдельной рамкой внутри свёрнутого блока — четыре коробки в коробке, и глаз цеплялся
+  // за вложенность, а не за значения.
+  const statGroup = (title, keys, extraClass = '') => `
+    <section class="cf-stat-group">
+      <h4 class="cf-stat-group-title">${title}</h4>
+      <div class="cf-stat-grid ${extraClass}">
+        ${keys.map(([key, label]) => statInput(key, label)).join('')}
+      </div>
+    </section>`;
 
   // Получаем текущий баланс и дату обновления для отображения подсказки
   const currentCoins = currentChar.ancientCoins || 0;
   const lastUpdateHint = currentChar.lastCoinUpdate 
     ? `(Последняя синхр.: ${new Date(currentChar.lastCoinUpdate).toLocaleDateString()})` 
-    : '(Еще не синхронизировалось)';
+    : '(Ещё не синхронизировалось)';
 
+  // Разметка повторяет вид раскрытой карточки (profileView.js): две колонки, слева —
+  // «кто это» и контакты, справа — характеристики, проходки и монеты. Имена полей и
+  // details.stats-fold сохранены: на них завязаны сохранение и разбор скриншота.
   const content = `
-    <div class="form-grid">
-      <!-- Базовая информация -->
-      <div class="two-cols">
-        <div class="field"><label>Никнейм *</label><input class="input" name="nick" value="${escapeHtml(currentChar.nick)}" required autofocus /></div>
-        <div class="field">
-          <label>Класс</label>
-          <select class="select" name="class">
-            ${noneClassOption}
-            ${classOptions}
-          </select>
-        </div>
-      </div>
-      <div class="two-cols">
-        <div class="field"><label>Уровень</label><input class="input" type="number" name="level" value="${currentChar.level}" min="1" /></div>
-        <div class="field"><label>Основная пати</label><select class="select" name="mainParty" id="char-main-party">${mainOptions}</select></div>
-      </div>
-      <div class="field"><label>Дополнительные пати <small class="muted">(если нужны; монеты и марафоны считаются по основной)</small></label><div class="party-chips" id="char-extra-parties">${partyChips}</div></div>
-
-      <!-- Небо -->
-      <div class="info-block" style="margin-top:16px;"><h4>Небо (Sky)</h4>
-        <div class="two-cols">
-          <div class="field">
-            <label>Название неба</label>
-            <select class="select" name="sky-name">
-              ${noneSkyOption}
-              ${skyNameOptions}
-            </select>
-          </div>
-          <div class="field">
-            <label>Уровень неба</label>
-            <select class="select" name="sky-level">
-              ${noneSkyLevelOption}
-              ${skyLevelOptions}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- ТЕГИ -->
-      <div class="field" style="margin-top:16px;">
-        <label>Теги (через запятую: «основа, твин, крафт»)</label>
-        <input class="input" type="text" name="tags" list="char-tag-list" autocomplete="off" value="${escapeHtml((currentChar.tags || []).join(', '))}" />
-        <datalist id="char-tag-list">${allTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>
-      </div>
-
-      <!-- КОНТАКТЫ (ТЕПЕРЬ ЗДЕСЬ, ПЕРЕД СТАТАМИ) -->
-      <details style="margin-top:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
-        <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные (для входа)</summary>
-        ${vaultStatus().ready ? '<p class="muted" style="font-size:0.75rem; margin:6px 0 0;">🔒 Хранятся в защищённом хранилище учётных данных ОС, а не в state.json</p>' : ''}
-        <div class="form-grid" style="margin-top:12px;">
-          <div class="field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
-          <div class="field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
-          <div class="field"><label>Recovery Email</label><input class="input" type="email" name="contact-recovery" value="${escapeHtml(contacts.recoveryEmail)}" /></div>
-          <div class="field"><label>Телефон</label><input class="input" type="tel" name="contact-phone" value="${escapeHtml(contacts.phone)}" /></div>
-        </div>
-      </details>
-
-      <!-- ХАРАКТЕРИСТИКИ: одним сворачиваемым блоком, чтобы форма не была простыней -->
-      <details class="info-block stats-fold" style="margin-top:16px;" open>
-        <summary>
-          <span class="stats-fold-title">📊 Характеристики</span>
-          <span class="stats-fold-note muted">Основные, бой и защита, показатели боя, PvE и пробивание</span>
-        </summary>
-        <div class="stats-fold-body">
-          <div class="stat-head">
-            <h4>Основные характеристики</h4>
-          </div>
-          <div class="four-cols">
-            ${statInput('endurance', 'Выносливость')}
-            ${statInput('intelligence', 'Интеллект')}
-            ${statInput('strength', 'Сила')}
-            ${statInput('agility', 'Ловкость')}
+    <div class="form-grid cf-grid">
+      <div class="pf-cols">
+        <div class="pf-col">
+          <div class="pf-panel">
+            <h4 class="pf-panel-title">Персонаж</h4>
+            <div class="two-cols">
+              <div class="field cf-field"><label>Никнейм *</label><input class="input" name="nick" value="${escapeHtml(currentChar.nick)}" required autofocus /></div>
+              <div class="field cf-field">
+                <label>Класс</label>
+                <select class="select" name="class">
+                  ${noneClassOption}
+                  ${classOptions}
+                </select>
+              </div>
+            </div>
+            <div class="two-cols">
+              <div class="field cf-field"><label>Уровень</label><input class="input" type="number" name="level" value="${currentChar.level}" min="1" /></div>
+              <div class="field cf-field"><label>Основная пати</label><select class="select" name="mainParty" id="char-main-party">${mainOptions}</select></div>
+            </div>
           </div>
 
-          <h4 class="stats-sub">Бой и Защита</h4>
-          <div class="four-cols">
-            ${statInput('hp', 'Здоровье')}
-            ${statInput('mp', 'Маг. энергия')}
-            ${statInput('levelBonus', 'Бонус к уровню (%)')}
-          </div>
-          <div class="four-cols">
-            ${statInput('physAttack', 'Физ. атака')}
-            ${statInput('physDefense', 'Физ. защита')}
-            ${statInput('magAttack', 'Маг. атака')}
-            ${statInput('magDefense', 'Маг. защита')}
+          <div class="pf-panel">
+            <h4 class="pf-panel-title">Пати</h4>
+            <div class="field cf-field">
+              <label class="cf-hint-label">Дополнительные <small class="muted">(монеты и марафоны считаются по основной)</small></label>
+              <div class="party-chips" id="char-extra-parties">${partyChips}</div>
+            </div>
           </div>
 
-          <h4 class="stats-sub">Показатели боя</h4>
-          <div class="three-cols">
-            ${statInput('critChance', 'Шанс крит. удара (%)')}
-            ${statInput('critDamage', 'Крит. урон (%)')}
-            ${statInput('atkSpeed', 'Скорость атаки')}
-          </div>
-          <div class="three-cols">
-            ${statInput('evasion', 'Уклонение')}
-            ${statInput('accuracy', 'Меткость')}
-            ${statInput('pa', 'Показатель атаки (ПА)')}
-          </div>
-          <div class="two-cols">
-            ${statInput('pz', 'Показатель защиты (ПЗ)')}
-            ${statInput('morale', 'Боевой дух')}
+          <div class="pf-panel">
+            <h4 class="pf-panel-title">Небо и теги</h4>
+            <div class="two-cols">
+              <div class="field cf-field">
+                <label>Название неба</label>
+                <select class="select" name="sky-name">
+                  ${noneSkyOption}
+                  ${skyNameOptions}
+                </select>
+              </div>
+              <div class="field cf-field">
+                <label>Уровень неба</label>
+                <select class="select" name="sky-level">
+                  ${noneSkyLevelOption}
+                  ${skyLevelOptions}
+                </select>
+              </div>
+            </div>
+            <div class="field cf-field">
+              <label class="cf-hint-label">Теги <small class="muted">(через запятую: «основа, твин, крафт»)</small></label>
+              <input class="input" type="text" name="tags" list="char-tag-list" autocomplete="off" value="${escapeHtml((currentChar.tags || []).join(', '))}" />
+              <datalist id="char-tag-list">${allTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>
+            </div>
           </div>
 
-          <h4 class="stats-sub">PvE и Пробивание</h4>
-          <div class="two-cols">
-            ${statInput('pvePa', 'Урон по монстрам (PvE PA)')}
-            ${statInput('pvePz', 'Защита от монстров (PvE PZ)')}
-          </div>
-          <div class="two-cols">
-            ${statInput('physPenetration', 'Физ. пробивание')}
-            ${statInput('magPenetration', 'Маг. пробивание')}
+          <details class="pf-panel cf-fold" open>
+            <summary class="pf-panel-title">Контактные данные <span class="muted cf-fold-note">для входа</span></summary>
+            ${vaultStatus().ready ? '<p class="cf-vault-note">🔒 Хранятся в защищённом хранилище учётных данных ОС, а не в state.json</p>' : ''}
+            <div class="two-cols">
+              <div class="field cf-field"><label>Email / Логин</label><input class="input" type="text" name="contact-email" value="${escapeHtml(contacts.email)}" /></div>
+              <div class="field cf-field"><label>Пароль</label><input class="input" type="text" name="contact-password" value="${escapeHtml(contacts.password)}" /></div>
+              <div class="field cf-field"><label>Recovery Email</label><input class="input" type="email" name="contact-recovery" value="${escapeHtml(contacts.recoveryEmail)}" /></div>
+              <div class="field cf-field"><label>Телефон</label><input class="input" type="tel" name="contact-phone" value="${escapeHtml(contacts.phone)}" /></div>
+            </div>
+          </details>
+
+          <!-- Проходки — в левую колонку, под контакты: их всего три числа, а справа
+               характеристик и так много, и третья колонка им только мешала -->
+          <div class="pf-panel">
+            <h4 class="pf-panel-title">Проходки в данжи</h4>
+            <div class="three-cols">
+              <div class="field cf-field"><label>Оружие</label><input class="input" type="number" name="pass-weapon" value="${passes.weapon}" min="0" /></div>
+              <div class="field cf-field"><label>Броня</label><input class="input" type="number" name="pass-armor" value="${passes.armor}" min="0" /></div>
+              <div class="field cf-field"><label>Реликвии</label><input class="input" type="number" name="pass-relic" value="${passes.relic}" min="0" /></div>
+            </div>
           </div>
         </div>
-      </details>
 
-      <!-- Проходки в данжи -->
-      <div class="info-block" style="margin-top:16px;"><h4>Проходки в данжи</h4>
-        <div class="three-cols">
-          <div class="field"><label>Оружие</label><input class="input" type="number" name="pass-weapon" value="${passes.weapon}" min="0" /></div>
-          <div class="field"><label>Броня</label><input class="input" type="number" name="pass-armor" value="${passes.armor}" min="0" /></div>
-          <div class="field"><label>Реликвии</label><input class="input" type="number" name="pass-relic" value="${passes.relic}" min="0" /></div>
-        </div>
-      </div>
+        <div class="pf-col">
+          <details class="pf-panel cf-fold stats-fold" open>
+            <summary class="pf-panel-title">📊 Характеристики <span class="muted cf-fold-note">основные, бой, показатели, PvE</span></summary>
+            <div class="cf-stat-groups">
+              ${statGroup('Основные характеристики', [
+                ['endurance', 'Выносливость'], ['intelligence', 'Интеллект'],
+                ['strength', 'Сила'], ['agility', 'Ловкость']
+              ], 'cf-stat-grid-2x2')}
+              ${statGroup('Бой и защита', [
+                ['hp', 'Здоровье'], ['mp', 'Маг. энергия'],
+                ['physAttack', 'Физ. атака'], ['physDefense', 'Физ. защита'],
+                ['magAttack', 'Маг. атака'], ['magDefense', 'Маг. защита']
+              ])}
+              ${statGroup('Показатели боя', [
+                ['critChance', 'Шанс крит. удара (%)'], ['critDamage', 'Крит. урон (%)'],
+                ['atkSpeed', 'Скорость атаки'], ['evasion', 'Уклонение'], ['accuracy', 'Меткость'],
+                ['pa', 'Показатель атаки (ПА)'], ['pz', 'Показатель защиты (ПЗ)'], ['morale', 'Боевой дух'],
+                ['levelBonus', 'Бонус к уровню (%)'],
+                ['physPenetration', 'Физ. пробивание'], ['magPenetration', 'Маг. пробивание']
+              ])}
+              ${statGroup('PvE', [
+                ['pvePa', 'Урон по монстрам'], ['pvePz', 'Защита от монстров']
+              ])}
+            </div>
+          </details>
 
-      <!-- БЛОК ДРЕВНИХ МОНЕТ (В САМОМ НИЗУ) -->
-      <div class="info-block" style="margin-top:16px; background:rgba(255,215,0,0.05); padding:12px; border-radius:4px; border:1px solid rgba(255,215,0,0.2);">
-        <h4 style="color:gold; margin-top:0;">💰 Древние монеты</h4>
-        <div class="field">
-          <label>Текущий баланс (можно изменить вручную)</label>
-          <input class="input" type="number" name="coins" value="${currentCoins}" min="0" step="0.1" style="font-size:1.2rem; font-weight:bold; color:gold;" />
-          <small class="help-text" style="display:block; margin-top:4px; color:#888;">
-             ${lastUpdateHint}
-          </small>
+          <div class="pf-panel cf-coins">
+            <h4 class="pf-panel-title cf-coins-title">💰 Древние монеты</h4>
+            <div class="field cf-field">
+              <label>Текущий баланс <small class="muted">(можно изменить вручную)</small></label>
+              <input class="input cf-coins-input" type="number" name="coins" value="${currentCoins}" min="0" step="0.1" />
+              <small class="help-text cf-coins-hint">${lastUpdateHint}</small>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -205,6 +209,27 @@ export function openCharacterForm(char = null) {
       if (isMain) cb.checked = false;
     });
     sel.addEventListener('change', sync);
+  }, 0);
+
+  // Разница с прошлым значением — прямо в форме, при вводе.
+  // Пока пользователь печатает, под полем видно, насколько новое значение отличается от
+  // прошлого: «+120» зелёным вверх, «−30» красным вниз. Само прошлое значение не меняется —
+  // оно подписано один раз при открытии формы.
+  setTimeout(() => {
+    document.querySelectorAll('#modal-root .cf-prev').forEach(hint => {
+      const previous = Number(hint.dataset.prevValue) || 0;
+      const input = hint.parentElement?.querySelector(`input[name="stat-${hint.dataset.prev}"]`);
+      const out = hint.querySelector('.cf-prev-delta');
+      if (!input || !out) return;
+      const update = () => {
+        const delta = (Number(input.value) || 0) - previous;
+        out.textContent = delta === 0 ? '' : `${delta > 0 ? '+' : '−'}${Math.abs(delta).toLocaleString('ru-RU')}`;
+        out.classList.toggle('is-up', delta > 0);
+        out.classList.toggle('is-down', delta < 0);
+      };
+      input.addEventListener('input', update);
+      update();
+    });
   }, 0);
 
   // Разбор скриншота окна характеристик. Разметка формы появляется только внутри showModal
@@ -253,6 +278,8 @@ export function openCharacterForm(char = null) {
   showModal({
     title: isEdit ? `Редактировать: ${currentChar.nick}` : 'Новый персонаж',
     content,
+    // Две колонки, как у раскрытой карточки: обычная ширина окна режет поля характеристик
+    wide: true,
     submitText: isEdit ? 'Сохранить изменения' : 'Создать персонажа',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
@@ -333,6 +360,11 @@ export function openCharacterForm(char = null) {
             
           updatedAt: nowISO()
         };
+
+        // Помним значения, которые были до сохранения: в профиле рядом с текущим числом
+        // показывается разница («было 96 467, стало 96 587») и когда это было.
+        // Новому персонажу история не нужна — сравнивать не с чем
+        if (isEdit) rememberStatsBefore(newCharData, currentChar.stats, newCharData.updatedAt);
 
         let idNote = '';
         if (isEdit) {

@@ -15,6 +15,7 @@ import {
   statusInfo, rowLabel, rowNotes, chestLine, summarize, summaryText, taskLevel, isRerunnable, plainRow
 } from './caravanCore.js';
 import { runCaravanBatch } from './caravanRunner.js';
+import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -44,6 +45,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
   let lastDry = false;
 
   const dlg = openOverlay({ title: '🧰 Сундук караванщика', wide: true, onClose: () => { if (running) running.cancelled = true; } });
+  dlg.foot.classList.add('sd-foot');
   const alive = () => dlg.el.isConnected;
 
   /* ---------------------------- форма ---------------------------- */
@@ -59,11 +61,11 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
   function listHtml() {
     const list = visibleChars();
-    if (!list.length) return '<div class="promo-empty">Никого не найдено</div>';
+    if (!list.length) return '<div class="promo-empty empty-state">Никого не найдено</div>';
     return list.map(c => {
       const parties = partiesOf(c, state.parties).map(p => p.name).join(', ');
       return `<label class="promo-item"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-        <span>${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted">${escapeHtml(parties)}</span></label>`;
+        <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
     }).join('');
   }
 
@@ -94,21 +96,25 @@ export function openCaravanDialog({ ids = [] } = {}) {
   function renderForm() {
     dlg.sub.textContent = 'Выберите персонажей и нажмите «Проверить инвентари»: у каждого будут открыты все «Сундуки караванщика».';
     dlg.body.innerHTML = `
-      <p class="promo-muted promo-hint">Для каждого персонажа приложение зайдёт на сайт, откроет инвентарь, найдёт «Сундуки караванщика»,
-        отметит в них все предметы и нажмёт «Перевести». Другие сундуки (например, «Подарочный мешок») не трогаются.
-        Персонажи одного аккаунта делят один инвентарь — достаточно выбрать одного из них.</p>
-      <div class="promo-quick">
-        <input class="input" id="caravan-search" placeholder="Поиск: ник, пати, тег" value="${escapeHtml(search)}">
-        <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
-        <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
-        <button class="btn ghost small" data-q="none">Снять выбор</button>
-      </div>
-      <div class="promo-list" id="caravan-list">${listHtml()}</div>
+      ${noteHtml({
+        icon: '🧰', title: 'Что сделает это окно',
+        text: 'Для каждого выбранного персонажа приложение зайдёт на сайт, откроет инвентарь, найдёт «Сундуки караванщика», '
+          + 'отметит в них все предметы и нажмёт «Перевести». Другие сундуки (например, «Подарочный мешок») не трогаются. '
+          + 'Персонажи одного аккаунта делят один инвентарь — достаточно выбрать одного из них.'
+      })}
       <div class="promo-warn" id="caravan-nologin" hidden></div>
-      <div class="promo-count" id="caravan-count"></div>`;
+      ${sectionHtml('Персонажи', { aside: `<span class="sd-count" id="caravan-count"></span>`, body: `
+        <div class="promo-quick">
+          <input class="input" id="caravan-search" aria-label="Поиск персонажа" placeholder="Поиск: ник, пати, тег" value="${escapeHtml(search)}">
+          <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
+          <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
+          <button class="btn ghost small" data-q="none">Снять выбор</button>
+        </div>
+        <div class="promo-list" id="caravan-list">${listHtml()}</div>` })}
+      `;
     dlg.foot.innerHTML = `
-      <span style="flex:1"></span>
-      <button class="btn ghost" data-act="close">Закрыть</button>
+      <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="dry" title="Откроет инвентарь и посчитает «Сундуки караванщика», но ничего не откроет и не нажмёт">👁 Только посчитать сундуки</button>
       <button class="btn primary" data-act="start" title="Откроет инвентарь, найдёт «Сундуки караванщика», отметит все предметы и нажмёт «Перевести»">📦 Проверить инвентари</button>`;
     updateCount();
@@ -165,36 +171,54 @@ const task = startTask(`🧰 Сундук караванщика${dry ? ' (то�
     dlg.sub.textContent = dry
       ? '👁 Только подсчёт: инвентарь открывается, сундуки считаются, ничего не нажимается.'
       : 'Идёт открытие: персонажи обрабатываются несколько одновременно, сундуки у каждого — по очереди.';
-    dlg.body.innerHTML = `<div class="promo-progress" id="caravan-progress">0 из ${chars.length}</div>
-      <div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${
-  chars.map(c => `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-cell="${escapeHtml(c.id)}">${cellHtml(null)}</td></tr>`).join('')}</tbody></table></div>`;
-    dlg.foot.innerHTML = `<span class="promo-muted" style="flex:1">«Стоп» не начинает новых персонажей; уже начатый закончится, открытые сундуки учтутся.</span>
+    dlg.body.innerHTML = `${progressHtml('caravan-progress', 0, chars.length)}
+      ${sectionHtml('Ход работы', { body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${
+  chars.map(c => `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-cell="${escapeHtml(c.id)}">${cellHtml(null)}</td></tr>`).join('')}</tbody></table></div>` })}`;
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых персонажей; уже начатый закончится, открытые сундуки учтутся.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = (e) => { signal.cancelled = true; e.currentTarget.disabled = true; e.currentTarget.textContent = '⏳ Останавливаю…'; };
   }
 
   function updateRunning(row, done, total) {
     setCell(row.charId, cellHtml(row));
-    const p = dlg.body.querySelector('#caravan-progress');
-    if (p) p.textContent = `${done} из ${total}`;
+    setProgress(dlg.body, 'caravan-progress', done, total);
   }
 
   /* ------------------------- результаты -------------------------- */
+
+  /** Итог запуска чистыми чипами — только то, что действительно было. */
+  const resultChips = (s, dry) => chipsHtml(dry
+    ? [
+      { icon: '👁', label: 'сундуков найти', value: s.found, tone: 'ok' },
+      { icon: '➖', label: 'без сундуков', value: s.nothing },
+      { icon: '🔴', label: 'без входа', value: s.noLogin, tone: 'err' },
+      { icon: '❌', label: 'проблем', value: s.failed + s.challenge, tone: 'err' }
+    ]
+    : [
+      { icon: '📦', label: 'открыто сундуков', value: s.opened, tone: 'ok' },
+      { icon: '⚠️', label: 'открыто не всё', value: s.partial, tone: 'warn' },
+      { icon: '➖', label: 'без сундуков', value: s.nothing },
+      { icon: '🔴', label: 'без входа', value: s.noLogin, tone: 'err' },
+      { icon: '❓', label: 'не проверено', value: s.unknown, tone: 'warn' },
+      { icon: '❌', label: 'ошибок', value: s.failed, tone: 'err' },
+      { icon: '⏭', label: 'не выполнено', value: s.notRun }
+    ]);
 
   function renderResults(stopped) {
     const s = summarize(lastRows);
     dlg.sub.textContent = summaryText(lastRows, { dry: lastDry, stopped });
     const byId = new Map(lastRows.map(r => [r.charId, r]));
     dlg.body.innerHTML = `
-      <div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${
-  lastChars.map(c => `<tr><td><b>${escapeHtml(c.nick)}</b></td><td>${cellHtml(byId.get(c.id) || plainRow(c, 'not_run'))}</td></tr>`).join('')}</tbody></table></div>
+      ${resultChips(s, lastDry)}
+      ${sectionHtml('Итог по персонажам', { body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${
+  lastChars.map(c => `<tr><td><b>${escapeHtml(c.nick)}</b></td><td>${cellHtml(byId.get(c.id) || plainRow(c, 'not_run'))}</td></tr>`).join('')}</tbody></table></div>` })}
       ${lastDry ? '<p class="promo-muted">Ничего не открыто и не нажато. Если сундуки найдены — можно открывать по-настоящему.</p>' : ''}
       ${s.unknown ? '<p class="promo-warn">❓ «Результат не проверен»: кнопка нажата, но инвентарь после этого прочитать не удалось. Проверьте инвентарь на сайте.</p>' : ''}
       ${s.partial ? '<p class="promo-warn">⚠ Часть сундуков осталась в инвентаре: «Повторить» откроет только их.</p>' : ''}`;
     const found = lastDry && s.found > 0;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
-      <span style="flex:1"></span>
+      <span class="sd-foot-spacer"></span>
       ${found ? '<button class="btn primary" data-act="real">📦 Открыть найденные сундуки</button>' : ''}
       ${lastDry ? '<button class="btn secondary" data-act="dry-again">👁 Ещё раз</button>'
     : `<button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить${s.rerun ? ` (${s.rerun})` : ''}</button>`}

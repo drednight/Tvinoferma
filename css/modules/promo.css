@@ -1,17 +1,147 @@
 /* css/modules/promo.css
-   Диалоги активации промокода (Issue #25) и передачи предметов (Issue #26). */
+   Диалоги скриптов: промокоды (promo.js), передача предметов (transfer.js),
+   активация подарков за Древние монеты (shop.js) и сундук караванщика (caravan.js).
+
+   Общий вид всех четырёх окон собран внизу файла — блок «Общий язык диалогов скриптов»
+   (классы sd-*): пояснение «что сделает скрипт», пронумерованные секции формы, счётчики,
+   чипы итогов, полоса прогресса. Ниже — только то, что касается отдельного окна. */
 
 /* --- Промокоды --- */
-.promo-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 6px; }
-.promo-quick .input { flex: 1 1 160px; min-width: 120px; }
-.promo-list { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px; background: var(--surface-2); }
-.promo-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--radius-xs); cursor: pointer; }
-.promo-item:hover { background: rgba(255, 255, 255, 0.05); }
-.promo-muted { color: var(--text-dim); font-size: 0.85em; }
-.promo-empty { padding: 16px; text-align: center; color: var(--text-dim); }
-.promo-count { margin: 6px 2px; font-size: 0.9em; color: var(--text-dim); }
 
-/* Подтверждение риска при передаче предметов: красная рамка и крупная галочка */
+/* Панель поиска и быстрых действий: одна карточка, чтобы ряд кнопок не висел в воздухе */
+.promo-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.promo-quick .input { flex: 1 1 180px; min-width: 140px; }
+.promo-quick .btn { flex: 0 0 auto; }
+
+/* Список выбора: ряды с отметкой. Отмеченная строка подсвечена рамкой и подложкой,
+   поэтому выбор виден и без опознания по цвету галочки */
+.promo-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  background: var(--surface-2);
+}
+.promo-item {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-sm);
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease);
+}
+.promo-item:hover { background: rgba(255, 255, 255, 0.05); border-color: var(--border); }
+.promo-item:has(input:checked) { background: var(--accent-soft); border-color: var(--accent-line); }
+.promo-item:focus-within { border-color: var(--accent); }
+.promo-item input[type='checkbox'] { width: 16px; height: 16px; flex: none; accent-color: var(--accent); cursor: pointer; }
+.promo-item b { font-weight: 650; }
+.promo-dot { flex: none; }
+.promo-item-tags { margin-left: auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+
+.promo-muted { color: var(--text-dim); font-size: 0.85em; }
+.promo-hint { margin: 6px 0 0; font-size: 0.82rem; line-height: 1.45; }
+
+/* Пустой результат поиска: тот же вид, что у остальных пустых состояний приложения */
+.promo-empty { padding: 22px 16px; text-align: center; color: var(--text-dim); border-radius: var(--radius-sm); font-size: 0.86rem; }
+
+/* Разбор кодов под полем: «новый» / «уже был введён» / «не похоже на код» */
+.promo-codes-info { display: grid; gap: 5px; font-size: 0.85em; }
+.promo-codes-info code { padding: 1px 5px; border-radius: var(--radius-xs); background: rgba(255, 255, 255, 0.06); }
+.promo-known { color: var(--success); }
+
+/* Предупреждения: рамка и подложка, а не просто цветной текст */
+.promo-warn {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid rgba(224, 175, 104, 0.4);
+  border-radius: var(--radius-xs);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.promo-warn code { padding: 1px 5px; border-radius: var(--radius-xs); background: rgba(224, 175, 104, 0.16); }
+.tr-plan-item > .promo-warn, .promo-reward > .promo-warn { margin-top: 6px; }
+.promo-alert {
+  padding: 10px 12px;
+  border: 1px solid rgba(247, 118, 142, 0.5);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.promo-alert code { padding: 1px 5px; border-radius: var(--radius-xs); background: rgba(247, 118, 142, 0.16); }
+
+/* Таблицы «персонаж × код» и результатов: заголовок приглушён, последняя строка без линии */
+.promo-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.promo-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+.promo-table th, .promo-table td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.promo-table th { color: var(--text-dim); font-weight: 600; font-size: 0.78rem; white-space: nowrap; }
+.promo-table tbody tr:last-child td { border-bottom: 0; }
+.promo-table tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+.promo-table code { padding: 1px 5px; border-radius: var(--radius-xs); background: rgba(255, 255, 255, 0.06); }
+
+/* Итог по кодам и награды */
+.promo-sums { display: grid; gap: 6px; font-size: 0.86rem; }
+.promo-code-sum { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-2); line-height: 1.45; }
+.promo-code-sum code { padding: 1px 5px; border-radius: var(--radius-xs); background: rgba(255, 255, 255, 0.06); }
+.promo-reward { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-2); font-size: 0.84rem; }
+.promo-reward > summary { cursor: pointer; font-weight: 600; color: var(--text-dim); }
+.promo-reward[open] > summary { margin-bottom: 6px; }
+.promo-reward ul, .promo-log-list { margin: 6px 0 0; padding-left: 20px; }
+.promo-log-h { margin: 8px 0 4px; font-weight: 650; }
+
+/* --- Передача предметов --- */
+.tr-top { display: flex; flex-wrap: wrap; gap: var(--gap); align-items: flex-end; }
+.tr-top .field { flex: 1 1 260px; margin: 0; }
+.tr-top .btn { flex: 0 1 auto; }
+.tr-body > * { flex: none; }   /* окно прокручивается; список браузеров не схлопывается под раскрытым планом */
+.tr-list { min-height: 140px; max-height: min(38vh, 320px); }
+.tr-plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.tr-plan[hidden] { display: none; }
+.tr-plan-item { padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-1); font-size: 0.86rem; line-height: 1.45; }
+.tr-items { margin: 6px 0 0; padding-left: 20px; columns: 2 260px; font-size: 0.88em; }
+.tr-items li { break-inside: avoid; }
+.tr-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.1fr) auto minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(190px, 1.5fr);
+  gap: var(--gap-sm);
+  align-items: center;
+  cursor: default;
+}
+.tr-refresh { padding: 4px 9px; }
+.tr-pick { display: flex; align-items: center; gap: var(--gap-sm); cursor: pointer; min-width: 0; }
+/* Что известно о браузере — до двух строк: подписывать серверы, число персонажей и «к передаче» целиком */
+.tr-info { min-width: 0; font-size: 0.8rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.tr-recipient, .tr-server { width: 100%; min-width: 0; }
+.tr-summary { display: grid; gap: 6px; font-size: 0.9rem; }
+.tr-notes { margin: 0; }
+.tr-line { font-size: 0.86rem; }
 .tr-ack-box {
   margin-top: 12px;
   padding: 12px 14px;
@@ -24,49 +154,105 @@
 }
 .tr-ack { display: flex; gap: 10px; align-items: flex-start; font-size: 1.02em; font-weight: 700; cursor: pointer; }
 .tr-ack input, .tr-force input { width: 20px; height: 20px; flex: none; margin-top: 1px; cursor: pointer; accent-color: var(--danger); }
-.tr-force { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9em; cursor: pointer; padding-top: 8px; border-top: 1px dashed rgba(247, 118, 142, 0.5); }
+.tr-force { display: flex; gap: 10px; align-items: flex-start; font-size: 0.9em; line-height: 1.45; cursor: pointer; padding-top: 8px; border-top: 1px dashed rgba(247, 118, 142, 0.5); }
 .tr-ack-box > .btn { align-self: flex-start; }
-.promo-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; font-size: 0.9em; }
-.promo-progress { margin-bottom: 8px; font-weight: 600; }
-.promo-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.promo-table th, .promo-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-.promo-table th { color: var(--text-dim); font-weight: 600; }
-.promo-warn { margin-top: 10px; color: var(--warning); font-size: 0.9em; }
-.promo-hint { margin: 4px 0 0; }
-.promo-codes-info { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; font-size: 0.9em; }
-.promo-known { color: var(--success); }
-.promo-scroll { overflow-x: auto; }
-.promo-alert { margin-bottom: 10px; padding: 9px 11px; border-radius: var(--radius-sm); border: 1px solid rgba(247, 118, 142, 0.5); background: var(--danger-soft); }
-.promo-sums { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.promo-reward ul, .promo-log-list { margin: 4px 0 4px 18px; padding: 0; }
-.promo-reward summary { cursor: pointer; }
-.promo-log-h { margin: 8px 0 4px; font-weight: 600; }
-
-/* --- Передача предметов --- */
-.tr-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-.tr-top .field { flex: 1 1 260px; margin: 0; }
-.tr-top .btn { flex: 0 1 auto; }
-.tr-body > * { flex: none; }   /* окно прокручивается; список браузеров не схлопывается под раскрытым планом */
-.tr-list { min-height: 140px; max-height: min(38vh, 320px); }
-.tr-plan { display: flex; flex-direction: column; gap: 8px; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
-.tr-plan[hidden] { display: none; }
-.tr-items { margin: 4px 0 0; padding-left: 22px; columns: 2 260px; font-size: 0.92em; }
-.tr-items li { break-inside: avoid; }
-.tr-row {
-  display: grid;
-  grid-template-columns: minmax(150px, 1.1fr) auto minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(190px, 1.5fr);
-  gap: 8px;
-  align-items: center;
-  cursor: default;
-}
-.tr-refresh { padding: 2px 8px; }
-.tr-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.tr-recipient, .tr-server { width: 100%; min-width: 0; }
-.tr-summary { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; font-size: 0.92em; }
-.tr-notes { margin-top: 4px; }
 @media (max-width: 760px) { .tr-row { grid-template-columns: 1fr; } }
 
 /* --- Сундук караванщика --- */
 .caravan-res-ok { color: var(--success); }
 .caravan-res-warn { color: var(--warning); }
 .caravan-res-error { color: var(--danger); }
+.caravan-res-info { color: var(--text-dim); }
+
+/* ==========================================================================
+   Общий язык диалогов скриптов
+   Четыре окна выглядят одинаково: сверху пояснение «что сделает скрипт»,
+   ниже пронумерованные секции формы, список выбора с отметкой строк,
+   полоса прогресса и итог чипами. Собирается js/modules/automation/scriptUi.js.
+   ========================================================================== */
+
+/* Пояснение «что сделает скрипт»; тон (info | warn | danger) задаёт смысл блока */
+.sd-note {
+  flex: none;
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: flex-start;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+.sd-note-icon { flex: none; font-size: 1.05rem; line-height: 1.4; }
+.sd-note-body { display: grid; gap: 3px; min-width: 0; }
+.sd-note-title { font-size: 0.84rem; font-weight: 700; }
+.sd-note-text { color: var(--text-dim); }
+.sd-note-text b { color: var(--text); }
+.sd-note-warn { border-color: rgba(224, 175, 104, 0.45); background: var(--warning-soft); }
+.sd-note-warn .sd-note-title, .sd-note-warn .sd-note-text { color: var(--warning); }
+.sd-note-danger { border-color: rgba(247, 118, 142, 0.5); background: var(--danger-soft); }
+.sd-note-danger .sd-note-title, .sd-note-danger .sd-note-text { color: var(--danger); }
+
+/* Секция формы: подпись с номером шага и пояснением, под ней содержимое */
+.sd-section { flex: none; display: grid; gap: var(--gap-sm); }
+.sd-section-head { display: flex; align-items: baseline; gap: var(--gap-sm); flex-wrap: wrap; }
+.sd-section-title { display: inline-flex; align-items: center; gap: var(--gap-sm); font-size: 0.94rem; font-weight: 650; color: var(--text); }
+.sd-section-title[for] { cursor: pointer; }
+.sd-step {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.sd-section-hint { color: var(--text-faint); font-size: 0.78rem; }
+/* Счётчики справа в подписи секции: видны всегда, без прокрутки окна */
+.sd-section-aside { display: inline-flex; align-items: baseline; gap: var(--gap); margin-left: auto; }
+
+/* Счётчик выбранного и сводка «что будет» */
+.sd-count { font-size: 0.88rem; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+.sd-count-meta { font-size: 0.8rem; color: var(--text-faint); }
+.sd-summary { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); font-size: 0.9rem; line-height: 1.45; }
+.sd-summary-line b { font-variant-numeric: tabular-nums; }
+
+/* Итог запуска: чипы только с тем, что действительно было */
+.sd-chips { flex: none; display: flex; flex-wrap: wrap; gap: 6px; }
+.sd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.sd-chip b { color: var(--text); font-weight: 700; }
+.sd-chip-ok { border-color: rgba(158, 206, 106, 0.35); background: var(--success-soft); color: var(--success); }
+.sd-chip-ok b { color: var(--success); }
+.sd-chip-warn { border-color: rgba(224, 175, 104, 0.35); background: var(--warning-soft); color: var(--warning); }
+.sd-chip-warn b { color: var(--warning); }
+.sd-chip-err { border-color: rgba(247, 118, 142, 0.35); background: var(--danger-soft); color: var(--danger); }
+.sd-chip-err b { color: var(--danger); }
+
+/* Прогресс работы: «N из M», процент и заполняемая полоса */
+.sd-progress { flex: none; display: grid; gap: 7px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.sd-progress-top { display: flex; align-items: baseline; justify-content: space-between; gap: var(--gap); font-size: 0.9rem; }
+.sd-progress-top b { font-variant-numeric: tabular-nums; }
+.sd-progress-pct { color: var(--text-dim); font-size: 0.84rem; font-variant-numeric: tabular-nums; }
+.sd-bar { height: 8px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.sd-bar > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.25s var(--ease); }
+
+/* Подвал окна: кнопки одного размера, главная — шире и по центру текста */
+.sd-foot .btn { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; }
+.sd-foot .btn.primary { min-width: 138px; justify-content: center; }
+.sd-foot-spacer { flex: 1 1 auto; }

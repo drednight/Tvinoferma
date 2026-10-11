@@ -17,6 +17,7 @@ import { scanRosters, runTransferBatch } from './transferRunner.js';
 import { getServerStatus, refreshServerStatus, onServerStatus } from '../servers/serverStatus.js';
 import { serverStatusHtml } from '../servers/serverStatusView.js';
 import { openTransferLog } from './transferLogView.js';
+import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -77,6 +78,7 @@ export function openTransferDialog({ ids = [] } = {}) {
   let offStatus = () => {};
   const dlg = openOverlay({ title: '📦 Передача предметов в игру', wide: true, onClose: () => { offStatus(); if (running) running.cancelled = true; } });
   dlg.body.classList.add('tr-body');   // блоки не сжимаются, окно прокручивается (иначе список браузеров схлопывается)
+  dlg.foot.classList.add('sd-foot');
   const alive = () => dlg.el.isConnected;
   // Названия всех серверов — со страницы «Статус серверов» (общие данные приложения: плашка в шапке, чтение при запуске и по расписанию)
   const servers = () => serverList(rosters, getServerStatus().status);
@@ -146,13 +148,19 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   function listHtml() {
     const list = visibleChars();
-    if (!list.length) return '<div class="promo-empty">Никого не найдено</div>';
+    if (!list.length) return '<div class="promo-empty empty-state">Никого не найдено</div>';
     return list.map(rowHtml).join('');
   }
 
   function renderForm() {
     dlg.sub.textContent = '';
     dlg.body.innerHTML = `
+      ${noteHtml({
+        icon: '📦', title: 'Что сделает это окно',
+        text: 'Всё, что ждёт передачи на аккаунте сайта, уходит персонажу, выбранному в строке, на выбранном там же сервере. '
+          + 'Сервер в строке обязателен: без него браузер пропускается. Сундуки не открываются — награду выбирают на сайте. '
+          + 'Передача необратима, поэтому перед запуском стоит прочитать блок «Что будет передано».'
+      })}
       <details class="tr-servers" id="tr-servers">
         <summary title="Серверы нужны не для перевода, а чтобы в списках рядом с ними были зелёные/красные точки. Открывать здесь нечего — обновление страницы серверов есть ниже.">🖥 Статус серверов</summary>
         <div class="tr-top">
@@ -163,21 +171,19 @@ export function openTransferDialog({ ids = [] } = {}) {
       <div class="tr-top">
         <button class="btn secondary small" data-act="refresh-all" title="Прочитать у ВСЕХ браузеров приложения серверы, персонажей и то, что ждёт передачи (галочки не нужны)">🔄 Обновить информацию по всем персонажам</button>
       </div>
-      <p class="promo-muted promo-hint">Предметы передаются <b>с сайта в игру</b>: всё, что ждёт передачи на аккаунте браузера, уходит персонажу, выбранному в строке, на выбранном там сервере.
-        Сервер в строке обязателен: без него браузер пропускается. Получатель не выбран, а на сервере один персонаж — передаём ему; персонажей несколько и никто не выбран — не передаём. Сундуки не открываются (награду выбирают на сайте).</p>
       <div id="tr-notes">${notesHtml()}</div>
-      <div class="promo-quick">
-        <input class="input" id="tr-search" placeholder="Поиск: ник, класс, тег" value="${escapeHtml(search)}">
-        <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
-        <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
-        <button class="btn ghost small" data-q="none">Снять выбор</button>
-        <button class="btn secondary small" data-act="refresh-selected" id="tr-check-btn" title="Прочитать серверы, персонажей и то, что ждёт передачи — только у отмеченных (остальные не трогаем)"></button>
-        <button class="btn secondary small" data-q="plan" id="tr-plan-btn" title="Расписать по каждому браузеру: куда и какие предметы будут переданы"></button>
-      </div>
-      <div class="promo-list tr-list" id="tr-list">${listHtml()}</div>
-      <div class="promo-count" id="tr-count"></div>
-      <div class="tr-summary" id="tr-summary"></div>
-      <div class="tr-plan" id="tr-plan" hidden></div>
+      ${sectionHtml('Браузеры и получатели', { hint: 'сервер и получатель выбираются в каждой строке', aside: `<span class="sd-count" id="tr-count"></span>`, body: `
+        <div class="promo-quick">
+          <input class="input" id="tr-search" aria-label="Поиск браузера" placeholder="Поиск: ник, класс, тег" value="${escapeHtml(search)}">
+          <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
+          <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
+          <button class="btn ghost small" data-q="none">Снять выбор</button>
+          <button class="btn secondary small" data-act="refresh-selected" id="tr-check-btn" title="Прочитать серверы, персонажей и то, что ждёт передачи — только у отмеченных (остальные не трогаем)"></button>
+          <button class="btn secondary small" data-q="plan" id="tr-plan-btn" title="Расписать по каждому браузеру: куда и какие предметы будут переданы"></button>
+        </div>
+        <div class="promo-list tr-list" id="tr-list">${listHtml()}</div>
+        <div class="tr-summary" id="tr-summary"></div>
+        <div class="tr-plan" id="tr-plan" hidden></div>` })}
       <div class="tr-ack-box">
         <label class="tr-ack"><input type="checkbox" id="tr-ack"> <span>⚠ Понимаю, что передача необратима: предметы уйдут в игру и вернуть их нельзя.</span></label>
         <label class="tr-force"><input type="checkbox" id="tr-force" ${force ? 'checked' : ''}> <span><b>Обойти ограничения приложения</b> и попытаться передать всё на указанных персонажей: запомненные ограничения («только на другой сервер») не применяются, отмечаются все предметы. Ограничения самого сайта (например, «награды можно перевести после 20:00…») это не отменяет: сайт может отклонить передачу.</span></label>
@@ -185,8 +191,8 @@ export function openTransferDialog({ ids = [] } = {}) {
       </div>`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="log" title="Журнал передач">📜 Журнал</button>
-      <span style="flex:1"></span>
-      <button class="btn ghost" data-act="close">Закрыть</button>
+      <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="dry" title="Пройти все шаги, но не нажимать «Передать»">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start" disabled>📦 Передать</button>`;
     updateAll();
@@ -207,8 +213,10 @@ export function openTransferDialog({ ids = [] } = {}) {
     const run = plans.filter(p => p.run).length;
     const skipped = plans.length - run;
     return `${force ? '<div class="promo-alert">⚠ Обход ограничений включён: приложение не пропускает акции, которые сайт ранее принимал только на другой сервер. Сайт может отклонить такие предметы предупреждением.</div>' : ''}
-      <div class="promo-count">Будет передано с аккаунтов: ${run} из ${plans.length}.${skipped ? ` Пропущено: ${skipped} (причины — в «Что будет передано»).` : ''}</div>
-      <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Лимит сайта «не более 6 предметов за раз» снят: отмечаются все предметы.</div>`;
+      <div class="sd-summary">
+        <div class="sd-summary-line">Будет передано с аккаунтов: <b>${run}</b> из <b>${plans.length}</b>${skipped ? `. Пропущено: <b>${skipped}</b> — причины в блоке «Что будет передано».` : '.'}</div>
+        <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Лимит сайта «не более 6 предметов за раз» снят: отмечаются все предметы.</div>
+      </div>`;
   }
 
   /** Предметы, которые сайт принимает только на другой сервер: на этом они не отмечаются. */
@@ -360,10 +368,10 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   function renderScanning(chars, signal) {
     dlg.sub.textContent = 'Читаю со страницы сайта, какие у аккаунтов серверы и персонажи и что ждёт передачи. Ничего не отправляется.';
-    dlg.body.innerHTML = `<div class="promo-progress" id="tr-progress">0 из ${chars.length}</div>
-      <div class="promo-scroll"><table class="promo-table"><tbody>${chars.map(c =>
-        `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-scan="${escapeHtml(c.id)}"><span class="promo-muted">⏳ в очереди</span></td></tr>`).join('')}</tbody></table></div>`;
-    dlg.foot.innerHTML = `<span class="promo-muted" style="flex:1">«Стоп» не начинает новых чтений; начатые завершатся.</span>
+    dlg.body.innerHTML = `${progressHtml('tr-progress', 0, chars.length)}
+      ${sectionHtml('Ход чтения', { body: `<div class="promo-scroll"><table class="promo-table"><tbody>${chars.map(c =>
+    `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-scan="${escapeHtml(c.id)}"><span class="promo-muted">⏳ в очереди</span></td></tr>`).join('')}</tbody></table></div>` })}`;
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых чтений; начатые завершатся.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
   }
@@ -379,8 +387,7 @@ export function openTransferDialog({ ids = [] } = {}) {
           : `✅ ${escapeHtml(r?.shards.length ? r.shards.map(s => s.name).join(', ') : 'персонажей нет')}${r?.pending ? ` · к передаче: ${r.pending.items.length}` : ''}`
         : `❌ ${escapeHtml(row.status === 'not_logged_in' ? 'нет входа' : row.status === 'challenge' ? 'проверка безопасности' : errorText(row.error))}`;
     }
-    const p = dlg.body.querySelector('#tr-progress');
-    if (p) p.textContent = `${done} из ${total}`;
+    setProgress(dlg.body, 'tr-progress', done, total);
   }
 
   function bindStop(signal) {
@@ -447,8 +454,9 @@ export function openTransferDialog({ ids = [] } = {}) {
     dlg.sub.textContent = dry
       ? 'Пробный запуск: выбираю сервер, персонажа и предметы, но «Передать» не нажимаю.'
       : 'Идёт передача: аккаунты обрабатываются несколько одновременно. После «Передать» сайт открывает историю передач — по ней я проверяю результат.';
-    dlg.body.innerHTML = `<div class="promo-progress" id="tr-progress">0 из ${plans.length}</div>${tableHtml(plans, new Map())}`;
-    dlg.foot.innerHTML = `<span class="promo-muted" style="flex:1">«Стоп» не начинает новых передач; уже нажатые завершатся и будут записаны в журнал.</span>
+    dlg.body.innerHTML = `${progressHtml('tr-progress', 0, plans.length)}
+      ${sectionHtml('Ход передачи', { body: tableHtml(plans, new Map()) })}`;
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых передач; уже нажатые завершатся и будут записаны в журнал.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
   }
@@ -457,9 +465,25 @@ export function openTransferDialog({ ids = [] } = {}) {
     const q = (attr) => [...dlg.body.querySelectorAll(`[${attr}]`)].find(el => el.getAttribute(attr) === row.charId);
     const cell = q('data-cell'); if (cell) cell.innerHTML = cellHtml(row);
     const cnt = q('data-count'); if (cnt) cnt.textContent = row.count || '';
-    const p = dlg.body.querySelector('#tr-progress');
-    if (p) p.textContent = `${done} из ${total}`;
+    setProgress(dlg.body, 'tr-progress', done, total);
   }
+
+  /** Итог запуска чистыми чипами — только то, что действительно было. */
+  const resultChips = (s, dry) => chipsHtml(dry
+    ? [
+      { icon: '👁', label: 'готово к передаче', value: s.dry, tone: 'ok' },
+      { icon: '⏭', label: 'пропущено', value: s.skipped },
+      { icon: '❓', label: 'не распознано', value: s.unknown, tone: 'warn' },
+      { icon: '❌', label: 'ошибок', value: s.failed, tone: 'err' }
+    ]
+    : [
+      { icon: '✅', label: 'передано', value: s.ok, tone: 'ok' },
+      { icon: '⚠️', label: 'передано не всё', value: s.partial, tone: 'warn' },
+      { icon: '🚫', label: 'не тот сервер', value: s.wrong, tone: 'warn' },
+      { icon: '❓', label: 'не распознано', value: s.unknown, tone: 'warn' },
+      { icon: '❌', label: 'ошибок', value: s.failed, tone: 'err' },
+      { icon: '⏭', label: 'пропущено', value: s.skipped }
+    ]);
 
   function renderResults(stopped) {
     const s = summarize(lastRows);
@@ -468,21 +492,23 @@ export function openTransferDialog({ ids = [] } = {}) {
     const byId = new Map(lastRows.map(r => [r.charId, r]));
     const list = (items) => `<ul class="tr-items">${itemTotals(items).map(i => `<li>${escapeHtml(i.name)}${i.qty > 1 ? ` <b>×${i.qty}</b>` : ''}</li>`).join('')}</ul>`;
     const sent = lastRows.filter(r => r.items.length && (isOk(r.status) || r.done?.length || r.missing?.length));
-    dlg.body.innerHTML = `${tableHtml(lastPlans, byId)}
-      ${sent.map(r => (r.done?.length || r.missing?.length) && !isOk(r.status)
-        ? `<details class="promo-reward" open><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: передано ${r.done.length} из ${r.items.length}</summary>
+    const sentHtml = sent.map(r => (r.done?.length || r.missing?.length) && !isOk(r.status)
+      ? `<details class="promo-reward" open><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: передано ${r.done.length} из ${r.items.length}</summary>
             ${r.done.length ? `<div class="promo-muted">✅ Передано (есть в истории сайта):</div>${list(r.done)}` : ''}
             ${r.missing.length ? `<div class="promo-warn">⚠ Не передано${r.warning?.onlyServer ? ` — сайт принимает их только на сервер «${escapeHtml(r.warning.onlyServer)}»` : ''}:</div>${list(r.missing)}` : ''}
             ${limitedHtml(r.limited)}</details>`
-        : `<details class="promo-reward"><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: ${r.count} предм.</summary>${list(r.items)}${limitedHtml(r.limited)}</details>`).join('')}
-      ${lastRows.filter(r => !sent.includes(r) && r.limited?.length).map(r => `<div class="tr-plan-item"><b>${escapeHtml(r.nick)}</b>${limitedHtml(r.limited)}</div>`).join('')}
+      : `<details class="promo-reward"><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: ${r.count} предм.</summary>${list(r.items)}${limitedHtml(r.limited)}</details>`).join('')
+      + lastRows.filter(r => !sent.includes(r) && r.limited?.length).map(r => `<div class="tr-plan-item"><b>${escapeHtml(r.nick)}</b>${limitedHtml(r.limited)}</div>`).join('');
+    dlg.body.innerHTML = `${resultChips(s, lastDry)}
+      ${sectionHtml('Результат по браузерам', { body: tableHtml(lastPlans, byId) })}
+      ${sentHtml ? sectionHtml('Что ушло в игру', { body: sentHtml }) : ''}
       ${s.wrong ? '<p class="promo-warn">🚫 «Не тот сервер»: эти предметы сайт передаёт только на другой сервер (указан в строке результата). Приложение запомнило это и в следующий раз не будет их отмечать на других серверах — выберите в строке нужный сервер и запустите заново.</p>' : ''}
       ${s.unknown || s.partial ? '<p class="promo-warn">❓ «Не распознано» и «Передано не всё»: сверьте результат с «Историей передачи» на сайте. Автоматически эти аккаунты не повторяются, чтобы не отправить предметы дважды.</p>' : ''}
       ${!lastDry && s.ok ? '<p class="promo-muted">Предметы дойдут до персонажа примерно через 30 минут. Строки со статусом «В обработке» на сайте — это нормально.</p>' : ''}`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
       <button class="btn ghost" data-act="log">📜 Журнал</button>
-      <span style="flex:1"></span>
+      <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить неудачные${s.rerun ? ` (${s.rerun})` : ''}</button>
       <button class="btn primary" data-act="close">Закрыть</button>`;
   }

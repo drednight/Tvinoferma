@@ -428,19 +428,27 @@ export function dockCurrentTask() {
 function dockBarHtml(current) {
   const pct = current ? current.percent : 0;
   const label = current ? current.title : 'Скрипты не выполняются';
+  // Что скрипт делает прямо сейчас: шаг короче названия и меняется на каждой записи журнала
+  const step = current && !current.waiting && !current.paused ? (current.step || '') : '';
   const zone = current ? (current.paused ? 'пауза' : `${pct}%`) : 'простой';
   const dot = current ? (current.paused ? 'is-paused' : 'is-busy') : '';
+  const ringState = current ? (current.paused ? 'is-paused' : (current.waiting ? 'is-queued' : '')) : 'is-idle';
   const controls = current ? `
     <button type="button" class="tl-icon-btn" data-dock-pause="${current.id}"
       title="${current.paused ? 'Продолжить' : 'Приостановить'}" aria-label="Пауза">${current.paused ? '▶' : '⏸'}</button>
     <button type="button" class="tl-icon-btn tl-cancel" data-dock-stop="${current.id}"
       title="Остановить сразу, не дожидаясь конца" aria-label="Стоп">■</button>` : '';
-  // Плашка повторяет вид квадрата «Московского времени»: тот же заголовок с точкой,
-  // подписью и плашкой-меткой, под ним — шкала прогресса и управление скриптом.
+  // Плашка повторяет вид квадрата «Московского времени»: заголовок с точкой, подписью
+  // и меткой, под ним — шкала прогресса и управление скриптом. Кольцо слева показывает
+  // проценты числом, поэтому «сколько осталось» видно без чтения мелкой шкалы.
   return `
     <div class="msk-clock-head">
       <span class="msk-clock-dot tf-dock-dot ${dot}" aria-hidden="true"></span>
-      <span class="msk-clock-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+      <span class="tf-dock-ring ${ringState}" style="--pct:${pct}" role="img" aria-label="Прогресс: ${pct}%"><b>${current ? (current.paused ? '‖' : pct) : '–'}</b></span>
+      <span class="tf-dock-title">
+        <span class="msk-clock-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+        ${step ? `<span class="tf-dock-step" title="${escapeHtml(step)}">${escapeHtml(step)}</span>` : ''}
+      </span>
       <span class="msk-clock-zone">${escapeHtml(zone)}</span>
     </div>
     <div class="tf-dock-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
@@ -482,20 +490,20 @@ function dockListHtml(list) {
       t.errors ? `ошибок ${t.errors}` : '',
       t.warnings ? `предупреждений ${t.warnings}` : ''
     ].filter(Boolean).join(' · ');
-    const mark = t.waiting ? '⏳' : (running ? `${pct}%` : STATUS_ICON[t.status] || '•');
-    return `<div class="tf-dock-row tl-s-${status}" data-dock-log-row="${t.id}"
+    const mark = t.waiting ? '…' : (running ? `${pct}%` : STATUS_ICON[t.status] || '•');
+    return `<button type="button" class="tf-dock-row tl-s-${status}" data-dock-log-row="${t.id}"
       title="${escapeHtml(`${t.title}: ${what}`)}">
-      <span class="tf-dock-row-dot" aria-hidden="true"></span>
-      <div class="tf-dock-row-body">
-        <div class="tf-dock-row-top">
-          <b>${escapeHtml(t.title)}</b>
-          <span class="tf-dock-row-pct">${mark}</span>
-        </div>
-        <div class="tf-dock-row-step">${escapeHtml(what)}</div>
-        ${running && !t.waiting ? `<span class="tf-dock-row-bar"><i style="width:${pct}%"></i></span>` : ''}
-      </div>
-      ${tail ? `<span class="tf-dock-row-tail">${escapeHtml(tail)}</span>` : ''}
-    </div>`;
+       <span class="tf-dock-row-dot" aria-hidden="true"></span>
+       <span class="tf-dock-ring tf-dock-ring-sm ${t.paused ? 'is-paused' : ''}" style="--pct:${t.waiting ? 0 : pct}" aria-hidden="true"><b>${mark}</b></span>
+       <span class="tf-dock-row-body">
+         <span class="tf-dock-row-top">
+           <b>${escapeHtml(t.title)}</b>
+           <span class="tf-dock-row-pct">${escapeHtml(tail || '')}</span>
+         </span>
+         <span class="tf-dock-row-step">${escapeHtml(what)}</span>
+         ${running && !t.waiting ? `<span class="tf-dock-row-bar"><i style="width:${pct}%"></i></span>` : ''}
+       </span>
+     </button>`;
   }).join('');
 }
 

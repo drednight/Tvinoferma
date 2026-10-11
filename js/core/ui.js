@@ -8,13 +8,14 @@ import { registerModal, closeModalRoot, isTopModal } from './modalLifecycle.js';
  * @param {{ title: string, content: string, submitText?: string, cancelText?: string,
  *           onSubmit?: (data: any) => any, onClose?: () => void, hideCloseButton?: boolean }} opts
  */
-export function showModal({ 
-  title, 
-  content, 
-  submitText = 'OK', 
-  cancelText = 'Cancel', 
-  onSubmit, 
+export function showModal({
+  title,
+  content,
+  submitText = 'OK',
+  cancelText = 'Cancel',
+  onSubmit,
   onClose,
+  wide = false,
   hideCloseButton = false // Игнорируется, крестик удален
 }) {
   const root = document.getElementById('modal-root');
@@ -26,10 +27,11 @@ export function showModal({
   // Создаем оверлей
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  
+
   // Создаем контейнер окна
   const container = document.createElement('div');
-  container.className = 'modal-container';
+  // `wide` — окну с двумя столбцами (профиль персонажа): обычная ширина режет содержимое
+  container.className = wide ? 'modal-container modal-wide' : 'modal-container';
   
   // Шапка (БЕЗ КРЕСТИКА)
   const header = document.createElement('div');

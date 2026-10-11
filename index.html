@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/css/modules/onboarding.css" />
   <link rel="stylesheet" href="/css/modules/guides.css" />
   <link rel="stylesheet" href="/css/core/modal.css" />
+  <link rel="stylesheet" href="/css/modules/profile.css" />
   <link rel="stylesheet" href="/css/core/commandPalette.css" />
   <link rel="stylesheet" href="/css/modules/marathons.css" />
   <link rel="stylesheet" href="/css/modules/promo.css" />
@@ -101,6 +102,9 @@
       <div class="topbar-right">
         <!-- Появляется, только когда найдено обновление (js/desktop/updateUi.js) -->
         <button id="update-badge" class="update-badge" type="button" hidden></button>
+
+        <!-- Базовый гайд по приложению: обзор разделов с возможностью пройти заново (js/settings/gettingStarted.js) -->
+        <button id="guide-start-btn" class="btn ghost topbar-guide" type="button" title="Базовый гайд: что где находится в приложении">❔ Как всё работает</button>
 
       </div>
     </header>
@@ -236,12 +240,12 @@
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
         <nav class="settings-nav" aria-label="Разделы настроек">
-          <a class="btn ghost" href="#settings-app">Приложение</a>
-          <a class="btn ghost" href="#settings-sync">Синхронизация</a>
-          <a class="btn ghost" href="#settings-updates">Обновления</a>
-          <a class="btn ghost" href="#settings-data">Данные и безопасность</a>
-          <a class="btn ghost" href="#settings-help">Справка</a>
-          <a class="btn ghost" href="#danger-zone">Опасные действия</a>
+          <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
+          <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты и свежесть данных</small></span></a>
+          <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
+          <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
+          <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
+          <a class="settings-nav-item" href="#danger-zone"><span class="settings-nav-icon" aria-hidden="true">⚠</span><span class="settings-nav-copy"><strong>Опасные действия</strong><small>Удаление и полный сброс</small></span></a>
         </nav>
         <section class="settings-group" id="settings-app" aria-labelledby="settings-app-title">
           <header class="settings-group-head"><h3 id="settings-app-title">Приложение</h3><p class="muted">Запуск игры, окна, трей и уведомления.</p></header>
@@ -274,7 +278,6 @@
             <p class="muted" style="margin: 0 0 4px 24px;">Если выключить, окно всё равно получит название «Ник — Класс», но значок останется игровым. После запуска Твиноферма проверит, что значки и названия применились ко всем окнам, и повторит попытку.</p>
             <label><input type="checkbox" data-setting="launcher.notify" /> После запуска показать одну строку: сколько окон запущено и за какое время (ошибки показываются всегда)</label>
             <label title="Если окно этого персонажа («Ник — Класс») уже открыто, запуск для него пропускается и очередь идёт к следующему. Работает, пока включено «Подписывать окна игры»."><input type="checkbox" data-setting="launcher.skipRunning" /> Пропускать персонажей, у которых окно игры уже запущено</label>
-            <label title="Эксперимент. Обычно на каждого персонажа GameCenter закрывается и открывается заново — иначе он запустит не того аккаунта. С этой настройкой Твиноферма не закрывает уже запущенный GameCenter, а только переписывает вход и запускает следующий персонаж. Работает лишь если запущенный GameCenter сам подхватывает изменение файла — это недокументированное поведение. Если не подхватывает, второй персонаж откроется под прошлым аккаунтом, и это будет выглядеть как дубль окна. Проверьте на пати из двух персонажей с разными аккаунтами в одном GameCenter."><input type="checkbox" data-setting="launcher.switchInRunningGc" /> Переключать аккаунт в уже запущенном GameCenter вместо его перезапуска <span class="muted">(эксперимент)</span></label>
             <label title="Перед запуском пати Твиноферма проверяет: нет ли GameCenter, запомнен ли вход, не запущены ли окна от администратора.">Проверки перед запуском:
               <select class="input" data-setting="launcher.preflight" data-value-type="string">
                 <option value="issues">показывать при проблемах</option>
@@ -356,14 +359,45 @@
 <details class="panel fold" id="settings-notifications">
           <summary>
             <h3>🔔 Уведомления</h3>
-            <p class="muted">Какие системные напоминания показывать и кнопка проверки.</p>
+            <p class="muted">Какие напоминания показывать, чем озвучивать, и кнопка проверки.</p>
           </summary>
           <div class="settings-checks">
             <label><input type="checkbox" data-setting="notifications.enabled" /> Системные уведомления</label>
-            <label><input type="checkbox" data-setting="notifications.marathonBehind" /> Персонаж не успевает задание марафона</label>
-            <label><input type="checkbox" data-setting="notifications.marathonEnding" /> Марафон заканчивается (≤ 2 дней)</label>
-            <label><input type="checkbox" data-setting="notifications.dailyReminder" /> Ежедневное напоминание о заданиях после
-              <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч (МСК)</label>
+            <label><input type="checkbox" data-setting="notifications.sound.enabled" /> Звук уведомлений</label>
+          </div>
+          <div class="setting-row" style="margin-top: 10px;">
+            <div>
+              <strong>Виды уведомлений</strong>
+              <p class="muted">Всплывающее окно — сообщение Windows поверх игры. Звук — короткий сигнал рядом с ним.
+                Напоминания об ивентах уходят за выбранное время до начала, остальное — по событию; о марафонах
+                приходит одно сообщение на вид со списком дел, а не сообщение на каждый марафон.</p>
+            </div>
+          </div>
+          <div class="notify-kinds" id="notify-kinds"></div>
+          <div class="setting-row" style="margin-top: 10px;">
+            <label>Громкость звука: <input class="input setting-num" type="number" min="0" max="100" data-setting="notifications.sound.volume" /> %</label>
+            <p class="muted">0 — совсем тихо, 100 — громко. Тон приходит и когда приложение свёрнуто.</p>
+          </div>
+          <div class="setting-row sound-row" style="margin-top: 10px;">
+            <div>
+              <label>Набор звука</label>
+              <p class="muted">Послушайте и выберите, какой слышно поверх игры: уведомления бывают разные по важности,
+                и один и тот же тон для «напоминание о марафоне» и «ошибка запуска» примелькается.
+                Для срочных видов (марафон, ивент, запуск и ошибки) выбранный набор звучит дважды.</p>
+            </div>
+            <div class="sound-controls">
+              <select class="select" id="sound-tone" data-setting="notifications.sound.tone" data-value-type="string" aria-label="Набор звука уведомлений"></select>
+              <button type="button" class="btn secondary" id="sound-preview">🔊 Послушать</button>
+              <span class="muted sound-tone-hint" id="sound-tone-hint"></span>
+            </div>
+          </div>
+          <div class="setting-row" style="margin-top: 10px;">
+            <div>
+              <strong>Ежедневная сводка</strong>
+              <p class="muted">Одно напоминание после выбранного часа (время московское): невыполненные задания
+                активных марафонов и дела календаря на сегодня. Всё остальное приходит по событию, без ожидания часа.</p>
+            </div>
+            <label>после <input class="input setting-num" type="number" min="0" max="23" data-setting="notifications.dailyHour" /> ч (МСК)</label>
           </div>
           <div class="setting-row" style="margin-top: 10px;">
             <div>
@@ -544,6 +578,9 @@
         </section>
         <section class="settings-group" id="settings-help" aria-labelledby="settings-help-title">
           <header class="settings-group-head"><h3 id="settings-help-title">Справка</h3><p class="muted">Пошаговые инструкции со скриншотами и горячие клавиши.</p></header>
+          <div class="row gap" style="margin: 0 0 10px;">
+            <button id="guide-start-settings-btn" class="btn secondary" type="button" title="Короткий обзор разделов и возможностей приложения: шаги с кнопками «дальше» и переходами к функциям">🚀 Пройти базовый гайд по приложению</button>
+          </div>
 <details class="panel fold guide-library" id="guide-library">
   <summary><h3>📖 Помощь по приложению</h3><p class="muted">Понятные инструкции: куда нажать, что проверить и какой результат ожидать.</p></summary>
   <div class="guide-library-content">

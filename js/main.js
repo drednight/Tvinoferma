@@ -6,6 +6,8 @@ import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
 import { hydrateSecrets } from './core/secrets.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
+import { initSound } from './desktop/sound.js';
+import { initGettingStarted } from './settings/gettingStarted.js';
 import { startUpdateScheduler } from './desktop/updater.js';
 import { resolveUpdateMode } from './desktop/updateSchedule.js';
 import { subscribeUpdate, setUpdateState } from './desktop/updateState.js';
@@ -171,6 +173,8 @@ async function boot() {
       const { openWelcome } = await import('./modules/characters/list.js');
       openWelcome();
     });
+    // Базовый гайд по приложению: кнопки в шапке и в «Настройки → Справка» + один автопоказ
+    initGettingStarted();
     console.log('[BOOT] Navigation bound.');
 
     // 5. Инициализация UI Actions (FAB, Меню скриптов)
@@ -185,6 +189,8 @@ async function boot() {
 
     // 6. Горячие клавиши, трей, фоновые проверки, уведомления
     initHotkeys({ switchTab });
+    // Звук уведомлений: браузерный движок разрешает его только после первого клика (js/desktop/sound.js)
+    initSound();
     try {
       await initDesktop();
       initNotifications();

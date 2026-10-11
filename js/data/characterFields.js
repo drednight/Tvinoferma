@@ -40,25 +40,27 @@ export const FIELD_GROUPS = [
     { path: 'lastCoinUpdate', label: 'Обновлено', type: 'date' },
     { path: 'coinHistory', label: 'История Древних монет', type: 'history', mergeable: true }
   ] },
-  { id: 'statsMain', title: 'Основные характеристики', fields: [
+  // Группы ниже повторяют то, как характеристики разложены в профиле и редакторе
+// (js/modules/characters/profileView.js и formEditor.js): тот же порядок и те же названия.
+// Расходятся — и в окне сравнения при импорте характеристики оказываются не в тех группах.
+{ id: 'statsMain', title: 'Основные характеристики', fields: [
     stat('endurance', 'Выносливость'), stat('intelligence', 'Интеллект'),
-    stat('strength', 'Сила'), stat('agility', 'Ловкость'),
-    stat('hp', 'Здоровье'), stat('mp', 'Маг. энергия'),
-    stat('levelBonus', 'Бонус к уровню (%)')
+    stat('strength', 'Сила'), stat('agility', 'Ловкость')
   ] },
   { id: 'statsCombat', title: 'Бой и защита', fields: [
+    stat('hp', 'Здоровье'), stat('mp', 'Маг. энергия'),
     stat('physAttack', 'Физ. атака'), stat('physDefense', 'Физ. защита'),
-    stat('magAttack', 'Маг. атака'), stat('magDefense', 'Маг. защита'),
-    stat('critChance', 'Шанс крит. удара (%)'), stat('critDamage', 'Крит. урон (%)'),
-    stat('atkSpeed', 'Скорость атаки'), stat('evasion', 'Уклонение'), stat('accuracy', 'Меткость')
+    stat('magAttack', 'Маг. атака'), stat('magDefense', 'Маг. защита')
   ] },
   { id: 'statsBattle', title: 'Показатели боя', fields: [
+    stat('critChance', 'Шанс крит. удара (%)'), stat('critDamage', 'Крит. урон (%)'),
+    stat('atkSpeed', 'Скорость атаки'), stat('evasion', 'Уклонение'), stat('accuracy', 'Меткость'),
     stat('pa', 'Показатель атаки (ПА)'), stat('pz', 'Показатель защиты (ПЗ)'),
-    stat('morale', 'Боевой дух')
-  ] },
-  { id: 'statsPve', title: 'PvE и пробивание', fields: [
-    stat('pvePa', 'Урон по монстрам (PvE PA)'), stat('pvePz', 'Защита от монстров (PvE PZ)'),
+    stat('morale', 'Боевой дух'), stat('levelBonus', 'Бонус к уровню (%)'),
     stat('physPenetration', 'Физ. пробивание'), stat('magPenetration', 'Маг. пробивание')
+  ] },
+  { id: 'statsPve', title: 'PvE', fields: [
+    stat('pvePa', 'Урон по монстрам'), stat('pvePz', 'Защита от монстров')
   ] },
   { id: 'sync', title: 'Данные с сайта', fields: [
     { path: 'marathonData', label: 'Прогресс марафонов (с сайта)', type: 'json' }

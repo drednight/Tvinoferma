@@ -12,6 +12,9 @@ import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { openCharacterForm } from './formEditor.js'; 
 import { levelBonusLabel } from './stateManager.js';
+import { statChange, statsChangeLog } from './statsHistory.js';
+import { ALL_FIELDS } from '../../data/characterFields.js';
+import { showCharactersWithTag } from './list.js';
 import { openSyncHelper, refreshBalanceFor, refreshAuthFor } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { hasGameCenterPath, loginStatusText, launchContext } from '../launcher/launch.js';
@@ -33,6 +36,25 @@ function gcListText(char) {
   return names.length ? `Прикреплено: ${names.join(', ')}` : 'GameCenter из общего списка не прикреплены.';
 }
 
+/**
+ * Строка контакта в профиле: подпись, значение с копированием по клику и глаз.
+ *
+ * Одинаковый вид у всех четырёх полей — раньше каждое писалось вручную инлайновыми
+ * стилями, и «email» с «телефоном» выглядели по-разному. Пустой контакт показывается
+ * прочерком и не нажимается: иначе глаз обещает показать то, чего нет.
+ */
+function contactRowHtml(type, label, value) {
+  const filled = !!value;
+  return `
+    <div class="contact-row-profile${filled ? '' : ' is-empty'}">
+      <span class="contact-key-profile">${escapeHtml(label)}</span>
+      <div class="contact-row-actions">
+        <span class="contact-value profile-copy-trigger" data-type="${type}" data-original="${escapeHtml(value || '')}" title="Скопировать">${filled ? maskText(value) : '—'}</span>
+        <button class="icon-btn profile-toggle-eye" data-target="${type}" title="Показать/Скрыть" aria-label="Показать или скрыть: ${escapeHtml(label)}">${EYE_SVG_OPEN}</button>
+      </div>
+    </div>`;
+}
+
 export function openCharacterProfile(char) {
   const isArchived = state.archivedCharacters.some(item => item.id === char.id);
   const archivedPartyLinks = isArchived
@@ -47,177 +69,208 @@ export function openCharacterProfile(char) {
   const sky = char.sky || {};
   const contacts = char.contacts || {};
   const launch = char.launch || {};
-  
 
-  const statRow = (label, val) => `
-    <div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px dashed rgba(255,255,255,0.05);">
-      <span class="muted">${label}</span>
-      <strong>${val || '-'}</strong>
-    </div>
-  `;
+  // Подписи статов для списка изменений берём из `characterFields.js`: названия уже есть,
+  // и второй список с ними со временем разошёлся бы с первым
+  const STAT_LABELS = Object.fromEntries(
+    ALL_FIELDS.filter(f => f.path.startsWith('stats.'))
+      .map(f => [f.path.slice(6), f.label.replace(/\s*\(.*\)$/, '')])
+  );
+
+  // Характеристика — плитка: подпись сверху, значение снизу, рядом разница с прошлым.
+  // Раньше строка была «подпись …——— значение», и двадцать таких строк подряд превращались
+  // в полосу из пунктиров и цифр. Плитки читаются списком, а не таблицей, и подписи
+  // больше не приходится обрезать: ширину колонки задаёт сетка, а не длина названия.
+  const statRow = (label, key) => {
+    const value = Number(stats[key]) || 0;
+    const change = statChange(char, key);
+    const delta = change && change.delta !== 0
+      ? `<span class="pf-stat-delta ${change.delta > 0 ? 'is-up' : 'is-down'}">${change.delta > 0 ? '+' : '−'}${Math.abs(change.delta).toLocaleString('ru-RU')}</span>`
+      : '';
+    const tip = change
+      ? ` title="Прошлое значение: ${change.previous.toLocaleString('ru-RU')}${change.at ? ` · ${formatWhen(change.at)}` : ''}"`
+      : '';
+    return `
+      <div class="pf-stat"${tip}>
+        <span class="pf-stat-label">${label}</span>
+        <span class="pf-stat-num">
+          <b class="pf-stat-value">${value ? value.toLocaleString('ru-RU') : '—'}</b>
+          ${delta}
+        </span>
+      </div>
+    `;
+  };
+
+  // Последние изменения характеристик: когда и что именно поменялось
+  const changeLog = statsChangeLog(char, 6);
+  const changeLogHtml = changeLog.length
+    ? changeLog.map(entry => {
+        const shown = entry.changes.filter(c => STAT_LABELS[c.key]).slice(0, 6);
+        const rest = entry.changes.length - shown.length;
+        return `
+          <div class="pf-changes-row">
+            <span class="pf-changes-when">${entry.at ? escapeHtml(formatWhen(entry.at)) : 'дата не известна'}</span>
+            <span class="pf-changes-list">${shown.map(c => `<span class="pf-change">
+              <span class="pf-change-key">${escapeHtml(STAT_LABELS[c.key])}</span>
+              <b class="${c.delta > 0 ? 'is-up' : 'is-down'}">${c.delta > 0 ? '+' : '−'}${Math.abs(c.delta).toLocaleString('ru-RU')}</b>
+            </span>`).join('')}${rest > 0 ? `<span class="pf-change-more">и ещё ${rest}</span>` : ''}</span>
+          </div>`;
+      }).join('')
+    : '<p class="pf-hint">Изменений пока не было — история появится, когда характеристики поменяются.</p>';
+
+  const tagsHtml = (char.tags || []).length
+    ? `<div class="pf-tags">${char.tags.map(tag => `<button type="button" class="tag-chip pf-tag" data-pf-tag="${escapeHtml(tag)}" title="Показать персонажей с этим тегом">#${escapeHtml(tag)}</button>`).join('')}</div>`
+    : '';
 
   const content = `
-    <div class="profile-view-container" style="display:flex; flex-direction:column; max-height: 70vh;">
-      
-      <!-- Скроллируемая область -->
-      <div style="overflow-y: auto; flex-grow: 1; padding-right: 10px; margin-bottom: 15px;">
-        
-        <!-- Шапка -->
-        <div style="display:flex; gap:20px; align-items:center; margin-bottom:20px; padding-bottom:20px; border-bottom:1px solid var(--border);">
-          <div style="width:80px; height:80px; background:rgba(255,255,255,0.05); border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; border:2px solid var(--accent); flex-shrink:0;">
-             ${getClassIconSrc(char.class) 
-               ? `<img src="${getClassIconSrc(char.class)}" style="width:100%; height:100%; object-fit:contain;" />` 
-               : `<span style="font-size:2rem; font-weight:bold; color:var(--muted);">${(char.class || '?')[0]}</span>`}
+    <div class="pf">
+      <div class="pf-scroll">
+        <!-- Шапка: кто это, главные строки и баланс справа -->
+        <div class="pf-head">
+          <div class="pf-avatar">
+            ${getClassIconSrc(char.class)
+              ? `<img src="${getClassIconSrc(char.class)}" alt="" />`
+              : `<span>${escapeHtml((char.class || '?')[0])}</span>`}
           </div>
-          <div>
+          <div class="pf-head-info">
             <div class="pf-title-row">
-              <h2 style="margin:0; color:var(--accent);">${escapeHtml(char.nick)}</h2>
+              <h2 class="pf-nick">${escapeHtml(char.nick)}</h2>
               <button id="btn-favorite-from-profile" class="pf-favorite${char.favorite ? ' is-active' : ''}" type="button"
                 aria-pressed="${char.favorite ? 'true' : 'false'}"
                 title="${char.favorite ? 'Убрать из избранного' : 'Добавить в избранное'}">${char.favorite ? '★' : '☆'}</button>
             </div>
-            <small class="muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></small>
-            <p class="muted" style="margin:4px 0;">${escapeHtml(char.class)} • Уровень ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</p>
-            <p class="muted" style="margin:4px 0;">☁️ ${escapeHtml(sky.name || 'Небо не выбрано')} ${sky.level ? `(Ур.${sky.level})` : ''}</p>
-            <p class="muted" style="margin:4px 0;" id="profile-auth-line">${isArchived ? '📦 Персонаж в архиве · автоматические проверки для него отключены' : authLineHtml(char)}</p>
-            <p class="muted" style="margin:4px 0;">🛡️ Пати: ${escapeHtml(activeMainParty || archivedMainParty?.party.name || NO_PARTY_LABEL)}${!activeMainParty && archivedMainParty ? ' · архив' : ''}</p>
+            <div class="pf-meta">
+              <span>${escapeHtml(char.class || 'Класс не выбран')} · Уровень <b>${char.level}</b>${levelBonusLabel(char) ? ` <span class="char-bu">${levelBonusLabel(char)}</span>` : ''}</span>
+              <span>☁️ ${escapeHtml(sky.name || 'Небо не выбрано')}${sky.level ? ` (Ур.${sky.level})` : ''}</span>
+              <span>🛡️ Пати: ${escapeHtml(activeMainParty || archivedMainParty?.party.name || NO_PARTY_LABEL)}${!activeMainParty && archivedMainParty ? ' · архив' : ''}</span>
+            </div>
+            <p class="pf-meta-line muted" id="profile-auth-line">${isArchived ? '📦 Персонаж в архиве · автоматические проверки для него отключены' : authLineHtml(char)}</p>
             ${extraPartiesHtml(char)}
+            <p class="pf-meta-line muted" title="Внутренний id: так персонаж называется в журнале задач и в папке профиля браузера">id: <code>${escapeHtml(char.id)}</code></p>
+            ${tagsHtml}
           </div>
-          
-          <!-- БЛОК МОНЕТ (обновление баланса — в меню «🔄 Проверить» внизу) -->
-          <div id="profile-coins-block" style="margin-left:auto; text-align:right; min-width:120px;">${coinBlockHtml(char)}</div>
+          <div class="pf-coins" id="profile-coins-block">${coinBlockHtml(char)}</div>
         </div>
 
-        <!-- КОГДА ЧТО ПРОВЕРЕНО (баланс, вход, прогресс марафонов) -->
+        <!-- КОГДА ЧТО ПРОВЕРЕНО (баланс, вход, прогресс марафонов). Свёрнуто: это справка,
+             а не то, за чем сюда приходят каждый день. -->
         <details class="pf-checks">
           <summary class="pf-checks-title">🕒 Когда что проверено</summary>
           <div id="profile-checks-block">${checksBlockHtml(char)}</div>
         </details>
 
-        <!-- КОНТАКТНЫЕ ДАННЫЕ -->
-        <details style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;" open>
-          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">Контактные данные</summary>
-          <div style="margin-top:12px; font-family:monospace; font-size:0.9rem; line-height:1.6; display:flex; flex-direction:column; gap:8px;">
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">EMAIL:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="email" data-original="${escapeHtml(contacts.email || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.email ? maskText(contacts.email) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="email" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
+        <div class="pf-cols">
+          <!-- ЛЕВАЯ КОЛОНКА: чем пользуются часто — контакты, запуск, заметки -->
+          <div class="pf-col">
+            <details class="pf-panel" open>
+              <summary class="pf-panel-title">
+                Контактные данные
+                <button type="button" class="btn ghost pf-contacts-all" id="pf-contacts-toggle-all" title="Показать или скрыть сразу все контакты">Показать все</button>
+              </summary>
+              <div class="pf-contacts">
+                ${contactRowHtml('email', 'Email', contacts.email)}
+                ${contactRowHtml('password', 'Пароль', contacts.password)}
+                ${contactRowHtml('recovery', 'Recovery email', contacts.recoveryEmail)}
+                ${contactRowHtml('phone', 'Телефон', contacts.phone)}
+              </div>
+            </details>
+
+            <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json -->
+            <details class="pf-panel pf-launch">
+              <summary class="pf-panel-title">🎮 Запуск игры</summary>
+              <div class="pf-launch-body">
+                <p class="pf-hint">GameCenter этого аккаунта. Запустить игру можно кнопкой «Играть» внизу.</p>
+                <div id="pf-gc-list" class="muted">${escapeHtml(gcListText(char))}</div>
+                <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
+                <label class="pf-label" for="pf-gc-path">Свой GameCenter (запасной вариант, если выше ничего не прикреплено)</label>
+                <div class="pf-launch-row">
+                  <input id="pf-gc-path" class="input" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
+                  <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe в проводнике">📂 Обзор…</button>
+                  <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
+                </div>
+                <div id="pf-gc-account" class="muted">${escapeHtml(loginStatusText(char))}</div>
+                <div class="pf-launch-row">
+                  <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом GameCenter, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход</button>
+                  <button id="pf-gc-forget" type="button" class="btn ghost">Забыть вход</button>
+                </div>
+              </div>
+            </details>
+
+            <div class="pf-panel">
+              <div class="pf-panel-title">Примечания <small id="char-notes-status" class="muted"></small></div>
+              <textarea id="char-notes" class="input" rows="4" maxlength="${NOTES_MAX_LENGTH}" placeholder="Заметки о персонаже: что докачать, что купить, особенности аккаунта…">${escapeHtml(char.notes || '')}</textarea>
             </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">PASSWORD:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="password" data-original="${escapeHtml(contacts.password || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.password ? maskText(contacts.password) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="password" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
+
+            <!-- Проходки и последние изменения — под примечаниями: это короткие сводки,
+                 а характеристики справа занимают всю правую колонку целиком -->
+            <div class="pf-panel">
+              <div class="pf-panel-title">Проходки в данжи</div>
+              <div class="pf-passes">
+                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-weapon.webp" alt="" /><strong>${passes.weapon || 0}</strong><small>Оружие</small></div>
+                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-armor.webp" alt="" /><strong>${passes.armor || 0}</strong><small>Доспех</small></div>
+                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-relic.webp" alt="" /><strong>${passes.relic || 0}</strong><small>Реликвия</small></div>
+              </div>
             </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">RECOVERY EMAIL:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="recovery" data-original="${escapeHtml(contacts.recoveryEmail || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.recoveryEmail ? maskText(contacts.recoveryEmail) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="recovery" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
-            </div>
-            <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,0.02); padding:4px 8px; border-radius:4px;" class="contact-row-profile">
-               <span class="muted" style="font-size:0.7rem;">PHONE:</span>
-               <div style="display:flex; align-items:center; gap:6px;">
-                  <span class="contact-value profile-copy-trigger" data-type="phone" data-original="${escapeHtml(contacts.phone || '')}" style="cursor:pointer; color:var(--text-primary);">${contacts.phone ? maskText(contacts.phone) : '-'}</span>
-                  <button class="icon-btn profile-toggle-eye" data-target="phone" style="opacity:0.4; display:flex; align-items:center;" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
-               </div>
+
+            <div class="pf-panel">
+              <div class="pf-panel-title">Последние изменения характеристик</div>
+              <div class="pf-changes">${changeLogHtml}</div>
             </div>
           </div>
-        </details>
 
-        <!-- ЗАПУСК ИГРЫ: свой GameCenter у каждого аккаунта; токен входа хранится в хранилище ОС, не в state.json.
-             Свёрнут по умолчанию: в профиле это редкая настройка, а не ежедневное действие. -->
-        <details class="pf-launch" style="margin-bottom:16px; border:1px solid var(--border); padding:8px; border-radius:4px;">
-          <summary style="cursor:pointer; font-weight:bold; color:var(--muted);">🎮 Запуск игры</summary>
-          <p class="muted" style="font-size:0.78rem; margin:6px 0 0;">Настройка GameCenter этого аккаунта. Запустить игру можно кнопкой «Играть» внизу профиля.</p>
-          <div style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
-            <div id="pf-gc-list" class="muted" style="font-size:0.85rem;">${escapeHtml(gcListText(char))}</div>
-            <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
-            <label class="muted" style="font-size:0.8rem;" for="pf-gc-path">Свой GameCenter (запасной вариант, если выше ничего не прикреплено): папка или файл GameCenter.exe</label>
-            <div style="display:flex; gap:8px;">
-              <input id="pf-gc-path" class="input" style="flex:1;" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
-              <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe в проводнике">📂 Обзор…</button>
-              <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
+          <!-- ПРАВАЯ КОЛОНКА: справочные характеристики, проходки и история изменений -->
+          <div class="pf-col">
+            <div class="pf-panel">
+              <div class="pf-panel-title">Характеристики</div>
+              <div class="pf-stat-group">
+                <div class="pf-stat-group-title">Основные</div>
+                <div class="pf-stats pf-stats-2x2">
+                  ${statRow('Выносливость', 'endurance')}
+                  ${statRow('Интеллект', 'intelligence')}
+                  ${statRow('Сила', 'strength')}
+                  ${statRow('Ловкость', 'agility')}
+                </div>
+              </div>
+              <div class="pf-stat-group">
+                <div class="pf-stat-group-title">Бой и защита</div>
+                <div class="pf-stats">
+                  ${statRow('Здоровье', 'hp')}
+                  ${statRow('Маг. энергия', 'mp')}
+                  ${statRow('Физ. атака', 'physAttack')}
+                  ${statRow('Физ. защита', 'physDefense')}
+                  ${statRow('Маг. атака', 'magAttack')}
+                  ${statRow('Маг. защита', 'magDefense')}
+                </div>
+              </div>
+              <div class="pf-stat-group">
+                <div class="pf-stat-group-title">Показатели боя</div>
+                <div class="pf-stats">
+                  ${statRow('Шанс крит. удара', 'critChance')}
+                  ${statRow('Критический урон', 'critDamage')}
+                  ${statRow('Скорость атаки', 'atkSpeed')}
+                  ${statRow('Уклонение', 'evasion')}
+                  ${statRow('Меткость', 'accuracy')}
+                  ${statRow('Показатель атаки (ПА)', 'pa')}
+                  ${statRow('Показатель защиты (ПЗ)', 'pz')}
+                  ${statRow('Боевой дух', 'morale')}
+                  ${statRow('Бонус к уровню', 'levelBonus')}
+                  ${statRow('Физ. пробивание', 'physPenetration')}
+                  ${statRow('Маг. пробивание', 'magPenetration')}
+                </div>
+              </div>
+              <div class="pf-stat-group">
+                <div class="pf-stat-group-title">PvE</div>
+                <div class="pf-stats">
+                  ${statRow('Урон по монстрам', 'pvePa')}
+                  ${statRow('Защита от монстров', 'pvePz')}
+                </div>
+              </div>
             </div>
-            <div id="pf-gc-account" class="muted" style="font-size:0.85rem;">${escapeHtml(loginStatusText(char))}</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом GameCenter, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход GameCenter</button>
-              <button id="pf-gc-forget" type="button" class="btn ghost">Забыть вход</button>
-            </div>
-          </div>
-        </details>
-
-        <!-- ПРИМЕЧАНИЯ (локально, автосохранение) -->
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>Примечания <small id="char-notes-status" class="muted" style="font-weight:normal;"></small></h4>
-          <textarea id="char-notes" class="input" rows="4" maxlength="${NOTES_MAX_LENGTH}" style="width:100%; resize:vertical;" placeholder="Заметки о персонаже: что докачать, что купить, особенности аккаунта…">${escapeHtml(char.notes || '')}</textarea>
-        </div>
-
-        <!-- Статы -->
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>Основные характеристики</h4>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Выносливость', stats.endurance)}
-             ${statRow('Интеллект', stats.intelligence)}
-             ${statRow('Сила', stats.strength)}
-             ${statRow('Ловкость', stats.agility)}
-          </div>
-        </div>
-
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>Бой и Защита</h4>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Здоровье', stats.hp)}
-             ${statRow('Маг. энергия', stats.mp)}
-             ${statRow('Бонус к уровню', stats.levelBonus ? `${stats.levelBonus}%` : '-')}
-             ${statRow('Физ. атака', stats.physAttack)}
-             ${statRow('Физ. защита', stats.physDefense)}
-             ${statRow('Маг. атака', stats.magAttack)}
-             ${statRow('Маг. защита', stats.magDefense)}
-          </div>
-        </div>
-
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>Показатели боя</h4>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Шанс крит. удара', stats.critChance ? `${stats.critChance}%` : '-')}
-             ${statRow('Критический урон', stats.critDamage ? `${stats.critDamage}%` : '-')}
-             ${statRow('Скорость атаки', stats.atkSpeed)}
-             ${statRow('Уклонение', stats.evasion)}
-             ${statRow('Меткость', stats.accuracy)}
-             ${statRow('Показатель атаки (ПА)', stats.pa)}
-             ${statRow('Показатель защиты (ПЗ)', stats.pz)}
-             ${statRow('Боевой дух', stats.morale)}
-          </div>
-        </div>
-
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>PvE и Пробивание</h4>
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-             ${statRow('Урон по монстрам (PvE PA)', stats.pvePa)}
-             ${statRow('Защита от монстров (PvE PZ)', stats.pvePz)}
-             ${statRow('Физ. пробивание', stats.physPenetration)}
-             ${statRow('Маг. пробивание', stats.magPenetration)}
-          </div>
-        </div>
-
-        <!-- Проходки -->
-        <div class="info-block" style="margin-bottom:16px;">
-          <h4>Проходки в данжи</h4>
-          <div style="display:flex; gap:20px;">
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-weapon.webp" style="width:24px;height:24px;"/> <strong>${passes.weapon || 0}</strong></div>
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-armor.webp" style="width:24px;height:24px;"/> <strong>${passes.armor || 0}</strong></div>
-            <div style="display:flex; align-items:center; gap:8px;"><img src="/assets/icons/dungeons/pass-relic.webp" style="width:24px;height:24px;"/> <strong>${passes.relic || 0}</strong></div>
           </div>
         </div>
-
       </div>
-      
-      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ: слева «Удалить», по центру действия с персонажем, справа «Редактировать» и «Закрыть» -->
+
+      <!-- ФИКСИРОВАННАЯ НИЖНЯЯ ЧАСТЬ: слева «Удалить», по центру действия с персонажем, справа «Править» и «Закрыть» -->
       <div class="pf-footer">
          <button id="btn-delete-from-profile" class="btn danger pf-delete" type="button" title="Удалить персонажа" aria-label="Удалить персонажа">🗑</button>
 
@@ -248,6 +301,8 @@ export function openCharacterProfile(char) {
   showModal({
     title: `Профиль: ${char.nick}`,
     content,
+    // Две колонки панелей: обычная ширина окна режет характеристики пополам
+    wide: true,
     submitText: null,
     cancelText: null,
     onSubmit: () => true,
@@ -259,28 +314,41 @@ export function openCharacterProfile(char) {
     const modalRoot = document.getElementById('modal-root');
     if(!modalRoot) return;
 
-    // Toggle Eyes
+    // Глаз у контакта: показать или скрыть значение.
+    // Логика в одной функции, потому что ею пользуются и глаз в строке, и кнопка
+    // «Показать все» — раньше это были две копии одного и того же кода
+    const setEye = (btn, show) => {
+      const row = btn.closest('.contact-row-profile');
+      const valueSpan = row?.querySelector('.profile-copy-trigger');
+      const original = valueSpan?.dataset.original;
+      if (!valueSpan || !original) return;
+      valueSpan.textContent = show ? original : maskText(original);
+      btn.innerHTML = show ? EYE_SVG_CLOSED : EYE_SVG_OPEN;
+      btn.style.opacity = show ? '1' : '0.4';
+      btn.title = show ? 'Скрыть' : 'Показать/Скрыть';
+    };
     modalRoot.querySelectorAll('.profile-toggle-eye').forEach(btn => {
       btn.onclick = (e) => {
         e.stopPropagation();
         const row = btn.closest('.contact-row-profile');
-        const valueSpan = row.querySelector('.profile-copy-trigger');
-        
-        if (valueSpan && valueSpan.dataset.original) {
-          const originalVal = valueSpan.dataset.original;
-          const isCurrentlyMasked = valueSpan.textContent.includes('•');
-          
-          if (isCurrentlyMasked) {
-             valueSpan.textContent = originalVal;
-             btn.innerHTML = EYE_SVG_CLOSED;
-             btn.style.opacity = '1';
-          } else {
-             valueSpan.textContent = maskText(originalVal);
-             btn.innerHTML = EYE_SVG_OPEN;
-             btn.style.opacity = '0.4';
-          }
-        }
+        const valueSpan = row?.querySelector('.profile-copy-trigger');
+        if (!valueSpan?.dataset.original) return;
+        setEye(btn, !valueSpan.textContent.includes('•'));
       };
+    });
+
+    // «Показать все» / «Скрыть все»: один глаз на все контакты вместо четырёх кликов
+    const toggleAll = document.getElementById('pf-contacts-toggle-all');
+    toggleAll?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const show = toggleAll.textContent !== 'Скрыть все';
+      modalRoot.querySelectorAll('.profile-toggle-eye').forEach(btn => setEye(btn, show));
+      toggleAll.textContent = show ? 'Скрыть все' : 'Показать все';
+    });
+
+    // Тег в профиле ведёт к списку персонажей с тем же тегом
+    modalRoot.querySelectorAll('.pf-tag').forEach(chip => {
+      chip.onclick = () => showCharactersWithTag(chip.dataset.pfTag);
     });
 
     // Copy Triggers

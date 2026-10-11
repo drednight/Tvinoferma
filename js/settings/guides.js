@@ -7,18 +7,58 @@ const categoryLabel = id => GUIDE_CATEGORIES.find(category => category.id === id
 const plural = new Intl.PluralRules('ru');
 const countText = count => `${count} ${({ one: 'инструкция', few: 'инструкции', many: 'инструкций', other: 'инструкции' })[plural.select(count)]}`;
 
+/**
+ * Снимок интерфейса статьи. `notes` — на что смотреть: снимок не всегда равноценен
+ * живому окну, поэтому подписываем то, что на нём важно разглядеть.
+ */
 function screenshotHtml(screen) {
   if (!screen) return '';
+  const notes = Array.isArray(screen.notes) ? screen.notes : [];
   return `<details class="guide-image-details">
-    <summary>Посмотреть скриншот интерфейса</summary>
+    <summary>Посмотреть снимок интерфейса</summary>
     <figure class="guide-screenshot">
-      <button type="button" class="guide-screenshot-button" data-guide-image="${escapeHtml(screen.src)}" data-guide-label="${escapeHtml(screen.alt)}" aria-label="Увеличить скриншот: ${escapeHtml(screen.alt)}">
+      <button type="button" class="guide-screenshot-button" data-guide-image="${escapeHtml(screen.src)}" data-guide-label="${escapeHtml(screen.alt)}" aria-label="Увеличить снимок: ${escapeHtml(screen.alt)}">
         <img src="${escapeHtml(screen.src)}" alt="${escapeHtml(screen.alt)}" loading="lazy" decoding="async" />
         <span class="guide-image-zoom">Увеличить</span>
       </button>
       <figcaption>${escapeHtml(screen.alt)}. Снимок на вымышленных данных.</figcaption>
     </figure>
+    ${notes.length ? `<div class="guide-screen-notes"><strong>На что смотреть</strong><ul>${notes.map(note => `<li>${escapeHtml(note)}</li>`).join('')}</ul></div>` : ''}
   </details>`;
+}
+
+/** Панели настроек: кнопка статьи раскрывает нужную панель. */
+const GUIDE_PANEL_LABEL = {
+  'settings-launcher': 'Открыть «Запуск игры» в настройках',
+  'settings-notifications': 'Открыть «Уведомления» в настройках',
+  'settings-freshness': 'Открыть «Свежесть данных» в настройках',
+  'settings-backups': 'Открыть «Резервные копии» в настройках',
+  'settings-transfer': 'Открыть «Перенос данных» в настройках',
+  'settings-security': 'Открыть «Безопасность» в настройках',
+  'settings-update-panel': 'Открыть «Обновления» в настройках',
+  'log-hub-panel': 'Открыть «Журналы» в настройках',
+  'danger-zone': 'Открыть «Опасные действия» в настройках'
+};
+
+/** Разделы приложения: кнопка статьи открывает тот раздел, о котором инструкция. */
+const GUIDE_TAB_LABEL = {
+  today: 'Сегодня', characters: 'Персонажи', parties: 'Пати', marathons: 'Марафоны',
+  runes: 'Руны', tools: 'Инструменты', settings: 'Настройки'
+};
+
+/** Кнопка «перейти к этому в приложении»: инструкция не заставляет искать раздел вручную. */
+function openButtonHtml(guide) {
+  if (guide.panel) {
+    const panel = GUIDE_PANEL_LABEL[guide.panel];
+    if (!panel) return '';
+    return `<div class="guide-open"><button type="button" class="btn secondary" data-guide-panel="${escapeHtml(guide.panel)}">⚙ ${escapeHtml(panel)}</button></div>`;
+  }
+  if (guide.tab) {
+    const label = GUIDE_TAB_LABEL[guide.tab];
+    if (!label) return '';
+    return `<div class="guide-open"><button type="button" class="btn secondary" data-guide-tab="${escapeHtml(guide.tab)}">➜ ${escapeHtml(label)}</button></div>`;
+  }
+  return '';
 }
 
 function articleHtml(guide) {
@@ -29,7 +69,7 @@ function articleHtml(guide) {
       <h3 id="guide-reader-title">${escapeHtml(guide.title)}</h3>
       <p class="guide-intro">${escapeHtml(guide.summary)}</p>
     </header>
-    <div class="guide-route"><strong>Где открыть</strong><p>${escapeHtml(guide.where)}</p></div>
+    <div class="guide-route"><strong>Где открыть</strong><p>${escapeHtml(guide.where)}</p>${openButtonHtml(guide)}</div>
     ${guide.before ? `<aside class="guide-callout is-info"><strong>Перед началом</strong><p>${escapeHtml(guide.before)}</p></aside>` : ''}
     <section class="guide-steps-section" aria-label="Пошаговая инструкция">
       <h4>Как сделать</h4>
@@ -42,6 +82,9 @@ function articleHtml(guide) {
     ${guide.related?.length ? `<footer class="guide-related"><h4>Дальше по теме</h4><div>${guide.related.map(id => `<button type="button" data-guide-open="${id}">${escapeHtml(byId.get(id).title)} <span aria-hidden="true">→</span></button>`).join('')}</div></footer>` : ''}
   </article>`;
 }
+
+/** Привязанная панель справочника: наружу отдаём только открытие статьи. */
+let panel = null;
 
 /** Каталог ничего не запускает и не меняет настройки: кнопки ведут только к инструкциям. */
 export function bindGuides() {
@@ -99,6 +142,9 @@ export function bindGuides() {
     st.category = 'start'; st.selected = 'first-character'; st.query = ''; search.value = '';
     render(); search.focus();
   };
+  // Наружу отдаём только открытие статьи: базовый гайд ссылается на справочник,
+  // а справочник про гайд ничего не знает
+  panel = { openGuide, resetFilters };
 
   library.addEventListener('click', event => {
     const target = event.target.closest?.('button');
@@ -122,6 +168,20 @@ export function bindGuides() {
       return;
     }
     if (target.dataset.guideOpen) { openGuide(target.dataset.guideOpen); return; }
+    // Кнопки «перейти к этому»: раздел приложения или панель настроек. Справочник при
+    // этом остаётся открытым, чтобы к инструкции можно было вернуться.
+    if (target.dataset.guideTab) {
+      document.querySelector(`.tab[data-tab="${target.dataset.guideTab}"]`)?.click();
+      return;
+    }
+    if (target.dataset.guidePanel) {
+      const panel = document.getElementById(target.dataset.guidePanel);
+      if (panel) {
+        panel.open = true;
+        panel.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+      }
+      return;
+    }
     if (target.dataset.guideId) {
       st.selected = target.dataset.guideId; render(); focusReader(); return;
     }
@@ -137,4 +197,22 @@ export function bindGuides() {
     render();
   });
   render();
+}
+
+/**
+ * Открыть инструкцию справочника из любого места приложения: раскрывает панель «Справка»,
+ * переключает вкладку настроек и показывает статью. Этим пользуется базовый гайд —
+ * он ведёт по разделам, а справочник объясняет конкретную задачу.
+ * @param {string} id идентификатор инструкции из `GUIDES`
+ * @returns {boolean} получилось ли (false — панель справочника не готова)
+ */
+export function revealGuide(id) {
+  const library = document.getElementById('guide-library');
+  if (!library || !panel || !byId.has(id)) return false;
+  // Панель свёрнута по умолчанию: без раскрытия статья осталась бы невидимой
+  library.open = true;
+  document.querySelector('.tab[data-tab="settings"]')?.click();
+  panel.openGuide(id);
+  library.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  return true;
 }

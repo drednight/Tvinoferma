@@ -38,6 +38,9 @@ export async function openScriptPreview(kind) {
     document.querySelector('[data-item="light"]').click();
     const amount = document.querySelector('input.shop-qty');
     if (amount) { amount.value = '1'; amount.dispatchEvent(new Event('input', { bubbles: true })); }
+  } else if (kind === 'caravan-dialog') {
+    const { openCaravanDialog } = await import('/js/modules/automation/caravan.js');
+    openCaravanDialog({ ids });
   } else if (kind === 'sync-task') {
     const { startTask, openTaskLog } = await import('/js/core/taskLog.js');
     const task = startTask('Проверка авторизации', { total: state.characters.length, dock: false, cancelable: true });

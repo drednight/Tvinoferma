@@ -23,6 +23,7 @@ import {
 } from './shopStore.js';
 import { runShopBatch } from './shopRunner.js';
 import { openShopLog } from './shopLogView.js';
+import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -69,6 +70,7 @@ export function openShopDialog({ ids = [] } = {}) {
     onClose: () => { closed = true; clearTimeout(renderTimer); if (running) running.cancelled = true; if (scanSignal) scanSignal.cancelled = true; }
   });
   dlg.body.classList.add('shop-body');
+  dlg.foot.classList.add('sd-foot');
   const alive = () => !closed && dlg.el.isConnected;
   const q = (sel) => dlg.body.querySelector(sel);
 
@@ -240,7 +242,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const desc = found && it.desc ? `<details class="shop-desc"><summary>Описание</summary><div>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</div></details>` : '';
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
-        <span>${def.icon}</span><b>${escapeHtml(def.name)}</b></label>
+        <span>${def.icon}</span><b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
       <div class="shop-price">${escapeHtml(price)}</div>
       ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
   }
@@ -272,13 +274,13 @@ export function openShopDialog({ ids = [] } = {}) {
       <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
       <td><b>${escapeHtml(g.nick)}</b> ${dot(g.rep || g.members[0])}${g.others.length ? `<div class="shop-muted">также: ${escapeHtml(g.others.join(', '))}</div>` : ''}
         ${parties ? `<div class="shop-muted">${escapeHtml(parties)}</div>` : ''}</td>
-      <td>${bal}</td>${cells}</tr>`;
+      <td class="shop-num">${bal}</td>${cells}</tr>`;
   }
 
   function tableHtml() {
     const defs = pickedDefs();
     view = sortGroups(allGroups().filter(matches));
-    if (!view.length) return '<div class="shop-empty">Никого не найдено</div>';
+    if (!view.length) return '<div class="shop-empty empty-state">Никого не найдено</div>';
     const head = defs.map(d => {
       const it = siteItem(d.key);
       const short = d.name.replace(/\s*\([^)]*\)\s*$/, '');
@@ -299,22 +301,28 @@ export function openShopDialog({ ids = [] } = {}) {
     phase = 'pick';
     dlg.sub.textContent = 'Цены, наличие и баланс читаются с сайта при открытии окна. Покупка необратима — запрос подтверждается.';
     dlg.body.innerHTML = `
+      ${noteHtml({
+        icon: '🪙', title: 'Что сделает это окно',
+        text: 'Отмеченные предметы покупаются за Древние монеты на аккаунте сайта: каждый покупается отдельной покупкой, штука за штукой. '
+          + 'Баланс и лимиты читаются с сайта прямо сейчас — старые данные показываются, только пока новая проверка идёт.'
+      })}
       <div class="shop-scan" id="shop-scan"></div>
-      <div class="shop-cards" id="shop-items"></div>
-      <div class="shop-quick">
-        <select class="input" id="shop-party" aria-label="Пати">${partyOptions()}</select>
-        <input class="input" id="shop-search" placeholder="Поиск: ник, пати, тег, аккаунт" value="${escapeHtml(search)}">
-        <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
-        <button class="btn ghost small" data-q="none">Снять выбор</button>
-        <button class="btn ghost small" data-q="refresh" title="Заново прочитать магазин и баланс каждого аккаунта">🔄 Обновить цены и баланс</button>
-      </div>
-      <div class="shop-count" id="shop-count"></div>
-      <div class="shop-scroll" id="shop-table"></div>
-      <div class="shop-summary" id="shop-summary"></div>`;
+      ${sectionHtml('Предметы магазина', { hint: 'цены, наличие и лимиты — с сайта', body: `<div class="shop-cards" id="shop-items"></div>` })}
+      ${sectionHtml('Аккаунты и количество', { hint: 'баланс у аккаунта сайта один на всех его персонажей', aside: `<span class="sd-count" id="shop-count"></span>`, body: `
+        <div class="shop-quick">
+          <select class="input" id="shop-party" aria-label="Пати">${partyOptions()}</select>
+          <input class="input" id="shop-search" aria-label="Поиск аккаунта" placeholder="Поиск: ник, пати, тег, аккаунт" value="${escapeHtml(search)}">
+          <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
+          <button class="btn ghost small" data-q="none">Снять выбор</button>
+          <button class="btn ghost small" data-q="refresh" title="Заново прочитать магазин и баланс каждого аккаунта">🔄 Обновить цены и баланс</button>
+        </div>
+        <div class="shop-scroll" id="shop-table"></div>
+        <div class="shop-summary" id="shop-summary"></div>` })}
+      `;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="log">📜 Журнал</button>
-      <span style="flex:1"></span>
-      <button class="btn ghost" data-act="close">Закрыть</button>
+      <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="dry" title="Откроет магазин и найдёт кнопку «Купить», но не нажмёт её: ничего не покупается и не записывается">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start">🪙 Купить</button>`;
     renderDynamic();
@@ -368,7 +376,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const sel = q('#shop-count');
     if (sel) sel.textContent = `Отмечено аккаунтов: ${count} из ${view.filter(g => g.state === 'ready').length}${view.length < allGroups().length ? ' (с учётом фильтра)' : ''}`;
     const sum = q('#shop-summary');
-    if (sum) sum.innerHTML = qty ? `К покупке: <b>${qty}</b> шт. на <b>${fmt(spent)}</b> мон. у аккаунтов: ${accounts}` : '<span class="shop-muted">Выберите предметы, отметьте аккаунты и укажите количество.</span>';
+    if (sum) sum.innerHTML = qty ? `<div class="sd-summary-line">К покупке: <b>${qty}</b> шт. на <b>${fmt(spent)}</b> мон. у аккаунтов: <b>${accounts}</b></div>` : '<span class="shop-muted">Выберите предметы, отметьте аккаунты и укажите количество.</span>';
   }
 
   /* ------------------------------ запуск ------------------------------ */
@@ -413,17 +421,11 @@ export function openShopDialog({ ids = [] } = {}) {
   const itemName = (key) => SHOP_ITEMS.find(d => d.key === key)?.name || key;
   const cellKey = (a, key) => `${a.siteKey}|${key}`;
 
-  /** «37% (3 из 8)» и полоса готовности. */
-  function progressText(done, total) {
-    const pct = total ? Math.round(done / total * 100) : 0;
-    return `<b>${pct}%</b> (${done} из ${total})<div class="shop-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>`;
-  }
-
   function runningHtml(accounts) {
-    return `<div class="shop-progress" id="shop-progress">${progressText(0, accounts.reduce((n, a) => n + a.orders.length, 0))}</div>
-      <div class="shop-scroll"><table class="shop-table"><thead><tr><th>Аккаунт</th><th>Предмет</th><th>Состояние</th></tr></thead><tbody>${
+    return `${progressHtml('shop-progress', 0, accounts.reduce((n, a) => n + a.orders.length, 0))}
+      ${sectionHtml('Ход покупки', { body: `<div class="shop-scroll"><table class="shop-table"><thead><tr><th>Аккаунт</th><th>Предмет</th><th>Состояние</th></tr></thead><tbody>${
   accounts.map(a => a.orders.map(o => `<tr><td><b>${escapeHtml(a.char.nick)}</b></td><td>${escapeHtml(itemName(o.key))} × ${o.qty}</td>
-    <td data-run="${escapeHtml(cellKey(a, o.key))}"><span class="shop-muted">⏳ в очереди</span></td></tr>`).join('')).join('')}</tbody></table></div>`;
+    <td data-run="${escapeHtml(cellKey(a, o.key))}"><span class="shop-muted">⏳ в очереди</span></td></tr>`).join('')).join('')}</tbody></table></div>` })}`;
   }
 
   async function start(accounts, dry) {
@@ -446,7 +448,7 @@ export function openShopDialog({ ids = [] } = {}) {
     dlg.sub.textContent = dry ? '👁 Пробный запуск: магазин открывается, кнопка ищется, но не нажимается.'
       : 'Идёт покупка: аккаунты обрабатываются несколько одновременно, предметы у каждого — по очереди, штука за штукой.';
     dlg.body.innerHTML = runningHtml(accounts);
-    dlg.foot.innerHTML = `<span class="shop-muted" style="flex:1">«Стоп» не начинает новых покупок; начатая закончится и будет учтена.</span>
+    dlg.foot.innerHTML = `<span class="shop-muted sd-foot-spacer">«Стоп» не начинает новых покупок; начатая закончится и будет учтена.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = (e) => { signal.cancelled = true; e.currentTarget.disabled = true; e.currentTarget.textContent = '⏳ Останавливаю…'; };
 
@@ -468,10 +470,8 @@ export function openShopDialog({ ids = [] } = {}) {
           if (!alive()) return;
           const info = resultInfo(row.status);
           setCell(cellKey({ siteKey: row.siteKey }, row.itemKey), `<span title="${escapeHtml(row.detail || '')}">${info.icon} ${escapeHtml(resultLabel(row))}</span>`);
-          const p = q('#shop-progress');
-          if (p) p.innerHTML = progressText(done, all);
-        }
-      });
+          setProgress(dlg.body, 'shop-progress', done, all);
+        }      });
     } finally {
       running = null;
     }
@@ -547,6 +547,21 @@ export function openShopDialog({ ids = [] } = {}) {
     return `<div class="shop-scroll"><table class="shop-table"><thead><tr><th>Аккаунт</th><th>Предмет</th><th>Итог</th><th>Потрачено</th><th>Баланс сейчас</th></tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
+  /** Итог запуска чистыми чипами — только то, что действительно было. */
+  const resultChips = (s, dry) => chipsHtml(dry
+    ? [
+      { icon: '👁', label: 'кнопка найдена', value: s.dry, tone: 'ok' },
+      { icon: '⏭', label: 'не покупалось', value: s.notRun }
+    ]
+    : [
+      { icon: '🪙', label: 'куплено', value: s.bought, tone: 'ok' },
+      { icon: '🔒', label: 'до лимита', value: s.limited, tone: 'warn' },
+      { icon: '💸', label: 'не хватило монет', value: s.noFunds, tone: 'warn' },
+      { icon: '❓', label: 'неясно', value: s.unknown, tone: 'warn' },
+      { icon: '❌', label: 'проблем', value: s.failed, tone: 'err' },
+      { icon: '⏭', label: 'не выполнено', value: s.notRun }
+    ]);
+
   function renderResults() {
     phase = 'results';
     const { rows, dry, stopped, checking } = last;
@@ -554,13 +569,14 @@ export function openShopDialog({ ids = [] } = {}) {
     dlg.sub.textContent = dry
       ? `${stopped ? '⏹ Остановлено. ' : ''}👁 Пробный запуск: кнопка найдена ${s.dry} из ${s.total}. Ничего не куплено и не записано в журнал.`
       : `${stopped ? '⏹ Остановлено. ' : ''}Куплено: ${s.bought} шт. на ${fmt(s.spent)} мон.${s.limited ? ` · до лимита: ${s.limited}` : ''}${s.noFunds ? ` · не хватило монет: ${s.noFunds}` : ''}${s.unknown ? ` · неясно: ${s.unknown}` : ''}${s.failed ? ` · проблем: ${s.failed}` : ''}${s.notRun ? ` · не выполнено: ${s.notRun}` : ''}`;
-    dlg.body.innerHTML = `${resultsHtml()}
+    dlg.body.innerHTML = `${resultChips(s, dry)}
+      ${sectionHtml('Итог по аккаунтам', { body: resultsHtml() })}
       ${s.unknown ? '<p class="shop-warn">❓ «Результат не распознан»: кнопка нажата, но итог неясен. Проверьте «Историю монет» на сайте; автоматически эти покупки не повторяются.</p>' : ''}
       ${checking ? '<p class="shop-muted">⏳ Проверяю баланс всех аккаунтов этого запуска…</p>' : ''}`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="log">📜 Журнал</button>
-      <span style="flex:1"></span>
-      <button class="btn ghost" data-act="close">Закрыть</button>
+      <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">✕ Закрыть</button>
       ${dry ? '<button class="btn secondary" data-act="back">← К выбору</button><button class="btn primary" data-act="real">🪙 Купить по-настоящему</button>'
     : `<button class="btn primary" data-act="again" ${checking ? 'disabled' : ''}>🛒 Активировать другие предметы</button>`}`;
   }

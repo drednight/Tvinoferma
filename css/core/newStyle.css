@@ -16,8 +16,12 @@ body[data-ui-style='next'] .app-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: var(--next-sidebar-w) minmax(0, 1fr);
-  grid-template-rows: 82px minmax(0, 1fr);
-}
+  /* Строка шапки — по содержимому, а не фиксированные 82px: док задач бывает выше
+     (две строки названия, шкала прогресса, кнопки), и при фиксированной высоте он
+     вылезал за подвал шапки прямо на границу содержимого. Свою минимальную высоту
+     шапка задаёт сама (min-height ниже). */
+  grid-template-rows: auto minmax(0, 1fr);
+  }
 
 body[data-ui-style='next'] .next-sidebar {
   grid-column: 1;
@@ -217,8 +221,17 @@ body[data-ui-style='next'] .content {
   grid-column: 2;
   grid-row: 2;
   min-width: 0;
+  /* Контент занимает всё место между шапкой и низом окна: прежняя граница ширины
+     оставляла по бокам пустоты, а короткая страница — пустоту внизу. */
+  max-width: none;
+  margin: 0;
   padding: 28px 32px 42px;
+  display: flex;
+  flex-direction: column;
 }
+/* Активная страница растягивается по всей высоте: фон и пустое место принадлежат ей,
+   а не «провисающему» между шапкой и содержимым. */
+body[data-ui-style='next'] .page.active { flex: 1 0 auto; min-width: 0; }
 body[data-ui-style='next'] .section-head {
   margin-bottom: 22px;
 }

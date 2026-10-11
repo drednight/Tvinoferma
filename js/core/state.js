@@ -1,5 +1,9 @@
 // @ts-check
 import { DEFAULT_SETTINGS } from './constants.js';
+// Список наборов звука нужен здесь, чтобы отсеять значение из state.json: неизвестный id
+// (например, из более новой версии приложения) не должен ломать загрузку настроек
+import { SOUND_TONES, DEFAULT_TONE } from '../desktop/sound.js';
+import { STATS_HISTORY_LIMIT } from '../modules/characters/statsHistory.js';
 import { migrateMarathon } from '../modules/marathons/model.js';
 import { SCHEMA_VERSION, migrateState } from './migrations.js';
 import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
@@ -57,6 +61,22 @@ function normalizeStats(input = {}) {
     stats[key] = Number(input?.[key]) || 0;
   });
   return stats;
+}
+
+/**
+ * История характеристик: список снимков `{ at, stats }`.
+ * Чужой мусор в state.json отсекаем, число снимков ограничиваем — иначе файл
+ * незаметно разрастался бы при каждом сохранении формы.
+ */
+function normalizeStatsHistory(input) {
+  const list = Array.isArray(input) ? input : [];
+  return list
+    .filter(entry => entry && typeof entry === 'object' && entry.stats && typeof entry.stats === 'object')
+    .slice(0, STATS_HISTORY_LIMIT)
+    .map(entry => ({
+      at: typeof entry.at === 'string' ? entry.at : null,
+      stats: normalizeStats(entry.stats)
+    }));
 }
 
 /** Теги: строки без лишних пробелов, без дублей (регистр не важен). */
@@ -143,6 +163,9 @@ export function normalizeCharacter(input = {}) {
     
     // Все характеристики из редактора (раньше сохранялись только 7 из них)
     stats: normalizeStats(input.stats),
+    // История характеристик: какие значения были до последнего изменения (characters/statsHistory.js).
+    // Без неё в профиле не показать «было → стало», а после перезапуска история просто пропала бы
+    statsHistory: normalizeStatsHistory(input.statsHistory),
     tags: normalizeTags(input.tags),
 
     ancientCoins: roundCoins(Number(input.ancientCoins) || 0),
@@ -214,7 +237,6 @@ function normalizeLauncherSettings(input = {}) {
     ? Math.min(120, Math.max(0, delay))
     : DEFAULT_SETTINGS.launcher.delaySec;
   merged.skipRunning = merged.skipRunning !== false;
-merged.switchInRunningGc = merged.switchInRunningGc === true;   // эксперимент: по умолчанию выключен
   merged.preflight = normalizePreflightMode(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
   merged.layoutTemplate = String(merged.layoutTemplate ?? '').trim();
@@ -222,27 +244,70 @@ merged.switchInRunningGc = merged.switchInRunningGc === true;   // экспер�
 }
 
 /**
- * Настройки уведомлений. Отдельная обработка нужна из-за вложенного списка ивентов:
- * обычное поверхностное слияние затирало бы умолчания ивентов, которых нет в старом state.json,
- * и напоминание о них молча не работало бы.
+ * Настройки уведомлений. Отдельная обработка нужна из-за вложенных списков — видов
+ * (`kinds`) и ивентов (`events`): обычное поверхностное слияние затирало бы умолчания
+ * ивентов, которых нет в старом state.json, и напоминание о них молча не работало бы.
  * Валидность «минут до начала» проверяет `eventNotificationSettings` при чтении.
  */
 function normalizeNotificationSettings(input = {}) {
-  const merged = { ...DEFAULT_SETTINGS.notifications, ...(input || {}) };
-  /** @type {Record<string, { enabled: boolean, leadMinutes: number }>} */
-  const events = {};
-  for (const [id, def] of Object.entries(DEFAULT_SETTINGS.notifications.events || {})) {
-    const raw = input?.events?.[id] || {};
-    const minutes = Number(raw.leadMinutes);
-    events[id] = {
-      enabled: raw.enabled !== false,
-      leadMinutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : def.leadMinutes
+  const raw = input || {};
+  const def = DEFAULT_SETTINGS.notifications;
+  const hour = Number(raw.dailyHour);
+
+  /**
+   * Настройка одного вида: показывать ли всплывающее окно и играть ли звук.
+   * Записи нет — вид работает целиком: новые виды доступны сразу после обновления.
+   */
+  /** @type {Record<string, { popup: boolean, sound: boolean }>} */
+  const kinds = {};
+  for (const [kind] of Object.entries(def.kinds || {})) {
+    const own = raw.kinds?.[kind] || {};
+    kinds[kind] = {
+      popup: own.popup !== false,
+      sound: own.sound !== false
     };
   }
-  // Приведение типа: набор ивентов задаётся расписанием (recurringEvents.js), поэтому в типе
-  // перечислены конкретные ключи, а объект собирается циклом
-  merged.events = /** @type {typeof DEFAULT_SETTINGS.notifications.events} */ (events);
-  return merged;
+  // Старые галочки «не успевает», «заканчивается» и «ежедневно» держали по одному выключателю
+  // на несколько видов. Переносим их выбор, иначе после обновления выбор молча сбросится.
+  const oldOff = (flag) => raw[flag] === false;
+  if (oldOff('marathonBehind')) {
+    kinds.behind.popup = false;
+    kinds.tight.popup = false;
+  }
+  if (oldOff('marathonEnding')) kinds.ending.popup = false;
+  if (oldOff('dailyReminder')) kinds.daily.popup = false;
+
+  /** @type {Record<string, { enabled: boolean, leadMinutes: number }>} */
+  const events = {};
+  for (const [id, defEvent] of Object.entries(def.events || {})) {
+    const own = raw.events?.[id] || {};
+    const minutes = Number(own.leadMinutes);
+    events[id] = {
+      enabled: own.enabled !== false,
+      leadMinutes: Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes) : defEvent.leadMinutes
+    };
+  }
+
+  const sound = raw.sound || {};
+  const volume = Number(sound.volume);
+  // Набор звука приводим к списку из `SOUND_TONES`: в state.json может прийти любой id,
+  // в том числе от более новой версии приложения — тогда берём набор по умолчанию
+  const toneIds = new Set(SOUND_TONES.map(t => t.id));
+  // Настройки собираются заново, а не поверх старых: так из state.json уходят галочки,
+  // которых больше нет (marathonBehind и другие), и остаётся один источник настроек
+  return {
+    enabled: raw.enabled !== false,
+    sound: {
+      enabled: sound.enabled !== false,
+      volume: Number.isFinite(volume) ? Math.min(100, Math.max(0, Math.round(volume))) : def.sound.volume,
+      tone: toneIds.has(sound.tone) ? sound.tone : DEFAULT_TONE
+    },
+    // Приведение типов: набор видов и ивентов задаётся списками в `constants.js`, поэтому в
+    // типах перечислены конкретные ключи, а объекты собираются циклом
+    kinds: /** @type {typeof def.kinds} */ (kinds),
+    dailyHour: Number.isFinite(hour) ? Math.min(23, Math.max(0, Math.round(hour))) : def.dailyHour,
+    events: /** @type {typeof def.events} */ (events)
+  };
 }
 
 function mergeSettings(input = {}) {

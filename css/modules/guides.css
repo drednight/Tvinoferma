@@ -39,6 +39,14 @@
 .guide-route { padding: 14px 16px; margin: 16px 0 24px; border-left: 3px solid var(--accent); border-radius: var(--radius-xs); background: var(--accent-soft); }
 .guide-route strong { display: block; font-size: 14px; color: var(--accent); }
 .guide-route p { margin: 6px 0 0; }
+/* Кнопка «перейти к этому»: маршрут словами и сразу переход к разделу или панели настроек */
+.guide-open { margin-top: 12px; }
+.guide-open .btn { min-height: 40px; }
+/* «На что смотреть» под снимком: снимок не равен живому окну, остаётся подписать главное */
+.guide-screen-notes { margin-top: 12px; padding: 12px 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: var(--radius-xs); }
+.guide-screen-notes strong { display: block; margin-bottom: 6px; font-size: 0.84rem; }
+.guide-screen-notes ul { margin: 0; padding-left: 20px; }
+.guide-screen-notes li { margin: 4px 0; color: var(--text-dim); font-size: 0.86rem; line-height: 1.5; }
 .guide-article h4 { margin: 0 0 16px; font-size: 18px; line-height: 1.4; }
 .guide-steps { list-style: none; counter-reset: guide-step; padding: 0; margin: 0 0 24px; }
 .guide-steps li { position: relative; counter-increment: guide-step; padding-left: 44px; margin: 0 0 20px; min-height: 32px; }
@@ -76,6 +84,33 @@
 .guide-empty-state p { color: var(--text-dim); }
 .guide-library button:focus-visible, .guide-image-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .guide-shortcuts button:hover, .guide-index-item:hover, .guide-related button:hover, .guide-category:hover { border-color: var(--accent); }
+
+/* --- Базовый гайд (js/settings/gettingStarted.js) ---
+   Окно гайда — тот же диалог, что и мастер марафона: степпер сверху, содержимое шага,
+   кнопки «Назад / Далее» и чекбокс «не показывать снова» снизу. Стили степпера берутся
+   из css/modules/marathons.css, здесь — только то, что относится к шагу гайда. */
+.gs-stepper .tf-step { max-width: 140px; }
+.gs-step { display: flex; flex-direction: column; gap: 14px; }
+.gs-head { display: flex; flex-direction: column; gap: 4px; }
+.gs-counter { color: var(--text-dim); font-size: 0.76rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.gs-head h3 { margin: 0; font-size: 1.3rem; }
+.gs-text { margin: 0; font-size: 1rem; line-height: 1.6; }
+.gs-hint { margin: 0; color: var(--text-dim); font-size: 0.88rem; line-height: 1.5; }
+/* Снимок интерфейса: тот же вид, что в статье справочника, но без кнопки увеличения —
+   в гайде он иллюстрация, а не предмет изучения */
+.gs-screen { margin: 0; }
+.gs-screen img { display: block; width: 100%; max-height: min(38vh, 320px); object-fit: contain; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); background: var(--surface-1); }
+.gs-screen figcaption { margin-top: 8px; color: var(--text-dim); font-size: 0.82rem; }
+.gs-go .btn { min-height: 40px; }
+.gs-more { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.gs-more > span { font-size: 0.82rem; }
+.gs-dont-show { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 0.84rem; cursor: pointer; }
+.tf-dialog-foot:has(.gs-dont-show) { justify-content: space-between; }
+@media (max-width: 760px) {
+  .tf-dialog-foot:has(.gs-dont-show) { flex-direction: column; align-items: stretch; }
+  .gs-stepper .tf-step { max-width: none; }
+}
+.topbar-guide { white-space: nowrap; }
 @media (max-width: 1100px) {
   .guide-workspace { grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 16px; }
   .guide-shortcuts button { padding: 14px; }

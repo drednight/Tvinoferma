@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { bindGuides } from '../js/settings/guides.js';
+import { bindGuides, revealGuide } from '../js/settings/guides.js';
 import { GUIDE_CATEGORIES, GUIDES, guideSearchText } from '../js/settings/guideData.js';
 
 const source = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
@@ -140,6 +140,38 @@ describe('каталог и область чтения', () => {
     $('[data-close]').click();
   });
 
+  it('статья ведёт к разделу приложения, а не только описывает путь', () => {
+    // Шапка статьи должна содержать кнопку «перейти к этому»: инструкция не заставляет
+    // искать раздел вручную
+    bindGuides();
+    $('[data-category="all"]').click();
+    $('[data-guide-id="first-character"]').click();
+    expect($('#guide-reader-title').textContent).toBe('Начать с первого персонажа');
+    const open = $('.guide-open [data-guide-tab]');
+    expect(open).not.toBeNull();
+    expect(open.textContent).toContain('Персонажи');
+    open.click();
+    expect(document.querySelector('.tab[data-tab="characters"]')).toBeNull();   // в тесте разделов нет
+  });
+
+  it('кнопка панели настроек раскрывает нужную панель', () => {
+    document.body.innerHTML = '<div id="modal-root"></div><details id="settings-launcher"></details>' + source.getElementById('guide-library').outerHTML;
+    bindGuides();
+    $('[data-category="all"]').click();
+    $('[data-guide-id="gamecenter"]').click();
+    $('.guide-open [data-guide-panel]').click();
+    expect($('#settings-launcher').open).toBe(true);
+  });
+
+  it('на снимке подписано, на что смотреть', () => {
+    bindGuides();
+    $('[data-category="all"]').click();
+    $('[data-guide-id="first-character"]').click();
+    const notes = [...document.querySelectorAll('.guide-screen-notes li')];
+    expect(notes.length).toBeGreaterThanOrEqual(3);
+    expect(notes[0].textContent).toContain('Карточка персонажа');
+  });
+
   it('все статьи доступны, все переходы ведут к правильному заголовку', () => {
     bindGuides();
     for (const guide of GUIDES) {
@@ -149,5 +181,26 @@ describe('каталог и область чтения', () => {
       expect(document.querySelectorAll('.guide-steps li')).toHaveLength(guide.steps.length);
       expect($('.guide-article-head').textContent).not.toContain('шагаов');
     }
+  });
+});
+
+describe('справочник извне: базовый гайд', () => {
+  // Гайд ссылается на статьи справочника: статья открывается без ручного поиска по catalog
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="modal-root"></div>' + source.getElementById('guide-library').outerHTML;
+    bindGuides();
+  });
+
+  it('открывает статью любой темы и раскрывает свёрнутую панель', () => {
+    const library = $('#guide-library');
+    expect(library.open).toBe(false);
+    expect(revealGuide('gamecenter')).toBe(true);
+    expect(library.open).toBe(true);
+    expect($('#guide-reader-title').textContent).toBe(GUIDES.find(g => g.id === 'gamecenter').title);
+  });
+
+  it('несуществующая статья ничего не ломает', () => {
+    expect(revealGuide('нет-такой')).toBe(false);
+    expect($('#guide-reader-title').textContent).toBe('Начать с первого персонажа');
   });
 });

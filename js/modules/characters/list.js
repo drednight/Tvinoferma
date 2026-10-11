@@ -316,9 +316,9 @@ async function closeCharacterGameWindow(charId, btn) {
  */
 function generateCardHTML(char, { archived = false } = {}) {
     const iconSrc = getClassIconSrc(char.class);
-    const avatarContent = iconSrc 
-      ? `<img src="${iconSrc}" alt="${escapeHtml(char.class)}" style="width:100%; height:100%; object-fit:contain;" />`
-      : `<span style="font-size:1rem; font-weight:bold; color:var(--muted);">${(char.class || '?')[0]}</span>`;
+    const avatarContent = iconSrc
+      ? `<img src="${iconSrc}" alt="${escapeHtml(char.class)}" />`
+      : `<span>${(char.class || '?')[0]}</span>`;
 
     const skyInfo = char.sky?.name ? `${escapeHtml(char.sky.name)}${char.sky.level ? ` (Ур.${char.sky.level})` : ''}` : 'Небо не выбрано';
     
@@ -334,15 +334,14 @@ function generateCardHTML(char, { archived = false } = {}) {
     const passesHtml = PASS_TYPES.map(pt => {
       const count = passes[pt.key] || 0;
       const imgPath = pt.img;
-      return `
-        <div class="pass-item" title="${pt.label}: ${count}">
-          <img class="pass-icon-img" src="${imgPath}" alt="${pt.label}" onerror="this.style.display='none'"/>
-          <span>${count}</span>
-        </div>
-      `;
+      return `<span class="pass-item" title="${pt.label}: ${count}"><img class="pass-icon-img" src="${imgPath}" alt="${pt.label}" /><span>${count}</span></span>`;
     }).join('');
 
-    const coinsDisplay = formatCoins(char.ancientCoins || 0) + (needsCoinRecheck(char) ? ' <span title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить»." style="color:#f7768e; cursor:help;">⚠</span>' : '');
+    // Предупреждение о балансе: видно сразу на карточке, а не только в профиле
+    const coinWarn = needsCoinRecheck(char)
+      ? ' <span class="coin-warn" title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить».">⚠</span>'
+      : '';
+    const coinsDisplay = `${formatCoins(char.ancientCoins || 0)}${coinWarn}`;
     const archivedPartyLinks = archived
       ? state.archivedParties.flatMap(party => (party.memberLinks || [])
           .filter(link => link.characterId === char.id)
@@ -369,9 +368,7 @@ function generateCardHTML(char, { archived = false } = {}) {
     const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
     const checkingAuth = !archived && state.ui?.authCheck?.[char.id] === 'checking';
 
-    const tagsHtml = (char.tags || []).length
-      ? `<div class="tag-list">${char.tags.map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('')}</div>`
-      : '';
+    const tagsHtml = (char.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('');
     const selecting = !archived && state.ui.selectionMode;
     const selected = selecting && state.ui.selection.has(char.id);
     const selectBox = selecting
@@ -389,31 +386,30 @@ function generateCardHTML(char, { archived = false } = {}) {
             </div>
             <div class="char-ident">
               <h3 class="char-nick">${escapeHtml(char.nick)}</h3>
-              <small class="muted char-sub">${escapeHtml(char.class)} • Ур. ${char.level}${levelBonusLabel(char) ? ` <span class="char-bu" title="Бонус к уровню" style="color:var(--gold); font-weight:600;">${levelBonusLabel(char)}</span>` : ''}</small>
-              <small class="muted char-sub">${skyInfo}</small>
+              <div class="char-facts">
+                <span class="char-fact char-class">${escapeHtml(char.class)}</span>
+                <span class="char-fact char-level">Ур. ${char.level}${levelBonusLabel(char) ? ` <b class="char-bu" title="Бонус к уровню">${levelBonusLabel(char)}</b>` : ''}</span>
+              </div>
+              <div class="char-sky">${skyInfo}</div>
             </div>
           </div>
 
           <div class="card-head-side">
-             <!-- ИНДИКАТОР СТАТУСА -->
              ${archived
                ? '<span class="badge">В архиве</span>'
                : `<div class="state ${authView.cls}" title="${statusTitle}">
                     <span class="state-dot"></span><span>${statusText}</span>
                   </div>`}
-
-             <span class="badge party card-party${partyColor ? ' has-color' : ''}"${partyColor ? ` style="--party-c:${partyColor}"` : ''}>${partyLabel}</span>
-
-             <!-- БЛОК МОНЕТ (БЕЗ ДАТЫ СИНХРОНИЗАЦИИ) -->
-             <div class="badge coins card-coins">
-               <span aria-hidden="true">🪙</span><strong>${coinsDisplay}</strong>
-             </div>
           </div>
         </header>
 
-        <div class="card-body">
-           <div class="card-tags">${tagsHtml}</div>
+        <div class="card-meta">
+           <span class="badge party card-party${partyColor ? ' has-color' : ''}"${partyColor ? ` style="--party-c:${partyColor}"` : ''}>${partyLabel}</span>
+           <span class="badge coins card-coins"><span aria-hidden="true">🪙</span><strong>${coinsDisplay}</strong></span>
+           <div class="card-tags tag-list">${tagsHtml}</div>
+        </div>
 
+        <div class="card-body">
            <div class="card-stats">
               <div><span class="muted">HP</span><strong>${fmtStat(stats.hp)}</strong></div>
               <div><span class="muted">PA</span><strong>${fmtStat(stats.pa)}</strong></div>
@@ -423,19 +419,19 @@ function generateCardHTML(char, { archived = false } = {}) {
            </div>
 
            <div class="card-contacts">
-              <div class="contact-row-mini">
+              <div class="contact-row-mini${hasEmail ? '' : ' is-empty'}">
                  <span class="muted contact-key">EMAIL</span>
                  <div class="contact-row-actions">
-                    <span class="contact-value mini-copy-trigger" data-type="email" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.email || '')}">${hasEmail ? emailMasked : '-'}</span>
-                    <button class="icon-btn mini-toggle-eye" data-target="email" style="pointer-events:${hasEmail ? 'auto' : 'none'};" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+                    <span class="contact-value mini-copy-trigger" data-type="email" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.email || '')}">${hasEmail ? emailMasked : '—'}</span>
+                    <button class="icon-btn mini-toggle-eye" data-target="email" type="button" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
                  </div>
               </div>
 
-              <div class="contact-row-mini">
+              <div class="contact-row-mini${hasPass ? '' : ' is-empty'}">
                  <span class="muted contact-key">PASS</span>
                  <div class="contact-row-actions">
-                    <span class="contact-value mini-copy-trigger" data-type="password" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.password || '')}">${hasPass ? passMasked : '-'}</span>
-                    <button class="icon-btn mini-toggle-eye" data-target="password" style="pointer-events:${hasPass ? 'auto' : 'none'};" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
+                    <span class="contact-value mini-copy-trigger" data-type="password" title="Нажмите, чтобы скопировать" data-original="${escapeHtml(char.contacts?.password || '')}">${hasPass ? passMasked : '—'}</span>
+                    <button class="icon-btn mini-toggle-eye" data-target="password" type="button" title="Показать/Скрыть">${EYE_SVG_OPEN}</button>
                  </div>
               </div>
            </div>
@@ -451,19 +447,18 @@ function generateCardHTML(char, { archived = false } = {}) {
            <div class="card-actions">
               <button class="card-act play${hasGameCenterPath(char) ? '' : ' is-unset'}"
                       type="button"
+                      data-action="launch"
                       aria-label="Играть"
-                      title="${hasGameCenterPath(char) ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите GameCenter (откроется карточка)'}"
-                      onclick="event.stopPropagation(); window.handleLaunchChar('${char.id}')">
+                      title="${hasGameCenterPath(char) ? 'Играть: запустить игру для этого персонажа' : 'Играть: сначала укажите GameCenter (откроется карточка)'}">
                  <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></svg>
               </button>
                <button id="btn-open-site-${char.id}"
-                       class="card-act"
+                       class="card-act${checkingAuth ? ' is-disabled' : ''}"
                        type="button"
+                       data-action="site"
                        aria-label="Открыть сайт"
-                       style="${checkingAuth ? 'cursor:not-allowed;' : ''}"
                        title="${checkingAuth ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
-                       ${checkingAuth ? 'disabled' : ''}
-                       onclick="event.stopPropagation(); window.handleOpenSite('${char.id}')">🌐</button>
+                       ${checkingAuth ? 'disabled' : ''}>🌐</button>
                ${gameWindowBtn(char, archived)}
                ${archived
 
@@ -636,6 +631,21 @@ export function bindOnboardingEvents(container, { closeBeforeAction = false } = 
   });
 }
 
+/**
+ * Показать персонажей с этим тегом. Нужно профилю: тег в шапке профиля ведёт к тем же
+ * людям в списке, что и клик по тегу в карточке.
+ * @param {string} tag
+ */
+export function showCharactersWithTag(tag) {
+  document.querySelector('.tab[data-tab="characters"]')?.click();
+  const select = document.getElementById('tag-filter');
+  if (!select) return;
+  fillTagFilter(select);
+  select.value = tag;
+  renderFilteredGrid();
+  select.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+}
+
 /** Справка «Как войти на сайт игры»: один текст на приветственное окно и на страницу. */
 export function openLoginHelp() {
   showModal({
@@ -718,6 +728,21 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
         toast(`Не удалось переместить персонажа в архив: ${error?.message || error}`, 'error');
       } finally {
         archiveBtn.disabled = false;
+      }
+      return;
+    }
+
+    // Действия кнопок карточки: запуск игры и открытие сайта. Раньше это были инлайновые
+    // onclick с ID персонажа внутри строки — код кнопки теперь рядом с остальными действиями.
+    const act = target.closest('[data-action]');
+    if (act) {
+      e.stopPropagation();
+      const id = act.closest('[data-char-id]')?.dataset.charId;
+      try {
+        if (act.dataset.action === 'launch') await window.handleLaunchChar(id);
+        else if (act.dataset.action === 'site') window.handleOpenSite(id);
+      } catch (error) {
+        toast(`Не удалось выполнить действие: ${error?.message || error}`, 'error');
       }
       return;
     }

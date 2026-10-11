@@ -48,10 +48,10 @@ describe('launcher', () => {
       { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
       { invoke }
     );
-    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, reuseRunning: false, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
+    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
     seen.length = 0;
     await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
-    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, reuseRunning: false, windowTitle: 'b', iconSmall: null, iconBig: null });
+    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
   });
 
   it('onStart вызывается по очереди, а не для всех сразу', async () => {
@@ -250,25 +250,31 @@ describe('launcher: подпись окон и закрытие чужих GameC
 describe('launcher.rs: GameCenter из других папок и итог подписи', () => {
   const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
   it('перед запуском закрываются чужие GameCenter, а итог подписи уходит событием', () => {
-    // Свой GameCenter закрывается только когда мы подставляем в него сохранённый вход.
-    // С появлением переключения на месте условие стало длиннее: своё закрывать нельзя,
-    // иначе переключать было бы нечего.
-    expect(rs).toContain('close_gamecenters(&exe, magic.is_some() && !switch_in_place)');
+    // Свой GameCenter закрывается только когда мы подставляем в него сохранённый вход:
+    // переписать `.ini` у живого процесса нельзя, он запишет файл обратно.
+    expect(rs).toContain('close_gamecenters(&exe, magic.is_some())');
     expect(rs).toContain('"launcher-decorate"');
     expect(rs).toContain('closed_other_gc');
   });
 
-  // Переключение аккаунта в работающем GameCenter держится на недокументированном поведении,
-  // поэтому выключено по умолчанию и решается в Rust по факту — что именно запущено сейчас.
-  it('переключение на месте разрешено только настройкой и только при запущенном своём GameCenter', () => {
-    expect(rs).toContain('reuse_running: Option<bool>');
-    expect(rs).toContain('switch_in_place = reuse_running.unwrap_or(false) && my_running && magic.is_some()');
-    expect(rs).toContain('switched_in_place: switch_in_place');
+  // Переключение аккаунта в уже запущенном GameCenter проверялось 10.10.2026 и не сработало:
+  // запущенный GameCenter не подхватывает изменение `GameCenter.ini`. Код и настройка убраны,
+  // тест оставлен, чтобы механизм не вернулся незаметно.
+  it('переключение аккаунта в работающем GameCenter не возвращалось', () => {
+    expect(rs).not.toContain('switch_in_place');
+    expect(rs).not.toContain('reuse_running');
+    expect(readFileSync('js/core/constants.js', 'utf8')).not.toContain('switchInRunningGc');
   });
 
-  it('в настройках переключение выключено по умолчанию', () => {
-    const def = readFileSync('js/core/constants.js', 'utf8');
-    expect(def).toContain('switchInRunningGc: false');
+  // Окнами клиентов следит один общий наблюдатель: раньше каждый запуск заводил свой поток,
+  // и каждый из них раз в 700 мс перебирал все окна системы — при десяти клиентах это десять
+  // переборов вместо одного.
+  it('окнами клиентов следит один общий наблюдатель, а не поток на каждый запуск', () => {
+    expect(rs).toContain('static WATCHER: Mutex<Watcher>');
+    expect(rs).toContain('fn watch_loop()');
+    // Один перебор окон на все задания, и заголовки читаются только у нужных процессов
+    expect(rs).toContain('win::windows_of(&pids)');
+    expect(rs).not.toContain('fn decorate_client');
   });
 });
 

@@ -11,7 +11,9 @@
 //!    Окно «Попытка авторизации…» с кнопкой «Прервать» не трогаем: Enter в нём прервал бы вход.
 //! 4. Ждём, пока появится новый процесс клиента игры.
 //! 5. Если передан заголовок и значок класса, окну нового клиента ставятся название «Ник — Класс»
-//!    и значок (в фоне: окно появляется не сразу). Меняется только вид окна, сама игра не затрагивается.
+//!    и значок (в фоне: окно появляется не сразу). Следит за окнами один общий наблюдатель —
+//!    перебор окон один на все запуски, а не поток с полным перебором на каждого аккаунта.
+//!    Меняется только вид окна, сама игра не затрагивается.
 //!
 //! Безопасность: запускается только файл с именем `GameCenter.exe`, а ссылка запуска
 //! должна начинаться с `vkplay://` и не содержать пробелов — произвольные программы отсюда не стартуют.
@@ -20,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Condvar, Mutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
@@ -49,7 +53,7 @@ const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
 const DECORATE_WAIT: Duration = Duration::from_secs(90);
 /// Сколько ещё следить за окном после первой подписи (игра может сама сменить заголовок при загрузке и входе в мир)
 const DECORATE_KEEP: Duration = Duration::from_secs(180);
-/// Как часто проверять окна клиента
+/// Как часто общий наблюдатель окон проверяет окна клиентов (один перебор на все запуски)
 const DECORATE_STEP: Duration = Duration::from_millis(700);
 /// Допустимый размер значка (сторона квадрата, пикселей)
 const ICON_MIN: usize = 8;
@@ -74,10 +78,6 @@ pub struct LaunchInfo {
     closed_other_gc: u32,
     /// Сколько GameCenter закрыть не удалось (запущены от администратора): запуск может пойти из них
     gc_close_failed: u32,
-    /// Аккаунт переключили в уже запущенном GameCenter, не перезапуская его (экспериментальный
-    /// режим «переключать на месте», см. `reuse_running`). false — GameCenter перезапущен обычным
-    /// порядком. Показывается в журнале запуска, чтобы было видно, какой режим сработал.
-    switched_in_place: bool,
     /// Замеры этапов одного запуска, мс.
     ///
     /// Без них «запуск идёт долго» нечем превратить в действие: видно ли время уходит на
@@ -93,6 +93,7 @@ pub struct LaunchInfo {
 /// Окна и клавиши Windows (user32) без лишних зависимостей.
 #[cfg(windows)]
 mod win {
+    use std::collections::HashSet;
     use std::ffi::c_void;
 
     type Hwnd = *mut c_void;
@@ -102,7 +103,6 @@ mod win {
     unsafe extern "system" {
         fn EnumWindows(proc_: EnumProc, lparam: isize) -> i32;
         fn GetClassNameW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
-        fn GetWindowTextW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
@@ -303,14 +303,72 @@ mod win {
         String::from_utf16_lossy(&buf[..n.clamp(0, 256) as usize])
     }
 
+    /// Заголовок окна с ограничением по времени.
+    ///
+    /// Заголовок чужого окна хранится в памяти чужого процесса, поэтому его читают не из
+    /// общей памяти, а сообщением `WM_GETTEXT`, на которое окно обязано ответить.
+    /// `GetWindowTextW` посылает это сообщение и ждёт, сколько понадобится чужому процессу:
+    /// зависший отвечает до 200 мс, и одно такое окно задерживает весь перебор окон — при
+    /// массовом запуске окон это и есть вероятная причина подвисаний. Поэтому отправляем
+    /// сообщение сами, с признаком `SMTO_ABORTIFHUNG` и коротким таймаутом: окно, которое
+    /// не ответило, считается окном без заголовка, а перебор окон не подвешивает.
+    fn title_with_timeout(hwnd: Hwnd) -> String {
+        const WM_GETTEXT: u32 = 0x000D;
+        const SMTO_ABORTIFHUNG: u32 = 0x0002;
+        /// Ждём ответа коротко: заголовки читаются в цикле, и зависшее окно не должно
+        /// задерживать проход дольше, чем сам шаг цикла.
+        const TIMEOUT_MS: u32 = 50;
+        let mut buf = [0u16; 256];
+        let mut copied: usize = 0;
+        let ok = unsafe {
+            SendMessageTimeoutW(
+                hwnd,
+                WM_GETTEXT,
+                buf.len(),
+                buf.as_mut_ptr() as isize,
+                SMTO_ABORTIFHUNG,
+                TIMEOUT_MS,
+                &mut copied,
+            )
+        };
+        if ok == 0 {
+            return String::new(); // окно не ответило: заголовок неизвестен
+        }
+        // Окно не обязано уложиться в буфер целиком, поэтому берём столько, сколько влезло
+        let n = copied.min(buf.len() - 1);
+        String::from_utf16_lossy(&buf[..n])
+    }
+
+    /// Что собирает `EnumWindows` по каждому окну.
+    struct Collect<'a> {
+        list: &'a mut Vec<WinInfo>,
+        /// Процессы, у которых нужно читать заголовок и класс. `None` — у всех.
+        /// Заголовок чужого окна — это сообщение чужому процессу (см. `title_with_timeout`),
+        /// поэтому там, где чужие заголовки не нужны, их и не спрашивают.
+        only: Option<HashSet<u32>>,
+    }
+
+    /// Нужно ли читать у окна процесса `pid` класс и заголовок. `None` — окна ищутся всех процессов.
+    ///
+    /// Вынесено из `collect` ради проверки без запуска Windows: чтение заголовка чужого окна —
+    /// это сообщение чужому процессу (см. `title_with_timeout`), и там, где чужие заголовки
+    /// не нужны, его не должно быть.
+    pub(crate) fn window_wanted(only: Option<&HashSet<u32>>, pid: u32) -> bool {
+        only.is_none_or(|want| want.contains(&pid))
+    }
+
     unsafe extern "system" fn collect(hwnd: Hwnd, lparam: isize) -> i32 {
-        let list = unsafe { &mut *(lparam as *mut Vec<WinInfo>) };
-        let class = read(|b, n| unsafe { GetClassNameW(hwnd, b, n) });
-        let title = read(|b, n| unsafe { GetWindowTextW(hwnd, b, n) });
-        let visible = unsafe { IsWindowVisible(hwnd) } != 0;
+        let ctx = unsafe { &mut *(lparam as *mut Collect) };
         let mut pid: u32 = 0;
         unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-        list.push(WinInfo {
+        // PID окна стоит копейки: это чтение общей структуры окна, а не сообщение процессу
+        let visible = unsafe { IsWindowVisible(hwnd) } != 0;
+        if !window_wanted(ctx.only.as_ref(), pid) {
+            return 1; // окно чужого процесса: ни класс, ни заголовок не читаем
+        }
+        let class = read(|b, n| unsafe { GetClassNameW(hwnd, b, n) });
+        let title = title_with_timeout(hwnd);
+        ctx.list.push(WinInfo {
             hwnd: hwnd as usize,
             pid,
             class,
@@ -320,13 +378,26 @@ mod win {
         1 // продолжать перебор окон
     }
 
+    /// Перебор окон с фильтром: читать заголовки только у окон `only`.
+    fn scan(only: Option<HashSet<u32>>) -> Vec<WinInfo> {
+        let mut list: Vec<WinInfo> = Vec::new();
+        let mut ctx = Collect {
+            list: &mut list,
+            only,
+        };
+        unsafe { EnumWindows(collect, &mut ctx as *mut Collect as isize) };
+        list
+    }
+
     /// Все окна верхнего уровня.
     pub fn all_windows() -> Vec<WinInfo> {
-        let mut list: Vec<WinInfo> = Vec::new();
-        unsafe {
-            EnumWindows(collect, &mut list as *mut Vec<WinInfo> as isize);
-        }
-        list
+        scan(None)
+    }
+
+    /// Окна только этих процессов. Нужно там, где ищут окна одной игры: перебор один,
+    /// а не по перебору на каждого клиента, да и заголовки чужих окон не читаются.
+    pub fn windows_of(pids: &[u32]) -> Vec<WinInfo> {
+        scan(Some(pids.iter().copied().collect()))
     }
 
     /// Отправка сообщения окну другого процесса с ограничением по времени: зависшее окно нас не подвесит.
@@ -558,9 +629,9 @@ mod win {
         }
     }
 
-    /// Текущий заголовок окна.
+    /// Текущий заголовок окна (см. `title_with_timeout` — почему с таймаутом).
     pub fn title_of(hwnd: usize) -> String {
-        read(|b, n| unsafe { GetWindowTextW(hwnd as Hwnd, b, n) })
+        title_with_timeout(hwnd as Hwnd)
     }
 
     /// Когда процесс был запущен, мс с 1970. `None` — процесс недоступен (например, запущен от администратора).
@@ -697,6 +768,10 @@ mod win {
         pub visible: bool,
     }
     pub fn all_windows() -> Vec<WinInfo> {
+        Vec::new()
+    }
+    /// Окна только этих процессов (на Windows — заголовки чужих окон не читаются).
+    pub fn windows_of(_pids: &[u32]) -> Vec<WinInfo> {
         Vec::new()
     }
     pub fn all_processes() -> Vec<(String, u32)> {
@@ -1040,63 +1115,200 @@ fn decorate_step(
     None
 }
 
-/// Подписывает окно(а) клиента и ставит значок. Окно появляется не сразу (загрузка), поэтому ищем его в фоне;
-/// после первой подписи ещё `DECORATE_KEEP` следим за заголовком и значком: игра может переписать их при загрузке.
-/// Итог (`Ok`, `Denied`, …) сообщается один раз через `report`.
-fn decorate_client(
+/// Одно окно(-а) клиента, за которым нужно следить: заголовок «Ник — Класс» и значок класса.
+///
+/// Окно появляется не сразу (загрузка клиента), поэтому его ищем в фоне; после первой подписи
+/// ещё `DECORATE_KEEP` следим за заголовком и значком — игра переписывает их при входе в мир.
+struct WatchJob {
+    /// PID клиента игры
+    pid: u32,
+    /// Какой заголовок должен быть у окна
+    title: String,
+    /// Значки окна (0 — этот значок не ставить)
+    small: usize,
+    big: usize,
+    /// Куда сообщить итог — в приложении это событие `launcher-decorate`
+    report: Box<dyn Fn(Decorated, u32) + Send>,
+    /// Что накопилось за время слежения
+    progress: DecorateProgress,
+    /// До какого момента искать окно клиента
+    deadline: Instant,
+    /// Когда заголовок впервые совпал с нужным
+    verified_at: Option<Instant>,
+    /// Итог уже сообщён: «Ок» и ошибка сообщаются один раз
+    reported: bool,
+}
+
+impl WatchJob {
+    /// Один проход по окнам. `true` — следить больше не нужно.
+    ///
+    /// Вызовы Windows принимаются параметрами, как в `decorate_step`: в тесте подписывать
+    /// настоящие окна нечем, а поведение прохода проверяется целиком.
+    fn step(
+        &mut self,
+        windows: &[win::WinInfo],
+        now: Instant,
+        set_title: &mut impl FnMut(usize, &str) -> Result<(), u32>,
+        set_icons: &mut impl FnMut(usize) -> Result<(), u32>,
+        has_icons: &impl Fn(usize) -> bool,
+    ) -> bool {
+        // Сначала срок: раньше это было условие выхода из цикла наблюдателя
+        if now >= self.deadline {
+            if !self.reported {
+                let status = if self.progress.seen {
+                    Decorated::Failed
+                } else {
+                    Decorated::Missing
+                };
+                self.report(status, self.progress.last_error);
+            }
+            return true;
+        }
+        if let Some(code) = decorate_step(
+            &mut self.progress,
+            windows,
+            self.pid,
+            &self.title,
+            set_title,
+            set_icons,
+            has_icons,
+        ) {
+            self.report(Decorated::Denied, code);
+            return true;
+        }
+        if self.progress.verified {
+            if !self.reported {
+                self.reported = true;
+                self.verified_at = Some(now);
+                self.report(Decorated::Ok, 0);
+            }
+            if self
+                .verified_at
+                .is_some_and(|t| now.duration_since(t) > DECORATE_KEEP)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn report(&self, status: Decorated, code: u32) {
+        (self.report)(status, code);
+    }
+}
+
+/// Задания, ожидающие общего наблюдателя окон.
+struct Watcher {
+    queue: Vec<WatchJob>,
+}
+
+/// Наблюдатель окон один на всё приложение: раньше каждый запуск окна заводил свой поток,
+/// и каждый из них раз в `DECORATE_STEP` перебирал все окна системы — при десяти клиентах
+/// это десять переборов вместо одного (а перебор окон — это сообщения чужим окнам).
+/// Теперь перебор один на все задания, а `WAKE` будит наблюдателя, когда есть работа.
+static WATCHER: Mutex<Watcher> = Mutex::new(Watcher { queue: Vec::new() });
+static WAKE: Condvar = Condvar::new();
+/// Наблюдатель уже запущен. Поток не завершается: без заданий он ждёт на условии.
+static WATCHING: AtomicBool = AtomicBool::new(false);
+
+fn watch_lock() -> std::sync::MutexGuard<'static, Watcher> {
+    WATCHER
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Ставит окно клиента в очередь наблюдателя: тот найдёт окно, поставит заголовок и значок
+/// и сообщит итог (`Ok`, `Denied`, …). Поведение прежнее, нагрузка — нет: перебор окон
+/// один на все запуски, а не поток с перебором окон на каждого аккаунта.
+fn watch_client(
+    app: &tauri::AppHandle,
     pid: u32,
     title: String,
-    small: Option<Vec<u8>>,
-    big: Option<Vec<u8>>,
-    report: impl Fn(Decorated, u32),
+    icon_small: Option<Vec<u8>>,
+    icon_big: Option<Vec<u8>>,
 ) {
-    let small_icon = icon_from_rgba(small.as_deref());
-    let big_icon = icon_from_rgba(big.as_deref());
-    let deadline = Instant::now() + DECORATE_WAIT;
-    let mut progress = DecorateProgress::default();
-    let mut reported = false;
-    let mut verified_at: Option<Instant> = None;
-    while Instant::now() < deadline {
-        let windows = win::all_windows();
-        let denied = decorate_step(
-            &mut progress,
-            &windows,
-            pid,
-            &title,
-            &mut |hwnd, t| win::set_title(hwnd, t),
-            &mut |hwnd| win::set_icons(hwnd, small_icon, big_icon),
-            // Свой значок у окна есть? Если игра его сбросила — поставим заново
-            &|hwnd| {
-                if small_icon == 0 && big_icon == 0 {
-                    return true; // значки не запрашивали: проверять нечего
-                }
-                let d = win::details(hwnd);
-                (small_icon == 0 || d.small_icon != 0) && (big_icon == 0 || d.big_icon != 0)
-            },
-        );
-        if let Some(code) = denied {
-            report(Decorated::Denied, code);
-            return;
-        }
-        if progress.verified {
-            if !reported {
-                reported = true;
-                verified_at = Some(Instant::now());
-                report(Decorated::Ok, 0);
-            }
-            if verified_at.is_some_and(|t| t.elapsed() > DECORATE_KEEP) {
-                return;
-            }
-        }
-        sleep(DECORATE_STEP);
+    let shown = title.clone();
+    let app = app.clone();
+    let job = WatchJob {
+        pid,
+        title,
+        small: icon_from_rgba(icon_small.as_deref()),
+        big: icon_from_rgba(icon_big.as_deref()),
+        report: Box::new(move |status, code| {
+            let _ = app.emit(
+                "launcher-decorate",
+                DecorateEvent {
+                    pid,
+                    title: shown.clone(),
+                    status,
+                    code,
+                },
+            );
+        }),
+        progress: DecorateProgress::default(),
+        deadline: Instant::now() + DECORATE_WAIT,
+        verified_at: None,
+        reported: false,
+    };
+    {
+        let mut watcher = watch_lock();
+        watcher.queue.push(job);
     }
-    if !reported {
-        let status = if progress.seen {
-            Decorated::Failed
-        } else {
-            Decorated::Missing
-        };
-        report(status, progress.last_error);
+    // Поток заводится один раз и живёт, пока живо приложение: без заданий он спит на условии
+    if !WATCHING.swap(true, Ordering::SeqCst) {
+        let started = std::thread::Builder::new()
+            .name("twino-windows".into())
+            .spawn(watch_loop)
+            .is_ok();
+        if !started {
+            WATCHING.store(false, Ordering::SeqCst);
+        }
+    }
+    WAKE.notify_one();
+}
+
+/// Цикл общего наблюдателя окон.
+fn watch_loop() {
+    let mut jobs: Vec<WatchJob> = Vec::new();
+    loop {
+        if jobs.is_empty() {
+            // Работы нет: спим до нового задания (шаг `DECORATE_STEP` — предохранитель,
+            // чтобы пропущенное пробуждение не стоило нам вечного ожидания)
+            let mut watcher = watch_lock();
+            if watcher.queue.is_empty() {
+                watcher = WAKE
+                    .wait_timeout(watcher, DECORATE_STEP)
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .0;
+            }
+            // Новое задание: проход начинаем сразу, не дожидаясь следующего шага
+            jobs.append(&mut watcher.queue);
+            continue;
+        }
+        // Один перебор окон на все задания: заголовки читаются только у окон этих процессов
+        let pids: Vec<u32> = jobs.iter().map(|job| job.pid).collect();
+        let windows = win::windows_of(&pids);
+        let now = Instant::now();
+        jobs.retain_mut(|job| {
+            let (small, big) = (job.small, job.big);
+            !job.step(
+                &windows,
+                now,
+                &mut |hwnd, t| win::set_title(hwnd, t),
+                &mut |hwnd| win::set_icons(hwnd, small, big),
+                // Свой значок у окна есть? Если игра его сбросила — поставим заново
+                &|hwnd| {
+                    if small == 0 && big == 0 {
+                        return true; // значки не запрашивали: проверять нечего
+                    }
+                    let d = win::details(hwnd);
+                    (small == 0 || d.small_icon != 0) && (big == 0 || d.big_icon != 0)
+                },
+            )
+        });
+        if !jobs.is_empty() {
+            sleep(DECORATE_STEP);
+        }
     }
 }
 
@@ -1522,15 +1734,6 @@ pub async fn launcher_start(
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
-    // `reuse_running` — экспериментальный режим «переключить аккаунт в уже запущенном
-    // GameCenter» вместо его перезапуска. Обычно порядок такой: закрыть GameCenter,
-    // переписать `GameCenter.ini`, открыть заново. Переписать файл у живого процесса нельзя —
-    // он может в любой момент записать его обратно. Поэтому вариант «переключить на месте»
-    // работает только если запущенный GameCenter перечитывает свой `.ini` по изменению, а это
-    // недокументированное поведение. Если оно не так — ошибки не будет, а второй запуск того
-    // же аккаунта, что хуже медленного запуска. Поэтому режим выключен по умолчанию.
-    // Здесь только разрешение на него: решает `gamecenter_pids()` в теле функции.
-    reuse_running: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
@@ -1547,24 +1750,12 @@ pub async fn launcher_start(
         let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
         let magic = id.map(get_magic).transpose()?.flatten();
 
-        // Переключение на месте возможно только когда: режим включён, вход сохранён (иначе
-        // переключать нечего и незачем оставлять чужой аккаунт в работающем GameCenter) и
-        // наш собственный GameCenter уже запущен. Чужие GameCenter в любом случае закрываем:
-        // они перехватили бы запуск.
-        let mine = exe.clone();
-        let my_running = gamecenter_pids().iter().any(|pid| {
-            gamecenter_path(*pid)
-                .map(|p| plain_path(Path::new(&p)).eq_ignore_ascii_case(&plain_path(&mine)))
-                .unwrap_or(false)
-        });
-        let switch_in_place = reuse_running.unwrap_or(false) && my_running && magic.is_some();
-
         // Замеры по этапам: пользователь видит в журнале, на что именно ушло время.
         // Без них «запуск идёт долго» нечем превратить в конкретное действие.
         let t_gc = Instant::now();
-        let closed = close_gamecenters(&exe, magic.is_some() && !switch_in_place)?;
+        let closed = close_gamecenters(&exe, magic.is_some())?;
         // Ждём освобождения единственного экземпляра GameCenter, но по факту, а не фиксированные 1.5 с
-        if !switch_in_place && (magic.is_some() || closed.others > 0) {
+        if magic.is_some() || closed.others > 0 {
             wait_gamecenters_gone();
         }
         let ms_gc_close = t_gc.elapsed().as_millis() as u64;
@@ -1601,22 +1792,11 @@ pub async fn launcher_start(
             })?;
         let ms_client = t_client.elapsed().as_millis() as u64;
 
-        // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт
+        // Название «Ник — Класс» и значок: окно появится не сразу, поэтому работаем в фоне, запуск следующего аккаунта не ждёт.
+        // Следит один общий наблюдатель окон — отдельный поток с полным перебором окон на каждый
+        // аккаунт превращался при десяти клиентах в десять переборов вместо одного.
         if let Some(title) = window_title.as_deref().and_then(clean_title) {
-            std::thread::spawn(move || {
-                let shown = title.clone();
-                decorate_client(client_pid, title, icon_small, icon_big, |status, code| {
-                    let _ = app.emit(
-                        "launcher-decorate",
-                        DecorateEvent {
-                            pid: client_pid,
-                            title: shown.clone(),
-                            status,
-                            code,
-                        },
-                    );
-                });
-            });
+            watch_client(&app, client_pid, title, icon_small, icon_big);
         }
 
         Ok::<LaunchInfo, String>(LaunchInfo {
@@ -1626,7 +1806,6 @@ pub async fn launcher_start(
             client_pid,
             closed_other_gc: closed.others,
             gc_close_failed: closed.failed,
-            switched_in_place: switch_in_place,
             ms_gc_close,
             ms_account,
             ms_client_wait: ms_client,
@@ -2627,6 +2806,151 @@ mod tests {
         );
         assert_eq!(denied, Some(ERROR_ACCESS_DENIED));
         assert_eq!(progress.last_error, ERROR_ACCESS_DENIED);
+    }
+
+    /// Задание наблюдателю для теста: итог уходит в канал, настоящие окна не нужны.
+    fn watch_job(
+        pid: u32,
+        title: &str,
+        wait: Duration,
+    ) -> (WatchJob, std::sync::mpsc::Receiver<(Decorated, u32)>) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let job = WatchJob {
+            pid,
+            title: title.to_string(),
+            small: 0,
+            big: 0,
+            report: Box::new(move |status, code| {
+                let _ = tx.send((status, code));
+            }),
+            progress: DecorateProgress::default(),
+            deadline: Instant::now() + wait,
+            verified_at: None,
+            reported: false,
+        };
+        (job, rx)
+    }
+
+    #[test]
+    fn titles_are_read_only_for_the_processes_being_looked_for() {
+        // Заголовок чужого окна — сообщение чужому процессу: там, где чужие заголовки
+        // не нужны, их не спрашивают вовсе
+        let want: HashSet<u32> = [100, 200].into_iter().collect();
+        assert!(win::window_wanted(Some(&want), 100));
+        assert!(win::window_wanted(Some(&want), 200));
+        assert!(!win::window_wanted(Some(&want), 300));
+        // Ищем окна всех процессов: фильтра нет
+        assert!(win::window_wanted(None, 300));
+    }
+
+    #[test]
+    fn watch_job_reports_ok_once_and_watches_for_the_keep_time() {
+        // Заголовок не наш: «подписали» ничем; значок проверять нечему — кладём замыканиями
+        fn keep_title(_hwnd: usize, _t: &str) -> Result<(), u32> {
+            Ok(())
+        }
+        fn keep_icons(_hwnd: usize) -> Result<(), u32> {
+            Ok(())
+        }
+        fn icons_in_place(_hwnd: usize) -> bool {
+            true
+        }
+        let (mut job, rx) = watch_job(
+            100,
+            "Ник — Класс",
+            DECORATE_WAIT + DECORATE_KEEP + DECORATE_KEEP,
+        );
+        let windows = [client_window(1, 100, "Ник — Класс")];
+        let now = Instant::now();
+        // Заголовок совпал: сообщаем «Ок», но ещё следим DECORATE_KEEP — игра переписала бы его при входе в мир
+        assert!(!job.step(
+            &windows,
+            now,
+            &mut keep_title,
+            &mut keep_icons,
+            &icons_in_place
+        ));
+        assert_eq!(rx.try_recv().unwrap(), (Decorated::Ok, 0));
+        // Второй проход «Ок» уже не шлём
+        assert!(!job.step(
+            &windows,
+            now + Duration::from_secs(1),
+            &mut keep_title,
+            &mut keep_icons,
+            &icons_in_place
+        ));
+        assert!(rx.try_recv().is_err());
+        // Ровно на границе DECORATE_KEEP ещё следим…
+        assert!(!job.step(
+            &windows,
+            now + DECORATE_KEEP,
+            &mut keep_title,
+            &mut keep_icons,
+            &icons_in_place
+        ));
+        // …а после неё следить больше нечему
+        assert!(job.step(
+            &windows,
+            now + DECORATE_KEEP + Duration::from_secs(1),
+            &mut keep_title,
+            &mut keep_icons,
+            &icons_in_place
+        ));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn watch_job_that_never_saw_the_window_reports_missing() {
+        let (mut job, rx) = watch_job(100, "Ник — Класс", Duration::from_millis(1));
+        let windows = [client_window(2, 200, "Чужое окно")];
+        let now = Instant::now() + Duration::from_secs(5);
+        assert!(
+            job.step(&windows, now, &mut |_, _| Ok(()), &mut |_| Ok(()), &|_| {
+                true
+            })
+        );
+        assert_eq!(rx.try_recv().unwrap(), (Decorated::Missing, 0));
+    }
+
+    #[test]
+    fn watch_job_that_saw_the_window_reports_failed_after_the_deadline() {
+        // Окно было, но заголовок так и не совпал (игра переписывает его при загрузке)
+        let (mut job, rx) = watch_job(100, "Ник — Класс", DECORATE_WAIT);
+        let windows = [client_window(1, 100, "Perfect World")];
+        let start = Instant::now();
+        assert!(!job.step(
+            &windows,
+            start,
+            &mut |_, _| Ok(()),
+            &mut |_| Ok(()),
+            &|_| true
+        ));
+        assert!(rx.try_recv().is_err()); // пока срок не вышел, итог не сообщаем
+        assert!(job.step(
+            &windows,
+            start + DECORATE_WAIT + Duration::from_secs(1),
+            &mut |_, _| Ok(()),
+            &mut |_| Ok(()),
+            &|_| true
+        ));
+        assert_eq!(rx.try_recv().unwrap(), (Decorated::Failed, 0));
+    }
+
+    #[test]
+    fn a_window_we_cannot_reach_ends_the_watching_with_denied() {
+        let (mut job, rx) = watch_job(100, "Ник — Класс", DECORATE_WAIT);
+        let windows = [client_window(1, 100, "Perfect World")];
+        assert!(job.step(
+            &windows,
+            Instant::now(),
+            &mut |_, _| Err(ERROR_ACCESS_DENIED),
+            &mut |_| Ok(()),
+            &|_| true
+        ));
+        assert_eq!(
+            rx.try_recv().unwrap(),
+            (Decorated::Denied, ERROR_ACCESS_DENIED)
+        );
     }
 
     #[test]

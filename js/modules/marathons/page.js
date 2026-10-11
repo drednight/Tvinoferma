@@ -26,7 +26,7 @@ import { mskDate } from '../../core/msk.js';
 const todayStr = () => mskDate();
 
 const view = { type: 'list', id: null };
-const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set(), descFull: new Set() };
+const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set() };
 
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
@@ -449,7 +449,6 @@ function renderDetail(root, m) {
 }
 
 const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'из новости', manual: 'изменено вручную' };
-const DESC_PREVIEW = 160;
 
 /** Раскрывающийся список описаний заданий: короткий текст, «Показать полностью», правка. */
 /** Правая колонка описания: «Древние монеты 🪙» и ниже только число ДМ за каждый порог задания. */
@@ -469,15 +468,12 @@ function descriptionsBlock(m) {
   if (!m.tasks.length) return '';
   const filled = m.tasks.filter(t => t.description).length;
   const items = m.tasks.map(t => {
-    const full = ui.descFull.has(t.id);
-    const [short, cut] = shortDescription(t.description, DESC_PREVIEW);
     const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
     return `
       <div class="mr-desc-item" data-desc-task="${t.id}">
         <div class="mr-desc-main">
         <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong></div>
-        ${t.description ? `<p class="mr-desc-text">${escapeHtml(full ? t.description : short)}</p>` : '<p class="muted mr-desc-text">Описания нет. Оно подтянется при сверке с сайтом или из новости; текст можно написать в редакторе марафона (✏️ Редактировать).</p>'}
-        ${cut ? `<div class="mr-desc-actions"><button class="btn small ghost" data-desc-toggle>${full ? 'Свернуть' : 'Показать полностью'}</button></div>` : ''}
+        ${t.description ? `<p class="mr-desc-text">${escapeHtml(t.description)}</p>` : '<p class="muted mr-desc-text">Описания нет. Оно подтянется при сверке с сайтом или из новости; текст можно написать в редакторе марафона (✏️ Редактировать).</p>'}
         </div>
         <aside class="mr-desc-side">
           ${src ? `<span class="mr-desc-src">${src}</span>` : ''}
@@ -495,14 +491,6 @@ function descriptionsBlock(m) {
 function bindDescriptions(root, m) {
   root.querySelector('.mr-descs')?.addEventListener('toggle', (e) => {
     if (e.target.open) ui.descOpen.add(m.id); else ui.descOpen.delete(m.id);
-  });
-  root.querySelectorAll('[data-desc-task]').forEach(box => {
-    const t = m.tasks.find(x => x.id === box.dataset.descTask);
-    if (!t) return;
-    box.querySelector('[data-desc-toggle]')?.addEventListener('click', () => {
-      if (ui.descFull.has(t.id)) ui.descFull.delete(t.id); else ui.descFull.add(t.id);
-      renderMarathons();
-    });
   });
 }
 

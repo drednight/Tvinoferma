@@ -22,39 +22,76 @@
   pointer-events: none;
 }
 
-/* Плашка логов повторяет квадрат «Московского времени» (тот же border/radius/фон) и
-   занимает всю высоту топбара: заголовок с точкой, подписью и меткой, шкала прогресса
-   и управление скриптом. Раскрытый список выпадает вниз отдельным модулем. */
-#tf-task-dock {
-  position: relative;
-  align-self: stretch;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  width: var(--tf-dock-w);
-  max-width: min(var(--tf-dock-w), 40vw);
-  pointer-events: none;
-}
-
+/* Плашка дока: заголовок с точкой, названием и меткой, шкала прогресса и управление
+   скриптом. Раскрытый список выпадает вниз отдельным модулем (не растягивает шапку). */
 .tf-dock-slot-bar {
   pointer-events: auto;
-  flex: 1 1 auto;
+  /* По высоте не тянется: плашка ровно по содержимому, иначе она снова достанет до подвала шапки */
+  flex: 0 0 auto;
   width: 100%;
-  min-height: 0;
   gap: 5px;
   padding: 7px 12px 8px;
 }
-/* Плашка прижата к правому краю и на всю высоту топбара: поля топбара (12/32) убираем
-   отрицательными отступами, иначе она торчит за верхнюю и нижнюю границы. */
+/* Плашка дока в экспериментальном каркасе.
+   Раньше это была отдельная «пилюля» с собственной рамкой и скруглением: она стояла
+   в шапке отдельным пятном и доходила до её нижней границы. Теперь док — часть шапки:
+   без скругления и без собственной рамки, а от левой части её отделяет одна вертикальная
+   линия (как разделитель колонок). Высота шапки теперь растёт под содержимое
+   (`grid-template-rows: auto` в newStyle.css), поэтому док за её подвал больше не выходит. */
 body[data-ui-style='next'] #tf-task-dock {
-  align-self: stretch;
+  --tf-dock-w: 292px;
+  align-self: center;
   height: auto;
-  margin: -12px -32px -12px 0;
+  margin: 0 0 0 auto;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
 }
+body[data-ui-style='next'] #tf-task-dock .tf-dock-slot-bar {
+  padding: 3px 0 4px;
+  gap: 5px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+/* Кольцо и кнопки чуть мельче: плашка должна помещаться в шапку по высоте */
+body[data-ui-style='next'] .tf-dock-ring { width: 24px; height: 24px; }
+body[data-ui-style='next'] .tf-dock-bar { height: 4px; }
+body[data-ui-style='next'] .tf-dock-toggle { width: 20px; height: 20px; }
 #tf-task-dock.is-idle .tf-dock-slot-bar { opacity: 0.72; }
 
 .tf-dock-dot.is-busy { animation: msk-clock-pulse 2s ease-in-out infinite; }
 .tf-dock-dot.is-paused { animation: none; opacity: 0.45; background: var(--warning); }
+
+/* Кольцо прогресса на плашке: проценты читаются числом, а не длиной шкалы */
+.tf-dock-ring {
+  --pct: 0;
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.1) 0);
+  transition: background 0.25s ease-out;
+}
+.tf-dock-ring::after { content: ''; position: absolute; inset: 3px; border-radius: 50%; background: var(--surface-1); }
+.tf-dock-ring b { position: relative; z-index: 1; font-size: 0.6rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+#tf-task-dock.is-idle .tf-dock-ring b { color: var(--text-faint); }
+.tf-dock-ring.is-paused { background: conic-gradient(var(--warning) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.1) 0); }
+.tf-dock-ring.is-paused b { color: var(--warning); }
+.tf-dock-ring.is-queued { background: rgba(255, 255, 255, 0.1); }
+.tf-dock-ring.is-queued b { color: var(--text-faint); }
+/* Кольцо в списке: то же кольцо, но меньше и без фона-«внутренности» */
+.tf-dock-ring-sm { width: 22px; height: 22px; }
+.tf-dock-ring-sm::after { inset: 2px; }
+.tf-dock-ring-sm b { font-size: 0.54rem; }
+
+/* Заголовок плашки: название скрипта и его текущее дело двумя строками */
+.tf-dock-title { display: grid; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.tf-dock-title .msk-clock-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-dock-step { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; color: var(--text-dim); }
 
 .tf-dock-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 .tf-dock-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.25s ease-out; }
@@ -102,24 +139,52 @@ body[data-ui-style='next'] #tf-task-dock {
 }
 
 /* --- Список «что делает скрипт» под плашкой ---
-   Раньше здесь выпадали карточки с кольцом и кнопками (■ 📄 ▾): на правом верхнем углу
-   они наезжали друг на друга и конкурировали с кнопками плашки. Теперь это тихий список
-   строк без единой кнопки — только имя скрипта, его текущее дело и ход работы.
-   Управление (пауза, стоп, логи) осталось на плашке в шапке. */
-.tf-dock-slot-list { gap: 2px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-glass); backdrop-filter: blur(12px); }
-.tf-dock-empty { margin: 0; padding: 8px 10px; color: var(--text-faint); font-size: 0.78rem; }
+   Строки списка — кнопки: клик открывает полный лог этого скрипта. У каждой строки своё
+   кольцо с процентами, поэтому «кто на каком шаге» видно без раскрытия журнала.
+
+   Вид: раньше это был почти прозрачный слой с разделителями между строками — строки
+   сливались с шапкой, а полупрозрачный фон на тёмном фоне выглядел грязным. Теперь это
+   отдельная плотная панель с тенью, а каждая строка — отдельная карточка-кнопка. */
+.tf-dock-slot-list {
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-3);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.tf-dock-empty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  text-align: center;
+}
 .tf-dock-row {
   --tf-row-color: var(--accent);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: var(--radius-xs);
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   /* Левая метка — статус строки: бегущий скрипт, завершённый, с ошибкой или на паузе */
-  box-shadow: inset 2px 0 0 var(--tf-row-color);
+  box-shadow: inset 3px 0 0 var(--tf-row-color);
+  transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease);
 }
-.tf-dock-row + .tf-dock-row { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.tf-dock-row:hover { background: var(--surface-3); border-color: var(--border); }
+.tf-dock-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Разделители между строками больше не нужны: строка — карточка, а не пункт списка */
+.tf-dock-row + .tf-dock-row { border-top: 1px solid transparent; }
 .tf-dock-row.tl-s-done { --tf-row-color: var(--success); }
 .tf-dock-row.tl-s-warn { --tf-row-color: var(--warning); }
 .tf-dock-row.tl-s-error { --tf-row-color: var(--danger); }

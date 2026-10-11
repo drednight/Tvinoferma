@@ -274,6 +274,22 @@
 .setting-row strong { font-weight: 600; }
 .setting-row .muted { font-size: 0.82rem; max-width: 68ch; }
 
+/* Выбор набора звука и кнопка «Послушать»: список и кнопка в одной строке, пояснение под ними */
+.sound-row { align-items: flex-start; }
+.sound-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.sound-controls .select { min-width: 150px; }
+.sound-tone-hint { flex-basis: 100%; font-size: 0.78rem; }
+@media (max-width: 720px) {
+  .sound-row { flex-direction: column; align-items: stretch; }
+  .sound-controls { justify-content: flex-start; }
+}
+
 /* Сворачиваемая панель: в свёрнутом виде видны название и описание */
 .panel.fold > summary {
   position: relative;
@@ -349,9 +365,58 @@
   .danger-item .btn { min-width: 0; }
 }
 
-/* Смысловые разделы настроек: навигация и порядок одинаковы на широком и узком экране. */
-.settings-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
-.settings-nav a { text-decoration: none; min-height: 44px; }
+/* Категории настроек: полоса карточек с обозначением и подписью вместо ряда кнопок.
+   Видно, сколько категорий всего и какая из них сейчас на экране (подсветку ставит
+   scroll-spy из js/settings/settings.js). */
+.settings-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(186px, 1fr));
+  gap: 8px;
+  margin-bottom: 26px;
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  text-decoration: none;
+  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease), transform var(--speed) var(--ease);
+}
+.settings-nav-item:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  transform: translateY(-1px);
+}
+.settings-nav-item.is-active {
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, var(--accent-soft), transparent);
+}
+.settings-nav-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+.settings-nav-item.is-active .settings-nav-icon { border-color: var(--accent-line); color: var(--accent); }
+.settings-nav-copy { display: grid; gap: 1px; min-width: 0; }
+.settings-nav-copy strong { font-size: 0.85rem; font-weight: 650; color: var(--text); }
+.settings-nav-copy small {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .settings-group { margin-bottom: 32px; scroll-margin-top: 140px; min-width: 0; }
 .settings-group-head { margin-bottom: 12px; }
 .settings-group-head h3 { margin: 0 0 4px; font-size: 1.25rem; }

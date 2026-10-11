@@ -5,7 +5,8 @@ import { state, serializeState } from '../core/state.js';
 import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
-import { runNotificationTest } from '../desktop/notifications.js';
+import { runNotificationTest, NOTIFY_KINDS } from '../desktop/notifications.js';
+import { SOUND_TONES, previewNotificationSound, soundSettings, soundDiagnostics } from '../desktop/sound.js';
 import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
 import { toast, confirmModal } from '../core/ui.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
@@ -158,6 +159,7 @@ export async function renderSettings() {
   });
   updateHoursHints();
   renderEventNotifications();
+  renderNotifyKinds();
 
   const hk = document.getElementById('hotkeys-list');
   if (hk && !hk.childElementCount) {
@@ -216,8 +218,134 @@ async function saveEventNotification(id, patch) {
   await persist();
 }
 
+/**
+ * Список видов уведомлений: показывать ли всплывающее окно и играть ли звук.
+ *
+ * Список рисуется из `NOTIFY_KINDS`, а не из разметки: добавили вид в `notifications.js` —
+ * он сразу появился в настройках, и рассинхрона «вид есть, а галочки нет» не будет.
+ */
+function renderNotifyKinds() {
+  const root = document.getElementById('notify-kinds');
+  if (!root) return;
+  const kinds = state.settings?.notifications?.kinds || {};
+  root.innerHTML = `
+    <div class="notify-kinds-head">
+      <span>Уведомление</span>
+      <span title="Сообщение Windows поверх остальных окон">Всплывающее</span>
+      <span title="Короткий сигнал рядом с сообщением">Звук</span>
+    </div>
+    ${NOTIFY_KINDS.map(item => {
+      const conf = kinds[item.kind] || { popup: true, sound: true };
+      return `<div class="notify-kind-row">
+        <label class="notify-kind-name">
+          <input type="checkbox" data-kind-popup="${escapeHtml(item.kind)}"${conf.popup !== false ? ' checked' : ''} />
+          <span><b>${escapeHtml(item.title)}</b><small class="muted">${escapeHtml(item.hint)}</small></span>
+        </label>
+        <label class="notify-kind-sound" title="Звук: ${escapeHtml(item.title)}">
+          <input type="checkbox" data-kind-sound="${escapeHtml(item.kind)}"${conf.sound !== false ? ' checked' : ''} />
+        </label>
+      </div>`;
+    }).join('')}`;
+
+  root.querySelectorAll('[data-kind-popup]').forEach(el => {
+    el.addEventListener('change', () => saveNotifyKind(el.dataset.kindPopup, { popup: el.checked }));
+  });
+  root.querySelectorAll('[data-kind-sound]').forEach(el => {
+    el.addEventListener('change', () => saveNotifyKind(el.dataset.kindSound, { sound: el.checked }));
+  });
+}
+
+/** Сохранение одной настройки вида: остальные виды и настройки не затрагиваются. */
+async function saveNotifyKind(kind, patch) {
+  const notifications = state.settings.notifications || (state.settings.notifications = {});
+  const kinds = notifications.kinds || (notifications.kinds = {});
+  kinds[kind] = { ...(kinds[kind] || { popup: true, sound: true }), ...patch };
+  await persist();
+}
+
+/**
+ * Выбор набора звука и кнопка «Послушать».
+ *
+ * Список наборов берём из `sound.js`, а не пишем здесь: наборы должны совпадать
+ * с теми, что действительно играют. Пояснение под списком меняется вместе с выбором —
+ * иначе приходилось бы запоминать, какой набор как звучит.
+ */
+function initSoundTonePicker() {
+  const select = document.getElementById('sound-tone');
+  const hint = document.getElementById('sound-tone-hint');
+  const button = document.getElementById('sound-preview');
+  if (!select || !button) return;
+
+  const fill = () => {
+    const current = soundSettings(state.settings).tone;
+    select.innerHTML = SOUND_TONES
+      .map(t => `<option value="${escapeHtml(t.id)}"${t.id === current ? ' selected' : ''}>${escapeHtml(t.title)}</option>`)
+      .join('');
+    updateHint();
+  };
+  const updateHint = () => {
+    if (!hint) return;
+    const tone = SOUND_TONES.find(t => t.id === select.value);
+    hint.textContent = tone ? tone.hint : '';
+  };
+
+  fill();
+  // Настройки перечитываются при открытии окна — список должен показать актуальный выбор
+  select.addEventListener('change', updateHint);
+
+  button.addEventListener('click', async () => {
+    const result = await previewNotificationSound(state.settings);
+    if (result === 'played') {
+      const tone = SOUND_TONES.find(t => t.id === soundSettings(state.settings).tone);
+      toast(`Звук «${tone ? tone.title : ''}»`, 'info');
+      return;
+    }
+    if (result === 'no-audio') {
+      toast('В этом окне звук недоступен — это бывает в браузере. В приложении звук работает.', 'warning');
+      return;
+    }
+    // Движок держит звук выключенным до первого клика по окну — честно говорим об этом
+    toast(soundDiagnostics().reason || 'Звук заблокирован браузером: нажмите на окно и попробуйте ещё раз.', 'warning');
+  });
+}
+
 /** Подписи к полям «часов»: 24 → «= 1 день», 30 → «= 1 день 6 часов». */
-function updateHoursHints() {
+
+/**
+ * Категории настроек: подсветка той, что сейчас на экране.
+ *
+ * Страница настроек длинная, и без подсветки непонятно, в какой из шести категорий
+ * вы находитесь после прокрутки. Клик по категории подсвечивает сразу, прокрутка — по месту.
+ */
+function initSettingsNavSpy() {
+  const nav = document.querySelector('.settings-nav');
+  if (!nav || nav.dataset.navSpy) return;
+  nav.dataset.navSpy = 'true';
+  const links = [...nav.querySelectorAll('.settings-nav-item')];
+  const sections = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+  if (!sections.length) return;
+
+  const mark = () => {
+    const line = window.scrollY + 180;
+    // Разметка без геометрии (тестовая среда) ничего не считает: по умолчанию активна первая
+    const laid = sections.filter(section => section.getBoundingClientRect().height > 0);
+    let current = sections[0];
+    for (const section of laid) {
+      if (section.getBoundingClientRect().top + window.scrollY <= line) current = section;
+    }
+    for (const link of links) {
+      link.classList.toggle('is-active', current && link.getAttribute('href') === `#${current.id}`);
+    }
+  };
+  nav.addEventListener('click', event => {
+    const link = event.target.closest?.('.settings-nav-item');
+    if (!link) return;
+    links.forEach(item => item.classList.toggle('is-active', item === link));
+  });
+  window.addEventListener('scroll', mark, { passive: true });
+  window.addEventListener('resize', mark);
+  mark();
+}function updateHoursHints() {
   document.querySelectorAll('[data-hours-for]').forEach(hint => {
     const input = document.querySelector(`[data-setting="${hint.dataset.hoursFor}"]`);
     const text = input instanceof HTMLInputElement ? formatHoursSpan(input.value) : '';
@@ -273,6 +401,8 @@ export function bindSettings() {
   bindGuides();
   balanceSettingsColumns();
   bindSettingInputs();
+  initSettingsNavSpy();
+  initSoundTonePicker();
 
   document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {
     const result = await runNotificationTest();
@@ -280,14 +410,16 @@ export function bindSettings() {
     const text = !result.sent
       ? 'Сейчас нечего напоминать — всё идёт по плану.'
       : result.delivered === result.sent
-        ? `Отправлено уведомлений: ${result.sent}`
+        ? `Отправлено уведомлений: ${result.sent}${result.soundOnly ? `, из них только звуком: ${result.soundOnly}` : ''}`
         : `Отправлено ${result.delivered} из ${result.sent}: остальные Windows не показала.`;
     toast(text, result.delivered === result.sent ? 'info' : 'warning');
     const diagnostics = document.getElementById('notify-diagnostics');
     if (!diagnostics) return;
     diagnostics.textContent = result.diagnostics.reasons.length
       ? `⚠️ ${result.diagnostics.reasons.join(' ')}`
-      : '✅ Уведомления доступны: Windows разрешает их показывать.';
+      : result.diagnostics.sound?.available
+        ? '✅ Уведомления доступны: Windows разрешает их показывать, звук играет.'
+        : '✅ Уведомления доступны: Windows разрешает их показывать.';
   });
 
   // Запуск игры: список GameCenter с названиями и привязка персонажей (окно собирается в js/modules/launcher/gcSettingsModal.js)

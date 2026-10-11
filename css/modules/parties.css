@@ -22,7 +22,10 @@
 
 .pt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(304px, 1fr));
+  /* Минимум 420px, а не 300: в широком окне колонок становилось по пять, и карточка пати
+     оказывалась уже, чем в маленьком окне. Теперь карточки растягиваются по строке,
+     а новая колонка добавляется только когда она действительно помещается. */
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: var(--gap-md);
   align-items: start;
   width: 100%;

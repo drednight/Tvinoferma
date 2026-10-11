@@ -29,7 +29,6 @@ function mount(search = '') {
 }
 const run = () => new Function(SCRIPT)();
 const clickAll = (n) => boxes().slice(0, n).forEach(b => b.click());
-const panel = () => shadow;
 const rows = () => [...shadow.querySelectorAll('.row')];
 const rowOf = (type) => rows().find(r => r.querySelector('.tname').textContent === type);
 const btn = (root, text) => [...root.querySelectorAll('button')].find(b => b.textContent === text);
