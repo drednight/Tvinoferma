@@ -177,6 +177,10 @@ export function bindGuides() {
     if (target.dataset.guidePanel) {
       const panel = document.getElementById(target.dataset.guidePanel);
       if (panel) {
+        // Настройки открыты по одному разделу: пока нужный не показан, панель искать негде.
+        // Сообщаем навигации, какой раздел открыть, — она и переключит, и подсветит пункт
+        const section = panel.closest('.settings-group');
+        if (section) window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: section.id } }));
         panel.open = true;
         panel.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
       }

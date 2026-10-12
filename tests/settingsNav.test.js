@@ -25,6 +25,14 @@ describe('категории настроек: разметка', () => {
     expect(css).toMatch(/\.settings-nav-item\.is-active/);
     expect(css).toMatch(/\.settings-nav \{[^}]*grid-template-columns:/);
   });
+
+  it('пункт при наведении не подчёркивается: карточка и так показывает наведение рамкой', () => {
+    // Пункт — это ссылка, а для ссылок в приложении действует общее правило
+    // «подчёркивать при наведении» (base.css). Без отдельного правила под текстом
+    // и иконкой появлялась линия, и карточка выглядела сломанной
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    expect(css).toMatch(/\.settings-nav-item:hover,\s*\n?\.settings-nav-item\.is-active:hover \{ text-decoration: none; \}/);
+  });
 });
 
 describe('категории настроек: подсветка', () => {
@@ -41,5 +49,37 @@ describe('категории настроек: подсветка', () => {
     items[3].click();
     expect(items[3].classList.contains('is-active')).toBe(true);
     expect(items[0].classList.contains('is-active')).toBe(false);
+  });
+
+  it('открыт ровно один раздел: остальные скрыты, а не висят под ним', async () => {
+    const { bindSettings } = await import('../js/settings/settings.js');
+    bindSettings();
+    const groups = [...document.querySelectorAll('.settings-body > .settings-group')];
+    expect(groups.length).toBeGreaterThan(1);
+    expect(groups.filter(g => !g.hidden)).toHaveLength(1);
+    expect(groups.find(g => !g.hidden).id).toBe('settings-app');
+    document.querySelectorAll('.settings-nav-item')[1].click();
+    expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-sync']);
+  });
+
+  it('ссылка на панель внутри раздела открывает этот раздел', async () => {
+    const { bindSettings } = await import('../js/settings/settings.js');
+    bindSettings();
+    // Справочник и гайд ведут и на раздел, и на панель внутри него — второй случай
+    // раньше просто прокручивал к панели, а теперь панель может быть в скрытом разделе
+    location.hash = '#settings-notifications';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    const groups = [...document.querySelectorAll('.settings-body > .settings-group')];
+    expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-app']);
+    expect(document.getElementById('settings-notifications')).not.toBeNull();
+  });
+
+  it('панель из справочника переключает раздел сама', async () => {
+    const { bindSettings } = await import('../js/settings/settings.js');
+    bindSettings();
+    // Справочник шлёт событие перед переходом к панели: иначе панель скрыта и искать негде
+    window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: 'settings-data' } }));
+    const groups = [...document.querySelectorAll('.settings-body > .settings-group')];
+    expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-data']);
   });
 });

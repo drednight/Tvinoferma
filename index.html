@@ -239,6 +239,10 @@
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
       <section class="page" data-section="settings">
+        <!-- Настройки — две колонки: слева разделы, справа открытый раздел целиком.
+             Раньше все шесть разделов шли одной длинной страницей, а список категорий лежал
+             карточками наверху: чтобы дойти до нужного, каждый раз прокручивали вниз. -->
+        <div class="settings-layout">
         <nav class="settings-nav" aria-label="Разделы настроек">
           <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
           <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты и свежесть данных</small></span></a>
@@ -247,6 +251,7 @@
           <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
           <a class="settings-nav-item" href="#danger-zone"><span class="settings-nav-icon" aria-hidden="true">⚠</span><span class="settings-nav-copy"><strong>Опасные действия</strong><small>Удаление и полный сброс</small></span></a>
         </nav>
+        <div class="settings-body">
         <section class="settings-group" id="settings-app" aria-labelledby="settings-app-title">
           <header class="settings-group-head"><h3 id="settings-app-title">Приложение</h3><p class="muted">Запуск игры, окна, трей и уведомления.</p></header>
           <div class="settings-cols">
@@ -578,10 +583,12 @@
         </section>
         <section class="settings-group" id="settings-help" aria-labelledby="settings-help-title">
           <header class="settings-group-head"><h3 id="settings-help-title">Справка</h3><p class="muted">Пошаговые инструкции со скриншотами и горячие клавиши.</p></header>
-          <div class="row gap" style="margin: 0 0 10px;">
-            <button id="guide-start-settings-btn" class="btn secondary" type="button" title="Короткий обзор разделов и возможностей приложения: шаги с кнопками «дальше» и переходами к функциям">🚀 Пройти базовый гайд по приложению</button>
-          </div>
-<details class="panel fold guide-library" id="guide-library">
+          <!-- Кнопки «Пройти базовый гайд» в «Справке» больше нет: гайд открывается кнопкой
+               «❔ Как всё работает» в шапке. Две точки входа в одном разделе путали: страница
+               справки и мастер-обзор — разные вещи, и держать их рядом незачем. -->
+<!-- Помощь по приложению — единственное содержимое раздела «Справка», поэтому раскрыта сразу:
+     заходить в раздел и ещё раз раскрывать панель незачем. -->
+<details class="panel fold guide-library" id="guide-library" open>
   <summary><h3>📖 Помощь по приложению</h3><p class="muted">Понятные инструкции: куда нажать, что проверить и какой результат ожидать.</p></summary>
   <div class="guide-library-content">
     <header class="guide-library-head"><span class="guide-eyebrow">Твиноферма · пошаговая справка</span><h3>Что хотите сделать?</h3><p>Выберите задачу или найдите её по слову. Все инструкции доступны без интернета; функции сайта требуют подключения.</p></header>
@@ -597,21 +604,17 @@
       <nav id="guide-list" class="guide-list" aria-label="Выбор инструкции"></nav>
       <div id="guide-reader" class="guide-reader" role="region" aria-labelledby="guide-reader-title" tabindex="-1"></div>
     </div>
+    <!-- Горячие клавиши — часть справки, отдельным разделом они были только потому,
+         что раньше в «Справке» было ещё что-то. Теперь это единственный пункт меню -->
+    <details class="panel fold" id="settings-hotkeys">
+      <summary>
+        <h3>⌨️ Горячие клавиши</h3>
+        <p class="muted">Список сочетаний клавиш приложения.</p>
+      </summary>
+<div id="hotkeys-list" class="hotkeys-list"></div>
+    </details>
   </div>
 </details>
-          <div class="settings-cols">
-            <div class="settings-col">
-<details class="panel fold" id="settings-hotkeys">
-          <summary>
-            <h3>⌨️ Горячие клавиши</h3>
-            <p class="muted">Список сочетаний клавиш приложения.</p>
-          </summary>
-          <div id="hotkeys-list" class="hotkeys-list"></div>
-        </details>
-            </div>
-            <div class="settings-col">
-            </div>
-          </div>
         </section>
 <details class="panel fold danger-zone" id="danger-zone">
           <summary>
@@ -653,6 +656,8 @@
           </details>
         </details>
       </section>
+        </div>
+        </div>
 
     </main>
   </div>

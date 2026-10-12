@@ -312,40 +312,68 @@ function initSoundTonePicker() {
 /** Подписи к полям «часов»: 24 → «= 1 день», 30 → «= 1 день 6 часов». */
 
 /**
- * Категории настроек: подсветка той, что сейчас на экране.
+ * Разделы настроек: слева список, справа открытый раздел целиком.
  *
- * Страница настроек длинная, и без подсветки непонятно, в какой из шести категорий
- * вы находитесь после прокрутки. Клик по категории подсвечивает сразу, прокрутка — по месту.
+ * Раньше все шесть разделов шли одной длинной страницей, а список категорий был карточками
+ * наверху. Теперь открыт ровно один раздел, поэтому прокрутка для перехода между ними не
+ * нужна, но ссылки из справочника и гайда (`#settings-sync`) должны работать по-прежнему:
+ * для этого есть `openSettingsSection(id)`, а якорь в адресе тоже переключает раздел.
  */
-function initSettingsNavSpy() {
+function initSettingsSections() {
   const nav = document.querySelector('.settings-nav');
-  if (!nav || nav.dataset.navSpy) return;
+  const body = document.querySelector('.settings-body');
+  if (!nav || !body || nav.dataset.navSpy) return;
   nav.dataset.navSpy = 'true';
   const links = [...nav.querySelectorAll('.settings-nav-item')];
-  const sections = links.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+  const sections = links
+    .map(link => document.getElementById(link.getAttribute('href').slice(1)))
+    .filter(Boolean);
   if (!sections.length) return;
 
-  const mark = () => {
-    const line = window.scrollY + 180;
-    // Разметка без геометрии (тестовая среда) ничего не считает: по умолчанию активна первая
-    const laid = sections.filter(section => section.getBoundingClientRect().height > 0);
-    let current = sections[0];
-    for (const section of laid) {
-      if (section.getBoundingClientRect().top + window.scrollY <= line) current = section;
-    }
-    for (const link of links) {
-      link.classList.toggle('is-active', current && link.getAttribute('href') === `#${current.id}`);
-    }
-  };
+  /**
+   * Открыть раздел настроек по id. Возвращает, открыт ли он.
+   * Вызывается из клика по навигации, из ссылки в адресной строке и из справочника.
+   */
+  function openSettingsSection(id) {
+    const section = sections.find(s => s.id === id) || null;
+    sections.forEach(s => { s.hidden = !section || s !== section; });
+    links.forEach(link => {
+      const on = !!section && link.getAttribute('href') === `#${section.id}`;
+      link.classList.toggle('is-active', on);
+      if (on) link.setAttribute('aria-current', 'true');
+      else link.removeAttribute('aria-current');
+    });
+    return !!section;
+  }
+
   nav.addEventListener('click', event => {
     const link = event.target.closest?.('.settings-nav-item');
     if (!link) return;
-    links.forEach(item => item.classList.toggle('is-active', item === link));
+    event.preventDefault();
+    openSettingsSection(link.getAttribute('href').slice(1));
+    body.scrollIntoView?.({ block: 'start', behavior: 'auto' });
   });
-  window.addEventListener('scroll', mark, { passive: true });
-  window.addEventListener('resize', mark);
-  mark();
-}function updateHoursHints() {
+
+  // Переход по прямой ссылке: справочник и гайд ведут и на раздел (`#settings-sync`),
+  // и на панель внутри него (`#settings-notifications`) — во втором случае открываем тот
+  // раздел, в котором панель находится
+  const fromHash = () => {
+    const id = location.hash.slice(1);
+    const target = id ? document.getElementById(id)?.closest('.settings-group') : null;
+    const sectionId = sections.some(s => s.id === id) ? id : target?.id;
+    return sectionId ? openSettingsSection(sectionId) : false;
+  };
+  window.addEventListener('hashchange', fromHash);
+  // Если в адресе нет раздела или он неизвестен — открываем первый. Иначе страница
+  // показала бы сразу все разделы разом, то есть ровно то, от чего ушли
+  if (!fromHash()) openSettingsSection(sections[0].id);
+
+  // Справка и гайды переходят к панели через `#id` — разделы надо переключить заранее,
+  // иначе панели некуда показывать (всё, кроме активного раздела, скрыто)
+  window.addEventListener('tf:open-section', event => openSettingsSection(event.detail?.id));
+}
+
+function updateHoursHints() {
   document.querySelectorAll('[data-hours-for]').forEach(hint => {
     const input = document.querySelector(`[data-setting="${hint.dataset.hoursFor}"]`);
     const text = input instanceof HTMLInputElement ? formatHoursSpan(input.value) : '';
@@ -401,7 +429,7 @@ export function bindSettings() {
   bindGuides();
   balanceSettingsColumns();
   bindSettingInputs();
-  initSettingsNavSpy();
+  initSettingsSections();
   initSoundTonePicker();
 
   document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {

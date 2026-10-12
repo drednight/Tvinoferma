@@ -200,13 +200,16 @@ describe('карточки персонажей и настройки', () => {
   });
 
   it('панели «Свежесть данных» и «Состояние парсеров» свёрнуты по умолчанию; в свёрнутом виде видны название и описание', () => {
-    const folds = [...document.querySelectorAll('details.panel.fold')];
+    // «Помощь по приложению» — исключение: это единственный пункт раздела «Справка»,
+    // он открыт сразу, иначе заходить в раздел и раскрывать панель пришлось бы дважды
+    const folds = [...document.querySelectorAll('details.panel.fold:not(#guide-library)')];
     const titles = folds.map(d => d.querySelector('summary h3').textContent);
     expect(titles).toEqual(expect.arrayContaining(['⏳ Свежесть данных', '🩺 Состояние парсеров']));
     for (const d of folds) {
       expect(d.hasAttribute('open')).toBe(false);
       expect(d.querySelector('summary p').textContent.length).toBeGreaterThan(20);
     }
+    expect(document.getElementById('guide-library').hasAttribute('open')).toBe(true);
     expect(document.getElementById('parser-health-panel').tagName).toBe('DETAILS');
   });
 

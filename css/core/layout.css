@@ -365,21 +365,46 @@
   .danger-item .btn { min-width: 0; }
 }
 
-/* Категории настроек: полоса карточек с обозначением и подписью вместо ряда кнопок.
-   Видно, сколько категорий всего и какая из них сейчас на экране (подсветку ставит
-   scroll-spy из js/settings/settings.js). */
-.settings-nav {
+/* Настройки: две колонки — слева разделы, справа открытый раздел целиком.
+   Раньше все шесть разделов шли одной длинной страницей, а список категорий был полосой
+   карточек наверху: чтобы дойти до нужного раздела, каждый раз надо было прокручивать вниз.
+   Теперь открыт ровно один раздел (переключает js/settings/settings.js), а список стоит
+   сбоку и следует за прокруткой. */
+.settings-layout {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(186px, 1fr));
-  gap: 8px;
-  margin-bottom: 26px;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.settings-body { min-width: 0; }
+/* Панели настроек умеют сжиматься: иначе длинные подписи (путь к папке, адрес сайта)
+   растягивали колонку и выталкивали список разделов */
+.settings-body .input,
+.settings-body .select { min-width: 0; }
+
+.settings-nav {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-bottom: 0;
+}
+/* На узком окне места для колонки нет: разделы возвращаются в ряд карточек сверху */
+@media (max-width: 980px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .settings-nav {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 8px;
+  }
 }
 .settings-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 56px;
-  padding: 9px 11px;
+  min-height: 52px;
+  padding: 8px 11px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
@@ -391,6 +416,12 @@
   background: var(--surface-2);
   transform: translateY(-1px);
 }
+/* Пункт настроек — ссылка, а для ссылок в приложении действует общее правило
+   «подчёркивать при наведении» (base.css). Здесь оно неуместно: карточка уже
+   показывает наведение рамкой и подъёмом, а линия под текстом и иконкой выглядела
+   так, будто наведение не сработало. */
+.settings-nav-item:hover,
+.settings-nav-item.is-active:hover { text-decoration: none; }
 .settings-nav-item.is-active {
   border-color: var(--accent-line);
   background: linear-gradient(180deg, var(--accent-soft), transparent);
