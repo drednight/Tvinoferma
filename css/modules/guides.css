@@ -89,8 +89,18 @@
    Окно гайда — тот же диалог, что и мастер марафона: степпер сверху, содержимое шага,
    кнопки «Назад / Далее» и чекбокс «не показывать снова» снизу. Стили степпера берутся
    из css/modules/marathons.css, здесь — только то, что относится к шагу гайда. */
-.gs-stepper .tf-step { max-width: 140px; }
+/* Степпер гайда — одна прокручиваемая строка: шагов девять, и в две строки он занимал
+   столько же места, сколько сам шаг. Селектор с обоими классами: `marathons.css`
+   подключается позже и со своим `flex-wrap: wrap` перебивал бы одиночный `.gs-stepper` */
+.tf-stepper.gs-stepper { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+.gs-stepper .tf-step { max-width: none; flex: 0 0 auto; white-space: nowrap; }
 .gs-step { display: flex; flex-direction: column; gap: 14px; }
+/* Шаг в две колонки: слева слова и кнопки, справа снимок с пометками «на что смотреть».
+   Раньше текст и снимок шли друг под другом, и картинка занимала половину высоты окна,
+   хотя её нужно было только глянуть. */
+.gs-cols { display: grid; grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr); gap: 20px; align-items: start; }
+.gs-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 860px) { .gs-cols { grid-template-columns: minmax(0, 1fr); } }
 .gs-head { display: flex; flex-direction: column; gap: 4px; }
 .gs-counter { color: var(--text-dim); font-size: 0.76rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .gs-head h3 { margin: 0; font-size: 1.3rem; }
@@ -98,9 +108,12 @@
 .gs-hint { margin: 0; color: var(--text-dim); font-size: 0.88rem; line-height: 1.5; }
 /* Снимок интерфейса: тот же вид, что в статье справочника, но без кнопки увеличения —
    в гайде он иллюстрация, а не предмет изучения */
-.gs-screen { margin: 0; }
-.gs-screen img { display: block; width: 100%; max-height: min(38vh, 320px); object-fit: contain; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); background: var(--surface-1); }
-.gs-screen figcaption { margin-top: 8px; color: var(--text-dim); font-size: 0.82rem; }
+.gs-screen { margin: 0; display: grid; gap: 8px; }
+.gs-screen img { display: block; width: 100%; max-height: min(34vh, 300px); object-fit: contain; border: 1px solid var(--border-strong); border-radius: var(--radius-xs); background: var(--surface-1); }
+.gs-screen figcaption { color: var(--text-dim); font-size: 0.82rem; }
+/* Пометки к снимку: что именно смотреть на картинке. Без них снимок просто украшение */
+.gs-notes { margin: 0; padding: 10px 12px 10px 28px; display: grid; gap: 4px; border: 1px solid var(--border); border-radius: var(--radius-xs); background: var(--surface-2); font-size: 0.82rem; color: var(--text-dim); }
+.gs-notes li::marker { color: var(--text-faint); }
 .gs-go .btn { min-height: 40px; }
 .gs-more { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .gs-more > span { font-size: 0.82rem; }

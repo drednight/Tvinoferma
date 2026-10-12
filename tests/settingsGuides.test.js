@@ -193,7 +193,8 @@ describe('справочник извне: базовый гайд', () => {
 
   it('открывает статью любой темы и раскрывает свёрнутую панель', () => {
     const library = $('#guide-library');
-    expect(library.open).toBe(false);
+    // Помощь по приложению — единственное содержимое раздела «Справка», поэтому раскрыта сразу
+    expect(library.open).toBe(true);
     expect(revealGuide('gamecenter')).toBe(true);
     expect(library.open).toBe(true);
     expect($('#guide-reader-title').textContent).toBe(GUIDES.find(g => g.id === 'gamecenter').title);

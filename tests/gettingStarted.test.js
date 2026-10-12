@@ -88,13 +88,14 @@ describe('гайд: показ и точки входа', () => {
     expect(mocks.persist).toHaveBeenCalledTimes(1);
   });
 
-  it('две точки входа: кнопка в шапке и кнопка в настройках', async () => {
+  it('гайд открывается кнопкой в шапке; в «Справке» кнопки нет', async () => {
     const getting = await import('../js/settings/gettingStarted.js');
     getting.initGettingStarted();
     const topbar = document.getElementById('guide-start-btn');
-    const settings = document.getElementById('guide-start-settings-btn');
     expect(topbar).not.toBeNull();
-    expect(settings).not.toBeNull();
+    // Кнопку из «Настройки → Справка» убрали: там же сама страница справки, и две
+    // точки входа рядом только путали — гайд открывается из шапки
+    expect(document.getElementById('guide-start-settings-btn')).toBeNull();
     // Гайд уже пройден: автопоказ не должен был запланироваться
     await getting.markGuideSeen(state);
     topbar.click();

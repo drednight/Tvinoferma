@@ -50,6 +50,7 @@ const TABS = GUIDES ? [
   ['settings', 'settings-security', '#settings-security'],
   ['settings', 'settings-danger', '#danger-zone'],
   ['settings', 'notifications', '#settings-notifications'],
+  ['settings', 'settings-help', '#settings-help'],
 ] : [
   ['today', 'today'],
   ['characters', 'characters'],
@@ -323,9 +324,15 @@ async function main() {
             document.querySelectorAll('[data-section="settings"] details').forEach(el => { el.open = false; });
             const el = document.querySelector(${JSON.stringify(target)});
             if (!el) throw new Error('Не найден раздел снимка: ' + ${JSON.stringify(target)});
+            // Настройки открыты по одному разделу: без этого панель из скрытого раздела
+            // имеет нулевой размер, и снимок получается пустым. «Опасные действия» —
+            // сам раздел, поэтому у него нет внешнего .settings-group
+            const section = el.closest('.settings-group');
+            window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: section ? section.id : el.id } }));
             if (el.tagName === 'DETAILS') el.open = true;
-            // В группе данных показываем действия резервного копирования; в приложении — запуск игры.
-            el.querySelector('#settings-backups, #settings-launcher, #log-hub-panel')?.setAttribute('open', '');
+            // В группе данных показываем действия резервного копирования; в приложении — запуск игры;
+// справка на снимке должна быть раскрыта — иначе получится пустая рамка
+            el.querySelector('#settings-backups, #settings-launcher, #log-hub-panel, #guide-library')?.setAttribute('open', '');
             document.querySelector('.topbar').style.visibility = 'hidden';
             const r = el.getBoundingClientRect();
             return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 };
