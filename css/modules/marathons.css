@@ -30,13 +30,29 @@
 .mr-group-completed .mr-group-ico { background: rgba(158,206,106,.12); border-color: rgba(158,206,106,.35); }
 .mr-group-count { padding: 1px 9px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-size: .75rem; font-weight: 600; }
 
-.mr-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+/* Карточки — плитки, а не строки с эмодзи: подпись сверху, значение снизу.
+   Раньше всё число перечислялось одной строкой («✅ 1/12 ⚠ 11 👥 4 📋 3 🪙 500/2000»),
+   она не помещалась, и карточка выглядела пёстро. */
+/* Сетка карточек — пять колонок на широком окне: марафонов обычно много, и раньше они
+   шли по две-три крупные карточки, из-за чего список тянулся вниз. На узких окнах
+   колонки убавляются, чтобы карточка оставалась читаемой. */
+/* align-items: stretch — карточки в ряду выравниваются по нижнему краю сетки.
+   Со значением start каждая карточка была по своему содержимому, и ряд выглядел
+   нервным: короткие карточки заканчивались намного выше соседних.
+   Пороги считаны с запасом на боковую панель (~250px): окно в 1000px оставляет под
+   карточки ~750px, и четыре колонки там уже нечитаемы. */
+.mr-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+@media (max-width: 1450px) { .mr-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 1250px) { .mr-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .mr-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 800px) { .mr-cards { grid-template-columns: minmax(0, 1fr); } }
 .mr-card {
   --mr-c: var(--accent);
   position: relative; overflow: hidden;
+  height: 100%;
   background: linear-gradient(180deg, color-mix(in srgb, var(--mr-c) 7%, var(--panel)), var(--panel) 55%);
   border: 1px solid var(--border); border-radius: 16px;
-  padding: 16px 16px 14px; display: flex; flex-direction: column; gap: 10px; cursor: pointer;
+  padding: 14px 15px 13px; display: flex; flex-direction: column; gap: 11px; cursor: pointer;
   transition: transform .15s, border-color .15s, box-shadow .15s;
 }
 /* цвет состояния: верхняя полоска карточки */
@@ -46,20 +62,45 @@
 .mr-card.mr-ph-upcoming { --mr-c: var(--warning); }
 .mr-card.mr-ph-completed { --mr-c: var(--success); }
 .mr-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--mr-c) 60%, var(--border)); box-shadow: var(--shadow); }
-.mr-card header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
-.mr-card-title { font-size: 1.02rem; line-height: 1.25; overflow-wrap: anywhere; }
-.mr-card-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: .82rem; color: var(--muted); }
-.mr-hint { padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.06); font-size: .74rem; }
+/* В пять колонок карточка узкая (~200px), поэтому заголовок и метка состояния
+   больше не стоят в одной строке: раньше название переносилось, а метка «Ждёт завершения»
+   сжималась в углу и налезала на него. Сверху название и даты, ниже — метка. */
+.mr-card header { display: grid; gap: 8px; justify-items: start; }
+.mr-card-head { display: grid; gap: 4px; min-width: 0; width: 100%; }
+.mr-card-title { font-size: 1rem; line-height: 1.25; overflow-wrap: anywhere; }
+/* Даты и подсказка — каждая на своей строке: в узкой карточке они делили одну строку
+   и обе ломались на переносы посреди числа */
+.mr-card-meta { display: grid; justify-items: start; gap: 4px; font-size: .8rem; color: var(--muted); }
+.mr-hint { padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.06); font-size: .72rem; max-width: 100%; }
 .mr-hint-warn { background: rgba(224,175,104,.15); color: var(--warning); }
 .mr-hint-late { background: rgba(247,118,142,.15); color: var(--danger); }
 .mr-prog { display: flex; align-items: center; gap: 10px; }
 .mr-prog .mr-bar { flex: 1; height: 8px; }
 .mr-prog b { min-width: 38px; text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; }
 .mr-card.mr-ph-completed .mr-bar > span { background: var(--success); }
-.mr-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: .85rem; }
-.mr-coins { margin-left: auto; font-weight: 700; }
-.mr-sync-line { margin-top: -2px; }
+.mr-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; }
+.mr-stat {
+  display: grid; gap: 1px; align-content: start;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .035);
+  min-width: 0;
+}
+/* Плитка с монетой занимает две колонки: «🪙 500 / 2 000» в одной не помещалось,
+   число переносилось на вторую строку и весь ряд становился неровным */
+.mr-stat.is-wide { grid-column: span 2; }
+.mr-stat-label { font-size: .66rem; line-height: 1.25; color: var(--muted); }
+.mr-stat-value { font-size: .95rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.01em; white-space: nowrap; }
+.mr-stat.is-bad .mr-stat-value { color: var(--danger); }
+.mr-stat.is-gold .mr-stat-value { color: var(--mr-gold); }
+/* Строка сверки прижата к низу карточки: карточки в ряду одинаковой высоты, и без этого
+   подписи «когда последний раз сверяли» стояли бы на разной высоте */
+.mr-sync-line { margin-top: auto; padding-top: 2px; }
 .mr-series { border-left: 1px solid var(--border); }
+/* Папка шире обычной карточки: внутри неё список марафонов с полосками прогресса,
+   в одну колонку он читался плохо. Занимает две колонки, но не больше 350px */
+.mr-card.mr-series { grid-column: span 2; max-width: 350px; }
+@media (max-width: 800px) { .mr-card.mr-series { grid-column: auto; max-width: none; } }
 .mr-series::after { content: ''; position: absolute; top: 0; right: 18px; width: 46px; height: 5px; border-radius: 0 0 6px 6px; background: var(--accent-2); }
 .mr-folder-ico { margin-right: 6px; }
 .mr-series-kids { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: 10px; background: rgba(0,0,0,.18); }
@@ -86,13 +127,54 @@
 .mr-crumbs { font-size: .85rem; color: var(--muted); margin-bottom: 8px; }
 .mr-crumbs a { color: var(--accent); cursor: pointer; }
 .mr-crumbs a:hover { text-decoration: underline; }
-.mr-head { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-.mr-head h2 { margin: 0 0 4px; }
-.mr-kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-top: 14px; }
-.mr-kpis .kpi-card { display: flex; flex-direction: column; gap: 4px; }
-.mr-kpis .kpi-card strong { font-size: 1.4rem; }
+/* --- Шапка марафона ---
+   Заголовок и факты слева, действия справа. Раньше это был один общий ряд, где кнопки
+   конкурировали с названием, и на узком окне actions уезжали под него отдельной строкой. */
+.mr-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 2px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+.mr-head-main { display: grid; gap: 6px; min-width: 0; flex: 1 1 320px; }
+.mr-head-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mr-head-title h2 { margin: 0; font-size: 1.3rem; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.mr-head-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .82rem; color: var(--muted); }
+.mr-head-actions { flex: none; }
+
+/* Плитки показателей: подпись сверху, значение снизу — как на карточке марафона,
+   чтобы страница читалась одним языком, а не двумя разными. */
+.mr-kpis { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-top: 12px; }
+.mr-kpis .kpi-card {
+  display: flex; flex-direction: column; gap: 3px; justify-content: flex-start;
+  border-radius: 14px;
+  border-color: var(--border);
+  background: var(--panel);
+  box-shadow: none;
+}
+.mr-kpis .kpi-card strong { font-size: 1.35rem; line-height: 1.15; }
+.mr-kpis .kpi-card .kpi-label { font-size: .74rem; }
 .mr-kpis .mr-bar { margin-top: 6px; }
-.mr-filters { margin: 12px 0 8px; flex-wrap: wrap; gap: 10px; }
+
+/* Фильтры и легенда одной панелью */
+.mr-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 12px 0 8px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
 .mr-legend { display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); flex-wrap: wrap; }
 .mr-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-left: 8px; }
 .mr-dot.mr-s-ok { background: var(--mr-ok); } .mr-dot.mr-s-warn { background: var(--mr-warn); }
@@ -108,8 +190,12 @@
 /* --- матрица --- */
 .tf-mx-wrap { overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); max-height: 70vh; }
 .mr-matrix { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .85rem; }
-.mr-matrix th, .mr-matrix td { padding: 6px; border-bottom: 1px solid var(--border); text-align: center; }
-.mr-matrix thead th { position: sticky; top: 0; background: var(--panel-2); z-index: 2; box-sizing: border-box; min-width: 80px; padding: 6px 12px; vertical-align: bottom; }
+.mr-matrix th, .mr-matrix td { padding: 8px 6px; border-bottom: 1px solid var(--border); text-align: center; }
+/* Строки с персонажами: наведение подсвечивает всю строку, иначе при десяти участниках
+   и шести заданиях (60 ячеек) искать нужную строку приходилось по одной ячейке */
+.mr-matrix tbody tr:not(.mr-group):hover td { background: rgba(255, 255, 255, .035); }
+.mr-matrix tbody tr:not(.mr-group):hover .mr-name { background: var(--panel-2); }
+.mr-matrix thead th { position: sticky; top: 0; background: var(--panel-2); z-index: 2; box-sizing: border-box; min-width: 88px; padding: 10px 12px; vertical-align: bottom; }
 .mr-matrix tfoot td { position: sticky; bottom: 0; background: var(--panel-2); }
 /* название переносится (до 3 строк), чтобы все задания умещались в ширину; ⓘ закреплена в правом верхнем углу */
 .mr-th { margin: 0 auto; font-weight: 600; line-height: 1.2; overflow: hidden; overflow-wrap: break-word; font-size: .82rem; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -222,14 +308,25 @@ tr.is-syncing td { animation: mr-pulse 1.2s ease-in-out infinite; }
 .tf-tab.is-active { background: var(--accent); color: #0b0d12; border-color: var(--accent); font-weight: 700; }
 
 .tf-task-list, .tf-reward-list { display: flex; flex-direction: column; gap: 8px; }
-.tf-task { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); }
+/* Задание — карточка: поля в верхнем ряду, счётчик дней, название на сайте и описание — в нижнем.
+   Раньше всё стояло в одной строке с переносом, и на узком окне ряд рассыпался. */
+.tf-task {
+  display: grid; gap: 8px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel-2);
+}
+.tf-task-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tf-task-foot { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .tf-task .input, .tf-task .select, .tf-reward-row .input { padding: 7px 10px; }
+/* Поля внутри сетки должны уметь сжиматься: у input и select min-width по умолчанию auto,
+   то есть не уже их собственной ширины — из-за этого они вылезали за карточку */
+.tf-task-main .input, .tf-task-main .select { min-width: 0; }
 .tf-task-num { width: 22px; color: var(--muted); text-align: center; }
 .tf-grow { flex: 1; min-width: 200px; }
 .tf-num { width: 74px; }
+.tf-dates { flex: 1 1 220px; min-width: 160px; }
 .tf-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .85rem; }
 .tf-task-stat { font-size: .8rem; color: var(--muted); min-width: 120px; }
-.tf-task-site { flex-basis: 100%; padding-left: 30px; font-size: .75rem; }
+.tf-task-site { font-size: .75rem; }
 
 .tf-mx-toolbar { flex-wrap: wrap; gap: 10px; }
 .tf-pick { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .85rem; }
@@ -278,7 +375,7 @@ tr.is-syncing td { animation: mr-pulse 1.2s ease-in-out infinite; }
 .tf-chip { display: inline-block; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: .8rem; opacity: .75; }
 .tf-chip.is-ok { opacity: 1; border-color: rgba(122, 213, 142, .55); }
 .tf-compare { margin: 6px 0; padding-left: 18px; font-size: .85rem; }
-.tf-task-desc { flex-basis: 100%; padding-left: 30px; }
+.tf-task-desc { flex: 1 1 260px; min-width: 0; }
 .tf-task-desc summary { cursor: pointer; font-size: .8rem; }
 .tf-task-desc textarea { width: 100%; margin-top: 6px; resize: vertical; font-size: .85rem; }
 

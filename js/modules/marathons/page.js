@@ -267,6 +267,19 @@ function syncAgeHtml(m) {
   return freshnessChipHtml(freshnessOf('marathon', m.lastSync.at, state.settings));
 }
 
+/**
+ * Плитка одного числа на карточке: подпись сверху, значение снизу.
+ *
+ * Раньше карточка перечисляла всё одной строкой с эмодзи («✅ 1/12 ⚠ 11 👥 4 📋 3 🪙 500/2000»):
+ * строка не помещалась, числа приходилось вылавливать глазами, и карточка выглядела
+ * пёстро. Плитки читаются списком и не зависят от ширины окна.
+ */
+const statTile = (label, value, { tone = '', title = '', wide = false } = {}) => `
+  <div class="mr-stat${tone ? ` is-${tone}` : ''}${wide ? ' is-wide' : ''}"${title ? ` title="${escapeHtml(title)}"` : ''}>
+    <span class="mr-stat-label">${escapeHtml(label)}</span>
+    <b class="mr-stat-value">${value}</b>
+  </div>`;
+
 function marathonCard(m, { inFolder = false } = {}) {
   const t = marathonTotals(m);
   const phase = marathonPhase(m);
@@ -274,17 +287,25 @@ function marathonCard(m, { inFolder = false } = {}) {
   return `
     <article class="mr-card mr-ph-${phase}" data-open="${m.id}">
       <header>
-        <strong class="mr-card-title">${escapeHtml(m.title)}</strong>
-        <span class="row gap-s"><span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>${inFolder ? `<button type="button" class="icon-btn mr-unlink" data-unlink="${m.id}" title="Убрать из папки">↩</button>` : ''}</span>
+        <div class="mr-card-head">
+          <strong class="mr-card-title">${escapeHtml(m.title)}</strong>
+          <div class="mr-card-meta">
+            <span>📅 ${fmtDate(m.startDate)} — ${fmtDate(m.endDate)}</span>
+            ${hint.text ? `<span class="mr-hint mr-hint-${hint.tone}">${hint.text}</span>` : ''}
+          </div>
+        </div>
+        <span class="row gap-s">
+          <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
+          ${inFolder ? `<button type="button" class="icon-btn mr-unlink" data-unlink="${m.id}" title="Убрать из папки">↩</button>` : ''}
+        </span>
       </header>
-      <div class="mr-card-meta"><span>📅 ${fmtDate(m.startDate)} — ${fmtDate(m.endDate)}</span>${hint.text ? `<span class="mr-hint mr-hint-${hint.tone}">${hint.text}</span>` : ''}</div>
       <div class="mr-prog">${progressBar(t.percent)}<b>${t.percent}%</b></div>
       <div class="mr-stats">
-        <span title="Выполнено заданий">✅ ${t.done}/${t.cells}</span>
-        ${t.failing ? `<span class="mr-red" title="Не успевают">⚠ ${t.failing}</span>` : ''}
-        <span class="muted" title="Участников">👥 ${m.participantIds.length}</span>
-        <span class="muted" title="Заданий">📋 ${m.tasks.length}</span>
-        <span class="mr-gold mr-coins">${coin(t.coins)}${t.maxCoins ? ` <small class="muted">/ ${t.maxCoins}</small>` : ''}</span>
+        ${statTile('Выполнено', `${t.done}/${t.cells}`, { title: 'Выполнено заданий' })}
+        ${t.failing ? statTile('Не успевают', t.failing, { tone: 'bad', title: 'Не успевают задания' }) : ''}
+        ${statTile('Участники', m.participantIds.length, { title: 'Участников' })}
+        ${statTile('Заданий', m.tasks.length)}
+        ${statTile('Заработано', `${coin(t.coins)}${t.maxCoins ? ` <small class="muted">/ ${formatCoins(t.maxCoins)}</small>` : ''}`, { tone: 'gold', wide: true, title: 'Заработано Древних монет' })}
       </div>
       ${m.lastSync ? `<small class="muted mr-sync-line">🔄 ${fmtDateTime(m.lastSync.at)} ${syncAgeHtml(m)}</small>` : ''}
     </article>`;
@@ -309,8 +330,8 @@ function seriesCard(s) {
       }).join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
       ${kids.length ? '' : '<div class="muted mr-card-meta">Папка пуста</div>'}
       <div class="mr-stats">
-        <span class="muted">Марафонов: ${kids.length}</span>
-        <span class="mr-gold mr-coins" title="Сумма заработанных монет по всем марафонам папки${maxCoins ? `; максимально возможного — по наградам каждого марафона` : ''}">${coin(coins)}${maxCoins ? ` <small class="muted">/ ${formatCoins(maxCoins)} возможных</small>` : ''}</span>
+        ${statTile('Марафонов', kids.length)}
+        ${statTile('Заработано', `${coin(coins)}${maxCoins ? ` <small class="muted">/ ${formatCoins(maxCoins)}</small>` : ''}`, { tone: 'gold', wide: true, title: `Сумма заработанных монет по всем марафонам папки${maxCoins ? '; максимально возможного — по наградам каждого марафона' : ''}` })}
       </div>
     </article>`;
 }
@@ -396,17 +417,31 @@ function renderDetail(root, m) {
   const series = m.seriesId ? findM(m.seriesId) : null;
   const url = marathonUrlOf(m);
   const completed = m.status === 'completed';
+  const hint = phaseHint(m, todayStr());
 
   root.innerHTML = `
     <div class="mr-crumbs"><a data-nav="list">Марафоны</a> ›
       ${series ? `<a data-nav="${series.id}">📁 ${escapeHtml(series.title)}</a> › ` : ''}<span>${escapeHtml(m.title)}</span></div>
-    <div class="toolbar mr-head">
-      <div>
-        <h2>${escapeHtml(m.title)} <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span></h2>
-        <span class="muted">${fmtDate(m.startDate)} — ${fmtDate(m.endDate)}
-          ${url ? ` · 🌐 ${escapeHtml(url.replace('https://', ''))}` : ' · сверка с сайтом не настроена'}${m.source?.newsUrl ? ` · 📰 ${escapeHtml(m.source.newsUrl.replace('https://', ''))}` : ''}</span>
+
+    <!-- Шапка: слева название и факты о марафоне, справа действия.
+         Раньше кнопки стояли в общем ряду с заголовком, и на узком окне они съезжали
+         под название отдельной строкой без всякого смысла. -->
+    <div class="mr-head">
+      <div class="mr-head-main">
+        <div class="mr-head-title">
+          <h2>${escapeHtml(m.title)}</h2>
+          <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
+          ${hint.text ? `<span class="mr-hint mr-hint-${hint.tone}">${hint.text}</span>` : ''}
+        </div>
+        <div class="mr-head-meta">
+          <span>📅 ${fmtDate(m.startDate)} — ${fmtDate(m.endDate)}</span>
+          <span title="${url ? 'Страница марафона на сайте' : 'Адрес страницы не задан — сверка с сайтом недоступна'}">
+            ${url ? `🌐 ${escapeHtml(url.replace('https://', ''))}` : '🌐 сверка с сайтом не настроена'}
+          </span>
+          ${m.source?.newsUrl ? `<span>📰 ${escapeHtml(m.source.newsUrl.replace('https://', ''))}</span>` : ''}
+        </div>
       </div>
-      <div class="row gap">
+      <div class="row gap mr-head-actions">
         ${!completed ? `<button class="btn primary" data-act="sync" ${url && !ui.syncProgress && m.participantIds.length ? '' : 'disabled'}>${ui.syncProgress ? `⏳ ${ui.syncProgress}` : '🔄 Сверить с сайтом'}</button>` : ''}
         <button class="btn" data-act="edit">✏️ Редактировать</button>
         ${completed ? '<button class="btn" data-act="reopen">🔓 Вернуть в работу</button>' : '<button class="btn" data-act="complete">🏁 Завершить</button>'}
@@ -420,14 +455,15 @@ function renderDetail(root, m) {
       ${kpi('Выполнено заданий', `${t.done}/${t.cells}`)}
       ${kpi('Не успевают', t.failing ? `<span class="mr-red">${t.failing}</span>` : '0', t.failing ? 'запас дней исчерпан' : 'все в графике')}
       ${kpi(completed ? '💰 Заработано (итог)' : '💰 Заработано', t.coins.toLocaleString('ru-RU'), t.maxCoins ? `из ${t.maxCoins.toLocaleString('ru-RU')} возможных` : 'награды не заданы')}
-      ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length} ${syncAgeHtml(m)}` : '')}
+      ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length} ${syncAgeHtml(m)}` : 'ещё не сверяли с сайтом')}
     </div>
 
     ${ui.syncTask && ui.syncTaskFor === m.id ? taskCardHtml(ui.syncTask) : ''}
     ${syncPanel(m)}
     ${descriptionsBlock(m)}
 
-    <div class="toolbar mr-filters">
+    <!-- Фильтры и легенда одной панелью: раньше это были два разрозненных ряда -->
+    <div class="mr-filters">
       <div class="row gap">
         <select class="select" data-f="party">
           <option value="all">Все пати</option>

@@ -129,7 +129,11 @@ export function openMarathonWizard(opts = {}) {
             ${n.error ? `<p class="tf-warn">Не удалось разобрать новость: ${escapeHtml(n.error)}</p>` : ''}
           </div>
 
-          <div class="tf-src-block ${hasSite ? 'is-loaded' : ''}">
+          <!-- Блок «Страница отметок» (поиск марафонов на сайте и загрузка заданий) временно скрыт:
+               функция не удалена — поиск, разбор страницы и загрузка заданий работают как
+               прежде, и марафоны, созданные раньше, по-прежнему сверяются с сайтом. Чтобы
+               вернуть блок, достаточно убрать класс tf-hidden. -->
+          <div class="tf-src-block tf-hidden ${hasSite ? 'is-loaded' : ''}">
             <h4>🌐 Страница отметок <small class="muted">— supermarathon.php / supermarathon2.php: названия заданий как на сайте, проверка новости</small></h4>
             ${scanner
               ? `<p class="muted">Поиск через профиль <strong>${escapeHtml(scanner.nick)}</strong> ${getAuthView(scanner).icon}</p>`
@@ -463,16 +467,21 @@ export function openMarathonWizard(opts = {}) {
 
     ov.body.innerHTML = `${stageBlock}${draftTabs()}
       <div class="tf-panel">
-        <div class="two-cols">
-          <div class="field"><label>Название марафона *</label><input class="input" data-f="title" value="${escapeHtml(d.title)}"/></div>
-          <div class="field"><label>Страница на сайте (для сверки)</label>
+        <!-- Название марафона — на всю ширину: раньше оно стояло в паре с выбором страницы
+             отметок, а эту функцию временно спрятали (см. ниже) -->
+        <div class="field"><label>Название марафона *</label><input class="input" data-f="title" value="${escapeHtml(d.title)}"/></div>
+        <!-- Страница отметок (выбор адреса для сверки с сайтом) временно скрыта: функция
+             работает и данные никуда не делись, но при создании марафона её больше не
+             предлагают выбирать. Чтобы вернуть, достаточно убрать класс tf-hidden —
+             разметка, обработчики и сохранение адреса остались на месте. -->
+        <div class="field tf-hidden">
+          <label>Страница на сайте (для сверки)</label>
             <select class="select" data-f="url">
               <option value="">${escapeHtml(inheritLabel)}</option>
               ${pages.map(p => `<option value="${escapeHtml(p.url)}" ${d.source?.url === p.url ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
               <option value="__custom__">✏️ Своя ссылка…</option>
             </select>
             <input class="input tf-hidden" data-custom-page placeholder="https://pwonline.ru/… — страница, где видны отметки"/></div>
-        </div>
         <div class="two-cols">
           <div class="field"><label>Начало *</label><input class="input" type="date" data-f="startDate" value="${d.startDate}"/></div>
           <div class="field"><label>Окончание *</label><input class="input" type="date" data-f="endDate" value="${d.endDate}"/></div>
@@ -539,25 +548,33 @@ export function openMarathonWizard(opts = {}) {
 
   function taskRow(d, t, i) {
     const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+    // Задание — карточка из двух рядов: сверху поля (название, цель, режим), снизу всё
+    // остальное (счётчик дней, название на сайте, описание). Раньше всё стояло в одну
+    // строку с переносом, описание прижималось к номеру задания, и на узком окне
+    // строка рассыпалась на три ряда случайного порядка.
     return `
       <div class="tf-task" data-task="${t.id}">
-        <span class="tf-task-num">${i + 1}</span>
-        <input class="input tf-grow" data-t="title" value="${escapeHtml(t.title)}" placeholder="Название задания"/>
-        <label class="tf-inline">Цель <input class="input tf-num" type="number" min="1" data-t="targetChecks" value="${t.targetChecks}"/></label>
-        <select class="select" data-t="mode">
-          <option value="everyDay" ${t.schedule.mode === 'everyDay' ? 'selected' : ''}>Каждый день</option>
-          <option value="weekly" ${t.schedule.mode === 'weekly' ? 'selected' : ''}>Раз в неделю</option>
-          <option value="dates" ${t.schedule.mode === 'dates' ? 'selected' : ''}>По датам</option>
-        </select>
-        ${t.schedule.mode === 'weekly' ? `<select class="select" data-t="weekStartDay">${days.map((n, k) => `<option value="${k}" ${t.schedule.weekStartDay == k ? 'selected' : ''}>${n}</option>`).join('')}</select>` : ''}
-        ${t.schedule.mode === 'dates' ? `<input class="input" data-t="dates" value="${t.schedule.dates.join(', ')}" placeholder="2026-10-01, 2026-10-05"/>` : ''}
-        <span class="tf-task-stat" data-stat="${t.id}">${taskStat(d, t)}</span>
-        <button type="button" class="icon-btn danger" data-act="del-task" title="Удалить">🗑</button>
-        ${t.siteTitle ? `<small class="tf-task-site muted" title="Название на сайте">🌐 ${escapeHtml(t.siteTitle)}</small>` : ''}
-        <details class="tf-task-desc">
-          <summary class="muted">📝 Описание <small data-desc-mark>${descMark(t)}</small></summary>
-          <textarea class="input" rows="3" data-t="description" placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
-        </details>
+        <div class="tf-task-main">
+          <span class="tf-task-num">${i + 1}</span>
+          <input class="input tf-grow" data-t="title" value="${escapeHtml(t.title)}" placeholder="Название задания"/>
+          <label class="tf-inline">Цель <input class="input tf-num" type="number" min="1" data-t="targetChecks" value="${t.targetChecks}"/></label>
+          <select class="select" data-t="mode">
+            <option value="everyDay" ${t.schedule.mode === 'everyDay' ? 'selected' : ''}>Каждый день</option>
+            <option value="weekly" ${t.schedule.mode === 'weekly' ? 'selected' : ''}>Раз в неделю</option>
+            <option value="dates" ${t.schedule.mode === 'dates' ? 'selected' : ''}>По датам</option>
+          </select>
+          ${t.schedule.mode === 'weekly' ? `<select class="select" data-t="weekStartDay">${days.map((n, k) => `<option value="${k}" ${t.schedule.weekStartDay == k ? 'selected' : ''}>${n}</option>`).join('')}</select>` : ''}
+          ${t.schedule.mode === 'dates' ? `<input class="input tf-dates" data-t="dates" value="${t.schedule.dates.join(', ')}" placeholder="2026-10-01, 2026-10-05"/>` : ''}
+          <span class="tf-task-stat" data-stat="${t.id}">${taskStat(d, t)}</span>
+          <button type="button" class="icon-btn danger" data-act="del-task" title="Удалить">🗑</button>
+        </div>
+        <div class="tf-task-foot">
+          ${t.siteTitle ? `<small class="tf-task-site muted" title="Название на сайте">🌐 ${escapeHtml(t.siteTitle)}</small>` : '<small></small>'}
+          <details class="tf-task-desc">
+            <summary class="muted">📝 Описание <small data-desc-mark>${descMark(t)}</small></summary>
+            <textarea class="input" rows="3" data-t="description" placeholder="Что нужно сделать в этом задании">${escapeHtml(t.description || '')}</textarea>
+          </details>
+        </div>
       </div>`;
   }
 
