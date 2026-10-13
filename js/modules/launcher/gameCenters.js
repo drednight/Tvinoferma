@@ -14,9 +14,9 @@
 // Для пати предпочитаемый выбирает pickMajorityGc: тот GameCenter, которым пользуется больше всего участников.
 
 /**
- * @typedef {{ id: string, name: string, path: string }} GameCenter
+ * @typedef {{ id: string, name: string, path: string, kind?: 'gamecenter' | 'astrum' }} GameCenter
  * @typedef {{ gameCenters?: GameCenter[], preferredId?: string }} GcContext
- * @typedef {{ path: string, key: string, nick: string, saved: boolean, gc: GameCenter | null }} ResolvedGc
+ * @typedef {{ path: string, key: string, nick: string, saved: boolean, gc: GameCenter | null, kind: string }} ResolvedGc
  */
 
 /** Максимум GameCenter в списке (защита от мусора в state.json). */
@@ -40,11 +40,36 @@ export function normalizeGameCenters(list) {
   for (const raw of Array.isArray(list) ? list : []) {
     const id = String(raw?.id || '').trim();
     const path = String(raw?.path || '').trim();
+    const kind = raw?.kind === 'astrum' ? 'astrum' : 'gamecenter';
     if (!id || !path || seen.has(id) || out.length >= MAX_GAME_CENTERS) continue;
     seen.add(id);
-    out.push({ id, name: String(raw?.name || '').trim().slice(0, 60) || 'GameCenter', path });
+    out.push({ id, name: String(raw?.name || '').trim().slice(0, 60) || kindLabel(kind), path, kind });
   }
   return out;
+}
+
+/** Тип лаунчера записи: GameCenter (VK Play) или AstrumPlay. Записи без типа — GameCenter (как раньше). */
+export function launcherKind(gc) {
+  return gc?.kind === 'astrum' ? 'astrum' : 'gamecenter';
+}
+
+/**
+ * Тип лаунчера по пути: `AstrumPlay` — Astrum Play, всё остальное — GameCenter.
+ *
+ * Нужно для «своего пути» из карточки персонажа (`character.launch.gcPath`): там тип нигде не
+ * сохранён, а Rust-командам он нужен, чтобы читать не тот ini. Смотрим на последний участок пути
+ * без `.exe`: пользователь вставляет и папку (`...\AstrumPlay`), и файл
+ * (`...\AstrumPlay\AstrumPlay.exe`) — в Rust оба варианта разворачиваются в `AstrumPlay.exe`.
+ * Имя файла важнее имени папки: `...\AstrumPlay\GameCenter.exe` — это GameCenter.
+ */
+export function kindForPath(path) {
+  const base = String(path || '').replace(/\//g, '\\').split('\\').filter(Boolean).pop() || '';
+  return base.replace(/\.exe$/i, '').toLowerCase() === 'astrumplay' ? 'astrum' : 'gamecenter';
+}
+
+/** Подпись типа лаунчера для интерфейса. */
+export function kindLabel(kind) {
+  return kind === 'astrum' ? 'AstrumPlay' : 'GameCenter';
 }
 
 /** Уникальный id для нового GameCenter. */
@@ -99,7 +124,7 @@ export function resolveGameCenter(char, ctx = {}) {
   if (attached.length) {
     const gc = attached.find(g => g.id === ctx.preferredId) || attached[0];
     const acc = char.launch?.gcAccounts?.[gc.id];
-    return { path: gc.path, key: accountKey(char, gc.id), nick: acc?.nick || '', saved: !!acc, gc };
+    return { path: gc.path, key: accountKey(char, gc.id), nick: acc?.nick || '', saved: !!acc, gc, kind: launcherKind(gc) };
   }
   const own = String(char?.launch?.gcPath || '').trim();
   if (own) {
@@ -108,7 +133,10 @@ export function resolveGameCenter(char, ctx = {}) {
       key: String(char?.id || ''),
       nick: String(char?.launch?.gcNick || ''),
       saved: char?.launch?.gcAccount === true,
-      gc: null
+      gc: null,
+      // У «своего пути» тип нигде не сохранён: узнаём по имени файла, иначе Rust
+      // открыл бы GameCenter.ini рядом с AstrumPlay.exe
+      kind: kindForPath(own)
     };
   }
   return null;
@@ -227,7 +255,8 @@ export function importLegacyPaths(settingsLauncher, characters) {
     let gc = list.find(g => samePathKey(g.path) === key);
     if (!gc) {
       if (list.length >= MAX_GAME_CENTERS) continue;
-      gc = { id: newGcId(list), name: suggestGcName(own, list), path: own };
+      // Тип по имени файла в пути: «свой путь» мог вести и к AstrumPlay.exe
+      gc = { id: newGcId(list), name: suggestGcName(own, list), path: own, kind: kindForPath(own) };
       list.push(gc);
       created++;
     }

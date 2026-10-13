@@ -28,6 +28,9 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tauri::Emitter;
 
+/// Astrum Play: отдельный лаунчер с другим ini и окном вопроса (см. launcher/astrum.rs)
+mod astrum;
+
 const GAMECENTER_EXE: &str = "GameCenter.exe";
 /// Начало имени образа клиента игры: `elementclient_64.exe`, `elementclient.exe` и подобные
 const CLIENT_PREFIX: &str = "elementclient";
@@ -1569,7 +1572,10 @@ fn wait_gamecenters_gone() {
 
 /// Проверка пути из настроек: возвращает полный путь к `GameCenter.exe`.
 #[tauri::command]
-pub fn launcher_check_path(path: String) -> Result<String, String> {
+pub fn launcher_check_path(path: String, kind: Option<String>) -> Result<String, String> {
+    if kind.as_deref() == Some("astrum") {
+        return astrum::resolve_exe(&path).map(|p| p.display().to_string());
+    }
     resolve_gamecenter_exe(&path).map(|p| p.display().to_string())
 }
 
@@ -1602,15 +1608,22 @@ fn read_gc_info(exe: &Path) -> Result<GcInfo, String> {
 
 /// Какой аккаунт сейчас открыт в этом GameCenter (для окна «GameCenter и персонажи»).
 #[tauri::command]
-pub async fn launcher_gc_info(path: String) -> Result<GcInfo, String> {
+pub async fn launcher_gc_info(path: String, kind: Option<String>) -> Result<GcInfo, String> {
+    if kind.as_deref() == Some("astrum") {
+        let exe = astrum::resolve_exe(&path)?;
+        return tauri::async_runtime::spawn_blocking(move || astrum::info(&exe))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     let exe = resolve_gamecenter_exe(&path)?;
     tauri::async_runtime::spawn_blocking(move || read_gc_info(&exe))
         .await
         .map_err(|e| e.to_string())?
 }
 
-/// Окно проводника «Открыть файл» (системное, через Windows Forms): пользователь указывает `GameCenter.exe`.
-/// Скрипт ничего не запускает и не читает, только возвращает выбранный путь.
+/// Окно проводника «Открыть файл» (системное, через Windows Forms): пользователь указывает
+/// `GameCenter.exe` или `AstrumPlay.exe`. Скрипт ничего не запускает и не читает, только
+/// возвращает выбранный путь; заголовок и фильтр подставляет `picker_script`.
 #[cfg(windows)]
 const PICKER_SCRIPT: &str = r#"
 Add-Type -AssemblyName System.Windows.Forms
@@ -1618,12 +1631,55 @@ Add-Type -AssemblyName System.Windows.Forms
 $owner = New-Object System.Windows.Forms.Form
 $owner.TopMost = $true
 $dlg = New-Object System.Windows.Forms.OpenFileDialog
-$dlg.Title = 'Укажите файл GameCenter.exe'
-$dlg.Filter = 'GameCenter.exe|GameCenter.exe|Программы (*.exe)|*.exe'
+$dlg.Title = '__TITLE__'
+$dlg.Filter = '__FILTER__'
 $dlg.CheckFileExists = $true
 if ($dlg.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dlg.FileName) }
 $owner.Dispose()
 "#;
+
+/// Диалог выбора файла для одного типа лаунчера (`kind`) или для обоих сразу (без `kind`).
+///
+/// Без `kind` фильтр показывает и `GameCenter.exe`, и `AstrumPlay.exe` — так «Обзор…» из карточки
+/// персонажа умеет указать любой лаунчер, а какой это тип, режется по имени выбранного файла.
+#[cfg(windows)]
+fn picker_script(kind: Option<&str>) -> String {
+    let (title, filter) = match kind {
+        Some("astrum") => (
+            "Укажите файл AstrumPlay.exe",
+            "AstrumPlay.exe|AstrumPlay.exe|Программы (*.exe)|*.exe",
+        ),
+        Some(_) => (
+            "Укажите файл GameCenter.exe",
+            "GameCenter.exe|GameCenter.exe|Программы (*.exe)|*.exe",
+        ),
+        None => (
+            "Укажите файл GameCenter.exe или AstrumPlay.exe",
+            "GameCenter.exe;AstrumPlay.exe|GameCenter.exe;AstrumPlay.exe|Программы (*.exe)|*.exe",
+        ),
+    };
+    PICKER_SCRIPT
+        .replace("__TITLE__", title)
+        .replace("__FILTER__", filter)
+}
+
+/// Проверка выбранного в проводнике файла.
+///
+/// `kind` задан — принимается только этот лаунчер. Без `kind` подходит любой из двух: какой
+/// именно, узнаём по имени файла, чтобы «свой путь» из карточки персонажа работал и с Astrum Play.
+#[cfg(windows)]
+fn resolve_picked(path: &str, kind: Option<&str>) -> Result<PathBuf, String> {
+    let is_astrum = Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.eq_ignore_ascii_case(astrum::ASTRUM_EXE));
+    match kind {
+        Some("astrum") => astrum::resolve_exe(path),
+        Some(_) => resolve_gamecenter_exe(path),
+        None if is_astrum => astrum::resolve_exe(path),
+        None => resolve_gamecenter_exe(path),
+    }
+}
 
 /// Вывод скрипта выбора файла: путь одной строкой (без BOM и переводов строк) или `None`, если окно закрыли.
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1636,18 +1692,20 @@ fn parse_picker_output(out: &str) -> Option<String> {
     }
 }
 
-/// Открывает проводник и возвращает полный путь к выбранному `GameCenter.exe` (`None` — окно закрыли без выбора).
+/// Открывает проводник и возвращает полный путь к `GameCenter.exe` или `AstrumPlay.exe`
+/// (`None` — окно закрыли без выбора). `kind` ограничивает выбор одним лаунчером.
 #[tauri::command]
-pub async fn launcher_pick_gamecenter() -> Result<Option<String>, String> {
+pub async fn launcher_pick_gamecenter(kind: Option<String>) -> Result<Option<String>, String> {
     #[cfg(windows)]
     {
-        let out = tauri::async_runtime::spawn_blocking(|| {
+        let script = picker_script(kind.as_deref());
+        let out = tauri::async_runtime::spawn_blocking(move || {
             hidden(Command::new("powershell").args([
                 "-NoProfile",
                 "-NonInteractive",
                 "-STA",
                 "-Command",
-                PICKER_SCRIPT,
+                script.as_str(),
             ]))
             .output()
             .map_err(|e| format!("powershell: {}", e))
@@ -1655,7 +1713,9 @@ pub async fn launcher_pick_gamecenter() -> Result<Option<String>, String> {
         .await
         .map_err(|e| e.to_string())??;
         match parse_picker_output(&String::from_utf8_lossy(&out.stdout)) {
-            Some(path) => resolve_gamecenter_exe(&path).map(|p| Some(p.display().to_string())),
+            Some(path) => {
+                resolve_picked(&path, kind.as_deref()).map(|p| Some(p.display().to_string()))
+            }
             None => Ok(None),
         }
     }
@@ -1668,7 +1728,12 @@ pub async fn launcher_pick_gamecenter() -> Result<Option<String>, String> {
 /// Запоминает вход, который сейчас открыт в этом GameCenter: токен — в хранилище ОС, ник возвращается
 /// для показа. Перед этим войдите в нужный аккаунт в самом GameCenter.
 #[tauri::command]
-pub async fn launcher_capture_account(char_id: String, path: String) -> Result<String, String> {
+pub async fn launcher_capture_account(char_id: String, path: String, kind: Option<String>) -> Result<String, String> {
+    if kind.as_deref() == Some("astrum") {
+        return tauri::async_runtime::spawn_blocking(move || astrum::capture(&char_id, &path))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     let exe = resolve_gamecenter_exe(&path)?;
     let ini = gc_ini_path(&exe)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -1734,7 +1799,11 @@ pub async fn launcher_start(
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
+    kind: Option<String>,
 ) -> Result<LaunchInfo, String> {
+    if kind.as_deref() == Some("astrum") {
+        return astrum::start(app, path, char_id, url, wait_secs, window_title, icon_small, icon_big).await;
+    }
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
     if !url.starts_with("vkplay://") || url.chars().any(char::is_whitespace) {
@@ -2992,6 +3061,54 @@ mod tests {
             parse_picker_output("\u{feff}D:\\GC 2\\GameCenter.exe\r\n").as_deref(),
             Some("D:\\GC 2\\GameCenter.exe")
         );
+    }
+
+    #[test]
+    fn picker_filter_lists_both_launchers_only_when_kind_is_unspecified() {
+        // С указанным типом фильтр показывает только его: из окна «Добавить GameCenter»
+        // нельзя случайно добавить AstrumPlay и наоборот.
+        let gc = picker_script(Some("gamecenter"));
+        assert!(gc.contains("'GameCenter.exe|GameCenter.exe|"), "{gc}");
+        assert!(!gc.contains("AstrumPlay"), "{gc}");
+
+        let astrum = picker_script(Some("astrum"));
+        assert!(astrum.contains("'AstrumPlay.exe|AstrumPlay.exe|"), "{astrum}");
+        assert!(!astrum.contains("GameCenter"), "{astrum}");
+
+        // Без типа — оба: так «Обзор…» из карточки персонажа работает с любым лаунчером.
+        let both = picker_script(None);
+        assert!(both.contains("GameCenter.exe;AstrumPlay.exe"), "{both}");
+        assert!(!both.contains("__TITLE__") && !both.contains("__FILTER__"), "{both}");
+    }
+
+    #[test]
+    fn picked_file_is_recognised_by_name_when_kind_is_unspecified() {
+        let dir = std::env::temp_dir().join(format!("tf-pick-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let gc = dir.join("GameCenter.exe");
+        let ap = dir.join("AstrumPlay.exe");
+        let txt = dir.join("notepad.exe");
+        std::fs::write(&gc, b"").unwrap();
+        std::fs::write(&ap, b"").unwrap();
+        std::fs::write(&txt, b"").unwrap();
+
+        // Без типа: по имени файла — GameCenter.exe и AstrumPlay.exe оба проходят,
+        // посторонняя программа нет.
+        assert_eq!(
+            resolve_picked(gc.to_str().unwrap(), None).unwrap(),
+            gc
+        );
+        assert_eq!(
+            resolve_picked(ap.to_str().unwrap(), None).unwrap(),
+            ap
+        );
+        assert!(resolve_picked(txt.to_str().unwrap(), None).is_err());
+
+        // С указанным типом чужой лаунчер не проходит: пункт «Добавить GameCenter»
+        // не должен принять AstrumPlay.exe.
+        assert!(resolve_picked(ap.to_str().unwrap(), Some("gamecenter")).is_err());
+        assert!(resolve_picked(gc.to_str().unwrap(), Some("astrum")).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

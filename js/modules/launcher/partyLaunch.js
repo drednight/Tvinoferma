@@ -8,7 +8,7 @@ import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
 import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, launchContext, launchWarnings, verifyLaunchedDecor, launchStageSummary, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
-import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc } from './gameCenters.js';
+import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, launcherKind, kindForPath, kindLabel } from './gameCenters.js';
 import { launchBlocker } from './gcSettingsModal.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
@@ -431,30 +431,36 @@ function offerElevatedClose(report, focused) {
   window.addEventListener('focus', () => { ask(); }, { once: true });
 }
 
-/** Сохраняет путь к GameCenter у персонажа (в приложении путь проверяется). */
-export async function saveGameCenterPath(char, path) {
+/**
+ * Сохраняет путь к лаунчеру у персонажа (в приложении путь проверяется).
+ * `kind` — 'gamecenter' | 'astrum'; не передан — определяется по имени файла в пути,
+ * чтобы «Обзор…» и ручной ввод работали с любым из двух лаунчеров.
+ */
+export async function saveGameCenterPath(char, path, kind = null) {
   const value = String(path || '').trim();
+  const k = kind || (value ? kindForPath(value) : 'gamecenter');
   if (value && isTauri()) {
-    try { await checkGameCenterPath(value); }
+    try { await checkGameCenterPath(value, { kind: k }); }
     catch (e) { toast(errText(e), 'error'); return false; }
   }
   char.launch = { ...(char.launch || {}), gcPath: value };
   char.updatedAt = new Date().toISOString();
   await persist();
-  toast(value ? 'Путь к GameCenter сохранён' : 'Путь к GameCenter убран', 'success');
+  toast(value ? `Путь к ${kindLabel(k)} сохранён` : 'Путь к GameCenter убран', 'success');
   return true;
 }
 
 /**
- * Куда привязывать вход: GameCenter из списка (`gcId` или тот, из которого персонаж запускается) либо «свой путь» из карточки.
- * @returns {{ gc: any, key: string, path: string } | { gc: null, key: string, path: string } | null}
+ * Куда привязывать вход: лаунчер из списка (`gcId` или тот, из которого персонаж запускается)
+ * либо «свой путь» из карточки. У «своего пути» тип нигде не сохранён — узнаём по имени файла.
+ * @returns {{ gc: any, key: string, path: string, kind: string } | { gc: null, key: string, path: string, kind: string } | null}
  */
 function loginTarget(char, gcId) {
   const ctx = launchContext();
   const gc = gcId ? ctx.gameCenters.find(g => g.id === gcId) : resolveGameCenter(char, ctx)?.gc;
-  if (gc) return { gc, key: accountKey(char, gc.id), path: gc.path };
+  if (gc) return { gc, key: accountKey(char, gc.id), path: gc.path, kind: launcherKind(gc) };
   const own = String(char.launch?.gcPath || '').trim();
-  return own ? { gc: null, key: String(char.id), path: own } : null;
+  return own ? { gc: null, key: String(char.id), path: own, kind: kindForPath(own) } : null;
 }
 
 /**

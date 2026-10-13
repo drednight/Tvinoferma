@@ -216,31 +216,44 @@ export function launchablePartyNames(parties, characters, membersOf, ctx = launc
     .filter(Boolean);
 }
 
+/**
+ * Тип лаунчера для команд Rust: 'gamecenter', 'astrum' или `undefined` — «любой из двух».
+ * У файлового окна разница видна: без типа фильтр показывает оба лаунчера.
+ */
+const launcherArg = (kind) => (kind === 'astrum' || kind === 'gamecenter' ? kind : undefined);
+
+/**
+ * То же для команд запуска, где Astrum — единственный особый случай. GameCenter уходит
+ * вообще без поля: прежние вызовы остаются такими же, как были.
+ */
+const launcherKindArg = (kind) => (kind === 'astrum' ? 'astrum' : undefined);
+
 /** Проверка пути из настроек. Возвращает полный путь к GameCenter.exe или бросает ошибку. */
 export function checkGameCenterPath(path, deps = {}) {
-  return (deps.invoke || tauriInvoke)('launcher_check_path', { path });
+  return (deps.invoke || tauriInvoke)('launcher_check_path', { path, kind: launcherKindArg(deps.kind) });
 }
 
 /**
- * Запомнить вход, который сейчас открыт в GameCenter персонажа (токен уходит в хранилище ОС).
- * `target` — `{ key, path }` из resolveGameCenter; без него берётся «свой путь» из карточки.
- * Возвращает ник из GameCenter (может быть пустой строкой).
+ * Запомнить вход, который сейчас открыт в лаунчере персонажа (токен уходит в хранилище ОС).
+ * `target` — `{ key, path, kind }` из resolveGameCenter; без него берётся «свой путь» из карточки.
+ * Возвращает ник из лаунчера (может быть пустой строкой).
  */
 export function captureAccount(character, deps = {}, target = null) {
   return (deps.invoke || tauriInvoke)('launcher_capture_account', {
     charId: target?.key || character.id,
-    path: target?.path ?? (character.launch?.gcPath || '')
+    path: target?.path ?? (character.launch?.gcPath || ''),
+    kind: launcherKindArg(target?.kind)
   });
 }
 
-/** Что сейчас за вход открыт в GameCenter (ник и есть ли вход вообще): `{ exe, nick, loggedIn }`. */
+/** Что сейчас за вход открыт в лаунчере (ник и есть ли вход вообще): `{ exe, nick, loggedIn }`. */
 export function gameCenterInfo(path, deps = {}) {
-  return (deps.invoke || tauriInvoke)('launcher_gc_info', { path });
+  return (deps.invoke || tauriInvoke)('launcher_gc_info', { path, kind: launcherKindArg(deps.kind) });
 }
 
-/** Открыть проводник и выбрать GameCenter.exe. Возвращает полный путь или null, если окно закрыли. */
+/** Открыть проводник и выбрать GameCenter.exe или AstrumPlay.exe. Возвращает полный путь или null. */
 export function pickGameCenter(deps = {}) {
-  return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter');
+  return (deps.invoke || tauriInvoke)('launcher_pick_gamecenter', { kind: launcherArg(deps.kind) });
 }
 
 /** Удалить сохранённый вход персонажа из хранилища ОС. */
@@ -576,6 +589,7 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
           nick: target?.nick || null,
           url: url || null,
           waitSecs: waitSecs ?? null,
+          kind: launcherKindArg(target?.kind),
           ...decor
         });
       } finally {

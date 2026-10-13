@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import {
+  normalizeGameCenters, resolveGameCenter, kindForPath, importLegacyPaths
+} from '../js/modules/launcher/gameCenters.js';
 import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice, inspectVerdict, inspectReportText, PROBE_TITLE } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
@@ -87,6 +90,74 @@ describe('launcher', () => {
     expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
     expect(JSON.stringify(c)).not.toContain('SECRET');
     expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} });
+  });
+});
+
+describe('Astrum Play: второй лаунчер рядом с GameCenter', () => {
+  it('тип лаунчера узнаётся по пути', () => {
+    // Проверка по последнему участку пути, а не по папке: пользователь вставляет и папку
+    // (`...\AstrumPlay`), и файл (`...\AstrumPlay\AstrumPlay.exe`) — в Rust оба варианта
+    // разворачиваются в AstrumPlay.exe.
+    expect(kindForPath('C:\\Users\\Имя\\AppData\\Local\\AstrumPlay')).toBe('astrum');
+    expect(kindForPath('C:\\Users\\Имя\\AppData\\Local\\AstrumPlay\\AstrumPlay.exe')).toBe('astrum');
+    expect(kindForPath('C:/Users/Имя/AppData/Local/AstrumPlay/astrumplay.EXE')).toBe('astrum');
+    // Имя файла важнее имени папки: в папке AstrumPlay может лежать GameCenter
+    expect(kindForPath('D:\\AstrumPlay\\GameCenter.exe')).toBe('gamecenter');
+    expect(kindForPath('C:\\Users\\Имя\\AppData\\Local\\GameCenter1')).toBe('gamecenter');
+    expect(kindForPath('C:\\Users\\Имя\\AppData\\Local\\GameCenter1\\GameCenter.exe')).toBe('gamecenter');
+    expect(kindForPath('')).toBe('gamecenter');
+    expect(kindForPath(null)).toBe('gamecenter');
+  });
+
+  it('«свой путь» из карточки отдаёт тип в запуск и в запоминание входа', () => {
+    // Раньше «свой путь» всегда шёл как GameCenter: Rust открывал GameCenter.ini
+    // рядом с AstrumPlay.exe и падаал с «Укажите папку GameCenter».
+    const r = resolveGameCenter(ch('a', 'D:\\AstrumPlay\\AstrumPlay.exe'), {});
+    expect(r.kind).toBe('astrum');
+    expect(r.gc).toBeNull();
+
+    const gc = resolveGameCenter(ch('a', 'D:\\GC1'), {});
+    expect(gc.kind).toBe('gamecenter');
+  });
+
+  it('лаунчер из списка несёт свой тип, и запуск уходит с ним', async () => {
+    const gameCenters = normalizeGameCenters([
+      { id: 'g1', path: 'D:\\GC1' },
+      { id: 'g2', path: 'D:\\AstrumPlay\\AstrumPlay.exe', kind: 'astrum' }
+    ]);
+    expect(gameCenters.map(g => g.kind)).toEqual(['gamecenter', 'astrum']);
+
+    const char = normalizeCharacter({ id: 'a', nick: 'A', launch: { gcIds: ['g2'], gcAccounts: { g2: { nick: 'Twin' } } } });
+    const seen = [];
+    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    await launchCharacters([char], { delayMs: 0 }, { invoke, ctx: { gameCenters, preferredId: '' } });
+    expect(seen[0].kind).toBe('astrum');
+    expect(seen[0].path).toBe('D:\\AstrumPlay\\AstrumPlay.exe');
+  });
+
+  it('GameCenter по-прежнему запускается без kind: поле появляется только у Astrum', async () => {
+    const seen = [];
+    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    await launchCharacters([ch('a', 'D:\\GC1')], { delayMs: 0 }, { invoke });
+    expect(seen[0].kind).toBeUndefined();
+  });
+
+  it('перенос путей из карточек сохраняет тип лаунчера', () => {
+    const settings = { gameCenters: [] };
+    const created = importLegacyPaths(settings, [ch('a', 'D:\\AstrumPlay\\AstrumPlay.exe')]);
+    expect(created.created).toBe(1);
+    expect(settings.gameCenters[0].kind).toBe('astrum');
+  });
+
+  it('Rust и JS называют ключ выбора лаунчера одинаково', () => {
+    // Расхождение в имени поля проявилось бы только в собранном приложении.
+    const rust = readFileSync('src-tauri/src/launcher.rs', 'utf8');
+    for (const name of ['launcher_check_path', 'launcher_gc_info', 'launcher_capture_account', 'launcher_start']) {
+      expect(rust).toMatch(new RegExp(`fn ${name}\\([^)]*kind: Option<String>`));
+    }
+    const js = readFileSync('js/modules/launcher/launch.js', 'utf8');
+    expect(js).toContain('kind: launcherKindArg(');
+    expect(js).toContain("'launcher_pick_gamecenter', { kind: launcherArg(");
   });
 });
 

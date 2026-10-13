@@ -15,7 +15,8 @@ import { gameCenterInfo, pickGameCenter, forgetAccount } from './launch.js';
 import { captureLogin, forgetLogin } from './partyLaunch.js';
 import {
   attachedGcs, attachGc, detachGc, replaceGc, accountKey, newGcId, suggestGcName, samePathKey,
-  removeGameCenter, importLegacyPaths, countLaunchReady, resolveGameCenter, MAX_GAME_CENTERS
+  removeGameCenter, importLegacyPaths, countLaunchReady, resolveGameCenter, MAX_GAME_CENTERS,
+  launcherKind, kindLabel
 } from './gameCenters.js';
 import { partiesOf, NO_PARTY } from '../parties/membership.js';
 
@@ -116,7 +117,8 @@ export function openGameCentersModal(opts = {}) {
       const cls = state === 'on' ? 'is-on' : state === 'error' ? 'is-bad' : state === 'busy' ? 'is-busy' : 'is-idle';
       return `
       <div class="gcm-gc" data-gc="${escapeHtml(gc.id)}">
-        <span class="gcm-gc-ico" aria-hidden="true">🎮</span>
+        <span class="gcm-gc-ico" aria-hidden="true">${launcherKind(gc) === 'astrum' ? '🅰️' : '🎮'}</span>
+        <span class="gcm-tag">${escapeHtml(kindLabel(launcherKind(gc)))}</span>
         <input class="input gcm-gc-name" data-act="gc-name" value="${escapeHtml(gc.name)}" maxlength="60" aria-label="Название GameCenter" />
         <div class="gcm-gc-path" title="${escapeHtml(gc.path)}">${escapeHtml(gc.path)}</div>
         <div class="state ${cls} gcm-gc-who" title="${escapeHtml(infoText(gc))}"><span class="state-dot"></span><span>${escapeHtml(used)}</span></div>
@@ -240,6 +242,7 @@ export function openGameCentersModal(opts = {}) {
       <div id="gcm-gcs"></div>
       <div class="gcm-actions">
         <button type="button" class="btn primary" data-act="gc-add">➕ Добавить GameCenter</button>
+        <button type="button" class="btn secondary" data-act="astrum-add">➕ Добавить AstrumPlay</button>
       </div>
       <div id="gcm-import" class="gcm-import" hidden>
         <span></span>
@@ -280,7 +283,7 @@ export function openGameCentersModal(opts = {}) {
     };
     setText();
     try {
-      const r = await gameCenterInfo(gc.path);
+      const r = await gameCenterInfo(gc.path, { kind: launcherKind(gc) });
       info.set(gc.id, { status: 'ok', nick: r?.nick || '', loggedIn: !!r?.loggedIn });
     } catch (e) {
       info.set(gc.id, { status: 'error', error: errText(e) });
@@ -293,9 +296,9 @@ export function openGameCentersModal(opts = {}) {
   // ----- Действия -----
 
   /** Открывает проводник и возвращает путь к GameCenter.exe (или null). Ошибки показываются сразу. */
-  const pickPath = async () => {
+  const pickPath = async (kind = 'gamecenter') => {
     if (!isTauri()) { toast('Выбор файла доступен только в приложении', 'error'); return null; }
-    try { return await pickGameCenter(); } catch (e) { toast(errText(e), 'error'); return null; }
+    try { return await pickGameCenter({ kind }); } catch (e) { toast(errText(e), 'error'); return null; }
   };
 
   const findChar = (el) => state.characters.find(c => c.id === el.closest('[data-char]')?.getAttribute('data-char'));
@@ -309,13 +312,14 @@ export function openGameCentersModal(opts = {}) {
     const gc = gcs().find(g => g.id === gcId);
     const c = findChar(btn);
 
-    if (act === 'gc-add') {
-      if (gcs().length >= MAX_GAME_CENTERS) { toast(`Не больше ${MAX_GAME_CENTERS} GameCenter`, 'error'); return; }
-      const path = await pickPath();
+    if (act === 'gc-add' || act === 'astrum-add') {
+      const kind = act === 'astrum-add' ? 'astrum' : 'gamecenter';
+      if (gcs().length >= MAX_GAME_CENTERS) { toast(`Не больше ${MAX_GAME_CENTERS} лаунчеров`, 'error'); return; }
+      const path = await pickPath(kind);
       if (!path) return;
       const same = gcs().find(g => samePathKey(g.path) === samePathKey(path));
-      if (same) { toast(`Этот GameCenter уже в списке: «${same.name}»`, 'error'); return; }
-      const created = { id: newGcId(gcs()), name: suggestGcName(path, gcs()), path };
+      if (same) { toast(`Этот лаунчер уже в списке: «${same.name}»`, 'error'); return; }
+      const created = { id: newGcId(gcs()), name: suggestGcName(path, gcs()), path, kind };
       gcs().push(created);
       await save();
       renderAll();
@@ -323,7 +327,7 @@ export function openGameCentersModal(opts = {}) {
       loadInfo(created);
       /** @type {HTMLInputElement | null | undefined} */ (gcRow(created.id)?.querySelector('input'))?.select();
     } else if (act === 'gc-path' && gc) {
-      const path = await pickPath();
+      const path = await pickPath(launcherKind(gc));
       if (!path) return;
       gc.path = path;
       await save();

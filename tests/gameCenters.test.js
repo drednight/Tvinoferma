@@ -62,7 +62,9 @@ describe('GameCenter: какой запускать', () => {
   it('GameCenter из списка важнее своего пути; без списка работает свой путь; без всего — null', () => {
     expect(resolveGameCenter(ch('a', { gcIds: ['gc-1'], gcPath: 'D:\\own' }), ctx()).path).toBe(GC1.path);
     const own = resolveGameCenter(ch('a', { gcPath: ' D:\\own ', gcNick: 'Twin', gcAccount: true }), ctx());
-    expect(own).toEqual({ path: 'D:\\own', key: 'a', nick: 'Twin', saved: true, gc: null });
+    // `kind` — тип лаунчера: у «своего пути» он узнаётся по имени файла в пути
+    expect(own).toEqual({ path: 'D:\\own', key: 'a', nick: 'Twin', saved: true, gc: null, kind: 'gamecenter' });
+    expect(resolveGameCenter(ch('a', { gcPath: 'D:\\AstrumPlay' }), ctx()).kind).toBe('astrum');
     expect(resolveGameCenter(ch('a', {}), ctx())).toBeNull();
     expect(resolveGameCenter(ch('a', { gcIds: ['удалён'] }), ctx())).toBeNull();
   });

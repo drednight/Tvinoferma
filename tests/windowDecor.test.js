@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { normalizeGameCenters } from '../js/modules/launcher/gameCenters.js';
 import { windowTitle, windowDecor, launchCharacters, WINDOW_ICON_SMALL, WINDOW_ICON_BIG } from '../js/modules/launcher/launch.js';
 import { normalizeState } from '../js/core/state.js';
 import { CLASS_ICON_MAP, CLASSES } from '../js/core/constants.js';
@@ -41,6 +42,26 @@ describe('название и значок окна клиента', () => {
     const loadIcon = async (cls, size) => [size];
     await launchCharacters([ch('a', 'Воин')], { delayMs: 0 }, { invoke, loadIcon });
     expect(seen[0]).toMatchObject({ path: 'D:\\a', windowTitle: 'Ник a — Воин', iconSmall: [16], iconBig: [48] });
+  });
+
+  it('через Astrum Play название и значки уходят точно так же — рядом с kind', async () => {
+    // Подпись окна и значок не зависят от лаунчера: Rust получает ту же тройку и тот же PID
+    // клиента (`elementclient*`), поэтому astrum-ветка обязана передать их дальше как есть.
+    const seen = [];
+    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const loadIcon = async (cls, size) => [size];
+    const gameCenters = normalizeGameCenters([
+      { id: 'g-astrum', path: 'D:\\AstrumPlay\\AstrumPlay.exe', kind: 'astrum' }
+    ]);
+    const char = { id: 'a', nick: 'Ник a', class: 'Воин', launch: { gcPath: '', gcIds: ['g-astrum'], gcAccounts: { 'g-astrum': { nick: 'Ник a' } } } };
+    await launchCharacters([char], { delayMs: 0 }, { invoke, loadIcon, ctx: { gameCenters, preferredId: '' } });
+    expect(seen[0]).toMatchObject({
+      path: 'D:\\AstrumPlay\\AstrumPlay.exe',
+      kind: 'astrum',
+      windowTitle: 'Ник a — Воин',
+      iconSmall: [16],
+      iconBig: [48]
+    });
   });
 
   it('настройка выключена — окно не трогаем', async () => {

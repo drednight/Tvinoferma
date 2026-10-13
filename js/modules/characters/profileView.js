@@ -182,15 +182,15 @@ export function openCharacterProfile(char) {
                 <p class="pf-hint">GameCenter этого аккаунта. Запустить игру можно кнопкой «Играть» внизу.</p>
                 <div id="pf-gc-list" class="muted">${escapeHtml(gcListText(char))}</div>
                 <div><button id="pf-gc-manage" type="button" class="btn secondary" title="Список GameCenter с названиями и привязка персонажей (Настройки → Запуск игры)">⚙ GameCenter и персонажи…</button></div>
-                <label class="pf-label" for="pf-gc-path">Свой GameCenter (запасной вариант, если выше ничего не прикреплено)</label>
+                <label class="pf-label" for="pf-gc-path">Свой лаунчер (запасной вариант, если выше ничего не прикреплено)</label>
                 <div class="pf-launch-row">
                   <input id="pf-gc-path" class="input" placeholder="Например: C:\\Users\\Имя\\AppData\\Local\\GameCenter1" value="${escapeHtml(launch.gcPath || '')}" />
-                  <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe в проводнике">📂 Обзор…</button>
+                  <button id="pf-gc-browse" type="button" class="btn secondary" title="Выбрать GameCenter.exe или AstrumPlay.exe в проводнике">📂 Обзор…</button>
                   <button id="pf-gc-save" type="button" class="btn secondary">Сохранить путь</button>
                 </div>
                 <div id="pf-gc-account" class="muted">${escapeHtml(loginStatusText(char))}</div>
                 <div class="pf-launch-row">
-                  <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом GameCenter, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход</button>
+                  <button id="pf-gc-capture" type="button" class="btn secondary" title="Сначала войдите в нужный аккаунт в самом лаунчере, затем нажмите: токен входа сохранится в хранилище ОС">🔑 Запомнить текущий вход</button>
                   <button id="pf-gc-forget" type="button" class="btn ghost">Забыть вход</button>
                 </div>
               </div>
@@ -498,7 +498,7 @@ export function openCharacterProfile(char) {
         const fold = modalRoot.querySelector('.pf-launch');
         if (fold) fold.open = true;
         gcInput?.focus();
-        toast('Укажите GameCenter этого аккаунта', 'error');
+        toast('Укажите лаунчер этого аккаунта', 'error');
         return;
       }
       const { launchGroup } = await import('../launcher/partyLaunch.js');
