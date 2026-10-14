@@ -40,6 +40,11 @@ export async function openWindowPicker(opts = {}) {
       ? `<div class="winp-list">${rows.map(rowHtml).join('')}</div>`
       : `<div class="empty-state">Запущенных окон игры нет.${known === 0 && rows.length ? '' : ''}</div>`;
 
+    drawFoot();
+  };
+
+  /** Только подвал: счётчик и кнопки. Список не трогаем. */
+  const drawFoot = () => {
     const count = selected.size;
     ov.foot.innerHTML = `
       <span class="winp-count muted">Выбрано: <b>${count}</b></span>
@@ -73,6 +78,9 @@ export async function openWindowPicker(opts = {}) {
   };
 
   const reload = async () => {
+    // Запоминаем прокрутку списка: draw() пересоздаёт его, без этого список прыгает наверх
+    const oldList = ov.body.querySelector('.winp-list');
+    const scrollTop = oldList ? oldList.scrollTop : 0;
     try {
       const clients = await runningClientDetails();
       rows = windowRows(clients, state.characters);
@@ -84,6 +92,8 @@ export async function openWindowPicker(opts = {}) {
       toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
     }
     draw();
+    const newList = ov.body.querySelector('.winp-list');
+    if (newList) newList.scrollTop = scrollTop;
   };
 
   /** Закрывает указанные PID и показывает итог. */
@@ -121,7 +131,8 @@ export async function openWindowPicker(opts = {}) {
     const pid = Number(box.dataset.pid);
     if (!pid) return;
     if (box.checked) selected.add(pid); else selected.delete(pid);
-    draw();
+    // Меняем только подвал: строки списка не пересоздаются, и прокрутка остаётся на месте
+    drawFoot();
   });
 
   ov.el.addEventListener('click', async (e) => {
