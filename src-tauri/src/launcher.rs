@@ -1421,6 +1421,8 @@ fn ini_set(text: &str, key: &str, value: &str) -> String {
 }
 
 /// Токен и ник, которые можно безопасно записать в ini (одна строка, печатные ASCII).
+/// Для записи в ini не используется: сохранение проверяет `writable_ini_value` по кодировке файла.
+#[allow(dead_code)]
 fn safe_ini_value(v: &str) -> bool {
     !v.is_empty() && v.len() <= 512 && v.chars().all(|c| c.is_ascii_graphic())
 }
@@ -1841,35 +1843,117 @@ pub async fn launcher_pick_gamecenter(kind: Option<String>) -> Result<Option<Str
 /// Запоминаются все ключи аккаунта (`ACCOUNT_KEYS`), а не один токен: лаунчер опознаёт аккаунт
 /// по `MyComUserUid`, и подстановка одного токена оставляла бы uid прошлого аккаунта.
 #[tauri::command]
-pub async fn launcher_capture_account(char_id: String, path: String, kind: Option<String>) -> Result<String, String> {
+pub async fn launcher_capture_account(char_id: String, path: String, kind: Option<String>) -> Result<CaptureReport, String> {
     if kind.as_deref() == Some("astrum") {
-        return tauri::async_runtime::spawn_blocking(move || astrum::capture(&char_id, &path))
-            .await
-            .map_err(|e| e.to_string())?;
+        return tauri::async_runtime::spawn_blocking(move || match astrum::capture(&char_id, &path) {
+            Ok(nick) => CaptureReport { ok: true, nick, steps: vec!["Astrum Play: вход запомнен".to_string()] },
+            Err(e) => CaptureReport { ok: false, nick: String::new(), steps: vec![format!("ОШИБКА (Astrum Play): {}", e)] },
+        })
+        .await
+        .map_err(|e| e.to_string());
     }
-    let exe = resolve_gamecenter_exe(&path)?;
-    let ini = gc_ini_path(&exe)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
-        let (text, _) = decode_ini(&bytes);
-        let pairs = read_account(&text)
-            .filter(|p| !p.is_empty())
-            .ok_or_else(|| {
-                "В этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string()
-            })?;
-        if pairs.iter().any(|(_, v)| !safe_ini_value(v)) {
-            return Err("Данные входа в GameCenter.ini имеют неожиданный вид".to_string());
+    tauri::async_runtime::spawn_blocking(move || capture_gc_steps(&char_id, &path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Итог «Запомнить»: результат и что удалось на каждом шаге. Сами значения (токен, email) в отчёт не попадают.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureReport {
+    ok: bool,
+    nick: String,
+    steps: Vec<String>,
+}
+
+fn capture_gc_steps(char_id: &str, path: &str) -> CaptureReport {
+    let mut steps: Vec<String> = Vec::new();
+    match capture_gc_inner(char_id, path, &mut steps) {
+        Ok(nick) => {
+            steps.push("Готово: вход запомнен".to_string());
+            CaptureReport { ok: true, nick, steps }
         }
-        let nick = ini_get(&text, "CurrentUserNick")
-            .map(|v| display_value(&v))
-            .unwrap_or_default();
-        magic_entry(&char_id)?
-            .set_password(&pairs_to_text(&pairs))
-            .map_err(|e| e.to_string())?;
-        Ok::<String, String>(nick)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        Err((step, why)) => {
+            steps.push(format!("ОШИБКА на шаге «{}»: {}", step, why));
+            CaptureReport { ok: false, nick: String::new(), steps }
+        }
+    }
+}
+
+fn capture_gc_inner(
+    char_id: &str,
+    path: &str,
+    steps: &mut Vec<String>,
+) -> Result<String, (&'static str, String)> {
+    let exe = resolve_gamecenter_exe(path).map_err(|e| ("1. Поиск GameCenter.exe", e))?;
+    steps.push(format!("1. GameCenter.exe: {}", exe.display()));
+
+    let ini = gc_ini_path(&exe).map_err(|e| ("2. Путь к GameCenter.ini", e))?;
+    steps.push(format!("2. Файл настроек: {}", ini.display()));
+
+    let bytes = std::fs::read(&ini).map_err(|e| ("3. Чтение GameCenter.ini", e.to_string()))?;
+    let (text, enc) = decode_ini(&bytes);
+    let enc_name = match enc {
+        IniEncoding::Utf16Le => "UTF-16",
+        IniEncoding::Bytes => "ANSI/UTF-8",
+    };
+    steps.push(format!("3. Файл прочитан: {} байт, кодировка {}", bytes.len(), enc_name));
+
+    let pairs = read_account(&text).filter(|p| !p.is_empty()).ok_or_else(|| {
+        (
+            "4. Поиск входа в файле",
+            "в этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string(),
+        )
+    })?;
+    let key_names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
+    steps.push(format!("4. Найдено ключей входа: {} {:?}", pairs.len(), key_names));
+
+    // Проверка по кодировке файла, а не только по ASCII: ник на русском в UTF-16 записывается без проблем.
+    let mut usable: Vec<(String, String)> = Vec::new();
+    for (key, value) in pairs {
+        if value.is_empty() {
+            steps.push(format!("5. Ключ {} пустой — пропущен", key));
+            continue;
+        }
+        if !writable_ini_value(&value, &enc) {
+            return Err((
+                "5. Проверка значения",
+                format!(
+                    "ключ {}: {} симв., такое значение нельзя записать в файл в кодировке {}",
+                    key,
+                    value.chars().count(),
+                    enc_name
+                ),
+            ));
+        }
+        usable.push((key, value));
+    }
+    steps.push(format!("5. Значения проверены: {} ключей подходят", usable.len()));
+
+    let nick = ini_get(&text, "CurrentUserNick")
+        .map(|v| display_value(&v))
+        .unwrap_or_default();
+
+    let entry = magic_entry(char_id).map_err(|e| ("6. Открытие записи в хранилище Windows", e))?;
+    let stored = pairs_to_text(&usable);
+    entry
+        .set_password(&stored)
+        .map_err(|e| ("6. Запись в хранилище Windows", e.to_string()))?;
+    steps.push("6. Записано в хранилище Windows".to_string());
+
+    let back = entry
+        .get_password()
+        .map_err(|e| ("7. Проверка записи", e.to_string()))?;
+    if back != stored {
+        return Err(("7. Проверка записи", "прочитано значение, отличное от записанного".to_string()));
+    }
+    steps.push("7. Запись проверена: совпадает".to_string());
+
+    steps.push(format!(
+        "8. Ник в GameCenter: {}",
+        if nick.is_empty() { "не найден".to_string() } else { nick.clone() }
+    ));
+    Ok(nick)
 }
 
 /// Удаляет сохранённый вход персонажа из хранилища ОС.

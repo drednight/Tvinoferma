@@ -510,7 +510,13 @@ export async function captureLogin(char, gcId = null) {
   }
   if (!isTauri()) { toast('Доступно только в приложении', 'error'); return false; }
   try {
-    const nick = await captureAccount(char, {}, target);
+    const report = await captureAccount(char, {}, target);
+    if (!report?.ok) {
+      const failed = (report?.steps || []).find(s => s.startsWith('ОШИБКА')) || 'неизвестная ошибка';
+      toast(failed, 'error');
+      return false;
+    }
+    const nick = report.nick || '';
     if (target.gc) {
       const legacy = !!char.launch?.gcAccounts?.[target.gc.id]?.legacy;
       setGcAccount(char, target.gc.id, nick || '', legacy);

@@ -39,7 +39,7 @@ beforeEach(() => {
   invokeMock.mockImplementation(async (cmd) => {
     if (cmd === 'launcher_gc_info') return { exe: 'x', nick: 'Twin', loggedIn: true };
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\GC3\\GameCenter.exe';
-    if (cmd === 'launcher_capture_account') return 'Twin';
+    if (cmd === 'launcher_capture_account') return { ok: true, nick: 'Twin', steps: ['Готово: вход запомнен'] };
     return null;
   });
   state.settings.launcher.gameCenters = [{ ...GC1 }, { ...GC2 }];
