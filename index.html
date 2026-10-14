@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="/css/modules/today.css" />
   <link rel="stylesheet" href="/css/core/components.css" />
   <link rel="stylesheet" href="/css/modules/characters.css" />
+  <link rel="stylesheet" href="/css/modules/charactersGrouping.css" />
+  <link rel="stylesheet" href="/css/modules/eternals.css" />
   <link rel="stylesheet" href="/css/modules/onboarding.css" />
   <link rel="stylesheet" href="/css/modules/guides.css" />
   <link rel="stylesheet" href="/css/core/modal.css" />
@@ -138,6 +140,16 @@
               <option value="offline">🔴 Не авторизован</option>
             </select>
             <select id="tag-filter" class="select" title="Фильтр по тегу"><option value="">Все теги</option></select>
+            <select id="group-filter" class="select" title="Группировка персонажей">
+              <option value="none">Без группировки</option>
+              <option value="party">По пати</option>
+              <option value="class">По классу</option>
+            </select>
+            <select id="order-filter" class="select" title="Порядок карточек">
+              <option value="nick">По нику (сначала онлайн)</option>
+              <option value="manual">Свой порядок</option>
+            </select>
+            <button id="order-reset" class="btn ghost small" type="button" hidden title="Вернуть порядок по нику">↺ Сбросить порядок</button>
             <!-- Появляется, только когда включён хотя бы один фильтр -->
             <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>

@@ -19,6 +19,8 @@ import { hasGameCenterPath } from '../launcher/launch.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
+import { groupChars, applyManualOrder, moveChar, ORDER_MANUAL } from './grouping.js';
+import { getManualOrder, saveManualOrder, resetManualOrder, hasManualOrder, getViewPrefs, saveViewPrefs } from './orderStore.js';
 import { onboardingHtml } from './onboarding.js';
 import { windowOfCharacter, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
 import { formatUptime } from '../launcher/windowList.js';
@@ -158,6 +160,26 @@ function initFilters() {
       searchInput.focus();
     };
   }
+  // Группировка и порядок карточек: восстанавливаем выбор и подключаем переключатели
+  const groupSelect = document.getElementById('group-filter');
+  const orderSelect = document.getElementById('order-filter');
+  const orderReset = document.getElementById('order-reset');
+  const prefs = getViewPrefs();
+  if (groupSelect) {
+    groupSelect.value = prefs.group;
+    groupSelect.onchange = () => { saveViewPrefs({ group: groupSelect.value }); renderFilteredGrid(); };
+  }
+  if (orderSelect) {
+    orderSelect.value = prefs.order;
+    orderSelect.onchange = () => { saveViewPrefs({ order: orderSelect.value }); renderFilteredGrid(); };
+  }
+  if (orderReset) {
+    orderReset.onclick = () => {
+      resetManualOrder();
+      renderFilteredGrid();
+      toast('Порядок сброшен: карточки по нику', 'success');
+    };
+  }
   updateClearButton();
 }
 
@@ -228,21 +250,102 @@ function renderFilteredGrid() {
     return;
   }
 
-  // Сортировка: Сначала онлайн, потом по алфавиту
-  const sortedChars = [...filteredChars].sort((a, b) => {
-      const aOnline = a.isLoggedIn ? 1 : 0;
-      const bOnline = b.isLoggedIn ? 1 : 0;
+  // Порядок: либо по нику (сначала онлайн), либо свой, заданный перетаскиванием
+  const prefs = getViewPrefs();
+  const manual = prefs.order === ORDER_MANUAL;
+  const byNick = [...filteredChars].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+  const ordered = manual
+    ? applyManualOrder(byNick, getManualOrder())
+    : byNick.sort((a, b) => (b.isLoggedIn ? 1 : 0) - (a.isLoggedIn ? 1 : 0)); // онлайн выше, внутри — по нику
 
-      if (aOnline !== bOnline) {
-          return bOnline - aOnline; // Онлайн выше
-      }
+  // Группировка: заголовки групп — строки сетки во всю ширину; внутри группы порядок сохраняется
+  const groups = groupChars(ordered, prefs.group, state.parties);
+  gridEl.innerHTML = groups
+    .map(g => (g.title != null ? groupHeadHtml(g) : '') + g.chars.map(generateCardHTML).join(''))
+    .join('');
 
-      return a.nick.localeCompare(b.nick, 'ru');
-  });
-
-  gridEl.innerHTML = sortedChars.map(generateCardHTML).join('');
-
+  markDraggable(gridEl, manual);
+  bindManualDrag(gridEl);
   bindCharacterEvents(gridEl);
+  updateOrderReset();
+}
+
+/** Заголовок группы: строка сетки во всю ширину, с числом карточек и онлайном. */
+function groupHeadHtml(g) {
+  const online = g.online ? ` · онлайн ${g.online}` : '';
+  return `<div class="chars-group-head"><strong>${escapeHtml(g.title)}</strong> <span class="muted">${g.chars.length}${online}</span></div>`;
+}
+
+/** Полный список id в своём порядке, включая скрытых фильтрами: так порядок не теряется. */
+function fullManualOrder() {
+  const byNick = [...state.characters].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
+  return applyManualOrder(byNick, getManualOrder()).map(c => c.id);
+}
+
+/** Карточки тянутся только в режиме «Свой порядок» и вне режима выбора. */
+function markDraggable(grid, manual) {
+  const on = manual && !state.ui.selectionMode;
+  grid.querySelectorAll('.clickable-card').forEach(el => { el.draggable = on; });
+}
+
+/** Перетаскивание карточек: обработчики на сетке, навешиваются один раз. Меняет только порядок. */
+function bindManualDrag(grid) {
+  if (grid.dataset.dragBound) return;
+  grid.dataset.dragBound = 'true';
+  let dragId = null;
+  grid.addEventListener('dragstart', (e) => {
+    const card = e.target.closest?.('.clickable-card');
+    if (!card || !card.draggable) return;
+    dragId = card.dataset.charId;
+    card.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragId);
+  });
+  grid.addEventListener('dragover', (e) => {
+    const card = e.target.closest?.('.clickable-card');
+    clearDropMarks(grid);
+    if (!card || !dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    // Показываем, куда встанет карточка: до или после той, над которой держим курсор
+    if (card.dataset.charId === dragId) return;
+    card.classList.add(dropSide(card, e.clientX) === 'after' ? 'drop-after' : 'drop-before');
+  });
+  grid.addEventListener('drop', (e) => {
+    const card = e.target.closest?.('.clickable-card');
+    clearDropMarks(grid);
+    if (!card || !dragId) return;
+    e.preventDefault();
+    const from = dragId;
+    const targetId = card.dataset.charId;
+    const after = dropSide(card, e.clientX) === 'after';
+    dragId = null;
+    if (from === targetId) return;
+    saveManualOrder(moveChar(fullManualOrder(), { dragId: from, targetId, after }));
+    renderFilteredGrid();
+  });
+  grid.addEventListener('dragend', () => {
+    dragId = null;
+    clearDropMarks(grid);
+    grid.querySelectorAll('.is-dragging').forEach(el => el.classList.remove('is-dragging'));
+  });
+}
+
+/** Сторона карточки, на которую указывает курсор: левая половина — перед, правая — после. */
+function dropSide(card, clientX) {
+  const r = card.getBoundingClientRect();
+  return clientX > r.left + r.width / 2 ? 'after' : 'before';
+}
+
+/** Убирает метки места вставки со всей сетки. */
+function clearDropMarks(grid) {
+  grid.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+}
+
+/** Кнопка «Сбросить порядок» видна только когда свой порядок задан. */
+function updateOrderReset() {
+  const btn = document.getElementById('order-reset');
+  if (btn) btn.hidden = !hasManualOrder();
 }
 
 /**
