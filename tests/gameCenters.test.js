@@ -175,10 +175,12 @@ describe('GameCenter: запуск', () => {
     const b = ch('b', { gcIds: ['gc-1'] });
     const own = ch('own', { gcPath: 'D:\\own' });
     await launchCharacters([a, b, own], { delayMs: 0, gcId: 'gc-2' }, { invoke, ctx: ctx() });
-    expect(seen.map(x => [x.path, x.charId, x.nick])).toEqual([
-      [GC2.path, 'a@gc-2', 'Twin'], // «Папка 2» есть
-      [GC1.path, 'b@gc-1', null],   // «Папки 2» нет — из доступной
-      ['D:\\own', 'own', null]      // старый путь из карточки
+    // loginSaved идёт вместе с ключом входа: по нему Rust узнает, что токен обязан быть
+    // в хранилище ОС (у «a» он есть, у «b» и «own» — нет, и запускать их нельзя)
+    expect(seen.map(x => [x.path, x.charId, x.loginSaved])).toEqual([
+      [GC2.path, 'a@gc-2', true],  // «Папка 2» есть
+      [GC1.path, 'b@gc-1', false], // «Папки 2» нет — из доступной
+      ['D:\\own', 'own', false]    // старый путь из карточки
     ]);
   });
 

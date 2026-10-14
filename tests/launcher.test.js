@@ -43,7 +43,7 @@ describe('launcher', () => {
     expect(done).toEqual(['a', 'b', 'c']);
   });
 
-  it('в команду запуска уходят путь, id и ник аккаунта (токена в JS нет), ссылка и время ожидания', async () => {
+  it('в команду запуска уходят путь и id аккаунта (токен в JS не ходит), признак входа и время ожидания', async () => {
     const seen = [];
     const invoke = async (cmd, args) => { seen.push([cmd, args]); return {}; };
     await launchCharacters(
@@ -51,10 +51,13 @@ describe('launcher', () => {
       { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
       { invoke }
     );
-    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', nick: 'Twin', url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
+    // loginSaved — флаг «интерфейс считает вход запомненным»: по нему Rust отказывается
+    // запускать, если в хранилище ОС токена нет (иначе игра вышла бы под чужим аккаунтом).
+    // Ник не передаётся: он лежит в ini вместе с остальным набором ключей аккаунта.
+    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', loginSaved: true, url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
     seen.length = 0;
     await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
-    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', nick: null, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
+    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', loginSaved: false, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
   });
 
   it('onStart вызывается по очереди, а не для всех сразу', async () => {
@@ -296,9 +299,15 @@ describe('launcher: подпись окон и закрытие чужих GameC
 
   it('предупреждения запуска: закрытый чужой GameCenter и GameCenter от администратора', () => {
     expect(launchWarnings(undefined)).toEqual([]);
-    expect(launchWarnings({ closedOtherGc: 0, gcCloseFailed: 0 })).toEqual([]);
+    expect(launchWarnings({ closedOtherGc: 0, gcCloseFailed: 0, switched: true })).toEqual([]);
     expect(launchWarnings({ closedOtherGc: 1 })[0]).toContain('другой папки');
     expect(launchWarnings({ gcCloseFailed: 1 })[0]).toContain('от администратора');
+  });
+
+  it('не подставленный вход — предупреждение: окно вышло под чужим аккаунтом', () => {
+    // Проверка до запуска такие персонажи отсекает, но если вход не подставился — молчать
+    // нельзя: заголовок окна правильный, а внутри другой аккаунт
+    expect(launchWarnings({ switched: false })[0]).toContain('не подставлен');
   });
 
   it('считаются запуски без запомненного входа', () => {
@@ -320,12 +329,39 @@ describe('launcher: подпись окон и закрытие чужих GameC
 
 describe('launcher.rs: GameCenter из других папок и итог подписи', () => {
   const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
+  const astrum = readFileSync('src-tauri/src/launcher/astrum.rs', 'utf8');
+
   it('перед запуском закрываются чужие GameCenter, а итог подписи уходит событием', () => {
     // Свой GameCenter закрывается только когда мы подставляем в него сохранённый вход:
     // переписать `.ini` у живого процесса нельзя, он запишет файл обратно.
-    expect(rs).toContain('close_gamecenters(&exe, magic.is_some())');
+    expect(rs).toContain('close_gamecenters(&exe, pairs.is_some())?');
     expect(rs).toContain('"launcher-decorate"');
     expect(rs).toContain('closed_other_gc');
+  });
+
+  // Пока живой GameCenter не ушёл, новый экземпляр не запускается: он передал бы старому ссылку,
+  // и игра вышла бы под тем аккаунтом, что был открыт раньше (окно при этом с правильным заголовком).
+  it('запуск отменяется, если GameCenter не закрылся — иначе ссылку перехватит старый', () => {
+    expect(rs).toContain('ensure_gamecenter_free');
+    expect(astrum).toContain('wait_astrum_gone()');
+    expect(astrum).toContain('не закрылся');
+  });
+
+  // Аккаунт в ini опознаётся по uid, а не по токену: подстановка одного токена оставляла uid
+  // прошлого аккаунта, и все окна после первого выходили под ним же.
+  it('в ini пишется весь набор ключей аккаунта, а не только токен', () => {
+    expect(rs).toContain('pub(super) const ACCOUNT_KEYS: [&str; 4]');
+    expect(rs).toContain('"MyComUserUid"');
+    expect(rs).toContain('write_account(&gc_ini_path(&exe)?, pairs)?');
+    // Astrum использует тот же набор — общий код
+    expect(astrum).toContain('write_account(&ini_path(&exe)?, p)?');
+  });
+
+  // Помечен «вход запомнен», а в хранилище ОС его нет: раньше это проходило молча и окно
+  // открывалось под чужим аккаунтом. Теперь — отказ с внятным объяснением.
+  it('вход помечен, но в хранилище ОС его нет — запуск отменяется', () => {
+    expect(rs).toContain('login_saved.unwrap_or(false)');
+    expect(astrum).toContain('login_saved.unwrap_or(false)');
   });
 
   // Переключение аккаунта в уже запущенном GameCenter проверялось 10.10.2026 и не сработало:
@@ -391,7 +427,7 @@ describe('launcher: проверка окон игры', () => {
     expect(inspectReportText(report({ windows: [win({ hasSmallIcon: false, hasBigIcon: false })] }))).toContain('своих нет');
   });
 
-  it('Rust ставит пробный заголовок, который ждёт интерфейс', () => {
+it('Rust ставит пробный заголовок, который ждёт интерфейс', () => {
     const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
     expect(rs).toContain(`const PROBE_TITLE: &str = "${PROBE_TITLE}"`);
   });

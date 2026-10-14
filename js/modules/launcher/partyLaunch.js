@@ -41,14 +41,53 @@ async function reportDone(text, isError) {
 
 const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
 
-/** Проверки перед запуском по текущему состоянию системы (какие окна уже открыты, есть ли права администратора). */
-async function runPreflight(characters) {
+/**
+ * Проверки перед запуском по текущему состоянию системы (какие окна уже открыты, есть ли права администратора).
+ *
+ * `ctx` обязателен и должен быть тем же, что и в самом запуске: проверка «вход запомнен?» идёт
+ * для того GameCenter, из которого пойдёт запуск. Если тут взять другой, персонаж с входом в
+ * «Папке 1» пройдёт проверку, а запустится из «Папки 2» — токена для неё нет, лаунчер останется
+ * открытым под прежним аккаунтом, и окно выйдет под чужим персонажем (с правильным заголовком).
+ *
+ * @param {any[]} characters
+ * @param {import('./gameCenters.js').GcContext} [ctx]
+ */
+async function runPreflight(characters, ctx = launchContext()) {
   const facts = await readLaunchFacts();
   const l = state.settings?.launcher || {};
   return launchPreflight({
-    characters, ctx: launchContext(), clients: facts.clients, selfElevated: facts.selfElevated,
+    characters, ctx, clients: facts.clients, selfElevated: facts.selfElevated,
     skipRunning: l.skipRunning !== false, decorate: decorateEnabled()
   });
+}
+
+/**
+ * Один GameCenter на всю группу: тот, которым пользуется большинство участников (у кого его нет —
+ * запускается из доступного). Выбирается один раз, до проверок, и дальше используется и проверкой,
+ * и запуском — иначе они считают разные папки.
+ *
+ * Считается по всей группе, а не по тем, кто прошёл проверку: решение «из какой папки запускаем»
+ * не должно зависеть от того, у кого уже открыто окно.
+ *
+ * @param {any[]} characters вся группа
+ * @param {string|undefined} gcId явно выбранный лаунчер (`opts.gcId`) — он важнее большинства
+ * @returns {{ ctx: import('./gameCenters.js').GcContext, gcId: string|undefined, gcName: string, count: number, total: number, distinct: number }}
+ */
+function launchContextForGroup(characters, gcId) {
+  const base = launchContext();
+  const empty = { ctx: base, gcId, gcName: '', count: 0, total: 0, distinct: 0 };
+  const list = characters || [];
+  if (gcId || list.length < 2) return empty;
+  const major = pickMajorityGc(list, base);
+  if (!major) return empty;
+  return {
+    ctx: { ...base, preferredId: major.gc.id },
+    gcId: major.gc.id,
+    gcName: major.gc.name,
+    count: major.count,
+    total: major.total,
+    distinct: major.distinct
+  };
 }
 
 /**
@@ -147,7 +186,11 @@ export async function launchGroup(title, characters, opts = {}) {
   active = { signal };   // место занято и пока открыт экран проверок
   let task = null;
   try {
-    let pre = await runPreflight(characters);
+    // Один GameCenter на всю группу выбирается ДО проверок, и дальше с ним и проверка, и запуск.
+    // Иначе они считают разные папки: проверка скажет «вход запомнен» про одну, а запускаться
+    // будут из другой, где токена нет, — и окно откроется под прежним аккаунтом.
+    const group = launchContextForGroup(characters, opts.gcId);
+    let pre = await runPreflight(characters, group.ctx);
     const mode = state.settings?.launcher?.preflight;
     // «Исправить и запустить» открывает окно «GameCenter и персонажи», пользователь что-то
     // доделывает и закрывает окно — и мы снова показываем проверку с новым списком. Круг
@@ -169,7 +212,7 @@ export async function launchGroup(title, characters, opts = {}) {
       // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
       // Твиноферма при этом не перезапускается — права нужны только на это действие.
       if (fixes.some(f => f.id === 'elevate')) await fixElevatedWindows(pre);
-      const next = await runPreflight(characters);   // пока открыт экран, окна могли запуститься или закрыться
+      const next = await runPreflight(characters, group.ctx);   // пока открыт экран, окна могли запуститься или закрыться
       const changed = next.noGc.length !== pre.noGc.length || next.noSavedLogin.length !== pre.noSavedLogin.length;
       pre = next;
       if (!changed) break;                  // пользователь ничего не доделал — незачем показывать то же самое
@@ -191,16 +234,10 @@ export async function launchGroup(title, characters, opts = {}) {
     await task.waitTurn();
     preflightLog(pre).forEach(l => task.log(l.text, l.level));
 
-    // Один GameCenter на всю пати — тот, которым пользуется большинство; остальные запускаются из того, что у них есть
-    let gcId = opts.gcId;
-    let gcName = '';
-    if (!gcId && ready.length > 1) {
-      const major = pickMajorityGc(ready, launchContext());
-      if (major) {
-        gcId = major.gc.id;
-        gcName = major.gc.name;
-        if (major.distinct > 1) task.log(`GameCenter «${major.gc.name}» — у ${major.count} из ${major.total}: запускаем из него, у остальных — из доступного`);
-      }
+    // Один GameCenter на всю пати (выбран до проверок): остальные запускаются из того, что у них есть
+    const { gcId, gcName } = group;
+    if (gcName && group.distinct > 1) {
+      task.log(`GameCenter «${gcName}» — у ${group.count} из ${group.total}: запускаем из него, у остальных — из доступного`);
     }
 
     const results = await launchCharacters(ready, {
@@ -213,8 +250,6 @@ export async function launchGroup(title, characters, opts = {}) {
         task.progress(done, total);
       }
     });
-    // Персонажи без запомненного входа отсеяны проверкой до запуска (см. preflight),
-    // поэтому здесь их быть не может: предупреждение было бы про невозможное.
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {

@@ -1,7 +1,9 @@
 //! Astrum Play: запуск аккаунта через свой лаунчер (`AstrumPlay.exe`).
 //!
 //! Чем отличается от GameCenter:
-//! - вход лежит в `AstrumPlay.ini` (UTF-16 LE), и для смены аккаунта нужно поменять сразу четыре ключа;
+//! - вход лежит в `AstrumPlay.ini` (UTF-16 LE); ключи аккаунта — те же, что у GameCenter
+//!   (`ACCOUNT_KEYS` родительского модуля), и подставлять их нужно все: лаунчер опознаёт
+//!   аккаунт по `MyComUserUid`, поэтому одной замены токена мало;
 //! - Astrum сам перезапускается, если его ini изменили при работе, поэтому ini пишется только при закрытом Astrum;
 //! - окно вопроса «Клиент игры уже запущен» называется «Astrum Play Launcher»; Enter выбирает
 //!   основную кнопку «Запустить новую копию клиента» (проверено на живом окне).
@@ -9,9 +11,9 @@
 //! Общие части (окна, процессы, разбор ini, подпись окон) берутся из родительского модуля `launcher`.
 
 use super::{
-    clean_title, client_pids, decode_ini, display_value, encode_ini, get_magic, ini_get, ini_set,
-    magic_entry, new_client_pid, watch_client, win, write_atomic, GcInfo, LaunchInfo,
-    CLIENT_POLL_STEP,
+    clean_title, client_pids, decode_ini, display_value, get_magic, ini_get, new_client_pid,
+    pairs_to_text, read_account, stored_account, watch_client, win, write_account, GcInfo,
+    LaunchInfo, CLIENT_POLL_STEP, LOGIN_KEY,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -29,16 +31,7 @@ const ASTRUM_INI: &str = "AstrumPlay.ini";
 /// `TYesNoForm`. У Astrum тот же движок, а полный заголовок в разных сборках звучит
 /// по-разному («Astrum Play Launcher», «VK Play Astrum Play Launcher»), поэтому режем по бренду.
 const ASTRUM_DIALOG_TITLE: &str = "Astrum Play";
-/// Ключи аккаунта. Сохраняются и подставляются все вместе, одним набором из одного входа.
-const ASTRUM_KEYS: [&str; 4] = [
-    "MyComUserLogin",
-    "MyComUserUid",
-    "CurrentUserNick",
-    "MyComUserMagic2",
-];
-/// По этому ключу видно, что вход в Astrum выполнен
-const ASTRUM_LOGIN_KEY: &str = "MyComUserMagic2";
-/// Сколько ждать, пока закрытый Astrum освободит файлы
+/// Сколько ждать, пока закрытый Astrum освободит файлы и единственный экземпляр
 const ASTRUM_EXIT_WAIT: Duration = Duration::from_secs(5);
 /// Сколько пытаться нажимать Enter в окне вопроса (после запуска, если клиент уже был открыт)
 const ASTRUM_DIALOG_WAIT: Duration = Duration::from_secs(30);
@@ -80,35 +73,7 @@ fn ini_path(exe: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "Не удалось определить папку Astrum Play".to_string())
 }
 
-/// Пары «ключ=значение» для хранилища ОС. Значения в одну строку (переводов строк в них не бывает).
-fn pairs_to_text(pairs: &[(String, String)]) -> String {
-    pairs
-        .iter()
-        .map(|(k, v)| format!("{}={}", k, v))
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn text_to_pairs(text: &str) -> Vec<(String, String)> {
-    text.lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
-}
-
-/// Значения входа из текста ini. `None` — вход не выполнен.
-fn read_account(text: &str) -> Option<Vec<(String, String)>> {
-    ini_get(text, ASTRUM_LOGIN_KEY)
-        .filter(|m| !m.is_empty())?;
-    Some(
-        ASTRUM_KEYS
-            .iter()
-            .filter_map(|k| ini_get(text, k).map(|v| (k.to_string(), v)))
-            .collect(),
-    )
-}
-
-/// Запоминает вход, открытый сейчас в Astrum: все четыре ключа — в хранилище ОС. Возвращает ник для показа.
+/// Запоминает вход, открытый сейчас в Astrum: все ключи аккаунта — в хранилище ОС. Возвращает ник для показа.
 pub(super) fn capture(char_id: &str, path: &str) -> Result<String, String> {
     let exe = resolve_exe(path)?;
     let ini = ini_path(&exe)?;
@@ -117,10 +82,13 @@ pub(super) fn capture(char_id: &str, path: &str) -> Result<String, String> {
     let pairs = read_account(&text).ok_or_else(|| {
         "В Astrum Play не выполнен вход: войдите в аккаунт и повторите".to_string()
     })?;
+    if pairs.is_empty() {
+        return Err("В Astrum Play не выполнен вход: войдите в аккаунт и повторите".to_string());
+    }
     let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
         .unwrap_or_default();
-    magic_entry(char_id)?
+    super::magic_entry(char_id)?
         .set_password(&pairs_to_text(&pairs))
         .map_err(|e| e.to_string())?;
     Ok(nick)
@@ -131,7 +99,7 @@ pub(super) fn info(exe: &Path) -> Result<GcInfo, String> {
     let ini = ini_path(exe)?;
     let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
     let (text, _) = decode_ini(&bytes);
-    let logged_in = ini_get(&text, ASTRUM_LOGIN_KEY).is_some_and(|m| !m.is_empty());
+    let logged_in = ini_get(&text, LOGIN_KEY).is_some_and(|m| !m.is_empty());
     let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
         .unwrap_or_default();
@@ -164,26 +132,17 @@ fn close_astrum() -> u32 {
     failed
 }
 
-fn wait_astrum_gone() {
+/// Ждёт выхода закрытого Astrum и возвращает оставшихся: пока жив хоть один, новый экземпляр
+/// не откроет игру, а передаст ссылку старому — и окно выйдет под чужим аккаунтом.
+fn wait_astrum_gone() -> Vec<u32> {
     let deadline = Instant::now() + ASTRUM_EXIT_WAIT;
-    while !astrum_pids().is_empty() && Instant::now() < deadline {
+    loop {
+        let alive = astrum_pids();
+        if alive.is_empty() || Instant::now() >= deadline {
+            return alive;
+        }
         sleep(Duration::from_millis(100));
     }
-}
-
-/// Подставляет значения входа в `AstrumPlay.ini`. При первой подмене рядом остаётся резервная копия.
-fn write_account(exe: &Path, pairs: &[(String, String)]) -> Result<(), String> {
-    let ini = ini_path(exe)?;
-    let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
-    let backup = ini.with_extension("ini.tvinoferma-backup");
-    if !backup.exists() {
-        let _ = std::fs::copy(&ini, &backup);
-    }
-    let (mut text, enc) = decode_ini(&bytes);
-    for (key, value) in pairs {
-        text = ini_set(&text, key, value);
-    }
-    write_atomic(&ini, &encode_ini(&text, &enc))
 }
 
 /// Окно вопроса Astrum «Клиент игры уже запущен»: видимое, класс `TYesNoForm`, в заголовке есть
@@ -250,6 +209,7 @@ fn launch_blocking(
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
+    login_saved: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     let dir = exe
         .parent()
@@ -257,22 +217,38 @@ fn launch_blocking(
         .ok_or_else(|| "Не удалось определить папку Astrum Play".to_string())?;
     let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
     let stored = id.map(get_magic).transpose()?.flatten();
-    let pairs = stored
-        .as_deref()
-        .map(text_to_pairs)
-        .filter(|p| !p.is_empty());
+    // Помечен как запомненный, а в хранилище ОС его нет: вход не подставится, а Astrum откроет
+    // игру под тем аккаунтом, что уже выбран. Молча пропускать это нельзя.
+    if stored.is_none() && login_saved.unwrap_or(false) {
+        return Err(
+            "Вход этого персонажа помечен как запомненный, но в хранилище ОС его нет. \
+             Откройте «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» \
+             и нажмите «🔑 Запомнить вход» ещё раз"
+                .to_string(),
+        );
+    }
+    let pairs = stored.as_deref().map(stored_account).transpose()?;
 
     // Astrum закрываем перед каждым запуском, как GameCenter. Вход подставляем при закрытом Astrum:
-    // иначе он перезапустится из-за правки ini.
+    // иначе он перезапустится из-за правки ini. Если закрыть не удалось — отменяем запуск:
+    // новый экземпляр передал бы ссылку старому, и игра вышла бы под прежним аккаунтом.
     let t_close = Instant::now();
     let failed = close_astrum();
-    wait_astrum_gone();
+    let alive = wait_astrum_gone();
+    if !alive.is_empty() {
+        return Err(format!(
+            "Astrum Play не закрылся (запущенных осталось: {}). Новый экземпляр передал бы ему \
+             ссылку, и окно открылось бы под чужим аккаунтом. Закройте Astrum Play вручную и \
+             повторите; если он запущен от администратора — запустите Твиноферму от администратора",
+            alive.len()
+        ));
+    }
     let ms_gc_close = t_close.elapsed().as_millis() as u64;
 
     let t_ini = Instant::now();
     let switched = match &pairs {
         Some(p) => {
-            write_account(&exe, p)?;
+            write_account(&ini_path(&exe)?, p)?;
             true
         }
         None => false,
@@ -325,6 +301,7 @@ pub(super) async fn start(
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
+    login_saved: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     let exe = resolve_exe(&path)?;
     let url = url.unwrap_or_else(|| ASTRUM_DEFAULT_URL.to_string());
@@ -342,6 +319,7 @@ pub(super) async fn start(
             window_title,
             icon_small,
             icon_big,
+            login_saved,
         )
     })
     .await
@@ -351,6 +329,7 @@ pub(super) async fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::{encode_ini, text_to_pairs};
 
     const ASTRUM_INI_TEXT: &str = "[UMS]\r\nastrum=1894\r\n\r\n[Main]\r\nLang=ru\r\nMyComUserLogin=user0@example.com\r\nMyComUserUid=1\r\nCurrentUserNick=Old\r\nMyComUserMagic2=OLDMAGIC\r\n\r\n[Chrome]\r\nCacheVersion=2\r\n";
 
@@ -405,7 +384,7 @@ mod tests {
     fn pairs_survive_text_roundtrip_and_keep_equals_in_values() {
         let pairs = vec![
             ("MyComUserLogin".to_string(), "user1@example.com".to_string()),
-            ("MyComUserMagic2".to_string(), "AB=CD".to_string()),
+            (LOGIN_KEY.to_string(), "AB=CD".to_string()),
         ];
         assert_eq!(text_to_pairs(&pairs_to_text(&pairs)), pairs);
     }
@@ -435,7 +414,7 @@ mod tests {
             ("CurrentUserNick".to_string(), "Twin".to_string()),
             ("MyComUserMagic2".to_string(), "NEWMAGIC".to_string()),
         ];
-        write_account(&exe, &pairs).unwrap();
+        write_account(&ini, &pairs).unwrap();
 
         let after = std::fs::read(&ini).unwrap();
         assert_eq!(&after[..2], &[0xFF, 0xFE], "BOM UTF-16 должен сохраниться");
@@ -443,7 +422,7 @@ mod tests {
         assert_eq!(ini_get(&text, "MyComUserLogin").as_deref(), Some("user2@example.com"));
         assert_eq!(ini_get(&text, "MyComUserUid").as_deref(), Some("197268650"));
         assert_eq!(ini_get(&text, "CurrentUserNick").as_deref(), Some("Twin"));
-        assert_eq!(ini_get(&text, "MyComUserMagic2").as_deref(), Some("NEWMAGIC"));
+        assert_eq!(ini_get(&text, LOGIN_KEY).as_deref(), Some("NEWMAGIC"));
         // Чужие строки не потеряны: секция [Chrome] и её ключ на месте
         assert!(text.contains("[Chrome]\r\nCacheVersion=2\r\n"));
         assert!(dir.join("AstrumPlay.ini.tvinoferma-backup").exists());

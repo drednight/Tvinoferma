@@ -58,6 +58,32 @@ describe('запуск пати: GameCenter по большинству учас
   });
 });
 
+// Регрессия: вход проверялся для одного GameCenter, а запуск шёл из другого.
+// Персонаж с входом только в «Папке 1» проходил проверку (считали attached[0]), запускался из
+// «Папки 2» по большинству, ключа `id@gc-2` в хранилище ОС нет — Rust тихо запускал игру под тем
+// аккаунтом, что был открыт в «Папке 2» (GameCenter один экземпляр, ссылку ему передаёт новый).
+describe('запуск пати: вход проверяется для того же GameCenter, из которого идёт запуск', () => {
+  it('вход есть только в «Папке 1», пати запускается из «Папки 2»: персонаж не запускается', async () => {
+    const sika = { ...ch('sika', ['gc-2']), launch: { gcIds: ['gc-2'], gcAccounts: { 'gc-2': { nick: 'Sika' } } } };
+    const ghost = { ...ch('ghost', ['gc-1', 'gc-2']), launch: { gcIds: ['gc-1', 'gc-2'], gcAccounts: { 'gc-1': { nick: 'Ghost' } } } };
+
+    await partyLaunch.launchGroup('Пати', [sika, ghost], { interactive: false });
+
+    const started = invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => c[1].charId);
+    // Сика запустилась, Гост — нет: вход не запомнен в той папке, из которой шла пати
+    expect(started).toEqual(['sika@gc-2']);
+  });
+
+  it('одиночный запуск: GameCenter не подменяется большинством', async () => {
+    // У одного персонажа проверка и запуск всегда считают одну и ту же папку
+    const ghost = { ...ch('ghost', ['gc-1', 'gc-2']), launch: { gcIds: ['gc-1', 'gc-2'], gcAccounts: { 'gc-1': { nick: 'Ghost' } } } };
+    await partyLaunch.launchGroup('Госта', [ghost], { interactive: false });
+    const started = invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => [c[1].path, c[1].charId]);
+    // приоритет из настроек пуст — берётся первый в списке персонажа, и вход у него есть
+    expect(started).toEqual([[GC1.path, 'ghost@gc-1']]);
+  });
+});
+
 describe('закрытие окон игры: запрос прав администратора', () => {
   it('если отказано в доступе, предлагается закрыть как администратор; согласие запускает команду Rust', async () => {
     invoke.mockImplementation(async (cmd) => cmd === 'launcher_close_clients_elevated' ? { found: 2, closed: 2, failed: 0, denied: 0, elevated: true } : {});

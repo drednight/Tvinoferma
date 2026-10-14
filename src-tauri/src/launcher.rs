@@ -2,9 +2,12 @@
 //!
 //! Что делает запуск аккаунта (`launcher_start`):
 //! 1. Если для персонажа запомнен вход (`launcher_capture_account`), GameCenter этого аккаунта закрывается,
-//!    а в его `GameCenter.ini` записываются два ключа — `CurrentUserNick` и `MyComUserMagic2`.
-//!    Токен `MyComUserMagic2` лежит только в хранилище ОС (keyring),
-//!    в `state.json` и в интерфейс он не попадает.
+//!    а в его `GameCenter.ini` записывается весь набор ключей аккаунта — `MyComUserLogin`,
+//!    `MyComUserUid`, `CurrentUserNick`, `MyComUserMagic2` (см. `ACCOUNT_KEYS`).
+//!    Раньше записывались только ник и токен, и это было ошибкой: GameCenter опознаёт аккаунт
+//!    по `MyComUserUid`, поэтому оставшийся uid от прошлого аккаунта открывал игру под ним же —
+//!    первое окно выходило правильным, а все следующие — под тем же аккаунтом.
+//!    Вход лежит только в хранилище ОС (keyring), в `state.json` и в интерфейс он не попадает.
 //! 2. Запускается `GameCenter.exe vkplay://play/0.61`.
 //! 3. Если клиент игры уже был запущен, GameCenter спрашивает «Клиент игры уже запущен»:
 //!    в этом окне выбирается «Запустить новую копию клиента» (по умолчанию выбрана она, достаточно Enter).
@@ -47,8 +50,10 @@ const DIALOG_PRESS_GAP: Duration = Duration::from_millis(700);
 /// Как часто опрашивать процессы, ожидая новый клиент игры.
 /// Опрос теперь почти бесплатный (снимок процессов, а не запуск `tasklist`), поэтому шаг мельче.
 const CLIENT_POLL_STEP: Duration = Duration::from_millis(250);
-/// Сколько ждать, пока закрытые GameCenter действительно завершатся
-const GC_EXIT_WAIT: Duration = Duration::from_millis(1500);
+/// Сколько ждать, пока закрытые GameCenter действительно завершатся.
+/// Ждём по факту (обычно 0.2–0.5 с), но потолок большой: незакрывшийся GameCenter перехватит
+/// ссылку запуска у нового и откроет игру под чужим аккаунтом, поэтому лучше не торопиться.
+const GC_EXIT_WAIT: Duration = Duration::from_secs(5);
 /// Сколько ждать новый клиент игры, секунд (если не задано в вызове)
 const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
 
@@ -63,8 +68,18 @@ const ICON_MIN: usize = 8;
 const ICON_MAX: usize = 128;
 
 const INI_NAME: &str = "GameCenter.ini";
-const KEY_NICK: &str = "CurrentUserNick";
-const KEY_MAGIC: &str = "MyComUserMagic2";
+/// Ключи аккаунта в ini лаунчера. Подставлять надо **все**: GameCenter и Astrum Play опознают
+/// аккаунт по `MyComUserUid`, а не по токену, поэтому одного `MyComUserMagic2` мало —
+/// с прежним uid игра открылась бы под прежним аккаунтом. Тот же набор ключей у обоих
+/// лаунчеров и в том же формате ini, поэтому он общий.
+pub(super) const ACCOUNT_KEYS: [&str; 4] = [
+    "MyComUserLogin",
+    "MyComUserUid",
+    "CurrentUserNick",
+    "MyComUserMagic2",
+];
+/// По этому ключу видно, что вход выполнен
+pub(super) const LOGIN_KEY: &str = "MyComUserMagic2";
 const VAULT_SERVICE: &str = "com.tvinoferma.desktop";
 
 #[derive(Serialize)]
@@ -1443,28 +1458,80 @@ fn write_atomic(path: &Path, data: &[u8]) -> Result<(), String> {
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
-/// Подставляет вход аккаунта в `GameCenter.ini` рядом с exe. При первой подмене рядом
-/// остаётся копия исходного файла `GameCenter.ini.tvinoferma-backup`.
-fn switch_account(exe: &Path, nick: Option<&str>, magic: &str) -> Result<(), String> {
-    if !safe_ini_value(magic) {
-        return Err("Сохранённый вход повреждён: запомните вход заново".to_string());
+/// Набор «ключ=значение» для хранилища ОС. Значения в одну строку (переводов строк в них не бывает).
+pub(super) fn pairs_to_text(pairs: &[(String, String)]) -> String {
+    pairs
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub(super) fn text_to_pairs(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// Значения входа из текста ini. `None` — вход не выполнен.
+pub(super) fn read_account(text: &str) -> Option<Vec<(String, String)>> {
+    ini_get(text, LOGIN_KEY).filter(|m| !m.is_empty())?;
+    Some(
+        ACCOUNT_KEYS
+            .iter()
+            .filter_map(|k| ini_get(text, k).map(|v| (k.to_string(), v)))
+            .collect(),
+    )
+}
+
+/// Значение, которое можно записать в ini одной строкой.
+///
+/// Файл бывает и в однобайтовой кодировке, и в UTF-16: в однобайтовую не-ASCII попасть нельзя
+/// (испортит файл), в UTF-16 — можно. Проверка идёт по кодировке, которую увидели в файле.
+fn writable_ini_value(value: &str, enc: &IniEncoding) -> bool {
+    let plain = !value.is_empty() && value.len() <= 512 && !value.contains(['\r', '\n']);
+    match enc {
+        IniEncoding::Utf16Le => plain,
+        IniEncoding::Bytes => plain && value.chars().all(|c| c.is_ascii_graphic()),
     }
-    let ini = gc_ini_path(exe)?;
-    let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
+}
+
+/// Подставляет значения входа в ini лаунчера. При первой подмене рядом остаётся резервная копия.
+/// Писать надо при закрытом лаунчере: работающий GameCenter файл не перечитывает, а Astrum
+/// после правки перезапускается сам.
+pub(super) fn write_account(ini: &Path, pairs: &[(String, String)]) -> Result<(), String> {
+    let bytes = std::fs::read(ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
     let backup = ini.with_extension("ini.tvinoferma-backup");
     if !backup.exists() {
-        let _ = std::fs::copy(&ini, &backup);
+        let _ = std::fs::copy(ini, &backup);
     }
-    let (text, enc) = decode_ini(&bytes);
-    let mut text = ini_set(&text, KEY_MAGIC, magic);
-    // Ник — только для отображения до входа; не-ASCII не пишем, чтобы не испортить кодировку файла
-    if let Some(n) = nick
-        .map(str::trim)
-        .filter(|n| !n.is_empty() && n.is_ascii() && !n.contains(['\r', '\n']))
-    {
-        text = ini_set(&text, KEY_NICK, n);
+    let (mut text, enc) = decode_ini(&bytes);
+    for (key, value) in pairs {
+        if !writable_ini_value(value, &enc) {
+            continue;
+        }
+        text = ini_set(&text, key, value);
     }
-    write_atomic(&ini, &encode_ini(&text, &enc))
+    write_atomic(ini, &encode_ini(&text, &enc))
+}
+
+/// Значения входа из хранилища ОС в виде набора ключей для ini.
+///
+/// Старые записи хранили только токен (одна строка без `=`). Подставить их нельзя: без `MyComUserUid`
+/// лаунчер оставит uid прошлого аккаунта и откроет игру под ним. Поэтому такая запись — явная
+/// ошибка с указанием, что сделать, а не тихая подстановка половины аккаунта.
+pub(super) fn stored_account(stored: &str) -> Result<Vec<(String, String)>, String> {
+    let pairs = text_to_pairs(stored);
+    if pairs.is_empty() {
+        return Err(
+            "Сохранённый вход в старом виде: в нём только токен, а лаунчеру нужен ещё uid аккаунта. \
+             Войдите этим аккаунтом в лаунчер и нажмите «🔑 Запомнить вход» ещё раз \
+             («Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи»)"
+                .to_string(),
+        );
+    }
+    Ok(pairs)
 }
 
 // ---------------------------------------------------------------------------
@@ -1502,6 +1569,8 @@ struct GcClosed {
     others: u32,
     /// Сколько GameCenter закрыть не удалось (обычно они запущены от администратора)
     failed: u32,
+    /// Из них сколько — из папки самого запуска (его закрывали, чтобы подставить вход)
+    own_failed: u32,
 }
 
 /// PID всех запущенных GameCenter.
@@ -1518,6 +1587,22 @@ fn gamecenter_path(pid: u32) -> Option<String> {
     win::process_image_path(pid).map(|p| p.strip_prefix(r"\\?\").map(str::to_string).unwrap_or(p))
 }
 
+/// Запущенные GameCenter, разделённые на свои (из папки `exe`) и чужие.
+/// Путь процесса, который не прочитался, считается чужим: закрыть его безопаснее, чем оставить.
+fn split_gamecenters(exe: &Path) -> (Vec<u32>, Vec<u32>) {
+    let me = plain_path(exe);
+    let (mut mine, mut others) = (Vec::new(), Vec::new());
+    for pid in gamecenter_pids() {
+        let path = gamecenter_path(pid).unwrap_or_default();
+        if !path.is_empty() && path.eq_ignore_ascii_case(&me) {
+            mine.push(pid);
+        } else {
+            others.push(pid);
+        }
+    }
+    (mine, others)
+}
+
 /// Закрывает GameCenter перед запуском. Запущенные клиенты игры продолжают работать.
 ///
 /// GameCenter работает в одном экземпляре на компьютер: если уже открыт GameCenter из другой папки,
@@ -1528,42 +1613,69 @@ fn gamecenter_path(pid: u32) -> Option<String> {
 /// Раньше здесь запускался PowerShell с `Get-CimInstance Win32_Process` — 1–2.5 с на КАЖДЫЙ аккаунт
 /// (WMI самый медленный способ узнать про процессы). Теперь это прямой перебор: миллисекунды.
 fn close_gamecenters(exe: &Path, close_own: bool) -> Result<GcClosed, String> {
-    let me = plain_path(exe);
+    let (mine, others) = split_gamecenters(exe);
     let mut report = GcClosed::default();
-    for pid in gamecenter_pids() {
-        // Путь не прочитали: считаем чужим — так безопаснее (свой GameCenter при этом останется)
-        let path = gamecenter_path(pid).unwrap_or_default();
-        let mine = !path.is_empty() && path.eq_ignore_ascii_case(&me);
-        if mine && !close_own {
-            continue;
-        }
-        match win::kill_process(pid) {
+    for (pid, is_mine) in others
+        .iter()
+        .map(|p| (p, false))
+        .chain(mine.iter().filter(|_| close_own).map(|p| (p, true)))
+    {
+        match win::kill_process(*pid) {
             Ok(()) => {}
             // 87 — процесс уже завершился между перебором и закрытием: для нас это то же «закрыт»
             Err(87) => {}
             Err(_) => {
                 report.failed += 1;
+                if is_mine {
+                    report.own_failed += 1;
+                }
                 continue;
             }
         }
-        if !mine {
+        if !is_mine {
             report.others += 1;
         }
     }
     Ok(report)
 }
 
-/// Ждёт, пока закрытые GameCenter действительно завершатся (нужно, чтобы он освободил
-/// единственный экземпляр). Раньше здесь стоял фиксированный `sleep(1500 мс)` на каждый запуск;
-/// на практике процессы заканчиваются за 0.2–0.5 с, поэтому ждём по факту, но не дольше прежнего.
-fn wait_gamecenters_gone() {
+/// Ждёт, пока закрытые GameCenter действительно завершатся (нужно, чтобы они освободили
+/// единственный экземпляр), и возвращает оставшихся. На практике процессы заканчиваются
+/// за 0.2–0.5 с, поэтому ждём по факту, а не фиксированное время.
+fn wait_gamecenters_gone() -> Vec<u32> {
     let deadline = Instant::now() + GC_EXIT_WAIT;
     loop {
-        if gamecenter_pids().is_empty() || Instant::now() >= deadline {
-            return;
+        let alive = gamecenter_pids();
+        if alive.is_empty() || Instant::now() >= deadline {
+            return alive;
         }
         sleep(Duration::from_millis(100));
     }
+}
+
+/// Не осталось ли GameCenter, который перехватит ссылку запуска.
+///
+/// Пока жив хоть один чужой или свой (когда вход подменяется) экземпляр, новый `GameCenter.exe`
+/// не откроет игру, а только передаст ссылку старому — и окно выйдет под чужим аккаунтом,
+/// причём с правильным заголовком. Поэтому такой запуск отменяется с внятной ошибкой.
+/// Свой GameCenter оставляется только когда вход не подменяется: тогда это ожидаемое поведение
+/// (окно откроется под тем аккаунтом, что выбран в лаунчере сейчас, — такие персонажи
+/// отсеиваются проверкой до запуска).
+fn ensure_gamecenter_free(exe: &Path, switched: bool) -> Result<(), String> {
+    let alive = wait_gamecenters_gone();
+    if alive.is_empty() {
+        return Ok(());
+    }
+    let (mine, _) = split_gamecenters(exe);
+    if !switched && mine.len() == alive.len() {
+        return Ok(());
+    }
+    Err(format!(
+        "GameCenter не закрылся (запущенных осталось: {}). Новый экземпляр передал бы ему ссылку, \
+         и окно открылось бы под чужим аккаунтом. Закройте GameCenter вручную и повторите; \
+         если он запущен от администратора — запустите Твиноферму от администратора",
+        alive.len()
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1593,10 +1705,8 @@ fn read_gc_info(exe: &Path) -> Result<GcInfo, String> {
     let ini = gc_ini_path(exe)?;
     let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
     let (text, _) = decode_ini(&bytes);
-    let logged_in = ini_get(&text, KEY_MAGIC)
-        .map(|m| !m.is_empty())
-        .unwrap_or(false);
-    let nick = ini_get(&text, KEY_NICK)
+    let logged_in = read_account(&text).is_some();
+    let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
         .unwrap_or_default();
     Ok(GcInfo {
@@ -1725,8 +1835,11 @@ pub async fn launcher_pick_gamecenter(kind: Option<String>) -> Result<Option<Str
     }
 }
 
-/// Запоминает вход, который сейчас открыт в этом GameCenter: токен — в хранилище ОС, ник возвращается
-/// для показа. Перед этим войдите в нужный аккаунт в самом GameCenter.
+/// Запоминает вход, который сейчас открыт в этом GameCenter: значения входа — в хранилище ОС,
+/// ник возвращается для показа. Перед этим войдите в нужный аккаунт в самом GameCenter.
+///
+/// Запоминаются все ключи аккаунта (`ACCOUNT_KEYS`), а не один токен: лаунчер опознаёт аккаунт
+/// по `MyComUserUid`, и подстановка одного токена оставляла бы uid прошлого аккаунта.
 #[tauri::command]
 pub async fn launcher_capture_account(char_id: String, path: String, kind: Option<String>) -> Result<String, String> {
     if kind.as_deref() == Some("astrum") {
@@ -1739,22 +1852,21 @@ pub async fn launcher_capture_account(char_id: String, path: String, kind: Optio
     tauri::async_runtime::spawn_blocking(move || {
         let bytes = std::fs::read(&ini).map_err(|e| format!("{}: {}", ini.display(), e))?;
         let (text, _) = decode_ini(&bytes);
-        let magic = ini_get(&text, KEY_MAGIC)
-            .filter(|m| !m.is_empty())
+        let pairs = read_account(&text)
+            .filter(|p| !p.is_empty())
             .ok_or_else(|| {
                 "В этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string()
             })?;
-        if !safe_ini_value(&magic) {
+        if pairs.iter().any(|(_, v)| !safe_ini_value(v)) {
             return Err("Данные входа в GameCenter.ini имеют неожиданный вид".to_string());
         }
+        let nick = ini_get(&text, "CurrentUserNick")
+            .map(|v| display_value(&v))
+            .unwrap_or_default();
         magic_entry(&char_id)?
-            .set_password(&magic)
+            .set_password(&pairs_to_text(&pairs))
             .map_err(|e| e.to_string())?;
-        Ok::<String, String>(
-            ini_get(&text, KEY_NICK)
-                .map(|v| display_value(&v))
-                .unwrap_or_default(),
-        )
+        Ok::<String, String>(nick)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1781,28 +1893,34 @@ pub async fn launcher_has_account(char_id: String) -> Result<bool, String> {
 ///
 /// 1. Закрывает GameCenter из других папок (иначе они перехватят запуск и откроют игру под своим аккаунтом).
 ///    Если у персонажа (`char_id`) сохранён вход — закрывает и этот GameCenter и подставляет вход в его ini.
+///    Если закрыть не удалось (запущен от администратора) — запуск отменяется: подставлять вход в ini
+///    при живом лаунчере бессмысленно, он файл не перечитывает, а игра выйдет под прежним аккаунтом.
 /// 2. Запоминает, сколько клиентов игры уже запущено, и стартует `GameCenter.exe <ссылка>`.
 /// 3. Если клиенты уже были — ждёт окно «Клиент игры уже запущен» и выбирает «Запустить новую копию клиента».
 ///    Если не было — ничего не нажимает.
 /// 4. Ждёт, пока появится новый клиент игры (до `wait_secs`, по умолчанию 60 с); иначе — ошибка.
 /// 5. Если передан `window_title`, в фоне подписывает окно нового клиента и ставит значок (`icon_small`, `icon_big` — RGBA);
 ///    итог приходит событием `launcher-decorate`.
+///
+/// `login_saved` — считает ли интерфейс вход персонажа запомненным. Если да, а в хранилище ОС его нет,
+/// запуск прекращается: иначе вход не подставится, а окно откроется под тем аккаунтом, что уже был
+/// выбран в лаунчере, — с правильным заголовком и чужим персонажем внутри.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn launcher_start(
     app: tauri::AppHandle,
     path: String,
     char_id: Option<String>,
-    nick: Option<String>,
     url: Option<String>,
     wait_secs: Option<u64>,
     window_title: Option<String>,
     icon_small: Option<Vec<u8>>,
     icon_big: Option<Vec<u8>>,
     kind: Option<String>,
+    login_saved: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     if kind.as_deref() == Some("astrum") {
-        return astrum::start(app, path, char_id, url, wait_secs, window_title, icon_small, icon_big).await;
+        return astrum::start(app, path, char_id, url, wait_secs, window_title, icon_small, icon_big, login_saved).await;
     }
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
@@ -1817,22 +1935,39 @@ pub async fn launcher_start(
 
     tauri::async_runtime::spawn_blocking(move || {
         let id = char_id.as_deref().map(str::trim).filter(|s| !s.is_empty());
-        let magic = id.map(get_magic).transpose()?.flatten();
+        let stored = id.map(get_magic).transpose()?.flatten();
+        // Интерфейс считает, что вход персонажа запомнен, а в хранилище ОС его нет (перенесли
+        // state.json, почистили менеджер паролей). Раньше это проходило молча: GameCenter не
+        // закрывался, ссылку запуска перехватывал старый экземпляр, и окно выходило под чужим
+        // аккаунтом. Теперь такой запуск останавливается с внятным объяснением.
+        if stored.is_none() && login_saved.unwrap_or(false) {
+            return Err(
+                "Вход этого персонажа помечен как запомненный, но в хранилище ОС его нет. \
+                 Откройте «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» \
+                 и нажмите «🔑 Запомнить вход» ещё раз"
+                    .to_string(),
+            );
+        }
+        // Набор ключей разбираем до закрытия лаунчера: старый вход (только токен, без uid) —
+        // ошибка, и закрывать ради него GameCenter незачем.
+        let pairs = stored.as_deref().map(stored_account).transpose()?;
 
         // Замеры по этапам: пользователь видит в журнале, на что именно ушло время.
         // Без них «запуск идёт долго» нечем превратить в конкретное действие.
         let t_gc = Instant::now();
-        let closed = close_gamecenters(&exe, magic.is_some())?;
-        // Ждём освобождения единственного экземпляра GameCenter, но по факту, а не фиксированные 1.5 с
-        if magic.is_some() || closed.others > 0 {
-            wait_gamecenters_gone();
+        let closed = close_gamecenters(&exe, pairs.is_some())?;
+        // Ждём освобождения единственного экземпляра GameCenter по факту и отменяем запуск,
+        // если кто-то всё же остался: новый экземпляр передал бы ему ссылку, и игра открылась бы
+        // под тем аккаунтом, что был открыт раньше (окно при этом получит правильный заголовок).
+        if pairs.is_some() || closed.others > 0 || closed.own_failed > 0 {
+            ensure_gamecenter_free(&exe, pairs.is_some())?;
         }
         let ms_gc_close = t_gc.elapsed().as_millis() as u64;
 
         let t_ini = Instant::now();
-        let switched = match magic {
-            Some(magic) => {
-                switch_account(&exe, nick.as_deref(), &magic)?;
+        let switched = match &pairs {
+            Some(pairs) => {
+                write_account(&gc_ini_path(&exe)?, pairs)?;
                 true
             }
             None => false,
@@ -3172,20 +3307,42 @@ mod tests {
         assert!(!is_gc_dialog("TYesNoForm", "", true));
     }
 
-    const INI: &str = "[UMS]\r\ngamecenter4=1916\r\n\r\n[Main]\r\nLang=ru\r\nCurrentUserNick=Dred\r\nMyComUserMagic2=OLDTOKEN\r\nForm_State=0\r\n\r\n[Chrome]\r\nCacheVersion=2\r\n";
+    const INI: &str = "[UMS]\r\ngamecenter4=1916\r\n\r\n[Main]\r\nLang=ru\r\nMyComUserLogin=old@example.com\r\nMyComUserUid=111\r\nCurrentUserNick=Dred\r\nMyComUserMagic2=OLDTOKEN\r\nForm_State=0\r\n\r\n[Chrome]\r\nCacheVersion=2\r\n";
 
     #[test]
     fn reads_account_keys() {
-        assert_eq!(ini_get(INI, KEY_NICK).as_deref(), Some("Dred"));
+        assert_eq!(ini_get(INI, "CurrentUserNick").as_deref(), Some("Dred"));
         assert_eq!(ini_get(INI, "mycomusermagic2").as_deref(), Some("OLDTOKEN"));
         assert_eq!(ini_get(INI, "Nope"), None);
     }
 
     #[test]
+    fn account_is_read_as_a_whole_set() {
+        // Аккаунт опознаётся по uid, поэтому в наборе обязаны быть все ключи, а не один токен
+        let pairs = read_account(INI).unwrap();
+        assert_eq!(pairs.len(), ACCOUNT_KEYS.len());
+        assert!(pairs.iter().any(|(k, v)| k == "MyComUserUid" && v == "111"));
+        assert!(pairs.iter().any(|(k, v)| k == LOGIN_KEY && v == "OLDTOKEN"));
+        assert_eq!(read_account("[Main]\r\nMyComUserMagic2=\r\n"), None);
+        assert_eq!(read_account("[Main]\r\nLang=ru\r\n"), None);
+    }
+
+    #[test]
+    fn old_stored_login_is_refused_not_half_written() {
+        // Старая запись хранилища — один токен без «=». Подставить её нельзя: без uid лаунчер
+        // оставит uid прошлого аккаунта и откроет игру под ним. Поэтому такая запись — ошибка.
+        let err = stored_account("OLDTOKEN").unwrap_err();
+        assert!(err.contains("Запомнить вход"), "сообщение должно говорить, что делать: {}", err);
+        // Новая запись — набор ключей: он и подставляется как есть
+        let pairs = read_account(INI).unwrap();
+        assert_eq!(stored_account(&pairs_to_text(&pairs)).unwrap(), pairs);
+    }
+
+    #[test]
     fn replaces_keys_and_keeps_everything_else() {
-        let out = ini_set(&ini_set(INI, KEY_MAGIC, "NEWTOKEN"), KEY_NICK, "Twin");
-        assert_eq!(ini_get(&out, KEY_MAGIC).as_deref(), Some("NEWTOKEN"));
-        assert_eq!(ini_get(&out, KEY_NICK).as_deref(), Some("Twin"));
+        let out = ini_set(&ini_set(INI, LOGIN_KEY, "NEWTOKEN"), "CurrentUserNick", "Twin");
+        assert_eq!(ini_get(&out, LOGIN_KEY).as_deref(), Some("NEWTOKEN"));
+        assert_eq!(ini_get(&out, "CurrentUserNick").as_deref(), Some("Twin"));
         let expected = INI
             .replace("OLDTOKEN", "NEWTOKEN")
             .replace("CurrentUserNick=Dred", "CurrentUserNick=Twin");
@@ -3195,12 +3352,12 @@ mod tests {
     #[test]
     fn inserts_missing_key_after_main_section() {
         let ini = "[Main]\nLang=ru\n[Chrome]\nCacheVersion=2\n";
-        let out = ini_set(ini, KEY_MAGIC, "T1");
+        let out = ini_set(ini, LOGIN_KEY, "T1");
         assert_eq!(
             out,
             "[Main]\nMyComUserMagic2=T1\nLang=ru\n[Chrome]\nCacheVersion=2\n"
         );
-        assert_eq!(ini_set("A=1", KEY_MAGIC, "T1"), "A=1\nMyComUserMagic2=T1\n");
+        assert_eq!(ini_set("A=1", LOGIN_KEY, "T1"), "A=1\nMyComUserMagic2=T1\n");
     }
 
     #[test]
@@ -3210,7 +3367,7 @@ mod tests {
         raw.extend_from_slice(&[0xC4, 0xF0, 0xE5, 0xE4]);
         raw.extend_from_slice(b"\r\nMyComUserMagic2=OLD\r\n");
         let (text, enc) = decode_ini(&raw);
-        let out = encode_ini(&ini_set(&text, KEY_MAGIC, "NEW"), &enc);
+        let out = encode_ini(&ini_set(&text, LOGIN_KEY, "NEW"), &enc);
         let mut expected = b"[Main]\r\nCurrentUserName=".to_vec();
         expected.extend_from_slice(&[0xC4, 0xF0, 0xE5, 0xE4]);
         expected.extend_from_slice(b"\r\nMyComUserMagic2=NEW\r\n");
@@ -3228,7 +3385,10 @@ mod tests {
         assert_eq!(&raw[..2], &[0xFF, 0xFE]);
         let (decoded, enc) = decode_ini(&raw);
         assert_eq!(decoded, text);
-        assert_eq!(ini_get(&decoded, KEY_NICK).as_deref(), Some("Дред"));
+        assert_eq!(
+            ini_get(&decoded, "CurrentUserNick").as_deref(),
+            Some("Дред")
+        );
         assert_eq!(encode_ini(&decoded, &enc), raw);
     }
 
@@ -3249,24 +3409,63 @@ mod tests {
     }
 
     #[test]
-    fn switch_account_rewrites_ini_next_to_exe() {
+    fn not_ascii_nick_goes_only_into_utf16_ini() {
+        // Ник бывает кириллицей. В UTF-16 файл он пишется как есть, в однобайтовый — нельзя:
+        // он бы испортил файл. Такое значение пропускаем, а не заменяем мусором.
+        let bytes = IniEncoding::Bytes;
+        assert!(!writable_ini_value("Сик", &bytes));
+        assert!(writable_ini_value("Sik", &bytes));
+        assert!(writable_ini_value("Сик", &IniEncoding::Utf16Le));
+        assert!(!writable_ini_value("a\r\nb=c", &IniEncoding::Utf16Le));
+        assert!(!writable_ini_value("", &IniEncoding::Utf16Le));
+    }
+
+    #[test]
+    fn write_account_rewrites_ini_next_to_exe() {
         let dir = std::env::temp_dir().join(format!("tf-gc-switch-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let exe = dir.join(GAMECENTER_EXE);
         std::fs::write(&exe, b"").unwrap();
-        std::fs::write(dir.join(INI_NAME), INI).unwrap();
-        switch_account(&exe, Some("Twin"), "NEWTOKEN").unwrap();
-        let after = std::fs::read_to_string(dir.join(INI_NAME)).unwrap();
-        assert_eq!(ini_get(&after, KEY_MAGIC).as_deref(), Some("NEWTOKEN"));
-        assert_eq!(ini_get(&after, KEY_NICK).as_deref(), Some("Twin"));
+        let ini = dir.join(INI_NAME);
+        std::fs::write(&ini, INI).unwrap();
+
+        // Новый вход: подставляются все ключи, включая uid прошлого аккаунта
+        let pairs = stored_account(&pairs_to_text(&[
+            ("MyComUserLogin".to_string(), "new@example.com".to_string()),
+            ("MyComUserUid".to_string(), "222".to_string()),
+            ("CurrentUserNick".to_string(), "Twin".to_string()),
+            (LOGIN_KEY.to_string(), "NEWTOKEN".to_string()),
+        ]))
+        .unwrap();
+        write_account(&ini, &pairs).unwrap();
+        let after = std::fs::read_to_string(&ini).unwrap();
+        assert_eq!(ini_get(&after, LOGIN_KEY).as_deref(), Some("NEWTOKEN"));
+        assert_eq!(ini_get(&after, "CurrentUserNick").as_deref(), Some("Twin"));
+        assert_eq!(
+            ini_get(&after, "MyComUserUid").as_deref(),
+            Some("222"),
+            "uid прошлого аккаунта обязан смениться, иначе игра выйдет под ним"
+        );
+        assert_eq!(
+            ini_get(&after, "MyComUserLogin").as_deref(),
+            Some("new@example.com")
+        );
+
         // исходный файл сохранён рядом один раз
         let backup = std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup, INI);
-        switch_account(&exe, None, "OTHER").unwrap();
+        write_account(
+            &ini,
+            &stored_account(&pairs_to_text(&[(
+                LOGIN_KEY.to_string(),
+                "OTHER".to_string(),
+            )]))
+            .unwrap(),
+        )
+        .unwrap();
         let backup2 =
             std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup2, INI); // повторная подмена копию не затирает
-        assert!(switch_account(&exe, None, "bad value").is_err());
         let _ = std::fs::remove_dir_all(dir);
     }
 }
