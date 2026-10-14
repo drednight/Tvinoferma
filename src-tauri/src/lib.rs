@@ -26,6 +26,7 @@ mod balance;
 mod commands;
 mod cookie_bank;
 mod elevate;
+mod eternals;
 mod injection;
 mod launcher;
 mod layout_sync;
@@ -127,6 +128,12 @@ pub fn run() {
             windows::rename_char_profiles,
             // закрыть только окна авторизации (окно входа уже подтверждено)
             windows::close_auth_popups,
+            // клановый сайт Eternals: отдельное окно, сводка профиля, отметки на ивенты
+            eternals::open_eternals_window,
+            eternals::close_eternals_window,
+            eternals::eternals_window_exists,
+            eternals::eternals_sync,
+            eternals::eternals_set_response,
             // скрипты сайта
             automation::promo::activate_promo,
             automation::caravan::open_caravan_chests,

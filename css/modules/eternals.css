@@ -1,0 +1,209 @@
+/* css/modules/eternals.css
+   Скрытая панель клана под разделом «Сегодня». Вкладки у неё нет: панель появляется
+   после пасхалки в разделе промокодов. */
+
+/* Панель скрыта, пока фича выключена (атрибут hidden должен побеждать стили) */
+#eternals-today[hidden] {
+  display: none !important;
+}
+
+/* Панель под колонками календаря */
+#eternals-today:not([hidden]) {
+  margin: 12px 0;
+}
+
+.eternals-card {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #d8ddd8);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-1, transparent);
+}
+
+.eternals-card h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.eternals-card p {
+  margin: 0;
+}
+
+.eternals-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.eternals-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border, #d8ddd8);
+}
+
+.eternals-event:first-of-type {
+  border-top: 0;
+}
+
+.eternals-event-main {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.eternals-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.eternals-state {
+  min-width: 90px;
+  color: var(--muted, #68736b);
+  font-size: 0.85rem;
+}
+
+/* Ответ «Пойду»: событие остаётся на экране и выделяется синим градиентом */
+.eternals-event.is-going,
+.eternals-event.is-out {
+  margin: 2px 0;
+  padding: 8px 10px;
+  border-top-color: transparent;
+  border-radius: var(--radius-sm, 8px);
+}
+
+.eternals-event.is-going {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+/* Ответ «Не пойду»: тот же вид, но красным */
+.eternals-event.is-out {
+  background: linear-gradient(90deg, var(--danger-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--danger);
+}
+
+.eternals-event.is-going + .eternals-event,
+.eternals-event.is-out + .eternals-event {
+  border-top-color: transparent;
+}
+
+/* Две колонки в блоке клана на «Сегодня»: события слева, пати справа */
+.eternals-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.eternals-col {
+  min-width: 0;
+}
+
+.eternals-col--parties {
+  padding-left: 14px;
+  border-left: 1px solid var(--border, #d8ddd8);
+}
+
+/* Событий и пати бывает много — колонки прокручиваются, а не растягивают «Сегодня» */
+.eternals-cols .eternals-events,
+.eternals-cols .eternals-parties {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@media (max-width: 900px) {
+  .eternals-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eternals-col--parties {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border, #d8ddd8);
+    padding-top: 12px;
+  }
+}
+
+/* Пати с составом: название, размер и копирование ников */
+.eternals-parties-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.eternals-parties-head b {
+  flex: 1 1 auto;
+}
+
+.eternals-parties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eternals-party {
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #d8ddd8);
+}
+
+.eternals-party:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.eternals-party-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.eternals-party-head b {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Участник пати: иконка класса и ник */
+.eternals-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.eternals-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--border, #d8ddd8);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-2, transparent);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.eternals-member-ico {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+/* Свой персонаж: в списке виден, но в копирование не попадает */
+.eternals-member.is-self {
+  border-color: var(--accent-line, #6e8ef8);
+  background: var(--accent-soft, rgba(110, 142, 248, 0.14));
+}

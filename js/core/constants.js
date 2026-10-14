@@ -57,6 +57,18 @@ export function getClassIconSrc(className) {
   return null; // Вернем null, если иконка не найдена, чтобы UI показал букву
 }
 
+/**
+ * Иконка класса по имени файла без расширения (`luk` → `luk.webp`).
+ * Нужен там, где класс приходит числом или именем файла, а не названием:
+ * например, со стороннего сайта, где иконка лежит по тому же соглашению об именах.
+ * @param {string} stem
+ * @returns {string|null}
+ */
+export function getClassIconSrcByStem(stem) {
+  const key = String(stem || '').trim();
+  return /^[a-z0-9_-]+$/i.test(key) ? `${ICON_BASE_PATH}${key}.webp` : null;
+}
+
 export const SKIES = [
   'Тайное небо',
   'Небо Миражей',
@@ -168,6 +180,11 @@ export const DEFAULT_SETTINGS = {
   browser: {
     unlimitedGiftItems: true,  // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
     collectionPanel: true      // на странице мини-игры «Коллекция» показать панель с запуском по кнопке и статистикой (Issue #72)
+  },
+  // Клановый сайт (скрытая панель на «Сегодня», включается паролем в разделе промокодов).
+  // У всех выключено: пока enabled=false, панели нет на странице.
+  eternals: {
+    enabled: false
   },
   // Запуск игры (Issue: запуск окон)
   launcher: {

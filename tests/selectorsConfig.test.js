@@ -7,7 +7,11 @@ const SCRIPTS = 'src-tauri/src/scripts';
 const cfg = loadSelectors();
 const sections = ['selectors', 'texts', 'regex'];
 const keysOf = (c) => sections.flatMap((s) => Object.keys(c[s]).map((k) => `${s}:${k}`));
-const parserScripts = readdirSync(SCRIPTS).filter((f) => f.endsWith('.js') && !['common.js', 'popup_patch.js'].includes(f));
+// eternals.js — исключение: это скрипт окна ДРУГОГО сайта (клановый pw-eternals.ru).
+// Он не подключает common.js, не ходит в __TF и разбирает чужую вёрстку, поэтому его
+// селекторы нельзя положить в конфиг парсеров pwonline.ru. Своя фикстура и тесты — в eternals.test.js.
+const parserScripts = readdirSync(SCRIPTS)
+  .filter((f) => f.endsWith('.js') && !['common.js', 'popup_patch.js', 'eternals.js'].includes(f));
 
 describe('selectors.json: структура', () => {
   it('есть версия и три раздела', () => {

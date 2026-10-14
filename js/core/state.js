@@ -10,6 +10,7 @@ import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
 import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
+import { normalizeEternalsData } from '../modules/eternals/core.js';
 import { normalizePreflightMode } from '../modules/launcher/preflight.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
 import { normalizePlannerEntry } from '../modules/dashboard/planner.js';
@@ -224,6 +225,15 @@ function normalizeArchivedParty(input = {}) {
   };
 }
 
+/**
+ * Настройки кланового сайта (скрытая фича). Рядом с флагом `enabled` лежит кэш сводки —
+ * как `updates.lastCheckedAt`: это данные, а не настройка, но они маленькие и одни
+ * на приложение. Флаг обязан быть строго булевым, кэш проходит через normalizeEternalsData.
+ */
+function normalizeEternalsSettings(input = {}) {
+  return { ...normalizeEternalsData(input), enabled: input?.enabled === true };
+}
+
 function normalizeLauncherSettings(input = {}) {
   const merged = { ...DEFAULT_SETTINGS.launcher, ...(input || {}) };
   merged.gameCenters = normalizeGameCenters(merged.gameCenters);
@@ -330,6 +340,7 @@ function mergeSettings(input = {}) {
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),
     browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
+    eternals: normalizeEternalsSettings(input.eternals),
     launcher: normalizeLauncherSettings(input.launcher),
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
     freshness: { ...DEFAULT_SETTINGS.freshness, ...(input.freshness || {}) },

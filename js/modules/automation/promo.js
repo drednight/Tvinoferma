@@ -16,6 +16,8 @@ import { loadLog, planRun, recordRun, recentRecords, findRecord, RECENT_N } from
 import { runPromoBatch } from './promoRunner.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
+// Служебная фраза скрытой панели клана: вводится в поле вместо промокода
+const SECRET_PHRASE = 'pw-eternals';
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
@@ -344,6 +346,15 @@ export function openPromoDialog({ ids = [] } = {}) {
     if (act === 'start' || act === 'dry') {
       const dry = act === 'dry';
       codesRaw = dlg.body.querySelector('#promo-code')?.value ?? codesRaw;
+      // Скрытая настройка: служебная фраза вместо кода переключает страницу клана и ничего не запускает
+      if (codesRaw.trim().toLowerCase() === SECRET_PHRASE) {
+        const { toggleEternals } = await import('../eternals/state.js');
+        const { applyEternalsVisibility } = await import('../eternals/page.js');
+        await toggleEternals();
+        applyEternalsVisibility();
+        dlg.close();
+        return;
+      }
       const p = parseCodes(codesRaw);
       if (p.invalid.length) { toast(`Не похоже на промокод: ${p.invalid.slice(0, 3).join(', ')}`, 'warning'); return; }
       if (!p.codes.length) { toast('Введите хотя бы один промокод', 'warning'); return; }

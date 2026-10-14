@@ -15,6 +15,7 @@ import { plannerEventsForDate } from './planner.js';
 import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
 import { persist } from '../../core/storage.js';
+import { renderEternalsToday, setEternalsRefresh } from '../eternals/page.js';
 
 /**
  * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
@@ -260,9 +261,13 @@ export function renderToday(root, deps = {}) {
   if (!root) return;
   const render = () => renderToday(root, deps);
   const summary = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
-  root.innerHTML = `<div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div>${summary}`;
+  root.innerHTML = `<div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div><div id="eternals-today" hidden></div>${summary}`;
   bindToday(root, deps);
   bindPlanner(root, { ...deps, render });
+  // Блок клана под колонками календаря: перерисовываем вместе со страницей, иначе его не будет после правок в календаре.
+  // Отмеченное клановое событие само ложится в календарь, поэтому панели нужна вся перерисовка «Сегодня», а не только её кусок.
+  setEternalsRefresh(render);
+  renderEternalsToday();
   root.querySelector('[data-today-side]')?.addEventListener('click', (e) => {
     // Записи-марафоны открываются прямо из панели
     const act = e.target.closest?.('[data-today-act="open-marathon"]');
