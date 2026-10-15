@@ -56,6 +56,23 @@
   align-items: center;
   margin-top: 14px;
 }
+/* Полоса «сколько в наличии»: она же показывается в форме сделки с голдом */
+.fin-holdings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+.fin-holding b { font-size: 0.95rem; }
+.fin-shop-hint { margin: 12px 0 0; font-size: 0.8rem; max-width: 78ch; }
+/* Та же полоса внутри модального окна: отступ сверху лишний, окно и так с полями */
+.fin-modal .fin-holdings { margin: 0; }
 
 /* --- Сводка по валютам --- */
 .fin-summary {
@@ -89,6 +106,10 @@
 .fin-month summary h3 { display: inline; font-size: 0.95rem; }
 .fin-month-totals { display: inline-flex; gap: 12px; margin-left: 10px; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
 
+/* Прокрутка по горизонтали вместо сжатия колонок.
+   Без неё таблица на узком окне сжимает «Откуда / на что» до нуля, а кнопки действий
+   выдавливаются за пределы ячейки — значки оказывались за границей блока. */
+.fin-table-wrap { overflow-x: auto; }
 .fin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
 .fin-table th {
   padding: 6px 8px;
@@ -103,14 +124,19 @@
 .fin-table tbody tr:last-child td { border-bottom: none; }
 .fin-table .fin-num { text-align: right; white-space: nowrap; }
 .fin-table-compact td, .fin-table-compact th { padding: 5px 6px; font-size: 0.8rem; }
+/* Предмет не должен раздувать таблицу: текст переносится, а колонка чисел остаётся узкой. */
+.fin-what { min-width: 9rem; max-width: 22rem; }
 
 .fin-date, .fin-balance { white-space: nowrap; color: var(--text-dim); }
 .fin-amount { text-align: right; white-space: nowrap; font-weight: 650; }
 .fin-what b { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .fin-what small { display: block; font-size: 0.74rem; overflow-wrap: anywhere; }
-.fin-actions { text-align: right; white-space: nowrap; }
-.fin-actions .btn { margin-left: 4px; }
+/* Колонка действий не сжимается: `flex: none` иначе отдаёт кнопкам ширину по содержимому,
+   они наезжали друг на друга и вылезали за поле строки. */
+.fin-actions { text-align: right; white-space: nowrap; width: 1%; }
+.fin-actions .fin-icon { flex: none; width: 30px; height: 28px; margin-left: 4px; padding: 0; }
 .fin-source { color: var(--text-faint); font-size: 0.7rem; }
+.fin-split { text-align: right; white-space: nowrap; font-size: 0.76rem; }
 
 .fin-chip {
   display: inline-block;
@@ -133,11 +159,16 @@
 @media (max-width: 900px) { .fin-shop { grid-template-columns: minmax(0, 1fr); } }
 
 .fin-shop-col {
+  display: flex;
+  flex-direction: column;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
 }
+/* Колонка «Покупка» без позиций была вдвое короче продажи, и подпись «На складе»
+   подвисала на середине. Флекс-колонка прижимает её к низу своей колонки. */
+.fin-shop-col > .fin-table-wrap { flex: 1; }
 .fin-shop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 .fin-shop-head h3 { margin: 0; font-size: 0.95rem; }
 .fin-shop-head span { font-size: 0.78rem; }
@@ -145,7 +176,8 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  margin-top: 10px;
+  margin-top: auto;
+  padding-top: 10px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
   font-variant-numeric: tabular-nums;

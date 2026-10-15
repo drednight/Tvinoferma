@@ -3,7 +3,6 @@
 // поэтому проверяется без запуска приложения.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  fullMonthsBetween,
   goldDeal,
   commissionLossPct,
   loanAccrual,
@@ -13,88 +12,278 @@ import {
   normalizeFinance,
   ledgerTotals,
   ledgerTotalsByCurrency,
-  runningBalance,
   shopTotals,
   shopItemTotal,
   findShopItem,
   money,
-  todayIso
+  todayIso,
+  daysBetween,
+  daysInMonth,
+  roundFor,
+  formatAmount,
+  spanLabel,
+  balances,
+  shopDealOperation,
+  loanOperation,
+  goldDealOperations
 } from '../js/modules/finance/model.js';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 
 /** Долг под 5% на полгода: 01.01 → 01.07. */
-const LOAN = { principal: 10000, percent: 5, start: '2026-01-01', end: '2026-07-01', payments: [] };
+/**
+ * Долг с процентами, где нужны копейки. Основной долг золотой и на нём считается
+ * ровно; для проверки дробных процентов есть отдельные тесты ниже.
+ */
+const LOAN = {
+  principal: 10000, percent: 5, start: '2026-01-01', end: '2026-07-01',
+  currency: 'coins', payments: []
+};
 
-describe('полные месяцы между датами', () => {
-  it('считает только целые месяцы, неполный месяц — ноль', () => {
-    expect(fullMonthsBetween('2026-01-01', '2026-02-01')).toBe(1);
-    expect(fullMonthsBetween('2026-01-15', '2026-02-14')).toBe(0);
-    expect(fullMonthsBetween('2026-01-15', '2026-02-15')).toBe(1);
-    expect(fullMonthsBetween('2026-01-01', '2026-07-01')).toBe(6);
+describe('дни между датами', () => {
+  it('считает целые дни', () => {
+    expect(daysBetween('2026-01-01', '2026-02-01')).toBe(31);
+    expect(daysBetween('2026-02-01', '2026-03-01')).toBe(28);
+    expect(daysBetween('2024-02-01', '2024-03-01')).toBe(29);   // високосный год
+    expect(daysBetween('2026-01-01', '2026-01-15')).toBe(14);
   });
 
-  it('31.01 → 28.02 целым месяцем не считается, и обратный порядок даёт ноль', () => {
-    expect(fullMonthsBetween('2026-01-31', '2026-02-28')).toBe(0);
-    expect(fullMonthsBetween('2026-07-01', '2026-01-01')).toBe(0);
-    expect(fullMonthsBetween('2026-01-01', '2026-01-01')).toBe(0);
+  it('обратный порядок, совпадение дат и битые даты дают ноль', () => {
+    expect(daysBetween('2026-07-01', '2026-01-01')).toBe(0);
+    expect(daysBetween('2026-01-01', '2026-01-01')).toBe(0);
+    expect(daysBetween('', '2026-07-01')).toBe(0);
+    expect(daysBetween('2026-01-01', 'ерунда')).toBe(0);
   });
 
-  it('битые даты не превращаются в месяцы', () => {
-    expect(fullMonthsBetween('', '2026-07-01')).toBe(0);
-    expect(fullMonthsBetween('2026-01-01', 'ерунда')).toBe(0);
+  it('число дней в месяце знает про високосный февраль', () => {
+    expect(daysInMonth('2026-02-01')).toBe(28);
+    expect(daysInMonth('2024-02-01')).toBe(29);
+    expect(daysInMonth('2026-04-01')).toBe(30);
+    expect(daysInMonth('2026-12-01')).toBe(31);
+  });
+
+  it('срок подписывается месяцами и днями', () => {
+    expect(spanLabel(0)).toBe('0 дн.');
+    expect(spanLabel(14)).toBe('14 дн.');
+    expect(spanLabel(30)).toBe('1 мес.');
+    expect(spanLabel(45)).toBe('1 мес. 15 дн.');
   });
 });
 
-describe('голд и комиссия 8%', () => {
-  it('продажа 1000 голда по миллиону: комиссия берётся голдом, золото целиком', () => {
-    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 8 });
-    expect(deal.commissionCoins).toBe(80);
-    expect(deal.coinsTotal).toBe(1080);          // «потратил 1020» из его примера — это случай с 2%
-    expect(deal.gold).toBe(1000000000);
-    expect(deal.commissionGold).toBe(0);
-    expect(deal.effectiveRate).toBe(925925.93);  // 1 000 000 000 / 1080
+describe('децималы зависят от валюты', () => {
+  it('золото округляется до целых, голд сохраняет копейки', () => {
+    expect(roundFor('gold', 10.4)).toBe(10);
+    expect(roundFor('gold', 10.5)).toBe(11);
+    expect(roundFor('coins', 10.44)).toBe(10.44);
+    expect(roundFor('coins', 10.445)).toBe(10.45);
   });
 
-  it('потеря курса при комиссии 8% равна 7.41%, а не 8%', () => {
-    // Ключевая проверка: комиссию считают от номинала, а убыток измеряют от курса,
-    // поэтому 8% превращаются в 8/108. Проверено вручную: 1 − 1000/1080 = 7.407%.
-    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 8 });
-    expect(commissionLossPct(deal.effectiveRate, 1000000)).toBe(7.41);
+  it('мусор и не-числа дают ноль, а не NaN', () => {
+    expect(roundFor('gold', 'ерунда')).toBe(0);
+    expect(roundFor('coins', undefined)).toBe(0);
+    expect(roundFor('gold', Infinity)).toBe(0);
   });
 
-  it('его пример с 20 голдами комиссии даёт потерю 1.96%', () => {
-    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 2 });
-    expect(deal.commissionCoins).toBe(20);
+  it('запись золота с хвостом обрезается, голд — нет', () => {
+    const [gold] = normalizeFinance({ operations: [{ amount: 100.7, currency: 'gold' }] }).operations;
+    const [coins] = normalizeFinance({ operations: [{ amount: 100.7, currency: 'coins' }] }).operations;
+    expect(gold.amount).toBe(101);
+    expect(coins.amount).toBe(100.7);
+  });
+
+  it('остаток золота остаётся целым, даже если строк было много', () => {
+    const ops = Array.from({ length: 37 }, () => ({ amount: 10.5, currency: 'gold', kind: 'in', date: '2026-06-01' }));
+    const totals = ledgerTotals(ops, 'gold');
+    expect(Number.isInteger(totals.income)).toBe(true);
+    expect(Number.isInteger(totals.balance)).toBe(true);
+  });
+
+  it('у голда децималы живут, и сумма строк совпадает с итогом', () => {
+    const ops = Array.from({ length: 37 }, () => ({ amount: 10.5, currency: 'coins', kind: 'in', date: '2026-06-01' }));
+    const totals = ledgerTotals(ops, 'coins');
+    expect(totals.income).toBe(388.5);   // 37 × 10,5 — ровно
+  });
+
+  it('сумма золота в реестре всегда целая — иначе остаток не сошёлся бы', () => {
+    const ops = normalizeFinance({
+      operations: [
+        { amount: 10.5, currency: 'gold', kind: 'in' },
+        { amount: 0.4, currency: 'gold', kind: 'in' }
+      ]
+    }).operations;
+    expect(ops.every(o => Number.isInteger(o.amount))).toBe(true);
+  });
+
+  it('проценты округляются под валюту долга', () => {
+    // 1000 под 5% за один день января = 1000 × 0,05 / 31 = 1,6129.
+    // В золоте это 2 целых, в голде остаётся 1,61. Проверено вручную.
+    const base = { principal: 1000, percent: 5, start: '2026-01-01', end: '2026-01-02', payments: [] };
+    expect(loanAccrual({ ...base, currency: 'gold' }, '2026-01-02').interest).toBe(2);
+    expect(loanAccrual({ ...base, currency: 'coins' }, '2026-01-02').interest).toBe(1.61);
+  });
+
+  it('мелкий золотой долг не дорисовывает золото из воздуха', () => {
+    // 1 золото под 5% за 5 месяцев = 0,25 золота: меньше целого, поэтому ноль,
+    // а в голде те же 0,25 остаются дробью
+    const base = { principal: 1, percent: 5, start: '2026-01-01', end: '2026-06-01', payments: [] };
+    const inGold = loanAccrual({ ...base, currency: 'gold' }, '2026-06-01');
+    const inCoins = loanAccrual({ ...base, currency: 'coins' }, '2026-06-01');
+    expect(inGold.interest).toBe(0);
+    expect(inCoins.interest).toBe(0.25);
+  });
+
+  it('проценты золотого долга всегда целые', () => {
+    const acc = loanAccrual({ principal: 999, percent: 5, start: '2026-01-01', end: '2026-03-01', currency: 'gold', payments: [] }, '2026-03-01');
+    for (const key of ['interest', 'interestDue', 'total', 'outstanding']) {
+      expect(Number.isInteger(acc[key])).toBe(true);
+    }
+  });
+
+  it('формат вывода золота без дробной части, голд с ней', () => {
+    expect(formatAmount('gold', 1234.7)).toBe(new Intl.NumberFormat('ru-RU').format(1235));
+    expect(formatAmount('coins', 1234.55)).toBe(new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(1234.55));
+  });
+});
+
+describe('голд и комиссия 2%', () => {
+  it('по умолчанию комиссия 2%, и она берётся голдом', () => {
+    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000 });
+    expect(deal.commissionCoins).toBe(20);       // ровно его пример: «20 голды»
     expect(deal.coinsTotal).toBe(1020);
-    expect(deal.effectiveRate).toBe(980392.16);
+    expect(deal.gold).toBe(1000000000);
+    expect(deal.effectiveRate).toBe(980392.16);  // 1 000 000 000 / 1020
+  });
+
+  it('потеря курса от комиссии 2% равна 1.96%, а не 2%', () => {
+    // Ключевая проверка: комиссию считают от номинала, а убыток измеряют от курса,
+    // поэтому 2% превращаются в 2/102. Проверено вручную: 1 − 1000/1020 = 1.9608%
+    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 2 });
     expect(commissionLossPct(deal.effectiveRate, 1000000)).toBe(1.96);
   });
 
-  it('покупка: комиссия добавкой к золоту, 1 голд обходится в 108% курса', () => {
-    const deal = goldDeal({ side: 'buy', coins: 1000, rate: 1000000, commissionPct: 8 });
+  it('при комиссии 8% потеря была бы 7.41% — пересчёт для сравнения', () => {
+    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 8 });
     expect(deal.commissionCoins).toBe(80);
-    expect(deal.commissionGold).toBe(80000000);
-    expect(deal.gold).toBe(1080000000);
-    expect(deal.effectiveRate).toBe(1080000);
-    expect(commissionLossPct(deal.effectiveRate, 1000000)).toBe(-8);
+    expect(commissionLossPct(deal.effectiveRate, 1000000)).toBe(7.41);
+  });
+
+  it('покупка: комиссия добавкой к золоту, 1 голд обходится в 102% курса', () => {
+    const deal = goldDeal({ side: 'buy', coins: 1000, rate: 1000000, commissionPct: 2 });
+    expect(deal.commissionCoins).toBe(20);
+    expect(deal.commissionGold).toBe(20000000);
+    expect(deal.gold).toBe(1020000000);
+    expect(deal.effectiveRate).toBe(1020000);
+    expect(commissionLossPct(deal.effectiveRate, 1000000)).toBe(-2);
   });
 
   it('нулевой курс не делит на ноль', () => {
-    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 0, commissionPct: 8 });
+    const deal = goldDeal({ side: 'sell', coins: 1000, rate: 0, commissionPct: 2 });
     expect(deal.effectiveRate).toBe(0);
     expect(deal.gold).toBe(0);
     expect(goldDeal({ side: 'sell', coins: 0, rate: 1000000 }).effectiveRate).toBe(0);
   });
 });
 
-describe('долг: проценты на остаток', () => {
-  it('без выплат за 6 месяцев под 5% начисляет 3000', () => {
+describe('сделка с голдом пишет обе валюты', () => {
+  it('продажа: голд уходит, золото приходит', () => {
+    const { operations } = goldDealOperations({ side: 'sell', coins: 1000, rate: 1000000, commissionPct: 2 });
+    expect(operations).toHaveLength(2);
+    const coins = operations.find(o => o.currency === 'coins');
+    const gold = operations.find(o => o.currency === 'gold');
+    expect(coins.kind).toBe('out');
+    expect(coins.amount).toBe(1020);          // 1000 + комиссия 20
+    expect(gold.kind).toBe('in');
+    expect(gold.amount).toBe(1000000000);
+  });
+
+  it('покупка: голд приходит в остаток, золото уходит', () => {
+    // Регрессия: раньше записывался только расход золота, и купленный голд нигде
+    // не появлялся — наличные расходились с остатком
+    const { operations } = goldDealOperations({ side: 'buy', coins: 1000, rate: 1000000, commissionPct: 2 });
+    const coins = operations.find(o => o.currency === 'coins');
+    const gold = operations.find(o => o.currency === 'gold');
+    expect(coins.kind).toBe('in');
+    expect(coins.amount).toBe(1000);
+    expect(gold.kind).toBe('out');
+    expect(gold.amount).toBe(1020000000);
+  });
+
+  it('обе записи пополняют остаток так, что он сходится с деньгами', () => {
+    const { operations } = goldDealOperations({ side: 'buy', coins: 1000, rate: 1000000, commissionPct: 2 });
+    const now = balances(operations);
+    expect(now.coins).toBe(1000);
+    expect(now.gold).toBe(-1020000000);
+  });
+});
+
+describe('деньги долга и комиссионки попадают в «Банк»', () => {
+  it('дал в долг — расход из остатка', () => {
+    const op = loanOperation({ id: 'l1', direction: 'lent', who: 'Шкила', principal: 10000, percent: 5, start: '2026-01-01', end: '2026-07-01' });
+    expect(op.kind).toBe('out');
+    expect(op.amount).toBe(10000);
+    expect(op.currency).toBe('gold');
+    expect(op.counterparty).toContain('Шкила');
+    expect(balances([op]).gold).toBe(-10000);
+  });
+
+  it('взял в долг — приход в остаток', () => {
+    const op = loanOperation({ id: 'l2', direction: 'borrowed', who: 'Ракохаме', principal: 2000, percent: 3, start: '2026-01-01', end: '2026-07-01' });
+    expect(op.kind).toBe('in');
+    expect(balances([op]).gold).toBe(2000);
+  });
+
+  it('продажа позиции комиссионки — приход золота', () => {
+    const item = { id: 'i1', side: 'sell', name: 'Зелье', price: 120000, qty: 5 };
+    const op = shopDealOperation({ item, qty: 2 });
+    expect(op.kind).toBe('in');
+    expect(op.amount).toBe(240000);           // 120000 × 2
+    expect(op.counterparty).toContain('Банк');
+    expect(op.source).toBe('shop');
+    expect(op.ref).toBe('i1');
+  });
+
+  it('покупка позиции комиссионки — расход золота', () => {
+    const item = { id: 'i2', side: 'buy', name: 'Меч', price: 250000, qty: 4 };
+    const op = shopDealOperation({ item, qty: 1 });
+    expect(op.kind).toBe('out');
+    expect(op.amount).toBe(250000);
+  });
+});
+
+describe('долг: проценты на остаток, ежедневно по календарю', () => {
+  it('без выплат за 6 полных месяцев под 5% начисляет 3000', () => {
+    // 6 отрезков «с 1-го по 1-е», каждый = ровно месячная ставка. Проверено вручную:
+    // 01.01→01.02 (31 день) и 01.02→01.03 (28 дней) стоят одинаково — это один месяц
     const acc = loanAccrual(LOAN, '2026-07-01');
     expect(acc.interest).toBe(3000);
     expect(acc.outstanding).toBe(10000);
     expect(acc.total).toBe(13000);
-    expect(acc.months).toBe(6);
+    expect(acc.days).toBe(181);
+  });
+
+  it('полный месяц стоит месячную ставку независимо от числа дней в нём', () => {
+    const rate = (start, end) => loanAccrual({ ...LOAN, start, end }, end).interest;
+    expect(rate('2026-01-01', '2026-02-01')).toBe(500);   // 31 день
+    expect(rate('2026-02-01', '2026-03-01')).toBe(500);   // 28 дней
+    expect(rate('2024-02-01', '2024-03-01')).toBe(500);   // високосный, 29 дней
+    expect(rate('2026-01-15', '2026-02-15')).toBe(500);   // выдача 15-го
+  });
+
+  it('выдача 31-го обрывается в последний день месяца и всё равно стоит месяц', () => {
+    expect(loanAccrual({ ...LOAN, start: '2026-01-31', end: '2026-02-28' }, '2026-02-28').interest).toBe(500);
+  });
+
+  it('неполный отрезок стоит ровно свою долю месяца', () => {
+    // 14 дней из 31 → 500 × 14/31 = 225,81
+    expect(loanAccrual({ ...LOAN, end: '2026-01-15' }, '2026-01-15').interest).toBe(225.81);
+    // один день января: 500 / 31
+    expect(loanAccrual({ ...LOAN, end: '2026-01-02' }, '2026-01-02').interest).toBe(16.13);
+  });
+
+  it('смена месяца меняет цену дня: в феврале день дороже, чем в марте', () => {
+    const perDayJan = loanAccrual({ ...LOAN, end: '2026-01-02' }, '2026-01-02').interest;
+    const perDayFeb = loanAccrual({ ...LOAN, start: '2026-02-01', end: '2026-02-02' }, '2026-02-02').interest;
+    expect(perDayFeb).toBeGreaterThan(perDayJan);   // 500/28 > 500/31
   });
 
   it('выплата 5000 на 4-й месяц гасит проценты, а остаток уменьшает базу', () => {
@@ -122,20 +311,20 @@ describe('долг: проценты на остаток', () => {
     expect(split.principal).toBe(0);
   });
 
-  it('неполный месяц процентов не добавляет', () => {
-    expect(loanAccrual(LOAN, '2026-01-20').interest).toBe(0);
-    expect(loanAccrual(LOAN, '2026-02-01').interest).toBe(500);
+  it('в первый день процентов ещё нет, на второй уже есть', () => {
+    expect(loanAccrual(LOAN, '2026-01-01').interest).toBe(0);
+    expect(loanAccrual(LOAN, '2026-01-02').interest).toBe(16.13);
   });
 
   it('после крайнего срока проценты не идут', () => {
     expect(loanAccrual(LOAN, '2027-07-01').interest).toBe(3000);
-    expect(loanAccrual(LOAN, '2027-07-01').months).toBe(6);
+    expect(loanAccrual(LOAN, '2027-07-01').days).toBe(181);
   });
 
   it('выплата, оформленная на будущее, сегодняшний долг не уменьшает', () => {
     const loan = { ...LOAN, payments: [{ id: 'p1', date: '2026-06-01', amount: 5000 }] };
     expect(loanAccrual(loan, '2026-03-01').outstanding).toBe(10000);
-    // К июню сначала набегает 5 × 500 процентов, поэтому из 5000 на проценты уходит 2500
+    // К июню набегает 5 полных месяцев по 500, поэтому из 5000 на проценты уходит 2500
     // и только 2500 гасят тело долга
     const acc = loanAccrual(loan, '2026-07-01');
     expect(acc.outstanding).toBe(7500);
@@ -153,8 +342,8 @@ describe('долг: проценты на остаток', () => {
     expect(acc.outstanding).toBeGreaterThanOrEqual(0);
   });
 
-  it('прогноз по сроку считается без выплат', () => {
-    expect(loanForecast(LOAN)).toEqual({ months: 6, principal: 10000, interest: 3000, total: 13000 });
+  it('прогноз по сроку совпадает с начислением без выплат', () => {
+    expect(loanForecast(LOAN)).toEqual({ days: 181, principal: 10000, interest: 3000, total: 13000 });
   });
 
   it('долг без срока не начисляет ничего', () => {
@@ -211,8 +400,19 @@ describe('реестр: нормализация', () => {
     const f = normalizeFinance(undefined);
     expect(f.operations).toEqual([]);
     expect(f.loans).toEqual([]);
-    expect(f.settings.commissionPct).toBe(8);
+    expect(f.settings.commissionPct).toBe(2);
     expect(f.settings.goldRate).toBe(0);
+  });
+
+  it('комиссию можно выключить нулём, а мусор возвращает умолчание', () => {
+    expect(normalizeFinance({ settings: { commissionPct: 0 } }).settings.commissionPct).toBe(0);
+    expect(normalizeFinance({ settings: { commissionPct: 'ерунда' } }).settings.commissionPct).toBe(2);
+    expect(normalizeFinance({ settings: { commissionPct: -5 } }).settings.commissionPct).toBe(2);
+  });
+
+  it('позиция без остатка убирается: проданное подчистую живёт в реестре', () => {
+    const f = normalizeFinance({ shopItems: [{ name: 'Зелье', price: 10, qty: 0 }] });
+    expect(f.shopItems).toEqual([]);
   });
 
   it('выплаты внутри долга сортируются по дате', () => {
@@ -243,9 +443,8 @@ describe('реестр: итоги', () => {
     expect(byCurrency.coins).toEqual({ income: 50, expense: 0, balance: 50 });
   });
 
-  it('нарастающий итог внутри месяца', () => {
-    const rows = runningBalance(OPS, 'gold');
-    expect(rows.map(r => r.balanceAfter)).toEqual([1000, 700]);
+  it('остаток в наличии по обеим валютам', () => {
+    expect(balances(OPS)).toEqual({ gold: 700, coins: 50 });
   });
 
   it('пустой реестр даёт нули, а не NaN', () => {
@@ -285,8 +484,8 @@ describe('комиссионный магазин', () => {
 });
 
 // ── Раздел: разметка ──────────────────────────────────────────────────────
-// Модель уже проверена выше. Зде��ь важно другое: человек должен увидеть итог и
-// нарастающий остаток на экране, а комиссия голда — до того, как он нажмёт «Провести».
+// Модель уже проверена выше. Здесь важно другое: человек должен увидеть остаток
+// на экране, а комиссию и разбивку выплаты — до того, как он нажмёт «Провести».
 
 const FINANCE = {
   operations: [
@@ -303,7 +502,7 @@ const FINANCE = {
     start: '2026-01-01', end: '2026-07-01', currency: 'gold', note: '',
     payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }]
   }],
-  settings: { goldRate: 1000000, commissionPct: 8, goldRateAt: '2026-06-09' }
+  settings: { goldRate: 1000000, commissionPct: 2, goldRateAt: '2026-06-09' }
 };
 
 beforeEach(async () => {
@@ -334,35 +533,56 @@ async function openBlock(id) {
  */
 const text = (el) => el.textContent.replace(/\u00a0/g, ' ');
 
-describe('раздел «Учёт»: четыре блока', () => {
-  it('в меню все четыре блока, и ни один не выбран по умолчанию дважды', async () => {
+describe('раздел «Учёт»: три блока', () => {
+  it('в меню три блока, активен ровно один', async () => {
     const { el } = await openBlock();
     const tabs = [...el.querySelectorAll('[data-fin-block]')];
-    expect(tabs.map(b => b.dataset.finBlock)).toEqual(['ledger', 'shop', 'gold', 'loans']);
+    expect(tabs.map(b => b.dataset.finBlock)).toEqual(['ledger', 'shop', 'loans']);
+    expect(tabs.map(b => text(b).trim())).toEqual(['🏦 Банк', '🏪 Комиссионка', '🤝 Долги']);
     expect(el.querySelectorAll('[data-fin-block].active')).toHaveLength(1);
   });
 
-  it('реестр показывает сводку по обеим валютам и нарастающий остаток', async () => {
+  it('блок называется «Банк» и показывает наличные по обеим валютам', async () => {
     const { el } = await openBlock();
-    const cells = [...el.querySelectorAll('.fin-summary-cell')];
-    expect(cells).toHaveLength(2);
     // 500 000 000 − 50 000 000 = 450 000 000 золота, голд живёт отдельно
+    const holding = text(el.querySelector('.fin-holdings'));
+    expect(holding).toContain('Золото: 450 000 000');
+    expect(holding).toContain('Голд: 1 000');
     expect(text(el.querySelector('.fin-summary'))).toContain('450 000 000');
-    expect(text(el.querySelector('.fin-summary'))).toContain('1 000');
-    // Баланс ведётся по валютам: у золота своя цепочка, у голда своя, обе в одной таблице
-    const balances = [...el.querySelectorAll('.fin-balance')].map(b => text(b).trim());
-    expect(balances).toEqual(['500 000 000', '450 000 000', '1 000']);
   });
 
-  it('записи показываются по месяцам и помечены источником', async () => {
+  it('«Получил» и «Потратил» вместо «Приход» и «Расход»', async () => {
+    const { el } = await openBlock();
+    const summary = text(el.querySelector('.fin-summary'));
+    expect(summary).toContain('Получил');
+    expect(summary).toContain('Потратил');
+    expect(summary).not.toContain('Приход');
+    expect(summary).not.toContain('Расход');
+    const chips = [...el.querySelectorAll('.fin-kind .fin-chip')].map(c => text(c).trim());
+    expect(chips).toEqual(['Получил', 'Потратил', 'Получил']);
+  });
+
+  it('записи показываются по месяцам, помечены источником, без колонки «Итог»', async () => {
     const { el } = await openBlock();
     expect(el.querySelector('.fin-month summary h3').textContent).toContain('июнь 2026');
-    // Все три записи месяца на месте, хотя золото и голд — разные валюты
     expect(el.querySelectorAll('.fin-row')).toHaveLength(3);
     expect(text(el)).toContain('долг');
+    // Колонку итога убрали — нарастающего остатка в строках больше нет
+    expect(el.querySelector('.fin-balance')).toBeNull();
+    const heads = [...el.querySelectorAll('.fin-table th')].map(h => text(h).trim());
+    expect(heads).toEqual(['Дата', 'Вид', 'Откуда / на что', 'Сумма', '']);
   });
 
-  it('магазин разносит продажу и покупку по двум колонкам с итогами', async () => {
+  it('кнопки записи и сделок с голдом стоят выше таблицы', async () => {
+    const { el } = await openBlock();
+    const acts = [...el.querySelectorAll('.fin-actions-row [data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).toEqual(['add-op', 'gold-sell', 'gold-buy']);
+    // Кнопки в разметке раньше первой таблицы
+    const html = el.innerHTML;
+    expect(html.indexOf('data-fin-act="add-op"')).toBeLessThan(html.indexOf('<table'));
+  });
+
+  it('комиссионка разносит продажу и покупку по двум колонкам', async () => {
     const { el } = await openBlock('shop');
     const cols = [...el.querySelectorAll('.fin-shop-col')];
     expect(cols).toHaveLength(2);
@@ -370,23 +590,31 @@ describe('раздел «Учёт»: четыре блока', () => {
     expect(text(cols[0].querySelector('.fin-shop-foot'))).toContain('300');
     expect(cols[1].querySelector('h3').textContent).toBe('Покупка');
     expect(text(cols[1].querySelector('.fin-shop-foot'))).toContain('200');
-    expect(text(el)).toContain('Золото заработано');
+    expect(text(el)).toContain('На складе');
   });
 
-  it('голд показывает фактический курс и потерю от комиссии', async () => {
-    const { el } = await openBlock('gold');
-    const hint = text(el.querySelector('.fin-gold-hint'));
-    expect(hint).toContain('925 925,93');   // 1 000 000 000 / 1080
-    expect(hint).toContain('−7,41%');
+  it('у позиции комиссионки есть «продано», «изменить» и «убрать»', async () => {
+    const { el } = await openBlock('shop');
+    const acts = [...el.querySelectorAll('.fin-shop-col [data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).toContain('deal-item');     // записать, сколько продано
+    expect(acts).toContain('edit-item');     // изменить
+    expect(acts).toContain('del-item');
+    // Кнопки «долить» больше нет — просили заменить на «изменить»
+    expect(acts).not.toContain('bump-item');
   });
 
   it('долг показывает остаток, набежавшие проценты и разбивку выплаты', async () => {
     const { el } = await openBlock('loans');
     expect(el.querySelector('.fin-loan').textContent).toContain('Шкила');
-    // 3 месяца по 10 000 → 1 500 процентов съедены выплатой, осталось 3 500 тела и 975 процентов
+    // Январь–март по 10 000 → 1 500 процентов съедены выплатой, осталось 3 500 тела и 975 процентов
     expect(text(el.querySelector('.fin-loan-grid-sum'))).toContain('6 500');
     expect(text(el.querySelector('.fin-loan-due b'))).toContain('7 475');
     expect(text(el)).toContain('проценты 1 500');
+  });
+
+  it('срок показан днями, а не месяцами', async () => {
+    const { el } = await openBlock('loans');
+    expect(text(el.querySelector('.fin-loan'))).toContain('дн.');
   });
 
   it('пустой раздел не падает и объясняет, что делать', async () => {
@@ -398,5 +626,45 @@ describe('раздел «Учёт»: четыре блока', () => {
       el.querySelector(`[data-fin-block="${id}"]`).click();
       expect(el.querySelector('.fin-empty')).toBeTruthy();
     }
+  });
+
+  it('сделка в комиссионке списывает количество и кладёт деньги в «Банк»', async () => {
+    const { page } = await openBlock('shop');
+    const { state } = await import('../js/core/state.js');
+    const { shopDealOperation } = await import('../js/modules/finance/model.js');
+    const item = state.finance.shopItems.find(i => i.side === 'sell');
+    const goldBefore = balances(state.finance.operations).gold;
+
+    item.qty = money(item.qty - 2);
+    state.finance.operations.unshift(shopDealOperation({ item, qty: 2 }));
+
+    expect(item.qty).toBe(1);                       // было 3
+    expect(balances(state.finance.operations).gold).toBe(goldBefore + 200);
+    expect(state.finance.operations[0].counterparty).toContain('Банк');
+    expect(state.finance.operations[0].source).toBe('shop');
+    page.renderFinance();
+  });
+
+  it('долг при создании уводит сумму из остатка, а взятый — добавляет', async () => {
+    const { page } = await openBlock();
+    const { state } = await import('../js/core/state.js');
+    const { loanOperation } = await import('../js/modules/finance/model.js');
+
+    const lent = { id: 'lx', direction: 'lent', who: 'Новый', principal: 5000, percent: 5, start: '2026-06-01', end: '2026-12-01', currency: 'gold', opId: null, payments: [] };
+    const op = loanOperation(lent);
+    lent.opId = op.id;
+    state.finance.loans.unshift(lent);
+    state.finance.operations.unshift(op);
+    const afterLent = balances(state.finance.operations).gold;
+    const goldBefore = ledgerTotals(FINANCE.operations, 'gold').balance;
+    expect(afterLent).toBe(goldBefore - 5000);
+
+    const borrowed = { id: 'ly', direction: 'borrowed', who: 'Другой', principal: 3000, percent: 3, start: '2026-06-01', end: '2026-12-01', currency: 'gold', opId: null, payments: [] };
+    const op2 = loanOperation(borrowed);
+    borrowed.opId = op2.id;
+    state.finance.loans.unshift(borrowed);
+    state.finance.operations.unshift(op2);
+    expect(balances(state.finance.operations).gold).toBe(afterLent + 3000);
+    page.renderFinance();
   });
 });

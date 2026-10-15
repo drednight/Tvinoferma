@@ -1,16 +1,16 @@
 // @ts-check
 // js/modules/finance/model.js
-// Раздел «Учёт»: единый реестр движений денег, комиссионный магазин, голд и долги.
+// Раздел «Учёт»: реестр движений денег, комиссионный магазин, голд и долги.
 // Здесь только чистые функции — без DOM и без state. Их проверяет tests/finance.test.js.
 //
 // Три идеи, на которых держится всё остальное:
 //
-// 1. ЕДИНЫЙ РЕЕСТР. Магазин, голд и возврат долга не хранят деньги отдельно, а порождают
+// 1. ЕДИНЫЙ РЕЕСТР. Комиссионка, голд и долги не хранят деньги отдельно, а порождают
 //    запись в `operations` с пометкой `source`. Иначе появятся три правды о деньгах,
-//    которые рано или поздно разойдутся, и «Сумма в банке» перестанет сходиться.
+//    которые рано или поздно разойдутся, и остаток перестанет сходиться с суммой строк.
 //
-// 2. СУММА ВСЕГДА ПОЛОЖИТЕЛЬНАЯ. Приход или расход — это `kind`, а не знак. Отрицательная
-//    сумма в реестре ломает все итоги сразу, поэтому нормализация её отсекает.
+// 2. СУММА ВСЕГДА ПОЛОЖИТЕЛЬНАЯ. Получил или потратил — это `kind`, а не знак.
+//    Отрицательная сумма в реестре ломает все итоги сразу, поэтому нормализация её отсекает.
 //
 // 3. ДЕНЬГИ ОКРУГЛЯЮТСЯ ЗДЕСЬ. Сумма, которую видит человек, уже округлена; накопление
 //    ошибки от float за год записей незаметно, но итог перестаёт сходиться с суммой строк —
@@ -31,8 +31,14 @@ export const CURRENCIES = {
 export const CURRENCY_IDS = Object.keys(CURRENCIES);
 export const DEFAULT_CURRENCY = 'gold';
 
-/** Комиссия комиссионного магазина по умолчанию (процент). В игре — 8%. */
-export const DEFAULT_COMMISSION_PCT = 8;
+/** Комиссия комиссионки по умолчанию (процент). */
+export const DEFAULT_COMMISSION_PCT = 2;
+
+/**
+ * Дней в «месяце» для показа сроков («1 мес. 30 дн.»). Только подпись: сама ставка
+ * так не делится, см. INTEREST_DAYS_IN_MONTH.
+ */
+export const SPAN_DAYS_PER_MONTH = 30;
 
 export function defaultFinance() {
   return {
@@ -45,10 +51,31 @@ export function defaultFinance() {
 
 // ── Числа и даты ───────────────────────────────────────────────────────────
 
-/** Деньги округляются до копеек: сумма в реестре, показанная глазом, обязана сходиться. */
+/**
+ * Деньги округляются до копеек: сумма в реестре, показанная глазом, обязана сходиться.
+ * Это округление по умолчанию — для валют, где копейки бывают (сейчас это Голд).
+ */
 export function money(value) {
   const n = Number(value);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+/**
+ * Округление под конкретную валюту. Золото в игре ходит ЦЕЛЫМИ числами, а Голд бывает
+ * дробным (цены, комиссия, проценты), поэтому валюта решает, что показывать.
+ * Разные валюты в одном расчёте смешивать нельзя: одна и та же сумма золота,
+ * посчитанная по-разному, дала бы разные остатки.
+ */
+export function roundFor(currency, value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return currency === CURRENCIES.gold.id ? Math.round(n) : money(n);
+}
+
+/** Округлённое число с разделителями — для показа в интерфейсе. */
+export function formatAmount(currency, value) {
+  const n = roundFor(currency, value);
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
 function positive(value) {
@@ -78,36 +105,89 @@ export function todayIso(now = new Date()) {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
-function parts(iso) {
-  const [y, m, d] = String(iso || '').split('-').map(Number);
-  return { y: y || 0, m: m || 1, d: d || 1 };
-}
-
 function isDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
 }
 
-/** Сколько ПОЛНЫХ месяцев прошло от `from` до `to`. Частичный месяц не считается:
- *  проценты начисляются помесячно, поэтому и месяц должен быть целым. */
-export function fullMonthsBetween(from, to) {
+/** Дата как UTC-полночь: разница в днях не должна зависеть от перехода на летнее время. */
+function dateMs(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number);
+  return Date.UTC(y || 0, (m || 1) - 1, d || 1);
+}
+
+/** Целых дней от `from` до `to`. Обратный порядок и битые даты дают 0. */
+export function daysBetween(from, to) {
   if (!isDate(from) || !isDate(to) || to <= from) return 0;
-  const a = parts(from);
-  const b = parts(to);
-  let months = (b.y - a.y) * 12 + (b.m - a.m);
-  if (b.d < a.d) months -= 1;   // 31.01 → 28.02 целым месяцем не считается
-  return Math.max(0, months);
+  return Math.round((dateMs(to) - dateMs(from)) / 86400000);
+}
+
+/** Дней в календарном месяце — для подписей и отчёта, не для начисления ставки. */
+export function daysInMonth(iso) {
+  const [y, m] = String(iso || '').split('-').map(Number);
+  if (!y || !m) return 30;
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+function nextMonthIso(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const target = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+  const last = daysInMonth(`${target}-01`);
+  // Выдача 31-го, а в следующем месяце 30 дней: отрезок обрывается в последний день
+  return `${target}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+/**
+ * Разбивка периода на месячные отрезки: от даты выдачи к такой же дате следующего месяца
+ * («с 15-го по 15-е»). Каждый отрезок отдаёт `length` — свою полную длину в днях, и
+ * `days` — сколько из них реально прошло.
+ *
+ * Делитель — длина САМОГО отрезка, а не число дней в каком-то месяце: полный отрезок
+ * это ровно один месяц и стоит ровно месячную ставку, а неполный — её долю. Так 01.01→01.02
+ * (31 день) и 01.02→01.03 (28 дней) стоят одинаково, потому что оба — один месяц.
+ */
+function monthChunks(from, to) {
+  const chunks = [];
+  let cursor = from;
+  let guard = 0;   // страховка от зацикливания на битой дате
+  while (cursor < to && guard++ < 1200) {
+    const boundary = nextMonthIso(cursor);
+    const length = daysBetween(cursor, boundary) || 1;
+    const end = boundary < to ? boundary : to;
+    const days = daysBetween(cursor, end);
+    if (days > 0) chunks.push({ from: cursor, to: end, days, length });
+    cursor = end;
+  }
+  return chunks;
+}
+
+/** Проценты за отрезок: полный отрезок = месячная ставка, неполный = его доля. */
+function interestOver(principal, percentPerMonth, from, to) {
+  return monthChunks(from, to)
+    .reduce((sum, c) => sum + principal * percent(percentPerMonth) / 100 * c.days / c.length, 0);
+}
+
+/** «30 дней» → «1 мес.» — для карточки долга. */
+export function spanLabel(days) {
+  const d = Math.max(0, Math.round(Number(days) || 0));
+  const months = Math.floor(d / SPAN_DAYS_PER_MONTH);
+  const rest = d % SPAN_DAYS_PER_MONTH;
+  if (!months) return `${d} дн.`;
+  return rest ? `${months} мес. ${rest} дн.` : `${months} мес.`;
 }
 
 // ── Нормализация ───────────────────────────────────────────────────────────
 
 function normalizeOperation(input = {}) {
+  const currency = CURRENCY_IDS.includes(input.currency) ? input.currency : DEFAULT_CURRENCY;
   return {
     id: String(input.id || uid()),
     date: isDate(input.date) ? input.date : todayIso(),
-    currency: CURRENCY_IDS.includes(input.currency) ? input.currency : DEFAULT_CURRENCY,
+    currency,
     // Чужое значение в kind не должно превращать расход в приход
     kind: input.kind === 'in' ? 'in' : 'out',
-    amount: money(positive(input.amount)),
+    // Валюта задана выше: округляем под неё, иначе сумма золота с хвостом проскочила бы
+    // в реестр и остаток перестал бы сходиться
+    amount: roundFor(currency, positive(input.amount)),
     counterparty: String(input.counterparty || '').slice(0, 200),
     note: String(input.note || '').slice(0, 500),
     status: String(input.status || '').slice(0, 100),
@@ -117,8 +197,8 @@ function normalizeOperation(input = {}) {
 }
 
 /**
- * Позиция комиссионного магазина. Это не разовая операция, а остаток на складе:
- * продал 3 «Зелья», потом ещё ещё 2 — получится одна позиция на 5 штук.
+ * Позиция комиссионки. Это остаток на складе, а не разовая операция: продал 3 «Зелья»,
+ * потом ещё 2 — получится одна позиция на 5 штук, а списание уменьшает количество.
  */
 function normalizeShopItem(input = {}) {
   return {
@@ -153,6 +233,9 @@ function normalizeLoan(input = {}) {
     end: isDate(input.end) ? input.end : '',
     currency: CURRENCY_IDS.includes(input.currency) ? input.currency : DEFAULT_CURRENCY,
     note: String(input.note || '').slice(0, 500),
+    // id записи в реестре, которой открыт этот долг: по нему правка суммы долга
+    // обновляет и саму запись, а не ищет её угадыванием по дате
+    opId: input.opId ? String(input.opId) : null,
     payments: (Array.isArray(input.payments) ? input.payments : [])
       .map(normalizeLoanPayment)
       .filter(p => p.amount > 0)
@@ -168,6 +251,7 @@ export function normalizeFinance(input = {}) {
       // Запись без суммы ничего не значит: нулевой «приход» только раздувает список
       .filter(op => op.amount > 0)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    // Позиция без количества — проданная подчистую: держать её незачем, деньги уже в реестре
     shopItems: (Array.isArray(raw.shopItems) ? raw.shopItems : []).map(normalizeShopItem)
       .filter(item => item.name && item.qty > 0 && item.price > 0)
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
@@ -197,7 +281,13 @@ export function ledgerTotals(operations, currency = null) {
     if (op.kind === 'in') income += op.amount;
     else expense += op.amount;
   }
-  return { income: money(income), expense: money(expense), balance: money(income - expense) };
+  // Округляем под валюту: сумма целых строк золота и сама обязана остаться целой
+  const id = currency || DEFAULT_CURRENCY;
+  return {
+    income: roundFor(id, income),
+    expense: roundFor(id, expense),
+    balance: roundFor(id, income - expense)
+  };
 }
 
 /** Итоги по каждой валюте сразу: `{ gold: {...}, coins: {...} }`. */
@@ -206,6 +296,15 @@ export function ledgerTotalsByCurrency(operations) {
   const out = {};
   for (const id of CURRENCY_IDS) out[id] = ledgerTotals(operations, id);
   return out;
+}
+
+/** Сколько сейчас в наличии по каждой валюте — для блока «Банк» и форм сделки. */
+export function balances(operations) {
+  const totals = ledgerTotalsByCurrency(operations);
+  return CURRENCY_IDS.reduce((acc, id) => {
+    acc[id] = totals[id].balance;
+    return acc;
+  }, /** @type {Record<string, number>} */ ({}));
 }
 
 export function monthOf(date) {
@@ -244,38 +343,16 @@ export function groupByMonth(operations) {
     }));
 }
 
-/**
- * Нарастающий итог внутри месяца — то, что в таблице было в колонке «Банковские расчеты».
- *
- * Баланс ведётся ПО ВАЛЮТЕ: месяц содержит и золото, и голд, и общий счётчик сложил бы
- * несовместимые величины, а запись в чужой валюте ещё и выпала бы из списка.
- * Валюта в аргументе остаётся как фильтр для тех, кому нужен один счётчик.
- */
-export function runningBalance(operations, currency = null) {
-  const byDate = operations
-    .filter(op => !currency || op.currency === currency)
-    .slice()
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-  /** @type {Record<string, number>} */
-  const balances = {};
-  return byDate.map(op => {
-    const next = (balances[op.currency] || 0) + (op.kind === 'in' ? op.amount : -op.amount);
-    balances[op.currency] = money(next);
-    return { ...op, balanceAfter: balances[op.currency] };
-  });
-}
+// ── Комиссионка ────────────────────────────────────────────────────────────
 
-// ── Магазин ────────────────────────────────────────────────────────────────
-
-/** Итог по позиции: цена за штуку × количество. */
+/** Итог по позиции: цена за штуку × сколько осталось на складе. */
 export function shopItemTotal(item) {
-  return money(positive(item?.price) * positive(item?.qty));
+  return roundFor(DEFAULT_CURRENCY, positive(item?.price) * positive(item?.qty));
 }
 
 /**
- * Сводка по магазину. `sell` — что я выставил (приход золота), `buy` — что я купил
- * (расход золота). Считается по позициям, а не по записям реестра: позицию можно
- * продать не полностью, и тогда она ещё числится на складе.
+ * Сводка по тому, что сейчас на складе. Считается по позициям, а не по записям реестра:
+ * проданная часть уже вычтена из количества и живёт в реестре отдельной записью.
  */
 export function shopTotals(items) {
   const sell = { count: 0, qty: 0, sum: 0 };
@@ -287,9 +364,9 @@ export function shopTotals(items) {
     bucket.sum += shopItemTotal(item);
   }
   return {
-    sell: { ...sell, qty: positive(sell.qty), sum: money(sell.sum) },
-    buy: { ...buy, qty: positive(buy.qty), sum: money(buy.sum) },
-    net: money(sell.sum - buy.sum)   // продажи минус покупки: сколько золота заработано
+    sell: { ...sell, qty: positive(sell.qty), sum: roundFor(DEFAULT_CURRENCY, sell.sum) },
+    buy: { ...buy, qty: positive(buy.qty), sum: roundFor(DEFAULT_CURRENCY, buy.sum) },
+    net: roundFor(DEFAULT_CURRENCY, sell.sum - buy.sum)
   };
 }
 
@@ -308,6 +385,30 @@ export function findShopItem(items, { side, name, price }) {
   ) || null;
 }
 
+/**
+ * Продажа или покупка части позиции. Возвращает запись в реестр: деньги двигаются
+ * один раз, а количество на складе уменьшается на проданное.
+ *
+ * Продажа — приход Золота, покупка — расход. Комиссионка торгует именно за Золото.
+ */
+export function shopDealOperation({ item, qty, date = todayIso() }) {
+  const sold = item.side !== 'buy';
+  const count = money(positive(qty));
+  return {
+    id: uid(),
+    date,
+    kind: sold ? 'in' : 'out',
+    currency: DEFAULT_CURRENCY,
+    // Цена в комиссионке — целое золото, поэтому и произведение целое
+    amount: roundFor(DEFAULT_CURRENCY, positive(item.price) * count),
+    counterparty: `Банк · ${sold ? 'продажа' : 'покупка'} ${item.name} ×${count}`,
+    note: '',
+    status: '',
+    source: 'shop',
+    ref: item.id
+  };
+}
+
 // ── Голд и комиссия ────────────────────────────────────────────────────────
 
 /**
@@ -318,23 +419,29 @@ export function findShopItem(items, { side, name, price }) {
  *            потратив `coins * pct` голда сверху (всего `coins * (1 + pct/100)`).
  *   покупка:  получил `coins` голда → заплатил `coins * rate * (1 + pct/100)` золота.
  *
- * Из-за этого «8% при продаже» съедают не 8% курса, а 8/108 ≈ 7.41%: комиссию считают
- * от номинала, а убыток измеряют от курса. Поэтому здесь есть и `effectiveRate`.
+ * Из-за этого комиссия съедает не `pct%` курса, а `pct/100/(1 + pct/100)`:
+ * комиссию считают от номинала, а убыток измеряют от курса. Поэтому здесь есть
+ * и `effectiveRate`.
  */
 export function goldDeal({ side, coins, rate, commissionPct = DEFAULT_COMMISSION_PCT }) {
   const c = positive(coins);
   const r = positive(rate);
   const pct = commissionPctOf(commissionPct);
+  // Голд округляется копейками, золото — до целого: купленный/проданный голд с хвостом
+  // в реестр не попадает, а сумма золота всегда та, что показана в интерфейсе
+  const gold = (v) => roundFor(CURRENCIES.gold.id, v);
+  // Курс — это цена за 1 голд, а не сумма золота: округлять его до целых нельзя,
+  // иначе «980 392» вместо «980 392,16» выглядело бы как потеря в комиссии
+  const perCoin = (v) => money(v);
   const commissionCoins = money(c * (pct / 100));
-  const nominal = money(c * r);
+  const nominal = gold(c * r);
   if (side === 'buy') {
-    const commissionGold = money(commissionCoins * r);
-    const gold = money(nominal + commissionGold);
+    const commissionGold = gold(commissionCoins * r);
     return {
-      side, coins: money(c), gold,
+      side, coins: money(c), coinsTotal: money(c), gold: gold(nominal + commissionGold),
       commissionCoins, commissionGold,
       // Покупка: золото делится на полученный голд — во сколько обошёлся 1 голд
-      effectiveRate: c > 0 ? money(gold / c) : 0
+      effectiveRate: c > 0 ? perCoin(gold(nominal + commissionGold) / c) : 0
     };
   }
   const coinsTotal = money(c + commissionCoins);   // продажа: столько голда уходит с руки
@@ -342,11 +449,45 @@ export function goldDeal({ side, coins, rate, commissionPct = DEFAULT_COMMISSION
     side, coins: money(c), coinsTotal, gold: nominal,
     commissionCoins,
     commissionGold: 0,   // при продаже комиссия ушла голдом: золото получено целиком
-    effectiveRate: coinsTotal > 0 ? money(nominal / coinsTotal) : 0
+    effectiveRate: coinsTotal > 0 ? perCoin(nominal / coinsTotal) : 0
   };
 }
 
-/** Насколько фактический курс хуже номинального, в процентах. Комиссия 8% → 7.41%. */
+/**
+ * Сделка с голдом — это ДВЕ записи в реестре, а не одна: голд всегда уходит в одну
+ * сторону, золото — в другую. Записать только золото (как было) означалоло бы, что
+ * купленный голд нигде не появился и наличные разошлись с остатком.
+ */
+export function goldDealOperations({ side, coins, rate, commissionPct, date = todayIso() }) {
+  const deal = goldDeal({ side, coins, rate, commissionPct });
+  const sold = side !== 'buy';
+  const label = sold ? 'Продажа голда' : 'Покупка голда';
+  const note = `${deal.coins} голд по курсу ${money(rate)}, комиссия ${deal.commissionCoins} голд`;
+  return {
+    deal,
+    operations: [
+      {
+        id: uid(), date,
+        kind: sold ? 'out' : 'in',
+        currency: 'coins',
+        // При продаже с рук уходит голд вместе с комиссией, при покупке — ровно купленное
+        amount: sold ? deal.coinsTotal : deal.coins,
+        counterparty: `Голд · ${sold ? 'продано' : 'куплено'}`,
+        note, status: '', source: 'gold', ref: null
+      },
+      {
+        id: uid(), date,
+        kind: sold ? 'in' : 'out',
+        currency: 'gold',
+        amount: deal.gold,
+        counterparty: label,
+        note, status: '', source: 'gold', ref: null
+      }
+    ]
+  };
+}
+
+/** Насколько фактический курс хуже номинального, в процентах. */
 export function commissionLossPct(effectiveRate, nominalRate) {
   const r = positive(nominalRate);
   if (!r) return 0;
@@ -358,10 +499,12 @@ export function commissionLossPct(effectiveRate, nominalRate) {
 /**
  * Начисление процентов и остаток долга на дату.
  *
- * Проценты простые, на остаток тела долга, помесячно: полный месяц считается целиком,
- * неполный — не считается вовсе. Выплата гасит сначала начисленные проценты, остаток
- * идёт в тело долга, поэтому база уменьшается и дальше проценты капают только на
- * остаток — ровно то, ради чего затевалась выплата частями.
+ * Линейные проценты с ежедневной базой по календарю: месячная ставка делится на число
+ * дней СВОЕГО месяца, а месячные отрезки идут от даты выдачи к такой же дате следующего
+ * месяца. За полный отрезок начисляется ровно месячная ставка, за неполный — его доля
+ * по календарю: в феврале на день приходится больше, чем в марте, и «деление на 30»
+ * это размазывало. Выплата гасит сначала начисленные проценты, остаток идёт в тело
+ * долга, поэтому база уменьшается и дальше проценты капают только на остаток.
  *
  * Считается одним проходом по выплатам в порядке дат: рекурсии между начислением и
  * разбиением выплаты нет, иначе долг с двумя десятками выплат уронил бы стек.
@@ -370,65 +513,63 @@ export function commissionLossPct(effectiveRate, nominalRate) {
  * @param {string} asOfIso
  */
 export function loanAccrual(loan, asOfIso = todayIso()) {
+  // Долг живёт в одной валюте, и округление процентов — тоже под неё: золото целое,
+  // и набежавшие 0,4 процента не должны превращаться в лишнее золото у каждого
+  // месячного отрезка и накапливаться за срок
+  const round = (v) => roundFor(loan?.currency || DEFAULT_CURRENCY, v);
   const start = loan?.start;
   const end = loan?.end || null;
   // Дальше крайнего срока проценты не идут: долг не должен расти бесконечно
   const cutoff = end && asOfIso > end ? end : asOfIso;
-  const rate = percent(loan?.percent) / 100;
-  // Без срока проценты не идут: начислять их «бесконечно» нельзя, а loanForecast для
-  // такого долга отдаёт 0 месяцев и одну только сумму — иначе эти две функции
-  // показывали бы разное и человек не понял бы, сколько отдавать
-  const elapsed = end ? fullMonthsBetween(start, cutoff) : 0;
+  // Без срока проценты не идут: начислять их «бесконечно» нельзя, иначе эта функция
+  // показывала бы одно, а loanForecast — другое
+  const accrues = !!end;
 
   const payments = (loan?.payments || [])
     .filter(p => p.date <= cutoff)
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-  let outstanding = money(loan?.principal);
+  let outstanding = round(loan?.principal);
   let interest = 0;      // начислено всего
   let interestDue = 0;   // начислено, но ещё не погашено выплатами
   let paid = 0;          // погашено тела долга
   let interestPaid = 0;  // погашено процентов
-  let accruedMonths = 0;
+  let cursor = start;
 
-  for (const payment of payments) {
-    const monthOfPayment = fullMonthsBetween(start, payment.date);
-    // Проценты за все целые месяцы до месяца этой выплаты — на тот остаток, который был
-    while (accruedMonths < monthOfPayment) {
-      const due = outstanding * rate;
+  const accrueTo = (to) => {
+    if (!accrues || to <= cursor) { cursor = to; return; }
+    for (const chunk of monthChunks(cursor, to)) {
+      const due = outstanding * percent(loan?.percent) / 100 * chunk.days / chunk.length;
       interest += due;
       interestDue += due;
-      accruedMonths += 1;
     }
-    const amount = money(payment.amount);
-    const interestPart = money(Math.min(amount, interestDue));
-    const principalPart = money(amount - interestPart);
-    interestDue = money(interestDue - interestPart);
-    outstanding = money(Math.max(0, outstanding - principalPart));
-    paid = money(paid + principalPart);
-    interestPaid = money(interestPaid + interestPart);
-  }
+    cursor = to;
+  };
 
-  // Добираем проценты до текущей даты по остатку, который к этому моменту и есть
-  while (accruedMonths < elapsed) {
-    const due = outstanding * rate;
-    interest += due;
-    interestDue += due;
-    accruedMonths += 1;
+  for (const payment of payments) {
+    accrueTo(payment.date);
+    const amount = round(payment.amount);
+    const interestPart = round(Math.min(amount, interestDue));
+    const principalPart = round(amount - interestPart);
+    interestDue = round(interestDue - interestPart);
+    outstanding = round(Math.max(0, outstanding - principalPart));
+    paid = round(paid + principalPart);
+    interestPaid = round(interestPaid + interestPart);
   }
+  accrueTo(cutoff);
 
-  outstanding = money(Math.max(0, outstanding));
-  interest = money(Math.max(0, interest));
+  outstanding = round(Math.max(0, outstanding));
+  interest = round(Math.max(0, interest));
   return {
-    principal: money(loan?.principal),
+    principal: round(loan?.principal),
     paid,
     interestPaid,
     outstanding,
     interest,
-    interestDue: money(Math.max(0, interestDue)),
-    total: money(outstanding + interestDue),
-    months: elapsed,
+    interestDue: round(Math.max(0, interestDue)),
+    total: round(outstanding + Math.max(0, interestDue)),
+    days: daysBetween(start, cutoff),
     rate: percent(loan?.percent)
   };
 }
@@ -439,22 +580,24 @@ export function loanAccrual(loan, asOfIso = todayIso()) {
  * сумму, — и это же объясняет, почему дальше проценты считаются с меньшей базы.
  */
 export function paymentSplit(loan, payment) {
-  const amount = money(positive(payment?.amount));
+  const round = (v) => roundFor(loan?.currency || DEFAULT_CURRENCY, v);
+  const amount = round(positive(payment?.amount));
   const others = {
     ...loan,
     payments: (loan?.payments || []).filter(p => p.id !== payment?.id && p.date < payment?.date)
   };
   const { interestDue } = loanAccrual(others, payment?.date || todayIso());
-  const interest = money(Math.min(amount, interestDue));
-  return { interest, principal: money(amount - interest) };
+  const interest = round(Math.min(amount, interestDue));
+  return { interest, principal: round(amount - interest) };
 }
 
 /** Сколько придётся отдать за весь срок, если выплат не было. */
 export function loanForecast(loan) {
-  const months = loan.end ? fullMonthsBetween(loan.start, loan.end) : 0;
-  const principal = money(loan.principal);
-  const interest = money(principal * (percent(loan.percent) / 100) * months);
-  return { months, principal, interest, total: money(principal + interest) };
+  const round = (v) => roundFor(loan?.currency || DEFAULT_CURRENCY, v);
+  const days = loan?.end ? daysBetween(loan.start, loan.end) : 0;
+  const principal = round(loan.principal);
+  const interest = round(loan?.end ? interestOver(principal, loan.percent, loan.start, loan.end) : 0);
+  return { days, principal, interest, total: round(principal + interest) };
 }
 
 /** Остаток, переплата по сроку и признак просрочки — для карточки долга. */
@@ -465,5 +608,28 @@ export function loanStatus(loan, asOfIso = todayIso()) {
     term: loanForecast(loan),
     settled: acc.total <= 0,
     overdue: !!loan.end && asOfIso > loan.end && acc.total > 0
+  };
+}
+
+/**
+ * Долг — это тоже движение денег: отдал в долг = расход из остатка, взял в долг =
+ * приход. Без этой записи остаток в «Банке» врал бы на всю сумму долга, хотя деньги
+ * физически ушли или пришли.
+ */
+export function loanOperation(loan, date = null) {
+  const lent = loan?.direction !== 'borrowed';
+  const pct = percent(loan?.percent);
+  const end = loan?.end || null;
+  return {
+    id: loan?.opId || uid(),
+    date: date || loan?.start || todayIso(),
+    kind: lent ? 'out' : 'in',
+    currency: loan?.currency || DEFAULT_CURRENCY,
+    amount: roundFor(loan?.currency || DEFAULT_CURRENCY, loan?.principal),
+    counterparty: lent ? `Дал в долг — ${loan?.who || ''}` : `Взял в долг — ${loan?.who || ''}`,
+    note: loan?.note || (pct ? `${pct}%${end ? ` до ${end}` : ', без срока'}` : ''),
+    status: '',
+    source: 'debt',
+    ref: loan?.id || null
   };
 }

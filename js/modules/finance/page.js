@@ -1,9 +1,9 @@
 // js/modules/finance/page.js
-// Раздел «Учёт»: приход и расход, комиссионный магазин, голд и долги.
+// Раздел «Учёт»: банк, комиссионка и долги.
 //
-// Четыре блока под общей вкладкой, потому что это четыре взгляда на одни и те же деньги,
-// а не четыре независимых раздела. Все три из них (магазин, голд, возврат долга) пишут
-// в общий реестр: если у каждого будут свои деньги, «Сумма в банке» перестанет сходиться.
+// Три блока под общей вкладкой, потому что это три взгляда на одни и те же деньги, а не
+// три независимых раздела. Комиссионка, голд и долги не хранят деньги отдельно —
+// каждый из них пишет в общий реестр: иначе «остаток» перестанет сходиться с суммой строк.
 //
 // Считает всё модель (finance/model.js) — здесь только разметка и обработчики.
 
@@ -12,16 +12,15 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import {
-  CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY,
-  money, todayIso, normalizeFinance, ledgerTotalsByCurrency,
-  groupByMonth, runningBalance, shopTotals, shopItemTotal,
-  findShopItem, goldDeal, commissionLossPct, loanStatus, paymentSplit
+  CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY, DEFAULT_COMMISSION_PCT,
+  money, roundFor, formatAmount, todayIso, normalizeFinance, balances, ledgerTotalsByCurrency,
+  groupByMonth, shopTotals, shopItemTotal, findShopItem, shopDealOperation,
+  goldDeal, goldDealOperations, commissionLossPct, loanStatus, loanOperation, paymentSplit, spanLabel
 } from './model.js';
 
 const BLOCKS = [
-  { id: 'ledger', label: 'Приход и расход', icon: '📒' },
-  { id: 'shop', label: 'Магазин', icon: '🏪' },
-  { id: 'gold', label: 'Голд', icon: '🪙' },
+  { id: 'ledger', label: 'Банк', icon: '🏦' },
+  { id: 'shop', label: 'Комиссионка', icon: '🏪' },
   { id: 'loans', label: 'Долги', icon: '🤝' }
 ];
 
@@ -42,8 +41,13 @@ function save() {
   renderFinance();
 }
 
-function fmt(value) {
-  return money(value).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+/**
+ * Число для показа. Золото округляется до целых, Голд оставляет копейки — иначе в
+ * интерфейсе и в реестре были бы разные числа. Валюту по умолчанию берём Золото,
+ * потому что почти все суммы в разделе — золотые.
+ */
+function fmt(value, currency = DEFAULT_CURRENCY) {
+  return formatAmount(currency, value);
 }
 
 function cur(id) {
@@ -91,9 +95,21 @@ function textField(label, name, value, placeholder = '') {
     </label>`;
 }
 
-// ── Блок «Приход и расход» ────────────────────────────────────────────────
+/** Полоса «сколько сейчас в наличии» по обеим валютам. */
+function balancesRow() {
+  const now = balances(fin().operations);
+  return `
+    <div class="fin-holdings">
+      ${CURRENCY_IDS.map(id => `
+        <span class="fin-holding ${now[id] < 0 ? 'fin-out' : ''}">
+          ${cur(id).icon} ${escapeHtml(cur(id).title)}: <b>${fmt(now[id], id)}</b>
+        </span>`).join('')}
+    </div>`;
+}
 
-function ledgerSummary() {
+// ── Блок «Банк» ───────────────────────────────────────────────────────────
+
+function bankSummary() {
   const totals = ledgerTotalsByCurrency(fin().operations);
   return `
     <div class="fin-summary">
@@ -102,70 +118,72 @@ function ledgerSummary() {
         return `
         <div class="fin-summary-cell">
           <span class="fin-summary-label">${cur(id).icon} ${escapeHtml(cur(id).title)}</span>
-          <span class="fin-summary-row"><small>Приход</small><b class="fin-in">+${fmt(t.income)}</b></span>
-          <span class="fin-summary-row"><small>Расход</small><b class="fin-out">−${fmt(t.expense)}</b></span>
-          <span class="fin-summary-row fin-summary-total"><small>Остаток</small><b>${fmt(t.balance)}</b></span>
+          <span class="fin-summary-row"><small>Получил</small><b class="fin-in">+${fmt(t.income, id)}</b></span>
+          <span class="fin-summary-row"><small>Потратил</small><b class="fin-out">−${fmt(t.expense, id)}</b></span>
+          <span class="fin-summary-row fin-summary-total"><small>Остаток</small><b>${fmt(t.balance, id)}</b></span>
         </div>`;
       }).join('')}
     </div>`;
 }
 
 const SOURCE_LABEL = {
-  manual: '', shop: 'магазин', gold: 'голд', debt: 'долг'
+  manual: '', shop: 'комиссионка', gold: 'голд', debt: 'долг'
 };
 
-function operationRow(op, balanceAfter) {
+const KIND_LABEL = { in: 'Получил', out: 'Потратил' };
+
+function operationRow(op) {
   const isIn = op.kind === 'in';
   return `
     <tr class="fin-row">
       <td class="fin-date">${escapeHtml(op.date.slice(8))}.${escapeHtml(op.date.slice(5, 7))}</td>
       <td class="fin-kind">
-        <span class="fin-chip ${isIn ? 'is-in' : 'is-out'}">${isIn ? 'Приход' : 'Расход'}</span>
+        <span class="fin-chip ${isIn ? 'is-in' : 'is-out'}">${KIND_LABEL[op.kind]}</span>
         ${SOURCE_LABEL[op.source] ? `<span class="fin-source">${escapeHtml(SOURCE_LABEL[op.source])}</span>` : ''}
       </td>
       <td class="fin-what">
         <b>${escapeHtml(op.counterparty || '—')}</b>
         ${op.note ? `<small class="muted">${escapeHtml(op.note)}</small>` : ''}
       </td>
-      <td class="fin-amount ${isIn ? 'fin-in' : 'fin-out'}">${isIn ? '+' : '−'}${fmt(op.amount)} <small class="muted">${escapeHtml(cur(op.currency).short)}</small></td>
-      <td class="fin-balance muted">${fmt(balanceAfter)}</td>
+      <td class="fin-amount ${isIn ? 'fin-in' : 'fin-out'}">${isIn ? '+' : '−'}${fmt(op.amount, op.currency)} <small class="muted">${escapeHtml(cur(op.currency).short)}</small></td>
       <td class="fin-actions">
-        <button type="button" class="btn ghost small" data-fin-act="edit-op" data-id="${escapeHtml(op.id)}" title="Изменить">✏️</button>
-        <button type="button" class="btn ghost small" data-fin-act="del-op" data-id="${escapeHtml(op.id)}" title="Удалить">🗑️</button>
+        <button type="button" class="btn ghost small fin-icon" data-fin-act="edit-op" data-id="${escapeHtml(op.id)}" title="Изменить">✏️</button>
+        <button type="button" class="btn ghost small fin-icon" data-fin-act="del-op" data-id="${escapeHtml(op.id)}" title="Удалить">🗑️</button>
       </td>
     </tr>`;
 }
 
-function ledgerBlock() {
+function bankTable() {
   const { operations } = fin();
   if (!operations.length) {
-    return `<p class="fin-empty">Записей пока нет. Нажмите «Записать» — и здесь появятся приход и расход.</p>`;
+    return '<p class="fin-empty">Записей пока нет. Нажмите «Записать» — и здесь появятся все движения денег.</p>';
   }
   const months = groupByMonth(operations);
-  return months.map(group => {
-    const rows = runningBalance(group.operations);
-    return `
-      <details class="panel fold fin-month" ${group === months[0] ? 'open' : ''}>
-        <summary>
-          <h3>${escapeHtml(group.label)}</h3>
-          <span class="fin-month-totals">
-            ${CURRENCY_IDS.map(id => `<span class="${group.totals[id].balance < 0 ? 'fin-out' : 'fin-in'}">${escapeHtml(cur(id).short)} ${fmt(group.totals[id].balance)}</span>`).join('')}
-          </span>
-        </summary>
+  return months.map(group => `
+    <details class="panel fold fin-month" ${group === months[0] ? 'open' : ''}>
+      <summary>
+        <h3>${escapeHtml(group.label)}</h3>
+        <span class="fin-month-totals">
+          ${CURRENCY_IDS.map(id => `<span class="${group.totals[id].balance < 0 ? 'fin-out' : 'fin-in'}">${escapeHtml(cur(id).short)} ${fmt(group.totals[id].balance, id)}</span>`).join('')}
+        </span>
+      </summary>
+      <div class="fin-table-wrap">
         <table class="fin-table">
-          <thead><tr><th>Дата</th><th>Вид</th><th>Откуда / на что</th><th class="fin-num">Сумма</th><th class="fin-num">Итог</th><th></th></tr></thead>
-          <tbody>${rows.map(r => operationRow(r, r.balanceAfter)).join('')}</tbody>
+          <thead><tr><th>Дата</th><th>Вид</th><th>Откуда / на что</th><th class="fin-num">Сумма</th><th></th></tr></thead>
+          <tbody>${group.operations.map(operationRow).join('')}</tbody>
         </table>
-      </details>`;
-  }).join('');
+      </div>
+    </details>`).join('');
 }
 
-// ── Блок «Магазин» ────────────────────────────────────────────────────────
+// ── Блок «Комиссионка» ────────────────────────────────────────────────────
 
 function shopColumn(side, items, totals) {
   const isSell = side === 'sell';
   const title = isSell ? 'Продажа' : 'Покупка';
   const sign = isSell ? '+' : '−';
+  const act = isSell ? 'Продано' : 'Куплено';
+  const actIcon = isSell ? '📤' : '🛒';
   return `
     <div class="fin-shop-col">
       <header class="fin-shop-head">
@@ -173,27 +191,31 @@ function shopColumn(side, items, totals) {
         <span class="muted">${totals.count} поз. · ${fmt(totals.qty)} шт.</span>
       </header>
       ${items.length ? `
-        <table class="fin-table fin-table-compact">
-          <thead><tr><th>Предмет</th><th class="fin-num">Цена</th><th class="fin-num">Кол-во</th><th class="fin-num">Итого</th><th></th></tr></thead>
-          <tbody>
-            ${items.map(item => `
-              <tr class="fin-row">
-                <td class="fin-what">
-                  <b>${escapeHtml(item.name)}</b>
-                  <small class="muted">${escapeHtml(item.date.slice(8))}.${escapeHtml(item.date.slice(5, 7))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small>
-                </td>
-                <td class="fin-num">${fmt(item.price)}</td>
-                <td class="fin-num">${fmt(item.qty)}</td>
-                <td class="fin-num"><b>${fmt(shopItemTotal(item))}</b></td>
-                <td class="fin-actions">
-                  <button type="button" class="btn ghost small" data-fin-act="bump-item" data-id="${escapeHtml(item.id)}" title="Долить такое же количество">➕</button>
-                  <button type="button" class="btn ghost small" data-fin-act="del-item" data-id="${escapeHtml(item.id)}" title="Убрать позицию">🗑️</button>
-                </td>
-              </tr>`).join('')}
-          </tbody>
-        </table>` : '<p class="fin-empty">Пусто</p>'}
+        <div class="fin-table-wrap">
+          <table class="fin-table fin-table-compact">
+            <thead><tr><th>Предмет</th><th class="fin-num">Цена</th><th class="fin-num">Осталось</th><th class="fin-num">Итого</th><th></th></tr></thead>
+            <tbody>
+              ${items.map(item => `
+                <tr class="fin-row">
+                  <td class="fin-what">
+                    <b>${escapeHtml(item.name)}</b>
+                    <small class="muted">${escapeHtml(item.date.slice(8))}.${escapeHtml(item.date.slice(5, 7))}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small>
+                  </td>
+                  <td class="fin-num">${fmt(item.price)}</td>
+                  <td class="fin-num">${fmt(item.qty)}</td>
+                  <td class="fin-num"><b>${fmt(shopItemTotal(item))}</b></td>
+                  <td class="fin-actions">
+                    <button type="button" class="btn ghost small fin-icon" data-fin-act="deal-item" data-id="${escapeHtml(item.id)}"
+                            title="Записать, сколько ${escapeHtml(act.toLowerCase())}">${actIcon}</button>
+                    <button type="button" class="btn ghost small fin-icon" data-fin-act="edit-item" data-id="${escapeHtml(item.id)}" title="Изменить">✏️</button>
+                    <button type="button" class="btn ghost small fin-icon" data-fin-act="del-item" data-id="${escapeHtml(item.id)}" title="Убрать позицию">🗑️</button>
+                  </td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : '<p class="fin-empty">Пусто</p>'}
       <footer class="fin-shop-foot">
-        <span class="muted">Итого</span>
+        <span class="muted">На складе</span>
         <b class="${isSell ? 'fin-in' : 'fin-out'}">${sign}${fmt(totals.sum)} ${escapeHtml(cur(DEFAULT_CURRENCY).short)}</b>
       </footer>
     </div>`;
@@ -202,47 +224,31 @@ function shopColumn(side, items, totals) {
 function shopBlock() {
   const items = fin().shopItems;
   const totals = shopTotals(items);
+  const now = balances(fin().operations);
   return `
+    <div class="fin-actions-row">
+      <button type="button" class="btn primary" data-fin-act="add-item">➕ Добавить позицию</button>
+      <span class="muted">На складе: продажа <b>${fmt(totals.sell.sum)}</b>, покупка <b>${fmt(totals.buy.sum)}</b> золота</span>
+    </div>
     <div class="fin-shop">
       ${shopColumn('sell', items.filter(i => i.side !== 'buy'), totals.sell)}
       ${shopColumn('buy', items.filter(i => i.side === 'buy'), totals.buy)}
     </div>
-    <div class="fin-actions-row">
-      <button type="button" class="btn primary" data-fin-act="add-item">➕ Добавить позицию</button>
-      <span class="muted">Золото заработано за вычетом купленного: <b>${fmt(totals.net)}</b></span>
-    </div>`;
+    <p class="muted fin-shop-hint">
+      📤 в колонке «Продажа» и 🛒 в «Покупке» записывают, сколько реально продано или куплено:
+      количество вычитается со склада, а деньги падают в «Банк» отдельной записью от «Банк · …».
+      Сейчас золота <b>${fmt(now[DEFAULT_CURRENCY])}</b>.
+    </p>`;
 }
 
-// ── Блок «Голд» ───────────────────────────────────────────────────────────
-
-function goldBlock() {
-  const { goldRate, goldRateAt, commissionPct } = fin().settings;
-  const sample = goldDeal({ side: 'sell', coins: 1000, rate: goldRate, commissionPct });
-  const loss = commissionLossPct(sample.effectiveRate, goldRate);
-  return `
-    <div class="fin-gold-settings">
-      ${field('Курс: 1 голд = ? золота', 'goldRate', goldRate, { type: 'number', step: '0.000001', min: 0, placeholder: '1000000' })}
-      ${field('Комиссия, %', 'commissionPct', commissionPct, { type: 'number', step: '0.01', min: 0 })}
-      <button type="button" class="btn primary" data-fin-act="save-gold">💾 Сохранить курс</button>
-    </div>
-    <p class="muted fin-gold-hint">
-      ${goldRateAt ? `Курс от ${escapeHtml(goldRateAt)}. Он зависит от рынка, поэтому меняется со временем.` : 'Курс ещё не задан.'}
-      Комиссия берётся голдом: при продаже 1000 голд уходит ${fmt(sample.coinsTotal ?? 0)} голда вместо 1000,
-      фактический курс ${fmt(sample.effectiveRate)} вместо ${fmt(goldRate)}
-      <b>(${loss > 0 ? `−${fmt(loss)}%` : '—'})</b>.
-    </p>
-    <div class="fin-actions-row">
-      <button type="button" class="btn" data-fin-act="gold-sell">💰 Продать голд</button>
-      <button type="button" class="btn" data-fin-act="gold-buy">🛒 Купить голд</button>
-    </div>`;
-}
-
-// ── Блок «Долги」 ─────────────────────────────────────────────────────────
+// ── Блок «Долги» ──────────────────────────────────────────────────────────
 
 function loanCard(loan) {
   const st = loanStatus(loan);
   const lent = loan.direction !== 'borrowed';
-  const paidTotal = st.paid + st.interestPaid;
+  // Долг живёт в своей валюте, поэтому и суммы в карточке округляются под неё
+  const ccy = loan.currency || DEFAULT_CURRENCY;
+  const n = (v) => fmt(v, ccy);
   return `
     <article class="fin-loan ${lent ? 'is-lent' : 'is-borrowed'}">
       <header class="fin-loan-head">
@@ -252,38 +258,40 @@ function loanCard(loan) {
         ${st.settled ? '<span class="fin-chip is-done">Закрыт</span>' : ''}
       </header>
       <div class="fin-loan-grid">
-        <span><small>Сумма</small><b>${fmt(loan.principal)}</b></span>
-        <span><small>Ставка</small><b>${fmt(loan.percent)}% / мес</b></span>
+        <span><small>Сумма</small><b>${n(loan.principal)}</b></span>
+        <span><small>Ставка</small><b>${fmt(loan.percent, ccy)}% / мес</b></span>
         <span><small>Срок</small><b>${escapeHtml(loan.start)} → ${loan.end ? escapeHtml(loan.end) : '—'}</b></span>
-        <span><small>Прошло</small><b>${st.months} мес.</b></span>
+        <span><small>Прошло</small><b>${escapeHtml(spanLabel(st.days))}</b></span>
       </div>
       <div class="fin-loan-grid fin-loan-grid-sum">
-        <span><small>Погашено тела</small><b>${fmt(st.paid)}</b></span>
-        <span><small>Осталось тела</small><b>${fmt(st.outstanding)}</b></span>
-        <span><small>Проценты набежали</small><b>${fmt(st.interestDue)}</b></span>
-        <span class="fin-loan-due"><small>Должен вернуть</small><b>${fmt(st.total)}</b></span>
+        <span><small>Погашено тела</small><b>${n(st.paid)}</b></span>
+        <span><small>Осталось тела</small><b>${n(st.outstanding)}</b></span>
+        <span><small>Проценты набежали</small><b>${n(st.interestDue)}</b></span>
+        <span class="fin-loan-due"><small>Должен вернуть</small><b>${n(st.total)}</b></span>
       </div>
-      ${st.term.months ? `<p class="muted fin-loan-term">
-        За весь срок без выплат вышло бы ${fmt(st.term.total)}
-        (${st.term.months} мес., проценты ${fmt(st.term.interest)}). Выплачено ${fmt(paidTotal)}.
+      ${st.term.days ? `<p class="muted fin-loan-term">
+        За весь срок без выплат вышло бы ${n(st.term.total)}
+        (${spanLabel(st.term.days)}, проценты ${n(st.term.interest)}). Выплачено ${n(st.paid + st.interestPaid)}.
       </p>` : '<p class="muted fin-loan-term">Срок не задан — проценты не начисляются.</p>'}
       ${loan.payments.length ? `
         <details class="fin-payments">
           <summary>Выплаты: ${loan.payments.length}</summary>
-          <table class="fin-table fin-table-compact">
-            <tbody>
-              ${loan.payments.map(p => {
-                const split = paymentSplit(loan, p);
-                return `<tr class="fin-row">
-                  <td>${escapeHtml(p.date)}</td>
-                  <td class="fin-amount fin-in">+${fmt(p.amount)}</td>
-                  <td class="muted">проценты ${fmt(split.interest)} · тело ${fmt(split.principal)}</td>
-                  <td class="fin-actions"><button type="button" class="btn ghost small" data-fin-act="del-payment"
-                    data-loan="${escapeHtml(loan.id)}" data-id="${escapeHtml(p.id)}" title="Убрать выплату">🗑️</button></td>
-                </tr>`;
-              }).join('')}
-            </tbody>
-          </table>
+          <div class="fin-table-wrap">
+            <table class="fin-table fin-table-compact">
+              <tbody>
+                ${loan.payments.map(p => {
+                  const split = paymentSplit(loan, p);
+                  return `<tr class="fin-row">
+                    <td class="fin-date">${escapeHtml(p.date)}</td>
+                    <td class="fin-amount fin-in">+${n(p.amount)}</td>
+                    <td class="muted fin-split">проценты ${n(split.interest)} · тело ${n(split.principal)}</td>
+                    <td class="fin-actions"><button type="button" class="btn ghost small fin-icon" data-fin-act="del-payment"
+                      data-loan="${escapeHtml(loan.id)}" data-id="${escapeHtml(p.id)}" title="Убрать выплату">🗑️</button></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
         </details>` : ''}
       <footer class="fin-loan-actions">
         <button type="button" class="btn primary small" data-fin-act="add-payment" data-id="${escapeHtml(loan.id)}">💸 Выплата</button>
@@ -295,19 +303,25 @@ function loanCard(loan) {
 
 function loansBlock() {
   const { loans } = fin();
+  // Долги могут быть в разных валютах, поэтому каждый показываем в своей
+  const total = (list) => list.reduce((s, l) => s + loanStatus(l).total, 0);
+  const byCurrency = (list) => CURRENCY_IDS
+    .map(id => ({ id, sum: roundFor(id, total(list.filter(l => (l.currency || DEFAULT_CURRENCY) === id))) }))
+    .filter(x => list.some(l => (l.currency || DEFAULT_CURRENCY) === x.id))
+    .map(x => `${cur(x.id).short} ${fmt(x.sum, x.id)}`)
+    .join(' · ');
   const lent = loans.filter(l => l.direction !== 'borrowed');
   const borrowed = loans.filter(l => l.direction === 'borrowed');
-  const total = (list) => list.reduce((sum, l) => sum + loanStatus(l).total, 0);
   return `
     <div class="fin-actions-row">
       <button type="button" class="btn primary" data-fin-act="add-loan" data-dir="lent">🤝 Дать в долг</button>
       <button type="button" class="btn" data-fin-act="add-loan" data-dir="borrowed">📥 Взять в долг</button>
-      ${lent.length ? `<span class="muted">Должны вернуть: <b>${fmt(total(lent))}</b></span>` : ''}
-      ${borrowed.length ? `<span class="muted">Я должен: <b>${fmt(total(borrowed))}</b></span>` : ''}
+      ${lent.length ? `<span class="muted">Должны вернуть: <b>${byCurrency(lent)}</b></span>` : ''}
+      ${borrowed.length ? `<span class="muted">Я должен: <b>${byCurrency(borrowed)}</b></span>` : ''}
     </div>
     ${loans.length
       ? `<div class="fin-loans">${loans.map(loanCard).join('')}</div>`
-      : '<p class="fin-empty">Долгов нет. Проценты считаются на остаток: после выплаты база уменьшается и дальше проценты капают только на остаток.</p>'}`;
+      : '<p class="fin-empty">Долгов нет. Проценты считаются на остаток ежедневно: ставка делится на 30, и после выплаты база уменьшается.</p>'}`;
 }
 
 // ── Отрисовка ─────────────────────────────────────────────────────────────
@@ -322,10 +336,16 @@ export function renderFinance() {
                 data-fin-block="${b.id}">${b.icon} ${escapeHtml(b.label)}</button>`).join('')}
     </nav>
     <div class="fin-body">
-      ${activeBlock === 'ledger' ? `${ledgerSummary()}${ledgerBlock()}
-        <div class="fin-actions-row"><button type="button" class="btn primary" data-fin-act="add-op">➕ Записать</button></div>` : ''}
+      ${activeBlock === 'ledger' ? `
+        ${balancesRow()}
+        <div class="fin-actions-row">
+          <button type="button" class="btn primary" data-fin-act="add-op">➕ Записать</button>
+          <button type="button" class="btn" data-fin-act="gold-sell">💰 Продать голд</button>
+          <button type="button" class="btn" data-fin-act="gold-buy">🛒 Купить голд</button>
+        </div>
+        ${bankSummary()}
+        ${bankTable()}` : ''}
       ${activeBlock === 'shop' ? shopBlock() : ''}
-      ${activeBlock === 'gold' ? goldBlock() : ''}
       ${activeBlock === 'loans' ? loansBlock() : ''}
     </div>`;
 }
@@ -342,15 +362,15 @@ function operationForm(existing = null) {
     submitText: 'Сохранить',
     content: `<form class="fin-form">
       ${selectField('Вид', 'kind', op.kind, [
-        { value: 'in', label: 'Приход — получили' },
-        { value: 'out', label: 'Расход — потратили' }
+        { value: 'in', label: 'Получил' },
+        { value: 'out', label: 'Потратил' }
       ])}
       ${selectField('Валюта', 'currency', op.currency,
         CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
       ${field('Сумма', 'amount', op.amount, { type: 'number', step: '0.01', min: 0, required: true })}
       ${field('Дата', 'date', op.date, { type: 'date', required: true })}
       ${textField('Откуда / на что', 'counterparty', op.counterparty, 'Ежа, клановое ЗП, магазин…')}
-      ${textField('Примечание', 'note', op.note, '25 сундуков + поджог')}
+      ${textField('Примечание', 'note', op.note, '50 сундуков + поджог')}
       ${textField('Статус', 'status', op.status, 'необязательно')}
     </form>`,
     onSubmit: (form) => {
@@ -365,7 +385,8 @@ function operationForm(existing = null) {
         counterparty: str(form.get('counterparty')),
         note: str(form.get('note')),
         status: str(form.get('status')),
-        // Правка записи, порождённой магазином или голдом, не должна терять её происхождение
+        // Правка записи, порождённой комиссионкой, голдом или долгом, не должна терять
+        // её происхождение: по source считаются пометки, а по ref — связанные записи
         source: existing?.source || 'manual',
         ref: existing?.ref || null
       };
@@ -389,12 +410,13 @@ function shopItemForm(existing = null) {
       ])}
       ${textField('Предмет', 'name', item.name, 'Зелье восстановления')}
       ${field('Цена за штуку (золото)', 'price', item.price, { type: 'number', step: '0.01', min: 0, required: true })}
-      ${field('Количество', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
+      ${field('Количество на складе', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
       ${field('Дата', 'date', item.date, { type: 'date' })}
       ${textField('Примечание', 'note', item.note)}
       <p class="muted fin-form-hint">
-        Такой же предмет с той же ценой долится в ту же позицию: продал 3 «Зелья», потом ещё 2 —
-        получится одна строка на 5 штук, а не две.
+        Такой же предмет с той же ценой долится в ту же позицию: ввёл 3 «Зелья», потом ещё 2 —
+        получится одна строка на 5 штук. Количество уменьшается, когда отмечаешь, сколько
+        реально продал или купил.
       </p>
     </form>`,
     onSubmit: (form) => {
@@ -416,29 +438,73 @@ function shopItemForm(existing = null) {
         toast(`Добавлено к позиции «${target.name}»: стало ${fmt(target.qty)} шт.`, 'success');
         return;
       }
-      const item = { id: existing?.id || uid(), ...draft };
-      const at = items.findIndex(i => i.id === item.id);
-      if (at >= 0) items[at] = item; else items.unshift(item);
+      const record = { id: existing?.id || uid(), ...draft };
+      const at = items.findIndex(i => i.id === record.id);
+      if (at >= 0) items[at] = record; else items.unshift(record);
       save();
     }
   });
 }
 
+/** Продажа/покупка части позиции: вычитает количество и пишет движение денег в «Банк». */
+function shopDealForm(item) {
+  const sold = item.side !== 'buy';
+  showModal({
+    title: `${sold ? 'Продано' : 'Куплено'}: ${item.name}`,
+    submitText: sold ? 'Продано' : 'Куплено',
+    content: `<form class="fin-form">
+      ${field('Сколько', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
+      ${field('Дата', 'date', todayIso(), { type: 'date', required: true })}
+      <div class="fin-preview" data-fin-preview>—</div>
+      <p class="muted fin-form-hint">
+        На складе осталось <b>${fmt(item.qty)}</b> шт. по ${fmt(item.price)} золота.
+        Деньги запишутся в «Банк»: ${sold ? 'приход' : 'расход'} Золота.
+      </p>
+    </form>`,
+    onSubmit: (form) => {
+      let qty = num(form.get('qty'));
+      if (qty <= 0) { alert('Количество должно быть больше нуля.'); return false; }
+      if (qty > item.qty) qty = item.qty;   // больше, чем на складе, продать нельзя
+      const date = str(form.get('date')) || todayIso();
+      const op = shopDealOperation({ item, qty, date });
+      item.qty = money(Math.max(0, item.qty - qty));
+      state.finance.operations.unshift(op);
+      save();
+      toast(`${sold ? 'Продано' : 'Куплено'} ${fmt(qty)} шт. · ${fmt(op.amount)} золота`, 'success');
+    }
+  });
+
+  const form = document.querySelector('#modal-root form');
+  if (!form) return;
+  const preview = form.querySelector('[data-fin-preview]');
+  const update = () => {
+    const qty = Math.min(num(form.elements.qty?.value), item.qty);
+    if (qty <= 0) { preview.textContent = 'Впиши количество.'; return; }
+    const rest = money(item.qty - qty);
+    preview.innerHTML = `${sold ? 'Приход' : 'Расход'} <b>${fmt(shopItemTotal({ price: item.price, qty }))} золота</b>
+      (${fmt(item.price)} × ${fmt(qty)}).<br>На складе останется: <b>${fmt(rest)}</b> шт.`;
+  };
+  form.addEventListener('input', update);
+  update();
+}
+
 function goldForm(side) {
   const isSell = side === 'sell';
   const settings = fin().settings;
+  const now = balances(fin().operations);
   showModal({
     title: isSell ? 'Продать голд' : 'Купить голд',
     submitText: 'Провести',
     wide: true,
     content: `<form class="fin-form">
+      ${balancesRow()}
       ${field('Количество голда', 'coins', 1000, { type: 'number', step: '1', min: 0, required: true })}
       ${field('Курс: 1 голд = ? золота', 'rate', settings.goldRate, { type: 'number', step: '0.000001', min: 0, required: true })}
-      ${field('Комиссия, %', 'commissionPct', settings.commissionPct, { type: 'number', step: '0.01', min: 0 })}
+      ${field('Комиссия, %', 'commissionPct', settings.commissionPct || DEFAULT_COMMISSION_PCT, { type: 'number', step: '0.01', min: 0 })}
       <div class="fin-preview" data-fin-preview>—</div>
       <p class="muted fin-form-hint">
-        Сделка попадёт в «Приход и расход» с пометкой «голд». Курс и комиссию из этой формы
-        можно сохранить как текущие.
+        Сделка запишется в «Банк» двумя строками: движение Голда и движение Золота.
+        Курс и комиссию из этой формы можно сохранить как текущие.
       </p>
     </form>`,
     onSubmit: (form) => {
@@ -446,28 +512,14 @@ function goldForm(side) {
       const rate = num(form.get('rate'));
       if (coins <= 0 || rate <= 0) { alert('Нужны количество голда и курс.'); return false; }
       const commissionPct = num(form.get('commissionPct'));
-      const deal = goldDeal({ side, coins, rate, commissionPct });
+      const { deal, operations } = goldDealOperations({ side, coins, rate, commissionPct });
 
       state.finance.settings.goldRate = rate;
       state.finance.settings.commissionPct = commissionPct;
       state.finance.settings.goldRateAt = todayIso();
-
-      // Голд уходит, золото приходит: в реестр пишем движение ЗОЛОТА, а не голда,
-      // потому что реестр показывает деньги, а голд — это единицы, которыми их меняют
-      state.finance.operations.unshift({
-        id: uid(),
-        date: todayIso(),
-        kind: isSell ? 'in' : 'out',
-        currency: 'gold',
-        amount: deal.gold,
-        counterparty: isSell ? 'Продажа голда' : 'Покупка голда',
-        note: `${fmt(deal.coins)} голд по курсу ${fmt(rate)}, комиссия ${fmt(deal.commissionCoins)} голд`,
-        status: '',
-        source: 'gold',
-        ref: null
-      });
+      state.finance.operations.unshift(...operations);
       save();
-      toast(isSell ? `Продано ${fmt(deal.coins)} голд` : `Куплено ${fmt(deal.coins)} голд`, 'success');
+      toast(`${isSell ? 'Продано' : 'Куплено'} ${fmt(deal.coins, 'coins')} голд · ${fmt(deal.gold, 'gold')} золота`, 'success');
     }
   });
 
@@ -477,16 +529,18 @@ function goldForm(side) {
   const preview = form.querySelector('[data-fin-preview]');
   const update = () => {
     const coins = num(form.elements.coins?.value);
-    const rate = num(form.elements.rate?.value);
+    const course = num(form.elements.rate?.value);
     const pct = num(form.elements.commissionPct?.value);
-    if (!coins || !rate) { preview.textContent = 'Впишите количество и курс.'; return; }
-    const d = goldDeal({ side, coins, rate, commissionPct: pct });
-    const loss = commissionLossPct(d.effectiveRate, rate);
+    if (!coins || !course) { preview.textContent = 'Впишите количество и курс.'; return; }
+    const d = goldDeal({ side, coins, rate: course, commissionPct: pct });
+    // Курс показываем с копейками: это цена за 1 голд, округлять её до целых нельзя
+    const rateText = (v) => formatAmount('coins', v);
+    const loss = commissionLossPct(d.effectiveRate, course);
     preview.innerHTML = isSell
-      ? `Уйдёт <b>${fmt(d.coinsTotal ?? coins)} голда</b> (${fmt(coins)} + комиссия ${fmt(d.commissionCoins)})<br>
-         Получите <b>${fmt(d.gold)} золота</b> · фактический курс ${fmt(d.effectiveRate)} <span class="fin-out">−${fmt(loss)}%</span>`
-      : `Придёт <b>${fmt(coins)} голда</b><br>
-         Заплатите <b>${fmt(d.gold)} золота</b> (из них комиссия ${fmt(d.commissionGold)}) · за 1 голд ${fmt(d.effectiveRate)} <span class="fin-out">+${fmt(Math.abs(loss))}%</span>`;
+      ? `Голд: уйдёт <b>${fmt(d.coinsTotal, 'coins')}</b> (${fmt(coins, 'coins')} + комиссия ${fmt(d.commissionCoins, 'coins')}) · остаток станет ${fmt(now.coins - d.coinsTotal, 'coins')}<br>
+         Золото: получите <b>${fmt(d.gold, 'gold')}</b> · фактический курс ${rateText(d.effectiveRate)} <span class="fin-out">−${rateText(loss)}%</span> · остаток станет ${fmt(now.gold + d.gold, 'gold')}`
+      : `Голд: придёт <b>${fmt(coins, 'coins')}</b> · остаток станет ${fmt(now.coins + coins, 'coins')}<br>
+         Золото: заплатите <b>${fmt(d.gold, 'gold')}</b> (из них комиссия ${fmt(d.commissionGold, 'gold')}) · за 1 голд ${rateText(d.effectiveRate)} <span class="fin-out">+${rateText(Math.abs(loss))}%</span> · остаток станет ${fmt(now.gold - d.gold, 'gold')}`;
   };
   form.addEventListener('input', update);
   update();
@@ -511,7 +565,8 @@ function loanForm(existing = null, direction = 'lent') {
       ${field('Конец (срок)', 'end', loan.end, { type: 'date' })}
       ${textField('Примечание', 'note', loan.note)}
       <p class="muted fin-form-hint">
-        Проценты простые и считаются на остаток: полный месяц целиком, неполный — никак.
+        Проценты линейные, начисляются ежедневно: ставка делится на 30 и падает на остаток
+        каждый день. Выплата сначала гасит проценты, потом тело долга — база уменьшается.
         Без даты конца проценты не идут вовсе.
       </p>
     </form>`,
@@ -532,15 +587,32 @@ function loanForm(existing = null, direction = 'lent') {
         note: str(form.get('note'))
       };
       const loans = fin().loans;
+      let target;
       if (existing) {
         const at = loans.findIndex(l => l.id === existing.id);
-        if (at >= 0) loans[at] = { ...existing, ...draft };
+        if (at < 0) return;
+        loans[at] = { ...existing, ...draft };
+        target = loans[at];
       } else {
-        loans.unshift({ id: uid(), payments: [], ...draft });
+        target = { id: uid(), payments: [], opId: null, ...draft };
+        loans.unshift(target);
       }
+      syncLoanOperation(target);
       save();
     }
   });
+}
+
+/**
+ * Долг — это движение денег, и запись в «Банке» должна совпадать с долгом.
+ * Правка суммы обновляет ту же запись по `opId`, а не ищет её угадыванием по дате.
+ */
+function syncLoanOperation(loan) {
+  const op = loanOperation(loan);
+  const ops = state.finance.operations;
+  const at = loan.opId ? ops.findIndex(o => o.id === loan.opId) : -1;
+  if (at >= 0) ops[at] = op; else ops.unshift(op);
+  loan.opId = op.id;
 }
 
 function paymentForm(loan) {
@@ -585,8 +657,9 @@ function paymentForm(loan) {
     const amount = num(form.elements.amount?.value);
     if (amount <= 0) { preview.textContent = 'Впишите сумму выплаты.'; return; }
     const split = paymentSplit(loan, { id: '__preview__', date: str(form.elements.date?.value) || todayIso(), amount });
-    preview.innerHTML = `Из ${fmt(amount)}: <b>${fmt(split.interest)}</b> в проценты
-      и <b>${fmt(split.principal)}</b> в тело долга.<br>
+    const ccy = loan.currency || DEFAULT_CURRENCY;
+    preview.innerHTML = `Из ${fmt(amount, ccy)}: <b>${fmt(split.interest, ccy)}</b> в проценты
+      и <b>${fmt(split.principal, ccy)}</b> в тело долга.<br>
       Проценты дальше считаются только на остаток.`;
   };
   form.addEventListener('input', update);
@@ -628,11 +701,14 @@ export function bindFinance() {
     }
 
     if (act === 'add-item') return shopItemForm();
-    if (act === 'bump-item') {
-      // Кнопка «➕» открывает ту же форму, но с уже подставленными числами: так
-      // «долить» и «завести новую позицию» — один и тот же код, а не две ветки
+    if (act === 'edit-item') {
       const item = shopItems.find(i => i.id === btn.dataset.id);
-      if (item) shopItemForm({ ...item, qty: '' });
+      if (item) shopItemForm(item);
+      return;
+    }
+    if (act === 'deal-item') {
+      const item = shopItems.find(i => i.id === btn.dataset.id);
+      if (item) shopDealForm(item);
       return;
     }
     if (act === 'del-item') {
@@ -645,14 +721,6 @@ export function bindFinance() {
       return;
     }
 
-    if (act === 'save-gold') {
-      const rate = num(document.querySelector('[name="goldRate"]')?.value);
-      const pct = num(document.querySelector('[name="commissionPct"]')?.value);
-      state.finance.settings = { goldRate: rate, commissionPct: pct, goldRateAt: todayIso() };
-      save();
-      toast('Курс и комиссия сохранены', 'success');
-      return;
-    }
     if (act === 'gold-sell') return goldForm('sell');
     if (act === 'gold-buy') return goldForm('buy');
 
@@ -668,8 +736,8 @@ export function bindFinance() {
       const ok = await confirmModal({
         title: `Удалить долг: ${loan.who}?`,
         text: loan.payments.length
-          ? `Вместе с долгом пропадут ${loan.payments.length} выплат и их записи в реестре.`
-          : 'Записи в реестре останутся.',
+          ? `Вместе с долгом пропадут ${loan.payments.length} выплат и их записи в «Банке».`
+          : 'Запись в «Банке» об открытии долга тоже пропадёт.',
         okText: 'Удалить', danger: true
       });
       if (!ok) return;
