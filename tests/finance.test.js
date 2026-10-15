@@ -1,7 +1,7 @@
 // Чистая логика раздела «Учёт» (js/modules/finance/model.js).
 // Здесь нет DOM и нет state — только деньги, комиссия и начисление процентов,
 // поэтому проверяется без запуска приложения.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   goldDeal,
@@ -322,9 +322,32 @@ describe('долг: проценты на остаток, ежедневно п�
     expect(loanAccrual(LOAN, '2027-07-01').days).toBe(181);
   });
 
-  it('выплата, оформленная на будущее, сегодняшний долг не уменьшает', () => {
+  it('выплата ПОСЛЕ срока засчитывается, а проценты сверх срока не капают', () => {
+    // Регрессия: выплаты фильтровались по дате срока, и «Выплатить всё» не работало:
+  // долг, закрытый после срока, навсегда оставался с остатком. Проверено вручную.
+    const loan = { ...LOAN, payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }] };
+    const st = loanStatus(loan, '2026-10-15');
+    expect(st.outstanding).toBe(6500);
+    expect(st.interestDue).toBe(975);   // проценты застыли на дату срока
+    expect(st.total).toBe(7475);
+
+    const paid = loanAccrual({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] }, '2026-10-15');
+    expect(paid.total).toBe(0);
+    expect(paid.outstanding).toBe(0);
+    expect(loanStatus({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] }, '2026-10-15').settled).toBe(true);
+
+    // Частичная выплата после срока уменьшает остаток ровно на тело
+    const part = loanAccrual({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 3000 }] }, '2026-10-15');
+    expect(part.total).toBe(4475);   // 7 475 − 3 000
+  });
+
+it('выплата, оформленная на будущее, сегодняшний долг не уменьшает', () => {
+    // Отсекается только выплата БУДУЩЕЕ, а не все, что позже даты расчёта:
+  // выплата раньше сегодняшнего дня засчитывается всегда, даже за пределами срока
     const loan = { ...LOAN, payments: [{ id: 'p1', date: '2026-06-01', amount: 5000 }] };
     expect(loanAccrual(loan, '2026-03-01').outstanding).toBe(10000);
+    // А вот будущая выплата (после даты расчёта) ещё не засчитана
+    expect(loanAccrual({ ...LOAN, payments: [{ id: 'p2', date: '2027-01-01', amount: 5000 }] }, '2026-03-01').outstanding).toBe(10000);
     // К июню набегает 5 полных месяцев по 500, поэтому из 5000 на проценты уходит 2500
     // и только 2500 гасят тело долга
     const acc = loanAccrual(loan, '2026-07-01');
@@ -498,19 +521,39 @@ const FINANCE = {
     { id: 'i1', side: 'sell', name: 'Зелье', price: 100, qty: 3, date: '2026-06-09', note: '' },
     { id: 'i2', side: 'buy', name: 'Меч', price: 200, qty: 1, date: '2026-06-10', note: '' }
   ],
-  loans: [{
-    id: 'l1', direction: 'lent', who: 'Шкила', principal: 10000, percent: 5,
-    start: '2026-01-01', end: '2026-07-01', currency: 'gold', note: '',
-    payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }]
-  }],
+  loans: [
+    {
+      id: 'l1', direction: 'lent', who: 'Шкила', principal: 10000, percent: 5,
+      start: '2026-01-01', end: '2026-07-01', currency: 'gold', note: '',
+      payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }]
+    },
+    // Второй долг без выплат: на нём проверяем отсутствие истории и подписи форм
+    {
+      id: 'l2', direction: 'borrowed', who: 'Ракохаме', principal: 2000000, percent: 3,
+      start: '2026-06-01', end: '2026-12-01', currency: 'gold', note: '', payments: []
+    }
+  ],
   settings: { goldRate: 1000000, commissionPct: 2, goldRateAt: '2026-06-09' }
 };
 
+// Проценты и остаток в долге зависят от сегодняшней даты, а тесты должны быть
+// одинаковыми в любой день запуска. Фиксируем время на дату до срока долга.
+const FROZEN_NOW = new Date('2026-06-01T12:00:00');
+
 beforeEach(async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(FROZEN_NOW);
   vi.resetModules();
-  document.body.innerHTML = '<div id="finance-root"></div>';
+  // modal-root нужен формам: они ищут его в документе, и без него тест падал бы
+  // не на своей проверке, а на отсутствии элемента
+  document.body.innerHTML = '<div id="modal-root"></div><div id="finance-root"></div>';
   const { state } = await import('../js/core/state.js');
   state.finance = normalizeFinance(structuredClone(FINANCE));
+});
+
+afterEach(() => {
+  document.querySelectorAll('.modal-overlay').forEach(o => o.remove());
+  vi.useRealTimers();
 });
 
 async function openBlock(id) {
@@ -543,13 +586,61 @@ describe('раздел «Учёт»: три блока', () => {
     expect(el.querySelectorAll('[data-fin-block].active')).toHaveLength(1);
   });
 
-  it('блок называется «Банк» и показывает наличные по обеим валютам', async () => {
+  it('блок «Банк» разделяет «сейчас в наличии» и итог месяца', async () => {
     const { el } = await openBlock();
-    // 500 000 000 − 50 000 000 = 450 000 000 золота, голд живёт отдельно
-    const holding = text(el.querySelector('.fin-holdings'));
+    // Верх — все записи с начала учёта: сколько денег есть сейчас
+    const holding = text(el.querySelector('.fin-now .fin-holdings'));
     expect(holding).toContain('Золото: 450 000 000');
     expect(holding).toContain('Голд: 1 000');
-    expect(text(el.querySelector('.fin-summary'))).toContain('450 000 000');
+    expect(text(el.querySelector('.fin-now h3'))).toContain('Сейчас в наличии');
+
+    // Низ — движение за месяц, а не повтор всей истории: это разные вопросы
+    const summary = el.querySelector('.fin-summary');
+    expect(summary).toBeTruthy();
+    const summaryText = text(summary);
+    // Голда в июне было 1 000 прихода и 0 расхода
+    expect(summaryText).toContain('Голд');
+    expect(text(el.querySelector('.fin-summary-head h3'))).toContain('июнь 2026');
+  });
+
+  it('сводка месяца не повторяет остаток сверху, а показывает итог месяца', async () => {
+    const { el } = await openBlock();
+    const summary = text(el.querySelector('.fin-summary'));
+    // «Остаток» верхней полосы = 450 000 000, в сводке итог месяца такой же, но
+    // подписан как «В плюсе» — это подсказка, что считается месяц, а не всё время
+    expect(summary).toMatch(/В плюсе|В минусе/);
+    expect(summary).not.toContain('Остаток');
+  });
+
+  it('пустая сводка не рисуется, если записей вообще нет', async () => {
+    const { el, page } = await openBlock();
+    const { state } = await import('../js/core/state.js');
+    state.finance = normalizeFinance(undefined);
+    page.renderFinance();
+    expect(el.querySelector('.fin-summary')).toBeNull();
+    expect(el.querySelector('.fin-empty')).toBeTruthy();
+  });
+
+  it('в наличных видно, сколько в долгах', async () => {
+    const { el } = await openBlock();
+    const holding = text(el.querySelector('.fin-now .fin-holdings'));
+    // На 2026-06-01 (тесты заморожены на этой дате): Шкила должен 7 150
+    // (тело 6 500 + проценты 650), минус мой долг Ракохаме 2 000 000.
+    // Остаток и долг нельзя складывать, поэтому долг стоит отдельной строкой.
+    expect(holding).toContain('в долгах');
+    const cell = [...el.querySelectorAll('.fin-holding')].find(s => s.textContent.includes('Золото'));
+    expect(text(cell)).toContain('1 992 850');   // 7 150 − 2 000 000
+  });
+
+it('в долге «Выплатить всё» подставляет сумму, которую видно на карточке', async () => {
+    // Кнопка обязана совпадать с числом в «Должен вернуть»: разные цифры в одном
+    // окне — это ровно то, из-за чего перестаешь доверять расчёту
+    const { el } = await openBlock('loans');
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    const due = text(card.querySelector('.fin-loan-due b'));
+    card.querySelector('[data-fin-act="add-payment"]').click();
+    const form = document.querySelector('#modal-root form');
+    expect(text(form.querySelector('[data-pay-all]'))).toContain(due);
   });
 
   it('«Получил» и «Потратил» вместо «Приход» и «Расход»', async () => {
@@ -608,6 +699,27 @@ describe('раздел «Учёт»: три блока', () => {
     expect(text(cols[1].querySelector('.fin-shop-foot'))).toContain('200');
   });
 
+  it('колонки комиссионки не съедают предмет: сумма ширин меньше ширины колонки', () => {
+    // Регрессия: при table-layout: fixed ширины берутся из шапки. Стоял width: 100%
+    // у предмета плюс фиксированные числа — предмету оставалось 25 px, и каждая
+    // буква названия вставала в отдельную строку (колонка вырастала на весь экран).
+    const css = readFileSync('css/modules/finance.css', 'utf8');
+    const widths = [...css.matchAll(/\.fin-shop \.fin-table th(?:\.fin-head-price|:nth-child\(\d\)|\.fin-head-actions)?\s*\{\s*width:\s*(\d+)px/g)]
+      .map(m => Number(m[1]));
+    // Предмет — width: auto, остальные фиксированы
+    expect(css).toMatch(/\.fin-shop \.fin-table th:first-child\s*\{\s*width:\s*auto/);
+    expect(widths.length).toBe(4);
+    // 4 колонки с числами и кнопками должны уместиться, оставив предмету остаток
+    const sum = widths.reduce((a, b) => a + b, 0);
+    expect(sum).toBeLessThan(360);
+  });
+
+  it('название предмета переносится по словам, а не по буквам', () => {
+    const css = readFileSync('css/modules/finance.css', 'utf8');
+    expect(css).toMatch(/\.fin-shop \.fin-what b[^{]*\{[^}]*word-break:\s*normal/);
+    expect(css).toMatch(/\.fin-shop \.fin-what\s*\{[^}]*min-width:\s*0/);
+  });
+
   it('у колонки действий комиссионки есть своя ширина, иначе кнопки вылезут за край', () => {
     // Регрессия: при table-layout: fixed ширину колонок берут из шапки, и width: 1%
     // ужимал колонку действий до 3 px — кнопки оттуда вылезали.
@@ -656,12 +768,107 @@ it('шапка колонки действий в комиссионке пом�
     expect(acts).not.toContain('bump-item');
   });
 
+  it('в долге есть «Выплатить всё», «Частично», «Закрыть» и история', async () => {
+    const { el } = await openBlock('loans');
+    const acts = [...el.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).toContain('pay-all');
+    expect(acts).toContain('add-payment');
+    expect(acts).toContain('close-loan');
+    expect(text(el.querySelector('.fin-payments summary'))).toContain('История выплат');
+    expect(text(el.querySelector('.fin-payments summary'))).toContain('5 000');
+  });
+
+it('форма выплаты подставляет сумму, которую видно в «Должен вернуть»', async () => {
+    const { el } = await openBlock('loans');
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    const due = text(card.querySelector('.fin-loan-due b'));
+    card.querySelector('[data-fin-act="add-payment"]').click();
+    const form = document.querySelector('#modal-root form');
+    // Пустой суммой предпросмотр просит ввести число, а не молчит
+    expect(text(form.querySelector('[data-fin-preview]'))).toContain('Впишите сумму');
+    // Кнопка подставляет всю сумму и обещает закрытие долга
+    form.querySelector('[data-pay-all]').click();
+    expect(form.elements.amount.value).toBe('7150');
+    expect(due).toContain('7 150');
+    expect(text(form.querySelector('[data-fin-preview]'))).toContain('закрыт полностью');
+  });
+
+it('предпросмотр показывает, сколько останется после частичной выплаты', async () => {
+    const { el } = await openBlock('loans');
+    el.querySelector('[data-fin-act="add-payment"]').click();
+    const form = document.querySelector('#modal-root form');
+    form.elements.amount.value = '3000';
+    form.dispatchEvent(new Event('input', { bubbles: true }));
+    const preview = text(form.querySelector('[data-fin-preview]'));
+    // На 2026-06-01 набежало 650 процентов, остаток 4 150
+    expect(preview).toContain('650');
+    expect(preview).toContain('2 350');
+    expect(preview).toContain('останется');
+  });
+
+  it('закрытый долг не предлагает выплату и не начисляет проценты', async () => {
+    const { el, page } = await openBlock('loans');
+    const { state } = await import('../js/core/state.js');
+    const { loanStatus } = await import('../js/modules/finance/model.js');
+    const loan = state.finance.loans.find(l => l.who === 'Шкила');
+    // Выплата всей суммы на сегодня: тело 6 500 + проценты 650 = 7 150
+    const due = loanStatus(loan).total;
+    expect(due).toBe(7150);
+    loan.payments = [...loan.payments, { id: 'p2', date: '2026-06-01', amount: due }];
+    expect(loanStatus(loan).settled).toBe(true);
+    page.renderFinance();
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    const acts = [...card.querySelectorAll('.fin-loan-actions [data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).not.toContain('pay-all');
+    expect(acts).not.toContain('close-loan');
+    // История закрытого долга раскрыта сама — иначе её не увидеть без клика
+    expect(card.querySelector('.fin-payments').open).toBe(true);
+  });
+
+  it('долг без выплат не показывает блок истории', async () => {
+    const { el } = await openBlock('loans');
+    const borrowed = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Ракохаме'));
+    expect(borrowed.querySelector('.fin-payments')).toBeNull();
+  });
+
+  it('форма выплаты подставляет сумму, которую видно в «Должен вернуть»', async () => {
+    const { el } = await openBlock('loans');
+    // Открываем форму через кнопку, чтобы проверить её разметку на самом деле
+    el.querySelector('[data-fin-act="add-payment"]').click();
+    const form = document.querySelector('#modal-root form');
+    expect(form).toBeTruthy();
+    expect(form.querySelector('[data-pay-all]')).toBeTruthy();
+    // Пустой суммой предпросмотр просит ввести число, а не молчит
+    expect(text(form.querySelector('[data-fin-preview]'))).toContain('Впишите сумму');
+    // Кнопка подставляет всю сумму и показывает, что долг будет закрыт
+    form.querySelector('[data-pay-all]').click();
+    expect(form.elements.amount.value).toBe('7150');
+    expect(text(form.querySelector('[data-fin-preview]'))).toContain('закрыт полностью');
+  });
+
+  it('предпросмотр показывает, сколько останется после частичной выплаты', async () => {
+    const { el } = await openBlock('loans');
+    el.querySelector('[data-fin-act="add-payment"]').click();
+    const form = document.querySelector('#modal-root form');
+    form.elements.amount.value = '3000';
+    form.dispatchEvent(new Event('input', { bubbles: true }));
+    const preview = text(form.querySelector('[data-fin-preview]'));
+    // На 2026-06-01 набежало 650 процентов, из выплаты 650 гасят проценты,
+    // 2 350 — тело, и остаётся 4 150
+    expect(preview).toContain('650');
+    expect(preview).toContain('2 350');
+    expect(preview).toContain('4 150');
+    expect(preview).toContain('останется');
+  });
+
   it('долг показывает остаток, набежавшие проценты и разбивку выплаты', async () => {
     const { el } = await openBlock('loans');
     expect(el.querySelector('.fin-loan').textContent).toContain('Шкила');
-    // Январь–март по 10 000 → 1 500 процентов съедены выплатой, осталось 3 500 тела и 975 процентов
+    // Выплата 5 000 в апреле съела 1 500 процентов и 3 500 тела; на 01.06 набежало
+    // ещё 650 процентов, итого видно 3 500 / 6 500 / 650 / 7 150
     expect(text(el.querySelector('.fin-loan-grid-sum'))).toContain('6 500');
-    expect(text(el.querySelector('.fin-loan-due b'))).toContain('7 475');
+    expect(text(el.querySelector('.fin-loan-grid-sum'))).toContain('650');
+    expect(text(el.querySelector('.fin-loan-due b'))).toContain('7 150');
     expect(text(el)).toContain('проценты 1 500');
   });
 

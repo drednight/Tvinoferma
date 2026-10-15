@@ -13,7 +13,7 @@ import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import {
   CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY, DEFAULT_COMMISSION_PCT,
-  money, roundFor, formatAmount, todayIso, normalizeFinance, balances, ledgerTotalsByCurrency,
+  money, roundFor, formatAmount, todayIso, normalizeFinance, balances,
   groupByMonth, shopTotals, shopItemTotal, findShopItem, shopDealOperation,
   goldDeal, goldDealOperations, commissionLossPct, loanStatus, loanOperation, paymentSplit, spanLabel
 } from './model.js';
@@ -95,23 +95,63 @@ function textField(label, name, value, placeholder = '') {
     </label>`;
 }
 
-/** Полоса «сколько сейчас в наличии» по обеим валютам. */
+/**
+ * Полоса «сколько сейчас в наличии» — ответ на вопрос «сколько у меня денег».
+ * Это ВСЕ записи с начала учёта, поэтому число одно и оно главное.
+ */
 function balancesRow() {
   const now = balances(fin().operations);
+  const debt = loanExposure();
   return `
     <div class="fin-holdings">
       ${CURRENCY_IDS.map(id => `
         <span class="fin-holding ${now[id] < 0 ? 'fin-out' : ''}">
           ${cur(id).icon} ${escapeHtml(cur(id).title)}: <b>${fmt(now[id], id)}</b>
+          ${debt[id] ? `<small class="fin-holding-debt">из них в долгах ${fmt(debt[id], id)}</small>` : ''}
         </span>`).join('')}
     </div>`;
 }
 
+/** Сколько сейчас должны тебе и сколько должен ты — по каждой валюте. */
+function loanExposure() {
+  /** @type {Record<string, number>} */
+  const out = {};
+  for (const loan of fin().loans) {
+    const id = loan.currency || DEFAULT_CURRENCY;
+    const st = loanStatus(loan);
+    if (st.settled) continue;
+    out[id] = roundFor(id, (out[id] || 0) + (loan.direction !== 'borrowed' ? st.total : -st.total));
+  }
+  return out;
+}
+
 // ── Блок «Банк» ───────────────────────────────────────────────────────────
 
+/**
+ * Сводка за ТЕКУЩИЙ месяц: сколько пришло, сколько ушло и чем закончился месяц.
+ * Зачем, если сверху уже есть наличные: наличные — это «сколько есть сейчас»,
+ * а здесь — «сколько заработано в этом месяце». Это разные вопросы: можно всю
+ * дорогу иметь минус и за месяц выйти в плюс.
+ * Если месяц пустой, показываем прошлые месяцы — иначе сводка была бы пустой
+ * в начале каждого месяца и выглядела бы как ошибка.
+ */
 function bankSummary() {
-  const totals = ledgerTotalsByCurrency(fin().operations);
+  const months = groupByMonth(fin().operations);
+  const current = todayIso().slice(0, 7);
+  let group = months.find(m => m.month === current);
+  let stale = false;
+  if (!group) {
+    group = months[0] || null;
+    stale = !!group;
+  }
+  if (!group) return '';
+
+  const totals = group.totals;
   return `
+    <div class="fin-summary-head">
+      <h3>${escapeHtml(group.label)}</h3>
+      ${stale ? '<span class="muted">в этом месяце записей ещё нет — показан последний с записями</span>' : ''}
+    </div>
     <div class="fin-summary">
       ${CURRENCY_IDS.map(id => {
         const t = totals[id];
@@ -120,7 +160,9 @@ function bankSummary() {
           <span class="fin-summary-label">${cur(id).icon} ${escapeHtml(cur(id).title)}</span>
           <span class="fin-summary-row"><small>Получил</small><b class="fin-in">+${fmt(t.income, id)}</b></span>
           <span class="fin-summary-row"><small>Потратил</small><b class="fin-out">−${fmt(t.expense, id)}</b></span>
-          <span class="fin-summary-row fin-summary-total"><small>Остаток</small><b>${fmt(t.balance, id)}</b></span>
+          <span class="fin-summary-row fin-summary-total">
+            <small>${t.balance >= 0 ? 'В плюсе' : 'В минусе'}</small><b>${t.balance >= 0 ? '+' : '−'}${fmt(Math.abs(t.balance), id)}</b>
+          </span>
         </div>`;
       }).join('')}
     </div>`;
@@ -197,7 +239,13 @@ function shopColumn(side, items, totals) {
       ${items.length ? `
         <div class="fin-table-wrap">
           <table class="fin-table fin-table-compact">
-            <thead><tr><th>Предмет</th><th class="fin-num">Цена</th><th class="fin-num">Осталось</th><th class="fin-num">Итого</th><th class="fin-head-actions"></th></tr></thead>
+            <thead><tr>
+              <th>Предмет</th>
+              <th class="fin-num fin-head-price">Цена<span class="fin-head-unit">за шт.</span></th>
+              <th class="fin-num">Осталось<span class="fin-head-unit">шт.</span></th>
+              <th class="fin-num">Сумма<span class="fin-head-unit">${escapeHtml(cur(DEFAULT_CURRENCY).short)}</span></th>
+              <th class="fin-head-actions"></th>
+            </tr></thead>
             <tbody>
               ${items.map(item => `
                 <tr class="fin-row">
@@ -274,8 +322,8 @@ function loanCard(loan) {
         (${spanLabel(st.term.days)}, проценты ${n(st.term.interest)}). Выплачено ${n(st.paid + st.interestPaid)}.
       </p>` : '<p class="muted fin-loan-term">Срок не задан — проценты не начисляются.</p>'}
       ${loan.payments.length ? `
-        <details class="fin-payments">
-          <summary>Выплаты: ${loan.payments.length}</summary>
+        <details class="fin-payments" ${st.settled ? 'open' : ''}>
+          <summary>История выплат: ${loan.payments.length} на ${fmt(st.paid + st.interestPaid, ccy)}</summary>
           <div class="fin-table-wrap">
             <table class="fin-table fin-table-compact">
               <tbody>
@@ -294,9 +342,15 @@ function loanCard(loan) {
           </div>
         </details>` : ''}
       <footer class="fin-loan-actions">
-        <button type="button" class="btn primary small" data-fin-act="add-payment" data-id="${escapeHtml(loan.id)}">💸 Выплата</button>
-        <button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️ Изменить</button>
-        <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️ Удалить</button>
+        ${st.settled
+          ? `<button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️ Изменить</button>
+             <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️ Удалить</button>`
+          : `<button type="button" class="btn primary small" data-fin-act="pay-all" data-id="${escapeHtml(loan.id)}" title="Выплатить всю сумму долга сразу">💵 Выплатить всё</button>
+             <button type="button" class="btn small" data-fin-act="add-payment" data-id="${escapeHtml(loan.id)}">💸 Частично</button>
+             <button type="button" class="btn ghost small" data-fin-act="close-loan" data-id="${escapeHtml(loan.id)}"
+                     title="Списать остаток долга — деньги больше не вернутся">✅ Закрыть</button>
+             <button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️</button>
+             <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️</button>`}
       </footer>
     </article>`;
 }
@@ -338,7 +392,10 @@ export function renderFinance() {
     <div class="fin-body">
       ${activeBlock === 'ledger' ? `
         <div class="fin-bank-head">
-          ${balancesRow()}
+          <div class="fin-now">
+            <h3>Сейчас в наличии</h3>
+            ${balancesRow()}
+          </div>
           <div class="fin-actions-row">
             <button type="button" class="btn primary" data-fin-act="add-op">➕ Записать</button>
             <button type="button" class="btn" data-fin-act="gold-sell">💰 Продать голд</button>
@@ -371,8 +428,8 @@ function operationForm(existing = null) {
         CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
       ${field('Сумма', 'amount', op.amount, { type: 'number', step: '0.01', min: 0, required: true })}
       ${field('Дата', 'date', op.date, { type: 'date', required: true })}
-      ${textField('Откуда / на что', 'counterparty', op.counterparty, 'Ежа, клановое ЗП, магазин…')}
-      ${textField('Примечание', 'note', op.note, '50 сундуков + поджог')}
+      ${textField('Откуда / на что', 'counterparty', op.counterparty, 'источник или статья расхода')}
+      ${textField('Примечание', 'note', op.note, 'детали операции')}
       ${textField('Статус', 'status', op.status, 'необязательно')}
     </form>`,
     onSubmit: (form) => {
@@ -410,7 +467,7 @@ function shopItemForm(existing = null, side = 'sell') {
         { value: 'sell', label: 'Продажа — золото ко мне' },
         { value: 'buy', label: 'Покупка — золото от меня' }
       ])}
-      ${textField('Предмет', 'name', item.name, 'Зелье восстановления')}
+      ${textField('Предмет', 'name', item.name, 'название предмета')}
       ${field('Цена за штуку (золото)', 'price', item.price, { type: 'number', step: '0.01', min: 0, required: true })}
       ${field('Количество на складе', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
       ${field('Дата', 'date', item.date, { type: 'date' })}
@@ -558,7 +615,7 @@ function loanForm(existing = null, direction = 'lent') {
         { value: 'lent', label: 'Я даю в долг' },
         { value: 'borrowed', label: 'Я беру в долг' }
       ])}
-      ${textField('Кто', 'who', loan.who, 'Шкила, Ежа…')}
+      ${textField('Кто', 'who', loan.who, 'ник или имя в игре')}
       ${field('Сумма долга', 'principal', loan.principal, { type: 'number', step: '0.01', min: 0, required: true })}
       ${field('Процент в месяц', 'percent', loan.percent, { type: 'number', step: '0.01', min: 0 })}
       ${selectField('Валюта', 'currency', loan.currency,
@@ -619,53 +676,91 @@ function syncLoanOperation(loan) {
 
 function paymentForm(loan) {
   const lent = loan.direction !== 'borrowed';
+  const ccy = loan.currency || DEFAULT_CURRENCY;
+  const st = loanStatus(loan);
   showModal({
     title: lent ? `Выплата от «${loan.who}»` : `Я возвращаю «${loan.who}»`,
     submitText: 'Записать выплату',
     content: `<form class="fin-form">
       ${field('Сумма выплаты', 'amount', '', { type: 'number', step: '0.01', min: 0, required: true })}
       ${field('Дата', 'date', todayIso(), { type: 'date', required: true })}
+      <div class="fin-pay-actions">
+        <button type="button" class="btn ghost small" data-pay-all>💵 Вся сумма долга (${fmt(st.total, ccy)})</button>
+      </div>
       <div class="fin-preview" data-fin-preview>—</div>
     </form>`,
     onSubmit: (form) => {
       const amount = num(form.get('amount'));
       if (amount <= 0) { alert('Сумма выплаты должна быть больше нуля.'); return false; }
-      const payment = { id: uid(), date: str(form.get('date')) || todayIso(), amount };
-      const target = fin().loans.find(l => l.id === loan.id);
-      if (!target) return;
-      target.payments = [...target.payments, payment];
-
-      // Возврат долга — движение денег: мне вернули (приход) или я отдал (расход)
-      state.finance.operations.unshift({
-        id: uid(),
-        date: payment.date,
-        kind: lent ? 'in' : 'out',
-        currency: target.currency,
-        amount,
-        counterparty: lent ? `Возврат долга — ${target.who}` : `Отдаю долг — ${target.who}`,
-        note: str(target.note) || `Выплата по долгу ${fmt(target.percent)}%`,
-        status: '',
-        source: 'debt',
-        ref: target.id
-      });
-      save();
+      if (!addPayment(loan, amount, str(form.get('date')) || todayIso())) return false;
     }
   });
 
   const form = document.querySelector('#modal-root form');
   if (!form) return;
   const preview = form.querySelector('[data-fin-preview]');
+  // Кнопка «вся сумма»: долг считается на сегодня, поэтому сумма может быть больше
+  // той, что была при открытии окна — подставляем актуальную при каждом нажатии
+  form.querySelector('[data-pay-all]')?.addEventListener('click', () => {
+    const current = loanStatus(loan);
+    form.elements.amount.value = String(current.total);
+    update();
+  });
   const update = () => {
     const amount = num(form.elements.amount?.value);
     if (amount <= 0) { preview.textContent = 'Впишите сумму выплаты.'; return; }
-    const split = paymentSplit(loan, { id: '__preview__', date: str(form.elements.date?.value) || todayIso(), amount });
-    const ccy = loan.currency || DEFAULT_CURRENCY;
+    const split = paymentSplit(loan, { id: '__preview__', date: todayIso(), amount });
+    // Остаток считаем на дату СЕГОДНЯ, а не на дату выплаты: иначе предпросмотр
+    // врал бы в обе стороны — показывал проценты, которых ещё не будет, или
+    // скрывал те, что уже набежали
+    const after = loanStatus(loanWithPayment(loan, { date: todayIso(), amount }), todayIso());
     preview.innerHTML = `Из ${fmt(amount, ccy)}: <b>${fmt(split.interest, ccy)}</b> в проценты
       и <b>${fmt(split.principal, ccy)}</b> в тело долга.<br>
-      Проценты дальше считаются только на остаток.`;
+      ${after.total > 0 ? `После выплаты останется <b>${fmt(after.total, ccy)}</b>.` : 'Долг будет закрыт полностью.'}
+      <br><small>Проценты дальше считаются только на остаток.</small>`;
   };
   form.addEventListener('input', update);
   update();
+}
+
+/**
+ * Долг, как если бы выплата уже была записана: предпросмотр обязан прогнать
+ * начисление с новым остатком, иначе показывал бы проценты по старой базе.
+ * Возвращаем именно долг, а не посчитанный статус: статус в себе выплат не держит,
+ * и повторный расчёт по нему терял бы их.
+ */
+function loanWithPayment(loan, payment) {
+  return { ...loan, payments: [...loan.payments, { ...payment, id: '__preview__' }] };
+}
+
+/**
+ * Записать выплату: сумма уходит и в сам долг, и в «Банк» одной записью. Общая часть
+ * для кнопок «Выплата», «Выплатить всё» и предпросмотра — иначе они разошлись бы
+ * при правке любой из них.
+ */
+function addPayment(loan, amount, date = null) {
+  const value = roundFor(loan.currency || DEFAULT_CURRENCY, amount);
+  if (value <= 0) return false;
+  const target = fin().loans.find(l => l.id === loan.id);
+  if (!target) return false;
+  const when = date || todayIso();
+  target.payments = [...target.payments, { id: uid(), date: when, amount: value }];
+
+  const lent = target.direction !== 'borrowed';
+  state.finance.operations.unshift({
+    id: uid(),
+    date: when,
+    kind: lent ? 'in' : 'out',
+    currency: target.currency,
+    amount: value,
+    counterparty: lent ? `Возврат долга — ${target.who}` : `Отдаю долг — ${target.who}`,
+    note: str(target.note) || `Выплата по долгу ${fmt(target.percent)}%`,
+    status: '',
+    source: 'debt',
+    ref: target.id
+  });
+  save();
+  return true;
 }
 
 // ── Обработчики ───────────────────────────────────────────────────────────
@@ -752,6 +847,41 @@ export function bindFinance() {
     if (act === 'add-payment') {
       const loan = loans.find(l => l.id === btn.dataset.id);
       if (loan) paymentForm(loan);
+      return;
+    }
+    if (act === 'pay-all') {
+      const loan = loans.find(l => l.id === btn.dataset.id);
+      if (!loan) return;
+      const ccy = loan.currency || DEFAULT_CURRENCY;
+      const st = loanStatus(loan);
+      const lent = loan.direction !== 'borrowed';
+      const ok = await confirmModal({
+        title: lent ? `Записать выплату от «${loan.who}»?` : `Записать возврат «${loan.who}»?`,
+        text: `Вся сумма долга: ${fmt(st.total, ccy)} `
+          + `(тело ${fmt(st.outstanding, ccy)}, проценты ${fmt(st.interestDue, ccy)}). Долг будет закрыт.`,
+        okText: 'Записать выплату'
+      });
+      if (!ok) return;
+      addPayment(loan, st.total);
+      return;
+    }
+    if (act === 'close-loan') {
+      const loan = loans.find(l => l.id === btn.dataset.id);
+      if (!loan) return;
+      const ccy = loan.currency || DEFAULT_CURRENCY;
+      const st = loanStatus(loan);
+      const ok = await confirmModal({
+        title: `Закрыть долг «${loan.who}», не выплачивая?`,
+        text: `Остаток ${fmt(st.total, ccy)} списывается: деньги уже не придут, но долг перестанет`
+          + ' начислять проценты. История выплат сохранится.',
+        okText: 'Закрыть долг',
+        danger: true
+      });
+      if (!ok) return;
+      loan.closedAt = todayIso();
+      loan.closeReason = 'Списан без выплаты';
+      save();
+      toast('Долг закрыт', 'success');
       return;
     }
     if (act === 'del-payment') {

@@ -519,14 +519,19 @@ export function loanAccrual(loan, asOfIso = todayIso()) {
   const round = (v) => roundFor(loan?.currency || DEFAULT_CURRENCY, v);
   const start = loan?.start;
   const end = loan?.end || null;
-  // Дальше крайнего срока проценты не идут: долг не должен расти бесконечно
-  const cutoff = end && asOfIso > end ? end : asOfIso;
+  // Проценты не идут дальше крайнего срока: иначе долг, который пережил срок, рос бы вечно
+  const accrueUntil = end && asOfIso > end ? end : asOfIso;
+  // Но ВЫПЛАТЫ после срока засчитываются: долг могли закрыть в octябре, и показывать
+  // его как непогашенный было бы неверно. Просто отсекать их по дате срока нельзя —
+  // именно это делало «Выплатить всё» бесполезным.
   // Без срока проценты не идут: начислять их «бесконечно» нельзя, иначе эта функция
   // показывала бы одно, а loanForecast — другое
   const accrues = !!end;
 
+  // Отсекаются только выплаты БУДУЩЕЕ, то есть позже даты расчёта. Раньше стоял
+  // отсев по дате срока — из-за него выплата после срока не засчитывалась вовсе.
   const payments = (loan?.payments || [])
-    .filter(p => p.date <= cutoff)
+    .filter(p => p.date <= asOfIso)
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
@@ -548,7 +553,9 @@ export function loanAccrual(loan, asOfIso = todayIso()) {
   };
 
   for (const payment of payments) {
-    accrueTo(payment.date);
+    // Начисляем только до даты выплаты и только пока идёт срок: выплата в октябре
+    // по долгу, закончившемуся в июле, проценты сверх срока не тянет
+    accrueTo(payment.date > accrueUntil ? accrueUntil : payment.date);
     const amount = round(payment.amount);
     const interestPart = round(Math.min(amount, interestDue));
     const principalPart = round(amount - interestPart);
@@ -557,7 +564,7 @@ export function loanAccrual(loan, asOfIso = todayIso()) {
     paid = round(paid + principalPart);
     interestPaid = round(interestPaid + interestPart);
   }
-  accrueTo(cutoff);
+  accrueTo(accrueUntil);
 
   outstanding = round(Math.max(0, outstanding));
   interest = round(Math.max(0, interest));
@@ -569,7 +576,7 @@ export function loanAccrual(loan, asOfIso = todayIso()) {
     interest,
     interestDue: round(Math.max(0, interestDue)),
     total: round(outstanding + Math.max(0, interestDue)),
-    days: daysBetween(start, cutoff),
+    days: daysBetween(start, accrueUntil),
     rate: percent(loan?.percent)
   };
 }

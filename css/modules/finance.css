@@ -60,8 +60,20 @@
    Раньше кнопки стояли в общем потоке и прилипали к таблице, а после них не было
    отступа до сводки. */
 .fin-bank-head { margin-bottom: 18px; }
-.fin-bank-head .fin-holdings { margin-bottom: 12px; }
 .fin-bank-head .fin-actions-row { margin-top: 0; }
+/* Подпись «Сейчас в наличии»: без неё две полосы с числами читались как одна,
+   и было не видно, какая из них про всё время, а какая про месяц. */
+.fin-now h3 { margin: 0 0 8px; font-size: 0.95rem; }
+.fin-now .fin-holdings { margin-bottom: 0; }
+.fin-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+.fin-summary-head h3 { margin: 0; font-size: 0.95rem; }
+.fin-summary-head span { font-size: 0.8rem; }
 /* Полоса «сколько в наличии»: она же показывается в форме сделки с голдом */
 .fin-holdings {
   display: flex;
@@ -76,6 +88,10 @@
   font-variant-numeric: tabular-nums;
 }
 .fin-holding b { font-size: 0.95rem; }
+/* «Из них в долгах» — вторая строка под числом: долг нельзя складывать с наличными,
+   поэтому он стоит отдельно и мелким шрифтом. */
+.fin-holding-debt { display: block; margin-top: 1px; color: var(--text-faint); font-size: 0.74rem; }
+.fin-pay-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; }
 .fin-shop-hint { margin: 12px 0 0; font-size: 0.8rem; max-width: 78ch; }
 /* Та же полоса внутри модального окна: отступ сверху лишний, окно и так с полями */
 .fin-modal .fin-holdings { margin: 0; }
@@ -140,15 +156,28 @@
 .fin-table-compact td, .fin-table-compact th { padding: 5px 6px; font-size: 0.8rem; }
 /* Предмет не должен раздувать таблицу: текст переносится, а колонка чисел остаётся узкой. */
 .fin-what { min-width: 9rem; max-width: 22rem; }
+/* В комиссионке предмет — единственная широкая колонка, и перенос по словам тут
+   единственный способ уместить название: без него буква падала на свою строку. */
+.fin-shop .fin-what { min-width: 0; max-width: none; }
+.fin-shop .fin-what b, .fin-shop .fin-what small { overflow-wrap: break-word; word-break: normal; }
 /* При table-layout: fixed ширину колонок задаёт шапка, а длинное название предмета
    переносится по словам вместо того, чтобы растянуть всю таблицу. */
+/* Предмет забирает всё, что осталось после чисел и кнопок: width: auto, а не 100%.
+   При table-layout: fixed ширины из шапки складываются, и 100% плюс фиксированные
+   колонки превышали ширину — предмету оставалось 25 px, и каждая буква названия
+   вставала в отдельную строку. */
 .fin-shop .fin-table th:first-child { width: auto; }
-/* При table-layout: fixed ширины колонок берутся только из шапки, и width: 1% схлопнул
-   колонку действий в 3 px — кнопки оттуда вылезали. Поэтому у неё своя ширина:
-   три кнопки по 26 px плюс отступы. Остальные числовые колонки жмутся по содержимому. */
-.fin-shop .fin-table th:not(:first-child) { width: 1%; }
-.fin-shop .fin-table th.fin-head-actions { width: 96px; }
+/* При table-layout: fixed ширины колонок берутся только из шапки, и width: 1% на
+   числовых колонках схлопывал их до одного символа — цифры наезжали на кнопки.
+   Поэтому у каждой колонки своя ширина, и сумма их меньше ширины колонки. */
+.fin-shop .fin-table th.fin-head-price { width: 64px; }
+.fin-shop .fin-table th:nth-child(3) { width: 62px; }
+.fin-shop .fin-table th:nth-child(4) { width: 74px; }
+.fin-shop .fin-table th.fin-head-actions { width: 92px; }
 .fin-shop .fin-actions { width: auto; }
+/* Единица измерения под заголовком: без неё «Цена» и «Итого» выглядят одинаково,
+   и столбцы чисел читались как одна полоса цифр. */
+.fin-head-unit { display: block; font-size: 0.68rem; font-weight: 400; color: var(--text-faint); }
 
 .fin-date, .fin-balance { white-space: nowrap; color: var(--text-dim); }
 .fin-amount { text-align: right; white-space: nowrap; font-weight: 650; }
@@ -300,7 +329,12 @@
   font-size: 0.85rem;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
+  /* Предпросмотр растёт текстом при длинных числах и подписи: без переноса он
+     вылезал за границы окна. */
+  overflow-wrap: anywhere;
 }
+/* Числа в предпросмотре не должны прижиматься к границе окна */
+.fin-preview b, .fin-preview small { overflow-wrap: anywhere; }
 
 @media (max-width: 560px) {
   .fin-form { grid-template-columns: minmax(0, 1fr); }
