@@ -56,6 +56,12 @@
   align-items: center;
   margin-top: 14px;
 }
+/* Шапка «Банка»: наличные и кнопки одной строкой, между ними и сводкой — воздух.
+   Раньше кнопки стояли в общем потоке и прилипали к таблице, а после них не было
+   отступа до сводки. */
+.fin-bank-head { margin-bottom: 18px; }
+.fin-bank-head .fin-holdings { margin-bottom: 12px; }
+.fin-bank-head .fin-actions-row { margin-top: 0; }
 /* Полоса «сколько в наличии»: она же показывается в форме сделки с голдом */
 .fin-holdings {
   display: flex;
@@ -110,7 +116,15 @@
    Без неё таблица на узком окне сжимает «Откуда / на что» до нуля, а кнопки действий
    выдавливаются за пределы ячейки — значки оказывались за границей блока. */
 .fin-table-wrap { overflow-x: auto; }
+/* Комиссионка: горизонтальный скроллбар здесь не нужен — колонка предмета сжимается,
+   а не растягивает таблицу. Цифры остаются узкими, поэтому таблица всегда влезает. */
+.fin-shop .fin-table-wrap { overflow-x: visible; }
+.fin-shop .fin-what { min-width: 5rem; max-width: none; }
 .fin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+/* min-width: 0 обязателен в гриде: иначе содержимое растягивает колонку и таблица
+   уезжает за пределы блока, откуда и появлялся скроллбар. */
+.fin-shop .fin-table { table-layout: fixed; }
+.fin-shop .fin-actions .fin-icon { width: 26px; margin-left: 2px; }
 .fin-table th {
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
@@ -126,6 +140,15 @@
 .fin-table-compact td, .fin-table-compact th { padding: 5px 6px; font-size: 0.8rem; }
 /* Предмет не должен раздувать таблицу: текст переносится, а колонка чисел остаётся узкой. */
 .fin-what { min-width: 9rem; max-width: 22rem; }
+/* При table-layout: fixed ширину колонок задаёт шапка, а длинное название предмета
+   переносится по словам вместо того, чтобы растянуть всю таблицу. */
+.fin-shop .fin-table th:first-child { width: auto; }
+/* При table-layout: fixed ширины колонок берутся только из шапки, и width: 1% схлопнул
+   колонку действий в 3 px — кнопки оттуда вылезали. Поэтому у неё своя ширина:
+   три кнопки по 26 px плюс отступы. Остальные числовые колонки жмутся по содержимому. */
+.fin-shop .fin-table th:not(:first-child) { width: 1%; }
+.fin-shop .fin-table th.fin-head-actions { width: 96px; }
+.fin-shop .fin-actions { width: auto; }
 
 .fin-date, .fin-balance { white-space: nowrap; color: var(--text-dim); }
 .fin-amount { text-align: right; white-space: nowrap; font-weight: 650; }
@@ -155,6 +178,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-top: 4px;
 }
 @media (max-width: 900px) { .fin-shop { grid-template-columns: minmax(0, 1fr); } }
 
@@ -169,9 +193,10 @@
 /* Колонка «Покупка» без позиций была вдвое короче продажи, и подпись «На складе»
    подвисала на середине. Флекс-колонка прижимает её к низу своей колонки. */
 .fin-shop-col > .fin-table-wrap { flex: 1; }
-.fin-shop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.fin-shop-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
 .fin-shop-head h3 { margin: 0; font-size: 0.95rem; }
-.fin-shop-head span { font-size: 0.78rem; }
+.fin-shop-head-right { display: flex; align-items: center; gap: 10px; }
+.fin-shop-head-right span { font-size: 0.78rem; }
 .fin-shop-foot {
   display: flex;
   justify-content: space-between;

@@ -2,6 +2,7 @@
 // Здесь нет DOM и нет state — только деньги, комиссия и начисление процентов,
 // поэтому проверяется без запуска приложения.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   goldDeal,
   commissionLossPct,
@@ -582,6 +583,21 @@ describe('раздел «Учёт»: три блока', () => {
     expect(html.indexOf('data-fin-act="add-op"')).toBeLessThan(html.indexOf('<table'));
   });
 
+  it('кнопки «Банка» отделены от сводки блоком с отступом', async () => {
+    const { el } = await openBlock();
+    const head = el.querySelector('.fin-bank-head');
+    expect(head).toBeTruthy();
+    // Наличные и кнопки внутри одной шапки, а не в общем потоке раздела
+    expect(head.querySelector('.fin-holdings')).toBeTruthy();
+    expect(head.querySelector('[data-fin-act="add-op"]')).toBeTruthy();
+    expect(head.querySelector('[data-fin-act="gold-sell"]')).toBeTruthy();
+    expect(head.querySelector('[data-fin-act="gold-buy"]')).toBeTruthy();
+    // Сводка и таблица — уже после шапки
+    const html = el.innerHTML;
+    expect(html.indexOf('fin-bank-head')).toBeLessThan(html.indexOf('fin-summary'));
+    expect(html.indexOf('fin-summary')).toBeLessThan(html.indexOf('<table'));
+  });
+
   it('комиссионка разносит продажу и покупку по двум колонкам', async () => {
     const { el } = await openBlock('shop');
     const cols = [...el.querySelectorAll('.fin-shop-col')];
@@ -590,7 +606,44 @@ describe('раздел «Учёт»: три блока', () => {
     expect(text(cols[0].querySelector('.fin-shop-foot'))).toContain('300');
     expect(cols[1].querySelector('h3').textContent).toBe('Покупка');
     expect(text(cols[1].querySelector('.fin-shop-foot'))).toContain('200');
-    expect(text(el)).toContain('На складе');
+  });
+
+  it('у колонки действий комиссионки есть своя ширина, иначе кнопки вылезут за край', () => {
+    // Регрессия: при table-layout: fixed ширину колонок берут из шапки, и width: 1%
+    // ужимал колонку действий до 3 px — кнопки оттуда вылезали.
+    // Проверяем правило в css, а не размеры: jsdom не верстает таблицы и отдаёт 0 px.
+    const css = readFileSync('css/modules/finance.css', 'utf8');
+    expect(css).toMatch(/\.fin-shop \.fin-table th\.fin-head-actions\s*\{\s*width:\s*\d+px/);
+    // Ячейка действий в комиссионке не ужимается общим правилом width: 1%
+    expect(css).toMatch(/\.fin-shop \.fin-actions\s*\{\s*width:\s*auto/);
+    // Кнопки узкие и без отступа слева, чтобы поместиться в отведённую ширину
+    expect(css).toMatch(/\.fin-shop \.fin-actions \.fin-icon\s*\{[^}]*width:\s*26px/);
+  });
+
+it('шапка колонки действий в комиссионке помечена классом', async () => {
+    const { el } = await openBlock('shop');
+    const heads = [...el.querySelectorAll('.fin-shop-col th.fin-head-actions')];
+    expect(heads).toHaveLength(2);
+    expect(heads.every(h => h.textContent.trim() === '')).toBe(true);
+  });
+
+  it('подпись итога повторяет название колонки, а не «На складе»', async () => {
+    const { el } = await openBlock('shop');
+    const labels = [...el.querySelectorAll('.fin-shop-foot span')].map(s => text(s).trim());
+    expect(labels).toEqual(['Продажа', 'Покупка']);
+  });
+
+  it('кнопка добавления позиции стоит в шапке своей колонки, а не над обеими', async () => {
+    const { el } = await openBlock('shop');
+    const heads = [...el.querySelectorAll('.fin-shop-head [data-fin-act="add-item"]')];
+    expect(heads).toHaveLength(2);
+    // У каждой кнопки своя сторона: в «Продажу» — sell, в «Покупку» — buy
+    expect(heads.map(b => b.dataset.side)).toEqual(['sell', 'buy']);
+    // Кнопка внутри своей колонки, а не отдельной полосой над ними
+    for (const head of [...el.querySelectorAll('.fin-shop-head')]) {
+      expect(head.querySelector('[data-fin-act="add-item"]')).toBeTruthy();
+    }
+    expect(el.querySelector('.fin-shop ~ .fin-actions-row [data-fin-act="add-item"]')).toBeNull();
   });
 
   it('у позиции комиссионки есть «продано», «изменить» и «убрать»', async () => {

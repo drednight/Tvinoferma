@@ -188,12 +188,16 @@ function shopColumn(side, items, totals) {
     <div class="fin-shop-col">
       <header class="fin-shop-head">
         <h3>${title}</h3>
-        <span class="muted">${totals.count} поз. · ${fmt(totals.qty)} шт.</span>
+        <div class="fin-shop-head-right">
+          <button type="button" class="btn ghost small" data-fin-act="add-item" data-side="${side}"
+                  title="Добавить позицию в «${title}»">➕ Позиция</button>
+          <span class="muted">${totals.count} поз. · ${fmt(totals.qty)} шт.</span>
+        </div>
       </header>
       ${items.length ? `
         <div class="fin-table-wrap">
           <table class="fin-table fin-table-compact">
-            <thead><tr><th>Предмет</th><th class="fin-num">Цена</th><th class="fin-num">Осталось</th><th class="fin-num">Итого</th><th></th></tr></thead>
+            <thead><tr><th>Предмет</th><th class="fin-num">Цена</th><th class="fin-num">Осталось</th><th class="fin-num">Итого</th><th class="fin-head-actions"></th></tr></thead>
             <tbody>
               ${items.map(item => `
                 <tr class="fin-row">
@@ -215,7 +219,7 @@ function shopColumn(side, items, totals) {
           </table>
         </div>` : '<p class="fin-empty">Пусто</p>'}
       <footer class="fin-shop-foot">
-        <span class="muted">На складе</span>
+        <span class="muted">${title}</span>
         <b class="${isSell ? 'fin-in' : 'fin-out'}">${sign}${fmt(totals.sum)} ${escapeHtml(cur(DEFAULT_CURRENCY).short)}</b>
       </footer>
     </div>`;
@@ -226,10 +230,6 @@ function shopBlock() {
   const totals = shopTotals(items);
   const now = balances(fin().operations);
   return `
-    <div class="fin-actions-row">
-      <button type="button" class="btn primary" data-fin-act="add-item">➕ Добавить позицию</button>
-      <span class="muted">На складе: продажа <b>${fmt(totals.sell.sum)}</b>, покупка <b>${fmt(totals.buy.sum)}</b> золота</span>
-    </div>
     <div class="fin-shop">
       ${shopColumn('sell', items.filter(i => i.side !== 'buy'), totals.sell)}
       ${shopColumn('buy', items.filter(i => i.side === 'buy'), totals.buy)}
@@ -337,11 +337,13 @@ export function renderFinance() {
     </nav>
     <div class="fin-body">
       ${activeBlock === 'ledger' ? `
-        ${balancesRow()}
-        <div class="fin-actions-row">
-          <button type="button" class="btn primary" data-fin-act="add-op">➕ Записать</button>
-          <button type="button" class="btn" data-fin-act="gold-sell">💰 Продать голд</button>
-          <button type="button" class="btn" data-fin-act="gold-buy">🛒 Купить голд</button>
+        <div class="fin-bank-head">
+          ${balancesRow()}
+          <div class="fin-actions-row">
+            <button type="button" class="btn primary" data-fin-act="add-op">➕ Записать</button>
+            <button type="button" class="btn" data-fin-act="gold-sell">💰 Продать голд</button>
+            <button type="button" class="btn" data-fin-act="gold-buy">🛒 Купить голд</button>
+          </div>
         </div>
         ${bankSummary()}
         ${bankTable()}` : ''}
@@ -398,10 +400,10 @@ function operationForm(existing = null) {
   });
 }
 
-function shopItemForm(existing = null) {
-  const item = existing || { side: 'sell', name: '', price: '', qty: '', date: todayIso(), note: '' };
+function shopItemForm(existing = null, side = 'sell') {
+  const item = existing || { side, name: '', price: '', qty: '', date: todayIso(), note: '' };
   showModal({
-    title: existing ? 'Изменить позицию' : 'Новая позиция',
+    title: existing ? 'Изменить позицию' : `Новая позиция: ${item.side === 'buy' ? 'Покупка' : 'Продажа'}`,
     submitText: 'Сохранить',
     content: `<form class="fin-form">
       ${selectField('Сторона', 'side', item.side, [
@@ -700,7 +702,7 @@ export function bindFinance() {
       return;
     }
 
-    if (act === 'add-item') return shopItemForm();
+    if (act === 'add-item') return shopItemForm(null, btn.dataset.side === 'buy' ? 'buy' : 'sell');
     if (act === 'edit-item') {
       const item = shopItems.find(i => i.id === btn.dataset.id);
       if (item) shopItemForm(item);
