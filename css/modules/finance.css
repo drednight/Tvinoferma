@@ -1,0 +1,250 @@
+/* css/modules/finance.css
+   Раздел «Учёт»: приход и расход, комиссионный магазин, голд и долги.
+
+   Почему свой файл: это первый раздел, где числа стоят рядом с текстом и их нужно
+   сравнивать глазом (курс против фактического, остаток против суммы строк). Поэтому
+   колонки с числами выровнены вправо и моноширинны, а приход и расход различаются
+   цветом, а не только знаком «+»/«−»: различать их приходится быстро, и на длинных
+   списках одного знака мало. */
+
+.fin-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.fin-subnav-btn {
+  padding: 7px 13px;
+  font-size: 0.86rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease), color var(--speed) var(--ease), background var(--speed) var(--ease);
+}
+.fin-subnav-btn:hover { border-color: var(--border-strong); color: var(--text); }
+.fin-subnav-btn.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+}
+.fin-subnav-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+/* --- Числа --- */
+.fin-in { color: var(--success); }
+.fin-out { color: var(--danger); }
+/* Моноширинный шрифт: суммы выровнены по разрядам, и «на 1000 больше» видно сразу,
+   не складывая в уме две строки с разным количеством цифр. */
+.fin-num, .fin-amount, .fin-balance { font-variant-numeric: tabular-nums; }
+
+.fin-empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.fin-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+/* --- Сводка по валютам --- */
+.fin-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.fin-summary-cell {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-summary-label { color: var(--text-dim); font-size: 0.8rem; }
+.fin-summary-row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.fin-summary-row small { color: var(--text-faint); font-size: 0.76rem; }
+.fin-summary-row b { font-variant-numeric: tabular-nums; }
+.fin-summary-total {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 1.05rem;
+}
+
+/* --- Таблицы реестра и магазина --- */
+.fin-month { margin-bottom: 12px; }
+.fin-month summary { cursor: pointer; }
+.fin-month summary h3 { display: inline; font-size: 0.95rem; }
+.fin-month-totals { display: inline-flex; gap: 12px; margin-left: 10px; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+
+.fin-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.fin-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.fin-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.fin-table tbody tr:last-child td { border-bottom: none; }
+.fin-table .fin-num { text-align: right; white-space: nowrap; }
+.fin-table-compact td, .fin-table-compact th { padding: 5px 6px; font-size: 0.8rem; }
+
+.fin-date, .fin-balance { white-space: nowrap; color: var(--text-dim); }
+.fin-amount { text-align: right; white-space: nowrap; font-weight: 650; }
+.fin-what b { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.fin-what small { display: block; font-size: 0.74rem; overflow-wrap: anywhere; }
+.fin-actions { text-align: right; white-space: nowrap; }
+.fin-actions .btn { margin-left: 4px; }
+.fin-source { color: var(--text-faint); font-size: 0.7rem; }
+
+.fin-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.fin-chip.is-in { background: var(--success-soft); color: var(--success); }
+.fin-chip.is-out { background: var(--danger-soft); color: var(--danger); }
+.fin-chip.is-warn { background: var(--warning-soft); color: var(--warning); }
+.fin-chip.is-done { background: var(--accent-soft); color: var(--accent); }
+
+/* --- Комиссионный магазин: две колонки, как в игре --- */
+.fin-shop {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 900px) { .fin-shop { grid-template-columns: minmax(0, 1fr); } }
+
+.fin-shop-col {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-shop-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.fin-shop-head h3 { margin: 0; font-size: 0.95rem; }
+.fin-shop-head span { font-size: 0.78rem; }
+.fin-shop-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Голд --- */
+.fin-gold-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-gold-hint { margin: 10px 0 0; max-width: 78ch; font-size: 0.82rem; }
+
+/* --- Долги --- */
+.fin-loans {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.fin-loan {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-loan.is-borrowed { border-left-color: var(--danger); }
+
+.fin-loan-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.fin-loan-head b { font-size: 1rem; }
+
+.fin-loan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+.fin-loan-grid span { display: grid; gap: 1px; }
+.fin-loan-grid small { color: var(--text-faint); font-size: 0.7rem; }
+.fin-loan-grid b { font-size: 0.88rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.fin-loan-grid-sum {
+  padding: 9px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+}
+.fin-loan-due b { font-size: 1.02rem; color: var(--warning); }
+.fin-loan-term { margin: 0; font-size: 0.78rem; }
+
+.fin-payments { font-size: 0.82rem; }
+.fin-payments summary { cursor: pointer; color: var(--text-dim); }
+.fin-loan-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* --- Формы в модальных окнах --- */
+.fin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.fin-field { display: grid; gap: 4px; min-width: 0; }
+.fin-field span { color: var(--text-dim); font-size: 0.78rem; }
+.fin-field input, .fin-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+.fin-field input:focus-visible, .fin-field select:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+/* Примечание и «кто» — длинный текст, во всю ширину окна */
+.fin-field-wide, .fin-form-hint, .fin-preview { grid-column: 1 / -1; }
+.fin-form-hint { margin: 0; font-size: 0.78rem; }
+
+/* Итог сделки: пересчитывается на лету, чтобы человек увидел комиссию до записи */
+.fin-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .fin-form { grid-template-columns: minmax(0, 1fr); }
+}

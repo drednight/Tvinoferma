@@ -17,7 +17,7 @@ describe('migrateState', () => {
     const { state, from, applied, newer } = migrateState(raw);
     expect(from).toBe(2);
     expect(newer).toBe(false);
-    expect(applied).toEqual([3, 4, 5, 6, 7, 8]);
+    expect(applied).toEqual([3, 4, 5, 6, 7, 8, 9]);
     expect(state.schemaVersion).toBe(SCHEMA_VERSION);
     expect(state.version).toBeUndefined();
     expect(state.exportedAt).toBeUndefined();
@@ -29,7 +29,7 @@ describe('migrateState', () => {
 
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
     expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
     expect(state.parties.every(p => typeof p.id === 'string' && p.id)).toBe(true);
   });
@@ -86,7 +86,7 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
 
   it('party (название) → partyIds (id), поле party удаляется, notes по умолчанию пустые', () => {
     const { state, applied } = migrateState(v4());
-    expect(applied).toEqual([5, 6, 7, 8]);
+    expect(applied).toEqual([5, 6, 7, 8, 9]);
     const id = (name) => state.parties.find(p => p.name === name).id;
     expect(state.parties.every(p => p.id)).toBe(true);
     expect(state.parties.find(p => p.name === 'Основа').id).toBe('p1');
@@ -162,9 +162,39 @@ describe('миграция v7: путь GameCenter у каждого аккау�
       characters: [{ id: 'a' }, { id: 'b', launch: { gcPath: '  D:\\GC  ' } }, { id: 'c', launch: null }]
     };
     const { state, applied } = migrateState(raw);
-    expect(applied).toEqual([7, 8]);
+    expect(applied).toEqual([7, 8, 9]);
     expect(state.characters.map(c => c.launch.gcPath)).toEqual(['', 'D:\\GC', '']);
     expect(raw.characters[0].launch).toBeUndefined(); // исходные данные не мутируются
+  });
+});
+
+describe('миграция v9: раздел «Учёт»', () => {
+  it('старый файл без раздела получает пустой, а не битый', () => {
+    const { state, applied } = migrateState({ schemaVersion: 8, characters: [], parties: [] });
+    expect(applied).toEqual([9]);
+    expect(state.finance).toEqual({});
+    expect(normalizeState(state).finance.operations).toEqual([]);
+  });
+
+  it('уже заведённые деньги переживают миграцию и обновление схемы', () => {
+    const finance = {
+      operations: [{ id: 'o1', date: '2026-06-09', kind: 'in', amount: 1000, currency: 'gold', counterparty: 'Ежа' }],
+      shopItems: [{ id: 'i1', side: 'sell', name: 'Зелье', price: 100, qty: 3 }],
+      loans: [{ id: 'l1', direction: 'lent', who: 'Шкила', principal: 500, percent: 5, start: '2026-06-01', end: '2026-12-01' }],
+      settings: { goldRate: 1000000, commissionPct: 8, goldRateAt: '2026-06-09' }
+    };
+    const normalized = normalizeState(migrateState({ schemaVersion: 8, finance, characters: [] }).state);
+    expect(normalized.finance.operations).toHaveLength(1);
+    expect(normalized.finance.operations[0].counterparty).toBe('Ежа');
+    expect(normalized.finance.shopItems[0].name).toBe('Зелье');
+    expect(normalized.finance.loans[0].who).toBe('Шкила');
+    expect(normalized.finance.settings.goldRate).toBe(1000000);
+  });
+
+  it('мусор на месте раздела не ломает загрузку', () => {
+    for (const bad of [null, 42, 'text', []]) {
+      expect(() => normalizeState(migrateState({ schemaVersion: 8, finance: bad }).state)).not.toThrow();
+    }
   });
 });
 
@@ -173,7 +203,7 @@ describe('цепочка миграций для релиза 1.0', () => {
     const { state, from, to, applied } = migrateState({});
     expect(from).toBe(1);
     expect(to).toBe(SCHEMA_VERSION);
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
     expect(state.characters).toEqual([]);
     expect(state.parties).toEqual([]);
     expect(state.marathons).toEqual([]);

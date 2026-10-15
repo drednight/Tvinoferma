@@ -20,11 +20,12 @@ describe('разметка раздела «Инструменты»', () => {
   it('пункт меню стоит шестым, после «Руны», и у него свой горячий ключ', () => {
     const doc = new DOMParser().parseFromString(html(), 'text/html');
     const tabs = [...doc.querySelectorAll('.next-nav [data-tab]')].map(b => b.dataset.tab);
-    expect(tabs).toEqual(['today', 'characters', 'parties', 'marathons', 'runes', 'tools']);
-    // «Настройки» живёт отдельно, внизу, и теперь это Ctrl+7
+    expect(tabs).toEqual(['today', 'characters', 'parties', 'marathons', 'runes', 'tools', 'finance']);
+    // «Настройки» живёт отдельно, внизу, и теперь это Ctrl+8 — седьмым стал «Учёт»
     const settings = doc.querySelector('.next-settings-tab');
-    expect(settings.title).toBe('Ctrl+7');
+    expect(settings.title).toBe('Ctrl+8');
     expect(doc.querySelector('.next-nav [data-tab="tools"]').title).toBe('Ctrl+6');
+    expect(doc.querySelector('.next-nav [data-tab="finance"]').title).toBe('Ctrl+7');
   });
 
   it('страница раздела есть и в ней панель состояния парсеров', () => {

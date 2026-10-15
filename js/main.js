@@ -32,6 +32,7 @@ import { mountMskClock } from './modules/servers/mskClock.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
 import { initNavBadges, refreshNavBadges } from './core/navBadges.js';
 import { bindEternals, applyEternalsVisibility, startEternalsDailySync } from './modules/eternals/page.js';
+import { bindFinance, renderFinance } from './modules/finance/page.js';
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
 import { initUiActions, updateFabVisibility } from './core/uiActions.js'; 
@@ -164,6 +165,12 @@ async function boot() {
       console.log('[BOOT] Settings bound.');
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind Settings:', e);
+    }
+
+    try {
+      bindFinance();
+    } catch (e) {
+      console.error('[BOOT ERROR] Failed to bind Finance:', e);
     }
 
     // Клан Eternals: скрытая страница, по умолчанию выключена
@@ -328,6 +335,9 @@ function renderActiveTab(sectionName) {
         renderTools();
         // Список окон игры нужен и здесь (управление окнами), и на «Сегодня», и в карточке
         if (isTauri()) refreshRunningWindows().catch(() => {});
+        break;
+      case 'finance':
+        renderFinance();
         break;
       case 'settings':
         renderSettings();

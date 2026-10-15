@@ -14,6 +14,7 @@ import { normalizeEternalsData } from '../modules/eternals/core.js';
 import { normalizePreflightMode } from '../modules/launcher/preflight.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
 import { normalizePlannerEntry } from '../modules/dashboard/planner.js';
+import { normalizeFinance, defaultFinance } from '../modules/finance/model.js';
 
 /** Максимальная длина примечания к персонажу (символов). */
 export const NOTES_MAX_LENGTH = 5000;
@@ -32,6 +33,8 @@ export const state = {
   marathons: [],
   marathonTemplates: [],
   plannerEntries: [],
+  // Раздел «Учёт»: реестр движений денег, комиссионный магазин, голд и долги
+  finance: defaultFinance(),
   settings: clone(DEFAULT_SETTINGS),
   ui: {
     activeTab: 'characters',
@@ -375,6 +378,7 @@ export function normalizeState(raw) {
     plannerEntries: Array.isArray(input?.plannerEntries)
       ? input.plannerEntries.map(normalizePlannerEntry).filter(entry => entry.title)
       : [],
+    finance: normalizeFinance(input?.finance),
     settings: mergeSettings(input?.settings),
     ui: {
       activeTab: 'characters',

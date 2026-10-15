@@ -8,7 +8,7 @@
 
 import { planCharacterIds, remapIdsDeep } from './ids.js';
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -104,6 +104,16 @@ export const MIGRATIONS = {
   8: (s) => {
     s.archivedCharacters = Array.isArray(s.archivedCharacters) ? s.archivedCharacters : [];
     s.archivedParties = Array.isArray(s.archivedParties) ? s.archivedParties : [];
+    return s;
+  },
+
+  // v8 → v9: раздел «Учёт» — реестр денег, комиссионный магазин, голд и долги.
+  // Миграция только заводит пустой раздел: приведение к схеме делает normalizeFinance
+  // при чтении, как и остальные разделы
+  9: (s) => {
+    s.finance = s.finance && typeof s.finance === 'object' && !Array.isArray(s.finance)
+      ? s.finance
+      : {};
     return s;
   }
 };

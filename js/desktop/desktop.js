@@ -85,7 +85,7 @@ export function initHotkeys({ switchTab }) {
 
     if (!e.shiftKey && ['1', '2', '3', '4', '5', '6', '7'].includes(key) && !modalOpen) {
       e.preventDefault();
-      switchTab(['today', 'characters', 'parties', 'marathons', 'runes', 'tools', 'settings'][Number(key) - 1]);
+      switchTab(['today', 'characters', 'parties', 'marathons', 'runes', 'tools', 'finance', 'settings'][Number(key) - 1]);
     } else if (!e.shiftKey && (key === 'f' || key === 'а') && !modalOpen) {
       e.preventDefault();
       switchTab('characters');

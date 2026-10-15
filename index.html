@@ -39,6 +39,7 @@
   <link rel="stylesheet" href="/css/modules/windowPicker.css" />
   <link rel="stylesheet" href="/css/modules/statsImport.css" />
   <link rel="stylesheet" href="/css/modules/tools.css" />
+  <link rel="stylesheet" href="/css/modules/finance.css" />
 </head>
 <body data-ui-style="next">
   <div class="app-shell">
@@ -81,13 +82,17 @@
           <span class="next-nav-icon" aria-hidden="true">⚡</span>
           <span class="next-nav-copy"><strong>Инструменты</strong><small>Скрипты и окна игры</small></span>
         </button>
+        <button class="tab" data-tab="finance" data-subtitle="Приход и расход, комиссионный магазин, голд и долги." title="Ctrl+7">
+          <span class="next-nav-icon" aria-hidden="true">₽</span>
+          <span class="next-nav-copy"><strong>Учёт</strong><small>Деньги, магазин и долги</small></span>
+        </button>
 
       </nav>
       <div class="next-sidebar-bottom">
         <div id="msk-clock" class="msk-clock" role="timer" aria-label="Московское время"></div>
         <div id="server-status" class="server-status" aria-label="Статус серверов"></div>
         <div class="next-sidebar-divider" aria-hidden="true"></div>
-        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+7">
+        <button class="tab next-settings-tab" data-tab="settings" data-subtitle="Данные и резервные копии, скрипты, запуск игры, уведомления и оформление." title="Ctrl+8">
           <span class="next-nav-icon" aria-hidden="true">⚙</span>
           <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
         </button>
@@ -247,6 +252,11 @@
             </div>
           </details>
         </section>
+      </section>
+
+      <!-- РАЗДЕЛ: УЧЁТ -->
+      <section class="page" data-section="finance">
+        <div id="finance-root"></div>
       </section>
 
       <!-- РАЗДЕЛ: НАСТРОЙКИ -->
