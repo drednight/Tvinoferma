@@ -1,0 +1,548 @@
+<!doctype html>
+<!--
+  docs/prototypes/finance-layouts.html
+  Четвёртый круг правок раздела «Учёт».
+
+  Что изменилось по просьбам:
+  - Комиссионка: сетка слотов ровно 5×4 в Продаже и в Покупке;
+  - открытый месяц ограничен по высоте и прокручивается внутри себя, а не растягивает
+    всю страницу; список месяцев показывает ровно 7 штук и тоже прокручивается;
+  - порядок блоков: панели → месяцы → Комиссионка (Продажа и Покупка) → Долги;
+  - «Склад» переименован в «Комиссионка»;
+  - долги перенесены в самый конец и переделаны: три варианта структуры карточки.
+
+  Прототип, не часть приложения: ничего не сохраняет.
+  Числа считает js/modules/finance/model.js — та же модель, что в приложении.
+-->
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Учёт — сетка 5×4, фиксированная высота месяца, долги в конце</title>
+  <link rel="stylesheet" href="/css/core/variables.css" />
+  <link rel="stylesheet" href="/css/core/base.css" />
+  <link rel="stylesheet" href="/css/core/components.css" />
+  <link rel="stylesheet" href="/css/modules/finance.css" />
+  <style>
+    body { padding: 24px 28px 80px; }
+    .proto-head { max-width: 980px; margin-bottom: 18px; }
+    .proto-head h1 { margin: 0 0 8px; font-size: 1.5rem; }
+    .proto-head p { margin: 0 0 6px; color: var(--text-dim); font-size: 0.9rem; line-height: 1.5; }
+    .proto-tools { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 14px 0 22px; }
+    .proto-tools label { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; cursor: pointer; }
+    .variant { margin-bottom: 56px; }
+    .variant-title {
+      display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+      padding: 12px 16px; margin-bottom: 14px;
+      border: 1px solid var(--accent-line); border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+    }
+    .variant-title h2 { margin: 0; font-size: 1.05rem; }
+    .variant-title span { color: var(--text-dim); font-size: 0.82rem; }
+    .frame { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+
+    .stack { display: grid; gap: 14px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 16px; }
+    .grp { display: flex; align-items: center; gap: 6px; }
+    .grp-label { color: var(--text-faint); font-size: 0.76rem; }
+
+    .pans { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 18px; }
+    .pan { display: grid; gap: 3px; align-content: start; padding: 12px 14px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); }
+    .pan-label { color: var(--text-dim); font-size: 0.78rem; }
+    .pan-value { font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
+    .pan-sub { color: var(--text-faint); font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+    .pan-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+    .pan-row span { color: var(--text-faint); }
+
+    .block-h { margin: 0 0 10px; font-size: 0.98rem; }
+
+    /* Сетка месяцев: ровно 7 строк, дальше прокрутка внутри */
+    .months-grid {
+      display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px;
+      margin-bottom: 18px;
+    }
+    @media (max-width: 1500px) { .months-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    @media (max-width: 900px) { .months-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .month-card {
+      display: grid; gap: 2px; text-align: left; padding: 9px 11px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--surface-1); color: inherit; cursor: pointer;
+    }
+    .month-card:hover { border-color: var(--accent-line); }
+    .month-card.active { border-color: var(--accent); background: var(--accent-soft); }
+    .month-card b { font-size: 0.86rem; font-weight: 600; }
+    .month-card .mc-sum { font-size: 0.8rem; font-variant-numeric: tabular-nums; font-weight: 650; }
+    .month-card small { color: var(--text-faint); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+    .months-scroll { max-height: 288px; overflow-y: auto; }
+
+    /* Открытый месяц: фиксированная высота, прокрутка внутри */
+    .month-open {
+      display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 14px; align-items: start;
+    }
+    @media (max-width: 900px) { .month-open { grid-template-columns: minmax(0, 1fr); } }
+    .month-body {
+      /* Высота задана явно: страница не растёт от длины месяца, лишнее уходит в скролл */
+      height: 470px; overflow-y: auto; padding-right: 6px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1);
+    }
+    .month-body::-webkit-scrollbar { width: 10px; }
+    .month-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+
+    .src-link { padding: 0; border: 0; background: none; color: inherit; font: inherit;
+      font-weight: 600; text-align: left; cursor: pointer;
+      text-decoration: underline dotted; text-underline-offset: 3px; }
+    .src-link:hover { color: var(--accent); }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      margin-bottom: 10px; padding: 8px 12px;
+      border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft); }
+    .filter-chip { display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 6px 3px 10px; border-radius: var(--radius-pill);
+      background: var(--accent); color: #fff; font-size: 0.78rem; font-weight: 600; }
+    .filter-chip button { padding: 0 3px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 0.9rem; line-height: 1; }
+
+    /* Комиссионка: сетка 5×4 */
+    .shop-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 900px) { .shop-grid { grid-template-columns: minmax(0, 1fr); } }
+    .shop-side { border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--surface-1); padding: 12px 14px; }
+    .shop-side-head { margin-bottom: 10px; }
+    .shop-side-head h4 { margin: 0; font-size: 0.95rem; }
+    /* Ровно 5 колонок и 4 ряда: столько слотов в игровом окне */
+    .slots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .slot { position: relative; aspect-ratio: 1; border-radius: var(--radius-xs);
+      border: 1px dashed var(--border); background: transparent; cursor: pointer;
+      display: grid; place-items: center; padding: 2px; }
+    .slot.is-empty { color: var(--text-faint); font-size: 1rem; }
+    .slot.is-empty:hover { border-color: var(--accent-line); color: var(--accent); }
+    .slot.is-filled { border: 1px solid hsl(var(--hue) 45% 38%); background: hsl(var(--hue) 42% 20%);
+      color: hsl(var(--hue) 70% 88%); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.02em; }
+    .slot.is-filled:hover { background: hsl(var(--hue) 45% 26%); }
+    .slot-qty { position: absolute; right: 3px; bottom: 2px;
+      font-size: 0.62rem; font-weight: 600; opacity: 0.85; font-variant-numeric: tabular-nums; }
+    .shop-side-foot { display: flex; justify-content: space-between; align-items: baseline;
+      margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+      font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+    .shop-note { margin: 8px 0 0; font-size: 0.76rem; color: var(--text-dim); }
+
+    /* Полоса погашения: видно, сколько долга уже закрыто */
+    .bar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 3px; background: var(--success); }
+    .bar.is-neg > i { background: var(--danger); }
+
+    /* Д1 — строка во всю ширину с полосой */
+    .debt-row {
+      display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px;
+      align-items: center; padding: 12px 14px;
+      border: 1px solid var(--border); border-left: 3px solid var(--success);
+      border-radius: var(--radius-sm); background: var(--surface-1);
+    }
+    .debt-row.is-borrowed { border-left-color: var(--danger); }
+    .debt-main { min-width: 0; display: grid; gap: 5px; }
+    .debt-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+    .debt-title b { font-size: 0.95rem; }
+    .debt-meta { color: var(--text-faint); font-size: 0.76rem; font-variant-numeric: tabular-nums; }
+    .debt-prog { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+    .debt-due { text-align: right; }
+    .debt-due small { display: block; color: var(--text-faint); font-size: 0.72rem; }
+    .debt-due b { font-size: 1.05rem; font-variant-numeric: tabular-nums; color: var(--warning); }
+    .debt-acts { display: flex; gap: 6px; margin-top: 8px; }
+
+    /* Д2 — сетка плиток */
+    .debt-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+    .debt-tile { display: grid; gap: 8px; align-content: start; padding: 13px 14px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); }
+    .debt-tile.is-borrowed { border-top: 2px solid var(--danger); }
+    .debt-tile.is-lent { border-top: 2px solid var(--success); }
+    .tile-sum { display: grid; gap: 1px; }
+    .tile-sum small { color: var(--text-faint); font-size: 0.72rem; }
+    .tile-sum b { font-size: 1.15rem; font-variant-numeric: tabular-nums; color: var(--warning); }
+
+    /* Д3 — компактная таблица */
+    .debt-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .debt-table th { padding: 7px 8px; border-bottom: 1px solid var(--border);
+      color: var(--text-faint); font-size: 0.74rem; font-weight: 600; text-align: left; white-space: nowrap; }
+    .debt-table td { padding: 9px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .debt-table .fin-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .debt-table .who { font-weight: 600; }
+
+    .debt-empty { display: grid; gap: 10px; justify-items: start; align-content: start;
+      padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius-sm); background: var(--surface-1); }
+    .debt-empty b { font-size: 1.1rem; color: var(--success); }
+    .debt-empty p { margin: 0; font-size: 0.8rem; color: var(--text-dim); max-width: 40ch; }
+  </style>
+</head>
+<body>
+  <div class="proto-head">
+    <h1>Учёт: сетка 5×4, месяц в рамке, долги в конце</h1>
+    <p>Слоты Комиссионки — 5×4 в Продаже и Покупке. Открытый месяц ограничен по высоте и
+      прокручивается внутри, поэтому страница не растёт от количества записей. Сетка месяцев
+      показывает 7 штук и тоже прокручивается.</p>
+    <p>Порядок блоков: панели → месяцы → Комиссионка → Долги. «Склад» переименован в
+      «Комиссионка». Под основным макетом — три варианта карточки долга.</p>
+  </div>
+
+  <div class="proto-tools">
+    <label><input type="checkbox" id="no-debts" /> Показать <b>без долгов</b></label>
+    <span class="muted" id="stats"></span>
+  </div>
+
+  <div id="out"></div>
+
+  <script type="module">
+    import {
+      normalizeFinance, balances, ledgerTotalsByCurrency, groupByMonth,
+      loanStatus, shopTotals, formatAmount, CURRENCY_IDS, CURRENCIES
+    } from '/js/modules/finance/model.js';
+
+    const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmt = (v, c = 'gold') => formatAmount(c, v);
+    const cur = (id) => CURRENCIES[id] || CURRENCIES.gold;
+    const signed = (v, c) => `${v >= 0 ? '+' : '−'}${fmt(Math.abs(v), c)}`;
+
+    const initials = (name) => String(name).trim().split(/\s+/)
+      .slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
+    const hueOf = (name) => {
+      let h = 0;
+      for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) % 360;
+      return h;
+    };
+
+    const SOURCES = [
+      { who: 'Ежа', base: 300000000, spread: 260000000, kind: 'in' },
+      { who: 'ЗП Клановое', base: 356000000, spread: 12000000, kind: 'in' },
+      { who: 'Сундуки', base: 875752175, spread: 500000000, kind: 'in' },
+      { who: 'Твинам', base: 229190230, spread: 90000000, kind: 'in' },
+      { who: 'Голд', base: 50000000, spread: 30000000, kind: 'out' },
+      { who: 'Расходка', base: 90000000, spread: 60000000, kind: 'out' },
+      { who: 'Релики', base: 40000000, spread: 25000000, kind: 'out' }
+    ];
+    const NOTES = ['на релики', 'сундуки + поджог', 'за месяц', 'метеориты', 'проценты', 'долить катало'];
+
+    let seed = 20261016;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+
+    const operations = [];
+    for (let m = 0; m < 10; m++) {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - m);
+      const year = d.getFullYear(), month = d.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const count = 52 + Math.floor(rnd() * 38);
+      for (let i = 0; i < count; i++) {
+        const s = SOURCES[Math.floor(rnd() * SOURCES.length)];
+        operations.push({
+          date: `${year}-${String(month + 1).padStart(2, '0')}-${String(1 + Math.floor(rnd() * daysInMonth)).padStart(2, '0')}`,
+          kind: s.kind, currency: 'gold',
+          amount: Math.round((s.base + rnd() * s.spread) / 1000) * 1000,
+          counterparty: s.who, note: NOTES[Math.floor(rnd() * NOTES.length)]
+        });
+      }
+      const g = 1 + Math.floor(rnd() * 400);
+      const gd = `${year}-${String(month + 1).padStart(2, '0')}-15`;
+      operations.push({ date: gd, kind: 'in', currency: 'coins', amount: g, counterparty: 'Продажа голда', note: `курс 1 000 000, комиссия 20 голд`, source: 'gold' });
+      operations.push({ date: gd, kind: 'in', currency: 'gold', amount: g * 1000000, counterparty: 'Продажа голда', note: 'Банк · голд ×' + g, source: 'gold' });
+    }
+
+    const BASE = {
+      operations,
+      shopItems: [
+        { side: 'sell', name: 'Зелье восстановления', price: 120000, qty: 5, date: '2026-10-12' },
+        { side: 'sell', name: 'Великие знаки юга', price: 5000000, qty: 2, date: '2026-10-10' },
+        { side: 'sell', name: 'Сундук говна', price: 875752175, qty: 1, date: '2026-10-09' },
+        { side: 'sell', name: 'Твины релики', price: 33333334, qty: 6, date: '2026-10-06' },
+        { side: 'sell', name: 'Ресчая крупа', price: 45000, qty: 12, date: '2026-10-05' },
+        { side: 'buy', name: 'Шахматный конь', price: 250000, qty: 4, date: '2026-10-08' },
+        { side: 'buy', name: 'Нефритовые лисы', price: 30000000, qty: 3, date: '2026-10-04' },
+        { side: 'buy', name: 'Сигна боковая', price: 75000, qty: 8, date: '2026-10-03' }
+      ],
+      loans: [
+        { direction: 'lent', who: 'Шкила', principal: 1000000, percent: 5, start: '2026-01-01', end: '2026-12-01', currency: 'gold',
+          payments: [{ date: '2026-08-15', amount: 300000 }] },
+        { direction: 'borrowed', who: 'Ракохаме', principal: 2500000, percent: 3, start: '2026-07-01', end: '2027-01-01', currency: 'gold', payments: [] },
+        { direction: 'lent', who: 'Ксюха', principal: 400000, percent: 10, start: '2026-09-01', end: '2026-11-01', currency: 'gold',
+          payments: [{ date: '2026-10-01', amount: 400000 }] }
+      ],
+      settings: { goldRate: 1000000, commissionPct: 2, goldRateAt: '2026-10-11' }
+    };
+
+    let withoutDebts = false;
+    let selected = null;
+    let filter = null;
+    let debtStyle = 1;
+
+    const render = () => {
+      const state = normalizeFinance({ ...BASE, loans: withoutDebts ? [] : BASE.loans });
+      const now = balances(state.operations);
+      const months = groupByMonth(state.operations);
+      const totals = shopTotals(state.shopItems);
+      const current = months[0].month;
+      if (!selected || !months.some(m => m.month === selected)) selected = current;
+      const sel = months.find(m => m.month === selected);
+      const list = filter ? sel.operations.filter(o => o.counterparty === filter) : sel.operations;
+      const filterTotals = ledgerTotalsByCurrency(list);
+
+      document.getElementById('stats').textContent =
+        `${state.operations.length} записей, ${months.length} месяцев`;
+
+      const toolbar = () => `
+        <div class="toolbar">
+          <span class="grp"><button type="button" class="btn primary">➕ Записать движение</button></span>
+          <span class="grp">
+            <span class="grp-label">Голд:</span>
+            <button type="button" class="btn">💰 Продать</button>
+            <button type="button" class="btn">🛒 Купить</button>
+          </span>
+          <span class="grp">
+            <span class="grp-label">Долги:</span>
+            <button type="button" class="btn ghost">🤝 Дать</button>
+            <button type="button" class="btn ghost">📥 Взять</button>
+          </span>
+        </div>`;
+
+      const panels = () => `
+        <div class="pans">
+          ${CURRENCY_IDS.map(id => `
+            <div class="pan">
+              <span class="pan-label">${cur(id).icon} ${esc(cur(id).title)}</span>
+              <span class="pan-value ${now[id] < 0 ? 'fin-out' : ''}">${fmt(now[id], id)}</span>
+              <span class="pan-sub">за ${esc(months[0].label)} ${signed(months[0].totals[id].balance, id)}</span>
+            </div>`).join('')}
+          <div class="pan">
+            <span class="pan-label">🤝 Долги</span>
+            ${state.loans.length
+              ? `<span class="pan-row"><span>должны вернуть</span><b class="fin-in">${fmt(state.loans.filter(l => l.direction !== 'borrowed').reduce((a, l) => a + loanStatus(l).total, 0))}</b></span>
+                 <span class="pan-row"><span>я должен</span><b class="fin-out">${fmt(state.loans.filter(l => l.direction === 'borrowed').reduce((a, l) => a + loanStatus(l).total, 0))}</b></span>`
+              : '<span class="pan-value" style="font-size:1.1rem;color:var(--success)">нет</span>'}
+          </div>
+          <div class="pan">
+            <span class="pan-label">🏪 Комиссионка</span>
+            <span class="pan-row"><span>продаю</span><b>${fmt(totals.sell.sum)}</b></span>
+            <span class="pan-row"><span>покупаю</span><b>${fmt(totals.buy.sum)}</b></span>
+          </div>
+        </div>`;
+
+      // Сетка месяцев: показывает 7 штук и прокручивается
+      const monthsGrid = () => `
+        <h3 class="block-h">Месяцы</h3>
+        <div class="months-scroll">
+          <div class="months-grid">
+            ${months.map(m => `
+              <button type="button" class="month-card ${m.month === selected ? 'active' : ''}" data-month="${m.month}">
+                <b>${esc(m.label)}</b>
+                <span class="mc-sum">
+                  ${CURRENCY_IDS.map(id => `<span class="${m.totals[id].balance < 0 ? 'fin-out' : 'fin-in'}">${signed(m.totals[id].balance, id)}</span>`).join('<br>')}
+                </span>
+                <small>${m.operations.length} записей</small>
+              </button>`).join('')}
+          </div>
+        </div>`;
+
+      const rows = (items) => items.map(op => `
+        <tr class="fin-row">
+          <td class="fin-date">${esc(op.date.slice(8))}.${esc(op.date.slice(5, 7))}</td>
+          <td><span class="fin-chip ${op.kind === 'in' ? 'is-in' : 'is-out'}">${op.kind === 'in' ? 'Получил' : 'Потратил'}</span></td>
+          <td class="fin-what">
+            <button type="button" class="src-link" data-src="${esc(op.counterparty)}">${esc(op.counterparty)}</button>
+            ${op.note ? `<small class="muted">${esc(op.note)}</small>` : ''}
+          </td>
+          <td class="fin-amount ${op.kind === 'in' ? 'fin-in' : 'fin-out'}">${op.kind === 'in' ? '+' : '−'}${fmt(op.amount, op.currency)}</td>
+        </tr>`).join('');
+
+      const monthOpen = () => `
+        <h3 class="block-h">${esc(sel.label)} · ${list.length} записей</h3>
+        ${filter ? `
+          <div class="filter-bar">
+            <span class="muted">Показано по источнику:</span>
+            <span class="filter-chip">${esc(filter)}<button type="button" data-clear-filter>×</button></span>
+            <span class="muted">${list.length} записей · ${signed(filterTotals.gold.balance)}</span>
+          </div>` : ''}
+        <div class="month-body">
+          <div class="fin-table-wrap">
+            <table class="fin-table">
+              <thead><tr><th>Дата</th><th>Вид</th><th>Откуда / на что</th><th class="fin-num">Сумма</th></tr></thead>
+              <tbody>${rows(list)}</tbody>
+            </table>
+          </div>
+        </div>`;
+
+      // Комиссионка: ровно 5×4 в каждой стороне
+      const SLOTS = 20;
+      const shopSide = (side) => {
+        const isSell = side === 'sell';
+        const items = state.shopItems.filter(i => (i.side === 'buy') === !isSell);
+        const sum = isSell ? totals.sell : totals.buy;
+        const qty = items.reduce((a, i) => a + i.qty, 0);
+        const cells = items.slice(0, SLOTS).map(i => `
+          <button type="button" class="slot is-filled" style="--hue: ${hueOf(i.name)}"
+                  title="${esc(i.name)} — ${fmt(i.qty)} шт. по ${fmt(i.price)}">
+            ${esc(initials(i.name))}<span class="slot-qty">×${fmt(i.qty)}</span>
+          </button>`).join('')
+          + '<button type="button" class="slot is-empty" title="Добавить предмет">+</button>'
+              .repeat(Math.max(0, SLOTS - items.length));
+        return `
+          <div class="shop-side">
+            <div class="shop-side-head">
+              <h4>${isSell ? 'Продажа' : 'Покупка'}</h4>
+              <span class="muted" style="font-size:0.76rem">${isSell ? 'золото → ко мне' : 'золото ← от меня'}</span>
+            </div>
+            <div class="slots">${cells}</div>
+            <div class="shop-side-foot">
+              <span class="muted">${items.length} предм. · ${fmt(qty)} шт.</span>
+              <b class="${isSell ? 'fin-in' : 'fin-out'}">${isSell ? '+' : '−'}${fmt(sum.sum)}</b>
+            </div>
+          </div>`;
+      };
+
+      const shopBlock = () => `
+        <h3 class="block-h">Комиссионка</h3>
+        <div class="shop-grid">${shopSide('sell')}${shopSide('buy')}</div>
+        <p class="shop-note">Плитки без иконок: инициалы и цвет из названия. Клик по плитке —
+          продать или купить часть, «+» — добавить предмет.</p>`;
+
+      // ── Долги: три структуры ──
+      const bar = (st, lent) => {
+        const pct = st.principal > 0 ? Math.min(100, Math.round(st.paid / st.principal * 100)) : 0;
+        return `<div class="bar ${lent ? '' : 'is-neg'}"><i style="width:${pct}%"></i></div>`;
+      };
+      const acts = () => `
+        <button type="button" class="btn primary small">💵 Выплатить всё</button>
+        <button type="button" class="btn small">💸 Частично</button>
+        <button type="button" class="btn ghost small">✅ Закрыть</button>`;
+
+      const debtsD1 = () => state.loans.map(loan => {
+        const st = loanStatus(loan);
+        const lent = loan.direction !== 'borrowed';
+        return `
+          <div class="debt-row ${lent ? 'is-lent' : 'is-borrowed'}">
+            <div class="debt-main">
+              <div class="debt-title">
+                <span class="fin-chip ${lent ? 'is-in' : 'is-out'}">${lent ? 'Дано' : 'Взято'}</span>
+                <b>${esc(loan.who)}</b>
+                ${st.overdue ? '<span class="fin-chip is-warn">Просрочен</span>' : ''}
+                ${st.settled ? '<span class="fin-chip is-done">Закрыт</span>' : ''}
+                <span class="debt-meta">${fmt(loan.principal)} · ${fmt(loan.percent)}%/мес · прошло ${esc(st.days)} дн.</span>
+              </div>
+              <div class="debt-prog">
+                ${bar(st, lent)}
+                <span class="debt-meta">погашено ${fmt(st.paid)} из ${fmt(st.principal)}</span>
+              </div>
+              <div class="debt-acts">${acts()}</div>
+            </div>
+            <div class="debt-due">
+              <small>должен вернуть</small>
+              <b>${fmt(st.total)}</b>
+            </div>
+          </div>`;
+      }).join('');
+
+      const debtsD2 = () => `<div class="debt-tiles">${state.loans.map(loan => {
+        const st = loanStatus(loan);
+        const lent = loan.direction !== 'borrowed';
+        return `
+          <div class="debt-tile ${lent ? 'is-lent' : 'is-borrowed'}">
+            <div class="debt-title">
+              <span class="fin-chip ${lent ? 'is-in' : 'is-out'}">${lent ? 'Дано' : 'Взято'}</span>
+              <b>${esc(loan.who)}</b>
+              ${st.overdue ? '<span class="fin-chip is-warn">Просрочен</span>' : ''}
+            </div>
+            <span class="debt-meta">${fmt(loan.percent)}%/мес · прошло ${esc(st.days)} дн.${loan.end ? ` · до ${esc(loan.end)}` : ''}</span>
+            ${bar(st, lent)}
+            <span class="debt-meta">погашено ${fmt(st.paid)} из ${fmt(st.principal)}</span>
+            <div class="tile-sum"><small>должен вернуть</small><b>${fmt(st.total)}</b></div>
+            <div class="debt-acts">${acts()}</div>
+          </div>`;
+      }).join('')}</div>`;
+
+      const debtsD3 = () => `
+        <table class="debt-table">
+          <thead><tr>
+            <th>Кто</th><th>Сумма</th><th class="fin-num">Ставка</th><th class="fin-num">Прошло</th>
+            <th style="width:130px">Погашено</th><th class="fin-num">Осталось тела</th>
+            <th class="fin-num">Проценты</th><th class="fin-num">Должен вернуть</th><th></th>
+          </tr></thead>
+          <tbody>${state.loans.map(loan => {
+            const st = loanStatus(loan);
+            const lent = loan.direction !== 'borrowed';
+            return `
+            <tr>
+              <td class="who">
+                <span class="fin-chip ${lent ? 'is-in' : 'is-out'}">${lent ? 'Дано' : 'Взято'}</span>
+                ${esc(loan.who)}${st.overdue ? ' <span class="fin-chip is-warn">Просрочен</span>' : ''}
+              </td>
+              <td class="fin-num">${fmt(loan.principal)}</td>
+              <td class="fin-num">${fmt(loan.percent)}%</td>
+              <td class="fin-num">${st.days} дн.</td>
+              <td>${bar(st, lent)}</td>
+              <td class="fin-num">${fmt(st.outstanding)}</td>
+              <td class="fin-num">${fmt(st.interestDue)}</td>
+              <td class="fin-num"><b>${fmt(st.total)}</b></td>
+              <td class="fin-num"><button type="button" class="btn primary small">💵</button></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`;
+
+      const debtsEmpty = () => `
+        <div class="debt-empty">
+          <b>Долгов нет</b>
+          <p>Никто не должен и ты ничего не должен. Долг появится здесь, как только его запишешь.</p>
+          <button type="button" class="btn small">🤝 Дать в долг</button>
+        </div>`;
+
+      const debtsBlock = (style) => `
+        <h3 class="block-h">Долги${state.loans.length ? ` (${state.loans.length})` : ''}</h3>
+        ${!state.loans.length ? debtsEmpty()
+          : style === 1 ? `<div class="stack">${debtsD1()}</div>`
+          : style === 2 ? debtsD2()
+          : debtsD3()}`;
+
+      const mainLayout = () => `
+        ${toolbar()}
+        ${panels()}
+        ${monthsGrid()}
+        ${monthOpen()}
+        ${shopBlock()}
+        ${debtsBlock(debtStyle)}`;
+
+      document.getElementById('out').innerHTML = `
+        <section class="variant" id="main">
+          <div class="variant-title">
+            <h2>Основной макет</h2>
+            <span>Сетка месяцев (7 в ряд, дальше скролл) → открытый месяц в рамке → Комиссионка 5×4 → Долги</span>
+          </div>
+          <div class="frame"><div class="fin-body" style="padding:18px">${mainLayout()}</div></div>
+        </section>
+
+        <section class="variant" id="debt-styles">
+          <div class="variant-title">
+            <h2>Долги: три структуры</h2>
+            <span>Одни и те же цифры, разная подача. Переключи — макет выше перестроится</span>
+          </div>
+          <div class="proto-tools" style="margin:0 0 14px">
+            <button type="button" class="btn ghost small ${debtStyle === 1 ? 'btn primary' : ''}" data-debt="1">Д1 · строка с полосой</button>
+            <button type="button" class="btn ghost small ${debtStyle === 2 ? 'btn primary' : ''}" data-debt="2">Д2 · плитки</button>
+            <button type="button" class="btn ghost small ${debtStyle === 3 ? 'btn primary' : ''}" data-debt="3">Д3 · таблица</button>
+          </div>
+          <div class="frame"><div class="fin-body" style="padding:18px">${debtsBlock(debtStyle)}</div></div>
+        </section>`;
+
+      document.querySelectorAll('[data-month]').forEach(b => b.addEventListener('click', () => {
+        selected = b.dataset.month; filter = null; render();
+      }));
+      document.querySelectorAll('[data-src]').forEach(b => b.addEventListener('click', () => {
+        filter = filter === b.dataset.src ? null : b.dataset.src; render();
+      }));
+      document.querySelector('[data-clear-filter]')?.addEventListener('click', () => { filter = null; render(); });
+      document.querySelectorAll('[data-debt]').forEach(b => b.addEventListener('click', () => {
+        debtStyle = Number(b.dataset.debt); render();
+      }));
+    };
+
+    document.getElementById('no-debts').addEventListener('change', (e) => {
+      withoutDebts = e.target.checked;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
