@@ -1,4 +1,4 @@
-// Чистая логика раздела «Учёт» (js/modules/finance/model.js).
+// Чистая логика раздела «Банк» (js/modules/finance/model.js).
 // Здесь нет DOM и нет state — только деньги, комиссия и начисление процентов,
 // поэтому проверяется без запуска приложения.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -556,18 +556,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function openBlock(id) {
+async function render() {
   const page = await import('../js/modules/finance/page.js');
-  if (id) {
-    const el = document.getElementById('finance-root');
-    page.bindFinance();
-    el.innerHTML = '';
-    page.renderFinance();
-    el.querySelector(`[data-fin-block="${id}"]`).click();
-  } else {
-    page.bindFinance();
-    page.renderFinance();
-  }
+  page.bindFinance();
+  page.renderFinance();
   return { el: document.getElementById('finance-root'), page };
 }
 
@@ -577,190 +569,166 @@ async function openBlock(id) {
  */
 const text = (el) => el.textContent.replace(/\u00a0/g, ' ');
 
-describe('раздел «Учёт»: три блока', () => {
-  it('в меню три блока, активен ровно один', async () => {
-    const { el } = await openBlock();
-    const tabs = [...el.querySelectorAll('[data-fin-block]')];
-    expect(tabs.map(b => b.dataset.finBlock)).toEqual(['ledger', 'shop', 'loans']);
-    expect(tabs.map(b => text(b).trim())).toEqual(['🏦 Банк', '🏪 Комиссионка', '🤝 Долги']);
-    expect(el.querySelectorAll('[data-fin-block].active')).toHaveLength(1);
+describe('раздел «Банк»: один экран', () => {
+  it('рисует KPI, месяцы, комиссионку и долги на одном экране', async () => {
+    const { el } = await render();
+    expect(el.querySelector('.pans')).toBeTruthy();
+    expect(el.querySelector('.months-list')).toBeTruthy();
+    expect(el.querySelector('.shop-grid')).toBeTruthy();
+    expect(el.querySelector('.fin-loan')).toBeTruthy();
   });
 
-  it('блок «Банк» разделяет «сейчас в наличии» и итог месяца', async () => {
-    const { el } = await openBlock();
-    // Верх — все записи с начала учёта: сколько денег есть сейчас
-    const holding = text(el.querySelector('.fin-now .fin-holdings'));
-    expect(holding).toContain('Золото: 450 000 000');
-    expect(holding).toContain('Голд: 1 000');
-    expect(text(el.querySelector('.fin-now h3'))).toContain('Сейчас в наличии');
-
-    // Низ — движение за месяц, а не повтор всей истории: это разные вопросы
-    const summary = el.querySelector('.fin-summary');
-    expect(summary).toBeTruthy();
-    const summaryText = text(summary);
-    // Голда в июне было 1 000 прихода и 0 расхода
-    expect(summaryText).toContain('Голд');
-    expect(text(el.querySelector('.fin-summary-head h3'))).toContain('июнь 2026');
+  it('KPI показывает наличные по валютам', async () => {
+    const { el } = await render();
+    const values = [...el.querySelectorAll('.pan-value')].map(v => text(v));
+    expect(values).toContain('450 000 000');
+    expect(values).toContain('1 000');
   });
 
-  it('сводка месяца не повторяет остаток сверху, а показывает итог месяца', async () => {
-    const { el } = await openBlock();
-    const summary = text(el.querySelector('.fin-summary'));
-    // «Остаток» верхней полосы = 450 000 000, в сводке итог месяца такой же, но
-    // подписан как «В плюсе» — это подсказка, что считается месяц, а не всё время
-    expect(summary).toMatch(/В плюсе|В минусе/);
-    expect(summary).not.toContain('Остаток');
+  it('KPI показывает, сколько должны вернуть и сколько должен я', async () => {
+    const { el } = await render();
+    const debts = el.querySelector('.pans .pan:nth-child(3)');
+    expect(text(debts)).toContain('должны вернуть');
+    expect(text(debts)).toContain('7 150');
+    expect(text(debts)).toContain('2 000 000');
   });
 
-  it('пустая сводка не рисуется, если записей вообще нет', async () => {
-    const { el, page } = await openBlock();
-    const { state } = await import('../js/core/state.js');
-    state.finance = normalizeFinance(undefined);
-    page.renderFinance();
-    expect(el.querySelector('.fin-summary')).toBeNull();
-    expect(el.querySelector('.fin-empty')).toBeTruthy();
+  it('месяцы показаны списком слева с итогом месяца', async () => {
+    const { el } = await render();
+    const items = [...el.querySelectorAll('.month-item')];
+    expect(items).toHaveLength(1);
+    expect(text(items[0])).toContain('июнь 2026');
+    expect(text(items[0])).toContain('450 000 000');
   });
 
-  it('в наличных видно, сколько в долгах', async () => {
-    const { el } = await openBlock();
-    const holding = text(el.querySelector('.fin-now .fin-holdings'));
-    // На 2026-06-01 (тесты заморожены на этой дате): Шкила должен 7 150
-    // (тело 6 500 + проценты 650), минус мой долг Ракохаме 2 000 000.
-    // Остаток и долг нельзя складывать, поэтому долг стоит отдельной строкой.
-    expect(holding).toContain('в долгах');
-    const cell = [...el.querySelectorAll('.fin-holding')].find(s => s.textContent.includes('Золото'));
-    expect(text(cell)).toContain('1 992 850');   // 7 150 − 2 000 000
-  });
-
-it('в долге «Выплатить всё» подставляет сумму, которую видно на карточке', async () => {
-    // Кнопка обязана совпадать с числом в «Должен вернуть»: разные цифры в одном
-    // окне — это ровно то, из-за чего перестаешь доверять расчёту
-    const { el } = await openBlock('loans');
-    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
-    const due = text(card.querySelector('.fin-loan-due b'));
-    card.querySelector('[data-fin-act="add-payment"]').click();
-    const form = document.querySelector('#modal-root form');
-    expect(text(form.querySelector('[data-pay-all]'))).toContain(due);
+  it('журнал показывает записи выбранного месяца с источником', async () => {
+    const { el } = await render();
+    expect(el.querySelectorAll('.month-body .fin-row')).toHaveLength(3);
+    expect(text(el)).toContain('Долг');
   });
 
   it('«Получил» и «Потратил» вместо «Приход» и «Расход»', async () => {
-    const { el } = await openBlock();
-    const summary = text(el.querySelector('.fin-summary'));
-    expect(summary).toContain('Получил');
-    expect(summary).toContain('Потратил');
-    expect(summary).not.toContain('Приход');
-    expect(summary).not.toContain('Расход');
+    const { el } = await render();
     const chips = [...el.querySelectorAll('.fin-kind .fin-chip')].map(c => text(c).trim());
     expect(chips).toEqual(['Получил', 'Потратил', 'Получил']);
   });
 
-  it('записи показываются по месяцам, помечены источником, без колонки «Итог»', async () => {
-    const { el } = await openBlock();
-    expect(el.querySelector('.fin-month summary h3').textContent).toContain('июнь 2026');
-    expect(el.querySelectorAll('.fin-row')).toHaveLength(3);
-    expect(text(el)).toContain('долг');
-    // Колонку итога убрали — нарастающего остатка в строках больше нет
-    expect(el.querySelector('.fin-balance')).toBeNull();
+  it('колонка «Итог» включена по умолчанию и считается снизу вверх', async () => {
+    const { el } = await render();
     const heads = [...el.querySelectorAll('.fin-table th')].map(h => text(h).trim());
-    expect(heads).toEqual(['Дата', 'Вид', 'Откуда / на что', 'Сумма', '']);
+    expect(heads).toContain('Итог');
+    // Нижняя строка — первое действие, верхняя — последнее: сложение идёт от низа
+    const its = [...el.querySelectorAll('.month-body .fin-row')].map(r => text(r.querySelector('.fin-num')));
+    expect(its[0]).toContain('1 000');        // верх: последнее (голд)
+    expect(its[1]).toContain('450 000 000');  // середина
+    expect(its[2]).toContain('500 000 000');  // низ: первое
   });
 
-  it('кнопки записи и сделок с голдом стоят выше таблицы', async () => {
-    const { el } = await openBlock();
-    const acts = [...el.querySelectorAll('.fin-actions-row [data-fin-act]')].map(b => b.dataset.finAct);
-    expect(acts).toEqual(['add-op', 'gold-sell', 'gold-buy']);
-    // Кнопки в разметке раньше первой таблицы
+  it('чекбокс «Итог» убирает колонку', async () => {
+    const { el } = await render();
+    const cb = el.querySelector('[data-balance]');
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+    const heads = [...el.querySelectorAll('.fin-table th')].map(h => text(h).trim());
+    expect(heads).not.toContain('Итог');
+  });
+
+  it('фильтр по источнику оставляет только свои записи', async () => {
+    const { el } = await render();
+    el.querySelector('[data-source="debt"]').click();
+    expect(el.querySelectorAll('.month-body .fin-row')).toHaveLength(1);
+    expect(text(el.querySelector('.month-body .fin-row'))).toContain('Шкила');
+  });
+
+  it('фильтр по валюте оставляет только голд', async () => {
+    const { el } = await render();
+    el.querySelector('[data-currency="coins"]').click();
+    expect(el.querySelectorAll('.month-body .fin-row')).toHaveLength(1);
+    expect(text(el.querySelector('.month-body .fin-row'))).toContain('Шкила');
+  });
+
+  it('поиск ищет по источнику и примечанию', async () => {
+    const { el } = await render();
+    const input = el.querySelector('[data-query]');
+    input.value = 'ежа';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(el.querySelectorAll('.month-body .fin-row')).toHaveLength(1);
+    expect(text(el.querySelector('.month-body .fin-row'))).toContain('Ежа');
+  });
+
+  it('клик по месяцу выбирает его', async () => {
+    const { el, page } = await render();
+    const { state } = await import('../js/core/state.js');
+    state.finance.operations.unshift({ id: 'ox', date: '2026-05-05', kind: 'in', currency: 'gold', amount: 100, counterparty: 'Май', note: '', status: '', source: 'manual', ref: null });
+    page.renderFinance();
+    const may = [...el.querySelectorAll('.month-item')].find(m => text(m).includes('май 2026'));
+    may.click();
+    expect(text(el.querySelector('.month-right > .block-h'))).toContain('май 2026');
+  });
+
+  it('панель действий: запись, голд и долг одной кнопкой', async () => {
+    const { el } = await render();
+    const acts = [...el.querySelectorAll('.desk-bar [data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).toEqual(['add-op', 'gold', 'add-loan']);
     const html = el.innerHTML;
     expect(html.indexOf('data-fin-act="add-op"')).toBeLessThan(html.indexOf('<table'));
   });
 
-  it('кнопки «Банка» отделены от сводки блоком с отступом', async () => {
-    const { el } = await openBlock();
-    const head = el.querySelector('.fin-bank-head');
-    expect(head).toBeTruthy();
-    // Наличные и кнопки внутри одной шапки, а не в общем потоке раздела
-    expect(head.querySelector('.fin-holdings')).toBeTruthy();
-    expect(head.querySelector('[data-fin-act="add-op"]')).toBeTruthy();
-    expect(head.querySelector('[data-fin-act="gold-sell"]')).toBeTruthy();
-    expect(head.querySelector('[data-fin-act="gold-buy"]')).toBeTruthy();
-    // Сводка и таблица — уже после шапки
-    const html = el.innerHTML;
-    expect(html.indexOf('fin-bank-head')).toBeLessThan(html.indexOf('fin-summary'));
-    expect(html.indexOf('fin-summary')).toBeLessThan(html.indexOf('<table'));
+  it('форма голда одна: сначала действие, комиссия скрыта', async () => {
+    const { el } = await render();
+    el.querySelector('[data-fin-act="gold"]').click();
+    const form = document.querySelector('#modal-root form');
+    expect(form.querySelector('select[name="side"]')).toBeTruthy();
+    const details = form.querySelector('.fin-details');
+    expect(details).toBeTruthy();
+    expect(details.open).toBe(false);                 // по умолчанию комиссия не видна
+    expect(details.querySelector('input[name="commissionPct"]').value).toBe('2');
+  });
+
+  it('форма долга одна: внутри выбираешь дать или взять', async () => {
+    const { el } = await render();
+    el.querySelector('[data-fin-act="add-loan"]').click();
+    const form = document.querySelector('#modal-root form');
+    const dir = form.querySelector('select[name="direction"]');
+    expect(dir).toBeTruthy();
+    expect([...dir.options].map(o => o.value)).toEqual(['lent', 'borrowed']);
   });
 
   it('комиссионка разносит продажу и покупку по двум колонкам', async () => {
-    const { el } = await openBlock('shop');
-    const cols = [...el.querySelectorAll('.fin-shop-col')];
+    const { el } = await render();
+    const cols = [...el.querySelectorAll('.shop-side')];
     expect(cols).toHaveLength(2);
-    expect(cols[0].querySelector('h3').textContent).toBe('Продажа');
-    expect(text(cols[0].querySelector('.fin-shop-foot'))).toContain('300');
-    expect(cols[1].querySelector('h3').textContent).toBe('Покупка');
-    expect(text(cols[1].querySelector('.fin-shop-foot'))).toContain('200');
+    expect(cols[0].querySelector('h4').textContent).toBe('Продажа');
+    expect(text(cols[0].querySelector('.shop-side-foot'))).toContain('300');
+    expect(cols[1].querySelector('h4').textContent).toBe('Покупка');
+    expect(text(cols[1].querySelector('.shop-side-foot'))).toContain('200');
   });
 
-  it('колонки комиссионки не съедают предмет: сумма ширин меньше ширины колонки', () => {
-    // Регрессия: при table-layout: fixed ширины берутся из шапки. Стоял width: 100%
-    // у предмета плюс фиксированные числа — предмету оставалось 25 px, и каждая
-    // буква названия вставала в отдельную строку (колонка вырастала на весь экран).
+  it('плитки комиссионки — ровно 5 колонок и ограничены по ширине', () => {
+    // Регрессия: на широком экране плитки раздувались на всю колонку. Теперь сетка
+    // ровно 5×4 и ограничена по ширине, чтобы слоты оставались размером с игру.
     const css = readFileSync('css/modules/finance.css', 'utf8');
-    const widths = [...css.matchAll(/\.fin-shop \.fin-table th(?:\.fin-head-price|:nth-child\(\d\)|\.fin-head-actions)?\s*\{\s*width:\s*(\d+)px/g)]
-      .map(m => Number(m[1]));
-    // Предмет — width: auto, остальные фиксированы
-    expect(css).toMatch(/\.fin-shop \.fin-table th:first-child\s*\{\s*width:\s*auto/);
-    expect(widths.length).toBe(4);
-    // 4 колонки с числами и кнопками должны уместиться, оставив предмету остаток
-    const sum = widths.reduce((a, b) => a + b, 0);
-    expect(sum).toBeLessThan(360);
+    expect(css).toMatch(/\.slots\s*\{[^}]*grid-template-columns:\s*repeat\(5/);
+    expect(css).toMatch(/\.slots\s*\{[^}]*max-width:\s*min\(620px/);
   });
 
-  it('название предмета переносится по словам, а не по буквам', () => {
+  it('название предмета переносится по словам внутри плитки', () => {
     const css = readFileSync('css/modules/finance.css', 'utf8');
-    expect(css).toMatch(/\.fin-shop \.fin-what b[^{]*\{[^}]*word-break:\s*normal/);
-    expect(css).toMatch(/\.fin-shop \.fin-what\s*\{[^}]*min-width:\s*0/);
+    expect(css).toMatch(/\.slot\.is-filled\s*\{[^}]*overflow-wrap:\s*anywhere/);
+    expect(css).toMatch(/\.slot\.is-filled\s*\{[^}]*line-height:\s*1\.15/);
   });
 
-  it('у колонки действий комиссионки есть своя ширина, иначе кнопки вылезут за край', () => {
-    // Регрессия: при table-layout: fixed ширину колонок берут из шапки, и width: 1%
-    // ужимал колонку действий до 3 px — кнопки оттуда вылезали.
-    // Проверяем правило в css, а не размеры: jsdom не верстает таблицы и отдаёт 0 px.
-    const css = readFileSync('css/modules/finance.css', 'utf8');
-    expect(css).toMatch(/\.fin-shop \.fin-table th\.fin-head-actions\s*\{\s*width:\s*\d+px/);
-    // Ячейка действий в комиссионке не ужимается общим правилом width: 1%
-    expect(css).toMatch(/\.fin-shop \.fin-actions\s*\{\s*width:\s*auto/);
-    // Кнопки узкие и без отступа слева, чтобы поместиться в отведённую ширину
-    expect(css).toMatch(/\.fin-shop \.fin-actions \.fin-icon\s*\{[^}]*width:\s*26px/);
-  });
-
-it('шапка колонки действий в комиссионке помечена классом', async () => {
-    const { el } = await openBlock('shop');
-    const heads = [...el.querySelectorAll('.fin-shop-col th.fin-head-actions')];
-    expect(heads).toHaveLength(2);
-    expect(heads.every(h => h.textContent.trim() === '')).toBe(true);
-  });
-
-  it('подпись итога повторяет название колонки, а не «На складе»', async () => {
-    const { el } = await openBlock('shop');
-    const labels = [...el.querySelectorAll('.fin-shop-foot span')].map(s => text(s).trim());
-    expect(labels).toEqual(['Продажа', 'Покупка']);
-  });
-
-  it('кнопка добавления позиции стоит в шапке своей колонки, а не над обеими', async () => {
-    const { el } = await openBlock('shop');
-    const heads = [...el.querySelectorAll('.fin-shop-head [data-fin-act="add-item"]')];
-    expect(heads).toHaveLength(2);
-    // У каждой кнопки своя сторона: в «Продажу» — sell, в «Покупку» — buy
-    expect(heads.map(b => b.dataset.side)).toEqual(['sell', 'buy']);
-    // Кнопка внутри своей колонки, а не отдельной полосой над ними
-    for (const head of [...el.querySelectorAll('.fin-shop-head')]) {
-      expect(head.querySelector('[data-fin-act="add-item"]')).toBeTruthy();
-    }
-    expect(el.querySelector('.fin-shop ~ .fin-actions-row [data-fin-act="add-item"]')).toBeNull();
+  it('у каждой колонки комиссионки есть кнопка добавления позиции', async () => {
+    const { el } = await render();
+    const add = [...el.querySelectorAll('[data-fin-act="add-item"]')];
+    expect(add.length).toBeGreaterThan(0);
+    expect(add.map(b => b.dataset.side)).toContain('sell');
+    expect(add.map(b => b.dataset.side)).toContain('buy');
   });
 
   it('у позиции комиссионки есть «продано», «изменить» и «убрать»', async () => {
-    const { el } = await openBlock('shop');
-    const acts = [...el.querySelectorAll('.fin-shop-col [data-fin-act]')].map(b => b.dataset.finAct);
+    const { el } = await render();
+    const acts = [...el.querySelectorAll('.shop-side [data-fin-act]')].map(b => b.dataset.finAct);
     expect(acts).toContain('deal-item');     // записать, сколько продано
     expect(acts).toContain('edit-item');     // изменить
     expect(acts).toContain('del-item');
@@ -768,18 +736,36 @@ it('шапка колонки действий в комиссионке пом�
     expect(acts).not.toContain('bump-item');
   });
 
+  it('в плитке видно название и количество', async () => {
+    const { el } = await render();
+    const slots = [...el.querySelectorAll('.slot.is-filled')];
+    expect(slots).toHaveLength(2);
+    expect(text(slots[0])).toContain('Зелье');
+    expect(text(slots[0])).toContain('×3');
+  });
+
+  it('голд-сделка помечена «Конвертация», а не «Потратил»', async () => {
+    const { el, page } = await render();
+    const { state } = await import('../js/core/state.js');
+    state.finance.operations.unshift({ id: 'g1', date: '2026-06-12', kind: 'out', currency: 'gold', amount: 1000, counterparty: 'Покупка голда', note: '', status: '', source: 'gold', ref: null });
+    page.renderFinance();
+    const row = [...el.querySelectorAll('.month-body .fin-row')].find(r => r.textContent.includes('Покупка голда'));
+    expect(text(row.querySelector('.fin-chip'))).toBe('Конвертация');
+  });
+
   it('в долге есть «Выплатить всё», «Частично», «Закрыть» и история', async () => {
-    const { el } = await openBlock('loans');
-    const acts = [...el.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
+    const { el } = await render();
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
     expect(acts).toContain('pay-all');
     expect(acts).toContain('add-payment');
     expect(acts).toContain('close-loan');
-    expect(text(el.querySelector('.fin-payments summary'))).toContain('История выплат');
-    expect(text(el.querySelector('.fin-payments summary'))).toContain('5 000');
+    expect(text(card.querySelector('.fin-payments summary'))).toContain('История выплат');
+    expect(text(card.querySelector('.fin-payments summary'))).toContain('5 000');
   });
 
-it('форма выплаты подставляет сумму, которую видно в «Должен вернуть»', async () => {
-    const { el } = await openBlock('loans');
+  it('форма выплаты подставляет сумму из «должен вернуть»', async () => {
+    const { el } = await render();
     const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
     const due = text(card.querySelector('.fin-loan-due b'));
     card.querySelector('[data-fin-act="add-payment"]').click();
@@ -793,61 +779,8 @@ it('форма выплаты подставляет сумму, которую 
     expect(text(form.querySelector('[data-fin-preview]'))).toContain('закрыт полностью');
   });
 
-it('предпросмотр показывает, сколько останется после частичной выплаты', async () => {
-    const { el } = await openBlock('loans');
-    el.querySelector('[data-fin-act="add-payment"]').click();
-    const form = document.querySelector('#modal-root form');
-    form.elements.amount.value = '3000';
-    form.dispatchEvent(new Event('input', { bubbles: true }));
-    const preview = text(form.querySelector('[data-fin-preview]'));
-    // На 2026-06-01 набежало 650 процентов, остаток 4 150
-    expect(preview).toContain('650');
-    expect(preview).toContain('2 350');
-    expect(preview).toContain('останется');
-  });
-
-  it('закрытый долг не предлагает выплату и не начисляет проценты', async () => {
-    const { el, page } = await openBlock('loans');
-    const { state } = await import('../js/core/state.js');
-    const { loanStatus } = await import('../js/modules/finance/model.js');
-    const loan = state.finance.loans.find(l => l.who === 'Шкила');
-    // Выплата всей суммы на сегодня: тело 6 500 + проценты 650 = 7 150
-    const due = loanStatus(loan).total;
-    expect(due).toBe(7150);
-    loan.payments = [...loan.payments, { id: 'p2', date: '2026-06-01', amount: due }];
-    expect(loanStatus(loan).settled).toBe(true);
-    page.renderFinance();
-    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
-    const acts = [...card.querySelectorAll('.fin-loan-actions [data-fin-act]')].map(b => b.dataset.finAct);
-    expect(acts).not.toContain('pay-all');
-    expect(acts).not.toContain('close-loan');
-    // История закрытого долга раскрыта сама — иначе её не увидеть без клика
-    expect(card.querySelector('.fin-payments').open).toBe(true);
-  });
-
-  it('долг без выплат не показывает блок истории', async () => {
-    const { el } = await openBlock('loans');
-    const borrowed = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Ракохаме'));
-    expect(borrowed.querySelector('.fin-payments')).toBeNull();
-  });
-
-  it('форма выплаты подставляет сумму, которую видно в «Должен вернуть»', async () => {
-    const { el } = await openBlock('loans');
-    // Открываем форму через кнопку, чтобы проверить её разметку на самом деле
-    el.querySelector('[data-fin-act="add-payment"]').click();
-    const form = document.querySelector('#modal-root form');
-    expect(form).toBeTruthy();
-    expect(form.querySelector('[data-pay-all]')).toBeTruthy();
-    // Пустой суммой предпросмотр просит ввести число, а не молчит
-    expect(text(form.querySelector('[data-fin-preview]'))).toContain('Впишите сумму');
-    // Кнопка подставляет всю сумму и показывает, что долг будет закрыт
-    form.querySelector('[data-pay-all]').click();
-    expect(form.elements.amount.value).toBe('7150');
-    expect(text(form.querySelector('[data-fin-preview]'))).toContain('закрыт полностью');
-  });
-
   it('предпросмотр показывает, сколько останется после частичной выплаты', async () => {
-    const { el } = await openBlock('loans');
+    const { el } = await render();
     el.querySelector('[data-fin-act="add-payment"]').click();
     const form = document.querySelector('#modal-root form');
     form.elements.amount.value = '3000';
@@ -861,35 +794,54 @@ it('предпросмотр показывает, сколько останет
     expect(preview).toContain('останется');
   });
 
+  it('закрытый долг не предлагает выплату и не начисляет проценты', async () => {
+    const { el, page } = await render();
+    const { state } = await import('../js/core/state.js');
+    const { loanStatus } = await import('../js/modules/finance/model.js');
+    const loan = state.finance.loans.find(l => l.who === 'Шкила');
+    // Выплата всей суммы на сегодня: тело 6 500 + проценты 650 = 7 150
+    const due = loanStatus(loan).total;
+    expect(due).toBe(7150);
+    loan.payments = [...loan.payments, { id: 'p2', date: '2026-06-01', amount: due }];
+    expect(loanStatus(loan).settled).toBe(true);
+    page.renderFinance();
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
+    expect(acts).not.toContain('pay-all');
+    expect(acts).not.toContain('close-loan');
+    // История закрытого долга раскрыта сама — иначе её не увидеть без клика
+    expect(card.querySelector('.fin-payments').open).toBe(true);
+  });
+
+  it('долг без выплат не показывает блок истории', async () => {
+    const { el } = await render();
+    const borrowed = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Ракохаме'));
+    expect(borrowed.querySelector('.fin-payments')).toBeNull();
+  });
+
   it('долг показывает остаток, набежавшие проценты и разбивку выплаты', async () => {
-    const { el } = await openBlock('loans');
-    expect(el.querySelector('.fin-loan').textContent).toContain('Шкила');
-    // Выплата 5 000 в апреле съела 1 500 процентов и 3 500 тела; на 01.06 набежало
-    // ещё 650 процентов, итого видно 3 500 / 6 500 / 650 / 7 150
-    expect(text(el.querySelector('.fin-loan-grid-sum'))).toContain('6 500');
-    expect(text(el.querySelector('.fin-loan-grid-sum'))).toContain('650');
-    expect(text(el.querySelector('.fin-loan-due b'))).toContain('7 150');
-    expect(text(el)).toContain('проценты 1 500');
+    const { el } = await render();
+    const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
+    expect(text(card.querySelector('.fin-loan-prog'))).toContain('3 500');
+    expect(text(card.querySelector('.fin-loan-due b'))).toContain('7 150');
+    expect(text(card.querySelector('.fin-payments'))).toContain('проценты 1 500');
   });
 
   it('срок показан днями, а не месяцами', async () => {
-    const { el } = await openBlock('loans');
+    const { el } = await render();
     expect(text(el.querySelector('.fin-loan'))).toContain('дн.');
   });
 
   it('пустой раздел не падает и объясняет, что делать', async () => {
-    const { el, page } = await openBlock();
+    const { el, page } = await render();
     const { state } = await import('../js/core/state.js');
     state.finance = normalizeFinance(undefined);
     page.renderFinance();
-    for (const id of ['ledger', 'shop', 'loans']) {
-      el.querySelector(`[data-fin-block="${id}"]`).click();
-      expect(el.querySelector('.fin-empty')).toBeTruthy();
-    }
+    expect(el.querySelector('.fin-empty')).toBeTruthy();
   });
 
   it('сделка в комиссионке списывает количество и кладёт деньги в «Банк»', async () => {
-    const { page } = await openBlock('shop');
+    const { page } = await render();
     const { state } = await import('../js/core/state.js');
     const { shopDealOperation } = await import('../js/modules/finance/model.js');
     const item = state.finance.shopItems.find(i => i.side === 'sell');
@@ -906,7 +858,7 @@ it('предпросмотр показывает, сколько останет
   });
 
   it('долг при создании уводит сумму из остатка, а взятый — добавляет', async () => {
-    const { page } = await openBlock();
+    const { page } = await render();
     const { state } = await import('../js/core/state.js');
     const { loanOperation } = await import('../js/modules/finance/model.js');
 

@@ -1,5 +1,5 @@
 /* css/modules/finance.css
-   Раздел «Учёт»: приход и расход, комиссионный магазин, голд и долги.
+   Раздел «Банк»: приход и расход, комиссионный магазин и голд.
 
    Почему свой файл: это первый раздел, где числа стоят рядом с текстом и их нужно
    сравнивать глазом (курс против фактического, остаток против суммы строк). Поэтому
@@ -320,6 +320,12 @@
 .fin-field-wide, .fin-form-hint, .fin-preview { grid-column: 1 / -1; }
 .fin-form-hint { margin: 0; font-size: 0.78rem; }
 
+/* Комиссия аукциона спрятана под раскрывающийся комментарий: по умолчанию 2%,
+   и поле не мозолит глаза, пока его не раскрыли */
+.fin-details { grid-column: 1 / -1; }
+.fin-details > summary { cursor: pointer; color: var(--text-dim); font-size: 0.82rem; }
+.fin-details .fin-field { margin-top: 8px; }
+
 /* Итог сделки: пересчитывается на лету, чтобы человек увидел комиссию до записи */
 .fin-preview {
   padding: 10px 12px;
@@ -339,3 +345,168 @@
 @media (max-width: 560px) {
   .fin-form { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* --- Раскладка «Рабочий стол» (вариант 6) ---
+   Один экран: KPI → журнал выбранного месяца (месяцы слева) → комиссионка и долги
+   двумя колонками. Панель действий и поиск — сверху, фильтры журнала — над рамкой. */
+
+.desk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.desk-bar .grp { display: flex; align-items: center; gap: 8px; }
+.desk-bar .grp-label { color: var(--text-faint); font-size: 0.78rem; }
+.desk-search { flex: 1 1 220px; min-width: 180px; }
+.desk-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+.desk-search input:focus-visible { outline: none; border-color: var(--accent-line); box-shadow: var(--focus-ring); }
+
+.desk-section { margin-bottom: 34px; }
+.block-h { margin: 0 0 10px; font-size: 0.98rem; }
+
+/* --- KPI-панели --- */
+.pans { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.pan { display: grid; gap: 3px; align-content: start; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); }
+.pan-label { color: var(--text-dim); font-size: 0.78rem; }
+.pan-value { font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.pan-sub { color: var(--text-faint); font-size: 0.74rem; font-variant-numeric: tabular-nums; }
+.pan-row { display: flex; justify-content: space-between; gap: 10px; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.pan-row span { color: var(--text-faint); }
+
+/* --- Месяцы: список слева, журнал справа --- */
+.month-open { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 14px; align-items: stretch; }
+@media (max-width: 900px) { .month-open { grid-template-columns: minmax(0, 1fr); } }
+/* Правая колонка — фиксированной высоты: сверху инструменты и заголовок, ниже рамка.
+   Список месяцев занимает ровно её высоту, поэтому начинается на уровне month-tools
+   и заканчивается на уровне конца month-body, а лишнее уходит в скролл. */
+.month-right { display: flex; flex-direction: column; height: 540px; min-height: 400px; }
+.months-list {
+  display: grid; gap: 6px; align-content: start; overflow-y: auto; padding-right: 4px;
+  height: 100%; min-height: 360px; max-height: 540px;
+}
+.month-item {
+  display: grid; gap: 2px; text-align: left; padding: 8px 11px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-1); color: inherit; cursor: pointer;
+}
+.month-item:hover { border-color: var(--accent-line); }
+.month-item.active { border-color: var(--accent); background: var(--accent-soft); }
+.month-item b { font-size: 0.86rem; font-weight: 600; }
+.month-item .mi-sum { font-size: 0.8rem; font-variant-numeric: tabular-nums; font-weight: 650; }
+.month-item small { color: var(--text-faint); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+
+.month-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 10px; }
+.month-tools .spacer { flex: 1; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chips-label { color: var(--text-faint); font-size: 0.78rem; }
+.chip-btn {
+  padding: 4px 11px; border: 1px solid var(--border); border-radius: var(--radius-pill);
+  background: var(--surface-1); color: var(--text-dim); font: inherit; font-size: 0.8rem; cursor: pointer;
+}
+.chip-btn:hover { border-color: var(--border-strong); color: var(--text); }
+.chip-btn.active { border-color: var(--accent-line); background: var(--accent-soft); color: var(--text); font-weight: 650; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-dim); cursor: pointer; }
+
+.filter-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-bottom: 10px; padding: 8px 12px;
+  border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft);
+}
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 6px 3px 10px; border-radius: var(--radius-pill);
+  background: var(--accent); color: var(--on-accent); font-size: 0.78rem; font-weight: 600;
+}
+.filter-chip button { padding: 0 3px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 0.9rem; line-height: 1; }
+
+.month-body {
+  flex: 1 1 auto; min-height: 320px; max-height: 470px; overflow-y: auto; padding-right: 6px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1);
+}
+.month-body::-webkit-scrollbar { width: 10px; }
+.month-body::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 6px; }
+
+/* --- Комиссионка: плитки 5×4 --- */
+.shop-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 560px) { .shop-grid { grid-template-columns: minmax(0, 1fr); } }
+.shop-side { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-1); padding: 12px 14px; }
+.shop-side-head { margin-bottom: 10px; }
+.shop-side-head h4 { margin: 0; font-size: 0.95rem; }
+.slots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; max-width: min(620px, 100%); margin: 0 auto; }
+.slot {
+  position: relative; aspect-ratio: 1; border-radius: var(--radius-xs);
+  border: 1px dashed var(--border); background: transparent; cursor: pointer;
+  display: grid; place-items: center; padding: 3px;
+}
+.slot.is-empty { color: var(--text-faint); font-size: 1rem; }
+.slot.is-empty:hover { border-color: var(--accent-line); color: var(--accent); }
+.slot.is-filled {
+  border: 1px solid hsl(var(--hue) 45% 38%); background: hsl(var(--hue) 42% 20%);
+  color: hsl(var(--hue) 75% 90%); font-weight: 600; font-size: 0.66rem; line-height: 1.15;
+  letter-spacing: 0; text-align: center; overflow-wrap: anywhere;
+}
+.slot.is-filled:hover { background: hsl(var(--hue) 45% 26%); }
+.slot-name { display: block; }
+.slot-qty { position: absolute; right: 3px; bottom: 2px; font-size: 0.62rem; font-weight: 600; opacity: 0.9; font-variant-numeric: tabular-nums; }
+/* Управление позицией прячем до наведения: плитка остаётся чистой, но позицию
+   можно изменить или убрать, наведясь на неё. */
+.slot-acts {
+  position: absolute; top: 2px; right: 2px;
+  display: flex; gap: 2px;
+  opacity: 0;
+  transition: opacity var(--speed) var(--ease);
+}
+.slot.is-filled:hover .slot-acts, .slot.is-filled:focus-within .slot-acts { opacity: 1; }
+.slot-btn {
+  width: 20px; height: 20px; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius-xs);
+  background: var(--surface-2); color: var(--text-dim);
+  font-size: 0.6rem; line-height: 1; cursor: pointer;
+}
+.slot-btn:hover { background: var(--surface-3); color: var(--text); }
+.shop-side-foot {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);
+  font-size: 0.82rem; font-variant-numeric: tabular-nums;
+}
+
+/* --- Долги: строки с полосой погашения --- */
+.fin-bar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.fin-bar > i { display: block; height: 100%; border-radius: 3px; background: var(--success); }
+.fin-bar.is-neg > i { background: var(--danger); }
+.stack { display: grid; gap: 14px; }
+.fin-loan {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--border); border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm); background: var(--surface-1);
+}
+.fin-loan.is-borrowed { border-left-color: var(--danger); }
+.fin-loan-main { min-width: 0; display: grid; gap: 5px; }
+.fin-loan-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.fin-loan-title b { font-size: 0.95rem; }
+.fin-loan-meta { color: var(--text-faint); font-size: 0.76rem; font-variant-numeric: tabular-nums; }
+.fin-loan-prog { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.fin-loan-due { text-align: right; }
+.fin-loan-due small { display: block; color: var(--text-faint); font-size: 0.72rem; }
+.fin-loan-due b { font-size: 1.05rem; font-variant-numeric: tabular-nums; color: var(--warning); }
+.fin-loan-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fin-chip.is-conv { background: var(--accent-soft); color: var(--accent); }
+
+/* --- Низ страницы: комиссионка слева, долги справа --- */
+.bottom-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .bottom-grid { grid-template-columns: minmax(0, 1fr); } }
