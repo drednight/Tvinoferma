@@ -9,6 +9,7 @@ import { roundCoins } from '../../core/coins.js';
 import {
   SHOP_ITEMS, itemByKey, reconcileTrack, trackAfterPurchase, needsHistory, historyPurchaseAt, addMonthMsk, siteKeyOf
 } from './shopCore.js';
+import { writeLogBounded } from '../../core/logStore.js';
 
 export const STATE_KEY = 'tf_shop_state_v1';
 export const LOG_KEY = 'tf_shop_log_v1';
@@ -157,7 +158,7 @@ export function logEntry(row) {
 export function recordShopRow(row) {
   if (row?.dryRun || !(row?.bought > 0 || row?.clicked)) return null;
   const entry = logEntry(row);
-  writeJson(LOG_KEY, [entry, ...loadShopLog()].slice(0, LOG_MAX));
+  writeLogBounded(LOG_KEY, [entry, ...loadShopLog()].slice(0, LOG_MAX));
   try { window.dispatchEvent(new CustomEvent('tf-shop-log')); } catch { /* вне браузера */ }
   return entry;
 }

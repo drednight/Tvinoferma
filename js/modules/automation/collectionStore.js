@@ -4,6 +4,8 @@
 // недоверенный источник: каждый отчёт перепроверяется и приводится к безопасному виду (числа с пределами, короткие строки).
 // Журнал хранит последние LOG_MAX запусков; показывается в «Настройки → Журналы» (collectionLogView.js).
 
+import { writeLogBounded } from '../../core/logStore.js';
+
 export const LOG_KEY = 'tf_collection_log_v1';
 export const LOG_MAX = 200;
 export const DROP_CATS = [1, 2, 3, 4, 5];       // с неоткрытых карточек падают только категории 1–5
@@ -11,7 +13,6 @@ export const ALL_CATS = [1, 2, 3, 4, 5, 6];
 
 const store = () => { try { return window.localStorage; } catch { return null; } };
 const readJson = (key, fallback) => { try { const v = JSON.parse(store()?.getItem(key) || 'null'); return v ?? fallback; } catch { return fallback; } };
-const writeJson = (key, value) => { try { store()?.setItem(key, JSON.stringify(value)); } catch { /* квота: журнал не критичен */ } };
 
 const num = (v, max = 1e7) => Math.min(max, Math.max(0, Math.floor(Number(v)) || 0));
 const clean = (s) => [...s].map(ch => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('');   // без управляющих символов
@@ -85,7 +86,7 @@ export function recordCollectionReports(reports, nickOf = () => '') {
     fresh.push(entry);
   });
   if (!fresh.length) return 0;
-  writeJson(LOG_KEY, [...fresh, ...log].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, LOG_MAX));
+  writeLogBounded(LOG_KEY, [...fresh, ...log].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, LOG_MAX));
   try { window.dispatchEvent(new CustomEvent('tf-collection-log')); } catch { /* вне браузера */ }
   return fresh.length;
 }

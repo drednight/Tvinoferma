@@ -62,8 +62,8 @@ export function collectLogs({ source = 'all', onlyProblems = false, query = '', 
   return { items, counts };
 }
 
-/** Короткая строка для заголовка панели. */
-export function logHubSummary({ sessionOnly = true } = {}) {
+/** Короткая строка для заголовка панели. История по умолчанию вся — см. `mountLogHub`. */
+export function logHubSummary({ sessionOnly = false } = {}) {
   const { items } = collectLogs({ sessionOnly });
   if (!items.length) return 'Записей пока нет: они появятся после первых проверок, промокодов и передач.';
   const problems = items.filter(isProblem).length;
@@ -95,11 +95,18 @@ function download(text, filename) {
 
 /**
  * Рисует журнал в контейнер (Настройки или отдельное окно).
+ *
+ * По умолчанию показывается **вся** история, а не только текущий запуск приложения.
+ * Раньше здесь стоял `sessionOnly = true`, и после перезапуска журнал выглядел пустым —
+ * хотя записи на месте и лежали в хранилище: они просто не показывались до галочки
+ * «Показать прошлые сеансы». Теперь по умолчанию видно всё, а сузить список до текущего
+ * запуска можно галочкой.
+ *
  * @param {HTMLElement} root
  * @param {{ source?: string, sessionOnly?: boolean }} [opts] source — вид, выбранный сразу
  * @returns {() => void} отписка
  */
-export function mountLogHub(root, { source = 'all', sessionOnly = true } = {}) {
+export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) {
   const st = { source: sources.has(source) ? source : 'all', sessionOnly, onlyProblems: false, query: '', limit: PAGE };
 
   root.innerHTML = `

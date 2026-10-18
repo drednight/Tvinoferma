@@ -9,6 +9,11 @@
 //   ms — сколько Твиноферма ждала появления клиента игры (без паузы между запусками);
 //   running — окно уже было запущено, запуск пропущен; nogc — не указан GameCenter.
 
+// Запись журнала идёт через logStore: при нехватке места в localStorage тот вытесняет
+// самые старые записи, а обычная запись молча не состоялась бы — и после перезапуска
+// её действительно не оказалось бы, что выглядит как «логи удалились».
+import { writeLogBounded } from '../../core/logStore.js';
+
 export const LOG_KEY = 'tf_launch_log_v1';
 export const LOG_MAX = 100;
 const ITEMS_MAX = 80;
@@ -22,7 +27,6 @@ export const ADVICE_MIN_WINDOWS = 10;
 
 const store = () => { try { return window.localStorage; } catch { return null; } };
 const readJson = (key, fallback) => { try { const v = JSON.parse(store()?.getItem(key) || 'null'); return v ?? fallback; } catch { return fallback; } };
-const writeJson = (key, value) => { try { store()?.setItem(key, JSON.stringify(value)); } catch { /* квота: журнал не критичен */ } };
 
 const num = (v, max = 1e9) => Math.min(max, Math.max(0, Math.floor(Number(v)) || 0));
 const clean = (s) => [...String(s ?? '')].map(ch => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('').trim();
@@ -85,7 +89,7 @@ function notify() {
 export function recordLaunchRun(run) {
   const entry = normalizeRun(run);
   if (!entry) return null;
-  writeJson(LOG_KEY, [entry, ...loadLaunchLog()].slice(0, LOG_MAX));
+  writeLogBounded(LOG_KEY, [entry, ...loadLaunchLog()].slice(0, LOG_MAX));
   notify();
   return entry;
 }

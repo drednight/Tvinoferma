@@ -6,6 +6,7 @@
 // Пропуск уже введённых работает по RECENT_N последним кодам.
 
 import { normalizeCode, codeKey, isOk, isInvalid, rewardText, toCsv } from './promoCore.js';
+import { writeLogBounded } from '../../core/logStore.js';
 
 export const LOG_KEY = 'tf_promo_log_v2';
 export const ARCHIVE_KEY = 'tf_promo_archive_v1';
@@ -24,7 +25,7 @@ export function loadLog() {
   try { store()?.removeItem(LEGACY_KEY); } catch { /* прежний формат (по строке на персонажа) не используется */ }
   return readJson(LOG_KEY).filter(r => r && r.code && r.entered).sort(byRecent);
 }
-export const saveLog = (log) => writeJson(LOG_KEY, log);
+export const saveLog = (log) => writeLogBounded(LOG_KEY, log);
 export function clearLog() { store()?.removeItem(LOG_KEY); }
 
 /** Последние n уникальных кодов. */

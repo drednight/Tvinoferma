@@ -5,6 +5,7 @@
 //  - журнал передач: когда, откуда, куда, что и чем закончилось.
 
 import { normalizeRoster, normalizeStatus, normKey } from './transferCore.js';
+import { writeLogBounded } from '../../core/logStore.js';
 
 export const ROSTER_KEY = 'tf_transfer_roster_v1';
 export const PREFS_KEY = 'tf_transfer_prefs_v1';
@@ -183,7 +184,7 @@ export function logEntry(row) {
 export function recordTransfer(row) {
   if (!row?.clicked || row.dryRun) return null;
   const entry = logEntry(row);
-  writeJson(LOG_KEY, [entry, ...loadTransferLog()].slice(0, LOG_MAX));
+  writeLogBounded(LOG_KEY, [entry, ...loadTransferLog()].slice(0, LOG_MAX));
   try { window.dispatchEvent(new CustomEvent('tf-transfer-log')); } catch { /* вне браузера */ }
   return entry;
 }

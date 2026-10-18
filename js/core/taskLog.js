@@ -12,6 +12,7 @@ import { registerLogSource, openLogHub } from './logHub.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
 import { mskStampSeconds } from './msk.js';
 import { state } from './state.js';
+import { writeLogBounded } from './logStore.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
 const MAX_TASKS = 300;
@@ -38,13 +39,11 @@ function loadJournal() {
   } catch (_) { return []; }
 }
 function saveJournal() {
-  let finished = tasks.filter(t => t.status !== 'running').slice(0, MAX_TASKS)
+  const finished = tasks.filter(t => t.status !== 'running').slice(0, MAX_TASKS)
     .map(t => ({ ...t, scopes: [], open: false }));
-  // При переполнении localStorage выбрасываем самые старые записи, пока журнал не поместится
-  for (let i = 0; i < 6; i++) {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(finished)); return; }
-    catch (_) { finished = finished.slice(0, Math.floor(finished.length / 2)); }
-  }
+  // Места в localStorage общие на все журналы приложения, и при нехватке запись молча
+  // не состоялась бы. `writeLogBounded` вместо этого ужимает журнал, выбрасывая самые старые.
+  writeLogBounded(STORAGE_KEY, finished);
 }
 
 const nowIso = () => new Date().toISOString();

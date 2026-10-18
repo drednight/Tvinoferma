@@ -222,33 +222,44 @@ describe('вид «Скрипты» (taskLog.js)', () => {
 
 
 describe('журнал текущей сессии', () => {
-  it('при запуске история скрыта, новые записи видны; переключатель возвращает историю без удаления', () => {
+  // По умолчанию видна вся история: иначе после перезапуска журнал выглядит пустым,
+  // хотя записи лежат в хранилище. Сузить до текущего запуска можно галочкой.
+  it('история видна сразу; переключатель оставляет только текущий запуск и ничего не удаляет', () => {
     const old = row('old', '2000-01-01T00:00:00Z');
     const src = makeSource('session', [old]);
     hub.registerLogSource(src);
     src.rows.push(row('new', new Date().toISOString()));
     hub.mountLogHub($('#root'));
-    expect([...document.querySelectorAll('[data-lh-key]')].map(el => el.dataset.lhKey)).toEqual(['new']);
-    expect(hub.logHubSummary()).toContain('Записей: 1');
+    expect([...document.querySelectorAll('[data-lh-key]')].map(el => el.dataset.lhKey)).toEqual(['new', 'old']);
+    expect(hub.logHubSummary()).toContain('Записей: 2');
     const history = $('[data-lh-history]');
-    expect(history.checked).toBe(false);
-    history.checked = true;
-    history.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
+    expect(history.checked).toBe(true);
     history.checked = false;
     history.dispatchEvent(new Event('change', { bubbles: true }));
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(1);
+    history.checked = true;
+    history.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
     expect(src.rows).toContain(old);
     expect(src.clear).not.toHaveBeenCalled();
   });
 
-  it('прошлые задачи остаются в localStorage, но не попадают в текущий запуск', async () => {
+  it('фильтр сессии по запросу работает независимо от переключателя', () => {
+    const src = makeSource('session2', [row('old', '2000-01-01T00:00:00Z')]);
+    src.rows.push(row('new', new Date().toISOString()));
+    hub.registerLogSource(src);
+    expect(hub.collectLogs({ sessionOnly: true }).items.map(it => it.key)).toEqual(['new']);
+    expect(hub.collectLogs({ sessionOnly: false }).items.map(it => it.key)).toEqual(['new', 'old']);
+  });
+
+  it('прошлые задачи остаются в localStorage и видны в общем списке', async () => {
     const key = 'tf_task_journal_v1';
     const saved = JSON.stringify([{ id: 'previous', title: 'Прошлая сессия', startedAt: '2000-01-01T00:00:00Z', status: 'done', entries: [] }]);
     localStorage.setItem(key, saved);
     const { startTask } = await import('../js/core/taskLog.js');
     hub.mountLogHub($('#root'));
-    expect(document.querySelector('[data-lh-key="previous"]')).toBeNull();
+    // Прошлая сессия видна: именно это и ломалось — записи были на месте, но прятались
+    expect(document.querySelector('[data-lh-key="previous"]')).not.toBeNull();
     expect(localStorage.getItem(key)).toBe(saved);
     startTask('Текущая сессия', { dock: false }).finish('Готово');
     expect(hub.collectLogs({ sessionOnly: true }).items.map(it => it.title)).toEqual(['Текущая сессия']);
