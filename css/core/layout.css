@@ -92,6 +92,9 @@
   transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
 }
 .tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+/* Раздел, выключенный в настройках (js/core/sections.js). Правило `display` выше перебивает
+   `hidden` из таблицы браузера, поэтому без этой строки кнопка оставалась бы на месте. */
+.tab[hidden] { display: none; }
 .tab.active {
   background: var(--surface-3);
   border-color: var(--border-strong);

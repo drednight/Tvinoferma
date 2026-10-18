@@ -4,6 +4,10 @@
 // Логика отделена от интерфейса: `buildCommands` собирает команды из состояния приложения,
 // `filterCommands` ищет их по запросу. Поэтому и то и другое проверяется тестами без DOM.
 
+// Список разделов — общий с меню (js/core/sections.js), иначе палитра и меню разошлись бы:
+// раздел скрыт в меню, а в палитре остался (или наоборот).
+import { visibleSections } from './sections.js';
+
 /** Разряды и регистр не мешают поиску: «Ауразак», «ауразак», «aura» находятся одинаково. */
 export function normalizeQuery(text) {
   return String(text || '')
@@ -72,14 +76,17 @@ export function buildCommands(state, deps = {}) {
   const push = (c) => out.push(c);
 
   // --- Разделы ---
-  for (const [tab, title, icon] of [
-    ['today', 'Сегодня', '⌂'],
-    ['characters', 'Персонажи', '👥'],
-    ['parties', 'Пати', '🛡'],
-    ['marathons', 'Марафоны', '🏃'],
-    ['settings', 'Настройки', '⚙']
-  ]) {
-    push({ id: `tab-${tab}`, title: `${icon} ${title}`, group: 'Разделы', keywords: [tab, 'раздел', 'вкладка'], run: () => deps.switchTab?.(tab) });
+  // Из того же списка, что и меню, и в том же порядке: выключенный раздел в палитре
+  // не нужен — открывать всё равно нечего, а нажать можно было бы и не заметив, что
+  // его убрали из меню.
+  for (const section of visibleSections(state?.settings)) {
+    push({
+      id: `tab-${section.id}`,
+      title: `${section.paletteIcon || ''} ${section.title}`.trim(),
+      group: 'Разделы',
+      keywords: [section.id, 'раздел', 'вкладка'],
+      run: () => deps.switchTab?.(section.id)
+    });
   }
 
   // --- Действия ---

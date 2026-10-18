@@ -133,7 +133,11 @@ export const DEFAULT_SETTINGS = {
   ui: {
     theme: 'dark',
     // Вид календаря на странице «Сегодня»: компактная неделя или месяц (js/modules/dashboard/plannerView.js)
-    plannerView: 'week'
+    plannerView: 'week',
+    // Какие разделы показывать в меню и в каком порядке (js/core/sections.js).
+    // Пусто значит «порядок по умолчанию, все видны» — список разделов и так меняется
+    // с выходом новой версии, а хранить его копию значило бы забыть об этом.
+    sections: { hidden: [], order: [] }
   },
   // Учётные данные — в хранилище ОС (Windows Credential Manager / Keychain), а не в state.json
   security: {

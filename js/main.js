@@ -32,6 +32,7 @@ import { mountMskClock } from './modules/servers/mskClock.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
 import { initNavBadges, refreshNavBadges } from './core/navBadges.js';
 import { bindEternals, applyEternalsVisibility, startEternalsDailySync } from './modules/eternals/page.js';
+import { applySections, resolveSection } from './core/sections.js';
 import { bindFinance, renderFinance } from './modules/finance/page.js';
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
@@ -221,12 +222,17 @@ async function boot() {
     // Часы по Москве над плашкой: ЧЧ:ММ:СС, тикают раз в секунду
     mountMskClock(document.getElementById('msk-clock'));
 
-    // 7. Первый рендер активной вкладки
+    // 7. Порядок и видимость разделов по настройке. Именно здесь, а не в разметке: раздел
+    // выключается и переставляется без перезагрузки, поэтому кнопки на месте со своими
+    // обработчиками, а меняются только их порядок и `hidden`.
+    applySections(document, state.settings);
+
+    // 8. Первый рендер активной вкладки
     renderActiveTab('today');
 
     console.log('[BOOT] Application ready.');
 
-    // 8. Фоновые проверки при запуске (не блокируют интерфейс). Порядок: сначала «Статус серверов»
+    // 9. Фоновые проверки при запуске (не блокируют интерфейс). Порядок: сначала «Статус серверов»
     // (публичная страница, аккаунты не нужны), затем проверка сохранённых авторизаций персонажей.
     if (window.__TAURI_INTERNALS__) {
       (async () => {
@@ -238,7 +244,7 @@ async function boot() {
       })().catch(e => console.error('[BOOT] Startup checks failed:', e));
     }
 
-    // 9. Обновления: обязательная тихая проверка при каждом запуске; дополнительные проверки по расписанию
+    // 10. Обновления: обязательная тихая проверка при каждом запуске; дополнительные проверки по расписанию
     initUpdateUi();
     initParserHealthUi();
     startFreshnessTicker(() => state.settings);   // «5 мин назад» пересчитывается раз в минуту
@@ -353,8 +359,19 @@ function renderActiveTab(sectionName) {
 }
 
 /** Переключить вкладку ��рограммно (горячие клавиши). */
+/**
+ * Переключить раздел программно: горячие клавиши, палитра команд, сохранённые команды.
+ *
+ * Раздел могли выключить в настройках, а прийти сюда можно откуда угодно — из палитры или
+ * из команды. Клик по спрятанной кнопке ничего не делает, и человек остался бы на прежнем
+ * экране без объяснений, поэтому выключенный раздел заменяем первым видимым.
+ */
 function switchTab(sectionName) {
-  document.querySelector(`.tab[data-tab="${sectionName}"]`)?.click();
+  const target = resolveSection(sectionName, state.settings);
+  if (target.id !== String(sectionName)) {
+    console.warn(`[NAV] Раздел «${sectionName}» выключен, открываю «${target.title}»`);
+  }
+  document.querySelector(`.tab[data-tab="${target.id}"]`)?.click();
 }
 
 // Запуск приложения после полной загрузки DOM

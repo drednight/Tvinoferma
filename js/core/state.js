@@ -13,6 +13,7 @@ import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
 import { normalizeEternalsData } from '../modules/eternals/core.js';
 import { normalizePreflightMode } from '../modules/launcher/preflight.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
+import { normalizeSectionsSettings } from './sections.js';
 import { normalizePlannerEntry } from '../modules/dashboard/planner.js';
 import { normalizeFinance, defaultFinance } from '../modules/finance/model.js';
 
@@ -338,7 +339,13 @@ function mergeSettings(input = {}) {
         ...(input.google?.sheetsFields || {})
       }
     },
-    ui: { ...DEFAULT_SETTINGS.ui, ...(input.ui || {}) },
+    // Разделы разбираем отдельно: порядок и список выключенных — это не «любые ключи»,
+    // а отфильтрованный набор настоящих разделов (см. js/core/sections.js)
+    ui: {
+      ...DEFAULT_SETTINGS.ui,
+      ...(input.ui || {}),
+      sections: normalizeSectionsSettings(input.ui?.sections)
+    },
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),

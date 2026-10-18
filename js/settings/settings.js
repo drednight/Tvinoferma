@@ -4,7 +4,8 @@ import { getAdapter, saveNow, forceRenderAndPersist, persist, createBackup, isTa
 import { state, serializeState } from '../core/state.js';
 import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
-import { HOTKEYS, applyDesktopSettings } from '../desktop/desktop.js';
+import { hotkeyRows, applyDesktopSettings } from '../desktop/desktop.js';
+import { applySections } from '../core/sections.js';
 import { runNotificationTest, NOTIFY_KINDS } from '../desktop/notifications.js';
 import { SOUND_TONES, previewNotificationSound, soundSettings, soundDiagnostics } from '../desktop/sound.js';
 import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
@@ -163,7 +164,9 @@ export async function renderSettings() {
 
   const hk = document.getElementById('hotkeys-list');
   if (hk && !hk.childElementCount) {
-    hk.innerHTML = HOTKEYS.map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
+    // Подпись разделам собирается по текущим настройкам: выключенный или переставленный раздел
+// меняет и номера горячих клавиш, и их названия
+    hk.innerHTML = hotkeyRows().map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
   }
 }
 
@@ -467,6 +470,12 @@ export function bindSettings() {
   import('../modules/launcher/layoutSync.js').then(m => m.bindLayoutPanel()).catch(e => console.warn('[LAYOUT]', e));
 
   import('../desktop/autostart.js').then(m => m.bindAutostart()).catch(e => console.warn('[AUTOSTART]', e));
+
+  // Разделы: список строится кодом, а изменения сразу видны в меню — иначе пришлось бы
+  // закрывать и открывать настройки, чтобы понять, что галочка сработала.
+  import('./sectionsPanel.js')
+    .then(m => m.bindSectionsPanel({ onChange: () => applySections(document, state.settings) }))
+    .catch(e => console.warn('[SECTIONS]', e));
 
   document.getElementById('close-game-windows-btn')?.addEventListener('click', async () => {
     const { closeAllGameWindows } = await import('../modules/launcher/partyLaunch.js');
