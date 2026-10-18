@@ -46,13 +46,38 @@ export async function openWindowPicker(opts = {}) {
   /** Только подвал: счётчик и кнопки. Список не трогаем. */
   const drawFoot = () => {
     const count = selected.size;
+    // Отметить и снять все — одна кнопка: пока выбрано не всё, она отмечает всё,
+    // а когда выбрано всё — снимает отметки. Иначе снять пришлось бы галочками по одной.
+    const every = rows.length > 0 && count === rows.length;
     ov.foot.innerHTML = `
       <span class="winp-count muted">Выбрано: <b>${count}</b></span>
+      <button type="button" class="btn ghost small" data-act="toggle-all" ${rows.length ? '' : 'disabled'}
+              title="${every ? 'Снять отметки со всех окон' : 'Отметить все окна сразу'}">${every ? '☐ Снять все' : '☑ Отметить все'}</button>
       <span class="winp-spacer"></span>
       <button type="button" class="btn ghost" data-act="close">Отмена</button>
       <button type="button" class="btn secondary" data-act="party" ${count ? '' : 'disabled'}>🛡 Закрыть пати…</button>
       <button type="button" class="btn secondary" data-act="selected" ${count ? '' : 'disabled'}>Закрыть выбранные (${count})</button>
       <button type="button" class="btn danger" data-act="all" ${rows.length ? '' : 'disabled'}>Закрыть все (${rows.length})</button>`;
+  };
+
+  /**
+   * Галочки строк и подвал приводятся к выбору.
+   *
+   * Строки не пересоздаются: иначе длинный список после отметки прыгал бы наверх.
+   */
+  const drawChecks = () => {
+    ov.body.querySelectorAll('input[type="checkbox"][data-pid]').forEach(input => {
+      input.checked = selected.has(Number(input.dataset.pid));
+    });
+    drawFoot();
+  };
+
+  /** Отметить все окна разом или снять все отметки — что имеет смысл в текущем выборе. */
+  const toggleAll = () => {
+    const pids = rows.map(r => r.pid);
+    if (pids.length && pids.every(pid => selected.has(pid))) pids.forEach(pid => selected.delete(pid));
+    else pids.forEach(pid => selected.add(pid));
+    drawChecks();
   };
 
   const rowHtml = (row) => {
@@ -131,8 +156,8 @@ export async function openWindowPicker(opts = {}) {
     const pid = Number(box.dataset.pid);
     if (!pid) return;
     if (box.checked) selected.add(pid); else selected.delete(pid);
-    // Меняем только подвал: строки списка не пересоздаются, и прокрутка остаётся на месте
-    drawFoot();
+    // Меняем галочки и подвал: строки списка не пересоздаются, и прокрутка остаётся на месте
+    drawChecks();
   });
 
   ov.el.addEventListener('click', async (e) => {
@@ -142,6 +167,7 @@ export async function openWindowPicker(opts = {}) {
 
     if (act === 'refresh') { await reload(); return; }
     if (act === 'close') { ov.close(); return; }
+    if (act === 'toggle-all') { toggleAll(); return; }
     if (act === 'selected') {
       const pids = [...selected];
       const nick = (pid) => rowLabel(rows.find(r => r.pid === pid)) || `PID ${pid}`;

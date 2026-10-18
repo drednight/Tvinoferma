@@ -6,10 +6,13 @@ import { toast } from '../core/ui.js';
 import { startCollectionSync } from '../modules/automation/collectionSync.js';
 import { launchablePartyNames, decorateNotice, hasGameCenterPath } from '../modules/launcher/launch.js';
 import { charactersInParty } from '../modules/parties/membership.js';
+import { visibleSections } from '../core/sections.js';
 
 export const HOTKEYS = [
   { keys: 'Ctrl+K', text: 'Командная палитра: команды, персонажи, пати' },
-  { keys: 'Ctrl+1…7', text: 'Разделы: Сегодня / Персонажи / Пати / Марафоны / Руны / Инструменты / Настройки' },
+  // Подпись и номера разделов подставляются по текущим настройкам: раздел можно выключить
+  // или переставить, и тогда Ctrl+3 должен вести туда же, что и третья кнопка меню.
+  { keys: 'Ctrl+1…', text: '', hotkeys: 'sections' },
   { keys: 'Ctrl+F', text: 'Поиск по нику' },
   { keys: 'Ctrl+N', text: 'Новый персонаж / пати (как кнопка «+»)' },
   { keys: 'Ctrl+S', text: 'Сохранить сейчас' },
@@ -19,6 +22,26 @@ export const HOTKEYS = [
   { keys: 'Ctrl+A', text: 'В режиме выбора — выбрать всех по фильтру' },
   { keys: 'Esc', text: 'Закрыть окно / выйти из режима выбора' }
 ];
+
+/** Разделы, до которых доходят номера: видимые, в порядке меню, без прибитого «Настроек». */
+export function hotkeySections(settings = state.settings) {
+  return visibleSections(settings).filter((s) => !s.pinned);
+}
+
+/**
+ * Готовый список горячих клавиш для справки: номера и названия разделов — по текущим
+ * настройкам, поэтому подпись не расходится с тем, что действительно сработает.
+ */
+export function hotkeyRows(settings = state.settings) {
+  const sections = hotkeySections(settings);
+  const first = sections.length ? 'Ctrl+1' : 'Ctrl+1…';
+  const last = sections.length ? `Ctrl+${sections.length}` : 'Ctrl+…';
+  return HOTKEYS.map((row) => {
+    if (row.hotkeys !== 'sections') return row;
+    const keys = sections.length === 1 ? first : `${first}…${last}`;
+    return { keys, text: `Разделы: ${sections.map((s) => s.title).join(' / ') || '—'}` };
+  });
+}
 
 let backgroundTimer = null;
 let backgroundChecking = false;
@@ -83,9 +106,13 @@ export function initHotkeys({ switchTab }) {
       return;
     }
 
-    if (!e.shiftKey && ['1', '2', '3', '4', '5', '6', '7'].includes(key) && !modalOpen) {
+    // Номера разделов — по тому, что сейчас в меню: выключенный или переставленный раздел
+    // не должен занимать номер, который ведёт в другое место.
+    const sections = hotkeySections();
+    const index = Number(key) - 1;
+    if (!e.shiftKey && Number.isInteger(index) && index >= 0 && index < sections.length && !modalOpen) {
       e.preventDefault();
-      switchTab(['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools', 'settings'][Number(key) - 1]);
+      switchTab(sections[index].id);
     } else if (!e.shiftKey && (key === 'f' || key === 'а') && !modalOpen) {
       e.preventDefault();
       switchTab('characters');

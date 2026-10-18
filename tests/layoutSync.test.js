@@ -68,16 +68,28 @@ describe('Layout: кнопка «Применить»', () => {
   }
   const tick = () => new Promise(r => setTimeout(r, 0));
 
-  it('при запущенной игре ничего не меняет', async () => {
+  it('при запущенной игре применяет сразу, а не отказывает', async () => {
     mount();
     const calls = [];
-    const invoke = async (cmd) => { calls.push(cmd); return cmd === 'layout_scan' ? { targets: [{ name: 'a.ini', readOnly: false }], templateInDir: true } : []; };
-    bindLayoutPanel({ invoke, running: async () => [123], confirm: async () => true });
+    const invoke = async (cmd) => {
+      calls.push(cmd);
+      if (cmd === 'layout_scan') return { targets: [{ name: 'a.ini', readOnly: false }], templateInDir: true };
+      if (cmd === 'layout_apply') return { replaced: ['a.ini'], unchanged: [], failed: [], backupDir: 'B' };
+      return null;
+    };
+    const confirm = vi.fn().mockResolvedValue(true);
+    bindLayoutPanel({ invoke, confirm });
     await tick();
     document.getElementById('layout-apply-btn').click();
-    await tick();
-    expect(calls).not.toContain('layout_apply');
-    expect(document.getElementById('toast-root').textContent).toMatch(/закройте окна игры/i);
+    await tick(); await tick();
+    expect(calls).toContain('layout_apply');
+    expect(document.getElementById('layout-result').textContent).toContain('заменено: 1');
+    // Требования закрыть игру больше нет, и проигрывать его текстом тоже незачем:
+    // удерживает раскладку пометка «только для чтения», о ней и сказано
+    expect(document.getElementById('toast-root').textContent).not.toMatch(/закройте окна игры/i);
+    expect(confirm.mock.calls[0][0].text).not.toMatch(/закройте окна игры/i);
+    expect(confirm.mock.calls[0][0].text).toContain('только для чтения');
+    expect(confirm.mock.calls[0][0].text).toContain('не перезапишет');
   });
 
   it('без подтверждения не применяет, с подтверждением — применяет', async () => {
@@ -90,7 +102,7 @@ describe('Layout: кнопка «Применить»', () => {
       return null;
     };
     const confirm = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    bindLayoutPanel({ invoke, running: async () => [], confirm });
+    bindLayoutPanel({ invoke, confirm });
     await tick();
     document.getElementById('layout-apply-btn').click();
     await tick(); await tick();

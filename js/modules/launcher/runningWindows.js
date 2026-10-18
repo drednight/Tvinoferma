@@ -51,7 +51,8 @@ function notify() {
  * Опросить запущенные окна и раздать результат подписчикам.
  * Параллельные вызовы не дублируют запрос к Rust: все ждут один и тот же.
  * Ошибка не блокирует интерфейс: в этом случае остаётся прежний список.
- * @returns {Promise<Array<any>>}
+ * @returns {Promise<boolean>} удалось ли получить список. Кнопке обновления это нужно,
+ *   чтобы отличить «окон нет» от «спросить не удалось» — по одному списку их не различить.
  */
 export async function refreshRunningWindows() {
   if (inflight) return inflight;
@@ -62,12 +63,13 @@ export async function refreshRunningWindows() {
       rows = windowRows(clients, state.characters);
       updatedAt = Date.now();
       notify();
+      return true;
     } catch (e) {
       console.warn('[WINDOWS] не удалось получить список окон:', e);
+      return false;
     } finally {
       inflight = null;
     }
-    return rows;
   })();
   return inflight;
 }

@@ -232,3 +232,76 @@ describe('список окон игры в разделе «Инструмен�
     expect(document.querySelectorAll('.rwn-row')).toHaveLength(before);
   });
 });
+
+describe('кнопка «Обновить» в блоке «Окна игры»', () => {
+  const renderToolsSection = async () => {
+    const tools = await import('../js/modules/tools/index.js');
+    tools.bindTools();
+    tools.renderTools();
+  };
+  const refreshBtn = () => document.querySelector('[data-tools-act="refresh-windows"]');
+  const rowCount = () => document.querySelectorAll('.rwn-row').length;
+
+  it('подхватывает окно, открытое уже после отрисовки раздела', async () => {
+    await runningWindows.refreshRunningWindows();
+    await renderToolsSection();
+    expect(rowCount()).toBe(0);
+    // Окно открыли, не заходя в «Инструменты» заново
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+    refreshBtn().click();
+    await vi.waitFor(() => expect(rowCount()).toBe(1));
+    expect(document.querySelector('.rwn-row').textContent).toContain('Аа — Воин');
+  });
+
+  it('убирает из списка окно, закрытое снаружи приложения', async () => {
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+    await runningWindows.refreshRunningWindows();
+    await renderToolsSection();
+    expect(rowCount()).toBe(1);
+    // Игру закрыли руками, мимо приложения
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [] : {}));
+    refreshBtn().click();
+    await vi.waitFor(() => expect(rowCount()).toBe(0));
+    expect(document.querySelector('[data-tools-windows]').textContent).toContain('Запущенных окон игры нет');
+  });
+
+  it('на время опроса кнопка выключена и говорит, что идёт проверка', async () => {
+    await runningWindows.refreshRunningWindows();
+    await renderToolsSection();
+    // Отложенный ответ: опрос нельзя завершить изнутри, пока не убедились, что кнопка ждёт
+    let release = () => {};
+    const pending = new Promise(res => { release = () => res([win(100, 'Аа')]); });
+    invoke.mockImplementation(cmd => (cmd === 'launcher_running_details' ? pending : Promise.resolve({})));
+    const btn = refreshBtn();
+    btn.click();
+    await vi.waitFor(() => expect(btn.disabled).toBe(true));
+    expect(btn.textContent).toContain('Проверяем');
+    release();
+    await vi.waitFor(() => expect(btn.disabled).toBe(false));
+    expect(btn.textContent).toContain('Обновить');
+    expect(rowCount()).toBe(1);
+  });
+
+  it('сбой опроса показывается сообщением, а не молчаливым старым списком', async () => {
+    const ui = await import('../js/core/ui.js');
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+    await runningWindows.refreshRunningWindows();
+    await renderToolsSection();
+    ui.toast.mockClear();
+    invoke.mockImplementation(async () => { throw new Error('нет доступа'); });
+    refreshBtn().click();
+    await vi.waitFor(() => expect(ui.toast).toHaveBeenCalledWith(expect.stringContaining('Не удалось'), 'error'));
+    // Прежний список на месте: сбой не должен читаться как «окна закрылись»
+    expect(rowCount()).toBe(1);
+  });
+
+  it('обновление ничего не закрывает: это чтение, а не действие', async () => {
+    invoke.mockImplementation(async cmd => (cmd === 'launcher_running_details' ? [win(100, 'Аа')] : {}));
+    await runningWindows.refreshRunningWindows();
+    await renderToolsSection();
+    refreshBtn().click();
+    await vi.waitFor(() => expect(rowCount()).toBe(1));
+    expect(invoke).not.toHaveBeenCalledWith('launcher_close_clients_pids', expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith('launcher_close_clients_all', expect.anything());
+  });
+});

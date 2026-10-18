@@ -139,3 +139,60 @@ describe('закрытие выбранных окон', () => {
     await vi.waitFor(() => expect(mocks.details).toHaveBeenCalled());
   });
 });
+
+describe('отметить все окна разом', () => {
+  const toggle = () => btn('toggle-all');
+  const allBoxes = () => [...document.querySelectorAll('.winp-row input[data-pid]')];
+
+  it('кнопка отмечает все окна: галочки, счётчик и подпись', () => {
+    expect(toggle().textContent).toContain('Отметить все');
+    toggle().click();
+    expect(allBoxes().map(b => b.checked)).toEqual([true, true, true]);
+    expect(document.querySelector('.winp-count').textContent).toContain('3');
+    expect(btn('selected').textContent).toContain('(3)');
+    // Выбрано всё — кнопка предлагает обратное действие
+    expect(toggle().textContent).toContain('Снять все');
+  });
+
+  it('повторное нажатие снимает все отметки', () => {
+    toggle().click();
+    toggle().click();
+    expect(allBoxes().map(b => b.checked)).toEqual([false, false, false]);
+    expect(document.querySelector('.winp-count').textContent).toContain('0');
+    expect(toggle().textContent).toContain('Отметить все');
+    expect(btn('selected').disabled).toBe(true);
+  });
+
+  it('частичный выбор не мешает: кнопка отмечает недостающее, а не снимает выбранное', () => {
+    box(100).checked = true;
+    box(100).dispatchEvent(new Event('change', { bubbles: true }));
+    expect(toggle().textContent).toContain('Отметить все');
+    toggle().click();
+    expect(allBoxes().map(b => b.checked)).toEqual([true, true, true]);
+  });
+
+  it('окно без ника отмечается вместе со своими — так же, как его закрывают', () => {
+    toggle().click();
+    expect(box(300).checked).toBe(true);
+  });
+
+  it('после отметки всех «Закрыть выбранные» закрывает весь список', async () => {
+    toggle().click();
+    btn('selected').click();
+    await vi.waitFor(() => expect(mocks.closePids).toHaveBeenCalled());
+    expect(mocks.closePids.mock.calls[0][0].sort()).toEqual([100, 200, 300]);
+  });
+
+  it('отметка не трогает само окно: закрывать надо отдельной кнопкой', () => {
+    toggle().click();
+    expect(mocks.closePids).not.toHaveBeenCalled();
+    expect(mocks.closeAll).not.toHaveBeenCalled();
+  });
+
+  it('список пуст — кнопка выключена, отмечать нечего', async () => {
+    mocks.details.mockResolvedValue([]);
+    const refresh = document.querySelector('.tf-dialog-sub [data-act="refresh"]');
+    refresh.click();
+    await vi.waitFor(() => expect(btn('toggle-all').disabled).toBe(true));
+  });
+});

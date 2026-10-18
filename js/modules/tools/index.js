@@ -14,6 +14,7 @@
 // каждый раз. Это Настройки.
 
 import { escapeHtml } from '../../core/utils.js';
+import { toast } from '../../core/ui.js';
 import { runningWindows, onRunningWindows, refreshRunningWindows } from '../launcher/runningWindows.js';
 import { rowLabel, formatUptime } from '../launcher/windowList.js';
 import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
@@ -67,6 +68,7 @@ export function renderTools() {
         <p class="muted">Проверяем запущенные окна…</p>
       </div>
       <div class="tools-actions">
+        <button type="button" class="btn ghost" data-tools-act="refresh-windows" title="Спросить у игры, какие окна запущены прямо сейчас">🔄 Обновить</button>
         <button type="button" class="btn ghost" data-tools-act="gc-binding" title="Список GameCenter, привязка аккаунтов и запомненные входы">🎮 GameCenter и персонажи</button>
         <button type="button" class="btn ghost" data-tools-act="pick-windows" title="Показать все окна игры и закрыть выбранные">🖥️ Показать все окна</button>
         <button type="button" class="btn ghost" data-tools-act="close-all-windows" title="Закрыть все запущенные окна игры">🛑 Закрыть все окна игры</button>
@@ -103,6 +105,29 @@ function fillWindows() {
   box.closest('.page')?.addEventListener('tf-leave', off, { once: true });
 }
 
+/**
+ * Кнопка «Обновить» в блоке «Окна игры»: спрашивает у Rust, что запущено прямо сейчас.
+ *
+ * Пока запрос идёт, кнопка выключена и говорит об этом — иначе повторные клики только
+ * ждали бы один и тот же опрос. Список перерисовывает подписчик, отдельного вызова не
+ * нужно. Неудача показывается отдельно: молчаливый старый список читался бы как «окна
+ * закрылись», а это противоположный вывод.
+ *
+ * @param {HTMLElement} btn
+ */
+async function refreshWindowsButton(btn) {
+  if (btn.disabled) return;
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Проверяем…';
+  try {
+    if (!await refreshRunningWindows()) toast('Не удалось получить список окон игры', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
 export function bindTools() {
   const el = root();
   if (!el || el.dataset.toolsBound) return;
@@ -116,7 +141,12 @@ export function bindTools() {
     }
     const act = /** @type {HTMLElement} */ (event.target).closest?.('[data-tools-act]');
     if (!act) return;
-    if (act.dataset.toolsAct === 'gc-binding') {
+    if (act.dataset.toolsAct === 'refresh-windows') {
+      // Список окон меняется не только здесь: игру можно закрыть снаружи, а окно может
+      // упасть само. Без кнопки сверить список можно было только закрытием окна — то есть
+      // цена проверки «какие окна открыты» была в потерянном окне.
+      await refreshWindowsButton(act);
+    } else if (act.dataset.toolsAct === 'gc-binding') {
       // То же окно, что и «Настройки → Запуск игры» и карточка персонажа: одна реализация,
       // чтобы правила привязки и входов не расходились между разделами
       const { openGameCentersModal } = await import('../launcher/gcSettingsModal.js');

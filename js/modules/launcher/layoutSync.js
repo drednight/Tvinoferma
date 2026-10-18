@@ -7,7 +7,6 @@
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
-import { runningClients } from './launch.js';
 
 async function tauriInvoke(cmd, args) {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -62,11 +61,10 @@ const errText = (e) => String(e?.message || e);
 /**
  * Привязывает панель «Layout» в настройках. Поля путей сохраняет общий обработчик настроек (data-setting),
  * здесь — кнопки выбора, просмотр списка и применение.
- * @param {{ invoke?: Function, running?: () => Promise<any[]>, confirm?: Function }} [deps]
+ * @param {{ invoke?: Function, confirm?: Function }} [deps]
  */
 export function bindLayoutPanel(deps = {}) {
   const invoke = deps.invoke || tauriInvoke;
-  const running = deps.running || (() => runningClients({ invoke }));
   const ask = deps.confirm || confirmModal;
   const $ = (id) => document.getElementById(id);
   const dirInput = $('layout-dir');
@@ -110,18 +108,17 @@ export function bindLayoutPanel(deps = {}) {
     const { dir, template } = layoutPaths();
     if (!dir || !template) { toast('Укажите папку Layout и файл-образец.', 'warning'); return; }
     try {
-      // Игра пишет раскладку при выходе: если клиент ещё открыт, он перезапишет наши файлы
-      const clients = await running();
-      if (clients?.length) {
-        toast('Сначала закройте окна игры: при выходе игра перезапишет файлы layout.', 'warning', 5000);
-        return;
-      }
       const scan = await invoke('layout_scan', { dir, template });
       const n = scan.targets.length;
       if (!n) { toast('В папке нет других файлов .ini: менять нечего.', 'info'); return; }
+      // Открытые окна игры не мешают: применяем сразу, как нажали. Раньше здесь был отказ от
+      // действия («сначала закройте окна»), из-за чего раскладку нельзя было сменить, не
+      // закрыв игру. Удерживает результат не это, а пометка «только для чтения», которую
+      // ставит `layout_apply`: файл с такой пометкой нельзя ни перезаписать, ни удалить,
+      // ни создать заново, поэтому игра не затрёт раскладку своей при выходе.
       const ok = await ask({
         title: 'Заменить layout?',
-        text: `Файл «${baseName(template)}» будет скопирован поверх ${n} ${plural(n, 'файла', 'файлов', 'файлов')} в папке «${dir}», и на них встанет «только для чтения». Прежние файлы сохранятся в резервной копии в данных приложения. Файл systemsettings.ini не меняется.`,
+        text: `Файл «${baseName(template)}» будет скопирован поверх ${n} ${plural(n, 'файла', 'файлов', 'файлов')} в папке «${dir}», и на них встанет «только для чтения» — игра не перезапишет их своей раскладкой. Прежние файлы сохранятся в резервной копии в данных приложения. Файл systemsettings.ini не меняется.`,
         okText: 'Заменить',
         danger: true
       });
