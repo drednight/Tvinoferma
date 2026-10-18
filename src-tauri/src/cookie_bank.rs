@@ -123,9 +123,8 @@ fn get_or_create_key() -> Result<Vec<u8>, String> {
             .ok_or_else(|| "Ключ банка кук в хранилище ОС повреждён".to_string()),
         Err(keyring::Error::NoEntry) => {
             let key = Aes256Gcm::generate_key(OsRng);
-            entry
-                .set_password(&to_hex(&key))
-                .map_err(|e| e.to_string())?;
+            // Запись через vault: обход невозможности записи keyring в сессии входа (Windows 1312).
+            crate::vault::set_password(&entry, KEYRING_SERVICE, KEYRING_USER, &to_hex(&key))?;
             Ok(key.to_vec())
         }
         Err(e) => Err(e.to_string()),

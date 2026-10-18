@@ -2,7 +2,7 @@
 // Автозапуск вместе с Windows: переключатели в «Настройки → Трей и фоновые проверки».
 // Сама запись (HKCU\...\Run) делается в Rust (src-tauri/src/autostart.rs); режим «в трее» хранится в команде запуска.
 
-import { toast } from '../core/ui.js';
+import { toast, confirmModal } from '../core/ui.js';
 
 async function tauriInvoke(cmd, args) {
   const { invoke } = await import('@tauri-apps/api/core');
@@ -24,6 +24,22 @@ export function getAutostart(deps = {}) {
 /** @param {{ invoke?: Function }} [deps] @returns {Promise<AutostartInfo>} */
 export function setAutostart(enabled, minimized, admin, deps = {}) {
   return (deps.invoke || tauriInvoke)('autostart_set', { enabled: !!enabled, minimized: !!minimized, admin: !!admin });
+}
+
+/**
+ * Перезапуск приложения с правами администратора.
+ *
+ * Зачем, если автозапуск от администратора уже настроен: автозапуск работает, а вот ручной
+ * запуск (ярлык, «Пуск») и перезапуск после обновления — обычные. Приложение само повысить
+ * права не умеет, и без них оно не может ни подписать, ни закрыть окна игры, запущенные с
+ * правами администратора. Раньше это выходило только вручную, каждый раз.
+ *
+ * @param {boolean} minimized запускать сразу в трей — как при автозапуске
+ * @param {{ invoke?: Function }} [deps]
+ * @returns {Promise<boolean>} `false`, если приложение уже администратор и перезапуск не нужен
+ */
+export function relaunchElevated(minimized, deps = {}) {
+  return (deps.invoke || tauriInvoke)('launcher_relaunch_elevated', { minimized: !!minimized });
 }
 
 /**
@@ -62,6 +78,7 @@ export async function bindAutostart(deps = {}) {
   const min = document.getElementById('autostart-minimized');
   const adm = document.getElementById('autostart-admin');
   const note = document.getElementById('autostart-note');
+  const relaunch = document.getElementById('autostart-relaunch');
   if (!block || !on || !min || !adm) return;
   if (!deps.invoke && !window.__TAURI_INTERNALS__) return;
 
@@ -72,6 +89,13 @@ export async function bindAutostart(deps = {}) {
     adm.checked = info.admin;
     min.disabled = adm.disabled = !info.enabled;
     if (note) note.textContent = autostartNote(info);
+    // Кнопка перезапуска нужна ровно тогда, когда прав нет, а пользователь их хочет.
+    // Если уже администратор — вопрос снят, и лишний запрос UAC показывать незачем.
+    if (relaunch) {
+      relaunch.hidden = !info.supported;
+      relaunch.disabled = !!info.selfElevated;
+      relaunch.textContent = info.selfElevated ? '✓ Уже от администратора' : '🔄 Перезапустить от администратора';
+    }
   };
 
   try {
@@ -101,4 +125,24 @@ export async function bindAutostart(deps = {}) {
   on.addEventListener('change', apply);
   min.addEventListener('change', apply);
   adm.addEventListener('change', apply);
+
+  relaunch?.addEventListener('click', async () => {
+    if (relaunch.disabled) return;
+    const ok = await confirmModal({
+      title: 'Перезапустить от администратора?',
+      text: 'Windows спросит разрешение. Твиноферма закроется и откроется заново с правами '
+        + 'администратора — иначе она не может подписывать и закрывать окна игры, запущенные с правами администратора.',
+      okText: 'Перезапустить',
+      danger: false
+    });
+    if (!ok) return;
+    relaunch.disabled = true;
+    try {
+      // Приложение само себя завершит после успешного запуска новой копии — здесь ждать нечего.
+      await relaunchElevated(min.checked, deps);
+    } catch (e) {
+      toast(`Перезапуск от администратора: ${errText(e)}`, 'error', 6000);
+      relaunch.disabled = false;
+    }
+  });
 }

@@ -16,9 +16,22 @@ use std::process::Command;
 /// Имя значения в разделе `Run`
 const VALUE_NAME: &str = "Tvinoferma";
 /// Признак «запущено Windows при входе в систему»
-const ARG_AUTOSTART: &str = "--autostart";
+pub const ARG_AUTOSTART: &str = "--autostart";
 /// Признак «окно не показываем, приложение живёт в трее»
-const ARG_MINIMIZED: &str = "--minimized";
+pub const ARG_MINIMIZED: &str = "--minimized";
+
+/// Ключи запуска, которыми Твиноферма сама себя поднимает.
+///
+/// Отдельная функция, а не сборка на месте: эти ключи читает и Планировщик (через XML
+/// задания), и перезапуск от администратора. Если набор разойдётся, новая копия придёт
+/// с другим поведением, чем то, к которому пользователь привык.
+pub fn autostart_args(minimized: bool) -> String {
+    if minimized {
+        format!("{} {}", ARG_AUTOSTART, ARG_MINIMIZED)
+    } else {
+        ARG_AUTOSTART.to_string()
+    }
+}
 /// Имя задания в Планировщике (латиницей: имя попадает в командную строку)
 const TASK_NAME: &str = "Tvinoferma autostart";
 /// Код «запрос прав администратора отменён» (так PowerShell сообщает об отказе в UAC)

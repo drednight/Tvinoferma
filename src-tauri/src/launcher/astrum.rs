@@ -88,9 +88,14 @@ pub(super) fn capture(char_id: &str, path: &str) -> Result<String, String> {
     let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
         .unwrap_or_default();
-    super::magic_entry(char_id)?
-        .set_password(&pairs_to_text(&pairs))
-        .map_err(|e| e.to_string())?;
+    // Запись через vault: обход невозможности записи keyring в сессии входа (Windows 1312).
+    let entry = super::magic_entry(char_id)?;
+    crate::vault::set_password(
+        &entry,
+        super::VAULT_SERVICE,
+        &format!("gc-magic:{}", char_id),
+        &pairs_to_text(&pairs),
+    )?;
     Ok(nick)
 }
 

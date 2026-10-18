@@ -7,7 +7,12 @@ use std::collections::HashMap;
 const SERVICE: &str = "com.tvinoferma.desktop";
 
 fn entry(key: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, &format!("contacts:{}", key)).map_err(|e| e.to_string())
+    keyring::Entry::new(SERVICE, &user(key)).map_err(|e| e.to_string())
+}
+
+/// Имя записи, каким его строит `entry` — нужно и для запасной записи в `vault`.
+fn user(key: &str) -> String {
+    format!("contacts:{}", key)
 }
 
 async fn blocking<T: Send + 'static>(
@@ -23,7 +28,7 @@ async fn blocking<T: Send + 'static>(
 pub async fn secrets_available() -> bool {
     blocking(|| {
         let probe = entry("__probe__")?;
-        probe.set_password("ok").map_err(|e| e.to_string())?;
+        crate::vault::set_password(&probe, SERVICE, &user("__probe__"), "ok")?;
         let ok = probe.get_password().map(|v| v == "ok").unwrap_or(false);
         let _ = probe.delete_credential();
         Ok(ok)
@@ -63,7 +68,7 @@ pub async fn secrets_set_many(items: HashMap<String, String>) -> Result<(), Stri
                     Err(err) => return Err(format!("{}: {}", key, err)),
                 }
             } else {
-                e.set_password(&value)
+                crate::vault::set_password(&e, SERVICE, &user(&key), &value)
                     .map_err(|err| format!("{}: {}", key, err))?;
             }
         }

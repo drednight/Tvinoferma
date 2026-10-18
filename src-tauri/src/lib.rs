@@ -9,6 +9,8 @@
 //! - `commands`  — state.json, резервные копии, учётные данные в keychain ОС;
 //! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
 //! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
+//! - `stats_ocr` — распознавание экрана боя (ETERNALS и т.п.);
+//! - `vault`     — запись секретов в хранилище ОС; на Windows есть запасной способ, если keyring не может писать (ошибка 1312);
 //! - `tray`      — иконка в трее;
 //! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
 //! - `injection` — (заготовка) панель и CSS поверх страниц игры;
@@ -37,6 +39,7 @@ mod pool;
 mod shortcut;
 mod stats_ocr;
 mod tray;
+mod vault;
 mod windows;
 
 use std::sync::atomic::Ordering;
@@ -199,6 +202,7 @@ pub fn run() {
             launcher::launcher_inspect_windows,
             launcher::launcher_self_elevated,
             elevate::launcher_run_elevated,
+            elevate::launcher_relaunch_elevated,
             launcher::launcher_capture_account,
             launcher::launcher_forget_account,
             launcher::launcher_has_account,

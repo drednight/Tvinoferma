@@ -54,6 +54,11 @@ const CLIENT_POLL_STEP: Duration = Duration::from_millis(250);
 /// Ждём по факту (обычно 0.2–0.5 с), но потолок большой: незакрывшийся GameCenter перехватит
 /// ссылку запуска у нового и откроет игру под чужим аккаунтом, поэтому лучше не торопиться.
 const GC_EXIT_WAIT: Duration = Duration::from_secs(5);
+/// Сколько раз пробуем закрыть GameCenter, прежде чем отменить запуск.
+///
+/// Один остаток чаще всего означает не «доступа нет», а то, что лаунчер успел поднять новый
+/// экземпляр между перебором и закрытием. Второй проход это снимает.
+const GC_CLOSE_ATTEMPTS: u32 = 2;
 /// Сколько ждать новый клиент игры, секунд (если не задано в вызове)
 const DEFAULT_CLIENT_WAIT_SECS: u64 = 60;
 
@@ -421,8 +426,15 @@ mod win {
     /// Отправка сообщения окну другого процесса с ограничением по времени: зависшее окно нас не подвесит.
     /// `Err(код)` — код ошибки Windows: 5 — отказано в доступе (окно запущено от администратора, а мы нет),
     /// 1460 — окно не ответило вовремя.
+    ///
+    /// Потолок намеренно маленький. Окно игры во время загрузки может не отвечать секунды, а
+    /// наблюдатель окон у нас один на все запуски (`watch_loop`): каждое занятое окно задерживало
+    /// подпись всех остальных на эти секунды. Не успевшая попытка ничего не стоит — следующий
+    /// проход идёт через `DECORATE_STEP`, а за время ожидания окна попыток десятки. Терять одну
+    /// попытку дёшево, задерживать подпись всех окон — дорого.
     fn send(hwnd: usize, msg: u32, wparam: usize, lparam: isize) -> Result<(), u32> {
         const SMTO_ABORTIFHUNG: u32 = 0x0002;
+        const TIMEOUT_MS: u32 = 200;
         let mut result: usize = 0;
         unsafe {
             let ok = SendMessageTimeoutW(
@@ -431,7 +443,7 @@ mod win {
                 wparam,
                 lparam,
                 SMTO_ABORTIFHUNG,
-                1500,
+                TIMEOUT_MS,
                 &mut result,
             ) != 0;
             if ok {
@@ -606,9 +618,14 @@ mod win {
     }
 
     /// Значок окна через `WM_GETICON` (0 — малый, 1 — большой). 0 — своего значка нет или окно не ответило.
+    ///
+    /// Здесь окно только читается, а читается это дважды на каждое окно и на каждом проходе,
+    /// поэтому таймаут ещё короче, чем у `send`. Всё то же рассуждение: проход повторяется
+    /// каждые `DECORATE_STEP`, и не ответивший значок на следующем проходе прочитается снова.
     fn get_icon(hwnd: usize, kind: usize) -> usize {
         const WM_GETICON: u32 = 0x007F;
         const SMTO_ABORTIFHUNG: u32 = 0x0002;
+        const TIMEOUT_MS: u32 = 120;
         let mut result: usize = 0;
         unsafe {
             let ok = SendMessageTimeoutW(
@@ -617,7 +634,7 @@ mod win {
                 kind,
                 0,
                 SMTO_ABORTIFHUNG,
-                700,
+                TIMEOUT_MS,
                 &mut result,
             );
             if ok != 0 {
@@ -708,11 +725,12 @@ mod win {
         }
     }
 
-    /// Запуск программы с правами администратора (глагол «runas»): Windows покажет запрос UAC.
+    /// Общая часть запуска от администратора: `wait` — ждать ли завершения нового процесса.
     ///
-    /// Код возврата — результат процесса: 1223 означает, что пользователь отказал.
-    /// `None` — сама оболочка не смогла запустить.
-    pub fn shell_run_elevated(exe: &str, flag: &str, token: &str) -> Option<i32> {
+    /// Разделено на два вызова, потому что ждать можно не всегда: помощник живёт секунды
+    /// и его результат действительно нужен, а перезапуск самого приложения ждать нельзя —
+    /// новая копия живёт часами.
+    fn shell_runas(exe: &str, params: &str, wait: bool) -> Result<Option<i32>, u32> {
         type Hinstance = *mut c_void;
         #[link(name = "shell32")]
         unsafe extern "system" {
@@ -736,10 +754,11 @@ mod win {
         const SW_HIDE: i32 = 0;
         let verb = wide("runas");
         let file = wide(exe);
-        let params = wide(&format!("{} {}", flag, token));
+        let params = wide(params);
         let mut info = ShellExecuteInfoW {
             cb_size: std::mem::size_of::<ShellExecuteInfoW>() as u32,
-            f_mask: SEE_MASK_NOCLOSEPROCESS,
+            // Без ожидания дескриптор процесса не нужен: он всё равно никому не передаётся.
+            f_mask: if wait { SEE_MASK_NOCLOSEPROCESS } else { 0 },
             hwnd: std::ptr::null_mut(),
             lp_verb: verb.as_ptr(),
             lp_file: file.as_ptr(),
@@ -750,15 +769,34 @@ mod win {
         };
         unsafe {
             if ShellExecuteExW(&mut info) <= 0 {
-                return None;
+                return Err(GetLastError());
+            }
+            if !wait {
+                return Ok(None);
             }
             let process = info.rest[5] as Hinstance; // hProcess по раскладке структуры
             WaitForSingleObject(process, 60_000);
             let mut code: u32 = 0;
             GetExitCodeProcess(process, &mut code);
             CloseHandle(process);
-            Some(code as i32)
+            Ok(Some(code as i32))
         }
+    }
+
+    /// Запуск программы с правами администратора (глагол «runas»): Windows покажет запрос UAC.
+    ///
+    /// Код возврата — результат процесса: 1223 означает, что пользователь отказал.
+    /// `None` — сама оболочка не смогла запустить.
+    pub fn shell_run_elevated(exe: &str, flag: &str, token: &str) -> Option<i32> {
+        shell_runas(exe, &format!("{} {}", flag, token), true).ok().flatten()
+    }
+
+    /// Запуск программы с правами администратора **без ожидания** её завершения.
+    ///
+    /// Для перезапуска самого приложения: новая копия живёт долго, ждать её выхода нельзя.
+    /// `Err` — код Windows, который вернула оболочка (`1223`, если пользователь закрыл UAC).
+    pub fn shell_run_elevated_detached(exe: &str, args: &str) -> Result<(), u32> {
+        shell_runas(exe, args, false).map(|_| ())
     }
 
     /// Строка UTF-16 с нулём на конце.
@@ -776,6 +814,11 @@ mod win {
     /// Запуск от администратора — только Windows; на других системах прав администратора нет
     pub fn shell_run_elevated(_exe: &str, _flag: &str, _token: &str) -> Option<i32> {
         None
+    }
+
+    /// Перезапуск от администратора — тоже только Windows
+    pub fn shell_run_elevated_detached(_exe: &str, _args: &str) -> Result<(), u32> {
+        Err(0)
     }
 
     pub struct WinInfo {
@@ -1085,7 +1128,18 @@ struct DecorateProgress {
     last_error: u32,
     /// Окна, которым значок уже ставили
     with_icons: Vec<usize>,
+    /// Окна, которые в прошлом проходе не ответили вовсе: в этом их не трогаем.
+    ///
+    /// Окно игры в это время бывает занято (загрузка мира, чтение с диска), а не «зависло»,
+    /// поэтому `SMTO_ABORTIFHUNG` его не прерывает, и мы платим таймаут на каждое сообщение.
+    /// На проход на окно их до четырёх (два `WM_GETICON` на проверку, `WM_SETTEXT`, два
+    /// `WM_SETICON`), а наблюдатель один на все запуски — то есть одно занятое окно задерживало
+    /// подпись всех остальных. Пропуск стоит одного прохода: следующий идёт через `DECORATE_STEP`.
+    busy: Vec<usize>,
 }
+
+/// Код Windows «окно не ответило за отведённое время» (или зависло — `SMTO_ABORTIFHUNG`).
+const WINDOW_TIMEOUT: u32 = 1460;
 
 /// Один проход по окнам: подписывает окна клиента `pid`. `Some(код)` — дальше пробовать бессмысленно (нет доступа).
 ///
@@ -1101,9 +1155,16 @@ fn decorate_step(
     set_icons: &mut impl FnMut(usize) -> Result<(), u32>,
     has_icons: &impl Fn(usize) -> bool,
 ) -> Option<u32> {
+    // Занятые в прошлом проходе окна в этом пропускаем: `take` уже очистил список, поэтому
+    // следующим проходом окно пробуется снова — пропуск ровно один, а не навсегда.
+    let skip = std::mem::take(&mut progress.busy);
     for w in windows.iter().filter(|w| is_client_window(w, pid)) {
         progress.seen = true;
+        if skip.contains(&w.hwnd) {
+            continue;
+        }
         let mut touched = false;
+        let mut timeout = false;
         if w.title == title {
             progress.verified = true;
         } else {
@@ -1111,6 +1172,7 @@ fn decorate_step(
             touched = true;
             if let Err(code) = set_title(w.hwnd, title) {
                 progress.last_error = code;
+                timeout |= code == WINDOW_TIMEOUT;
                 if code == ERROR_ACCESS_DENIED {
                     return Some(code);
                 }
@@ -1121,10 +1183,14 @@ fn decorate_step(
         if !has_icons(w.hwnd) {
             if let Err(code) = set_icons(w.hwnd) {
                 progress.last_error = code;
+                timeout |= code == WINDOW_TIMEOUT;
                 if code == ERROR_ACCESS_DENIED {
                     return Some(code);
                 }
             }
+        }
+        if timeout {
+            progress.busy.push(w.hwnd);
         }
         if touched && !progress.with_icons.contains(&w.hwnd) {
             progress.with_icons.push(w.hwnd);
@@ -1663,21 +1729,41 @@ fn wait_gamecenters_gone() -> Vec<u32> {
 /// Свой GameCenter оставляется только когда вход не подменяется: тогда это ожидаемое поведение
 /// (окно откроется под тем аккаунтом, что выбран в лаунчере сейчас, — такие персонажи
 /// отсеиваются проверкой до запуска).
+///
+/// Закрытие повторяется: один остаток — это часто не «не далось закрыть», а лаунчер успел
+/// поднять новый экземпляр между перебором и закрытием. Повторный проход снимает это, и запуск
+/// не срывается зря. Повторов два: больше — значит процесс действительно чужой или зависший,
+/// и дальше ждать только впустую.
 fn ensure_gamecenter_free(exe: &Path, switched: bool) -> Result<(), String> {
-    let alive = wait_gamecenters_gone();
-    if alive.is_empty() {
-        return Ok(());
+    for attempt in 0..GC_CLOSE_ATTEMPTS {
+        let alive = wait_gamecenters_gone();
+        if alive.is_empty() {
+            return Ok(());
+        }
+        let (mine, _) = split_gamecenters(exe);
+        if !switched && mine.len() == alive.len() {
+            return Ok(());
+        }
+        if attempt + 1 < GC_CLOSE_ATTEMPTS {
+            close_gamecenters(exe, switched)?;
+        } else {
+            // Остаток после повторов: сообщаем так, чтобы совет был по делу
+            let how = if self_elevated() {
+                "Закройте GameCenter вручную и повторите"
+            } else {
+                "Закройте GameCenter вручную и повторите; если он запущен от администратора — \
+                 запустите Твиноферму от администратора"
+            };
+            return Err(format!(
+                "GameCenter не закрылся после {} попыток закрытия (запущенных осталось: {}). \
+                 Новый экземпляр передал бы ему ссылку, и окно открылось бы под чужим аккаунтом. \
+                 {how}",
+                GC_CLOSE_ATTEMPTS,
+                alive.len()
+            ));
+        }
     }
-    let (mine, _) = split_gamecenters(exe);
-    if !switched && mine.len() == alive.len() {
-        return Ok(());
-    }
-    Err(format!(
-        "GameCenter не закрылся (запущенных осталось: {}). Новый экземпляр передал бы ему ссылку, \
-         и окно открылось бы под чужим аккаунтом. Закройте GameCenter вручную и повторите; \
-         если он запущен от администратора — запустите Твиноферму от администратора",
-        alive.len()
-    ))
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1936,9 +2022,15 @@ fn capture_gc_inner(
 
     let entry = magic_entry(char_id).map_err(|e| ("6. Открытие записи в хранилище Windows", e))?;
     let stored = pairs_to_text(&usable);
-    entry
-        .set_password(&stored)
-        .map_err(|e| ("6. Запись в хранилище Windows", e.to_string()))?;
+    // Запись через vault: если keyring не может писать в эту сессию входа
+    // (Windows 1312) — vault пишет запасным способом, видным чтению keyring.
+    crate::vault::set_password(
+        &entry,
+        VAULT_SERVICE,
+        &format!("gc-magic:{}", char_id),
+        &stored,
+    )
+    .map_err(|e| ("6. Запись в хранилище Windows", e))?;
     steps.push("6. Записано в хранилище Windows".to_string());
 
     let back = entry
@@ -2598,6 +2690,14 @@ pub fn run_elevated_self(exe: &str, flag: &str, token: &str) -> Option<i32> {
     win::shell_run_elevated(exe, flag, token)
 }
 
+/// Запускает эту же программу с правами администратора, **не дожидаясь** её завершения.
+///
+/// Для перезапуска самого приложения: в отличие от помощника, новая копия живёт долго,
+/// и ждать её выхода бессмысленно. `Err(code)` — код Windows (`1223`, если отказ в UAC).
+pub fn run_elevated_self_detached(exe: &str, args: &str) -> Result<(), u32> {
+    win::shell_run_elevated_detached(exe, args)
+}
+
 /// Подписывает окна клиентов: заголовок «Ник — Класс» и значок класса.
 ///
 /// Вынесено из команды, чтобы тем же кодом пользовался помощник с правами администратора
@@ -3249,12 +3349,75 @@ mod tests {
             &[client_window(1, 100, "Perfect World")],
             100,
             "Ник — Класс",
-            &mut |_, _| Err(1460),
+            &mut |_, _| Err(WINDOW_TIMEOUT),
             &mut |_| Ok(()),
             &|_| false,
         );
         assert_eq!(denied, None);
-        assert_eq!(progress.last_error, 1460);
+        assert_eq!(progress.last_error, WINDOW_TIMEOUT);
+    }
+
+    #[test]
+    fn a_busy_window_is_skipped_for_one_pass_so_others_are_not_starved() {
+        // Окно игры не ответило: в этом проходе мы его не трогаем вовсе — ни заголовка,
+        // ни значка. Наблюдатель один на все запуски, и не отвечающее окно иначе съедало бы
+        // таймауты на каждом проходе и задерживало подпись всех остальных.
+        let mut progress = DecorateProgress::default();
+        let windows = [client_window(1, 100, "Perfect World")];
+        let step = |progress: &mut DecorateProgress| {
+            let mut titled: Vec<usize> = Vec::new();
+            decorate_step(
+                progress,
+                &windows,
+                100,
+                "Ник — Класс",
+                &mut |hwnd, _| {
+                    titled.push(hwnd);
+                    Err(WINDOW_TIMEOUT)
+                },
+                &mut |_| Ok(()),
+                &|_| true,
+            );
+            titled
+        };
+
+        // Первый проход: окно ещё пробуем — оно только что появилось
+        assert_eq!(step(&mut progress), vec![1]);
+        // Второй проход: помечено занятым, к нему не обращаемся вообще
+        assert_eq!(step(&mut progress), Vec::<usize>::new());
+        // Третий: снова пробуем — окно к этому времени могло освободиться
+        assert_eq!(step(&mut progress), vec![1]);
+    }
+
+    #[test]
+    fn skip_applies_per_window_and_does_not_hide_a_recovered_one() {
+        // Занятым было только одно окно из трёх: остальные подписываются как обычно.
+        // pid у всех один — это окна одного клиента игры, как и в настоящем запуске.
+        let mut progress = DecorateProgress::default();
+        let windows = [
+            client_window(1, 100, "Perfect World"),
+            client_window(2, 100, "Perfect World"),
+            client_window(3, 100, "Perfect World"),
+        ];
+        let mut touched: Vec<usize> = Vec::new();
+        let run = |progress: &mut DecorateProgress, touched: &mut Vec<usize>| {
+            decorate_step(
+                progress,
+                &windows,
+                100,
+                "Ник — Класс",
+                &mut |hwnd, _| {
+                    touched.push(hwnd);
+                    if hwnd == 1 { Err(WINDOW_TIMEOUT) } else { Ok(()) }
+                },
+                &mut |_| Ok(()),
+                &|_| true,
+            )
+        };
+        run(&mut progress, &mut touched);
+        touched.clear();
+        run(&mut progress, &mut touched);
+        assert_eq!(touched, vec![2, 3]);
     }
 
     #[test]

@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
+vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async () => true) }));
 
-import { autostartNote, healAutostart, bindAutostart, getAutostart, setAutostart } from '../js/desktop/autostart.js';
-import { toast } from '../js/core/ui.js';
+import { autostartNote, healAutostart, bindAutostart, getAutostart, setAutostart, relaunchElevated } from '../js/desktop/autostart.js';
+import { toast, confirmModal } from '../js/core/ui.js';
 
 const html = readFileSync('index.html', 'utf8');
 const info = (over = {}) => ({ supported: true, enabled: false, minimized: true, path: '', current: false, broken: false, admin: false, selfElevated: false, ...over });
@@ -61,6 +61,8 @@ describe('автозапуск: переключатели в настройка
     const doc = new DOMParser().parseFromString(html, 'text/html');
     document.body.innerHTML = doc.getElementById('autostart-block').outerHTML;
     toast.mockClear();
+    confirmModal.mockClear();
+    confirmModal.mockResolvedValue(true);
   });
 
   it('блок есть в разметке и по умолчанию скрыт (вне приложения он не нужен)', () => {
@@ -128,6 +130,85 @@ describe('автозапуск: переключатели в настройка
     await vi.waitFor(() => expect(toast).toHaveBeenCalled());
     expect(toast.mock.calls[0][0]).toContain('код 5');
     await vi.waitFor(() => expect(on.checked).toBe(false));
+  });
+});
+
+describe('автозапуск: перезапуск от администратора', () => {
+  beforeEach(() => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    document.body.innerHTML = doc.getElementById('autostart-block').outerHTML;
+    toast.mockClear();
+    confirmModal.mockClear();
+    confirmModal.mockResolvedValue(true);
+  });
+  const btn = () => document.getElementById('autostart-relaunch');
+
+  it('кнопка есть в разметке блока автозапуска', () => {
+    expect(btn()).toBeTruthy();
+    expect(btn().textContent).toContain('Перезапустить от администратора');
+  });
+
+  it('без прав кнопка предлагает перезапуск, с правами — говорит, что они уже есть', async () => {
+    await bindAutostart({ invoke: async () => info({ enabled: true, minimized: true, current: true, admin: true }) });
+    expect(btn().disabled).toBe(false);
+    expect(btn().textContent).toContain('Перезапустить от администратора');
+
+    document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html')
+      .getElementById('autostart-block').outerHTML;
+    await bindAutostart({ invoke: async () => info({ enabled: true, admin: true, selfElevated: true }) });
+    // Уже администратор: лишний запрос UAC пользователю показывать незачем
+    expect(btn().disabled).toBe(true);
+    expect(btn().textContent).toContain('Уже от администратора');
+  });
+
+  it('перезапуск идёт с тем же режимом трея, что и автозапуск', async () => {
+    const invoke = vi.fn(async () => info({ enabled: true, minimized: true, admin: true }));
+    await bindAutostart({ invoke });
+    btn().click();
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('launcher_relaunch_elevated', { minimized: true }));
+    expect(confirmModal).toHaveBeenCalled();
+    expect(confirmModal.mock.calls[0][0].text).toContain('не может подписывать и закрывать');
+  });
+
+  it('отказ в подтверждении ничего не запускает', async () => {
+    confirmModal.mockResolvedValue(false);
+    const invoke = vi.fn(async () => info({ enabled: true, admin: true }));
+    await bindAutostart({ invoke });
+    invoke.mockClear();
+    btn().click();
+    await new Promise(r => setTimeout(r, 20));
+    expect(invoke).not.toHaveBeenCalledWith('launcher_relaunch_elevated', expect.anything());
+  });
+
+  it('отказ в правах показывается, а кнопка снова доступна', async () => {
+    const invoke = vi.fn(async (cmd) => {
+      if (cmd === 'launcher_relaunch_elevated') throw new Error('Запрос прав администратора отменён');
+      return info({ enabled: true, admin: true });
+    });
+    await bindAutostart({ invoke });
+    btn().click();
+    await vi.waitFor(() => expect(toast.mock.calls[0][0]).toContain('отменён'));
+    expect(btn().disabled).toBe(false);
+  });
+
+  it('команда обходит отправку флагов прямо в Rust', async () => {
+    const invoke = vi.fn(async () => true);
+    expect(await relaunchElevated(true, { invoke })).toBe(true);
+    expect(invoke).toHaveBeenCalledWith('launcher_relaunch_elevated', { minimized: true });
+  });
+
+  it('перезапуск зарегистрирован в Rust и берёт те же ключи, что и автозапуск', () => {
+    const lib = readFileSync('src-tauri/src/lib.rs', 'utf8');
+    const elevate = readFileSync('src-tauri/src/elevate.rs', 'utf8');
+    const autostart = readFileSync('src-tauri/src/autostart.rs', 'utf8');
+    const launcher = readFileSync('src-tauri/src/launcher.rs', 'utf8');
+    expect(lib).toContain('elevate::launcher_relaunch_elevated');
+    expect(elevate).toContain('autostart::autostart_args(minimized)');
+    // Ждать завершения новой копии нельзя: она живёт часами, а помощник — секунды
+    expect(launcher).toContain('run_elevated_self_detached');
+    expect(launcher).toMatch(/shell_runas\(exe, [^\n]*true\)/);
+    // Один источник правды про ключи запуска — иначе новая копия придёт с другим поведением
+    expect(autostart).toContain('pub fn autostart_args');
   });
 });
 
