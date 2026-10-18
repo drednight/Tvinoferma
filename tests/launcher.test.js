@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   normalizeGameCenters, resolveGameCenter, kindForPath, importLegacyPaths
 } from '../js/modules/launcher/gameCenters.js';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice, inspectVerdict, inspectReportText, PROBE_TITLE } from '../js/modules/launcher/launch.js';
+import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice, inspectVerdict, inspectReportText, PROBE_TITLE, redecorateRunningWindows } from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
@@ -459,3 +459,84 @@ it('Rust ставит пробный заголовок, который ждёт
     expect(res.every(r => r.ok)).toBe(true);
   });
 });
+
+describe('восстановление названий и значков у запущенных окон', () => {
+  // Иконки и заголовки слетают уже после запуска: игра переписывает заголовок при загрузке,
+  // проводник сбрасывает значок. Чинится кнопкой, а не повторным запуском аккаунта.
+  const win = (o) => ({ pid: 1, known: true, nick: 'Первый', cls: 'Хранитель', ...o });
+
+  it('подписывает опознанные окна и собирает «Ник — Класс»', async () => {
+    const calls = [];
+    const res = await redecorateRunningWindows([win({ pid: 11 }), win({ pid: 22 })], {
+      invoke: (cmd, args) => { calls.push({ cmd, args }); return Promise.resolve([{ pid: 11, status: 'ok' }, { pid: 22, status: 'ok' }]); }
+    });
+    expect(calls[0].cmd).toBe('launcher_decorate_clients');
+    expect(calls[0].args.targets.map(t => t.title)).toEqual(['Первый — Хранитель', 'Первый — Хранитель']);
+    expect(res.ok).toBe(2);
+    expect(res.skipped).toBe(0);
+  });
+
+  it('окна без класса подписываются одним ником', async () => {
+    let sent = [];
+    await redecorateRunningWindows([win({ cls: '' })], {
+      invoke: (cmd, args) => { sent = args.targets; return Promise.resolve([{ pid: 1, status: 'ok' }]); }
+    });
+    expect(sent[0].title).toBe('Первый');
+  });
+
+  it('чужие и безымянные окна не трогает: подписывать их нечем', async () => {
+    const res = await redecorateRunningWindows(
+      [win({ known: false }), win({ nick: '' }), win({ pid: 0 })],
+      { invoke: () => { throw new Error('вызывать нельзя'); } }
+    );
+    expect(res.skipped).toBe(3);
+    expect(res.ok).toBe(0);
+  });
+
+  it('если обычная подпись не вышла — пробует с правами администратора', async () => {
+    // Игра запущена от админа, Твиноферма обычным пользователем: Windows не даёт менять чужие окна
+    const seen = [];
+    const res = await redecorateRunningWindows([win()], {
+      invoke: (cmd, args) => {
+        seen.push(cmd);
+        if (cmd === 'launcher_decorate_clients') return Promise.resolve([{ pid: 1, status: 'failed' }]);
+        return Promise.resolve({ status: 'ok', decorate: [{ pid: 1, status: 'ok' }] });
+      }
+    });
+    expect(seen).toEqual(['launcher_decorate_clients', 'launcher_run_elevated']);
+    expect(res.ok).toBe(1);
+    expect(res.denied).toBe(false);
+  });
+
+  it('права не запрашиваются, если хотя бы одно окно подписалось', async () => {
+    const seen = [];
+    await redecorateRunningWindows([win()], {
+      invoke: (cmd) => { seen.push(cmd); return Promise.resolve([{ pid: 1, status: 'ok' }]); }
+    });
+    expect(seen).toEqual(['launcher_decorate_clients']);
+  });
+
+  it('отказ в правах показывается отдельным состоянием', async () => {
+    const res = await redecorateRunningWindows([win()], {
+      invoke: (cmd) => Promise.resolve(cmd === 'launcher_decorate_clients'
+        ? [{ pid: 1, status: 'failed' }]
+        : { status: 'denied' })
+    });
+    expect(res.denied).toBe(true);
+  });
+
+  it('ошибка Rust не роняет кнопку, а попадает в подробности', async () => {
+    const res = await redecorateRunningWindows([win()], {
+      invoke: () => Promise.reject(new Error('окна пропали'))
+    });
+    expect(res.ok).toBe(0);
+    expect(res.details.join(' ')).toContain('окна пропали');
+  });
+
+  it('пустой список не считается ошибкой, но и подписывать нечего', async () => {
+    const res = await redecorateRunningWindows([], { invoke: () => { throw new Error('не звать'); } });
+    expect(res.ok).toBe(0);
+    expect(res.details.length).toBe(1);
+  });
+});
+

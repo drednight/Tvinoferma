@@ -709,3 +709,57 @@ export async function verifyLaunchedDecor(results, deps = {}) {
   const res = await redecorateClients(targets, deps);
   return redecorateText(res);
 }
+
+/**
+ * Ожидаемый заголовок и значки окна для персонажа — то же, что ставится при запуске.
+ * @param {any} character
+ * @returns {Promise<{ title: string, iconSmall: number[]|null, iconBig: number[]|null }>}
+ */
+async function expectedDecor(character) {
+  const withIcons = decorateIconsEnabled();
+  const [small, big] = await Promise.all([
+    withIcons ? classIconRgba(character?.class, WINDOW_ICON_SMALL) : null,
+    withIcons ? classIconRgba(character?.class, WINDOW_ICON_BIG) : null
+  ]);
+  return { title: windowTitle(character), iconSmall: small || null, iconBig: big || null };
+}
+
+/**
+ * Переподписывает окна, которые уже запущены: заново ставит «Ник — Класс» и значок класса.
+ *
+ * Зачем: после запуска подпись делается один раз, а игра при загрузке успевает переписать
+ * заголовок, значок слетает при сворачивании в панель задач или после перезапуска проводника.
+ * Окно остаётся рабочим — неправильные только название и картинка, — поэтому чинится одной
+ * кнопкой, а не повторным запуском аккаунта.
+ *
+ * Окна с чужим или неизвестным заголовком не трогаем: подписать их нечем, иначе подпись
+ * стёрла бы заголовок настоящего окна игры.
+ *
+ * @param {Array<{ pid: number, known?: boolean, nick?: string, cls?: string }>} windows строки списка окон
+ * @param {{ invoke?: Function }} [deps]
+ * @returns {Promise<{ ok: number, fixed: number, missing: number, failed: number, denied: boolean, skipped: number, details: string[] }>}
+ */
+export async function redecorateRunningWindows(windows, deps = {}) {
+  const out = { ok: 0, fixed: 0, missing: 0, failed: 0, denied: false, skipped: 0, details: [] };
+  const targets = [];
+  for (const w of windows || []) {
+    // `known` — окно опознано как персонаж приложения; у чужих окон чинить нечего
+    if (!w || !w.pid || !w.known || !w.nick) { out.skipped++; continue; }
+    targets.push({ pid: w.pid, ...(await expectedDecor({ nick: w.nick, class: w.cls })) });
+  }
+  if (!targets.length) {
+    out.details.push('Не найдено окон, заголовок и значок которых можно восстановить');
+    return out;
+  }
+  const first = await redecorateClients(targets, deps);
+  out.ok = first.ok; out.fixed = first.fixed; out.missing = first.missing; out.failed = first.failed;
+  // Ничего не вышло — почти всегда значит, что игра запущена от администратора, а Твиноферма
+  // обычным пользователем: Windows не даёт менять чужие окна. Пробуем через помощника с правами.
+  if (!out.ok && !out.fixed) {
+    const admin = await decorateElevated(targets, deps);
+    out.ok = admin.ok; out.fixed = admin.fixed; out.missing = admin.missing;
+    out.failed = admin.failed; out.denied = admin.denied;
+    out.details = [...out.details, ...admin.details];
+  }
+  return out;
+}
