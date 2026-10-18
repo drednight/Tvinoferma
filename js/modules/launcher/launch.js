@@ -13,6 +13,7 @@ import { createLimiter, runQueue, sleep } from '../sync/queue.js';
 import { state } from '../../core/state.js';
 import { resolveGameCenter } from './gameCenters.js';
 import { getClassIconSrc } from '../../core/constants.js';
+import { rememberLaunched } from './launchedWindows.js';
 
 /** Пауза между запусками аккаунтов (после появления нового клиента), мс. */
 export const DEFAULT_LAUNCH_DELAY_MS = 0;
@@ -651,6 +652,12 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       decor: r.result?.decor || null
     };
   });
+  // Запоминаем, чьё это окно: заголовок и значок могут слететь, а сопоставить окно с
+  // персонажем иначе нечем (окно узнаётся по нику из заголовка — см. windowList.js).
+  // Запись сверяется со временем старта процесса, поэтому переиспользование PID не путает.
+  for (const r of out) {
+    if (r.ok && r.clientPid) rememberLaunched(r.clientPid, r.id);
+  }
   // Разбивка по этапам — не элемент массива, а свойство: переборы и фильтры работают как раньше
   Object.defineProperty(out, 'stages', {
     value: { ...stages, delay: delayTotal, total: [...times.values()].reduce((a, b) => a + b, 0) + delayTotal },

@@ -14,7 +14,7 @@
  * @property {string} title        название для меню и палитры
  * @property {string} [paletteIcon] значок для палитры команд; в меню своя строка из разметки
  * @property {string} [required]   почему раздел нельзя выключить; `undefined` — можно
- * @property {boolean} [pinned]    раздел вне переставляемого списка (прибит к низу меню)
+ * @property {'top'|'bottom'} [pin] раздел не переставляется и всегда стоит на своём краю меню
  */
 
 /**
@@ -27,17 +27,22 @@
  *     календарь, а другого места для него в приложении нет;
  *   - «Настройки» — включить раздел обратно можно только здесь.
  *
+ * `pin` — место раздела, которое человек не переставляет:
+ *   - «Сегодня» — сверху: это вход в приложение и главный экран дня, он не должен
+ *     уезжать вниз списка, куда человек случайно его сдвинет;
+ *   - «Настройки» — снизу: там включают разделы обратно, и оно всегда должно быть под рукой.
+ *
  * @type {Section[]}
  */
 export const SECTIONS = [
-  { id: 'today', title: 'Сегодня', paletteIcon: '⌂', required: 'Здесь календарь и «Открыть день в календаре» — больше их открыть негде.' },
+  { id: 'today', title: 'Сегодня', paletteIcon: '⌂', pin: 'top', required: 'Здесь календарь и «Открыть день в календаре» — больше их открыть негде.' },
   { id: 'characters', title: 'Персонажи', paletteIcon: '👥' },
   { id: 'parties', title: 'Пати', paletteIcon: '🛡' },
   { id: 'marathons', title: 'Марафоны', paletteIcon: '🏃' },
   { id: 'runes', title: 'Руны', paletteIcon: '🔮' },
   { id: 'finance', title: 'Банк', paletteIcon: '₽' },
   { id: 'tools', title: 'Инструменты', paletteIcon: '⚡' },
-  { id: 'settings', title: 'Настройки', paletteIcon: '⚙', pinned: true, required: 'Включить выключенный раздел обратно можно только здесь.' }
+  { id: 'settings', title: 'Настройки', paletteIcon: '⚙', pin: 'bottom', required: 'Включить выключенный раздел обратно можно только здесь.' }
 ];
 
 /** @type {Map<string, Section>} */
@@ -77,9 +82,17 @@ export function normalizeSectionsSettings(input = {}) {
     .filter((id) => BY_ID.has(id) && !isRequiredSection(id));
 
   const orderRaw = Array.isArray(input?.order) ? input.order.map(String) : [];
-  const order = [...new Set(orderRaw.filter((id) => BY_ID.has(id)))];
+  const knownOrder = [...new Set(orderRaw.filter((id) => BY_ID.has(id)))];
   // Всё, чего в настройке не было, дописываем в конце — в порядке по умолчанию
-  for (const id of known) if (!order.includes(id)) order.push(id);
+  for (const id of known) if (!knownOrder.includes(id)) knownOrder.push(id);
+
+  // Закреплённые разделы всегда стоят на своём краю, независимо от того, что лежит в
+  // настройке: «Сегодня» — вход в приложение, «Настройки» — место, где раздел включают
+  // обратно. Если бы порядок из старого файла мог их сдвинуть, то место было бы ненадёжным.
+  const pinnedTop = known.filter((id) => sectionById(id)?.pin === 'top');
+  const pinnedBottom = known.filter((id) => sectionById(id)?.pin === 'bottom');
+  const free = knownOrder.filter((id) => !pinnedTop.includes(id) && !pinnedBottom.includes(id));
+  const order = [...pinnedTop, ...free, ...pinnedBottom];
 
   return { hidden, order };
 }
@@ -96,7 +109,7 @@ export function sectionOrder(settings) {
 
 /** Переставляемый список: всё, кроме прибитых к низу разделов. */
 export function reorderableSections(settings) {
-  return sectionOrder(settings).filter((s) => !s.pinned);
+  return sectionOrder(settings).filter((s) => !s.pin);
 }
 
 /**

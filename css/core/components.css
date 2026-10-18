@@ -220,8 +220,13 @@
 /* Недоступный переключатель не должен наводиться как рабочий */
 .sections-row.is-required .sections-toggle { cursor: default; }
 .sections-row.is-required:hover { background: none; }
-.sections-order { display: flex; gap: 4px; flex: none; }
+.sections-order { display: flex; gap: 4px; flex: none; align-items: center; }
 .sections-order .btn { min-width: 30px; padding: 4px 8px; }
+/* Закреплённый раздел («Сегодня» сверху, «Настройки» снизу) вместо стрелок показывает,
+   где он стоит: иначе непонятно, что он не двигается, — кнопки просто седели бы */
+.sections-pin { font-size: 0.75rem; white-space: nowrap; }
+.sections-row.is-pinned:hover { background: none; }
+.sections-row.is-pinned .sections-toggle { cursor: default; }
 
 /* Переключатель «вкл/выкл». Настоящий checkbox остаётся в разметке (с клавиатуры и для
    скринридеров работает он), а видимая часть — нарисованная дорожка с ползунком. */

@@ -58,9 +58,16 @@ export async function refreshRunningWindows() {
   if (inflight) return inflight;
   inflight = (async () => {
     const { runningClientDetails } = await import('./launch.js');
+    const { recalledOwnership, pruneLaunched } = await import('./launchedWindows.js');
     try {
       const clients = await runningClientDetails();
-      rows = windowRows(clients, state.characters);
+      // Окна, чей заголовок уже бесполезен, узнаём по памяти запусков — иначе они остались
+      // бы «PID 1234», и починить их было бы нечем
+      rows = windowRows(clients, state.characters, { recalled: recalledOwnership(clients.map(c => ({
+        pid: Number(c?.pid) || 0,
+        uptimeMs: c?.startedAt ? Math.max(0, Date.now() - Number(c.startedAt)) : null
+      }))) });
+      pruneLaunched(rows);
       updatedAt = Date.now();
       notify();
       return true;

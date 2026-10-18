@@ -41,7 +41,10 @@ export function parseWindowTitle(title) {
  *
  * @param {Array<{pid: number, image?: string, startedAt?: number|null, title?: string, hwnd?: number|null, elevated?: boolean|null}>} clients ответ `launcher_running_details`
  * @param {Array<any>} characters персонажи приложения
- * @param {{ now?: number, partyIds?: string[] | null }} [opts] `partyIds` — ограничить список участниками этих пати
+ * @param {{ now?: number, partyIds?: string[] | null, recalled?: Record<string, string> }} [opts]
+ *   `partyIds` — ограничить список участниками этих пати;
+ *   `recalled` — `{ pid: charId }` из памяти запусков: подпись окна слетает вместе со
+ *   значком, и без заголовка персонажа не с кем сопоставить (см. launchedWindows.js)
  * @returns {Array<{ pid: number, image: string, nick: string, cls: string, known: boolean, charId: string|null, uptimeMs: number|null, elevated: boolean|null, title: string, partyIds: string[] }>}
  */
 export function windowRows(clients, characters, opts = {}) {
@@ -55,12 +58,22 @@ export function windowRows(clients, characters, opts = {}) {
     const key = String(c.nick || '').trim().toLowerCase();
     if (key && !byNick.has(key)) byNick.set(key, c);
   }
+  // Кто окно запускал: подпись могла слететь, а мы всё равно знаем, чьё это окно
+  const byPid = new Map();
+  for (const [pid, charId] of Object.entries(opts.recalled || {})) {
+    const c = list.find(x => String(x.id) === String(charId));
+    if (c) byPid.set(String(pid), c);
+  }
 
   return (clients || []).map(client => {
     const parsed = parseWindowTitle(client?.title);
-    const char = parsed ? byNick.get(parsed.nick.toLowerCase()) : null;
-    return {
-      pid: Number(client?.pid) || 0,
+    const pid = Number(client?.pid) || 0;
+    const char = (parsed ? byNick.get(parsed.nick.toLowerCase()) : null)
+      // Заголовок бесполезен — берём персонажа из памяти запусков
+      || byPid.get(String(pid))
+      || null;
+    const row = {
+      pid,
       image: String(client?.image || ''),
       // Имя берём из карточки (там точный ник), иначе из заголовка; без заголовка — пустая строка
       nick: char ? String(char.nick) : (parsed?.nick || ''),
@@ -72,6 +85,7 @@ export function windowRows(clients, characters, opts = {}) {
       title: String(client?.title || ''),
       partyIds: char ? (char.partyIds || []) : []
     };
+    return row;
   }).sort((a, b) => {
     // Сначала узнанные окна, затем по нику; безымянные — по PID
     if (a.known !== b.known) return a.known ? -1 : 1;

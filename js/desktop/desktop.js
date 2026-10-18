@@ -25,7 +25,7 @@ export const HOTKEYS = [
 
 /** Разделы, до которых доходят номера: видимые, в порядке меню, без прибитого «Настроек». */
 export function hotkeySections(settings = state.settings) {
-  return visibleSections(settings).filter((s) => !s.pinned);
+  return visibleSections(settings).filter((s) => !s.pin);
 }
 
 /**

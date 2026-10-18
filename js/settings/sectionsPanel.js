@@ -9,7 +9,7 @@ import { persist } from '../core/storage.js';
 import { toast } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
 import {
-  SECTIONS, canHideSection, normalizeSectionsSettings, sectionOrder
+  SECTIONS, canHideSection, normalizeSectionsSettings, sectionOrder, sectionById
 } from '../core/sections.js';
 
 /**
@@ -48,7 +48,7 @@ export function sectionHint(sectionId, settings = state.settings) {
  */
 export function moveSection(sectionId, direction, settings = state.settings) {
   const { hidden, order } = readSections(settings);
-  const movable = order.filter((id) => !SECTIONS.find((s) => s.id === id)?.pinned && !hidden.includes(id));
+  const movable = order.filter((id) => !sectionById(id)?.pin && !hidden.includes(id));
   const at = movable.indexOf(String(sectionId));
   const to = direction === 'up' ? at - 1 : at + 1;
   if (at < 0 || to < 0 || to >= movable.length) return null;
@@ -99,16 +99,23 @@ export function sectionsListHtml(settings = state.settings) {
   const { hidden } = readSections(settings);
   const ordered = sectionOrder(settings);
   // Стрелки двигают раздел только по видимым: у скрытого в меню нет ни строки, ни «места выше».
-  const movable = ordered.filter((s) => !s.pinned && !hidden.includes(s.id));
-  return SECTIONS.map((section) => {
+  const movable = ordered.filter((s) => !s.pin && !hidden.includes(s.id));
+  // Рисуем именно сохранённый порядок. Раньше здесь был `SECTIONS.map(...)`, и список
+  // всегда показывал порядок по умолчанию: стрелки считали позицию по сохранённому, а строки
+  // стояли по каноническому — перестановка выглядела как «ничего не происходит».
+  return ordered.map((section) => {
     const isHidden = hidden.includes(section.id);
     const required = !!section.required;
-    const at = required ? -1 : movable.indexOf(section);
+    const pinned = !!section.pin;
+    // Закреплённый раздел не двигается: у него нет «места выше/ниже», и стрелки у него
+    // не работали бы вхолостую — вместо них показываем, где он стоит
+    const at = required || pinned ? -1 : movable.indexOf(section);
     const canMoveUp = at > 0;
     const canMoveDown = at >= 0 && at < movable.length - 1;
+    const pinNote = section.pin === 'top' ? 'закреплён сверху' : section.pin === 'bottom' ? 'закреплён снизу' : '';
     const hint = required ? section.required : (!isHidden ? sectionHint(section.id, settings) : '');
     return `
-      <div class="sections-row${isHidden ? ' is-off' : ''}${required ? ' is-required' : ''}">
+      <div class="sections-row${isHidden ? ' is-off' : ''}${required ? ' is-required' : ''}${pinned ? ' is-pinned' : ''}">
         <label class="sections-toggle" title="${escapeHtml(hint)}">
           <input type="checkbox" data-sections-id="${escapeHtml(section.id)}" ${isHidden ? '' : 'checked'}
                  ${required ? 'disabled' : ''} />
@@ -119,10 +126,11 @@ export function sectionsListHtml(settings = state.settings) {
           </span>
         </label>
         <span class="sections-order">
+          ${pinned ? `<small class="muted sections-pin">${escapeHtml(pinNote)}</small>` : `
           <button type="button" class="btn ghost small" data-sections-move="up" data-sections-id="${escapeHtml(section.id)}"
                   title="${canMoveUp ? 'Выше' : 'Уже первый'}" ${canMoveUp ? '' : 'disabled'}>↑</button>
           <button type="button" class="btn ghost small" data-sections-move="down" data-sections-id="${escapeHtml(section.id)}"
-                  title="${canMoveDown ? 'Ниже' : 'Уже последний'}" ${canMoveDown ? '' : 'disabled'}>↓</button>
+                  title="${canMoveDown ? 'Ниже' : 'Уже последний'}" ${canMoveDown ? '' : 'disabled'}>↓</button>`}
         </span>
       </div>`;
   }).join('');
