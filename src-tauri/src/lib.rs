@@ -9,7 +9,7 @@
 //! - `commands`  — state.json, резервные копии, учётные данные в keychain ОС;
 //! - `cookie_bank` — зашифрованный банк кук: сессии персонажей на pwonline.ru;
 //! - `pool`      — пул воркеров: общие скрытые окна, куки персонажа берутся из банка;
-//! - `stats_ocr` — распознавание экрана боя (ETERNALS и т.п.);
+//! - `stats_ocr` — распознавание экрана боя (GUILD и т.п.);
 //! - `vault`     — запись секретов в хранилище ОС; на Windows есть запасной способ, если keyring не может писать (ошибка 1312);
 //! - `tray`      — иконка в трее;
 //! - `automation` — промокоды (`activate_promo`) и передача предметов (`read_transfer_page`, `read_server_status`, `transfer_items`);
@@ -28,7 +28,7 @@ mod balance;
 mod commands;
 mod cookie_bank;
 mod elevate;
-mod eternals;
+mod guild;
 mod injection;
 mod launcher;
 mod layout_sync;
@@ -131,12 +131,12 @@ pub fn run() {
             windows::rename_char_profiles,
             // закрыть только окна авторизации (окно входа уже подтверждено)
             windows::close_auth_popups,
-            // клановый сайт Eternals: отдельное окно, сводка профиля, отметки на ивенты
-            eternals::open_eternals_window,
-            eternals::close_eternals_window,
-            eternals::eternals_window_exists,
-            eternals::eternals_sync,
-            eternals::eternals_set_response,
+            // клановый сайт Guild: отдельное окно, сводка профиля, отметки на ивенты
+            guild::open_guild_window,
+            guild::close_guild_window,
+            guild::guild_window_exists,
+            guild::guild_sync,
+            guild::guild_set_response,
             // скрипты сайта
             automation::promo::activate_promo,
             automation::caravan::open_caravan_chests,
