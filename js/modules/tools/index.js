@@ -60,16 +60,21 @@ export function renderTools() {
     </section>
 
     <section class="tools-block" aria-labelledby="tools-windows-title">
-      <header class="tools-block-head">
-        <h3 id="tools-windows-title">Окна игры</h3>
-        <p class="muted">Клиенты, запущенные на этом компьютере.</p>
+      <header class="tools-block-head tools-block-head-row">
+        <div>
+          <h3 id="tools-windows-title">Окна игры</h3>
+          <p class="muted">Клиенты, запущенные на этом компьютере.</p>
+        </div>
+        <!-- Обновление стоит в шапке: список окон меняется сам, а кнопка его обновления —
+             не действие над окнами, а обновление самого списка. В общей кучке с «закрыть
+             всё» она выглядела так же важно, как действия, которые окна ломают. -->
+        <button type="button" class="btn ghost small" data-tools-act="refresh-windows"
+                title="Спросить у игры, какие окна запущены прямо сейчас">🔄 Обновить</button>
       </header>
       <div class="tools-row" data-tools-windows>
         <p class="muted">Проверяем запущенные окна…</p>
       </div>
       <div class="tools-actions">
-        <button type="button" class="btn ghost" data-tools-act="refresh-windows" title="Спросить у игры, какие окна запущены прямо сейчас">🔄 Обновить</button>
-        <button type="button" class="btn ghost" data-tools-act="redecorate-windows" title="Заново поставить окнам игры название «Ник — Класс» и значок класса, если они слетели">🔖 Названия и значки</button>
         <button type="button" class="btn ghost" data-tools-act="gc-binding" title="Список GameCenter, привязка аккаунтов и запомненные входы">🎮 GameCenter и персонажи</button>
         <button type="button" class="btn ghost" data-tools-act="pick-windows" title="Показать все окна игры и закрыть выбранные">🖥️ Показать все окна</button>
         <button type="button" class="btn ghost" data-tools-act="close-all-windows" title="Закрыть все запущенные окна игры">🛑 Закрыть все окна игры</button>
@@ -129,39 +134,6 @@ async function refreshWindowsButton(btn) {
   }
 }
 
-/**
- * Кнопка «Названия и значки»: заново подписывает уже запущенные окна.
- *
- * Список окон берём свежий, а не из кэша на экране: подписать можно только то, что запущено
- * прямо сейчас, и в кэше могли остаться уже закрытые окна. Кэш всё равно обновляем после —
- * заголовок окна изменился, значит и в списке он должен быть новым.
- *
- * @param {HTMLElement} btn
- */
-async function redecorateWindowsButton(btn) {
-  if (btn.disabled) return;
-  const label = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '⏳ Подписываем…';
-  try {
-    await refreshRunningWindows();
-    const { redecorateRunningWindows } = await import('../launcher/launch.js');
-    const res = await redecorateRunningWindows(runningWindows());
-    const done = res.ok + res.fixed;
-    if (done) toast(`Названия и значки восстановлены: окон ${done}`, 'ok');
-    else if (res.skipped) toast('Нет окон, у которых можно восстановить название и значок', 'warn');
-    else if (res.denied) toast('Windows не дал доступ к окнам игры', 'error');
-    else toast('Не удалось восстановить названия и значки', 'error');
-    res.details.forEach(d => console.warn('[TOOLS] окна:', d));
-  } catch (e) {
-    toast(`Не удалось восстановить названия и значки: ${e?.message || e}`, 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = label;
-    await refreshRunningWindows();
-  }
-}
-
 export function bindTools() {
   const el = root();
   if (!el || el.dataset.toolsBound) return;
@@ -180,8 +152,6 @@ export function bindTools() {
       // упасть само. Без кнопки сверить список можно было только закрытием окна — то есть
       // цена проверки «какие окна открыты» была в потерянном окне.
       await refreshWindowsButton(act);
-    } else if (act.dataset.toolsAct === 'redecorate-windows') {
-      await redecorateWindowsButton(act);
     } else if (act.dataset.toolsAct === 'gc-binding') {
       // То же окно, что и «Настройки → Запуск игры» и карточка персонажа: одна реализация,
       // чтобы правила привязки и входов не расходились между разделами

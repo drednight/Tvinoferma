@@ -15,6 +15,14 @@
 
 .tools-block-head { margin-bottom: 12px; }
 .tools-block-head h3 { margin: 0 0 2px; font-size: 1rem; }
+/* Шапка с действием справа: заголовок и описание слева, кнопка — на краю.
+   Обновление списка окон не относится к действиям над окнами, но в общей кучке с
+   «закрыть всё» оно читалось как такая же команда, только безобидная. */
+.tools-block-head-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.tools-block-head-row > div { min-width: 0; }
 /* Вкладка занимает всю ширину окна, поэтому длинная строка описания растянулась бы на весь
    экран и перестала бы читаться. 72ch — та же граница, что у .section-sub. */
 .tools-block-head p { margin: 0; font-size: 0.82rem; max-width: 72ch; }

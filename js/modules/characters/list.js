@@ -19,8 +19,8 @@ import { hasGameCenterPath } from '../launcher/launch.js';
 import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../sync/syncManager.js';
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
-import { groupChars, applyManualOrder, moveChar, ORDER_MANUAL } from './grouping.js';
-import { getManualOrder, saveManualOrder, resetManualOrder, hasManualOrder, getViewPrefs, saveViewPrefs } from './orderStore.js';
+import { groupChars, applyManualOrder, moveChar, ORDER_MANUAL, ORDER_NICK } from './grouping.js';
+import { getManualOrder, saveManualOrder, resetManualOrder, hasManualOrder, canSaveOrder, getViewPrefs, saveViewPrefs, listOrderPresets, saveOrderPreset, deleteOrderPreset, presetValue, presetIdFromValue } from './orderStore.js';
 import { onboardingHtml } from './onboarding.js';
 import { windowOfCharacter, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
 import { formatUptime } from '../launcher/windowList.js';
@@ -170,17 +170,191 @@ function initFilters() {
     groupSelect.onchange = () => { saveViewPrefs({ group: groupSelect.value }); renderFilteredGrid(); };
   }
   if (orderSelect) {
-    orderSelect.value = prefs.order;
-    orderSelect.onchange = () => { saveViewPrefs({ order: orderSelect.value }); renderFilteredGrid(); };
+    fillOrderOptions(orderSelect, prefs.order);
+    orderSelect.onchange = () => {
+      const value = orderSelect.value;
+      // Сохранённый порядок копируется в живой: перетаскивание работает так же,
+      // а сам снимок остаётся нетронутым, пока его не обновят явно
+      const presetId = presetIdFromValue(value);
+      if (presetId) {
+        const preset = listOrderPresets().find(p => p.id === presetId);
+        if (preset?.ids.length) saveManualOrder(preset.ids);
+      }
+      saveViewPrefs({ order: value });
+      renderFilteredGrid();
+      updateOrderButtons();
+    };
   }
   if (orderReset) {
     orderReset.onclick = () => {
       resetManualOrder();
+      // Возвращаемся на «По нику», а не на «Свой порядок»: своего порядка после сброса
+      // нет, и надпись в списке обещала бы несуществующий порядок
+      saveViewPrefs({ order: ORDER_NICK });
+      fillOrderOptions(document.getElementById('order-filter'), ORDER_NICK);
       renderFilteredGrid();
+      updateOrderButtons();
       toast('Порядок сброшен: карточки по нику', 'success');
     };
   }
+  bindOrderPresetButtons();
+  updateOrderButtons();
   updateClearButton();
+}
+
+/**
+ * Наполняет список порядков: стандартные режимы плюс сохранённые под своими именами.
+ * Повторяет сохранённые после каждого сохранения и удаления — иначе в списке остались бы
+ * порядки, которых уже нет.
+ *
+ * @param {HTMLSelectElement|null} select
+ * @param {string} current значение, которое надо восстановить
+ */
+export function fillOrderOptions(select, current = '') {
+  if (!select) return;
+  const presets = listOrderPresets();
+  const known = presets.some(p => p.id === presetIdFromValue(current));
+  const selected = known ? current : (current || 'nick');
+  select.innerHTML = `
+    <option value="nick">По нику (сначала онлайн)</option>
+    <option value="manual">Свой порядок</option>
+    ${presets.length ? `<optgroup label="Сохранённые">${presets.map(p => `
+      <option value="${escapeHtml(presetValue(p.id))}">${escapeHtml(p.name)}</option>`).join('')}</optgroup>` : ''}`;
+  select.value = selected;
+}
+
+/**
+ * Показывает кнопки, которые зависят от выбранного порядка.
+ *
+ * Прятать лишнее — правило всего раздела: кнопка, которая сейчас ничего не сделает,
+ * занимает место и обещает действие, которого не будет.
+ */
+function updateOrderButtons() {
+  const orderSelect = document.getElementById('order-filter');
+  const value = orderSelect?.value || getViewPrefs().order;
+  const presetId = presetIdFromValue(value);
+  const preset = presetId ? listOrderPresets().find(p => p.id === presetId) : null;
+  const setHidden = (id, hidden) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.hidden = hidden;
+  };
+  // Порядка, который мы запустили из Твинофермы, ещё нет — сохранять нечего
+  setHidden('order-save', value !== ORDER_MANUAL || !canSaveOrder());
+  setHidden('order-apply', !preset || !canSaveOrder());
+  setHidden('order-delete', !preset);
+  setHidden('order-reset', !preset && !canSaveOrder());
+}
+
+/** Кнопки сохранённых порядков: сохранить, обновить, удалить. */
+function bindOrderPresetButtons() {
+  const save = document.getElementById('order-save');
+  const apply = document.getElementById('order-apply');
+  const del = document.getElementById('order-delete');
+  if (save) save.onclick = () => askOrderPresetName();
+  if (apply) apply.onclick = () => applyPresetUpdate();
+  if (del) del.onclick = () => applyPresetDelete();
+}
+
+/** Спрашивает имя и сохраняет текущий свой порядок под ним. */
+async function askOrderPresetName() {
+  const suggested = listOrderPresets().length ? `Мой порядок ${listOrderPresets().length + 1}` : 'Мой порядок';
+  const name = await promptOrderName('Сохранить порядок под именем', suggested);
+  if (!name) return;
+  let saved;
+  try {
+    saved = saveOrderPreset(name, getManualOrder());
+  } catch (e) {
+    toast(e.message || 'Не удалось сохранить порядок', 'error');
+    return;
+  }
+  saveViewPrefs({ order: presetValue(saved.id) });
+  fillOrderOptions(document.getElementById('order-filter'), presetValue(saved.id));
+  renderFilteredGrid();
+  updateOrderButtons();
+  toast(saved.replaced ? `Порядок «${saved.name}» обновлён` : `Порядок «${saved.name}» сохранён`, 'success');
+}
+
+/** Записывает текущий порядок обратно в выбранный сохранённый. */
+function applyPresetUpdate() {
+  const presetId = presetIdFromValue(document.getElementById('order-filter')?.value || '');
+  if (!presetId) return;
+  const preset = listOrderPresets().find(p => p.id === presetId);
+  if (!preset) return;
+  saveOrderPreset(preset.name, getManualOrder());
+  renderFilteredGrid();
+  updateOrderButtons();
+  toast(`Порядок «${preset.name}» обновлён`, 'success');
+}
+
+/**
+ * Удаляет выбранный сохранённый порядок.
+ *
+ * Подтверждение обязательно: список порядков — это настройка, потеря которой молча
+ * пропала бы у человека, который её настраивал. После удаления выбор возвращается на
+ * «Свой порядок», иначе в списке осталось бы значение, которого уже нет.
+ */
+async function applyPresetDelete() {
+  const select = document.getElementById('order-filter');
+  const presetId = presetIdFromValue(select?.value || '');
+  const preset = presetId ? listOrderPresets().find(p => p.id === presetId) : null;
+  if (!preset) return;
+  const ok = await confirmModal({
+    title: `Удалить порядок «${preset.name}»?`,
+    text: 'Сохранённый порядок пропадёт. Карточки останутся на месте — это только вид списка.',
+    okText: 'Удалить',
+    danger: true
+  });
+  if (!ok) return;
+  deleteOrderPreset(preset.id);
+  saveViewPrefs({ order: ORDER_NICK });
+  fillOrderOptions(select, ORDER_NICK);
+  renderFilteredGrid();
+  updateOrderButtons();
+  toast(`Порядок «${preset.name}» удалён`, 'success');
+}
+
+/** Модалка ввода имени порядка. Пустая строка и Отмена — это не имя. */
+function promptOrderName(title, value = '') {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-container" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+        <div class="modal-header"><h3>${escapeHtml(title)}</h3></div>
+        <div class="modal-body">
+          <label class="field">
+            <span>Название порядка</span>
+            <input id="order-preset-name" class="input" maxlength="40" value="${escapeHtml(value)}" />
+          </label>
+          <p class="muted" style="margin:8px 0 0;font-size:0.8rem">
+            Порядок сохранится под этим именем и появится в списке сортировки.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn ghost" data-act="cancel">Отмена</button>
+          <button type="button" class="btn primary" data-act="ok">Сохранить</button>
+        </div>
+      </div>`;
+    const done = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      resolve(result);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(''); }
+      if (e.key === 'Enter') { e.preventDefault(); done(input.value); }
+    };
+    const input = /** @type {HTMLInputElement} */ (overlay.querySelector('#order-preset-name'));
+    overlay.addEventListener('click', (e) => {
+      const act = /** @type {HTMLElement} */ (e.target).closest?.('[data-act]')?.getAttribute('data-act');
+      if (act === 'ok') done(input.value);
+      else if (act === 'cancel' || e.target === overlay) done('');
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    input.focus();
+    input.select();
+  });
 }
 
 /** Показывает кнопку сброса, только если есть активный фильтр (иначе она занимает место зря). */
@@ -250,9 +424,11 @@ function renderFilteredGrid() {
     return;
   }
 
-  // Порядок: либо по нику (сначала онлайн), либо свой, заданный перетаскиванием
+  // Порядок: либо по нику (сначала онлайн), либо свой — заданный перетаскиванием напрямую
+  // или выбранный из сохранённых. Сохранённый тоже свой: перетаскивание должно работать,
+  // иначе кнопка «Обновить» не имела бы смысла — переписать было бы нечего.
   const prefs = getViewPrefs();
-  const manual = prefs.order === ORDER_MANUAL;
+  const manual = prefs.order === ORDER_MANUAL || !!presetIdFromValue(prefs.order);
   const byNick = [...filteredChars].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
   const ordered = manual
     ? applyManualOrder(byNick, getManualOrder())

@@ -14,6 +14,7 @@ import { getClassIconSrc, CLASSES } from '../../core/constants.js';
 import { runningClientDetails, closeClientsByPid, closeAllClients, applyWindowStyle, applyStyleText } from './launch.js';
 import { windowRows, rowLabel, formatUptime, closeSelectedText } from './windowList.js';
 import { showCloseReport } from './partyLaunch.js';
+import { recalledOwnership } from './launchedWindows.js';
 
 const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
 
@@ -34,7 +35,10 @@ export async function openWindowPicker(opts = {}) {
   const draw = () => {
     const known = rows.filter(r => r.known).length;
     ov.sub.innerHTML = `<span class="muted">Окон запущено: <b>${rows.length}</b>${known ? ` · из них с ником: ${known}` : ''}</span>
-      <button type="button" class="btn ghost small" data-act="refresh">🔄 Обновить список</button>`;
+      <button type="button" class="btn ghost small" data-act="refresh">🔄 Обновить список</button>
+      <button type="button" class="btn ghost small" data-act="redecorate"
+              title="Заново поставить окнам игры название «Ник — Класс» и значок класса, если они слетели"
+              ${rows.filter(r => r.known).length ? '' : 'disabled'}>🔖 Названия и значки</button>`;
 
     ov.body.innerHTML = rows.length
       ? `<div class="winp-list">${rows.map(rowHtml).join('')}</div>`
@@ -108,8 +112,10 @@ export async function openWindowPicker(opts = {}) {
     const scrollTop = oldList ? oldList.scrollTop : 0;
     try {
       const clients = await runningClientDetails();
-      rows = windowRows(clients, state.characters);
-      // Выбор не должен «помнить» закрытые окна
+      rows = windowRows(clients, state.characters, { recalled: recalledOwnership(clients.map(c => ({
+        pid: Number(c?.pid) || 0,
+        uptimeMs: c?.startedAt ? Math.max(0, Date.now() - Number(c.startedAt)) : null
+      }))) });
       const live = new Set(rows.map(r => r.pid));
       [...selected].forEach(pid => { if (!live.has(pid)) selected.delete(pid); });
     } catch (e) {
@@ -119,6 +125,38 @@ export async function openWindowPicker(opts = {}) {
     draw();
     const newList = ov.body.querySelector('.winp-list');
     if (newList) newList.scrollTop = scrollTop;
+  };
+
+  /**
+   * Заново ставит окнам название «Ник — Класс» и значок класса.
+   *
+   * Список берём заново прямо сейчас: подписывать можно только то, что запущено, а к
+   * закрытым окнам в списке могли остаться старые строки. После подписи список
+   * перерисовывается — заголовок окна изменился, и в списке он должен быть новым.
+   *
+   * @param {HTMLElement} btn
+   */
+  const redecorateOpenWindows = async (btn) => {
+    if (busy) return;
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '⏳ Подписываем…';
+    try {
+      await reload();
+      const { redecorateRunningWindows, redecorateText } = await import('./launch.js');
+      const res = await redecorateRunningWindows(rows);
+      const done = res.ok + res.fixed;
+      if (done) toast(`Названия и значки восстановлены: окон ${done}`, 'success');
+      else if (res.denied) toast('Windows не дал доступ к окнам игры', 'error');
+      else toast(redecorateText(res) || 'Не удалось восстановить названия и значки', res.skipped ? 'warning' : 'error');
+      res.details.forEach(d => console.warn('[WINDOWS] подпись:', d));
+      await reload();
+    } catch (e) {
+      toast(`Не удалось восстановить названия и значки: ${errText(e)}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = label;
+    }
   };
 
   /** Закрывает указанные PID и показывает итог. */
@@ -166,6 +204,12 @@ export async function openWindowPicker(opts = {}) {
     const act = btn.dataset.act;
 
     if (act === 'refresh') { await reload(); return; }
+    if (act === 'redecorate') {
+      // Подписываем уже открытые окна: заголовок и значок слетают уже после запуска,
+      // и в этом окне их видно построчно — сразу понятно, что именно чинить
+      await redecorateOpenWindows(btn);
+      return;
+    }
     if (act === 'close') { ov.close(); return; }
     if (act === 'toggle-all') { toggleAll(); return; }
     if (act === 'selected') {

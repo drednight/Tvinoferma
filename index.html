@@ -155,6 +155,11 @@
               <option value="manual">Свой порядок</option>
             </select>
             <button id="order-reset" class="btn ghost small" type="button" hidden title="Вернуть порядок по нику">↺ Сбросить порядок</button>
+            <!-- Появляется, когда выбран «Свой порядок»: сохранить его под именем -->
+            <button id="order-save" class="btn ghost small" type="button" hidden title="Сохранить текущий порядок карточек под своим именем">💾 Сохранить как…</button>
+            <!-- Появляется, когда выбран сохранённый порядок: обновить его или убрать -->
+            <button id="order-apply" class="btn ghost small" type="button" hidden title="Записать текущий порядок обратно в выбранный">↻ Обновить</button>
+            <button id="order-delete" class="btn ghost small" type="button" hidden title="Удалить выбранный сохранённый порядок">✕ Удалить порядок</button>
             <!-- Появляется, только когда включён хотя бы один фильтр -->
             <button id="filters-clear" class="filters-clear" type="button" hidden title="Сбросить поиск и все фильтры">✕ Сбросить</button>
           </div>
