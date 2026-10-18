@@ -5,6 +5,16 @@ import { normalizeState, normalizeTags, NOTES_MAX_LENGTH } from '../js/core/stat
 
 const fixture = (name) => JSON.parse(readFileSync(`tests/fixtures/${name}`, 'utf8'));
 
+/**
+ * Список миграций от `from` до текущей схемы.
+ *
+ * Раньше цепочка была выписана в тестах константой («[3, 4, 5, 6, 7, 8, 9]»), и любая
+ * новая миграция ломала шесть проверок в других сценариях — причём падали они не там,
+ * где дело было. Список выводится из номера версии: добавили миграцию — правок в тестах
+ * не нужно, а пропущенный шаг по-прежнему ловится.
+ */
+const chainFrom = (from) => Array.from({ length: SCHEMA_VERSION - from }, (_, i) => from + 1 + i);
+
 describe('migrateState', () => {
   it('определяет версию по schemaVersion или старому полю version', () => {
     expect(detectVersion({ version: 2 })).toBe(2);
@@ -17,7 +27,7 @@ describe('migrateState', () => {
     const { state, from, applied, newer } = migrateState(raw);
     expect(from).toBe(2);
     expect(newer).toBe(false);
-    expect(applied).toEqual([3, 4, 5, 6, 7, 8, 9]);
+    expect(applied).toEqual(chainFrom(2));
     expect(state.schemaVersion).toBe(SCHEMA_VERSION);
     expect(state.version).toBeUndefined();
     expect(state.exportedAt).toBeUndefined();
@@ -29,7 +39,7 @@ describe('migrateState', () => {
 
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(applied).toEqual(chainFrom(1));
     expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
     expect(state.parties.every(p => typeof p.id === 'string' && p.id)).toBe(true);
   });
@@ -86,7 +96,7 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
 
   it('party (название) → partyIds (id), поле party удаляется, notes по умолчанию пустые', () => {
     const { state, applied } = migrateState(v4());
-    expect(applied).toEqual([5, 6, 7, 8, 9]);
+    expect(applied).toEqual(chainFrom(4));
     const id = (name) => state.parties.find(p => p.name === name).id;
     expect(state.parties.every(p => p.id)).toBe(true);
     expect(state.parties.find(p => p.name === 'Основа').id).toBe('p1');
@@ -162,7 +172,7 @@ describe('миграция v7: путь GameCenter у каждого аккау�
       characters: [{ id: 'a' }, { id: 'b', launch: { gcPath: '  D:\\GC  ' } }, { id: 'c', launch: null }]
     };
     const { state, applied } = migrateState(raw);
-    expect(applied).toEqual([7, 8, 9]);
+    expect(applied).toEqual(chainFrom(6));
     expect(state.characters.map(c => c.launch.gcPath)).toEqual(['', 'D:\\GC', '']);
     expect(raw.characters[0].launch).toBeUndefined(); // исходные данные не мутируются
   });
@@ -171,7 +181,7 @@ describe('миграция v7: путь GameCenter у каждого аккау�
 describe('миграция v9: раздел «Учёт»', () => {
   it('старый файл без раздела получает пустой, а не битый', () => {
     const { state, applied } = migrateState({ schemaVersion: 8, characters: [], parties: [] });
-    expect(applied).toEqual([9]);
+    expect(applied).toEqual(chainFrom(8));
     expect(state.finance).toEqual({});
     expect(normalizeState(state).finance.operations).toEqual([]);
   });
@@ -203,7 +213,7 @@ describe('цепочка миграций для релиза 1.0', () => {
     const { state, from, to, applied } = migrateState({});
     expect(from).toBe(1);
     expect(to).toBe(SCHEMA_VERSION);
-    expect(applied).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(applied).toEqual(chainFrom(1));
     expect(state.characters).toEqual([]);
     expect(state.parties).toEqual([]);
     expect(state.marathons).toEqual([]);
@@ -233,3 +243,56 @@ describe('цепочка миграций для релиза 1.0', () => {
     expect(normalized.marathons.length).toBe(state.marathons.length);
   });
 });
+
+describe('миграция v10: раздел клана eternals → guild', () => {
+  // Переименование ключа настроек через миграцию, а не правкой на чтении: иначе откат на
+  // старую версию увидел бы незнакомый ключ, счёл файл битым и записал поверх умолчания.
+  const old = (settings) => ({ schemaVersion: 9, settings });
+
+  it('настройки клана переезжают в новый ключ', () => {
+    const { state, applied } = migrateState(old({ eternals: { enabled: true, syncedAt: 1700000000000 } }));
+    expect(applied).toEqual([10]);
+    expect(state.settings.guild.enabled).toBe(true);
+    expect(state.settings.guild.syncedAt).toBe(1700000000000);
+  });
+
+  it('старый ключ удаляется, иначе он переживёт переименование навсегда', () => {
+    const { state } = migrateState(old({ eternals: { enabled: true } }));
+    expect(state.settings.eternals).toBeUndefined();
+  });
+
+  it('новый ключ важнее старого: дважды переименованный файл не откатывается назад', () => {
+    const { state } = migrateState(old({ guild: { enabled: false }, eternals: { enabled: true } }));
+    expect(state.settings.guild.enabled).toBe(false);
+  });
+
+  it('файл без раздела клана остаётся без него', () => {
+    const { state } = migrateState(old({ launcher: {} }));
+    expect(state.settings.guild).toBeUndefined();
+  });
+
+  it('битое settings не ломает загрузку', () => {
+    for (const bad of [null, 'text', [], 42]) {
+      expect(() => migrateState({ schemaVersion: 9, settings: bad })).not.toThrow();
+    }
+  });
+
+  it('миграция идемпотентна: повторный запуск на новой версии ничего не меняет', () => {
+    const once = migrateState(old({ eternals: { enabled: true } }));
+    const twice = migrateState(once.state);
+    expect(twice.applied).toEqual([]);
+    expect(twice.state.settings.guild.enabled).toBe(true);
+  });
+
+it('файл из более новой версии не трогается — этим и защищён откат', () => {
+    // Старая версия, увидев файл с большим номером схемы, обязана оставить его как есть.
+    // Именно это делает переименование ключа безопасным при откате: без миграции старая
+    // версия сочла бы файл битым и записала поверх него умолчания.
+    const fromFuture = { schemaVersion: SCHEMA_VERSION + 1, settings: { guild: { enabled: true } } };
+    const res = migrateState(fromFuture);
+    expect(res.newer).toBe(true);
+    expect(res.applied).toEqual([]);
+    expect(res.state).toEqual(fromFuture);
+  });
+});
+

@@ -8,7 +8,7 @@
 
 import { planCharacterIds, remapIdsDeep } from './ids.js';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -114,6 +114,22 @@ export const MIGRATIONS = {
     s.finance = s.finance && typeof s.finance === 'object' && !Array.isArray(s.finance)
       ? s.finance
       : {};
+    return s;
+  },
+
+  // v9 → v10: раздел клана переименован из `eternals` в `guild`.
+  //
+  // Переименование идёт миграцией, а не правкой на чтении, потому что иначе откат на
+  // старую версию видел бы файл с чужим ключом, посчитал бы его битым и записал поверх
+  // него умолчания — то есть откат молча стирал бы настройку. С номером схемы старая
+  // версия вместо этого увидит `newer` и не тронет файл.
+  10: (s) => {
+    const settings = s.settings && typeof s.settings === 'object' && !Array.isArray(s.settings) ? s.settings : {};
+    if (settings.guild === undefined && settings.eternals !== undefined) {
+      settings.guild = settings.eternals;
+    }
+    delete settings.eternals;
+    s.settings = settings;
     return s;
   }
 };
