@@ -1,11 +1,14 @@
 // tests/orderPresets.test.js
 // Сохранённые порядки карточек под своими именами (js/modules/characters/orderStore.js)
 // и список порядков, в который они попадают.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 import {
   getManualOrder, saveManualOrder, resetManualOrder, canSaveOrder,
   listOrderPresets, saveOrderPreset, deleteOrderPreset, presetValue, presetIdFromValue
 } from '../js/modules/characters/orderStore.js';
+import { fillOrderOptions } from '../js/modules/characters/list.js';
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -91,3 +94,50 @@ describe('сохранение порядка под именем', () => {
     expect(listOrderPresets()[0].id).toBe(saved.id);
   });
 });
+describe('разделитель сохранённых порядков', () => {
+  // Отдельная строка-разделитель занимала целиком строку списка. Вместо неё — нижняя
+  // граница у «Свой порядок»: она рисуется стилями, когда сохранённые порядки есть.
+  const fill = (presets, current = 'manual') => {
+    if (presets) saveOrderPreset('Для рейда', presets);
+    const select = document.createElement('select');
+    document.body.appendChild(select);
+    fillOrderOptions(select, current);
+    return select;
+  };
+
+  it('граница появляется только когда есть сохранённые', () => {
+    expect(fill(null).classList.contains('has-presets')).toBe(false);
+    expect(fill(['c1']).classList.contains('has-presets')).toBe(true);
+  });
+
+  it('без сохранённых в списке ровно два пункта, ничего лишнего', () => {
+    expect([...fill(null).options].map(o => o.value)).toEqual(['nick', 'manual']);
+  });
+
+  it('стиль границы на месте: она задана пункту «Свой порядок»', () => {
+    // Строку читает не jsdom, а браузер, поэтому проверяем правило в CSS: без него
+    // класс .has-presets ничего не нарисует и разделения не будет
+    const css = readFileSync('css/core/components.css', 'utf8');
+    expect(css).toContain("#order-filter.has-presets option[value='manual']");
+    expect(css).toMatch(/#order-filter\.has-presets option\[value='manual'\][\s\S]{0,200}border-bottom/);
+  });
+
+  it('выбранный порядок остаётся выбранным после перерисовки списка', () => {
+    const saved = saveOrderPreset('Для рейда', ['c1', 'c2']);
+    const select = fill(null, presetValue(saved.id));
+    saveOrderPreset('Второй', ['c2']);
+    fillOrderOptions(select, select.value);
+    expect(select.value).toBe(presetValue(saved.id));
+  });
+
+  it('удалённый порядок не остаётся выбранным', () => {
+    const b = saveOrderPreset('Второй', ['c2']);
+    const select = fill(null, presetValue(b.id));
+    deleteOrderPreset(b.id);
+    fillOrderOptions(select, select.value);
+    // В списке такого значения уже нет — выбирать не на чем, и оставаться не на чем
+    expect([...select.options].some(o => o.value === presetValue(b.id))).toBe(false);
+    expect(select.value).toBe('nick');
+  });
+});
+

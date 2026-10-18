@@ -204,6 +204,71 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
 }
 
 /**
+ * Меню действий рядом с кнопкой.
+ *
+ * Нужно там, где у одного действия слишком много вариантов: четыре кнопки в ряд занимают
+ * место и обещают больше, чем нужно в этот момент. Открывающий элемент остаётся на месте —
+ * меню появляется под ним и закрывается кликом мимо или по Escape.
+ *
+ * Оформление уже было в css/core/fab.css (`.dropdown-menu`, `.dropdown-item`,
+ * `.dropdown-sep`, `.action-menu-wrapper`) — здесь оно впервые используется по назначению.
+ *
+ * @param {HTMLElement} anchor элемент-источник: меню появится под ним
+ * @param {Array<{ id: string, label: string, icon?: string, hint?: string, disabled?: boolean, danger?: boolean, onSelect?: () => void }>} items
+ * @returns {() => void} закрыть меню
+ */
+export function openActionMenu(anchor, items) {
+  // Одно меню на страницу: второе открытие должно заменить первое, а не положить его
+  document.querySelector('.dropdown-menu[data-open]')?.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'dropdown-menu';
+  wrap.dataset.open = '1';
+  wrap.setAttribute('role', 'menu');
+  wrap.innerHTML = items.map((it, i) => (
+    it.separator
+      ? '<div class="dropdown-sep"></div>'
+      : `<button type="button" role="menuitem" class="dropdown-item" data-id="${escapeHtml(it.id)}"
+           ${it.disabled ? 'disabled' : ''} ${it.danger ? 'style="color:var(--danger)"' : ''}
+           title="${escapeHtml(it.hint || it.label)}">
+           ${it.icon ? `<span aria-hidden="true">${escapeHtml(it.icon)}</span>` : ''}
+           <span>${escapeHtml(it.label)}</span>
+         </button>`
+  )).join('');
+
+  const close = () => {
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('mousedown', onOutside, true);
+    wrap.remove();
+  };
+  const onKey = (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    close();
+  };
+  const onOutside = (e) => {
+    if (wrap.contains(/** @type {Node} */ (e.target)) || anchor.contains(/** @type {Node} */ (e.target))) return;
+    close();
+  };
+
+  wrap.addEventListener('click', (e) => {
+    const id = /** @type {HTMLElement} */ (e.target).closest?.('[data-id]')?.getAttribute('data-id');
+    if (!id) return;
+    close();
+    items.find((it) => it.id === id)?.onSelect?.();
+  });
+
+  // Обёртка с position: relative — иначе меню уехало бы к краю окна
+  const holder = anchor.parentElement;
+  if (holder && getComputedStyle(holder).position === 'static') holder.style.position = 'relative';
+  (holder || document.body).appendChild(wrap);
+  document.addEventListener('keydown', onKey, true);
+  document.addEventListener('mousedown', onOutside, true);
+  return close;
+}
+
+/**
  * Строка подтверждения в стиле приложения. Все подтверждения идут через `confirmModal`:
  * системные окна `alert`/`confirm` выглядят чужеродно и не подчиняются теме приложения.
  * Функция оставлена только как напоминание — использовать её не нужно.

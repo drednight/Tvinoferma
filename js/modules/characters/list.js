@@ -4,7 +4,7 @@ import { state, normalizeTags } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
-import { toast, showModal, closeModal, confirmModal } from '../../core/ui.js';
+import { toast, showModal, closeModal, confirmModal, openActionMenu } from '../../core/ui.js';
 import { renderParties } from '../parties/index.js';
 
 // Импортируем константы
@@ -163,7 +163,6 @@ function initFilters() {
   // Группировка и порядок карточек: восстанавливаем выбор и подключаем переключатели
   const groupSelect = document.getElementById('group-filter');
   const orderSelect = document.getElementById('order-filter');
-  const orderReset = document.getElementById('order-reset');
   const prefs = getViewPrefs();
   if (groupSelect) {
     groupSelect.value = prefs.group;
@@ -182,23 +181,17 @@ function initFilters() {
       }
       saveViewPrefs({ order: value });
       renderFilteredGrid();
-      updateOrderButtons();
+      updateOrderMenu();
     };
   }
-  if (orderReset) {
-    orderReset.onclick = () => {
-      resetManualOrder();
-      // Возвращаемся на «По нику», а не на «Свой порядок»: своего порядка после сброса
-      // нет, и надпись в списке обещала бы несуществующий порядок
-      saveViewPrefs({ order: ORDER_NICK });
-      fillOrderOptions(document.getElementById('order-filter'), ORDER_NICK);
-      renderFilteredGrid();
-      updateOrderButtons();
-      toast('Порядок сброшен: карточки по нику', 'success');
+  const orderMenu = document.getElementById('order-menu');
+  if (orderMenu) {
+    orderMenu.onclick = () => openOrderMenu(orderMenu);
+    orderMenu.onkeydown = (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOrderMenu(orderMenu); }
     };
   }
-  bindOrderPresetButtons();
-  updateOrderButtons();
+  updateOrderMenu();
   updateClearButton();
 }
 
@@ -207,52 +200,72 @@ function initFilters() {
  * Повторяет сохранённые после каждого сохранения и удаления — иначе в списке остались бы
  * порядки, которых уже нет.
  *
+ * Отделение сохранённых — нижняя граница у «Свой порядок» (`.has-presets` в CSS), а не
+ * строка-разделитель: строка занимала бы целиком отдельную строку списка ради ничего.
+ *
  * @param {HTMLSelectElement|null} select
  * @param {string} current значение, которое надо восстановить
  */
 export function fillOrderOptions(select, current = '') {
   if (!select) return;
   const presets = listOrderPresets();
-  const known = presets.some(p => p.id === presetIdFromValue(current));
-  const selected = known ? current : (current || 'nick');
+  const known = [...['nick', 'manual'], ...presets.map(p => presetValue(p.id))];
+  // Чего в списке нет — выбирать не на чем: браузер оставил бы пустое значение, и в списке
+  // висела бы пустая строка. Тогда — «По нику».
+  const selected = known.includes(current) ? current : ORDER_NICK;
   select.innerHTML = `
     <option value="nick">По нику (сначала онлайн)</option>
     <option value="manual">Свой порядок</option>
-    ${presets.length ? `<optgroup label="Сохранённые">${presets.map(p => `
-      <option value="${escapeHtml(presetValue(p.id))}">${escapeHtml(p.name)}</option>`).join('')}</optgroup>` : ''}`;
+    ${presets.map(p => `
+      <option value="${escapeHtml(presetValue(p.id))}">${escapeHtml(p.name)}</option>`).join('')}`;
   select.value = selected;
+  // Черта под «Свой порядок» рисуется только когда сохранённые есть: без них отделять
+  // нечего, и линия под последним пунктом была бы просто чужой полоской
+  select.classList.toggle('has-presets', presets.length > 0);
 }
 
 /**
- * Показывает кнопки, которые зависят от выбранного порядка.
+ * Прячет кнопку порядка, когда делать нечего.
  *
- * Прятать лишнее — правило всего раздела: кнопка, которая сейчас ничего не сделает,
- * занимает место и обещает действие, которого не будет.
+ * Без своего порядка сохранять нечего, обновлять нечего и удалять нечего — до первого
+ * перетаскивания кнопка обещала бы четыре действия, из которых ни одно не сработает.
  */
-function updateOrderButtons() {
-  const orderSelect = document.getElementById('order-filter');
-  const value = orderSelect?.value || getViewPrefs().order;
-  const presetId = presetIdFromValue(value);
-  const preset = presetId ? listOrderPresets().find(p => p.id === presetId) : null;
-  const setHidden = (id, hidden) => {
-    const btn = document.getElementById(id);
-    if (btn) btn.hidden = hidden;
-  };
-  // Порядка, который мы запустили из Твинофермы, ещё нет — сохранять нечего
-  setHidden('order-save', value !== ORDER_MANUAL || !canSaveOrder());
-  setHidden('order-apply', !preset || !canSaveOrder());
-  setHidden('order-delete', !preset);
-  setHidden('order-reset', !preset && !canSaveOrder());
+function updateOrderMenu() {
+  const btn = document.getElementById('order-menu');
+  const value = document.getElementById('order-filter')?.value || getViewPrefs().order;
+  if (btn) btn.hidden = !canSaveOrder() && !presetIdFromValue(value);
 }
 
-/** Кнопки сохранённых порядков: сохранить, обновить, удалить. */
-function bindOrderPresetButtons() {
-  const save = document.getElementById('order-save');
-  const apply = document.getElementById('order-apply');
-  const del = document.getElementById('order-delete');
-  if (save) save.onclick = () => askOrderPresetName();
-  if (apply) apply.onclick = () => applyPresetUpdate();
-  if (del) del.onclick = () => applyPresetDelete();
+/**
+ * Меню порядка: сохранить, обновить, удалить, сбросить.
+ *
+ * Четыре отдельные кнопки в панели фильтров занимали место и путались с самими фильтрами,
+ * поэтому действия собраны под одну. Недоступные пункты не убираем, а гасим: человек должен
+ * видеть, что действие существует, и понимать, почему оно сейчас не работает.
+ */
+function openOrderMenu(btn) {
+  const value = document.getElementById('order-filter')?.value || getViewPrefs().order;
+  const presetId = presetIdFromValue(value);
+  const preset = presetId ? listOrderPresets().find(p => p.id === presetId) : null;
+  const hasOrder = canSaveOrder();
+  openActionMenu(btn, [
+    { id: 'save', icon: '💾', label: 'Сохранить как…', hint: 'Сохранить текущий порядок под своим именем', disabled: !hasOrder, onSelect: () => askOrderPresetName() },
+    { id: 'apply', icon: '↻', label: 'Обновить сохранённый', hint: 'Записать текущий порядок обратно в выбранный', disabled: !preset || !hasOrder, onSelect: () => applyPresetUpdate() },
+    { id: 'delete', icon: '✕', label: 'Удалить сохранённый', hint: 'Убрать выбранный порядок из списка', disabled: !preset, danger: true, onSelect: () => applyPresetDelete() },
+    { id: 'reset', icon: '↺', label: 'Сбросить порядок', hint: 'Вернуть карточки по нику', disabled: !hasOrder && !preset, onSelect: () => applyOrderReset() }
+  ]);
+}
+
+/** Сброс своего порядка: карточки снова по нику. */
+function applyOrderReset() {
+  resetManualOrder();
+  // Возвращаемся на «По нику», а не на «Свой порядок»: своего порядка после сброса нет,
+  // и надпись в списке обещала бы несуществующий порядок
+  saveViewPrefs({ order: ORDER_NICK });
+  fillOrderOptions(document.getElementById('order-filter'), ORDER_NICK);
+  renderFilteredGrid();
+  updateOrderMenu();
+  toast('Порядок сброшен: карточки по нику', 'success');
 }
 
 /** Спрашивает имя и сохраняет текущий свой порядок под ним. */
@@ -270,7 +283,7 @@ async function askOrderPresetName() {
   saveViewPrefs({ order: presetValue(saved.id) });
   fillOrderOptions(document.getElementById('order-filter'), presetValue(saved.id));
   renderFilteredGrid();
-  updateOrderButtons();
+  updateOrderMenu();
   toast(saved.replaced ? `Порядок «${saved.name}» обновлён` : `Порядок «${saved.name}» сохранён`, 'success');
 }
 
@@ -282,7 +295,7 @@ function applyPresetUpdate() {
   if (!preset) return;
   saveOrderPreset(preset.name, getManualOrder());
   renderFilteredGrid();
-  updateOrderButtons();
+  updateOrderMenu();
   toast(`Порядок «${preset.name}» обновлён`, 'success');
 }
 
@@ -309,7 +322,7 @@ async function applyPresetDelete() {
   saveViewPrefs({ order: ORDER_NICK });
   fillOrderOptions(select, ORDER_NICK);
   renderFilteredGrid();
-  updateOrderButtons();
+  updateOrderMenu();
   toast(`Порядок «${preset.name}» удалён`, 'success');
 }
 

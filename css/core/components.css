@@ -35,6 +35,19 @@
 .select[disabled],
 .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 
+/* Список порядка карточек: сохранённые отделены нижней границей у «Свой порядок».
+   `.select` объявлен с `appearance: none`, поэтому выпадающий список рисует сам Chromium
+   и оформление пунктов к нему применимо — в отличие от обычного select, где границы
+   `<option>` игнорируются. Класс `.has-presets` ставит список, когда сохранённые порядки
+   есть: без них отделять нечего, и линия под последним пунктом была бы просто чужой
+   полоской в конце списка. */
+#order-filter option { padding: 9px 14px; }
+#order-filter.has-presets option[value='manual'] {
+  border-bottom: 1px solid var(--border-strong);
+  margin-bottom: 4px;
+  padding-bottom: 11px;
+}
+
 .select {
   padding-right: 30px;
   appearance: none;
