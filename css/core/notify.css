@@ -1,0 +1,97 @@
+/* css/core/notify.css
+   Свои уведомления внутри приложения — стопка, которая не исчезает сама.
+
+   Отдельный файл, потому что тосты и уведомления живут по разным правилам: тост
+   показывается на секунды и уходит, уведомление стоит, пока его не закроют. Смешивать их
+   в одной куче стилей значило бы потом гадать, почему одно пропало, а другое нет. */
+
+#notify-center {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: min(360px, calc(100vw - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1001;
+  pointer-events: none;
+}
+/* Пока уведомлений нет, блока вовсе: пустой фиксированный контейнер перехватывал бы
+   клики по кнопке «+» под собой (та же причина, что и у .toast-host:empty). */
+#notify-center:empty { display: none; }
+
+.nc-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 34px 11px 13px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-3);
+  pointer-events: auto;
+  animation: nc-in 0.18s var(--ease);
+}
+@keyframes nc-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.nc-card.is-error { border-left-color: var(--danger); }
+.nc-card.is-warning { border-left-color: var(--warning); }
+.nc-card.is-accent { border-left-color: var(--accent); }
+.nc-card.is-info { border-left-color: var(--text-faint); }
+
+.nc-body { min-width: 0; flex: 1; }
+.nc-title { display: block; font-size: 0.88rem; font-weight: 650; overflow-wrap: anywhere; }
+.nc-text {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--text-dim);
+  /* Многострочный список дел: без ограничения карточка уходила бы за край экрана */
+  max-height: 7.5em;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.nc-time { display: block; margin-top: 6px; font-size: 0.72rem; color: var(--text-faint); }
+
+.nc-close {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+}
+.nc-close:hover { background: var(--surface-3); color: var(--text); }
+.nc-close:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 1px; }
+
+.nc-more {
+  align-self: flex-end;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.nc-more:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* Уведомление не должно накрывать круглую кнопку «+» в углу: сдвигаем стопку вверх,
+   когда плавающая кнопка на месте (она тоже в правом нижнем углу). */
+body:has(.fab-container:not([hidden])) #notify-center { bottom: 92px; }
+@media (max-width: 560px) {
+  #notify-center { right: 12px; left: 12px; width: auto; }
+}

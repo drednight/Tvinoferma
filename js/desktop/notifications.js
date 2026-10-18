@@ -23,7 +23,9 @@ import { state } from '../core/state.js';
 import { mskDate, mskMinutes, mskParts } from '../core/msk.js';
 import { computeCell, marathonPhase } from '../modules/marathons/model.js';
 import { RECURRING_EVENTS, recurringEventsForDate, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
+import { entryStatusForDate } from '../modules/dashboard/planner.js';
 import { playNotificationSound, soundSettings, soundDiagnostics } from './sound.js';
+import { showInApp } from '../core/notifyCenter.js';
 
 const SENT_KEY = 'tf_notifications_sent_v1';
 /** Журнал уведомлений об ивентах: ключ «ивент + дата» → дата (чистим по прошествии суток). */
@@ -73,6 +75,7 @@ export const NOTIFY_KINDS = [
   { kind: 'ending', title: 'Марафон заканчивается', hint: 'Осталось ≤ 2 дней, задания не выполнены' },
   { kind: 'daily', title: 'Ежедневная сводка заданий', hint: 'Задания марафонов и дела календаря на сегодня' },
   { kind: 'event', title: 'Игровые ивенты', hint: 'Битва Династий, Ритм Гильдии и другие' },
+  { kind: 'task', title: 'Напоминание о начале записи', hint: 'За сколько минут до времени из календаря' },
   { kind: 'launch', title: 'Запуск окон игры завершён', hint: 'Одна строка «Запущено N окон за M»' },
   { kind: 'launchError', title: 'Ошибка запуска окон игры', hint: 'Показывается и когда итог запуска выключен' },
   { kind: 'close', title: 'Окна игры закрыты', hint: 'Одна строка о закрытии окон' }
@@ -88,6 +91,8 @@ export function notificationKind(kind, settings) {
   const raw = settings?.kinds?.[kind] || {};
   return {
     popup: raw.popup !== false,
+    // Карточка внутри приложения, которая стоит, пока её не закроют
+    inapp: raw.inapp !== false,
     sound: raw.sound !== false
   };
 }
@@ -205,6 +210,40 @@ export function collectEventAlerts({ today = todayStr(), nowMinutes = mskMinutes
   return out;
 }
 
+/**
+ * Чистая функция: напоминания о начале записей календаря.
+ *
+ * Записи, у которых в форме выбрано «Напомнить», присылают сообщение за указанное число
+ * минут. Раньше поле `reminderMinutes` собиралось, сохранялось — и ни разу не читалось:
+ * человек выбирал «За 15 минут» для кланового ивента, и не приходило ничего.
+ *
+ * Окно напоминания — [начало − запас, начало). Ровно в момент начала не напоминаем: иначе
+ * при перезапуске приложения пришло бы «через минуту после начала».
+ *
+ * @param {{ today?: string, nowMinutes?: number, entries?: Array<any>, isDone?: (e: any, date: string) => boolean }} [opts]
+ * @returns {Array<{ key: string, title: string, body: string, kind: string, entryId: string }>}
+ */
+export function collectTaskAlerts({ today = todayStr(), nowMinutes = mskMinutes(), entries = [], isDone = null } = {}) {
+  const out = [];
+  for (const entry of entries || []) {
+    const lead = Math.round(Number(entry?.reminderMinutes) || 0);
+    if (lead <= 0 || entry?.date !== today) continue;
+    const start = timeMinutes(entry.time);
+    if (start === null) continue;
+    if (isDone?.(entry, today)) continue;
+    if (nowMinutes < start - lead || nowMinutes >= start) continue;
+    const left = Math.max(0, start - nowMinutes);
+    out.push({
+      kind: 'task',
+      entryId: String(entry.id),
+      key: `task:${entry.id}:${today}`,
+      title: `⏰ ${entry.title || 'Запись'} — через ${left} мин.`,
+      body: `Начало в ${entry.time} (МСК)${left > 1 ? ` · осталось ${left} мин.` : ' · начинается сейчас'}`
+    });
+  }
+  return out;
+}
+
 function loadSent(key) {
   try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; }
 }
@@ -244,18 +283,24 @@ function api() {
  */
 export async function notify(title, body, kind = null) {
   const settings = state.settings?.notifications || {};
-  const conf = kind ? notificationKind(kind, settings) : { popup: true, sound: soundSettings(settings).enabled };
-  const wantPopup = settings.enabled !== false && conf.popup;
-  const wantSound = settings.enabled !== false && conf.sound;
-  if (!wantPopup && !wantSound) return true; // этот вид выключен: сообщать нечего, и это не отказ
+  const conf = kind ? notificationKind(kind, settings) : { popup: true, inapp: true, sound: soundSettings(settings).enabled };
+  const master = settings.enabled !== false;
+  const wantInApp = master && conf.inapp;
+  const wantPopup = master && conf.popup;
+  const wantSound = master && conf.sound;
+  if (!wantInApp && !wantPopup && !wantSound) return true; // вид выключен целиком
 
-  let delivered = true;
+  // Карточка в приложении — основной канал: она стоит, пока её не закроют.
+  // Окно Windows остаётся как дополнение для случая, когда приложение свёрнуто.
+  if (wantInApp) showInApp({ title, body, kind: kind || 'info', once: true });
+
+  let delivered = wantInApp;
   if (wantPopup) {
-    delivered = await send(title, body);
+    delivered = (await send(title, body)) || delivered;
   }
   if (wantSound) {
-    // Звук не влияет на итог: всплывающее окно уже показано, а отсутствие звука — настройка
-    // или запрет движка (js/desktop/sound.js), оба случаях показывать всё равно надо.
+    // Звук не влияет на итог: уведомление уже показано, а отсутствие звука — это настройка
+    // или запрет движка (js/desktop/sound.js), в обоих случаях показывать всё равно надо.
     await playNotificationSound(kind || 'calm', settings);
   }
   return delivered;
@@ -308,8 +353,19 @@ export async function runEventCheck({ force = false, now = new Date() } = {}) {
   if (state.settings?.notifications?.enabled === false && !force) return [];
   const today = mskDate(now);
   const sent = loadSent(EVENT_SENT_KEY);
-  const fresh = collectEventAlerts({ today, nowMinutes: mskMinutes(now), settings: state.settings?.notifications })
-    .filter(a => force || sent[a.key] !== today);
+  const settings = state.settings?.notifications;
+  const alerts = [
+    ...collectEventAlerts({ today, nowMinutes: mskMinutes(now), settings }),
+    // Напоминания о начале записей календаря идут тем же таймером и тем же журналом:
+    // отдельный таймер означал бы ещё один 30-секундный опрос без причины
+    ...collectTaskAlerts({
+      today,
+      nowMinutes: mskMinutes(now),
+      entries: state.plannerEntries || [],
+      isDone: (entry, date) => entryStatusForDate(entry, date) === 'done'
+    })
+  ];
+  const fresh = alerts.filter(a => force || sent[a.key] !== today);
   for (const a of fresh) {
     a.delivered = await notify(a.title, a.body, a.kind);
     if (a.delivered) sent[a.key] = today;
@@ -357,12 +413,14 @@ export async function runNotificationTest() {
   const marathon = await runReminderCheck({ force: true });
   const events = await runEventCheck({ force: true });
   const all = [...marathon, ...events];
-  const silent = all.filter(a => a.delivered && !notificationKind(a.kind, state.settings?.notifications).popup).length;
+  // Отчёт считает именно показ в приложении: карточка остаётся на экране, и человек видит
+  // результат проверки, а не ищет его в области уведомлений Windows, куда он уже ушёл
+  const shown = all.filter(a => a.delivered).length;
   return {
     sent: all.length,
-    delivered: all.filter(a => a.delivered).length,
+    delivered: shown,
     // Показаны только звуком: всплывающее окно для этого вида выключено
-    soundOnly: silent,
+    soundOnly: all.filter(a => a.delivered && !notificationKind(a.kind, state.settings?.notifications).popup).length,
     marathon: marathon.length,
     events: events.length,
     diagnostics: diag

@@ -234,27 +234,60 @@ function renderNotifyKinds() {
   root.innerHTML = `
     <div class="notify-kinds-head">
       <span>Уведомление</span>
+      <span title="Карточка внутри приложения: стоит, пока не закроете">В приложении</span>
       <span title="Сообщение Windows поверх остальных окон">Всплывающее</span>
       <span title="Короткий сигнал рядом с сообщением">Звук</span>
+      <span title="Свой набор для этого вида; «как у всех» — взять общий">Набор</span>
     </div>
     ${NOTIFY_KINDS.map(item => {
-      const conf = kinds[item.kind] || { popup: true, sound: true };
+      const conf = kinds[item.kind] || { popup: true, inapp: true, sound: true };
+      const tone = conf.tone || '';
       return `<div class="notify-kind-row">
         <label class="notify-kind-name">
           <input type="checkbox" data-kind-popup="${escapeHtml(item.kind)}"${conf.popup !== false ? ' checked' : ''} />
           <span><b>${escapeHtml(item.title)}</b><small class="muted">${escapeHtml(item.hint)}</small></span>
         </label>
+        <label class="notify-kind-inapp" title="В приложении: ${escapeHtml(item.title)}">
+          <input type="checkbox" data-kind-inapp="${escapeHtml(item.kind)}"${conf.inapp !== false ? ' checked' : ''} />
+        </label>
         <label class="notify-kind-sound" title="Звук: ${escapeHtml(item.title)}">
           <input type="checkbox" data-kind-sound="${escapeHtml(item.kind)}"${conf.sound !== false ? ' checked' : ''} />
         </label>
+        <select class="select notify-kind-tone" data-kind-tone="${escapeHtml(item.kind)}"
+                aria-label="Набор звука: ${escapeHtml(item.title)}">
+          <option value=""${tone ? '' : ' selected'}>как у всех</option>
+          ${SOUND_TONES.map(t => `<option value="${escapeHtml(t.id)}"${tone === t.id ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
+        </select>
+        <button type="button" class="btn ghost small notify-kind-listen" data-kind-listen="${escapeHtml(item.kind)}"
+                title="Послушать звук этого вида" aria-label="Послушать звук: ${escapeHtml(item.title)}">🔊</button>
       </div>`;
     }).join('')}`;
 
   root.querySelectorAll('[data-kind-popup]').forEach(el => {
     el.addEventListener('change', () => saveNotifyKind(el.dataset.kindPopup, { popup: el.checked }));
   });
+  root.querySelectorAll('[data-kind-inapp]').forEach(el => {
+    el.addEventListener('change', () => saveNotifyKind(el.dataset.kindInapp, { inapp: el.checked }));
+  });
   root.querySelectorAll('[data-kind-sound]').forEach(el => {
     el.addEventListener('change', () => saveNotifyKind(el.dataset.kindSound, { sound: el.checked }));
+  });
+  root.querySelectorAll('[data-kind-tone]').forEach(el => {
+    el.addEventListener('change', () => saveNotifyKind(el.dataset.kindTone, { tone: el.value || undefined }));
+  });
+  // Своя кнопка «Послушать» у каждого вида: общая кнопка проигрывала бы общий набор,
+  // а у вида он может быть своим — и оценять надо ровно то, что услышат потом
+  root.querySelectorAll('[data-kind-listen]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const label = el.textContent;
+      el.textContent = '⏳';
+      const res = await previewNotificationSound(state.settings.notifications, el.dataset.kindListen);
+      el.textContent = res === 'played' ? label : '🔇';
+      if (res !== 'played') {
+        toast('Звук не прозвучал: браузер разрешает звук только после первого клика по приложению', 'warning');
+      }
+      setTimeout(() => { el.textContent = label; }, 800);
+    });
   });
 }
 
@@ -262,7 +295,11 @@ function renderNotifyKinds() {
 async function saveNotifyKind(kind, patch) {
   const notifications = state.settings.notifications || (state.settings.notifications = {});
   const kinds = notifications.kinds || (notifications.kinds = {});
-  kinds[kind] = { ...(kinds[kind] || { popup: true, sound: true }), ...patch };
+  const next = { ...(kinds[kind] || { popup: true, inapp: true, sound: true }), ...patch };
+  // Пустой выбор набора означает «как у всех»: хранить его незачем, иначе общий набор
+  // перестанет действовать для этого вида после смены общего в выпадающем списке
+  if (!patch.tone) delete next.tone;
+  kinds[kind] = next;
   await persist();
 }
 

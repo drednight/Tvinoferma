@@ -6,6 +6,7 @@ import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
 import { hydrateSecrets } from './core/secrets.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
+import { bindNotifyCenter } from './core/notifyCenter.js';
 import { initSound } from './desktop/sound.js';
 import { initGettingStarted } from './settings/gettingStarted.js';
 import { startUpdateScheduler } from './desktop/updater.js';
@@ -210,6 +211,7 @@ async function boot() {
     initHotkeys({ switchTab });
     // Звук уведомлений: браузерный движок разрешает его только после первого клика (js/desktop/sound.js)
     initSound();
+bindNotifyCenter();
     try {
       await initDesktop();
       initNotifications();

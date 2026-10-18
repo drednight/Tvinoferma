@@ -156,18 +156,22 @@ export const DEFAULT_SETTINGS = {
     // Своих звуковых файлов нет: тон собран из колебаний через Web Audio (js/desktop/sound.js),
     // наборы — `SOUND_TONES` там же, здесь только id выбранного
     sound: { enabled: true, volume: 80, tone: 'clear' },
-    // По каждому виду — показывать ли всплывающее окно Windows и играть ли звук.
+    // По каждому виду — где показывать и чем озвучивать:
+    //   popup — всплывающее окно Windows (исчезает само, годится на «сейчас гляну»);
+    //   inapp — карточка внутри приложения, стоит, пока её не закроют;
+    //   sound — короткий сигнал; `tone` задаёт свой набор, без него берётся общий.
     // Список видов с подписями — `NOTIFY_KINDS` в js/desktop/notifications.js.
     // Записи нет — вид работает целиком: новые виды доступны сразу после обновления.
     kinds: {
-      behind: { popup: true, sound: true },     // персонаж не успевает задание марафона
-      tight: { popup: true, sound: false },      // запас задания ≤ 1 дня
-      ending: { popup: true, sound: true },      // марафон заканчивается
-      daily: { popup: true, sound: true },      // ежедневная сводка заданий
-      event: { popup: true, sound: true },       // игровой ивент вот-вот начнётся
-      launch: { popup: true, sound: true },      // запуск окон игры завершён
-      launchError: { popup: true, sound: true }, // запуск окон игры не удался
-      close: { popup: true, sound: false }       // окна игры закрыты
+      behind: { popup: true, inapp: true, sound: true },     // персонаж не успевает задание марафона
+      tight: { popup: true, inapp: true, sound: false },     // запас задания ≤ 1 дня
+      ending: { popup: true, inapp: true, sound: true },     // марафон заканчивается
+      daily: { popup: true, inapp: true, sound: true },      // ежедневная сводка заданий
+      event: { popup: true, inapp: true, sound: true },      // игровой ивент вот-вот начнётся
+      task: { popup: true, inapp: true, sound: true },       // запись календаря скоро начнётся
+      launch: { popup: true, inapp: true, sound: true },     // запуск окон игры завершён
+      launchError: { popup: true, inapp: true, sound: true }, // запуск окон игры не удался
+      close: { popup: true, inapp: true, sound: false }      // окна игры закрыты
     },
     dailyHour: 20,
     // Постоянные игровые ивенты: по каждому — напоминать ли и за сколько минут до начала.

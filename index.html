@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="/css/modules/dashboard.css" />
   <link rel="stylesheet" href="/css/modules/today.css" />
   <link rel="stylesheet" href="/css/core/components.css" />
+  <link rel="stylesheet" href="/css/core/notify.css" />
   <link rel="stylesheet" href="/css/modules/characters.css" />
   <link rel="stylesheet" href="/css/modules/charactersGrouping.css" />
   <link rel="stylesheet" href="/css/modules/guild.css" />
@@ -406,7 +407,10 @@
           <div class="setting-row" style="margin-top: 10px;">
             <div>
               <strong>Виды уведомлений</strong>
-              <p class="muted">Всплывающее окно — сообщение Windows поверх игры. Звук — короткий сигнал рядом с ним.
+              <p class="muted">У каждого вида три включателя: <b>В приложении</b> — карточка в правом нижнем углу,
+                которая стоит, пока её не закроют; <b>Всплывающее</b> — сообщение Windows поверх игры, оно исчезает само;
+                <b>Звук</b> — короткий сигнал. Набор звука можно оставить общий или задать свой виду:
+                «напоминание о марафоне» и «ошибка запуска» вполне могут звучать по-разному.
                 Напоминания об ивентах уходят за выбранное время до начала, остальное — по событию; о марафонах
                 приходит одно сообщение на вид со списком дел, а не сообщение на каждый марафон.</p>
             </div>
@@ -419,9 +423,8 @@
           <div class="setting-row sound-row" style="margin-top: 10px;">
             <div>
               <label>Набор звука</label>
-              <p class="muted">Послушайте и выберите, какой слышно поверх игры: уведомления бывают разные по важности,
-                и один и тот же тон для «напоминание о марафоне» и «ошибка запуска» примелькается.
-                Для срочных видов (марафон, ивент, запуск и ошибки) выбранный набор звучит дважды.</p>
+              <p class="muted">Послушайте и выберите, какой слышно поверх игры. Этот набор используют все виды,
+                у которых свой набор не задан; у каждого вида набор можно переопределить в таблице выше.</p>
             </div>
             <div class="sound-controls">
               <select class="select" id="sound-tone" data-setting="notifications.sound.tone" data-value-type="string" aria-label="Набор звука уведомлений"></select>
@@ -698,6 +701,7 @@
   <!-- Контейнеры для модальных окон и уведомлений -->
   <div id="modal-root"></div>
   <div id="toast-root"></div>
+  <div id="notify-center" aria-live="polite" aria-label="Уведомления приложения"></div>
 
   <!-- === КОНТЕКСТНАЯ КРУГЛАЯ КНОПКА «+» (speed-dial): орбы с подписями вокруг кнопки === -->
   <div class="fab-container" id="global-fab-container">

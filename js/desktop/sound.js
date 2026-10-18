@@ -107,6 +107,21 @@ export function soundSettings(settings) {
 }
 
 /**
+ * Набор звука для конкретного вида уведомления.
+ *
+ * Зачем: виды разные по важности, и один набор на всех примелькается — «напоминание о
+ * марафоне» и «ошибка запуска» звучали одинаково. У вида может быть свой набор
+ * (`kinds[kind].tone`), а если его не выбрано — общий из настроек звука.
+ *
+ * @param {string} kind вид уведомления (`NOTIFY_KINDS`)
+ * @param {any} [settings] `state.settings.notifications`
+ */
+export function toneForKind(kind, settings) {
+  const own = settings?.kinds?.[kind]?.tone;
+  return own ? toneById(own).id : soundSettings(settings).tone;
+}
+
+/**
  * Разрешить звук: браузерный движок держит AudioContext в подвешенном состоянии,
  * пока пользователь ни разу ни во что не ткнул. Без этого звук не появится никогда.
  */
@@ -192,9 +207,8 @@ export async function playNotificationSound(kind, settings) {
     }
   }
   if (ac.state !== 'running') return false;
-  // Небольшой сдвиг от текущего момента: сразу после resume движок переключает состояние
-  // не мгновенно, и нота, поставленная «сейчас», может не зазвучать
-  playNotes(ac, conf.tone, conf.volume, PROFILE_BY_KIND[kind] === 'attention');
+  // Набор берётся по виду уведомления: иначе всё звенит одинаково и быстро привыкает
+  playNotes(ac, toneForKind(kind, settings), conf.volume, PROFILE_BY_KIND[kind] === 'attention');
   return true;
 }
 
@@ -203,11 +217,16 @@ export async function playNotificationSound(kind, settings) {
  *
  * Отличается от `playNotificationSound` двумя вещами: слушает всегда (иначе кнопка
  * ничего не даст при выключенном звуке) и не повторяет набор — оценивать надо ровно то,
- * что услышат потом. Возвращает, что показать пользователю.
+ * что услышат потом.
+ *
+ * С указанием вида проигрывает набор этого вида: у видов он может быть своим, и кнопка
+ * «Послушать» рядом со строкой обязана звучать так же, как услышат потом.
+ *
  * @param {any} [settings] `state.settings`
+ * @param {string} [kind] вид уведомления; без него — общий набор
  * @returns {Promise<'played'|'no-audio'|'blocked'>}
  */
-export async function previewNotificationSound(settings) {
+export async function previewNotificationSound(settings, kind = '') {
   const conf = soundSettings(settings);
   const ac = context();
   if (!ac) return 'no-audio';
@@ -219,6 +238,6 @@ export async function previewNotificationSound(settings) {
     }
   }
   if (ac.state !== 'running') return 'blocked';
-  playNotes(ac, conf.tone, conf.volume, false);
+  playNotes(ac, kind ? toneForKind(kind, settings) : conf.tone, conf.volume, false);
   return 'played';
 }

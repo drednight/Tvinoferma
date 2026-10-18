@@ -9,6 +9,7 @@
 
 import { DEFAULT_SETTINGS } from '../constants.js';
 import { SOUND_TONES, DEFAULT_TONE } from '../../desktop/sound.js';
+const SOUND_TONE_IDS = new Set(SOUND_TONES.map((t) => t.id));
 import { normalizeGameCenters } from '../../modules/launcher/gameCenters.js';
 import { normalizeGuildData } from '../../modules/guild/core.js';
 import { normalizePreflightMode } from '../../modules/launcher/preflight.js';
@@ -59,14 +60,18 @@ function normalizeNotificationSettings(input = {}) {
    * Настройка одного вида: показывать ли всплывающее окно и играть ли звук.
    * Записи нет — вид работает целиком: новые виды доступны сразу после обновления.
    */
-  /** @type {Record<string, { popup: boolean, sound: boolean }>} */
+  /** @type {Record<string, { popup: boolean, inapp: boolean, sound: boolean, tone?: string }>} */
   const kinds = {};
   for (const [kind] of Object.entries(def.kinds || {})) {
     const own = raw.kinds?.[kind] || {};
     kinds[kind] = {
       popup: own.popup !== false,
+      inapp: own.inapp !== false,
       sound: own.sound !== false
     };
+    // Свой набор звука для вида: пустой или неизвестный — «как у всех», и хранить его незачем
+    const tone = own.tone;
+    if (tone && SOUND_TONE_IDS.has(String(tone))) kinds[kind].tone = String(tone);
   }
   // Старые галочки «не успевает», «заканчивается» и «ежедневно» держали по одному выключателю
   // на несколько видов. Переносим их выбор, иначе после обновления выбор молча сбросится.

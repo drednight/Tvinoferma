@@ -994,7 +994,9 @@
 .notify-kinds-head,
 .notify-kind-row {
   display: grid;
-  grid-template-columns: 1fr 88px 56px;
+  /* Четыре колонки-включателя (в приложении, всплывающее, звук) плюс выбор набора
+     и кнопка «Послушать». Раньше набора не было, и всё звонело одним и тем же. */
+  grid-template-columns: 1fr 76px 84px 52px 132px 34px;
   align-items: center;
   gap: 10px;
 }
@@ -1010,12 +1012,20 @@
 .notify-kind-name { display: flex; align-items: center; gap: 9px; min-width: 0; cursor: pointer; }
 .notify-kind-name b { display: block; font-size: 0.86rem; }
 .notify-kind-name small { display: block; font-size: 0.74rem; }
-.notify-kind-sound { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.notify-kind-sound,
+.notify-kind-inapp { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+/* Свой набор для вида: узкий список, но подпись «как у всех» обязана помещаться целиком */
+.notify-kind-tone { padding: 5px 8px; font-size: 0.78rem; }
+.notify-kind-listen { padding: 4px 0; min-width: 30px; }
 .notify-kind-row { padding: 7px 11px; }
 .notify-kind-row:nth-child(odd) { background: var(--surface-2); }
+@media (max-width: 860px) {
+  .notify-kinds-head { display: none; }
+  .notify-kind-row { grid-template-columns: 1fr auto; row-gap: 6px; }
+  .notify-kind-name { grid-column: 1 / -1; }
+}
 @media (max-width: 560px) {
-  .notify-kinds-head,
-  .notify-kind-row { grid-template-columns: 1fr 56px 44px; }
+  .notify-kind-row { grid-template-columns: 1fr auto; }
 }
 
 /* Цвета записей: метка в списке дня и полоски событий */

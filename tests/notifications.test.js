@@ -8,7 +8,7 @@ import {
   notificationKind,
   NOTIFY_KINDS
 } from '../js/desktop/notifications.js';
-import { soundSettings, SOUND_TONES } from '../js/desktop/sound.js';
+import { soundSettings, SOUND_TONES, toneForKind, DEFAULT_TONE } from '../js/desktop/sound.js';
 import { createMarathon } from '../js/modules/marathons/model.js';
 import { normalizeState } from '../js/core/state.js';
 import { DEFAULT_SETTINGS } from '../js/core/constants.js';
@@ -41,7 +41,7 @@ describe('collectAlerts', () => {
     const done = st({ c1: { t1: { site: 5, adjust: 0, marks: [], history: {} } } });
     expect(collectAlerts(done, { today: '2026-06-09', hour: 23 })).toEqual([]);
     const off = st();
-    const offKind = { popup: false, sound: false };
+    const offKind = { popup: false, inapp: false, sound: false };
     off.settings.notifications = {
       kinds: { behind: { ...offKind }, tight: { ...offKind }, ending: { ...offKind }, daily: { ...offKind } }
     };
@@ -104,21 +104,21 @@ describe('collectAlerts', () => {
 
 describe('виды уведомлений: галочки', () => {
   it('нет записи в настройках — вид работает целиком', () => {
-    expect(notificationKind('behind', {})).toEqual({ popup: true, sound: true });
-    expect(notificationKind('behind', { kinds: {} })).toEqual({ popup: true, sound: true });
+    expect(notificationKind('behind', {})).toEqual({ popup: true, inapp: true, sound: true });
+    expect(notificationKind('behind', { kinds: {} })).toEqual({ popup: true, inapp: true, sound: true });
   });
 
   it('выбор пользователя сохраняется', () => {
     expect(notificationKind('behind', { kinds: { behind: { popup: false, sound: false } } }))
-      .toEqual({ popup: false, sound: false });
+      .toEqual({ popup: false, inapp: true, sound: false });
   });
 
-  it('всякий вид имеет и всплывающее окно, и звук', () => {
+  it('всякий вид имеет карточку в приложении, всплывающее окно и звук', () => {
     for (const item of NOTIFY_KINDS) {
       expect(item.kind, item.title).toBeTruthy();
       expect(item.title, item.kind).toBeTruthy();
       expect(item.hint, item.kind).toBeTruthy();
-      expect(notificationKind(item.kind, {}), item.kind).toEqual({ popup: true, sound: true });
+      expect(notificationKind(item.kind, {}), item.kind).toEqual({ popup: true, inapp: true, sound: true });
     }
     // «нет своего вида» в списке не остаётся: виды собираются из одного места
     expect(new Set(NOTIFY_KINDS.map(k => k.kind)).size).toBe(NOTIFY_KINDS.length);
@@ -278,7 +278,7 @@ describe('настройки уведомлений в состоянии', () =
     const s = normalizeState({ characters: [], settings: {} });
     const n = s.settings.notifications;
     expect(n.sound).toEqual({ enabled: true, volume: 80, tone: 'clear' });
-    expect(n.kinds.event).toEqual({ popup: true, sound: true });
+    expect(n.kinds.event).toEqual({ popup: true, inapp: true, sound: true });
     // Старые галочки уходят: иначе в настройках остался бы мёртвый ключ
     expect(n.marathonBehind).toBeUndefined();
     expect(n.dailyReminder).toBeUndefined();
@@ -310,3 +310,37 @@ describe('настройки уведомлений в состоянии', () =
     expect(s.settings.notifications.sound.volume).toBe(100);
   });
 });
+
+describe('звук по видам уведомлений', () => {
+  // Раньше набор выбирался один на всё: «напоминание о марафоне» и «ошибка запуска»
+  // звучали одинаково, и через неделю человек переставал их замечать.
+  it('без своего набора вид звучит общим', () => {
+    expect(toneForKind('daily', { sound: { tone: 'soft' } })).toBe('soft');
+  });
+
+  it('у вида может быть свой набор', () => {
+    expect(toneForKind('launchError', { sound: { tone: 'soft' }, kinds: { launchError: { tone: 'signal' } } })).toBe('signal');
+  });
+
+  it('незнакомый набор не ломает звук: берётся значение по умолчанию', () => {
+    // Набор приходит из state.json и может быть чем угодно
+    expect(toneForKind('daily', { sound: { tone: 'выдуманный' } })).toBe(DEFAULT_TONE);
+    expect(toneForKind('daily', { sound: { tone: 'выдуманный' }, kinds: { daily: { tone: 'ещё хуже' } } })).toBe(DEFAULT_TONE);
+  });
+
+  it('настройки видов переживают нормализацию, а чужие отбрасываются', () => {
+    const s = normalizeState({ settings: { notifications: { kinds: {
+      daily: { popup: false, inapp: true, sound: true, tone: 'signal' },
+      behind: { popup: true, inapp: true, sound: false, tone: 'не-набор' }
+    } } } });
+    expect(s.settings.notifications.kinds.daily.tone).toBe('signal');
+    // Чужой набор хранить незачем: он всё равно не сыграет, но в настройках смутит
+    expect(s.settings.notifications.kinds.behind.tone).toBeUndefined();
+  });
+
+  it('у вида с настройкой по умолчанию есть и карточка в приложении, и звук', () => {
+    const s = normalizeState({ settings: {} });
+    expect(s.settings.notifications.kinds.daily).toEqual({ popup: true, inapp: true, sound: true });
+  });
+});
+
