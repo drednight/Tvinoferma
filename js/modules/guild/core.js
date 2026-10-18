@@ -1,12 +1,12 @@
-// js/modules/eternals/core.js
+// js/modules/guild/core.js
 // Клановый сайт (скрытая фича): разбор страницы профиля и сводка для экрана «Сегодня».
 //
 // Модуль без DOM и без Tauri: на вход разметка (уже прогнанная через DOMParser), на выход
 // данные. Поэтому он покрыт тестами и работает в браузере и в Node.
 //
-// Разбор повторяет src-tauri/src/scripts/eternals.js — там та же логика, потому что она
+// Разбор повторяет src-tauri/src/scripts/guild.js — там та же логика, потому что она
 // выполняется в окне сайта, где модули приложения недоступны. Расхождение видно на тестах
-// по фикстуре tests/fixtures/site-eternals-profile.html.
+// по фикстуре tests/fixtures/site-guild-profile.html.
 //
 // Из страницы берём только две вещи: предстоящие события и «Пати в которых вы состоите».
 // Ники, твины и состав клана приложению не нужны.
@@ -20,7 +20,7 @@ export const RESPONSE_NO = 'no';
 export const RESPONSE_NONE = '';
 
 /** Префикс id записей клана в календаре: по нему они отличаются от своих записей. */
-export const CLAN_ENTRY_PREFIX = 'eternals-';
+export const CLAN_ENTRY_PREFIX = 'guild-';
 /** На сколько длится отмеченный клановый ивент в календаре. */
 export const CLAN_EVENT_MINUTES = 60;
 /** Месяцы в родительном падеже — так их пишет сайт («15 октября»). */
@@ -29,10 +29,10 @@ const MONTHS = ['января', 'февраля', 'марта', 'апреля', 
 const YEAR_SLACK_DAYS = 7;
 
 /**
- * @typedef {{ nick: string, cls: string, title: string }} EternalsMember
- * @typedef {{ name: string, members: EternalsMember[] }} EternalsParty
- * @typedef {{ id: string, title: string, when: string, comment: string, response: string }} EternalsEvent
- * @typedef {{ events: EternalsEvent[], parties: EternalsParty[], selfNick: string, syncedAt: number | null }} EternalsData
+ * @typedef {{ nick: string, cls: string, title: string }} GuildMember
+ * @typedef {{ name: string, members: GuildMember[] }} GuildParty
+ * @typedef {{ id: string, title: string, when: string, comment: string, response: string }} GuildEvent
+ * @typedef {{ events: GuildEvent[], parties: GuildParty[], selfNick: string, syncedAt: number | null }} GuildData
  */
 
 const PARTIES_TITLE = 'Пати в которых вы состоите';
@@ -65,7 +65,7 @@ function normalizeMember(m) {
  * Данные из state.json. Мусор не должен ломать экран «Сегодня», поэтому всё приводится
  * к известной форме: неизвестный ответ на ивент становится «без ответа».
  */
-export function normalizeEternalsData(raw) {
+export function normalizeGuildData(raw) {
   const src = raw || {};
   return {
     events: (Array.isArray(src.events) ? src.events : [])
@@ -133,7 +133,7 @@ function partyMembers(col) {
  * Всё, что не нашлось, остаётся пустым: сайт мог поменять разметку, и это не должно ронять
  * приложение.
  * @param {Element} column
- * @returns {EternalsParty[]}
+ * @returns {GuildParty[]}
  */
 export function parseParties(column) {
   if (!column) return [];
@@ -151,7 +151,7 @@ export function parseParties(column) {
 /**
  * Разбор страницы профиля.
  * @param {Document} document
- * @returns {EternalsData}
+ * @returns {GuildData}
  */
 export function parseProfileDocument(document) {
   const partiesColumn = [...document.querySelectorAll('.user__col')]
@@ -241,7 +241,7 @@ export function isClanEntry(entry) {
 /**
  * Какие записи клана должны быть в календаре: у каждого события с ответом «Пойду» — своя
  * запись на час. «Не пойду» и без ответа записи не дают.
- * @param {EternalsData} data
+ * @param {GuildData} data
  * @returns {Map<string, object>}
  */
 export function wantedClanEntries(data) {

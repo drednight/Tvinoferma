@@ -31,7 +31,7 @@ import { mountServerStatus } from './modules/servers/serverStatusView.js';
 import { mountMskClock } from './modules/servers/mskClock.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
 import { initNavBadges, refreshNavBadges } from './core/navBadges.js';
-import { bindEternals, applyEternalsVisibility, startEternalsDailySync } from './modules/eternals/page.js';
+import { bindGuild, applyGuildVisibility, startGuildDailySync } from './modules/guild/page.js';
 import { applySections, resolveSection } from './core/sections.js';
 import { bindFinance, renderFinance } from './modules/finance/page.js';
 
@@ -174,14 +174,14 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind Finance:', e);
     }
 
-    // Клан Eternals: скрытая страница, по умолчанию выключена
+    // Клан Guild: скрытая страница, по умолчанию выключена
     try {
-      bindEternals();
-      applyEternalsVisibility();
+      bindGuild();
+      applyGuildVisibility();
       // Суточное обновление сводки клана (работает, только если страница включена)
-      startEternalsDailySync();
+      startGuildDailySync();
     } catch (e) {
-      console.error('[BOOT ERROR] Failed to bind Eternals:', e);
+      console.error('[BOOT ERROR] Failed to bind Guild:', e);
     }
 
     // 4. Привязка навигации по вкладкам и счётчиков разделов
@@ -317,7 +317,7 @@ function renderActiveTab(sectionName) {
   try {
     switch (sectionName) {
       case 'today':
-        // renderToday сам вызывает renderEternalsToday в конце — второй раз звать не надо
+        // renderToday сам вызывает renderGuildToday в конце — второй раз звать не надо
         renderToday(document.getElementById('today-root'), { run: runTodayAction });
         // Список окон игры нужен и на «Сегодня» (блок запущенных окон), и на «Персонажах»
         // (кнопка закрытия окна в карточке). Он общий и меняется после запуска/закрытия,

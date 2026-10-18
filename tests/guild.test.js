@@ -1,31 +1,32 @@
-// tests/eternals.test.js
-// Разбор страницы профиля кланового сайта (pw-eternals.ru).
+// tests/guild.test.js
+// Разбор страницы профиля кланового сайта (pw-guild.ru).
 //
-// Разбор живёт в двух местах: js/modules/eternals/core.js (эталон, используется приложением
-// при чтении кэша) и src-tauri/src/scripts/eternals.js (работает в окне сайта). Здесь
+// Разбор живёт в двух местах: js/modules/guild/core.js (эталон, используется приложением
+// при чтении кэша) и src-tauri/src/scripts/guild.js (работает в окне сайта). Здесь
 // проверяются оба на одной фикстуре, чтобы правки одного не разошлись с другим.
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  parseProfileDocument, parseParties, parseEvents, normalizeEternalsData,
+  parseProfileDocument, parseParties, parseEvents, normalizeGuildData,
   unansweredEvents, responseText, summaryText,
   partyNicks, allPartyNicks, isSelfNick,
   parseEventWhen, plannerEntryFor, wantedClanEntries, CLAN_ENTRY_PREFIX,
   RESPONSE_YES, RESPONSE_NO
-} from '../js/modules/eternals/core.js';
-import { planClanEntries } from '../js/modules/eternals/plannerBridge.js';
-import { msToMskMidnight } from '../js/modules/eternals/page.js';
+} from '../js/modules/guild/core.js';
+import { planClanEntries } from '../js/modules/guild/plannerBridge.js';
+import { msToMskMidnight } from '../js/modules/guild/page.js';
+import { normalizeState } from '../js/core/state.js';
 
-const html = readFileSync('tests/fixtures/site-eternals-profile.html', 'utf8');
+const html = readFileSync('tests/fixtures/site-guild-profile.html', 'utf8');
 const doc = () => new DOMParser().parseFromString(html, 'text/html');
 const profile = () => parseProfileDocument(doc());
 
 /** Тот же скрипт, что Rust вшивает в окно клана, на фикстуре. */
 function runWindowScript() {
-  delete window.__tfEternalsInstalled;
+  delete window.__tfGuildInstalled;
   document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
   window.history.replaceState(null, '', '/index.php');
-  new Function(readFileSync('src-tauri/src/scripts/eternals.js', 'utf8'))();
+  new Function(readFileSync('src-tauri/src/scripts/guild.js', 'utf8'))();
   return JSON.parse(decodeURIComponent(window.location.hash.replace('#TFETE1_', '')));
 }
 
@@ -132,7 +133,7 @@ describe('копирование ников', () => {
 
 describe('нормализация кэша', () => {
   it('мусор в state.json не ломает данные', () => {
-    const raw = normalizeEternalsData({
+    const raw = normalizeGuildData({
       events: [{ id: ' 1 ', title: ' X ', response: 'maybe' }, { title: 'без id' }, 'нет объекта'],
       parties: [{ name: 'Основа', members: [{ nick: '#Аня', cls: '../../etc/passwd' }, { cls: 'luk' }] }, { members: [] }],
       selfNick: ' #Дреднайт ',
@@ -145,7 +146,7 @@ describe('нормализация кэша', () => {
   });
 
   it('пустое значение даёт пустую сводку', () => {
-    expect(normalizeEternalsData(undefined)).toEqual({ events: [], parties: [], selfNick: '', syncedAt: null });
+    expect(normalizeGuildData(undefined)).toEqual({ events: [], parties: [], selfNick: '', syncedAt: null });
   });
 });
 
@@ -153,7 +154,7 @@ describe('список событий', () => {
   const data = { ...profile(), syncedAt: 1 };
 
   it('ответивший ивент остаётся в данных с нужным ответом', () => {
-    const events = normalizeEternalsData({ ...data, events: [...data.events, { id: '465', title: 'ГВГ деф', response: RESPONSE_NO }] });
+    const events = normalizeGuildData({ ...data, events: [...data.events, { id: '465', title: 'ГВГ деф', response: RESPONSE_NO }] });
     expect(events.events.map(e => e.id)).toEqual(['462', '464', '465']);
     expect(events.events[2].response).toBe(RESPONSE_NO);
     expect(unansweredEvents(events).map(e => e.id)).toEqual(['464']);
@@ -289,3 +290,26 @@ describe('расписание обновления', () => {
     expect(winter).toBe(summer);
   });
 });
+
+describe('перенос настроек при переименовании eternals → guild', () => {
+  // Раздел переименовали, но ключ в сохранённых настройках у людей остался прежним.
+  // Без чтения старого ключа у всех, кто уже включал страницу клана, сбросились бы
+  // флаг и кэшированная сводка — молча, без ошибки.
+  it('берёт настройки из старого ключа eternals', () => {
+    const s = normalizeState({ settings: { eternals: { enabled: true, syncedAt: 1700000000000 } } });
+    expect(s.settings.guild.enabled).toBe(true);
+    expect(s.settings.guild.syncedAt).toBe(1700000000000);
+  });
+
+  it('новый ключ важнее старого', () => {
+    const s = normalizeState({ settings: {
+      guild: { enabled: true }, eternals: { enabled: false }
+    } });
+    expect(s.settings.guild.enabled).toBe(true);
+  });
+
+  it('без обоих ключей — умолчание', () => {
+    expect(normalizeState({ settings: {} }).settings.guild.enabled).toBe(false);
+  });
+});
+

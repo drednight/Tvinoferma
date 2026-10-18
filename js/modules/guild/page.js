@@ -1,6 +1,6 @@
-// js/modules/eternals/page.js
-// Скрытая панель клана под разделом «Сегодня» (клановый сайт Eternals).
-// Отдельной вкладки нет: панель появляется и исчезает по флагу settings.eternals.enabled
+// js/modules/guild/page.js
+// Скрытая панель клана под разделом «Сегодня» (клановый сайт Guild).
+// Отдельной вкладки нет: панель появляется и исчезает по флагу settings.guild.enabled
 // (см. state.js), который по умолчанию выключен у всех и переключается только пасхалкой
 // в разделе промокодов.
 //
@@ -12,12 +12,12 @@ import { toast } from '../../core/ui.js';
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
 import { isTauri } from '../../core/storage.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
-import { eternalsEnabled, readEternalsData, writeEternalsData } from './state.js';
+import { guildEnabled, readGuildData, writeGuildData } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import {
   summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO
 } from './core.js';
-import { openEternals, syncEternalsFromSite, respondToEvent } from './window.js';
+import { openGuild, syncGuildFromSite, respondToEvent } from './window.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
 const START_DELAY_MS = 60 * 1000;
@@ -35,37 +35,37 @@ let refreshToday = null;
  * Отдельная страница клана убрана, поэтому перерисовать можно только панель, а изменился
  * календарь — нужен весь экран.
  */
-export function setEternalsRefresh(fn) {
+export function setGuildRefresh(fn) {
   refreshToday = typeof fn === 'function' ? fn : null;
 }
 
 function renderTodayNow() {
-  (refreshToday || renderEternalsToday)();
+  (refreshToday || renderGuildToday)();
 }
 
 /** Показывает или прячет панель клана на «Сегодня» по флагу. */
-export function applyEternalsVisibility() {
-  renderEternalsToday();
+export function applyGuildVisibility() {
+  renderGuildToday();
 }
 
 /** Обработчики кнопок клана вешаются один раз на весь документ: блоки перерисовываются (календарь перезадаёт всю страницу). */
-export function bindEternals() {
-  if (document.body.dataset.eternalsBound) return;
-  document.body.dataset.eternalsBound = 'true';
+export function bindGuild() {
+  if (document.body.dataset.guildBound) return;
+  document.body.dataset.guildBound = 'true';
   document.addEventListener('click', onClick);
 }
 
 async function onClick(e) {
-  const btn = e.target.closest('[data-eternals]');
+  const btn = e.target.closest('[data-guild]');
   if (!btn || btn.disabled || !isTauri()) return;
-  const act = btn.dataset.eternals;
+  const act = btn.dataset.guild;
   if (act === 'open') {
     await run(btn, async () => {
-      await openEternals();
+      await openGuild();
       toast('Окно клана открыто. Войдите на сайте, если ещё не входили.', 'info');
     });
   } else if (act === 'refresh') {
-    await run(btn, () => syncEternals());
+    await run(btn, () => syncGuild());
   } else if (act === 'respond') {
     const { event, response } = btn.dataset;
     await run(btn, () => respond(event, response));
@@ -83,7 +83,7 @@ async function run(btn, fn) {
     toast(`Не удалось: ${err?.message || err}`, 'error');
   } finally {
     btn.disabled = false;
-    renderEternalsToday();
+    renderGuildToday();
   }
 }
 
@@ -100,25 +100,25 @@ function syncErrorText(error) {
  * Обновляет сводку и сохраняет её. Возвращает true при успехе.
  * `silent` — для проверки по расписанию: без сообщений об ошибке.
  */
-async function syncEternals({ silent = false } = {}) {
+async function syncGuild({ silent = false } = {}) {
   let report;
   try {
-    report = await syncEternalsFromSite();
+    report = await syncGuildFromSite();
   } catch (error) {
     if (!silent) toast(syncErrorText(error), 'warning');
     return false;
   }
-  await writeEternalsData(report);
+  await writeGuildData(report);
   if (!silent) toast('Сводка обновлена', 'success');
   return true;
 }
 
 /** Обновление по расписанию: молча, только при включённой панели клана. */
 async function autoSync() {
-  if (!isTauri() || !eternalsEnabled()) return;
-  if (!(await syncEternals({ silent: true }))) return;
-  if (await syncClanEntries(readEternalsData())) renderTodayNow();
-  else renderEternalsToday();
+  if (!isTauri() || !guildEnabled()) return;
+  if (!(await syncGuild({ silent: true }))) return;
+  if (await syncClanEntries(readGuildData())) renderTodayNow();
+  else renderGuildToday();
 }
 
 /** Миллисекунд до ближайшей полуночи по Москве. */
@@ -150,7 +150,7 @@ function scheduleMidnightSync() {
 }
 
 /** Обновление по расписанию: один раз через минуту после старта и потом каждый день в 00:00 МСК. */
-export function startEternalsDailySync() {
+export function startGuildDailySync() {
   setTimeout(autoSync, START_DELAY_MS);
   scheduleMidnightSync();
 }
@@ -186,15 +186,15 @@ async function respond(eventId, response) {
   // Сайт применяет отметку не мгновенно: ждём и перечитываем сводку по-настоящему,
   // чтобы календарь и панель показали то, что реально записалось.
   await new Promise((resolve) => setTimeout(resolve, APPLY_DELAY_MS));
-  const fresh = await syncEternals({ silent: true });
-  const data = readEternalsData();
+  const fresh = await syncGuild({ silent: true });
+  const data = readGuildData();
   if (!fresh) {
     // Перечитать не вышло: показываем то, что подтвердил сайт, чтобы отметка не «откатилась».
     data.events = data.events.map(ev => (ev.id === String(eventId) ? { ...ev, response } : ev));
-    await writeEternalsData(data);
+    await writeGuildData(data);
   }
   if (await syncClanEntries(data)) renderTodayNow();
-  else renderEternalsToday();
+  else renderGuildToday();
 }
 
 /**
@@ -203,7 +203,7 @@ async function respond(eventId, response) {
  * Свой ник с сайта в список не попадает.
  */
 async function copyNicks(btn) {
-  const data = readEternalsData();
+  const data = readGuildData();
   const only = btn.dataset.party;
   const party = only ? data.parties.find(p => p.name === only) : null;
   if (only && !party) {
@@ -230,42 +230,42 @@ function eventsHtml(data) {
     const going = ev.response === RESPONSE_YES;
     const out = ev.response === RESPONSE_NO;
     return `
-    <div class="eternals-event${going ? ' is-going' : ''}${out ? ' is-out' : ''}">
-      <div class="eternals-event-main">
+    <div class="guild-event${going ? ' is-going' : ''}${out ? ' is-out' : ''}">
+      <div class="guild-event-main">
         <b>${esc(ev.title)}</b> <span class="muted">${esc(ev.when)}</span>
         ${ev.comment ? `<div class="muted">${esc(ev.comment)}</div>` : ''}
       </div>
-      <div class="eternals-event-actions">
-        <span class="eternals-state">${esc(responseText(ev.response))}</span>
+      <div class="guild-event-actions">
+        <span class="guild-state">${esc(responseText(ev.response))}</span>
         <button class="btn small ${going ? 'primary' : 'secondary'}" type="button"
-                data-eternals="respond" data-event="${esc(ev.id)}" data-response="yes">Пойду</button>
+                data-guild="respond" data-event="${esc(ev.id)}" data-response="yes">Пойду</button>
         <button class="btn small ${out ? 'danger' : 'ghost'}" type="button"
-                data-eternals="respond" data-event="${esc(ev.id)}" data-response="no">Не пойду</button>
+                data-guild="respond" data-event="${esc(ev.id)}" data-response="no">Не пойду</button>
       </div>
     </div>`;
   }).join('');
-  return `<div class="eternals-events">${rows}</div>`;
+  return `<div class="guild-events">${rows}</div>`;
 }
 
 /** Один участник пати: иконка класса и ник. Свой ник помечен — в копирование он не идёт. */
 function memberHtml(member, selfNick) {
   const icon = getClassIconSrcByStem(member.cls);
-  const ico = icon ? `<img class="eternals-member-ico" src="${esc(icon)}" alt="" loading="lazy">` : '';
+  const ico = icon ? `<img class="guild-member-ico" src="${esc(icon)}" alt="" loading="lazy">` : '';
   const self = isSelfNick(member.nick, selfNick) ? ' is-self' : '';
-  return `<span class="eternals-member${self}" title="${esc(member.title || member.nick)}">${ico}<span>${esc(member.nick)}</span></span>`;
+  return `<span class="guild-member${self}" title="${esc(member.title || member.nick)}">${ico}<span>${esc(member.nick)}</span></span>`;
 }
 
 function partyHtml(party, selfNick) {
   const nicks = partyNicks(party, selfNick);
   return `
-    <div class="eternals-party">
-      <div class="eternals-party-head">
+    <div class="guild-party">
+      <div class="guild-party-head">
         <b>${esc(party.name)}</b>
         <span class="muted">${party.members.length}</span>
-        <button class="btn ghost small" type="button" data-eternals="copy-nicks" data-party="${esc(party.name)}"
+        <button class="btn ghost small" type="button" data-guild="copy-nicks" data-party="${esc(party.name)}"
                 title="Скопировать ники пати"${nicks.length ? '' : ' disabled'}>📋</button>
       </div>
-      <div class="eternals-members">${party.members.map(m => memberHtml(m, selfNick)).join('')}</div>
+      <div class="guild-members">${party.members.map(m => memberHtml(m, selfNick)).join('')}</div>
     </div>`;
 }
 
@@ -273,39 +273,39 @@ function partyHtml(party, selfNick) {
 function partiesHtml(data) {
   if (!data.parties.length) return '<p class="muted">Пати нет.</p>';
   return `
-    <div class="eternals-parties-head">
+    <div class="guild-parties-head">
       <b>Пати</b>
       <span class="muted">${data.parties.length} пати</span>
     </div>
-    <div class="eternals-parties">${data.parties.map(p => partyHtml(p, data.selfNick)).join('')}</div>`;
+    <div class="guild-parties">${data.parties.map(p => partyHtml(p, data.selfNick)).join('')}</div>`;
 }
 
 /** Блок под «Сегодня»: сводка и две колонки — события слева, пати справа. */
-export function renderEternalsToday() {
-  const box = document.getElementById('eternals-today');
+export function renderGuildToday() {
+  const box = document.getElementById('guild-today');
   if (!box) return;
-  if (!eternalsEnabled()) {
+  if (!guildEnabled()) {
     box.hidden = true;
     box.innerHTML = '';
     return;
   }
   box.hidden = false;
-  const data = readEternalsData();
+  const data = readGuildData();
   const summary = summaryText(data);
   const events = data.syncedAt
     ? eventsHtml(data)
     : '<p class="muted">Сводки ещё нет. Нажмите «Обновить»; если сайт попросит вход, откройте его и войдите.</p>';
   box.innerHTML = `
-    <section class="eternals-card">
-      <header class="eternals-card-head">
-        <b>Клан Eternals</b>
+    <section class="guild-card">
+      <header class="guild-card-head">
+        <b>Клан Guild</b>
         <span class="muted">${summary ? esc(summary) : 'сводка ещё не получена'}</span>
-        <button class="btn ghost small" type="button" data-eternals="refresh">↻ Обновить</button>
-        <button class="btn ghost small" type="button" data-eternals="open">Открыть сайт</button>
+        <button class="btn ghost small" type="button" data-guild="refresh">↻ Обновить</button>
+        <button class="btn ghost small" type="button" data-guild="open">Открыть сайт</button>
       </header>
-      <div class="eternals-cols">
-        <div class="eternals-col">${events}</div>
-        <div class="eternals-col eternals-col--parties">${partiesHtml(data)}</div>
+      <div class="guild-cols">
+        <div class="guild-col">${events}</div>
+        <div class="guild-col guild-col--parties">${partiesHtml(data)}</div>
       </div>
     </section>`;
 }

@@ -1,5 +1,5 @@
-// src-tauri/src/scripts/eternals.js
-// Скрипт окна клана Eternals (pw-eternals.ru). Внедряется во все страницы этого окна.
+// src-tauri/src/scripts/guild.js
+// Скрипт окна клана Guild (pw-guild.ru). Внедряется во все страницы этого окна.
 //
 // 1) Панель навигации сверху: назад, вперёд, обновить страницу.
 // 2) На странице профиля разбирает предстоящие события и «Пати в которых вы состоите»
@@ -11,14 +11,14 @@
 // Hash меняется через history.replaceState, а не location.hash: иначе каждая сводка
 // добавляла бы запись в историю, и кнопка «назад» переключала бы hash вместо страниц.
 //
-// Разбор повторяет js/modules/eternals/core.js: этот файл выполняется в окне сайта,
+// Разбор повторяет js/modules/guild/core.js: этот файл выполняется в окне сайта,
 // модули приложения там недоступны.
 
 (function () {
-  if (window.__tfEternalsInstalled) return;
-  window.__tfEternalsInstalled = true;
+  if (window.__tfGuildInstalled) return;
+  window.__tfGuildInstalled = true;
 
-  const NAV_ID = 'tf-eternals-nav';
+  const NAV_ID = 'tf-guild-nav';
   const NAV_HEIGHT = 36;
 
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
@@ -29,7 +29,7 @@
     if (document.getElementById(NAV_ID)) return;
 
     const style = document.createElement('style');
-    style.id = 'tf-eternals-nav-style';
+    style.id = 'tf-guild-nav-style';
     style.textContent = `
       #${NAV_ID} { position: fixed; top: 0; left: 0; right: 0; z-index: 2147483646; display: flex; align-items: center; gap: 6px;
         height: ${NAV_HEIGHT}px; padding: 0 10px; box-sizing: border-box; background: #1d2420; color: #e8efe9;
@@ -37,7 +37,7 @@
       #${NAV_ID} button { min-width: 34px; height: 26px; padding: 0 8px; border: 1px solid #3a4a40; border-radius: 6px;
         background: #27322c; color: inherit; font: inherit; cursor: pointer; }
       #${NAV_ID} button:hover { background: #34443b; }
-      #${NAV_ID} .tf-eternals-title { margin-left: 8px; font-size: 12px; opacity: 0.7; }
+      #${NAV_ID} .tf-guild-title { margin-left: 8px; font-size: 12px; opacity: 0.7; }
       html { scroll-padding-top: ${NAV_HEIGHT}px; }
       body { padding-top: ${NAV_HEIGHT}px !important; }`;
     document.head.appendChild(style);
@@ -48,7 +48,7 @@
       <button type="button" data-tf-nav="back" title="Назад" aria-label="Назад">←</button>
       <button type="button" data-tf-nav="forward" title="Вперёд" aria-label="Вперёд">→</button>
       <button type="button" data-tf-nav="reload" title="Обновить страницу" aria-label="Обновить страницу">⟳</button>
-      <span class="tf-eternals-title">Eternals Clan · Твиноферма</span>`;
+      <span class="tf-guild-title">Guild Clan · Твиноферма</span>`;
     bar.addEventListener('click', (e) => {
       const act = e.target.closest('[data-tf-nav]')?.dataset.tfNav;
       if (act === 'back') history.back();
@@ -131,7 +131,7 @@
   }
 
   // Сводка профиля. На странице входа отвечаем признаком error: 'login' — так обновление без окна не ждёт зря.
-  window.__tfEternalsScrape = function () {
+  window.__tfGuildScrape = function () {
     if (document.querySelector('.user__events, .user__col')) {
       publish('TFETE1_', { data: parseProfile(document), error: null });
       return true;
@@ -145,7 +145,7 @@
   // Отметка на ивенте тем же запросом, что у формы сайта.
   // Вердикт читаем мягко: сайт отвечает `{ status: 'success' | 'error', message }`, но если
   // разметка ответа поменяется, не хочется врать «не принял» на уже применённой отметке.
-  window.__tfEternalsRespond = async function (eventId, response) {
+  window.__tfGuildRespond = async function (eventId, response) {
     const result = { ok: false, eventId: String(eventId), response: String(response), message: '', detail: '' };
     try {
       const body = new FormData();
@@ -182,7 +182,7 @@
     console.log('[TF clan] адрес:', location.href, '| readyState:', document.readyState, '| символов текста:', text.length);
     if (text.length > 40) return;
     const box = document.createElement('div');
-    box.id = 'tf-eternals-diag';
+    box.id = 'tf-guild-diag';
     box.style.cssText = 'position:fixed;top:50px;left:16px;right:16px;z-index:2147483646;padding:14px 16px;'
       + 'background:#2a1f1f;color:#f5e6e6;border:1px solid #6b3a3a;border-radius:8px;font:14px system-ui,sans-serif';
     box.innerHTML = '<b>Страница клана не отобразилась.</b><br>'
@@ -195,7 +195,7 @@
 
   function start() {
     mountNavBar();
-    window.__tfEternalsScrape();
+    window.__tfGuildScrape();
     // Даём сайту время отрисоваться, потом проверяем содержимое
     setTimeout(checkRendered, 4000);
   }

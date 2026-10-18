@@ -1,9 +1,9 @@
-//! Клановый сайт Eternals (pw-eternals.ru): отдельное окно браузера со своим профилем.
+//! Клановый сайт Guild (pw-guild.ru): отдельное окно браузера со своим профилем.
 //!
 //! Зачем отдельный модуль, а не `open_sync_window`: окно персонажа имеет метку `sync-win-<id>`,
 //! и открыть в нём чужой сайт значит подменить окно pwonline.ru и сломать синхронизацию.
 //!
-//! Сводка профиля (события и пати) забирается командой `eternals_sync`. Если окна клана нет,
+//! Сводка профиля (события и пати) забирается командой `guild_sync`. Если окна клана нет,
 //! она открывает СКРЫТОЕ окно с тем же профилем: вход сохраняется в профиле, поэтому после
 //! первого входа обновление работает без открытия сайта. Если сессия истекла, команда
 //! возвращает ошибку `login`.
@@ -17,10 +17,10 @@ use std::time::{Duration, Instant};
 use tauri::webview::NewWindowResponse;
 use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-const ETERNALS_LABEL: &str = "eternals-win";
-const ETERNALS_URL: &str = "https://pw-eternals.ru/index.php";
+const GUILD_LABEL: &str = "guild-win";
+const GUILD_URL: &str = "https://pw-guild.ru/index.php";
 /// Скрипт окна: панель навигации, разбор профиля и отметка на ивенте. Во всех страницах окна.
-const ETERNALS_SCRIPT: &str = include_str!("scripts/eternals.js");
+const GUILD_SCRIPT: &str = include_str!("scripts/guild.js");
 /// Начало hash со сводкой профиля (или признаком «нужен вход»).
 const REPORT_HASH: &str = "#TFETE1_";
 /// Начало hash с результатом отметки на ивенте.
@@ -39,14 +39,14 @@ fn profile_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
-        .join("pw-eternals-profiles")
+        .join("pw-guild-profiles")
         .join("clan");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
     Ok(dir)
 }
 
 fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
-    app.get_webview_window(ETERNALS_LABEL)
+    app.get_webview_window(GUILD_LABEL)
 }
 
 /// Создаёт окно клана. `visible = false` — скрытое окно для фонового обновления.
@@ -54,19 +54,19 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
 /// Создаётся только из `async` команд: на Windows создание окна из синхронной команды приводит
 /// к взаимной блокировке, и `invoke` тогда не возвращается.
 fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
-    let url = Url::parse(ETERNALS_URL).map_err(|e| e.to_string())?;
+    let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
     let handle = app.clone();
-    WebviewWindowBuilder::new(app, ETERNALS_LABEL, WebviewUrl::External(url))
-        .title("Eternals Clan")
+    WebviewWindowBuilder::new(app, GUILD_LABEL, WebviewUrl::External(url))
+        .title("Guild Clan")
         .inner_size(1100.0, 800.0)
         .resizable(true)
         .visible(visible)
         .data_directory(profile_dir(app)?)
-        .initialization_script(ETERNALS_SCRIPT)
+        .initialization_script(GUILD_SCRIPT)
         .on_new_window(move |url, _features| {
             // Ссылки, которые сайт открывает в новом окне, показываем в этом же окне
             if matches!(url.scheme(), "http" | "https") {
-                if let Some(win) = handle.get_webview_window(ETERNALS_LABEL) {
+                if let Some(win) = handle.get_webview_window(GUILD_LABEL) {
                     tauri::async_runtime::spawn(async move {
                         let _ = win.navigate(url);
                     });
@@ -80,7 +80,7 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
 
 /// Открывает окно клана или поднимает уже открытое.
 #[command]
-pub async fn open_eternals_window(app: AppHandle) -> Result<(), String> {
+pub async fn open_guild_window(app: AppHandle) -> Result<(), String> {
     if let Some(win) = clan_window(&app) {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
@@ -91,7 +91,7 @@ pub async fn open_eternals_window(app: AppHandle) -> Result<(), String> {
 
 /// Закрывает окно клана.
 #[command]
-pub async fn close_eternals_window(app: AppHandle) -> Result<(), String> {
+pub async fn close_guild_window(app: AppHandle) -> Result<(), String> {
     if let Some(win) = clan_window(&app) {
         win.close().map_err(|e| e.to_string())?;
     }
@@ -100,7 +100,7 @@ pub async fn close_eternals_window(app: AppHandle) -> Result<(), String> {
 
 /// Открыто ли окно клана (видимое или скрытое).
 #[command]
-pub fn eternals_window_exists(app: AppHandle) -> bool {
+pub fn guild_window_exists(app: AppHandle) -> bool {
     clan_window(&app).is_some()
 }
 
@@ -112,7 +112,7 @@ pub fn eternals_window_exists(app: AppHandle) -> bool {
 /// - `timeout` — страница профиля не открылась за отведённое время;
 /// - `busy` — обновление уже идёт.
 #[command]
-pub async fn eternals_sync(app: AppHandle) -> Result<serde_json::Value, String> {
+pub async fn guild_sync(app: AppHandle) -> Result<serde_json::Value, String> {
     if SYNC_BUSY.swap(true, Ordering::SeqCst) {
         return Err("busy".into());
     }
@@ -159,7 +159,7 @@ async fn wait_for_hash(
 async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, String> {
     let _ = win.eval(
         "history.replaceState(null, '', location.pathname + location.search);\
-         if (window.__tfEternalsScrape) window.__tfEternalsScrape();",
+         if (window.__tfGuildScrape) window.__tfGuildScrape();",
     );
     wait_for_hash(win, REPORT_HASH, Duration::from_secs(SYNC_TIMEOUT_SECS)).await
 }
@@ -173,7 +173,7 @@ async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, Strin
 /// Возвращает `{ ok, eventId, response, message }` — ответ сайта. Ошибки приходят строкой:
 /// `login`, `timeout`, `busy`.
 #[command]
-pub async fn eternals_set_response(
+pub async fn guild_set_response(
     app: AppHandle,
     event_id: String,
     response: String,
@@ -220,7 +220,7 @@ async fn send_response(
         "if (location.hash.indexOf('#TFETA1_') === 0) history.replaceState(null, '', location.pathname + location.search);",
     );
     win.eval(&format!(
-        "if (window.__tfEternalsRespond) window.__tfEternalsRespond({}, {});",
+        "if (window.__tfGuildRespond) window.__tfGuildRespond({}, {});",
         event_id,
         serde_json::Value::String(response.to_string())
     ))

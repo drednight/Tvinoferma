@@ -1,4 +1,4 @@
-// js/modules/eternals/window.js
+// js/modules/guild/window.js
 // Окно браузера с клановым сайтом.
 //
 // Одно общее окно на приложение: у сайта свой вход, он не привязан к персонажу
@@ -15,31 +15,31 @@ async function callRust(command, args) {
 }
 
 /** Открывает окно (или поднимает уже открытое). */
-export async function openEternals(deps = {}) {
-  return (deps.invoke || callRust)('open_eternals_window');
+export async function openGuild(deps = {}) {
+  return (deps.invoke || callRust)('open_guild_window');
 }
 
 /** Закрывает окно. */
-export async function closeEternals(deps = {}) {
-  return (deps.invoke || callRust)('close_eternals_window');
+export async function closeGuild(deps = {}) {
+  return (deps.invoke || callRust)('close_guild_window');
 }
 
 /** Открыто ли окно (видимое или скрытое). */
-export async function isEternalsOpen(deps = {}) {
-  return (deps.invoke || callRust)('eternals_window_exists');
+export async function isGuildOpen(deps = {}) {
+  return (deps.invoke || callRust)('guild_window_exists');
 }
 
 /**
  * Обновляет сводку: события и пати. Работает без открытого окна, если сессия на сайте жива.
  * Возвращает `{ events, parties }`. Ошибки приходят строкой: `login`, `timeout`, `busy`.
  */
-export async function syncEternalsFromSite(deps = {}) {
-  return (deps.invoke || callRust)('eternals_sync');
+export async function syncGuildFromSite(deps = {}) {
+  return (deps.invoke || callRust)('guild_sync');
 }
 
 /** Отмечает ивент на сайте и ждёт ответа. Возвращает `{ ok, eventId, response, message }`. */
-export async function setEternalsResponse(eventId, response, deps = {}) {
-  return (deps.invoke || callRust)('eternals_set_response', { eventId: String(eventId), response });
+export async function setGuildResponse(eventId, response, deps = {}) {
+  return (deps.invoke || callRust)('guild_set_response', { eventId: String(eventId), response });
 }
 
 /**
@@ -47,5 +47,5 @@ export async function setEternalsResponse(eventId, response, deps = {}) {
  * дождётся страницы и вернёт ответ сайта. Ошибки приходят строкой: `login`, `timeout`, `busy`.
  */
 export async function respondToEvent(eventId, response, deps = {}) {
-  return setEternalsResponse(eventId, response, deps);
+  return setGuildResponse(eventId, response, deps);
 }

@@ -10,7 +10,7 @@ import { DEFAULT_STATS } from '../modules/characters/stateManager.js';
 import { characterIdFor } from './ids.js';
 import { roundCoins, normalizeCoinHistory } from './coins.js';
 import { normalizeGameCenters } from '../modules/launcher/gameCenters.js';
-import { normalizeEternalsData } from '../modules/eternals/core.js';
+import { normalizeGuildData } from '../modules/guild/core.js';
 import { normalizePreflightMode } from '../modules/launcher/preflight.js';
 import { normalizePartyIds, resolveMainPartyId, sweepPartyIds } from '../modules/parties/membership.js';
 import { normalizeSectionsSettings } from './sections.js';
@@ -232,10 +232,10 @@ function normalizeArchivedParty(input = {}) {
 /**
  * Настройки кланового сайта (скрытая фича). Рядом с флагом `enabled` лежит кэш сводки —
  * как `updates.lastCheckedAt`: это данные, а не настройка, но они маленькие и одни
- * на приложение. Флаг обязан быть строго булевым, кэш проходит через normalizeEternalsData.
+ * на приложение. Флаг обязан быть строго булевым, кэш проходит через normalizeGuildData.
  */
-function normalizeEternalsSettings(input = {}) {
-  return { ...normalizeEternalsData(input), enabled: input?.enabled === true };
+function normalizeGuildSettings(input = {}) {
+  return { ...normalizeGuildData(input), enabled: input?.enabled === true };
 }
 
 function normalizeLauncherSettings(input = {}) {
@@ -350,7 +350,9 @@ function mergeSettings(input = {}) {
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),
     browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
-    eternals: normalizeEternalsSettings(input.eternals),
+    // Раздел назывался eternals, переименован в guild. Старый ключ читаем один раз, иначе у
+    // всех, кто уже включал страницу клана, сбросился бы флаг и пропала кэшированная сводка.
+    guild: normalizeGuildSettings(input.guild ?? input.eternals),
     launcher: normalizeLauncherSettings(input.launcher),
     tray: { ...DEFAULT_SETTINGS.tray, ...(input.tray || {}) },
     freshness: { ...DEFAULT_SETTINGS.freshness, ...(input.freshness || {}) },

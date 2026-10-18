@@ -17,7 +17,7 @@ import { runPromoBatch } from './promoRunner.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
 
 // Служебная фраза скрытой панели клана: вводится в поле вместо промокода
-const SECRET_PHRASE = 'pw-eternals';
+const SECRET_PHRASE = 'pw-guild';
 const dot = (c) => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
@@ -348,10 +348,10 @@ export function openPromoDialog({ ids = [] } = {}) {
       codesRaw = dlg.body.querySelector('#promo-code')?.value ?? codesRaw;
       // Скрытая настройка: служебная фраза вместо кода переключает страницу клана и ничего не запускает
       if (codesRaw.trim().toLowerCase() === SECRET_PHRASE) {
-        const { toggleEternals } = await import('../eternals/state.js');
-        const { applyEternalsVisibility } = await import('../eternals/page.js');
-        await toggleEternals();
-        applyEternalsVisibility();
+        const { toggleGuild } = await import('../guild/state.js');
+        const { applyGuildVisibility } = await import('../guild/page.js');
+        await toggleGuild();
+        applyGuildVisibility();
         dlg.close();
         return;
       }
