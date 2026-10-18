@@ -7,7 +7,7 @@ const SCRIPTS = 'src-tauri/src/scripts';
 const cfg = loadSelectors();
 const sections = ['selectors', 'texts', 'regex'];
 const keysOf = (c) => sections.flatMap((s) => Object.keys(c[s]).map((k) => `${s}:${k}`));
-// guild.js — исключение: это скрипт окна ДРУГОГО сайта (клановый pw-guild.ru).
+// guild.js — исключение: это скрипт окна ДРУГОГО сайта (клановый pw-eternals.ru).
 // Он не подключает common.js, не ходит в __TF и разбирает чужую вёрстку, поэтому его
 // селекторы нельзя положить в конфиг парсеров pwonline.ru. Своя фикстура и тесты — в guild.test.js.
 const parserScripts = readdirSync(SCRIPTS)

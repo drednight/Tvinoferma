@@ -1,4 +1,4 @@
-//! Клановый сайт Guild (pw-guild.ru): отдельное окно браузера со своим профилем.
+//! Клановый сайт (pw-eternals.ru): отдельное окно браузера со своим профилем.
 //!
 //! Зачем отдельный модуль, а не `open_sync_window`: окно персонажа имеет метку `sync-win-<id>`,
 //! и открыть в нём чужой сайт значит подменить окно pwonline.ru и сломать синхронизацию.
@@ -18,7 +18,9 @@ use tauri::webview::NewWindowResponse;
 use tauri::{command, AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const GUILD_LABEL: &str = "guild-win";
-const GUILD_URL: &str = "https://pw-guild.ru/index.php";
+/// Адрес кланового сайта. Это настоящий домен, а не название раздела: при переименовании
+/// модуля `eternals` → `guild` его уже однажды задели, и окно открывало несуществующий сайт.
+const GUILD_URL: &str = "https://pw-eternals.ru/index.php";
 /// Скрипт окна: панель навигации, разбор профиля и отметка на ивенте. Во всех страницах окна.
 const GUILD_SCRIPT: &str = include_str!("scripts/guild.js");
 /// Начало hash со сводкой профиля (или признаком «нужен вход»).
@@ -34,12 +36,15 @@ const RESPOND_TIMEOUT_SECS: u64 = 20;
 static SYNC_BUSY: AtomicBool = AtomicBool::new(false);
 
 /// Каталог профилей клана — отдельный от профилей персонажей (`pw-sync-profiles`).
+///
+/// Имя каталога менять нельзя: это путь на диске, и смена имени бросила бы сохранённый
+/// профиль браузера вместе с входом на сайт. Переименование модуля его уже однажды задело.
 fn profile_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
         .map_err(|e| e.to_string())?
-        .join("pw-guild-profiles")
+        .join("pw-eternals-profiles")
         .join("clan");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create profile dir: {}", e))?;
     Ok(dir)
@@ -57,7 +62,7 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
     let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
     let handle = app.clone();
     WebviewWindowBuilder::new(app, GUILD_LABEL, WebviewUrl::External(url))
-        .title("Guild Clan")
+        .title("Клан")
         .inner_size(1100.0, 800.0)
         .resizable(true)
         .visible(visible)

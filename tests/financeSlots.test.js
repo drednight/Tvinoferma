@@ -37,14 +37,17 @@ describe('плитки банка одинакового размера', () => 
     for (const rem of sizes) expect(rem * 16, `шрифт ${rem}rem`).toBeGreaterThanOrEqual(11);
   });
 
-  it('у названия есть место: отступ справа и снизу под количество', () => {
-    // Без отступов длинное название налезало бы на «×7»
+  it('у названия есть место, а количество не отнимает треть плитки', () => {
+    // Отступ снизу — под «×7». Справа места не резервируем: плитка узкая, и отступ в 20px
+    // съедал треть ширины — короткие названия начинали переноситься.
     const padding = rule('\\.slot\\.is-filled').match(/padding:\s*([^;]+);/);
     expect(padding).toBeTruthy();
     const parts = padding[1].trim().split(/\s+/);
-    expect(parts.length, `padding: ${padding[1]}`).toBe(4);
     const px = (v) => Number(String(v).replace(/[a-z]+$/, ''));
-    expect(px(parts[1]), `отступ справа под количество (${padding[1]})`).toBeGreaterThan(0);
-    expect(px(parts[2]), `отступ снизу под количество (${padding[1]})`).toBeGreaterThan(0);
+    const right = parts.length === 4 ? px(parts[1]) : px(parts[1]);
+    const bottom = parts.length === 4 ? px(parts[2]) : px(parts[1]);
+    expect(bottom, `отступ снизу под количество (${padding[1]})`).toBeGreaterThan(0);
+    // Справа — только базовые 3px: больше означало бы, что текст снова стал ужиматься
+    expect(right, `отступ справа (${padding[1]})`).toBeLessThanOrEqual(6);
   });
 });
