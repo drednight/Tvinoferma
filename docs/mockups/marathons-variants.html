@@ -1,0 +1,816 @@
+<!doctype html>
+<!--
+  docs/mockups/marathons-variants.html
+  Три варианта списка раздела «Марафоны» — по одному и тому же набору данных.
+
+  Данные — из tests/fixtures/ui-demo-state.json: «Летний марафон» (4 участника, 3 задания
+  по 10 проверок, бонус «Летний ларец», последняя сверка 04.10) и папка «Лето 2026».
+  Даты сдвинуты к текущему игровому дню (17.10): в фикстуре марафон заканчивается 8 октября,
+  из-за чего на «сегодня» все марафоны попадают в состояние «ждут завершения» и сравнивать нечего.
+  Персонажи и суммы вымышленные.
+
+  Оформление — настоящие классы приложения (.mr-*, .btn, .panel, .kpi-grid), подключены
+  css/core/* и css/modules/marathons.css. Своё только раскладка вариантов.
+
+  Прототип, не часть приложения: ничего не сохраняет и никуда не ходит.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Марафоны: три варианта списка</title>
+    <link rel="stylesheet" href="/css/core/variables.css" />
+    <link rel="stylesheet" href="/css/core/base.css" />
+    <link rel="stylesheet" href="/css/core/layout.css" />
+    <link rel="stylesheet" href="/css/core/components.css" />
+    <link rel="stylesheet" href="/css/modules/marathons.css" />
+    <style>
+      body {
+        padding: 24px 28px 80px;
+      }
+      .proto-head {
+        max-width: 1000px;
+        margin-bottom: 22px;
+      }
+      .proto-head h1 {
+        margin: 0 0 8px;
+        font-size: 1.5rem;
+      }
+      .proto-head p {
+        margin: 0 0 6px;
+        color: var(--text-dim);
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+      .proto-note {
+        color: var(--text-faint);
+        font-size: 0.8rem;
+        line-height: 1.5;
+      }
+      .variant {
+        margin-bottom: 54px;
+        max-width: 100%;
+      }
+      .variant-title {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 16px;
+        margin-bottom: 12px;
+        border: 1px solid var(--accent-line);
+        border-radius: var(--radius-sm);
+        background: var(--accent-soft);
+      }
+      .variant-title h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+      .variant-title span {
+        color: var(--text-dim);
+        font-size: 0.82rem;
+      }
+      .variant-note {
+        max-width: 108ch;
+        margin: 0 0 14px;
+        color: var(--text-dim);
+        font-size: 0.86rem;
+        line-height: 1.5;
+      }
+      .tag {
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+      }
+      .tag.rec {
+        border-color: var(--accent-line);
+        color: var(--accent);
+        background: var(--surface-1);
+      }
+      .tiny {
+        font-size: 0.72rem;
+      }
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+      .vbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* --- Вариант A: дела на сегодня --- */
+      .attn {
+        border: 1px solid var(--warning);
+        border-radius: var(--radius);
+        background: var(--surface-1);
+        overflow: hidden;
+      }
+      .attn-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        background: var(--warning-soft);
+        border-bottom: 1px solid var(--border);
+      }
+      .attn-head strong {
+        font-size: 0.92rem;
+      }
+      .attn-row {
+        display: grid;
+        grid-template-columns: minmax(190px, 1.1fr) minmax(150px, 1fr) 132px 116px auto;
+        gap: 12px;
+        align-items: center;
+        padding: 9px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .attn-row:last-child {
+        border-bottom: 0;
+      }
+      .attn-who {
+        display: grid;
+        gap: 1px;
+      }
+      .attn-who small {
+        color: var(--text-faint);
+        font-size: 0.74rem;
+      }
+      .attn-task {
+        font-size: 0.86rem;
+      }
+      .attn-nums {
+        display: grid;
+        gap: 3px;
+      }
+      .attn-nums b {
+        font-variant-numeric: tabular-nums;
+      }
+      .attn-actions {
+        display: flex;
+        gap: 6px;
+        justify-content: flex-end;
+      }
+      .mr-row .mr-chip,
+      .attn-row .mr-chip {
+        justify-self: start;
+      }
+      .mr-row {
+        display: grid;
+        grid-template-columns: minmax(210px, 1.3fr) 116px minmax(160px, 1fr) 96px 104px 128px auto;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        background: var(--surface-1);
+      }
+      .mr-row + .mr-row {
+        margin-top: 8px;
+      }
+      .mr-row-title {
+        display: grid;
+        gap: 2px;
+      }
+      .mr-row-title small {
+        color: var(--text-faint);
+        font-size: 0.74rem;
+      }
+      .mr-row-prog {
+        display: grid;
+        gap: 3px;
+      }
+      .mr-row-prog b {
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .mr-digits {
+        font-variant-numeric: tabular-nums;
+        font-size: 0.86rem;
+      }
+
+      /* --- Вариант B: плотная таблица --- */
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .chip {
+        font: inherit;
+        font-size: 0.78rem;
+        padding: 3px 10px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border);
+        background: var(--surface-2);
+        color: var(--text-dim);
+      }
+      .chip.on {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .mr-table-wide {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.84rem;
+      }
+      .mr-table-wide th {
+        text-align: left;
+        font-weight: 600;
+        color: var(--text-dim);
+        font-size: 0.76rem;
+        text-transform: lowercase;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border-strong);
+        white-space: nowrap;
+      }
+      .mr-table-wide td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: middle;
+      }
+      .mr-table-wide tr.is-folder td {
+        background: var(--surface-2);
+        color: var(--text-dim);
+        font-size: 0.8rem;
+        padding: 6px 10px;
+      }
+      .mr-table-wide tr.is-active td {
+        background: var(--accent-soft);
+      }
+      .mr-table-wide tr.is-dim td {
+        opacity: 0.62;
+      }
+      .t-name {
+        display: grid;
+        gap: 1px;
+      }
+      .t-name small {
+        color: var(--text-faint);
+        font-size: 0.72rem;
+      }
+      .t-prog {
+        display: grid;
+        gap: 3px;
+        min-width: 128px;
+      }
+      .t-prog b {
+        font-size: 0.76rem;
+        font-variant-numeric: tabular-nums;
+      }
+      .t-num {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .t-sort {
+        color: var(--accent);
+      }
+
+      /* --- Вариант C: сроки --- */
+      .tl {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface-1);
+        padding: 14px;
+      }
+      .tl-grid {
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr);
+        gap: 8px 10px;
+        align-items: center;
+      }
+      .tl-corner {
+        display: grid;
+        gap: 1px;
+      }
+      .tl-corner small,
+      .tl-name small {
+        color: var(--text-faint);
+        font-size: 0.72rem;
+      }
+      .tl-head {
+        display: grid;
+        grid-template-columns: repeat(9, minmax(0, 1fr));
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 4px;
+      }
+      .tl-head span {
+        font-size: 0.72rem;
+        color: var(--text-faint);
+        text-align: center;
+        text-transform: capitalize;
+      }
+      .tl-name {
+        display: grid;
+        gap: 1px;
+      }
+      .tl-track {
+        position: relative;
+        height: 30px;
+        border-radius: var(--radius-xs);
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .tl-tick {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: var(--border-strong);
+      }
+      .tl-span {
+        position: absolute;
+        top: 4px;
+        height: 22px;
+        box-sizing: border-box;
+        border-radius: 4px;
+        background: var(--accent-soft);
+        border: 1px solid var(--accent-line);
+        overflow: hidden;
+      }
+      .tl-span.is-series {
+        background: color-mix(in srgb, var(--accent-2) 24%, transparent);
+        border-color: color-mix(in srgb, var(--accent-2) 55%, transparent);
+      }
+      .tl-span.is-done {
+        background: var(--success-soft);
+        border-color: color-mix(in srgb, var(--success) 45%, transparent);
+      }
+      .tl-span b {
+        font-size: 0.72rem;
+        padding: 0 6px;
+        white-space: nowrap;
+        color: var(--text);
+      }
+      .tl-danger {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        background: var(--danger-soft);
+      }
+      .tl-now {
+        position: absolute;
+        top: -4px;
+        bottom: -4px;
+        width: 2px;
+        background: var(--danger);
+      }
+      .tl-now::after {
+        content: 'сегодня';
+        position: absolute;
+        top: -16px;
+        left: -18px;
+        font-size: 0.7rem;
+        color: var(--danger);
+      }
+      .tl-legend {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        font-size: 0.76rem;
+        color: var(--text-dim);
+      }
+      .tl-legend i {
+        display: inline-block;
+        width: 11px;
+        height: 11px;
+        border-radius: 3px;
+        margin-right: 5px;
+        vertical-align: -1px;
+      }
+      .lg-accent {
+        background: var(--accent-soft);
+        border: 1px solid var(--accent-line);
+      }
+      .lg-danger {
+        background: var(--danger-soft);
+      }
+      .lg-series {
+        background: color-mix(in srgb, var(--accent-2) 24%, transparent);
+        border: 1px solid color-mix(in srgb, var(--accent-2) 55%, transparent);
+      }
+
+      /* Узкое окно: строки разворачиваются в две колонки, подпись занимает обе.
+         Иначе семь колонок не помещаются и страница едет вбок. */
+      @media (max-width: 1100px) {
+        .mr-row,
+        .attn-row {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          row-gap: 10px;
+        }
+        .mr-row-title,
+        .attn-who {
+          grid-column: 1 / -1;
+        }
+        .mr-row .mr-bar,
+        .t-prog .mr-bar {
+          min-width: 0;
+        }
+        .mr-digits,
+        .attn-nums {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+        .attn-actions {
+          justify-content: flex-start;
+        }
+        .tl-grid {
+          grid-template-columns: 112px minmax(0, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="proto-head">
+      <h1>Марафоны: три варианта списка</h1>
+      <p>
+        Один и тот же набор данных во всех трёх: «Летний марафон» (08.10 — 24.10, 4 участника,
+        3 задания по 10 проверок, прогресс 65%, двое не успевают, заработано 15 400 из 20 000 ДМ),
+        «Осенний ивент» (20.10 — 10.11, ещё не начался), папка «Осень 2026» с обоими внутри.
+      </p>
+      <p class="proto-note">
+        Оформление — настоящие классы приложения: <code>.mr-overview</code>, <code>.mr-card</code>,
+        <code>.mr-stat</code>, <code>.mr-chip</code>, <code>.mr-bar</code>. Разметку можно перенести
+        в приложение почти без правок. Даты в фикстуре заканчиваются 8 октября — в прототипе они
+        сдвинуты к текущему дню, иначе марафон был бы в состоянии «ждут завершения».
+      </p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ВАРИАНТ A                                                    -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="variant-title">
+        <h2>Вариант A — «Дела на сегодня»</h2>
+        <span>сверху то, что горит; каталог марафонов ниже</span>
+        <span class="tag rec">рекомендую</span>
+      </div>
+      <p class="variant-note">
+        Раздел перестаёт быть каталогом и становится списком дел. Первым блоком — персонажи и
+        задания, которые не успевают или по которым нет свежих данных: их мало, они всегда одни и
+        те же, и именно они требуют действия. Марафоны ниже становятся строками, а не карточками:
+        название, сроки, полоса прогресса, кто не успевает, монеты, свежесть сверки. Папки и
+        завершённые свёрнуты — за ними не ходят каждый день.
+      </p>
+
+      <div class="stack">
+        <div class="mr-overview">
+          <span class="mr-ov mr-ov-active"><b>1</b> идёт</span>
+          <span class="mr-ov mr-ov-upcoming"><b>1</b> скоро</span>
+          <span class="mr-ov mr-ov-coins">🪙 <b>15 400</b> заработано</span>
+        </div>
+
+        <div class="attn">
+          <div class="attn-head">
+            <span aria-hidden="true">⚠️</span>
+            <strong>Требует внимания</strong>
+            <span class="muted">2 персонажа · из 2 марафонов</span>
+            <span style="flex: 1"></span>
+            <button class="btn small" type="button">🔄 Сверить всё</button>
+          </div>
+          <div class="attn-row">
+            <div class="attn-who">
+              <strong>Мираж_77</strong>
+              <small>Фарм-Крипта · Маг</small>
+            </div>
+            <div class="attn-task">Ежедневный вход · 3 из 10</div>
+            <div class="attn-nums">
+              <b class="mr-red">запас 0 дн.</b>
+              <small class="tiny muted">осталось 2 дня марафона</small>
+            </div>
+            <div><span class="mr-chip mr-active">⚠ не успевает</span></div>
+            <div class="attn-actions">
+              <button class="btn small primary" type="button">Отметить</button>
+              <button class="btn small ghost" type="button" title="Открыть карточку ячейки">Подробнее</button>
+            </div>
+          </div>
+          <div class="attn-row">
+            <div class="attn-who">
+              <strong>Ночной_Бард</strong>
+              <small>Марафон · Бард</small>
+            </div>
+            <div class="attn-task">Все три задания · нет данных</div>
+            <div class="attn-nums">
+              <b>0 из 30</b>
+              <small class="tiny muted">сверка 3 ч назад, заходил давно</small>
+            </div>
+            <div><span class="mr-chip mr-upcoming">🔄 не сверяли</span></div>
+            <div class="attn-actions">
+              <button class="btn small" type="button">Сверить</button>
+              <button class="btn small ghost" type="button">Войти на сайт</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="vbar" style="margin: 0 2px 8px">
+            <strong>Идут сейчас</strong>
+            <span class="muted tiny">сортировка: по сроку окончания</span>
+          </div>
+          <div class="mr-row">
+            <div class="mr-row-title">
+              <strong>Летний марафон</strong>
+              <small>📅 08.10 — 24.10 · осталось 7 дней</small>
+            </div>
+            <span class="mr-chip mr-active">Идёт</span>
+            <div class="mr-row-prog">
+              <div class="mr-bar"><span style="width: 65%"></span></div>
+              <b>65% · 52 из 80 отметок</b>
+            </div>
+            <div class="mr-digits"><span class="mr-red">2</span> <span class="muted tiny">не успевают</span></div>
+            <div class="mr-digits"><span class="mr-gold">🪙 15 400</span></div>
+            <div class="mr-digits muted tiny">🔄 3 ч назад</div>
+            <div class="attn-actions">
+              <button class="btn small ghost" type="button" title="Сверить с сайтом">🔄</button>
+              <button class="btn small" type="button">Открыть</button>
+            </div>
+          </div>
+        </div>
+
+        <details class="panel fold">
+          <summary><h3>⏳ Скоро · 1</h3><p class="muted">Ещё не начался — задания не засчитываются.</p></summary>
+          <div class="mr-row" style="margin-top: 10px">
+            <div class="mr-row-title">
+              <strong>Осенний ивент</strong>
+              <small>📅 20.10 — 10.11 · начнётся через 3 дня</small>
+            </div>
+            <span class="mr-chip mr-upcoming">Скоро</span>
+            <div class="mr-row-prog">
+              <div class="mr-bar"><span style="width: 0%"></span></div>
+              <b>2 участника · 1 задание</b>
+            </div>
+            <div class="mr-digits muted tiny">—</div>
+            <div class="mr-digits muted tiny">—</div>
+            <div class="mr-digits muted tiny">не сверяли</div>
+            <div class="attn-actions"><button class="btn small" type="button">Открыть</button></div>
+          </div>
+        </details>
+
+        <details class="panel fold">
+          <summary><h3>📁 Папки · 1</h3><p class="muted">Мало: «Осень 2026» — 2 марафона.</p></summary>
+          <div class="mr-row" style="margin-top: 10px">
+            <div class="mr-row-title">
+              <strong>📁 Осень 2026</strong>
+              <small>Все осенние события</small>
+            </div>
+            <span class="mr-chip mr-active">Идёт</span>
+            <div class="mr-row-prog">
+              <div class="mr-bar"><span style="width: 65%"></span></div>
+              <b>2 марафона</b>
+            </div>
+            <div class="mr-digits muted tiny">2</div>
+            <div class="mr-digits"><span class="mr-gold">🪙 15 400</span></div>
+            <div class="mr-digits muted tiny">—</div>
+            <div class="attn-actions"><button class="btn small" type="button">Открыть</button></div>
+          </div>
+        </details>
+
+        <details class="panel fold">
+          <summary><h3>🏁 Завершённые · 4</h3><p class="muted">Архив: награды зафиксированы.</p></summary>
+        </details>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- ВАРИАНТ B                                                    -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="variant-title">
+        <h2>Вариант B — «Плотная таблица»</h2>
+        <span>одна строка на марафон, девять колонок, без карточек</span>
+      </div>
+      <p class="variant-note">
+        Каталог без отдельного «тревожного» блока: всё сравнивается в колонках, марафоны разложены
+        по одной строке, папка сворачивает своих детей в строки ниже. Выигрывает, когда марафонов
+        много (пять и больше) и ими надо сравнивать между собой, а не разбирать по одному. Проигрывает
+        то, ради чего делается половина работы в приложении: здесь не видно, кому конкретно
+        не везёт, — придётся открывать марафон.
+      </p>
+
+      <div class="stack">
+        <div class="vbar">
+          <div class="chips">
+            <button class="chip on" type="button">Идут · 1</button>
+            <button class="chip" type="button">Скоро · 1</button>
+            <button class="chip" type="button">Ждут · 0</button>
+            <button class="chip" type="button">Завершённые · 4</button>
+            <button class="chip" type="button">Все · 6</button>
+          </div>
+          <div class="chips">
+            <button class="chip on" type="button">Папки свернуты</button>
+            <button class="chip" type="button">Свежесть сверки</button>
+          </div>
+        </div>
+
+        <div class="tf-mx-wrap">
+          <table class="mr-table-wide">
+            <thead>
+              <tr>
+                <th>Марафон</th>
+                <th>Сроки</th>
+                <th>Осталось</th>
+                <th>Прогресс <span class="t-sort">↓</span></th>
+                <th>Не успевают</th>
+                <th>Участники</th>
+                <th>Монеты</th>
+                <th>Сверка</th>
+                <th aria-label="Действия"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="is-active">
+                <td>
+                  <div class="t-name">
+                    <strong>Летний марафон</strong>
+                    <small>3 задания · бонус «Летний ларец»</small>
+                  </div>
+                </td>
+                <td class="t-num">08.10 — 24.10</td>
+                <td class="t-num mr-red">7 дней</td>
+                <td>
+                  <div class="t-prog">
+                    <div class="mr-bar"><span style="width: 65%"></span></div>
+                    <b>65% · 52/80</b>
+                  </div>
+                </td>
+                <td><span class="mr-red">2</span></td>
+                <td class="t-num">4</td>
+                <td class="t-num"><span class="mr-gold">15 400</span> <small class="muted">/ 20 000</small></td>
+                <td class="tiny muted">3 ч назад</td>
+                <td>
+                  <button class="icon-btn" type="button" title="Сверить с сайтом">🔄</button>
+                  <button class="btn small ghost" type="button">Открыть</button>
+                </td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="t-name">
+                    <strong>Осенний ивент</strong>
+                    <small>1 задание</small>
+                  </div>
+                </td>
+                <td class="t-num">20.10 — 10.11</td>
+                <td class="t-num">начнётся через 3 дня</td>
+                <td>
+                  <div class="t-prog">
+                    <div class="mr-bar"><span style="width: 0%"></span></div>
+                    <b class="muted">не начался</b>
+                  </div>
+                </td>
+                <td class="muted">—</td>
+                <td class="t-num">2</td>
+                <td class="muted">—</td>
+                <td class="tiny muted">не сверяли</td>
+                <td><button class="btn small ghost" type="button">Открыть</button></td>
+              </tr>
+              <tr class="is-folder">
+                <td colspan="9">📁 Осень 2026 · 2 марафона · 🪙 15 400</td>
+              </tr>
+              <tr class="is-dim">
+                <td>
+                  <div class="t-name">
+                    <strong>Осенний кубок</strong>
+                    <small>2 задания · внутри «Осень 2026»</small>
+                  </div>
+                </td>
+                <td class="t-num">28.09 — 05.10</td>
+                <td class="t-num">ждали сверки 12 дней</td>
+                <td>
+                  <div class="t-prog">
+                    <div class="mr-bar"><span style="width: 100%"></span></div>
+                    <b>100% · 16/16</b>
+                  </div>
+                </td>
+                <td class="muted">—</td>
+                <td class="t-num">4</td>
+                <td class="t-num"><span class="mr-gold">4 600</span></td>
+                <td class="tiny muted">12 дней назад</td>
+                <td><button class="btn small ghost" type="button">Открыть</button></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td><strong>Всего по видимым</strong></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td><strong>2</strong></td>
+                <td></td>
+                <td class="t-num"><strong><span class="mr-gold">20 000</span></strong></td>
+                <td colspan="2"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- ВАРИАНТ C                                                    -->
+    <!-- ============================================================ -->
+    <section class="variant">
+      <div class="variant-title">
+        <h2>Вариант C — «Сроки»</h2>
+        <span>шкала от 1 октября до 15 ноября, марафон — полоса на ней</span>
+      </div>
+      <p class="variant-note">
+        Главный вопрос к марафону — «когда он кончается», и на карточках это надо вычитывать из
+        двух дат в мелкой строке. Здесь вместо этого сразу видна шкала: где пересекаются два
+        марафона, где «горячие» последние дни заданий (подсвеченная полоса на конце), сколько
+        осталось. Работает на любом количестве событий. Цена — появляется новый способ думать о
+        разделе и нужна шкала, которая не помещается на узком окне: там придётся сжимать её до
+        месяца или уводить в горизонтальную прокрутку.
+      </p>
+
+      <div class="stack">
+        <div class="mr-overview">
+          <span class="mr-ov mr-ov-active"><b>1</b> идёт</span>
+          <span class="mr-ov mr-ov-ended"><b>1</b> ждёт сверки</span>
+          <span class="mr-ov mr-ov-coins">🪙 <b>15 400</b> заработано</span>
+        </div>
+
+        <div class="tl">
+          <div class="tl-grid">
+            <div class="tl-corner">
+              <strong>Марафон</strong>
+              <small>срок</small>
+            </div>
+            <div class="tl-head">
+              <span>окт</span><span>11</span><span>18</span><span>25</span><span>ноя</span>
+              <span>8</span><span>15</span><span>22</span><span>29</span>
+            </div>
+
+            <div class="tl-name">
+              <strong>Летний марафон</strong>
+              <small>3 задания · 4 участника</small>
+            </div>
+            <div class="tl-track">
+              <div class="tl-danger" style="left: 88%; right: 0"></div>
+              <div class="tl-span" style="left: 0; width: 66%"><b>65% · 🪙 15 400</b></div>
+              <div class="tl-now" style="left: 46%"></div>
+            </div>
+
+            <div class="tl-name">
+              <strong>Осенний кубок</strong>
+              <small>ждёт сверки 12 дней</small>
+            </div>
+            <div class="tl-track">
+              <div class="tl-span is-done" style="left: 0; width: 20%"><b>100% · 🏁</b></div>
+            </div>
+
+            <div class="tl-name">
+              <strong>Осенний ивент</strong>
+              <small>начнётся 20.10</small>
+            </div>
+            <div class="tl-track">
+              <div class="tl-span is-series" style="left: 54%; width: 44%">
+                <b>не начался · 2 участника</b>
+              </div>
+            </div>
+
+            <div class="tl-name">
+              <strong>Зимний марафон</strong>
+              <small>пока не создан</small>
+            </div>
+            <div class="tl-track">
+              <div class="tl-tick" style="left: 18%"></div>
+            </div>
+          </div>
+
+          <div class="tl-legend">
+            <span><i class="lg-accent"></i>идёт</span>
+            <span><i class="lg-danger"></i>последние дни заданий — риск не успеть</span>
+            <span><i class="lg-series"></i>ещё не начался</span>
+            <span class="muted">красная черта — сегодня, 17 октября</span>
+          </div>
+        </div>
+
+        <div class="mr-row" style="margin-top: 4px">
+          <div class="mr-row-title">
+            <strong>Летний марафон</strong>
+            <small>📅 08.10 — 24.10 · осталось 7 дней</small>
+          </div>
+          <span class="mr-chip mr-active">Идёт</span>
+          <div class="mr-row-prog">
+            <div class="mr-bar"><span style="width: 65%"></span></div>
+            <b>65% · 52 из 80 отметок</b>
+          </div>
+          <div class="mr-digits"><span class="mr-red">2</span> <span class="muted tiny">не успевают</span></div>
+          <div class="mr-digits"><span class="mr-gold">🪙 15 400</span></div>
+          <div class="mr-digits muted tiny">🔄 3 ч назад</div>
+          <div class="attn-actions">
+            <button class="btn small ghost" type="button" title="Сверить с сайтом">🔄</button>
+            <button class="btn small" type="button">Открыть</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </body>
+</html>
