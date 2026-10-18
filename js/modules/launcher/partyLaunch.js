@@ -173,6 +173,50 @@ async function openGameCentersForFix(pre, opts) {
  *   Не указан — берётся GameCenter, которым пользуется больше всего участников (pickMajorityGc).
  *   interactive: false — без экрана проверок (запуск из трея: окно приложения может быть скрыто).
  */
+/**
+ * Кого стоит повторить: не запустились, но и не отменены пользователем.
+ *
+ * Отменённые повторять нельзя — человек сам остановил запуск.
+ */
+export function retryableCharacters(characters, results) {
+  const failed = new Set(
+    (results || []).filter((r) => !r.ok && !r.cancelled).map((r) => String(r.id))
+  );
+  return characters.filter((c) => failed.has(String(c.id)));
+}
+
+/**
+ * Повторный проход по персонажам, которые не запустились.
+ *
+ * Зачем: часть отказов временная, а не «этот персонаж не запускается никогда» — GameCenter не
+ * успел закрыться между окнами, окно клиента не появилось за отведённое время. Второй проход
+ * по тем же персонажам это снимает, и повторять запуск всей пати вручную не нужно.
+ *
+ * Возвращает объединённый список: удачный повтор заменяет провал, неудачный — оставляет
+ * первую ошибку (второй раз то же самое только на словах). Замеры этапов складываются, иначе
+ * в журнале «Запуски» потерялась бы половина времени.
+ */
+export function mergeLaunchResults(first, second) {
+  if (!second?.length) return first;
+  const merged = first.map((r) => {
+    const again = second.find((x) => String(x.id) === String(r.id));
+    if (!again || r.ok || r.cancelled) return r;
+    return again.ok ? { ...again, ms: (r.ms ?? 0) + (again.ms ?? 0) } : r;
+  });
+  // `stages` — не элемент массива, а свойство: переборы и фильтры работают как раньше
+  Object.defineProperty(merged, 'stages', {
+    value: {
+      gcClose: (first.stages?.gcClose || 0) + (second.stages?.gcClose || 0),
+      account: (first.stages?.account || 0) + (second.stages?.account || 0),
+      clientWait: (first.stages?.clientWait || 0) + (second.stages?.clientWait || 0),
+      delay: (first.stages?.delay || 0) + (second.stages?.delay || 0),
+      total: (first.stages?.total || 0) + (second.stages?.total || 0)
+    },
+    enumerable: false
+  });
+  return merged;
+}
+
 export async function launchGroup(title, characters, opts = {}) {
   if (active) {
     toast('Запуск уже идёт: дождитесь окончания или отмените его (док задач внизу)', 'error');
@@ -240,7 +284,7 @@ export async function launchGroup(title, characters, opts = {}) {
       task.log(`GameCenter «${gcName}» — у ${group.count} из ${group.total}: запускаем из него, у остальных — из доступного`);
     }
 
-    const results = await launchCharacters(ready, {
+    const firstPass = await launchCharacters(ready, {
       signal,
       gcId,
       onStart: (c) => task.setStep(`${c.nick}: запуск…`),
@@ -250,6 +294,28 @@ export async function launchGroup(title, characters, opts = {}) {
         task.progress(done, total);
       }
     });
+
+    // Повторный проход по тем, кто не запустился. Часть отказов временная (GameCenter не успел
+    // закрыться, окно клиента не появилось за отведённое время), и второй проход по тем же
+    // персонажам это снимает — иначе пришлось бы повторять запуск всей пати вручную.
+    let results = firstPass;
+    const retry = signal.cancelled ? [] : retryableCharacters(ready, firstPass);
+    if (retry.length) {
+      const nicks = retry.map((c) => c.nick || c.id).join(', ');
+      task.log(`Не запустились: ${nicks}. Повторяю их — ${retry.length} ${retry.length === 1 ? 'окно' : 'окон'}`, 'warn');
+      const second = await launchCharacters(retry, {
+        signal,
+        gcId,
+        onStart: (c) => task.setStep(`${c.nick}: повтор…`),
+        onDone: (e) => {
+          task.log(`${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
+        }
+      });
+      results = mergeLaunchResults(firstPass, second);
+      const revived = second.filter((r) => r.ok).length;
+      if (revived) task.log(`Повтор помог: запустилось ${revived} из ${retry.length}`, 'ok');
+    }
+
     // Проверяем, что окна действительно получили название «Ник — Класс» и значок: окно клиента
     // появляется не сразу, и игра может переписать заголовок. Где не вышло — пробуем ещё раз.
     try {
