@@ -181,6 +181,43 @@ describe('задачи на день: действия', () => {
   });
 });
 
+describe('повтор в списке задач на день', () => {
+  // Свойство отметок по дням: у повтора состояние своё у каждого вхождения.
+  const daily = (title, extra = {}) => normalizePlannerEntry({
+    title, date: '2026-10-04', recurrence: 'daily', ...extra
+  });
+
+  it('дела, отмеченные вчера, сегодня приходят неотмеченными', () => {
+    state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
+    renderToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-todo-toggle]');
+    expect(box.checked).toBe(false);
+    expect(document.querySelector('.todo-status').textContent.trim()).toBe('Ожидает');
+    // Во вчерашнем дне та же запись осталась отмеченной
+    expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
+  });
+
+  it('отметка сегодняшнего дня не трогает вчерашнее вхождение', async () => {
+    state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
+    renderToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-todo-toggle]');
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
+    expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
+  });
+
+  it('кнопка статуса перебирает состояние именно сегодняшнего дня', async () => {
+    state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
+    renderToday(document.getElementById('today-root'), {});
+    const click = () => document.querySelector('.todo-status').click();
+    click(); await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('doing'));
+    click(); await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
+    // Вчерашний день остался выполненным, а не переписан новым состоянием
+    expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
+  });
+});
+
 describe('сколько задач видно сразу', () => {
   const rowsOf = (host, sel) => host.querySelector(sel).style.getPropertyValue('--todo-rows');
 

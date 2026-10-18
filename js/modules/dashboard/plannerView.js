@@ -2,7 +2,7 @@
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
-import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate } from './planner.js';
+import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate, entryStatusForDate, setEntryStatusForDate } from './planner.js';
 import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
 import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, MIN_BLOCK_HEIGHT } from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
@@ -325,8 +325,10 @@ export function openPlannerDay(date, deps = {}) {
   modal.querySelectorAll('[data-planner-done]').forEach(button => button.addEventListener('click', async () => {
     const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDone);
     if (!entry) return;
-    entry.status = entry.status === 'done' ? 'todo' : 'done';
-    entry.updatedAt = new Date().toISOString();
+    // Отметка относится к открытому дню: у повтора состояние своё у каждого вхождения,
+    // и «Готово» в среду не должен отмечать запись за понедельник.
+    const next = entryStatusForDate(entry, date) === 'done' ? 'todo' : 'done';
+    if (!setEntryStatusForDate(entry, date, next)) return;
     await persist();
     openPlannerDay(date, deps);
     deps.render?.();
@@ -358,11 +360,14 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
   // Повторяющаяся запись на другой день: в списке это вхождение, а не сама запись.
   // Правка меняет основную запись и все её повторения — об этом честно сказано в форме.
   const otherOccurrence = edit && entry.date !== date;
+  // Состояние в форме — состояние того вхождения, которое открыто, а не всей записи:
+  // у повтора у каждого дня оно своё, и форма обязана показывать то же, что показал день.
+  const shownStatus = edit ? entryStatusForDate(entry, date) : 'todo';
 
   showModal({
     title: edit ? 'Изменить запись' : 'Новая запись',
     content: `<form class="planner-form">
-      ${otherOccurrence ? `<p class="muted planner-form-note">Запись повторяется и в этот день тоже (${escapeHtml(entry.date)} — начало повтора). Изменения применятся ко всем её повторениям.</p>` : ''}
+      ${otherOccurrence ? `<p class="muted planner-form-note">Запись повторяется и в этот день тоже (${escapeHtml(entry.date)} — начало повтора). Поля изменятся во всех её повторениях; состояние относится только к ${escapeHtml(date)}.</p>` : ''}
       <label class="field">Название *<input class="input" name="title" maxlength="160" value="${escapeHtml(edit ? entry.title : '')}" autofocus></label>
       <div class="two-cols">
         <label class="field">Дата<input class="input" type="date" name="date" value="${edit ? entry.date : date}"></label>
@@ -376,7 +381,7 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
         <label class="field">Приоритет${sel('priority', edit ? entry.priority : 'normal', [['normal', 'Обычный'], ['high', 'Высокий'], ['low', 'Низкий']])}</label>
         <label class="field">Напомнить${sel('reminderMinutes', String(edit ? entry.reminderMinutes : 0), [['0', 'Не напоминать'], ['15', 'За 15 минут'], ['60', 'За час'], ['1440', 'За день']])}</label>
       </div>
-      ${edit ? `<div class="two-cols"><label class="field">Состояние${sel('status', entry.status, [['todo', 'Не начато'], ['doing', 'В работе'], ['done', 'Готово']])}</label></div>` : ''}
+      ${edit ? `<div class="two-cols"><label class="field">Состояние${sel('status', shownStatus, [['todo', 'Не начато'], ['doing', 'В работе'], ['done', 'Готово']])}</label></div>` : ''}
       <div class="two-cols">
         <label class="field">Повтор${sel('recurrence', edit ? entry.recurrence : 'none', [['none', 'Не повторять'], ['daily', 'Ежедневно'], ['weekly', 'Еженедельно'], ['monthly', 'Ежемесячно']])}</label>
         <label class="field">Повторять до<input class="input" type="date" name="recurrenceEnd" value="${escapeHtml(edit ? entry.recurrenceEnd : '')}"></label>
@@ -405,8 +410,10 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
         color: formData.get('color')
       };
       if (edit) {
-        // Обновляем на месте: id и createdAt должны уцелеть, иначе это будет новая запись
-        Object.assign(entry, normalizePlannerEntry({ ...entry, ...fields, status: formData.get('status') || entry.status }));
+        // Обновляем на месте: id и createdAt должны уцелеть, иначе это будет новая запись.
+        // Поля — общие для всех повторов, а состояние относится к открытому дню и пишется отдельно.
+        Object.assign(entry, normalizePlannerEntry({ ...entry, ...fields }));
+        setEntryStatusForDate(entry, date, formData.get('status') || shownStatus);
         entry.updatedAt = new Date().toISOString();
       } else {
         state.plannerEntries.push(normalizePlannerEntry(fields));

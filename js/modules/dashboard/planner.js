@@ -35,6 +35,69 @@ export function isEntryDone(entry) {
 }
 
 /**
+ * Состояния повторяющейся записи по дням: 'YYYY-MM-DD' → статус этого дня.
+ *
+ * Без этого дела на завтра приходили уже отмеченными: у записи один статус на все дни,
+ * поэтому «сделал вчера» автоматически означало «сделал сегодня». Своё состояние нужно
+ * каждому дню повтора, а не записи целиком.
+ *
+ * @param {{ statusByDate?: unknown }} [input]
+ * @returns {Record<string, 'todo'|'doing'|'done'>}
+ */
+function normalizeStatusByDate(input = {}) {
+  const source = input.statusByDate;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const out = {};
+  for (const [date, status] of Object.entries(source)) {
+    // Мусор в сохранённых данных не должен попадать в состояние: неизвестная дата или
+    // неизвестный статус просто отбрасываются, запись остаётся пригодной для показа.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && STATUSES.has(status)) out[date] = String(status);
+  }
+  return out;
+}
+
+/**
+ * Статус записи в конкретный день.
+ *
+ * Для записи без повтора это и есть её единственный день, а для повторяющейся — состояние
+ * именно этого вхождения. День, для которого состояния нет, — новое дело: вчерашняя
+ * отметка в него не переносится.
+ *
+ * @param {any} entry
+ * @param {string} [date] день, МСК; без него берётся состояние записи целиком
+ * @returns {'todo'|'doing'|'done'}
+ */
+export function entryStatusForDate(entry, date) {
+  if (!entry) return 'todo';
+  if (!date || date === entry.date) return entryStatus(entry);
+  const saved = entry.statusByDate?.[date];
+  if (STATUSES.has(saved)) return String(saved);
+  return 'todo';
+}
+
+/**
+ * Записать состояние записи в конкретный день.
+ *
+ * Собственный день записи меняет поле `status`, любой другой день повтора — свою запись в
+ * `statusByDate`. Так состояния старых записей остаются читаемыми без переноса данных,
+ * а у повторов появляется независимое состояние на каждый день.
+ *
+ * @param {any} entry
+ * @param {string} date
+ * @param {string} status
+ * @returns {boolean} было ли что менять
+ */
+export function setEntryStatusForDate(entry, date, status) {
+  if (!entry) return false;
+  const next = STATUSES.has(status) ? String(status) : 'todo';
+  if (entryStatusForDate(entry, date) === next) return false;
+  if (!date || date === entry.date) entry.status = next;
+  else entry.statusByDate = { ...(entry.statusByDate || {}), [date]: next };
+  entry.updatedAt = new Date().toISOString();
+  return true;
+}
+
+/**
  * Календарная дата записи. Считается по Москве: у пользователя в другом часовом поясе
  * «сегодня» в планировщике должно совпадать с игровым днём (см. js/core/msk.js).
  */
@@ -59,6 +122,8 @@ export function normalizePlannerEntry(input = {}) {
     recurrenceEnd: /^\d{4}-\d{2}-\d{2}$/.test(String(input.recurrenceEnd || '')) ? String(input.recurrenceEnd) : '',
     color: COLORS.has(input.color) ? input.color : 'blue',
     status: entryStatus(input),
+    // Состояние повторов по дням: у каждого вхождения оно своё (см. entryStatusForDate)
+    statusByDate: normalizeStatusByDate(input),
     createdAt: input.createdAt || new Date().toISOString(),
     updatedAt: input.updatedAt || new Date().toISOString()
   };
@@ -94,7 +159,9 @@ function occursOn(entry, date) {
 export function plannerEventsForDate(appState, date) {
   const manual = (appState?.plannerEntries || [])
     .filter(entry => occursOn(entry, date))
-    .map(entry => ({ ...entry, source: 'manual' }));
+    // Вхождение повтора — это запись на конкретный день: своя дата и своё состояние.
+    // Иначе отметка за вчерашний день тащилась бы в сегодняшний, а вхождение врало бы про дату.
+    .map(entry => ({ ...entry, date, status: entryStatusForDate(entry, date), source: 'manual' }));
   const marathons = (appState?.marathons || [])
     .filter(m => m?.kind !== 'series' && m?.status !== 'completed' && m.startDate && m.endDate
       && date >= m.startDate && date <= m.endDate)

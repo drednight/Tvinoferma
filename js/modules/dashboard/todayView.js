@@ -11,7 +11,7 @@ import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord, todayStr } from './today.js';
 import { plannerHtml, bindPlanner, openPlannerDay, openPlannerEntryForm } from './plannerView.js';
-import { plannerEventsForDate } from './planner.js';
+import { plannerEventsForDate, entryStatusForDate, setEntryStatusForDate } from './planner.js';
 import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
 import { persist } from '../../core/storage.js';
@@ -260,6 +260,10 @@ export function todayHtml(deps = {}, appState = state) {
 export function renderToday(root, deps = {}) {
   if (!root) return;
   const render = () => renderToday(root, deps);
+  // День списка берём на момент отрисовки: отметка обязана попасть в то вхождение, которое
+  // пользователь видит. Если взять дату в момент клика, приложение, пережившее полночь,
+  // записало бы отметку в следующий день, которого на экране ещё нет.
+  const today = todayStr();
   const summary = todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
   root.innerHTML = `<div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div><div id="eternals-today" hidden></div>${summary}`;
   bindToday(root, deps);
@@ -277,12 +281,12 @@ export function renderToday(root, deps = {}) {
     const add = e.target.closest?.('[data-todo-add]');
     if (add) { addTodoFor(add.dataset.todoAdd, { ...deps, render }); return; }
     const status = e.target.closest?.('[data-todo-status]');
-    if (status) { setTodoStatus(status.dataset.todoStatus, render); return; }
+    if (status) { setTodoStatus(today, status.dataset.todoStatus, render); return; }
   });
   // Галочка живёт в label, а не в кнопке: кликается целиком и не мешает выделению текста
   root.querySelector('[data-today-side]')?.addEventListener('change', (e) => {
     const box = e.target.closest?.('[data-todo-toggle]');
-    if (box) setTodoStatus(box.dataset.todoToggle, render, box.checked ? 'done' : 'todo');
+    if (box) setTodoStatus(today, box.dataset.todoToggle, render, box.checked ? 'done' : 'todo');
   });
 }
 
@@ -290,17 +294,20 @@ export function renderToday(root, deps = {}) {
  * Отметка в списке задач на день: галочка ставит и снимает «выполнено», кнопка справа перебирает
  * статус по кругу. Только свои записи — марафоны и ивенты из расписания не трогаем.
  *
+ * День обязателен: у повторяющейся записи состояние своё у каждого вхождения, и отметка
+ * в списке «Сегодня» не должна трогать вчера или завтра.
+ *
+ * @param {string} date день списка, МСК
  * @param {string} id
  * @param {() => void} render
  * @param {string} [status] конкретный статус; без него берётся следующий по кругу
  */
-async function setTodoStatus(id, render, status) {
+async function setTodoStatus(date, id, render, status) {
   const entry = state.plannerEntries.find(item => item.id === id);
   if (!entry) return;
-  const next = status || STATUS_NEXT[entry.status || 'todo'] || 'todo';
-  if (entry.status === next) return;
-  entry.status = next;
-  entry.updatedAt = new Date().toISOString();
+  const current = entryStatusForDate(entry, date);
+  const next = status || STATUS_NEXT[current] || 'todo';
+  if (!setEntryStatusForDate(entry, date, next)) return;
   await persist();
   render();
 }
