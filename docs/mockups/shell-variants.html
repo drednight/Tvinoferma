@@ -1,0 +1,1458 @@
+<!doctype html>
+<!--
+  docs/mockups/shell-variants.html
+  Три варианта приложения целиком: каркас окна, меню и главный экран.
+
+  Сейчас в приложении два пересекающихся раздела — «Сегодня» и «Персонажи» (в меню он
+  подписан «Сегодня и аккаунты»), а самое срочное («Требуют внимания») лежит под календарём.
+  Здесь три ответа на вопрос «что это приложение делает по умолчанию»:
+
+    A. Дневник дел  — главный объект: очередь конкретных действий.
+    B. Планировщик — главный объект: время (что когда и кто должен успеть).
+    C. Реестр       — главный объект: все аккаунты строкой (сканируется при 50+).
+
+  Каркас настоящий: .next-sidebar, .next-nav, .topbar, .content (css/core/newStyle.css).
+  Блоки настоящие: .today-*, .pt-*, .tl-*, .tf-dock-*, .stat-strip, .bulk-bar, .chips.
+  Таблица аккаунтов и вертикальная лента — новые для макета: в приложении их нет,
+  это и есть предмет выбора.
+
+  Данные — из tests/fixtures/ui-demo-state.json (6 персонажей, 4 пати, 2 марафона), вымышленные.
+  Сегодня — суббота, 17 октября 2026, 22:42 МСК. Данж дня: Доспех.
+
+  Прототип, не часть приложения: ничего не сохраняет и ничего не запускает.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Твиноферма: три варианта приложения</title>
+    <link rel="stylesheet" href="/css/core/variables.css" />
+    <link rel="stylesheet" href="/css/core/base.css" />
+    <link rel="stylesheet" href="/css/core/layout.css" />
+    <link rel="stylesheet" href="/css/core/newStyle.css" />
+    <link rel="stylesheet" href="/css/core/components.css" />
+    <link rel="stylesheet" href="/css/core/serverStatus.css" />
+    <link rel="stylesheet" href="/css/core/taskLog.css" />
+    <link rel="stylesheet" href="/css/modules/today.css" />
+    <link rel="stylesheet" href="/css/modules/dashboard.css" />
+    <link rel="stylesheet" href="/css/modules/characters.css" />
+    <link rel="stylesheet" href="/css/modules/parties.css" />
+    <link rel="stylesheet" href="/css/modules/finance.css" />
+    <style>
+      body {
+        padding: 24px 28px 80px;
+      }
+      .proto-head {
+        max-width: 108ch;
+        margin-bottom: 26px;
+      }
+      .proto-head h1 {
+        margin: 0 0 10px;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+      }
+      .proto-head p {
+        margin: 0 0 7px;
+        color: var(--text-dim);
+        font-size: 0.92rem;
+        line-height: 1.55;
+      }
+      .variant {
+        margin-bottom: 56px;
+      }
+      .variant-title {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        border: 1px solid var(--accent-line);
+        border-radius: var(--radius-sm);
+        background: var(--accent-soft);
+      }
+      .variant-title h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+      .variant-title span {
+        color: var(--text-dim);
+        font-size: 0.82rem;
+      }
+      .variant-note {
+        max-width: 112ch;
+        margin: 0 0 14px;
+        color: var(--text-dim);
+        font-size: 0.87rem;
+        line-height: 1.55;
+      }
+      .tag {
+        font-size: 0.72rem;
+        padding: 2px 9px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--border);
+        color: var(--text-dim);
+      }
+      .tag.rec {
+        border-color: var(--accent-line);
+        color: var(--accent);
+        background: var(--surface-1);
+      }
+
+      /* --- Общее для всех трёх frames ---------------------------------------
+         Кадр — это целое окно приложения внутри страницы. Настоящий сайдбар липкий
+         и высотой в экран: внутри макета он должен просто дорасти до содержимого. */
+      body[data-ui-style='next'] .frame .app-shell {
+        min-height: 0;
+        grid-template-rows: auto auto;
+      }
+      body[data-ui-style='next'] .frame .next-sidebar {
+        position: static;
+        height: auto;
+      }
+      body[data-ui-style='next'] .frame .content {
+        padding: 20px 24px 28px;
+      }
+      .frame {
+        border: 1px solid var(--border-strong);
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--bg);
+        box-shadow: var(--shadow-2);
+      }
+
+      /* Стенд считает текст мельче 11px ошибкой, а в реальных классах есть подписи
+         по 0.58–0.68rem. В макете они подняты до 0.72rem — иначе снимок не пройдёт проверку. */
+      .frame :is(.card-stats .muted, .contact-key, .pt-badge, .today-strip-day small,
+                 .cal-block small, .stat-note, .cal-more, .planner-more, .today-more,
+                 .srv-age, .tf-dock-row-tail, .tf-dock-step, .msk-clock-head) {
+        font-size: 0.72rem;
+      }
+
+      /* --- Вариант A: полоса состояния --------------------------------------
+         Четыре плитки, каждая одновременно показатель и действие: сейчас в приложении
+         те же числа лежат в .stat-strip и не нажимаются. */
+      .rail {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--gap-sm);
+        margin-bottom: var(--gap-md);
+      }
+      .rail-tile {
+        display: grid;
+        gap: 4px;
+        align-content: start;
+        padding: 11px 13px;
+        border: 1px solid var(--border);
+        border-left: 3px solid var(--tile-c, var(--border-strong));
+        border-radius: 10px;
+        background: var(--surface-1);
+        color: inherit;
+        text-align: left;
+        cursor: pointer;
+        font: inherit;
+        transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+      }
+      .rail-tile:hover { background: var(--surface-2); }
+      .rail-tile.is-bad { --tile-c: var(--danger); }
+      .rail-tile.is-warn { --tile-c: var(--warning); }
+      .rail-tile.is-ok { --tile-c: var(--success); }
+      .rail-tile.is-accent { --tile-c: var(--accent); }
+      .rail-label {
+        color: var(--text-dim);
+        font-size: 0.76rem;
+      }
+      .rail-num {
+        font-size: 1.5rem;
+        font-weight: 700;
+        line-height: 1.1;
+        font-variant-numeric: tabular-nums;
+        color: var(--tile-c, var(--text));
+      }
+      .rail-act {
+        color: var(--text-faint);
+        font-size: 0.74rem;
+      }
+
+      /* Две колонки: слева очередь действий, справа контекст дня. */
+      .split {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+        gap: var(--gap-md);
+        align-items: start;
+      }
+      .split-narrow { grid-template-columns: minmax(0, 1fr) 330px; }
+      .stack-side { display: grid; gap: var(--gap-md); align-content: start; min-width: 0; }
+
+      .today-card { margin: 0; }
+      .card-head-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--gap-sm);
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      /* Неделя одной строкой: `.today-strip-day` из настоящего экрана «Сегодня». */
+      .weekline {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
+        margin-bottom: 12px;
+      }
+      .weekline .today-strip-day { min-height: 54px; }
+      /* Запасы в одну строку, а не столбиком: те же числа уже есть в плитках сверху,
+         повторять их тремя блоками — значит растягивать правую колонку. */
+      .stack-side .today-supplies {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--gap-sm);
+      }
+
+      /* --- Вариант B: вертикальная лента дня --------------------------------
+         Слева время, справа что происходит. Настоящей ленты в приложении нет:
+         календарь есть, но он про события, а не про «что я должен успеть до 24:00». */
+      .tl-day {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface-1);
+        overflow: hidden;
+      }
+      .tl-day-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+      }
+      .tl-day-head b { font-size: 0.92rem; }
+      .tl-line {
+        display: grid;
+        grid-template-columns: 62px 18px minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        padding: 9px 14px;
+        border-top: 1px solid var(--border);
+      }
+      .tl-line:first-of-type { border-top: none; }
+      .tl-line.is-now {
+        background: color-mix(in srgb, var(--accent) 9%, transparent);
+        border-top-color: var(--accent-line);
+      }
+      .tl-line.is-past { opacity: 0.55; }
+      .tl-time {
+        color: var(--text-dim);
+        font-size: 0.8rem;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .tl-mark {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--mark-c, var(--text-faint));
+      }
+      .tl-mark.is-live {
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--mark-c, var(--accent)) 26%, transparent);
+      }
+      .tl-body { min-width: 0; display: grid; gap: 2px; }
+      .tl-body b { font-size: 0.86rem; font-weight: 600; }
+      .tl-body small {
+        color: var(--text-dim);
+        font-size: 0.75rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tl-who { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+      /* Постоянный док задач: в приложении он живёт в шапке и прячется, когда пуст. */
+      .dock {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface-1);
+        overflow: hidden;
+      }
+      .dock-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--border);
+        background: var(--surface-2);
+      }
+      .dock-head b { font-size: 0.86rem; }
+      .dock-row {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        padding: 9px 12px;
+        border-top: 1px solid var(--border);
+      }
+      .dock-row:first-of-type { border-top: none; }
+      .dock-ring {
+        position: relative;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        flex: none;
+        display: grid;
+        place-items: center;
+        background: conic-gradient(var(--accent) 62%, var(--surface-3) 0);
+      }
+      .dock-ring b { position: relative; z-index: 1; font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+      .dock-ring::after {
+        content: '';
+        position: absolute;
+        inset: 3px;
+        border-radius: 50%;
+        background: var(--surface-1);
+      }
+      .dock-ring.is-ok { background: var(--success); }
+      .dock-ring.is-queued { background: var(--surface-3); }
+      .dock-copy { min-width: 0; display: grid; gap: 2px; flex: 1; }
+      .dock-copy b { font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .dock-copy small { color: var(--text-dim); font-size: 0.73rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      /* --- Вариант C: реестр аккаунтов --------------------------------------
+         Таблица вместо сетки карточек. В приложении карточка занимает ~340px
+         и на 50 аккаунтах сетку невозможно сканировать по колонке. */
+      .reg {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 0.82rem;
+      }
+      .reg th,
+      .reg td {
+        padding: 6px 9px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+      }
+      .reg thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--surface-2);
+        color: var(--text-dim);
+        font-size: 0.74rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .reg tbody tr:hover { background: var(--surface-2); }
+      .reg tbody tr.is-bad { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+      .reg tbody tr.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+      .reg .c-num { text-align: right; font-variant-numeric: tabular-nums; }
+      .reg .c-sel { width: 34px; }
+      /* Колонки, которые первыми уходят на узком окне: всё, что видно в профиле.
+         Реестр на 900px не должен превращаться в горизонтальную прокрутку. */
+      @media (max-width: 1180px) {
+        .reg-a th:nth-child(4), .reg-a td:nth-child(4),
+        .reg-a th:nth-child(7), .reg-a td:nth-child(7),
+        .reg-a th:nth-child(9), .reg-a td:nth-child(9),
+        .reg-c th:nth-child(4), .reg-c td:nth-child(4),
+        .reg-c th:nth-child(7), .reg-c td:nth-child(7),
+        .reg-c th:nth-child(8), .reg-c td:nth-child(8),
+        .reg-c th:nth-child(10), .reg-c td:nth-child(10) {
+          display: none;
+        }
+        /* Реестр на узком окне не должен превращаться в горизонтальную прокрутку:
+           колонки, которые первыми уходят, видны в профиле, а шаг вёрстки сжимается. */
+        .reg { font-size: 0.78rem; }
+        .reg th,
+        .reg td { padding: 5px 7px; }
+        .reg .badge { font-size: 0.72rem; padding: 3px 7px; }
+      }
+      .reg-check {
+        width: 15px;
+        height: 15px;
+        margin: 0;
+        vertical-align: middle;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+      .reg .c-act { text-align: right; }
+      .reg-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .reg-ava {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-dim);
+        background: var(--surface-3);
+      }
+      .reg-nick { font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
+      .reg-sub { color: var(--text-faint); font-size: 0.74rem; }
+      .reg-wrap {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: auto;
+        max-height: 460px;
+        background: var(--surface-1);
+      }
+
+      /* Массовые действия внизу таблицы, а не под шапкой: в приложении `.bulk-bar`
+         липнет к верху и закрывает собой первые строки. */
+      .bulk-bottom {
+        position: sticky;
+        bottom: 0;
+        z-index: 5;
+        margin-top: 10px;
+        border-radius: 10px;
+        border: 1px solid var(--accent-line);
+        background: var(--surface-glass);
+        backdrop-filter: blur(10px);
+        box-shadow: var(--shadow-2);
+      }
+
+      /* Пункт «Ещё»: разделы, которые не попали в основное меню. */
+      .nav-more { padding-left: 26px; color: var(--text-faint); font-size: 0.72rem; }
+    </style>
+  </head>
+
+  <body data-ui-style="next">
+
+    <header class="proto-head">
+      <h1>Твиноферма: три варианта приложения</h1>
+      <p>
+        Ниже — три варианта каркаса окна и главного экрана на одних и тех же данных
+        (6 персонажей, 4 пати, 2 марафона, суббота 17 октября, 22:42 МСК).
+        Различаются они не отступами, а ответом на вопрос «что приложение делает по умолчанию»:
+        <b>A</b> — ведёт список дел, <b>B</b> — ведёт по времени, <b>C</b> — ведёт реестр аккаунтов.
+        Меню, кнопки и блоки настоящие; таблица аккаунтов и вертикальная лента дня —
+        то, чего в приложении пока нет.
+      </p>
+      <p class="faint">
+        Меню в A и B нарисовано с пятью пунктами вместо семи: часть разделов
+        (Руны, Банк, Инструменты) уходит под «Ещё». Такое уже возможно — в
+        <span class="mono">Настройки → Разделы приложения</span> есть переключатель видимости и порядка.
+      </p>
+    </header>
+
+    <!-- ==================================================================== -->
+    <!-- ВАРИАНТ A — ДНЕВНИК ДЕЛ                                              -->
+    <!-- ==================================================================== -->
+    <section class="variant" id="variant-a">
+      <div class="variant-title">
+        <h2>Вариант A — Дневник дел</h2>
+        <span>главный объект — очередь действий; время и аккаунты живут ниже</span>
+        <span class="tag rec">рекомендую</span>
+      </div>
+      <p class="variant-note">
+        Полоса из четырёх плиток под шапкой: каждая плитка — одновременно показатель и кнопка.
+        Под ней очередь «Что сделать сейчас», где у каждой строки своё действие и одна кнопка
+        «Сделать всё» на всю очередь. Справа — неделя одной строкой, данж дня и дела дня.
+        Ещё ниже — плотная таблица аккаунтов с переключателем «Карточки | Таблица».
+        <br />
+        <b>Что появляется как функция:</b> «Сделать всё» (очередь в док задач вместо модальных окон),
+        табличный режим аккаунтов, сохранённые представления-чипы над таблицей.
+        <br />
+        <b>Цена переноса:</b> новых данных не нужно — всё собирается из уже существующих
+        <span class="mono">today.js</span> и <span class="mono">taskLog.js</span>.
+        Появляется только вид «строка» и один агрегатор, который кладёт элементы очереди в док.
+        Чего не будет: недельный календарь крупным блоком (сжался до полосы) — если он нужен
+        для планирования недели, этот вариант не подходит.
+      </p>
+
+      <div class="frame">
+        <div class="app-shell">
+          <aside class="next-sidebar" aria-label="Навигация">
+            <div class="next-brand">
+              <div class="brand-mark">ТФ</div>
+              <div>
+                <strong>Твиноферма</strong>
+                <span>Управление аккаунтами</span>
+              </div>
+            </div>
+
+            <nav class="next-nav" aria-label="Разделы приложения">
+              <button class="tab active" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⌂</span>
+                <span class="next-nav-copy"><strong>Сегодня</strong><small>Что сделать сейчас</small></span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">●</span>
+                <span class="next-nav-copy"><strong>Аккаунты</strong><small>Вход, монеты, контакты</small></span>
+                <span class="tab-count">6</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">◆</span>
+                <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
+                <span class="tab-count">3</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">▲</span>
+                <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
+                <span class="tab-count">1</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⋯</span>
+                <span class="next-nav-copy">
+                  <strong>Ещё</strong>
+                  <small>Руны, Банк, Скрипты</small>
+                  <span class="nav-more">скрывается в Настройках</span>
+                </span>
+              </button>
+            </nav>
+
+            <div class="next-sidebar-bottom">
+              <div class="msk-clock" role="timer" aria-label="Московское время">
+                <div class="msk-clock-head">
+                  <span class="msk-clock-dot" aria-hidden="true"></span>
+                  <span class="msk-clock-label">МОСКОВСКОЕ ВРЕМЯ</span>
+                  <span class="msk-clock-zone">UTC+3</span>
+                </div>
+                <div class="msk-clock-time"><b data-part="h">22</b>:<b data-part="m">42</b>:<b data-part="s">22</b></div>
+              </div>
+              <div class="server-status">
+                <div class="srv-plaque">
+                  <div class="srv-head">
+                    <b>Статус серверов</b>
+                    <span class="srv-age">обновлено 4 мин назад</span>
+                  </div>
+                  <ul class="srv-list">
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Гильдия</li>
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Сфера</li>
+                    <li class="srv is-off"><span class="srv-dot" aria-hidden="true"></span>Барон</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="next-sidebar-divider" aria-hidden="true"></div>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⚙</span>
+                <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
+              </button>
+            </div>
+          </aside>
+
+          <header class="topbar">
+            <div class="next-page-heading">
+              <h2>Сегодня</h2>
+              <p class="section-sub">Суббота, 17 октября · всё, что требует действия, видно без прокрутки.</p>
+            </div>
+            <div class="topbar-right">
+              <button class="btn ghost topbar-guide" type="button">❔ Как всё работает</button>
+              <button class="btn secondary small" type="button" aria-label="Открыть командную палитру">Ctrl+K</button>
+            </div>
+          </header>
+
+          <main class="content">
+            <div class="page active" data-section="today">
+
+              <div class="rail">
+                <button class="rail-tile is-bad" type="button">
+                  <span class="rail-label">Нужен вход на сайт</span>
+                  <span class="rail-num">3</span>
+                  <span class="rail-act">Проверить вход →</span>
+                </button>
+                <button class="rail-tile is-warn" type="button">
+                  <span class="rail-label">Монеты старше 12 часов</span>
+                  <span class="rail-num">5</span>
+                  <span class="rail-act">Обновить балансы →</span>
+                </button>
+                <button class="rail-tile is-warn" type="button">
+                  <span class="rail-label">Отстают в марафоне</span>
+                  <span class="rail-num">2</span>
+                  <span class="rail-act">Открыть марафон →</span>
+                </button>
+                <button class="rail-tile is-ok" type="button">
+                  <span class="rail-label">Окна игры запущены</span>
+                  <span class="rail-num">2</span>
+                  <span class="rail-act">Закрыть окна →</span>
+                </button>
+              </div>
+
+              <div class="split">
+                <section class="panel today-card">
+                  <div class="card-head-row">
+                    <span class="today-title">
+                      <span class="today-count is-warn">7</span>
+                      Что сделать сейчас
+                    </span>
+                    <div class="row gap">
+                      <button class="btn primary small" type="button">▶ Сделать всё</button>
+                      <button class="btn ghost small" type="button">Только отстающие</button>
+                    </div>
+                  </div>
+
+                  <ul class="today-list">
+                    <li class="today-row">
+                      <span class="today-dot is-bad" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Каменный Ган</b>
+                        <small>Нужен вход на сайт: сессия истекла или вход не проверялся</small>
+                      </span>
+                      <button class="btn small" type="button">Проверить вход</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot is-bad" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Мираж_77</b>
+                        <small>Нужен вход на сайт: сессия истекла или вход не проверялся</small>
+                      </span>
+                      <button class="btn small" type="button">Проверить вход</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot is-bad" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Одинокий Призрак</b>
+                        <small>Нужен вход на сайт: сессия истекла или вход не проверялся</small>
+                      </span>
+                      <button class="btn small" type="button">Проверить вход</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot is-warn" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Ночной Бард</b>
+                        <small>Баланс не проверялся 2 дня — 780 монет могут быть неверны</small>
+                      </span>
+                      <button class="btn small" type="button">Обновить баланс</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot is-warn" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Тихая Сова</b>
+                        <small>Летний марафон: 3 задания из 4, осталось 2 дня</small>
+                      </span>
+                      <button class="btn small" type="button">Открыть</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot is-warn" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Ауразак</b>
+                        <small>Летний марафон: 2 задания из 4, осталось 2 дня</small>
+                      </span>
+                      <button class="btn small" type="button">Открыть</button>
+                    </li>
+                    <li class="today-row">
+                      <span class="today-dot" aria-hidden="true"></span>
+                      <span class="today-row-text">
+                        <b>Папка «Лето 2026»</b>
+                        <small>Пуста: ни одного марафона не заведено</small>
+                      </span>
+                      <button class="btn ghost small" type="button">Добавить</button>
+                    </li>
+                  </ul>
+                  <p class="today-more">Показаны все 7. После «Сделать всё» строки уходят в док задач и не мешают.</p>
+                </section>
+
+                <div class="stack-side">
+                  <section class="panel">
+                    <span class="today-title"><span class="today-dot" aria-hidden="true"></span>Ближайшее</span>
+
+                    <div class="today-dungeon is-armor">
+                      <span class="today-dungeon-ico" aria-hidden="true">🛡</span>
+                      <span class="today-dungeon-copy">
+                        <b>Данж дня: Доспех</b>
+                        <small>Цвет дня = данж дня по циклу Реликвия → Оружие → Доспех</small>
+                      </span>
+                    </div>
+
+                    <div class="weekline">
+                      <div class="today-strip-day is-today is-armor"><b>сб 🛡</b><small>17</small></div>
+                      <div class="today-strip-day is-weapon"><b>вс ⚔</b><small>18</small></div>
+                      <div class="today-strip-day is-relic"><b>пн 💎</b><small>19</small></div>
+                      <div class="today-strip-day is-armor"><b>вт 🛡</b><small>20</small></div>
+                      <div class="today-strip-day is-weapon"><b>ср ⚔</b><small>21</small></div>
+                      <div class="today-strip-day is-relic"><b>чт 💎</b><small>22</small></div>
+                      <div class="today-strip-day is-armor"><b>пт 🛡</b><small>23</small></div>
+                    </div>
+                    <div class="planner-legend">
+                      <span class="planner-legend-label">Данж дня:</span>
+                      <span class="planner-legend-item is-relic"><b>💎</b>Реликвия</span>
+                      <span class="planner-legend-item is-weapon"><b>⚔</b>Оружие</span>
+                      <span class="planner-legend-item is-armor"><b>🛡</b>Доспех</span>
+                    </div>
+
+                    <ul class="today-list" style="max-height: none;">
+                      <li class="today-row">
+                        <span class="today-dot is-warn" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Битва Династий</b>
+                          <small>20:20 — 22:20 · идёт сейчас</small>
+                        </span>
+                        <span class="today-chip">событие</span>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Собрать караван</b>
+                          <small>дело дня · 22:40</small>
+                        </span>
+                        <span class="today-chip">задача</span>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Летний марафон</b>
+                          <small>осталось 2 дня · 4 задания</small>
+                        </span>
+                        <span class="today-chip is-marathon">марафон</span>
+                      </li>
+                    </ul>
+
+                    <div class="today-supplies" style="margin-top: 12px;">
+                      <div class="today-supply">
+                        <b class="is-gold">11 095</b>
+                        <small>древние монеты</small>
+                      </div>
+                      <div class="today-supply">
+                        <b>6</b>
+                        <small>персонажей</small>
+                      </div>
+                      <div class="today-supply">
+                        <b>2</b>
+                        <small>окна запущены</small>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              <section class="panel acc-panel" style="margin-top: var(--gap-md);">
+                <div class="card-head-row">
+                  <span class="today-title">Аккаунты</span>
+                  <div class="row gap">
+                    <div class="planner-switch" role="group" aria-label="Вид списка">
+                      <button class="btn small" type="button">Карточки</button>
+                      <button class="btn small is-on" type="button">Таблица</button>
+                    </div>
+                    <button class="btn ghost small" type="button">Столбцы…</button>
+                  </div>
+                </div>
+
+                <div class="lh-chips">
+                  <button class="lh-chip active" type="button">Все <span class="muted">6</span></button>
+                  <button class="lh-chip" type="button">Нужен вход <span class="muted">3</span></button>
+                  <button class="lh-chip" type="button">Монеты старше суток <span class="muted">5</span></button>
+                  <button class="lh-chip" type="button">Отстают <span class="muted">2</span></button>
+                  <button class="lh-chip" type="button">Без пати <span class="muted">1</span></button>
+                  <button class="btn ghost small" type="button">💾 Сохранить представление</button>
+                </div>
+
+                <div class="reg-wrap">
+                  <table class="reg reg-a">
+                    <thead>
+                      <tr>
+                        <th scope="col" class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать все строки" /></th>
+                        <th scope="col">Персонаж</th>
+                        <th scope="col">Класс</th>
+                        <th scope="col" class="c-num">Ур.</th>
+                        <th scope="col">Вход</th>
+                        <th scope="col" class="c-num">Монеты</th>
+                        <th scope="col" class="c-opt">Проверка</th>
+                        <th scope="col">Пати</th>
+                        <th scope="col" class="c-opt">Марафон</th>
+                        <th scope="col" class="c-act">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">А</span><span class="reg-nick">Ауразак</span></span></td>
+                        <td>Воин</td>
+                        <td class="c-num">105</td>
+                        <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                        <td class="c-num char-bu">2 850</td>
+                        <td class="reg-sub">монеты 8 мин назад</td>
+                        <td><span class="badge party">Основа</span></td>
+                        <td class="reg-sub">2 из 4</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                      <tr class="is-bad">
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">К</span><span class="reg-nick">Каменный Ган</span></span></td>
+                        <td>Стрелок</td>
+                        <td class="c-num">100</td>
+                        <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                        <td class="c-num char-bu">5 310</td>
+                        <td class="reg-sub">монеты 3 ч назад</td>
+                        <td><span class="badge party">Фарм-Крипта</span></td>
+                        <td class="reg-sub">—</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                      <tr>
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">Н</span><span class="reg-nick">Ночной Бард</span></span></td>
+                        <td>Бард</td>
+                        <td class="c-num">99</td>
+                        <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                        <td class="c-num char-bu">780</td>
+                        <td class="reg-sub coin-warn">монеты 2 дня назад</td>
+                        <td><span class="badge party">Марафон</span></td>
+                        <td class="reg-sub">1 из 4</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                      <tr class="is-bad">
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">М</span><span class="reg-nick">Мираж_77</span></span></td>
+                        <td>Маг</td>
+                        <td class="c-num">103</td>
+                        <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                        <td class="c-num char-bu">1 420</td>
+                        <td class="reg-sub coin-warn">монеты 4 дня назад</td>
+                        <td><span class="badge party">Основа</span> <span class="badge party">Марафон</span></td>
+                        <td class="reg-sub">1 из 4</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                      <tr>
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">Т</span><span class="reg-nick">Тихая Сова</span></span></td>
+                        <td>Жрец</td>
+                        <td class="c-num">102</td>
+                        <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                        <td class="c-num char-bu">640</td>
+                        <td class="reg-sub">монеты 8 мин назад</td>
+                        <td><span class="badge party">Основа</span> <span class="badge party">Фарм-Крипта</span></td>
+                        <td class="reg-sub">3 из 4</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                      <tr class="is-bad">
+                        <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                        <td><span class="reg-id"><span class="reg-ava" aria-hidden="true">О</span><span class="reg-nick">Одинокий Призрак</span></span></td>
+                        <td>Призрак</td>
+                        <td class="c-num">98</td>
+                        <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                        <td class="c-num char-bu">95</td>
+                        <td class="reg-sub coin-warn">монеты не проверялись</td>
+                        <td><span class="badge">Без пати</span></td>
+                        <td class="reg-sub">—</td>
+                        <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="variant-note" style="margin: 10px 0 0;">
+                  Карточки остаются как режим: на шести аккаунтах они удобнее для правки,
+                  на пятидесяти — таблица. Переключатель запоминает выбор.
+                </p>
+              </section>
+
+            </div>
+          </main>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- ВАРИАНТ B — ПЛАНИРОВЩИК                                             -->
+    <!-- ==================================================================== -->
+    <section class="variant" id="variant-b">
+      <div class="variant-title">
+        <h2>Вариант B — Планировщик</h2>
+        <span>главный объект — время: что происходит и что надо успеть до 24:00</span>
+      </div>
+      <p class="variant-note">
+        Экран открывается на «сейчас 22:42» и идёт вниз до конца дня, потом — завтра.
+        Действия по аккаунтам не висят отдельным списком, а стоят там, где их срок:
+        у задания марафона — «22:00, осталось 2 дня», у автопроверки входа — «23:00».
+        Док задач перестаёт быть прятавшейся плашкой в шапке и становится постоянной
+        правой колонкой: работа идёт минуту, а не открыл-закрыл окно.
+        <br />
+        <b>Что появляется как функция:</b> срок у каждого задания марафона (сейчас срок есть
+        только у марафона целиком), планировщик фоновых проверок как видимая строка ленты,
+        постоянный док задач вместо плавающей полосы.
+        <br />
+        <b>Цена переноса — самая высокая из трёх.</b> Нужна новая модель: дата срока
+        у задания, а не «осталось N дней» текстом. Без неё лента врёт, и это не лечится вёрсткой.
+        Плюс приложение должно уметь нормально работать на длинном дне: список дел растёт,
+        а прокрутка в колонке — новый паттерн.
+      </p>
+
+      <div class="frame">
+        <div class="app-shell">
+          <aside class="next-sidebar" aria-label="Навигация">
+            <div class="next-brand">
+              <div class="brand-mark">ТФ</div>
+              <div>
+                <strong>Твиноферма</strong>
+                <span>План на день</span>
+              </div>
+            </div>
+
+            <nav class="next-nav" aria-label="Разделы приложения">
+              <button class="tab active" type="button">
+                <span class="next-nav-icon" aria-hidden="true">◷</span>
+                <span class="next-nav-copy"><strong>План</strong><small>Лента дня и сроки</small></span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">●</span>
+                <span class="next-nav-copy"><strong>Аккаунты</strong><small>Вход, монеты, контакты</small></span>
+                <span class="tab-count">6</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">◆</span>
+                <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
+                <span class="tab-count">3</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">▲</span>
+                <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
+                <span class="tab-count">1</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⋯</span>
+                <span class="next-nav-copy">
+                  <strong>Ещё</strong>
+                  <small>Руны, Банк, Скрипты</small>
+                </span>
+              </button>
+            </nav>
+
+            <div class="next-sidebar-bottom">
+              <div class="msk-clock" role="timer" aria-label="Московское время">
+                <div class="msk-clock-head">
+                  <span class="msk-clock-dot" aria-hidden="true"></span>
+                  <span class="msk-clock-label">МОСКОВСКОЕ ВРЕМЯ</span>
+                  <span class="msk-clock-zone">UTC+3</span>
+                </div>
+                <div class="msk-clock-time"><b data-part="h">22</b>:<b data-part="m">42</b>:<b data-part="s">22</b></div>
+              </div>
+              <div class="server-status">
+                <div class="srv-plaque">
+                  <div class="srv-head">
+                    <b>Статус серверов</b>
+                    <span class="srv-age">4 мин назад</span>
+                  </div>
+                  <ul class="srv-list">
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Гильдия</li>
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Сфера</li>
+                    <li class="srv is-off"><span class="srv-dot" aria-hidden="true"></span>Барон</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="next-sidebar-divider" aria-hidden="true"></div>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⚙</span>
+                <span class="next-nav-copy"><strong>Настройки</strong><small>Данные и приложение</small></span>
+              </button>
+            </div>
+          </aside>
+
+          <header class="topbar">
+            <div class="next-page-heading">
+              <h2>План на сегодня</h2>
+              <p class="section-sub">Суббота, 17 октября · сейчас 22:42 · до конца дня 1 ч 18 мин.</p>
+            </div>
+            <div class="topbar-right">
+              <button class="btn secondary small" type="button">Сегодня</button>
+              <button class="btn ghost small" type="button">Завтра</button>
+              <button class="btn ghost topbar-guide" type="button">❔ Справка</button>
+            </div>
+          </header>
+
+          <main class="content">
+            <div class="page active" data-section="plan">
+              <div class="split split-narrow">
+
+                <div class="stack-side">
+                  <div class="tl-day">
+                    <div class="tl-day-head">
+                      <b>Суббота, 17 октября</b>
+                      <span class="muted">события, дела и сроки — в одном порядке</span>
+                    </div>
+
+                    <div class="tl-line is-past" style="--mark-c: var(--accent-2);">
+                      <span class="tl-time">19:30</span>
+                      <span class="tl-mark" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Ритм Гильдии</b>
+                        <small>19:30 — 19:59 · прошло, отметка не нужна</small>
+                      </span>
+                      <span class="tl-who"><span class="badge">группа</span></span>
+                    </div>
+
+                    <div class="tl-line is-now" style="--mark-c: var(--danger);">
+                      <span class="tl-time">20:20</span>
+                      <span class="tl-mark is-live" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Битва Династий · идёт</b>
+                        <small>20:20 — 22:20 · осталось 38 минут · окна игры уже запущены</small>
+                      </span>
+                      <span class="tl-who"><span class="badge coins">2 окна</span></span>
+                    </div>
+
+                    <div class="tl-line" style="--mark-c: var(--warning);">
+                      <span class="tl-time">22:00</span>
+                      <span class="tl-mark" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Летний марафон · срок задания</b>
+                        <small>осталось 2 дня · не выполнили 2 из 3 участников</small>
+                      </span>
+                      <span class="tl-who">
+                        <span class="badge">Тихая Сова</span>
+                        <span class="badge">Ауразак</span>
+                      </span>
+                    </div>
+
+                    <div class="tl-line is-now" style="--mark-c: var(--accent);">
+                      <span class="tl-time">22:40</span>
+                      <span class="tl-mark is-live" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Собрать караван</b>
+                        <small>дело дня · 5 минут</small>
+                      </span>
+                      <span class="tl-who"><button class="btn tiny" type="button">Отметить</button></span>
+                    </div>
+
+                    <div class="tl-line" style="--mark-c: var(--success);">
+                      <span class="tl-time">23:00</span>
+                      <span class="tl-mark" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Автопроверка входа</b>
+                        <small>3 персонажа · 6–9 секунд · можно отложить</small>
+                      </span>
+                      <span class="tl-who"><button class="btn tiny" type="button">Запустить</button></span>
+                    </div>
+
+                    <div class="tl-line" style="--mark-c: var(--text-faint);">
+                      <span class="tl-time">23:30</span>
+                      <span class="tl-mark" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Обновление монет</b>
+                        <small>5 аккаунтов · можно оставить на завтра</small>
+                      </span>
+                      <span class="tl-who"><button class="btn tiny" type="button">Запустить</button></span>
+                    </div>
+
+                    <div class="tl-line" style="--mark-c: var(--text-faint);">
+                      <span class="tl-time">00:00</span>
+                      <span class="tl-mark" aria-hidden="true"></span>
+                      <span class="tl-body">
+                        <b>Ночь</b>
+                        <small>План на завтра соберётся в 00:05 из свежего состояния</small>
+                      </span>
+                      <span class="tl-who"></span>
+                    </div>
+                  </div>
+
+                  <section class="panel" style="margin-top: var(--gap-md);">
+                    <span class="today-title">Кто что должен успеть до 24:00</span>
+                    <ul class="today-list" style="max-height: none;">
+                      <li class="today-row">
+                        <span class="today-dot is-bad" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Каменный Ган</b>
+                          <small>вход на сайт — иначе монеты не обновлятся</small>
+                        </span>
+                        <button class="btn small" type="button">Проверить</button>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot is-bad" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Мираж_77</b>
+                          <small>вход на сайт + 1 задание марафона</small>
+                        </span>
+                        <button class="btn small" type="button">Проверить</button>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot is-bad" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Одинокий Призрак</b>
+                          <small>вход на сайт — баланс не проверялся ни разу</small>
+                        </span>
+                        <button class="btn small" type="button">Проверить</button>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot is-warn" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Ночной Бард</b>
+                          <small>монеты старше двух суток</small>
+                        </span>
+                        <button class="btn small" type="button">Обновить</button>
+                      </li>
+                    </ul>
+                    <div class="row gap" style="margin-top: 12px;">
+                      <button class="btn primary small" type="button">▶ Поставить всё в очередь</button>
+                      <span class="muted">4 действия · примерно 40 секунд</span>
+                    </div>
+                  </section>
+                </div>
+
+                <div class="stack-side">
+                  <div class="dock">
+                    <div class="dock-head">
+                      <b>Очередь задач</b>
+                      <span class="badge party">2 активны</span>
+                    </div>
+
+                    <div class="dock-row">
+                      <span class="dock-ring"><b>62%</b></span>
+                      <span class="dock-copy">
+                        <b>Проверка входа · 3 персонажа</b>
+                        <small>Каменный Ган — идёт · 6 с осталось</small>
+                      </span>
+                      <button class="icon-btn" type="button" aria-label="Отменить проверку входа">✕</button>
+                    </div>
+
+                    <div class="dock-row">
+                      <span class="dock-ring"><b>18%</b></span>
+                      <span class="dock-copy">
+                        <b>Обновление монет · 5 аккаунтов</b>
+                        <small>в очереди, начнётся после проверки входа</small>
+                      </span>
+                      <button class="icon-btn" type="button" aria-label="Приоставить обновление монет">⏸</button>
+                    </div>
+
+                    <div class="dock-row">
+                      <span class="dock-ring is-ok"><b>✓</b></span>
+                      <span class="dock-copy">
+                        <b>Запуск пати «Основа»</b>
+                        <small>2 окна запущено за 11 с</small>
+                      </span>
+                      <button class="icon-btn" type="button" aria-label="Открыть журнал запуска">📄</button>
+                    </div>
+
+                    <div class="dock-row">
+                      <span class="dock-ring is-queued"><b>—</b></span>
+                      <span class="dock-copy">
+                        <b>Передача предметов</b>
+                        <small>в очереди: 14 предметов, 3 персонажа</small>
+                      </span>
+                      <button class="icon-btn" type="button" aria-label="Открыть передачу предметов">▶</button>
+                    </div>
+                  </div>
+
+                  <section class="panel" style="margin-top: var(--gap-md);">
+                    <span class="today-title"><span class="today-dot is-ok" aria-hidden="true"></span>Сейчас</span>
+
+                    <div class="today-dungeon is-armor">
+                      <span class="today-dungeon-ico" aria-hidden="true">🛡</span>
+                      <span class="today-dungeon-copy">
+                        <b>Данж дня: Доспех</b>
+                        <small>цикл: Реликвия → Оружие → Доспех</small>
+                      </span>
+                    </div>
+
+                    <ul class="today-list" style="max-height: none;">
+                      <li class="today-row">
+                        <span class="today-dot is-ok" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Битва Династий</b>
+                          <small>20:20 — 22:20 · осталось 38 минут</small>
+                        </span>
+                      </li>
+                      <li class="today-row">
+                        <span class="today-dot is-ok" aria-hidden="true"></span>
+                        <span class="today-row-text">
+                          <b>Окна игры запущены: 2</b>
+                          <small>Основа: Каменный Ган, Ночной Бард</small>
+                        </span>
+                        <button class="btn ghost small" type="button">Закрыть</button>
+                      </li>
+                    </ul>
+
+                    <div class="today-supplies" style="margin-top: 12px;">
+                      <div class="today-supply">
+                        <b class="is-gold">11 095</b>
+                        <small>монет всего</small>
+                      </div>
+                      <div class="today-supply">
+                        <b>3 из 6</b>
+                        <small>вход подтверждён</small>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================================================================== -->
+    <!-- ВАРИАНТ C — РЕЕСТР АККАУНТОВ                                        -->
+    <!-- ==================================================================== -->
+    <section class="variant" id="variant-c">
+      <div class="variant-title">
+        <h2>Вариант C — Реестр</h2>
+        <span>главный объект — все аккаунты строкой; «Сегодня» живёт в шапке и представлениях</span>
+      </div>
+      <p class="variant-note">
+        Приложение открывается сразу реестром: одна строка — один аккаунт, колонки
+        выровнены по вертикали, поэтому видно сразу «кто в порядке, а кто нет».
+        «Сегодня» не отдельный раздел, а представление-чип и счётчик в шапке:
+        нажал — реестр отфильтрован тем, что требует внимания.
+        Представления сохраняются под именем («Все, кто не заходил неделю»),
+        набор колонок настраивается, массовые действия живут липкой полосой
+        <b>внизу</b> таблицы, а не под шапкой, где они сейчас закрывают первые строки.
+        <br />
+        <b>Что появляется как функция:</b> табличный режим как основной, сохранённые представления,
+        набор колонок. Массовые действия и фильтры уже есть — меняется только то, где они живут.
+        <br />
+        <b>Цена переноса — самая низкая из трёх:</b> <span class="mono">js/settings/columns.js</span>
+        и <span class="mono">.bulk-bar</span> уже написаны, представления — это фильтры под именем.
+        Плата — карточки перестают быть главным: правка одного персонажа в строке неудобна,
+        и нужен второй путь (открытие профиля по клику, как сейчас).
+      </p>
+
+      <div class="frame">
+        <div class="app-shell">
+          <aside class="next-sidebar" aria-label="Навигация">
+            <div class="next-brand">
+              <div class="brand-mark">ТФ</div>
+              <div>
+                <strong>Твиноферма</strong>
+                <span>Реестр аккаунтов</span>
+              </div>
+            </div>
+
+            <nav class="next-nav" aria-label="Разделы приложения">
+              <button class="tab active" type="button">
+                <span class="next-nav-icon" aria-hidden="true">▦</span>
+                <span class="next-nav-copy"><strong>Аккаунты</strong><small>Все строкой</small></span>
+                <span class="tab-count">6</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">◆</span>
+                <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
+                <span class="tab-count">3</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">▲</span>
+                <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
+                <span class="tab-count">1</span>
+              </button>
+              <button class="tab" type="button">
+                <span class="next-nav-icon" aria-hidden="true">⋯</span>
+                <span class="next-nav-copy">
+                  <strong>Ещё</strong>
+                  <small>Руны, Банк, Настройки</small>
+                </span>
+              </button>
+            </nav>
+
+            <div class="next-sidebar-bottom">
+              <div class="msk-clock" role="timer" aria-label="Московское время">
+                <div class="msk-clock-head">
+                  <span class="msk-clock-dot" aria-hidden="true"></span>
+                  <span class="msk-clock-label">МОСКОВСКОЕ ВРЕМЯ</span>
+                  <span class="msk-clock-zone">UTC+3</span>
+                </div>
+                <div class="msk-clock-time"><b data-part="h">22</b>:<b data-part="m">42</b>:<b data-part="s">22</b></div>
+              </div>
+              <div class="server-status">
+                <div class="srv-plaque is-warn">
+                  <div class="srv-head">
+                    <b>Статус серверов</b>
+                    <span class="srv-age">Барон не отвечает</span>
+                  </div>
+                  <ul class="srv-list">
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Гильдия</li>
+                    <li class="srv is-on"><span class="srv-dot" aria-hidden="true"></span>Сфера</li>
+                    <li class="srv is-off"><span class="srv-dot" aria-hidden="true"></span>Барон</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="next-sidebar-divider" aria-hidden="true"></div>
+            </div>
+          </aside>
+
+          <header class="topbar">
+            <div class="next-page-heading">
+              <h2>Аккаунты</h2>
+              <p class="section-sub">6 аккаунтов · 3 без входа · 11 095 монет</p>
+            </div>
+            <div class="topbar-right">
+              <button class="btn secondary small" type="button">⚠ Требуют внимания · 7</button>
+              <div class="planner-switch" role="group" aria-label="Вид списка">
+                <button class="btn small is-on" type="button">Таблица</button>
+                <button class="btn small" type="button">Карточки</button>
+              </div>
+            </div>
+          </header>
+
+          <main class="content">
+            <div class="page active" data-section="characters">
+
+              <div class="toolbar">
+                <div class="filters">
+                  <input class="input" type="search" placeholder="Поиск по нику или #тегу…" aria-label="Поиск по нику или тегу" />
+                  <select class="select" aria-label="Фильтр по классу"><option>Все классы</option></select>
+                  <select class="select" aria-label="Фильтр по статусу входа"><option>Все статусы</option></select>
+                  <select class="select" aria-label="Сортировка"><option>Давно не проверялись</option></select>
+                  <button class="filters-clear" type="button">✕ Сбросить</button>
+                </div>
+                <div class="row gap">
+                  <button class="btn small" type="button">Столбцы…</button>
+                  <button class="btn small" type="button">Представления…</button>
+                </div>
+              </div>
+
+              <div class="chips" style="margin-bottom: 12px;">
+                <span class="chips-label">Представления</span>
+                <button class="chip-btn active" type="button">Все · 6</button>
+                <button class="chip-btn" type="button">Нужен вход · 3</button>
+                <button class="chip-btn" type="button">Монеты старше суток · 5</button>
+                <button class="chip-btn" type="button">Отстают в марафоне · 2</button>
+                <button class="chip-btn" type="button">Без пати · 1</button>
+                <button class="chip-btn" type="button">Основная пати без баланса · 2</button>
+                <button class="btn ghost small" type="button">+ Сохранить текущие</button>
+              </div>
+
+              <div class="reg-wrap" style="max-height: none;">
+                <table class="reg reg-c">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать все строки" /></th>
+                      <th scope="col">Персонаж</th>
+                      <th scope="col">Класс</th>
+                      <th scope="col" class="c-num">Ур.</th>
+                      <th scope="col">Вход</th>
+                      <th scope="col" class="c-num">Монеты</th>
+                      <th scope="col" class="c-opt">Проверяли</th>
+                      <th scope="col" class="c-opt">О/Д/Р</th>
+                      <th scope="col">Пати</th>
+                      <th scope="col" class="c-opt">Марафон</th>
+                      <th scope="col" class="c-act">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr class="is-bad is-selected">
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">К</span>
+                          <span><span class="reg-nick">Каменный Ган</span><br /><span class="reg-sub">#фарм</span></span>
+                        </span>
+                      </td>
+                      <td>Стрелок</td>
+                      <td class="c-num">100</td>
+                      <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                      <td class="c-num char-bu">5 310</td>
+                      <td class="reg-sub">вход 3 ч назад</td>
+                      <td class="reg-sub">О4 · Д2 · Р1</td>
+                      <td><span class="badge party">Фарм-Крипта</span></td>
+                      <td class="reg-sub">—</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                    </tr>
+                    <tr class="is-bad is-selected">
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">М</span>
+                          <span><span class="reg-nick">Мираж_77</span><br /><span class="reg-sub">#дд #марафон</span></span>
+                        </span>
+                      </td>
+                      <td>Маг</td>
+                      <td class="c-num">103</td>
+                      <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                      <td class="c-num char-bu">1 420</td>
+                      <td class="reg-sub">вход 4 дня назад</td>
+                      <td class="reg-sub">О1</td>
+                      <td><span class="badge party">Основа</span> <span class="badge party">Марафон</span></td>
+                      <td class="reg-sub">1 из 4 · 2 дня</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                    </tr>
+                    <tr class="is-bad">
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">О</span>
+                          <span><span class="reg-nick">Одинокий Призрак</span><br /><span class="reg-sub">без тегов</span></span>
+                        </span>
+                      </td>
+                      <td>Призрак</td>
+                      <td class="c-num">98</td>
+                      <td><span class="state is-off"><span class="state-dot" aria-hidden="true"></span>Нет входа</span></td>
+                      <td class="c-num char-bu">95</td>
+                      <td class="reg-sub coin-warn">не проверялось</td>
+                      <td class="reg-sub">—</td>
+                      <td><span class="badge">Без пати</span></td>
+                      <td class="reg-sub">—</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Проверить</button></td>
+                    </tr>
+                    <tr>
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">Н</span>
+                          <span><span class="reg-nick">Ночной Бард</span><br /><span class="reg-sub">#марафон</span></span>
+                        </span>
+                      </td>
+                      <td>Бард</td>
+                      <td class="c-num">99</td>
+                      <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                      <td class="c-num char-bu">780</td>
+                      <td class="reg-sub coin-warn">монеты 2 дня назад</td>
+                      <td class="reg-sub">О2 · Р3</td>
+                      <td><span class="badge party">Марафон</span></td>
+                      <td class="reg-sub">1 из 4</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Обновить</button></td>
+                    </tr>
+                    <tr>
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">А</span>
+                          <span><span class="reg-nick">Ауразак</span><br /><span class="reg-sub">#основа #дд</span></span>
+                        </span>
+                      </td>
+                      <td>Воин</td>
+                      <td class="c-num">105</td>
+                      <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                      <td class="c-num char-bu">2 850</td>
+                      <td class="reg-sub">монеты 8 мин</td>
+                      <td class="reg-sub">О4 · Д2 · Р1</td>
+                      <td><span class="badge party">Основа</span></td>
+                      <td class="reg-sub">2 из 4</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Обновить</button></td>
+                    </tr>
+                    <tr>
+                      <td class="c-sel"><input class="reg-check" type="checkbox" aria-label="Выбрать строку" /></td>
+                      <td>
+                        <span class="reg-id">
+                          <span class="reg-ava" aria-hidden="true">Т</span>
+                          <span><span class="reg-nick">Тихая Сова</span><br /><span class="reg-sub">#хил</span></span>
+                        </span>
+                      </td>
+                      <td>Жрец</td>
+                      <td class="c-num">102</td>
+                      <td><span class="state is-on"><span class="state-dot" aria-hidden="true"></span>Вход</span></td>
+                      <td class="c-num char-bu">640</td>
+                      <td class="reg-sub">монеты 8 мин</td>
+                      <td class="reg-sub">Д3 · Р2</td>
+                      <td><span class="badge party">Основа</span> <span class="badge party">Фарм-Крипта</span></td>
+                      <td class="reg-sub">3 из 4</td>
+                      <td class="c-act"><button class="btn tiny" type="button">Обновить</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="bulk-bar bulk-bottom">
+                <span class="bulk-count">Выбрано: 2</span>
+                <button class="btn small" type="button">🔐 Проверить вход</button>
+                <button class="btn small" type="button">🪙 Обновить балансы</button>
+                <button class="btn small" type="button">🎁 Промокод…</button>
+                <button class="btn small" type="button">📤 Передать предметы…</button>
+                <button class="btn small" type="button">🏷 Теги…</button>
+                <span class="bulk-sep"></span>
+                <button class="btn ghost small" type="button">В очередь</button>
+                <button class="btn danger small" type="button">Удалить</button>
+              </div>
+
+              <p class="variant-note" style="margin: 12px 0 0;">
+                «О/Д/Р» — проходки на Оружие, Доспех и Реликвию. Клик по строке открывает профиль персонажа,
+                двойной — правит его. Полоса массовых действий появляется <b>внизу</b> таблицы
+                и не перекрывает строки: в приложении <span class="mono">.bulk-bar</span> липнет к шапке
+                и закрывает верх выборки.
+              </p>
+            </div>
+          </main>
+        </div>
+      </div>
+    </section>
+
+  </body>
+</html>

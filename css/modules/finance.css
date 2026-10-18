@@ -452,17 +452,30 @@
   position: relative; aspect-ratio: 1; border-radius: var(--radius-xs);
   border: 1px dashed var(--border); background: transparent; cursor: pointer;
   display: grid; place-items: center; padding: 3px;
+  /* Размер плитки задаёт aspect-ratio, а не содержимое. Без ограничения имени и обрезки
+     содержимого длинное название распирало плитку: заполненные становились выше пустых,
+     ряд выглядел неровным, а сетка вылезала из блока. */
+  overflow: hidden;
 }
 .slot.is-empty { color: var(--text-faint); font-size: 1rem; }
 .slot.is-empty:hover { border-color: var(--accent-line); color: var(--accent); }
 .slot.is-filled {
   border: 1px solid hsl(var(--hue) 45% 38%); background: hsl(var(--hue) 42% 20%);
-  color: hsl(var(--hue) 75% 90%); font-weight: 600; font-size: 0.66rem; line-height: 1.15;
+  color: hsl(var(--hue) 75% 90%); font-weight: 600; font-size: 0.7rem; line-height: 1.2;
   letter-spacing: 0; text-align: center; overflow-wrap: anywhere;
+  /* Справа и снизу отступ под количество: без него длинное название налезает на «×7» */
+  padding: 3px 20px 13px 3px;
 }
 .slot.is-filled:hover { background: hsl(var(--hue) 45% 26%); }
-.slot-name { display: block; }
-.slot-qty { position: absolute; right: 3px; bottom: 2px; font-size: 0.62rem; font-weight: 600; opacity: 0.9; font-variant-numeric: tabular-nums; }
+/* Название переносится на две строки, а что не влезло — многоточием.
+   Двух строк хватает всем реальным названиям (самое длинное — «Ключ от Книги наставлений»),
+   а полное название всё равно лежит в подсказке плитки, поэтому обрезка ничего не теряет. */
+.slot-name {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; max-height: 2.4em;
+}
+/* 0.7rem = 11.2px: в проекте мельче 11px текст не читается (см. правила интерфейса) */
+.slot-qty { position: absolute; right: 4px; bottom: 3px; font-size: 0.7rem; font-weight: 600; opacity: 0.9; font-variant-numeric: tabular-nums; }
 /* Управление позицией прячем до наведения: плитка остаётся чистой, но позицию
    можно изменить или убрать, наведясь на неё. */
 .slot-acts {

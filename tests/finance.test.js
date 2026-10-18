@@ -715,7 +715,11 @@ describe('раздел «Банк»: один экран', () => {
   it('название предмета переносится по словам внутри плитки', () => {
     const css = readFileSync('css/modules/finance.css', 'utf8');
     expect(css).toMatch(/\.slot\.is-filled\s*\{[^}]*overflow-wrap:\s*anywhere/);
-    expect(css).toMatch(/\.slot\.is-filled\s*\{[^}]*line-height:\s*1\.15/);
+    // Строки не должны липнуть: межстрочный интервал задаётся, но без зазора между
+    // строками название в две строки читается слитно (1.15 → 1.2)
+    const lh = css.match(/\.slot\.is-filled\s*\{[^}]*line-height:\s*([\d.]+)/);
+    expect(lh, 'у плитки должен быть задан межстрочный интервал').toBeTruthy();
+    expect(Number(lh[1])).toBeGreaterThanOrEqual(1.2);
   });
 
   it('у каждой колонки комиссионки есть кнопка добавления позиции', async () => {
