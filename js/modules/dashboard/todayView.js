@@ -228,7 +228,7 @@ export function todayHtml(deps = {}, appState = state) {
           <div class="today-supplies">
             <div class="today-supply">
               <span class="muted">Древние монеты</span>
-              <b class="is-gold">${formatCoins(supplies.coins)} 🪙</b>
+              <b class="is-gold">${formatCoins(supplies.coins)} <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></b>
             </div>
             <div class="today-supply">
               <span class="muted">Персонажей</span>

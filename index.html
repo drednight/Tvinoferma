@@ -43,6 +43,15 @@
   <link rel="stylesheet" href="/css/modules/finance.css" />
 </head>
 <body data-ui-style="next">
+  <!-- SVG-иконки: монетка и кошелёк -->
+  <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="i-coin" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="#e8c05a"/>
+      <circle cx="12" cy="12" r="8" fill="none" stroke="#b8942e" stroke-width="1.5"/>
+      <text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" fill="#7a5c14">Д</text>
+    </symbol>
+  </svg>
+
   <div class="app-shell">
     <!-- Экспериментальный каркас. В классическом режиме полностью скрыт. -->
     <aside class="next-sidebar" aria-label="Навигация нового интерфейса">
@@ -495,7 +504,7 @@
             <p class="muted">Через сколько времени данные считаются устаревшими (подсвечиваются жёлтым в окне «Когда что проверено» в профиле персонажа и на карточках марафонов) и как часто обновляется статус серверов.</p>
           </summary>
           <div class="setting-row">
-            <div><strong>🪙 Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
+            <div><strong><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс монет</strong><p class="muted">Часов с последней проверки баланса.</p></div>
             <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.balanceHours" /><span class="muted hours-hint" data-hours-for="freshness.balanceHours"></span></div>
           </div>
           <div class="setting-row">

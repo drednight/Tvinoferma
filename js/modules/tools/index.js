@@ -26,11 +26,11 @@ import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
  */
 const SCRIPTS = [
   { id: 'check-auth', ico: '🔐', label: 'Проверка входа',   hint: 'Проверить вход у всех персонажей на сайте игры' },
-  { id: 'update-balance', ico: '💰', label: 'Балансы',       hint: 'Обновить баланс Древних монет' },
+  { id: 'update-balance', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Балансы',       hint: 'Обновить баланс Древних монет' },
   { id: 'update-marathons', ico: '🏃', label: 'Марафоны',     hint: 'Сверить задания и прогресс на сайте' },
   { id: 'promo', ico: '🎁', label: 'Промокод',          hint: 'Активировать промокод на аккаунтах' },
   { id: 'transfer', ico: '📦', label: 'Передача', hint: 'Передать все предметы с сайта' },
-  { id: 'shop', ico: '🪙', label: 'Подарки',           hint: 'Купить подарки за Древние монеты' },
+  { id: 'shop', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Подарки',           hint: 'Купить подарки за Древние монеты' },
   { id: 'caravan', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
   { id: 'close-game', ico: '🛑', label: 'Закрыть все окна игры', hint: 'Закрыть все запущенные окна игры' }
 ];

@@ -30,7 +30,7 @@ const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: n
 
 const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
 const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-const coin = (n) => `🪙 ${formatCoins(n || 0)}`;
+const coin = (n) => `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(n || 0)}`;
 const charById = (id) => state.characters.find(c => c.id === id);
 /** Группа персонажа в марафоне — его основная пати; без пати — «Без пати». */
 const partyLabel = (c) => mainPartyName(c, state.parties) || NO_PARTY_LABEL;
@@ -244,7 +244,7 @@ function renderList(root) {
   const overview = `
     <div class="mr-overview">
       ${groups.filter(g => g.list.length).map(g => `<span class="mr-ov mr-ov-${g.key}"><b>${g.list.length}</b> ${g.label.toLowerCase()}</span>`).join('')}
-      <span class="mr-ov mr-ov-coins" title="Сумма по всем марафонам">🪙 <b>${formatCoins(roundCoins(earned))}</b> заработано</span>
+      <span class="mr-ov mr-ov-coins" title="Сумма по всем марафонам"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <b>${formatCoins(roundCoins(earned))}</b> заработано</span>
     </div>`;
 
   root.innerHTML = overview + groups.filter(g => g.list.length).map(g => `
@@ -270,7 +270,7 @@ function syncAgeHtml(m) {
 /**
  * Плитка одного числа на карточке: подпись сверху, значение снизу.
  *
- * Раньше карточка перечисляла всё одной строкой с эмодзи («✅ 1/12 ⚠ 11 👥 4 📋 3 🪙 500/2000»):
+ * Раньше карточка перечисляла всё одной строкой с эмодзи («✅ 1/12 ⚠ 11 👥 4 📋 3 <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> 500/2000»):
  * строка не помещалась, числа приходилось вылавливать глазами, и карточка выглядела
  * пёстро. Плитки читаются списком и не зависят от ширины окна.
  */
@@ -364,11 +364,11 @@ function renderSeries(root, s) {
     <div class="kpi-grid mr-kpis">
       ${kpi('Марафонов', kids.length)}${kpi('Участников', charIds.length)}
       ${kpi('Выполнено заданий', `${totals.reduce((a, x) => a + x.t.done, 0)}/${totals.reduce((a, x) => a + x.t.cells, 0)}`)}
-      ${kpi('💰 Заработано', `${coins.toLocaleString('ru-RU')}`, maxCoins ? `из ${maxCoins.toLocaleString('ru-RU')} возможных` : '')}
+      ${kpi('<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано', `${coins.toLocaleString('ru-RU')}`, maxCoins ? `из ${maxCoins.toLocaleString('ru-RU')} возможных` : '')}
     </div>
     <div class="mr-cards">${kids.map(k => marathonCard(k, { inFolder: true })).join('') || '<div class="empty-state">Папка пуста. Нажмите «+ Марафон» или «📥 Добавить существующие».</div>'}</div>
     ${kids.length ? '' : '<!--'}<div class="panel mr-section">
-      <h3>💰 Монеты по этапам</h3>
+      <h3><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Монеты по этапам</h3>
       <div class="tf-mx-wrap"><table class="mr-table">
         <thead><tr><th>Персонаж</th>${kids.map(k => `<th>${escapeHtml(k.source?.stageName || k.title)}</th>`).join('')}<th>Итого</th></tr></thead>
         <tbody>${charIds.map(cid => {
@@ -454,7 +454,7 @@ function renderDetail(root, m) {
       ${kpi('Прогресс', `${t.percent}%`, progressBar(t.percent))}
       ${kpi('Выполнено заданий', `${t.done}/${t.cells}`)}
       ${kpi('Не успевают', t.failing ? `<span class="mr-red">${t.failing}</span>` : '0', t.failing ? 'запас дней исчерпан' : 'все в графике')}
-      ${kpi(completed ? '💰 Заработано (итог)' : '💰 Заработано', t.coins.toLocaleString('ru-RU'), t.maxCoins ? `из ${t.maxCoins.toLocaleString('ru-RU')} возможных` : 'награды не заданы')}
+      ${kpi(completed ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано (итог)' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано', t.coins.toLocaleString('ru-RU'), t.maxCoins ? `из ${t.maxCoins.toLocaleString('ru-RU')} возможных` : 'награды не заданы')}
       ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length} ${syncAgeHtml(m)}` : 'ещё не сверяли с сайтом')}
     </div>
 
@@ -487,13 +487,13 @@ function renderDetail(root, m) {
 const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'из новости', manual: 'изменено вручную' };
 
 /** Раскрывающийся список описаний заданий: короткий текст, «Показать полностью», правка. */
-/** Правая колонка описания: «Древние монеты 🪙» и ниже только число ДМ за каждый порог задания. */
+/** Правая колонка описания: «Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>» и ниже только число ДМ за каждый порог задания. */
 function rewardLadder(task) {
   const { max, tiers } = rewardPotential(task);
-  if (!max) return '<div class="mr-desc-coins muted"><div class="mr-desc-coins-head">Древние монеты 🪙</div><div class="muted">—</div></div>';
+  if (!max) return '<div class="mr-desc-coins muted"><div class="mr-desc-coins-head">Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></div><div class="muted">—</div></div>';
   return `
     <div class="mr-desc-coins">
-      <div class="mr-desc-coins-head">Древние монеты 🪙</div>
+      <div class="mr-desc-coins-head">Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></div>
       ${tiers.length > 1
         ? `<ul class="mr-desc-tiers">${tiers.map(x => `<li${x.coins === max ? ' class="is-max"' : ''}><span>${x.threshold} раз</span><b>${x.coins}</b></li>`).join('')}</ul>`
         : `<ul class="mr-desc-tiers"><li class="is-max"><span>за задание</span><b>${max}</b></li></ul>`}
@@ -592,7 +592,7 @@ function matrix(m) {
 function thTitle(t) {
   const base = t.siteTitle && t.siteTitle !== t.title ? `${t.title} (на сайте: ${t.siteTitle})` : t.title;
   const pot = rewardPotential(t).text;
-  const head = pot ? `${base}\n🪙 ${pot}` : base;
+  const head = pot ? `${base}\n<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${pot}` : base;
   if (!t.description) return head;
   const [short] = shortDescription(t.description, 400);
   return `${head}\n\n${short}`;
@@ -631,7 +631,7 @@ function coinsSection(m, t) {
   return `
     <div class="mr-two">
       <div class="panel mr-section">
-        <h3>💰 По персонажам</h3>
+        <h3><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> По персонажам</h3>
         <table class="mr-table"><thead><tr><th>Персонаж</th><th>Выполнено</th><th>Награды</th>${hasBonus ? '<th>🎁 Бонус</th>' : ''}<th title="Изменение баланса ДМ с сайта с первой сверки (для сравнения)">Δ баланса ДМ</th></tr></thead>
         <tbody>${charRows.map(r => `<tr><td>${escapeHtml(charById(r.cid)?.nick || '—')}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td>${hasBonus ? `<td>${bonusCell(r.cid)}</td>` : ''}<td>${balanceDelta(r.cid)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td><strong>Всего</strong></td><td>${t.done}/${t.cells}</td><td class="mr-gold"><strong>${coin(t.coins)}</strong></td>${hasBonus ? `<td><strong>${m.participantIds.filter(cid => bonusStatus(m, cid).some(b => b.reached)).length}</strong> получат</td>` : ''}<td></td></tr></tfoot></table>
@@ -759,7 +759,7 @@ function openCellCard(m, charId, taskId) {
         <div><span class="muted">С сайта</span><strong>${x.hasSite ? cell.site : '—'}</strong><small class="muted">${cell.syncedAt ? fmtDateTime(cell.syncedAt) : 'нет данных'}</small></div>
         <div><span class="muted">Ручные отметки</span><strong>${x.manual}</strong><small class="muted">дни в календаре</small></div>
         <div><span class="muted">Осталось дней</span><strong>${x.left}</strong><small class="muted" title="Сколько дней можно пропустить, если считать только сайт / только ручные отметки">запас: сайт ${x.siteReserve === null ? '—' : x.siteReserve} / ручной ${x.manualReserve}</small></div>
-        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → 🪙${x.next.rewardCoins}` : (rewardPotential(task).max ? 'максимум получен' : '')}</small></div>
+        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${x.next.rewardCoins}` : (rewardPotential(task).max ? 'максимум получен' : '')}</small></div>
       </div>
 
       <div class="mr-adjust">
@@ -772,7 +772,7 @@ function openCellCard(m, charId, taskId) {
       </div>
 
       ${sortedRewards.length ? `<div class="mr-rewards">${sortedRewards.map(r => `
-        <span class="mr-reward ${x.count >= r.threshold ? 'is-reached' : ''}">${x.count >= r.threshold ? '✓' : '○'} ${r.threshold}: ${escapeHtml(r.rewardText || 'награда')} · 🪙${r.rewardCoins}</span>`).join('')}</div>` : ''}
+        <span class="mr-reward ${x.count >= r.threshold ? 'is-reached' : ''}">${x.count >= r.threshold ? '✓' : '○'} ${r.threshold}: ${escapeHtml(r.rewardText || 'награда')} · <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}</span>`).join('')}</div>` : ''}
 
       <h4 class="mr-cal-title">Календарь <small class="muted">(нажмите на день, чтобы отметить выполнение вручную)</small></h4>
       <div class="mr-cal-legend muted">

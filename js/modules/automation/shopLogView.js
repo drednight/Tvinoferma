@@ -22,7 +22,7 @@ export function detailsHtml(e) {
   const info = resultInfo(e.status);
   const bal = e.balanceBefore != null && e.balanceAfter != null ? `${fmt(e.balanceBefore)} → ${fmt(e.balanceAfter)} мон.` : '';
   return `
-    <div class="tl-summary"><span>🪙 <b>${escapeHtml(e.nick)}</b>${others(e).length ? ` <span class="muted">(также: ${escapeHtml(others(e).join(', '))})</span>` : ''}</span><span class="muted">${escapeHtml(when(e.at))}</span></div>
+    <div class="tl-summary"><span><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <b>${escapeHtml(e.nick)}</b>${others(e).length ? ` <span class="muted">(также: ${escapeHtml(others(e).join(', '))})</span>` : ''}</span><span class="muted">${escapeHtml(when(e.at))}</span></div>
     <div class="promo-log-h">${info.icon} ${escapeHtml(resultLabel(e))}</div>
     <ul class="promo-log-list">
       <li>Предмет: ${escapeHtml(e.item)}</li>
@@ -46,7 +46,7 @@ const entryText = (e) => [
 export function openShopEntry(index) {
   const e = loadShopLog()[index];
   if (!e) return null;
-  const ov = openOverlay({ title: '🪙 Активация подарка', wide: true });
+  const ov = openOverlay({ title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарка', wide: true });
   ov.body.innerHTML = detailsHtml(e);
   ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
@@ -61,7 +61,7 @@ export function openShopEntry(index) {
 export const shopLogSource = {
   id: 'shop',
   title: 'Подарки',
-  icon: '🪙',
+  icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
   list: () => loadShopLog().map(e => ({
     key: entryKey(e), at: e.at, title: `${e.item} · ${e.bought} из ${e.requested}`,
     status: e.status === 'done' ? 'ok' : resultInfo(e.status).level === 'error' ? 'error' : 'warn',

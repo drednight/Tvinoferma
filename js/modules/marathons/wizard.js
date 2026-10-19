@@ -333,7 +333,7 @@ export function openMarathonWizard(opts = {}) {
           <div class="tf-news-stage">
             <strong>📅 ${escapeHtml(st.name)}</strong> <small class="muted">${st.startDate || '?'} — ${st.endDate || '?'}</small>
             ${st.bonus ? `<div class="tf-small">🎁 ${escapeHtml(st.bonus.text)} — за ${st.bonus.needTasks} выполн. заданий</div>` : ''}
-            <ul>${raw.quests.filter(q => q.stageKey === st.key || (!q.stageKey && raw.stages.length === 1)).map(q => `<li>${escapeHtml(q.title)} — цель ${q.goal}${q.weekly ? ' (раз в неделю)' : ''} · ${(q.rewards || []).map(r => `${r.threshold}→🪙${r.rewardCoins}`).join(', ') || 'без наград'}${q.description ? '' : ' · <span class="tf-warn">без описания</span>'}</li>`).join('')}</ul>
+            <ul>${raw.quests.filter(q => q.stageKey === st.key || (!q.stageKey && raw.stages.length === 1)).map(q => `<li>${escapeHtml(q.title)} — цель ${q.goal}${q.weekly ? ' (раз в неделю)' : ''} · ${(q.rewards || []).map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || 'без наград'}${q.description ? '' : ' · <span class="tf-warn">без описания</span>'}</li>`).join('')}</ul>
           </div>`).join('')}</div>
         <p class="muted tf-small">🌐 Сверка отметок: ${raw.sourceUrl ? escapeHtml(raw.sourceUrl.replace('https://', '')) : '<span class="tf-warn">ссылка не найдена — укажите на следующем шаге</span>'}</p>
       </div>`;
@@ -734,7 +734,7 @@ export function openMarathonWizard(opts = {}) {
             <div class="tf-reward-row" data-rw="${r.id}">
               <label class="tf-inline">Порог <input class="input tf-num" type="number" min="1" data-r="threshold" value="${r.threshold}"/></label>
               <input class="input tf-grow" data-r="rewardText" value="${escapeHtml(r.rewardText)}" placeholder="Награда (например, Сундук)"/>
-              <label class="tf-inline">🪙 <input class="input tf-num" type="number" min="0" data-r="rewardCoins" value="${r.rewardCoins}"/></label>
+              <label class="tf-inline"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <input class="input tf-num" type="number" min="0" data-r="rewardCoins" value="${r.rewardCoins}"/></label>
               <button type="button" class="icon-btn danger" data-act="del-rw">✕</button>
             </div>`).join('') || '<p class="muted tf-small">Наград нет.</p>'}
           <div class="row gap">

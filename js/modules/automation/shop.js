@@ -1,5 +1,5 @@
 // js/modules/automation/shop.js
-// 🪙 Активация подарков: покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
+// <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков: покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
 // Цены, наличие, описание и лимиты всегда читаются с сайта при открытии окна (команда read_shop); данные прошлого чтения
 // показываются сразу, пока идёт новое. Покупка: shopRunner.js (команда buy_shop_item), хранение: shopStore.js,
 // чистая логика: shopCore.js. Правила: docs/COMPLIANCE.md.
@@ -66,7 +66,7 @@ export function openShopDialog({ ids = [] } = {}) {
   let last = null;                         // итог последнего запуска: { rows, accounts, dry, stopped, checking, balances }
 
   const dlg = openOverlay({
-    title: '🪙 Активация подарков', wide: true,
+    title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков', wide: true,
     onClose: () => { closed = true; clearTimeout(renderTimer); if (running) running.cancelled = true; if (scanSignal) scanSignal.cancelled = true; }
   });
   dlg.body.classList.add('shop-body');
@@ -302,7 +302,7 @@ export function openShopDialog({ ids = [] } = {}) {
     dlg.sub.textContent = 'Цены, наличие и баланс читаются с сайта при открытии окна. Покупка необратима — запрос подтверждается.';
     dlg.body.innerHTML = `
       ${noteHtml({
-        icon: '🪙', title: 'Что сделает это окно',
+        icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', title: 'Что сделает это окно',
         text: 'Отмеченные предметы покупаются за Древние монеты на аккаунте сайта: каждый покупается отдельной покупкой, штука за штукой. '
           + 'Баланс и лимиты читаются с сайта прямо сейчас — старые данные показываются, только пока новая проверка идёт.'
       })}
@@ -324,7 +324,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="dry" title="Откроет магазин и найдёт кнопку «Купить», но не нажмёт её: ничего не покупается и не записывается">👁 Пробный запуск</button>
-      <button class="btn primary" data-act="start">🪙 Купить</button>`;
+      <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить</button>`;
     renderDynamic();
   }
 
@@ -435,7 +435,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const { invoke } = await import('@tauri-apps/api/core');
 
     const total = accounts.reduce((n, a) => n + a.orders.length, 0);
-    const task = startTask(`🪙 Активация подарков${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`, { total, cancelable: true });
+    const task = startTask(`<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`, { total, cancelable: true });
     const signal = { cancelled: false };
     running = signal;
     task.onCancel(() => { signal.cancelled = true; });
@@ -463,7 +463,7 @@ export function openShopDialog({ ids = [] } = {}) {
           recordPurchase(info.acc.siteKey, info.order.key, { at: info.at, balanceAfter: info.balanceAfter, availableBefore: info.availableBefore, availableAfter: info.availableAfter });
           const k = cellKey(info.acc, info.order.key);
           bought.set(k, (bought.get(k) || 0) + 1);
-          if (alive()) setCell(k, `<span class="shop-muted">🪙 куплено ${bought.get(k)} из ${info.order.qty}…</span>`);
+          if (alive()) setCell(k, `<span class="shop-muted"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> куплено ${bought.get(k)} из ${info.order.qty}…</span>`);
         },
         onRow: (row, done, all) => {
           recordShopRow(row);
@@ -502,7 +502,7 @@ export function openShopDialog({ ids = [] } = {}) {
       const before = new Map(reps.map(c => [c.id, c.lastCoinUpdate || null]));
       // noQueue: мы уже внутри идущего скрипта активации — эта проверка его часть,
         // и ждать в очереди за ним самим собой она не может
-      await sm.refreshAllBalances(reps, { title: '💰 Баланс после покупки', onlyLoggedIn: false, noQueue: true });
+      await sm.refreshAllBalances(reps, { title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс после покупки', onlyLoggedIn: false, noQueue: true });
       let copied = false;
       accounts.forEach(a => {
         const rep = reps.find(c => c.id === a.char.id);
@@ -554,7 +554,7 @@ export function openShopDialog({ ids = [] } = {}) {
       { icon: '⏭', label: 'не покупалось', value: s.notRun }
     ]
     : [
-      { icon: '🪙', label: 'куплено', value: s.bought, tone: 'ok' },
+      { icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'куплено', value: s.bought, tone: 'ok' },
       { icon: '🔒', label: 'до лимита', value: s.limited, tone: 'warn' },
       { icon: '💸', label: 'не хватило монет', value: s.noFunds, tone: 'warn' },
       { icon: '❓', label: 'неясно', value: s.unknown, tone: 'warn' },
@@ -577,7 +577,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="log">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
-      ${dry ? '<button class="btn secondary" data-act="back">← К выбору</button><button class="btn primary" data-act="real">🪙 Купить по-настоящему</button>'
+      ${dry ? '<button class="btn secondary" data-act="back">← К выбору</button><button class="btn primary" data-act="real"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить по-настоящему</button>'
     : `<button class="btn primary" data-act="again" ${checking ? 'disabled' : ''}>🛒 Активировать другие предметы</button>`}`;
   }
 

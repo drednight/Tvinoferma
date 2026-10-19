@@ -81,6 +81,11 @@ pub fn run() {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 tray::setup(app)?;
+                // Явно ставим иконку главному окну: Tauri v2 не принимает `icon` в конфиге окна,
+                // а без неё Windows иногда показывает пустой значок на панели задач.
+                if let (Some(main), Some(icon)) = (app.get_webview_window("main"), app.default_window_icon()) {
+                    let _ = main.set_icon(icon.clone());
+                }
                 // Автозапуск «в трее»: окно не показываем, приложение сразу работает в фоне
                 if autostart::started_minimized() {
                     if let Some(main) = app.get_webview_window("main") {

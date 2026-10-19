@@ -239,7 +239,7 @@ describe('launcher: итог запуска, трей', () => {
     expect(rust).toContain('PROMO_ACTION: &str = "promo"');
     expect(rust).toContain('TRANSFER_ACTION: &str = "transfer"');
     expect(rust).toContain('SHOP_ACTION: &str = "shop"');
-    expect(rust).toContain('🪙 Активация подарков');
+    expect(rust).toContain('Активация подарков');
     expect(rust).toContain('&auth, &balance, &promo, &transfer, &shop, &caravan, &marathons');
     expect(rust).toContain('action == SHOP_ACTION');
     expect(rust).toContain('CARAVAN_ACTION: &str = "caravan"');

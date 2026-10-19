@@ -186,7 +186,7 @@ export function openCharacterForm(char = null) {
           </details>
 
           <div class="pf-panel cf-coins">
-            <h4 class="pf-panel-title cf-coins-title">💰 Древние монеты</h4>
+            <h4 class="pf-panel-title cf-coins-title"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Древние монеты</h4>
             <div class="field cf-field">
               <label>Текущий баланс <small class="muted">(можно изменить вручную)</small></label>
               <input class="input cf-coins-input" type="number" name="coins" value="${currentCoins}" min="0" step="0.1" />

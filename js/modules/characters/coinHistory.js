@@ -34,14 +34,14 @@ export function openCoinHistory(charOrId) {
 
   const archived = state.archivedCharacters.some(item => item.id === char.id);
   const history = normalizeCoinHistory(char.coinHistory);
-  const ov = openOverlay({ title: `🪙 История Древних монет: ${char.nick}`, wide: true });
+  const ov = openOverlay({ title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История Древних монет: ${char.nick}`, wide: true });
   const last = char.lastCoinUpdate ? fmtDate(char.lastCoinUpdate) : 'ещё не проверялся';
 
   const stale = needsCoinRecheck(char);
   ov.body.innerHTML = `
     ${stale ? `<p class="tf-warn" data-coin-warn>⚠ Баланс и записи ниже сделаны до исправления разбора: значение с запятой (28,5) могло записаться как 285.${archived ? ' Персонаж в архиве, поэтому автоматическая перепроверка отключена.' : ' Нажмите «Перепроверить» — баланс будет прочитан с сайта заново, в историю добавится запись о разнице.'}</p>` : ''}
     <div class="tl-summary">
-      <strong>🪙 ${formatCoins(char.ancientCoins || 0)}</strong>
+      <strong><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(char.ancientCoins || 0)}</strong>
       <span class="muted">Последняя проверка: ${escapeHtml(last)}</span>
       <span class="muted">Записей: ${history.length}</span>
     </div>

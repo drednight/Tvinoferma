@@ -94,12 +94,12 @@ export function buildCommands(state, deps = {}) {
   push({ id: 'act-new-party', title: '➕ Новая пати', group: 'Действия', keywords: ['создать', 'добавить', 'группа'], run: () => deps.run?.('new-party') });
   push({ id: 'act-new-marathon', title: '➕ Новый марафон', group: 'Действия', keywords: ['создать', 'событие'], run: () => deps.run?.('new-marathon') });
   push({ id: 'act-auth', title: '🔐 Проверить авторизацию', group: 'Действия', keywords: ['вход', 'логин', 'сессия', 'проверка'], run: () => deps.run?.('check-auth') });
-  push({ id: 'act-balance', title: '💰 Обновить балансы', group: 'Действия', keywords: ['монеты', 'деньги', 'обновить'], run: () => deps.run?.('update-balance') });
+  push({ id: 'act-balance', title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновить балансы', group: 'Действия', keywords: ['монеты', 'деньги', 'обновить'], run: () => deps.run?.('update-balance') });
   push({ id: 'act-marathon-sync', title: '🏆 Обновить марафоны', group: 'Действия', keywords: ['прогресс', 'сверка', 'сверка с сайтом'], run: () => deps.run?.('update-marathons') });
   push({ id: 'act-promo', title: '🎁 Активировать промокод', group: 'Действия', keywords: ['код', 'бонус'], run: () => deps.run?.('promo') });
   push({ id: 'act-transfer', title: '📦 Передать предметы в игру', group: 'Действия', keywords: ['подарок', 'перевод'], run: () => deps.run?.('transfer') });
   push({ id: 'act-caravan', title: '🧰 Сундук караванщика (открыть сундуки в инвентаре)', group: 'Действия', keywords: ['сундук', 'сундуки', 'караванщик', 'караванщика', 'инвентарь', 'открыть', 'перевести'], run: () => deps.run?.('caravan') });
-  push({ id: 'act-shop', title: '🪙 Активация подарков (покупка за Древние монеты)', group: 'Действия', keywords: ['активация', 'магазин', 'подарки', 'подарок', 'камень', 'знак', 'сундук', 'купить'], run: () => deps.run?.('shop') });
+  push({ id: 'act-shop', title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков (покупка за Древние монеты)', group: 'Действия', keywords: ['активация', 'магазин', 'подарки', 'подарок', 'камень', 'знак', 'сундук', 'купить'], run: () => deps.run?.('shop') });
   push({ id: 'act-windows', title: '🎮 Запущенные окна игры', group: 'Действия', keywords: ['закрыть', 'клиенты', 'процессы'], run: () => deps.run?.('windows') });
   push({ id: 'act-close-game', title: '🛑 Закрыть все окна игры', group: 'Действия', keywords: ['закрыть', 'клиенты'], run: () => deps.run?.('close-game') });
   push({ id: 'act-save', title: '💾 Сохранить сейчас', group: 'Действия', keywords: ['запись', 'диск'], run: () => deps.run?.('save') });
@@ -140,7 +140,7 @@ export function buildCommands(state, deps = {}) {
       });
       push({
         id: `char-balance-${c.id}`,
-        title: `💰 Обновить баланс: ${c.nick}`,
+        title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновить баланс: ${c.nick}`,
         group: 'Команды персонажа',
         subtitle: where,
         keywords: ['монеты'],

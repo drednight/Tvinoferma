@@ -425,7 +425,7 @@ export async function refreshAllBalances(chars = state.characters, { title, only
         return { updated: 0, failed: 0 };
     }
     const { retries, retryDelayMs } = scriptSettings();
-    const task = startTask(title || `💰 Обновление балансов (${list.length} акк.)`, { total: list.length, cancelable: list.length > 1 });
+    const task = startTask(title || `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновление балансов (${list.length} акк.)`, { total: list.length, cancelable: list.length > 1 });
     const signal = { cancelled: false };
     task.onCancel(() => { signal.cancelled = true; });
     // Ждём своей очереди: пока идёт другой скрипт, балансы не запрашиваем
@@ -476,7 +476,7 @@ export async function refreshAllBalances(chars = state.characters, { title, only
 
 /** Баланс одного персонажа (кнопка в профиле). */
 export async function refreshBalanceFor(char) {
-    return refreshAllBalances([char], { title: `💰 Баланс: ${char.nick}`, onlyLoggedIn: false });
+    return refreshAllBalances([char], { title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс: ${char.nick}`, onlyLoggedIn: false });
 }
 
 /**

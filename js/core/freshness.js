@@ -11,7 +11,7 @@ const HOUR = 3600 * 1000;
 
 /** Виды данных: значок, подпись и ключ порога в settings.freshness. */
 export const FRESHNESS_KINDS = {
-  balance: { icon: '🪙', label: 'Баланс', settingKey: 'balanceHours' },
+  balance: { icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Баланс', settingKey: 'balanceHours' },
   login: { icon: '🔐', label: 'Вход', settingKey: 'loginHours' },
   marathon: { icon: '🏆', label: 'Марафон', settingKey: 'marathonHours' }
 };
@@ -120,7 +120,7 @@ export function formatWhen(iso) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Метка «🪙 3 ч назад»; подпись пересчитывается раз в минуту (refreshFreshnessLabels).
+ * Метка «<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> 3 ч назад»; подпись пересчитывается раз в минуту (refreshFreshnessLabels).
  * bare: только «3 ч назад», без значка (когда значок и название уже есть рядом).
  */
 export function freshnessChipHtml(item, { bare = false } = {}) {

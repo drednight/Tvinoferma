@@ -54,7 +54,7 @@ describe('описания заданий на странице марафона
     expect(box.querySelector('[data-desc-task="t2"]').textContent).toContain('Редактировать');
   });
 
-  it('в заголовке столбца нет строки «цель … · до 🪙…»', () => {
+  it('в заголовке столбца нет строки «цель … · до монет…»', () => {
     state.characters = [{ id: 'c1', nick: 'Ник', party: null, class: '' }];
     state.marathons[0].participantIds = ['c1'];
     state.marathons[0].assignments = { c1: ['t1', 't2'] };

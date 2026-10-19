@@ -280,12 +280,12 @@ export function openCharacterProfile(char) {
                Играть
             </button>
             <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
-            <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет">🪙 История</button>
+            <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История</button>
             ${isArchived ? '<span class="muted" title="Персонажи архива исключены из проверок">Проверки отключены</span>' : `<div class="pf-menu" id="pf-check-menu">
                <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
                <div class="pf-menu-list" hidden>
                   <button type="button" data-pf-check="auth">🔐 Вход на сайт</button>
-                  <button type="button" data-pf-check="coins" data-pf-coins>${needsCoinRecheck(char) ? '🪙 Перепроверить баланс' : '🪙 Баланс Древних монет'}</button>
+                  <button type="button" data-pf-check="coins" data-pf-coins>${needsCoinRecheck(char) ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Перепроверить баланс' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс Древних монет'}</button>
                </div>
             </div>`}
          </div>
@@ -530,7 +530,7 @@ export function openCharacterProfile(char) {
       const coins = document.getElementById('profile-coins-block');
       if (coins) coins.innerHTML = coinBlockHtml(char);          // красная пометка исчезает, если баланс перечитан
       const item = document.querySelector('[data-pf-coins]');
-      if (item) item.textContent = needsCoinRecheck(char) ? '🪙 Перепроверить баланс' : '🪙 Баланс Древних монет';
+      if (item) item.textContent = needsCoinRecheck(char) ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Перепроверить баланс' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс Древних монет';
     };
     menu?.querySelectorAll('[data-pf-check]').forEach(btn => {
       btn.onclick = async () => {
@@ -578,7 +578,7 @@ function checksBlockHtml(char) {
     </div>`;
   const marathons = marathonSyncList(char.id, state.marathons);
   const rows = [
-    row('🪙', 'Баланс монет', freshnessOf('balance', char.lastCoinUpdate, state.settings)),
+    row('<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', 'Баланс монет', freshnessOf('balance', char.lastCoinUpdate, state.settings)),
     row('🔐', 'Вход на сайт', freshnessOf('login', char.lastLoginCheck, state.settings)),
     ...marathons.map(({ marathon, at }) => row('🏆', `Марафон «${marathon.title}»`, freshnessOf('marathon', at, state.settings)))
   ];
@@ -597,7 +597,7 @@ function coinBlockHtml(char) {
     last = `<span class="muted" style="font-size:0.7rem;">Проверено: ${mskStamp(d)}</span>`;
   }
   return `
-    <div style="font-size:1.5rem; color:gold; font-weight:bold;">🪙 ${formatCoins(char.ancientCoins || 0)}</div>
+    <div style="font-size:1.5rem; color:gold; font-weight:bold;"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(char.ancientCoins || 0)}</div>
     <small class="muted" style="display:block; margin-bottom:4px;">Древних монет</small>
     ${last}
     ${needsCoinRecheck(char) ? '<small data-coin-warn style="display:block; margin-top:4px; color:#f7768e; max-width:200px;" title="Раньше баланс с запятой (28,5) мог записаться как 285. Откройте «🔄 Проверить» → «Перепроверить баланс»: значение будет прочитано с сайта заново.">⚠ Баланс записан до исправления — перепроверьте</small>' : ''}`;

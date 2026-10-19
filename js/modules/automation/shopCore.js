@@ -1,5 +1,5 @@
 // js/modules/automation/shopCore.js
-// 🪙 Активация подарков (покупка за Древние монеты) (магазин подарков, chests2.php): чистая логика без интерфейса —
+// <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков (покупка за Древние монеты) (магазин подарков, chests2.php): чистая логика без интерфейса —
 // список закреплённых предметов, разбор ответа сайта, расчёт количества и остатка, лимиты и срок их обновления,
 // статусы итогов. Хранение: shopStore.js. Запуск: shopRunner.js. Диалог: shop.js. Правила: docs/COMPLIANCE.md.
 
@@ -249,7 +249,7 @@ export function limitView(item, track, now = new Date()) {
 export const RESULT_INFO = {
   done: { icon: '✅', label: 'Куплено', level: 'ok' },
   limit: { icon: '🔒', label: 'Куплено до лимита', level: 'warn' },
-  no_funds: { icon: '🪙', label: 'Не хватило монет', level: 'warn' },
+  no_funds: { icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Не хватило монет', level: 'warn' },
   price_changed: { icon: '💱', label: 'Цена изменилась — остановлено', level: 'warn' },
   missing: { icon: '🚫', label: 'Нет в магазине', level: 'warn' },
   no_effect: { icon: '⚠️', label: 'Сайт не провёл покупку', level: 'warn' },

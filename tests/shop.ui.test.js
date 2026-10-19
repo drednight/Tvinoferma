@@ -103,7 +103,7 @@ describe('окно: предметы', () => {
     const desc = $('[data-card="valor"] .shop-desc');
     expect(desc.textContent).toContain('вы получите');
     expect(desc.closest('label')).toBeNull();
-    expect($('.tf-dialog-title').textContent).toContain('🪙');
+    expect($('.tf-dialog-title').innerHTML).toContain('i-coin');
   });
 
   it('ивентовых предметов нет на сайте: карточки заблокированы, видно прежнюю цену', async () => {

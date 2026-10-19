@@ -697,7 +697,7 @@ function generateCardHTML(char, { archived = false } = {}) {
 
         <div class="card-meta">
            <span class="badge party card-party${partyColor ? ' has-color' : ''}"${partyColor ? ` style="--party-c:${partyColor}"` : ''}>${partyLabel}</span>
-           <span class="badge coins card-coins"><span aria-hidden="true">🪙</span><strong>${coinsDisplay}</strong></span>
+           <span class="badge coins card-coins"><span aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></span><strong>${coinsDisplay}</strong></span>
            <div class="card-tags tag-list">${tagsHtml}</div>
         </div>
 
@@ -1218,10 +1218,10 @@ function renderBulkBar() {
     <button class="btn ghost small" data-bulk="all">☑ Все по фильтру (${visibleIds.length})</button>
     <span class="bulk-sep"></span>
     <button class="btn secondary small" data-bulk="auth" ${dis}>🔐 Проверить вход</button>
-    <button class="btn secondary small" data-bulk="balance" ${dis}>💰 Балансы</button>
+    <button class="btn secondary small" data-bulk="balance" ${dis}><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Балансы</button>
     <button class="btn secondary small" data-bulk="promo" ${dis}>🎁 Промокод</button>
     <button class="btn secondary small" data-bulk="transfer" ${dis}>📦 Передать предметы</button>
-    <button class="btn secondary small" data-bulk="shop" ${dis} title="Активация подарков: покупка за Древние монеты">🪙 Подарки</button>
+    <button class="btn secondary small" data-bulk="shop" ${dis} title="Активация подарков: покупка за Древние монеты"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Подарки</button>
     <button class="btn secondary small" data-bulk="caravan" ${dis} title="Сундук караванщика: открыть сундуки в инвентаре">🧰 Сундук</button>
     <button class="btn secondary small" data-bulk="launch" ${dis} title="Запустить игру для выбранных по очереди">▶ Запустить</button>
     <button class="btn secondary small" data-bulk="tag-add" ${dis}>🏷 Добавить тег</button>

@@ -158,7 +158,7 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   }
   parsed.debug.forEach(line => task.log(line, /не найден|вручную|проверьте/i.test(line) ? 'warn' : 'info'));
   parsed.stages.forEach(st => task.log(`Этап «${st.name}»: ${st.startDate || '?'} — ${st.endDate || '?'}, заданий ${parsed.quests.filter(q => q.stageKey === st.key).length}`));
-  parsed.quests.forEach(q => task.log(`  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${q.rewards.map(r => `${r.threshold}→🪙${r.rewardCoins}`).join(', ') || '—'}`));
+  parsed.quests.forEach(q => task.log(`  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${q.rewards.map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || '—'}`));
   if (!parsed.quests.length) {
     task.finish('В новости не найдена таблица заданий', 'error');
     return { marathon: null, error: 'no_quests', task };

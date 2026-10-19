@@ -133,7 +133,7 @@ const launchReady = activeMembers.filter(m => !launchBlocker(m)).length;
                     <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
                     <span class="pt-sub">${countLabel}${activeMembers.length ? ` · онлайн ${stats.onlineCount}` : ''}</span>
                 </div>
-                <div class="pt-coins" title="Монеты считаются по основной пати персонажей">${stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} 🪙` : ''}</div>
+                <div class="pt-coins" title="Монеты считаются по основной пати персонажей">${stats.totalCoins > 0 ? `${formatCoins(stats.totalCoins)} <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>` : ''}</div>
                 <span class="toggle-arrow pt-arrow" aria-hidden="true"></span>
             </header>
             <div class="pt-glance">
@@ -232,7 +232,7 @@ export function renderPartiesGrid() {
         summary.innerHTML = `
             <span class="pt-chip">👥 Персонажей <b>${state.characters.length}</b></span>
             <span class="pt-chip">🛡 Пати <b>${state.parties.length}</b></span>
-            <span class="pt-chip pt-chip-gold">🪙 <b>${formatCoins(overall)}</b></span>
+            <span class="pt-chip pt-chip-gold"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <b>${formatCoins(overall)}</b></span>
             ${multi ? `<span class="pt-chip" title="Монеты таких персонажей считаются только по основной пати">В нескольких пати: <b>${multi}</b></span>` : ''}`;
     }
 

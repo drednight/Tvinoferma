@@ -121,7 +121,7 @@ describe('метки на странице', () => {
     const stale = freshnessOf('login', ago(30), SETTINGS, NOW);
     document.body.innerHTML = freshnessChipHtml(freshnessOf('balance', ago(3), SETTINGS, NOW)) + freshnessChipHtml(stale, { bare: true });
     const chips = [...document.querySelectorAll('.fresh-chip')];
-    expect(chips.map(c => c.textContent.trim())).toEqual(['🪙 3 ч назад', '1 дн. назад']);
+    expect(chips.map(c => c.textContent.trim())).toEqual(['3 ч назад', '1 дн. назад']);
     expect(chips.map(c => c.classList.contains('is-stale'))).toEqual([false, true]);
   });
 
@@ -130,7 +130,7 @@ describe('метки на странице', () => {
     const chip = document.querySelector('.fresh-chip');
     expect(chip.classList.contains('is-stale')).toBe(false);
     refreshFreshnessLabels(SETTINGS, document, NOW + 2 * 3600e3);                 // прошло 2 часа
-    expect(chip.textContent.trim()).toBe('🪙 1 дн. назад');
+    expect(chip.textContent.trim()).toBe('1 дн. назад');
     expect(chip.classList.contains('is-stale')).toBe(true);
     expect(chip.getAttribute('title')).toContain('устарело');
     refreshFreshnessLabels({ freshness: { balanceHours: 72 } }, document, NOW + 2 * 3600e3);   // порог увеличили в настройках
