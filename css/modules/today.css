@@ -994,11 +994,12 @@
 .notify-kinds-head,
 .notify-kind-row {
   display: grid;
-  /* Четыре колонки-включателя (в приложении, всплывающее, звук) плюс выбор набора
-     и кнопка «Послушать». Раньше набора не было, и всё звонело одним и тем же. */
-  grid-template-columns: 1fr 76px 84px 52px 132px 34px;
+  /* Три включателя плюс набор звука. Шесть колонок в ряд уезжали за край панели
+     настроек: включатели слеплись в полосу, а список наборов обрезался. Поэтому набор
+     звука стоит отдельной строкой под видом. */
+  grid-template-columns: minmax(0, 1fr) 100px 92px 56px;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
 }
 .notify-kinds-head {
   padding: 0 11px;
@@ -1014,18 +1015,21 @@
 .notify-kind-name small { display: block; font-size: 0.74rem; }
 .notify-kind-sound,
 .notify-kind-inapp { display: flex; align-items: center; justify-content: center; cursor: pointer; }
-/* Свой набор для вида: узкий список, но подпись «как у всех» обязана помещаться целиком */
-.notify-kind-tone { padding: 5px 8px; font-size: 0.78rem; }
-.notify-kind-listen { padding: 4px 0; min-width: 30px; }
+.notify-kind-extra {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 8px;
+  margin-left: 25px;
+  min-width: 0;
+}
+.notify-kind-extra > label { font-size: 0.76rem; color: var(--text-dim); flex: none; }
+.notify-kind-tone { flex: 1; min-width: 0; max-width: 240px; padding: 5px 8px; font-size: 0.78rem; }
+.notify-kind-listen { padding: 4px 0; min-width: 32px; flex: none; }
 .notify-kind-row { padding: 7px 11px; }
 .notify-kind-row:nth-child(odd) { background: var(--surface-2); }
-@media (max-width: 860px) {
+@media (max-width: 700px) {
   .notify-kinds-head { display: none; }
-  .notify-kind-row { grid-template-columns: 1fr auto; row-gap: 6px; }
-  .notify-kind-name { grid-column: 1 / -1; }
-}
-@media (max-width: 560px) {
-  .notify-kind-row { grid-template-columns: 1fr auto; }
+  .notify-kind-row { grid-template-columns: minmax(0, 1fr) repeat(3, auto); }
+  .notify-kind-extra { margin-left: 0; }
 }
 
 /* Цвета записей: метка в списке дня и полоски событий */

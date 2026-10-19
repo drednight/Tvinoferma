@@ -10,6 +10,7 @@ import { runNotificationTest, NOTIFY_KINDS } from '../desktop/notifications.js';
 import { SOUND_TONES, previewNotificationSound, soundSettings, soundDiagnostics } from '../desktop/sound.js';
 import { RECURRING_EVENTS, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
 import { toast, confirmModal } from '../core/ui.js';
+import { showInApp } from '../core/notifyCenter.js';
 import { DANGER_ACTIONS, clearParties, clearMarathons, clearCharacters } from './dangerZone.js';
 import { balanceSettingsColumns } from './columns.js';
 import { bindGuides } from './guides.js';
@@ -235,9 +236,8 @@ function renderNotifyKinds() {
     <div class="notify-kinds-head">
       <span>Уведомление</span>
       <span title="Карточка внутри приложения: стоит, пока не закроете">В приложении</span>
-      <span title="Сообщение Windows поверх остальных окон">Всплывающее</span>
+      <span title="Сообщение Windows поверх остальных окон">Окно Windows</span>
       <span title="Короткий сигнал рядом с сообщением">Звук</span>
-      <span title="Свой набор для этого вида; «как у всех» — взять общий">Набор</span>
     </div>
     ${NOTIFY_KINDS.map(item => {
       const conf = kinds[item.kind] || { popup: true, inapp: true, sound: true };
@@ -253,13 +253,16 @@ function renderNotifyKinds() {
         <label class="notify-kind-sound" title="Звук: ${escapeHtml(item.title)}">
           <input type="checkbox" data-kind-sound="${escapeHtml(item.kind)}"${conf.sound !== false ? ' checked' : ''} />
         </label>
-        <select class="select notify-kind-tone" data-kind-tone="${escapeHtml(item.kind)}"
-                aria-label="Набор звука: ${escapeHtml(item.title)}">
-          <option value=""${tone ? '' : ' selected'}>как у всех</option>
-          ${SOUND_TONES.map(t => `<option value="${escapeHtml(t.id)}"${tone === t.id ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
-        </select>
-        <button type="button" class="btn ghost small notify-kind-listen" data-kind-listen="${escapeHtml(item.kind)}"
-                title="Послушать звук этого вида" aria-label="Послушать звук: ${escapeHtml(item.title)}">🔊</button>
+        <span class="notify-kind-extra">
+          <label for="tone-${escapeHtml(item.kind)}">Набор</label>
+          <select class="select notify-kind-tone" id="tone-${escapeHtml(item.kind)}" data-kind-tone="${escapeHtml(item.kind)}"
+                  aria-label="Набор звука: ${escapeHtml(item.title)}">
+            <option value=""${tone ? '' : ' selected'}>как у всех</option>
+            ${SOUND_TONES.map(t => `<option value="${escapeHtml(t.id)}"${tone === t.id ? ' selected' : ''}>${escapeHtml(t.title)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn ghost small notify-kind-listen" data-kind-listen="${escapeHtml(item.kind)}"
+                  title="Послушать звук этого вида" aria-label="Послушать звук: ${escapeHtml(item.title)}">🔊</button>
+        </span>
       </div>`;
     }).join('')}`;
 
@@ -488,6 +491,18 @@ export function bindSettings() {
       : result.diagnostics.sound?.available
         ? '✅ Уведомления доступны: Windows разрешает их показывать, звук играет.'
         : '✅ Уведомления доступны: Windows разрешает их показывать.';
+  });
+
+  // Кнопка «Показать пример»: «Проверить сейчас» зависит от того, есть ли что напоминать,
+  // и от разрешений Windows, поэтому по ней нельзя понять, как выглядит сама карточка.
+  // Здесь показывается ровно та карточка, какая придёт на настоящее уведомление.
+  document.getElementById('show-notification-btn')?.addEventListener('click', () => {
+    showInApp({
+      title: '🎯 Битва Династий — через 10 минут',
+      body: 'Начало в 20:20 (МСК), осталось 10 мин. Понедельник и пятница, 20:20–22:20.\nКарточка стоит, пока её не закроют: крестик справа или клик по самой карточке.',
+      kind: 'event',
+      once: false
+    });
   });
 
   // Запуск игры: список GameCenter с названиями и привязка персонажей (окно собирается в js/modules/launcher/gcSettingsModal.js)

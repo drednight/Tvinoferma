@@ -234,6 +234,76 @@ export { rerender as rerenderLists };
  * Проверка входа через общую очередь: лимит окон, повтор с увеличенным таймаутом,
  * если сайт не ответил или показал «Проверку безопасности» («Вы не авторизованы» не повторяется).
  */
+/**
+ * Строки итоговой таблицы по каждому персонажу.
+ *
+ * Три состояния, а не два: «в сети», «нет входа» (проверили и входа нет) и «не получилось»
+ * (проверка не состоялась — таймаут, страница не открылась, вход не подтвердился и отказ не
+ * распознан). Смешивать второе и третье нельзя: «нет входа» — это ответ сайта, а «не
+ * получилось» — наша неудача, и человеку с ними надо по-разному.
+ *
+ * @param {Array<any>} checked проверенные персонажи
+ * @param {string[]} busy ники с открытым окном — их не проверяли, и молчать о них нельзя
+ * @returns {Array<{ name: string, status: string, tone: string, note: string }>}
+ */
+export function authSummaryRows(checked = [], busy = []) {
+    // Строка без ника бессмысленна: в таблице она была бы пустой строкой с результатом
+    const rows = checked.filter(c => c && c.nick).map((c) => {
+        if (c.isLoggedIn === true) return { name: c.nick, status: 'Авторизован', tone: 'ok', note: '' };
+        if (c.isLoggedIn === false) return { name: c.nick, status: 'Не авторизован', tone: 'warn', note: authDetails(c) || '' };
+        return { name: c.nick, status: 'Не получилось', tone: 'error', note: authDetails(c) || 'проверка не состоялась' };
+    });
+    return rows.concat((busy || []).filter(Boolean).map((nick) => ({ name: nick, status: 'Пропущен', tone: 'info', note: 'открыто окно' })));
+}
+
+/**
+ * Перепроверка тех, кто закончил с ошибкой или без входа.
+ *
+ * Зачем: «таймаут», «страница не успела», «окно занято» — по большей части разовые сбои.
+ * Повтор их снимает, и тогда итог показывает настоящее состояние вместо «ошибок: 3».
+ * Успех снимает ошибки персонажа из журнала (`resolveProblems`), поэтому задача не остаётся
+ * жёлтой из-за сбоя, который давно прошёл.
+ *
+ * Повтор один и с запасом времени: повторять трижды — это молча удваивать время проверки.
+ *
+ * @param {any} task задача в журнале
+ * @param {Array<any>} checked проверенные персонажи
+ * @param {{ baseTimeout: number, closeAfter: boolean }} opts
+ * @returns {Promise<number>} сколько перепроверили
+ */
+async function recheckProblems(task, checked, { baseTimeout, closeAfter }) {
+    if (!task) return 0;
+    const bad = checked.filter(c => c.isLoggedIn !== true);
+    if (!bad.length) return 0;
+    task.log(`Перепроверяем тех, кто без входа или с ошибкой: ${bad.length}. Может занять минуту.`, 'step');
+    const fixed = [];
+    for (const char of bad) {
+        const scope = `char:${char.id}`;
+        try {
+            setAuthChecking(char.id, true);
+            // Запас времени больше обычного: персонаж уже попался, спешить незачем
+            const res = await checkCharacterAuth(char.id, { timeoutSeconds: baseTimeout * 2 + 4, closeAfter });
+            if (res?.status === 'online' && applyLoginResult(res) !== null) {
+                fixed.push(char.nick);
+                task.resolveProblems(scope, 'перепроверка: вход подтверждён');
+                closeAuthWindowsAfterLogin(char.id, char);
+            }
+        } catch (e) {
+            task.log(`${char.nick}: перепроверка не удалась — ${errorText(e)}`, 'warn', scope);
+        } finally {
+            setAuthChecking(char.id, false);
+        }
+    }
+    task.log(
+        fixed.length
+            ? `Перепроверка помогла: вход подтверждён у ${fixed.length} (${fixed.join(', ')})`
+            : `Перепроверка ничего не изменила: без входа остались те же ${bad.length}`,
+        fixed.length ? 'ok' : 'warn'
+    );
+    if (fixed.length) { persist().then(() => rerender()); }
+    return bad.length;
+}
+
 export async function runAuthChecks(chars, { title = '🔐 Проверка авторизации', baseTimeout = 4, closeAfter = false, silent = false } = {}) {
     const { retries, retryDelayMs } = scriptSettings();
     const task = silent && chars.length === 1 ? null : startTask(title, { total: chars.length, cancelable: chars.length > 1 });
@@ -282,13 +352,33 @@ export async function runAuthChecks(chars, { title = '🔐 Проверка ав
     // Открытые окна отдельно: это не «нет входа» и не отмена, а сознательный пропуск
     const busy = results.filter(r => r.result?.reason === 'window_open').map(r => r.item.nick);
     const skipped = chars.length - checked.length;
+    const busyNote = busy.length ? `, пропущено ${busy.length} (открыто окно)` : '';
+    if (signal.cancelled) {
+      const online = checked.filter(c => c.isLoggedIn === true).length;
+      task?.finish(`Отменено: проверено ${checked.length} из ${chars.length}, в сети ${online}${busyNote}`, 'warn');
+      return { online, offline: checked.filter(c => c.isLoggedIn !== true).map(c => c.nick), results, cancelled: true, skipped, busy };
+    }
+
+    // Перед итоговой таблицей — перепроверка тех, кто ушёл с ошибкой или без результата.
+    // Многие из этих сбоев разовые («страница не успела», «окно занято»), и повтор их
+    // снимает: тогда итог показывает правду, а не «ошибок: 3» по памяти.
+    await recheckProblems(task, checked, { baseTimeout, closeAfter });
+
+    // Считаем итог заново: перепроверка могла изменить статус
     const online = checked.filter(c => c.isLoggedIn === true).length;
     const offline = checked.filter(c => c.isLoggedIn !== true).map(c => c.nick);
     if (offline.length) task?.log(`Без входа: ${offline.join(', ')}`, 'warn');
-    const busyNote = busy.length ? `, пропущено ${busy.length} (открыто окно)` : '';
-    if (signal.cancelled) task?.finish(`Отменено: проверено ${checked.length} из ${chars.length}, в сети ${online}${busyNote}`, 'warn');
-    else task?.finish(`В сети ${online} из ${checked.length}${busyNote}`, offline.length || busy.length ? 'warn' : 'done');
-    return { online, offline, results, cancelled: signal.cancelled, skipped, busy };
+    task?.summaryTable(authSummaryRows(checked, busy), {
+      title: 'Итоги проверки входа',
+      totals: [
+        { label: 'в сети', value: checked.filter(c => c.isLoggedIn === true).length, tone: 'ok' },
+        { label: 'без входа', value: checked.filter(c => c.isLoggedIn === false).length, tone: 'warn' },
+        { label: 'не получилось', value: checked.filter(c => c.isLoggedIn !== true && c.isLoggedIn !== false).length, tone: 'error' },
+        { label: 'пропущено', value: skipped + busy.length }
+      ]
+    });
+    task?.finish(`В сети ${online} из ${checked.length}${busyNote}`, offline.length || busy.length ? 'warn' : 'done');
+    return { online, offline, results, cancelled: false, skipped, busy };
 }
 
 /**

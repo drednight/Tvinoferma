@@ -19,7 +19,7 @@ const MAX_TASKS = 300;
 const MAX_ENTRIES = 500;
 const DOCK_AUTOHIDE_MS = 8000;
 
-const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌' };
+const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌', summary: '▦' };
 
 export { ERROR_TEXT, errorText };
 
@@ -133,6 +133,27 @@ class Task {
     return this;
   }
   setStep(message) { return this.log(message, 'step'); }
+
+  /**
+   * Итоговая таблица в конце журнала: по строке на персонажа и итог счётом.
+   *
+   * Зачем именно таблицей: по журналу итог приходилось собирать глазами — «Коля: ок»,
+   * «Сокол: ок», «Дима: таймаут», и сколько из этого в сети — непонятно, пока не сложишь
+   * руками. Таблица отвечает на вопрос сразу, и по ней видно, кому именно нужно внимание.
+   *
+   * Запись помечена уровнем `summary`, поэтому фильтр «только ошибки и предупреждения»
+   * её по-прежнему показывает: это итог, а не шум.
+   *
+   * @param {Array<{ name: string, status: string, tone?: string, note?: string }>} rows
+   * @param {{ title?: string, totals?: Array<{ label: string, value: number, tone?: string }> }} [opts]
+   */
+  summaryTable(rows = [], { title = 'Итоги', totals = [] } = {}) {
+    const list = rows.filter(r => r && r.name);
+    this.entries.push({ at: nowIso(), level: 'summary', message: title, rows: list, totals, scope: '' });
+    // Запись не строка, а объект: копирование в буфер обрезает её, а строками её не вернуть
+    notify(this);
+    return this;
+  }
   /** Что сделать при нажатии «Отмена» (обычно — поднять флаг для очереди). */
   onCancel(fn) { this._onCancel = fn; return this; }
   /** Что делать при паузе и продолжении. */
@@ -319,7 +340,33 @@ export const initTaskLog = ensureRustListener;
 const STATUS_ICON = { running: '⏳', done: '✅', warn: '⚠️', error: '❌' };
 
 function entryHtml(e) {
+  // Итоговая таблица рисуется таблицей, а не строкой: по журналу результат иначе
+  // приходилось собирать глазами по всем строкам
+  if (e.level === 'summary') return summaryTableHtml(e);
   return `<div class="tl-entry tl-l-${e.level}"><span class="tl-time">${timeOf(e.at)}</span><span class="tl-icon">${LEVEL_ICON[e.level] || '•'}</span><span>${escapeHtml(e.message)}</span></div>`;
+}
+
+/**
+ * Итоговая таблица журнала: заголовок, счётчики и по строке на персонажа.
+ * @param {{ message?: string, rows?: Array<{ name: string, status: string, tone?: string, note?: string }>, totals?: Array<{ label: string, value: number, tone?: string }> }} e
+ */
+function summaryTableHtml(e) {
+  const rows = e.rows || [];
+  const totals = (e.totals || []).filter(t => t && Number(t.value) !== 0);
+  if (!rows.length && !totals.length) return '';
+  return `<div class="tl-summary-table">
+    <div class="tl-summary-title">${escapeHtml(e.message || 'Итоги')}</div>
+    ${totals.length ? `<div class="tl-summary-totals">${totals.map(t =>
+      `<span class="tl-total${t.tone ? ` is-${escapeHtml(t.tone)}` : ''}">${escapeHtml(t.label)} <b>${escapeHtml(String(t.value))}</b></span>`).join('')}</div>` : ''}
+    ${rows.length ? `<table class="tl-summary-rows">
+      <thead><tr><th>Персонаж</th><th>Результат</th><th>Пояснение</th></tr></thead>
+      <tbody>${rows.map(r => `<tr>
+        <td>${escapeHtml(r.name)}</td>
+        <td><span class="tl-sum-status${r.tone ? ` is-${escapeHtml(r.tone)}` : ''}">${escapeHtml(r.status)}</span></td>
+        <td class="muted">${escapeHtml(r.note || '')}</td>
+      </tr>`).join('')}</tbody>
+    </table>` : ''}
+  </div>`;
 }
 
 const RING_ICON = { done: '✓', warn: '!', error: '✕' };
@@ -568,18 +615,30 @@ export function openTaskLog(id) {
       <div class="tl-filter row gap">
         <label class="tf-radio"><input type="checkbox" data-only-problems${onlyProblems ? ' checked' : ''}/> Только ошибки и предупреждения</label>
       </div>
-      <div class="tl-entries tl-full">${t.entries.filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error').map(entryHtml).join('')}</div>`;
+      <div class="tl-entries tl-full">${t.entries.filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary').map(entryHtml).join('')}</div>`;
     ov.body.querySelector('[data-only-problems]').onchange = (e) => {
       onlyProblems = e.target.checked;
       ov.body.querySelector('.tl-full').innerHTML = t.entries
-        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error').map(entryHtml).join('');
+        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary').map(entryHtml).join('');
     };
   };
   draw();
   ov.foot.innerHTML = `<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   ov.foot.querySelector('[data-copy]').onclick = async () => {
-    const text = [`${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')}`, ...t.entries.map(e => `${timeOf(e.at)} ${LEVEL_ICON[e.level] || '•'} ${e.message}`)].join('\n');
+    // Итоговая таблица копируется строками: в буфер попадает ровно то, что человек видит,
+    // и её можно вставить в отчёт или сообщение, не переписывая вручную
+    const lines = t.entries.flatMap((e) => {
+      if (e.level !== 'summary') return [`${timeOf(e.at)} ${LEVEL_ICON[e.level] || '•'} ${e.message}`];
+      return [
+        '',
+        `▦ ${e.message || 'Итоги'}`,
+        ...(e.totals || []).map(x => `   ${x.label}: ${x.value}`),
+        ...(e.rows || []).map(r => `   ${r.name} — ${r.status}${r.note ? ` (${r.note})` : ''}`),
+        ''
+      ];
+    });
+    const text = [`${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')}`, ...lines].join('\n');
     try { await navigator.clipboard.writeText(text); ov.foot.querySelector('[data-copy]').textContent = '✔ Скопировано'; }
     catch (_) { ov.foot.querySelector('[data-copy]').textContent = 'Не удалось скопировать'; }
   };
