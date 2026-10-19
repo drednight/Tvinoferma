@@ -28,4 +28,17 @@ export default [
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
+  {
+    // Прототип в docs/visuals: обычные скрипты в браузере, глобальная переменная TV.
+    files: ['docs/visuals/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: { ...globals.browser, TV: 'writable' },
+    },
+    rules: {
+      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
 ];
