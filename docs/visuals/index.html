@@ -1,0 +1,250 @@
+<!doctype html>
+<!--
+  docs/visuals/index.html
+  Лаборатория интерфейса Твинофермы: 9 экранов × 3 дизайн-направления.
+
+  Это отдельный статический прототип, а не часть приложения: он ничего не сохраняет,
+  не ходит на сайт и не запускает игру. Все данные вымышленные (взяты по образцу
+  из tests/fixtures/ui-demo-state.json).
+
+  Файл открывается двойным кликом — сборка не нужна, сеть не нужна.
+-->
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма · варианты интерфейса</title>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/ui.css" />
+  </head>
+  <body>
+    <!-- Иконки: один спрайт на весь прототип, чтобы не тянуть внешние библиотеки -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-home" viewBox="0 0 24 24">
+          <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />
+        </symbol>
+        <symbol id="i-users" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3.2" />
+          <path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" />
+          <circle cx="17.5" cy="9" r="2.4" />
+          <path d="M16 14.6c2.9.3 5 2.3 5 5.4" />
+        </symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24">
+          <path d="M12 3 20 6v6c0 4.6-3.3 7.8-8 9-4.7-1.2-8-4.4-8-9V6z" />
+          <path d="m9 12 2 2 4-4" />
+        </symbol>
+        <symbol id="i-flag" viewBox="0 0 24 24">
+          <path d="M5 21V4" />
+          <path d="M5 5h11l-2 3.5L16 12H5" />
+        </symbol>
+        <symbol id="i-rune" viewBox="0 0 24 24">
+          <path d="M12 3 20 9l-8 12L4 9z" />
+          <path d="M12 3v18M4 9h16" />
+        </symbol>
+        <symbol id="i-wallet" viewBox="0 0 24 24">
+          <rect x="3" y="6" width="18" height="13" rx="2.5" />
+          <path d="M3 10h18" />
+          <circle cx="17" cy="14.5" r="1.3" />
+        </symbol>
+        <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 5 13h5l-1 9 8-11h-5z" /></symbol>
+        <symbol id="i-gear" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"
+          />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m16 16 4.5 4.5" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5 19 12 7 19.5z" /></symbol>
+        <symbol id="i-globe" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3" />
+        </symbol>
+        <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></symbol>
+        <symbol id="i-archive" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="4" rx="1.5" />
+          <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8M10 12h4" />
+        </symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24">
+          <path d="M20 12a8 8 0 1 1-2.6-5.9" />
+          <path d="M20 4v5h-5" />
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m4.5 12.5 5 5 10-11" /></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
+        <symbol id="i-warn" viewBox="0 0 24 24">
+          <path d="M12 4 22 20H2z" />
+          <path d="M12 10v4.5M12 17.5v.01" />
+        </symbol>
+        <symbol id="i-clock" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7v5.2l3.2 2" />
+        </symbol>
+        <symbol id="i-calendar" viewBox="0 0 24 24">
+          <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+          <path d="M3.5 10h17M8 3v4M16 3v4" />
+        </symbol>
+        <symbol id="i-coin" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7v10M9.5 9.5h5M9.5 14.5h5" />
+        </symbol>
+        <symbol id="i-copy" viewBox="0 0 24 24">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+        </symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24">
+          <path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6" />
+          <circle cx="12" cy="12" r="2.6" />
+        </symbol>
+        <symbol id="i-eye-off" viewBox="0 0 24 24">
+          <path d="M4 4l16 16" />
+          <path
+            d="M9.5 6.4A9.9 9.9 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3.3 3.8M6.5 8.2A16.6 16.6 0 0 0 2.5 12S6 18 12 18a9.6 9.6 0 0 0 3.2-.5"
+          />
+        </symbol>
+        <symbol id="i-box" viewBox="0 0 24 24">
+          <path d="m12 3 8 4.2v9.6L12 21l-8-4.2V7.2z" />
+          <path d="m4 7.2 8 4.3 8-4.3M12 11.5V21" />
+        </symbol>
+        <symbol id="i-gift" viewBox="0 0 24 24">
+          <rect x="3" y="9" width="18" height="11" rx="2" />
+          <path d="M3 13h18M12 9v11M12 9S9.5 3 7 4.5 9 9 12 9zM12 9s2.5-6 5-4.5S15 9 12 9z" />
+        </symbol>
+        <symbol id="i-tag" viewBox="0 0 24 24">
+          <path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z" />
+          <circle cx="7.5" cy="7.5" r="1.3" />
+        </symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24">
+          <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+        </symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24">
+          <path d="M4 20h4L19 9l-4-4L4 16z" />
+          <path d="m14 6 4 4" />
+        </symbol>
+        <symbol id="i-external" viewBox="0 0 24 24">
+          <path d="M14 4h6v6M20 4l-9 9" />
+          <path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
+        </symbol>
+        <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+        <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z" /></symbol>
+        <symbol id="i-list" viewBox="0 0 24 24">
+          <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+        </symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+          <rect x="13.5" y="3.5" width="7" height="7" rx="1.5" />
+          <rect x="3.5" y="13.5" width="7" height="7" rx="1.5" />
+          <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
+        </symbol>
+        <symbol id="i-columns" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="5.5" height="16" rx="1.5" />
+          <rect x="9.3" y="4" width="5.5" height="16" rx="1.5" />
+          <rect x="15.6" y="4" width="5.5" height="16" rx="1.5" />
+        </symbol>
+        <symbol id="i-sword" viewBox="0 0 24 24">
+          <path d="M20 4 10 14M14 20 4 20l6-6M17 3h4v4" />
+          <path d="m9 15-2 2" />
+        </symbol>
+        <symbol id="i-server" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="6" rx="2" />
+          <rect x="3" y="14" width="18" height="6" rx="2" />
+          <path d="M7 7h.01M7 17h.01" />
+        </symbol>
+        <symbol id="i-bell" viewBox="0 0 24 24">
+          <path d="M6 16V10a6 6 0 0 1 12 0v6l1.5 2.5h-15z" />
+          <path d="M10 20a2.2 2.2 0 0 0 4 0" />
+        </symbol>
+        <symbol id="i-link" viewBox="0 0 24 24">
+          <path d="M10 13a4 4 0 0 0 5.7 0l3-3A4 4 0 0 0 13 4.4l-1.7 1.7" />
+          <path d="M14 11a4 4 0 0 0-5.7 0l-3 3A4 4 0 0 0 11 19.6l1.7-1.7" />
+        </symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v11M8 11l4 4 4-4M4 19h16" /></symbol>
+        <symbol id="i-star" viewBox="0 0 24 24">
+          <path d="m12 3.5 2.7 5.6 6.1.8-4.5 4.2 1.2 6-5.5-3-5.5 3 1.2-6L3.2 9.9l6.1-.8z" />
+        </symbol>
+        <symbol id="i-thumb-up" viewBox="0 0 24 24">
+          <path d="M7 21V10l5-7 1.6.7a2 2 0 0 1 1 1.8L14 9h5.2a2 2 0 0 1 2 2.4l-1.4 7A2 2 0 0 1 17.8 20H7z" />
+          <rect x="2.5" y="10" width="4.5" height="11" rx="1" />
+        </symbol>
+        <symbol id="i-thumb-down" viewBox="0 0 24 24">
+          <path d="M17 3v11l-5 7-1.6-.7a2 2 0 0 1-1-1.8L10 15H4.8a2 2 0 0 1-2-2.4l1.4-7A2 2 0 0 1 6.2 4H17z" />
+          <rect x="17" y="3" width="4.5" height="11" rx="1" />
+        </symbol>
+        <symbol id="i-compare" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="7.5" height="16" rx="1.5" />
+          <rect x="13.5" y="4" width="7.5" height="16" rx="1.5" />
+        </symbol>
+        <symbol id="i-note" viewBox="0 0 24 24">
+          <path d="M5 3h14v18H5z" />
+          <path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- ══ Оболочка лаборатории (вне вариантов интерфейса) ══ -->
+    <header class="lab-top">
+      <div class="lab-brand">
+        <span class="lab-logo">ТФ</span>
+        <div>
+          <strong>Варианты интерфейса</strong>
+          <small>макеты для оценки — функционал сохранён, данные вымышленные</small>
+        </div>
+      </div>
+
+      <nav class="lab-pages" id="lab-pages" aria-label="Экраны"></nav>
+
+      <div class="lab-actions">
+        <div class="lab-variants" id="lab-variants" role="group" aria-label="Дизайн-направление"></div>
+        <button class="lab-btn" id="lab-compare" type="button" aria-pressed="false" title="Показать два варианта рядом">
+          <svg class="ic"><use href="#i-compare" /></svg> Сравнить
+        </button>
+        <button class="lab-btn" id="lab-share" type="button" title="Скопировать ссылку на текущий экран">
+          <svg class="ic"><use href="#i-link" /></svg> Ссылка
+        </button>
+        <button class="lab-btn" id="lab-votes" type="button" title="Сводка оценок и экспорт">
+          <svg class="ic"><use href="#i-star" /></svg> Оценки <span class="lab-badge" id="lab-votes-count">0</span>
+        </button>
+      </div>
+    </header>
+
+    <div class="lab-sub" id="lab-sub">
+      <div class="lab-sub-info">
+        <strong id="lab-variant-name"></strong>
+        <span id="lab-variant-desc"></span>
+      </div>
+      <div class="lab-sub-right">
+        <span class="lab-hint">Оценивайте прямо в макете: 👍 / 👎 и комментарий под каждым вариантом</span>
+        <button class="lab-btn ghost" id="lab-export" type="button">
+          <svg class="ic"><use href="#i-download" /></svg> Выгрузить отчёт
+        </button>
+      </div>
+    </div>
+
+    <main class="lab-stage" id="lab-stage"></main>
+
+    <!-- Панель сводки оценок -->
+    <aside class="lab-drawer" id="lab-drawer" hidden aria-label="Сводка оценок">
+      <div class="lab-drawer-head">
+        <strong>Сводка оценок</strong>
+        <button class="lab-btn ghost" id="lab-drawer-close" type="button" aria-label="Закрыть">
+          <svg class="ic"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="lab-drawer-body" id="lab-drawer-body"></div>
+      <div class="lab-drawer-foot">
+        <button class="lab-btn" id="lab-export-2" type="button">
+          <svg class="ic"><use href="#i-download" /></svg> Скопировать отчёт
+        </button>
+        <button class="lab-btn ghost" id="lab-reset" type="button">Сбросить оценки</button>
+      </div>
+    </aside>
+
+    <script src="assets/data.js"></script>
+    <script src="assets/pages.js"></script>
+    <script src="assets/lab.js"></script>
+  </body>
+</html>
