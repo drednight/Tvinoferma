@@ -13,6 +13,7 @@ import { diffCharacters, presentPaths, buildMerged, setPartyNameResolver } from 
 import { planPartyImport, remapCharacterParties, partyNamesOf } from '../modules/parties/membership.js';
 import { openCompareDialog } from './compare.js';
 import { syncIdWithNick } from '../modules/characters/identity.js';
+import { normalizeFinance } from '../modules/finance/model.js';
 
 const CONTACT_KEYS = ['email', 'password', 'recoveryEmail', 'phone'];
 
@@ -32,6 +33,36 @@ export function liftLegacyContacts(raw) {
 }
 
 const nickKey = nick => String(nick || '').trim().toLowerCase();
+
+/**
+ * Слияние финансов: реестры объединяются по id (при дубле побеждает локальная запись),
+ * настройки — из файла с более свежим курсом (goldRateAt). Ничего не удаляет:
+ * для merge это единственный безопасный вариант, удаления операций в файле быть не должно.
+ */
+export function mergeFinance(local, incoming) {
+  const union = (a = [], b = []) => {
+    const out = new Map(a.map(x => [x.id, x]));
+    for (const x of b) if (!out.has(x.id)) out.set(x.id, x);
+    return [...out.values()];
+  };
+  const localRate = String(local?.settings?.goldRateAt || '');
+  const incomingRate = String(incoming?.settings?.goldRateAt || '');
+  const settings = incomingRate >= localRate ? incoming?.settings : local?.settings;
+  const merged = {
+    operations: union(local?.operations, incoming?.operations),
+    shopItems: union(local?.shopItems, incoming?.shopItems),
+    loans: union(local?.loans, incoming?.loans),
+    // opening, monthAdjust и monthCarry — часть импортируемых данных, а не рыночный
+    // курс: их берём из файла всегда, иначе баланс панели не сойдётся с таблицей.
+    settings: {
+      ...settings,
+      opening: incoming?.settings?.opening ?? settings?.opening,
+      monthAdjust: incoming?.settings?.monthAdjust ?? settings?.monthAdjust,
+      monthCarry: incoming?.settings?.monthCarry ?? settings?.monthCarry
+    }
+  };
+  return normalizeFinance(merged);
+}
 
 /**
  * Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами).
@@ -115,7 +146,7 @@ export function openImportDialog(raw) {
         ${plan.identical.length ? `<p class="muted">✔ Полностью совпадают (пропускаются): ${plan.identical.length}</p>` : ''}
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">Прочее</h4>
-          <p class="muted" style="margin:0;">Пати: новых ${newParties.length} · Марафоны: новых ${newMarathons.length}, обновлённых ${newerMarathons.length} · Шаблоны марафонов: новых ${newTemplates.length}</p>
+          <p class="muted" style="margin:0;">Пати: новых ${newParties.length} · Марафоны: новых ${newMarathons.length}, обновлённых ${newerMarathons.length} · Шаблоны марафонов: новых ${newTemplates.length}${hasKey(source, 'finance') ? ` · Финансовых записей в файле: ${incoming.finance.operations.length}` : ''}</p>
         </div>
       </div>`,
     async onSubmit(formData) {
@@ -130,6 +161,7 @@ export function openImportDialog(raw) {
         if (hasKey(source, 'marathons')) state.marathons = incoming.marathons;
         if (hasKey(source, 'marathonTemplates')) state.marathonTemplates = incoming.marathonTemplates;
         if (hasKey(source, 'settings')) state.settings = incoming.settings;
+        if (hasKey(source, 'finance')) state.finance = incoming.finance;
         await forceRenderAndPersist();
         toast('Импорт завершён: данные заменены', 'success');
         return true;
@@ -140,7 +172,8 @@ export function openImportDialog(raw) {
       setTimeout(() => runMerge({
         added: plan.added.filter(c => addIds.has(c.id)),
         conflicts: plan.conflicts.filter(x => cmpIds.has(x.local.id)),
-        newParties, newMarathons, newerMarathons, newTemplates
+        newParties, newMarathons, newerMarathons, newTemplates,
+        finance: hasKey(source, 'finance') ? incoming.finance : null
       }), 0);
       return true;
     }
@@ -152,7 +185,7 @@ async function backupBeforeImport() {
   try { await saveNow(); await createBackup('pre-import'); } catch (e) { console.warn('[IMPORT] backup failed', e); }
 }
 
-async function runMerge({ added, conflicts, newParties, newMarathons, newerMarathons, newTemplates }) {
+async function runMerge({ added, conflicts, newParties, newMarathons, newerMarathons, newTemplates, finance }) {
   // 1. Решения по совпадениям (до изменения данных — «Отменить импорт» ничего не трогает)
   const decisions = [];
   let bulk = null;
@@ -200,6 +233,7 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
   newMarathons.forEach(m => state.marathons.push(m));
   newerMarathons.forEach(m => { const i = state.marathons.findIndex(x => x.id === m.id); if (i !== -1) state.marathons[i] = m; });
   newTemplates.forEach(t => state.marathonTemplates.push(t));
+  if (finance) state.finance = mergeFinance(state.finance, finance);
 
   await forceRenderAndPersist();
   toast(`Импорт завершён: добавлено ${addedCount}, обновлено ${changed}`, 'success');

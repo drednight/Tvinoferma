@@ -24,6 +24,8 @@ import {
   formatAmount,
   spanLabel,
   balances,
+  currentBalances,
+  groupByMonth,
   shopDealOperation,
   loanOperation,
   goldDealOperations
@@ -477,6 +479,66 @@ describe('реестр: итоги', () => {
   });
 });
 
+describe('поправки по месяцам (переносы из таблицы)', () => {
+  const mon = (date) => ({ date, currency: 'gold', kind: 'in', amount: 0 });
+
+  it('monthAdjust правит итог месяца, не трогая записи', () => {
+    const ops = [
+      { ...mon('2026-09-01'), kind: 'in', amount: 100 },
+      { ...mon('2026-09-02'), kind: 'out', amount: 40 }
+    ];
+    const [m] = groupByMonth(ops, { '2026-09': { gold: 500 } });
+    expect(m.totals.gold.balance).toBe(560);
+    expect(m.operations).toHaveLength(2);
+  });
+
+  it('без поправок итог месяца считается из движений', () => {
+    const ops = [{ ...mon('2025-03-01'), kind: 'in', amount: 100 }];
+    expect(groupByMonth(ops)[0].totals.gold.balance).toBe(100);
+  });
+
+  it('«сейчас» — итог самого свежего месяца, а не сумма истории', () => {
+    const finance = normalizeFinance({
+      operations: [
+        { ...mon('2025-03-01'), kind: 'in', amount: 1000 },
+        { ...mon('2026-09-01'), kind: 'in', amount: 100 },
+        { ...mon('2026-09-02'), kind: 'out', amount: 40 }
+      ],
+      settings: { monthAdjust: { '2025-03': { gold: 9999 }, '2026-09': { gold: 500 } } }
+    });
+    // Сумма по всем месяцам была бы 1000 + 9999 + 60 + 500 = 11559
+    expect(currentBalances(finance).gold).toBe(560);
+  });
+
+  it('без monthAdjust «сейчас» = движения + начальный остаток', () => {
+    const finance = normalizeFinance({
+      operations: [{ ...mon('2026-09-01'), kind: 'in', amount: 100 }],
+      settings: { opening: { gold: 25 } }
+    });
+    expect(currentBalances(finance).gold).toBe(125);
+  });
+
+  it('normalizeFinance выбрасывает битые поправки', () => {
+    const finance = normalizeFinance({ settings: { monthAdjust: { сломано: { gold: 5 }, '2026-09': { gold: 'ерунда' } } } });
+    expect(finance.settings.monthAdjust).toEqual({});
+  });
+
+  it('monthCarry хранит перенос месяца, не меняя ни итог, ни записи', () => {
+    const finance = normalizeFinance({
+      operations: [{ ...mon('2026-09-01'), kind: 'in', amount: 100 }],
+      settings: {
+        monthAdjust: { '2026-09': { gold: 500 } },
+        monthCarry: { '2026-09': { gold: 400 }, мусор: { gold: 7 } }
+      }
+    });
+    expect(finance.settings.monthCarry).toEqual({ '2026-09': { gold: 400 } });
+    // «за месяц» = итог − перенос: приложение показывает накопленное за месяц
+    const [m] = groupByMonth(finance.operations, finance.settings.monthAdjust);
+    expect(m.totals.gold.balance - finance.settings.monthCarry[m.month].gold).toBe(200);
+    expect(currentBalances(finance).gold).toBe(600);
+  });
+});
+
 describe('комиссионный магазин', () => {
   const ITEMS = [
     { side: 'sell', name: 'Зелье', price: 100, qty: 3 },
@@ -599,6 +661,36 @@ describe('раздел «Банк»: один экран', () => {
     expect(items).toHaveLength(1);
     expect(text(items[0])).toContain('июнь 2026');
     expect(text(items[0])).toContain('450 000 000');
+  });
+
+  it('перенос и поправка работают для «Голда» так же, как для золота', async () => {
+    const { state } = await import('../js/core/state.js');
+    // coins за месяц: 1 000 из фикстуры + 1 000 добавленная = 2 000.
+    // Перенос (поправка) 400 — как в таблице, он входит в итог месяца.
+    state.finance.operations = [
+      ...state.finance.operations,
+      { id: 'c1', date: '2026-06-12', kind: 'in', currency: 'coins', amount: 1000, counterparty: 'Голд', note: '', status: '', source: 'manual', ref: null }
+    ];
+    state.finance.settings.monthAdjust = { '2026-06': { coins: 400 } };
+    state.finance.settings.monthCarry = { '2026-06': { coins: 400 } };
+    const { el } = await render();
+    const coins = el.querySelector('.pans .pan:nth-child(2)');
+    expect(text(coins.querySelector('.pan-value'))).toContain('2 400');   // сейчас = итог месяца с переносом
+    expect(text(coins.querySelector('.pan-sub'))).toContain('2 000');    // за месяц — без переноса
+    expect(text(el.querySelector('.month-item .mi-sum'))).toContain('2 000');
+  });
+
+  it('в списке месяцев перенос прошлого месяца не считается заработком', async () => {
+    const { state } = await import('../js/core/state.js');
+    // Как в таблице: поправка месяца (monthAdjust) — это и есть перенос прошлого месяца,
+    // поэтому итог месяца с ним 550 000 000, а заработано за месяц 450 000 000.
+    state.finance.settings.monthAdjust = { '2026-06': { gold: 100000000 } };
+    state.finance.settings.monthCarry = { '2026-06': { gold: 100000000 } };
+    const { el } = await render();
+    const gold = el.querySelector('.pans .pan:nth-child(1)');
+    expect(text(gold.querySelector('.pan-sub'))).toContain('450 000 000');
+    expect(text(el.querySelector('.month-item .mi-sum'))).toContain('450 000 000');
+    expect(text(el.querySelector('.month-item .mi-sum'))).not.toContain('550 000 000');
   });
 
   it('журнал показывает записи выбранного месяца с источником', async () => {

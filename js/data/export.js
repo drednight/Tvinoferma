@@ -20,7 +20,7 @@ function downloadFile(content, filename, mimeType) {
 
 export function openExportDialog() {
   // Состояние мастера
-  let selectedTypes = new Set(['marathons', 'characters']);
+  let selectedTypes = new Set(['marathons', 'characters', 'finance']);
   let selectedMarathonIds = new Set();
   let selectedPartyNames = new Set();
   let selectedCharacterIds = new Set(); 
@@ -41,6 +41,7 @@ export function openExportDialog() {
         <label><input type="checkbox" id="chk-marathons" ${selectedTypes.has('marathons') ? 'checked':''}/> 🏃 Марафоны (Экспорт шаблона без участников)</label>
         <label><input type="checkbox" id="chk-characters" ${selectedTypes.has('characters') ? 'checked':''}/> 👤 Персонажи (Ручной выбор)</label>
         <label><input type="checkbox" id="chk-parties" ${selectedTypes.has('parties') ? 'checked':''}/> 🛡️ Пати (Выбор групп и их состава)</label>
+        <label><input type="checkbox" id="chk-finance" ${selectedTypes.has('finance') ? 'checked':''}/> 💰 Финансы — раздел «Банк» (реестр, комиссионка, долги)</label>
       </div>
 
       <!-- ШАГ 2: ДЕТАЛИ ВЫБОРА -->
@@ -132,8 +133,8 @@ export function openExportDialog() {
 
         const exportData = { schemaVersion: SCHEMA_VERSION, exportedAt: new Date().toISOString() };
 
-        // 1. ЭКСПОРТ МАРАФОНОВ (Шаблон без участников)
-        if (selectedTypes.has('marathons')) {
+        // Типы данных читаем с чекбоксов: selectedTypes — только значения по умолчанию
+        if (chkMarathons.checked) {
            let marathonsToExport = [];
            
            if (selectedMarathonIds.size === 0 && allMarathons.length > 0) {
@@ -158,14 +159,12 @@ export function openExportDialog() {
            if (state.marathonTemplates?.length) exportData.marathonTemplates = JSON.parse(JSON.stringify(state.marathonTemplates));
         }
 
-        // 2. ЭКСПОРТ ПАТИ (Структура групп)
-        if (selectedTypes.has('parties')) {
+        if (chkParties.checked) {
            const partiesToExport = state.parties.filter(p => selectedPartyNames.has(p.name));
            if(partiesToExport.length > 0) exportData.parties = partiesToExport;
         }
 
-        // 3. ЭКСПОРТ ПЕРСОНАЖЕЙ
-        if (selectedTypes.has('characters') || selectedTypes.has('parties')) {
+        if (chkCharacters.checked || chkParties.checked) {
            const charsToExport = state.characters.filter(c => finalCharIds.has(c.id));
            
            // Структура как в state.json: импорт понимает её без преобразований
@@ -202,6 +201,11 @@ export function openExportDialog() {
            const have = new Set((exportData.parties || []).map(p => p.id));
            const extra = state.parties.filter(p => needed.has(p.id) && !have.has(p.id));
            if (extra.length) exportData.parties = [...(exportData.parties || []), ...JSON.parse(JSON.stringify(extra))];
+        }
+
+        // 4. ЭКСПОРТ ФИНАНСОВ (раздел «Банк» целиком)
+        if (document.getElementById('chk-finance')?.checked) {
+           exportData.finance = JSON.parse(JSON.stringify(state.finance));
         }
 
         // Генерация файла

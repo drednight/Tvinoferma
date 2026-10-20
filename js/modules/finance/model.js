@@ -51,7 +51,12 @@ export function defaultFinance() {
     operations: [],
     shopItems: [],
     loans: [],
-    settings: { goldRate: 0, commissionPct: DEFAULT_COMMISSION_PCT, goldRateAt: null }
+    settings: {
+      goldRate: 0,
+      commissionPct: DEFAULT_COMMISSION_PCT,
+      goldRateAt: null,
+      opening: { gold: 0, coins: 0 }
+    }
   };
 }
 
@@ -268,9 +273,48 @@ export function normalizeFinance(input = {}) {
       // последнего изменения: старый курс без даты читался бы как актуальный.
       goldRate: money(positive(settings.goldRate)),
       goldRateAt: isDate(settings.goldRateAt) ? settings.goldRateAt : null,
-      commissionPct: commissionPctOf(settings.commissionPct)
+      commissionPct: commissionPctOf(settings.commissionPct),
+      // Остаток на начало ведения реестра (строка «Перенос прошлого месяца» в таблицах).
+      // Это НЕ операция: реестр хранит только движения, а сколько было «до» — отдельно.
+      // Без этого баланс = сумма всех движений за все месяцы, что в разы больше реального остатка.
+      opening: normalizeOpening(settings.opening),
+      // Поправки по месяцам: `{ "2026-09": -260000000 }`. Переносы в таблице сходятся
+      // не всегда (перенос ≠ перенос прошлого + движения), поэтому каждый месяц несёт
+      // свою поправку — тогда итог месяца совпадает с колонкой «Банк» из таблицы.
+      monthAdjust: normalizeMonthAdjust(settings.monthAdjust),
+      // Перенос прошлого месяца внутри итога. Нужен панели: «за месяц» показывают
+      // без него (накопленное за месяц), а не итог вместе с чужими деньгами.
+      monthCarry: normalizeMonthAdjust(settings.monthCarry)
     }
   };
+}
+
+/** Поправки по месяцам: только числа по валютам, лишнее выбрасываем. */
+function normalizeMonthAdjust(input) {
+  const raw = input && typeof input === 'object' ? input : {};
+  /** @type {Record<string, Record<string, number>>} */
+  const out = {};
+  for (const [month, value] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const perCurrency = value && typeof value === 'object' ? value : {};
+    /** @type {Record<string, number>} */
+    const amounts = {};
+    for (const id of CURRENCY_IDS) {
+      const n = roundFor(id, Number(perCurrency[id]) || 0);
+      if (n) amounts[id] = n;
+    }
+    if (Object.keys(amounts).length) out[month] = amounts;
+  }
+  return out;
+}
+
+/** Начальный остаток по валютам: `{ gold: 123, coins: 0 }`. */
+function normalizeOpening(input) {
+  const raw = input && typeof input === 'object' ? input : {};
+  /** @type {Record<string, number>} */
+  const out = {};
+  for (const id of CURRENCY_IDS) out[id] = roundFor(id, Number(raw[id]) || 0);
+  return out;
 }
 
 // ── Реестр ─────────────────────────────────────────────────────────────────
@@ -304,13 +348,37 @@ export function ledgerTotalsByCurrency(operations) {
   return out;
 }
 
-/** Сколько сейчас в наличии по каждой валюте — для блока «Банк» и форм сделки. */
-export function balances(operations) {
+/**
+ * Сколько сейчас в наличии по каждой валюте — для блока «Банк» и форм сделки.
+ * `opening` — остаток на начало реестра: без него итог был бы суммой всех движений
+ * за всю историю, то есть в разы больше того, что лежит на руках.
+ */
+export function balances(operations, opening = null) {
   const totals = ledgerTotalsByCurrency(operations);
   return CURRENCY_IDS.reduce((acc, id) => {
-    acc[id] = totals[id].balance;
+    acc[id] = roundFor(id, totals[id].balance + (Number(opening?.[id]) || 0));
     return acc;
   }, /** @type {Record<string, number>} */ ({}));
+}
+
+/**
+ * Сколько сейчас в наличии. Месяцы в таблице не сходятся между собой (перенос ≠
+ * итог прошлого месяца), поэтому «сейчас» — это итог САМОГО СВЕЖЕГО месяца, а не
+ * сумма движений за всю историю: поправки месяцев заданы как абсолютные итоги.
+ * Если поправок нет, поведение прежнее: движения + начальный остаток.
+ */
+export function currentBalances(finance) {
+  const { operations, settings } = finance;
+  const adjust = settings?.monthAdjust;
+  const hasAdjust = adjust && Object.keys(adjust).length > 0;
+  const newest = groupByMonth(operations, adjust)[0];
+  if (hasAdjust && newest) {
+    return CURRENCY_IDS.reduce((acc, id) => {
+      acc[id] = roundFor(id, newest.totals[id].balance);
+      return acc;
+    }, /** @type {Record<string, number>} */ ({}));
+  }
+  return balances(operations, settings?.opening);
 }
 
 export function monthOf(date) {
@@ -331,7 +399,7 @@ export function monthLabel(month) {
  * Группировка по месяцам, свежие сверху. Нужна для «Банковских расчетов»: в таблице
  * нарастающий итог считался вручную внутри каждого месяца, здесь он считается сам.
  */
-export function groupByMonth(operations) {
+export function groupByMonth(operations, monthAdjust = null) {
   /** @type {Map<string, any[]>} */
   const byMonth = new Map();
   for (const op of operations) {
@@ -341,12 +409,15 @@ export function groupByMonth(operations) {
   }
   return [...byMonth.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-    .map(([month, ops]) => ({
-      month,
-      label: monthLabel(month),
-      operations: ops,
-      totals: ledgerTotalsByCurrency(ops)
-    }));
+    .map(([month, ops]) => {
+      const totals = ledgerTotalsByCurrency(ops);
+      // Поправка месяца (перенос из таблицы): правит итог, не трогая записи
+      for (const id of CURRENCY_IDS) {
+        const fix = Number(monthAdjust?.[month]?.[id]) || 0;
+        if (fix) totals[id].balance = roundFor(id, totals[id].balance + fix);
+      }
+      return { month, label: monthLabel(month), operations: ops, totals };
+    });
 }
 
 // ── Комиссионка ────────────────────────────────────────────────────────────

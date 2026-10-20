@@ -14,7 +14,7 @@ import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import {
   CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY, DEFAULT_COMMISSION_PCT,
-  money, roundFor, formatAmount, todayIso, normalizeFinance, balances,
+  money, roundFor, formatAmount, todayIso, normalizeFinance, currentBalances,
   groupByMonth, shopTotals, shopItemTotal, findShopItem, shopDealOperation,
   goldDeal, goldDealOperations, commissionLossPct,
   loanStatus, loanOperation, paymentSplit, spanLabel
@@ -138,7 +138,7 @@ function loanExposure() {
  * Показывается в форме сделки с голдом.
  */
 function balancesRow() {
-  const now = balances(fin().operations);
+  const now = currentBalances(fin());
   const debt = loanExposure();
   return `
     <div class="fin-holdings">
@@ -152,11 +152,22 @@ function balancesRow() {
 
 // ── KPI-панели ─────────────────────────────────────────────────────────────
 
+/**
+ * Итог месяца без переноса: сколько заработали/потратили ЗА этот месяц.
+ * `totals` уже включает перенос прошлого месяца (колонка «Банк»), а он не
+ * заработан в этом месяце — поэтому вычитаем.
+ */
+function netOf(month, currency = DEFAULT_CURRENCY) {
+  if (!month) return 0;
+  const carry = Number(fin().settings.monthCarry?.[month.month]?.[currency]) || 0;
+  return month.totals[currency].balance - carry;
+}
+
 /** Верх страницы: сколько есть сейчас, сколько должны, что на складе. */
 function panels() {
-  const { operations, loans, shopItems } = fin();
-  const now = balances(operations);
-  const months = groupByMonth(operations);
+  const { operations, loans, shopItems, settings } = fin();
+  const now = currentBalances(fin());
+  const months = groupByMonth(operations, settings.monthAdjust);
   const first = months[0];
   const totals = shopTotals(shopItems);
   const lent = loans.filter(l => l.direction !== 'borrowed');
@@ -168,7 +179,7 @@ function panels() {
         <div class="pan">
           <span class="pan-label">${cur(id).icon} ${escapeHtml(cur(id).title)}</span>
           <span class="pan-value ${now[id] < 0 ? 'fin-out' : ''}">${fmt(now[id], id)}</span>
-          <span class="pan-sub">за ${escapeHtml(first ? first.label : '—')} ${signed(first ? first.totals[id].balance : 0, id)}</span>
+          <span class="pan-sub">за ${escapeHtml(first ? first.label : '—')} ${signed(netOf(first, id), id)}</span>
         </div>`).join('')}
       <div class="pan">
         <span class="pan-label">🤝 Долги</span>
@@ -189,14 +200,15 @@ function panels() {
 
 /** Список месяцев слева: клик выбирает месяц, активный подсвечен. */
 function monthsList() {
-  const months = groupByMonth(fin().operations);
+  const months = groupByMonth(fin().operations, fin().settings.monthAdjust);
+  // В списке — итог ЗА месяц (без переноса прошлого): по нему видно, в плюсе месяц или нет.
   return `
     <div class="months-list">
       ${months.map(m => `
         <button type="button" class="month-item ${m.month === selected ? 'active' : ''}" data-month="${m.month}">
           <b>${escapeHtml(m.label)}</b>
           <span class="mi-sum">
-            ${CURRENCY_IDS.map(id => `<span class="${m.totals[id].balance < 0 ? 'fin-out' : 'fin-in'}">${signed(m.totals[id].balance, id)}</span>`).join('<br>')}
+            ${CURRENCY_IDS.map(id => `<span class="${netOf(m, id) < 0 ? 'fin-out' : 'fin-in'}">${signed(netOf(m, id), id)}</span>`).join('<br>')}
           </span>
           <small>${m.operations.length} записей</small>
         </button>`).join('')}
@@ -586,7 +598,7 @@ function shopDealForm(item) {
 
 function goldForm() {
   const settings = fin().settings;
-  const now = balances(fin().operations);
+  const now = currentBalances(fin());
   showModal({
     title: 'Голд',
     submitText: 'Провести',

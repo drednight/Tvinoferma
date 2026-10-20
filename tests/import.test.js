@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planImport, liftLegacyContacts } from '../js/data/import.js';
+import { planImport, liftLegacyContacts, mergeFinance } from '../js/data/import.js';
 import { diffCharacters, buildMerged, presentPaths, mergeValues, ALL_FIELDS } from '../js/data/characterFields.js';
 import { normalizeCharacter } from '../js/core/state.js';
 
@@ -53,5 +53,53 @@ describe('импорт: сборка карточки', () => {
   it('старый формат гибкого экспорта: email/password переносятся в contacts', () => {
     const out = liftLegacyContacts({ characters: [{ id: 'x', nick: 'X', email: 'e@e', password: 'p' }] });
     expect(out.characters[0]).toEqual({ id: 'x', nick: 'X', contacts: { email: 'e@e', password: 'p' } });
+  });
+});
+
+describe('импорт: слияние финансов', () => {
+  const op = (id, over = {}) => ({ id, date: '2026-01-05', kind: 'in', amount: 100, currency: 'gold', ...over });
+  const fin = (ops = [], settings = {}) => ({ operations: ops, shopItems: [], loans: [], settings });
+
+  it('реестры объединяются по id, дубль не создаётся, при дубле берётся локальная запись', () => {
+    const local = fin([op('a', { amount: 100 }), op('b')]);
+    const incoming = fin([op('a', { amount: 999 }), op('c')]);
+    const merged = mergeFinance(local, incoming);
+    expect(merged.operations.map(o => o.id).sort()).toEqual(['a', 'b', 'c']);
+    expect(merged.operations.find(o => o.id === 'a').amount).toBe(100);
+  });
+
+  it('настройки: не затирает локальный более свежий курс', () => {
+    const local = fin([], { goldRate: 5, goldRateAt: '2026-02-01', commissionPct: 3 });
+    const incoming = fin([], { goldRate: 1, goldRateAt: '2026-01-01', commissionPct: 2 });
+    expect(mergeFinance(local, incoming).settings.goldRate).toBe(5);
+  });
+
+  it('настройки: более свежий курс файла побеждает', () => {
+    const local = fin([], { goldRate: 1, goldRateAt: '2026-01-01' });
+    const incoming = fin([], { goldRate: 7, goldRateAt: '2026-03-01' });
+    expect(mergeFinance(local, incoming).settings.goldRate).toBe(7);
+  });
+
+  it('пустой файл не трогает локальные финансы', () => {
+    const local = fin([op('a')], { goldRate: 5, goldRateAt: '2026-02-01' });
+    const merged = mergeFinance(local, fin());
+    expect(merged.operations.map(o => o.id)).toEqual(['a']);
+    expect(merged.settings.goldRate).toBe(5);
+  });
+
+  it('поправки месяцев и начальный остаток едут из файла даже при старом курсе', () => {
+    const local = fin([], { goldRate: 5, goldRateAt: '2026-02-01' });
+    const incoming = fin([], {
+      goldRate: 1,
+      goldRateAt: '2026-01-01',
+      opening: { gold: 100 },
+      monthAdjust: { '2026-09': { gold: 500 } },
+      monthCarry: { '2026-09': { gold: 400 } }
+    });
+    const merged = mergeFinance(local, incoming);
+    expect(merged.settings.goldRate).toBe(5);
+    expect(merged.settings.opening.gold).toBe(100);
+    expect(merged.settings.monthAdjust).toEqual({ '2026-09': { gold: 500 } });
+    expect(merged.settings.monthCarry).toEqual({ '2026-09': { gold: 400 } });
   });
 });
