@@ -49,7 +49,7 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: true
           args: --config src-tauri/tauri.release.conf.json
       # Полное описание релиза (если есть docs/RELEASE-NOTES-X.Y.Z.md) заменяет короткий текст в
       # описании черновика. Файл latest.json уже собран, его `notes` остаются короткими.
