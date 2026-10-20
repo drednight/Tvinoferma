@@ -175,7 +175,7 @@ async function boot() {
       console.error('[BOOT ERROR] Failed to bind Finance:', e);
     }
 
-    // Клан Guild: скрытая страница, по умолчанию выключена
+    // Клан Eternals: скрытая страница, по умолчанию выключена
     try {
       bindGuild();
       applyGuildVisibility();

@@ -298,7 +298,7 @@ export function renderGuildToday() {
   box.innerHTML = `
     <section class="guild-card">
       <header class="guild-card-head">
-        <b>Клан Guild</b>
+        <b>Клан Eternals</b>
         <span class="muted">${summary ? esc(summary) : 'сводка ещё не получена'}</span>
         <button class="btn ghost small" type="button" data-guild="refresh">↻ Обновить</button>
         <button class="btn ghost small" type="button" data-guild="open">Открыть сайт</button>
