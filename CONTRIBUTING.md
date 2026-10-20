@@ -7,7 +7,7 @@
 
 ## Что нужно установить
 
-- [Node.js](https://nodejs.org) 20.19 или новее.
+- [Node.js](https://nodejs.org) 22.22 или новее (jsdom 30 требует Node >= 22.22).
 - [Rust](https://rustup.rs) (stable) и [зависимости Tauri для Windows](https://tauri.app/start/prerequisites/)
   (Microsoft C++ Build Tools, WebView2).
 
