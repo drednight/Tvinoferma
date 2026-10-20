@@ -19,7 +19,7 @@
 
 use crate::parsers::{eval_and_wait, navigate_clean};
 use crate::windows::{dispose, get_or_create_hidden_window, window_label};
-use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
+use aes_gcm::aead::{Aead, Generate, Key, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -122,7 +122,7 @@ fn get_or_create_key() -> Result<Vec<u8>, String> {
             .filter(|k| k.len() == 32)
             .ok_or_else(|| "Ключ банка кук в хранилище ОС повреждён".to_string()),
         Err(keyring::Error::NoEntry) => {
-            let key = Aes256Gcm::generate_key(OsRng);
+            let key = Key::<Aes256Gcm>::generate();
             // Запись через vault: обход невозможности записи keyring в сессии входа (Windows 1312).
             crate::vault::set_password(&entry, KEYRING_SERVICE, KEYRING_USER, &to_hex(&key))?;
             Ok(key.to_vec())
@@ -134,7 +134,7 @@ fn get_or_create_key() -> Result<Vec<u8>, String> {
 /// Формат файла: nonce (12 байт) + шифртекст.
 fn encrypt(key: &[u8], plain: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::generate();
     let ct = cipher.encrypt(&nonce, plain).map_err(|e| e.to_string())?;
     let mut out = nonce.to_vec();
     out.extend_from_slice(&ct);
@@ -146,9 +146,10 @@ fn decrypt(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
         return Err("Файл банка кук повреждён (слишком короткий)".into());
     }
     let (nonce, ct) = data.split_at(12);
+    let nonce = Nonce::try_from(nonce).map_err(|_| "Файл банка кук повреждён".to_string())?;
     let cipher = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
     cipher
-        .decrypt(Nonce::from_slice(nonce), ct)
+        .decrypt(&nonce, ct)
         .map_err(|_| "Не удалось расшифровать банк кук (изменился ключ или файл повреждён). Войдите заново — сессия сохранится сама".to_string())
 }
 
@@ -454,6 +455,17 @@ mod tests {
         broken[last] ^= 1;
         assert!(decrypt(&key, &broken).is_err());
         assert!(decrypt(&[8u8; 32], &data).is_err());
+    }
+
+    #[test]
+    fn decrypts_file_written_by_aes_gcm_0_10() {
+        // Файл, зашифрованный прежней версией библиотеки (ключ 07*32, nonce 03*12).
+        // Старые банки кук должны открываться после обновления.
+        let data = from_hex(
+            "0303030303030303030303034d9bcf6f35083c23142b63f461c7d099435b7a1ff44097931b94",
+        )
+        .unwrap();
+        assert_eq!(decrypt(&[7u8; 32], &data).unwrap(), b"hello bank");
     }
 
     #[test]
