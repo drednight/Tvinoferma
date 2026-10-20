@@ -83,7 +83,9 @@ pub fn run() {
                 tray::setup(app)?;
                 // Явно ставим иконку главному окну: Tauri v2 не принимает `icon` в конфиге окна,
                 // а без неё Windows иногда показывает пустой значок на панели задач.
-                if let (Some(main), Some(icon)) = (app.get_webview_window("main"), app.default_window_icon()) {
+                if let (Some(main), Some(icon)) =
+                    (app.get_webview_window("main"), app.default_window_icon())
+                {
                     let _ = main.set_icon(icon.clone());
                 }
                 // Большой слот окна (`ICON_BIG`) Tauri не ставит вовсе, а без него панель задач

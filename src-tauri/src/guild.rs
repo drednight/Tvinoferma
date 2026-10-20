@@ -197,7 +197,11 @@ pub async fn guild_set_response(
     result
 }
 
-async fn run_respond(app: &AppHandle, event_id: &str, response: &str) -> Result<serde_json::Value, String> {
+async fn run_respond(
+    app: &AppHandle,
+    event_id: &str,
+    response: &str,
+) -> Result<serde_json::Value, String> {
     match clan_window(app) {
         Some(win) => send_response(&win, event_id, response, false).await,
         None => {
@@ -224,7 +228,7 @@ async fn send_response(
     let _ = win.eval(
         "if (location.hash.indexOf('#TFETA1_') === 0) history.replaceState(null, '', location.pathname + location.search);",
     );
-    win.eval(&format!(
+    win.eval(format!(
         "if (window.__tfGuildRespond) window.__tfGuildRespond({}, {});",
         event_id,
         serde_json::Value::String(response.to_string())

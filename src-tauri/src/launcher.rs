@@ -808,7 +808,9 @@ mod win {
     /// Код возврата — результат процесса: 1223 означает, что пользователь отказал.
     /// `None` — сама оболочка не смогла запустить.
     pub fn shell_run_elevated(exe: &str, flag: &str, token: &str) -> Option<i32> {
-        shell_runas(exe, &format!("{} {}", flag, token), true).ok().flatten()
+        shell_runas(exe, &format!("{} {}", flag, token), true)
+            .ok()
+            .flatten()
     }
 
     /// Запуск программы с правами администратора **без ожидания** её завершения.
@@ -1952,11 +1954,25 @@ pub async fn launcher_pick_gamecenter(kind: Option<String>) -> Result<Option<Str
 /// Запоминаются все ключи аккаунта (`ACCOUNT_KEYS`), а не один токен: лаунчер опознаёт аккаунт
 /// по `MyComUserUid`, и подстановка одного токена оставляла бы uid прошлого аккаунта.
 #[tauri::command]
-pub async fn launcher_capture_account(char_id: String, path: String, kind: Option<String>) -> Result<CaptureReport, String> {
+pub async fn launcher_capture_account(
+    char_id: String,
+    path: String,
+    kind: Option<String>,
+) -> Result<CaptureReport, String> {
     if kind.as_deref() == Some("astrum") {
-        return tauri::async_runtime::spawn_blocking(move || match astrum::capture(&char_id, &path) {
-            Ok(nick) => CaptureReport { ok: true, nick, steps: vec!["Astrum Play: вход запомнен".to_string()] },
-            Err(e) => CaptureReport { ok: false, nick: String::new(), steps: vec![format!("ОШИБКА (Astrum Play): {}", e)] },
+        return tauri::async_runtime::spawn_blocking(move || {
+            match astrum::capture(&char_id, &path) {
+                Ok(nick) => CaptureReport {
+                    ok: true,
+                    nick,
+                    steps: vec!["Astrum Play: вход запомнен".to_string()],
+                },
+                Err(e) => CaptureReport {
+                    ok: false,
+                    nick: String::new(),
+                    steps: vec![format!("ОШИБКА (Astrum Play): {}", e)],
+                },
+            }
         })
         .await
         .map_err(|e| e.to_string());
@@ -1980,11 +1996,19 @@ fn capture_gc_steps(char_id: &str, path: &str) -> CaptureReport {
     match capture_gc_inner(char_id, path, &mut steps) {
         Ok(nick) => {
             steps.push("Готово: вход запомнен".to_string());
-            CaptureReport { ok: true, nick, steps }
+            CaptureReport {
+                ok: true,
+                nick,
+                steps,
+            }
         }
         Err((step, why)) => {
             steps.push(format!("ОШИБКА на шаге «{}»: {}", step, why));
-            CaptureReport { ok: false, nick: String::new(), steps }
+            CaptureReport {
+                ok: false,
+                nick: String::new(),
+                steps,
+            }
         }
     }
 }
@@ -2006,16 +2030,26 @@ fn capture_gc_inner(
         IniEncoding::Utf16Le => "UTF-16",
         IniEncoding::Bytes => "ANSI/UTF-8",
     };
-    steps.push(format!("3. Файл прочитан: {} байт, кодировка {}", bytes.len(), enc_name));
+    steps.push(format!(
+        "3. Файл прочитан: {} байт, кодировка {}",
+        bytes.len(),
+        enc_name
+    ));
 
-    let pairs = read_account(&text).filter(|p| !p.is_empty()).ok_or_else(|| {
-        (
-            "4. Поиск входа в файле",
-            "в этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string(),
-        )
-    })?;
+    let pairs = read_account(&text)
+        .filter(|p| !p.is_empty())
+        .ok_or_else(|| {
+            (
+                "4. Поиск входа в файле",
+                "в этом GameCenter не выполнен вход: войдите в аккаунт и повторите".to_string(),
+            )
+        })?;
     let key_names: Vec<&str> = pairs.iter().map(|(k, _)| k.as_str()).collect();
-    steps.push(format!("4. Найдено ключей входа: {} {:?}", pairs.len(), key_names));
+    steps.push(format!(
+        "4. Найдено ключей входа: {} {:?}",
+        pairs.len(),
+        key_names
+    ));
 
     // Проверка по кодировке файла, а не только по ASCII: ник на русском в UTF-16 записывается без проблем.
     let mut usable: Vec<(String, String)> = Vec::new();
@@ -2037,7 +2071,10 @@ fn capture_gc_inner(
         }
         usable.push((key, value));
     }
-    steps.push(format!("5. Значения проверены: {} ключей подходят", usable.len()));
+    steps.push(format!(
+        "5. Значения проверены: {} ключей подходят",
+        usable.len()
+    ));
 
     let nick = ini_get(&text, "CurrentUserNick")
         .map(|v| display_value(&v))
@@ -2060,13 +2097,20 @@ fn capture_gc_inner(
         .get_password()
         .map_err(|e| ("7. Проверка записи", e.to_string()))?;
     if back != stored {
-        return Err(("7. Проверка записи", "прочитано значение, отличное от записанного".to_string()));
+        return Err((
+            "7. Проверка записи",
+            "прочитано значение, отличное от записанного".to_string(),
+        ));
     }
     steps.push("7. Запись проверена: совпадает".to_string());
 
     steps.push(format!(
         "8. Ник в GameCenter: {}",
-        if nick.is_empty() { "не найден".to_string() } else { nick.clone() }
+        if nick.is_empty() {
+            "не найден".to_string()
+        } else {
+            nick.clone()
+        }
     ));
     Ok(nick)
 }
@@ -2119,7 +2163,18 @@ pub async fn launcher_start(
     login_saved: Option<bool>,
 ) -> Result<LaunchInfo, String> {
     if kind.as_deref() == Some("astrum") {
-        return astrum::start(app, path, char_id, url, wait_secs, window_title, icon_small, icon_big, login_saved).await;
+        return astrum::start(
+            app,
+            path,
+            char_id,
+            url,
+            wait_secs,
+            window_title,
+            icon_small,
+            icon_big,
+            login_saved,
+        )
+        .await;
     }
     let exe = resolve_gamecenter_exe(&path)?;
     let url = url.unwrap_or_else(|| DEFAULT_URL.to_string());
@@ -3468,7 +3523,11 @@ mod tests {
                 "Ник — Класс",
                 &mut |hwnd, _| {
                     touched.push(hwnd);
-                    if hwnd == 1 { Err(WINDOW_TIMEOUT) } else { Ok(()) }
+                    if hwnd == 1 {
+                        Err(WINDOW_TIMEOUT)
+                    } else {
+                        Ok(())
+                    }
                 },
                 &mut |_| Ok(()),
                 &|_| true,
@@ -3514,13 +3573,19 @@ mod tests {
         assert!(!gc.contains("AstrumPlay"), "{gc}");
 
         let astrum = picker_script(Some("astrum"));
-        assert!(astrum.contains("'AstrumPlay.exe|AstrumPlay.exe|"), "{astrum}");
+        assert!(
+            astrum.contains("'AstrumPlay.exe|AstrumPlay.exe|"),
+            "{astrum}"
+        );
         assert!(!astrum.contains("GameCenter"), "{astrum}");
 
         // Без типа — оба: так «Обзор…» из карточки персонажа работает с любым лаунчером.
         let both = picker_script(None);
         assert!(both.contains("GameCenter.exe;AstrumPlay.exe"), "{both}");
-        assert!(!both.contains("__TITLE__") && !both.contains("__FILTER__"), "{both}");
+        assert!(
+            !both.contains("__TITLE__") && !both.contains("__FILTER__"),
+            "{both}"
+        );
     }
 
     #[test]
@@ -3536,14 +3601,8 @@ mod tests {
 
         // Без типа: по имени файла — GameCenter.exe и AstrumPlay.exe оба проходят,
         // посторонняя программа нет.
-        assert_eq!(
-            resolve_picked(gc.to_str().unwrap(), None).unwrap(),
-            gc
-        );
-        assert_eq!(
-            resolve_picked(ap.to_str().unwrap(), None).unwrap(),
-            ap
-        );
+        assert_eq!(resolve_picked(gc.to_str().unwrap(), None).unwrap(), gc);
+        assert_eq!(resolve_picked(ap.to_str().unwrap(), None).unwrap(), ap);
         assert!(resolve_picked(txt.to_str().unwrap(), None).is_err());
 
         // С указанным типом чужой лаунчер не проходит: пункт «Добавить GameCenter»
@@ -3639,7 +3698,11 @@ mod tests {
         // Старая запись хранилища — один токен без «=». Подставить её нельзя: без uid лаунчер
         // оставит uid прошлого аккаунта и откроет игру под ним. Поэтому такая запись — ошибка.
         let err = stored_account("OLDTOKEN").unwrap_err();
-        assert!(err.contains("Запомнить вход"), "сообщение должно говорить, что делать: {}", err);
+        assert!(
+            err.contains("Запомнить вход"),
+            "сообщение должно говорить, что делать: {}",
+            err
+        );
         // Новая запись — набор ключей: он и подставляется как есть
         let pairs = read_account(INI).unwrap();
         assert_eq!(stored_account(&pairs_to_text(&pairs)).unwrap(), pairs);
@@ -3647,7 +3710,11 @@ mod tests {
 
     #[test]
     fn replaces_keys_and_keeps_everything_else() {
-        let out = ini_set(&ini_set(INI, LOGIN_KEY, "NEWTOKEN"), "CurrentUserNick", "Twin");
+        let out = ini_set(
+            &ini_set(INI, LOGIN_KEY, "NEWTOKEN"),
+            "CurrentUserNick",
+            "Twin",
+        );
         assert_eq!(ini_get(&out, LOGIN_KEY).as_deref(), Some("NEWTOKEN"));
         assert_eq!(ini_get(&out, "CurrentUserNick").as_deref(), Some("Twin"));
         let expected = INI

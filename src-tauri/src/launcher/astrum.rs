@@ -51,10 +51,7 @@ pub(super) fn resolve_exe(input: &str) -> Result<PathBuf, String> {
         .and_then(|n| n.to_str())
         .is_some_and(|n| n.eq_ignore_ascii_case(ASTRUM_EXE));
     if !name_ok {
-        return Err(format!(
-            "Укажите папку Astrum Play или файл {}",
-            ASTRUM_EXE
-        ));
+        return Err(format!("Укажите папку Astrum Play или файл {}", ASTRUM_EXE));
     }
     if !exe.is_file() {
         return Err(format!("Файл не найден: {}", exe.display()));
@@ -333,8 +330,8 @@ pub(super) async fn start(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{encode_ini, text_to_pairs};
+    use super::*;
 
     const ASTRUM_INI_TEXT: &str = "[UMS]\r\nastrum=1894\r\n\r\n[Main]\r\nLang=ru\r\nMyComUserLogin=user0@example.com\r\nMyComUserUid=1\r\nCurrentUserNick=Old\r\nMyComUserMagic2=OLDMAGIC\r\n\r\n[Chrome]\r\nCacheVersion=2\r\n";
 
@@ -369,13 +366,29 @@ mod tests {
     fn dialog_is_matched_by_class_title_and_visibility() {
         // Полный заголовок окна вопроса у Astrum в разных сборках звучит по-разному, поэтому
         // решает часть заголовка плюс класс окна: вопрос — `TYesNoForm`, как и у GameCenter.
-        assert!(is_launcher_dialog("TYesNoForm", "Astrum Play Launcher", true));
-        assert!(is_launcher_dialog("TYesNoForm", "VK Play Astrum Play Launcher", true));
+        assert!(is_launcher_dialog(
+            "TYesNoForm",
+            "Astrum Play Launcher",
+            true
+        ));
+        assert!(is_launcher_dialog(
+            "TYesNoForm",
+            "VK Play Astrum Play Launcher",
+            true
+        ));
 
         // Скрытое окно, чужой класс и окно авторизации не подходят: Enter в окне
         // «Попытка авторизации…» прервал бы вход, у GameCenter то же исключение.
-        assert!(!is_launcher_dialog("TYesNoForm", "Astrum Play Launcher", false));
-        assert!(!is_launcher_dialog("TMainForm", "Astrum Play Launcher", true));
+        assert!(!is_launcher_dialog(
+            "TYesNoForm",
+            "Astrum Play Launcher",
+            false
+        ));
+        assert!(!is_launcher_dialog(
+            "TMainForm",
+            "Astrum Play Launcher",
+            true
+        ));
         assert!(!is_launcher_dialog(
             "TYesNoForm",
             "Astrum Play: попытка авторизации",
@@ -388,7 +401,10 @@ mod tests {
     #[test]
     fn pairs_survive_text_roundtrip_and_keep_equals_in_values() {
         let pairs = vec![
-            ("MyComUserLogin".to_string(), "user1@example.com".to_string()),
+            (
+                "MyComUserLogin".to_string(),
+                "user1@example.com".to_string(),
+            ),
             (LOGIN_KEY.to_string(), "AB=CD".to_string()),
         ];
         assert_eq!(text_to_pairs(&pairs_to_text(&pairs)), pairs);
@@ -414,7 +430,10 @@ mod tests {
         std::fs::write(&ini, &raw).unwrap();
 
         let pairs = vec![
-            ("MyComUserLogin".to_string(), "user2@example.com".to_string()),
+            (
+                "MyComUserLogin".to_string(),
+                "user2@example.com".to_string(),
+            ),
             ("MyComUserUid".to_string(), "197268650".to_string()),
             ("CurrentUserNick".to_string(), "Twin".to_string()),
             ("MyComUserMagic2".to_string(), "NEWMAGIC".to_string()),
@@ -424,7 +443,10 @@ mod tests {
         let after = std::fs::read(&ini).unwrap();
         assert_eq!(&after[..2], &[0xFF, 0xFE], "BOM UTF-16 должен сохраниться");
         let (text, _) = decode_ini(&after);
-        assert_eq!(ini_get(&text, "MyComUserLogin").as_deref(), Some("user2@example.com"));
+        assert_eq!(
+            ini_get(&text, "MyComUserLogin").as_deref(),
+            Some("user2@example.com")
+        );
         assert_eq!(ini_get(&text, "MyComUserUid").as_deref(), Some("197268650"));
         assert_eq!(ini_get(&text, "CurrentUserNick").as_deref(), Some("Twin"));
         assert_eq!(ini_get(&text, LOGIN_KEY).as_deref(), Some("NEWMAGIC"));
