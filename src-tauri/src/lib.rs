@@ -86,6 +86,14 @@ pub fn run() {
                 if let (Some(main), Some(icon)) = (app.get_webview_window("main"), app.default_window_icon()) {
                     let _ = main.set_icon(icon.clone());
                 }
+                // Большой слот окна (`ICON_BIG`) Tauri не ставит вовсе, а без него панель задач
+                // рисует пустой лист. Ставим его из ресурса exe (см. `apply_app_taskbar_icon`).
+                #[cfg(windows)]
+                if let Some(main) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = main.hwnd() {
+                        launcher::apply_app_taskbar_icon(hwnd.0 as usize);
+                    }
+                }
                 // Автозапуск «в трее»: окно не показываем, приложение сразу работает в фоне
                 if autostart::started_minimized() {
                     if let Some(main) = app.get_webview_window("main") {

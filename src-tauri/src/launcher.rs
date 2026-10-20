@@ -142,6 +142,10 @@ mod win {
         fn IsHungAppWindow(hwnd: Hwnd) -> i32;
         fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
+        // Значок из ресурсов нашего же exe (идентификатор `RT_GROUP_ICON`). Нужен большому
+        // слоту окна: Tauri v2 не ставит `ICON_BIG`, а без него панель задач рисует пустой лист.
+        fn LoadIconW(instance: *mut c_void, resource_id: *const u16) -> *mut c_void;
+        fn GetModuleHandleW(name: *const u16) -> *mut c_void;
     }
 
     #[link(name = "kernel32")]
@@ -504,6 +508,22 @@ mod win {
         }
     }
 
+    /// Значок приложения из ресурсов нашего же exe (`RT_GROUP_ICON`, id 32512 — тот же,
+    /// что вшивает tauri-build). Нужен большому слоту окна: Tauri v2 не ставит `ICON_BIG`,
+    /// а без него панель задач рисует пустой лист. Ручка не уничтожается — окну нужна
+    /// на всё время его жизни (та же договорённость, что в `make_icon`).
+    pub fn app_resource_icon() -> usize {
+        // Идентификатор подаётся как указатель на низкий `u16`, а не как строка.
+        const APP_ICON_ID: u16 = 32512;
+        unsafe {
+            let module = GetModuleHandleW(std::ptr::null());
+            if module.is_null() {
+                return 0;
+            }
+            LoadIconW(module, APP_ICON_ID as *const u16) as usize
+        }
+    }
+
     /// Ставит окну малый (заголовок) и большой (панель задач, Alt+Tab) значки. 0 — этот значок не меняем.
     pub fn set_icons(hwnd: usize, small: usize, big: usize) -> Result<(), u32> {
         if small != 0 {
@@ -846,6 +866,9 @@ mod win {
         Err(1)
     }
     pub fn make_icon(_bgra: &[u8], _size: usize) -> usize {
+        0
+    }
+    pub fn app_resource_icon() -> usize {
         0
     }
     pub fn set_icons(_hwnd: usize, _small: usize, _big: usize) -> Result<(), u32> {
@@ -2761,6 +2784,22 @@ pub fn decorate_targets(targets: &[DecorateTarget]) -> Vec<DecorateResult> {
     out
 }
 
+/// Ставит главному окну большой значок панели задач (Alt+Tab и кнопка на панели).
+///
+/// Tauri v2 не заполняет слот `ICON_BIG` (его `set_icon` пишет только `ICON_SMALL`), а класс
+/// окна `Tauri Window` регистрируется без иконок — поэтому панель задач Windows рисует пустой
+/// лист вместо кота. Здесь значок берётся из ресурса 32512 того же exe (тот, что вшивает
+/// tauri-build) и ставится в оба слота через `win::set_icons`.
+#[cfg(windows)]
+pub fn apply_app_taskbar_icon(hwnd: usize) {
+    let icon = win::app_resource_icon();
+    if icon != 0 {
+        // Малый слот тоже ставим: он отвечает за заголовок и Alt+Tab, и держать его
+        // согласованным с большим дешевле, чем отдельно восстанавливать.
+        let _ = win::set_icons(hwnd, icon, icon);
+    }
+}
+
 /// Запущена ли Твиноферма с правами администратора (для проверок перед запуском: окна игры от администратора
 /// нельзя подписать и закрыть из обычной Твинофермы).
 #[tauri::command]
@@ -3006,6 +3045,27 @@ mod tests {
         assert!(
             !src.contains(&set_icons_zero),
             "снятие значка не должно идти через set_icons с нулями"
+        );
+    }
+
+    #[test]
+    fn main_window_sets_the_big_taskbar_icon() {
+        // Панель задач Windows рисует кнопку из слота `ICON_BIG`. Tauri v2 его не заполняет
+        // (его `set_icon` пишет только `ICON_SMALL`), а класс окна `Tauri Window` регистрируется
+        // без иконок — поэтому на панели задач вместо кота был пустой лист. Проверяем, что мы
+        // явно ставим большой слот и берём для него ресурс 32512 того же exe.
+        let src = include_str!("launcher.rs");
+        assert!(
+            src.contains("pub fn apply_app_taskbar_icon(hwnd: usize)"),
+            "обходной путь для большого слота должен существовать"
+        );
+        assert!(
+            src.contains("win::set_icons(hwnd, icon, icon)"),
+            "значок обязан уйти в оба слота окна, включая большой"
+        );
+        assert!(
+            src.contains("const APP_ICON_ID: u16 = 32512"),
+            "значок панели задач берётся из ресурса 32512 того же exe (та же иконка, что у Tauri)"
         );
     }
 
