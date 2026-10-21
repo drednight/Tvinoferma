@@ -31,6 +31,47 @@ describe('импорт: сопоставление', () => {
   });
 });
 
+describe('импорт: совпадение с архивом', () => {
+  it('персонаж, уже лежащий в архиве, не считается новым и обновляет архивную запись', () => {
+    const archived = [ch({ id: 'Bob', nick: 'Bob', level: 10 })];
+    const incoming = [ch({ id: 'Bob', nick: 'Bob', level: 20 })];
+    const plan = planImport([], incoming, () => null, archived);
+    expect(plan.added).toHaveLength(0);
+    expect(plan.conflicts).toHaveLength(1);
+    expect(plan.conflicts[0].archived).toBe(true);
+    expect(plan.conflicts[0].local.id).toBe('Bob');
+    expect(plan.conflicts[0].diffs.map(f => f.path)).toEqual(['level']);
+  });
+
+  it('идентичный архивный персонаж пропускается — дубликат не создаётся', () => {
+    const archived = [ch({ id: 'Bob', nick: 'Bob', level: 10 })];
+    const incoming = [ch({ id: 'Bob', nick: 'Bob', level: 10 })];
+    const plan = planImport([], incoming, () => null, archived);
+    expect(plan.added).toHaveLength(0);
+    expect(plan.conflicts).toHaveLength(0);
+    expect(plan.identical).toHaveLength(1);
+    expect(plan.identical[0].archived).toBe(true);
+  });
+
+  it('совпадение с архивом по нику без учёта регистра, даже если id разные', () => {
+    const archived = [ch({ id: 'old-uuid', nick: 'Bob' })];
+    const incoming = [ch({ id: 'bob', nick: 'BOB', level: 11 })];
+    const plan = planImport([], incoming, () => null, archived);
+    expect(plan.added).toHaveLength(0);
+    expect(plan.conflicts[0].local.id).toBe('old-uuid');
+    expect(plan.conflicts[0].archived).toBe(true);
+  });
+
+  it('активный персонаж в приоритете над архивным с тем же ником', () => {
+    const active = [ch({ id: 'Bob', nick: 'Bob', level: 10 })];
+    const archived = [ch({ id: 'Bob-2', nick: 'Bob', level: 30 })];
+    const incoming = [ch({ id: 'Bob', nick: 'Bob', level: 20 })];
+    const plan = planImport(active, incoming, () => null, archived);
+    expect(plan.conflicts[0].local.id).toBe('Bob');
+    expect(plan.conflicts[0].archived).toBe(false);
+  });
+});
+
 describe('импорт: сборка карточки', () => {
   it('берёт выбранные поля из файла, остальные — из текущей', () => {
     const local = ch({ class: 'Маг', stats: { pa: 1, pz: 1 } });

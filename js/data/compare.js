@@ -11,7 +11,7 @@ import { FIELD_GROUPS, getPath, displayValue, buildMerged, diffCharacters } from
  * @returns {Promise<{ action: 'merge', character: object } | { action: 'keep' } | { action: 'both' } |
  *                   { action: 'cancel' } | { action: 'all-local' } | { action: 'all-incoming' }>}
  */
-export function openCompareDialog(local, incoming, { index = 1, total = 1, present = null } = {}) {
+export function openCompareDialog(local, incoming, { index = 1, total = 1, present = null, archived = false } = {}) {
   return new Promise(resolve => {
     const root = document.getElementById('modal-root');
     if (!root) return resolve({ action: 'keep' });
@@ -27,7 +27,7 @@ export function openCompareDialog(local, incoming, { index = 1, total = 1, prese
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
       <div class="modal-container cmp-modal">
-        <div class="modal-header"><h3>Совпадение ${index} из ${total}: «${escapeHtml(local.nick)}»</h3></div>
+        <div class="modal-header"><h3>Совпадение ${index} из ${total}: «${escapeHtml(local.nick)}»${archived ? ' <span class="muted">(в архиве)</span>' : ''}</h3></div>
         <div class="modal-body">
           <div class="cmp-toolbar">
             <span class="muted">Отличается полей: <strong>${diffs.size}</strong>. Отметьте, какое значение оставить.</span>
@@ -46,7 +46,7 @@ export function openCompareDialog(local, incoming, { index = 1, total = 1, prese
           ${total - index > 0 ? `
           <button type="button" class="btn ghost" data-act="all-local" title="Для этого и всех следующих совпадений оставить текущие карточки">Оставить текущие для всех</button>
           <button type="button" class="btn ghost" data-act="all-incoming" title="Для этого и всех следующих совпадений взять данные из файла">Взять из файла для всех</button>` : ''}
-          <button type="button" class="btn" data-act="both" title="Сохранить обе карточки: из файла добавится как новый персонаж">Оставить обе</button>
+          ${archived ? '' : `<button type="button" class="btn" data-act="both" title="Сохранить обе карточки: из файла добавится как новый персонаж">Оставить обе</button>`}
           <button type="button" class="btn" data-act="keep">Оставить текущую</button>
           <button type="button" class="btn primary" data-act="merge">Сохранить выбранное</button>
         </div>

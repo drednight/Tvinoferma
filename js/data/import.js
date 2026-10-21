@@ -66,24 +66,33 @@ export function mergeFinance(local, incoming) {
 
 /**
  * Сопоставление персонажей файла с текущими. Чистая функция (покрыта тестами).
+ * Архивные персонажи — тоже существующие записи: если персонаж из файла уже лежит
+ * в архиве, он обновит архивную карточку, а не создаст дубликат в активном списке.
  * @param {any[]} localChars
  * @param {any[]} incomingChars
  * @param {(c: any) => any} [presentFor]
+ * @param {any[]} [archivedChars]
  */
-export function planImport(localChars, incomingChars, presentFor = () => null) {
+export function planImport(localChars, incomingChars, presentFor = () => null, archivedChars = []) {
   const byId = new Map(localChars.map(c => [c.id, c]));
   const byNick = new Map(localChars.map(c => [nickKey(c.nick), c]));
+  const archivedById = new Map(archivedChars.map(c => [c.id, c]));
+  const archivedByNick = new Map(archivedChars.map(c => [nickKey(c.nick), c]));
   const plan = { added: [], conflicts: [], identical: [] };
   const usedLocal = new Set();
   incomingChars.forEach(inc => {
+    // Сначала активные, затем архивные: совпадение по id, иначе по нику без учёта регистра.
     let local = byId.get(inc.id);
+    let archived = false;
     if (!local || usedLocal.has(local.id)) local = byNick.get(nickKey(inc.nick));
+    if (!local || usedLocal.has(local.id)) { local = archivedById.get(inc.id); archived = true; }
+    if (!local || usedLocal.has(local.id)) { local = archivedByNick.get(nickKey(inc.nick)); archived = true; }
     if (!local || usedLocal.has(local.id)) { plan.added.push(inc); return; }
     usedLocal.add(local.id);
     const present = presentFor(inc);
     const diffs = diffCharacters(local, inc, present);
-    if (diffs.length) plan.conflicts.push({ local, incoming: inc, diffs, present });
-    else plan.identical.push({ local, incoming: inc });
+    if (diffs.length) plan.conflicts.push({ local, incoming: inc, diffs, present, archived });
+    else plan.identical.push({ local, incoming: inc, archived });
   });
   return plan;
 }
@@ -104,7 +113,7 @@ export function openImportDialog(raw) {
   setPartyNameResolver(id => [...state.parties, ...newParties].find(p => p.id === id)?.name || null);
 
   const presence = new Map(mergeChars.map((c, i) => [c, presentPaths(rawChars[i] || {})]));
-  const plan = planImport(state.characters, mergeChars, c => presence.get(c) || null);
+  const plan = planImport(state.characters, mergeChars, c => presence.get(c) || null, state.archivedCharacters);
 
   const localMarathons = new Map(state.marathons.map(m => [m.id, m]));
   const newMarathons = incoming.marathons.filter(m => !localMarathons.has(m.id));
@@ -140,10 +149,10 @@ export function openImportDialog(raw) {
         </div>
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">⚖️ Совпадают, но отличаются: ${plan.conflicts.length}</h4>
-          ${list(plan.conflicts, x => `<label><input type="checkbox" name="cmp" value="${escapeHtml(x.local.id)}" checked /> ${escapeHtml(x.local.nick)} <small class="muted">— отличий: ${x.diffs.length} (${escapeHtml(x.diffs.slice(0, 4).map(f => f.label).join(', '))}${x.diffs.length > 4 ? '…' : ''})</small></label>`)}
+          ${list(plan.conflicts, x => `<label><input type="checkbox" name="cmp" value="${escapeHtml(x.local.id)}" checked /> ${escapeHtml(x.local.nick)}${x.archived ? ' <small class="muted">· в архиве</small>' : ''} <small class="muted">— отличий: ${x.diffs.length} (${escapeHtml(x.diffs.slice(0, 4).map(f => f.label).join(', '))}${x.diffs.length > 4 ? '…' : ''})</small></label>`)}
           ${plan.conflicts.length ? '<p class="muted" style="font-size:0.8rem; margin:4px 0 0;">Снимите галочку, чтобы оставить текущую карточку без сравнения.</p>' : ''}
         </div>
-        ${plan.identical.length ? `<p class="muted">✔ Полностью совпадают (пропускаются): ${plan.identical.length}</p>` : ''}
+        ${plan.identical.length ? `<p class="muted">✔ Полностью совпадают (пропускаются): ${plan.identical.length}${plan.identical.some(x => x.archived) ? ` (в архиве: ${plan.identical.filter(x => x.archived).length})` : ''}</p>` : ''}
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">Прочее</h4>
           <p class="muted" style="margin:0;">Пати: новых ${newParties.length} · Марафоны: новых ${newMarathons.length}, обновлённых ${newerMarathons.length} · Шаблоны марафонов: новых ${newTemplates.length}${hasKey(source, 'finance') ? ` · Финансовых записей в файле: ${incoming.finance.operations.length}` : ''}</p>
@@ -190,14 +199,14 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
   const decisions = [];
   let bulk = null;
   for (let i = 0; i < conflicts.length; i++) {
-    const { local, incoming, present } = conflicts[i];
-    let res = bulk ? { action: bulk } : await openCompareDialog(local, incoming, { index: i + 1, total: conflicts.length, present });
+    const { local, incoming, present, archived } = conflicts[i];
+    let res = bulk ? { action: bulk } : await openCompareDialog(local, incoming, { index: i + 1, total: conflicts.length, present, archived });
     if (res.action === 'cancel') { toast('Импорт отменён', 'info'); return; }
     if (res.action === 'all-local' || res.action === 'all-incoming') {
       bulk = res.action === 'all-local' ? 'keep' : 'take';
       res = { action: bulk };
     }
-    decisions.push({ local, incoming, diffs: conflicts[i].diffs, ...res });
+    decisions.push({ local, incoming, diffs: conflicts[i].diffs, archived, ...res });
   }
 
   await backupBeforeImport();
@@ -213,18 +222,23 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
   added.forEach(addAsNew);
 
   for (const d of decisions) {
-    const idx = state.characters.findIndex(c => c.id === d.local.id);
-    if (idx === -1) continue;
+    const activeIdx = state.characters.findIndex(c => c.id === d.local.id);
+    const archivedIdx = activeIdx === -1 ? state.archivedCharacters.findIndex(c => c.id === d.local.id) : -1;
+    if (activeIdx === -1 && archivedIdx === -1) continue;
     if (d.action === 'merge' || d.action === 'take') {
       // «Взять из файла» = все отличающиеся поля, которые есть в файле, берутся из него
       const merged = d.action === 'take'
         ? buildMerged(d.local, d.incoming, Object.fromEntries(d.diffs.map(f => [f.path, 'incoming'])))
         : d.character;
       const next = normalizeCharacter(merged);
-      state.characters[idx] = next;
+      // Архивная карточка обновляется на месте: активный список не пополняется дубликатом.
+      if (activeIdx !== -1) state.characters[activeIdx] = next;
+      else state.archivedCharacters[archivedIdx] = next;
       if (next.nick !== d.local.nick) await syncIdWithNick(next);
       changed++;
-    } else if (d.action === 'both') {
+    } else if (d.action === 'both' && activeIdx !== -1) {
+      // «Оставить обе» для архивного совпадения не имеет смысла: архивная запись уже
+      // сохранена, а добавление активной копии создало бы дубликат.
       addAsNew(d.incoming);
     }
   }
