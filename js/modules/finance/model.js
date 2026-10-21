@@ -89,6 +89,21 @@ export function formatAmount(currency, value) {
   return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 }
 
+/**
+ * Число с пробелами после каждых трёх цифр — для полей, куда человек вводит сумму.
+ * «242982166» → «242 982 166», «1234,5» → «1 234,5». Пока вводишь, видно, сколько
+ * получится: без пробелов «242982166» и «2429821660» выглядят одинаково пугающе.
+ * Пробелы из прежнего заполнения снимаем — иначе они копились бы при каждой правке.
+ */
+export function formatInputNumber(value) {
+  const s = String(value ?? '').replace(/\s/g, '').replace(/[^\d.,]/g, '');
+  const m = s.match(/^(\d*)([.,]?)(\d*)$/);
+  if (!m) return s;
+  const [, intPart, sep, fracPart] = m;
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return grouped + (sep ? sep + fracPart : '');
+}
+
 function positive(value) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -362,23 +377,39 @@ export function balances(operations, opening = null) {
 }
 
 /**
- * Сколько сейчас в наличии. Месяцы в таблице не сходятся между собой (перенос ≠
- * итог прошлого месяца), поэтому «сейчас» — это итог САМОГО СВЕЖЕГО месяца, а не
- * сумма движений за всю историю: поправки месяцев заданы как абсолютные итоги.
- * Если поправок нет, поведение прежнее: движения + начальный остаток.
+ * Сколько сейчас в наличии по каждой валюте — для блока «Банк» и форм сделки.
+ *
+ * Месяцы идут от старых к свежим, и остаток каждого — это остаток прошлого плюс
+ * движения текущего: в конце месяца остаток переносится. Без переноса на старте
+ * нового месяца баланс обнулялся, и история прошлого месяца пропадала — панель
+ * показывала «за месяц» и «сейчас» одним и тем же числом.
+ *
+ * Поправка листа (`monthAdjust`) — тоже его правда: если у месяца она есть, итог
+ * берём из неё (колонка «Банк»), иначе переносим. Так импорт из таблицы остаётся
+ * точным, а месяц, которого в таблице ещё нет (операции вбиты руками), получает
+ * перенос автоматически.
  */
 export function currentBalances(finance) {
   const { operations, settings } = finance;
   const adjust = settings?.monthAdjust;
   const hasAdjust = adjust && Object.keys(adjust).length > 0;
-  const newest = groupByMonth(operations, adjust)[0];
-  if (hasAdjust && newest) {
-    return CURRENCY_IDS.reduce((acc, id) => {
-      acc[id] = roundFor(id, newest.totals[id].balance);
-      return acc;
-    }, /** @type {Record<string, number>} */ ({}));
+  if (!hasAdjust) return balances(operations, settings?.opening);
+
+  // Старые → свежие: иначе перенос шёл бы от future к прошлому
+  const months = groupByMonth(operations).reverse();
+  const opening = settings?.opening;
+  /** @type {Record<string, number>} */
+  const running = CURRENCY_IDS.reduce((acc, id) => {
+    acc[id] = roundFor(id, Number(opening?.[id]) || 0);
+    return acc;
+  }, /** @type {Record<string, number>} */ ({}));
+  for (const m of months) {
+    for (const id of CURRENCY_IDS) {
+      const fix = Number(adjust?.[m.month]?.[id]) || 0;
+      running[id] = roundFor(id, fix ? m.totals[id].balance + fix : running[id] + m.totals[id].balance);
+    }
   }
-  return balances(operations, settings?.opening);
+  return running;
 }
 
 export function monthOf(date) {

@@ -14,7 +14,7 @@ import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import {
   CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY, DEFAULT_COMMISSION_PCT,
-  money, roundFor, formatAmount, todayIso, normalizeFinance, currentBalances,
+  money, roundFor, formatAmount, formatInputNumber, todayIso, normalizeFinance, currentBalances,
   groupByMonth, shopTotals, shopItemTotal, findShopItem, shopDealOperation,
   goldDeal, goldDealOperations, commissionLossPct,
   loanStatus, loanOperation, paymentSplit, spanLabel
@@ -90,13 +90,16 @@ function hueOf(name) {
   return h;
 }
 
-/** Виджет «поле + подпись» для модальных форм. */
+/** Виджет «поле + подпись» для модальных форм. `money` — поле суммы: пробелы после
+ *  каждых трёх цифр, чтобы было видно, сколько человек вводит. */
 function field(label, name, value, opts = {}) {
-  const { type = 'text', step, min, placeholder = '', required = false } = opts;
+  const { type = 'text', step, min, placeholder = '', required = false, money = false } = opts;
+  const shown = money ? formatInputNumber(value) : value;
   return `
     <label class="fin-field">
       <span>${escapeHtml(label)}</span>
-      <input type="${type}" name="${name}" value="${escapeHtml(value)}"
+      <input type="${money ? 'text' : type}" name="${name}" value="${escapeHtml(shown)}"
+             ${money ? 'inputmode="decimal" class="fin-money"' : ''}
              ${step ? `step="${step}"` : ''} ${min !== undefined ? `min="${min}"` : ''}
              placeholder="${escapeHtml(placeholder)}" ${required ? 'required' : ''} />
     </label>`;
@@ -475,7 +478,7 @@ function operationForm(existing = null) {
       ])}
       ${selectField('Валюта', 'currency', op.currency,
         CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
-      ${field('Сумма', 'amount', op.amount, { type: 'number', step: '0.01', min: 0, required: true })}
+      ${field('Сумма', 'amount', op.amount, { type: 'number', step: '0.01', min: 0, required: true, money: true })}
       ${field('Дата', 'date', op.date, { type: 'date', required: true })}
       ${textField('Откуда / на что', 'counterparty', op.counterparty, 'источник или статья расхода')}
       ${textField('Примечание', 'note', op.note, 'детали операции')}
@@ -517,8 +520,8 @@ function shopItemForm(existing = null, side = 'sell') {
         { value: 'buy', label: 'Покупка — золото от меня' }
       ])}
       ${textField('Предмет', 'name', item.name, 'название предмета')}
-      ${field('Цена за штуку (золото)', 'price', item.price, { type: 'number', step: '0.01', min: 0, required: true })}
-      ${field('Количество на складе', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
+      ${field('Цена за штуку (золото)', 'price', item.price, { type: 'number', step: '0.01', min: 0, required: true, money: true })}
+      ${field('Количество на складе', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true, money: true })}
       ${field('Дата', 'date', item.date, { type: 'date' })}
       ${textField('Примечание', 'note', item.note)}
       <p class="muted fin-form-hint">
@@ -561,7 +564,7 @@ function shopDealForm(item) {
     title: `${sold ? 'Продано' : 'Куплено'}: ${item.name}`,
     submitText: sold ? 'Продано' : 'Куплено',
     content: `<form class="fin-form">
-      ${field('Сколько', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true })}
+      ${field('Сколько', 'qty', item.qty, { type: 'number', step: '1', min: 0, required: true, money: true })}
       ${field('Дата', 'date', todayIso(), { type: 'date', required: true })}
       <div class="fin-preview" data-fin-preview>—</div>
       <p class="muted fin-form-hint">
@@ -609,8 +612,8 @@ function goldForm() {
         { value: 'sell', label: 'Продать голд — получить золото' },
         { value: 'buy', label: 'Купить голд — заплатить золотом' }
       ])}
-      ${field('Количество голда', 'coins', 1000, { type: 'number', step: '1', min: 0, required: true })}
-      ${field('Курс: 1 голд = ? золота', 'rate', settings.goldRate, { type: 'number', step: '0.000001', min: 0, required: true })}
+      ${field('Количество голда', 'coins', 1000, { type: 'number', step: '1', min: 0, required: true, money: true })}
+      ${field('Курс: 1 голд = ? золота', 'rate', settings.goldRate, { type: 'number', step: '0.000001', min: 0, required: true, money: true })}
       <details class="fin-details">
         <summary>Комиссия аукциона (по умолчанию 2%)</summary>
         ${field('Комиссия, %', 'commissionPct', settings.commissionPct || DEFAULT_COMMISSION_PCT, { type: 'number', step: '0.01', min: 0 })}
@@ -675,7 +678,7 @@ function loanForm(existing = null, direction = 'lent') {
         { value: 'borrowed', label: 'Я беру в долг' }
       ])}
       ${textField('Кто', 'who', loan.who, 'ник или имя в игре')}
-      ${field('Сумма долга', 'principal', loan.principal, { type: 'number', step: '0.01', min: 0, required: true })}
+      ${field('Сумма долга', 'principal', loan.principal, { type: 'number', step: '0.01', min: 0, required: true, money: true })}
       ${field('Процент в месяц', 'percent', loan.percent, { type: 'number', step: '0.01', min: 0 })}
       ${selectField('Валюта', 'currency', loan.currency,
         CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
@@ -741,7 +744,7 @@ function paymentForm(loan) {
     title: lent ? `Выплата от «${loan.who}»` : `Я возвращаю «${loan.who}»`,
     submitText: 'Записать выплату',
     content: `<form class="fin-form">
-      ${field('Сумма выплаты', 'amount', '', { type: 'number', step: '0.01', min: 0, required: true })}
+      ${field('Сумма выплаты', 'amount', '', { type: 'number', step: '0.01', min: 0, required: true, money: true })}
       ${field('Дата', 'date', todayIso(), { type: 'date', required: true })}
       <div class="fin-pay-actions">
         <button type="button" class="btn ghost small" data-pay-all>💵 Вся сумма долга (${fmt(st.total, ccy)})</button>
@@ -988,4 +991,34 @@ export function bindFinance() {
     showBalance = input.checked;
     renderFinance();
   });
+
+  // Пробелы после каждых трёх цифр в полях сумм: пока человек вводит, видно,
+  // сколько получится. Каретку держим на том же разряде — иначе ввод «прыгал» бы.
+  const modalRoot = document.getElementById('modal-root');
+  if (modalRoot && !modalRoot.dataset.moneyBound) {
+    modalRoot.dataset.moneyBound = 'true';
+    modalRoot.addEventListener('input', (event) => {
+      const input = /** @type {HTMLInputElement} */ (event.target)?.closest?.('.fin-money');
+      if (!input) return;
+      const pos = input.selectionStart ?? input.value.length;
+      const formatted = formatInputNumber(input.value);
+      if (formatted === input.value) return;
+      const digitsBefore = String(input.value).slice(0, pos).replace(/\D/g, '').length;
+      input.value = formatted;
+      let caret = 0;
+      if (digitsBefore > 0) {
+        let seen = 0;
+        while (caret < formatted.length) {
+          if (/\d/.test(formatted[caret])) {
+            seen++;
+            caret++;
+            if (seen >= digitsBefore) break;
+            continue;
+          }
+          caret++;
+        }
+      }
+      try { input.setSelectionRange(caret, caret); } catch { /* не все поля ставят каретку */ }
+    });
+  }
 }

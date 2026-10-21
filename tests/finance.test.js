@@ -22,6 +22,7 @@ import {
   daysInMonth,
   roundFor,
   formatAmount,
+  formatInputNumber,
   spanLabel,
   balances,
   currentBalances,
@@ -145,6 +146,31 @@ describe('децималы зависят от валюты', () => {
   it('формат вывода золота без дробной части, голд с ней', () => {
     expect(formatAmount('gold', 1234.7)).toBe(new Intl.NumberFormat('ru-RU').format(1235));
     expect(formatAmount('coins', 1234.55)).toBe(new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(1234.55));
+  });
+});
+
+describe('пробелы в полях сумм', () => {
+  it('разделяет разряды пробелами по три цифры', () => {
+    expect(formatInputNumber('242982166')).toBe('242 982 166');
+    expect(formatInputNumber(1000)).toBe('1 000');
+    expect(formatInputNumber('1234567890123')).toBe('1 234 567 890 123');
+  });
+
+  it('сохраняет дробную часть и разделитель, который ввели', () => {
+    expect(formatInputNumber('1234,5')).toBe('1 234,5');
+    expect(formatInputNumber('1234567.89')).toBe('1 234 567.89');
+  });
+
+  it('снимает уже расставленные пробелы и мусор, ничего не накапливая', () => {
+    expect(formatInputNumber('1 000')).toBe('1 000');
+    expect(formatInputNumber(' 242 982 166 ')).toBe('242 982 166');
+    expect(formatInputNumber('1 000 abc')).toBe('1 000');
+  });
+
+  it('пустое и нечисловое дают пустое, а не NaN', () => {
+    expect(formatInputNumber('')).toBe('');
+    expect(formatInputNumber(null)).toBe('');
+    expect(formatInputNumber(undefined)).toBe('');
   });
 });
 
@@ -497,7 +523,7 @@ describe('поправки по месяцам (переносы из табли
     expect(groupByMonth(ops)[0].totals.gold.balance).toBe(100);
   });
 
-  it('«сейчас» — итог самого свежего месяца, а не сумма истории', () => {
+  it('у каждого месяца своя правда листа, и «сейчас» — итог свежего месяца', () => {
     const finance = normalizeFinance({
       operations: [
         { ...mon('2025-03-01'), kind: 'in', amount: 1000 },
@@ -506,7 +532,7 @@ describe('поправки по месяцам (переносы из табли
       ],
       settings: { monthAdjust: { '2025-03': { gold: 9999 }, '2026-09': { gold: 500 } } }
     });
-    // Сумма по всем месяцам была бы 1000 + 9999 + 60 + 500 = 11559
+    // Поправка есть у обоих месяцев: итог свежего (60 + 500) и есть «сейчас»
     expect(currentBalances(finance).gold).toBe(560);
   });
 
@@ -536,6 +562,32 @@ describe('поправки по месяцам (переносы из табли
     const [m] = groupByMonth(finance.operations, finance.settings.monthAdjust);
     expect(m.totals.gold.balance - finance.settings.monthCarry[m.month].gold).toBe(200);
     expect(currentBalances(finance).gold).toBe(600);
+  });
+
+  it('свежий месяц без поправки листа получает остаток прошлого', () => {
+    // Сентябрь закрыт листом (поправка 500), октябрь — руками, листа ещё нет.
+    // Без переноса октябрь показывал бы 50 вместо 650, и история сентября пропадала.
+    const finance = normalizeFinance({
+      operations: [
+        { ...mon('2026-09-01'), kind: 'in', amount: 100 },
+        { ...mon('2026-10-01'), kind: 'in', amount: 50 }
+      ],
+      settings: { monthAdjust: { '2026-09': { gold: 500 } } }
+    });
+    expect(currentBalances(finance).gold).toBe(650);
+  });
+
+  it('перенос работает и по обеим валютам сразу', () => {
+    const finance = normalizeFinance({
+      operations: [
+        { date: '2026-09-01', kind: 'in', currency: 'coins', amount: 10 },
+        { date: '2026-10-01', kind: 'in', currency: 'coins', amount: 5 }
+      ],
+      settings: { monthAdjust: { '2026-09': { gold: 100, coins: 10 } } }
+    });
+    // Сентябрь закрыт листом: Золото 100, Голд 20 (нетто 10 + поправка 10).
+    // Октябрь без поправки: Золото 100 + 0, Голд 20 + 5.
+    expect(currentBalances(finance)).toEqual({ gold: 100, coins: 25 });
   });
 });
 
@@ -693,6 +745,24 @@ describe('раздел «Банк»: один экран', () => {
     expect(text(el.querySelector('.month-item .mi-sum'))).not.toContain('550 000 000');
   });
 
+  it('панель показывает остаток с переносом прошлого месяца', async () => {
+    const { state } = await import('../js/core/state.js');
+    // Сентябрь закрыт листом (поправка 500), октябрь вбиту руками — листа ещё нет.
+    state.finance = normalizeFinance({
+      operations: [
+        { id: 'a', date: '2026-09-01', kind: 'in', currency: 'gold', amount: 100, counterparty: 'Сент', note: '', status: '', source: 'manual', ref: null },
+        { id: 'b', date: '2026-10-01', kind: 'in', currency: 'gold', amount: 50, counterparty: 'Окт', note: '', status: '', source: 'manual', ref: null }
+      ],
+      settings: { monthAdjust: { '2026-09': { gold: 500 } } }
+    });
+    const { el } = await render();
+    const gold = el.querySelector('.pans .pan:nth-child(1)');
+    // Сентябрь: 100 + 500 = 600, октябрь: 600 + 50 = 650. Без переноса было бы 50.
+    expect(text(gold.querySelector('.pan-value'))).toContain('650');
+    // «за месяц» остаётся ежемесячным: в панели видно и итог, и вклад месяца
+    expect(text(gold.querySelector('.pan-sub'))).toContain('50');
+  });
+
   it('журнал показывает записи выбранного месяца с источником', async () => {
     const { el } = await render();
     expect(el.querySelectorAll('.month-body .fin-row')).toHaveLength(3);
@@ -775,6 +845,23 @@ describe('раздел «Банк»: один экран', () => {
     expect(details).toBeTruthy();
     expect(details.open).toBe(false);                 // по умолчанию комиссия не видна
     expect(details.querySelector('input[name="commissionPct"]').value).toBe('2');
+  });
+
+  it('суммы в формах показаны с пробелами по три цифры', async () => {
+    const { el } = await render();
+    el.querySelector('[data-fin-act="gold"]').click();
+    const coins = document.querySelector('#modal-root form input[name="coins"]');
+    expect(coins.value).toBe('1 000');
+  });
+
+  it('поле суммы разделяет разряды пробелами при вводе', async () => {
+    const { el } = await render();
+    el.querySelector('[data-fin-act="add-op"]').click();
+    const input = document.querySelector('#modal-root form input[name="amount"]');
+    expect(input.classList.contains('fin-money')).toBe(true);
+    input.value = '242982166';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(input.value).toBe('242 982 166');
   });
 
   it('форма долга одна: внутри выбираешь дать или взять', async () => {
