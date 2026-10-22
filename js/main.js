@@ -331,6 +331,9 @@ function renderActiveTab(sectionName) {
         if (isTauri()) refreshRunningWindows().catch(() => {});
         break;      case 'parties':
         renderParties();
+        // Список окон игры нужен и на «Пати» (кнопка «🔖» подписать окна в карточке пати).
+        // Он общий и меняется после запуска/закрытия, поэтому обновляем его при входе.
+        if (isTauri()) refreshRunningWindows().catch(() => {});
         break;
       case 'marathons':
         resetMarathonView();   // клик по вкладке всегда возвращает к списку марафонов

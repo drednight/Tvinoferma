@@ -14,9 +14,9 @@ import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } fr
 import { openPreflight } from './preflightDialog.js';
 import { recordLaunchRun } from './launchLog.js';
 
-let active = null; // { signal } идущего запуска
+let activeLaunches = 0;   // сколько запусков сейчас идёт (включая ожидание очереди)
 
-export const isLaunching = () => !!active;
+export const isLaunching = () => activeLaunches > 0;
 
 /** Показывать ли итог запуска (настройка «Настройки → Запуск игры»). Ошибки показываются всегда. */
 const notifyEnabled = () => state.settings?.launcher?.notify !== false;
@@ -218,18 +218,24 @@ export function mergeLaunchResults(first, second) {
 }
 
 export async function launchGroup(title, characters, opts = {}) {
-  if (active) {
-    toast('Запуск уже идёт: дождитесь окончания или отмените его (док задач внизу)', 'error');
-    return null;
-  }
   if (!isTauri()) {
     toast('Запуск игры работает только в приложении (в браузере недоступен)', 'error');
     return null;
   }
   const signal = { cancelled: false };
-  active = { signal };   // место занято и пока открыт экран проверок
+  activeLaunches += 1;
   let task = null;
   try {
+    // Задача создаётся сразу, до проверок: пока идёт другой скрипт, запуск встаёт в очередь
+    // дока и ждёт своей очереди, а не отказывает («запуск уже идёт»). Проверки идут уже после
+    // ожидания: иначе «окна уже запущены» считалось бы по окнам чужого, ещё не закончившегося
+    // запуска, и наш персонаж был бы пропущен.
+    task = startTask(title, { cancelable: true });
+    task.onCancel(() => { signal.cancelled = true; });
+    // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
+    await task.waitTurn();
+    if (signal.cancelled) { task.finish('Отменено в очереди', 'warn'); return null; }
+    task.setStep('проверка…');
     // Один GameCenter на всю группу выбирается ДО проверок, и дальше с ним и проверка, и запуск.
     // Иначе они считают разные папки: проверка скажет «вход запомнен» про одну, а запускаться
     // будут из другой, где токена нет, — и окно откроется под прежним аккаунтом.
@@ -245,7 +251,7 @@ export async function launchGroup(title, characters, opts = {}) {
     let fixedOnce = false;
     while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
-      if (!choice) return null;
+      if (!choice) { task.finish('Отменено на экране проверки', 'warn'); return null; }
       if (choice !== 'fix') break;          // «Запустить»: дальше запускаем, экран больше не нужен
       const fixes = availableFixes(pre, launchContext());
       if (fixes.some(f => f.id === 'openGcWindow')) {
@@ -268,14 +274,12 @@ export async function launchGroup(title, characters, opts = {}) {
       else if (pre.noGc.length && pre.noSavedLogin.length) toast('Не запускаю: нет GameCenter и не запомнен вход. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи»', 'error');
       else if (pre.noSavedLogin.length) toast('Не запускаю: вход в GameCenter не запомнен ни у кого. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»', 'error');
       else toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
+      task.finish('Нечего запускать', 'warn');
       return null;
     }
 
     const startedAt = Date.now();
-    task = startTask(title, { total: ready.length, cancelable: true });
-    task.onCancel(() => { signal.cancelled = true; });
-    // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
-    await task.waitTurn();
+    task.progress(0, ready.length);
     preflightLog(pre).forEach(l => task.log(l.text, l.level));
 
     // Один GameCenter на всю пати (выбран до проверок): остальные запускаются из того, что у них есть
@@ -343,7 +347,10 @@ export async function launchGroup(title, characters, opts = {}) {
     toast(`Запуск не удался: ${errText(e)}`, 'error');
     return null;
   } finally {
-    active = null;
+    activeLaunches = Math.max(0, activeLaunches - 1);
+    // Окна только что открылись — обновляем общий список окон, чтобы в карточке пати
+    // появилась кнопка «🔖», а в шапке — кнопки закрытия окон.
+    import('../launcher/runningWindows.js').then(m => m.refreshRunningWindows()).catch(() => {});
   }
 }
 
@@ -453,9 +460,60 @@ export async function closePartyWindows(partyName) {
   try {
     const report = await closeClientsByPid(mine.map(r => r.pid));
     showCloseReport(report);
+    // Окна закрылись — список окон общий, обновляем: кнопка «🔖» в карточке должна исчезнуть
+    import('../launcher/runningWindows.js').then(m => m.refreshRunningWindows()).catch(() => {});
     return Number(report?.closed) || 0;
   } catch (e) {
     toast(`Не удалось закрыть окна пати: ${errText(e)}`, 'error');
+    return 0;
+  }
+}
+
+/**
+ * Подписывает окна игры участников пати: возвращает заголовок «Ник — Класс» и значок класса.
+ *
+ * Зачем это в карточке пати: окна часто остаются без названия и значка (игра запущена
+ * от администратора, или заголовок переписала сама игра). Подписать можно и в «Инструменты →
+ * Окна игры», но там список общий на все аккаунты, а в пати нужен свой набор — как с закрытием.
+ *
+ * @param {string} partyName название пати
+ * @returns {Promise<number>} сколько окон подписано
+ */
+export async function signPartyWindows(partyName) {
+  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  const { partyByName, charactersInParty } = await import('../parties/membership.js');
+  const { runningClientDetails, redecorateRunningWindows, redecorateText } = await import('./launch.js');
+  const { windowRows } = await import('./windowList.js');
+
+  const party = partyByName(state.parties, partyName);
+  if (!party) { toast(`Пати «${partyName}» не найдена`, 'error'); return 0; }
+  const members = charactersInParty(state.characters, party.id);
+  if (!members.length) { toast(`В пати «${party.name}» нет персонажей`, 'info'); return 0; }
+
+  let rows;
+  try {
+    rows = windowRows(await runningClientDetails(), state.characters);
+  } catch (e) {
+    toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
+    return 0;
+  }
+
+  const mine = rows.filter(r => r.known && members.some(m => m.id === r.charId));
+  if (!mine.length) {
+    toast(`Окна пати «${party.name}» не запущены`, 'info');
+    return 0;
+  }
+
+  try {
+    const res = await redecorateRunningWindows(mine);
+    const done = res.ok + res.fixed;
+    if (done) toast(`Названия и значки восстановлены: окон ${done}`, 'success');
+    else if (res.denied) toast('Windows не дал доступ к окнам игры', 'error');
+    else toast(redecorateText(res) || 'Не удалось восстановить названия и значки', res.skipped ? 'warning' : 'error');
+    res.details.forEach(d => console.warn('[WINDOWS] подпись:', d));
+    return done;
+  } catch (e) {
+    toast(`Не удалось подписать окна пати: ${errText(e)}`, 'error');
     return 0;
   }
 }

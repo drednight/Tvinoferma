@@ -259,6 +259,41 @@ describe('точечное обновление плашек задач', () => 
     expect(after[0].textContent).not.toContain('в очереди');
   });
 
+  it('у ждущего очереди есть крестик отмены, у идущего — нет', async () => {
+    const { startTask, renderDock } = await import('../js/core/taskLog.js');
+    const first = startTask('Обновление балансов', { total: 4, cancelable: true });
+    const second = startTask('Проверка авторизации', { total: 2, cancelable: true });
+    renderDock();
+    const dock = document.getElementById('tf-task-dock');
+    // Идущим скриптом управляет плашка в шапке, а ждущего можно снять прямо в списке
+    expect(dock.querySelector(`[data-dock-cancel="${first.id}"]`)).toBeNull();
+    const cancel = dock.querySelector(`[data-dock-cancel="${second.id}"]`);
+    expect(cancel).not.toBeNull();
+    expect(cancel.closest('.tf-dock-row')).toBeNull();   // кнопка рядом со строкой, а не внутри неё
+    // Ждущий помечен: CSS гасит такие строки
+    expect(dock.querySelector(`[data-dock-log-row="${second.id}"]`).className).toContain('is-queued');
+  });
+
+  it('крестик отменяет ждущего: он не начнёт работу и не заблокирует очередь', async () => {
+    const { startTask, renderDock } = await import('../js/core/taskLog.js');
+    const first = startTask('Обновление балансов', { total: 4, cancelable: true });
+    const second = startTask('Проверка авторизации', { total: 2, cancelable: true });
+    renderDock();
+    document.querySelector(`[data-dock-cancel="${second.id}"]`).click();
+    expect(second.status).toBe('warn');
+    expect(second.summary).toBe('Отменён в очереди');
+
+    // Следующий в очереди начинает работу, когда освободится место
+    const third = startTask('Сверка балансов', { total: 1, cancelable: true });
+    let started = false;
+    third.waitTurn().then(() => { started = true; });
+    await Promise.resolve();
+    expect(started).toBe(false);
+    first.finish('Готово');
+    await Promise.resolve(); await Promise.resolve();
+    expect(started).toBe(true);
+  });
+
   it('очередь идёт по порядку запуска, а не по последнему нажатию', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
     const first = startTask('Первый', { total: 1, cancelable: true });
