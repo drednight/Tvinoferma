@@ -15,6 +15,9 @@ import { state } from './state.js';
 import { writeLogBounded } from './logStore.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
+// Отметка «страница уже открывалась в этой вкладке»: sessionStorage живёт до перезагрузки,
+// поэтому по ней отличаем перезагрузку (F5, HMR) от свежего запуска приложения
+const SESSION_KEY = 'tf_task_session';
 const MAX_TASKS = 300;
 const MAX_ENTRIES = 500;
 const DOCK_AUTOHIDE_MS = 8000;
@@ -23,27 +26,65 @@ const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error:
 
 export { ERROR_TEXT, errorText };
 
-// Журнал читается после объявления `class Task` (см. конец класса): `loadJournal` создаёт Task,
-// а до объявления класса это ReferenceError, который глотался — журнал после перезапуска был пустым
+// Журнал читается в самом конце модуля: `loadJournal` создаёт Task и логирует восстановление,
+// а это обращается к `renderDock()` и другим объявлениям ниже — до них такие обращения дали бы
+// ReferenceError, который глотался, и журнал после перезапуска оставался пустым
 let tasks = [];
 const subscribers = new Set();
 let listenerReady = false;
 
+/** Отличить перезагрузку страницы от свежего запуска: ключ живёт только в текущей вкладке. */
+function wasPageReloaded() {
+  try {
+    const seen = sessionStorage.getItem(SESSION_KEY) === '1';
+    sessionStorage.setItem(SESSION_KEY, '1');
+    return seen;
+  } catch (_) { return false; }
+}
+
+/** Строки журнала для localStorage: без рантайм-полей, самые новые сверху. */
+function journalRows(list) {
+  return list.slice(0, MAX_TASKS).map(t => ({ ...t, scopes: [], open: false }));
+}
+
 function loadJournal() {
+  // Отметку ставим здесь, до любых обращений к журналу: иначе первый же saveJournal
+  // посчитал бы текущий запуск перезагрузкой
+  const reloaded = wasPageReloaded();
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
     // записи ручных операций (kind: 'operation') из промежуточной версии в логи скриптов не входят
     // Плашки прошлых запусков при старте не показываются (они остаются только в журнале): `_hidden` до перезапуска мог не сохраниться,
     // т.к. журнал пишется в finish() раньше, чем плашка сама скрывается
-    return Array.isArray(raw) ? raw.filter(t => t.kind !== 'operation').map(t => Object.assign(new Task(), t, { _hidden: true })) : [];
+    if (!Array.isArray(raw)) return [];
+    const list = raw.filter(t => t.kind !== 'operation').map(t => Object.assign(new Task(), t, { _hidden: true }));
+    // Задачи, которые шли в момент срыва, остались в журнале со статусом `running` (см. saveJournal):
+    // иначе они висели бы «в процессе» вечно
+    const note = reloaded ? 'Прервано: страница перезагружена' : 'Прервано: приложение было закрыто';
+    let changed = false;
+    for (const t of list) {
+      if (t.status !== 'running') continue;
+      t.status = 'warn';
+      t.waiting = false;
+      t.finishedAt = t.finishedAt || nowIso();
+      t.step = note;
+      t.summary = note;
+      t.actor = null;
+      t.log(note, 'warn');
+      changed = true;
+    }
+    // Пишем напрямую, а не через saveJournal(): глобальный `tasks` ещё не присвоен (см. `tasks = loadJournal()`),
+    // и saveJournal записал бы пустой список, стерев журнал
+    if (changed) writeLogBounded(STORAGE_KEY, journalRows(list));
+    return list;
   } catch (_) { return []; }
 }
 function saveJournal() {
-  const finished = tasks.filter(t => t.status !== 'running').slice(0, MAX_TASKS)
-    .map(t => ({ ...t, scopes: [], open: false }));
+  // Сохраняем и идущие задачи: иначе при перезагрузке страницы или падении приложения
+  // скрипт исчезал из журнала бесследно. На загрузке такие записи помечаются как прерванные.
   // Места в localStorage общие на все журналы приложения, и при нехватке запись молча
   // не состоялась бы. `writeLogBounded` вместо этого ужимает журнал, выбрасывая самые старые.
-  writeLogBounded(STORAGE_KEY, finished);
+  writeLogBounded(STORAGE_KEY, journalRows(tasks));
 }
 
 const nowIso = () => new Date().toISOString();
@@ -234,8 +275,6 @@ class Task {
   }
 }
 
-tasks = loadJournal();
-
 /**
  * Очередь запуска: скрипты выполняются по одному.
  *
@@ -283,6 +322,9 @@ export function startTask(title, opts = {}) {
   if (tasks.length > MAX_TASKS) tasks.length = MAX_TASKS;
   t.log(`Начато: ${title}`, 'info');
   enqueueIfBusy(t);
+  // Идущая и ждущая задачи тоже попадают в журнал: если страница перезагрузится
+  // или приложение закроется, при следующем старте они будут видны как прерванные
+  saveJournal();
   return t;
 }
 
@@ -750,3 +792,5 @@ const DELEGATE_KEY = '__tfTaskLogClickDelegate';
 if (document[DELEGATE_KEY]) document.removeEventListener('click', document[DELEGATE_KEY]);
 document[DELEGATE_KEY] = onTaskLogClick;
 document.addEventListener('click', onTaskLogClick);
+
+tasks = loadJournal();

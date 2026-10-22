@@ -11,7 +11,7 @@ const taskItems = async () => {
 };
 
 describe('журнал задач после перезапуска', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); });
+  beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.resetModules(); });
 
   it('завершённая задача сохраняется и видна после «перезапуска»', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
@@ -44,6 +44,36 @@ describe('журнал задач после перезапуска', () => {
     localStorage.setItem('tf_task_journal_v1', '{не json');
     await import('../js/core/taskLog.js');
     expect(await taskItems()).toEqual([]);
+  });
+
+  it('идущая задача попадает в журнал сразу при старте, не дожидаясь конца', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    startTask('Долгая проверка');
+    const saved = JSON.parse(localStorage.getItem('tf_task_journal_v1') || '[]');
+    const row = saved.find(x => x.title === 'Долгая проверка');
+    expect(row).toBeTruthy();
+    expect(row.status).toBe('running');
+  });
+
+  it('после перезагрузки страницы идущая задача помечается прерванной', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    startTask('Долгая проверка');
+    vi.resetModules(); // как F5/HMR: скрипты заново, sessionStorage жив
+    const items = await taskItems();
+    const row = items.find(x => x.title === 'Долгая проверка');
+    expect(row.status).toBe('warn');
+    expect(row.summary).toContain('Прервано: страница перезагружена');
+  });
+
+  it('после закрытия приложения идущая задача помечается иначе', async () => {
+    const { startTask } = await import('../js/core/taskLog.js');
+    startTask('Долгая проверка');
+    sessionStorage.clear(); // новой вкладке sessionStorage достаётся пустым
+    vi.resetModules();
+    const items = await taskItems();
+    const row = items.find(x => x.title === 'Долгая проверка');
+    expect(row.status).toBe('warn');
+    expect(row.summary).toContain('Прервано: приложение было закрыто');
   });
 });
 
