@@ -17,6 +17,15 @@ const A = () => ({
   id: 'a', nick: 'Аа', class: 'Воин',
   launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Аа' } } }
 });
+const B = () => ({
+  id: 'b', nick: 'Бэ', class: 'Лучник',
+  launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Бэ' } } }
+});
+const C = () => ({
+  id: 'c', nick: 'Цэ', class: 'Маг',
+  launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Цэ' } } }
+});
+const minutesAgo = (n) => new Date(Date.now() - n * 60 * 1000).toISOString();
 
 let state, partyLaunch, ui, taskLog;
 beforeEach(async () => {
@@ -86,5 +95,69 @@ describe('очередь запуска игры', () => {
     await first;
     await second;
     expect(started()).toEqual(['a']);
+  });
+
+  it('зависшая задача снимается сама и не держит очередь', async () => {
+    const busy = taskLog.startTask('Зависший скрипт', { total: 1, cancelable: true });
+    busy.updatedAt = minutesAgo(4);
+
+    await partyLaunch.launchGroup('Пати', [A()]);
+
+    expect(started()).toEqual(['a']);
+    expect(busy.status).toBe('warn');
+    expect(busy.summary).toBe('Прервано: задача зависла');
+    expect(busy.entries.some(e => e.message.includes('Прервано'))).toBe(true);
+  });
+
+  it('свежая задача не снимается: запуск ждёт в очереди', async () => {
+    const busy = taskLog.startTask('Другой скрипт', { total: 1, cancelable: true });
+    const p = partyLaunch.launchGroup('Пати', [A()]);
+    await Promise.resolve();
+
+    expect(busy.status).toBe('running');
+    expect(dockRow('Пати').className).toContain('is-queued');
+    expect(started()).toEqual([]);
+    expect(busy.entries.some(e => e.message.includes('Прервано'))).toBe(false);
+
+    busy.finish('Готово');
+    await p;
+    expect(started()).toEqual(['a']);
+  });
+
+  it('задача на паузе не считается зависшей', async () => {
+    const busy = taskLog.startTask('Другой скрипт', { total: 1, cancelable: true });
+    busy.paused = true;
+    busy.updatedAt = minutesAgo(10);
+
+    const p = partyLaunch.launchGroup('Пати', [A()]);
+    await Promise.resolve();
+
+    expect(busy.status).toBe('running');
+    expect(dockRow('Пати').className).toContain('is-queued');
+    expect(started()).toEqual([]);
+
+    busy.paused = false;
+    busy.finish('Готово');
+    await p;
+    expect(started()).toEqual(['a']);
+  });
+
+  it('после автоснятия зависшей очередь соблюдает порядок', async () => {
+    const busy = taskLog.startTask('Зависший скрипт', { total: 1, cancelable: true });
+    const b = partyLaunch.launchGroup('Пати B', [B()]);
+    await Promise.resolve();
+    expect(started()).toEqual([]);
+
+    busy.updatedAt = minutesAgo(4);
+    const c = partyLaunch.launchGroup('Пати C', [C()]);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(started()).not.toContain('c');
+    expect(dockRow('Пати C').className).toContain('is-queued');
+
+    await b;
+    await c;
+    expect(started()).toEqual(['b', 'c']);
   });
 });

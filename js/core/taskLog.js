@@ -21,6 +21,10 @@ const SESSION_KEY = 'tf_task_session';
 const MAX_TASKS = 300;
 const MAX_ENTRIES = 500;
 const DOCK_AUTOHIDE_MS = 8000;
+// Сколько задача может не подавать признаков жизни, прежде чем считаться зависшей.
+// Один персонаж проходится за ~15 с, десять — примерно за 2,5 минуты, но между ними
+// идут log/progress, поэтому 3 минуты тишины — это точно застрявший скрипт.
+const STALE_MS = 3 * 60 * 1000;
 
 const LEVEL_ICON = { info: '•', step: '▶', ok: '✅', warn: '⚠️', error: '❌', summary: '▦' };
 
@@ -98,6 +102,7 @@ class Task {
     this.kind = opts.kind || 'task';
     this.dock = opts.dock !== false;
     this.startedAt = nowIso();
+    this.updatedAt = this.startedAt;   // последний признак жизни: по нему ищем зависшие задачи
     this.finishedAt = null;
     this.status = 'running';     // running | done | warn | error (ожидание — по флагу waiting)
     this.done = 0;
@@ -142,6 +147,7 @@ class Task {
     list.forEach(fn => { try { fn(); } catch (_) {} });
   }
   log(message, level = 'info', scope = '') {
+    this.updatedAt = nowIso();
     this.entries.push({ at: nowIso(), level, message: String(message), scope: scope || '' });
     if (this.entries.length > MAX_ENTRIES) this.entries.splice(0, this.entries.length - MAX_ENTRIES);
     if (level === 'warn') this.warnings++;
@@ -251,6 +257,7 @@ class Task {
     return this;
   }
   progress(done, total, step) {
+    this.updatedAt = nowIso();
     this.done = done; if (total != null) this.total = total;
     if (step) this.step = step;
     notify(this);
@@ -276,6 +283,36 @@ class Task {
 }
 
 /**
+ * Завис ли выполняющийся скрипт.
+ *
+ * Признаки жизни — `log()` и `progress()`, они обновляют `updatedAt`. Если три минуты
+ * ни того ни другого, скрипт застрял: например, окно игры не отвечает и промис проверки
+ * не разрешается. Задача на паузе не считается зависшей — её остановил пользователь.
+ */
+function staleBlocker(task, now = Date.now()) {
+  if (!task || task.status !== 'running' || task._hidden || task.paused) return false;
+  const at = Date.parse(task.updatedAt || task.startedAt || '');
+  if (!Number.isFinite(at)) return false;
+  return now - at > STALE_MS;
+}
+
+/**
+ * Снять зависшие скрипты, чтобы очередь не стояла навсегда.
+ *
+ * Зависшая задача так и осталась бы «выполняющейся»: она держит док и блокирует всех
+ * ждущих до перезапуска приложения. Снимаем её с предупреждением в журнале, дальше
+ * `finish` сам пускает следующего из очереди.
+ *
+ * @returns {number} сколько задач снято
+ */
+function dropStaleBlockers(now = Date.now()) {
+  // Список собираем до `finish`: тот меняет статус, и повторный проход по `tasks` был бы пуст
+  const stale = tasks.filter(t => t.dock && !t.waiting && staleBlocker(t, now));
+  stale.forEach(t => t.finish('Прервано: задача зависла', 'warn'));
+  return stale.length;
+}
+
+/**
  * Очередь запуска: скрипты выполняются по одному.
  *
  * Раньше новый скрипт начинался сразу, даже если предыдущий ещё шёл: плашка показывала
@@ -290,6 +327,9 @@ class Task {
  */
 function enqueueIfBusy(task) {
   if (!task.dock || task.waiting) return false;
+  // Новый запуск — повод проверить, не висит ли текущий скрипт: иначе очередь стоит,
+  // пока пользователь не перезапустит приложение
+  dropStaleBlockers();
   const busy = tasks.some(t => t !== task && t.dock && t.status === 'running' && !t._hidden);
   if (!busy) return false;
   task.waiting = true;
@@ -318,10 +358,14 @@ function startNextQueued() {
 export function startTask(title, opts = {}) {
   ensureRustListener();
   const t = new Task(title, opts);
+  t.log(`Начато: ${title}`, 'info');
+  // Сначала выясняем, занят ли док, и только потом добавляем задачу в список: иначе
+  // она сама выглядит как идущая и не даёт очереди пустить того, кто ждёт дольше
+  enqueueIfBusy(t);
   tasks.unshift(t);
   if (tasks.length > MAX_TASKS) tasks.length = MAX_TASKS;
-  t.log(`Начато: ${title}`, 'info');
-  enqueueIfBusy(t);
+  // «Начато» ушло в журнал до добавления в список — док нужно обновить ещё раз
+  notify(t);
   // Идущая и ждущая задачи тоже попадают в журнал: если страница перезагрузится
   // или приложение закроется, при следующем старте они будут видны как прерванные
   saveJournal();
