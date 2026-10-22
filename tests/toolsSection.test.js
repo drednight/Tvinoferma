@@ -72,6 +72,36 @@ describe('содержимое раздела', () => {
     expect(root.querySelectorAll('.tools-card-body small').length).toBe(8);
   });
 
+  it('скрипты разделены на две зоны: проверки и операции', () => {
+    const groups = [...root.querySelectorAll('.tools-group')];
+    expect(groups.length).toBe(2);
+
+    const titles = groups.map(g => g.querySelector('.tools-group-head h4').textContent.trim());
+    expect(titles).toEqual(['Проверки', 'Операции']);
+
+    const checkCards = groups[0].querySelectorAll('[data-script-action]');
+    const actionCards = groups[1].querySelectorAll('[data-script-action]');
+    expect([...checkCards].map(c => c.dataset.scriptAction)).toEqual([
+      'check-auth', 'update-balance', 'update-marathons'
+    ]);
+    expect([...actionCards].map(c => c.dataset.scriptAction)).toEqual([
+      'promo', 'transfer', 'shop', 'caravan', 'close-game'
+    ]);
+  });
+
+  it('тип скрипта виден по модификатору карточки, без чипа', () => {
+    // Чип «Проверка/Действие» повторял заголовок группы и наезжал на длинные названия,
+    // поэтому тип теперь несут только модификаторы: по ним красится левая полоса и ховер.
+    expect(root.querySelector('.tools-chip')).toBeNull();
+    expect(root.querySelector('[data-script-action="check-auth"]').classList).toContain('tools-card--check');
+    expect(root.querySelector('[data-script-action="update-balance"]').classList).toContain('tools-card--check');
+    expect(root.querySelector('[data-script-action="promo"]').classList).toContain('tools-card--action');
+    expect(root.querySelector('[data-script-action="close-game"]').classList).toContain('tools-card--action');
+    // Все восемь карточек размечены, ни одна не осталась без типа
+    expect(root.querySelectorAll('.tools-card--check').length).toBe(3);
+    expect(root.querySelectorAll('.tools-card--action').length).toBe(5);
+  });
+
   it('клик по карточке запускает скрипт с её id', async () => {
     root.querySelector('[data-script-action="promo"]').click();
     await vi.waitFor(() => expect(runScriptAction).toHaveBeenCalledWith('promo'));

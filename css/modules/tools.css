@@ -13,6 +13,20 @@
   background: var(--surface-1);
 }
 
+/* Группа скриптов внутри блока: проверки и операции — отдельные секции с заголовком. */
+.tools-group { margin: 0 0 16px; }
+.tools-group:last-child { margin-bottom: 0; }
+.tools-group-head { margin-bottom: 8px; }
+.tools-group-head h4 {
+  margin: 0 0 2px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.tools-group-head p { margin: 0; font-size: 0.72rem; color: var(--text-faint); max-width: 72ch; }
+
 .tools-block-head { margin-bottom: 12px; }
 .tools-block-head h3 { margin: 0 0 2px; font-size: 1rem; }
 /* Шапка с действием справа: заголовок и описание слева, кнопка — на краю.
@@ -71,6 +85,26 @@
 /* Подпись ограничена по ширине символов: на широкой карточке (четыре колонки на большом
    окне) иначе она вытягивалась бы в одну строку на всю ширину карточки. */
 .tools-card-body small { color: var(--text-dim); font-size: 0.74rem; max-width: 34ch; overflow-wrap: break-word; }
+
+/* Тип скрипта показан цветом, без чипа в углу: группы уже подписаны, и восемь
+   одинаковых ярлыков «проверка/операция» только повторяли бы заголовки. Левая полоса
+   работает и на узких экранах, где чип наезжал на длинные названия.
+
+   inset-тень, а не border-left: полоса не сдвигает содержимое карточки и на 2 px,
+   поэтому иконки во всех карточках стоят на одной вертикали. */
+.tools-card--check { box-shadow: inset 3px 0 0 var(--success); }
+.tools-card--action { box-shadow: inset 3px 0 0 var(--warning); }
+
+/* SVG-иконки наследуют цвет и подкрашиваются по типу; эмодзи цвет игнорируют,
+   для них тип читается по полосе и ховеру. */
+.tools-card--check .tools-card-ico { color: var(--success); }
+.tools-card--action .tools-card-ico { color: var(--warning); }
+
+/* Состояние при наведении отличается по зоне: проверки — мягкий акцент, операции — warn-цвет. */
+.tools-card--check:hover { border-color: var(--success); background: var(--success-soft); }
+.tools-card--action:hover { border-color: var(--warning); background: var(--warning-soft); }
+.tools-card--check:focus-visible { outline-color: var(--success); }
+.tools-card--action:focus-visible { outline-color: var(--warning); }
 
 /* --- Окна игры --- */
 .tools-row { margin-bottom: 10px; }

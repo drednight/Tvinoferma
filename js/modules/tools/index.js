@@ -22,23 +22,37 @@ import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
 /**
  * Скрипты раздела. `id` совпадает со значением `data-script-action`, которое уже
  * обрабатывалось в FAB, — сам запуск переехал из uiActions.js и не изменился.
+ * `type` разделяет скрипты на две зоны:
+ *  - check — только читают данные с сайта, не нажимают кнопок, могут работать в фоне;
+ *  - action — требуют нажатия и подтверждения пользователя, не запускаются по расписанию.
  * Порядок — от проверки данных к действиям с предметами.
  */
 const SCRIPTS = [
-  { id: 'check-auth', ico: '🔐', label: 'Проверка входа',   hint: 'Проверить вход у всех персонажей на сайте игры' },
-  { id: 'update-balance', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Балансы',       hint: 'Обновить баланс Древних монет' },
-  { id: 'update-marathons', ico: '🏃', label: 'Марафоны',     hint: 'Сверить задания и прогресс на сайте' },
-  { id: 'promo', ico: '🎁', label: 'Промокод',          hint: 'Активировать промокод на аккаунтах' },
-  { id: 'transfer', ico: '📦', label: 'Передача', hint: 'Передать все предметы с сайта' },
-  { id: 'shop', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Подарки',           hint: 'Купить подарки за Древние монеты' },
-  { id: 'caravan', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
-  { id: 'close-game', ico: '🛑', label: 'Закрыть все окна игры', hint: 'Закрыть все запущенные окна игры' }
+  { id: 'check-auth', type: 'check',  ico: '🔐', label: 'Проверка входа',   hint: 'Проверить вход у всех персонажей на сайте игры' },
+  { id: 'update-balance', type: 'check',  ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Балансы',       hint: 'Обновить баланс Древних монет' },
+  { id: 'update-marathons', type: 'check', ico: '🏃', label: 'Марафоны',     hint: 'Сверить задания и прогресс на сайте' },
+  { id: 'promo', type: 'action', ico: '🎁', label: 'Промокод',          hint: 'Активировать промокод на аккаунтах' },
+  { id: 'transfer', type: 'action', ico: '📦', label: 'Передача', hint: 'Передать все предметы с сайта' },
+  { id: 'shop', type: 'action', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Подарки',           hint: 'Купить подарки за Древние монеты' },
+  { id: 'caravan', type: 'action', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
+  { id: 'close-game', type: 'action', ico: '🛑', label: 'Закрыть все окна игры', hint: 'Закрыть все запущенные окна игры' }
 ];
+
+const CHECKS = SCRIPTS.filter(s => s.type === 'check');
+const ACTIONS = SCRIPTS.filter(s => s.type === 'action');
 
 const root = () => document.getElementById('tools-root');
 
 function uptimeText(ms) {
   return ms == null ? 'время работы неизвестно' : `работает ${formatUptime(ms)}`;
+}
+
+function renderScriptCards(list) {
+  return list.map(s => `
+    <button type="button" class="tools-card tools-card--${s.type}" data-script-action="${s.id}" title="${escapeHtml(s.hint)}">
+      <span class="tools-card-ico" aria-hidden="true">${s.ico}</span>
+      <span class="tools-card-body"><b>${escapeHtml(s.label)}</b><small>${escapeHtml(s.hint)}</small></span>
+    </button>`).join('');
 }
 
 export function renderTools() {
@@ -50,12 +64,25 @@ export function renderTools() {
         <h3 id="tools-scripts-title">Скрипты</h3>
         <p class="muted">Скрипты выполняются по одному: новый встаёт в очередь и ждёт, пока закончит предыдущий. Ход работы — в плашке журнала в шапке.</p>
       </header>
-      <div class="tools-grid">
-        ${SCRIPTS.map(s => `
-          <button type="button" class="tools-card" data-script-action="${s.id}" title="${escapeHtml(s.hint)}">
-            <span class="tools-card-ico" aria-hidden="true">${s.ico}</span>
-            <span class="tools-card-body"><b>${escapeHtml(s.label)}</b><small>${escapeHtml(s.hint)}</small></span>
-          </button>`).join('')}
+
+      <div class="tools-group">
+        <header class="tools-group-head">
+          <h4>Проверки</h4>
+          <p class="muted">Только читают данные с сайта — не нажимают кнопок и не меняют ничего. Могут работать в фоне.</p>
+        </header>
+        <div class="tools-grid tools-grid--check">
+          ${renderScriptCards(CHECKS)}
+        </div>
+      </div>
+
+      <div class="tools-group">
+        <header class="tools-group-head">
+          <h4>Операции</h4>
+          <p class="muted">Требуют вашего нажатия и подтверждения. Не запускаются по расписанию — только по кнопке.</p>
+        </header>
+        <div class="tools-grid tools-grid--action">
+          ${renderScriptCards(ACTIONS)}
+        </div>
       </div>
     </section>
 
