@@ -157,8 +157,7 @@
    очередь и ничего не выполняется. Стоит подстраховаться: при старте новой задачи, если
    блокирующая задача «жива» (растёт `updatedAt`), предупредить; если нет — снять её.
 3. **Экран проверки (`openPreflight`, `js/modules/launcher/preflightDialog.js`) обязан всегда
-   отдавать результат.** Если его промис не разрешится (esc/закрытие окна), задача останется
-   `running` и заблокирует очередь — пункт 2 покрывает и этот случай.
+   отдавать результат.** **Сделано.** Добавлены идемпотентный `settle(result)` с флагом `settled` и `observer?.disconnect()`, `onClose: () => settle(answer)`, `MutationObserver` на `documentElement` (subtree/childList) для отлова удаления `.tf-overlay` мимо `close()` — при срабатывании вызывает `dlg.close()` и `settle(answer)` (также покрывает замену/очистку `#modal-root`). В `tests/preflight.test.js` добавлены два теста: «оверлей убрали из DOM мимо close()» и «затёрли весь #modal-root». **Осталось:** прогнать `npx vitest run tests/preflight.test.js --reporter=verbose`, затем `npm run check`, сделать коммит `fix(проверка): экран проверки всегда отдаёт результат` и `git push` в `origin/feat/tools-groups` (PR не создавать). Если его промис не разрешится (esc/закрытие окна), задача останется `running` и заблокирует очередь — пункт 2 покрывает и этот случай.
 
 ---
 

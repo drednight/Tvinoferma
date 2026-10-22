@@ -75,7 +75,27 @@ export function preflightRows(pre) {
 export function openPreflight(pre, { title = '', gameCenters = [] } = {}) {
   return new Promise((resolve) => {
     let answer = null;
-    const dlg = openOverlay({ title: '🧭 Проверка перед запуском', wide: true, onClose: () => resolve(answer) });
+    let settled = false;
+    let observer = null;
+    // Экран обязан отдать результат при любом закрытии: иначе задача останется
+    // running и заблокирует очередь до перезапуска приложения.
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      observer = null;
+      resolve(result ?? null);
+    };
+    const dlg = openOverlay({ title: '🧭 Проверка перед запуском', wide: true, onClose: () => settle(answer) });
+    // Обычные пути (крестик, Escape, массовое закрытие) идут через close() и onClose.
+    // Остаётся случай, когда оверлей убрали из DOM мимо close(): ловим пропажу узла
+    // и закрываем сами. documentElement, а не #modal-root, — чтобы поймать и замену body.
+    observer = new MutationObserver(() => {
+      if (dlg.el.isConnected) return;
+      dlg.close();
+      settle(answer);
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
     const fixes = availableFixes(pre, { gameCenters });
     dlg.sub.textContent = title || '';
     dlg.body.innerHTML = `<div class="prl-list">${preflightRows(pre).map(r => `

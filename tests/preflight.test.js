@@ -257,4 +257,21 @@ describe('экран проверок', () => {
     document.querySelector('.tf-close').click();
     expect(await p).toBeNull();
   });
+
+  it('оверлей убрали из DOM мимо close() — экран всё равно отдаёт отмену', async () => {
+    const pre = launchPreflight({ characters: [ch('a', 'Аа')], ctx, clients: [] });
+    const p = openPreflight(pre);
+    document.querySelector('.tf-overlay').remove();
+    // MutationObserver срабатывает асинхронно — даём ему тик.
+    await new Promise(r => setTimeout(r, 0));
+    expect(await p).toBeNull();
+  });
+
+  it('затёрли весь #modal-root — экран всё равно отдаёт отмену', async () => {
+    const pre = launchPreflight({ characters: [ch('a', 'Аа')], ctx, clients: [] });
+    const p = openPreflight(pre);
+    document.getElementById('modal-root').innerHTML = '';
+    await new Promise(r => setTimeout(r, 0));
+    expect(await p).toBeNull();
+  });
 });
