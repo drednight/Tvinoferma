@@ -68,7 +68,6 @@ const wb = XLSX.readFile(file, { cellDates: true });
 const operations = [];
 const seq = { in: 0, out: 0 };
 let lastRate = null;
-let opening = null; // всегда 0: месяцы живут поправками, а не накоплением
 let lastSheetTotal = 0; // итог последнего листа = сколько «сейчас» по таблице
 const sheetTotals = {}; // итог каждого листа: { "2026-09": 3278083094 }
 const monthAdjust = {}; // поправки по месяцам: { "2026-09": { gold: -260000000 } }
@@ -98,7 +97,7 @@ for (const name of wb.SheetNames) {
   }
 
   const lastDay = iso(sm.year, sm.month, daysInMonth(sm.year, sm.month));
-  let sumIn = 0, sumOut = 0, skup = 0, prodazha = 0, nIn = 0, nOut = 0;
+  let sumIn = 0, sumOut = 0, skup = 0, prodazha = 0;
   let sheetCarry = 0; // перенос этого листа: входит в его итог, но не в реестр
   const body = rows.slice(hIdx + 1);
   for (const r of body) {
@@ -119,7 +118,7 @@ for (const name of wb.SheetNames) {
       if (inAmount > 0) sheetCarry = inAmount;
     } else if (inAmount > 0 && from) {
       const date = parseDate(r[incDate], sm) ?? lastDay;
-      seq.in++; nIn++; sumIn += inAmount;
+      seq.in++; sumIn += inAmount;
       operations.push({
         id: `sh-in-${String(seq.in).padStart(3, '0')}`,
         date, currency: 'gold', kind: 'in', amount: inAmount,
@@ -131,7 +130,7 @@ for (const name of wb.SheetNames) {
       if (from === 'Торговля' && inStatus === 'Продажа') prodazha += inAmount;
     }
     if (outAmount > 0) {
-      seq.out++; nOut++; sumOut += outAmount;
+      seq.out++; sumOut += outAmount;
       operations.push({
         id: `sh-out-${String(seq.out).padStart(3, '0')}`,
         date: parseDate(r[expDate], sm) ?? lastDay,
@@ -181,7 +180,6 @@ for (const [month, amounts] of Object.entries(monthAdjust).sort()) {
 
 // Начальный остаток не нужен: итог каждого месяца уже включает перенос, поэтому
 // месяцы живут поправками (monthAdjust), а не накопительным остатком.
-opening = { gold: 0, coins: 0 };
 
 const finance = {
   operations,
@@ -191,7 +189,7 @@ const finance = {
     goldRate: lastRate?.rate ?? 0,
     goldRateAt: lastRate?.at ?? null,
     commissionPct: 2,
-    opening,
+    opening: { gold: 0, coins: 0 },
     monthAdjust,
     monthCarry
   }

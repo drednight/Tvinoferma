@@ -181,10 +181,15 @@ class Task {
     const wasWaiting = this.waiting;
     this.waiting = false;
     this._releaseWaiters();      // ждущий отпускается сразу: работать ему уже не о чем
-    this.log('Остановлено: работа прервана на середине', 'warn');
     try { this._onCancel?.(); } catch (_) {}
     try { this._onStop?.(); } catch (_) {}
-    if (wasWaiting) startNextQueued();
+    if (wasWaiting) {
+      // Остановлен скрипт в очереди: работать ему уже не о чем, поэтому закрываем задачу.
+      // Иначе она навсегда осталась бы «идущей» в доке и держала очередь.
+      this.finish('Остановлен в очереди', 'warn');
+      return this;
+    }
+    this.log('Остановлено: работа прервана на середине', 'warn');
     return this;
   }
 
@@ -194,9 +199,14 @@ class Task {
     const wasWaiting = this.waiting;
     this.waiting = false;
     this._releaseWaiters();
-    this.log('Отмена: уже запущенные проверки завершатся, остальные будут пропущены', 'warn');
     try { this._onCancel?.(); } catch (_) {}
-    if (wasWaiting) startNextQueued();
+    if (wasWaiting) {
+      // Отменён скрипт в очереди: работать ему уже не о чем, поэтому закрываем задачу.
+      // Иначе она навсегда осталась бы «идущей» в доке и держала очередь.
+      this.finish('Отменён в очереди', 'warn');
+      return this;
+    }
+    this.log('Отмена: уже запущенные проверки завершатся, остальные будут пропущены', 'warn');
     return this;
   }
   progress(done, total, step) {
@@ -251,6 +261,11 @@ function enqueueIfBusy(task) {
 
 /** Пустить следующий скрипт из очереди, если очередь не пуста. */
 function startNextQueued() {
+  // Пока идёт другой док-скрипт, очередь не трогаем. Раньше отмена ждущего
+  // (или его остановка) выпускала следующего сразу — и тот начинал работу
+  // параллельно с текущим, а не после него.
+  const busy = tasks.some(t => t.dock && t.status === 'running' && !t.waiting && !t._hidden);
+  if (busy) return;
   // `tasks.unshift`, поэтому индекс 0 — самый новый. Очередь идёт по порядку запуска:
   // первым встаёт тот, кто ждёт дольше всех, — он и последний в списке.
   const next = [...tasks].reverse().find(t => t.waiting);
@@ -513,8 +528,9 @@ export /**
  * Раньше здесь выпадали карточки `taskCardHtml` — с кольцом, полосой и кнопками. На верхней
  * правой части окна это читалось как мешанина: карточки наезжали друг на друга, а кнопки
  * (■ 📄 ▾) конкурировали с кнопками самой плашки. Теперь это просто список строк: имя
- * скрипта, чем он занят, сколько процентов. Кнопок нет намеренно — управление скриптом
- * (пауза, стоп, логи) осталось на плашке в шапке, где для этого есть место.
+ * скрипта, чем он занят, сколько процентов. Управление скриптом (пауза, стоп, логи) осталось
+ * на плашке в шапке, где для этого есть место. Исключение — ждущий очереди: его можно
+ * отменить прямо в списке (крестик рядом со строкой), ждать его в очереди не обязательно.
  *
  * @param {Array<any>} list видимые задачи
  */
@@ -529,7 +545,10 @@ function dockListHtml(list) {
       : t.paused
         ? 'на паузе — текущий скрипт дойдёт до конца'
         : (t.step || (running ? 'начинаю…' : t.summary || ''));
-    const status = t.waiting ? 'is-queued' : (t.paused ? 'is-paused' : t.status);
+    // Состояние строки: «в очереди» и «на паузе» — свои классы (их красит CSS),
+    // остальные — по статусу задачи (готово/с ошибкой/с предупреждением).
+    const state = t.waiting ? 'is-queued' : (t.paused ? 'is-paused' : '');
+    const status = state ? '' : `tl-s-${t.status}`;
     // Счётчик прогресса ждущему показывать нечего: он ещё не начал считать
     const tail = [
       !t.waiting && t.total ? `${t.done}/${t.total}` : '',
@@ -537,19 +556,29 @@ function dockListHtml(list) {
       t.warnings ? `предупреждений ${t.warnings}` : ''
     ].filter(Boolean).join(' · ');
     const mark = t.waiting ? '…' : (running ? `${pct}%` : STATUS_ICON[t.status] || '•');
-    return `<button type="button" class="tf-dock-row tl-s-${status}" data-dock-log-row="${t.id}"
-      title="${escapeHtml(`${t.title}: ${what}`)}">
-       <span class="tf-dock-row-dot" aria-hidden="true"></span>
-       <span class="tf-dock-ring tf-dock-ring-sm ${t.paused ? 'is-paused' : ''}" style="--pct:${t.waiting ? 0 : pct}" aria-hidden="true"><b>${mark}</b></span>
-       <span class="tf-dock-row-body">
-         <span class="tf-dock-row-top">
-           <b>${escapeHtml(t.title)}</b>
-           <span class="tf-dock-row-pct">${escapeHtml(tail || '')}</span>
-         </span>
-         <span class="tf-dock-row-step">${escapeHtml(what)}</span>
-         ${running && !t.waiting ? `<span class="tf-dock-row-bar"><i style="width:${pct}%"></i></span>` : ''}
-       </span>
-     </button>`;
+    // Ждущего можно отменить прямо в списке: он всё равно не начнёт раньше текущего
+    // скрипта, а ждать иногда не хочется. Кнопка — рядом со строкой, а не внутри неё:
+    // строка сама кликается (открывает лог) и остаётся кнопкой.
+    const cancel = t.waiting
+      ? `<button type="button" class="tf-dock-cancel" data-dock-cancel="${t.id}"
+           title="Отменить: скрипт в очереди не запустится" aria-label="Отменить скрипт в очереди">✕</button>`
+      : '';
+    return `<div class="tf-dock-item">
+      <button type="button" class="tf-dock-row ${status} ${state}" data-dock-log-row="${t.id}"
+        title="${escapeHtml(`${t.title}: ${what}`)}">
+        <span class="tf-dock-row-dot" aria-hidden="true"></span>
+        <span class="tf-dock-ring tf-dock-ring-sm ${t.paused ? 'is-paused' : ''}" style="--pct:${t.waiting ? 0 : pct}" aria-hidden="true"><b>${mark}</b></span>
+        <span class="tf-dock-row-body">
+          <span class="tf-dock-row-top">
+            <b>${escapeHtml(t.title)}</b>
+            <span class="tf-dock-row-pct">${escapeHtml(tail || '')}</span>
+          </span>
+          <span class="tf-dock-row-step">${escapeHtml(what)}</span>
+          ${running && !t.waiting ? `<span class="tf-dock-row-bar"><i style="width:${pct}%"></i></span>` : ''}
+        </span>
+      </button>
+      ${cancel}
+    </div>`;
   }).join('');
 }
 
@@ -569,7 +598,7 @@ export function renderDock() {
   const visible = tasks.filter(t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt));
   const rank = (t) => (t.status === 'running' && !t.waiting ? 0 : t.waiting ? 1 : 2);
   visible.sort((a, b) => rank(a) - rank(b));
-  visible.length = Math.min(visible.length, 4);
+  visible.length = Math.min(visible.length, 6);
   const current = dockCurrentTask();
   dock.classList.toggle('is-open', !dockFolded);
   dock.classList.toggle('is-idle', !current);
@@ -694,7 +723,14 @@ function onTaskLogClick(e) {
   if (pause) { const t = tasks.find(x => x.id === pause.dataset.dockPause); if (t) { t.togglePause(); notify(t); renderDock(); } return; }
   const stop = e.target.closest?.('[data-dock-stop]');
   if (stop) { const t = tasks.find(x => x.id === stop.dataset.dockStop); if (t) { t.stop(); notify(t); renderDock(); } return; }
-  // Клик по строке списка — открыть лог этой задачи. Кнопок в списке нет намеренно,
+  // Крестик у ждущего очереди: отменить скрипт, который ещё не начал работу
+  const cancelQueued = e.target.closest?.('[data-dock-cancel]');
+  if (cancelQueued) {
+    const t = tasks.find(x => x.id === cancelQueued.dataset.dockCancel);
+    if (t) { t.cancel(); notify(t); renderDock(); }
+    return;
+  }
+  // Клик по строке списка — открыть лог этой задачи. Кнопок в строке нет намеренно,
   // поэтому строка сама и есть управление.
   const row = e.target.closest?.('[data-dock-log-row]');
   if (row) { openTaskLog(row.dataset.dockLogRow); return; }

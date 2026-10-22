@@ -11,6 +11,7 @@ import { charactersInMainParty, isMainParty, partyByName, hasNoParty, totalCoins
 import { partyStyleVars } from './color.js';
 import { launchBlocker } from '../launcher/gcSettingsModal.js';
 import { getClassIconSrc } from '../../core/constants.js';
+import { runningWindows, onRunningWindows } from '../launcher/runningWindows.js';
 import { toast } from '../../core/ui.js';
 
 // Функции цвета живут в color.js: ими пользуются ещё и список персонажей и окно настроек.
@@ -124,6 +125,10 @@ const launchReady = activeMembers.filter(m => !launchBlocker(m)).length;
     const onlinePct = activeMembers.length ? Math.round(stats.onlineCount / activeMembers.length * 100) : 0;
     const dragAttrs = isDraggable ? `draggable="true" data-drag-name="${escapeHtml(name)}"` : '';
     const style = partyStyleVars(name, party);
+    // Кнопка «🔖» (подписать окна) нужна, только когда у пати реально есть запущенные окна:
+    // подписывать нечего, а лишняя кнопка в карточке только шумит.
+    const runningIds = new Set(runningWindows().filter(r => r.known).map(r => r.charId));
+    const hasRunning = !!party && activeMembers.some(m => runningIds.has(m.id));
 
     return `
         <article class="party-card-modern pt-card ${isExpanded ? 'is-expanded' : ''} ${isDraggable ? '' : 'is-none'}" data-party-name="${escapeHtml(name)}" style="${style}">
@@ -145,6 +150,7 @@ const launchReady = activeMembers.filter(m => !launchBlocker(m)).length;
                         title="${launchReady ? 'Запустить игру для активных участников по очереди (GameCenter выбирается по большинству участников)' : activeMembers.length ? `Готовы к запуску: ${launchReady} из ${activeMembers.length}. Остальным нужен GameCenter и запомненный вход — откроется экран проверки` : 'В пати нет активных персонажей'}">
                     ▶ Запустить <small>${launchReady}/${activeMembers.length}</small>
                 </button>
+                ${hasRunning ? `<button class="pt-btn pt-btn-icon sign-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Подписать окна игры этой пати: вернуть название «Ник — Класс» и значок класса" aria-label="Подписать окна игры пати">🔖</button>` : ''}
                 ${activeMembers.length ? `<button class="pt-btn pt-btn-icon close-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Закрыть окна игры этой пати (откроется список, если запущено больше окон)" aria-label="Закрыть окна игры пати">🛑</button>` : ''}
                 ${isDraggable ? `<button class="pt-btn pt-btn-icon edit-party-action-btn" type="button" data-party-name="${escapeHtml(name)}" title="Состав, название и цвет пати">⚙</button>` : ''}
             </div>
@@ -156,9 +162,27 @@ const launchReady = activeMembers.filter(m => !launchBlocker(m)).length;
         </article>`;
 }
 
+/**
+ * Кнопка «🔖» в карточке пати появляется, когда у пати есть запущенные окна.
+ * Список окон общий и меняется после запуска и закрытия — подписываемся один раз.
+ */
+let runningWindowsBound = false;
+function bindRunningWindows() {
+    if (runningWindowsBound) return;
+    runningWindowsBound = true;
+    onRunningWindows(() => {
+        const list = document.getElementById('party-list');
+        // Перерисовываем только когда видна вкладка «Пати»: иначе затираем то,
+        // что пользователь в этот момент смотрит в другой вкладке.
+        if (!list || !list.closest('.page')?.classList.contains('active')) return;
+        renderPartiesGrid();
+    });
+}
+
 export function renderPartiesGrid() {
     const container = document.getElementById('party-list');
     if (!container) return;
+    bindRunningWindows();
 
     document.getElementById('active-party-count')?.replaceChildren(String(state.parties.length));
     const archivedPartyMirrors = state.parties
@@ -423,7 +447,15 @@ function bindPartyEvents(container) {
             return;
         }
 
-        // 1b. Клик по кнопке "Закрыть окна пати": закрывает окна участников этой пати
+        // 1b. Клик по кнопке «🔖»: подписать окна игры участников этой пати (название и значок)
+        const signBtn = target.closest('.sign-party-action-btn');
+        if (signBtn) {
+            e.stopPropagation();
+            import('../launcher/partyLaunch.js').then(m => m.signPartyWindows(signBtn.dataset.partyName));
+            return;
+        }
+
+        // 1c. Клик по кнопке "Закрыть окна пати": закрывает окна участников этой пати
         const closeBtn = target.closest('.close-party-action-btn');
         if (closeBtn) {
             e.stopPropagation();
