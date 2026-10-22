@@ -55,7 +55,9 @@ export function defaultFinance() {
       goldRate: 0,
       commissionPct: DEFAULT_COMMISSION_PCT,
       goldRateAt: null,
-      opening: { gold: 0, coins: 0 }
+      // Тип как у normalizeOpening: остаток по валютам, а не фиксированная пара
+      // (иначе нормализованные данные не ложатся в состояние).
+      opening: /** @type {Record<string, number>} */ ({ gold: 0, coins: 0 })
     }
   };
 }
