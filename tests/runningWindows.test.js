@@ -270,7 +270,9 @@ describe('кнопка «Обновить» в блоке «Окна игры»'
     await renderToolsSection();
     // Отложенный ответ: опрос нельзя завершить изнутри, пока не убедились, что кнопка ждёт
     let release = () => {};
-    const pending = new Promise(res => { release = () => res([win(100, 'Аа')]); });
+    const pending = new Promise(res => {
+      release = () => res([win(100, 'Аа')]);
+    });
     invoke.mockImplementation(cmd => (cmd === 'launcher_running_details' ? pending : Promise.resolve({})));
     const btn = refreshBtn();
     btn.click();
@@ -288,7 +290,9 @@ describe('кнопка «Обновить» в блоке «Окна игры»'
     await runningWindows.refreshRunningWindows();
     await renderToolsSection();
     ui.toast.mockClear();
-    invoke.mockImplementation(async () => { throw new Error('нет доступа'); });
+    invoke.mockImplementation(async () => {
+      throw new Error('нет доступа');
+    });
     refreshBtn().click();
     await vi.waitFor(() => expect(ui.toast).toHaveBeenCalledWith(expect.stringContaining('Не удалось'), 'error'));
     // Прежний список на месте: сбой не должен читаться как «окна закрылись»

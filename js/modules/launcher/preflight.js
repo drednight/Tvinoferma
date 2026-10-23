@@ -22,9 +22,15 @@ export const PREFLIGHT_MODES = ['issues', 'always', 'off'];
 export const DEFAULT_PREFLIGHT_MODE = 'issues';
 
 /** @param {any} v */
-export const normalizePreflightMode = (v) => (PREFLIGHT_MODES.includes(v) ? v : DEFAULT_PREFLIGHT_MODE);
+export const normalizePreflightMode = v => (PREFLIGHT_MODES.includes(v) ? v : DEFAULT_PREFLIGHT_MODE);
 
-const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+const same = (a, b) =>
+  String(a || '')
+    .trim()
+    .toLowerCase() ===
+  String(b || '')
+    .trim()
+    .toLowerCase();
 
 /**
  * Сопоставляет запущенные клиенты с персонажами: какой персонаж уже в игре.
@@ -39,11 +45,16 @@ export function matchRunningClients(characters, clients) {
   /** @type {Map<string, { pid: number, title: string, elevated: boolean|null }>} */
   const out = new Map();
   for (const ch of characters || []) {
-    const hit = parsed.find(p => !p.used && p.info && same(p.info.nick, ch.nick)
-      && (!p.info.cls || !ch.class || same(p.info.cls, ch.class)));
+    const hit = parsed.find(
+      p => !p.used && p.info && same(p.info.nick, ch.nick) && (!p.info.cls || !ch.class || same(p.info.cls, ch.class))
+    );
     if (!hit) continue;
     hit.used = true;
-    out.set(String(ch.id), { pid: Number(hit.client.pid) || 0, title: String(hit.client.title || ''), elevated: hit.client.elevated ?? null });
+    out.set(String(ch.id), {
+      pid: Number(hit.client.pid) || 0,
+      title: String(hit.client.title || ''),
+      elevated: hit.client.elevated ?? null
+    });
   }
   return out;
 }
@@ -59,13 +70,22 @@ export function matchRunningClients(characters, clients) {
  *   decorate?: boolean
  * }} input
  */
-export function launchPreflight({ characters, ctx = {}, clients = null, selfElevated = null, skipRunning = true, decorate = true }) {
+export function launchPreflight({
+  characters,
+  ctx = {},
+  clients = null,
+  selfElevated = null,
+  skipRunning = true,
+  decorate = true
+}) {
   const list = characters || [];
   const withGc = list.filter(c => !!resolveGameCenter(c, ctx));
   const noGc = list.filter(c => !resolveGameCenter(c, ctx));
 
   const running = clients ? matchRunningClients(withGc, clients) : new Map();
-  const alreadyRunning = skipRunning ? withGc.filter(c => running.has(String(c.id))).map(c => ({ char: c, ...running.get(String(c.id)) })) : [];
+  const alreadyRunning = skipRunning
+    ? withGc.filter(c => running.has(String(c.id))).map(c => ({ char: c, ...running.get(String(c.id)) }))
+    : [];
   const skipIds = new Set(alreadyRunning.map(r => String(r.char.id)));
   const planned = withGc.filter(c => !skipIds.has(String(c.id)));
 
@@ -77,14 +97,21 @@ export function launchPreflight({ characters, ctx = {}, clients = null, selfElev
   const toLaunch = planned.filter(c => !noLoginIds.has(String(c.id)));
   const siteNoLogin = toLaunch.filter(c => c.isLoggedIn === false);
   // Окна игры от администратора: их нужно сопоставить с персонажами, иначе «Исправить» не знает,
-// что именно подписывать. Само сопоставление — то же, что для уже запущенных окон.
-const elevatedRows = clients ? matchRunningClients(withGc, clients.filter(c => c?.elevated === true)) : new Map();
-const elevatedMatched = [...elevatedRows.entries()].map(([id, info]) => {
-  const char = withGc.find(c => String(c.id) === id);
-  return char ? { char, ...info } : null;
-}).filter(Boolean);
-const elevatedClients = (clients || []).filter(c => c?.elevated === true).length;
-const adminMismatch = elevatedClients > 0 && selfElevated === false;
+  // что именно подписывать. Само сопоставление — то же, что для уже запущенных окон.
+  const elevatedRows = clients
+    ? matchRunningClients(
+        withGc,
+        clients.filter(c => c?.elevated === true)
+      )
+    : new Map();
+  const elevatedMatched = [...elevatedRows.entries()]
+    .map(([id, info]) => {
+      const char = withGc.find(c => String(c.id) === id);
+      return char ? { char, ...info } : null;
+    })
+    .filter(Boolean);
+  const elevatedClients = (clients || []).filter(c => c?.elevated === true).length;
+  const adminMismatch = elevatedClients > 0 && selfElevated === false;
   const unknownClients = clients ? clients.filter(c => !parseWindowTitle(String(c?.title || ''))).length : 0;
 
   /**
@@ -100,13 +127,23 @@ const adminMismatch = elevatedClients > 0 && selfElevated === false;
   if (adminMismatch) problems.push('adminMismatch');
 
   return {
-    toLaunch, planned, alreadyRunning, noGc, noSavedLogin, siteNoLogin,
-    elevatedClients, selfElevated, adminMismatch, unknownClients,
+    toLaunch,
+    planned,
+    alreadyRunning,
+    noGc,
+    noSavedLogin,
+    siteNoLogin,
+    elevatedClients,
+    selfElevated,
+    adminMismatch,
+    unknownClients,
     /** Окна игры от администратора, сопоставленные с персонажами: их можно подписать помощником. */
     elevatedRows: elevatedMatched,
     /** Узнали ли мы, какие окна запущены (иначе «уже запущено» не проверялось). */
-    runningKnown: clients !== null, decorate,
-    problems, hasProblems: problems.length > 0,
+    runningKnown: clients !== null,
+    decorate,
+    problems,
+    hasProblems: problems.length > 0,
     total: list.length
   };
 }
@@ -140,11 +177,25 @@ const nicks = (list, max = 6) => {
 export function preflightLog(pre) {
   /** @type {Array<{ text: string, level: 'info'|'warn'|'ok' }>} */
   const out = [];
-  if (pre.alreadyRunning.length) out.push({ level: 'info', text: `Уже запущены, пропускаю (${pre.alreadyRunning.length}): ${nicks(pre.alreadyRunning)}` });
-  if (pre.noGc.length) out.push({ level: 'warn', text: `Не указан GameCenter, пропускаю (${pre.noGc.length}): ${nicks(pre.noGc)}` });
-  if (pre.noSavedLogin.length) out.push({ level: 'warn', text: `Вход в GameCenter не запомнен, пропускаю (${pre.noSavedLogin.length}): ${nicks(pre.noSavedLogin)}. Такое окно открылось бы под тем аккаунтом, который выбран в GameCenter сейчас` });
-  if (pre.adminMismatch) out.push({ level: 'warn', text: 'Среди запущенных окон есть окна от администратора, а Твиноферма запущена без прав: названия и значки им не поставить' });
-  if (pre.siteNoLogin.length) out.push({ level: 'info', text: `Нет входа на сайт (на запуск игры не влияет): ${nicks(pre.siteNoLogin)}` });
+  if (pre.alreadyRunning.length)
+    out.push({
+      level: 'info',
+      text: `Уже запущены, пропускаю (${pre.alreadyRunning.length}): ${nicks(pre.alreadyRunning)}`
+    });
+  if (pre.noGc.length)
+    out.push({ level: 'warn', text: `Не указан GameCenter, пропускаю (${pre.noGc.length}): ${nicks(pre.noGc)}` });
+  if (pre.noSavedLogin.length)
+    out.push({
+      level: 'warn',
+      text: `Вход в GameCenter не запомнен, пропускаю (${pre.noSavedLogin.length}): ${nicks(pre.noSavedLogin)}. Такое окно открылось бы под тем аккаунтом, который выбран в GameCenter сейчас`
+    });
+  if (pre.adminMismatch)
+    out.push({
+      level: 'warn',
+      text: 'Среди запущенных окон есть окна от администратора, а Твиноферма запущена без прав: названия и значки им не поставить'
+    });
+  if (pre.siteNoLogin.length)
+    out.push({ level: 'info', text: `Нет входа на сайт (на запуск игры не влияет): ${nicks(pre.siteNoLogin)}` });
   return out;
 }
 

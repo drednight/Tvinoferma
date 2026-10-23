@@ -14,9 +14,7 @@ import { isTauri } from '../../core/storage.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
 import { guildEnabled, readGuildData, writeGuildData } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
-import {
-  summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO
-} from './core.js';
+import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
 import { openGuild, syncGuildFromSite, respondToEvent } from './window.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
@@ -143,10 +141,13 @@ let midnightTimer = null;
 function scheduleMidnightSync() {
   if (midnightTimer) clearTimeout(midnightTimer);
   const day = mskDayKey();
-  midnightTimer = setTimeout(async () => {
-    if (mskDayKey() !== day) await autoSync();
-    scheduleMidnightSync();
-  }, Math.max(msToMskMidnight(), 1000));
+  midnightTimer = setTimeout(
+    async () => {
+      if (mskDayKey() !== day) await autoSync();
+      scheduleMidnightSync();
+    },
+    Math.max(msToMskMidnight(), 1000)
+  );
 }
 
 /** Обновление по расписанию: один раз через минуту после старта и потом каждый день в 00:00 МСК. */
@@ -185,7 +186,7 @@ async function respond(eventId, response) {
   }
   // Сайт применяет отметку не мгновенно: ждём и перечитываем сводку по-настоящему,
   // чтобы календарь и панель показали то, что реально записалось.
-  await new Promise((resolve) => setTimeout(resolve, APPLY_DELAY_MS));
+  await new Promise(resolve => setTimeout(resolve, APPLY_DELAY_MS));
   const fresh = await syncGuild({ silent: true });
   const data = readGuildData();
   if (!fresh) {
@@ -226,10 +227,11 @@ async function copyNicks(btn) {
 function eventsHtml(data) {
   const list = data.events || [];
   if (!list.length) return '<p class="muted">Предстоящих событий нет.</p>';
-  const rows = list.map(ev => {
-    const going = ev.response === RESPONSE_YES;
-    const out = ev.response === RESPONSE_NO;
-    return `
+  const rows = list
+    .map(ev => {
+      const going = ev.response === RESPONSE_YES;
+      const out = ev.response === RESPONSE_NO;
+      return `
     <div class="guild-event${going ? ' is-going' : ''}${out ? ' is-out' : ''}">
       <div class="guild-event-main">
         <b>${esc(ev.title)}</b> <span class="muted">${esc(ev.when)}</span>
@@ -243,7 +245,8 @@ function eventsHtml(data) {
                 data-guild="respond" data-event="${esc(ev.id)}" data-response="no">Не пойду</button>
       </div>
     </div>`;
-  }).join('');
+    })
+    .join('');
   return `<div class="guild-events">${rows}</div>`;
 }
 

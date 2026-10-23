@@ -26,7 +26,7 @@ async function until(cond, ms = 2000) {
     await tick();
   }
 }
-const called = (cmd) => invokeMock.mock.calls.some(c => c[0] === cmd);
+const called = cmd => invokeMock.mock.calls.some(c => c[0] === cmd);
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
 const GC2 = { id: 'gc-2', name: 'Папка 2', path: 'D:\\GC2\\GameCenter.exe' };
 
@@ -36,7 +36,7 @@ beforeEach(() => {
   window.__TAURI_INTERNALS__ = { invoke: (...a) => invokeMock(...a) };
   invokeMock.mockReset();
   persistMock.mockClear();
-  invokeMock.mockImplementation(async (cmd) => {
+  invokeMock.mockImplementation(async cmd => {
     if (cmd === 'launcher_gc_info') return { exe: 'x', nick: 'Twin', loggedIn: true };
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\GC3\\GameCenter.exe';
     if (cmd === 'launcher_capture_account') return { ok: true, nick: 'Twin', steps: ['Готово: вход запомнен'] };
@@ -85,7 +85,10 @@ describe('окно «GameCenter и персонажи»', () => {
     openGameCentersModal();
     document.querySelector('[data-char="a"] .gcm-bind[data-gc="gc-2"] [data-act="cap"]').click();
     await until(() => called('launcher_capture_account') && state.characters[0].launch.gcAccounts['gc-2']);
-    expect(invokeMock.mock.calls.map(c => [c[0], c[1]])).toContainEqual(['launcher_capture_account', { charId: 'a@gc-2', path: GC2.path }]);
+    expect(invokeMock.mock.calls.map(c => [c[0], c[1]])).toContainEqual([
+      'launcher_capture_account',
+      { charId: 'a@gc-2', path: GC2.path }
+    ]);
     expect(state.characters[0].launch.gcAccounts).toEqual({ 'gc-2': { nick: 'Twin' } });
     expect(document.querySelector('[data-char="a"] .gcm-acc.is-saved').textContent).toContain('Twin');
   });
@@ -100,7 +103,8 @@ describe('окно «GameCenter и персонажи»', () => {
     // повторный выбор того же файла не создаёт дубль
     document.querySelector('[data-act="gc-add"]').click();
     await until(() => invokeMock.mock.calls.filter(c => c[0] === 'launcher_pick_gamecenter').length === 2);
-    await tick(); await tick();
+    await tick();
+    await tick();
     expect(state.settings.launcher.gameCenters).toHaveLength(3);
   });
 
@@ -130,6 +134,9 @@ describe('окно «GameCenter и персонажи»', () => {
     await until(() => called('launcher_forget_account') && state.characters[0].launch.gcIds.length === 0);
     expect(state.settings.launcher.gameCenters.map(g => g.id)).toEqual(['gc-2']);
     expect(state.characters[0].launch.gcIds).toEqual([]);
-    expect(invokeMock.mock.calls.map(c => [c[0], c[1]])).toContainEqual(['launcher_forget_account', { charId: 'a@gc-1' }]);
+    expect(invokeMock.mock.calls.map(c => [c[0], c[1]])).toContainEqual([
+      'launcher_forget_account',
+      { charId: 'a@gc-1' }
+    ]);
   });
 });

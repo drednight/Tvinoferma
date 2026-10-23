@@ -73,7 +73,11 @@ describe('меню действий', () => {
   });
 
   it('разделитель рисуется, но не выбирается', () => {
-    openActionMenu(mountAnchor(), [{ id: 'a', label: 'Первое' }, { id: 'sep', separator: true }, { id: 'b', label: 'Второе' }]);
+    openActionMenu(mountAnchor(), [
+      { id: 'a', label: 'Первое' },
+      { id: 'sep', separator: true },
+      { id: 'b', label: 'Второе' }
+    ]);
     expect(menu().querySelector('.dropdown-sep')).toBeTruthy();
     expect(menu().querySelector('[data-id="sep"]')).toBeNull();
   });

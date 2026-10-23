@@ -92,7 +92,10 @@ describe('buildNotes', () => {
   });
 
   it('очень длинный список обрезается', () => {
-    const many = Array.from({ length: 80 }, (_, i) => `- Пункт номер ${i} с достаточно длинным описанием изменения`).join('\n');
+    const many = Array.from(
+      { length: 80 },
+      (_, i) => `- Пункт номер ${i} с достаточно длинным описанием изменения`
+    ).join('\n');
     const t = buildNotes(`## [2.0.0] — 2026-01-01\n\n### Кратко\n\n${many}\n`, '2.0.0');
     expect(t.length).toBeLessThan(3400);
     expect(t).toContain('- …');

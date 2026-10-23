@@ -13,10 +13,10 @@ import { state } from './state.js';
 export const CONTACT_FIELDS = ['email', 'password', 'recoveryEmail', 'phone'];
 
 const vault = {
-  ready: false,        // хранилище доступно и прочитано
+  ready: false, // хранилище доступно и прочитано
   checked: false,
   error: null,
-  known: new Map()     // charId -> JSON, который сейчас лежит в хранилище ОС
+  known: new Map() // charId -> JSON, который сейчас лежит в хранилище ОС
 };
 
 let invokeImpl = null;
@@ -26,7 +26,13 @@ async function invoke(cmd, args) {
 }
 
 /** Для тестов: подменить транспорт к Rust. */
-export function __setInvoke(fn) { invokeImpl = fn; vault.ready = false; vault.checked = false; vault.known.clear(); vault.error = null; }
+export function __setInvoke(fn) {
+  invokeImpl = fn;
+  vault.ready = false;
+  vault.checked = false;
+  vault.known.clear();
+  vault.error = null;
+}
 
 export function vaultStatus() {
   return { ready: vault.ready, checked: vault.checked, error: vault.error, count: vault.known.size };
@@ -34,7 +40,9 @@ export function vaultStatus() {
 
 export function contactsJson(contacts = {}) {
   const clean = {};
-  CONTACT_FIELDS.forEach(f => { clean[f] = String(contacts?.[f] || ''); });
+  CONTACT_FIELDS.forEach(f => {
+    clean[f] = String(contacts?.[f] || '');
+  });
   return CONTACT_FIELDS.some(f => clean[f]) ? JSON.stringify(clean) : '';
 }
 
@@ -49,7 +57,10 @@ function useVault() {
  */
 export async function hydrateSecrets(characters, { tauri = true, aliases = {} } = {}) {
   vault.checked = true;
-  if (!tauri || !useVault()) { vault.ready = false; return { migrated: 0 }; }
+  if (!tauri || !useVault()) {
+    vault.ready = false;
+    return { migrated: 0 };
+  }
   try {
     const available = await invoke('secrets_available');
     if (!available) throw new Error('хранилище учётных данных ОС недоступно');
@@ -64,11 +75,19 @@ export async function hydrateSecrets(characters, { tauri = true, aliases = {} } 
         // Перенос под новый ключ произойдёт при сохранении: старый ключ удалится,
         // новый запишется (prepareForDisk сравнивает с vault.known).
         vault.known.set(oldId, stored);
-        try { c.contacts = { ...c.contacts, ...JSON.parse(stored) }; } catch (_) { /* битая запись */ }
+        try {
+          c.contacts = { ...c.contacts, ...JSON.parse(stored) };
+        } catch (_) {
+          /* битая запись */
+        }
         migrated++;
       } else if (stored) {
         vault.known.set(c.id, stored);
-        try { c.contacts = { ...c.contacts, ...JSON.parse(stored) }; } catch (_) { /* битая запись — оставляем файл */ }
+        try {
+          c.contacts = { ...c.contacts, ...JSON.parse(stored) };
+        } catch (_) {
+          /* битая запись — оставляем файл */
+        }
       } else if (contactsJson(c.contacts)) {
         migrated++;
       }
@@ -103,7 +122,7 @@ export async function prepareForDisk(snapshot) {
 
   if (Object.keys(toSet).length) await invoke('secrets_set_many', { items: toSet });
   if (toDelete.length) await invoke('secrets_delete_many', { keys: toDelete });
-  Object.entries(toSet).forEach(([id, json]) => json ? vault.known.set(id, json) : vault.known.delete(id));
+  Object.entries(toSet).forEach(([id, json]) => (json ? vault.known.set(id, json) : vault.known.delete(id)));
   toDelete.forEach(id => vault.known.delete(id));
 
   return {

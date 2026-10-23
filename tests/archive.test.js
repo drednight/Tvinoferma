@@ -8,7 +8,12 @@ vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn() }
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 
 const character = (id, partyIds = [], mainPartyId = null) => ({
-  id, nick: id, partyIds, mainPartyId, partyOrder: {}, updatedAt: 'old'
+  id,
+  nick: id,
+  partyIds,
+  mainPartyId,
+  partyOrder: {},
+  updatedAt: 'old'
 });
 
 beforeEach(() => {
@@ -56,7 +61,10 @@ describe('архив пати', () => {
     const archivedMember = character('archived-member', ['p1'], 'p1');
     state.characters = [member];
     state.archivedCharacters = [archivedMember];
-    state.parties = [{ id: 'p1', name: 'Основная', order: 1 }, { id: 'p2', name: 'Другая', order: 2 }];
+    state.parties = [
+      { id: 'p1', name: 'Основная', order: 1 },
+      { id: 'p2', name: 'Другая', order: 2 }
+    ];
     const { archiveParty, restoreParty } = await import('../js/modules/archive/archive.js');
 
     await archiveParty('p1');
@@ -70,7 +78,11 @@ describe('архив пати', () => {
 
     await restoreParty('p1');
     expect(state.archivedParties).toEqual([]);
-    expect(state.characters[0]).toMatchObject({ partyIds: ['p2', 'p1'], mainPartyId: 'p1', partyOrder: { p2: 1, p1: 3 } });
+    expect(state.characters[0]).toMatchObject({
+      partyIds: ['p2', 'p1'],
+      mainPartyId: 'p1',
+      partyOrder: { p2: 1, p1: 3 }
+    });
     expect(state.archivedCharacters[0]).toMatchObject({ partyIds: ['p1'], mainPartyId: 'p1' });
   });
 });

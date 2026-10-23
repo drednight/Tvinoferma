@@ -1,9 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  normalizeGameCenters, resolveGameCenter, kindForPath, importLegacyPaths
+  normalizeGameCenters,
+  resolveGameCenter,
+  kindForPath,
+  importLegacyPaths
 } from '../js/modules/launcher/gameCenters.js';
-import { launchCharacters, launchable, launchPlan, loginStatusText, formatDuration, windowsWord, launchSummary, launchablePartyNames, closeReportText, canCloseElevated, launchWarnings, withoutSavedLogin, decorateNotice, inspectVerdict, inspectReportText, PROBE_TITLE, redecorateRunningWindows } from '../js/modules/launcher/launch.js';
+import {
+  launchCharacters,
+  launchable,
+  launchPlan,
+  loginStatusText,
+  formatDuration,
+  windowsWord,
+  launchSummary,
+  launchablePartyNames,
+  closeReportText,
+  canCloseElevated,
+  launchWarnings,
+  withoutSavedLogin,
+  decorateNotice,
+  inspectVerdict,
+  inspectReportText,
+  PROBE_TITLE,
+  redecorateRunningWindows
+} from '../js/modules/launcher/launch.js';
 import { confirmModal } from '../js/core/ui.js';
 import { charactersInParty } from '../js/modules/parties/membership.js';
 import { migrateState, SCHEMA_VERSION } from '../js/core/migrations.js';
@@ -34,7 +55,7 @@ describe('launcher', () => {
     const done = [];
     const res = await launchCharacters(
       [ch('a', 'one'), ch('b', 'bad'), ch('c', 'three')],
-      { delayMs: 0, onDone: (e) => done.push(e.id) },
+      { delayMs: 0, onDone: e => done.push(e.id) },
       { invoke }
     );
     expect(calls.map(c => c[1])).toEqual(['one', 'bad', 'three']);
@@ -45,7 +66,10 @@ describe('launcher', () => {
 
   it('в команду запуска уходят путь и id аккаунта (токен в JS не ходит), признак входа и время ожидания', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push([cmd, args]); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push([cmd, args]);
+      return {};
+    };
     await launchCharacters(
       [ch('a', 'one', { gcNick: 'Twin', gcAccount: true })],
       { delayMs: 0, url: 'vkplay://play/0.61', waitSecs: 30 },
@@ -54,26 +78,64 @@ describe('launcher', () => {
     // loginSaved — флаг «интерфейс считает вход запомненным»: по нему Rust отказывается
     // запускать, если в хранилище ОС токена нет (иначе игра вышла бы под чужим аккаунтом).
     // Ник не передаётся: он лежит в ini вместе с остальным набором ключей аккаунта.
-    expect(seen).toEqual([['launcher_start', { path: 'one', charId: 'a', loginSaved: true, url: 'vkplay://play/0.61', waitSecs: 30, windowTitle: 'a', iconSmall: null, iconBig: null }]]);
+    expect(seen).toEqual([
+      [
+        'launcher_start',
+        {
+          path: 'one',
+          charId: 'a',
+          loginSaved: true,
+          url: 'vkplay://play/0.61',
+          waitSecs: 30,
+          windowTitle: 'a',
+          iconSmall: null,
+          iconBig: null
+        }
+      ]
+    ]);
     seen.length = 0;
     await launchCharacters([ch('b', 'two')], { delayMs: 0 }, { invoke });
-    expect(seen[0][1]).toEqual({ path: 'two', charId: 'b', loginSaved: false, url: null, waitSecs: null, windowTitle: 'b', iconSmall: null, iconBig: null });
+    expect(seen[0][1]).toEqual({
+      path: 'two',
+      charId: 'b',
+      loginSaved: false,
+      url: null,
+      waitSecs: null,
+      windowTitle: 'b',
+      iconSmall: null,
+      iconBig: null
+    });
   });
 
   it('onStart вызывается по очереди, а не для всех сразу', async () => {
     const log = [];
-    const invoke = async (cmd, args) => { log.push(`start:${args.charId}`); await new Promise(r => setTimeout(r, 5)); log.push(`end:${args.charId}`); };
-    await launchCharacters([ch('a', '1'), ch('b', '2')], { delayMs: 0, onStart: (c) => log.push(`onStart:${c.id}`) }, { invoke });
+    const invoke = async (cmd, args) => {
+      log.push(`start:${args.charId}`);
+      await new Promise(r => setTimeout(r, 5));
+      log.push(`end:${args.charId}`);
+    };
+    await launchCharacters(
+      [ch('a', '1'), ch('b', '2')],
+      { delayMs: 0, onStart: c => log.push(`onStart:${c.id}`) },
+      { invoke }
+    );
     expect(log).toEqual(['onStart:a', 'start:a', 'end:a', 'onStart:b', 'start:b', 'end:b']);
   });
 
   it('отмена: ожидающие в очереди не запускаются', async () => {
     const signal = { cancelled: false };
     const started = [];
-    const invoke = async (cmd, args) => { started.push(args.charId); signal.cancelled = true; };
+    const invoke = async (cmd, args) => {
+      started.push(args.charId);
+      signal.cancelled = true;
+    };
     const res = await launchCharacters([ch('a', '1'), ch('b', '2'), ch('c', '3')], { delayMs: 0, signal }, { invoke });
     expect(started).toEqual(['a']);
-    expect(res.map(r => [r.ok, r.cancelled])).toEqual([[true, false], [false, true], [false, true]]);
+    expect(res.map(r => [r.ok, r.cancelled])).toEqual([
+      [true, false],
+      [false, true],
+      [false, true]
+    ]);
   });
 
   it('текст про сохранённый вход', () => {
@@ -89,10 +151,19 @@ describe('launcher', () => {
   });
 
   it('normalizeCharacter: путь и ник обрезаются, признак входа сохраняется, токена в данных нет', () => {
-    const c = normalizeCharacter({ nick: 'X', launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' } });
+    const c = normalizeCharacter({
+      nick: 'X',
+      launch: { gcPath: '  D:\\GC1  ', gcNick: ' Twin ', gcAccount: true, gcMagic: 'SECRET' }
+    });
     expect(c.launch).toEqual({ gcPath: 'D:\\GC1', gcNick: 'Twin', gcAccount: true, gcIds: [], gcAccounts: {} });
     expect(JSON.stringify(c)).not.toContain('SECRET');
-    expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({ gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} });
+    expect(normalizeCharacter({ nick: 'X' }).launch).toEqual({
+      gcPath: '',
+      gcNick: '',
+      gcAccount: false,
+      gcIds: [],
+      gcAccounts: {}
+    });
   });
 });
 
@@ -130,9 +201,16 @@ describe('Astrum Play: второй лаунчер рядом с GameCenter', ()
     ]);
     expect(gameCenters.map(g => g.kind)).toEqual(['gamecenter', 'astrum']);
 
-    const char = normalizeCharacter({ id: 'a', nick: 'A', launch: { gcIds: ['g2'], gcAccounts: { g2: { nick: 'Twin' } } } });
+    const char = normalizeCharacter({
+      id: 'a',
+      nick: 'A',
+      launch: { gcIds: ['g2'], gcAccounts: { g2: { nick: 'Twin' } } }
+    });
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     await launchCharacters([char], { delayMs: 0 }, { invoke, ctx: { gameCenters, preferredId: '' } });
     expect(seen[0].kind).toBe('astrum');
     expect(seen[0].path).toBe('D:\\AstrumPlay\\AstrumPlay.exe');
@@ -140,7 +218,10 @@ describe('Astrum Play: второй лаунчер рядом с GameCenter', ()
 
   it('GameCenter по-прежнему запускается без kind: поле появляется только у Astrum', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     await launchCharacters([ch('a', 'D:\\GC1')], { delayMs: 0 }, { invoke });
     expect(seen[0].kind).toBeUndefined();
   });
@@ -175,15 +256,26 @@ describe('launcher: итог запуска, трей', () => {
   });
 
   it('склонение «окно»', () => {
-    expect([0, 1, 2, 4, 5, 11, 12, 21, 22, 25].map(windowsWord))
-      .toEqual(['окон', 'окно', 'окна', 'окна', 'окон', 'окон', 'окон', 'окно', 'окна', 'окон']);
+    expect([0, 1, 2, 4, 5, 11, 12, 21, 22, 25].map(windowsWord)).toEqual([
+      'окон',
+      'окно',
+      'окна',
+      'окна',
+      'окон',
+      'окон',
+      'окон',
+      'окно',
+      'окна',
+      'окон'
+    ]);
   });
 
   it('одна строка итога: сколько окон и за какое время; ошибки и пропуски — в конце', () => {
     expect(launchSummary({ ok: 3, ms: 72000 })).toBe('Запущено 3 окна за 1 мин 12 с');
     expect(launchSummary({ ok: 1, ms: 9000 })).toBe('Запущено 1 окно за 9 с');
-    expect(launchSummary({ ok: 5, failed: 1, cancelled: 2, skipped: 1, ms: 30000 }))
-      .toBe('Запущено 5 окон за 30 с, с ошибкой: 1, отменено: 2, без пути к GameCenter: 1');
+    expect(launchSummary({ ok: 5, failed: 1, cancelled: 2, skipped: 1, ms: 30000 })).toBe(
+      'Запущено 5 окон за 30 с, с ошибкой: 1, отменено: 2, без пути к GameCenter: 1'
+    );
   });
 
   it('итог с уже запущенными окнами: пропуск называется явно, «всё уже запущено» — отдельной фразой', () => {
@@ -193,15 +285,26 @@ describe('launcher: итог запуска, трей', () => {
   });
 
   it('в результатах запуска есть время ожидания клиента: у успешных и у неудачных', async () => {
-    const invoke = async (cmd, args) => { if (args.path === 'bad') throw new Error('нет'); return {}; };
+    const invoke = async (cmd, args) => {
+      if (args.path === 'bad') throw new Error('нет');
+      return {};
+    };
     const ends = [];
-    const res = await launchCharacters([ch('a', 'one'), ch('b', 'bad')], { delayMs: 0, onDone: (e) => ends.push(e.ms) }, { invoke });
+    const res = await launchCharacters(
+      [ch('a', 'one'), ch('b', 'bad')],
+      { delayMs: 0, onDone: e => ends.push(e.ms) },
+      { invoke }
+    );
     expect(res.map(r => typeof r.ms)).toEqual(['number', 'number']);
     expect(ends.every(ms => ms >= 0)).toBe(true);
   });
 
   it('в меню трея попадают только пати, где есть кого запускать, в порядке вкладки «Пати»', () => {
-    const parties = [{ id: 'p2', name: 'Вторая', order: 2 }, { id: 'p1', name: 'Первая', order: 1 }, { id: 'p3', name: 'Пустая', order: 3 }];
+    const parties = [
+      { id: 'p2', name: 'Вторая', order: 2 },
+      { id: 'p1', name: 'Первая', order: 1 },
+      { id: 'p3', name: 'Пустая', order: 3 }
+    ];
     const chars = [
       { id: 'a', partyIds: ['p1'], launch: { gcPath: 'D:\\GC1' } },
       { id: 'b', partyIds: ['p2'], launch: { gcPath: '' } },
@@ -213,7 +316,9 @@ describe('launcher: итог запуска, трей', () => {
 
   it('настройка «показывать итог» включена по умолчанию и сохраняется', () => {
     expect(normalizeState({ characters: [], settings: {} }).settings.launcher.notify).toBe(true);
-    expect(normalizeState({ characters: [], settings: { launcher: { notify: false } } }).settings.launcher.notify).toBe(false);
+    expect(normalizeState({ characters: [], settings: { launcher: { notify: false } } }).settings.launcher.notify).toBe(
+      false
+    );
   });
 
   it('трей: пункты меню и префикс пати совпадают у Rust и интерфейса', () => {
@@ -263,7 +368,9 @@ describe('launcher: итог запуска, трей', () => {
     expect(closeReportText({ found: 3, closed: 1, failed: 2 })).toContain('Закрыто 1 из 3');
     expect(closeReportText({ found: 3, closed: 1, failed: 2, denied: 2 })).toContain('нужны права администратора');
     expect(closeReportText({ found: 3, closed: 1, failed: 2, denied: 2, elevated: true })).not.toContain('нужны права');
-    expect(closeReportText({ found: 2, closed: 0, failed: 2, details: ['PID 7: код ошибки Windows 1'] })).toContain('PID 7');
+    expect(closeReportText({ found: 2, closed: 0, failed: 2, details: ['PID 7: код ошибки Windows 1'] })).toContain(
+      'PID 7'
+    );
     expect(canCloseElevated({ found: 2, failed: 2, denied: 2 })).toBe(true);
     expect(canCloseElevated({ found: 2, failed: 2, denied: 2, elevated: true })).toBe(false);
     expect(canCloseElevated({ found: 2, failed: 2, denied: 0 })).toBe(false);
@@ -271,7 +378,8 @@ describe('launcher: итог запуска, трей', () => {
   });
 
   it('подтверждение в стиле приложения: «ОК» — да, «Отмена»/Esc — нет, окно убирается', async () => {
-    const ask = () => confirmModal({ title: 'Закрыть?', text: 'Будет закрыто окон: 2', okText: 'Закрыть (2)', danger: true });
+    const ask = () =>
+      confirmModal({ title: 'Закрыть?', text: 'Будет закрыто окон: 2', okText: 'Закрыть (2)', danger: true });
     let p = ask();
     expect(document.querySelector('.tf-confirm .modal-body').textContent).toContain('окон: 2');
     document.querySelector('[data-act="ok"]').click();
@@ -311,8 +419,10 @@ describe('launcher: подпись окон и закрытие чужих GameC
   });
 
   it('считаются запуски без запомненного входа', () => {
-    const ok = (switched) => ({ ok: true, info: { switched } });
-    expect(withoutSavedLogin([ok(true), ok(false), ok(false), { ok: false, info: { switched: false } }, { ok: true }])).toBe(2);
+    const ok = switched => ({ ok: true, info: { switched } });
+    expect(
+      withoutSavedLogin([ok(true), ok(false), ok(false), { ok: false, info: { switched: false } }, { ok: true }])
+    ).toBe(2);
     expect(withoutSavedLogin(undefined)).toBe(0);
   });
 
@@ -386,8 +496,26 @@ describe('launcher.rs: GameCenter из других папок и итог по�
 });
 
 describe('launcher: проверка окон игры', () => {
-  const win = (over = {}) => ({ hwnd: '0x1', class: 'ElementClient Window', title: 'Perfect World', visible: true, tool: false, owned: false, hung: false, app: false, hasSmallIcon: true, hasBigIcon: true, titleError: null, titleAfter: PROBE_TITLE, iconError: null, ...over });
-  const report = (client, selfElevated = false) => ({ selfElevated, clients: [{ pid: 10, elevated: false, windows: [win()], ...client }] });
+  const win = (over = {}) => ({
+    hwnd: '0x1',
+    class: 'ElementClient Window',
+    title: 'Perfect World',
+    visible: true,
+    tool: false,
+    owned: false,
+    hung: false,
+    app: false,
+    hasSmallIcon: true,
+    hasBigIcon: true,
+    titleError: null,
+    titleAfter: PROBE_TITLE,
+    iconError: null,
+    ...over
+  });
+  const report = (client, selfElevated = false) => ({
+    selfElevated,
+    clients: [{ pid: 10, elevated: false, windows: [win()], ...client }]
+  });
 
   it('нет игры — просим запустить', () => {
     expect(inspectVerdict({ selfElevated: false, clients: [] })[0]).toContain('не найдено');
@@ -410,7 +538,9 @@ describe('launcher: проверка окон игры', () => {
 
   it('называет конкретную неполадку окна', () => {
     expect(inspectVerdict(report({ windows: [win({ titleError: 1460 })] })).join(' ')).toContain('1460');
-    expect(inspectVerdict(report({ windows: [win({ titleAfter: 'Perfect World' })] })).join(' ')).toContain('обрабатывает его по-своему');
+    expect(inspectVerdict(report({ windows: [win({ titleAfter: 'Perfect World' })] })).join(' ')).toContain(
+      'обрабатывает его по-своему'
+    );
     expect(inspectVerdict(report({ windows: [win({ iconError: 5 })] })).join(' ')).toContain('значок не принимается');
     expect(inspectVerdict(report({ windows: [win({ tool: true })] })).join(' ')).toContain('окно-инструмент');
     expect(inspectVerdict(report({ windows: [win({ hung: true })] })).join(' ')).toContain('не отвечает');
@@ -424,10 +554,12 @@ describe('launcher: проверка окон игры', () => {
     expect(text).toContain('«Perfect World»');
     expect(text).toContain('значки: свои (малый, большой)');
     expect(text).toContain('Вывод:');
-    expect(inspectReportText(report({ windows: [win({ hasSmallIcon: false, hasBigIcon: false })] }))).toContain('своих нет');
+    expect(inspectReportText(report({ windows: [win({ hasSmallIcon: false, hasBigIcon: false })] }))).toContain(
+      'своих нет'
+    );
   });
 
-it('Rust ставит пробный заголовок, который ждёт интерфейс', () => {
+  it('Rust ставит пробный заголовок, который ждёт интерфейс', () => {
     const rs = readFileSync('src-tauri/src/launcher.rs', 'utf8');
     expect(rs).toContain(`const PROBE_TITLE: &str = "${PROBE_TITLE}"`);
   });
@@ -450,11 +582,7 @@ it('Rust ставит пробный заголовок, который ждёт
       document.getElementById('dots')?.click();
       return 1;
     };
-    const res = await launchCharacters(
-      [ch('a', 'one'), ch('b', 'two'), ch('c', 'three')],
-      { delayMs: 0 },
-      { invoke }
-    );
+    const res = await launchCharacters([ch('a', 'one'), ch('b', 'two'), ch('c', 'three')], { delayMs: 0 }, { invoke });
     expect(started).toEqual(['one', 'two', 'three']);
     expect(res.every(r => r.ok)).toBe(true);
   });
@@ -463,12 +591,18 @@ it('Rust ставит пробный заголовок, который ждёт
 describe('восстановление названий и значков у запущенных окон', () => {
   // Иконки и заголовки слетают уже после запуска: игра переписывает заголовок при загрузке,
   // проводник сбрасывает значок. Чинится кнопкой, а не повторным запуском аккаунта.
-  const win = (o) => ({ pid: 1, known: true, nick: 'Первый', cls: 'Хранитель', ...o });
+  const win = o => ({ pid: 1, known: true, nick: 'Первый', cls: 'Хранитель', ...o });
 
   it('подписывает опознанные окна и собирает «Ник — Класс»', async () => {
     const calls = [];
     const res = await redecorateRunningWindows([win({ pid: 11 }), win({ pid: 22 })], {
-      invoke: (cmd, args) => { calls.push({ cmd, args }); return Promise.resolve([{ pid: 11, status: 'ok' }, { pid: 22, status: 'ok' }]); }
+      invoke: (cmd, args) => {
+        calls.push({ cmd, args });
+        return Promise.resolve([
+          { pid: 11, status: 'ok' },
+          { pid: 22, status: 'ok' }
+        ]);
+      }
     });
     expect(calls[0].cmd).toBe('launcher_decorate_clients');
     expect(calls[0].args.targets.map(t => t.title)).toEqual(['Первый — Хранитель', 'Первый — Хранитель']);
@@ -479,16 +613,20 @@ describe('восстановление названий и значков у з�
   it('окна без класса подписываются одним ником', async () => {
     let sent = [];
     await redecorateRunningWindows([win({ cls: '' })], {
-      invoke: (cmd, args) => { sent = args.targets; return Promise.resolve([{ pid: 1, status: 'ok' }]); }
+      invoke: (cmd, args) => {
+        sent = args.targets;
+        return Promise.resolve([{ pid: 1, status: 'ok' }]);
+      }
     });
     expect(sent[0].title).toBe('Первый');
   });
 
   it('чужие и безымянные окна не трогает: подписывать их нечем', async () => {
-    const res = await redecorateRunningWindows(
-      [win({ known: false }), win({ nick: '' }), win({ pid: 0 })],
-      { invoke: () => { throw new Error('вызывать нельзя'); } }
-    );
+    const res = await redecorateRunningWindows([win({ known: false }), win({ nick: '' }), win({ pid: 0 })], {
+      invoke: () => {
+        throw new Error('вызывать нельзя');
+      }
+    });
     expect(res.skipped).toBe(3);
     expect(res.ok).toBe(0);
   });
@@ -511,16 +649,18 @@ describe('восстановление названий и значков у з�
   it('права не запрашиваются, если хотя бы одно окно подписалось', async () => {
     const seen = [];
     await redecorateRunningWindows([win()], {
-      invoke: (cmd) => { seen.push(cmd); return Promise.resolve([{ pid: 1, status: 'ok' }]); }
+      invoke: cmd => {
+        seen.push(cmd);
+        return Promise.resolve([{ pid: 1, status: 'ok' }]);
+      }
     });
     expect(seen).toEqual(['launcher_decorate_clients']);
   });
 
   it('отказ в правах показывается отдельным состоянием', async () => {
     const res = await redecorateRunningWindows([win()], {
-      invoke: (cmd) => Promise.resolve(cmd === 'launcher_decorate_clients'
-        ? [{ pid: 1, status: 'failed' }]
-        : { status: 'denied' })
+      invoke: cmd =>
+        Promise.resolve(cmd === 'launcher_decorate_clients' ? [{ pid: 1, status: 'failed' }] : { status: 'denied' })
     });
     expect(res.denied).toBe(true);
   });
@@ -534,9 +674,12 @@ describe('восстановление названий и значков у з�
   });
 
   it('пустой список не считается ошибкой, но и подписывать нечего', async () => {
-    const res = await redecorateRunningWindows([], { invoke: () => { throw new Error('не звать'); } });
+    const res = await redecorateRunningWindows([], {
+      invoke: () => {
+        throw new Error('не звать');
+      }
+    });
     expect(res.ok).toBe(0);
     expect(res.details.length).toBe(1);
   });
 });
-

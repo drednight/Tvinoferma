@@ -11,10 +11,13 @@
 export const RECIPIENT_RE = /^\d{1,14}_\d{1,14}_\d{1,14}$/;
 export const SHARD_RE = /^\d{1,8}$/;
 
-const squash = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const squash = s =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 /** Как назвать получателя людям: у персонажа без ника на сайте имени нет. */
 export const NO_NICK = 'без ника';
-export const charTitle = (ch) => squash(ch?.name) || NO_NICK;
+export const charTitle = ch => squash(ch?.name) || NO_NICK;
 const byName = (a, b) => String(a.name).localeCompare(String(b.name), 'ru');
 
 /** Как показывать каждый итог. */
@@ -31,21 +34,32 @@ export const STATUS_INFO = {
   dry_run: { icon: '👁', label: 'Пробный запуск: выбрано, «Передать» не нажато', level: 'info' },
   not_logged_in: { icon: '🔴', label: 'Нет входа', level: 'warn' },
   challenge: { icon: '🛡️', label: 'Нужна проверка безопасности', level: 'warn' },
-  only_other_server: { icon: '🔒', label: 'Предметы акции принимаются только на другой сервер — не передавалось', level: 'warn' },
+  only_other_server: {
+    icon: '🔒',
+    label: 'Предметы акции принимаются только на другой сервер — не передавалось',
+    level: 'warn'
+  },
   wrong_server: { icon: '🚫', label: 'Сайт не принял предметы: они передаются только на другой сервер', level: 'warn' },
   unknown: { icon: '❓', label: 'Результат не распознан — проверьте историю на сайте', level: 'warn' },
   error: { icon: '❌', label: 'Ошибка', level: 'error' },
   cancelled: { icon: '⏹', label: 'Остановлено кнопкой «Стоп» — не передавалось', level: 'info' },
   not_run: { icon: '⏭', label: 'Пропущен', level: 'info' }
 };
-export const statusInfo = (status) => STATUS_INFO[status] || STATUS_INFO.error;
-export const rowLabel = (row) => (row?.detail && ['not_run', 'partial', 'unknown', 'success', 'wrong_server', 'only_other_server'].includes(row.status) ? `${statusInfo(row.status).label}: ${row.detail}` : statusInfo(row?.status).label);
+export const statusInfo = status => STATUS_INFO[status] || STATUS_INFO.error;
+export const rowLabel = row =>
+  row?.detail && ['not_run', 'partial', 'unknown', 'success', 'wrong_server', 'only_other_server'].includes(row.status)
+    ? `${statusInfo(row.status).label}: ${row.detail}`
+    : statusInfo(row?.status).label;
 
 /** Предметы ушли на сайт (даже если не все или результат неясен): повторять автоматически нельзя. */
-export const isSent = (row) => !!row?.clicked;
-export const isOk = (status) => status === 'success';
+export const isSent = row => !!row?.clicked;
+export const isOk = status => status === 'success';
 /** Что «Повторить» запустит снова: ничего не нажато и причина не в самом выборе. */
-export const isRerunnable = (row) => !!row && !row.clicked && !row.dryRun && ['error', 'not_logged_in', 'challenge', 'cancelled', 'not_run'].includes(row.status);
+export const isRerunnable = row =>
+  !!row &&
+  !row.clicked &&
+  !row.dryRun &&
+  ['error', 'not_logged_in', 'challenge', 'cancelled', 'not_run'].includes(row.status);
 
 /* ------------------------------------------------------------------ */
 /*  Серверы и персонажи                                                 */
@@ -62,13 +76,24 @@ export function normalizeRoster(data, now = new Date()) {
       id: String(s.id),
       name: squash(s.name).slice(0, 40) || `Сервер ${s.id}`,
       chars: (Array.isArray(s.chars) ? s.chars : [])
-        .filter(c => c && RECIPIENT_RE.test(String(c.key)))      // ник может быть пустым: на сайте такой персонаж показан как «(Класс, уровень:N)»
-        .map(c => ({ key: String(c.key), name: squash(c.name).slice(0, 60), cls: squash(c.cls).slice(0, 30), level: Number(c.level) || 0 }))
+        .filter(c => c && RECIPIENT_RE.test(String(c.key))) // ник может быть пустым: на сайте такой персонаж показан как «(Класс, уровень:N)»
+        .map(c => ({
+          key: String(c.key),
+          name: squash(c.name).slice(0, 60),
+          cls: squash(c.cls).slice(0, 30),
+          level: Number(c.level) || 0
+        }))
     }))
     .sort(byName);
   const items = (Array.isArray(data?.items) ? data.items : [])
     .filter(i => i && squash(i.name))
-    .map(i => ({ id: String(i.id ?? ''), name: squash(i.name).slice(0, 120), qty: Number(i.qty) > 0 ? Number(i.qty) : 1, until: squash(i.until).slice(0, 30), source: squash(i.source).slice(0, 120) }));
+    .map(i => ({
+      id: String(i.id ?? ''),
+      name: squash(i.name).slice(0, 120),
+      qty: Number(i.qty) > 0 ? Number(i.qty) : 1,
+      until: squash(i.until).slice(0, 30),
+      source: squash(i.source).slice(0, 120)
+    }));
   return {
     at: now.toISOString(),
     siteId: String(data?.siteId ?? '').slice(0, 40),
@@ -79,7 +104,7 @@ export function normalizeRoster(data, now = new Date()) {
 }
 
 /** Ключ для сравнения названий серверов: регистр, «ё» и лишние пробелы не важны. */
-export const serverKey = (name) => squash(name).toLowerCase().replace(/ё/g, 'е');
+export const serverKey = name => squash(name).toLowerCase().replace(/ё/g, 'е');
 
 /**
  * Ответ `read_server_status` (страница «Статус серверов») → запись для хранилища.
@@ -88,7 +113,10 @@ export const serverKey = (name) => squash(name).toLowerCase().replace(/ё/g, 'е
 export function normalizeStatus(data, now = new Date()) {
   const seen = new Set();
   const servers = (Array.isArray(data?.servers) ? data.servers : [])
-    .map(s => ({ name: squash(s?.name).slice(0, 40), online: s?.online === true ? true : s?.online === false ? false : null }))
+    .map(s => ({
+      name: squash(s?.name).slice(0, 40),
+      online: s?.online === true ? true : s?.online === false ? false : null
+    }))
     .filter(s => s.name && !seen.has(serverKey(s.name)) && seen.add(serverKey(s.name)));
   return { at: now.toISOString(), servers, recommended: squash(data?.recommended).slice(0, 40) };
 }
@@ -102,13 +130,18 @@ export function normalizeStatus(data, now = new Date()) {
  */
 export function serverList(rosters, status = null) {
   const map = new Map();
-  Object.entries(rosters || {}).forEach(([charId, r]) => (r?.shards || []).forEach(s => {
-    const cur = map.get(s.id) || { id: s.id, name: s.name, chars: 0, browsers: [], online: null };
-    if (String(r.at) >= String(cur.at || '')) { cur.name = s.name; cur.at = r.at; }
-    cur.chars += s.chars.length;
-    cur.browsers.push(charId);
-    map.set(s.id, cur);
-  }));
+  Object.entries(rosters || {}).forEach(([charId, r]) =>
+    (r?.shards || []).forEach(s => {
+      const cur = map.get(s.id) || { id: s.id, name: s.name, chars: 0, browsers: [], online: null };
+      if (String(r.at) >= String(cur.at || '')) {
+        cur.name = s.name;
+        cur.at = r.at;
+      }
+      cur.chars += s.chars.length;
+      cur.browsers.push(charId);
+      map.set(s.id, cur);
+    })
+  );
   const list = [...map.values()].map(({ at, ...s }) => s);
   const extra = [];
   (status?.servers || []).forEach(st => {
@@ -119,7 +152,8 @@ export function serverList(rosters, status = null) {
   return [...list, ...extra].sort(byName);
 }
 
-export const charsOnServer = (roster, shardId) => (roster?.shards || []).find(s => s.id === String(shardId))?.chars || [];
+export const charsOnServer = (roster, shardId) =>
+  (roster?.shards || []).find(s => s.id === String(shardId))?.chars || [];
 
 /**
  * Кому передавать у одного браузера на выбранном сервере.
@@ -144,8 +178,8 @@ export function itemTotals(items) {
   return [...map.entries()].map(([name, qty]) => ({ name, qty }));
 }
 /** Ключ для сравнения названий (предмета, акции): регистр, «ё» и лишние пробелы не важны. */
-export const normKey = (s) => squash(s).toLowerCase().replace(/ё/g, 'е');
-const qtyOf = (i) => (Number(i?.qty) > 0 ? Number(i.qty) : 1);
+export const normKey = s => squash(s).toLowerCase().replace(/ё/g, 'е');
+const qtyOf = i => (Number(i?.qty) > 0 ? Number(i.qty) : 1);
 
 /**
  * Какие из отправленных предметов есть в истории сайта: сравнение по названию и количеству (каждая запись истории
@@ -154,12 +188,18 @@ const qtyOf = (i) => (Number(i?.qty) > 0 ? Number(i.qty) : 1);
  */
 export function compareItems(sent, historyRows) {
   const left = new Map();
-  (historyRows || []).forEach(r => { const k = `${normKey(r?.name)}|${qtyOf(r)}`; left.set(k, (left.get(k) || 0) + 1); });
+  (historyRows || []).forEach(r => {
+    const k = `${normKey(r?.name)}|${qtyOf(r)}`;
+    left.set(k, (left.get(k) || 0) + 1);
+  });
   const done = [];
   const missing = [];
   (sent || []).forEach(i => {
     const k = `${normKey(i?.name)}|${qtyOf(i)}`;
-    if ((left.get(k) || 0) > 0) { left.set(k, left.get(k) - 1); done.push(i); } else missing.push(i);
+    if ((left.get(k) || 0) > 0) {
+      left.set(k, left.get(k) - 1);
+      done.push(i);
+    } else missing.push(i);
   });
   return { done, missing };
 }
@@ -170,7 +210,8 @@ export function splitByLimits(pendingItems, limits, serverName) {
   const keep = [];
   (pendingItems || []).forEach(i => {
     const lim = i?.source ? limits?.[normKey(i.source)] : null;
-    if (lim && normKey(lim) !== normKey(serverName)) skipped.push({ ...i, server: lim }); else keep.push(i);
+    if (lim && normKey(lim) !== normKey(serverName)) skipped.push({ ...i, server: lim });
+    else keep.push(i);
   });
   return { keep, skipped };
 }
@@ -178,7 +219,7 @@ export function splitByLimits(pendingItems, limits, serverName) {
 /** Полный список «Название ×N; …». `max` нужен только там, где места мало (по умолчанию показывается всё). */
 export const totalsText = (items, max = Infinity) => {
   const t = itemTotals(items);
-  const line = (x) => `${x.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`;
+  const line = x => `${x.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`;
   return t.slice(0, max).map(line).join('; ') + (t.length > max ? `; … ещё ${t.length - max}` : '');
 };
 
@@ -205,19 +246,43 @@ export function planTransfer(chars, rosters, { shards = {}, shardId = '', picks 
     if (known && !roster.pending.items.length) return { ...base, run: false, status: 'nothing_to_transfer' };
     if (roster && !sid) return { ...base, run: false, status: 'no_server_chosen' };
     const rec = resolveRecipient(roster, sid, picks?.[char.id]?.[sid]);
-    if (!rec.ok) return { ...base, run: false, status: rec.status, ...(rec.stale ? { detail: 'сохранённый получатель пропал с сайта — выберите заново' } : {}) };
+    if (!rec.ok)
+      return {
+        ...base,
+        run: false,
+        status: rec.status,
+        ...(rec.stale ? { detail: 'сохранённый получатель пропал с сайта — выберите заново' } : {})
+      };
     // Предметы акций, которые сайт принимает только на другой сервер, не отмечаются: сайт отвечает на них предупреждением
     const lim = splitByLimits(known ? roster.pending.items : [], limits, serverName);
     if (known && roster.pending.items.length && !lim.keep.length) {
       const only = [...new Set(lim.skipped.map(i => i.server))].join(', ');
-      return { ...base, run: false, status: 'only_other_server', detail: `только на «${only}»`, skipped: lim.skipped, recipient: rec.char, auto: rec.auto };
+      return {
+        ...base,
+        run: false,
+        status: 'only_other_server',
+        detail: `только на «${only}»`,
+        skipped: lim.skipped,
+        recipient: rec.char,
+        auto: rec.auto
+      };
     }
     base.pendingCount = known ? lim.keep.length : null;
     // Акции, которые сайт принимает только на другой сервер, не отмечаем, даже если что ждёт передачи, пока неизвестно
-    const skipSources = Object.entries(limits || {}).filter(([, srv]) => normKey(srv) !== normKey(serverName)).map(([key]) => key);
+    const skipSources = Object.entries(limits || {})
+      .filter(([, srv]) => normKey(srv) !== normKey(serverName))
+      .map(([key]) => key);
     // Один аккаунт сайта в нескольких браузерах передаёт один раз, на сервер и персонажа первого из них
     const site = roster.siteId;
-    if (site && seenSite.has(site)) return { ...base, run: false, status: 'same_site', detail: `как у «${seenSite.get(site)}»`, recipient: rec.char, auto: rec.auto };
+    if (site && seenSite.has(site))
+      return {
+        ...base,
+        run: false,
+        status: 'same_site',
+        detail: `как у «${seenSite.get(site)}»`,
+        recipient: rec.char,
+        auto: rec.auto
+      };
     if (site) seenSite.set(site, char.nick);
     return { ...base, run: true, recipient: rec.char, auto: rec.auto, skipSources, skipped: lim.skipped };
   });
@@ -250,26 +315,74 @@ export function isFresh(at, now = new Date(), maxMin = 15) {
 export function verifyHistory(rows, expect, now = new Date()) {
   const sent = expect.items || [];
   const batch = latestBatch(rows);
-  if (!batch.length) return { status: 'unknown', reason: 'empty', detail: 'история передачи пуста', rows: [], done: [], missing: sent };
+  if (!batch.length)
+    return { status: 'unknown', reason: 'empty', detail: 'история передачи пуста', rows: [], done: [], missing: sent };
   const at = batch[0].at;
-  if (!isFresh(at, now)) return { status: 'unknown', reason: 'stale', detail: `новой записи в истории нет (последняя: ${at})`, rows: batch, done: [], missing: sent };
+  if (!isFresh(at, now))
+    return {
+      status: 'unknown',
+      reason: 'stale',
+      detail: `новой записи в истории нет (последняя: ${at})`,
+      rows: batch,
+      done: [],
+      missing: sent
+    };
   // У персонажа без ника в истории имени нет: сверяем только сервер
-  const wrong = batch.filter(r => (squash(expect.char) && squash(r.char) !== squash(expect.char)) || squash(r.server) !== squash(expect.server));
-  if (wrong.length) return { status: 'unknown', reason: 'recipient', detail: `в истории другой получатель: ${wrong[0].char || '?'} · ${wrong[0].server || '?'}`, rows: batch, done: [], missing: sent };
+  const wrong = batch.filter(
+    r => (squash(expect.char) && squash(r.char) !== squash(expect.char)) || squash(r.server) !== squash(expect.server)
+  );
+  if (wrong.length)
+    return {
+      status: 'unknown',
+      reason: 'recipient',
+      detail: `в истории другой получатель: ${wrong[0].char || '?'} · ${wrong[0].server || '?'}`,
+      rows: batch,
+      done: [],
+      missing: sent
+    };
   const cmp = compareItems(sent, batch);
   const states = [...new Set(batch.map(r => r.status).filter(Boolean))].join(', ');
   if (batch.length < expect.count) {
     const miss = cmp.missing.length ? `; не найдено в истории: ${totalsText(cmp.missing)}` : '';
-    return { status: 'partial', reason: 'short', detail: `в истории ${batch.length} из ${expect.count} (${states})${miss}; остальное осталось на сайте`, rows: batch, ...cmp };
+    return {
+      status: 'partial',
+      reason: 'short',
+      detail: `в истории ${batch.length} из ${expect.count} (${states})${miss}; остальное осталось на сайте`,
+      rows: batch,
+      ...cmp
+    };
   }
-  return { status: 'success', reason: 'ok', detail: `в истории ${batch.length} зап., статус: ${states || '—'}`, rows: batch, done: sent, missing: [] };
+  return {
+    status: 'success',
+    reason: 'ok',
+    detail: `в истории ${batch.length} зап., статус: ${states || '—'}`,
+    rows: batch,
+    done: sent,
+    missing: []
+  };
 }
 
 /** Строка результата без запуска (пропущено, остановлено, не выполнялось). */
 export const plainRow = (plan, status, detail = null, now = new Date()) => ({
-  charId: plan.char.id, nick: plan.char.nick, shardId: plan.shardId, server: plan.serverName,
-  recipient: plan.recipient ? charTitle(plan.recipient) : '', status, error: null, detail, clicked: false, dryRun: false,
-  count: 0, items: [], history: [], done: [], missing: [], limited: plan.skipped || [], warning: null, limit: null, at: now.toISOString()
+  charId: plan.char.id,
+  nick: plan.char.nick,
+  shardId: plan.shardId,
+  server: plan.serverName,
+  recipient: plan.recipient ? charTitle(plan.recipient) : '',
+  status,
+  error: null,
+  detail,
+  clicked: false,
+  dryRun: false,
+  count: 0,
+  items: [],
+  history: [],
+  done: [],
+  missing: [],
+  limited: plan.skipped || [],
+  warning: null,
+  limit: null,
+  at: now.toISOString()
 });
 
 /**
@@ -279,23 +392,41 @@ export const plainRow = (plan, status, detail = null, now = new Date()) => ({
 export function rowFromPayload(plan, payload, error, now = new Date()) {
   const base = plainRow(plan, 'error', null, now);
   if (error || !payload) return { ...base, error: String(error?.message || error || 'no_response') };
-  const warning = payload.warning && typeof payload.warning === 'object' && squash(payload.warning.message)
-    ? { message: squash(payload.warning.message).slice(0, 240), onlyServer: squash(payload.warning.onlyServer).slice(0, 40) } : null;
+  const warning =
+    payload.warning && typeof payload.warning === 'object' && squash(payload.warning.message)
+      ? {
+          message: squash(payload.warning.message).slice(0, 240),
+          onlyServer: squash(payload.warning.onlyServer).slice(0, 40)
+        }
+      : null;
   const row = {
     ...base,
-    status: STATUS_INFO[payload.status] ? payload.status : (payload.status === 'submitted' ? 'submitted' : 'error'),
+    status: STATUS_INFO[payload.status] ? payload.status : payload.status === 'submitted' ? 'submitted' : 'error',
     error: payload.error || null,
     detail: payload.detail || null,
     clicked: !!payload.clicked,
     dryRun: !!payload.dryRun,
     count: Number(payload.count) || 0,
     warning,
-    items: (Array.isArray(payload.items) ? payload.items : []).filter(i => i && i.name).map(i => ({ name: squash(i.name).slice(0, 120), qty: qtyOf(i), source: squash(i.source).slice(0, 120) }))
+    items: (Array.isArray(payload.items) ? payload.items : [])
+      .filter(i => i && i.name)
+      .map(i => ({ name: squash(i.name).slice(0, 120), qty: qtyOf(i), source: squash(i.source).slice(0, 120) }))
   };
   if (row.status !== 'submitted') return row;
 
-  const v = verifyHistory(payload.history, { count: row.count, char: plan.recipient?.name, server: plan.serverName, items: row.items }, now);
-  const out = { ...row, status: v.status, detail: v.detail, history: v.rows.slice(0, 30), done: v.done, missing: v.missing };
+  const v = verifyHistory(
+    payload.history,
+    { count: row.count, char: plan.recipient?.name, server: plan.serverName, items: row.items },
+    now
+  );
+  const out = {
+    ...row,
+    status: v.status,
+    detail: v.detail,
+    history: v.rows.slice(0, 30),
+    done: v.done,
+    missing: v.missing
+  };
   if (!warning) return out;
 
   // Сайт показал «Предупреждение»: часть предметов могла уйти — по истории видно, какие именно
@@ -324,7 +455,7 @@ export function rowFromPayload(plan, payload, error, now = new Date()) {
 
 /** Можно ли повторить САМИ: ничего не нажато, причина временная (сайт не ответил / проверка безопасности). */
 export const TRANSIENT_ERRORS = new Set(['timeout', 'form_not_found', 'pending']);
-export const isTransient = (code) => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
+export const isTransient = code => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
 export function canAutoRetry(row) {
   if (!row || row.clicked || row.dryRun) return false;
   return row.status === 'challenge' || (row.status === 'error' && isTransient(row.error));
@@ -332,7 +463,7 @@ export function canAutoRetry(row) {
 
 /** Общий итог по набору строк. */
 export function summarize(rows) {
-  const count = (pred) => rows.filter(pred).length;
+  const count = pred => rows.filter(pred).length;
   const active = rows.filter(r => !r.dryRun && r.status !== 'same_site');
   return {
     total: rows.length,
@@ -341,10 +472,16 @@ export function summarize(rows) {
     unknown: count(r => r.status === 'unknown'),
     wrong: count(r => r.status === 'wrong_server'),
     dry: count(r => r.status === 'dry_run'),
-    skipped: count(r => ['same_site', 'nothing', 'no_roster', 'no_server', 'no_recipient', 'not_run', 'only_other_server'].includes(r.status)),
+    skipped: count(r =>
+      ['same_site', 'nothing', 'no_roster', 'no_server', 'no_recipient', 'not_run', 'only_other_server'].includes(
+        r.status
+      )
+    ),
     stopped: count(r => r.status === 'cancelled'),
     failed: count(r => ['error', 'not_logged_in', 'challenge'].includes(r.status)),
     rerun: count(isRerunnable),
-    items: active.filter(r => r.status === 'success' || r.status === 'partial').reduce((n, r) => n + (r.status === 'partial' ? (r.history?.length || 0) : r.count), 0)
+    items: active
+      .filter(r => r.status === 'success' || r.status === 'partial')
+      .reduce((n, r) => n + (r.status === 'partial' ? r.history?.length || 0 : r.count), 0)
   };
 }

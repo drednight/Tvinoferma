@@ -1,21 +1,50 @@
 // История и статистика запусков игры (launchLog.js, launchLogView.js).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  normalizeRun, loadLaunchLog, recordLaunchRun, clearLaunchLog, statsOf, perCharacter, perDelay, delayAdvice, fmtMs,
-  LOG_KEY, LOG_MAX
+  normalizeRun,
+  loadLaunchLog,
+  recordLaunchRun,
+  clearLaunchLog,
+  statsOf,
+  perCharacter,
+  perDelay,
+  delayAdvice,
+  fmtMs,
+  LOG_KEY,
+  LOG_MAX
 } from '../js/modules/launcher/launchLog.js';
 import { runSummary, runDetailsHtml, statsView, launchLogSource } from '../js/modules/launcher/launchLogView.js';
 
 const item = (id, status = 'ok', ms = 4000, over = {}) => ({ id, nick: id.toUpperCase(), status, ms, ...over });
-const run = (items, over = {}) => ({ id: `r${Math.random()}`, at: '2026-10-01T10:00:00Z', title: 'Пати', ms: 20000, delayMs: 3000, gc: 'Папка 1', requested: items.length, items, ...over });
+const run = (items, over = {}) => ({
+  id: `r${Math.random()}`,
+  at: '2026-10-01T10:00:00Z',
+  title: 'Пати',
+  ms: 20000,
+  delayMs: 3000,
+  gc: 'Папка 1',
+  requested: items.length,
+  items,
+  ...over
+});
 /** Журнал нужного вида: от новых к старым, как отдаёт loadLaunchLog. */
 const logOf = (...runs) => runs.map(r => normalizeRun(r)).sort((a, b) => b.at.localeCompare(a.at));
 
-beforeEach(() => { window.localStorage.clear(); });
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe('normalizeRun', () => {
   it('считает итоги по окнам и чистит данные', () => {
-    const r = normalizeRun(run([item('a'), item('b', 'failed', 9000, { error: 'нет окна\n\tклиента' }), item('c', 'cancelled', null), item('d', 'running', null), item('e', 'nogc', null)]));
+    const r = normalizeRun(
+      run([
+        item('a'),
+        item('b', 'failed', 9000, { error: 'нет окна\n\tклиента' }),
+        item('c', 'cancelled', null),
+        item('d', 'running', null),
+        item('e', 'nogc', null)
+      ])
+    );
     expect([r.ok, r.failed, r.cancelled, r.running, r.noGc]).toEqual([1, 1, 1, 1, 1]);
     expect(r.items[1].error).toBe('нет окна  клиента');
     expect(r.items[2].ms).toBeNull();
@@ -53,7 +82,8 @@ describe('журнал: запись, чтение, очистка', () => {
   it('хранит не больше LOG_MAX запусков; пустая запись возвращает null и ничего не пишет', () => {
     expect(recordLaunchRun(run([]))).toBeNull();
     expect(window.localStorage.getItem(LOG_KEY)).toBeNull();
-    for (let i = 0; i < LOG_MAX + 5; i++) recordLaunchRun(run([item('a')], { id: `r${i}`, at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString() }));
+    for (let i = 0; i < LOG_MAX + 5; i++)
+      recordLaunchRun(run([item('a')], { id: `r${i}`, at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString() }));
     const log = loadLaunchLog();
     expect(log).toHaveLength(LOG_MAX);
     expect(log[0].id).toBe(`r${LOG_MAX + 4}`);
@@ -69,7 +99,18 @@ describe('журнал: запись, чтение, очистка', () => {
 
 describe('statsOf', () => {
   it('считает попытки, ошибки, среднее и максимум времени по успешным', () => {
-    const s = statsOf(logOf(run([item('a', 'ok', 2000), item('b', 'ok', 6000), item('c', 'failed', 30000), item('d', 'running', null), item('e', 'nogc', null), item('f', 'cancelled', null)])));
+    const s = statsOf(
+      logOf(
+        run([
+          item('a', 'ok', 2000),
+          item('b', 'ok', 6000),
+          item('c', 'failed', 30000),
+          item('d', 'running', null),
+          item('e', 'nogc', null),
+          item('f', 'cancelled', null)
+        ])
+      )
+    );
     expect([s.runs, s.attempts, s.ok, s.failed, s.cancelled, s.skippedRunning, s.noGc]).toEqual([1, 3, 2, 1, 1, 1, 1]);
     expect(s.avgMs).toBe(4000);
     expect(s.maxMs).toBe(6000);
@@ -96,7 +137,12 @@ describe('perCharacter', () => {
   });
 
   it('мало попыток — не «нестабильный»; пропуски считаются отдельно и в попытки не входят', () => {
-    const rows = perCharacter(logOf(run([item('a', 'failed'), item('b', 'running', null)]), run([item('a', 'failed')], { at: '2026-10-02T10:00:00Z' })));
+    const rows = perCharacter(
+      logOf(
+        run([item('a', 'failed'), item('b', 'running', null)]),
+        run([item('a', 'failed')], { at: '2026-10-02T10:00:00Z' })
+      )
+    );
     const a = rows.find(r => r.id === 'a');
     expect(a).toMatchObject({ attempts: 2, failed: 2, unstable: false });
     expect(rows.find(r => r.id === 'b')).toMatchObject({ attempts: 0, skipped: 1, failRate: 0 });
@@ -104,11 +150,24 @@ describe('perCharacter', () => {
 });
 
 describe('perDelay и delayAdvice', () => {
-  const many = (n, failed, delayMs, at = '2026-10-01T10:00:00Z') => run(Array.from({ length: n }, (_, i) => item(`c${i}`, i < failed ? 'failed' : 'ok')), { delayMs, at });
+  const many = (n, failed, delayMs, at = '2026-10-01T10:00:00Z') =>
+    run(
+      Array.from({ length: n }, (_, i) => item(`c${i}`, i < failed ? 'failed' : 'ok')),
+      { delayMs, at }
+    );
 
   it('группирует по паузе, по возрастанию', () => {
-    const rows = perDelay(logOf(many(10, 2, 3000, '2026-10-01T10:00:00Z'), many(10, 0, 5000, '2026-10-02T10:00:00Z'), many(5, 1, 3000, '2026-10-03T10:00:00Z')));
-    expect(rows.map(r => [r.delaySec, r.windows, r.failed])).toEqual([[3, 15, 3], [5, 10, 0]]);
+    const rows = perDelay(
+      logOf(
+        many(10, 2, 3000, '2026-10-01T10:00:00Z'),
+        many(10, 0, 5000, '2026-10-02T10:00:00Z'),
+        many(5, 1, 3000, '2026-10-03T10:00:00Z')
+      )
+    );
+    expect(rows.map(r => [r.delaySec, r.windows, r.failed])).toEqual([
+      [3, 15, 3],
+      [5, 10, 0]
+    ]);
   });
 
   it('мало данных — честно об этом говорит', () => {
@@ -146,7 +205,17 @@ describe('fmtMs', () => {
 
 describe('вид «Запуски» в журналах', () => {
   it('подпись и подробности запуска: пропущенные, без GameCenter, ошибки; текст экранируется', () => {
-    const r = normalizeRun(run([item('a'), item('b', 'failed', 9000, { error: '<b>сбой</b>' }), item('c', 'running', null), item('d', 'nogc', null)], { title: 'Пати <1>' }));
+    const r = normalizeRun(
+      run(
+        [
+          item('a'),
+          item('b', 'failed', 9000, { error: '<b>сбой</b>' }),
+          item('c', 'running', null),
+          item('d', 'nogc', null)
+        ],
+        { title: 'Пати <1>' }
+      )
+    );
     expect(runSummary(r)).toContain('запущено 1 из 2');
     expect(runSummary(r)).toContain('ошибок 1');
     expect(runSummary(r)).toContain('уже было запущено 1');
@@ -162,7 +231,10 @@ describe('вид «Запуски» в журналах', () => {
     recordLaunchRun(run([item('a'), item('b', 'failed')], { id: 'x1' }));
     recordLaunchRun(run([item('a')], { id: 'x2', at: '2026-10-02T10:00:00Z' }));
     const rows = launchLogSource.list();
-    expect(rows.map(r => [r.key, r.status])).toEqual([['x2', 'ok'], ['x1', 'error']]);
+    expect(rows.map(r => [r.key, r.status])).toEqual([
+      ['x2', 'ok'],
+      ['x1', 'error']
+    ]);
     const cb = vi.fn();
     const off = launchLogSource.subscribe(cb);
     recordLaunchRun(run([item('a')], { id: 'x3' }));
@@ -175,13 +247,19 @@ describe('вид «Запуски» в журналах', () => {
   });
 
   it('статистика: нестабильные в таблице и в предупреждении, совет по паузе, пустой журнал не падает', () => {
-    const log = logOf(...Array.from({ length: 4 }, (_, i) => run([item('a', i < 2 ? 'failed' : 'ok', 3000, { error: 'нет клиента' }), item('b')], { at: `2026-10-0${i + 1}T10:00:00Z` })));
+    const log = logOf(
+      ...Array.from({ length: 4 }, (_, i) =>
+        run([item('a', i < 2 ? 'failed' : 'ok', 3000, { error: 'нет клиента' }), item('b')], {
+          at: `2026-10-0${i + 1}T10:00:00Z`
+        })
+      )
+    );
     const v = statsView(log, 3);
     expect(v.chars[0]).toMatchObject({ id: 'a', unstable: true });
     expect(v.html).toContain('Нестабильные');
     expect(v.html).toContain('promo-alert-row');
     expect(v.text).toContain('Нестабильные: A');
-    expect(v.advice).toMatch(/Пока мало данных/);   // 8 окон < 10
+    expect(v.advice).toMatch(/Пока мало данных/); // 8 окон < 10
     const empty = statsView([], 3);
     expect(empty.html).toContain('Данных пока нет');
     expect(empty.advice).toMatch(/Пока мало данных/);

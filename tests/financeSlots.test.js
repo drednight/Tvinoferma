@@ -10,8 +10,10 @@ import { readFileSync } from 'node:fs';
 const css = readFileSync('css/modules/finance.css', 'utf8');
 
 /** Правило для селектора — по одному, вместе со всем телом блока. */
-const rule = (selector) => {
-  const m = css.match(new RegExp(`(^|\\})\\s*${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*\\{([^}]*)\\}`, 'm'));
+const rule = selector => {
+  const m = css.match(
+    new RegExp(`(^|\\})\\s*${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\s*\\{([^}]*)\\}`, 'm')
+  );
   return m ? m[2] : '';
 };
 
@@ -43,7 +45,7 @@ describe('плитки банка одинакового размера', () => 
     const padding = rule('\\.slot\\.is-filled').match(/padding:\s*([^;]+);/);
     expect(padding).toBeTruthy();
     const parts = padding[1].trim().split(/\s+/);
-    const px = (v) => Number(String(v).replace(/[a-z]+$/, ''));
+    const px = v => Number(String(v).replace(/[a-z]+$/, ''));
     const right = parts.length === 4 ? px(parts[1]) : px(parts[1]);
     const bottom = parts.length === 4 ? px(parts[2]) : px(parts[1]);
     expect(bottom, `отступ снизу под количество (${padding[1]})`).toBeGreaterThan(0);

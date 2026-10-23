@@ -24,22 +24,33 @@ const STATUS_ICON = { ok: '✅', warn: '⚠️', error: '❌', running: '⏳' };
 const ROW_CLASS = { ok: 'done', warn: 'warn', error: 'error', running: 'running' };
 const PAGE = 100;
 
-const when = (iso) => new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-const isProblem = (it) => it.status === 'warn' || it.status === 'error';
+const when = iso =>
+  new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+const isProblem = it => it.status === 'warn' || it.status === 'error';
 
 /** Подключает вид логов; повторная регистрация с тем же id заменяет прежнюю. */
 export function registerLogSource(src) {
-  if (!src?.id || typeof src.list !== 'function' || typeof src.open !== 'function') throw new Error('log source: id, list и open обязательны');
+  if (!src?.id || typeof src.list !== 'function' || typeof src.open !== 'function')
+    throw new Error('log source: id, list и open обязательны');
   sources.set(src.id, src);
 }
 export const getLogSources = () => [...sources.values()];
 
-const listOf = (src) => {
+const listOf = src => {
   try {
     return (src.list() || [])
       .filter(it => it && it.key != null && it.at)
       .map(it => ({ ...it, key: String(it.key), source: src.id }));
-  } catch (e) { console.warn('[LOG HUB]', src.id, e); return []; }
+  } catch (e) {
+    console.warn('[LOG HUB]', src.id, e);
+    return [];
+  }
 };
 
 /**
@@ -48,17 +59,21 @@ const listOf = (src) => {
  */
 export function collectLogs({ source = 'all', onlyProblems = false, query = '', sessionOnly = false } = {}) {
   const q = query.trim().toLowerCase();
-  const byFilter = (it) => (!onlyProblems || isProblem(it)) && (!q || [it.title, it.summary, it.who].join(' ').toLowerCase().includes(q));
+  const byFilter = it =>
+    (!onlyProblems || isProblem(it)) && (!q || [it.title, it.summary, it.who].join(' ').toLowerCase().includes(q));
   const counts = { all: 0 };
   const all = [];
   getLogSources().forEach(src => {
-    const rows = listOf(src).filter(it => !sessionOnly || new Date(it.at).getTime() >= sessionStartedAt).filter(byFilter);
+    const rows = listOf(src)
+      .filter(it => !sessionOnly || new Date(it.at).getTime() >= sessionStartedAt)
+      .filter(byFilter);
     counts[src.id] = rows.length;
     counts.all += rows.length;
     all.push(...rows);
   });
-  const items = (source === 'all' ? all : all.filter(it => it.source === source))
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const items = (source === 'all' ? all : all.filter(it => it.source === source)).sort((a, b) =>
+    String(b.at).localeCompare(String(a.at))
+  );
   return { items, counts };
 }
 
@@ -74,22 +89,36 @@ export function logHubSummary({ sessionOnly = false } = {}) {
 
 /** Любое изменение любого источника (для заголовка панели). Возвращает функцию отписки. */
 export function onLogsChange(fn) {
-  const offs = getLogSources().map(src => src.subscribe?.(fn)).filter(Boolean);
-  return () => offs.forEach(off => { try { off(); } catch { /* уже отписан */ } });
+  const offs = getLogSources()
+    .map(src => src.subscribe?.(fn))
+    .filter(Boolean);
+  return () =>
+    offs.forEach(off => {
+      try {
+        off();
+      } catch {
+        /* уже отписан */
+      }
+    });
 }
 
 export function logsToText(items) {
-  return items.map(it => {
-    const src = sources.get(it.source);
-    return `${when(it.at)} · ${src?.title || it.source} · ${STATUS_ICON[it.status] || ''} ${it.title}${it.summary ? ` — ${it.summary}` : ''}`;
-  }).join('\n');
+  return items
+    .map(it => {
+      const src = sources.get(it.source);
+      return `${when(it.at)} · ${src?.title || it.source} · ${STATUS_ICON[it.status] || ''} ${it.title}${it.summary ? ` — ${it.summary}` : ''}`;
+    })
+    .join('\n');
 }
 
 function download(text, filename) {
   const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
   URL.revokeObjectURL(url);
 }
 
@@ -119,26 +148,37 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
     <div class="muted lh-count" data-lh-count></div>
     <div class="tl-journal lh-list" data-lh-list></div>
     <div class="row gap lh-actions" data-lh-actions></div>`;
-  const $ = (sel) => root.querySelector(sel);
+  const $ = sel => root.querySelector(sel);
 
   const draw = () => {
     const { items, counts } = collectLogs(st);
     const srcs = getLogSources();
-    $('[data-lh-chips]').innerHTML = [{ id: 'all', title: 'Все', icon: '📚' }, ...srcs].map(s =>
-      `<button type="button" class="lh-chip ${st.source === s.id ? 'active' : ''}" data-lh-source="${escapeHtml(s.id)}">${s.icon || ''} ${escapeHtml(s.title)} <span class="muted">${counts[s.id] ?? 0}</span></button>`).join('');
+    $('[data-lh-chips]').innerHTML = [{ id: 'all', title: 'Все', icon: '📚' }, ...srcs]
+      .map(
+        s =>
+          `<button type="button" class="lh-chip ${st.source === s.id ? 'active' : ''}" data-lh-source="${escapeHtml(s.id)}">${s.icon || ''} ${escapeHtml(s.title)} <span class="muted">${counts[s.id] ?? 0}</span></button>`
+      )
+      .join('');
 
     const shown = items.slice(0, st.limit);
     $('[data-lh-count]').textContent = items.length
       ? `Показано ${shown.length} из ${items.length}. Нажмите на запись, чтобы открыть подробности.`
       : '';
     $('[data-lh-list]').innerHTML = items.length
-      ? shown.map(it => `
+      ? shown
+          .map(
+            it => `
         <button type="button" class="tl-jrow tl-s-${ROW_CLASS[it.status] || 'done'}" data-lh-key="${escapeHtml(it.key)}" data-lh-from="${escapeHtml(it.source)}">
           <span>${STATUS_ICON[it.status] || '•'}</span>
           <strong>${sources.get(it.source)?.icon || ''} ${escapeHtml(it.title)}</strong>
           <span class="muted">${escapeHtml(when(it.at))}</span>
           <span class="tl-jsum">${escapeHtml([it.who, it.summary].filter(Boolean).join(' · '))}</span>
-        </button>`).join('') + (items.length > shown.length ? `<button type="button" class="btn ghost lh-more" data-lh-more>Показать ещё ${Math.min(PAGE, items.length - shown.length)}</button>` : '')
+        </button>`
+          )
+          .join('') +
+        (items.length > shown.length
+          ? `<button type="button" class="btn ghost lh-more" data-lh-more>Показать ещё ${Math.min(PAGE, items.length - shown.length)}</button>`
+          : '')
       : '<div class="empty-state">Ничего не найдено. Здесь появятся логи проверок входа, промокодов и передач предметов.</div>';
 
     const cur = sources.get(st.source);
@@ -152,10 +192,19 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
       <button type="button" class="btn" data-lh-save ${items.length ? '' : 'disabled'}>💾 Сохранить в файл</button>`;
   };
 
-  root.addEventListener('click', async (e) => {
+  root.addEventListener('click', async e => {
     const chip = e.target.closest('[data-lh-source]');
-    if (chip) { st.source = chip.dataset.lhSource; st.limit = PAGE; draw(); return; }
-    if (e.target.closest('[data-lh-more]')) { st.limit += PAGE; draw(); return; }
+    if (chip) {
+      st.source = chip.dataset.lhSource;
+      st.limit = PAGE;
+      draw();
+      return;
+    }
+    if (e.target.closest('[data-lh-more]')) {
+      st.limit += PAGE;
+      draw();
+      return;
+    }
     const row = e.target.closest('[data-lh-key]');
     if (row) {
       const src = sources.get(row.dataset.lhFrom);
@@ -167,7 +216,9 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
     if (e.target.closest('[data-lh-clear]') && cur?.clear) {
       const ok = await confirmModal({
         title: 'Очистить логи?',
-        text: cur.clearConfirm || `Все записи журнала «${cur.title}» будут удалены. Данные персонажей и марафонов не меняются.`,
+        text:
+          cur.clearConfirm ||
+          `Все записи журнала «${cur.title}» будут удалены. Данные персонажей и марафонов не меняются.`,
         okText: 'Очистить',
         danger: true
       });
@@ -178,39 +229,71 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
       return;
     }
     const act = e.target.closest('[data-lh-action]');
-    if (act && cur) { cur.actions?.().find(a => a.id === act.dataset.lhAction)?.run(); return; }
+    if (act && cur) {
+      cur
+        .actions?.()
+        .find(a => a.id === act.dataset.lhAction)
+        ?.run();
+      return;
+    }
     const text = () => logsToText(collectLogs(st).items);
     if (e.target.closest('[data-lh-copy]')) {
       const btn = e.target.closest('[data-lh-copy]');
-      try { await navigator.clipboard.writeText(text()); btn.textContent = '✔ Скопировано'; }
-      catch { btn.textContent = 'Не удалось скопировать'; }
+      try {
+        await navigator.clipboard.writeText(text());
+        btn.textContent = '✔ Скопировано';
+      } catch {
+        btn.textContent = 'Не удалось скопировать';
+      }
       return;
     }
-    if (e.target.closest('[data-lh-save]')) download(text(), `tvinoferma-logs-${new Date().toISOString().slice(0, 10)}.txt`);
+    if (e.target.closest('[data-lh-save]'))
+      download(text(), `tvinoferma-logs-${new Date().toISOString().slice(0, 10)}.txt`);
   });
-  root.addEventListener('input', (e) => {
-    if (e.target.matches('[data-lh-query]')) { st.query = e.target.value; st.limit = PAGE; draw(); }
+  root.addEventListener('input', e => {
+    if (e.target.matches('[data-lh-query]')) {
+      st.query = e.target.value;
+      st.limit = PAGE;
+      draw();
+    }
   });
-  root.addEventListener('change', (e) => {
-    if (e.target.matches('[data-lh-history]')) { st.sessionOnly = !e.target.checked; st.limit = PAGE; draw(); }
-    if (e.target.matches('[data-lh-problems]')) { st.onlyProblems = e.target.checked; st.limit = PAGE; draw(); }
+  root.addEventListener('change', e => {
+    if (e.target.matches('[data-lh-history]')) {
+      st.sessionOnly = !e.target.checked;
+      st.limit = PAGE;
+      draw();
+    }
+    if (e.target.matches('[data-lh-problems]')) {
+      st.onlyProblems = e.target.checked;
+      st.limit = PAGE;
+      draw();
+    }
   });
 
   // Источники сообщают о новых записях часто (задачи — на каждую строку): перерисовываем не чаще раза в 250 мс
   // и только пока контейнер на странице и панель не свёрнута; поле поиска при этом не пересоздаётся.
   let timer = null;
   let offs = [];
-  const unsub = () => { clearTimeout(timer); offs.forEach(off => off()); offs = []; };
+  const unsub = () => {
+    clearTimeout(timer);
+    offs.forEach(off => off());
+    offs = [];
+  };
   const schedule = () => {
     if (timer) return;
     timer = setTimeout(() => {
       timer = null;
-      if (!root.isConnected) { unsub(); return; }
+      if (!root.isConnected) {
+        unsub();
+        return;
+      }
       const fold = root.closest('details');
       if (!fold || fold.open) draw();
     }, 250);
   };
-  offs = getLogSources().map(src => src.subscribe?.(schedule)).filter(Boolean);
+  offs = getLogSources()
+    .map(src => src.subscribe?.(schedule))
+    .filter(Boolean);
 
   draw();
   return unsub;
@@ -223,6 +306,9 @@ export function openLogHub({ source = 'all', title = '📚 Журналы' } = {
   ov.foot.innerHTML = '<span></span><button type="button" class="btn primary" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   const origClose = ov.close;
-  ov.close = () => { unsub(); origClose(); };
+  ov.close = () => {
+    unsub();
+    origClose();
+  };
   return ov;
 }

@@ -107,7 +107,7 @@ export function classIconRgba(className, size) {
   const key = `${src}@${size}`;
   let p = iconCache.get(key);
   if (!p) {
-    p = new Promise((resolve) => {
+    p = new Promise(resolve => {
       const img = new Image();
       img.onerror = () => resolve(null);
       img.onload = () => {
@@ -116,16 +116,23 @@ export function classIconRgba(className, size) {
           canvas.width = size;
           canvas.height = size;
           const g = canvas.getContext('2d', { willReadFrequently: true });
-          if (!g) { resolve(null); return; }
+          if (!g) {
+            resolve(null);
+            return;
+          }
           g.imageSmoothingQuality = 'high';
           g.drawImage(img, 0, 0, size, size);
           resolve(Array.from(g.getImageData(0, 0, size, size).data));
-        } catch { resolve(null); }
+        } catch {
+          resolve(null);
+        }
       };
       img.src = src;
     });
     iconCache.set(key, p);
-    p.then(v => { if (!v) iconCache.delete(key); }); // неудачу не запоминаем: в следующий раз попробуем снова
+    p.then(v => {
+      if (!v) iconCache.delete(key);
+    }); // неудачу не запоминаем: в следующий раз попробуем снова
   }
   return p;
 }
@@ -141,9 +148,8 @@ export async function windowDecor(character, deps = {}) {
   const load = deps.loadIcon || classIconRgba;
   const cls = String(character?.class || '').trim();
   const withIcons = deps.icons ?? decorateIconsEnabled();
-  const [iconSmall, iconBig] = cls && withIcons
-    ? await Promise.all([load(cls, WINDOW_ICON_SMALL), load(cls, WINDOW_ICON_BIG)])
-    : [null, null];
+  const [iconSmall, iconBig] =
+    cls && withIcons ? await Promise.all([load(cls, WINDOW_ICON_SMALL), load(cls, WINDOW_ICON_BIG)]) : [null, null];
   return { windowTitle: windowTitle(character) || null, iconSmall, iconBig };
 }
 
@@ -221,13 +227,13 @@ export function launchablePartyNames(parties, characters, membersOf, ctx = launc
  * Тип лаунчера для команд Rust: 'gamecenter', 'astrum' или `undefined` — «любой из двух».
  * У файлового окна разница видна: без типа фильтр показывает оба лаунчера.
  */
-const launcherArg = (kind) => (kind === 'astrum' || kind === 'gamecenter' ? kind : undefined);
+const launcherArg = kind => (kind === 'astrum' || kind === 'gamecenter' ? kind : undefined);
 
 /**
  * То же для команд запуска, где Astrum — единственный особый случай. GameCenter уходит
  * вообще без поля: прежние вызовы остаются такими же, как были.
  */
-const launcherKindArg = (kind) => (kind === 'astrum' ? 'astrum' : undefined);
+const launcherKindArg = kind => (kind === 'astrum' ? 'astrum' : undefined);
 
 /** Проверка пути из настроек. Возвращает полный путь к GameCenter.exe или бросает ошибку. */
 export function checkGameCenterPath(path, deps = {}) {
@@ -324,7 +330,7 @@ export function closeClientsByPid(pids, deps = {}) {
  */
 export async function applyWindowStyle(opts, deps = {}) {
   const invoke = deps.invoke || tauriInvoke;
-  const cls = opts.clearIcon ? null : (opts.class || null);
+  const cls = opts.clearIcon ? null : opts.class || null;
   const [iconSmall, iconBig] = cls
     ? await Promise.all([classIconRgba(cls, WINDOW_ICON_SMALL), classIconRgba(cls, WINDOW_ICON_BIG)])
     : [null, null];
@@ -341,10 +347,14 @@ export async function applyWindowStyle(opts, deps = {}) {
 /** Текст итога ручной смены вида окна. */
 export function applyStyleText(result) {
   switch (result?.status) {
-    case 'missing': return 'Окно игры не найдено: возможно, оно уже закрыто';
-    case 'failed': return 'Windows не даёт менять это окно: игра запущена от администратора, а Твиноферма — нет';
-    case 'fixed': return 'Окно обновлено';
-    default: return 'Изменений не потребовалось';
+    case 'missing':
+      return 'Окно игры не найдено: возможно, оно уже закрыто';
+    case 'failed':
+      return 'Windows не даёт менять это окно: игра запущена от администратора, а Твиноферма — нет';
+    case 'fixed':
+      return 'Окно обновлено';
+    default:
+      return 'Изменений не потребовалось';
   }
 }
 
@@ -382,7 +392,10 @@ export async function redecorateClients(targets, deps = {}) {
       if (r.status === 'ok') out.ok++;
       else if (r.status === 'fixed') out.fixed++;
       else if (r.status === 'missing') out.missing++;
-      else { out.failed++; out.details.push(`PID ${r.pid}: название и значок не применились`); }
+      else {
+        out.failed++;
+        out.details.push(`PID ${r.pid}: название и значок не применились`);
+      }
     }
   } catch (e) {
     out.details.push(`Проверка окон не удалась: ${String(e?.message || e)}`);
@@ -418,7 +431,10 @@ export async function decorateElevated(targets, deps = {}) {
       if (r.status === 'ok') out.ok++;
       else if (r.status === 'fixed') out.fixed++;
       else if (r.status === 'missing') out.missing++;
-      else { out.failed++; out.details.push(`PID ${r.pid}: не удалось подписать даже с правами администратора`); }
+      else {
+        out.failed++;
+        out.details.push(`PID ${r.pid}: не удалось подписать даже с правами администратора`);
+      }
     }
   } catch (e) {
     out.details.push(`Работа от администратора не удалась: ${String(e?.message || e)}`);
@@ -452,20 +468,34 @@ export function inspectVerdict(report) {
   for (const c of clients) {
     const wins = (c.windows || []).filter(w => w.visible && w.title);
     if (c.elevated && !selfAdmin) {
-      out.push(`PID ${c.pid}: игра запущена от администратора, а Твиноферма — нет. Windows не даёт менять чужие окна (название и значок). Запустите Твиноферму от имени администратора (ПКМ по ярлыку → «Запуск от имени администратора»; в режиме разработки — терминал от администратора).`);
+      out.push(
+        `PID ${c.pid}: игра запущена от администратора, а Твиноферма — нет. Windows не даёт менять чужие окна (название и значок). Запустите Твиноферму от имени администратора (ПКМ по ярлыку → «Запуск от имени администратора»; в режиме разработки — терминал от администратора).`
+      );
       continue;
     }
-    if (!wins.length) { out.push(`PID ${c.pid}: нет видимого окна с заголовком — менять нечего (игра ещё грузится?).`); continue; }
+    if (!wins.length) {
+      out.push(`PID ${c.pid}: нет видимого окна с заголовком — менять нечего (игра ещё грузится?).`);
+      continue;
+    }
     for (const w of wins) {
-      if (w.titleError) out.push(`PID ${c.pid}, окно ${w.hwnd}: заголовок не принимается (код Windows ${w.titleError}).`);
-      else if (w.titleAfter !== PROBE_TITLE) out.push(`PID ${c.pid}, окно ${w.hwnd}: заголовок принят, но прочитано «${w.titleAfter}» — игра обрабатывает его по-своему.`);
+      if (w.titleError)
+        out.push(`PID ${c.pid}, окно ${w.hwnd}: заголовок не принимается (код Windows ${w.titleError}).`);
+      else if (w.titleAfter !== PROBE_TITLE)
+        out.push(
+          `PID ${c.pid}, окно ${w.hwnd}: заголовок принят, но прочитано «${w.titleAfter}» — игра обрабатывает его по-своему.`
+        );
       if (w.iconError) out.push(`PID ${c.pid}, окно ${w.hwnd}: значок не принимается (код Windows ${w.iconError}).`);
-      if (w.tool || w.owned) out.push(`PID ${c.pid}, окно ${w.hwnd}: это ${w.tool ? 'окно-инструмент' : 'окно с владельцем'} — панель задач такие не показывает.`);
+      if (w.tool || w.owned)
+        out.push(
+          `PID ${c.pid}, окно ${w.hwnd}: это ${w.tool ? 'окно-инструмент' : 'окно с владельцем'} — панель задач такие не показывает.`
+        );
       if (w.hung) out.push(`PID ${c.pid}, окно ${w.hwnd}: окно не отвечает — Windows не принимает от него сообщения.`);
     }
   }
   if (!out.length) {
-    out.push('Заголовок и значок окон менять можно. Если на панели задач иконка общая: Параметры → Персонализация → Панель задач → «Группировать кнопки на панели задач» → «Никогда»; тогда у каждого окна будет свой значок и подпись.');
+    out.push(
+      'Заголовок и значок окон менять можно. Если на панели задач иконка общая: Параметры → Персонализация → Панель задач → «Группировать кнопки на панели задач» → «Никогда»; тогда у каждого окна будет свой значок и подпись.'
+    );
   }
   return out;
 }
@@ -476,16 +506,28 @@ export function inspectReportText(report) {
   const clients = report?.clients || [];
   lines.push(`Твиноферма: ${report?.selfElevated ? 'запущена от администратора' : 'обычные права'}`);
   lines.push(`Клиентов игры: ${clients.length}`);
-  const who = (v) => v === true ? 'от администратора' : v === false ? 'обычные права' : 'права не определены';
+  const who = v => (v === true ? 'от администратора' : v === false ? 'обычные права' : 'права не определены');
   for (const c of clients) {
     lines.push('', `PID ${c.pid} — ${who(c.elevated)}`);
     if (!c.windows?.length) lines.push('  окон нет');
     for (const w of c.windows || []) {
-      const flags = [w.visible ? 'видимое' : 'скрытое', w.tool && 'инструмент', w.owned && 'есть владелец', w.app && 'в панели задач принудительно', w.hung && 'не отвечает'].filter(Boolean).join(', ');
+      const flags = [
+        w.visible ? 'видимое' : 'скрытое',
+        w.tool && 'инструмент',
+        w.owned && 'есть владелец',
+        w.app && 'в панели задач принудительно',
+        w.hung && 'не отвечает'
+      ]
+        .filter(Boolean)
+        .join(', ');
       lines.push(`  ${w.hwnd} «${w.title}» (${w.class}) — ${flags}`);
       if (w.visible && w.title) {
-        lines.push(`    заголовок: ${w.titleError ? `отказ, код ${w.titleError}` : 'смена удалась'}; после пробы прочитано «${w.titleAfter}»`);
-        lines.push(`    значки: ${w.hasSmallIcon || w.hasBigIcon ? `свои (${w.hasSmallIcon ? 'малый' : '—'}, ${w.hasBigIcon ? 'большой' : '—'})` : 'своих нет (берётся значок из файла игры)'}; смена ${w.iconError ? `отказ, код ${w.iconError}` : 'удалась'}`);
+        lines.push(
+          `    заголовок: ${w.titleError ? `отказ, код ${w.titleError}` : 'смена удалась'}; после пробы прочитано «${w.titleAfter}»`
+        );
+        lines.push(
+          `    значки: ${w.hasSmallIcon || w.hasBigIcon ? `свои (${w.hasSmallIcon ? 'малый' : '—'}, ${w.hasBigIcon ? 'большой' : '—'})` : 'своих нет (берётся значок из файла игры)'}; смена ${w.iconError ? `отказ, код ${w.iconError}` : 'удалась'}`
+        );
       }
     }
   }
@@ -511,12 +553,21 @@ export function closeAllClientsElevated(deps = {}) {
 export function launchWarnings(info) {
   const out = [];
   if (!info) return out;
-  if (info.closedOtherGc > 0) out.push(`Закрыт GameCenter из другой папки (${info.closedOtherGc}): GameCenter работает в одном экземпляре и открыл бы игру под своим аккаунтом`);
-  if (info.gcCloseFailed > 0) out.push('GameCenter запущен от администратора, закрыть его не удалось: игра может открыться под его аккаунтом. Запустите Твиноферму от администратора');
+  if (info.closedOtherGc > 0)
+    out.push(
+      `Закрыт GameCenter из другой папки (${info.closedOtherGc}): GameCenter работает в одном экземпляре и открыл бы игру под своим аккаунтом`
+    );
+  if (info.gcCloseFailed > 0)
+    out.push(
+      'GameCenter запущен от администратора, закрыть его не удалось: игра может открыться под его аккаунтом. Запустите Твиноферму от администратора'
+    );
   // Вход не подставился: окно откроется под тем аккаунтом, что выбран в лаунчере сейчас, —
   // то есть, скорее всего, не тем. Проверка до запуска такие персонажи отсекает, поэтому
   // строка появляется только если данные изменились посреди запуска (или проверку обошли).
-  if (info.switched === false) out.push('Вход в лаунчер не подставлен: окно открылось под тем аккаунтом, который выбран в лаунчере сейчас. Запомните вход: «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»');
+  if (info.switched === false)
+    out.push(
+      'Вход в лаунчер не подставлен: окно открылось под тем аккаунтом, который выбран в лаунчере сейчас. Запомните вход: «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»'
+    );
   return out;
 }
 
@@ -584,7 +635,9 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       onStart?.(character);
       const target = resolveGameCenter(character, ctx);
       // Название окна «Ник — Класс» и значок: Rust применит их к новому окну клиента в фоне
-      const decor = decorate ? await windowDecor(character, deps) : { windowTitle: null, iconSmall: null, iconBig: null };
+      const decor = decorate
+        ? await windowDecor(character, deps)
+        : { windowTitle: null, iconSmall: null, iconBig: null };
       const t0 = Date.now();
       let info;
       try {
@@ -604,10 +657,11 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       } finally {
         times.set(character.id, Date.now() - t0);
       }
-      if (!last && delayMs > 0) {                  // следующий аккаунт стартует после паузы
-      delayTotal += delayMs;
-      await sleep(delayMs);
-    }
+      if (!last && delayMs > 0) {
+        // следующий аккаунт стартует после паузы
+        delayTotal += delayMs;
+        await sleep(delayMs);
+      }
       // Замеры приходят из Rust: там видно, сколько стоило закрыть GameCenter, записать
       // вход и дождаться окна игры. Складываем по всем аккаунтам — итог идёт в журнал.
       if (info) {
@@ -624,14 +678,18 @@ export async function launchCharacters(characters, opts = {}, deps = {}) {
       onDone: (entry, done, total) => {
         if (entry.result?.cancelled) return;
         const { character } = entry.item;
-        onDone?.({
-          id: character.id,
-          nick: character.nick || character.id,
-          ok: !entry.error,
-          error: entry.error ? String(entry.error?.message || entry.error) : undefined,
-          info: entry.result?.info,
-          ms: times.get(character.id) ?? null
-        }, done, total);
+        onDone?.(
+          {
+            id: character.id,
+            nick: character.nick || character.id,
+            ok: !entry.error,
+            error: entry.error ? String(entry.error?.message || entry.error) : undefined,
+            info: entry.result?.info,
+            ms: times.get(character.id) ?? null
+          },
+          done,
+          total
+        );
       }
     }
   );
@@ -692,7 +750,8 @@ export function launchStageSummary(stages) {
   // и ждать его не надо — следующий аккаунт к этому моменту уже стартует).
   if (stages.clientWait) parts.push(`GameCenter до клиента ${stageSec(stages.clientWait)}`);
   if (stages.delay) parts.push(`пауза между запусками ${stageSec(stages.delay)}`);
-  const total = stages.total ?? (stages.gcClose || 0) + (stages.account || 0) + (stages.clientWait || 0) + (stages.delay || 0);
+  const total =
+    stages.total ?? (stages.gcClose || 0) + (stages.account || 0) + (stages.clientWait || 0) + (stages.delay || 0);
   if (!parts.length) return null;
   return `Итого ${stageSec(total)}: ${parts.join(', ')}.`;
 }
@@ -751,7 +810,10 @@ export async function redecorateRunningWindows(windows, deps = {}) {
   const targets = [];
   for (const w of windows || []) {
     // `known` — окно опознано как персонаж приложения; у чужих окон чинить нечего
-    if (!w || !w.pid || !w.known || !w.nick) { out.skipped++; continue; }
+    if (!w || !w.pid || !w.known || !w.nick) {
+      out.skipped++;
+      continue;
+    }
     targets.push({ pid: w.pid, ...(await expectedDecor({ nick: w.nick, class: w.cls })) });
   }
   if (!targets.length) {
@@ -759,13 +821,19 @@ export async function redecorateRunningWindows(windows, deps = {}) {
     return out;
   }
   const first = await redecorateClients(targets, deps);
-  out.ok = first.ok; out.fixed = first.fixed; out.missing = first.missing; out.failed = first.failed;
+  out.ok = first.ok;
+  out.fixed = first.fixed;
+  out.missing = first.missing;
+  out.failed = first.failed;
   // Ничего не вышло — почти всегда значит, что игра запущена от администратора, а Твиноферма
   // обычным пользователем: Windows не даёт менять чужие окна. Пробуем через помощника с правами.
   if (!out.ok && !out.fixed) {
     const admin = await decorateElevated(targets, deps);
-    out.ok = admin.ok; out.fixed = admin.fixed; out.missing = admin.missing;
-    out.failed = admin.failed; out.denied = admin.denied;
+    out.ok = admin.ok;
+    out.fixed = admin.fixed;
+    out.missing = admin.missing;
+    out.failed = admin.failed;
+    out.denied = admin.denied;
     out.details = [...out.details, ...admin.details];
   }
   return out;

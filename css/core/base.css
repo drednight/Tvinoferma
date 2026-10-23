@@ -60,10 +60,24 @@ p {
   margin: 0;
 }
 
-h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
-h2 { font-size: 1.28rem; font-weight: 700; letter-spacing: -0.015em; }
-h3 { font-size: 1rem; font-weight: 650; }
-h4 { font-size: 0.94rem; font-weight: 650; }
+h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+h2 {
+  font-size: 1.28rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+h3 {
+  font-size: 1rem;
+  font-weight: 650;
+}
+h4 {
+  font-size: 0.94rem;
+  font-weight: 650;
+}
 
 /* Заголовок раздела: слева название и пояснение, справа — действия */
 .section-head {
@@ -74,7 +88,9 @@ h4 { font-size: 0.94rem; font-weight: 650; }
   flex-wrap: wrap;
   margin-bottom: 18px;
 }
-.section-head h2 { margin: 0; }
+.section-head h2 {
+  margin: 0;
+}
 .section-head .section-sub {
   margin-top: 3px;
   color: var(--text-dim);
@@ -87,9 +103,15 @@ h4 { font-size: 0.94rem; font-weight: 650; }
   flex-wrap: wrap;
 }
 
-.muted { color: var(--text-dim); }
-.faint { color: var(--text-faint); }
-.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+.muted {
+  color: var(--text-dim);
+}
+.faint {
+  color: var(--text-faint);
+}
+.mono {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
 
 .empty-state {
   padding: 28px;
@@ -112,16 +134,26 @@ h4 { font-size: 0.94rem; font-weight: 650; }
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
   background: var(--border-strong);
   border: 2px solid transparent;
   background-clip: content-box;
   border-radius: var(--radius-pill);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: content-box; }
-::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
 ::selection {
   background: var(--accent-soft);

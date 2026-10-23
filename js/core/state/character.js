@@ -43,12 +43,18 @@ export function normalizeStatsHistory(input) {
 export function normalizeTags(input) {
   const list = Array.isArray(input) ? input : String(input || '').split(',');
   const seen = new Set();
-  return list.map(t => String(t || '').trim().replace(/\s+/g, ' ')).filter(t => {
-    const key = t.toLowerCase();
-    if (!t || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return list
+    .map(t =>
+      String(t || '')
+        .trim()
+        .replace(/\s+/g, ' ')
+    )
+    .filter(t => {
+      const key = t.toLowerCase();
+      if (!t || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 /** Список id GameCenter: строки без пустых, без дублей. */
@@ -110,8 +116,8 @@ export function normalizeCharacter(input = {}) {
     // Запуск игры: у каждого аккаунта свой GameCenter (папка или GameCenter.exe)
     launch: {
       gcPath: String(input.launch?.gcPath || '').trim(),
-      gcNick: String(input.launch?.gcNick || '').trim(),   // ник в GameCenter (для показа); токен входа лежит в хранилище ОС
-      gcAccount: input.launch?.gcAccount === true,         // вход этого аккаунта запомнен (см. launcher_capture_account)
+      gcNick: String(input.launch?.gcNick || '').trim(), // ник в GameCenter (для показа); токен входа лежит в хранилище ОС
+      gcAccount: input.launch?.gcAccount === true, // вход этого аккаунта запомнен (см. launcher_capture_account)
       // GameCenter из общего списка (Настройки → Запуск игры): id по порядку, первый — основной
       gcIds: normalizeGcIds(input.launch?.gcIds),
       // Запомненный вход персонажа в каждом из них: { [gcId]: { nick, legacy? } }; токены лежат в хранилище ОС
@@ -132,15 +138,13 @@ export function normalizeCharacter(input = {}) {
 
     ancientCoins: roundCoins(Number(input.ancientCoins) || 0),
     lastCoinUpdate: input.lastCoinUpdate || null,
-    coinsParserV: Number(input.coinsParserV) || 0,   // версия разбора баланса (см. needsCoinRecheck)
+    coinsParserV: Number(input.coinsParserV) || 0, // версия разбора баланса (см. needsCoinRecheck)
 
     // --- Данные синхронизации с pwonline.ru (раньше терялись при перезапуске) ---
     isLoggedIn: input.isLoggedIn === true,
     lastLoginCheck: input.lastLoginCheck || null,
-    lastLoginReason: input.lastLoginReason || null,   // почему «оффлайн» (код ошибки), см. authDetails
-    marathonData: input.marathonData && typeof input.marathonData === 'object'
-      ? input.marathonData
-      : null,
+    lastLoginReason: input.lastLoginReason || null, // почему «оффлайн» (код ошибки), см. authDetails
+    marathonData: input.marathonData && typeof input.marathonData === 'object' ? input.marathonData : null,
     // История Древних монет: без записей «+0», не более 10 последних
     coinHistory: normalizeCoinHistory(input.coinHistory),
     createdAt: input.createdAt || new Date().toISOString(),

@@ -21,15 +21,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 vi.mock('../js/modules/characters/index.js', () => ({
-  openCharacterProfile: vi.fn(), openCharacterForm: mocks.openCharacterForm
+  openCharacterProfile: vi.fn(),
+  openCharacterForm: mocks.openCharacterForm
 }));
 vi.mock('../js/core/ui.js', () => ({
-  toast: vi.fn(), showModal: mocks.showModal, closeModal: mocks.closeModal,
+  toast: vi.fn(),
+  showModal: mocks.showModal,
+  closeModal: mocks.closeModal,
   confirmModal: vi.fn(async () => true)
 }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({
-  openSyncHelper: vi.fn(), refreshAuthFor: vi.fn(), refreshBalanceFor: vi.fn(),
-  refreshAllLoginStatuses: vi.fn(), refreshAllBalances: vi.fn()
+  openSyncHelper: vi.fn(),
+  refreshAuthFor: vi.fn(),
+  refreshBalanceFor: vi.fn(),
+  refreshAllLoginStatuses: vi.fn(),
+  refreshAllBalances: vi.fn()
 }));
 
 const body = `
@@ -59,8 +65,28 @@ describe('фильтры персонажей: кнопка «Сбросить»
     state.parties = [];
     state.marathons = [];
     state.characters = [
-      { id: 'a', nick: 'Аа', class: 'Воин', level: 1, isLoggedIn: true, contacts: {}, tags: ['фарм'], partyIds: [], mainPartyId: null },
-      { id: 'b', nick: 'Бб', class: 'Маг', level: 1, isLoggedIn: false, contacts: {}, tags: [], partyIds: [], mainPartyId: null }
+      {
+        id: 'a',
+        nick: 'Аа',
+        class: 'Воин',
+        level: 1,
+        isLoggedIn: true,
+        contacts: {},
+        tags: ['фарм'],
+        partyIds: [],
+        mainPartyId: null
+      },
+      {
+        id: 'b',
+        nick: 'Бб',
+        class: 'Маг',
+        level: 1,
+        isLoggedIn: false,
+        contacts: {},
+        tags: [],
+        partyIds: [],
+        mainPartyId: null
+      }
     ];
     bindCharacters();
   });

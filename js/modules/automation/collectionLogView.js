@@ -9,26 +9,31 @@ import { openOverlay } from '../marathons/overlay.js';
 import { loadCollectionLog, clearCollectionLog, totalsOf, share, DROP_CATS, ALL_CATS } from './collectionStore.js';
 
 const COLORS = { 1: '#9aa0ad', 2: '#6fcf97', 3: '#56b6f7', 4: '#b48cf2', 5: '#f0b84a', 6: '#f06a6a' };
-const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-const pad = (n) => (n < 10 ? '0' : '') + n;
-export const fmtDuration = (ms) => {
+const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+const pad = n => (n < 10 ? '0' : '') + n;
+export const fmtDuration = ms => {
   const s = Math.floor(Math.max(0, ms) / 1000);
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
 };
-const aboveText = (a) => (a === 'stop' ? 'остановиться' : `забрать до ${a}-й`);
-const dropsLine = (e) => DROP_CATS.filter(c => e.drops[c]).map(c => `${c}×${e.drops[c]}`).join(' · ') || 'без выпадений';
-const prizes = (claimed) => ALL_CATS.filter(c => claimed[c]).map(c => `${c}-я ×${claimed[c]}`);
+const aboveText = a => (a === 'stop' ? 'остановиться' : `забрать до ${a}-й`);
+const dropsLine = e =>
+  DROP_CATS.filter(c => e.drops[c])
+    .map(c => `${c}×${e.drops[c]}`)
+    .join(' · ') || 'без выпадений';
+const prizes = claimed => ALL_CATS.filter(c => claimed[c]).map(c => `${c}-я ×${claimed[c]}`);
 
 /** Таблица «категория → сколько, доля» с полосками; 6-я категория с карточек не падает — только обмен. */
 export function tableHtml(t) {
-  const rows = DROP_CATS.map(c => `
+  const rows = DROP_CATS.map(
+    c => `
     <tr>
       <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${COLORS[c]};margin-right:6px"></span>${c}</td>
       <td style="text-align:right">${t.drops[c]}</td>
       <td style="text-align:right">${share(t.drops[c], t.opened)}%</td>
       <td style="width:40%"><div style="height:7px;border-radius:4px;background:${COLORS[c]};width:${Math.min(100, Number(share(t.drops[c], t.opened)))}%"></div></td>
       <td style="text-align:right">${t.promoted[c] ? `обмен ${c}→${c + 1} ×${t.promoted[c]}` : ''}</td>
-    </tr>`).join('');
+    </tr>`
+  ).join('');
   return `<table style="width:100%;border-collapse:collapse"><thead><tr class="muted"><th style="text-align:left">Категория</th><th style="text-align:right">Выпало</th><th style="text-align:right">Доля</th><th></th><th></th></tr></thead><tbody>${rows}
     <tr><td>6</td><td colspan="4" class="muted">с карточек не падает: даётся только обменом 5 карт пятой категории (получено ${t.promoted[5] || 0})</td></tr></tbody></table>`;
 }
@@ -46,23 +51,29 @@ export function detailsHtml(e) {
     ${e.unknown ? `<div class="muted">Карточек без определённой категории: ${e.unknown}</div>` : ''}`;
 }
 
-const entryText = (e) => [
-  `${when(e.at)} · ${e.nick || 'окно персонажа'} · цель ${e.target} · ${fmtDuration(e.ms)}`,
-  e.message,
-  `Открыто карточек: ${e.opened}${e.left != null ? ` (осталось ${e.left})` : ''}`,
-  ...DROP_CATS.map(c => `${c} категория: ${e.drops[c]} | ${share(e.drops[c], e.opened)}%`),
-  `Призы: ${prizes(e.claimed).join(', ') || 'нет'}`,
-  `Обменов: ${DROP_CATS.reduce((n, c) => n + e.promoted[c], 0)}`
-].join('\n');
+const entryText = e =>
+  [
+    `${when(e.at)} · ${e.nick || 'окно персонажа'} · цель ${e.target} · ${fmtDuration(e.ms)}`,
+    e.message,
+    `Открыто карточек: ${e.opened}${e.left != null ? ` (осталось ${e.left})` : ''}`,
+    ...DROP_CATS.map(c => `${c} категория: ${e.drops[c]} | ${share(e.drops[c], e.opened)}%`),
+    `Призы: ${prizes(e.claimed).join(', ') || 'нет'}`,
+    `Обменов: ${DROP_CATS.reduce((n, c) => n + e.promoted[c], 0)}`
+  ].join('\n');
 
 function openWithCopy(title, body, copyText) {
   const ov = openOverlay({ title, wide: true });
   ov.body.innerHTML = body;
-  ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
+  ov.foot.innerHTML =
+    '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-copy]').onclick = async (ev) => {
-    try { await navigator.clipboard.writeText(copyText); ev.target.textContent = '✔ Скопировано'; }
-    catch { ev.target.textContent = 'Не удалось скопировать'; }
+  ov.foot.querySelector('[data-copy]').onclick = async ev => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      ev.target.textContent = '✔ Скопировано';
+    } catch {
+      ev.target.textContent = 'Не удалось скопировать';
+    }
   };
   return ov;
 }
@@ -99,16 +110,30 @@ export const collectionLogSource = {
   id: 'collection',
   title: 'Коллекция',
   icon: '🃏',
-  list: () => loadCollectionLog().map(e => ({
-    key: e.id, at: e.at, title: `Цель ${e.target} · ${e.opened} карт`,
-    status: e.kind === 'error' ? 'error' : e.kind === 'warn' ? 'warn' : 'ok',
-    who: e.nick,
-    summary: `${dropsLine(e)}${prizes(e.claimed).length ? ` · 🏆 ${prizes(e.claimed).join(', ')}` : ''}`
-  })),
-  open: (item) => openCollectionEntry(item.key),
+  list: () =>
+    loadCollectionLog().map(e => ({
+      key: e.id,
+      at: e.at,
+      title: `Цель ${e.target} · ${e.opened} карт`,
+      status: e.kind === 'error' ? 'error' : e.kind === 'warn' ? 'warn' : 'ok',
+      who: e.nick,
+      summary: `${dropsLine(e)}${prizes(e.claimed).length ? ` · 🏆 ${prizes(e.claimed).join(', ')}` : ''}`
+    })),
+  open: item => openCollectionEntry(item.key),
   clear: () => clearCollectionLog(),
-  clearConfirm: 'Очистить логи «Коллекции»? Приложение забудет прошлые запуски и итоговую статистику. Статистика текущего окна персонажа не меняется.',
-  actions: () => [{ id: 'totals', label: '📊 Итоги по всем запускам', disabled: !loadCollectionLog().length, run: () => openCollectionTotals() }],
-  subscribe: (fn) => { window.addEventListener('tf-collection-log', fn); return () => window.removeEventListener('tf-collection-log', fn); }
+  clearConfirm:
+    'Очистить логи «Коллекции»? Приложение забудет прошлые запуски и итоговую статистику. Статистика текущего окна персонажа не меняется.',
+  actions: () => [
+    {
+      id: 'totals',
+      label: '📊 Итоги по всем запускам',
+      disabled: !loadCollectionLog().length,
+      run: () => openCollectionTotals()
+    }
+  ],
+  subscribe: fn => {
+    window.addEventListener('tf-collection-log', fn);
+    return () => window.removeEventListener('tf-collection-log', fn);
+  }
 };
 registerLogSource(collectionLogSource);

@@ -18,7 +18,9 @@ export function balanceSettingsColumns(root = document) {
 function balanceGroup(wrap) {
   const cols = /** @type {HTMLElement[]} */ ([...wrap.querySelectorAll(':scope > .settings-col')]);
   if (cols.length < 2) return cols.map(c => c.children.length);
-  const panels = cols.flatMap(c => /** @type {HTMLElement[]} */ ([...c.children]).filter(el => el.classList.contains('panel')));
+  const panels = cols.flatMap(c =>
+    /** @type {HTMLElement[]} */ ([...c.children]).filter(el => el.classList.contains('panel'))
+  );
   const left = Math.ceil(panels.length / 2);
   panels.forEach((p, i) => cols[i < left ? 0 : 1].appendChild(p));
   return cols.map(c => c.children.length);

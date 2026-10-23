@@ -9,7 +9,11 @@ const mocks = vi.hoisted(() => ({
   running: []
 }));
 
-vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}), isTauri: () => true }));
+vi.mock('../js/core/storage.js', () => ({
+  persist: vi.fn(async () => {}),
+  saveNow: vi.fn(async () => {}),
+  isTauri: () => true
+}));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
   launchGroup: mocks.launchGroup,
   closePartyWindows: mocks.closePartyWindows,
@@ -25,26 +29,51 @@ vi.mock('../js/modules/launcher/runningWindows.js', () => ({
   runningWindows: () => mocks.running,
   onRunningWindows: () => () => {}
 }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async () => true), showModal: vi.fn(), closeModal: vi.fn() }));
+vi.mock('../js/core/ui.js', () => ({
+  toast: vi.fn(),
+  confirmModal: vi.fn(async () => true),
+  showModal: vi.fn(),
+  closeModal: vi.fn()
+}));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 
 let state, renderParties;
 
 const cards = () => [...document.querySelectorAll('.pt-card')];
-const cardOf = (name) => cards().find(c => c.dataset.partyName === name);
-const signBtn = (name) => cardOf(name)?.querySelector('.sign-party-action-btn');
+const cardOf = name => cards().find(c => c.dataset.partyName === name);
+const signBtn = name => cardOf(name)?.querySelector('.sign-party-action-btn');
 
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.running = [];
-  document.body.innerHTML = '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div><div id="toast-root"></div>';
+  document.body.innerHTML =
+    '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div><div id="toast-root"></div>';
   ({ state } = await import('../js/core/state.js'));
   ({ renderPartiesGrid: renderParties } = await import('../js/modules/parties/renderer.js'));
-  state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
+  state.parties = [
+    { id: 'p1', name: 'Основа', order: 1 },
+    { id: 'p2', name: 'Фарм', order: 2 }
+  ];
   state.characters = [
-    { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC', gcAccount: true } },
-    { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', isLoggedIn: false, launch: { gcPath: 'D:\\GC', gcAccount: true } }
+    {
+      id: 'a',
+      nick: 'Аа',
+      class: 'Воин',
+      partyIds: ['p1'],
+      mainPartyId: 'p1',
+      isLoggedIn: true,
+      launch: { gcPath: 'D:\\GC', gcAccount: true }
+    },
+    {
+      id: 'b',
+      nick: 'Бб',
+      class: 'Маг',
+      partyIds: ['p2'],
+      mainPartyId: 'p2',
+      isLoggedIn: false,
+      launch: { gcPath: 'D:\\GC', gcAccount: true }
+    }
   ];
 });
 

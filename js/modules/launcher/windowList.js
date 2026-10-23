@@ -55,7 +55,9 @@ export function windowRows(clients, characters, opts = {}) {
   // Персонаж узнаётся по нику из заголовка; класс уточняется по карточке
   const byNick = new Map();
   for (const c of list) {
-    const key = String(c.nick || '').trim().toLowerCase();
+    const key = String(c.nick || '')
+      .trim()
+      .toLowerCase();
     if (key && !byNick.has(key)) byNick.set(key, c);
   }
   // Кто окно запускал: подпись могла слететь, а мы всё равно знаем, чьё это окно
@@ -65,33 +67,36 @@ export function windowRows(clients, characters, opts = {}) {
     if (c) byPid.set(String(pid), c);
   }
 
-  return (clients || []).map(client => {
-    const parsed = parseWindowTitle(client?.title);
-    const pid = Number(client?.pid) || 0;
-    const char = (parsed ? byNick.get(parsed.nick.toLowerCase()) : null)
-      // Заголовок бесполезен — берём персонажа из памяти запусков
-      || byPid.get(String(pid))
-      || null;
-    const row = {
-      pid,
-      image: String(client?.image || ''),
-      // Имя берём из карточки (там точный ник), иначе из заголовка; без заголовка — пустая строка
-      nick: char ? String(char.nick) : (parsed?.nick || ''),
-      cls: char ? String(char.class || '') : (parsed?.cls || ''),
-      known: !!char,
-      charId: char ? char.id : null,
-      uptimeMs: client?.startedAt ? Math.max(0, now - Number(client.startedAt)) : null,
-      elevated: client?.elevated ?? null,
-      title: String(client?.title || ''),
-      partyIds: char ? (char.partyIds || []) : []
-    };
-    return row;
-  }).sort((a, b) => {
-    // Сначала узнанные окна, затем по нику; безымянные — по PID
-    if (a.known !== b.known) return a.known ? -1 : 1;
-    if (a.known && b.known) return a.nick.localeCompare(b.nick, 'ru');
-    return a.pid - b.pid;
-  });
+  return (clients || [])
+    .map(client => {
+      const parsed = parseWindowTitle(client?.title);
+      const pid = Number(client?.pid) || 0;
+      const char =
+        (parsed ? byNick.get(parsed.nick.toLowerCase()) : null) ||
+        // Заголовок бесполезен — берём персонажа из памяти запусков
+        byPid.get(String(pid)) ||
+        null;
+      const row = {
+        pid,
+        image: String(client?.image || ''),
+        // Имя берём из карточки (там точный ник), иначе из заголовка; без заголовка — пустая строка
+        nick: char ? String(char.nick) : parsed?.nick || '',
+        cls: char ? String(char.class || '') : parsed?.cls || '',
+        known: !!char,
+        charId: char ? char.id : null,
+        uptimeMs: client?.startedAt ? Math.max(0, now - Number(client.startedAt)) : null,
+        elevated: client?.elevated ?? null,
+        title: String(client?.title || ''),
+        partyIds: char ? char.partyIds || [] : []
+      };
+      return row;
+    })
+    .sort((a, b) => {
+      // Сначала узнанные окна, затем по нику; безымянные — по PID
+      if (a.known !== b.known) return a.known ? -1 : 1;
+      if (a.known && b.known) return a.nick.localeCompare(b.nick, 'ru');
+      return a.pid - b.pid;
+    });
 }
 
 /** Подпись строки: ник и класс, а для чужого окна — «PID 1234». */

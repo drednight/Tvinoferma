@@ -28,14 +28,38 @@ import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
  * Порядок — от проверки данных к действиям с предметами.
  */
 const SCRIPTS = [
-  { id: 'check-auth', type: 'check',  ico: '🔐', label: 'Проверка входа',   hint: 'Проверить вход у всех персонажей на сайте игры' },
-  { id: 'update-balance', type: 'check',  ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Балансы',       hint: 'Обновить баланс Древних монет' },
-  { id: 'update-marathons', type: 'check', ico: '🏃', label: 'Марафоны',     hint: 'Сверить задания и прогресс на сайте' },
-  { id: 'promo', type: 'action', ico: '🎁', label: 'Промокод',          hint: 'Активировать промокод на аккаунтах' },
+  {
+    id: 'check-auth',
+    type: 'check',
+    ico: '🔐',
+    label: 'Проверка входа',
+    hint: 'Проверить вход у всех персонажей на сайте игры'
+  },
+  {
+    id: 'update-balance',
+    type: 'check',
+    ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+    label: 'Балансы',
+    hint: 'Обновить баланс Древних монет'
+  },
+  { id: 'update-marathons', type: 'check', ico: '🏃', label: 'Марафоны', hint: 'Сверить задания и прогресс на сайте' },
+  { id: 'promo', type: 'action', ico: '🎁', label: 'Промокод', hint: 'Активировать промокод на аккаунтах' },
   { id: 'transfer', type: 'action', ico: '📦', label: 'Передача', hint: 'Передать все предметы с сайта' },
-  { id: 'shop', type: 'action', ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Подарки',           hint: 'Купить подарки за Древние монеты' },
+  {
+    id: 'shop',
+    type: 'action',
+    ico: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+    label: 'Подарки',
+    hint: 'Купить подарки за Древние монеты'
+  },
   { id: 'caravan', type: 'action', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
-  { id: 'close-game', type: 'action', ico: '🛑', label: 'Закрыть все окна игры', hint: 'Закрыть все запущенные окна игры' }
+  {
+    id: 'close-game',
+    type: 'action',
+    ico: '🛑',
+    label: 'Закрыть все окна игры',
+    hint: 'Закрыть все запущенные окна игры'
+  }
 ];
 
 const CHECKS = SCRIPTS.filter(s => s.type === 'check');
@@ -48,11 +72,15 @@ function uptimeText(ms) {
 }
 
 function renderScriptCards(list) {
-  return list.map(s => `
+  return list
+    .map(
+      s => `
     <button type="button" class="tools-card tools-card--${s.type}" data-script-action="${s.id}" title="${escapeHtml(s.hint)}">
       <span class="tools-card-ico" aria-hidden="true">${s.ico}</span>
       <span class="tools-card-body"><b>${escapeHtml(s.label)}</b><small>${escapeHtml(s.hint)}</small></span>
-    </button>`).join('');
+    </button>`
+    )
+    .join('');
 }
 
 export function renderTools() {
@@ -116,12 +144,14 @@ export function renderTools() {
 function fillWindows() {
   const box = root()?.querySelector('[data-tools-windows]');
   if (!box) return;
-  const draw = (rows) => {
+  const draw = rows => {
     if (!rows.length) {
       box.innerHTML = '<p class="muted">Запущенных окон игры нет.</p>';
       return;
     }
-    box.innerHTML = `<ul class="today-list rwn-list">${rows.map(r => `
+    box.innerHTML = `<ul class="today-list rwn-list">${rows
+      .map(
+        r => `
       <li class="today-row rwn-row">
         <span class="rwn-dot ${r.known ? 'is-known' : ''}" aria-hidden="true"></span>
         <span class="today-row-text">
@@ -130,7 +160,9 @@ function fillWindows() {
         </span>
         <button type="button" class="btn ghost small" data-tools-act="close-one-window" data-pid="${r.pid}"
                 title="Закрыть это окно игры">🛑 Закрыть</button>
-      </li>`).join('')}</ul>`;
+      </li>`
+      )
+      .join('')}</ul>`;
   };
   draw(runningWindows());
   const off = onRunningWindows(draw);
@@ -154,7 +186,7 @@ async function refreshWindowsButton(btn) {
   btn.disabled = true;
   btn.textContent = '⏳ Проверяем…';
   try {
-    if (!await refreshRunningWindows()) toast('Не удалось получить список окон игры', 'error');
+    if (!(await refreshRunningWindows())) toast('Не удалось получить список окон игры', 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = label;
@@ -165,7 +197,7 @@ export function bindTools() {
   const el = root();
   if (!el || el.dataset.toolsBound) return;
   el.dataset.toolsBound = 'true';
-  el.addEventListener('click', async (event) => {
+  el.addEventListener('click', async event => {
     const script = /** @type {HTMLElement} */ (event.target).closest?.('[data-script-action]');
     if (script) {
       const { runScriptAction } = await import('../../core/uiActions.js');
@@ -198,7 +230,7 @@ export function bindTools() {
       const { confirmModal } = await import('../../core/ui.js');
       const row = runningWindows().find(r => r.pid === pid);
       const ok = await confirmModal({
-        title: `Закрыть окно игры: ${row ? (row.nick || row.title) : `PID ${pid}`}?`,
+        title: `Закрыть окно игры: ${row ? row.nick || row.title : `PID ${pid}`}?`,
         text: 'Всё, что не сохранено в игре, будет потеряно.',
         okText: 'Закрыть окно',
         danger: true

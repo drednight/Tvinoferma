@@ -2,7 +2,11 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import {
-  normalizeQuery, scoreCommand, filterCommands, isHeading, buildCommands
+  normalizeQuery,
+  scoreCommand,
+  filterCommands,
+  isHeading,
+  buildCommands
 } from '../js/core/commandPaletteData.js';
 
 const cmd = (title, extra = {}) => ({ id: title, title, group: 'Тест', run: () => {}, ...extra });
@@ -120,7 +124,7 @@ describe('состав команд', () => {
   it('пустое состояние не падает и не показывает лишнего', () => {
     const empty = buildCommands({}, {});
     expect(empty.some(c => c.title.includes('👤'))).toBe(false);
-    expect(empty.length).toBeGreaterThan(0);   // разделы и действия остаются
+    expect(empty.length).toBeGreaterThan(0); // разделы и действия остаются
     expect(buildCommands(null, {})).toHaveLength(empty.length);
   });
 
@@ -135,7 +139,9 @@ describe('состав команд', () => {
 
   it('команды разделов переключают вкладку', () => {
     const switchTab = vi.fn();
-    buildCommands(appState, { switchTab }).find(c => c.title === '🏃 Марафоны').run();
+    buildCommands(appState, { switchTab })
+      .find(c => c.title === '🏃 Марафоны')
+      .run();
     expect(switchTab).toHaveBeenCalledWith('marathons');
   });
 

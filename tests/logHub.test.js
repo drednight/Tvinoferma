@@ -6,7 +6,7 @@ vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.con
 vi.mock('../js/core/state.js', () => ({ state: { characters: [] } }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 
-const $ = (s) => document.querySelector(s);
+const $ = s => document.querySelector(s);
 const wait = (ms = 20) => new Promise(r => setTimeout(r, ms));
 let hub;
 
@@ -14,18 +14,32 @@ let hub;
 function makeSource(id, rows, extra = {}) {
   const subs = new Set();
   const src = {
-    id, title: `Вид ${id}`, icon: id === 'a' ? '🅰️' : '🅱️',
+    id,
+    title: `Вид ${id}`,
+    icon: id === 'a' ? '🅰️' : '🅱️',
     rows,
     list: () => src.rows,
     open: vi.fn(),
-    clear: vi.fn(() => { src.rows = []; }),
-    subscribe: (fn) => { subs.add(fn); return () => subs.delete(fn); },
+    clear: vi.fn(() => {
+      src.rows = [];
+    }),
+    subscribe: fn => {
+      subs.add(fn);
+      return () => subs.delete(fn);
+    },
     emit: () => subs.forEach(fn => fn()),
     ...extra
   };
   return src;
 }
-const row = (key, at, status = 'ok', extra = {}) => ({ key, at, title: `Запись ${key}`, status, summary: `итог ${key}`, ...extra });
+const row = (key, at, status = 'ok', extra = {}) => ({
+  key,
+  at,
+  title: `Запись ${key}`,
+  status,
+  summary: `итог ${key}`,
+  ...extra
+});
 
 beforeEach(async () => {
   vi.resetModules();
@@ -37,9 +51,13 @@ beforeEach(async () => {
 });
 
 const setup = () => {
-  const a = makeSource('a', [row('a1', '2026-10-01T10:00:00Z'), row('a2', '2026-10-03T10:00:00Z', 'warn', { who: 'Ауразак' })]);
+  const a = makeSource('a', [
+    row('a1', '2026-10-01T10:00:00Z'),
+    row('a2', '2026-10-03T10:00:00Z', 'warn', { who: 'Ауразак' })
+  ]);
   const b = makeSource('b', [row('b1', '2026-10-02T10:00:00Z', 'error'), row('b2', '2026-10-04T10:00:00Z', 'running')]);
-  hub.registerLogSource(a); hub.registerLogSource(b);
+  hub.registerLogSource(a);
+  hub.registerLogSource(b);
   return { a, b };
 };
 
@@ -64,7 +82,13 @@ describe('сбор записей', () => {
 
   it('сломанный источник не ломает остальные; записи без ключа/даты отбрасываются', () => {
     setup();
-    hub.registerLogSource(makeSource('bad', [], { list: () => { throw new Error('boom'); } }));
+    hub.registerLogSource(
+      makeSource('bad', [], {
+        list: () => {
+          throw new Error('boom');
+        }
+      })
+    );
     hub.registerLogSource(makeSource('junk', [{ title: 'без ключа', at: '2026-10-01T00:00:00Z' }, { key: 'x' }, null]));
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(hub.collectLogs().items).toHaveLength(4);
@@ -92,7 +116,11 @@ describe('интерфейс', () => {
   it('кнопки видов со счётчиками, список, нажатие на запись открывает подробности у самого вида', () => {
     const { a } = setup();
     hub.mountLogHub($('#root'), { sessionOnly: false });
-    expect([...document.querySelectorAll('.lh-chip')].map(c => c.textContent.replace(/\s+/g, ' ').trim())).toEqual(['📚 Все 4', '🅰️ Вид a 2', '🅱️ Вид b 2']);
+    expect([...document.querySelectorAll('.lh-chip')].map(c => c.textContent.replace(/\s+/g, ' ').trim())).toEqual([
+      '📚 Все 4',
+      '🅰️ Вид a 2',
+      '🅱️ Вид b 2'
+    ]);
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(4);
     document.querySelector('[data-lh-key="a2"]').click();
     expect(a.open).toHaveBeenCalledWith(expect.objectContaining({ key: 'a2', source: 'a', title: 'Запись a2' }));
@@ -103,10 +131,15 @@ describe('интерфейс', () => {
     hub.mountLogHub($('#root'), { sessionOnly: false });
     document.querySelector('[data-lh-source="b"]').click();
     expect([...document.querySelectorAll('[data-lh-key]')].map(r => r.dataset.lhKey)).toEqual(['b2', 'b1']);
-    const q = $('[data-lh-query]'); q.value = 'b1'; q.dispatchEvent(new Event('input', { bubbles: true }));
+    const q = $('[data-lh-query]');
+    q.value = 'b1';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
     expect([...document.querySelectorAll('[data-lh-key]')].map(r => r.dataset.lhKey)).toEqual(['b1']);
-    q.value = ''; q.dispatchEvent(new Event('input', { bubbles: true }));
-    const p = $('[data-lh-problems]'); p.checked = true; p.dispatchEvent(new Event('change', { bubbles: true }));
+    q.value = '';
+    q.dispatchEvent(new Event('input', { bubbles: true }));
+    const p = $('[data-lh-problems]');
+    p.checked = true;
+    p.dispatchEvent(new Event('change', { bubbles: true }));
     expect([...document.querySelectorAll('[data-lh-key]')].map(r => r.dataset.lhKey)).toEqual(['b1']);
   });
 
@@ -131,12 +164,14 @@ describe('интерфейс', () => {
     await vi.waitFor(() => expect(a.clear).toHaveBeenCalledTimes(1));
     expect(b.clear).not.toHaveBeenCalled();
     expect(hub.collectLogs().items.map(i => i.key)).toEqual(['b2', 'b1']);
-    expect($('[data-lh-clear]').disabled).toBe(true);    // у вида больше нет записей
+    expect($('[data-lh-clear]').disabled).toBe(true); // у вида больше нет записей
   });
 
   it('дополнительные кнопки вида (например, архив CSV) показываются на его вкладке', () => {
     const run = vi.fn();
-    hub.registerLogSource(makeSource('a', [row('a1', '2026-10-01T00:00:00Z')], { actions: () => [{ id: 'csv', label: '⬇ Архив', run }] }));
+    hub.registerLogSource(
+      makeSource('a', [row('a1', '2026-10-01T00:00:00Z')], { actions: () => [{ id: 'csv', label: '⬇ Архив', run }] })
+    );
     hub.mountLogHub($('#root'), { sessionOnly: false });
     expect($('[data-lh-action="csv"]')).toBeNull();
     document.querySelector('[data-lh-source="a"]').click();
@@ -145,7 +180,9 @@ describe('интерфейс', () => {
   });
 
   it('длинный список выводится порциями по 100', () => {
-    const rows = Array.from({ length: 250 }, (_, i) => row(`r${i}`, new Date(Date.UTC(2026, 9, 1, 0, 0, i)).toISOString()));
+    const rows = Array.from({ length: 250 }, (_, i) =>
+      row(`r${i}`, new Date(Date.UTC(2026, 9, 1, 0, 0, i)).toISOString())
+    );
     hub.registerLogSource(makeSource('a', rows));
     hub.mountLogHub($('#root'), { sessionOnly: false });
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(100);
@@ -164,7 +201,8 @@ describe('интерфейс', () => {
     const write = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true });
     hub.mountLogHub($('#root'), { sessionOnly: false });
-    $('[data-lh-copy]').click(); await wait();
+    $('[data-lh-copy]').click();
+    await wait();
     expect(write).toHaveBeenCalledTimes(1);
     expect(write.mock.calls[0][0].split('\n')).toHaveLength(4);
   });
@@ -173,12 +211,15 @@ describe('интерфейс', () => {
     const { a } = setup();
     hub.mountLogHub($('#root'), { sessionOnly: false });
     a.rows = [...a.rows, row('a3', '2026-10-05T10:00:00Z')];
-    a.emit(); a.emit(); a.emit();
+    a.emit();
+    a.emit();
+    a.emit();
     await wait(320);
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(5);
     $('#p').open = false;
     a.rows = [...a.rows, row('a4', '2026-10-06T10:00:00Z')];
-    a.emit(); await wait(320);
+    a.emit();
+    await wait(320);
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(5);
   });
 
@@ -186,8 +227,11 @@ describe('интерфейс', () => {
     const { a } = setup();
     const spy = vi.fn();
     const off = hub.onLogsChange(spy);
-    a.emit(); expect(spy).toHaveBeenCalledTimes(1);
-    off(); a.emit(); expect(spy).toHaveBeenCalledTimes(1);
+    a.emit();
+    expect(spy).toHaveBeenCalledTimes(1);
+    off();
+    a.emit();
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('openLogHub: отдельное окно, вид выбирается сразу', () => {
@@ -212,14 +256,20 @@ describe('вид «Скрипты» (taskLog.js)', () => {
     const running = startTask('Марафоны', { dock: false, total: 4 });
     running.progress(1, 4, 'Ауразак');
     const { items } = hub.collectLogs({ source: 'task' });
-    expect(Object.fromEntries(items.map(i => [i.title, i.status]))).toEqual({ 'Проверка входа': 'ok', 'Балансы': 'warn', 'Марафоны': 'running' });
+    expect(Object.fromEntries(items.map(i => [i.title, i.status]))).toEqual({
+      'Проверка входа': 'ok',
+      Балансы: 'warn',
+      Марафоны: 'running'
+    });
     expect(items.find(i => i.title === 'Марафоны').summary).toContain('25%');
-    hub.getLogSources().find(s => s.id === 'task').clear();
+    hub
+      .getLogSources()
+      .find(s => s.id === 'task')
+      .clear();
     expect(hub.collectLogs({ source: 'task' }).items.map(i => i.title)).toEqual(['Марафоны']);
     running.finish('ok');
   });
 });
-
 
 describe('журнал текущей сессии', () => {
   // По умолчанию видна вся история: иначе после перезапуска журнал выглядит пустым,
@@ -254,7 +304,9 @@ describe('журнал текущей сессии', () => {
 
   it('прошлые задачи остаются в localStorage и видны в общем списке', async () => {
     const key = 'tf_task_journal_v1';
-    const saved = JSON.stringify([{ id: 'previous', title: 'Прошлая сессия', startedAt: '2000-01-01T00:00:00Z', status: 'done', entries: [] }]);
+    const saved = JSON.stringify([
+      { id: 'previous', title: 'Прошлая сессия', startedAt: '2000-01-01T00:00:00Z', status: 'done', entries: [] }
+    ]);
     localStorage.setItem(key, saved);
     const { startTask } = await import('../js/core/taskLog.js');
     hub.mountLogHub($('#root'));

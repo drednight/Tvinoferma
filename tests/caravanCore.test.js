@@ -1,20 +1,58 @@
 // «Сундук караванщика»: чистая логика (строки результата, статусы, тексты, сводка) и запуск пачки персонажей.
 import { describe, it, expect, vi } from 'vitest';
 import {
-  rowFromPayload, plainRow, canAutoRetry, isRerunnable, rowLabel, rowNotes, chestLine, summarize, summaryText, taskLevel,
-  caravanErrorText, isTransient, statusInfo
+  rowFromPayload,
+  plainRow,
+  canAutoRetry,
+  isRerunnable,
+  rowLabel,
+  rowNotes,
+  chestLine,
+  summarize,
+  summaryText,
+  taskLevel,
+  caravanErrorText,
+  isTransient,
+  statusInfo
 } from '../js/modules/automation/caravanCore.js';
 import { runCaravanBatch, START_STAGGER_MS } from '../js/modules/automation/caravanRunner.js';
 import { createLimiter } from '../js/modules/sync/queue.js';
 
 const ch = { id: 'a', nick: 'Аа' };
-const chest = (over = {}) => ({ cartId: '1001', until: '15:04 10.10.2026', state: 'opened', error: null, items: ['x', 'y'], ...over });
-const payload = (over = {}) => ({ charId: 'a', status: 'success', error: null, dryRun: false, clicked: true, found: 2, other: 1, opened: 2, chests: [chest(), chest({ cartId: '1002' })], ...over });
+const chest = (over = {}) => ({
+  cartId: '1001',
+  until: '15:04 10.10.2026',
+  state: 'opened',
+  error: null,
+  items: ['x', 'y'],
+  ...over
+});
+const payload = (over = {}) => ({
+  charId: 'a',
+  status: 'success',
+  error: null,
+  dryRun: false,
+  clicked: true,
+  found: 2,
+  other: 1,
+  opened: 2,
+  chests: [chest(), chest({ cartId: '1002' })],
+  ...over
+});
 
 describe('rowFromPayload', () => {
   it('нормализует ответ команды', () => {
     const r = rowFromPayload(ch, payload());
-    expect(r).toMatchObject({ charId: 'a', nick: 'Аа', status: 'success', found: 2, opened: 2, other: 1, clicked: true, error: null });
+    expect(r).toMatchObject({
+      charId: 'a',
+      nick: 'Аа',
+      status: 'success',
+      found: 2,
+      opened: 2,
+      other: 1,
+      clicked: true,
+      error: null
+    });
     expect(r.chests).toHaveLength(2);
     expect(r.chests[0]).toMatchObject({ cartId: '1001', state: 'opened', items: ['x', 'y'] });
   });
@@ -40,9 +78,15 @@ describe('подписи и статусы', () => {
   it('подписи по статусам', () => {
     expect(rowLabel(rowFromPayload(ch, payload()))).toBe('Открыто сундуков: 2');
     expect(rowLabel(rowFromPayload(ch, payload({ status: 'partial', opened: 1 })))).toBe('Открыто 1 из 2');
-    expect(rowLabel(rowFromPayload(ch, payload({ status: 'nothing', found: 0, opened: 0, clicked: false })))).toBe('Сундуков нет');
-    expect(rowLabel(rowFromPayload(ch, payload({ status: 'dry_run', dryRun: true, clicked: false })))).toBe('Сундуков караванщика: 2');
-    expect(rowLabel(rowFromPayload(ch, payload({ status: 'error', error: 'timeout', clicked: false })))).toContain('сайт не ответил вовремя');
+    expect(rowLabel(rowFromPayload(ch, payload({ status: 'nothing', found: 0, opened: 0, clicked: false })))).toBe(
+      'Сундуков нет'
+    );
+    expect(rowLabel(rowFromPayload(ch, payload({ status: 'dry_run', dryRun: true, clicked: false })))).toBe(
+      'Сундуков караванщика: 2'
+    );
+    expect(rowLabel(rowFromPayload(ch, payload({ status: 'error', error: 'timeout', clicked: false })))).toContain(
+      'сайт не ответил вовремя'
+    );
     expect(rowLabel(rowFromPayload(ch, payload({ status: 'not_logged_in' })))).toBe('Нет входа на сайт');
   });
 
@@ -56,7 +100,9 @@ describe('подписи и статусы', () => {
 
   it('строка про сундук: состояние, номер, срок, число предметов, ошибка', () => {
     expect(chestLine(chest())).toBe('✅ открыт №1001 · до 15:04 10.10.2026 · предметов: 2');
-    expect(chestLine(chest({ state: 'error', error: 'selection_changed', items: [], until: '' }))).toContain('отметки в сундуке изменились');
+    expect(chestLine(chest({ state: 'error', error: 'selection_changed', items: [], until: '' }))).toContain(
+      'отметки в сундуке изменились'
+    );
   });
 
   it('тексты ошибок сундука не говорят про «Активировать» и «передачу»', () => {
@@ -67,8 +113,18 @@ describe('подписи и статусы', () => {
   });
 
   it('у каждого статуса есть иконка и уровень; неизвестный = ошибка', () => {
-    ['success', 'partial', 'nothing', 'dry_run', 'not_logged_in', 'challenge', 'unknown', 'error', 'cancelled', 'not_run']
-      .forEach(s => expect(statusInfo(s).icon).toBeTruthy());
+    [
+      'success',
+      'partial',
+      'nothing',
+      'dry_run',
+      'not_logged_in',
+      'challenge',
+      'unknown',
+      'error',
+      'cancelled',
+      'not_run'
+    ].forEach(s => expect(statusInfo(s).icon).toBeTruthy());
     expect(statusInfo('zzz').level).toBe('error');
   });
 });
@@ -105,7 +161,16 @@ describe('сводка', () => {
   ];
 
   it('считает персонажей, найденные и открытые сундуки', () => {
-    expect(summarize(rows)).toMatchObject({ total: 4, success: 1, nothing: 1, partial: 1, noLogin: 1, found: 5, opened: 3, rerun: 1 });
+    expect(summarize(rows)).toMatchObject({
+      total: 4,
+      success: 1,
+      nothing: 1,
+      partial: 1,
+      noLogin: 1,
+      found: 5,
+      opened: 3,
+      rerun: 1
+    });
   });
 
   it('текст итога и уровень записи в журнале', () => {
@@ -124,9 +189,9 @@ describe('сводка', () => {
 });
 
 describe('runCaravanBatch', () => {
-  const mk = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, nick: `Ник${i}` }));
+  const mk = n => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, nick: `Ник${i}` }));
   const noSleep = async () => {};
-  const base = (over) => ({ chars: mk(3), limiter: createLimiter(3), sleepFn: noSleep, random: () => 0, ...over });
+  const base = over => ({ chars: mk(3), limiter: createLimiter(3), sleepFn: noSleep, random: () => 0, ...over });
   const ok = (charId, extra = {}) => payload({ charId, ...extra });
 
   it('по одному вызову команды на персонажа, строки в порядке списка', async () => {
@@ -140,21 +205,33 @@ describe('runCaravanBatch', () => {
   });
 
   it('одновременно работает столько персонажей, сколько разрешает лимит окон', async () => {
-    let active = 0, max = 0;
-    const invokeFn = async (_, a) => { active++; max = Math.max(max, active); await new Promise(r => setTimeout(r, 5)); active--; return ok(a.charId); };
+    let active = 0,
+      max = 0;
+    const invokeFn = async (_, a) => {
+      active++;
+      max = Math.max(max, active);
+      await new Promise(r => setTimeout(r, 5));
+      active--;
+      return ok(a.charId);
+    };
     await runCaravanBatch(base({ chars: mk(6), invokeFn, limiter: createLimiter(2) }));
     expect(max).toBe(2);
   });
 
   it('только подсчёт: dryRun уходит в команду', async () => {
-    const invokeFn = vi.fn(async (_, a) => ok(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0 }));
+    const invokeFn = vi.fn(async (_, a) =>
+      ok(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0 })
+    );
     const rows = await runCaravanBatch(base({ invokeFn, dryRun: true }));
     expect(invokeFn.mock.calls.every(c => c[1].dryRun === true)).toBe(true);
     expect(summarize(rows)).toMatchObject({ dry: 3, opened: 0, rerun: 0 });
   });
 
   it('сбой команды у одного персонажа не мешает остальным', async () => {
-    const invokeFn = async (_, a) => { if (a.charId === 'c1') throw new Error('сломалось'); return ok(a.charId); };
+    const invokeFn = async (_, a) => {
+      if (a.charId === 'c1') throw new Error('сломалось');
+      return ok(a.charId);
+    };
     const rows = await runCaravanBatch(base({ invokeFn }));
     expect(rows.map(r => r.status)).toEqual(['success', 'error', 'success']);
     expect(rows[1].error).toBe('сломалось');
@@ -162,28 +239,47 @@ describe('runCaravanBatch', () => {
 
   it('временный сбой повторяется, пока ничего не нажато', async () => {
     let n = 0;
-    const invokeFn = vi.fn(async (_, a) => (n++ === 0 ? payload({ charId: a.charId, status: 'error', error: 'timeout', clicked: false, opened: 0, found: 0, chests: [] }) : ok(a.charId)));
+    const invokeFn = vi.fn(async (_, a) =>
+      n++ === 0
+        ? payload({
+            charId: a.charId,
+            status: 'error',
+            error: 'timeout',
+            clicked: false,
+            opened: 0,
+            found: 0,
+            chests: []
+          })
+        : ok(a.charId)
+    );
     const rows = await runCaravanBatch(base({ chars: mk(1), invokeFn, retries: 2 }));
     expect(invokeFn).toHaveBeenCalledTimes(2);
     expect(rows[0].status).toBe('success');
   });
 
   it('после нажатия кнопки вслепую не повторяем', async () => {
-    const invokeFn = vi.fn(async (_, a) => payload({ charId: a.charId, status: 'error', error: 'timeout', clicked: true }));
+    const invokeFn = vi.fn(async (_, a) =>
+      payload({ charId: a.charId, status: 'error', error: 'timeout', clicked: true })
+    );
     const rows = await runCaravanBatch(base({ chars: mk(1), invokeFn, retries: 3 }));
     expect(invokeFn).toHaveBeenCalledTimes(1);
     expect(rows[0].clicked).toBe(true);
   });
 
   it('«нет входа» не повторяется', async () => {
-    const invokeFn = vi.fn(async (_, a) => payload({ charId: a.charId, status: 'not_logged_in', clicked: false, found: 0, opened: 0, chests: [] }));
+    const invokeFn = vi.fn(async (_, a) =>
+      payload({ charId: a.charId, status: 'not_logged_in', clicked: false, found: 0, opened: 0, chests: [] })
+    );
     await runCaravanBatch(base({ chars: mk(1), invokeFn, retries: 3 }));
     expect(invokeFn).toHaveBeenCalledTimes(1);
   });
 
   it('«Стоп»: новые персонажи не стартуют, они помечены остановленными', async () => {
     const signal = { cancelled: false };
-    const invokeFn = vi.fn(async (_, a) => { signal.cancelled = true; return ok(a.charId); });
+    const invokeFn = vi.fn(async (_, a) => {
+      signal.cancelled = true;
+      return ok(a.charId);
+    });
     const rows = await runCaravanBatch(base({ chars: mk(4), invokeFn, signal, limiter: createLimiter(1) }));
     expect(invokeFn).toHaveBeenCalledTimes(1);
     expect(rows.map(r => r.status)).toEqual(['success', 'cancelled', 'cancelled', 'cancelled']);

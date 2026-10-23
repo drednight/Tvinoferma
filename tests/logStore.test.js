@@ -13,7 +13,7 @@ const KEY = 'tf_test_log';
 function storageWithQuota(limitBytes) {
   const used = new Map();
   return {
-    getItem: (k) => (used.has(k) ? used.get(k) : null),
+    getItem: k => (used.has(k) ? used.get(k) : null),
     setItem(k, v) {
       const bytes = [...used].filter(([key]) => key !== k).reduce((n, [, val]) => n + val.length, 0) + v.length;
       if (bytes > limitBytes) {
@@ -23,8 +23,10 @@ function storageWithQuota(limitBytes) {
       }
       used.set(k, v);
     },
-    removeItem: (k) => used.delete(k),
-    get size() { return used.size; }
+    removeItem: k => used.delete(k),
+    get size() {
+      return used.size;
+    }
   };
 }
 
@@ -93,7 +95,11 @@ describe('журнал: переполнение хранилища', () => {
   it('ошибка не из-за квоты не маскируется под успешную запись', () => {
     const broken = {
       getItem: () => null,
-      setItem() { const e = new Error('сломан'); e.name = 'UnknownError'; throw e; },
+      setItem() {
+        const e = new Error('сломан');
+        e.name = 'UnknownError';
+        throw e;
+      },
       removeItem: () => {}
     };
     const backup = window.localStorage;
@@ -110,7 +116,7 @@ describe('журнал: добавление записи', () => {
   it('новые сверху, лимит соблюдается, старые вытесняются', () => {
     for (let i = 0; i < 6; i++) pushLog(KEY, { i }, 3);
     const log = readLog(KEY);
-    expect(log.map((e) => e.i)).toEqual([5, 4, 3]);
+    expect(log.map(e => e.i)).toEqual([5, 4, 3]);
   });
 
   it('пустое хранилище и битая запись не ломают добавление', () => {
@@ -139,7 +145,7 @@ describe('журналы приложения пишутся через logStore
       const fs = await import('node:fs');
       const source = fs.readFileSync(file, 'utf8');
       // Ни одна запись журнала не должна идти через writeJson: он квоту глушит
-      expect(source.split('\n').filter((l) => /writeJson\(\s*(LOG_KEY|STORAGE_KEY)/.test(l))).toHaveLength(0);
+      expect(source.split('\n').filter(l => /writeJson\(\s*(LOG_KEY|STORAGE_KEY)/.test(l))).toHaveLength(0);
       expect(source).toContain('writeLogBounded(');
     });
   }

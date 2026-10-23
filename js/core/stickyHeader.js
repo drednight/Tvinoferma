@@ -12,7 +12,8 @@
 export function initStickyHeader(doc = document) {
   const bar = /** @type {HTMLElement | null} */ (doc.querySelector('.topbar'));
   if (!bar) return () => {};
-  const apply = () => doc.documentElement.style.setProperty('--topbar-h', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
+  const apply = () =>
+    doc.documentElement.style.setProperty('--topbar-h', `${Math.ceil(bar.getBoundingClientRect().height)}px`);
   apply();
   if (typeof ResizeObserver === 'undefined') {
     window.addEventListener('resize', apply);

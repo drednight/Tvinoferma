@@ -15,19 +15,40 @@ export const LIMITS_TTL_DAYS = 60;
 export const LOG_KEY = 'tf_transfer_log_v1';
 export const LOG_MAX = 300;
 
-const store = () => { try { return window.localStorage; } catch { return null; } };
-const readJson = (key, fallback) => { try { const v = JSON.parse(store()?.getItem(key) || 'null'); return v ?? fallback; } catch { return fallback; } };
-const writeJson = (key, value) => { try { store()?.setItem(key, JSON.stringify(value)); } catch { /* квота: данные не критичны */ } };
-const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const store = () => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+const readJson = (key, fallback) => {
+  try {
+    const v = JSON.parse(store()?.getItem(key) || 'null');
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writeJson = (key, value) => {
+  try {
+    store()?.setItem(key, JSON.stringify(value));
+  } catch {
+    /* квота: данные не критичны */
+  }
+};
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 
 /* ------------------------- серверы и персонажи ------------------------- */
 
 /** { [id браузера]: список } — списки, которые есть. */
 export function loadRosters() {
   const raw = readJson(ROSTER_KEY, {});
-  return isObj(raw) ? Object.fromEntries(Object.entries(raw).filter(([, r]) => isObj(r) && Array.isArray(r.shards))) : {};
+  return isObj(raw)
+    ? Object.fromEntries(Object.entries(raw).filter(([, r]) => isObj(r) && Array.isArray(r.shards)))
+    : {};
 }
-export const saveRosters = (rosters) => writeJson(ROSTER_KEY, rosters);
+export const saveRosters = rosters => writeJson(ROSTER_KEY, rosters);
 
 /**
  * Записывает прочитанное со страницы сайта.
@@ -79,7 +100,7 @@ export function reconcileRoster(charId, charNick, prev) {
   const gone = Object.entries(prefs.picks?.[charId] || {})
     .filter(([, key]) => !keys.has(key))
     .map(([sid]) => sid);
-  const hasNick = (list) => !!charNick && (list || []).some(n => n && normKey(n) === normKey(charNick));
+  const hasNick = list => !!charNick && (list || []).some(n => n && normKey(n) === normKey(charNick));
   const names = (roster.shards || []).flatMap(s => (s.chars || []).map(c => c.name));
   const missingChar = hasNick(prev?.shards?.flatMap(s => (s.chars || []).map(c => c.name))) && !hasNick(names);
   if (gone.length) {
@@ -95,7 +116,12 @@ export function reconcileRoster(charId, charNick, prev) {
 export function clearPending(charId) {
   const all = loadRosters();
   if (!all[charId]) return;
-  all[charId].pending = { items: [], chests: all[charId].pending?.chests || 0, locked: all[charId].pending?.locked || 0, stale: true };
+  all[charId].pending = {
+    items: [],
+    chests: all[charId].pending?.chests || 0,
+    locked: all[charId].pending?.locked || 0,
+    stale: true
+  };
   saveRosters(all);
 }
 
@@ -126,7 +152,7 @@ export function loadPrefs() {
   const raw = readJson(PREFS_KEY, {});
   return { servers: isObj(raw?.servers) ? raw.servers : {}, picks: isObj(raw?.picks) ? raw.picks : {} };
 }
-export const savePrefs = (prefs) => writeJson(PREFS_KEY, prefs);
+export const savePrefs = prefs => writeJson(PREFS_KEY, prefs);
 
 /* ------------------- акции, привязанные к серверу ------------------- */
 
@@ -140,7 +166,11 @@ export function loadLimits(now = new Date()) {
   const raw = readJson(LIMITS_KEY, {});
   if (!isObj(raw)) return {};
   const maxAge = LIMITS_TTL_DAYS * 86400000;
-  return Object.fromEntries(Object.entries(raw).filter(([, v]) => isObj(v) && v.source && v.server && now.getTime() - Date.parse(v.at) <= maxAge));
+  return Object.fromEntries(
+    Object.entries(raw).filter(
+      ([, v]) => isObj(v) && v.source && v.server && now.getTime() - Date.parse(v.at) <= maxAge
+    )
+  );
 }
 /** Простой вид для планирования: ключ акции → название сервера. */
 export function limitsMap(now = new Date()) {
@@ -149,20 +179,33 @@ export function limitsMap(now = new Date()) {
 /** Запоминает: акции `sources` принимаются только на сервер `server`. */
 export function saveLimits({ server, sources }, now = new Date()) {
   const all = loadLimits(now);
-  (sources || []).forEach(s => { if (String(s).trim()) all[normKey(s)] = { source: String(s).trim().slice(0, 120), server: String(server).trim().slice(0, 40), at: now.toISOString() }; });
+  (sources || []).forEach(s => {
+    if (String(s).trim())
+      all[normKey(s)] = {
+        source: String(s).trim().slice(0, 120),
+        server: String(server).trim().slice(0, 40),
+        at: now.toISOString()
+      };
+  });
   writeJson(LIMITS_KEY, all);
   return all;
 }
-export function clearLimits() { store()?.removeItem(LIMITS_KEY); }
+export function clearLimits() {
+  store()?.removeItem(LIMITS_KEY);
+}
 
 /* -------------------------------- журнал ------------------------------- */
 
 /** От новых записей к старым. */
 export function loadTransferLog() {
   const raw = readJson(LOG_KEY, []);
-  return (Array.isArray(raw) ? raw : []).filter(r => r && r.at && r.charId).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return (Array.isArray(raw) ? raw : [])
+    .filter(r => r && r.at && r.charId)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
-export function clearTransferLog() { store()?.removeItem(LOG_KEY); }
+export function clearTransferLog() {
+  store()?.removeItem(LOG_KEY);
+}
 
 /**
  * Запись журнала по строке результата. Пробные запуски и строки без нажатия «Передать» не записываются:
@@ -170,12 +213,24 @@ export function clearTransferLog() { store()?.removeItem(LOG_KEY); }
  */
 export function logEntry(row) {
   return {
-    at: row.at, charId: row.charId, nick: row.nick, shardId: row.shardId, server: row.server, recipient: row.recipient,
-    status: row.status, detail: row.detail || null, count: row.count || 0,
+    at: row.at,
+    charId: row.charId,
+    nick: row.nick,
+    shardId: row.shardId,
+    server: row.server,
+    recipient: row.recipient,
+    status: row.status,
+    detail: row.detail || null,
+    count: row.count || 0,
     items: (row.items || []).map(i => ({ name: i.name, qty: i.qty })),
     done: (row.done || []).map(i => ({ name: i.name, qty: i.qty })),
     missing: (row.missing || []).map(i => ({ name: i.name, qty: i.qty, source: i.source || '' })),
-    limited: (row.limited || []).map(i => ({ name: i.name, qty: i.qty, source: i.source || '', server: i.server || '' })),
+    limited: (row.limited || []).map(i => ({
+      name: i.name,
+      qty: i.qty,
+      source: i.source || '',
+      server: i.server || ''
+    })),
     warning: row.warning ? row.warning.message : null,
     siteStatus: [...new Set((row.history || []).map(h => h.status).filter(Boolean))].join(', ')
   };
@@ -185,6 +240,10 @@ export function recordTransfer(row) {
   if (!row?.clicked || row.dryRun) return null;
   const entry = logEntry(row);
   writeLogBounded(LOG_KEY, [entry, ...loadTransferLog()].slice(0, LOG_MAX));
-  try { window.dispatchEvent(new CustomEvent('tf-transfer-log')); } catch { /* вне браузера */ }
+  try {
+    window.dispatchEvent(new CustomEvent('tf-transfer-log'));
+  } catch {
+    /* вне браузера */
+  }
   return entry;
 }

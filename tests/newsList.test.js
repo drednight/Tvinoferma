@@ -1,18 +1,31 @@
 import { describe, it, expect } from 'vitest';
 import { fixture, runPageScript } from './helpers/pageScript.js';
-import { parseNewsList, filterNews, isMarathonTitle, mergeNewsPages, newsListUrl, NEWS_LIST_PAGES } from '../js/modules/marathons/newsList.js';
+import {
+  parseNewsList,
+  filterNews,
+  isMarathonTitle,
+  mergeNewsPages,
+  newsListUrl,
+  NEWS_LIST_PAGES
+} from '../js/modules/marathons/newsList.js';
 
 // Фикстуры — реальные страницы архива событий pwonline.ru (стр. 1 и 2), перекодированные в UTF-8.
 const p1 = fixture('news_list_p1.html');
 const p2 = fixture('news_list_p2.html');
 // То, что реально приходит из приложения: скрипт страницы удаляет атрибуты class/style
-const stripped = (h) => h.replace(/\s(class|style|align|width|valign)="[^"]*"/g, '');
+const stripped = h => h.replace(/\s(class|style|align|width|valign)="[^"]*"/g, '');
 
 describe('parseNewsList', () => {
   it('разбирает 15 новостей на странице', () => {
     const a = parseNewsList(p1);
     expect(a).toHaveLength(15);
-    expect(a[0]).toMatchObject({ id: '9124', title: 'День середины осени в Идеальном Мире', date: '24.09.2026', isoDate: '2026-09-24', url: 'https://pwonline.ru/news.php?article=9124' });
+    expect(a[0]).toMatchObject({
+      id: '9124',
+      title: 'День середины осени в Идеальном Мире',
+      date: '24.09.2026',
+      isoDate: '2026-09-24',
+      url: 'https://pwonline.ru/news.php?article=9124'
+    });
   });
   it('работает с HTML без классов (как отдаёт приложение)', () => {
     expect(parseNewsList(stripped(p2))).toEqual(parseNewsList(p2));
@@ -29,7 +42,10 @@ describe('поиск марафонов', () => {
   it('находит новости про марафоны на страницах 1–2', () => {
     const found = filterNews(mergeNewsPages([parseNewsList(p1), parseNewsList(p2)]));
     expect(found.map(x => x.title)).toEqual([
-      'Марафон активности на «Капелле»', 'Летний марафон', 'Весенний марафон', 'Обновление гильдейских марафонов «Капеллы»'
+      'Марафон активности на «Капелле»',
+      'Летний марафон',
+      'Весенний марафон',
+      'Обновление гильдейских марафонов «Капеллы»'
     ]);
   });
   it('«показать все» не фильтрует, новые сверху', () => {

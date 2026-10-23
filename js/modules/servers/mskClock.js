@@ -9,10 +9,12 @@ import { mskTimeSeconds } from '../../core/msk.js';
 /** Разметка часов: подпись, смещение пояса и три группы цифр. */
 export function mskClockHtml(value = new Date()) {
   const [h, m, s] = (mskTimeSeconds(value) || '--:--:--').split(':');
-  return `<div class="msk-clock-head"><span class="msk-clock-dot" aria-hidden="true"></span>`
-    + `<span class="msk-clock-label">Московское время</span><span class="msk-clock-zone">UTC+3</span></div>`
-    + `<div class="msk-clock-time" aria-label="Московское время">`
-    + `<b data-part="h">${h}</b><i aria-hidden="true">:</i><b data-part="m">${m}</b><i aria-hidden="true">:</i><b data-part="s">${s}</b></div>`;
+  return (
+    `<div class="msk-clock-head"><span class="msk-clock-dot" aria-hidden="true"></span>` +
+    `<span class="msk-clock-label">Московское время</span><span class="msk-clock-zone">UTC+3</span></div>` +
+    `<div class="msk-clock-time" aria-label="Московское время">` +
+    `<b data-part="h">${h}</b><i aria-hidden="true">:</i><b data-part="m">${m}</b><i aria-hidden="true">:</i><b data-part="s">${s}</b></div>`
+  );
 }
 
 /**

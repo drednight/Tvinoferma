@@ -8,10 +8,10 @@ import { openOverlay } from '../marathons/overlay.js';
 import { statusInfo } from './transferCore.js';
 import { loadTransferLog, clearTransferLog } from './transferStore.js';
 
-const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-const itemsCount = (e) => (e.items || []).reduce((n, i) => n + (Number(i.qty) || 1), 0);
+const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+const itemsCount = e => (e.items || []).reduce((n, i) => n + (Number(i.qty) || 1), 0);
 
-const label = (e) => {
+const label = e => {
   const info = statusInfo(e.status);
   return `${info.label}${e.detail ? `: ${e.detail}` : ''}`;
 };
@@ -30,12 +30,15 @@ export function detailsHtml(e) {
     ${e.status === 'success' ? '' : '<p class="promo-warn">Сверьте с «Историей передачи» на сайте: приложение само ничего не повторяет, чтобы не отправить предметы дважды.</p>'}`;
 }
 
-const entryText = (e) => [
-  `${when(e.at)} · ${e.nick} → ${e.server || '?'} → ${e.recipient || '?'}`,
-  label(e),
-  ...(e.missing?.length ? [`Не передано: ${e.missing.map(i => `${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''}`).join('; ')}`] : []),
-  ...(e.items || []).map(i => `${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''}`)
-].join('\n');
+const entryText = e =>
+  [
+    `${when(e.at)} · ${e.nick} → ${e.server || '?'} → ${e.recipient || '?'}`,
+    label(e),
+    ...(e.missing?.length
+      ? [`Не передано: ${e.missing.map(i => `${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''}`).join('; ')}`]
+      : []),
+    ...(e.items || []).map(i => `${i.name}${i.qty > 1 ? ` ×${i.qty}` : ''}`)
+  ].join('\n');
 
 /** Окно с подробностями одной передачи. */
 export function openTransferEntry(index) {
@@ -43,35 +46,46 @@ export function openTransferEntry(index) {
   if (!e) return null;
   const ov = openOverlay({ title: '📦 Передача предметов', wide: true });
   ov.body.innerHTML = detailsHtml(e);
-  ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
+  ov.foot.innerHTML =
+    '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-copy]').onclick = async (ev) => {
-    try { await navigator.clipboard.writeText(entryText(e)); ev.target.textContent = '✔ Скопировано'; }
-    catch { ev.target.textContent = 'Не удалось скопировать'; }
+  ov.foot.querySelector('[data-copy]').onclick = async ev => {
+    try {
+      await navigator.clipboard.writeText(entryText(e));
+      ev.target.textContent = '✔ Скопировано';
+    } catch {
+      ev.target.textContent = 'Не удалось скопировать';
+    }
   };
   return ov;
 }
 
-const entryKey = (e) => `${e.at}|${e.charId}`;
+const entryKey = e => `${e.at}|${e.charId}`;
 
 /** Вид логов «Передачи» в едином модуле логов (logHub.js). */
 export const transferLogSource = {
   id: 'transfer',
   title: 'Передачи',
   icon: '📦',
-  list: () => loadTransferLog().map(e => ({
-    key: entryKey(e), at: e.at, title: `${e.recipient || '?'} · ${e.server || '?'}`,
-    status: e.status === 'success' ? 'ok' : statusInfo(e.status).level === 'error' ? 'error' : 'warn',
-    who: e.nick,
-    summary: `${e.count || itemsCount(e)} предм.${e.status === 'success' ? '' : ` · ${statusInfo(e.status).label}`}`
-  })),
-  open: (item) => {
+  list: () =>
+    loadTransferLog().map(e => ({
+      key: entryKey(e),
+      at: e.at,
+      title: `${e.recipient || '?'} · ${e.server || '?'}`,
+      status: e.status === 'success' ? 'ok' : statusInfo(e.status).level === 'error' ? 'error' : 'warn',
+      who: e.nick,
+      summary: `${e.count || itemsCount(e)} предм.${e.status === 'success' ? '' : ` · ${statusInfo(e.status).label}`}`
+    })),
+  open: item => {
     const i = loadTransferLog().findIndex(e => entryKey(e) === item.key);
     if (i >= 0) openTransferEntry(i);
   },
   clear: () => clearTransferLog(),
   clearConfirm: 'Очистить логи передач? Приложение забудет, что и когда передавалось. На сайте история останется.',
-  subscribe: (fn) => { window.addEventListener('tf-transfer-log', fn); return () => window.removeEventListener('tf-transfer-log', fn); }
+  subscribe: fn => {
+    window.addEventListener('tf-transfer-log', fn);
+    return () => window.removeEventListener('tf-transfer-log', fn);
+  }
 };
 registerLogSource(transferLogSource);
 

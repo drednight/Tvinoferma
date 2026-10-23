@@ -31,8 +31,18 @@ const range = (r, random) => r[0] + random() * (r[1] - r[0]);
  * @returns {Promise<object[]>} строки результата в порядке `chars`
  */
 export async function runCaravanBatch({
-  chars, dryRun = false, signal = { cancelled: false }, invokeFn, limiter = browserSlots,
-  retries = 0, retryDelayMs = 2000, task, onRow, onStart, sleepFn = sleep, random = Math.random
+  chars,
+  dryRun = false,
+  signal = { cancelled: false },
+  invokeFn,
+  limiter = browserSlots,
+  retries = 0,
+  retryDelayMs = 2000,
+  task,
+  onRow,
+  onStart,
+  sleepFn = sleep,
+  random = Math.random
 }) {
   const total = chars.length;
   const rows = new Map();
@@ -47,40 +57,61 @@ export async function runCaravanBatch({
     onRow?.(row, done, total);
   };
 
-  const attempt = async (char) => {
+  const attempt = async char => {
     for (let a = 0; ; a++) {
-      task?.setStep?.(`${char.nick}: ${dryRun ? 'считаю сундуки' : 'открываю сундуки'}${a ? ` (повтор ${a}/${retries})` : ''}`);
+      task?.setStep?.(
+        `${char.nick}: ${dryRun ? 'считаю сундуки' : 'открываю сундуки'}${a ? ` (повтор ${a}/${retries})` : ''}`
+      );
       let payload, error;
       try {
-        payload = await invokeFn('open_caravan_chests', { charId: char.id, dryRun, timeoutSeconds: Math.min(25 + 15 * a, 60) });
-      } catch (e) { error = e; }
+        payload = await invokeFn('open_caravan_chests', {
+          charId: char.id,
+          dryRun,
+          timeoutSeconds: Math.min(25 + 15 * a, 60)
+        });
+      } catch (e) {
+        error = e;
+      }
       const row = rowFromPayload(char, payload, error);
       if (a >= retries || signal.cancelled || !canAutoRetry(row)) return row;
-      task?.log?.(`${char.nick}: повтор ${a + 1}/${retries} (${row.status === 'challenge' ? 'проверка безопасности' : row.error})`, 'info');
+      task?.log?.(
+        `${char.nick}: повтор ${a + 1}/${retries} (${row.status === 'challenge' ? 'проверка безопасности' : row.error})`,
+        'info'
+      );
       await sleepFn(retryDelayMs * (a + 1));
     }
   };
 
-  const entries = await runQueue(chars, async (char) => {
-    if (signal.cancelled) return null;
-    if (started++ > 0) await sleepFn(range(START_STAGGER_MS, random));
-    if (signal.cancelled) return null;
-    onStart?.(char);
-    const row = await attempt(char);
-    emit(char, row);
-    return row;
-  }, {
-    limiter, retries: 0, signal,
-    onDone: (entry) => { if (entry.error) task?.log?.(`${entry.item.nick}: ${entry.error?.message || entry.error}`, 'error'); }
-  });
+  const entries = await runQueue(
+    chars,
+    async char => {
+      if (signal.cancelled) return null;
+      if (started++ > 0) await sleepFn(range(START_STAGGER_MS, random));
+      if (signal.cancelled) return null;
+      onStart?.(char);
+      const row = await attempt(char);
+      emit(char, row);
+      return row;
+    },
+    {
+      limiter,
+      retries: 0,
+      signal,
+      onDone: entry => {
+        if (entry.error) task?.log?.(`${entry.item.nick}: ${entry.error?.message || entry.error}`, 'error');
+      }
+    }
+  );
   // «Стоп» нажат до старта персонажа (или его worker упал): строка остановленного
-  entries.forEach(e => emit(e.item, e.error
-    ? rowFromPayload(e.item, null, e.error)
-    : plainRow(e.item, 'cancelled')));
+  entries.forEach(e => emit(e.item, e.error ? rowFromPayload(e.item, null, e.error) : plainRow(e.item, 'cancelled')));
 
   chars.forEach(c => {
     const row = rows.get(c.id);
-    if (row && row.status !== 'cancelled') task?.log?.(`${c.nick}: ${statusInfo(row.status).icon} ${rowLabel(row)}`, statusInfo(row.status).level === 'error' ? 'error' : 'info');
+    if (row && row.status !== 'cancelled')
+      task?.log?.(
+        `${c.nick}: ${statusInfo(row.status).icon} ${rowLabel(row)}`,
+        statusInfo(row.status).level === 'error' ? 'error' : 'info'
+      );
   });
   return chars.map(c => rows.get(c.id));
 }

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
-  mskParts, mskDate, mskTime, mskTimeSeconds, mskMinutes, mskWeekday, mskAddDays, mskDateTime, mskText,
-  mskStamp, mskStampSeconds, weekdayOfDate
+  mskParts,
+  mskDate,
+  mskTime,
+  mskTimeSeconds,
+  mskMinutes,
+  mskWeekday,
+  mskAddDays,
+  mskDateTime,
+  mskText,
+  mskStamp,
+  mskStampSeconds,
+  weekdayOfDate
 } from '../js/core/msk.js';
 
 // Летом Москва — UTC+3; зимой тоже UTC+3 (перевода часов нет с 2014 года).
@@ -33,9 +43,9 @@ describe('московское время', () => {
   it('день недели в нумерации планировщика: 0 — понедельник', () => {
     // 2026-06-08 — понедельник, 2026-06-14 — воскресенье
     expect(mskWeekday(new Date('2026-06-08T12:00:00Z'))).toBe(0);
-    expect(mskWeekday(new Date('2026-06-10T12:00:00Z'))).toBe(2);   // среда
-    expect(mskWeekday(new Date('2026-06-11T12:00:00Z'))).toBe(3);   // четверг
-    expect(mskWeekday(new Date('2026-06-12T12:00:00Z'))).toBe(4);   // пятница
+    expect(mskWeekday(new Date('2026-06-10T12:00:00Z'))).toBe(2); // среда
+    expect(mskWeekday(new Date('2026-06-11T12:00:00Z'))).toBe(3); // четверг
+    expect(mskWeekday(new Date('2026-06-12T12:00:00Z'))).toBe(4); // пятница
     expect(mskWeekday(new Date('2026-06-14T12:00:00Z'))).toBe(6);
   });
 
@@ -72,7 +82,7 @@ describe('московское время', () => {
   it('день недели календарной даты считается без часовых поясов', () => {
     expect(weekdayOfDate('2026-06-08')).toBe(0);
     expect(weekdayOfDate('2026-06-14')).toBe(6);
-    expect(weekdayOfDate('2026-06-15')).toBe(0);   // следующий понедельник
+    expect(weekdayOfDate('2026-06-15')).toBe(0); // следующий понедельник
     expect(weekdayOfDate('мусор')).toBe(-1);
   });
 

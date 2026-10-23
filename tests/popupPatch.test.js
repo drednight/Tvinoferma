@@ -53,7 +53,7 @@ describe('popup_patch.js', () => {
 
   it('ссылка с target="_blank" превращается в _self', () => {
     document.body.innerHTML = '<a id="a" href="https://example.com/" target="_blank"><span id="s">Вход</span></a>';
-    click(document.getElementById('s'));   // клик по вложенному элементу
+    click(document.getElementById('s')); // клик по вложенному элементу
     expect(document.getElementById('a').target).toBe('_self');
   });
 
@@ -64,7 +64,8 @@ describe('popup_patch.js', () => {
   });
 
   it('ссылки без target и с _self не трогаются', () => {
-    document.body.innerHTML = '<a id="a" href="https://pwonline.ru/"></a><a id="b" href="https://pwonline.ru/" target="_top"></a>';
+    document.body.innerHTML =
+      '<a id="a" href="https://pwonline.ru/"></a><a id="b" href="https://pwonline.ru/" target="_top"></a>';
     click(document.getElementById('a'));
     click(document.getElementById('b'));
     expect(document.getElementById('a').getAttribute('target')).toBeNull();

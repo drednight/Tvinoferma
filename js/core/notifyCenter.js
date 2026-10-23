@@ -40,14 +40,21 @@ export function onNotifyCenter(fn) {
 }
 
 function notifyChanged() {
-  listeners.forEach((fn) => {
-    try { fn(items); } catch (e) { console.error('[NOTIFY-CENTER] подписчик упал:', e); }
+  listeners.forEach(fn => {
+    try {
+      fn(items);
+    } catch (e) {
+      console.error('[NOTIFY-CENTER] подписчик упал:', e);
+    }
   });
 }
 
-const escapeHtml = (s) => String(s ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;');
+const escapeHtml = s =>
+  String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 
 /**
  * Показать уведомление в приложении.
@@ -62,9 +69,16 @@ export function showInApp({ title, body = '', kind = 'info', onClick = null, onc
   const box = root();
   if (!box) return false;
   const text = String(body || '').trim();
-  if (once && items.some((it) => it.kind === kind && it.title === title && it.body === text)) return true;
+  if (once && items.some(it => it.kind === kind && it.title === title && it.body === text)) return true;
 
-  const item = { id: `nc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, title: String(title || ''), body: text, kind, at: Date.now(), onClick };
+  const item = {
+    id: `nc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    title: String(title || ''),
+    body: text,
+    kind,
+    at: Date.now(),
+    onClick
+  };
   items = [item, ...items];
   // Больше MAX_VISIBLE карточек держать незачем: мигает над играющей поверх, и нужное
   // всё равно уходит наверх. Счётчик «ещё N» показывает, что список не пустой.
@@ -76,8 +90,11 @@ export function showInApp({ title, body = '', kind = 'info', onClick = null, onc
 
 export function dismissInApp(id) {
   const before = items.length;
-  items = items.filter((it) => it.id !== id);
-  if (items.length !== before) { render(); notifyChanged(); }
+  items = items.filter(it => it.id !== id);
+  if (items.length !== before) {
+    render();
+    notifyChanged();
+  }
 }
 
 export function clearInApp() {
@@ -91,9 +108,9 @@ export function inAppItems() {
   return items;
 }
 
-const whenText = (at) => {
+const whenText = at => {
   const d = new Date(at);
-  const p = (n) => String(n).padStart(2, '0');
+  const p = n => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
@@ -104,7 +121,9 @@ function render() {
   const hidden = items.length - shown.length;
   box.innerHTML = `
     ${hidden > 0 ? `<button type="button" class="nc-more" data-nc-action="clear">и ещё ${hidden} — свернуть все</button>` : ''}
-    ${shown.map((it) => `
+    ${shown
+      .map(
+        it => `
       <div class="nc-card is-${LEVEL_BY_KIND[it.kind] || 'info'}" data-nc-id="${escapeHtml(it.id)}">
         <div class="nc-body">
           <b class="nc-title">${escapeHtml(it.title)}</b>
@@ -113,7 +132,9 @@ function render() {
         </div>
         <button type="button" class="nc-close" data-nc-action="dismiss" data-nc-id="${escapeHtml(it.id)}"
                 aria-label="Закрыть уведомление">✕</button>
-      </div>`).join('')}`;
+      </div>`
+      )
+      .join('')}`;
 }
 
 /** Подписка на клики: один обработчик на весь контейнер, карточки перерисовываются целиком. */
@@ -121,16 +142,19 @@ export function bindNotifyCenter() {
   const box = root();
   if (!box || box.dataset.bound) return;
   box.dataset.bound = '1';
-  box.addEventListener('click', (e) => {
+  box.addEventListener('click', e => {
     const target = /** @type {HTMLElement} */ (e.target);
     const action = target.closest?.('[data-nc-action]')?.getAttribute('data-nc-action');
-    if (action === 'clear') { clearInApp(); return; }
+    if (action === 'clear') {
+      clearInApp();
+      return;
+    }
     if (action === 'dismiss') {
       dismissInApp(target.closest('[data-nc-id]')?.getAttribute('data-nc-id') || '');
       return;
     }
     const id = target.closest('[data-nc-id]')?.getAttribute('data-nc-id');
-    const item = items.find((it) => it.id === id);
+    const item = items.find(it => it.id === id);
     if (!item) return;
     // Клик по уведомлению — это согласие («показать, что делать»), поэтому закрываем
     item.onClick?.();

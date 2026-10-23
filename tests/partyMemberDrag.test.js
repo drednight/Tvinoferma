@@ -5,12 +5,28 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ persist: vi.fn(async () => {}) }));
 
-vi.mock('../js/core/storage.js', () => ({ persist: mocks.persist, saveNow: vi.fn(async () => {}), isTauri: () => false }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async () => true), showModal: vi.fn(), closeModal: vi.fn() }));
-vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ launchGroup: vi.fn(), closePartyWindows: vi.fn(), showCloseReport: vi.fn() }));
+vi.mock('../js/core/storage.js', () => ({
+  persist: mocks.persist,
+  saveNow: vi.fn(async () => {}),
+  isTauri: () => false
+}));
+vi.mock('../js/core/ui.js', () => ({
+  toast: vi.fn(),
+  confirmModal: vi.fn(async () => true),
+  showModal: vi.fn(),
+  closeModal: vi.fn()
+}));
+vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
+  launchGroup: vi.fn(),
+  closePartyWindows: vi.fn(),
+  showCloseReport: vi.fn()
+}));
 vi.mock('../js/modules/launcher/launch.js', () => ({
-  hasGameCenterPath: () => true, loginStatusText: () => '', launchContext: () => ({ gameCenters: [], preferredId: '' }),
-  runningClientDetails: vi.fn(), closeClientsByPid: vi.fn()
+  hasGameCenterPath: () => true,
+  loginStatusText: () => '',
+  launchContext: () => ({ gameCenters: [], preferredId: '' }),
+  runningClientDetails: vi.fn(),
+  closeClientsByPid: vi.fn()
 }));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 
@@ -23,7 +39,7 @@ const dnd = (type, target, extra = {}) => {
   target.dispatchEvent(ev);
   return ev;
 };
-const row = (id) => document.querySelector(`.pt-member[data-char-id="${id}"]`);
+const row = id => document.querySelector(`.pt-member[data-char-id="${id}"]`);
 const drag = (fromId, toId) => {
   dnd('dragstart', row(fromId).querySelector('.pt-drag'));
   dnd('dragover', row(toId), { clientY: 0 });
@@ -39,9 +55,17 @@ beforeEach(async () => {
   ({ renderPartiesGrid: renderParties } = await import('../js/modules/parties/renderer.js'));
   ({ charactersInPartyOrdered: order } = await import('../js/modules/parties/membership.js'));
   partyLaunch = await import('../js/modules/launcher/partyLaunch.js');
-  state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
+  state.parties = [
+    { id: 'p1', name: 'Основа', order: 1 },
+    { id: 'p2', name: 'Фарм', order: 2 }
+  ];
   state.characters = ['a', 'b', 'c'].map((id, i) => ({
-    id, nick: id.toUpperCase(), class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', partyOrder: { p1: i + 1 }
+    id,
+    nick: id.toUpperCase(),
+    class: 'Воин',
+    partyIds: ['p1'],
+    mainPartyId: 'p1',
+    partyOrder: { p1: i + 1 }
   }));
   state.characters.push({ id: 'd', nick: 'D', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2' });
   // Раскрытая карточка, чтобы строки были в DOM
@@ -51,7 +75,9 @@ beforeEach(async () => {
 describe('кнопка «Запуск» уважает порядок участников', () => {
   it('окна открываются в том же порядке, в каком пати нарисована на экране', async () => {
     // Порядок в состоянии: a, b, c. Перетаскиванием задано: c, b, a
-    state.characters.forEach(c => { c.partyOrder = { p1: { a: 3, b: 2, c: 1 }[c.id] }; });
+    state.characters.forEach(c => {
+      c.partyOrder = { p1: { a: 3, b: 2, c: 1 }[c.id] };
+    });
     renderParties();
     partyLaunch.launchGroup.mockClear();
     document.querySelector('.launch-party-action-btn[data-party-name="Основа"]').click();

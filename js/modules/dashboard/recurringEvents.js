@@ -27,7 +27,7 @@ export const RECURRING_EVENTS = [
   {
     id: 'dynasty-battle',
     title: 'Битва Династий',
-    days: [0, 4],   // понедельник и пятница
+    days: [0, 4], // понедельник и пятница
     start: '20:20',
     end: '22:20',
     color: 'red',
@@ -36,16 +36,16 @@ export const RECURRING_EVENTS = [
   {
     id: 'guild-rhythm',
     title: 'Ритм Гильдии',
-    days: [2],      // среда
+    days: [2], // среда
     start: '19:30',
-    end: '19:59',   // на минуту меньше, чтобы не слипалось со следующим ивентом в 20:00
+    end: '19:59', // на минуту меньше, чтобы не слипалось со следующим ивентом в 20:00
     color: 'green',
     note: 'Среда'
   },
   {
     id: 'forbidden-teaching',
     title: 'Запретное учение',
-    days: [2],      // среда
+    days: [2], // среда
     start: '20:00',
     end: '21:30',
     color: 'purple',
@@ -54,7 +54,7 @@ export const RECURRING_EVENTS = [
   {
     id: 'hero-arena',
     title: 'Арена Героев',
-    days: [3],      // четверг
+    days: [3], // четверг
     start: '19:00',
     end: '24:00',
     color: 'yellow',
@@ -95,24 +95,22 @@ export function recurringDurationMinutes(event) {
 export function recurringEventsForDate(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
   const weekday = weekdayOf(date);
-  return RECURRING_EVENTS
-    .filter(event => event.days.includes(weekday))
-    .map(event => ({
-      id: `recurring-${event.id}`,
-      title: event.title,
-      date,
-      time: event.start,
-      endTime: event.end,
-      durationMinutes: recurringDurationMinutes(event),
-      kind: 'event',
-      priority: 'normal',
-      color: event.color,
-      colorKey: event.color,
-      recurring: true,
-      source: 'recurring',
-      recurringId: event.id,
-      note: event.note
-    }));
+  return RECURRING_EVENTS.filter(event => event.days.includes(weekday)).map(event => ({
+    id: `recurring-${event.id}`,
+    title: event.title,
+    date,
+    time: event.start,
+    endTime: event.end,
+    durationMinutes: recurringDurationMinutes(event),
+    kind: 'event',
+    priority: 'normal',
+    color: event.color,
+    colorKey: event.color,
+    recurring: true,
+    source: 'recurring',
+    recurringId: event.id,
+    note: event.note
+  }));
 }
 
 /** День недели календарной даты в нумерации планировщика (0 — понедельник). */

@@ -21,7 +21,7 @@ const STATUS = {
   not_run: { icon: '⏭', label: 'Не выполнялось', level: 'info' }
 };
 
-export const statusInfo = (status) => STATUS[status] || STATUS.error;
+export const statusInfo = status => STATUS[status] || STATUS.error;
 
 /** Состояния отдельных сундуков в отчёте Rust. */
 const CHEST_STATE = {
@@ -32,7 +32,7 @@ const CHEST_STATE = {
   gone: '➖ уже недоступен',
   error: '❌ не открыт'
 };
-export const chestStateLabel = (state) => CHEST_STATE[state] || String(state || '');
+export const chestStateLabel = state => CHEST_STATE[state] || String(state || '');
 
 /** Тексты ошибок для сундука: у общих кодов формулировки про «Активировать» и «передачу» тут не подходят. */
 const OWN_ERROR_TEXT = {
@@ -41,19 +41,30 @@ const OWN_ERROR_TEXT = {
   no_items: 'в сундуке нет предметов',
   form_not_found: 'на странице сундука нет формы (возможно, сайт изменил вёрстку)'
 };
-export const caravanErrorText = (code) => OWN_ERROR_TEXT[code] || errorText(code);
+export const caravanErrorText = code => OWN_ERROR_TEXT[code] || errorText(code);
 
 /** Ошибки, после которых имеет смысл подождать и повторить (пока ничего не нажато). */
 export const TRANSIENT_ERRORS = new Set(['timeout', 'pending', 'page_not_found', 'form_not_found', 'click_failed']);
-export const isTransient = (code) => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
+export const isTransient = code => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
 
 /** Строка результата без обращения к сайту (остановлено, не запускалось). */
 export const plainRow = (char, status, detail = null, extra = {}) => ({
-  charId: char.id, nick: char.nick, status, error: null, detail, dryRun: false, clicked: false,
-  found: 0, other: 0, opened: 0, truncated: 0, chests: [], ...extra
+  charId: char.id,
+  nick: char.nick,
+  status,
+  error: null,
+  detail,
+  dryRun: false,
+  clicked: false,
+  found: 0,
+  other: 0,
+  opened: 0,
+  truncated: 0,
+  chests: [],
+  ...extra
 });
 
-const num = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0);
+const num = v => (Number.isFinite(Number(v)) && Number(v) > 0 ? Math.floor(Number(v)) : 0);
 
 /**
  * Строка результата из ответа команды. Любой ответ не того вида превращается в ошибку `bad_response`,
@@ -63,19 +74,33 @@ export function rowFromPayload(char, payload, error) {
   if (error || !payload || typeof payload !== 'object') {
     return plainRow(char, 'error', null, { error: String(error?.message || error || 'no_response') });
   }
-  const status = STATUS[payload.status] && !['cancelled', 'not_run'].includes(payload.status) ? payload.status : 'error';
+  const status =
+    STATUS[payload.status] && !['cancelled', 'not_run'].includes(payload.status) ? payload.status : 'error';
   const chests = Array.isArray(payload.chests)
     ? payload.chests.map(c => ({
-      cartId: String(c?.cartId ?? ''), until: String(c?.until ?? ''), state: String(c?.state ?? 'found'),
-      error: c?.error ? String(c.error) : null, items: Array.isArray(c?.items) ? c.items.map(String) : []
-    }))
+        cartId: String(c?.cartId ?? ''),
+        until: String(c?.until ?? ''),
+        state: String(c?.state ?? 'found'),
+        error: c?.error ? String(c.error) : null,
+        items: Array.isArray(c?.items) ? c.items.map(String) : []
+      }))
     : [];
   return {
-    charId: char.id, nick: char.nick, status,
-    error: payload.error ? String(payload.error) : (status === 'error' && payload.status !== 'error' ? 'bad_response' : null),
+    charId: char.id,
+    nick: char.nick,
+    status,
+    error: payload.error
+      ? String(payload.error)
+      : status === 'error' && payload.status !== 'error'
+        ? 'bad_response'
+        : null,
     detail: null,
-    dryRun: !!payload.dryRun, clicked: !!payload.clicked,
-    found: num(payload.found), other: num(payload.other), opened: num(payload.opened), truncated: num(payload.truncated),
+    dryRun: !!payload.dryRun,
+    clicked: !!payload.clicked,
+    found: num(payload.found),
+    other: num(payload.other),
+    opened: num(payload.opened),
+    truncated: num(payload.truncated),
     chests
   };
 }
@@ -94,18 +119,25 @@ export function canAutoRetry(row, isTransientError = isTransient) {
  * Строки, которые кнопка «Повторить» запустит снова. Повтор безопасен: команда сначала читает инвентарь
  * и открывает только те сундуки, которые в нём ещё лежат.
  */
-export const isRerunnable = (row) => !!row && !row.dryRun && ['partial', 'error', 'challenge', 'unknown', 'cancelled', 'not_run'].includes(row.status);
+export const isRerunnable = row =>
+  !!row && !row.dryRun && ['partial', 'error', 'challenge', 'unknown', 'cancelled', 'not_run'].includes(row.status);
 
 /** Короткая подпись результата для таблицы. */
 export function rowLabel(row) {
   const info = statusInfo(row.status);
   switch (row.status) {
-    case 'success': return `Открыто сундуков: ${row.opened}`;
-    case 'partial': return `Открыто ${row.opened} из ${row.found}`;
-    case 'dry_run': return `Сундуков караванщика: ${row.found}`;
-    case 'unknown': return `Нажато, но список не перечитан (сундуков: ${row.found})`;
-    case 'error': return row.error ? `Ошибка: ${caravanErrorText(row.error)}` : info.label;
-    default: return info.label;
+    case 'success':
+      return `Открыто сундуков: ${row.opened}`;
+    case 'partial':
+      return `Открыто ${row.opened} из ${row.found}`;
+    case 'dry_run':
+      return `Сундуков караванщика: ${row.found}`;
+    case 'unknown':
+      return `Нажато, но список не перечитан (сундуков: ${row.found})`;
+    case 'error':
+      return row.error ? `Ошибка: ${caravanErrorText(row.error)}` : info.label;
+    default:
+      return info.label;
   }
 }
 
@@ -115,8 +147,10 @@ export function rowNotes(row) {
   if (row.detail) notes.push(row.detail);
   if (row.other) notes.push(`Других сундуков (не трогали): ${row.other}`);
   if (row.truncated) notes.push(`Сверх лимита за запуск: ${row.truncated} — запустите ещё раз`);
-  if (row.status === 'unknown') notes.push('Проверьте инвентарь на сайте; автоматически эти сундуки повторно не открываются вслепую');
-  if (row.status === 'challenge') notes.push('Сайт показал «Проверку безопасности»: пройдите её в окне персонажа и повторите');
+  if (row.status === 'unknown')
+    notes.push('Проверьте инвентарь на сайте; автоматически эти сундуки повторно не открываются вслепую');
+  if (row.status === 'challenge')
+    notes.push('Сайт показал «Проверку безопасности»: пройдите её в окне персонажа и повторите');
   return notes;
 }
 
@@ -131,8 +165,8 @@ export function chestLine(c) {
 
 /** Сводка по набору строк. */
 export function summarize(rows) {
-  const count = (pred) => rows.filter(pred).length;
-  const sum = (key) => rows.reduce((n, r) => n + (r[key] || 0), 0);
+  const count = pred => rows.filter(pred).length;
+  const sum = key => rows.reduce((n, r) => n + (r[key] || 0), 0);
   return {
     total: rows.length,
     success: count(r => r.status === 'success'),
@@ -169,7 +203,7 @@ export function summaryText(rows, { dry = false, stopped = false } = {}) {
 }
 
 /** Уровень итоговой записи в журнале задач: `done`, если всё прошло гладко, иначе `warn`. */
-export const taskLevel = (rows) => {
+export const taskLevel = rows => {
   const s = summarize(rows);
   return s.partial || s.noLogin || s.challenge || s.unknown || s.failed || s.notRun ? 'warn' : 'done';
 };

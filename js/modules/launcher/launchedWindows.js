@@ -19,7 +19,11 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 const START_TOLERANCE_MS = 5 * 60 * 1000;
 
 const store = () => {
-  try { return window.localStorage; } catch { return null; }
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 };
 
 /** @returns {Record<string, { charId: string, at: number }>} */
@@ -45,7 +49,11 @@ function readAll() {
 }
 
 function writeAll(all) {
-  try { store()?.setItem(KEY, JSON.stringify(all)); } catch { /* квота: память не критична */ }
+  try {
+    store()?.setItem(KEY, JSON.stringify(all));
+  } catch {
+    /* квота: память не критична */
+  }
 }
 
 /**
@@ -91,7 +99,7 @@ export function recalledOwnership(windows, now = Date.now()) {
     const rec = all[String(w.pid)];
     if (!rec) continue;
     // Окно стартовало не в то время, которое мы запомнили → PID переиспользован
-    if (Math.abs((now - w.uptimeMs) - rec.at) > START_TOLERANCE_MS) continue;
+    if (Math.abs(now - w.uptimeMs - rec.at) > START_TOLERANCE_MS) continue;
     out[String(w.pid)] = rec.charId;
   }
   return out;
@@ -104,7 +112,10 @@ export function pruneLaunched(rows) {
   const now = Date.now();
   let changed = false;
   for (const pid of Object.keys(all)) {
-    if (!alive.has(pid) || now - all[pid].at > TTL_MS) { delete all[pid]; changed = true; }
+    if (!alive.has(pid) || now - all[pid].at > TTL_MS) {
+      delete all[pid];
+      changed = true;
+    }
   }
   if (changed) writeAll(all);
 }

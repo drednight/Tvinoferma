@@ -19,7 +19,10 @@ describe('читаемые id персонажей', () => {
   });
 
   it('planCharacterIds возвращает только изменившиеся', () => {
-    const remap = planCharacterIds([{ id: 'uuid-1', nick: 'A' }, { id: 'A-2', nick: 'A' }]);
+    const remap = planCharacterIds([
+      { id: 'uuid-1', nick: 'A' },
+      { id: 'A-2', nick: 'A' }
+    ]);
     expect([...remap]).toEqual([['uuid-1', 'A']]);
   });
 
@@ -33,8 +36,13 @@ describe('миграция v4', () => {
   it('переименовывает персонажей и ссылки в марафонах', () => {
     const raw = {
       schemaVersion: 3,
-      characters: [{ id: '11111111-aaaa', nick: 'Маг#1' }, { id: '22222222-bbbb', nick: 'маг 1' }],
-      marathons: [{ id: 'm1', title: 'M', participantIds: ['11111111-aaaa', '22222222-bbbb'], progress: { '11111111-aaaa': {} } }]
+      characters: [
+        { id: '11111111-aaaa', nick: 'Маг#1' },
+        { id: '22222222-bbbb', nick: 'маг 1' }
+      ],
+      marathons: [
+        { id: 'm1', title: 'M', participantIds: ['11111111-aaaa', '22222222-bbbb'], progress: { '11111111-aaaa': {} } }
+      ]
     };
     const res = migrateState(raw);
     expect(res.idRemap).toEqual({ '11111111-aaaa': 'Mag_1', '22222222-bbbb': 'mag_1-2' });
@@ -55,7 +63,10 @@ import { syncIdWithNick } from '../js/modules/characters/identity.js';
 
 describe('смена ника', () => {
   it('меняет id и ссылки в марафонах', async () => {
-    state.characters = [{ id: 'Old', nick: 'New Name' }, { id: 'New_Name', nick: 'Другой' }];
+    state.characters = [
+      { id: 'Old', nick: 'New Name' },
+      { id: 'New_Name', nick: 'Другой' }
+    ];
     state.marathons = [{ id: 'm', participantIds: ['Old'], progress: { Old: { t: 1 } } }];
     state.ui.selection = new Set(['Old']);
     const res = await syncIdWithNick(state.characters[0]);

@@ -11,7 +11,11 @@ const HOUR = 3600 * 1000;
 
 /** Виды данных: значок, подпись и ключ порога в settings.freshness. */
 export const FRESHNESS_KINDS = {
-  balance: { icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Баланс', settingKey: 'balanceHours' },
+  balance: {
+    icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+    label: 'Баланс',
+    settingKey: 'balanceHours'
+  },
   login: { icon: '🔐', label: 'Вход', settingKey: 'loginHours' },
   marathon: { icon: '🏆', label: 'Марафон', settingKey: 'marathonHours' }
 };
@@ -43,7 +47,14 @@ export function formatAge(ageMs) {
   return `${Math.floor(h / 24)} дн. назад`;
 }
 
-const fmtDateTime = (ms) => new Date(ms).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtDateTime = ms =>
+  new Date(ms).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
 /**
  * Свежесть одного вида данных.
@@ -56,12 +67,25 @@ export function freshnessOf(kind, iso, settings, now = Date.now()) {
   const limit = thresholdHours(settings, kind);
   const at = toMs(iso);
   if (at === null) {
-    return { kind, at: null, ageMs: Infinity, stale: true, never: true, text: 'нет данных', title: `${info.label}: ещё не обновлялся` };
+    return {
+      kind,
+      at: null,
+      ageMs: Infinity,
+      stale: true,
+      never: true,
+      text: 'нет данных',
+      title: `${info.label}: ещё не обновлялся`
+    };
   }
   const ageMs = Math.max(0, now - at);
   const stale = ageMs > limit * HOUR;
   return {
-    kind, at: /** @type {string} */ (iso), ageMs, stale, never: false, text: formatAge(ageMs),
+    kind,
+    at: /** @type {string} */ (iso),
+    ageMs,
+    stale,
+    never: false,
+    text: formatAge(ageMs),
     title: `${info.label}: обновлено ${fmtDateTime(at)}${stale ? ` — устарело (порог ${limit} ч)` : ` (порог устаревания ${limit} ч)`}`
   };
 }
@@ -81,15 +105,24 @@ function hasSiteUrl(m, all) {
 export function marathonSyncList(charId, marathons = []) {
   const out = [];
   for (const m of marathons) {
-    if (m.kind === 'series' || m.status === 'completed' || !m.participantIds?.includes(charId) || !hasSiteUrl(m, marathons)) continue;
-    const times = Object.values(m.progress?.[charId] || {}).map(c => toMs(c?.syncedAt)).filter(t => t !== null);
+    if (
+      m.kind === 'series' ||
+      m.status === 'completed' ||
+      !m.participantIds?.includes(charId) ||
+      !hasSiteUrl(m, marathons)
+    )
+      continue;
+    const times = Object.values(m.progress?.[charId] || {})
+      .map(c => toMs(c?.syncedAt))
+      .filter(t => t !== null);
     out.push({ marathon: m, at: times.length ? new Date(Math.max(...times)).toISOString() : null });
   }
   return out;
 }
 
 const plural = (n, [one, few, many]) => {
-  const m10 = n % 10, m100 = n % 100;
+  const m10 = n % 10,
+    m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
   if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
   return many;
@@ -102,7 +135,8 @@ const plural = (n, [one, few, many]) => {
 export function formatHoursSpan(hours) {
   const h = Math.round(Number(hours));
   if (!Number.isFinite(h) || h < 1) return '';
-  const days = Math.floor(h / 24), rest = h % 24;
+  const days = Math.floor(h / 24),
+    rest = h % 24;
   const d = `${days} ${plural(days, ['день', 'дня', 'дней'])}`;
   const r = `${rest} ${plural(rest, ['час', 'часа', 'часов'])}`;
   if (!days) return r;

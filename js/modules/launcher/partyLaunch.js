@@ -7,14 +7,42 @@ import { state } from '../../core/state.js';
 import { persist, isTauri } from '../../core/storage.js';
 import { toast, confirmModal } from '../../core/ui.js';
 import { startTask } from '../../core/taskLog.js';
-import { launchCharacters, launchSummary, closeReportText, canCloseElevated, closeAllClientsElevated, checkGameCenterPath, captureAccount, forgetAccount, closeAllClients, runningClients, launchContext, launchWarnings, verifyLaunchedDecor, launchStageSummary, launchDelayMs, decorateEnabled, readLaunchFacts, windowDecor, decorateElevated } from './launch.js';
-import { resolveGameCenter, accountKey, setGcAccount, pickMajorityGc, launcherKind, kindForPath, kindLabel } from './gameCenters.js';
+import {
+  launchCharacters,
+  launchSummary,
+  closeReportText,
+  canCloseElevated,
+  closeAllClientsElevated,
+  checkGameCenterPath,
+  captureAccount,
+  forgetAccount,
+  closeAllClients,
+  runningClients,
+  launchContext,
+  launchWarnings,
+  verifyLaunchedDecor,
+  launchStageSummary,
+  launchDelayMs,
+  decorateEnabled,
+  readLaunchFacts,
+  windowDecor,
+  decorateElevated
+} from './launch.js';
+import {
+  resolveGameCenter,
+  accountKey,
+  setGcAccount,
+  pickMajorityGc,
+  launcherKind,
+  kindForPath,
+  kindLabel
+} from './gameCenters.js';
 import { launchBlocker } from './gcSettingsModal.js';
 import { launchPreflight, shouldShowPreflight, preflightLog, availableFixes } from './preflight.js';
 import { openPreflight } from './preflightDialog.js';
 import { recordLaunchRun } from './launchLog.js';
 
-let activeLaunches = 0;   // сколько запусков сейчас идёт (включая ожидание очереди)
+let activeLaunches = 0; // сколько запусков сейчас идёт (включая ожидание очереди)
 
 export const isLaunching = () => activeLaunches > 0;
 
@@ -31,15 +59,20 @@ const notifyEnabled = () => state.settings?.launcher?.notify !== false;
 async function reportDone(text, isError) {
   if (!isError && !notifyEnabled()) return;
   const focused = typeof document !== 'undefined' && document.hasFocus();
-  if (focused) { toast(text, isError ? 'error' : 'success'); return; }
+  if (focused) {
+    toast(text, isError ? 'error' : 'success');
+    return;
+  }
   try {
     const { notify } = await import('../../desktop/notifications.js');
-    if (await notify('Твиноферма', text, isError ? 'launchError' : 'launch')) return;   // false — нет разрешения на уведомления: покажем подпись ниже
-  } catch { /* системные уведомления недоступны */ }
+    if (await notify('Твиноферма', text, isError ? 'launchError' : 'launch')) return; // false — нет разрешения на уведомления: покажем подпись ниже
+  } catch {
+    /* системные уведомления недоступны */
+  }
   toast(text, isError ? 'error' : 'success');
 }
 
-const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
+const errText = e => String(e?.message || e || 'неизвестная ошибка');
 
 /**
  * Проверки перед запуском по текущему состоянию системы (какие окна уже открыты, есть ли права администратора).
@@ -56,8 +89,12 @@ async function runPreflight(characters, ctx = launchContext()) {
   const facts = await readLaunchFacts();
   const l = state.settings?.launcher || {};
   return launchPreflight({
-    characters, ctx, clients: facts.clients, selfElevated: facts.selfElevated,
-    skipRunning: l.skipRunning !== false, decorate: decorateEnabled()
+    characters,
+    ctx,
+    clients: facts.clients,
+    selfElevated: facts.selfElevated,
+    skipRunning: l.skipRunning !== false,
+    decorate: decorateEnabled()
   });
 }
 
@@ -118,13 +155,19 @@ async function fixElevatedWindows(pre) {
   }
   const res = await decorateElevated(targets);
   if (res.denied) {
-    toast('Без прав администратора окна останутся без названия и значка. Запустите Твиноферму от администратора, если это нужно.', 'warning');
+    toast(
+      'Без прав администратора окна останутся без названия и значка. Запустите Твиноферму от администратора, если это нужно.',
+      'warning'
+    );
     return false;
   }
   const done = res.ok + res.fixed;
-  toast(done
-    ? `Окна подписаны с правами администратора: ${done}`
-    : 'Не удалось подписать окна даже с правами администратора', done ? 'success' : 'error');
+  toast(
+    done
+      ? `Окна подписаны с правами администратора: ${done}`
+      : 'Не удалось подписать окна даже с правами администратора',
+    done ? 'success' : 'error'
+  );
   return done > 0;
 }
 
@@ -149,7 +192,7 @@ async function openGameCentersForFix(pre, opts) {
   // статический импорт замкнул бы круг на уровне модулей.
   const { openGameCentersModal } = await import('./gcSettingsModal.js');
   const partyId = String(opts?.partyId || '');
-  await new Promise((resolve) => {
+  await new Promise(resolve => {
     openGameCentersModal({
       partyId,
       // Если жаловались на вход — сразу показываем именно тех, у кого его нет
@@ -179,10 +222,8 @@ async function openGameCentersForFix(pre, opts) {
  * Отменённые повторять нельзя — человек сам остановил запуск.
  */
 export function retryableCharacters(characters, results) {
-  const failed = new Set(
-    (results || []).filter((r) => !r.ok && !r.cancelled).map((r) => String(r.id))
-  );
-  return characters.filter((c) => failed.has(String(c.id)));
+  const failed = new Set((results || []).filter(r => !r.ok && !r.cancelled).map(r => String(r.id)));
+  return characters.filter(c => failed.has(String(c.id)));
 }
 
 /**
@@ -198,8 +239,8 @@ export function retryableCharacters(characters, results) {
  */
 export function mergeLaunchResults(first, second) {
   if (!second?.length) return first;
-  const merged = first.map((r) => {
-    const again = second.find((x) => String(x.id) === String(r.id));
+  const merged = first.map(r => {
+    const again = second.find(x => String(x.id) === String(r.id));
     if (!again || r.ok || r.cancelled) return r;
     return again.ok ? { ...again, ms: (r.ms ?? 0) + (again.ms ?? 0) } : r;
   });
@@ -231,10 +272,15 @@ export async function launchGroup(title, characters, opts = {}) {
     // ожидания: иначе «окна уже запущены» считалось бы по окнам чужого, ещё не закончившегося
     // запуска, и наш персонаж был бы пропущен.
     task = startTask(title, { cancelable: true });
-    task.onCancel(() => { signal.cancelled = true; });
+    task.onCancel(() => {
+      signal.cancelled = true;
+    });
     // Ждём своей очереди: пока идёт другой скрипт, игру не запускаем
     await task.waitTurn();
-    if (signal.cancelled) { task.finish('Отменено в очереди', 'warn'); return null; }
+    if (signal.cancelled) {
+      task.finish('Отменено в очереди', 'warn');
+      return null;
+    }
     task.setStep('проверка…');
     // Один GameCenter на всю группу выбирается ДО проверок, и дальше с ним и проверка, и запуск.
     // Иначе они считают разные папки: проверка скажет «вход запомнен» про одну, а запускаться
@@ -251,28 +297,40 @@ export async function launchGroup(title, characters, opts = {}) {
     let fixedOnce = false;
     while (opts.interactive !== false && shouldShowPreflight(pre, mode)) {
       const choice = await openPreflight(pre, { title, gameCenters: launchContext().gameCenters });
-      if (!choice) { task.finish('Отменено на экране проверки', 'warn'); return null; }
-      if (choice !== 'fix') break;          // «Запустить»: дальше запускаем, экран больше не нужен
+      if (!choice) {
+        task.finish('Отменено на экране проверки', 'warn');
+        return null;
+      }
+      if (choice !== 'fix') break; // «Запустить»: дальше запускаем, экран больше не нужен
       const fixes = availableFixes(pre, launchContext());
       if (fixes.some(f => f.id === 'openGcWindow')) {
-        if (fixedOnce) break;               // окно уже открывали, второй раз по той же просьбе — нет
+        if (fixedOnce) break; // окно уже открывали, второй раз по той же просьбе — нет
         fixedOnce = true;
         await openGameCentersForFix(pre, opts);
       }
       // Окна игры от администратора: подписываем их короткоживущим помощником от администратора.
       // Твиноферма при этом не перезапускается — права нужны только на это действие.
       if (fixes.some(f => f.id === 'elevate')) await fixElevatedWindows(pre);
-      const next = await runPreflight(characters, group.ctx);   // пока открыт экран, окна могли запуститься или закрыться
+      const next = await runPreflight(characters, group.ctx); // пока открыт экран, окна могли запуститься или закрыться
       const changed = next.noGc.length !== pre.noGc.length || next.noSavedLogin.length !== pre.noSavedLogin.length;
       pre = next;
-      if (!changed) break;                  // пользователь ничего не доделал — незачем показывать то же самое
+      if (!changed) break; // пользователь ничего не доделал — незачем показывать то же самое
     }
     const ready = pre.toLaunch;
     const skipped = [...pre.noGc, ...pre.noSavedLogin];
     if (!ready.length) {
-      if (pre.alreadyRunning.length && !skipped.length) toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
-      else if (pre.noGc.length && pre.noSavedLogin.length) toast('Не запускаю: нет GameCenter и не запомнен вход. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи»', 'error');
-      else if (pre.noSavedLogin.length) toast('Не запускаю: вход в GameCenter не запомнен ни у кого. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»', 'error');
+      if (pre.alreadyRunning.length && !skipped.length)
+        toast(launchSummary({ ok: 0, running: pre.alreadyRunning.length, ms: 0 }), 'info');
+      else if (pre.noGc.length && pre.noSavedLogin.length)
+        toast(
+          'Не запускаю: нет GameCenter и не запомнен вход. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи»',
+          'error'
+        );
+      else if (pre.noSavedLogin.length)
+        toast(
+          'Не запускаю: вход в GameCenter не запомнен ни у кого. «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»',
+          'error'
+        );
       else toast('Не указан GameCenter: «Настройки → Запуск игры» или карточка персонажа → «🎮 Запуск игры»', 'error');
       task.finish('Нечего запускать', 'warn');
       return null;
@@ -285,13 +343,15 @@ export async function launchGroup(title, characters, opts = {}) {
     // Один GameCenter на всю пати (выбран до проверок): остальные запускаются из того, что у них есть
     const { gcId, gcName } = group;
     if (gcName && group.distinct > 1) {
-      task.log(`GameCenter «${gcName}» — у ${group.count} из ${group.total}: запускаем из него, у остальных — из доступного`);
+      task.log(
+        `GameCenter «${gcName}» — у ${group.count} из ${group.total}: запускаем из него, у остальных — из доступного`
+      );
     }
 
     const firstPass = await launchCharacters(ready, {
       signal,
       gcId,
-      onStart: (c) => task.setStep(`${c.nick}: запуск…`),
+      onStart: c => task.setStep(`${c.nick}: запуск…`),
       onDone: (e, done, total) => {
         task.log(`${e.nick}: ${e.ok ? 'клиент игры запущен' : `ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
         launchWarnings(e.info).forEach(w => task.log(`${e.nick}: ${w}`, 'warn'));
@@ -305,18 +365,24 @@ export async function launchGroup(title, characters, opts = {}) {
     let results = firstPass;
     const retry = signal.cancelled ? [] : retryableCharacters(ready, firstPass);
     if (retry.length) {
-      const nicks = retry.map((c) => c.nick || c.id).join(', ');
-      task.log(`Не запустились: ${nicks}. Повторяю их — ${retry.length} ${retry.length === 1 ? 'окно' : 'окон'}`, 'warn');
+      const nicks = retry.map(c => c.nick || c.id).join(', ');
+      task.log(
+        `Не запустились: ${nicks}. Повторяю их — ${retry.length} ${retry.length === 1 ? 'окно' : 'окон'}`,
+        'warn'
+      );
       const second = await launchCharacters(retry, {
         signal,
         gcId,
-        onStart: (c) => task.setStep(`${c.nick}: повтор…`),
-        onDone: (e) => {
-          task.log(`${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`, e.ok ? 'ok' : 'error');
+        onStart: c => task.setStep(`${c.nick}: повтор…`),
+        onDone: e => {
+          task.log(
+            `${e.nick}: повтор — ${e.ok ? 'клиент игры запущен' : `снова ошибка — ${e.error}`}`,
+            e.ok ? 'ok' : 'error'
+          );
         }
       });
       results = mergeLaunchResults(firstPass, second);
-      const revived = second.filter((r) => r.ok).length;
+      const revived = second.filter(r => r.ok).length;
       if (revived) task.log(`Повтор помог: запустилось ${revived} из ${retry.length}`, 'ok');
     }
 
@@ -336,7 +402,14 @@ export async function launchGroup(title, characters, opts = {}) {
     // игры и паузы. Без неё «долго» нечем превратить в действие.
     const stageNote = launchStageSummary(results.stages);
     if (stageNote) task.log(stageNote, 'info');
-    const summary = launchSummary({ ok, failed, cancelled, skipped: skipped.length, running: pre.alreadyRunning.length, ms });
+    const summary = launchSummary({
+      ok,
+      failed,
+      cancelled,
+      skipped: skipped.length,
+      running: pre.alreadyRunning.length,
+      ms
+    });
     task.finish(summary, failed ? 'warn' : undefined);
     reportDone(summary, failed > 0);
     saveRunToHistory({ title, results, pre, ms, gcName });
@@ -359,9 +432,11 @@ function saveRunToHistory({ title, results, pre, ms, gcName }) {
   try {
     const items = [
       ...results.map(r => ({
-        id: r.id, nick: r.nick,
+        id: r.id,
+        nick: r.nick,
         status: r.cancelled ? 'cancelled' : r.ok ? 'ok' : 'failed',
-        ms: r.cancelled ? null : r.ms, error: r.error || null,
+        ms: r.cancelled ? null : r.ms,
+        error: r.error || null,
         noLogin: r.ok && r.info?.switched === false
       })),
       ...pre.alreadyRunning.map(r => ({ id: String(r.char.id), nick: r.char.nick, status: 'running' })),
@@ -369,8 +444,13 @@ function saveRunToHistory({ title, results, pre, ms, gcName }) {
     ];
     recordLaunchRun({
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      at: new Date(Date.now() - ms).toISOString(), title, ms, delayMs: launchDelayMs(), gc: gcName,
-      requested: pre.total, items
+      at: new Date(Date.now() - ms).toISOString(),
+      title,
+      ms,
+      delayMs: launchDelayMs(),
+      gc: gcName,
+      requested: pre.total,
+      items
     });
   } catch (e) {
     console.warn('[LAUNCH] history write failed:', e);
@@ -395,7 +475,10 @@ export async function launchOne(char, opts = {}) {
         document.getElementById('pf-gc-path')?.focus();
       }, 0);
     } else {
-      toast(`У ${char.nick || char.id} не запомнен вход в GameCenter — окно откроется под тем аккаунтом, который выбран в GameCenter сейчас. Запомнить: «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»`, 'warning');
+      toast(
+        `У ${char.nick || char.id} не запомнен вход в GameCenter — окно откроется под тем аккаунтом, который выбран в GameCenter сейчас. Запомнить: «Инструменты» → «Окна игры» → «🎮 GameCenter и персонажи» → «🔑 Запомнить вход»`,
+        'warning'
+      );
     }
     return null;
   }
@@ -406,12 +489,18 @@ export async function launchOne(char, opts = {}) {
 export async function launchPartyByName(name, opts = {}) {
   const { partyByName, charactersInPartyOrdered } = await import('../parties/membership.js');
   const party = partyByName(state.parties, name);
-  if (!party) { toast(`Пати «${name}» не найдена`, 'error'); return null; }
+  if (!party) {
+    toast(`Пати «${name}» не найдена`, 'error');
+    return null;
+  }
   // Именно порядок пати, а не общий порядок списка персонажей: его задаёт перетаскивание
   // участников в карточке («⠿» → «изменить порядок запуска»), и запускаться надо в нём же.
   // `partyId` уходит в экран проверки, чтобы «Исправить» открыл «GameCenter и персонажи»
   // уже отфильтрованными по этой пати, а не по всему списку.
-  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), { partyId: party.id, ...opts });
+  return launchGroup(`Запуск игры: ${party.name}`, charactersInPartyOrdered(state.characters, party.id), {
+    partyId: party.id,
+    ...opts
+  });
 }
 
 /**
@@ -425,15 +514,24 @@ export async function launchPartyByName(name, opts = {}) {
  * @returns {Promise<number>} сколько окон закрыто
  */
 export async function closePartyWindows(partyName) {
-  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  if (!isTauri()) {
+    toast('Доступно только в приложении', 'error');
+    return 0;
+  }
   const { partyByName, charactersInParty } = await import('../parties/membership.js');
   const { runningClientDetails, closeClientsByPid } = await import('./launch.js');
   const { windowRows, rowLabel } = await import('./windowList.js');
 
   const party = partyByName(state.parties, partyName);
-  if (!party) { toast(`Пати «${partyName}» не найдена`, 'error'); return 0; }
+  if (!party) {
+    toast(`Пати «${partyName}» не найдена`, 'error');
+    return 0;
+  }
   const members = charactersInParty(state.characters, party.id);
-  if (!members.length) { toast(`В пати «${party.name}» нет персонажей`, 'info'); return 0; }
+  if (!members.length) {
+    toast(`В пати «${party.name}» нет персонажей`, 'info');
+    return 0;
+  }
 
   let rows;
   try {
@@ -480,15 +578,24 @@ export async function closePartyWindows(partyName) {
  * @returns {Promise<number>} сколько окон подписано
  */
 export async function signPartyWindows(partyName) {
-  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  if (!isTauri()) {
+    toast('Доступно только в приложении', 'error');
+    return 0;
+  }
   const { partyByName, charactersInParty } = await import('../parties/membership.js');
   const { runningClientDetails, redecorateRunningWindows, redecorateText } = await import('./launch.js');
   const { windowRows } = await import('./windowList.js');
 
   const party = partyByName(state.parties, partyName);
-  if (!party) { toast(`Пати «${partyName}» не найдена`, 'error'); return 0; }
+  if (!party) {
+    toast(`Пати «${partyName}» не найдена`, 'error');
+    return 0;
+  }
   const members = charactersInParty(state.characters, party.id);
-  if (!members.length) { toast(`В пати «${party.name}» нет персонажей`, 'info'); return 0; }
+  if (!members.length) {
+    toast(`В пати «${party.name}» нет персонажей`, 'info');
+    return 0;
+  }
 
   let rows;
   try {
@@ -523,10 +630,16 @@ export async function signPartyWindows(partyName) {
  * (Из меню трея окна закрывает сам Rust, интерфейс получает только итог — см. showCloseReport.)
  */
 export async function closeAllGameWindows({ confirm = true } = {}) {
-  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return 0; }
+  if (!isTauri()) {
+    toast('Доступно только в приложении', 'error');
+    return 0;
+  }
   try {
     const running = await runningClients();
-    if (!running.length) { showCloseReport({ found: 0 }); return 0; }
+    if (!running.length) {
+      showCloseReport({ found: 0 });
+      return 0;
+    }
     if (confirm) {
       const ok = await confirmModal({
         title: 'Закрыть все окна игры?',
@@ -551,10 +664,15 @@ export function showCloseReport(report) {
   const isError = !!(report?.error || report?.failed);
   const focused = typeof document !== 'undefined' && document.hasFocus();
   if (canCloseElevated(report)) offerElevatedClose(report, focused);
-  if (focused) { toast(text, isError ? 'error' : 'success'); return; }
+  if (focused) {
+    toast(text, isError ? 'error' : 'success');
+    return;
+  }
   import('../../desktop/notifications.js')
     .then(m => m.notify('Твиноферма', text, isError ? 'launchError' : 'close'))
-    .then(sent => { if (!sent) toast(text, isError ? 'error' : 'success'); })
+    .then(sent => {
+      if (!sent) toast(text, isError ? 'error' : 'success');
+    })
     .catch(() => toast(text, isError ? 'error' : 'success'));
 }
 
@@ -586,8 +704,17 @@ function offerElevatedClose(report, focused) {
       elevatedOfferPending = false;
     }
   };
-  if (focused) { ask(); return; }
-  window.addEventListener('focus', () => { ask(); }, { once: true });
+  if (focused) {
+    ask();
+    return;
+  }
+  window.addEventListener(
+    'focus',
+    () => {
+      ask();
+    },
+    { once: true }
+  );
 }
 
 /**
@@ -599,8 +726,12 @@ export async function saveGameCenterPath(char, path, kind = null) {
   const value = String(path || '').trim();
   const k = kind || (value ? kindForPath(value) : 'gamecenter');
   if (value && isTauri()) {
-    try { await checkGameCenterPath(value, { kind: k }); }
-    catch (e) { toast(errText(e), 'error'); return false; }
+    try {
+      await checkGameCenterPath(value, { kind: k });
+    } catch (e) {
+      toast(errText(e), 'error');
+      return false;
+    }
   }
   char.launch = { ...(char.launch || {}), gcPath: value };
   char.updatedAt = new Date().toISOString();
@@ -632,7 +763,10 @@ export async function captureLogin(char, gcId = null) {
     toast('Сначала укажите GameCenter (и сохраните путь)', 'error');
     return false;
   }
-  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return false; }
+  if (!isTauri()) {
+    toast('Доступно только в приложении', 'error');
+    return false;
+  }
   try {
     const report = await captureAccount(char, {}, target);
     if (!report?.ok) {

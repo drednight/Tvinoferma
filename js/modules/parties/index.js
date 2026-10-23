@@ -8,25 +8,28 @@ import { openCreatePartyModal } from './manager.js';
  * Вызывается один раз при старте приложения из main.js
  */
 export function bindParties() {
-    const addBtn = document.getElementById('add-party-btn');
-    if (addBtn) {
-        addBtn.addEventListener('click', () => {
-            openCreatePartyModal();
-        });
-    }
+  const addBtn = document.getElementById('add-party-btn');
+  if (addBtn) {
+    addBtn.addEventListener('click', () => {
+      openCreatePartyModal();
+    });
+  }
 
-    for (const [id, archived] of [['show-active-parties', false], ['show-archived-parties', true]]) {
-        const button = document.getElementById(id);
-        if (button && !button.dataset.bound) {
-            button.dataset.bound = 'true';
-            button.addEventListener('click', () => {
-                setPartyArchiveView(archived);
-            });
-        }
+  for (const [id, archived] of [
+    ['show-active-parties', false],
+    ['show-archived-parties', true]
+  ]) {
+    const button = document.getElementById(id);
+    if (button && !button.dataset.bound) {
+      button.dataset.bound = 'true';
+      button.addEventListener('click', () => {
+        setPartyArchiveView(archived);
+      });
     }
+  }
 
-    // Первый рендер
-    renderPartiesGrid();
+  // Первый рендер
+  renderPartiesGrid();
 }
 
 /**

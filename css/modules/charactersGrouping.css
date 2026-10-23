@@ -18,7 +18,7 @@
 }
 
 /* Карточка, которую тянем */
-#character-grid .character-card[draggable="true"] {
+#character-grid .character-card[draggable='true'] {
   cursor: grab;
 }
 
@@ -28,7 +28,7 @@
   outline-offset: 2px;
 }
 
-#character-grid .character-card[draggable="true"]:hover {
+#character-grid .character-card[draggable='true']:hover {
   box-shadow: 0 0 0 1px var(--accent-line, #47785c);
 }
 

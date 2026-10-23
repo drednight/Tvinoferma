@@ -3,7 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import { retryableCharacters, mergeLaunchResults } from '../js/modules/launcher/partyLaunch.js';
 
-const chars = (ids) => ids.map((id) => ({ id, nick: id }));
+const chars = ids => ids.map(id => ({ id, nick: id }));
 const res = (id, over = {}) => ({ id, nick: id, ok: true, cancelled: false, ms: 100, ...over });
 
 /** Приклеивает `stages` так же, как это делает `launchCharacters`. */
@@ -15,8 +15,13 @@ const withStages = (list, stages) => {
 describe('повторный проход: кого повторять', () => {
   it('только те, кто не запустился и кого не отменяли', () => {
     const list = chars(['а', 'б', 'в', 'г']);
-    const first = [res('а'), res('б', { ok: false, error: 'окно не появилось' }), res('в', { ok: false, cancelled: true }), res('г', { ok: false, error: 'GameCenter не закрылся' })];
-    expect(retryableCharacters(list, first).map((c) => c.id)).toEqual(['б', 'г']);
+    const first = [
+      res('а'),
+      res('б', { ok: false, error: 'окно не появилось' }),
+      res('в', { ok: false, cancelled: true }),
+      res('г', { ok: false, error: 'GameCenter не закрылся' })
+    ];
+    expect(retryableCharacters(list, first).map(c => c.id)).toEqual(['б', 'г']);
   });
 
   it('успешных и отменённых в повтор не берём', () => {
@@ -33,11 +38,17 @@ describe('повторный проход: кого повторять', () => {
 
 describe('повторный проход: слияние результатов', () => {
   it('удачный повтор заменяет провал', () => {
-    const first = withStages([res('а'), res('б', { ok: false, error: 'окно не появилось' })], { gcClose: 10, account: 5, clientWait: 900, delay: 100, total: 1100 });
+    const first = withStages([res('а'), res('б', { ok: false, error: 'окно не появилось' })], {
+      gcClose: 10,
+      account: 5,
+      clientWait: 900,
+      delay: 100,
+      total: 1100
+    });
     const second = withStages([res('б')], { gcClose: 2, account: 1, clientWait: 700, delay: 50, total: 800 });
     const merged = mergeLaunchResults(first, second);
-    expect(merged.map((r) => r.ok)).toEqual([true, true]);
-    expect(merged.find((r) => r.id === 'б').error).toBeUndefined();
+    expect(merged.map(r => r.ok)).toEqual([true, true]);
+    expect(merged.find(r => r.id === 'б').error).toBeUndefined();
   });
 
   it('неудачный повтор оставляет первую ошибку, а не вторую', () => {
@@ -57,7 +68,13 @@ describe('повторный проход: слияние результатов
   });
 
   it('замеры этапов складываются: иначе в журнале пропала бы половина времени', () => {
-    const first = withStages([res('а'), res('б', { ok: false })], { gcClose: 10, account: 5, clientWait: 900, delay: 100, total: 1100 });
+    const first = withStages([res('а'), res('б', { ok: false })], {
+      gcClose: 10,
+      account: 5,
+      clientWait: 900,
+      delay: 100,
+      total: 1100
+    });
     const second = withStages([res('б')], { gcClose: 1, account: 2, clientWait: 300, delay: 50, total: 400 });
     const merged = mergeLaunchResults(first, second);
     expect(merged.stages.gcClose).toBe(11);

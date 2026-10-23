@@ -11,10 +11,17 @@
 
 /* Подсказка рисуется внутри #character-grid — сетки карточек с колонкой 360px. Без
    растяжения на всю ширину она занимала одну колонку и текст ломался по одному слову. */
-#character-grid > .onb { grid-column: 1 / -1; }
+#character-grid > .onb {
+  grid-column: 1 / -1;
+}
 
-.onb-head h3 { margin-bottom: 4px; }
-.onb-head p { font-size: 0.88rem; max-width: 70ch; }
+.onb-head h3 {
+  margin-bottom: 4px;
+}
+.onb-head p {
+  font-size: 0.88rem;
+  max-width: 70ch;
+}
 
 .onb-steps {
   list-style: none;
@@ -35,7 +42,9 @@
   background: var(--surface-2);
   transition: border-color var(--speed) var(--ease);
 }
-.onb-step:hover { border-color: var(--border-strong); }
+.onb-step:hover {
+  border-color: var(--border-strong);
+}
 
 .onb-num {
   display: grid;
@@ -48,21 +57,49 @@
   font-size: 0.78rem;
   font-weight: 700;
 }
-.onb-ico { font-size: 1.5rem; text-align: center; }
-.onb-body b { display: block; font-size: 0.94rem; }
-.onb-body p { font-size: 0.84rem; margin-top: 2px; }
+.onb-ico {
+  font-size: 1.5rem;
+  text-align: center;
+}
+.onb-body b {
+  display: block;
+  font-size: 0.94rem;
+}
+.onb-body p {
+  font-size: 0.84rem;
+  margin-top: 2px;
+}
 
-.onb-note { margin-top: 16px; font-size: 0.8rem; }
+.onb-note {
+  margin-top: 16px;
+  font-size: 0.8rem;
+}
 
 /* Справка «Как войти на сайт игры» */
-.onb-help { margin: 0; padding-left: 20px; display: grid; gap: 8px; font-size: 0.9rem; line-height: 1.5; }
+.onb-help {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
 
 /* --- Приветственное окно первого запуска: три шага карточками в ряд ---
    В окне места больше, чем на странице, поэтому шаги идут рядом: видно весь путь сразу,
    а не «простыню» строк. На узком экране карточки встают в столбик. */
-.onb-modal { padding: 0; border: 0; background: none; box-shadow: none; }
-.onb-modal .onb-head { margin-bottom: 16px; }
-.onb-modal .onb-head p { font-size: 0.86rem; }
+.onb-modal {
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.onb-modal .onb-head {
+  margin-bottom: 16px;
+}
+.onb-modal .onb-head p {
+  font-size: 0.86rem;
+}
 
 .onb-cards {
   list-style: none;
@@ -83,25 +120,59 @@
   background: var(--surface-2);
   min-width: 0;
 }
-.onb-card:hover { border-color: var(--border-strong); }
-.onb-card-top { display: flex; align-items: center; gap: 9px; }
-.onb-card-top .onb-ico { font-size: 1.6rem; line-height: 1; }
-.onb-card b { font-size: 0.95rem; }
-.onb-card p { font-size: 0.82rem; margin: 0; flex: 1 1 auto; }
+.onb-card:hover {
+  border-color: var(--border-strong);
+}
+.onb-card-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.onb-card-top .onb-ico {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.onb-card b {
+  font-size: 0.95rem;
+}
+.onb-card p {
+  font-size: 0.82rem;
+  margin: 0;
+  flex: 1 1 auto;
+}
 /* Кнопка прижата к низу: карточки одной высоты, кнопки на одной линии */
-.onb-card .btn { margin-top: auto; align-self: flex-start; }
+.onb-card .btn {
+  margin-top: auto;
+  align-self: flex-start;
+}
 
 @media (max-width: 760px) {
-  .onb-cards { grid-template-columns: minmax(0, 1fr); }
-  .onb-card p { flex: 0 0 auto; }
+  .onb-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .onb-card p {
+    flex: 0 0 auto;
+  }
 }
 
 /* Строка с кнопкой повторного открытия инструкции */
-#welcome-row { margin: 0 0 12px; align-items: center; }
-#welcome-row[hidden] { display: none; }
+#welcome-row {
+  margin: 0 0 12px;
+  align-items: center;
+}
+#welcome-row[hidden] {
+  display: none;
+}
 
 @media (max-width: 720px) {
-  .onb-step { grid-template-columns: 26px minmax(0, 1fr); }
-  .onb-ico { display: none; }
-  .onb-step .btn { grid-column: 2; justify-self: start; }
+  .onb-step {
+    grid-template-columns: 26px minmax(0, 1fr);
+  }
+  .onb-ico {
+    display: none;
+  }
+  .onb-step .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
 }

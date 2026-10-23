@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { normalizeGameCenters } from '../js/modules/launcher/gameCenters.js';
-import { windowTitle, windowDecor, launchCharacters, WINDOW_ICON_SMALL, WINDOW_ICON_BIG } from '../js/modules/launcher/launch.js';
+import {
+  windowTitle,
+  windowDecor,
+  launchCharacters,
+  WINDOW_ICON_SMALL,
+  WINDOW_ICON_BIG
+} from '../js/modules/launcher/launch.js';
 import { normalizeState } from '../js/core/state.js';
 import { CLASS_ICON_MAP, CLASSES } from '../js/core/constants.js';
 
@@ -20,14 +26,24 @@ describe('название и значок окна клиента', () => {
 
   it('значки запрашиваются в двух размерах; без класса значков нет', async () => {
     const asked = [];
-    const loadIcon = async (cls, size) => { asked.push([cls, size]); return [size]; };
+    const loadIcon = async (cls, size) => {
+      asked.push([cls, size]);
+      return [size];
+    };
     expect(await windowDecor({ nick: 'T', class: 'Маг' }, { loadIcon })).toEqual({
       windowTitle: 'T — Маг',
       iconSmall: [WINDOW_ICON_SMALL],
       iconBig: [WINDOW_ICON_BIG]
     });
-    expect(asked).toEqual([['Маг', 16], ['Маг', 48]]);
-    expect(await windowDecor({ nick: 'T', class: '' }, { loadIcon })).toEqual({ windowTitle: 'T', iconSmall: null, iconBig: null });
+    expect(asked).toEqual([
+      ['Маг', 16],
+      ['Маг', 48]
+    ]);
+    expect(await windowDecor({ nick: 'T', class: '' }, { loadIcon })).toEqual({
+      windowTitle: 'T',
+      iconSmall: null,
+      iconBig: null
+    });
     expect(await windowDecor({}, { loadIcon })).toEqual({ windowTitle: null, iconSmall: null, iconBig: null });
   });
 
@@ -38,7 +54,10 @@ describe('название и значок окна клиента', () => {
 
   it('при запуске название и значки уходят в Rust вместе с остальными параметрами', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     const loadIcon = async (cls, size) => [size];
     await launchCharacters([ch('a', 'Воин')], { delayMs: 0 }, { invoke, loadIcon });
     expect(seen[0]).toMatchObject({ path: 'D:\\a', windowTitle: 'Ник a — Воин', iconSmall: [16], iconBig: [48] });
@@ -48,12 +67,20 @@ describe('название и значок окна клиента', () => {
     // Подпись окна и значок не зависят от лаунчера: Rust получает ту же тройку и тот же PID
     // клиента (`elementclient*`), поэтому astrum-ветка обязана передать их дальше как есть.
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     const loadIcon = async (cls, size) => [size];
     const gameCenters = normalizeGameCenters([
       { id: 'g-astrum', path: 'D:\\AstrumPlay\\AstrumPlay.exe', kind: 'astrum' }
     ]);
-    const char = { id: 'a', nick: 'Ник a', class: 'Воин', launch: { gcPath: '', gcIds: ['g-astrum'], gcAccounts: { 'g-astrum': { nick: 'Ник a' } } } };
+    const char = {
+      id: 'a',
+      nick: 'Ник a',
+      class: 'Воин',
+      launch: { gcPath: '', gcIds: ['g-astrum'], gcAccounts: { 'g-astrum': { nick: 'Ник a' } } }
+    };
     await launchCharacters([char], { delayMs: 0 }, { invoke, loadIcon, ctx: { gameCenters, preferredId: '' } });
     expect(seen[0]).toMatchObject({
       path: 'D:\\AstrumPlay\\AstrumPlay.exe',
@@ -66,34 +93,49 @@ describe('название и значок окна клиента', () => {
 
   it('настройка выключена — окно не трогаем', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     await launchCharacters([ch('a', 'Воин')], { delayMs: 0, decorate: false }, { invoke, loadIcon: async () => [1] });
     expect(seen[0]).toMatchObject({ windowTitle: null, iconSmall: null, iconBig: null });
   });
 
   it('настройка включена по умолчанию и сохраняется', () => {
     expect(normalizeState({ characters: [], settings: {} }).settings.launcher.decorateWindows).toBe(true);
-    expect(normalizeState({ characters: [], settings: { launcher: { decorateWindows: false } } }).settings.launcher.decorateWindows).toBe(false);
+    expect(
+      normalizeState({ characters: [], settings: { launcher: { decorateWindows: false } } }).settings.launcher
+        .decorateWindows
+    ).toBe(false);
   });
 
   it('значки можно не ставить: окно получает только название «Ник — Класс»', async () => {
     const asked = [];
-    const loadIcon = async (cls, size) => { asked.push([cls, size]); return [size]; };
+    const loadIcon = async (cls, size) => {
+      asked.push([cls, size]);
+      return [size];
+    };
     const r = await windowDecor({ nick: 'T', class: 'Маг' }, { loadIcon, icons: false });
     expect(r).toEqual({ windowTitle: 'T — Маг', iconSmall: null, iconBig: null });
-    expect(asked).toEqual([]);   // значки даже не читаются с диска
+    expect(asked).toEqual([]); // значки даже не читаются с диска
   });
 
   it('выключенные значки уходят в Rust пустыми и при запуске', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     await launchCharacters([ch('a', 'Воин')], { delayMs: 0 }, { invoke, loadIcon: async () => [1], icons: false });
     expect(seen[0]).toMatchObject({ windowTitle: 'Ник a — Воин', iconSmall: null, iconBig: null });
   });
 
   it('настройка значков включена по умолчанию, сохраняется и есть в разметке', () => {
     expect(normalizeState({ characters: [], settings: {} }).settings.launcher.decorateIcons).toBe(true);
-    expect(normalizeState({ characters: [], settings: { launcher: { decorateIcons: false } } }).settings.launcher.decorateIcons).toBe(false);
+    expect(
+      normalizeState({ characters: [], settings: { launcher: { decorateIcons: false } } }).settings.launcher
+        .decorateIcons
+    ).toBe(false);
     expect(readFileSync('index.html', 'utf8')).toContain('data-setting="launcher.decorateIcons"');
   });
 
@@ -103,7 +145,7 @@ describe('название и значок окна клиента', () => {
       expect(rust).toContain(name);
     }
     const js = readFileSync('js/modules/launcher/launch.js', 'utf8');
-    expect(js).toContain("windowTitle: windowTitle(character) || null");
+    expect(js).toContain('windowTitle: windowTitle(character) || null');
     expect(js).toContain('iconSmall');
     expect(js).toContain('iconBig');
     expect(readFileSync('index.html', 'utf8')).toContain('data-setting="launcher.decorateWindows"');

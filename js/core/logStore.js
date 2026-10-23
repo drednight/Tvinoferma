@@ -16,14 +16,15 @@
 function isQuotaError(e) {
   if (!e) return false;
   // У разных браузеров причина выражена по-разному: именем, кодом или просто числом
-  return e.name === 'QuotaExceededError'
-    || e.name === 'NS_ERROR_DOM_QUOTA_REACHED'
-    || e.code === 22
-    || e.code === 1014;
+  return e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED' || e.code === 22 || e.code === 1014;
 }
 
 function store() {
-  try { return window.localStorage; } catch { return null; }
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -84,7 +85,7 @@ export function writeLogBounded(key, list) {
  */
 export function pushLog(key, entry, max) {
   const list = [entry, ...(Array.isArray(readLog(key)) ? readLog(key) : [])]
-    .filter((it) => it != null)
+    .filter(it => it != null)
     .slice(0, Math.max(1, Number(max) || 1));
   writeLogBounded(key, list);
   return list;
@@ -96,5 +97,9 @@ export function pushLog(key, entry, max) {
  * @param {string} key
  */
 export function clearLog(key) {
-  try { store()?.removeItem(key); } catch { /* хранилище недоступно — нечего чистить */ }
+  try {
+    store()?.removeItem(key);
+  } catch {
+    /* хранилище недоступно — нечего чистить */
+  }
 }

@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
-  STATS_HISTORY_LIMIT, rememberStatsBefore, previousStat, statChange, statsDiff, statsChangeLog, statsHistory
+  STATS_HISTORY_LIMIT,
+  rememberStatsBefore,
+  previousStat,
+  statChange,
+  statsDiff,
+  statsChangeLog,
+  statsHistory
 } from '../js/modules/characters/statsHistory.js';
 import { normalizeState } from '../js/core/state.js';
 
@@ -26,7 +32,7 @@ describe('история характеристик', () => {
 
   it('снимков не больше лимита, новые сверху', () => {
     const char = charWith(stats({ hp: 100 + STATS_HISTORY_LIMIT }), []);
-    const day = (n) => `2026-10-${String(n).padStart(2, '0')}T10:00:00Z`;
+    const day = n => `2026-10-${String(n).padStart(2, '0')}T10:00:00Z`;
     for (let i = 1; i <= STATS_HISTORY_LIMIT + 5; i++) {
       rememberStatsBefore(char, stats({ hp: i }), day(i));
     }
@@ -82,20 +88,29 @@ describe('история характеристик', () => {
     const s = normalizeState({
       characters: [],
       settings: {},
-      archivedCharacters: [{
-        id: 'c1', nick: 'Герой',
-        stats: stats({ hp: 95 }),
-        statsHistory: [{ at: '2026-10-02T10:00:00Z', stats: stats({ hp: 80 }) }, 'мусор']
-      }]
+      archivedCharacters: [
+        {
+          id: 'c1',
+          nick: 'Герой',
+          stats: stats({ hp: 95 }),
+          statsHistory: [{ at: '2026-10-02T10:00:00Z', stats: stats({ hp: 80 }) }, 'мусор']
+        }
+      ]
     });
     expect(s.archivedCharacters[0].statsHistory).toHaveLength(1);
     expect(s.archivedCharacters[0].statsHistory[0].stats.hp).toBe(80);
     // Приведённые к числам: в state.json могли прийти строками
-    expect(normalizeState({ characters: [], archivedCharacters: [{ id: 'c2', statsHistory: [{ at: null, stats: { hp: '95' } }] }] })
-      .archivedCharacters[0].statsHistory[0].stats.hp).toBe(95);
+    expect(
+      normalizeState({
+        characters: [],
+        archivedCharacters: [{ id: 'c2', statsHistory: [{ at: null, stats: { hp: '95' } }] }]
+      }).archivedCharacters[0].statsHistory[0].stats.hp
+    ).toBe(95);
     // Старые файлы без истории остаются рабочими
-    expect(normalizeState({ characters: [], archivedCharacters: [{ id: 'c3', stats: stats() }] })
-      .archivedCharacters[0].statsHistory).toEqual([]);
+    expect(
+      normalizeState({ characters: [], archivedCharacters: [{ id: 'c3', stats: stats() }] }).archivedCharacters[0]
+        .statsHistory
+    ).toEqual([]);
   });
 });
 
@@ -109,7 +124,10 @@ describe('разница в профиле и в форме', () => {
     vi.doMock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
     const { openCharacterProfile } = await import('../js/modules/characters/profileView.js');
     openCharacterProfile({
-      id: 'c1', nick: 'Ник', class: 'Маг', level: 10,
+      id: 'c1',
+      nick: 'Ник',
+      class: 'Маг',
+      level: 10,
       stats: { hp: 120, mp: 40, strength: 10 },
       statsHistory: [{ at: new Date().toISOString(), stats: { hp: 100, mp: 50, strength: 10 } }]
     });
@@ -123,7 +141,8 @@ describe('разница в профиле и в форме', () => {
     expect(row.getAttribute('title')).toContain('Прошлое значение: 100');
 
     // Упавшее значение — красным вниз
-    const down = [...document.querySelectorAll('.pf-stat')].find(r => r.textContent.includes('Маг. энергия'))
+    const down = [...document.querySelectorAll('.pf-stat')]
+      .find(r => r.textContent.includes('Маг. энергия'))
       .querySelector('.pf-stat-delta');
     expect(down.textContent).toBe('−10');
     expect(down.classList.contains('is-down')).toBe(true);
@@ -151,14 +170,16 @@ describe('разница в профиле и в форме', () => {
     vi.doMock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
     const { openCharacterForm } = await import('../js/modules/characters/formEditor.js');
     openCharacterForm({
-      id: 'c1', nick: 'Ник', contacts: {},
+      id: 'c1',
+      nick: 'Ник',
+      contacts: {},
       stats: { hp: 120 },
       statsHistory: [{ at: '2026-10-02T10:00:00Z', stats: { hp: 100 } }]
     });
     const hint = document.querySelector('.cf-prev[data-prev="hp"]');
     expect(hint).not.toBeNull();
     expect(hint.textContent).toContain('было 100');
-    await new Promise(r => setTimeout(r, 20));   // разница считается при показе формы
+    await new Promise(r => setTimeout(r, 20)); // разница считается при показе формы
     const input = document.querySelector('input[name="stat-hp"]');
     const delta = hint.querySelector('.cf-prev-delta');
     expect(delta.textContent).toBe('+20');
@@ -172,6 +193,6 @@ describe('разница в профиле и в форме', () => {
 
     input.value = '100';
     input.dispatchEvent(new Event('input'));
-    expect(delta.textContent).toBe('');   // вернулись к прошлому значению — разницы нет
+    expect(delta.textContent).toBe(''); // вернулись к прошлому значению — разницы нет
   });
 });

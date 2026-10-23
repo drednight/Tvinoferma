@@ -18,7 +18,7 @@ describe('пауза между запусками окон', () => {
   });
 
   it('нормализация состояния чинит значение и сохраняет ноль', () => {
-    const get = (launcher) => normalizeState({ characters: [], settings: { launcher } }).settings.launcher.delaySec;
+    const get = launcher => normalizeState({ characters: [], settings: { launcher } }).settings.launcher.delaySec;
     expect(normalizeState({ characters: [], settings: {} }).settings.launcher.delaySec).toBe(0);
     expect(get({ delaySec: 0 })).toBe(0);
     expect(get({ delaySec: 7 })).toBe(7);
@@ -29,8 +29,11 @@ describe('пауза между запусками окон', () => {
 
   it('явно переданная пауза главнее настройки; последнее окно не ждёт', async () => {
     const calls = [];
-    const invoke = async (cmd, args) => { calls.push(args.charId); return {}; };
-    const ch = (id) => ({ id, nick: id, class: '', launch: { gcPath: `D:\\${id}` } });
+    const invoke = async (cmd, args) => {
+      calls.push(args.charId);
+      return {};
+    };
+    const ch = id => ({ id, nick: id, class: '', launch: { gcPath: `D:\\${id}` } });
     const t0 = Date.now();
     await launchCharacters([ch('a'), ch('b')], { delayMs: 0 }, { invoke, loadIcon: async () => null, icons: false });
     expect(calls).toHaveLength(2);

@@ -1,11 +1,25 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}), forceRenderAndPersist: vi.fn(async () => {}) }));
-vi.mock('../js/modules/sync/authStatus.js', () => ({ getAuthView: (c) => ({ icon: c.isLoggedIn ? '🟢' : '🔴', color: 'red' }) }));
+vi.mock('../js/core/storage.js', () => ({
+  persist: vi.fn(async () => {}),
+  saveNow: vi.fn(async () => {}),
+  forceRenderAndPersist: vi.fn(async () => {})
+}));
+vi.mock('../js/modules/sync/authStatus.js', () => ({
+  getAuthView: c => ({ icon: c.isLoggedIn ? '🟢' : '🔴', color: 'red' })
+}));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({
-  syncMarathons: vi.fn(), marathonUrlOf: () => null, SITE_PAGES: [], customPages: () => [], rememberCustomPage: vi.fn(),
-  scanTitles: vi.fn(), parseMarathonPage: vi.fn(), pickScannerCharacter: () => null, loadNewsPage: vi.fn(), isNewsUrl: () => false
+  syncMarathons: vi.fn(),
+  marathonUrlOf: () => null,
+  SITE_PAGES: [],
+  customPages: () => [],
+  rememberCustomPage: vi.fn(),
+  scanTitles: vi.fn(),
+  parseMarathonPage: vi.fn(),
+  pickScannerCharacter: () => null,
+  loadNewsPage: vi.fn(),
+  isNewsUrl: () => false
 }));
 
 import { createPartyWith } from '../js/modules/parties/membership.js';
@@ -65,7 +79,9 @@ describe('подпись на карточке марафона', () => {
   });
 
   it('у завершённого марафона и без даты окончания подписи нет', () => {
-    expect(phaseHint({ status: 'completed', startDate: '2026-09-01', endDate: '2026-10-10' }, '2026-10-05').text).toBe('');
+    expect(phaseHint({ status: 'completed', startDate: '2026-09-01', endDate: '2026-10-10' }, '2026-10-05').text).toBe(
+      ''
+    );
     expect(phaseHint({ startDate: '2026-09-01' }, '2026-10-05').text).toBe('');
   });
 });
@@ -77,9 +93,21 @@ describe('вкладка «Пати»', () => {
     document.body.innerHTML = '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div>';
     ({ state } = await import('../js/core/state.js'));
     renderer = await import('../js/modules/parties/renderer.js');
-    state.parties = [{ id: 'p1', name: 'Alpha Strike', order: 1 }, { id: 'p2', name: 'Пустая', order: 2 }];
+    state.parties = [
+      { id: 'p1', name: 'Alpha Strike', order: 1 },
+      { id: 'p2', name: 'Пустая', order: 2 }
+    ];
     state.characters = [
-      { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, ancientCoins: 100, launch: { gcPath: 'D:\\GC\\GameCenter.exe', gcAccount: true } },
+      {
+        id: 'a',
+        nick: 'Аа',
+        class: 'Воин',
+        partyIds: ['p1'],
+        mainPartyId: 'p1',
+        isLoggedIn: true,
+        ancientCoins: 100,
+        launch: { gcPath: 'D:\\GC\\GameCenter.exe', gcAccount: true }
+      },
       { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: false, ancientCoins: 50 },
       { id: 'c', nick: 'Вв', class: 'Лучник', partyIds: [], mainPartyId: null, isLoggedIn: false, ancientCoins: 5 }
     ];
@@ -134,17 +162,20 @@ describe('вкладка «Пати»', () => {
   it('раскрытая карточка остаётся раскрытой после перерисовки', () => {
     document.querySelector('.pt-card[data-party-name="Alpha Strike"] .pt-head').click();
     renderer.renderPartiesGrid();
-    expect(document.querySelector('.pt-card[data-party-name="Alpha Strike"]').classList.contains('is-expanded')).toBe(true);
+    expect(document.querySelector('.pt-card[data-party-name="Alpha Strike"]').classList.contains('is-expanded')).toBe(
+      true
+    );
   });
 });
 
 describe('вкладка «Марафоны»', () => {
   let state, model, page;
   // Приложение считает дни по Москве, поэтому и тест берёт «сегодня» по МСК, а не по часовому поясу машины
-  const day = (offset) => mskAddDays(mskDate(), offset);
+  const day = offset => mskAddDays(mskDate(), offset);
   beforeEach(async () => {
     vi.resetModules();
-    document.body.innerHTML = '<div class="page" data-section="marathons"><div id="marathon-list"></div></div><div id="modal-root"></div>';
+    document.body.innerHTML =
+      '<div class="page" data-section="marathons"><div id="marathon-list"></div></div><div id="modal-root"></div>';
     ({ state } = await import('../js/core/state.js'));
     model = await import('../js/modules/marathons/model.js');
     page = await import('../js/modules/marathons/page.js');
@@ -169,9 +200,9 @@ describe('вкладка «Марафоны»', () => {
     state.marathons = [active, waiting, done, folder];
     page.renderMarathons();
     const root = document.getElementById('marathon-list');
-    const titles = (sel) => [...root.querySelectorAll(`${sel} .mr-card-title`)].map(e => e.textContent);
+    const titles = sel => [...root.querySelectorAll(`${sel} .mr-card-title`)].map(e => e.textContent);
     expect(titles('.mr-group-active')).toContain('Идёт');
-    expect(titles('.mr-group-active')).toContain('📁Лето');   // пустая папка считается идущей
+    expect(titles('.mr-group-active')).toContain('📁Лето'); // пустая папка считается идущей
     expect(root.querySelector('.mr-group-ended .mr-card-title').textContent).toBe('Ждёт');
     expect(root.querySelector('.mr-group-completed')).not.toBeNull();
     expect(root.querySelector('.mr-group-active .mr-card:not(.mr-series) .mr-hint').textContent).toBe('осталось 2 дня');

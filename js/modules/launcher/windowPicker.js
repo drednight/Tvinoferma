@@ -11,19 +11,28 @@ import { toast, confirmModal } from '../../core/ui.js';
 import { escapeHtml } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { getClassIconSrc, CLASSES } from '../../core/constants.js';
-import { runningClientDetails, closeClientsByPid, closeAllClients, applyWindowStyle, applyStyleText } from './launch.js';
+import {
+  runningClientDetails,
+  closeClientsByPid,
+  closeAllClients,
+  applyWindowStyle,
+  applyStyleText
+} from './launch.js';
 import { windowRows, rowLabel, formatUptime, closeSelectedText } from './windowList.js';
 import { showCloseReport } from './partyLaunch.js';
 import { recalledOwnership } from './launchedWindows.js';
 
-const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
+const errText = e => String(e?.message || e || 'неизвестная ошибка');
 
 /**
  * Открывает окно со списком запущенных клиентов игры.
  * @param {{ onClosed?: (report: any) => void }} [opts]
  */
 export async function openWindowPicker(opts = {}) {
-  if (!isTauri()) { toast('Доступно только в приложении', 'error'); return null; }
+  if (!isTauri()) {
+    toast('Доступно только в приложении', 'error');
+    return null;
+  }
 
   const ov = openOverlay({ title: '🎮 Запущенные окна игры', wide: true, onClose: () => opts.onClosed?.(null) });
   /** @type {Set<number>} */
@@ -84,7 +93,7 @@ export async function openWindowPicker(opts = {}) {
     drawChecks();
   };
 
-  const rowHtml = (row) => {
+  const rowHtml = row => {
     const icon = row.known ? getClassIconSrc(row.cls) : null;
     const checked = selected.has(row.pid) ? ' checked' : '';
     const uptime = row.uptimeMs == null ? '—' : formatUptime(row.uptimeMs);
@@ -92,7 +101,7 @@ export async function openWindowPicker(opts = {}) {
       <div class="winp-row${row.known ? '' : ' is-unknown'}">
         <label class="winp-pick-main">
           <input type="checkbox" data-pid="${row.pid}"${checked} />
-          <span class="winp-ava">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : (row.known && row.nick ? escapeHtml(row.nick[0]) : '?')}</span>
+          <span class="winp-ava">${icon ? `<img src="${escapeHtml(icon)}" alt="" />` : row.known && row.nick ? escapeHtml(row.nick[0]) : '?'}</span>
           <span class="winp-who">
             <b>${escapeHtml(row.nick || `PID ${row.pid}`)}</b>
             ${row.cls ? `<small class="muted">${escapeHtml(row.cls)}</small>` : '<small class="muted">окно запущено не из Твинофермы</small>'}
@@ -112,12 +121,18 @@ export async function openWindowPicker(opts = {}) {
     const scrollTop = oldList ? oldList.scrollTop : 0;
     try {
       const clients = await runningClientDetails();
-      rows = windowRows(clients, state.characters, { recalled: recalledOwnership(clients.map(c => ({
-        pid: Number(c?.pid) || 0,
-        uptimeMs: c?.startedAt ? Math.max(0, Date.now() - Number(c.startedAt)) : null
-      }))) });
+      rows = windowRows(clients, state.characters, {
+        recalled: recalledOwnership(
+          clients.map(c => ({
+            pid: Number(c?.pid) || 0,
+            uptimeMs: c?.startedAt ? Math.max(0, Date.now() - Number(c.startedAt)) : null
+          }))
+        )
+      });
       const live = new Set(rows.map(r => r.pid));
-      [...selected].forEach(pid => { if (!live.has(pid)) selected.delete(pid); });
+      [...selected].forEach(pid => {
+        if (!live.has(pid)) selected.delete(pid);
+      });
     } catch (e) {
       rows = [];
       toast(`Не удалось получить список окон: ${errText(e)}`, 'error');
@@ -136,7 +151,7 @@ export async function openWindowPicker(opts = {}) {
    *
    * @param {HTMLElement} btn
    */
-  const redecorateOpenWindows = async (btn) => {
+  const redecorateOpenWindows = async btn => {
     if (busy) return;
     const label = btn.textContent;
     btn.disabled = true;
@@ -160,7 +175,7 @@ export async function openWindowPicker(opts = {}) {
   };
 
   /** Закрывает указанные PID и показывает итог. */
-  const closePids = async (pids) => {
+  const closePids = async pids => {
     if (busy || !pids.length) return;
     busy = true;
     try {
@@ -178,7 +193,7 @@ export async function openWindowPicker(opts = {}) {
     }
   };
 
-  ov.body.addEventListener('click', async (e) => {
+  ov.body.addEventListener('click', async e => {
     // Кнопка «Вид…»: своё название окна и значок класса для конкретного окна
     const styleBtn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-style]'));
     if (!styleBtn) return;
@@ -188,33 +203,43 @@ export async function openWindowPicker(opts = {}) {
     if (row) await openStyleDialog(row, reload);
   });
 
-  ov.body.addEventListener('change', (e) => {
+  ov.body.addEventListener('change', e => {
     const box = /** @type {HTMLInputElement} */ (e.target);
     if (box?.type !== 'checkbox') return;
     const pid = Number(box.dataset.pid);
     if (!pid) return;
-    if (box.checked) selected.add(pid); else selected.delete(pid);
+    if (box.checked) selected.add(pid);
+    else selected.delete(pid);
     // Меняем галочки и подвал: строки списка не пересоздаются, и прокрутка остаётся на месте
     drawChecks();
   });
 
-  ov.el.addEventListener('click', async (e) => {
+  ov.el.addEventListener('click', async e => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-act]'));
     if (!btn) return;
     const act = btn.dataset.act;
 
-    if (act === 'refresh') { await reload(); return; }
+    if (act === 'refresh') {
+      await reload();
+      return;
+    }
     if (act === 'redecorate') {
       // Подписываем уже открытые окна: заголовок и значок слетают уже после запуска,
       // и в этом окне их видно построчно — сразу понятно, что именно чинить
       await redecorateOpenWindows(btn);
       return;
     }
-    if (act === 'close') { ov.close(); return; }
-    if (act === 'toggle-all') { toggleAll(); return; }
+    if (act === 'close') {
+      ov.close();
+      return;
+    }
+    if (act === 'toggle-all') {
+      toggleAll();
+      return;
+    }
     if (act === 'selected') {
       const pids = [...selected];
-      const nick = (pid) => rowLabel(rows.find(r => r.pid === pid)) || `PID ${pid}`;
+      const nick = pid => rowLabel(rows.find(r => r.pid === pid)) || `PID ${pid}`;
       const ok = await confirmModal({
         title: `Закрыть окна: ${pids.length}?`,
         text: `${pids.map(nick).join(', ')}. Всё, что не сохранено в игре, будет потеряно.`,
@@ -269,7 +294,9 @@ export async function openWindowPicker(opts = {}) {
 async function openStyleDialog(row, after) {
   const suggested = row.nick ? (row.cls ? `${row.nick} — ${row.cls}` : row.nick) : `PID ${row.pid}`;
   const ov = openOverlay({ title: `✏️ Вид окна: ${rowLabel(row)}`, wide: false });
-  const classOptions = CLASSES.map(c => `<option value="${escapeHtml(c)}"${row.cls === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  const classOptions = CLASSES.map(
+    c => `<option value="${escapeHtml(c)}"${row.cls === c ? ' selected' : ''}>${escapeHtml(c)}</option>`
+  ).join('');
 
   ov.body.innerHTML = `
     <p class="muted">Название окна и значок меняются только у вида окна и панели задач — игра не затрагивается.</p>
@@ -294,10 +321,13 @@ async function openStyleDialog(row, after) {
 
   const resultEl = /** @type {HTMLElement} */ (ov.body.querySelector('#ws-result'));
 
-  ov.el.addEventListener('click', async (e) => {
+  ov.el.addEventListener('click', async e => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-x]'));
     if (!btn) return;
-    if (btn.dataset.x === 'cancel') { ov.close(); return; }
+    if (btn.dataset.x === 'cancel') {
+      ov.close();
+      return;
+    }
 
     const title = /** @type {HTMLInputElement} */ (ov.body.querySelector('#ws-title')).value.trim();
     const cls = /** @type {HTMLSelectElement} */ (ov.body.querySelector('#ws-class')).value;
@@ -341,7 +371,12 @@ async function closeByParty(selected, rows, closePids) {
   const unknown = chosenRows.filter(r => !r.known).length;
 
   const list = parties.length
-    ? parties.map(p => `<label class="winp-pick"><input type="checkbox" value="${escapeHtml(p.id)}" checked /> ${escapeHtml(p.name)}</label>`).join('')
+    ? parties
+        .map(
+          p =>
+            `<label class="winp-pick"><input type="checkbox" value="${escapeHtml(p.id)}" checked /> ${escapeHtml(p.name)}</label>`
+        )
+        .join('')
     : '<p class="muted">Среди выбранных окон нет персонажей с пати. Отметьте окна персонажей или закройте их кнопкой «Закрыть выбранные».</p>';
 
   const ov = openOverlay({ title: '🛡 Закрыть окна пати', wide: false });
@@ -351,11 +386,15 @@ async function closeByParty(selected, rows, closePids) {
   ov.foot.innerHTML = `<button type="button" class="btn ghost" data-x="cancel">Отмена</button>
     <button type="button" class="btn danger" data-x="ok" ${parties.length ? '' : 'disabled'}>Закрыть окна пати</button>`;
 
-  const done = new Promise((resolve) => {
-    ov.el.addEventListener('click', async (e) => {
+  const done = new Promise(resolve => {
+    ov.el.addEventListener('click', async e => {
       const b = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-x]'));
       if (!b) return;
-      if (b.dataset.x === 'cancel') { ov.close(); resolve(null); return; }
+      if (b.dataset.x === 'cancel') {
+        ov.close();
+        resolve(null);
+        return;
+      }
       const ids = [...ov.body.querySelectorAll('input[type="checkbox"]:checked')].map(el => el.value);
       const pids = rows.filter(r => r.partyIds.some(id => ids.includes(id))).map(r => r.pid);
       ov.close();

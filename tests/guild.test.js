@@ -7,11 +7,22 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  parseProfileDocument, parseParties, parseEvents, normalizeGuildData,
-  unansweredEvents, responseText, summaryText,
-  partyNicks, allPartyNicks, isSelfNick,
-  parseEventWhen, plannerEntryFor, wantedClanEntries, CLAN_ENTRY_PREFIX,
-  RESPONSE_YES, RESPONSE_NO
+  parseProfileDocument,
+  parseParties,
+  parseEvents,
+  normalizeGuildData,
+  unansweredEvents,
+  responseText,
+  summaryText,
+  partyNicks,
+  allPartyNicks,
+  isSelfNick,
+  parseEventWhen,
+  plannerEntryFor,
+  wantedClanEntries,
+  CLAN_ENTRY_PREFIX,
+  RESPONSE_YES,
+  RESPONSE_NO
 } from '../js/modules/guild/core.js';
 import { planClanEntries } from '../js/modules/guild/plannerBridge.js';
 import { msToMskMidnight } from '../js/modules/guild/page.js';
@@ -66,7 +77,10 @@ describe('разбор профиля', () => {
   });
 
   it('без колонки пати возвращает пустой список, а не падает', () => {
-    const empty = new DOMParser().parseFromString('<div class="user__col"><div class="title">Прочее</div></div>', 'text/html');
+    const empty = new DOMParser().parseFromString(
+      '<div class="user__col"><div class="title">Прочее</div></div>',
+      'text/html'
+    );
     expect(parseParties(empty.querySelector('.user__col'))).toEqual([]);
     expect(parseParties(null)).toEqual([]);
   });
@@ -118,7 +132,12 @@ describe('копирование ников', () => {
   it('повторов между пати не делает, регистр и # не важны', () => {
     const twice = {
       ...data,
-      parties: [data.parties[0], { name: 'Ещё', members: [{ nick: 'oHAYO', cls: '', title: '' }] }, data.parties[1], data.parties[0]]
+      parties: [
+        data.parties[0],
+        { name: 'Ещё', members: [{ nick: 'oHAYO', cls: '', title: '' }] },
+        data.parties[1],
+        data.parties[0]
+      ]
     };
     expect(allPartyNicks(twice)).toEqual(['#Ohayo', '#Μακαο', '#тирс', 'Rakohammа', '#Сомандор']);
   });
@@ -126,7 +145,12 @@ describe('копирование ников', () => {
   it('без своего ника копирует всех', () => {
     // 5 участников первой пати + 2 второй, но #Дреднайт есть в обеих — повтор схлопывается
     expect(allPartyNicks({ ...data, selfNick: '' })).toEqual([
-      '#Дреднайт', '#Ohayo', '#Μακαο', '#тирс', 'Rakohammа', '#Сомандор'
+      '#Дреднайт',
+      '#Ohayo',
+      '#Μακαο',
+      '#тирс',
+      'Rakohammа',
+      '#Сомандор'
     ]);
   });
 });
@@ -135,7 +159,10 @@ describe('нормализация кэша', () => {
   it('мусор в state.json не ломает данные', () => {
     const raw = normalizeGuildData({
       events: [{ id: ' 1 ', title: ' X ', response: 'maybe' }, { title: 'без id' }, 'нет объекта'],
-      parties: [{ name: 'Основа', members: [{ nick: '#Аня', cls: '../../etc/passwd' }, { cls: 'luk' }] }, { members: [] }],
+      parties: [
+        { name: 'Основа', members: [{ nick: '#Аня', cls: '../../etc/passwd' }, { cls: 'luk' }] },
+        { members: [] }
+      ],
       selfNick: ' #Дреднайт ',
       syncedAt: -1
     });
@@ -154,7 +181,10 @@ describe('список событий', () => {
   const data = { ...profile(), syncedAt: 1 };
 
   it('ответивший ивент остаётся в данных с нужным ответом', () => {
-    const events = normalizeGuildData({ ...data, events: [...data.events, { id: '465', title: 'ГВГ деф', response: RESPONSE_NO }] });
+    const events = normalizeGuildData({
+      ...data,
+      events: [...data.events, { id: '465', title: 'ГВГ деф', response: RESPONSE_NO }]
+    });
     expect(events.events.map(e => e.id)).toEqual(['462', '464', '465']);
     expect(events.events[2].response).toBe(RESPONSE_NO);
     expect(unansweredEvents(events).map(e => e.id)).toEqual(['464']);
@@ -184,7 +214,10 @@ describe('разбор даты события', () => {
   });
 
   it('берёт год по Москве и переносит прошедшую дату на следующий', () => {
-    expect(parseEventWhen('28 декабря (понедельник) в 21:00', '2026-12-20')).toEqual({ date: '2026-12-28', time: '21:00' });
+    expect(parseEventWhen('28 декабря (понедельник) в 21:00', '2026-12-20')).toEqual({
+      date: '2026-12-28',
+      time: '21:00'
+    });
     expect(parseEventWhen('2 января (пятница) в 21:00', '2026-12-28')).toEqual({ date: '2027-01-02', time: '21:00' });
   });
 
@@ -197,7 +230,12 @@ describe('разбор даты события', () => {
 
 describe('запись в календаре', () => {
   const today = '2026-10-13';
-  const going = { id: '462', title: 'ГВГ атака - ГВГ ЧТ', when: '15 октября (четверг) в 22:00', response: RESPONSE_YES };
+  const going = {
+    id: '462',
+    title: 'ГВГ атака - ГВГ ЧТ',
+    when: '15 октября (четверг) в 22:00',
+    response: RESPONSE_YES
+  };
 
   it('заводит запись на час с id клана', () => {
     expect(plannerEntryFor(going, today)).toMatchObject({
@@ -213,11 +251,7 @@ describe('запись в календаре', () => {
 
   it('«Пойду» — запись есть, «Не пойду» и без ответа — нет', () => {
     const data = {
-      events: [
-        going,
-        { ...going, id: '463', response: RESPONSE_NO },
-        { ...going, id: '464', response: '' }
-      ]
+      events: [going, { ...going, id: '463', response: RESPONSE_NO }, { ...going, id: '464', response: '' }]
     };
     expect([...wantedClanEntries(data).keys()]).toEqual([`${CLAN_ENTRY_PREFIX}462`]);
   });
@@ -270,7 +304,7 @@ describe('сверка календаря с ответами на сайте', 
 
 describe('расписание обновления', () => {
   const DAY = 24 * 60 * 60 * 1000;
-  const at = (iso) => Date.parse(iso);
+  const at = iso => Date.parse(iso);
 
   it('считает до 00:00 по Москве, а не по времени компьютера', () => {
     // Полночь МСК = 21:00 UTC предыдущего дня
@@ -302,9 +336,12 @@ describe('перенос настроек при переименовании et
   });
 
   it('новый ключ важнее старого', () => {
-    const s = normalizeState({ settings: {
-      guild: { enabled: true }, eternals: { enabled: false }
-    } });
+    const s = normalizeState({
+      settings: {
+        guild: { enabled: true },
+        eternals: { enabled: false }
+      }
+    });
     expect(s.settings.guild.enabled).toBe(true);
   });
 
@@ -312,4 +349,3 @@ describe('перенос настроек при переименовании et
     expect(normalizeState({ settings: {} }).settings.guild.enabled).toBe(false);
   });
 });
-

@@ -1,49 +1,106 @@
 // Журнал и архив промокодов (Issue #25): запись только успешных, награда с первого прохода, пропуск, архив.
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  loadLog, applyRows, recordRun, planRun, recentRecords, missedList, enteredList, loadArchive, upsertArchive, archiveCsv,
-  clearLog, LOG_MAX, RECENT_N, LOG_KEY
+  loadLog,
+  applyRows,
+  recordRun,
+  planRun,
+  recentRecords,
+  missedList,
+  enteredList,
+  loadArchive,
+  upsertArchive,
+  archiveCsv,
+  clearLog,
+  LOG_MAX,
+  RECENT_N,
+  LOG_KEY
 } from '../js/modules/automation/promoLog.js';
 
-const T = (n) => new Date(Date.UTC(2026, 0, 1, 0, n));
-const chars = [{ id: 'a', nick: 'Аа' }, { id: 'b', nick: 'Бб' }, { id: 'c', nick: 'Вв' }];
+const T = n => new Date(Date.UTC(2026, 0, 1, 0, n));
+const chars = [
+  { id: 'a', nick: 'Аа' },
+  { id: 'b', nick: 'Бб' },
+  { id: 'c', nick: 'Вв' }
+];
 const reward = [{ name: 'Метеорит', qty: 100, id: '47493', bound: true }];
-const row = (charId, status, over = {}) => ({ code: 'CODE1234', charId, nick: chars.find(c => c.id === charId).nick, status, error: null, clicked: true, dryRun: false, skipped: false, rewards: null, at: T(1).toISOString(), ...over });
+const row = (charId, status, over = {}) => ({
+  code: 'CODE1234',
+  charId,
+  nick: chars.find(c => c.id === charId).nick,
+  status,
+  error: null,
+  clicked: true,
+  dryRun: false,
+  skipped: false,
+  rewards: null,
+  at: T(1).toISOString(),
+  ...over
+});
 
-beforeEach(() => { window.localStorage.clear(); });
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe('applyRows', () => {
   it('недействительные коды не сохраняются, даже если запись уже есть — она не меняется', () => {
-    const r = applyRows([], 'BAD00001', [row('a', 'invalid_code', { code: 'BAD00001' }), row('b', 'expired', { code: 'BAD00001' })], { known: chars, now: T(2) });
+    const r = applyRows(
+      [],
+      'BAD00001',
+      [row('a', 'invalid_code', { code: 'BAD00001' }), row('b', 'expired', { code: 'BAD00001' })],
+      { known: chars, now: T(2) }
+    );
     expect(r.log).toEqual([]);
     expect(r.record).toBeNull();
   });
 
   it('только ошибки (нет входа, проверка) — записи тоже нет', () => {
-    expect(applyRows([], 'CODE1234', [row('a', 'challenge'), row('b', 'not_logged_in')], { known: chars, now: T(2) }).record).toBeNull();
+    expect(
+      applyRows([], 'CODE1234', [row('a', 'challenge'), row('b', 'not_logged_in')], { known: chars, now: T(2) }).record
+    ).toBeNull();
   });
 
   it('первый успех создаёт запись: дата первого ввода, награда, кому введён и кому нет (и почему)', () => {
-    const { record, created } = applyRows([], 'CODE1234', [
-      row('a', 'success', { rewards: reward, at: T(1).toISOString() }),
-      row('b', 'already_used'),
-      row('c', 'challenge')
-    ], { known: chars, now: T(5) });
+    const { record, created } = applyRows(
+      [],
+      'CODE1234',
+      [
+        row('a', 'success', { rewards: reward, at: T(1).toISOString() }),
+        row('b', 'already_used'),
+        row('c', 'challenge')
+      ],
+      { known: chars, now: T(5) }
+    );
     expect(created).toBe(true);
     expect(record.firstAt).toBe(T(5).toISOString());
     expect(record.reward).toEqual(reward);
-    expect(enteredList(record).map(e => [e.nick, e.status])).toEqual([['Аа', 'success'], ['Бб', 'already_used']]);
-    expect(missedList(record)).toEqual([{ id: 'c', nick: 'Вв', reason: { nick: 'Вв', status: 'challenge', error: null, detail: null, at: T(1).toISOString() } }]);
+    expect(enteredList(record).map(e => [e.nick, e.status])).toEqual([
+      ['Аа', 'success'],
+      ['Бб', 'already_used']
+    ]);
+    expect(missedList(record)).toEqual([
+      {
+        id: 'c',
+        nick: 'Вв',
+        reason: { nick: 'Вв', status: 'challenge', error: null, detail: null, at: T(1).toISOString() }
+      }
+    ]);
   });
 
   it('персонаж, которого не запускали, виден в «не введён» без причины', () => {
     const { record } = applyRows([], 'CODE1234', [row('a', 'success')], { known: chars, now: T(5) });
-    expect(missedList(record).map(m => [m.nick, m.reason])).toEqual([['Бб', null], ['Вв', null]]);
+    expect(missedList(record).map(m => [m.nick, m.reason])).toEqual([
+      ['Бб', null],
+      ['Вв', null]
+    ]);
   });
 
   it('повторный запуск: добавленные переходят из «не введён» в «введён», дата первого ввода не меняется', () => {
     const first = applyRows([], 'CODE1234', [row('a', 'success'), row('c', 'challenge')], { known: chars, now: T(5) });
-    const second = applyRows(first.log, 'CODE1234', [row('c', 'success', { at: T(9).toISOString() })], { known: chars, now: T(10) });
+    const second = applyRows(first.log, 'CODE1234', [row('c', 'success', { at: T(9).toISOString() })], {
+      known: chars,
+      now: T(10)
+    });
     expect(second.created).toBe(false);
     expect(second.record.firstAt).toBe(T(5).toISOString());
     expect(second.record.lastAt).toBe(T(10).toISOString());
@@ -52,8 +109,16 @@ describe('applyRows', () => {
   });
 
   it('у кого код уже введён, ошибка потом не затирает ввод; первый ввод не перезаписывается', () => {
-    const first = applyRows([], 'CODE1234', [row('a', 'success', { at: T(1).toISOString() })], { known: chars, now: T(5) });
-    const next = applyRows(first.log, 'CODE1234', [row('a', 'error'), row('a', 'already_used', { at: T(8).toISOString() })], { known: chars, now: T(9) });
+    const first = applyRows([], 'CODE1234', [row('a', 'success', { at: T(1).toISOString() })], {
+      known: chars,
+      now: T(5)
+    });
+    const next = applyRows(
+      first.log,
+      'CODE1234',
+      [row('a', 'error'), row('a', 'already_used', { at: T(8).toISOString() })],
+      { known: chars, now: T(9) }
+    );
     expect(next.record.entered.a).toEqual({ nick: 'Аа', at: T(1).toISOString(), status: 'success' });
     expect(next.record.missed.a).toBeUndefined();
   });
@@ -61,7 +126,10 @@ describe('applyRows', () => {
   it('награда записывается с первого удачного прохода и больше не перезаписывается', () => {
     const first = applyRows([], 'CODE1234', [row('a', 'success', { rewards: reward })], { known: chars, now: T(5) });
     const other = [{ name: 'Другое', qty: 1, id: null, bound: false }];
-    const next = applyRows(first.log, 'CODE1234', [row('b', 'success', { rewards: other })], { known: chars, now: T(6) });
+    const next = applyRows(first.log, 'CODE1234', [row('b', 'success', { rewards: other })], {
+      known: chars,
+      now: T(6)
+    });
     expect(next.record.reward).toEqual(reward);
     expect(next.rewardSet).toBe(false);
   });
@@ -69,14 +137,22 @@ describe('applyRows', () => {
   it('успех без списка наград: награда подтянется со следующего успеха', () => {
     const first = applyRows([], 'CODE1234', [row('a', 'success')], { known: chars, now: T(5) });
     expect(first.record.reward).toBeNull();
-    const next = applyRows(first.log, 'CODE1234', [row('b', 'success', { rewards: reward })], { known: chars, now: T(6) });
+    const next = applyRows(first.log, 'CODE1234', [row('b', 'success', { rewards: reward })], {
+      known: chars,
+      now: T(6)
+    });
     expect(next.record.reward).toEqual(reward);
     expect(next.rewardSet).toBe(true);
   });
 
   it('пропущенные по журналу строки и пробные запуски ничего не меняют', () => {
     const first = applyRows([], 'CODE1234', [row('a', 'success')], { known: chars, now: T(5) });
-    const next = applyRows(first.log, 'CODE1234', [row('b', 'already_used', { skipped: true }), row('c', 'dry_run', { dryRun: true })], { known: chars, now: T(6) });
+    const next = applyRows(
+      first.log,
+      'CODE1234',
+      [row('b', 'already_used', { skipped: true }), row('c', 'dry_run', { dryRun: true })],
+      { known: chars, now: T(6) }
+    );
     expect(Object.keys(next.record.entered)).toEqual(['a']);
     expect(next.record.missed).toEqual({});
   });
@@ -84,7 +160,10 @@ describe('applyRows', () => {
   it(`журнал хранит не больше ${LOG_MAX} кодов: вытесняются давние`, () => {
     let log = [];
     for (let i = 0; i < LOG_MAX + 5; i++) {
-      log = applyRows(log, `CODE${1000 + i}`, [row('a', 'success', { code: `CODE${1000 + i}` })], { known: chars, now: T(i) }).log;
+      log = applyRows(log, `CODE${1000 + i}`, [row('a', 'success', { code: `CODE${1000 + i}` })], {
+        known: chars,
+        now: T(i)
+      }).log;
     }
     expect(log).toHaveLength(LOG_MAX);
     expect(log.some(r => r.code === 'CODE1000')).toBe(false);
@@ -97,7 +176,10 @@ describe('planRun: пропуск уже введённых среди посл�
     let log = [];
     for (let i = 0; i < RECENT_N + 2; i++) {
       const code = `CODE${1000 + i}`;
-      log = applyRows(log, code, [row('a', 'success', { code }), row('b', 'challenge', { code })], { known: chars, now: T(i) }).log;
+      log = applyRows(log, code, [row('a', 'success', { code }), row('b', 'challenge', { code })], {
+        known: chars,
+        now: T(i)
+      }).log;
     }
     return log;
   };
@@ -137,7 +219,8 @@ describe('запись на диск и архив', () => {
   });
 
   it('архив не ограничен журналом и не очищается вместе с ним', () => {
-    for (let i = 0; i < LOG_MAX + 3; i++) recordRun(`CODE${2000 + i}`, [row('a', 'success', { code: `CODE${2000 + i}` })], { known: chars, now: T(i) });
+    for (let i = 0; i < LOG_MAX + 3; i++)
+      recordRun(`CODE${2000 + i}`, [row('a', 'success', { code: `CODE${2000 + i}` })], { known: chars, now: T(i) });
     expect(loadLog()).toHaveLength(LOG_MAX);
     expect(loadArchive()).toHaveLength(LOG_MAX + 3);
     clearLog();
@@ -153,7 +236,16 @@ describe('запись на диск и архив', () => {
   });
 
   it('CSV архива: код, дата, награда', () => {
-    const csv = archiveCsv([{ code: 'CODE1234', firstAt: 'd', reward: [{ name: 'Метеорит', qty: 100 }, { name: 'Руны', qty: 1 }] }]);
+    const csv = archiveCsv([
+      {
+        code: 'CODE1234',
+        firstAt: 'd',
+        reward: [
+          { name: 'Метеорит', qty: 100 },
+          { name: 'Руны', qty: 1 }
+        ]
+      }
+    ]);
     expect(csv).toBe('\ufeffПромокод;Дата первого ввода;Награда\r\nCODE1234;d;"Метеорит ×100; Руны"');
   });
 

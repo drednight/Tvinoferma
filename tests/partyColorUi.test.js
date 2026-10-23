@@ -69,14 +69,19 @@ describe('цвет и архив убраны из карточки в наст�
 
 describe('список доступных персонажей: видно, кто ещё без пати', () => {
   it('«без пати» помечен, стоит первым и считается в подсказке', () => {
-    state.parties = [{ id: 'p1', name: PARTY, order: 1 }, { id: 'p2', name: 'Другая', order: 2 }];
+    state.parties = [
+      { id: 'p1', name: PARTY, order: 1 },
+      { id: 'p2', name: 'Другая', order: 2 }
+    ];
     state.characters = [
       { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true },
       { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', isLoggedIn: true },
       { id: 'c', nick: 'Вв', class: 'Лучник', partyIds: [], mainPartyId: null, isLoggedIn: true }
     ];
     const modal = openSettings();
-    const rows = [...modal.querySelectorAll('.member-row')].map(r => r.querySelector('.member-checkbox').dataset.charId);
+    const rows = [...modal.querySelectorAll('.member-row')].map(
+      r => r.querySelector('.member-checkbox').dataset.charId
+    );
     // Первым идёт тот, кого ещё не взяли ни в одну пати: его и ищем, набирая состав
     expect(rows).toEqual(['c', 'a', 'b']);
     const free = modal.querySelector('.member-row.is-free .member-checkbox');

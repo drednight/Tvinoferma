@@ -28,7 +28,11 @@ async function writeNow() {
   const data = await prepareForDisk(serializeState());
   await getAdapter().saveState(data);
   // Сообщаем остальным частям приложения (например, меню трея со списком пати), что данные сохранены
-  try { window.dispatchEvent(new CustomEvent('tf-persisted')); } catch { /* вне браузера */ }
+  try {
+    window.dispatchEvent(new CustomEvent('tf-persisted'));
+  } catch {
+    /* вне браузера */
+  }
 }
 
 /**
@@ -44,7 +48,7 @@ export function persist() {
       pending = null;
       return writeNow();
     })
-    .catch((error) => {
+    .catch(error => {
       console.error('[STORAGE] Failed to save state:', error);
       throw error; // Пробрасываем ошибку выше, чтобы обработчик клика мог сделать откат
     });

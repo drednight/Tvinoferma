@@ -2,17 +2,53 @@
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
-import { localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate, entryStatusForDate, setEntryStatusForDate } from './planner.js';
-import { timelineBlocks, hourMarks, timeToMinutes, eventEndTime, DEFAULT_DURATION_MINUTES, DAY_MINUTES } from './timeline.js';
-import { weekDays, weekRangeTitle, weekLayout, allDayHeight, weekHours, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, MIN_BLOCK_HEIGHT } from './weekView.js';
+import {
+  localDate,
+  monthMatrix,
+  normalizePlannerEntry,
+  plannerEventsForDate,
+  entryStatusForDate,
+  setEntryStatusForDate
+} from './planner.js';
+import {
+  timelineBlocks,
+  hourMarks,
+  timeToMinutes,
+  eventEndTime,
+  DEFAULT_DURATION_MINUTES,
+  DAY_MINUTES
+} from './timeline.js';
+import {
+  weekDays,
+  weekRangeTitle,
+  weekLayout,
+  allDayHeight,
+  weekHours,
+  nowLinePct,
+  HOUR_HEIGHT,
+  CELL_HEIGHT,
+  MIN_BLOCK_HEIGHT
+} from './weekView.js';
 import { dungeonInfoForDate, DUNGEON_NAMES, DUNGEON_ICONS, DUNGEON_CYCLE } from '../dungeons/schedule.js';
 // Время по Москве: линия «сейчас» в клетке месяца и прокрутка недели к текущему часу
 import { mskMinutes, weekdayOfDate } from '../../core/msk.js';
 
 let shownMonth = new Date();
 
-const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const MONTHS = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь'
+];
 /** Дни недели для шапки месячной сетки, с понедельника (так же, как её строит `monthMatrix`). */
 const MONTH_WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const KIND = { task: 'Задача', event: 'Событие', note: 'Заметка' };
@@ -80,17 +116,33 @@ function dayCellHtml(date, events, dungeon, isToday) {
   const cellTitle = [
     `${dungeon.date}: данж дня — ${dungeon.name}`,
     ...events.map(e => (e.time ? `${e.time} ${e.title}` : e.title)),
-    nowMin === null ? '' : `сейчас ${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}`
-  ].filter(Boolean).join('\n');
+    nowMin === null
+      ? ''
+      : `сейчас ${String(Math.floor(nowMin / 60)).padStart(2, '0')}:${String(nowMin % 60).padStart(2, '0')}`
+  ]
+    .filter(Boolean)
+    .join('\n');
   return `<button class="planner-day is-${dungeon.key}${isToday ? ' is-today' : ''}${isWeekend ? ' is-weekend' : ''}${events.length ? ' has-events' : ''}"
             type="button" data-planner-date="${date}"
             title="${escapeHtml(cellTitle)}"
             aria-label="${date}, данж: ${dungeon.name}, записей: ${events.length}">
     <span class="planner-day-number">${day}</span>
     <span class="planner-day-list">
-      ${titles.slice(0, 3).map(e => `<span class="planner-chip is-${escapeHtml(e.color)}${e.marathon ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
-        title="${escapeHtml(e.title)}">${e.marathon ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
-      ${titles.length > 3 ? `<span class="planner-more" title="${titles.slice(3).map(x => escapeHtml(x.title)).join(' • ')}">ещё ${titles.length - 3}</span>` : ''}
+      ${titles
+        .slice(0, 3)
+        .map(
+          e => `<span class="planner-chip is-${escapeHtml(e.color)}${e.marathon ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+        title="${escapeHtml(e.title)}">${e.marathon ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`
+        )
+        .join('')}
+      ${
+        titles.length > 3
+          ? `<span class="planner-more" title="${titles
+              .slice(3)
+              .map(x => escapeHtml(x.title))
+              .join(' • ')}">ещё ${titles.length - 3}</span>`
+          : ''
+      }
     </span>
   </button>`;
 }
@@ -114,8 +166,9 @@ function weekHtml(appState) {
   const nowMin = mskMinutes();
   // Записи «на весь день» (марафоны и записи без времени) подписаны под датой дня: так они не красят
   // всю колонку и не закрывают часовую шкалу. Марафон идёт первым — он важнее заметок
-  const ownAllDay = layout.map(day => [...day.allDay].sort((a, b) =>
-    Number(b.source === 'marathon') - Number(a.source === 'marathon')));
+  const ownAllDay = layout.map(day =>
+    [...day.allDay].sort((a, b) => Number(b.source === 'marathon') - Number(a.source === 'marathon'))
+  );
   // Область «весь день» растёт по самому насыщенному дню недели; если записей нет ни в одном дне — скрыта
   const ownRows = Math.max(0, ...ownAllDay.map(list => list.length));
   // Ячейка «весь день» стоит над 00:00 и нужна, только если на неделе есть такие записи
@@ -129,44 +182,62 @@ function weekHtml(appState) {
          aria-label="Ближайшие 5 дней: время сверху вниз, сутки ${trackH} пикселей">
       <div class="cal-week-side">
         <div class="cal-week-spacer" aria-hidden="true"></div>
-        ${hasAllDay ? `<div class="cal-week-allday" style="height:${allDayH}px">
+        ${
+          hasAllDay
+            ? `<div class="cal-week-allday" style="height:${allDayH}px">
           <span class="cal-week-allday-label" title="Записи, не привязанные к часу: марафоны идут весь день, у остальных время не задано">без конкретного времени</span>
-        </div>` : ''}
+        </div>`
+            : ''
+        }
         ${hours.map(h => `<div class="cal-hour${h.isMajor ? ' is-major' : ''}">${h.label}</div>`).join('')}
       </div>
       <div class="cal-week-days">
-        ${days.map((d, i) => {
-          const dungeon = dungeonInfoForDate(d.date);
-          const day = layout[i] || { allDay: [], blocks: [] };
-          const own = ownAllDay[i];
-          const dayEvents = events[i];
-          const cellTitle = [
-            `${d.date}: данж дня — ${dungeon.name}`,
-            ...dayEvents.map(e => (e.time ? `${e.time} ${e.title}` : e.title))
-          ].join('\n');
-          return `<div class="cal-day is-${dungeon.key}${d.isToday ? ' is-today' : ''}${d.isWeekend ? ' is-weekend' : ''}">
+        ${days
+          .map((d, i) => {
+            const dungeon = dungeonInfoForDate(d.date);
+            const day = layout[i] || { allDay: [], blocks: [] };
+            const own = ownAllDay[i];
+            const dayEvents = events[i];
+            const cellTitle = [
+              `${d.date}: данж дня — ${dungeon.name}`,
+              ...dayEvents.map(e => (e.time ? `${e.time} ${e.title}` : e.title))
+            ].join('\n');
+            return `<div class="cal-day is-${dungeon.key}${d.isToday ? ' is-today' : ''}${d.isWeekend ? ' is-weekend' : ''}">
           <button type="button" class="cal-day-head" data-planner-date="${d.date}" title="${escapeHtml(cellTitle)}">
             <small>${d.weekdayName}</small>
             <b>${d.day}</b>
             <span class="cal-day-dng is-${dungeon.key}" title="Данж дня: ${dungeon.name}">${dungeon.icon}</span>
           </button>
-          ${hasAllDay ? `<div class="cal-day-allday" style="height:${allDayH}px">
-            ${own.map(e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
-              title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без конкретного времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
-          </div>` : ''}
+          ${
+            hasAllDay
+              ? `<div class="cal-day-allday" style="height:${allDayH}px">
+            ${own
+              .map(
+                e => `<span class="cal-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.done ? ' is-done' : ''}"
+              title="${escapeHtml(e.title)}${e.source === 'marathon' ? ' · марафон, весь день' : ' · без конкретного времени'}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`
+              )
+              .join('')}
+          </div>`
+              : ''
+          }
 <div class="cal-day-track" style="min-height:${trackH}px" data-planner-date="${d.date}"
                title="${escapeHtml(cellTitle)}">
              ${hours.map(h => `<div class="cal-line${h.isMajor ? ' is-major' : ''}"></div>`).join('')}
-             ${day.blocks.map(b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
+             ${day.blocks
+               .map(
+                 b => `<div class="cal-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.done ? ' is-done' : ''}"
                style="top:${b.topPct.toFixed(4)}%;height:${b.heightPct.toFixed(4)}%;min-height:${MIN_BLOCK_HEIGHT}px;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
                title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}"
                data-planner-date="${d.date}">
                <small>${b.startTime}–${b.endTime}</small><b>${escapeHtml(b.event.title)}</b>
-            </div>`).join('')}
+            </div>`
+               )
+               .join('')}
             ${d.isToday ? `<div class="cal-now" style="top:${nowLinePct(nowMin).toFixed(4)}%" title="Сейчас"></div>` : ''}
           </div>
         </div>`;
-        }).join('')}
+          })
+          .join('')}
       </div>
     </div>`;
 }
@@ -185,11 +256,14 @@ export function plannerHtml(appState = state) {
       <div class="planner-head">
         <h3>Календарь</h3>
         <div class="planner-nav">
-          ${view === 'month' ? `
+          ${
+            view === 'month'
+              ? `
             <button class="btn ghost small" type="button" data-planner-nav="-1" aria-label="Предыдущий месяц">←</button>
             <strong>${title}</strong>
-            <button class="btn ghost small" type="button" data-planner-nav="1" aria-label="Следующий месяц">→</button>` :
-            `<strong>${title}</strong>`}
+            <button class="btn ghost small" type="button" data-planner-nav="1" aria-label="Следующий месяц">→</button>`
+              : `<strong>${title}</strong>`
+          }
           <button class="btn secondary small" type="button" data-planner-today>Сегодня</button>
           <span class="planner-switch" role="group" aria-label="Вид календаря">
             <button class="btn ghost small${view === 'week' ? ' is-on' : ''}" type="button" data-planner-view="week"
@@ -199,16 +273,23 @@ export function plannerHtml(appState = state) {
           </span>
         </div>
       </div>
-      ${view === 'week' ? weekHtml(appState) : `
+      ${
+        view === 'week'
+          ? weekHtml(appState)
+          : `
         ${plannerLegendHtml()}
-        <div class="planner-weekdays">${MONTH_WEEKDAY_LABELS.map((d, i) =>
-          `<span${i >= 5 ? ' class="is-weekend"' : ''}>${d}</span>`).join('')}</div>
+        <div class="planner-weekdays">${MONTH_WEEKDAY_LABELS.map(
+          (d, i) => `<span${i >= 5 ? ' class="is-weekend"' : ''}>${d}</span>`
+        ).join('')}</div>
         <div class="planner-grid">
-          ${cells.map(date => {
-            if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';
-            return dayCellHtml(date, plannerEventsForDate(appState, date), dungeonInfoForDate(date), date === today);
-          }).join('')}
-        </div>`}
+          ${cells
+            .map(date => {
+              if (!date) return '<span class="planner-day is-empty" aria-hidden="true"></span>';
+              return dayCellHtml(date, plannerEventsForDate(appState, date), dungeonInfoForDate(date), date === today);
+            })
+            .join('')}
+        </div>`
+      }
     </section>`;
 }
 
@@ -216,7 +297,7 @@ export function bindPlanner(root, deps = {}) {
   const planner = root?.querySelector?.('[data-planner]');
   if (!planner || planner.dataset.bound) return;
   planner.dataset.bound = 'true';
-  planner.addEventListener('click', async (event) => {
+  planner.addEventListener('click', async event => {
     const viewBtn = event.target.closest('[data-planner-view]');
     if (viewBtn) {
       // Вид запоминаем в настройках: выбранный однажды, он остаётся при следующем запуске
@@ -246,24 +327,39 @@ export function bindPlanner(root, deps = {}) {
 }
 
 function eventRow(event) {
-  const source = event.source === 'marathon' ? 'Марафон'
-    : event.source === 'recurring' ? 'Постоянный ивент'
-    : KIND[event.kind] || 'Запись';
+  const source =
+    event.source === 'marathon'
+      ? 'Марафон'
+      : event.source === 'recurring'
+        ? 'Постоянный ивент'
+        : KIND[event.kind] || 'Запись';
   // Диапазон времени: у постоянных ивентов окончание задано расписанием, у своих записей
   // считается из длительности — так в списке видно, сколько запись идёт
   const end = eventEndTime(event);
-  const span = event.source === 'marathon' ? 'весь день'
-    : event.time ? `${event.time}${end && end !== event.time ? `–${end}` : ''}` : '';
-  const meta = [source, span, event.priority === 'high' ? 'Высокий приоритет' : '',
-    event.recurrence && event.recurrence !== 'none' ? 'Повторяется' : ''].filter(Boolean).join(' · ');
+  const span =
+    event.source === 'marathon'
+      ? 'весь день'
+      : event.time
+        ? `${event.time}${end && end !== event.time ? `–${end}` : ''}`
+        : '';
+  const meta = [
+    source,
+    span,
+    event.priority === 'high' ? 'Высокий приоритет' : '',
+    event.recurrence && event.recurrence !== 'none' ? 'Повторяется' : ''
+  ]
+    .filter(Boolean)
+    .join(' · ');
   // Постоянный ивент приходит из расписания: его нельзя отметить «готово» или удалить
-  const actions = event.source === 'manual' ? `
+  const actions =
+    event.source === 'manual'
+      ? `
       <button class="btn ghost small" type="button" data-planner-edit="${escapeHtml(event.id)}" title="Изменить запись">✎</button>
       <button class="btn ghost small" type="button" data-planner-done="${escapeHtml(event.id)}">${event.status === 'done' ? 'Вернуть' : 'Готово'}</button>
       <button class="btn danger small" type="button" data-planner-delete="${escapeHtml(event.id)}" aria-label="Удалить">×</button>`
-    : event.source === 'marathon'
-      ? `<button class="btn secondary small" type="button" data-planner-marathon="${escapeHtml(event.marathonId)}">Открыть</button>`
-      : `<span class="planner-lock" title="Постоянный ивент: идёт каждую неделю по расписанию">расписание</span>`;
+      : event.source === 'marathon'
+        ? `<button class="btn secondary small" type="button" data-planner-marathon="${escapeHtml(event.marathonId)}">Открыть</button>`
+        : `<span class="planner-lock" title="Постоянный ивент: идёт каждую неделю по расписанию">расписание</span>`;
   return `<li class="planner-day-row${event.status === 'done' ? ' is-done' : ''} is-source-${escapeHtml(event.source || 'manual')}">
     <span class="planner-color is-${escapeHtml(event.color || 'blue')}"></span>
     <span class="planner-day-copy"><b>${escapeHtml(event.title)}</b><small class="muted">${escapeHtml(meta)}</small></span>
@@ -281,21 +377,33 @@ function dayScaleHtml(events) {
   const marks = hourMarks(6);
   const allDayEvents = allDay.map(x => x.event);
   return `<div class="planner-scale-wrap">
-    ${allDayEvents.length ? `<div class="planner-scale-allday">
+    ${
+      allDayEvents.length
+        ? `<div class="planner-scale-allday">
       <span class="planner-scale-allday-label">Без конкретного времени</span>
-      ${allDayEvents.map(e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.status === 'done' ? ' is-done' : ''}"
-        title="${e.time ? `с ${e.time}` : 'без времени'} · ${escapeHtml(e.title)}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`).join('')}
-    </div>` : ''}
+      ${allDayEvents
+        .map(
+          e => `<span class="planner-chip is-${escapeHtml(e.color || 'blue')}${e.source === 'marathon' ? ' is-marathon' : ''}${e.status === 'done' ? ' is-done' : ''}"
+        title="${e.time ? `с ${e.time}` : 'без времени'} · ${escapeHtml(e.title)}">${e.source === 'marathon' ? '🏁 ' : ''}${escapeHtml(e.title)}</span>`
+        )
+        .join('')}
+    </div>`
+        : ''
+    }
     <div class="planner-scale">
       <div class="planner-scale-marks" aria-hidden="true">
         ${marks.map(m => `<span class="planner-scale-mark"><i></i>${m}</span>`).join('')}
       </div>
       <div class="planner-scale-track">
-        ${blocks.map(b => `<div class="planner-scale-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.status === 'done' ? ' is-done' : ''}"
+        ${blocks
+          .map(
+            b => `<div class="planner-scale-block is-${escapeHtml(b.event.color || 'blue')}${b.event.source === 'recurring' ? ' is-recurring' : ''}${b.event.status === 'done' ? ' is-done' : ''}"
           style="top:${b.topPct.toFixed(3)}%;height:${b.heightPct.toFixed(3)}%;left:${b.leftPct.toFixed(2)}%;width:${b.widthPct.toFixed(2)}%"
           title="${b.startTime}–${b.endTime} · ${escapeHtml(b.event.title)}">
           <b>${escapeHtml(b.event.title)}</b><small>${b.startTime}–${b.endTime}</small>
-        </div>`).join('')}
+        </div>`
+          )
+          .join('')}
       </div>
     </div>
   </div>`;
@@ -315,38 +423,46 @@ export function openPlannerDay(date, deps = {}) {
   });
   const modal = document.getElementById('modal-root');
   modal.querySelector('[data-planner-add]')?.addEventListener('click', () => openPlannerEntryForm(date, deps));
-  modal.querySelectorAll('[data-planner-edit]').forEach(button => button.addEventListener('click', () => {
-    const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerEdit);
-    if (!entry) return;
-    // `date` — день, который открыт, а не дата записи: у повторяющейся записи они разные,
-    // и форма должна предупредить, что правка затронет все повторения
-    openPlannerEntryForm(date, deps, entry);
-  }));
-  modal.querySelectorAll('[data-planner-done]').forEach(button => button.addEventListener('click', async () => {
-    const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDone);
-    if (!entry) return;
-    // Отметка относится к открытому дню: у повтора состояние своё у каждого вхождения,
-    // и «Готово» в среду не должен отмечать запись за понедельник.
-    const next = entryStatusForDate(entry, date) === 'done' ? 'todo' : 'done';
-    if (!setEntryStatusForDate(entry, date, next)) return;
-    await persist();
-    openPlannerDay(date, deps);
-    deps.render?.();
-  }));
-  modal.querySelectorAll('[data-planner-delete]').forEach(button => button.addEventListener('click', async () => {
-    const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDelete);
-    if (!entry) return;
-    const ok = await confirmModal({ title: 'Удалить запись?', text: entry.title, okText: 'Удалить', danger: true });
-    if (!ok) return;
-    state.plannerEntries = state.plannerEntries.filter(item => item.id !== entry.id);
-    await persist();
-    openPlannerDay(date, deps);
-    deps.render?.();
-  }));
-  modal.querySelectorAll('[data-planner-marathon]').forEach(button => button.addEventListener('click', () => {
-    closeModal();
-    deps.run?.('open-marathon', button.dataset.plannerMarathon);
-  }));
+  modal.querySelectorAll('[data-planner-edit]').forEach(button =>
+    button.addEventListener('click', () => {
+      const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerEdit);
+      if (!entry) return;
+      // `date` — день, который открыт, а не дата записи: у повторяющейся записи они разные,
+      // и форма должна предупредить, что правка затронет все повторения
+      openPlannerEntryForm(date, deps, entry);
+    })
+  );
+  modal.querySelectorAll('[data-planner-done]').forEach(button =>
+    button.addEventListener('click', async () => {
+      const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDone);
+      if (!entry) return;
+      // Отметка относится к открытому дню: у повтора состояние своё у каждого вхождения,
+      // и «Готово» в среду не должен отмечать запись за понедельник.
+      const next = entryStatusForDate(entry, date) === 'done' ? 'todo' : 'done';
+      if (!setEntryStatusForDate(entry, date, next)) return;
+      await persist();
+      openPlannerDay(date, deps);
+      deps.render?.();
+    })
+  );
+  modal.querySelectorAll('[data-planner-delete]').forEach(button =>
+    button.addEventListener('click', async () => {
+      const entry = state.plannerEntries.find(item => item.id === button.dataset.plannerDelete);
+      if (!entry) return;
+      const ok = await confirmModal({ title: 'Удалить запись?', text: entry.title, okText: 'Удалить', danger: true });
+      if (!ok) return;
+      state.plannerEntries = state.plannerEntries.filter(item => item.id !== entry.id);
+      await persist();
+      openPlannerDay(date, deps);
+      deps.render?.();
+    })
+  );
+  modal.querySelectorAll('[data-planner-marathon]').forEach(button =>
+    button.addEventListener('click', () => {
+      closeModal();
+      deps.run?.('open-marathon', button.dataset.plannerMarathon);
+    })
+  );
 }
 
 export function openPlannerEntryForm(date, deps = {}, entry = null) {
@@ -355,8 +471,9 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
   // удалить и создать заново, теряя время, длительность и повтор.
   const edit = !!entry;
   const sel = (name, value, options) =>
-    `<select class="select" name="${name}">${options.map(([v, label]) =>
-      `<option value="${v}"${v === value ? ' selected' : ''}>${label}</option>`).join('')}</select>`;
+    `<select class="select" name="${name}">${options
+      .map(([v, label]) => `<option value="${v}"${v === value ? ' selected' : ''}>${label}</option>`)
+      .join('')}</select>`;
   // Повторяющаяся запись на другой день: в списке это вхождение, а не сама запись.
   // Правка меняет основную запись и все её повторения — об этом честно сказано в форме.
   const otherOccurrence = edit && entry.date !== date;
@@ -374,29 +491,72 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
         <label class="field">Время начала (МСК)<input class="input" type="time" name="time" value="${escapeHtml(edit ? entry.time : '')}"></label>
       </div>
       <div class="two-cols">
-        <label class="field">Длительность${sel('durationMinutes', String(edit ? entry.durationMinutes : DEFAULT_DURATION_MINUTES), DURATION_CHOICES.map(c => [String(c.minutes), c.label]))}</label>
-        <label class="field">Тип${sel('kind', edit ? entry.kind : 'task', [['task', 'Задача'], ['event', 'Событие'], ['note', 'Заметка']])}</label>
+        <label class="field">Длительность${sel(
+          'durationMinutes',
+          String(edit ? entry.durationMinutes : DEFAULT_DURATION_MINUTES),
+          DURATION_CHOICES.map(c => [String(c.minutes), c.label])
+        )}</label>
+        <label class="field">Тип${sel('kind', edit ? entry.kind : 'task', [
+          ['task', 'Задача'],
+          ['event', 'Событие'],
+          ['note', 'Заметка']
+        ])}</label>
       </div>
       <div class="two-cols">
-        <label class="field">Приоритет${sel('priority', edit ? entry.priority : 'normal', [['normal', 'Обычный'], ['high', 'Высокий'], ['low', 'Низкий']])}</label>
-        <label class="field">Напомнить${sel('reminderMinutes', String(edit ? entry.reminderMinutes : 0), [['0', 'Не напоминать'], ['15', 'За 15 минут'], ['60', 'За час'], ['1440', 'За день']])}</label>
+        <label class="field">Приоритет${sel('priority', edit ? entry.priority : 'normal', [
+          ['normal', 'Обычный'],
+          ['high', 'Высокий'],
+          ['low', 'Низкий']
+        ])}</label>
+        <label class="field">Напомнить${sel('reminderMinutes', String(edit ? entry.reminderMinutes : 0), [
+          ['0', 'Не напоминать'],
+          ['15', 'За 15 минут'],
+          ['60', 'За час'],
+          ['1440', 'За день']
+        ])}</label>
       </div>
-      ${edit ? `<div class="two-cols"><label class="field">Состояние${sel('status', shownStatus, [['todo', 'Не начато'], ['doing', 'В работе'], ['done', 'Готово']])}</label></div>` : ''}
+      ${
+        edit
+          ? `<div class="two-cols"><label class="field">Состояние${sel('status', shownStatus, [
+              ['todo', 'Не начато'],
+              ['doing', 'В работе'],
+              ['done', 'Готово']
+            ])}</label></div>`
+          : ''
+      }
       <div class="two-cols">
-        <label class="field">Повтор${sel('recurrence', edit ? entry.recurrence : 'none', [['none', 'Не повторять'], ['daily', 'Ежедневно'], ['weekly', 'Еженедельно'], ['monthly', 'Ежемесячно']])}</label>
+        <label class="field">Повтор${sel('recurrence', edit ? entry.recurrence : 'none', [
+          ['none', 'Не повторять'],
+          ['daily', 'Ежедневно'],
+          ['weekly', 'Еженедельно'],
+          ['monthly', 'Ежемесячно']
+        ])}</label>
         <label class="field">Повторять до<input class="input" type="date" name="recurrenceEnd" value="${escapeHtml(edit ? entry.recurrenceEnd : '')}"></label>
       </div>
       <div class="two-cols">
-        <label class="field">Цвет${sel('color', edit ? entry.color : 'blue', [['blue', 'Синий'], ['green', 'Зелёный'], ['yellow', 'Жёлтый'], ['red', 'Красный'], ['purple', 'Фиолетовый'], ['gray', 'Серый']])}</label>
+        <label class="field">Цвет${sel('color', edit ? entry.color : 'blue', [
+          ['blue', 'Синий'],
+          ['green', 'Зелёный'],
+          ['yellow', 'Жёлтый'],
+          ['red', 'Красный'],
+          ['purple', 'Фиолетовый'],
+          ['gray', 'Серый']
+        ])}</label>
       </div>
     </form>`,
     submitText: edit ? 'Сохранить' : 'Добавить',
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
       const title = String(formData.get('title') || '').trim();
-      if (!title) { setError('Введите название записи.'); return false; }
+      if (!title) {
+        setError('Введите название записи.');
+        return false;
+      }
       const time = String(formData.get('time') || '');
-      if (time && timeToMinutes(time) === null) { setError('Время должно быть в формате ЧЧ:ММ.'); return false; }
+      if (time && timeToMinutes(time) === null) {
+        setError('Время должно быть в формате ЧЧ:ММ.');
+        return false;
+      }
       const fields = {
         title,
         date: formData.get('date'),

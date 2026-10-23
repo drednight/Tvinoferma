@@ -11,7 +11,11 @@ const taskItems = async () => {
 };
 
 describe('журнал задач после перезапуска', () => {
-  beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.resetModules(); });
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.resetModules();
+  });
 
   it('завершённая задача сохраняется и видна после «перезапуска»', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
@@ -28,7 +32,7 @@ describe('журнал задач после перезапуска', () => {
 
   it('при запуске плашки прошлых задач не показываются, а в журнале остаются; новая задача плашку получает', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
-    startTask('Прошлая проверка').finish('Готово', 'warn');   // записана в журнал сразу, плашка ещё не скрылась
+    startTask('Прошлая проверка').finish('Готово', 'warn'); // записана в журнал сразу, плашка ещё не скрылась
 
     vi.resetModules();
     document.body.innerHTML = '';
@@ -78,7 +82,11 @@ describe('журнал задач после перезапуска', () => {
 });
 
 describe('пауза и мгновенная остановка', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = '<div class="topbar-right"></div>'; });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    document.body.innerHTML = '<div class="topbar-right"></div>';
+  });
 
   it('пауза останавливает очередь и продолжается обратно', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
@@ -96,7 +104,8 @@ describe('пауза и мгновенная остановка', () => {
 
   it('стоп обрывает работу сразу, отмена — только очередь', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
-    let cancelled = 0, stopped = 0;
+    let cancelled = 0,
+      stopped = 0;
     const task = startTask('Передача предметов', { total: 2, cancelable: true })
       .onCancel(() => cancelled++)
       .onStop(() => stopped++);
@@ -118,7 +127,11 @@ describe('пауза и мгновенная остановка', () => {
 });
 
 describe('док задач в шапке', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = '<div class="topbar-right"></div>'; });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    document.body.innerHTML = '<div class="topbar-right"></div>';
+  });
 
   it('плашка живёт в топбаре, показывает название скрипта и проценты', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
@@ -137,7 +150,7 @@ describe('док задач в шапке', () => {
   it('по умолчанию док свёрнут: в шапке только плашка, список — по кнопке', async () => {
     const { startTask } = await import('../js/core/taskLog.js');
     const first = startTask('Обновление балансов', { total: 2, cancelable: true });
-    startTask('Проверка авторизации', { total: 2, cancelable: true });   // в очереди
+    startTask('Проверка авторизации', { total: 2, cancelable: true }); // в очереди
     const dock = document.getElementById('tf-task-dock');
     // Плашка текущего скрипта видна всегда — свёрнут именно выпадающий список
     expect(dock.classList.contains('is-open')).toBe(false);
@@ -225,12 +238,17 @@ describe('док задач в шапке', () => {
 });
 
 describe('точечное обновление плашек задач', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = ''; });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    document.body.innerHTML = '';
+  });
   it('новая строка не пересоздаёт чужие плашки, завершение добавляет кнопку скрытия', async () => {
     // Проверяем на карточке задачи, встроенной в страницу: в списке шапки карточек больше нет,
     // там тихие строки без кнопок (см. док «список задач под плашкой»).
     const { startTask, taskCardHtml } = await import('../js/core/taskLog.js');
-    const first = startTask('Первая задача'), second = startTask('Вторая задача');
+    const first = startTask('Первая задача'),
+      second = startTask('Вторая задача');
     document.body.innerHTML = `<div id="holder">${taskCardHtml(first)}${taskCardHtml(second)}</div>`;
     const other = document.querySelector(`[data-task-card="${second.id}"]`);
     first.log('Новый шаг');
@@ -247,7 +265,7 @@ describe('точечное обновление плашек задач', () => 
     const dock = document.getElementById('tf-task-dock');
     const row = dock.querySelector('.tf-dock-row');
     expect(row.textContent).toContain('Проверка входа');
-    expect(row.textContent).toContain('Аа');           // чем скрипт занят
+    expect(row.textContent).toContain('Аа'); // чем скрипт занят
     expect(row.textContent).toContain('50%');
     expect(row.textContent).toContain('2/4');
     // Кнопок в строке нет: управление скриптом живёт на плашке в шапке
@@ -265,7 +283,7 @@ describe('точечное обновление плашек задач', () => 
     const rows = [...dock.querySelectorAll('.tf-dock-row')];
 
     expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toContain('Обновление балансов');   // идущий — сверху
+    expect(rows[0].textContent).toContain('Обновление балансов'); // идущий — сверху
     expect(rows[0].textContent).toContain('1/4');
     expect(rows[1].textContent).toContain('Проверка авторизации'); // ждущий — под ним
     expect(rows[1].textContent).toContain('в очереди');
@@ -276,7 +294,9 @@ describe('точечное обновление плашек задач', () => 
 
     // Ждущий не начинает работу, пока первый не закончит
     let started = false;
-    const turn = second.waitTurn().then(() => { started = true; });
+    const turn = second.waitTurn().then(() => {
+      started = true;
+    });
     await Promise.resolve();
     expect(started).toBe(false);
 
@@ -299,7 +319,7 @@ describe('точечное обновление плашек задач', () => 
     expect(dock.querySelector(`[data-dock-cancel="${first.id}"]`)).toBeNull();
     const cancel = dock.querySelector(`[data-dock-cancel="${second.id}"]`);
     expect(cancel).not.toBeNull();
-    expect(cancel.closest('.tf-dock-row')).toBeNull();   // кнопка рядом со строкой, а не внутри неё
+    expect(cancel.closest('.tf-dock-row')).toBeNull(); // кнопка рядом со строкой, а не внутри неё
     // Ждущий помечен: CSS гасит такие строки
     expect(dock.querySelector(`[data-dock-log-row="${second.id}"]`).className).toContain('is-queued');
   });
@@ -316,11 +336,14 @@ describe('точечное обновление плашек задач', () => 
     // Следующий в очереди начинает работу, когда освободится место
     const third = startTask('Сверка балансов', { total: 1, cancelable: true });
     let started = false;
-    third.waitTurn().then(() => { started = true; });
+    third.waitTurn().then(() => {
+      started = true;
+    });
     await Promise.resolve();
     expect(started).toBe(false);
     first.finish('Готово');
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     expect(started).toBe(true);
   });
 
@@ -335,7 +358,8 @@ describe('точечное обновление плашек задач', () => 
     first.finish('Готово');
     second.finish('Готово');
     third.finish('Готово');
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     expect(order).toEqual(['второй', 'третий']);
   });
 
@@ -344,12 +368,15 @@ describe('точечное обновление плашек задач', () => 
     const first = startTask('Идущий', { total: 1, cancelable: true });
     const dropped = startTask('Отменённый', { total: 1, cancelable: true });
     const next = startTask('Следующий', { total: 1, cancelable: true });
-    dropped.cancel();                          // пользователь снял ожидание
+    dropped.cancel(); // пользователь снял ожидание
     expect(dropped.waiting).toBe(false);
     let ran = false;
-    next.waitTurn().then(() => { ran = true; });
+    next.waitTurn().then(() => {
+      ran = true;
+    });
     first.finish('Готово');
-    await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     expect(ran).toBe(true);
   });
 
@@ -359,7 +386,9 @@ describe('точечное обновление плашек задач', () => 
     const plain = startTask('Мастер марафона', { dock: false, total: 1 });
     expect(plain.waiting).toBe(false);
     let started = false;
-    plain.waitTurn().then(() => { started = true; });
+    plain.waitTurn().then(() => {
+      started = true;
+    });
     await Promise.resolve();
     expect(started).toBe(true);
   });
@@ -378,7 +407,11 @@ describe('точечное обновление плашек задач', () => 
 });
 
 describe('отзыв ошибок после успеха', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = ''; });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    document.body.innerHTML = '';
+  });
 
   it('ошибки и предупреждения персонажа исчезают, если тот же scope отработал успешно', async () => {
     const { startTask, logScope } = await import('../js/core/taskLog.js');
@@ -387,7 +420,8 @@ describe('отзыв ошибок после успеха', () => {
     logScope('char:a', 'Аа: таймаут страницы', 'error');
     logScope('char:a', 'Аа: не дождался ответа', 'warn');
     logScope('char:b', 'Вв: таймаут страницы', 'error');
-    expect(task.errors).toBe(2); expect(task.warnings).toBe(1);
+    expect(task.errors).toBe(2);
+    expect(task.warnings).toBe(1);
 
     // Повтор прошёл: ошибки Аа больше не актуальны, ошибки Вв — ещё да
     task.resolveProblems('char:a');
@@ -396,7 +430,8 @@ describe('отзыв ошибок после успеха', () => {
     expect(text).not.toContain('Аа: таймаут страницы');
     expect(text).not.toContain('не дождался ответа');
     expect(text).toContain('Вв: таймаут страницы');
-    expect(task.errors).toBe(1); expect(task.warnings).toBe(0);
+    expect(task.errors).toBe(1);
+    expect(task.warnings).toBe(0);
     // В логе остаётся след, что строки сняли, — иначе непонятно, куда делись строки
     expect(text).toContain('ошибки сняты');
   });
@@ -425,36 +460,64 @@ describe('отзыв ошибок после успеха', () => {
     const task = startTask('Проверка входа');
     task.log('Вв: таймаут', 'error', 'char:b');
     const before = task.entries.length;
-    task.resolveProblems('char:a');   // у Аа ошибок не было
+    task.resolveProblems('char:a'); // у Аа ошибок не было
     expect(task.entries).toHaveLength(before);
     expect(task.errors).toBe(1);
   });
 });
 
 describe('ход выполнения в полном логе', () => {
-  beforeEach(() => { localStorage.clear(); vi.resetModules(); document.body.innerHTML = '<div id="modal-root"></div>'; });
+  beforeEach(() => {
+    localStorage.clear();
+    vi.resetModules();
+    document.body.innerHTML = '<div id="modal-root"></div>';
+  });
   it('показывает актуальный прогресс и отмену без повторного открытия того же лога', async () => {
     const { startTask, openTaskLog } = await import('../js/core/taskLog.js');
-    const task = startTask('Проверка', {total:4,dock:false,cancelable:true});task.progress(1,4);openTaskLog(task.id);
-    expect(document.querySelector('.tf-dialog-sub').textContent).toContain('25%');expect(document.querySelector('.tf-dialog-sub [data-task-log]')).toBeNull();
-    task.progress(2,4);await vi.waitFor(() => expect(document.querySelector('.tf-dialog-sub').textContent).toContain('50%'));
-    document.querySelector('.tf-dialog-sub [data-task-cancel]').click();expect(task.cancelled).toBe(true);
-    const { closeModal } = await import('../js/core/ui.js');closeModal();expect(document.querySelector('.tf-overlay')).toBeNull();task.finish('Готово');
+    const task = startTask('Проверка', { total: 4, dock: false, cancelable: true });
+    task.progress(1, 4);
+    openTaskLog(task.id);
+    expect(document.querySelector('.tf-dialog-sub').textContent).toContain('25%');
+    expect(document.querySelector('.tf-dialog-sub [data-task-log]')).toBeNull();
+    task.progress(2, 4);
+    await vi.waitFor(() => expect(document.querySelector('.tf-dialog-sub').textContent).toContain('50%'));
+    document.querySelector('.tf-dialog-sub [data-task-cancel]').click();
+    expect(task.cancelled).toBe(true);
+    const { closeModal } = await import('../js/core/ui.js');
+    closeModal();
+    expect(document.querySelector('.tf-overlay')).toBeNull();
+    task.finish('Готово');
   });
 });
 
-
 describe('частота перерисовки полного журнала', () => {
   it('объединяет поток строк в одну перерисовку и сохраняет фильтр ошибок', async () => {
-    vi.resetModules();vi.useFakeTimers();localStorage.clear();document.body.innerHTML='<div id="modal-root"></div>';
+    vi.resetModules();
+    vi.useFakeTimers();
+    localStorage.clear();
+    document.body.innerHTML = '<div id="modal-root"></div>';
     try {
-      const {startTask,openTaskLog}=await import('../js/core/taskLog.js');const task=startTask('Проверка',{dock:false});openTaskLog(task.id);
-      const checkbox=document.querySelector('[data-only-problems]');checkbox.checked=true;checkbox.dispatchEvent(new Event('change'));
-      const list=document.querySelector('.tl-full');for(let i=0;i<500;i++)task.log(`Шаг ${i}`);task.log('Ошибка','error');
-      expect(document.querySelector('.tl-full')).toBe(list);await vi.advanceTimersByTimeAsync(100);
-      expect(document.querySelector('.tl-full')).not.toBe(list);expect(document.querySelector('[data-only-problems]').checked).toBe(true);
+      const { startTask, openTaskLog } = await import('../js/core/taskLog.js');
+      const task = startTask('Проверка', { dock: false });
+      openTaskLog(task.id);
+      const checkbox = document.querySelector('[data-only-problems]');
+      checkbox.checked = true;
+      checkbox.dispatchEvent(new Event('change'));
+      const list = document.querySelector('.tl-full');
+      for (let i = 0; i < 500; i++) task.log(`Шаг ${i}`);
+      task.log('Ошибка', 'error');
+      expect(document.querySelector('.tl-full')).toBe(list);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(document.querySelector('.tl-full')).not.toBe(list);
+      expect(document.querySelector('[data-only-problems]').checked).toBe(true);
       expect(document.querySelectorAll('.tl-full .tl-entry')).toHaveLength(1);
-      const {closeModal}=await import('../js/core/ui.js');closeModal();task.log('После закрытия');await vi.advanceTimersByTimeAsync(200);expect(document.querySelector('.tf-overlay')).toBeNull();
-    } finally {vi.useRealTimers();}
+      const { closeModal } = await import('../js/core/ui.js');
+      closeModal();
+      task.log('После закрытия');
+      await vi.advanceTimersByTimeAsync(200);
+      expect(document.querySelector('.tf-overlay')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

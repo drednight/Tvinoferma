@@ -30,13 +30,16 @@ export function normalizeArchivedParty(input = {}) {
   return {
     ...party,
     memberLinks: Array.isArray(input.memberLinks)
-      ? input.memberLinks.filter(link => link && link.characterId).map(link => ({
-        characterId: String(link.characterId),
-        isMain: link.isMain === true,
-        order: link.order !== null && link.order !== undefined && Number.isFinite(Number(link.order))
-          ? Number(link.order)
-          : null
-      }))
+      ? input.memberLinks
+          .filter(link => link && link.characterId)
+          .map(link => ({
+            characterId: String(link.characterId),
+            isMain: link.isMain === true,
+            order:
+              link.order !== null && link.order !== undefined && Number.isFinite(Number(link.order))
+                ? Number(link.order)
+                : null
+          }))
       : []
   };
 }

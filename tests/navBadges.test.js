@@ -15,7 +15,7 @@ const markup = () => `
     <button class="tab" data-tab="settings"><span class="tab-ico">⚙</span><span>Настройки</span></button>
   </nav>`;
 
-const counter = (section) => document.getElementById(`tab-count-${section}`);
+const counter = section => document.getElementById(`tab-count-${section}`);
 
 describe('счётчики разделов', () => {
   beforeEach(() => {
@@ -30,8 +30,8 @@ describe('счётчики разделов', () => {
     state.parties = [{ id: 'p1' }];
     state.marathons = [
       { id: 'm1', kind: 'single', status: 'active' },
-      { id: 'm2', kind: 'single', status: 'completed' },   // завершённые не считаем
-      { id: 's1', kind: 'series' }                          // папка — не марафон
+      { id: 'm2', kind: 'single', status: 'completed' }, // завершённые не считаем
+      { id: 's1', kind: 'series' } // папка — не марафон
     ];
     expect(navCounts()).toEqual({ characters: 2, parties: 1, marathons: 1 });
   });

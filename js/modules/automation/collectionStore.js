@@ -8,17 +8,36 @@ import { writeLogBounded } from '../../core/logStore.js';
 
 export const LOG_KEY = 'tf_collection_log_v1';
 export const LOG_MAX = 200;
-export const DROP_CATS = [1, 2, 3, 4, 5];       // с неоткрытых карточек падают только категории 1–5
+export const DROP_CATS = [1, 2, 3, 4, 5]; // с неоткрытых карточек падают только категории 1–5
 export const ALL_CATS = [1, 2, 3, 4, 5, 6];
 
-const store = () => { try { return window.localStorage; } catch { return null; } };
-const readJson = (key, fallback) => { try { const v = JSON.parse(store()?.getItem(key) || 'null'); return v ?? fallback; } catch { return fallback; } };
+const store = () => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+const readJson = (key, fallback) => {
+  try {
+    const v = JSON.parse(store()?.getItem(key) || 'null');
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 const num = (v, max = 1e7) => Math.min(max, Math.max(0, Math.floor(Number(v)) || 0));
-const clean = (s) => [...s].map(ch => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('');   // без управляющих символов
-const text = (v, max) => clean(String(v ?? '')).trim().slice(0, max);
+const clean = s => [...s].map(ch => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join(''); // без управляющих символов
+const text = (v, max) =>
+  clean(String(v ?? ''))
+    .trim()
+    .slice(0, max);
 const perCat = (obj, cats) => Object.fromEntries(cats.map(c => [c, num(obj?.[c], 1e6)]));
-const iso = (v) => { const t = Date.parse(v); return Number.isFinite(t) && t > 0 && t < 4102444800000 ? new Date(t).toISOString() : null; };
+const iso = v => {
+  const t = Date.parse(v);
+  return Number.isFinite(t) && t > 0 && t < 4102444800000 ? new Date(t).toISOString() : null;
+};
 const KINDS = ['ok', 'warn', 'error'];
 
 /**
@@ -47,7 +66,10 @@ export function normalizeReport(raw, nick = '') {
     above,
     maxCards: num(raw.maxCards, 100000),
     // opened — все открытые карточки: выпавшие по категориям и те, у которых категорию определить не удалось
-    opened: Math.max(num(raw.opened, 1e6), DROP_CATS.reduce((n, c) => n + drops[c], 0)),
+    opened: Math.max(
+      num(raw.opened, 1e6),
+      DROP_CATS.reduce((n, c) => n + drops[c], 0)
+    ),
     unknown,
     drops,
     claimed: perCat(raw.claimed, ALL_CATS),
@@ -62,11 +84,17 @@ export function normalizeReport(raw, nick = '') {
 /** От новых запусков к старым. */
 export function loadCollectionLog() {
   const raw = readJson(LOG_KEY, []);
-  return (Array.isArray(raw) ? raw : []).filter(e => e && e.id && e.at).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return (Array.isArray(raw) ? raw : [])
+    .filter(e => e && e.id && e.at)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 export function clearCollectionLog() {
   store()?.removeItem(LOG_KEY);
-  try { window.dispatchEvent(new CustomEvent('tf-collection-log')); } catch { /* вне браузера */ }
+  try {
+    window.dispatchEvent(new CustomEvent('tf-collection-log'));
+  } catch {
+    /* вне браузера */
+  }
 }
 
 /**
@@ -86,14 +114,22 @@ export function recordCollectionReports(reports, nickOf = () => '') {
     fresh.push(entry);
   });
   if (!fresh.length) return 0;
-  writeLogBounded(LOG_KEY, [...fresh, ...log].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, LOG_MAX));
-  try { window.dispatchEvent(new CustomEvent('tf-collection-log')); } catch { /* вне браузера */ }
+  writeLogBounded(
+    LOG_KEY,
+    [...fresh, ...log].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, LOG_MAX)
+  );
+  try {
+    window.dispatchEvent(new CustomEvent('tf-collection-log'));
+  } catch {
+    /* вне браузера */
+  }
   return fresh.length;
 }
 
 /** Итоги по набору запусков (всё в журнале или выбранный персонаж). */
 export function totalsOf(entries) {
-  const sum = (key, cats) => Object.fromEntries(cats.map(c => [c, entries.reduce((n, e) => n + (e[key]?.[c] || 0), 0)]));
+  const sum = (key, cats) =>
+    Object.fromEntries(cats.map(c => [c, entries.reduce((n, e) => n + (e[key]?.[c] || 0), 0)]));
   const opened = entries.reduce((n, e) => n + (e.opened || 0), 0);
   const ms = entries.reduce((n, e) => n + (e.ms || 0), 0);
   return {

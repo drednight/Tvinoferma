@@ -7,17 +7,19 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) })
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => true }));
 // showModal нужен по-настоящему: «Исправить и запустить» открывает окно «GameCenter и персонажи».
 // Раньше мок был без него, и окно просто не появлялось.
-vi.mock('../js/core/ui.js', async (orig) => {
+vi.mock('../js/core/ui.js', async orig => {
   const actual = await orig();
   return { ...actual, toast: vi.fn(), confirmModal: vi.fn(async () => true) };
 });
-vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));
+vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} }));
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
 // Входы «запомнены» во всех GameCenter списка: иначе персонаж, которому только что
 // прикрепили GameCenter, остался бы без входа и не запустился бы.
 const ch = (id, nick, gcIds = ['gc-1']) => ({
-  id, nick, class: 'Воин',
+  id,
+  nick,
+  class: 'Воин',
   launch: { gcIds, gcAccounts: { 'gc-1': { nick }, 'gc-2': { nick } } }
 });
 const A = () => ch('a', 'Аа');
@@ -32,8 +34,11 @@ beforeEach(async () => {
   document.body.innerHTML = '<div id="modal-root"></div>';
   facts = { windows: [], elevated: false };
   invoke.mockReset();
-  invoke.mockImplementation(async (cmd) => {
-    if (cmd === 'launcher_running_details') { if (facts.windows instanceof Error) throw facts.windows; return facts.windows; }
+  invoke.mockImplementation(async cmd => {
+    if (cmd === 'launcher_running_details') {
+      if (facts.windows instanceof Error) throw facts.windows;
+      return facts.windows;
+    }
     if (cmd === 'launcher_self_elevated') return facts.elevated;
     if (cmd === 'launcher_check_path') return 'D:\\New\\GameCenter.exe';
     if (cmd === 'launcher_pick_gamecenter') return 'D:\\New\\GameCenter.exe';
@@ -41,16 +46,25 @@ beforeEach(async () => {
   });
   vi.resetModules();
   ({ state } = await import('../js/core/state.js'));
-  state.settings.launcher = { ...(state.settings.launcher || {}), gameCenters: [GC1], preferredGcId: '', decorateWindows: false, skipRunning: true, preflight: 'issues', delaySec: 3 };
+  state.settings.launcher = {
+    ...(state.settings.launcher || {}),
+    gameCenters: [GC1],
+    preferredGcId: '',
+    decorateWindows: false,
+    skipRunning: true,
+    preflight: 'issues',
+    delaySec: 3
+  };
   partyLaunch = await import('../js/modules/launcher/partyLaunch.js');
   ui = await import('../js/core/ui.js');
   log = await import('../js/modules/launcher/launchLog.js');
 });
 
-const started = () => invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => String(c[1].charId).split('@')[0]);   // ключ запуска — «id@gc-id»
+const started = () =>
+  invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => String(c[1].charId).split('@')[0]); // ключ запуска — «id@gc-id»
 const dlg = () => document.querySelector('.tf-dialog');
-const click = (act) => document.querySelector(`[data-act="${act}"]`).click();
-const win = (nick) => ({ pid: 500, title: `${nick} — Воин`, elevated: false });
+const click = act => document.querySelector(`[data-act="${act}"]`).click();
+const win = nick => ({ pid: 500, title: `${nick} — Воин`, elevated: false });
 
 describe('порядок запуска по пати', () => {
   it('персонажи запускаются в том порядке, который задан в карточке пати, а не в общем списке', async () => {
@@ -68,7 +82,7 @@ describe('порядок запуска по пати', () => {
   it('у кого порядок не задан — запускаются по алфавиту, но после заданных', async () => {
     state.parties = [{ id: 'p1', name: 'Папка 1' }];
     state.characters = [A(), B(), C()].map(c => ({ ...c, partyIds: ['p1'] }));
-    state.characters[0].partyOrder = { p1: 2 };   // Аа — единственный с заданным порядком
+    state.characters[0].partyOrder = { p1: 2 }; // Аа — единственный с заданным порядком
 
     await partyLaunch.launchPartyByName('Папка 1');
     // Заданные идут первыми (иначе перетаскивание теряло бы смысл), остальные — по алфавиту
@@ -114,7 +128,7 @@ describe('экран «Проверка перед запуском»', () => {
     const p = partyLaunch.launchGroup('Пати', [A(), B()]);
     await vi.waitFor(() => expect(dlg()).not.toBeNull());
     expect(dlg().textContent).toContain('Проверка перед запуском');
-    expect(partyLaunch.isLaunching()).toBe(true);   // место занято, пока экран открыт
+    expect(partyLaunch.isLaunching()).toBe(true); // место занято, пока экран открыт
     click('cancel');
     expect(await p).toBeNull();
     expect(started()).toEqual([]);
@@ -146,14 +160,14 @@ describe('экран «Проверка перед запуском»', () => {
   });
 
   // «Исправить» больше не прикрепляет GameCenter молча: открывает окно «GameCenter и персонажи»
-// с фильтром по запускаемой пати. Тесты закрывают это окно, как это сделал бы пользователь.
-const gcModal = () => [...document.querySelectorAll('#modal-root .modal-container')].pop();
-const closeGcModal = () => {
-  const btn = [...gcModal().querySelectorAll('button')].find(b => b.textContent.trim() === 'Закрыть');
-  btn.click();
-};
+  // с фильтром по запускаемой пати. Тесты закрывают это окно, как это сделал бы пользователь.
+  const gcModal = () => [...document.querySelectorAll('#modal-root .modal-container')].pop();
+  const closeGcModal = () => {
+    const btn = [...gcModal().querySelectorAll('button')].find(b => b.textContent.trim() === 'Закрыть');
+    btn.click();
+  };
 
-it('«Исправить и запустить» открывает «GameCenter и персонажи» с фильтром по пати', async () => {
+  it('«Исправить и запустить» открывает «GameCenter и персонажи» с фильтром по пати', async () => {
     state.parties = [{ id: 'p1', name: 'Папка 1' }];
     const n = { ...ch('n', 'Нн', []), partyIds: ['p1'] };
     const a = { ...A(), partyIds: ['p1'] };
@@ -176,7 +190,7 @@ it('«Исправить и запустить» открывает «GameCenter
     await vi.waitFor(() => expect(gcModal()).toBeFalsy());
     expect(dlg()).toBeNull();
     await p;
-    expect(started()).toEqual(['a']);   // готовый персонаж запущен, «Нн» пропущен
+    expect(started()).toEqual(['a']); // готовый персонаж запущен, «Нн» пропущен
   });
 
   it('если жаловались на незапомненный вход — фильтр «без входа» уже включён', async () => {
@@ -256,7 +270,12 @@ describe('история запусков', () => {
     expect(run.title).toBe('Пати «Тест»');
     expect(run.delayMs).toBe(3000);
     expect(run.requested).toBe(4);
-    expect(run.items.map(i => [i.id, i.status])).toEqual([['a', 'ok'], ['c', 'ok'], ['b', 'running'], ['n', 'nogc']]);
+    expect(run.items.map(i => [i.id, i.status])).toEqual([
+      ['a', 'ok'],
+      ['c', 'ok'],
+      ['b', 'running'],
+      ['n', 'nogc']
+    ]);
     expect(run.items[0].ms).toBeGreaterThanOrEqual(0);
     expect(run.items[2].ms).toBeNull();
     expect([run.ok, run.running, run.noGc]).toEqual([2, 1, 1]);

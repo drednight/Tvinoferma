@@ -1,7 +1,6 @@
 // @ts-check
 // js/core/constants.js
 
-
 // Базовый путь к иконкам (относительно public/assets/icons/classes/)
 const ICON_BASE_PATH = '/assets/icons/classes/';
 
@@ -28,24 +27,24 @@ export const CLASSES = [
 
 // Маппинг: Название класса -> Имя файла
 export const CLASS_ICON_MAP = {
-  'Оборотень': 'tank.webp',
-  'Друид': 'dru.webp',
-  'Странник': 'mk.webp',
-  'Воин': 'var.webp',
-  'Маг': 'mag.webp',
-  'Стрелок': 'gan.webp',
-  'Жрец': 'prist.webp',
-  'Лучник': 'luk.webp',
-  'Паладин': 'pal.webp',
-  'Убийца': 'sin.webp',
-  'Шаман': 'sham.webp',
-  'Бард': 'bard.webp',
-  'Мистик': 'mist.webp',
-  'Страж': 'sik.webp',
+  Оборотень: 'tank.webp',
+  Друид: 'dru.webp',
+  Странник: 'mk.webp',
+  Воин: 'var.webp',
+  Маг: 'mag.webp',
+  Стрелок: 'gan.webp',
+  Жрец: 'prist.webp',
+  Лучник: 'luk.webp',
+  Паладин: 'pal.webp',
+  Убийца: 'sin.webp',
+  Шаман: 'sham.webp',
+  Бард: 'bard.webp',
+  Мистик: 'mist.webp',
+  Страж: 'sik.webp',
   'Дух Крови': 'dk.webp',
-  'Жнец': 'kosa.webp',
-  'Призрак': 'gost.webp',
-  'Канглонг': 'canglong.webp'
+  Жнец: 'kosa.webp',
+  Призрак: 'gost.webp',
+  Канглонг: 'canglong.webp'
 };
 
 // Функция-помощник для получения URL иконки или fallback-буквы
@@ -83,7 +82,6 @@ export const SKIES = [
 ];
 
 export const SKY_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
-
 
 export const PASS_TYPES = [
   { key: 'weapon', label: 'Оружие', icon: '⚔️', img: '/assets/icons/dungeons/pass-weapon.webp' },
@@ -145,8 +143,8 @@ export const DEFAULT_SETTINGS = {
   },
   // Очередь фоновых скриптов (вход, балансы)
   scripts: {
-    concurrency: 3,      // одновременно открытых скрытых окон
-    retries: 2,          // повторов при таймауте / «Проверке безопасности»
+    concurrency: 3, // одновременно открытых скрытых окон
+    retries: 2, // повторов при таймауте / «Проверке безопасности»
     retryDelayMs: 2000,
     authIntervalHours: 6 // через сколько часов повторно проверять вход автоматически (0 — только вручную)
   },
@@ -163,15 +161,15 @@ export const DEFAULT_SETTINGS = {
     // Список видов с подписями — `NOTIFY_KINDS` в js/desktop/notifications.js.
     // Записи нет — вид работает целиком: новые виды доступны сразу после обновления.
     kinds: {
-      behind: { popup: true, inapp: true, sound: true },     // персонаж не успевает задание марафона
-      tight: { popup: true, inapp: true, sound: false },     // запас задания ≤ 1 дня
-      ending: { popup: true, inapp: true, sound: true },     // марафон заканчивается
-      daily: { popup: true, inapp: true, sound: true },      // ежедневная сводка заданий
-      event: { popup: true, inapp: true, sound: true },      // игровой ивент вот-вот начнётся
-      task: { popup: true, inapp: true, sound: true },       // запись календаря скоро начнётся
-      launch: { popup: true, inapp: true, sound: true },     // запуск окон игры завершён
+      behind: { popup: true, inapp: true, sound: true }, // персонаж не успевает задание марафона
+      tight: { popup: true, inapp: true, sound: false }, // запас задания ≤ 1 дня
+      ending: { popup: true, inapp: true, sound: true }, // марафон заканчивается
+      daily: { popup: true, inapp: true, sound: true }, // ежедневная сводка заданий
+      event: { popup: true, inapp: true, sound: true }, // игровой ивент вот-вот начнётся
+      task: { popup: true, inapp: true, sound: true }, // запись календаря скоро начнётся
+      launch: { popup: true, inapp: true, sound: true }, // запуск окон игры завершён
       launchError: { popup: true, inapp: true, sound: true }, // запуск окон игры не удался
-      close: { popup: true, inapp: true, sound: false }      // окна игры закрыты
+      close: { popup: true, inapp: true, sound: false } // окна игры закрыты
     },
     dailyHour: 20,
     // Постоянные игровые ивенты: по каждому — напоминать ли и за сколько минут до начала.
@@ -186,8 +184,8 @@ export const DEFAULT_SETTINGS = {
   },
   // Видимые окна браузера персонажей
   browser: {
-    unlimitedGiftItems: true,  // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
-    collectionPanel: true      // на странице мини-игры «Коллекция» показать панель с запуском по кнопке и статистикой (Issue #72)
+    unlimitedGiftItems: true, // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
+    collectionPanel: true // на странице мини-игры «Коллекция» показать панель с запуском по кнопке и статистикой (Issue #72)
   },
   // Клановый сайт (скрытая панель на «Сегодня», включается паролем в разделе промокодов).
   // У всех выключено: пока enabled=false, панели нет на странице.
@@ -196,30 +194,30 @@ export const DEFAULT_SETTINGS = {
   },
   // Запуск игры (Issue: запуск окон)
   launcher: {
-    notify: true,   // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
-    gameCenters: [],   // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
+    notify: true, // после запуска показать одну строку «Запущено N окон за M» (ошибки показываются всегда)
+    gameCenters: [], // GameCenter с названиями: [{ id, name, path }] (Настройки → Запуск игры → «GameCenter и персонажи»)
     preferredGcId: '', // какой GameCenter запускать в первую очередь; '' — первый из списка персонажа
-    decorateWindows: true,  // после запуска назвать окно клиента «Ник — Класс» и поставить значок класса
-    decorateIcons: true,    // ставить значок класса; выключено — окно получает только название «Ник — Класс»
-    delaySec: 0,            // пауза между запусками окон игры, секунд (0 — без паузы). По умолчанию 0:
-  // замер 10.10.2026 на трёх аккаунтах дал 30.9 с, а прежние 3 с были чистой потерей —
-  // окно к этому моменту уже запущено, и ждать нечего. Если на большой пати посыплются
-  // ошибки запуска, поднимите здесь до 1–2 с.
-    skipRunning: true,      // не запускать персонажа, чьё окно игры уже открыто («Ник — Класс»): сразу переходить к следующему
-    preflight: 'issues',    // экран проверок перед запуском: 'issues' — только при проблемах, 'always' — всегда, 'off' — никогда
-    layoutDir: '',          // папка Layout игры (Настройки → Запуск игры → «Layout»)
-    layoutTemplate: ''      // файл-образец layout, который копируется поверх остальных .ini в папке
+    decorateWindows: true, // после запуска назвать окно клиента «Ник — Класс» и поставить значок класса
+    decorateIcons: true, // ставить значок класса; выключено — окно получает только название «Ник — Класс»
+    delaySec: 0, // пауза между запусками окон игры, секунд (0 — без паузы). По умолчанию 0:
+    // замер 10.10.2026 на трёх аккаунтах дал 30.9 с, а прежние 3 с были чистой потерей —
+    // окно к этому моменту уже запущено, и ждать нечего. Если на большой пати посыплются
+    // ошибки запуска, поднимите здесь до 1–2 с.
+    skipRunning: true, // не запускать персонажа, чьё окно игры уже открыто («Ник — Класс»): сразу переходить к следующему
+    preflight: 'issues', // экран проверок перед запуском: 'issues' — только при проблемах, 'always' — всегда, 'off' — никогда
+    layoutDir: '', // папка Layout игры (Настройки → Запуск игры → «Layout»)
+    layoutTemplate: '' // файл-образец layout, который копируется поверх остальных .ini в папке
   },
   tray: {
     closeToTray: false,
-    backgroundAuthMinutes: 0   // 0 — выключено
+    backgroundAuthMinutes: 0 // 0 — выключено
   },
   // Через сколько часов данные считаются устаревшими (подсветка «3 ч назад» в профиле персонажа и на карточках марафонов)
   freshness: {
     balanceHours: 24,
     loginHours: 24,
     marathonHours: 24,
-    serverStatusMinutes: 10   // как часто перечитывать «Статус серверов» (минуты; 0 — только при запуске). Сайт обновляет его раз в 10 минут
+    serverStatusMinutes: 10 // как часто перечитывать «Статус серверов» (минуты; 0 — только при запуске). Сайт обновляет его раз в 10 минут
   },
   // mode: startup | daily | weekly | never (см. desktop/updateSchedule.js).
   // Если mode не задан, он выводится из checkOnStartup (старые данные).

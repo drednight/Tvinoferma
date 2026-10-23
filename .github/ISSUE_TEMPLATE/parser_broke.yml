@@ -1,6 +1,6 @@
 name: Сломался разбор страницы сайта
 description: Сайт изменил вёрстку, баланс, марафон или вход определяются неверно
-labels: ["type/bug", "stage/02"]
+labels: ['type/bug', 'stage/02']
 body:
   - type: markdown
     attributes:

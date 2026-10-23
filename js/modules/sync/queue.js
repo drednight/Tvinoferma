@@ -9,20 +9,36 @@ export function createLimiter(max = 3) {
   let active = 0;
   const waiting = [];
   const limiter = {
-    get max() { return max; },
-    set max(v) { max = Math.max(1, Number(v) || 1); drain(); },
-    get active() { return active; },
-    get waiting() { return waiting.length; },
+    get max() {
+      return max;
+    },
+    set max(v) {
+      max = Math.max(1, Number(v) || 1);
+      drain();
+    },
+    get active() {
+      return active;
+    },
+    get waiting() {
+      return waiting.length;
+    },
     async run(fn) {
       // Слот либо занимается сразу, либо передаётся из drain() (active уже учтён)
       if (active < max) active++;
       else await new Promise(resolve => waiting.push(resolve));
-      try { return await fn(); }
-      finally { active--; drain(); }
+      try {
+        return await fn();
+      } finally {
+        active--;
+        drain();
+      }
     }
   };
   function drain() {
-    while (waiting.length && active < max) { active++; waiting.shift()(); }
+    while (waiting.length && active < max) {
+      active++;
+      waiting.shift()();
+    }
   }
   return limiter;
 }
@@ -30,14 +46,21 @@ export function createLimiter(max = 3) {
 /** Общий лимит скрытых окон браузера для всех скриптов. */
 export const browserSlots = createLimiter(3);
 
-export const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** Ошибки, которые имеет смысл повторить (сайт не успел, anti-bot, страница не дорисована). */
 export const RETRYABLE = new Set([
-  'timeout', 'challenge', 'pending', 'container_missing', 'no_value_tag',
-  'timeout_parsing_marathon', 'timeout_parsing_details', 'unknown'
+  'timeout',
+  'challenge',
+  'pending',
+  'container_missing',
+  'no_value_tag',
+  'timeout_parsing_marathon',
+  'timeout_parsing_details',
+  'unknown'
 ]);
-export const isRetryableCode = (code) => !!code && (RETRYABLE.has(code) || String(code).startsWith('exception_') || String(code).startsWith('timeout'));
+export const isRetryableCode = code =>
+  !!code && (RETRYABLE.has(code) || String(code).startsWith('exception_') || String(code).startsWith('timeout'));
 
 /**
  * Выполнить `worker(item, attempt)` для всех элементов.
@@ -63,7 +86,9 @@ export async function runQueue(items, worker, opts = {}) {
     retries = 2,
     retryDelayMs = 2000,
     shouldRetry = (_result, error) => !!error,
-    onStart, onDone, signal
+    onStart,
+    onDone,
+    signal
   } = opts;
   const total = items.length;
   let done = 0;
@@ -73,7 +98,7 @@ export async function runQueue(items, worker, opts = {}) {
     while (signal?.paused && !signal.cancelled) await sleep(200);
   };
 
-  const runOne = async (item) => {
+  const runOne = async item => {
     let attempt = 0;
     let result, error;
     while (true) {
@@ -81,7 +106,8 @@ export async function runQueue(items, worker, opts = {}) {
       await waitWhilePaused();
       if (signal?.cancelled) return { item, attempts: attempt, cancelled: true };
       onStart?.(item, attempt);
-      result = undefined; error = undefined;
+      result = undefined;
+      error = undefined;
       try {
         result = await limiter.run(() => worker(item, attempt));
       } catch (e) {

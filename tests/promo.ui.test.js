@@ -5,17 +5,36 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(async () => tr
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({ scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }) }));
-vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));   // без реальных пауз
+vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} })); // без реальных пауз
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
 
-const $ = (s) => document.querySelector(s);
+const $ = s => document.querySelector(s);
 const wait = (ms = 50) => new Promise(r => setTimeout(r, ms));
 let state, openPromoDialog, recordRun, mountLogHub, logHubSummary;
 // «Настройки → Журналы», вид «Промокоды» (единый модуль логов)
-const renderPromoLog = () => { $('#promo-log-root').innerHTML = ''; mountLogHub($('#promo-log-root'), { source: 'promo' }); };
+const renderPromoLog = () => {
+  $('#promo-log-root').innerHTML = '';
+  mountLogHub($('#promo-log-root'), { source: 'promo' });
+};
 
-const chars = [{ id: 'a', nick: 'Аа' }, { id: 'b', nick: 'Бб' }, { id: 'c', nick: 'Вв', isLoggedIn: true }];
-const okRow = (charId, code = 'CODE1234', extra = {}) => ({ code, charId, nick: chars.find(c => c.id === charId).nick, status: 'success', error: null, clicked: true, dryRun: false, skipped: false, rewards: null, at: new Date().toISOString(), ...extra });
+const chars = [
+  { id: 'a', nick: 'Аа' },
+  { id: 'b', nick: 'Бб' },
+  { id: 'c', nick: 'Вв', isLoggedIn: true }
+];
+const okRow = (charId, code = 'CODE1234', extra = {}) => ({
+  code,
+  charId,
+  nick: chars.find(c => c.id === charId).nick,
+  status: 'success',
+  error: null,
+  clicked: true,
+  dryRun: false,
+  skipped: false,
+  rewards: null,
+  at: new Date().toISOString(),
+  ...extra
+});
 
 beforeEach(async () => {
   vi.resetModules();
@@ -25,7 +44,8 @@ beforeEach(async () => {
   mocks.toast.mockReset();
   document.body.innerHTML = '<div id="modal-root"></div><p id="promo-log-summary"></p><div id="promo-log-root"></div>';
   ({ state } = await import('../js/core/state.js'));
-  state.characters = chars.map(c => ({ ...c })); state.parties = [];
+  state.characters = chars.map(c => ({ ...c }));
+  state.parties = [];
   ({ openPromoDialog } = await import('../js/modules/automation/promo.js'));
   await import('../js/modules/automation/promoLogView.js');
   ({ mountLogHub, logHubSummary } = await import('../js/core/logHub.js'));
@@ -69,7 +89,8 @@ describe('форма промокодов', () => {
     $('#promo-code').value = 'ab';
     $('#promo-code').dispatchEvent(new Event('input', { bubbles: true }));
     expect($('#promo-codes-info').textContent).toContain('Не похоже на промокод');
-    $('[data-act="start"]').click(); await wait();
+    $('[data-act="start"]').click();
+    await wait();
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });
@@ -84,25 +105,44 @@ describe('запуск', () => {
   };
 
   it('несколько кодов: у каждого персонажа каждый код — отдельный вызов; итог — таблица «персонаж × код», награда и журнал', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'success', clicked: true, rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }] }));
+    mocks.invoke.mockImplementation(async (_, a) => ({
+      charId: a.charId,
+      status: 'success',
+      clicked: true,
+      rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }]
+    }));
     await run('AAAA1111, BBBB2222', ['a', 'b']);
     expect(mocks.invoke).toHaveBeenCalledTimes(4);
     expect(mocks.invoke.mock.calls.every(c => c[0] === 'activate_promo' && c[1].dryRun === false)).toBe(true);
-    expect([...document.querySelectorAll('.promo-table thead th')].map(t => t.textContent)).toEqual(['Персонаж', 'AAAA1111', 'BBBB2222']);
+    expect([...document.querySelectorAll('.promo-table thead th')].map(t => t.textContent)).toEqual([
+      'Персонаж',
+      'AAAA1111',
+      'BBBB2222'
+    ]);
     expect($('.tf-dialog-sub').textContent).toContain('Введено: 4 из 4');
     expect($('.promo-sums').textContent).toContain('Метеорит ×100');
     expect($('[data-act="retry"]')).not.toBeNull();
     // журнал в Настройках
     renderPromoLog();
-    expect([...document.querySelectorAll('[data-lh-key]')].map(c => c.dataset.lhKey).sort()).toEqual(['AAAA1111', 'BBBB2222']);
+    expect([...document.querySelectorAll('[data-lh-key]')].map(c => c.dataset.lhKey).sort()).toEqual([
+      'AAAA1111',
+      'BBBB2222'
+    ]);
   });
 
   it('пробный запуск: кнопка «Пробный запуск» вызывает activate_promo с dryRun=true, без подтверждения, без журнала; потом можно запустить по-настоящему', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'dry_run', clicked: false, dryRun: true, detail: 'Активировать' }));
+    mocks.invoke.mockImplementation(async (_, a) => ({
+      charId: a.charId,
+      status: 'dry_run',
+      clicked: false,
+      dryRun: true,
+      detail: 'Активировать'
+    }));
     openPromoDialog({ ids: ['a', 'b'] });
     $('#promo-code').value = 'AAAA1111';
     $('#promo-code').dispatchEvent(new Event('input', { bubbles: true }));
-    $('[data-act="dry"]').click(); await wait(400);
+    $('[data-act="dry"]').click();
+    await wait(400);
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     expect(mocks.invoke.mock.calls.every(c => c[0] === 'activate_promo' && c[1].dryRun === true)).toBe(true);
@@ -112,14 +152,20 @@ describe('запуск', () => {
     // «Запустить по-настоящему»: уже с подтверждением и dryRun=false
     mocks.invoke.mockClear();
     mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'success', clicked: true }));
-    $('[data-act="real"]').click(); await wait(400);
+    $('[data-act="real"]').click();
+    await wait(400);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
     expect(mocks.invoke.mock.calls.every(c => c[1].dryRun === false)).toBe(true);
     expect($('.tf-dialog-sub').textContent).toContain('Введено: 2 из 2');
   });
 
   it('недействительный код: предупреждение «не принят» и ничего в журнале', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'invalid_code', clicked: true, detail: 'Не добавлены бонусы для этого типа пин-кода' }));
+    mocks.invoke.mockImplementation(async (_, a) => ({
+      charId: a.charId,
+      status: 'invalid_code',
+      clicked: true,
+      detail: 'Не добавлены бонусы для этого типа пин-кода'
+    }));
     await run('BADD0001', ['a', 'b']);
     expect($('.promo-alert').textContent).toContain('BADD0001');
     expect($('.promo-alert').textContent).toContain('не принят');
@@ -128,12 +174,17 @@ describe('запуск', () => {
   });
 
   it('повторный ввод того же кода: введённых пропускает без запроса, остальных прогоняет заново', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => (a.charId === 'b' ? { charId: 'b', status: 'challenge', clicked: false } : { charId: a.charId, status: 'success', clicked: true }));
+    mocks.invoke.mockImplementation(async (_, a) =>
+      a.charId === 'b'
+        ? { charId: 'b', status: 'challenge', clicked: false }
+        : { charId: a.charId, status: 'success', clicked: true }
+    );
     await run('AAAA1111', ['a', 'b']);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     mocks.invoke.mockClear();
     mocks.invoke.mockImplementation(async (_, a) => ({ charId: a.charId, status: 'success', clicked: true }));
-    $('[data-act="retry"]').click(); await wait(400);
+    $('[data-act="retry"]').click();
+    await wait(400);
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
     expect(mocks.invoke.mock.calls[0][1].charId).toBe('b');
     expect($('.tf-dialog-sub').textContent).toContain('Введено: 2 из 2');
@@ -143,16 +194,23 @@ describe('запуск', () => {
   it('кнопка «Стоп» есть во время ввода; введённое сохраняется', async () => {
     let release;
     const { browserSlots } = await import('../js/modules/sync/queue.js');
-    browserSlots.max = 1;   // по одному, чтобы остальные ждали в очереди, когда нажат «Стоп»
-    mocks.invoke.mockImplementation((_, a) => new Promise(res => { release = () => res({ charId: a.charId, status: 'success', clicked: true }); }));
+    browserSlots.max = 1; // по одному, чтобы остальные ждали в очереди, когда нажат «Стоп»
+    mocks.invoke.mockImplementation(
+      (_, a) =>
+        new Promise(res => {
+          release = () => res({ charId: a.charId, status: 'success', clicked: true });
+        })
+    );
     openPromoDialog({ ids: ['a', 'b', 'c'] });
     $('#promo-code').value = 'AAAA1111';
     $('#promo-code').dispatchEvent(new Event('input', { bubbles: true }));
-    $('[data-act="start"]').click(); await wait(100);
+    $('[data-act="start"]').click();
+    await wait(100);
     const stop = $('[data-act="stop"]');
     expect(stop).not.toBeNull();
     stop.click();
-    release(); await wait(300);
+    release();
+    await wait(300);
     // начатый ввод завершился и сохранён, остальные не начинались
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
     renderPromoLog();
@@ -171,11 +229,19 @@ describe('Журналы → Промокоды', () => {
   });
 
   it('список как в логах скриптов: строка «код — дата — итог»; по нажатию открывается окно, а не раскрывается список', () => {
-    recordRun('CODE1234', [
-      okRow('a', 'CODE1234', { rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }] }),
-      okRow('b', 'CODE1234', { status: 'challenge', clicked: false }),
-      okRow('c', 'CODE1234', { status: 'not_run', clicked: false, detail: 'Сайт показал проверку безопасности — остальные коды не вводились' })
-    ], { known: [...chars, { id: 'd', nick: 'Гг' }] });
+    recordRun(
+      'CODE1234',
+      [
+        okRow('a', 'CODE1234', { rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }] }),
+        okRow('b', 'CODE1234', { status: 'challenge', clicked: false }),
+        okRow('c', 'CODE1234', {
+          status: 'not_run',
+          clicked: false,
+          detail: 'Сайт показал проверку безопасности — остальные коды не вводились'
+        })
+      ],
+      { known: [...chars, { id: 'd', nick: 'Гг' }] }
+    );
     renderPromoLog();
     const row = $('.tl-jrow[data-lh-key="CODE1234"]');
     expect(row.textContent).toContain('CODE1234');

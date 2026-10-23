@@ -25,13 +25,18 @@ export function normalizeVersion(ref) {
 
 /** Строки раздела версии (без заголовка `## [X.Y.Z]`) или null, если раздела нет. */
 export function extractSection(changelog, version) {
-  const lines = String(changelog || '').replace(/\r\n/g, '\n').split('\n');
+  const lines = String(changelog || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n');
   const head = new RegExp(`^##\\s*\\[${version.replace(/\./g, '\\.')}\\]`);
   const start = lines.findIndex(l => head.test(l));
   if (start < 0) return null;
   let end = lines.length;
   for (let i = start + 1; i < lines.length; i++) {
-    if (/^##\s+\[/.test(lines[i])) { end = i; break; }
+    if (/^##\s+\[/.test(lines[i])) {
+      end = i;
+      break;
+    }
   }
   return lines.slice(start + 1, end);
 }
@@ -59,7 +64,8 @@ function topLevelBullets(lines) {
   const items = [];
   for (const line of lines) {
     if (/^[-*]\s+/.test(line)) items.push(line.replace(/^[-*]\s+/, ''));
-    else if (/^\s+\S/.test(line) && items.length && !/^\s+[-*]\s/.test(line)) items[items.length - 1] += ` ${line.trim()}`;
+    else if (/^\s+\S/.test(line) && items.length && !/^\s+[-*]\s/.test(line))
+      items[items.length - 1] += ` ${line.trim()}`;
   }
   return items;
 }
@@ -88,7 +94,11 @@ export function shortItems(section) {
   const brief = parts.find(p => /^Кратко$/i.test(p.title));
   const own = brief ? topLevelBullets(brief.lines) : [];
   if (own.length) return own.map(i => clip(plainText(i), 220));
-  return parts.filter(p => p !== brief).flatMap(p => topLevelBullets(p.lines)).map(headline).filter(Boolean);
+  return parts
+    .filter(p => p !== brief)
+    .flatMap(p => topLevelBullets(p.lines))
+    .map(headline)
+    .filter(Boolean);
 }
 
 /**
@@ -98,10 +108,13 @@ export function shortItems(section) {
 export function buildNotes(changelog, version) {
   const section = extractSection(changelog, version);
   if (!section) {
-    throw new Error(`В CHANGELOG.md нет раздела «## [${version}]». Перед тегом переименуйте «[Unreleased]» в «[${version}] — дата».`);
+    throw new Error(
+      `В CHANGELOG.md нет раздела «## [${version}]». Перед тегом переименуйте «[Unreleased]» в «[${version}] — дата».`
+    );
   }
   const items = shortItems(section);
-  if (!items.length) throw new Error(`Раздел [${version}] в CHANGELOG.md пуст: опишите изменения (подраздел «### Кратко»).`);
+  if (!items.length)
+    throw new Error(`Раздел [${version}] в CHANGELOG.md пуст: опишите изменения (подраздел «### Кратко»).`);
   let list = items.map(i => `- ${i}`).join('\n');
   if (list.length > MAX_NOTES) list = `${list.slice(0, MAX_NOTES).replace(/\n[^\n]*$/, '')}\n- …`;
   return `Что нового в ${version}\n\n${list}\n\nВсе изменения: ${CHANGELOG_URL}\n`;

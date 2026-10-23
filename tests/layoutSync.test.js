@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { layoutSummaryText, layoutApplyText, baseName, layoutPaths, bindLayoutPanel } from '../js/modules/launcher/layoutSync.js';
+import {
+  layoutSummaryText,
+  layoutApplyText,
+  baseName,
+  layoutPaths,
+  bindLayoutPanel
+} from '../js/modules/launcher/layoutSync.js';
 import { state } from '../js/core/state.js';
 import { normalizeState } from '../js/core/state.js';
 
@@ -16,15 +22,28 @@ describe('Layout: тексты', () => {
 
   it('сводка по папке', () => {
     expect(layoutSummaryText({ targets: [], templateInDir: true })).toMatch(/менять нечего/);
-    const t = layoutSummaryText({ targets: [{ name: 'a.ini', readOnly: true }, { name: 'b.ini', readOnly: false }], templateInDir: true }, 'D:\\x\\1.ini');
+    const t = layoutSummaryText(
+      {
+        targets: [
+          { name: 'a.ini', readOnly: true },
+          { name: 'b.ini', readOnly: false }
+        ],
+        templateInDir: true
+      },
+      'D:\\x\\1.ini'
+    );
     expect(t).toContain('2 файла');
     expect(t).toContain('уже: 1');
     expect(t).toContain('1.ini');
   });
 
   it('итог применения', () => {
-    expect(layoutApplyText({ replaced: ['a', 'b'], unchanged: ['c'], failed: [], backupDir: 'X' })).toBe('Готово: заменено: 2, уже совпадали: 1. Прежние файлы сохранены в копии: X');
-    expect(layoutApplyText({ replaced: [], unchanged: [], failed: [{ name: 'a.ini', error: 'нет доступа' }] })).toContain('a.ini — нет доступа');
+    expect(layoutApplyText({ replaced: ['a', 'b'], unchanged: ['c'], failed: [], backupDir: 'X' })).toBe(
+      'Готово: заменено: 2, уже совпадали: 1. Прежние файлы сохранены в копии: X'
+    );
+    expect(
+      layoutApplyText({ replaced: [], unchanged: [], failed: [{ name: 'a.ini', error: 'нет доступа' }] })
+    ).toContain('a.ini — нет доступа');
     expect(layoutApplyText({ replaced: [], unchanged: [], failed: [] })).toBe('Менять было нечего.');
   });
 
@@ -38,7 +57,14 @@ describe('Layout: тексты', () => {
 describe('Layout: разметка и команды', () => {
   it('панель есть в разделе «Приложение», id уникальны', () => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    for (const id of ['layout-dir', 'layout-template', 'layout-dir-btn', 'layout-template-btn', 'layout-apply-btn', 'layout-unlock-btn']) {
+    for (const id of [
+      'layout-dir',
+      'layout-template',
+      'layout-dir-btn',
+      'layout-template-btn',
+      'layout-apply-btn',
+      'layout-unlock-btn'
+    ]) {
       expect(doc.querySelector(`#settings-app #settings-layout #${id}`), id).not.toBeNull();
     }
     expect(doc.querySelector('[data-setting="launcher.layoutDir"]')).not.toBeNull();
@@ -71,7 +97,7 @@ describe('Layout: кнопка «Применить»', () => {
   it('при запущенной игре применяет сразу, а не отказывает', async () => {
     mount();
     const calls = [];
-    const invoke = async (cmd) => {
+    const invoke = async cmd => {
       calls.push(cmd);
       if (cmd === 'layout_scan') return { targets: [{ name: 'a.ini', readOnly: false }], templateInDir: true };
       if (cmd === 'layout_apply') return { replaced: ['a.ini'], unchanged: [], failed: [], backupDir: 'B' };
@@ -81,7 +107,8 @@ describe('Layout: кнопка «Применить»', () => {
     bindLayoutPanel({ invoke, confirm });
     await tick();
     document.getElementById('layout-apply-btn').click();
-    await tick(); await tick();
+    await tick();
+    await tick();
     expect(calls).toContain('layout_apply');
     expect(document.getElementById('layout-result').textContent).toContain('заменено: 1');
     // Требования закрыть игру больше нет, и проигрывать его текстом тоже незачем:
@@ -95,7 +122,7 @@ describe('Layout: кнопка «Применить»', () => {
   it('без подтверждения не применяет, с подтверждением — применяет', async () => {
     mount();
     const calls = [];
-    const invoke = async (cmd) => {
+    const invoke = async cmd => {
       calls.push(cmd);
       if (cmd === 'layout_scan') return { targets: [{ name: 'a.ini', readOnly: false }], templateInDir: true };
       if (cmd === 'layout_apply') return { replaced: ['a.ini'], unchanged: [], failed: [], backupDir: 'B' };
@@ -105,10 +132,12 @@ describe('Layout: кнопка «Применить»', () => {
     bindLayoutPanel({ invoke, confirm });
     await tick();
     document.getElementById('layout-apply-btn').click();
-    await tick(); await tick();
+    await tick();
+    await tick();
     expect(calls).not.toContain('layout_apply');
     document.getElementById('layout-apply-btn').click();
-    await tick(); await tick();
+    await tick();
+    await tick();
     expect(calls).toContain('layout_apply');
     expect(document.getElementById('layout-result').textContent).toContain('заменено: 1');
     expect(confirm.mock.calls[0][0].text).toContain('systemsettings.ini');

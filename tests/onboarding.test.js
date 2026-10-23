@@ -7,11 +7,17 @@ vi.mock('../js/core/state.js', () => ({ state: { characters: [] } }));
 vi.mock('../js/core/storage.js', () => ({ persist: mocks.persist }));
 
 import {
-  shouldShowOnboarding, onboardingHtml, onboardingModalHtml, markOnboardingSeen,
-  ONBOARDING_STEPS, ONBOARDING_INTRO
+  shouldShowOnboarding,
+  onboardingHtml,
+  onboardingModalHtml,
+  markOnboardingSeen,
+  ONBOARDING_STEPS,
+  ONBOARDING_INTRO
 } from '../js/modules/characters/onboarding.js';
 
-beforeEach(() => { mocks.persist.mockClear(); });
+beforeEach(() => {
+  mocks.persist.mockClear();
+});
 
 describe('когда показывать подсказку', () => {
   it('на пустых данных — да', () => {
@@ -97,7 +103,7 @@ describe('разметка подсказки', () => {
     const html = onboardingHtml({ characters: [] });
     for (const step of ONBOARDING_STEPS) {
       expect(html).toContain(step.title);
-      expect(step.text.length).toBeGreaterThan(30);   // объяснение, а не «нажмите кнопку»
+      expect(step.text.length).toBeGreaterThan(30); // объяснение, а не «нажмите кнопку»
       expect(html).toContain(`data-onb="${step.action}"`);
     }
   });

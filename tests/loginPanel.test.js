@@ -13,13 +13,21 @@ beforeEach(() => {
   // closed shadow DOM в тесте делаем открытым, чтобы его можно было проверить
   origAttach = origAttach || Element.prototype.attachShadow;
   const orig = origAttach;
-  Element.prototype.attachShadow = function (init) { shadow = orig.call(this, { ...init, mode: 'open' }); return shadow; };
+  Element.prototype.attachShadow = function (init) {
+    shadow = orig.call(this, { ...init, mode: 'open' });
+    return shadow;
+  };
   Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(async () => {}) }, configurable: true });
 });
 
 describe('panelDataFor', () => {
   it('берёт контакты персонажа', () => {
-    expect(panelDataFor({ nick: 'x', contacts: { email: 'e' } }).contacts).toEqual({ email: 'e', password: '', recoveryEmail: '', phone: '' });
+    expect(panelDataFor({ nick: 'x', contacts: { email: 'e' } }).contacts).toEqual({
+      email: 'e',
+      password: '',
+      recoveryEmail: '',
+      phone: ''
+    });
     expect(panelDataFor(null).nick).toBe('');
   });
 });
@@ -40,7 +48,7 @@ describe('panelBootstrap', () => {
   it('кнопка 📋 копирует реальный пароль', async () => {
     panelBootstrap(data);
     const copyBtns = [...shadow.querySelectorAll('button')].filter(b => b.textContent === '📋');
-    copyBtns[1].click();   // email, пароль (recovery пуст)
+    copyBtns[1].click(); // email, пароль (recovery пуст)
     await wait();
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('secret&1');
   });

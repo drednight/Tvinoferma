@@ -11,7 +11,7 @@ export const CATCHUP_INTERVAL_MS = 10 * 60 * 1000; // если плановая 
 export const BOUNDARY_SLACK_MS = 1000;
 export const FIRST_CHECK_DELAY_MS = 5000;
 
-let pending = null;      // объект Update из плагина (нужен для установки)
+let pending = null; // объект Update из плагина (нужен для установки)
 let checking = false;
 let installing = false;
 let timers = [];
@@ -47,7 +47,8 @@ export async function checkForUpdates({ silent = false } = {}) {
       error: null,
       lastCheckedAt
     });
-    if (!silent) toast(`Доступна версия ${formatVersion(update.version)}. Кнопка обновления в шапке и в настройках.`, 'info');
+    if (!silent)
+      toast(`Доступна версия ${formatVersion(update.version)}. Кнопка обновления в шапке и в настройках.`, 'info');
     return update;
   } catch (e) {
     console.warn('[UPDATER]', e);
@@ -81,10 +82,12 @@ export async function installUpdate() {
       const { saveNow, createBackup } = await import('../core/storage.js');
       await saveNow();
       await createBackup(`pre-update-v${pending.currentVersion || 'x'}-to-v${pending.version || 'x'}`);
-    } catch (e) { console.warn('[UPDATER] pre-update backup failed', e); }
+    } catch (e) {
+      console.warn('[UPDATER] pre-update backup failed', e);
+    }
     let total = 0;
     let received = 0;
-    await pending.downloadAndInstall((event) => {
+    await pending.downloadAndInstall(event => {
       if (event.event === 'Started') {
         total = event.data?.contentLength || 0;
         setUpdateState({ status: 'downloading', progress: total ? 0 : null });
@@ -97,7 +100,12 @@ export async function installUpdate() {
     });
     setUpdateState({ status: 'installing', progress: 100 });
     // Перед перезапуском гарантированно сохраняем данные
-    try { const { saveNow } = await import('../core/storage.js'); await saveNow(); } catch (e) { console.warn('[UPDATER] saveNow', e); }
+    try {
+      const { saveNow } = await import('../core/storage.js');
+      await saveNow();
+    } catch (e) {
+      console.warn('[UPDATER] saveNow', e);
+    }
     const { relaunch } = await import('@tauri-apps/plugin-process');
     await relaunch();
     return true;
@@ -112,7 +120,7 @@ export async function installUpdate() {
   }
 }
 
-let schedule = null;   // { getMode, getLastChecked }
+let schedule = null; // { getMode, getLastChecked }
 let boundaryTimer = null;
 
 const dueNow = () => !!schedule && isCheckDue(schedule.getMode(), schedule.getLastChecked());
@@ -124,10 +132,13 @@ function armBoundary() {
   const mode = schedule?.getMode();
   if (!isScheduledMode(mode)) return;
   const ms = Math.max(1000, nextBoundary(mode).getTime() - Date.now() + BOUNDARY_SLACK_MS);
-  boundaryTimer = setTimeout(() => {
-    if (dueNow()) checkForUpdates({ silent: true });   // если догоняющая проверка уже сработала, повтора нет
-    armBoundary();
-  }, Math.min(ms, 2 ** 31 - 1));
+  boundaryTimer = setTimeout(
+    () => {
+      if (dueNow()) checkForUpdates({ silent: true }); // если догоняющая проверка уже сработала, повтора нет
+      armBoundary();
+    },
+    Math.min(ms, 2 ** 31 - 1)
+  );
 }
 
 /**
@@ -136,15 +147,24 @@ function armBoundary() {
  *  - daily/weekly: дополнительно в 00:00 и, если пропустили срок, в ближайшие 10 минут.
  * @param {{ getMode?: () => string, getLastChecked?: () => (string|null|undefined) }} opts
  */
-export function startUpdateScheduler({ getMode = () => 'startup', getLastChecked = () => getUpdateState().lastCheckedAt } = {}) {
+export function startUpdateScheduler({
+  getMode = () => 'startup',
+  getLastChecked = () => getUpdateState().lastCheckedAt
+} = {}) {
   stopUpdateScheduler();
   if (!isSupported()) return;
   schedule = { getMode, getLastChecked };
-  timers.push(setTimeout(() => {
-    // Проверяем при каждом запуске, даже если сегодня уже проверяли или сохранён старый режим never.
-    checkForUpdates({ silent: true });
-  }, FIRST_CHECK_DELAY_MS));
-  timers.push(setInterval(() => { if (dueNow()) checkForUpdates({ silent: true }); }, CATCHUP_INTERVAL_MS));
+  timers.push(
+    setTimeout(() => {
+      // Проверяем при каждом запуске, даже если сегодня уже проверяли или сохранён старый режим never.
+      checkForUpdates({ silent: true });
+    }, FIRST_CHECK_DELAY_MS)
+  );
+  timers.push(
+    setInterval(() => {
+      if (dueNow()) checkForUpdates({ silent: true });
+    }, CATCHUP_INTERVAL_MS)
+  );
   armBoundary();
 }
 
@@ -156,7 +176,10 @@ export function rescheduleUpdates() {
 }
 
 export function stopUpdateScheduler() {
-  timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+  timers.forEach(t => {
+    clearTimeout(t);
+    clearInterval(t);
+  });
   timers = [];
   clearTimeout(boundaryTimer);
   boundaryTimer = null;

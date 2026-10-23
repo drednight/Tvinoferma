@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveUpdateMode, lastBoundary, nextBoundary, isCheckDue, nextCheckText
+  resolveUpdateMode,
+  lastBoundary,
+  nextBoundary,
+  isCheckDue,
+  nextCheckText
 } from '../js/desktop/updateSchedule.js';
 
 // Issue #83: расписание автопроверки обновлений. 2026-10-07 — среда.

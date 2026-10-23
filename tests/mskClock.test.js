@@ -4,8 +4,12 @@ import { mountMskClock, mskClockHtml } from '../js/modules/servers/mskClock.js';
 
 // Часы по Москве над плашкой «Статус серверов»: ЧЧ:ММ:СС, тикают раз в секунду.
 describe('часы МСК', () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it('показывают московское время в формате ЧЧ:ММ:СС', () => {
     const el = document.createElement('div');
@@ -23,7 +27,7 @@ describe('часы МСК', () => {
     const sec = el.querySelector('[data-part="s"]');
     expect(sec.textContent).toBe('05');
     vi.advanceTimersByTime(1100);
-    expect(el.querySelector('[data-part="s"]')).toBe(sec);   // тот же узел
+    expect(el.querySelector('[data-part="s"]')).toBe(sec); // тот же узел
     expect(sec.textContent).toBe('06');
     stop();
     vi.advanceTimersByTime(5000);

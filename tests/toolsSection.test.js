@@ -5,10 +5,20 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 const runScriptAction = vi.fn(async () => {});
-vi.mock('../js/core/uiActions.js', () => ({ runScriptAction: (a) => runScriptAction(a) }));
+vi.mock('../js/core/uiActions.js', () => ({ runScriptAction: a => runScriptAction(a) }));
 vi.mock('../js/modules/launcher/runningWindows.js', () => ({
   runningWindows: () => [
-    { pid: 4242, nick: 'ДР8', cls: 'Жрец', title: 'ДР8 — Жрец', known: true, charId: 'c1', uptimeMs: 130000, elevated: false, partyIds: [] }
+    {
+      pid: 4242,
+      nick: 'ДР8',
+      cls: 'Жрец',
+      title: 'ДР8 — Жрец',
+      known: true,
+      charId: 'c1',
+      uptimeMs: 130000,
+      elevated: false,
+      partyIds: []
+    }
   ],
   onRunningWindows: () => () => {},
   refreshRunningWindows: vi.fn(async () => [])
@@ -38,7 +48,10 @@ describe('разметка раздела «Инструменты»', () => {
 
   it('круглая кнопка «+» больше не содержит скриптов и окон игры', () => {
     const src = html();
-    const fab = src.slice(src.indexOf('<div class="fab-container"'), src.indexOf('<!-- ====', src.indexOf('<div class="fab-container"')));
+    const fab = src.slice(
+      src.indexOf('<div class="fab-container"'),
+      src.indexOf('<!-- ====', src.indexOf('<div class="fab-container"'))
+    );
     expect(fab).not.toContain('data-script-action');
     expect(fab).not.toContain('fab-scripts-submenu');
     expect(fab).not.toContain('game-windows');
@@ -65,8 +78,14 @@ describe('содержимое раздела', () => {
   it('все скрипты видны сразу списком, без второго нажатия', () => {
     const ids = [...root.querySelectorAll('[data-script-action]')].map(b => b.dataset.scriptAction);
     expect(ids).toEqual([
-      'check-auth', 'update-balance', 'update-marathons',
-      'promo', 'transfer', 'shop', 'caravan', 'close-game'
+      'check-auth',
+      'update-balance',
+      'update-marathons',
+      'promo',
+      'transfer',
+      'shop',
+      'caravan',
+      'close-game'
     ]);
     // Под каждым — что именно он сделает
     expect(root.querySelectorAll('.tools-card-body small').length).toBe(8);
@@ -82,10 +101,16 @@ describe('содержимое раздела', () => {
     const checkCards = groups[0].querySelectorAll('[data-script-action]');
     const actionCards = groups[1].querySelectorAll('[data-script-action]');
     expect([...checkCards].map(c => c.dataset.scriptAction)).toEqual([
-      'check-auth', 'update-balance', 'update-marathons'
+      'check-auth',
+      'update-balance',
+      'update-marathons'
     ]);
     expect([...actionCards].map(c => c.dataset.scriptAction)).toEqual([
-      'promo', 'transfer', 'shop', 'caravan', 'close-game'
+      'promo',
+      'transfer',
+      'shop',
+      'caravan',
+      'close-game'
     ]);
   });
 

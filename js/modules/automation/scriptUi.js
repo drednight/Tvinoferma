@@ -67,7 +67,12 @@ export function setProgress(root, id, done, total) {
 export function chipsHtml(items = []) {
   const rows = items.filter(i => i && (Number(i.value) !== 0 || i.zero));
   if (!rows.length) return '';
-  return `<div class="sd-chips">${rows.map(i => `<span class="sd-chip${i.tone ? ` sd-chip-${escapeHtml(i.tone)}` : ''}">${
-    i.icon ? `<span aria-hidden="true">${escapeHtml(i.icon)}</span>` : ''}${escapeHtml(i.label)}${
-    i.value == null ? '' : ` <b>${escapeHtml(String(i.value))}</b>`}</span>`).join('')}</div>`;
+  return `<div class="sd-chips">${rows
+    .map(
+      i =>
+        `<span class="sd-chip${i.tone ? ` sd-chip-${escapeHtml(i.tone)}` : ''}">${
+          i.icon ? `<span aria-hidden="true">${escapeHtml(i.icon)}</span>` : ''
+        }${escapeHtml(i.label)}${i.value == null ? '' : ` <b>${escapeHtml(String(i.value))}</b>`}</span>`
+    )
+    .join('')}</div>`;
 }

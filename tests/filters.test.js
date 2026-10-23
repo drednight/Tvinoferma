@@ -2,11 +2,14 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from '../js/modules/characters/filters.js';
 
 const ch = (nick, over = {}) => ({ id: nick, nick, class: '', partyIds: [], tags: [], isLoggedIn: false, ...over });
-const values = (select) => [...select.options].map(o => o.value);
+const values = select => [...select.options].map(o => o.value);
 
 describe('фильтр по классам (issue #2)', () => {
   let select;
-  beforeEach(() => { document.body.innerHTML = '<select id="c"></select>'; select = document.getElementById('c'); });
+  beforeEach(() => {
+    document.body.innerHTML = '<select id="c"></select>';
+    select = document.getElementById('c');
+  });
 
   it('новый класс сразу появляется в списке вариантов', () => {
     const chars = [ch('A', { class: 'Маг' })];
@@ -81,7 +84,7 @@ describe('filterCharacters', () => {
     ch('Beta', { class: 'Воин', partyIds: [], tags: [] }),
     ch('Gamma', { class: 'Маг', partyIds: ['P2', 'P1'], tags: ['Фарм'] })
   ];
-  const nicks = (f) => filterCharacters(chars, f).map(c => c.nick);
+  const nicks = f => filterCharacters(chars, f).map(c => c.nick);
   it('без фильтров — все', () => expect(nicks({})).toEqual(['Alpha', 'Beta', 'Gamma']));
   it('класс', () => expect(nicks({ cls: 'Маг' })).toEqual(['Alpha', 'Gamma']));
   it('пати: персонаж входит в выбранную пати; «Без пати»', () => {
@@ -89,8 +92,17 @@ describe('filterCharacters', () => {
     expect(nicks({ party: 'P1' })).toEqual(['Alpha', 'Gamma']); // Gamma состоит в двух пати
     expect(nicks({ party: '__none__' })).toEqual(['Beta']);
   });
-  it('тег без учёта регистра и «Без тегов»', () => { expect(nicks({ tag: 'фарм' })).toEqual(['Alpha', 'Gamma']); expect(nicks({ tag: '__none__' })).toEqual(['Beta']); });
-  it('статус входа', () => { expect(nicks({ auth: 'online' })).toEqual(['Alpha']); expect(nicks({ auth: 'offline' })).toEqual(['Beta', 'Gamma']); });
-  it('поиск по нику и #тегу', () => { expect(nicks({ search: 'bet' })).toEqual(['Beta']); expect(nicks({ search: '#фарм' })).toEqual(['Alpha', 'Gamma']); });
+  it('тег без учёта регистра и «Без тегов»', () => {
+    expect(nicks({ tag: 'фарм' })).toEqual(['Alpha', 'Gamma']);
+    expect(nicks({ tag: '__none__' })).toEqual(['Beta']);
+  });
+  it('статус входа', () => {
+    expect(nicks({ auth: 'online' })).toEqual(['Alpha']);
+    expect(nicks({ auth: 'offline' })).toEqual(['Beta', 'Gamma']);
+  });
+  it('поиск по нику и #тегу', () => {
+    expect(nicks({ search: 'bet' })).toEqual(['Beta']);
+    expect(nicks({ search: '#фарм' })).toEqual(['Alpha', 'Gamma']);
+  });
   it('комбинация фильтров', () => expect(nicks({ cls: 'Маг', party: 'P2' })).toEqual(['Gamma']));
 });

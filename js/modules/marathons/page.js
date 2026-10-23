@@ -15,9 +15,19 @@ import { openMarathonWizard, setWizardSavedHandler } from './wizard.js';
 import { syncMarathons, marathonUrlOf, SITE_PAGES, customPages, rememberCustomPage } from './siteSync.js';
 import { taskCardHtml, renderDock } from '../../core/taskLog.js';
 import {
-  computeCell, marathonTotals, freezeAwards, marathonPhase, seriesChildren, seriesPhase,
-  ensureCell, STATUS_LABELS, createSeries, bonusStatus, shortDescription,
-  rewardPotential, calendarStates
+  computeCell,
+  marathonTotals,
+  freezeAwards,
+  marathonPhase,
+  seriesChildren,
+  seriesPhase,
+  ensureCell,
+  STATUS_LABELS,
+  createSeries,
+  bonusStatus,
+  shortDescription,
+  rewardPotential,
+  calendarStates
 } from './model.js';
 import { getAllDatesInRange, isTaskActiveOnDate, phaseHint } from './dates.js';
 import { mskDate } from '../../core/msk.js';
@@ -26,15 +36,29 @@ import { mskDate } from '../../core/msk.js';
 const todayStr = () => mskDate();
 
 const view = { type: 'list', id: null };
-const ui = { party: 'all', onlyProblems: false, syncing: new Set(), syncQueue: new Set(), syncProgress: null, showSync: true, syncTask: null, syncTaskFor: null, descOpen: new Set() };
+const ui = {
+  party: 'all',
+  onlyProblems: false,
+  syncing: new Set(),
+  syncQueue: new Set(),
+  syncProgress: null,
+  showSync: true,
+  syncTask: null,
+  syncTaskFor: null,
+  descOpen: new Set()
+};
 
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
-const fmtDateTime = (iso) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-const coin = (n) => `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(n || 0)}`;
-const charById = (id) => state.characters.find(c => c.id === id);
+const fmtDate = d =>
+  d ? new Date(d + 'T00:00:00').toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) : '—';
+const fmtDateTime = iso =>
+  iso
+    ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+    : '—';
+const coin = n => `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(n || 0)}`;
+const charById = id => state.characters.find(c => c.id === id);
 /** Группа персонажа в марафоне — его основная пати; без пати — «Без пати». */
-const partyLabel = (c) => mainPartyName(c, state.parties) || NO_PARTY_LABEL;
-const findM = (id) => state.marathons.find(m => m.id === id);
+const partyLabel = c => mainPartyName(c, state.parties) || NO_PARTY_LABEL;
+const findM = id => state.marathons.find(m => m.id === id);
 
 const ERROR_TEXT = {
   not_logged_in: 'нет авторизации',
@@ -48,11 +72,12 @@ export function openMarathon(id) {
   const m = findM(id);
   view.type = m?.kind === 'series' ? 'series' : 'detail';
   view.id = id;
-  ui.party = 'all'; ui.onlyProblems = false;
+  ui.party = 'all';
+  ui.onlyProblems = false;
   renderMarathons();
 }
 
-setWizardSavedHandler((id) => openMarathon(id));
+setWizardSavedHandler(id => openMarathon(id));
 
 /* ================================================================== */
 /*  Точка входа                                                        */
@@ -64,7 +89,10 @@ export function renderMarathons() {
   try {
     if (view.type === 'detail' && findM(view.id)) renderDetail(root, findM(view.id));
     else if (view.type === 'series' && findM(view.id)) renderSeries(root, findM(view.id));
-    else { view.type = 'list'; renderList(root); }
+    else {
+      view.type = 'list';
+      renderList(root);
+    }
     // Круглая кнопка «+» нужна только на списке (CSS прячет её на страницах марафона и папки)
     document.querySelector('.page[data-section="marathons"]')?.setAttribute('data-view', view.type);
     renderDock();
@@ -79,12 +107,17 @@ export function bindMarathons() {
 }
 
 /** Создание папки и марафона вызываются из круглой кнопки «+» (js/core/uiActions.js). */
-export function createMarathonFromFab() { openMarathonWizard(); }
-export function createFolderFromFab() { openFolderDialog(); }
+export function createMarathonFromFab() {
+  openMarathonWizard();
+}
+export function createFolderFromFab() {
+  openFolderDialog();
+}
 
 /** Возврат к списку марафонов (клик по вкладке «Марафоны»). */
 export function resetMarathonView() {
-  view.type = 'list'; view.id = null;
+  view.type = 'list';
+  view.id = null;
 }
 
 /* ================================================================== */
@@ -118,9 +151,15 @@ function openFolderDialog(folder = null) {
   ov.foot.querySelector('[data-x="cancel"]').onclick = () => ov.close();
   ov.foot.querySelector('[data-x="ok"]').onclick = async () => {
     const title = ov.body.querySelector('[data-k="title"]').value.trim();
-    if (!title) { toast('Укажите название папки', 'warning'); return; }
+    if (!title) {
+      toast('Укажите название папки', 'warning');
+      return;
+    }
     let url = sel.value === '__custom__' ? custom.value.trim() : sel.value;
-    if (url && !/^https?:\/\//.test(url)) { toast('Ссылка должна начинаться с https://', 'warning'); return; }
+    if (url && !/^https?:\/\//.test(url)) {
+      toast('Ссылка должна начинаться с https://', 'warning');
+      return;
+    }
     if (sel.value === '__custom__' && url) rememberCustomPage(url);
     f.title = title;
     f.description = ov.body.querySelector('[data-k="description"]').value.trim();
@@ -158,8 +197,12 @@ function openFolderPicker(m) {
   ov.body.innerHTML = `
     <div class="tf-list">
       <label class="tf-list-item"><input type="radio" name="fold" value="" ${!m.seriesId ? 'checked' : ''}/><div><strong>Без папки</strong></div></label>
-      ${folders.map(f => `<label class="tf-list-item"><input type="radio" name="fold" value="${f.id}" ${m.seriesId === f.id ? 'checked' : ''}/>
-        <div><strong>📁 ${escapeHtml(f.title)}</strong><br/><small class="muted">${f.childIds.length} марафонов${f.description ? ` · ${escapeHtml(f.description)}` : ''}</small></div></label>`).join('')}
+      ${folders
+        .map(
+          f => `<label class="tf-list-item"><input type="radio" name="fold" value="${f.id}" ${m.seriesId === f.id ? 'checked' : ''}/>
+        <div><strong>📁 ${escapeHtml(f.title)}</strong><br/><small class="muted">${f.childIds.length} марафонов${f.description ? ` · ${escapeHtml(f.description)}` : ''}</small></div></label>`
+        )
+        .join('')}
     </div>
     ${folders.length ? '' : '<p class="muted">Папок пока нет — создайте её кнопкой «+» справа внизу на вкладке «Марафоны».</p>'}`;
   ov.foot.innerHTML = `<button type="button" class="btn ghost" data-x="cancel">Отмена</button><button type="button" class="btn primary" data-x="ok">Переместить</button>`;
@@ -167,7 +210,9 @@ function openFolderPicker(m) {
   ov.foot.querySelector('[data-x="ok"]').onclick = async () => {
     const v = ov.body.querySelector('input[name="fold"]:checked')?.value || '';
     moveToFolder(m, v || null);
-    await persist(); ov.close(); renderMarathons();
+    await persist();
+    ov.close();
+    renderMarathons();
     toast(v ? 'Марафон перемещён в папку' : 'Марафон убран из папки', 'success');
   };
 }
@@ -175,16 +220,23 @@ function openFolderPicker(m) {
 function openAddExisting(folder) {
   const free = state.marathons.filter(x => x.kind !== 'series' && x.seriesId !== folder.id);
   const ov = openOverlay({ title: `📥 Добавить марафоны в «${folder.title}»` });
-  ov.body.innerHTML = free.length ? `<div class="tf-list">${free.map(x => `
+  ov.body.innerHTML = free.length
+    ? `<div class="tf-list">${free
+        .map(
+          x => `
       <label class="tf-list-item"><input type="checkbox" value="${x.id}"/>
-        <div><strong>${escapeHtml(x.title)}</strong><br/><small class="muted">${fmtDate(x.startDate)} — ${fmtDate(x.endDate)}${x.seriesId ? ` · сейчас в «${escapeHtml(findM(x.seriesId)?.title || '')}»` : ''}</small></div></label>`).join('')}</div>`
+        <div><strong>${escapeHtml(x.title)}</strong><br/><small class="muted">${fmtDate(x.startDate)} — ${fmtDate(x.endDate)}${x.seriesId ? ` · сейчас в «${escapeHtml(findM(x.seriesId)?.title || '')}»` : ''}</small></div></label>`
+        )
+        .join('')}</div>`
     : '<p class="muted">Нет марафонов для добавления.</p>';
   ov.foot.innerHTML = `<button type="button" class="btn ghost" data-x="cancel">Отмена</button><button type="button" class="btn primary" data-x="ok" ${free.length ? '' : 'disabled'}>Добавить</button>`;
   ov.foot.querySelector('[data-x="cancel"]').onclick = () => ov.close();
   ov.foot.querySelector('[data-x="ok"]').onclick = async () => {
     const ids = [...ov.body.querySelectorAll('input:checked')].map(i => i.value);
     ids.forEach(id => moveToFolder(findM(id), folder.id));
-    await persist(); ov.close(); renderMarathons();
+    await persist();
+    ov.close();
+    renderMarathons();
     if (ids.length) toast(`Добавлено: ${ids.length}`, 'success');
   };
 }
@@ -202,11 +254,19 @@ function openDeleteFolder(folder) {
   ov.foot.querySelector('[data-x="keep"]').onclick = async () => {
     kids.forEach(k => moveToFolder(k, null));
     state.marathons = state.marathons.filter(m => m.id !== folder.id);
-    await persist(); ov.close(); view.type = 'list'; renderMarathons(); toast('Папка удалена, марафоны сохранены', 'success');
+    await persist();
+    ov.close();
+    view.type = 'list';
+    renderMarathons();
+    toast('Папка удалена, марафоны сохранены', 'success');
   };
   ov.foot.querySelector('[data-x="all"]')?.addEventListener('click', async () => {
     state.marathons = state.marathons.filter(m => m.id !== folder.id && m.seriesId !== folder.id);
-    await persist(); ov.close(); view.type = 'list'; renderMarathons(); toast('Папка и марафоны удалены', 'success');
+    await persist();
+    ov.close();
+    view.type = 'list';
+    renderMarathons();
+    toast('Папка и марафоны удалены', 'success');
   });
 }
 
@@ -232,10 +292,13 @@ function renderList(root) {
       </div>`;
     return;
   }
-  const phaseOf = (m) => m.kind === 'series' ? seriesPhase(m, state.marathons) : marathonPhase(m);
+  const phaseOf = m => (m.kind === 'series' ? seriesPhase(m, state.marathons) : marathonPhase(m));
   const groups = PHASE_GROUPS.map(([key, icon, label]) => ({
-    key, icon, label,
-    list: items.filter(m => phaseOf(m) === key)
+    key,
+    icon,
+    label,
+    list: items
+      .filter(m => phaseOf(m) === key)
       .sort((a, b) => String(b.startDate || b.createdAt).localeCompare(String(a.startDate || a.createdAt)))
   }));
 
@@ -243,18 +306,28 @@ function renderList(root) {
   const earned = state.marathons.filter(m => m.kind !== 'series').reduce((sum, m) => sum + marathonTotals(m).coins, 0);
   const overview = `
     <div class="mr-overview">
-      ${groups.filter(g => g.list.length).map(g => `<span class="mr-ov mr-ov-${g.key}"><b>${g.list.length}</b> ${g.label.toLowerCase()}</span>`).join('')}
+      ${groups
+        .filter(g => g.list.length)
+        .map(g => `<span class="mr-ov mr-ov-${g.key}"><b>${g.list.length}</b> ${g.label.toLowerCase()}</span>`)
+        .join('')}
       <span class="mr-ov mr-ov-coins" title="Сумма по всем марафонам"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <b>${formatCoins(roundCoins(earned))}</b> заработано</span>
     </div>`;
 
-  root.innerHTML = overview + groups.filter(g => g.list.length).map(g => `
+  root.innerHTML =
+    overview +
+    groups
+      .filter(g => g.list.length)
+      .map(
+        g => `
     <section class="mr-group mr-group-${g.key}">
       <h3 class="mr-group-title"><span class="mr-group-ico">${g.icon}</span>${g.label}<span class="mr-group-count">${g.list.length}</span></h3>
-      <div class="mr-cards">${g.list.map(m => m.kind === 'series' ? seriesCard(m) : marathonCard(m)).join('')}</div>
+      <div class="mr-cards">${g.list.map(m => (m.kind === 'series' ? seriesCard(m) : marathonCard(m))).join('')}</div>
     </section>
-  `).join('');
+  `
+      )
+      .join('');
 
-  root.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openMarathon(el.dataset.open));
+  root.querySelectorAll('[data-open]').forEach(el => (el.onclick = () => openMarathon(el.dataset.open)));
 }
 
 function progressBar(percent, cls = '') {
@@ -324,10 +397,13 @@ function seriesCard(s) {
         <span class="mr-chip mr-${phase}">${STATUS_LABELS[phase]}</span>
       </header>
       ${s.description ? `<div class="mr-card-meta"><span>${escapeHtml(s.description)}</span></div>` : ''}
-      <div class="mr-series-kids">${kids.slice(0, 4).map((k, i) => {
-        const t = totals[i];
-        return `<div class="mr-kid"><span>${escapeHtml(k.source?.stageName || k.title)}</span>${progressBar(t.percent, 'mr-bar-sm')}<small>${t.percent}%</small></div>`;
-      }).join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
+      <div class="mr-series-kids">${kids
+        .slice(0, 4)
+        .map((k, i) => {
+          const t = totals[i];
+          return `<div class="mr-kid"><span>${escapeHtml(k.source?.stageName || k.title)}</span>${progressBar(t.percent, 'mr-bar-sm')}<small>${t.percent}%</small></div>`;
+        })
+        .join('')}${kids.length > 4 ? `<small class="muted">и ещё ${kids.length - 4}…</small>` : ''}</div>
       ${kids.length ? '' : '<div class="muted mr-card-meta">Папка пуста</div>'}
       <div class="mr-stats">
         ${statTile('Марафонов', kids.length)}
@@ -371,28 +447,35 @@ function renderSeries(root, s) {
       <h3><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Монеты по этапам</h3>
       <div class="tf-mx-wrap"><table class="mr-table">
         <thead><tr><th>Персонаж</th>${kids.map(k => `<th>${escapeHtml(k.source?.stageName || k.title)}</th>`).join('')}<th>Итого</th></tr></thead>
-        <tbody>${charIds.map(cid => {
-          const per = totals.map(x => x.t.perChar[cid]?.coins || 0);
-          return `<tr><td>${escapeHtml(charById(cid)?.nick || '—')}</td>${per.map(v => `<td>${v ? coin(v) : '<span class="muted">—</span>'}</td>`).join('')}<td><strong class="mr-gold">${coin(per.reduce((a, b) => a + b, 0))}</strong></td></tr>`;
-        }).join('')}</tbody>
+        <tbody>${charIds
+          .map(cid => {
+            const per = totals.map(x => x.t.perChar[cid]?.coins || 0);
+            return `<tr><td>${escapeHtml(charById(cid)?.nick || '—')}</td>${per.map(v => `<td>${v ? coin(v) : '<span class="muted">—</span>'}</td>`).join('')}<td><strong class="mr-gold">${coin(per.reduce((a, b) => a + b, 0))}</strong></td></tr>`;
+          })
+          .join('')}</tbody>
         <tfoot><tr><td><strong>Всего</strong></td>${totals.map(x => `<td><strong>${coin(x.t.coins)}</strong></td>`).join('')}<td><strong class="mr-gold">${coin(coins)}</strong></td></tr></tfoot>
       </table></div>
     </div>${kids.length ? '' : '-->'}`;
 
   bindCrumbs(root);
-  root.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openMarathon(el.dataset.open));
+  root.querySelectorAll('[data-open]').forEach(el => (el.onclick = () => openMarathon(el.dataset.open)));
   root.querySelector('[data-act="sync"]').onclick = () => runSync(syncable, s.id);
   root.querySelector('[data-act="add"]').onclick = () => openMarathonWizard({ seriesId: s.id });
   root.querySelector('[data-act="add-existing"]').onclick = () => openAddExisting(s);
   root.querySelector('[data-act="settings"]').onclick = () => openFolderDialog(s);
   root.querySelector('[data-act="delete"]').onclick = () => openDeleteFolder(s);
-  root.querySelectorAll('[data-unlink]').forEach(b => b.onclick = async (e) => {
-    e.stopPropagation();
-    const k = findM(b.dataset.unlink);
-    if (!k) return;
-    moveToFolder(k, null); await persist(); renderMarathons();
-    toast(`«${k.title}» убран из папки`, 'success');
-  });
+  root.querySelectorAll('[data-unlink]').forEach(
+    b =>
+      (b.onclick = async e => {
+        e.stopPropagation();
+        const k = findM(b.dataset.unlink);
+        if (!k) return;
+        moveToFolder(k, null);
+        await persist();
+        renderMarathons();
+        toast(`«${k.title}» убран из папки`, 'success');
+      })
+  );
 }
 
 function kpi(label, value, sub = '') {
@@ -400,11 +483,16 @@ function kpi(label, value, sub = '') {
 }
 
 function bindCrumbs(root) {
-  root.querySelectorAll('[data-nav]').forEach(a => a.onclick = () => {
-    if (a.dataset.nav === 'list') { view.type = 'list'; view.id = null; }
-    else openMarathon(a.dataset.nav);
-    renderMarathons();
-  });
+  root.querySelectorAll('[data-nav]').forEach(
+    a =>
+      (a.onclick = () => {
+        if (a.dataset.nav === 'list') {
+          view.type = 'list';
+          view.id = null;
+        } else openMarathon(a.dataset.nav);
+        renderMarathons();
+      })
+  );
 }
 
 /* ================================================================== */
@@ -490,22 +578,26 @@ const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'и�
 /** Правая колонка описания: «Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>» и ниже только число ДМ за каждый порог задания. */
 function rewardLadder(task) {
   const { max, tiers } = rewardPotential(task);
-  if (!max) return '<div class="mr-desc-coins muted"><div class="mr-desc-coins-head">Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></div><div class="muted">—</div></div>';
+  if (!max)
+    return '<div class="mr-desc-coins muted"><div class="mr-desc-coins-head">Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></div><div class="muted">—</div></div>';
   return `
     <div class="mr-desc-coins">
       <div class="mr-desc-coins-head">Древние монеты <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg></div>
-      ${tiers.length > 1
-        ? `<ul class="mr-desc-tiers">${tiers.map(x => `<li${x.coins === max ? ' class="is-max"' : ''}><span>${x.threshold} раз</span><b>${x.coins}</b></li>`).join('')}</ul>`
-        : `<ul class="mr-desc-tiers"><li class="is-max"><span>за задание</span><b>${max}</b></li></ul>`}
+      ${
+        tiers.length > 1
+          ? `<ul class="mr-desc-tiers">${tiers.map(x => `<li${x.coins === max ? ' class="is-max"' : ''}><span>${x.threshold} раз</span><b>${x.coins}</b></li>`).join('')}</ul>`
+          : `<ul class="mr-desc-tiers"><li class="is-max"><span>за задание</span><b>${max}</b></li></ul>`
+      }
     </div>`;
 }
 
 function descriptionsBlock(m) {
   if (!m.tasks.length) return '';
   const filled = m.tasks.filter(t => t.description).length;
-  const items = m.tasks.map(t => {
-    const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
-    return `
+  const items = m.tasks
+    .map(t => {
+      const src = t.description ? DESC_SOURCE_LABEL[t.descriptionSource || 'site'] : '';
+      return `
       <div class="mr-desc-item" data-desc-task="${t.id}">
         <div class="mr-desc-main">
         <div class="mr-desc-head"><strong>${escapeHtml(t.title)}</strong></div>
@@ -516,7 +608,8 @@ function descriptionsBlock(m) {
           ${rewardLadder(t)}
         </aside>
       </div>`;
-  }).join('');
+    })
+    .join('');
   return `
     <details class="panel mr-descs" ${ui.descOpen.has(m.id) ? 'open' : ''}>
       <summary>📋 Описания заданий <span class="muted">(${filled} из ${m.tasks.length})</span></summary>
@@ -525,63 +618,90 @@ function descriptionsBlock(m) {
 }
 
 function bindDescriptions(root, m) {
-  root.querySelector('.mr-descs')?.addEventListener('toggle', (e) => {
-    if (e.target.open) ui.descOpen.add(m.id); else ui.descOpen.delete(m.id);
+  root.querySelector('.mr-descs')?.addEventListener('toggle', e => {
+    if (e.target.open) ui.descOpen.add(m.id);
+    else ui.descOpen.delete(m.id);
   });
 }
 
 function syncPanel(m) {
   const ls = m.lastSync;
   if (!ls || (!ls.changes.length && !ls.errors.length)) return '';
-  const taskTitle = (id) => m.tasks.find(t => t.id === id)?.title || '—';
+  const taskTitle = id => m.tasks.find(t => t.id === id)?.title || '—';
   return `
     <details class="panel mr-sync" ${ui.showSync ? 'open' : ''}>
       <summary>🔄 Результат сверки ${fmtDateTime(ls.at)} — изменений: <strong>${ls.changes.length}</strong>${ls.errors.length ? `, ошибок: <strong class="mr-red">${ls.errors.length}</strong>` : ''}</summary>
       <div class="mr-sync-grid">
-        ${ls.changes.map(c => `<div class="mr-sync-row"><strong>${escapeHtml(charById(c.charId)?.nick || '—')}</strong><span>${escapeHtml(taskTitle(c.taskId))}</span>
-          <span>${c.from ?? '—'} → <b>${c.to}</b> ${c.from != null ? `<span class="mr-green">(+${c.to - c.from})</span>` : '<span class="muted">(первые данные)</span>'}</span></div>`).join('')}
-        ${ls.errors.map(e => `<div class="mr-sync-row mr-sync-err"><strong>${escapeHtml(charById(e.charId)?.nick || '—')}</strong><span>❌ ${escapeHtml(ERROR_TEXT[e.error] || e.error)}</span>
-          ${e.error === 'not_logged_in' ? `<button class="btn small" data-login="${e.charId}">Войти</button>` : '<span></span>'}</div>`).join('')}
+        ${ls.changes
+          .map(
+            c => `<div class="mr-sync-row"><strong>${escapeHtml(charById(c.charId)?.nick || '—')}</strong><span>${escapeHtml(taskTitle(c.taskId))}</span>
+          <span>${c.from ?? '—'} → <b>${c.to}</b> ${c.from != null ? `<span class="mr-green">(+${c.to - c.from})</span>` : '<span class="muted">(первые данные)</span>'}</span></div>`
+          )
+          .join('')}
+        ${ls.errors
+          .map(
+            e => `<div class="mr-sync-row mr-sync-err"><strong>${escapeHtml(charById(e.charId)?.nick || '—')}</strong><span>❌ ${escapeHtml(ERROR_TEXT[e.error] || e.error)}</span>
+          ${e.error === 'not_logged_in' ? `<button class="btn small" data-login="${e.charId}">Войти</button>` : '<span></span>'}</div>`
+          )
+          .join('')}
       </div>
     </details>`;
 }
 
 function matrix(m) {
-  if (!m.participantIds.length) return '<div class="empty-state">Нет участников. Откройте «✏️ Редактировать» → «Участники».</div>';
-  const chars = m.participantIds.map(charById).filter(Boolean)
+  if (!m.participantIds.length)
+    return '<div class="empty-state">Нет участников. Откройте «✏️ Редактировать» → «Участники».</div>';
+  const chars = m.participantIds
+    .map(charById)
+    .filter(Boolean)
     .filter(c => ui.party === 'all' || partyLabel(c) === ui.party);
   const groups = new Map();
   // Персонаж показан один раз — в своей основной пати
-  chars.forEach(c => { const k = partyLabel(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); });
+  chars.forEach(c => {
+    const k = partyLabel(c);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(c);
+  });
   const cols = m.tasks.length + 2;
 
-  const rows = [...groups.entries()].map(([party, members]) => {
-    const body = members.map(c => {
-      const cells = m.tasks.map(t => computeCell(m, c.id, t.id));
-      if (ui.onlyProblems && !cells.some(x => x.state === 'fail' || x.state === 'warn')) return '';
-      const done = cells.filter(x => x.state === 'done').length;
-      const assigned = cells.filter(x => x.assigned).length;
-      const coins = cells.reduce((a, x) => a + x.coins, 0);
-      const syncing = ui.syncing.has(c.id), queued = ui.syncQueue.has(c.id);
-      return `
+  const rows = [...groups.entries()]
+    .map(([party, members]) => {
+      const body = members
+        .map(c => {
+          const cells = m.tasks.map(t => computeCell(m, c.id, t.id));
+          if (ui.onlyProblems && !cells.some(x => x.state === 'fail' || x.state === 'warn')) return '';
+          const done = cells.filter(x => x.state === 'done').length;
+          const assigned = cells.filter(x => x.assigned).length;
+          const coins = cells.reduce((a, x) => a + x.coins, 0);
+          const syncing = ui.syncing.has(c.id),
+            queued = ui.syncQueue.has(c.id);
+          return `
         <tr class="${syncing ? 'is-syncing' : ''}">
           <td class="mr-name">${getAuthView(c).icon} <strong>${escapeHtml(c.nick)}</strong><br/><small class="muted">${escapeHtml(c.class || '')}${syncing ? ' · ⏳ сверка…' : queued ? ' · в очереди' : ''}</small></td>
           ${cells.map((x, i) => cellHtml(m, c.id, m.tasks[i].id, x)).join('')}
           <td class="mr-total"><strong>${done}/${assigned}</strong><br/><small class="mr-gold">${coin(coins)}</small></td>
         </tr>`;
-    }).join('');
-    return body ? `<tr class="mr-group"><td colspan="${cols}">${escapeHtml(party)}</td></tr>${body}` : '';
-  }).join('');
+        })
+        .join('');
+      return body ? `<tr class="mr-group"><td colspan="${cols}">${escapeHtml(party)}</td></tr>${body}` : '';
+    })
+    .join('');
 
-  const foot = m.tasks.map(t => {
-    const cells = m.participantIds.map(cid => computeCell(m, cid, t.id)).filter(x => x.assigned);
-    return `<td><strong>${cells.filter(x => x.state === 'done').length}/${cells.length}</strong></td>`;
-  }).join('');
+  const foot = m.tasks
+    .map(t => {
+      const cells = m.participantIds.map(cid => computeCell(m, cid, t.id)).filter(x => x.assigned);
+      return `<td><strong>${cells.filter(x => x.state === 'done').length}/${cells.length}</strong></td>`;
+    })
+    .join('');
 
   return `
     <table class="mr-matrix">
-      <thead><tr><th class="mr-name">Персонаж</th>${m.tasks.map(t => `
-        <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div></th>`).join('')}
+      <thead><tr><th class="mr-name">Персонаж</th>${m.tasks
+        .map(
+          t => `
+        <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div></th>`
+        )
+        .join('')}
         <th>Итого</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:20px">Нет персонажей по фильтру</td></tr>`}</tbody>
       <tfoot><tr><td class="mr-name muted">Выполнили</td>${foot}<td></td></tr></tfoot>
@@ -614,19 +734,25 @@ function cellHtml(m, charId, taskId, x) {
 }
 
 function coinsSection(m, t) {
-  const balanceDelta = (cid) => {
-    const s = m.balance?.start?.[cid], e = m.balance?.end?.[cid];
+  const balanceDelta = cid => {
+    const s = m.balance?.start?.[cid],
+      e = m.balance?.end?.[cid];
     const now = charById(cid);
-    const endCoins = e ? e.coins : (now?.lastCoinUpdate ? Number(now.ancientCoins) || 0 : null);
+    const endCoins = e ? e.coins : now?.lastCoinUpdate ? Number(now.ancientCoins) || 0 : null;
     if (!s || endCoins === null) return '<span class="muted">—</span>';
     const d = roundCoins(endCoins - s.coins);
     return `<span class="${d >= 0 ? 'mr-green' : 'mr-red'}">${formatDelta(d)}</span>`;
   };
   const charRows = m.participantIds.map(cid => ({ cid, ...t.perChar[cid] })).sort((a, b) => b.coins - a.coins);
   const hasBonus = (m.bonuses || []).length > 0;
-  const bonusCell = (cid) => bonusStatus(m, cid).map(b => b.reached
-    ? `<span class="mr-green" title="${escapeHtml(b.bonus.text)}">✅ ${escapeHtml(b.bonus.text || 'бонус')}</span>`
-    : `<span class="muted" title="${escapeHtml(b.bonus.text)}">${b.done}/${b.need}</span>`).join('<br/>');
+  const bonusCell = cid =>
+    bonusStatus(m, cid)
+      .map(b =>
+        b.reached
+          ? `<span class="mr-green" title="${escapeHtml(b.bonus.text)}">✅ ${escapeHtml(b.bonus.text || 'бонус')}</span>`
+          : `<span class="muted" title="${escapeHtml(b.bonus.text)}">${b.done}/${b.need}</span>`
+      )
+      .join('<br/>');
   const taskRows = m.tasks.map(task => ({ task, ...t.perTask[task.id] }));
   return `
     <div class="mr-two">
@@ -663,14 +789,20 @@ function bindDetail(root, m) {
       const c = charById(cid);
       if (c?.lastCoinUpdate) m.balance.end[cid] = { coins: Number(c.ancientCoins) || 0, at: new Date().toISOString() };
     });
-    m.status = 'completed'; m.completedAt = m.updatedAt = new Date().toISOString();
-    await persist(); renderMarathons();
+    m.status = 'completed';
+    m.completedAt = m.updatedAt = new Date().toISOString();
+    await persist();
+    renderMarathons();
     toast(`Марафон завершён. Заработано: ${marathonTotals(m).coins} ДМ`, 'success');
   });
   act('reopen', async () => {
-    m.status = 'active'; m.awards = []; m.completedAt = null; m.balance.end = {};
+    m.status = 'active';
+    m.awards = [];
+    m.completedAt = null;
+    m.balance.end = {};
     m.updatedAt = new Date().toISOString();
-    await persist(); renderMarathons();
+    await persist();
+    renderMarathons();
   });
   act('delete', async () => {
     const ok = await confirmModal({
@@ -684,22 +816,40 @@ function bindDetail(root, m) {
     const series = m.seriesId ? findM(m.seriesId) : null;
     if (series) series.childIds = series.childIds.filter(id => id !== m.id);
     await persist();
-    if (series) openMarathon(series.id); else { view.type = 'list'; renderMarathons(); }
+    if (series) openMarathon(series.id);
+    else {
+      view.type = 'list';
+      renderMarathons();
+    }
     toast('Марафон удалён', 'success');
   });
 
-  root.querySelector('[data-f="party"]').onchange = (e) => { ui.party = e.target.value; renderMarathons(); };
-  root.querySelector('[data-f="problems"]').onchange = (e) => { ui.onlyProblems = e.target.checked; renderMarathons(); };
-  root.querySelector('.mr-sync')?.addEventListener('toggle', (e) => { ui.showSync = e.target.open; });
+  root.querySelector('[data-f="party"]').onchange = e => {
+    ui.party = e.target.value;
+    renderMarathons();
+  };
+  root.querySelector('[data-f="problems"]').onchange = e => {
+    ui.onlyProblems = e.target.checked;
+    renderMarathons();
+  };
+  root.querySelector('.mr-sync')?.addEventListener('toggle', e => {
+    ui.showSync = e.target.open;
+  });
   bindDescriptions(root, m);
-  root.querySelectorAll('[data-login]').forEach(b => b.onclick = async () => {
-    const { openSyncHelper } = await import('../sync/syncManager.js');
-    openSyncHelper(b.dataset.login);
-  });
-  root.querySelectorAll('[data-cell]').forEach(td => td.onclick = () => {
-    const [cid, tid] = td.dataset.cell.split('|');
-    openCellCard(m, cid, tid);
-  });
+  root.querySelectorAll('[data-login]').forEach(
+    b =>
+      (b.onclick = async () => {
+        const { openSyncHelper } = await import('../sync/syncManager.js');
+        openSyncHelper(b.dataset.login);
+      })
+  );
+  root.querySelectorAll('[data-cell]').forEach(
+    td =>
+      (td.onclick = () => {
+        const [cid, tid] = td.dataset.cell.split('|');
+        openCellCard(m, cid, tid);
+      })
+  );
 }
 
 /* ================================================================== */
@@ -710,7 +860,10 @@ async function runSync(marathons, ownerId = null) {
   const list = marathons.filter(m => m.status !== 'completed' && m.participantIds.length);
   if (!list.length) return;
   const noUrl = list.filter(m => !marathonUrlOf(m));
-  if (noUrl.length === list.length) { toast('Не указана страница марафона на сайте (✏️ Редактировать → Этапы и задания).', 'warning'); return; }
+  if (noUrl.length === list.length) {
+    toast('Не указана страница марафона на сайте (✏️ Редактировать → Этапы и задания).', 'warning');
+    return;
+  }
 
   ui.syncQueue = new Set(list.flatMap(m => m.participantIds));
   ui.syncProgress = `0/${ui.syncQueue.size}`;
@@ -718,18 +871,38 @@ async function runSync(marathons, ownerId = null) {
   renderMarathons();
 
   const { report, cancelled } = await syncMarathons(list, {
-    onTask: (t) => { ui.syncTask = t; ui.syncTaskFor = ownerId; },
-    onStart: (cid) => { ui.syncQueue.delete(cid); ui.syncing.add(cid); renderMarathons(); },
-    onDone: (cid) => { ui.syncing.delete(cid); renderMarathons(); },
-    onProgress: (done, total) => { ui.syncProgress = `${Math.round(done / total * 100)}% · ${done}/${total}`; }
+    onTask: t => {
+      ui.syncTask = t;
+      ui.syncTaskFor = ownerId;
+    },
+    onStart: cid => {
+      ui.syncQueue.delete(cid);
+      ui.syncing.add(cid);
+      renderMarathons();
+    },
+    onDone: cid => {
+      ui.syncing.delete(cid);
+      renderMarathons();
+    },
+    onProgress: (done, total) => {
+      ui.syncProgress = `${Math.round((done / total) * 100)}% · ${done}/${total}`;
+    }
   });
 
-  ui.syncing.clear(); ui.syncQueue.clear(); ui.syncProgress = null;
+  ui.syncing.clear();
+  ui.syncQueue.clear();
+  ui.syncProgress = null;
   renderMarathons();
   const changes = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
   const errors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
-  toast(`${cancelled ? 'Сверка отменена' : 'Сверка завершена'}: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`, cancelled ? 'info' : errors ? 'warning' : 'success');
-  try { const { renderCharacters } = await import('../characters/list.js'); renderCharacters(); } catch (_) {}
+  toast(
+    `${cancelled ? 'Сверка отменена' : 'Сверка завершена'}: изменений ${changes}${errors ? `, ошибок ${errors}` : ''}`,
+    cancelled ? 'info' : errors ? 'warning' : 'success'
+  );
+  try {
+    const { renderCharacters } = await import('../characters/list.js');
+    renderCharacters();
+  } catch (_) {}
 }
 
 /* ================================================================== */
@@ -759,7 +932,7 @@ function openCellCard(m, charId, taskId) {
         <div><span class="muted">С сайта</span><strong>${x.hasSite ? cell.site : '—'}</strong><small class="muted">${cell.syncedAt ? fmtDateTime(cell.syncedAt) : 'нет данных'}</small></div>
         <div><span class="muted">Ручные отметки</span><strong>${x.manual}</strong><small class="muted">дни в календаре</small></div>
         <div><span class="muted">Осталось дней</span><strong>${x.left}</strong><small class="muted" title="Сколько дней можно пропустить, если считать только сайт / только ручные отметки">запас: сайт ${x.siteReserve === null ? '—' : x.siteReserve} / ручной ${x.manualReserve}</small></div>
-        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${x.next.rewardCoins}` : (rewardPotential(task).max ? 'максимум получен' : '')}</small></div>
+        <div><span class="muted">Награда</span><strong class="mr-gold">${coin(x.coins)}</strong><small class="muted">${x.next ? `след.: ${x.next.threshold} → <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${x.next.rewardCoins}` : rewardPotential(task).max ? 'максимум получен' : ''}</small></div>
       </div>
 
       <div class="mr-adjust">
@@ -771,8 +944,16 @@ function openCellCard(m, charId, taskId) {
         <small class="muted">Итого = большее из «С сайта» и «Ручные отметки» + поправка. Можно превысить цель (например, 30/25).</small>
       </div>
 
-      ${sortedRewards.length ? `<div class="mr-rewards">${sortedRewards.map(r => `
-        <span class="mr-reward ${x.count >= r.threshold ? 'is-reached' : ''}">${x.count >= r.threshold ? '✓' : '○'} ${r.threshold}: ${escapeHtml(r.rewardText || 'награда')} · <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}</span>`).join('')}</div>` : ''}
+      ${
+        sortedRewards.length
+          ? `<div class="mr-rewards">${sortedRewards
+              .map(
+                r => `
+        <span class="mr-reward ${x.count >= r.threshold ? 'is-reached' : ''}">${x.count >= r.threshold ? '✓' : '○'} ${r.threshold}: ${escapeHtml(r.rewardText || 'награда')} · <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}</span>`
+              )
+              .join('')}</div>`
+          : ''
+      }
 
       <h4 class="mr-cal-title">Календарь <small class="muted">(нажмите на день, чтобы отметить выполнение вручную)</small></h4>
       <div class="mr-cal-legend muted">
@@ -784,28 +965,38 @@ function openCellCard(m, charId, taskId) {
       <div class="mr-cal">
         ${['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(d => `<div class="mr-cal-dow">${d}</div>`).join('')}
         ${'<div></div>'.repeat(firstDow)}
-        ${all.map(d => {
-          const active = isTaskActiveOnDate(task, d, all);
-          const marked = cell.marks.includes(d);
-          const delta = cell.history[d];
-          return `<button type="button" class="mr-cal-day ${active ? '' : 'is-inactive'} ${marked ? 'is-marked' : ''} is-${calState[d] || 'normal'} ${d === today ? 'is-today' : ''} ${d > today ? 'is-future' : ''}"
+        ${all
+          .map(d => {
+            const active = isTaskActiveOnDate(task, d, all);
+            const marked = cell.marks.includes(d);
+            const delta = cell.history[d];
+            return `<button type="button" class="mr-cal-day ${active ? '' : 'is-inactive'} ${marked ? 'is-marked' : ''} is-${calState[d] || 'normal'} ${d === today ? 'is-today' : ''} ${d > today ? 'is-future' : ''}"
             data-day="${d}" ${active && editable ? '' : 'disabled'}>
             <span>${Number(d.slice(8))}</span>${delta ? `<small class="mr-cal-delta">+${delta}</small>` : ''}${marked ? '<small>✓</small>' : ''}</button>`;
-        }).join('')}
+          })
+          .join('')}
       </div>`;
 
-    ov.body.querySelectorAll('[data-adj]').forEach(b => b.onclick = async () => {
-      const v = Number(b.dataset.adj);
-      cell.adjust = v === 0 ? 0 : cell.adjust + v;
-      m.updatedAt = new Date().toISOString();
-      await persist(); draw();
-    });
-    ov.body.querySelectorAll('[data-day]').forEach(b => b.onclick = async () => {
-      const d = b.dataset.day;
-      cell.marks = cell.marks.includes(d) ? cell.marks.filter(x => x !== d) : [...cell.marks, d];
-      m.updatedAt = new Date().toISOString();
-      await persist(); draw();
-    });
+    ov.body.querySelectorAll('[data-adj]').forEach(
+      b =>
+        (b.onclick = async () => {
+          const v = Number(b.dataset.adj);
+          cell.adjust = v === 0 ? 0 : cell.adjust + v;
+          m.updatedAt = new Date().toISOString();
+          await persist();
+          draw();
+        })
+    );
+    ov.body.querySelectorAll('[data-day]').forEach(
+      b =>
+        (b.onclick = async () => {
+          const d = b.dataset.day;
+          cell.marks = cell.marks.includes(d) ? cell.marks.filter(x => x !== d) : [...cell.marks, d];
+          m.updatedAt = new Date().toISOString();
+          await persist();
+          draw();
+        })
+    );
   };
   draw();
 }

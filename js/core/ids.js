@@ -6,10 +6,43 @@
 // латиница, цифры, «_» и «-» (ограничение меток окон Tauri и имён папок Windows).
 
 const TRANSLIT = {
-  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
-  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
-  х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
-  і: 'i', ї: 'yi', є: 'ye', ґ: 'g'
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  д: 'd',
+  е: 'e',
+  ё: 'e',
+  ж: 'zh',
+  з: 'z',
+  и: 'i',
+  й: 'y',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'kh',
+  ц: 'ts',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'shch',
+  ъ: '',
+  ы: 'y',
+  ь: '',
+  э: 'e',
+  ю: 'yu',
+  я: 'ya',
+  і: 'i',
+  ї: 'yi',
+  є: 'ye',
+  ґ: 'g'
 };
 
 // Зарезервированные имена устройств Windows: такую папку создать нельзя.
@@ -18,14 +51,17 @@ const MAX_LENGTH = 40;
 
 /** Транслитерация + замена всего лишнего на «_». */
 export function slugifyNick(nick) {
-  const latin = [...String(nick || '').normalize('NFC')].map(ch => {
-    const lower = ch.toLowerCase();
-    if (!(lower in TRANSLIT)) return ch;
-    const t = TRANSLIT[lower];
-    return ch !== lower && t ? t[0].toUpperCase() + t.slice(1) : t;
-  }).join('');
+  const latin = [...String(nick || '').normalize('NFC')]
+    .map(ch => {
+      const lower = ch.toLowerCase();
+      if (!(lower in TRANSLIT)) return ch;
+      const t = TRANSLIT[lower];
+      return ch !== lower && t ? t[0].toUpperCase() + t.slice(1) : t;
+    })
+    .join('');
   let slug = latin
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // é → e
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // é → e
     .replace(/[^A-Za-z0-9_-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^[_-]+|[_-]+$/g, '')
@@ -73,7 +109,9 @@ export function remapIdsDeep(value, remap) {
   if (Array.isArray(value)) return value.map(v => remapIdsDeep(v, remap));
   if (value && typeof value === 'object') {
     const out = {};
-    Object.entries(value).forEach(([k, v]) => { out[remap.has(k) ? remap.get(k) : k] = remapIdsDeep(v, remap); });
+    Object.entries(value).forEach(([k, v]) => {
+      out[remap.has(k) ? remap.get(k) : k] = remapIdsDeep(v, remap);
+    });
     return out;
   }
   return value;

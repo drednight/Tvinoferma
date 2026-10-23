@@ -19,8 +19,14 @@
   animation: cpIn 0.16s var(--ease);
 }
 @keyframes cpIn {
-  from { opacity: 0; transform: translateY(-8px) scale(0.99); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* Строка поиска: крупная, потому что это главный элемент палитры */
@@ -32,7 +38,10 @@
   border-bottom: 1px solid var(--border);
   background: var(--surface-2);
 }
-.cp-ico { color: var(--text-faint); font-size: 1rem; }
+.cp-ico {
+  color: var(--text-faint);
+  font-size: 1rem;
+}
 .cp-input {
   flex: 1;
   min-width: 0;
@@ -42,7 +51,9 @@
   font-size: 1rem;
   outline: none;
 }
-.cp-input::placeholder { color: var(--text-faint); }
+.cp-input::placeholder {
+  color: var(--text-faint);
+}
 .cp-esc {
   font-size: 0.7rem;
   padding: 2px 7px;
@@ -88,10 +99,24 @@
   background: var(--accent-soft);
   box-shadow: inset 2px 0 0 0 var(--accent);
 }
-.cp-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-item-sub { font-size: 0.78rem; white-space: nowrap; }
+.cp-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-item-sub {
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
 
-.cp-empty { padding: 24px 16px; text-align: center; color: var(--text-dim); font-size: 0.88rem; }
+.cp-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
 
 .cp-foot {
   display: flex;
@@ -115,6 +140,10 @@
 }
 
 @media (max-width: 600px) {
-  .cp-overlay { padding-top: 6vh; }
-  .cp-foot span:nth-child(2) { display: none; }
+  .cp-overlay {
+    padding-top: 6vh;
+  }
+  .cp-foot span:nth-child(2) {
+    display: none;
+  }
 }

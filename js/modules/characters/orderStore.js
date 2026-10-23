@@ -75,7 +75,11 @@ export function listOrderPresets() {
   if (!Array.isArray(value)) return [];
   return value
     .filter(p => p && typeof p === 'object' && p.id && p.name)
-    .map(p => ({ id: String(p.id), name: String(p.name), ids: Array.isArray(p.ids) ? p.ids.filter(x => typeof x === 'string') : [] }));
+    .map(p => ({
+      id: String(p.id),
+      name: String(p.name),
+      ids: Array.isArray(p.ids) ? p.ids.filter(x => typeof x === 'string') : []
+    }));
 }
 
 /** Значение для `<option>`; пустое — такого порядка больше нет. */
@@ -101,7 +105,9 @@ export function presetIdFromValue(value) {
  * @returns {{ id: string, name: string, ids: string[], replaced: boolean }}
  */
 export function saveOrderPreset(name, ids) {
-  const clean = String(name || '').trim().slice(0, 40);
+  const clean = String(name || '')
+    .trim()
+    .slice(0, 40);
   const presets = listOrderPresets();
   const list = [...new Set((ids || []).filter(id => typeof id === 'string'))];
   if (!clean) throw new Error('Пустое имя');

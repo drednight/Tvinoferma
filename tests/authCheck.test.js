@@ -5,12 +5,20 @@ const mocks = vi.hoisted(() => ({ calls: [], release: null, gate: null, balCalls
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => ({})) }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), showModal: vi.fn(), closeModal: vi.fn(), confirmModal: vi.fn(async () => true) }));
+vi.mock('../js/core/ui.js', () => ({
+  toast: vi.fn(),
+  showModal: vi.fn(),
+  closeModal: vi.fn(),
+  confirmModal: vi.fn(async () => true)
+}));
 vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn() }));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
-vi.mock('../js/modules/marathons/siteSync.js', () => ({ onCharMarathonData: vi.fn(), syncAllActiveMarathons: vi.fn() }));
+vi.mock('../js/modules/marathons/siteSync.js', () => ({
+  onCharMarathonData: vi.fn(),
+  syncAllActiveMarathons: vi.fn()
+}));
 vi.mock('../js/modules/sync/getBalance.js', () => ({
-  getCharacterBalance: vi.fn(async (charId) => {
+  getCharacterBalance: vi.fn(async charId => {
     mocks.balCalls.push(charId);
     if (mocks.gate) await mocks.gate;
     return { charId, balance: 28.5, error: null };
@@ -18,9 +26,9 @@ vi.mock('../js/modules/sync/getBalance.js', () => ({
 }));
 vi.mock('../js/modules/sync/checkAuth.js', () => ({
   closeAuthPopups: vi.fn(async () => mocks.closed),
-  checkCharacterAuth: vi.fn(async (charId) => {
+  checkCharacterAuth: vi.fn(async charId => {
     mocks.calls.push(charId);
-    if (mocks.gate) await mocks.gate;               // первая проверка «висит», пока тест не отпустит
+    if (mocks.gate) await mocks.gate; // первая проверка «висит», пока тест не отпустит
     return charId === 'bad'
       ? { charId, status: 'offline', reason: 'not_logged_in' }
       : { charId, status: 'online', reason: null };
@@ -28,18 +36,18 @@ vi.mock('../js/modules/sync/checkAuth.js', () => ({
 }));
 
 let state, sync, authStatus, authDetails, startTask;
-const mk = (id) => ({ id, nick: id, isLoggedIn: true, lastLoginCheck: null });
+const mk = id => ({ id, nick: id, isLoggedIn: true, lastLoginCheck: null });
 
 // Ответы по умолчанию. Тесты про пропуск подменяют их, поэтому стандартные возвращаем
 // в beforeEach: иначе подмена утекла бы в следующие тесты (мок живёт весь файл).
-const defaultAuth = async (charId) => {
+const defaultAuth = async charId => {
   mocks.calls.push(charId);
-  if (mocks.gate) await mocks.gate;               // первая проверка «висит», пока тест не отпустит
+  if (mocks.gate) await mocks.gate; // первая проверка «висит», пока тест не отпустит
   return charId === 'bad'
     ? { charId, status: 'offline', reason: 'not_logged_in' }
     : { charId, status: 'online', reason: null };
 };
-const defaultBalance = async (charId) => {
+const defaultBalance = async charId => {
   mocks.balCalls.push(charId);
   if (mocks.gate) await mocks.gate;
   return { charId, balance: 28.5, error: null };
@@ -47,7 +55,10 @@ const defaultBalance = async (charId) => {
 
 beforeEach(async () => {
   vi.resetModules();
-  mocks.calls.length = 0; mocks.balCalls.length = 0; mocks.gate = null; mocks.closed = 0;
+  mocks.calls.length = 0;
+  mocks.balCalls.length = 0;
+  mocks.gate = null;
+  mocks.closed = 0;
   ({ state } = await import('../js/core/state.js'));
   // authIntervalHours: 0 — иначе к статусу дописывается «автопроверка …» и проверки текста ниже видят лишнее
   state.settings = { scripts: { concurrency: 1, retries: 0, retryDelayMs: 0, authIntervalHours: 0 } };
@@ -67,15 +78,24 @@ describe('authDetails: результат и время последней пр�
     // Время проверки показывается по Москве, поэтому момент задаётся явным UTC:
     // 15:20 UTC = 18:20 МСК. Без «Z» JS счёл бы строку местным временем и на CI (UTC)
     // получилось бы другое значение — тест зависел бы от пояса машины.
-    expect(authDetails({ id: 'a', isLoggedIn: true, lastLoginCheck: '2026-10-02T15:20:00Z' })).toMatch(/^Онлайн · проверено 02\.10\.2026 18:20$/);
-    expect(authDetails({ id: 'a', isLoggedIn: false, lastLoginReason: 'not_logged_in', lastLoginCheck: '2026-10-02T15:20:00Z' }))
-      .toBe('Оффлайн: не выполнен вход на сайт · проверено 02.10.2026 18:20');
+    expect(authDetails({ id: 'a', isLoggedIn: true, lastLoginCheck: '2026-10-02T15:20:00Z' })).toMatch(
+      /^Онлайн · проверено 02\.10\.2026 18:20$/
+    );
+    expect(
+      authDetails({
+        id: 'a',
+        isLoggedIn: false,
+        lastLoginReason: 'not_logged_in',
+        lastLoginCheck: '2026-10-02T15:20:00Z'
+      })
+    ).toBe('Оффлайн: не выполнен вход на сайт · проверено 02.10.2026 18:20');
   });
 });
 
 describe('refreshAuthFor: ручная проверка одного персонажа', () => {
   it('онлайн: пишет время; оффлайн: причину', async () => {
-    const ok = mk('ok'), bad = mk('bad');
+    const ok = mk('ok'),
+      bad = mk('bad');
     state.characters = [ok, bad];
     await sync.refreshAuthFor(ok);
     expect(ok.isLoggedIn).toBe(true);
@@ -113,7 +133,7 @@ describe('автопроверка при запуске: интервал по 
     // Подсветка устаревания может стоять хоть 720 ч, интервал автопроверки от неё не зависит
     state.settings.freshness.loginHours = 720;
     expect(sync.authCheckCandidates(state.characters)).toHaveLength(0);
-    state.settings.scripts.authIntervalHours = 1;   // пользователь поставил час
+    state.settings.scripts.authIntervalHours = 1; // пользователь поставил час
     expect(sync.authCheckCandidates(state.characters).map(r => r.char.id)).toEqual(['a']);
   });
 
@@ -152,7 +172,7 @@ describe('статус входа: когда следующая автопро�
     expect(authStatus.nextAutoAuthText(at(0), S, NOW)).toBe('через 6 ч');
     expect(authStatus.nextAutoAuthText(at(5.5), S, NOW)).toBe('через 30 мин');
     expect(authStatus.nextAutoAuthText(at(2), S, NOW)).toBe('через 4 ч');
-    expect(authStatus.nextAutoAuthText(at(9), S, NOW)).toBe('сейчас');   // интервал вышел
+    expect(authStatus.nextAutoAuthText(at(9), S, NOW)).toBe('сейчас'); // интервал вышел
     // Никогда не проверялся: ждать нечего
     expect(authStatus.nextAutoAuthText(null, S, NOW)).toBe('сейчас');
     // Автопроверка выключена — дописывать нечего
@@ -189,7 +209,7 @@ describe('открытое окно персонажа: пропуск вмес�
     const ok = { id: 'ok', nick: 'Ок', isLoggedIn: true };
     state.characters = [busy, ok];
     const { checkCharacterAuth } = await import('../js/modules/sync/checkAuth.js');
-    checkCharacterAuth.mockImplementation(async (charId) => {
+    checkCharacterAuth.mockImplementation(async charId => {
       mocks.calls.push(charId);
       return charId === 'busy'
         ? { charId, status: 'skipped', reason: 'window_open', skipped: true }
@@ -199,8 +219,8 @@ describe('открытое окно персонажа: пропуск вмес�
     const res = await sync.runAuthChecks([busy, ok]);
     expect(res.busy).toEqual(['Бб']);
     expect(res.online).toBe(1);
-    expect(res.offline).toEqual([]);          // «пропущен» ≠ «нет входа»
-    expect(busy.isLoggedIn).toBe(true);       // статус прежний
+    expect(res.offline).toEqual([]); // «пропущен» ≠ «нет входа»
+    expect(busy.isLoggedIn).toBe(true); // статус прежний
   });
 
   it('в журнале видно, что персонаж пропущен', async () => {
@@ -231,7 +251,7 @@ describe('открытое окно персонажа: пропуск вмес�
     const ok = { id: 'ok', nick: 'Ок', isLoggedIn: true, ancientCoins: 0 };
     state.characters = [busy, ok];
     const { getCharacterBalance } = await import('../js/modules/sync/getBalance.js');
-    getCharacterBalance.mockImplementation(async (charId) => {
+    getCharacterBalance.mockImplementation(async charId => {
       mocks.balCalls.push(charId);
       return charId === 'busy'
         ? { charId, balance: null, error: 'window_open', skipped: true }
@@ -262,22 +282,27 @@ describe('открытое окно персонажа: пропуск вмес�
 describe('отмена массовой проверки', () => {
   it('Task.cancel вызывает onCancel один раз и пишет в журнал', () => {
     const t = startTask('x', { cancelable: true, dock: false });
-    const fn = vi.fn(); t.onCancel(fn);
-    t.cancel(); t.cancel();
+    const fn = vi.fn();
+    t.onCancel(fn);
+    t.cancel();
+    t.cancel();
     expect(fn).toHaveBeenCalledTimes(1);
     expect(t.cancelled).toBe(true);
     t.finish('', 'warn');
-    t.cancel();                                            // после завершения — игнорируется
+    t.cancel(); // после завершения — игнорируется
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it('после отмены оставшиеся персонажи не проверяются и их статус не меняется', async () => {
     const chars = ['a', 'b', 'c', 'd'].map(mk);
     state.characters = chars;
-    let open; mocks.gate = new Promise(r => { open = r; });
+    let open;
+    mocks.gate = new Promise(r => {
+      open = r;
+    });
     const pending = sync.runAuthChecks(chars, { title: 'тест', baseTimeout: 1 });
-    await vi.waitFor(() => expect(mocks.calls).toEqual(['a']));        // concurrency = 1: идёт только первая
-// Останавливаем так же, как пользователь: кнопкой «■» на плашке скриптов в шапке.
+    await vi.waitFor(() => expect(mocks.calls).toEqual(['a'])); // concurrency = 1: идёт только первая
+    // Останавливаем так же, как пользователь: кнопкой «■» на плашке скриптов в шапке.
     // В выпадающем списке задач кнопок нет намеренно — он только показывает состояние.
     const btn = await vi.waitFor(() => {
       const el = document.querySelector('[data-dock-stop]');
@@ -288,7 +313,7 @@ describe('отмена массовой проверки', () => {
     open();
     const res = await pending;
     expect(res.cancelled).toBe(true);
-    expect(mocks.calls).toEqual(['a']);                                    // b, c, d даже не запускались
+    expect(mocks.calls).toEqual(['a']); // b, c, d даже не запускались
     expect(res.skipped).toBe(3);
     // Б, В, Г не трогаем вообще. А прерван на середине, поэтому результат не применяется:
     // прежний статус остаётся, отметки о проверке нет.
@@ -296,8 +321,7 @@ describe('отмена массовой проверки', () => {
     expect(chars.slice(1).every(c => !c.lastLoginCheck)).toBe(true);
     expect(chars[0].isLoggedIn).toBe(true);
     expect(chars[0].lastLoginCheck).toBeFalsy();
-    expect(state.ui.authCheck).toEqual({});                                // «Проверка…» снято у всех
-
+    expect(state.ui.authCheck).toEqual({}); // «Проверка…» снято у всех
   });
 });
 
@@ -305,7 +329,10 @@ describe('отмена массового обновления балансов'
   it('после «Отмена» остальные персонажи не запрашиваются, итог — «Отменено»', async () => {
     const chars = ['a', 'b', 'c'].map(mk);
     state.characters = chars;
-    let open; mocks.gate = new Promise(r => { open = r; });
+    let open;
+    mocks.gate = new Promise(r => {
+      open = r;
+    });
     const pending = sync.refreshAllBalances(chars);
     await vi.waitFor(() => expect(mocks.balCalls).toEqual(['a']));
     const btn = await vi.waitFor(() => {
@@ -323,7 +350,8 @@ describe('отмена массового обновления балансов'
     expect(chars[1].ancientCoins ?? 0).toBe(0);
   });
   it('для одного персонажа кнопки «Отмена» нет', async () => {
-    const c = mk('a'); state.characters = [c];
+    const c = mk('a');
+    state.characters = [c];
     mocks.gate = new Promise(() => {});
     sync.refreshAllBalances([c]);
     await vi.waitFor(() => expect(mocks.balCalls).toEqual(['a']));
@@ -402,7 +430,7 @@ describe('закрытие окна браузера', () => {
     const { closeAuthPopups } = await import('../js/modules/sync/checkAuth.js');
     mocks.closed = 1;
     state.characters = [mk('a')];
-    state.characters[0].isLoggedIn = true;   // сессия и до входа была жива → changed === false
+    state.characters[0].isLoggedIn = true; // сессия и до входа была жива → changed === false
 
     await sync.runAuthChecks([state.characters[0]]);
 

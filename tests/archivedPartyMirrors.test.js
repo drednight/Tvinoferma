@@ -22,7 +22,9 @@ describe('копии пати в архиве персонажей', () => {
     state.parties = [{ id: 'p1', name: 'Основная', order: 1 }];
     state.archivedParties = [];
     state.characters = [{ id: 'active', nick: 'Активный', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1' }];
-    state.archivedCharacters = [{ id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1' }];
+    state.archivedCharacters = [
+      { id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1' }
+    ];
   });
 
   it('показывает отдельную архивную копию с архивными участниками, оставляя активных отдельно', () => {

@@ -11,13 +11,16 @@ const createBackupMock = vi.fn();
 vi.mock('@tauri-apps/plugin-updater', () => ({ check: (...a) => checkMock(...a) }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: (...a) => relaunchMock(...a) }));
 vi.mock('../js/core/ui.js', () => ({ toast: (...a) => toastMock(...a) }));
-vi.mock('../js/core/storage.js', () => ({ saveNow: (...a) => saveNowMock(...a), createBackup: (...a) => createBackupMock(...a) }));
+vi.mock('../js/core/storage.js', () => ({
+  saveNow: (...a) => saveNowMock(...a),
+  createBackup: (...a) => createBackupMock(...a)
+}));
 
 const fakeUpdate = (over = {}) => ({
   version: '0.3.0',
   currentVersion: '0.2.0',
   body: '- новая кнопка\n- исправления',
-  downloadAndInstall: vi.fn(async (cb) => {
+  downloadAndInstall: vi.fn(async cb => {
     cb({ event: 'Started', data: { contentLength: 200 } });
     cb({ event: 'Progress', data: { chunkLength: 100 } });
     cb({ event: 'Progress', data: { chunkLength: 100 } });
@@ -64,7 +67,7 @@ describe('updateState: подписи и признаки', () => {
 
   it('подписчик получает текущее значение сразу и обновления потом', () => {
     const seen = [];
-    const off = state.subscribeUpdate((s) => seen.push(s.status));
+    const off = state.subscribeUpdate(s => seen.push(s.status));
     state.setUpdateState({ status: 'checking' });
     off();
     state.setUpdateState({ status: 'uptodate' });
@@ -75,13 +78,21 @@ describe('updateState: подписи и признаки', () => {
 describe('updater: проверка и установка', () => {
   let confirmSpy;
   beforeEach(async () => {
-    checkMock.mockReset(); relaunchMock.mockReset(); toastMock.mockReset(); saveNowMock.mockReset(); createBackupMock.mockReset();
+    checkMock.mockReset();
+    relaunchMock.mockReset();
+    toastMock.mockReset();
+    saveNowMock.mockReset();
+    createBackupMock.mockReset();
     window.__TAURI_INTERNALS__ = {};
     confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
     document.body.innerHTML = '';
     await load();
   });
-  afterEach(() => { delete window.__TAURI_INTERNALS__; confirmSpy.mockRestore(); vi.useRealTimers(); });
+  afterEach(() => {
+    delete window.__TAURI_INTERNALS__;
+    confirmSpy.mockRestore();
+    vi.useRealTimers();
+  });
 
   it('нет обновления → uptodate; тост только при ручной проверке', async () => {
     checkMock.mockResolvedValue(null);
@@ -134,7 +145,7 @@ describe('updater: проверка и установка', () => {
     checkMock.mockResolvedValue(upd);
     await mod.checkForUpdates({ silent: true });
     const progress = [];
-    state.subscribeUpdate((s) => progress.push(`${s.status}:${s.progress}`));
+    state.subscribeUpdate(s => progress.push(`${s.status}:${s.progress}`));
     const ok = await mod.installUpdate();
     expect(ok).toBe(true);
     expect(progress).toContain('downloading:0');
@@ -153,7 +164,9 @@ describe('updater: проверка и установка', () => {
     await mod.checkForUpdates({ silent: true });
     await mod.installUpdate();
     expect(createBackupMock).toHaveBeenCalledWith('pre-update-v0.2.0-to-v0.3.0');
-    expect(createBackupMock.mock.invocationCallOrder[0]).toBeLessThan(upd.downloadAndInstall.mock.invocationCallOrder[0]);
+    expect(createBackupMock.mock.invocationCallOrder[0]).toBeLessThan(
+      upd.downloadAndInstall.mock.invocationCallOrder[0]
+    );
   });
 
   it('сбой резервной копии не блокирует установку', async () => {
@@ -181,7 +194,9 @@ describe('updater: проверка и установка', () => {
     expect(state.hasUpdate()).toBe(true);
     expect(relaunchMock).not.toHaveBeenCalled();
     // повтор
-    upd.downloadAndInstall.mockImplementation(async (cb) => { cb({ event: 'Finished' }); });
+    upd.downloadAndInstall.mockImplementation(async cb => {
+      cb({ event: 'Finished' });
+    });
     expect(await mod.installUpdate()).toBe(true);
     expect(relaunchMock).toHaveBeenCalledTimes(1);
   });
@@ -211,19 +226,22 @@ describe('updater: проверка и установка', () => {
   it('планировщик, режим daily: догоняет пропущенное при запуске и срабатывает в полночь', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 7, 23, 50, 0));
-    let last = new Date(2026, 9, 6, 12, 0, 0).toISOString();   // вчера — срок пропущен
-    checkMock.mockImplementation(async () => { last = new Date().toISOString(); return null; });
+    let last = new Date(2026, 9, 6, 12, 0, 0).toISOString(); // вчера — срок пропущен
+    checkMock.mockImplementation(async () => {
+      last = new Date().toISOString();
+      return null;
+    });
     mod.startUpdateScheduler({ getMode: () => 'daily', getLastChecked: () => last });
     await vi.advanceTimersByTimeAsync(mod.FIRST_CHECK_DELAY_MS);
-    expect(checkMock).toHaveBeenCalledTimes(1);          // надогнали
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);    // все ещё до полуночи
+    expect(checkMock).toHaveBeenCalledTimes(1); // надогнали
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000); // все ещё до полуночи
     expect(checkMock).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(5 * 60 * 1000);    // перешли в 00:00
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000); // перешли в 00:00
     expect(checkMock).toHaveBeenCalledTimes(2);
     mod.stopUpdateScheduler();
   });
 
-  it.each(['daily', 'weekly'])('режим %s: свежая прошлая проверка не отменяет проверку при запуске', async (mode) => {
+  it.each(['daily', 'weekly'])('режим %s: свежая прошлая проверка не отменяет проверку при запуске', async mode => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 7, 12));
     checkMock.mockResolvedValue(fakeUpdate());
@@ -266,8 +284,14 @@ describe('updateUi: кнопка в шапке и окно', () => {
     await load();
     ui.initUpdateUi();
   });
-  afterEach(() => { delete window.__TAURI_INTERNALS__; document.body.innerHTML = ''; });
-  function installMocks() { checkMock.mockReset(); relaunchMock.mockReset(); }
+  afterEach(() => {
+    delete window.__TAURI_INTERNALS__;
+    document.body.innerHTML = '';
+  });
+  function installMocks() {
+    checkMock.mockReset();
+    relaunchMock.mockReset();
+  }
 
   it('кнопка скрыта, пока обновления нет', () => {
     expect(document.getElementById('update-badge').hidden).toBe(true);

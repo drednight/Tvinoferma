@@ -19,10 +19,16 @@ const stateWithGc = () => ({
   parties: [{ id: 'p1', name: 'Пати', memberIds: ['a'], color: '', archived: false }],
   characters: [
     {
-      id: 'a', nick: 'Первый', class: 'Воин',
-      partyIds: ['p1'], mainPartyId: 'p1', tags: [],
+      id: 'a',
+      nick: 'Первый',
+      class: 'Воин',
+      partyIds: ['p1'],
+      mainPartyId: 'p1',
+      tags: [],
       launch: {
-        gcPath: '', gcNick: '', gcAccount: false,
+        gcPath: '',
+        gcNick: '',
+        gcAccount: false,
         gcIds: ['gc-1', 'gc-2'],
         gcAccounts: { 'gc-1': { nick: 'Дракон' }, 'gc-2': { nick: 'Дракон2', legacy: true } }
       }
@@ -51,7 +57,7 @@ describe('привязка GameCenter переживает перезапуск'
 
   it('привязки персонажа к GameCenter сохраняются в том же порядке', async () => {
     const a = (await restart()).characters.find(c => c.id === 'a');
-    expect(a.launch.gcIds).toEqual(['gc-1', 'gc-2']);   // порядок решает, какой запускать
+    expect(a.launch.gcIds).toEqual(['gc-1', 'gc-2']); // порядок решает, какой запускать
   });
 
   it('запомненные входы сохраняются вместе с ником и признаком legacy', async () => {

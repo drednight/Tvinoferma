@@ -48,8 +48,16 @@ const AUTH_CODES = new Set(['not_logged_in', 'zero_no_user_session_expired', 'se
 // Ответ получен, но на сайте действительно пусто (нет марафона / нет заданий) — это не поломка
 const EMPTY_CODES = new Set(['container_not_found', 'no_title_found']);
 const LAYOUT_CODES = new Set([
-  'pending', 'container_missing', 'no_value_tag', 'parse_nan', 'no_progress_found',
-  'no_article', 'no_news_list', 'no_quests', 'no_marathon', 'config_missing'
+  'pending',
+  'container_missing',
+  'no_value_tag',
+  'parse_nan',
+  'no_progress_found',
+  'no_article',
+  'no_news_list',
+  'no_quests',
+  'no_marathon',
+  'config_missing'
 ]);
 
 /**
@@ -101,19 +109,32 @@ function load() {
     const out = {};
     for (const key of Object.keys(PARSERS)) {
       const e = raw.parsers[key];
-      if (e && typeof e === 'object') out[key] = { ...blank(), ...e, failStreak: Math.max(0, Number(e.failStreak) || 0) };
+      if (e && typeof e === 'object')
+        out[key] = { ...blank(), ...e, failStreak: Math.max(0, Number(e.failStreak) || 0) };
     }
     return out;
-  } catch (_) { return {}; }
+  } catch (_) {
+    return {};
+  }
 }
 
 function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, parsers: store })); } catch (_) { /* память переполнена — статусы не критичны */ }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: STORAGE_VERSION, parsers: store }));
+  } catch (_) {
+    /* память переполнена — статусы не критичны */
+  }
 }
 
 function notify() {
   const snapshot = getParserHealth();
-  subscribers.forEach(fn => { try { fn(snapshot); } catch (e) { console.error('[parserHealth]', e); } });
+  subscribers.forEach(fn => {
+    try {
+      fn(snapshot);
+    } catch (e) {
+      console.error('[parserHealth]', e);
+    }
+  });
 }
 
 /**
@@ -165,23 +186,37 @@ export function problemParsers(threshold = FAIL_THRESHOLD) {
 export function subscribeHealth(fn) {
   subscribers.add(fn);
   fn(getParserHealth());
-  return () => { subscribers.delete(fn); };
+  return () => {
+    subscribers.delete(fn);
+  };
 }
 
 /** Сбросить все статусы (после ручной проверки или в тестах). */
 export function resetParserHealth() {
   store = {};
-  try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* нечего чистить */ }
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (_) {
+    /* нечего чистить */
+  }
   notify();
 }
 
 /** Версия конфига селекторов, встроенного в сборку (selectors.json). */
 export const selectorsVersion = () => Number(/** @type {{ version?: number }} */ (selectors).version) || 0;
 
-const fmt = (iso) => {
+const fmt = iso => {
   if (!iso) return '—';
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return Number.isNaN(d.getTime())
+    ? '—'
+    : d.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
 };
 export const formatHealthTime = fmt;
 

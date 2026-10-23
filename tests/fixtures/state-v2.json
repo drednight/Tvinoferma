@@ -198,13 +198,9 @@
       "startDate": "2026-09-01",
       "endDate": "2026-09-30",
       "status": "active",
-      
-      "participantIds": [
-        "char-uuid-001",
-        "char-uuid-002",
-        "char-uuid-003"
-      ],
-      
+
+      "participantIds": ["char-uuid-001", "char-uuid-002", "char-uuid-003"],
+
       "tasks": [
         {
           "id": "task-uuid-001",
@@ -239,13 +235,7 @@
           "spareDays": 2,
           "schedule": {
             "mode": "dates",
-            "dates": [
-              "2026-09-05",
-              "2026-09-10",
-              "2026-09-15",
-              "2026-09-20",
-              "2026-09-25"
-            ]
+            "dates": ["2026-09-05", "2026-09-10", "2026-09-15", "2026-09-20", "2026-09-25"]
           },
           "stages": [
             {
@@ -263,7 +253,7 @@
           ]
         }
       ],
-      
+
       "comboRewards": [
         {
           "id": "combo-uuid-001",
@@ -276,7 +266,7 @@
           }
         }
       ],
-      
+
       "records": [
         {
           "id": "rec-001",
@@ -306,9 +296,9 @@
           "updatedAt": "2026-09-01T20:00:00.000Z"
         }
       ],
-      
+
       "awards": [],
-      
+
       "createdAt": "2026-08-25T10:00:00.000Z",
       "updatedAt": "2026-09-24T10:00:00.000Z",
       "completedAt": null

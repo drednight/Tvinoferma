@@ -7,17 +7,42 @@
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.02);
-  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.si-drop.is-over { border-color: var(--accent); background: var(--accent-soft); }
-.si-drop-inner { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.si-drop-ico { font-size: 2rem; }
-.si-drop-inner .btn { margin-top: 4px; }
+.si-drop.is-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.si-drop-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.si-drop-ico {
+  font-size: 2rem;
+}
+.si-drop-inner .btn {
+  margin-top: 4px;
+}
 
-.si-loading { padding: 18px; text-align: center; }
+.si-loading {
+  padding: 18px;
+  text-align: center;
+}
 
-.si-summary { display: flex; flex-direction: column; gap: 4px; margin: 14px 0 10px; }
-.si-summary .muted { font-size: 0.82rem; }
+.si-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0 10px;
+}
+.si-summary .muted {
+  font-size: 0.82rem;
+}
 
 /* Сетка распознанных характеристик: подпись, что распознано, и поле для правки */
 .si-grid {
@@ -37,43 +62,100 @@
   cursor: pointer;
   transition: border-color var(--speed) var(--ease);
 }
-.si-item:hover { border-color: var(--border-strong); }
-.si-item:has(input[type='checkbox'] checked) { border-color: var(--accent); }
-.si-item input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-.si-item-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.si-item-label b { font-size: 0.88rem; font-weight: 600; }
-.si-item-label small { font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.si-item-value { padding: 6px 8px; text-align: right; font-variant-numeric: tabular-nums; }
-.si-item input[type='number'] { -moz-appearance: textfield; }
+.si-item:hover {
+  border-color: var(--border-strong);
+}
+.si-item:has(input[type='checkbox'] checked) {
+  border-color: var(--accent);
+}
+.si-item input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.si-item-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.si-item-label b {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.si-item-label small {
+  font-size: 0.72rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.si-item-value {
+  padding: 6px 8px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.si-item input[type='number'] {
+  -moz-appearance: textfield;
+}
 .si-item input[type='number']::-webkit-outer-spin-button,
-.si-item input[type='number']::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.si-item input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 
-.si-missed { margin-top: 12px; }
-.si-missed summary { cursor: pointer; color: var(--text-dim); font-size: 0.85rem; }
-.si-missed p { margin-top: 6px; font-size: 0.8rem; }
+.si-missed {
+  margin-top: 12px;
+}
+.si-missed summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.si-missed p {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
 
 /* Заголовок блока характеристик с кнопкой разбора скриншота (js/modules/characters/formEditor.js) */
-.stat-head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); flex-wrap: wrap; margin-bottom: 10px; }
-.stat-head h4 { margin: 0; }
+.stat-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.stat-head h4 {
+  margin: 0;
+}
 
 /* Поле, которое только что заполнили со скриншота: зелёный — распознанное выше текущего,
    красный — ниже, обычная подсветка — не изменилось. Подсветка снимается правкой поля. */
 input.is-filled {
   border-color: var(--border-strong);
   background: rgba(255, 255, 255, 0.05);
-  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+  transition:
+    border-color 0.4s var(--ease),
+    background 0.4s var(--ease);
 }
 input.is-up {
   border-color: var(--success);
   background: var(--success-soft);
-  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+  transition:
+    border-color 0.4s var(--ease),
+    background 0.4s var(--ease);
 }
 input.is-down {
   border-color: var(--danger);
   background: var(--danger-soft);
-  transition: border-color 0.4s var(--ease), background 0.4s var(--ease);
+  transition:
+    border-color 0.4s var(--ease),
+    background 0.4s var(--ease);
 }
 
 @media (max-width: 700px) {
-  .si-grid { grid-template-columns: minmax(0, 1fr); }
+  .si-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

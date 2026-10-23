@@ -5,66 +5,107 @@
 // тогда оно появится в окне сравнения при импорте.
 
 // Название пати по id для окна сравнения (import.js подставляет локальные и новые пати)
-let resolvePartyName = (id) => id;
-export function setPartyNameResolver(fn) { resolvePartyName = typeof fn === 'function' ? fn : (id) => id; }
+let resolvePartyName = id => id;
+export function setPartyNameResolver(fn) {
+  resolvePartyName = typeof fn === 'function' ? fn : id => id;
+}
 
-const isListType = (f) => f.type === 'list' || f.type === 'parties';
+const isListType = f => f.type === 'list' || f.type === 'parties';
 
 const stat = (key, label) => ({ path: `stats.${key}`, label, type: 'number' });
 
 export const FIELD_GROUPS = [
-  { id: 'main', title: 'Основное', fields: [
-    { path: 'nick', label: 'Ник' },
-    { path: 'class', label: 'Класс' },
-    { path: 'level', label: 'Уровень', type: 'number' },
-    { path: 'mainPartyId', label: 'Основная пати', type: 'party' },
-    { path: 'partyIds', label: 'Все пати', type: 'parties', mergeable: true },
-    { path: 'sky.name', label: 'Небо' },
-    { path: 'sky.level', label: 'Уровень неба', type: 'number' },
-    { path: 'tags', label: 'Теги', type: 'list', mergeable: true },
-    { path: 'notes', label: 'Примечания' }
-  ] },
-  { id: 'contacts', title: 'Контакты', fields: [
-    { path: 'contacts.email', label: 'Email / Логин' },
-    { path: 'contacts.password', label: 'Пароль', secret: true },
-    { path: 'contacts.recoveryEmail', label: 'Recovery Email' },
-    { path: 'contacts.phone', label: 'Телефон' }
-  ] },
-  { id: 'passes', title: 'Проходки в данжи', fields: [
-    { path: 'dungeonPasses.weapon', label: 'Оружие', type: 'number' },
-    { path: 'dungeonPasses.armor', label: 'Броня', type: 'number' },
-    { path: 'dungeonPasses.relic', label: 'Реликвии', type: 'number' }
-  ] },
-  { id: 'coins', title: 'Древние монеты', fields: [
-    { path: 'ancientCoins', label: 'Баланс', type: 'number' },
-    { path: 'lastCoinUpdate', label: 'Обновлено', type: 'date' },
-    { path: 'coinHistory', label: 'История Древних монет', type: 'history', mergeable: true }
-  ] },
+  {
+    id: 'main',
+    title: 'Основное',
+    fields: [
+      { path: 'nick', label: 'Ник' },
+      { path: 'class', label: 'Класс' },
+      { path: 'level', label: 'Уровень', type: 'number' },
+      { path: 'mainPartyId', label: 'Основная пати', type: 'party' },
+      { path: 'partyIds', label: 'Все пати', type: 'parties', mergeable: true },
+      { path: 'sky.name', label: 'Небо' },
+      { path: 'sky.level', label: 'Уровень неба', type: 'number' },
+      { path: 'tags', label: 'Теги', type: 'list', mergeable: true },
+      { path: 'notes', label: 'Примечания' }
+    ]
+  },
+  {
+    id: 'contacts',
+    title: 'Контакты',
+    fields: [
+      { path: 'contacts.email', label: 'Email / Логин' },
+      { path: 'contacts.password', label: 'Пароль', secret: true },
+      { path: 'contacts.recoveryEmail', label: 'Recovery Email' },
+      { path: 'contacts.phone', label: 'Телефон' }
+    ]
+  },
+  {
+    id: 'passes',
+    title: 'Проходки в данжи',
+    fields: [
+      { path: 'dungeonPasses.weapon', label: 'Оружие', type: 'number' },
+      { path: 'dungeonPasses.armor', label: 'Броня', type: 'number' },
+      { path: 'dungeonPasses.relic', label: 'Реликвии', type: 'number' }
+    ]
+  },
+  {
+    id: 'coins',
+    title: 'Древние монеты',
+    fields: [
+      { path: 'ancientCoins', label: 'Баланс', type: 'number' },
+      { path: 'lastCoinUpdate', label: 'Обновлено', type: 'date' },
+      { path: 'coinHistory', label: 'История Древних монет', type: 'history', mergeable: true }
+    ]
+  },
   // Группы ниже повторяют то, как характеристики разложены в профиле и редакторе
-// (js/modules/characters/profileView.js и formEditor.js): тот же порядок и те же названия.
-// Расходятся — и в окне сравнения при импорте характеристики оказываются не в тех группах.
-{ id: 'statsMain', title: 'Основные характеристики', fields: [
-    stat('endurance', 'Выносливость'), stat('intelligence', 'Интеллект'),
-    stat('strength', 'Сила'), stat('agility', 'Ловкость')
-  ] },
-  { id: 'statsCombat', title: 'Бой и защита', fields: [
-    stat('hp', 'Здоровье'), stat('mp', 'Маг. энергия'),
-    stat('physAttack', 'Физ. атака'), stat('physDefense', 'Физ. защита'),
-    stat('magAttack', 'Маг. атака'), stat('magDefense', 'Маг. защита')
-  ] },
-  { id: 'statsBattle', title: 'Показатели боя', fields: [
-    stat('critChance', 'Шанс крит. удара (%)'), stat('critDamage', 'Крит. урон (%)'),
-    stat('atkSpeed', 'Скорость атаки'), stat('evasion', 'Уклонение'), stat('accuracy', 'Меткость'),
-    stat('pa', 'Показатель атаки (ПА)'), stat('pz', 'Показатель защиты (ПЗ)'),
-    stat('morale', 'Боевой дух'), stat('levelBonus', 'Бонус к уровню (%)'),
-    stat('physPenetration', 'Физ. пробивание'), stat('magPenetration', 'Маг. пробивание')
-  ] },
-  { id: 'statsPve', title: 'PvE', fields: [
-    stat('pvePa', 'Урон по монстрам'), stat('pvePz', 'Защита от монстров')
-  ] },
-  { id: 'sync', title: 'Данные с сайта', fields: [
-    { path: 'marathonData', label: 'Прогресс марафонов (с сайта)', type: 'json' }
-  ] }
+  // (js/modules/characters/profileView.js и formEditor.js): тот же порядок и те же названия.
+  // Расходятся — и в окне сравнения при импорте характеристики оказываются не в тех группах.
+  {
+    id: 'statsMain',
+    title: 'Основные характеристики',
+    fields: [
+      stat('endurance', 'Выносливость'),
+      stat('intelligence', 'Интеллект'),
+      stat('strength', 'Сила'),
+      stat('agility', 'Ловкость')
+    ]
+  },
+  {
+    id: 'statsCombat',
+    title: 'Бой и защита',
+    fields: [
+      stat('hp', 'Здоровье'),
+      stat('mp', 'Маг. энергия'),
+      stat('physAttack', 'Физ. атака'),
+      stat('physDefense', 'Физ. защита'),
+      stat('magAttack', 'Маг. атака'),
+      stat('magDefense', 'Маг. защита')
+    ]
+  },
+  {
+    id: 'statsBattle',
+    title: 'Показатели боя',
+    fields: [
+      stat('critChance', 'Шанс крит. удара (%)'),
+      stat('critDamage', 'Крит. урон (%)'),
+      stat('atkSpeed', 'Скорость атаки'),
+      stat('evasion', 'Уклонение'),
+      stat('accuracy', 'Меткость'),
+      stat('pa', 'Показатель атаки (ПА)'),
+      stat('pz', 'Показатель защиты (ПЗ)'),
+      stat('morale', 'Боевой дух'),
+      stat('levelBonus', 'Бонус к уровню (%)'),
+      stat('physPenetration', 'Физ. пробивание'),
+      stat('magPenetration', 'Маг. пробивание')
+    ]
+  },
+  { id: 'statsPve', title: 'PvE', fields: [stat('pvePa', 'Урон по монстрам'), stat('pvePz', 'Защита от монстров')] },
+  {
+    id: 'sync',
+    title: 'Данные с сайта',
+    fields: [{ path: 'marathonData', label: 'Прогресс марафонов (с сайта)', type: 'json' }]
+  }
 ];
 
 export const ALL_FIELDS = FIELD_GROUPS.flatMap(g => g.fields.map(f => ({ ...f, group: g.id })));
@@ -76,7 +117,10 @@ export function getPath(obj, path) {
 export function setPath(obj, path, value) {
   const keys = path.split('.');
   let o = obj;
-  keys.slice(0, -1).forEach(k => { if (!o[k] || typeof o[k] !== 'object') o[k] = {}; o = o[k]; });
+  keys.slice(0, -1).forEach(k => {
+    if (!o[k] || typeof o[k] !== 'object') o[k] = {};
+    o = o[k];
+  });
   o[keys[keys.length - 1]] = value;
 }
 
@@ -98,15 +142,19 @@ export function sameValue(field, a, b) {
  * present — пути, которые реально есть в файле (поля, не попавшие в экспорт, не сравниваются).
  */
 export function diffCharacters(local, incoming, present = null) {
-  return ALL_FIELDS.filter(f => (!present || present.has(f.path)) &&
-    !sameValue(f, getPath(local, f.path), getPath(incoming, f.path)));
+  return ALL_FIELDS.filter(
+    f => (!present || present.has(f.path)) && !sameValue(f, getPath(local, f.path), getPath(incoming, f.path))
+  );
 }
 
 /** Какие поля есть в «сыром» персонаже из файла (до нормализации). */
 export function presentPaths(rawChar) {
   const present = new Set(ALL_FIELDS.filter(f => getPath(rawChar, f.path) !== undefined).map(f => f.path));
   // Файлы старого формата хранили пати названием в поле `party`
-  if (rawChar && rawChar.party !== undefined) { present.add('partyIds'); present.add('mainPartyId'); }
+  if (rawChar && rawChar.party !== undefined) {
+    present.add('partyIds');
+    present.add('mainPartyId');
+  }
   return present;
 }
 
@@ -114,7 +162,12 @@ export function presentPaths(rawChar) {
 export function mergeValues(field, a, b) {
   if (isListType(field)) {
     const seen = new Set();
-    return [...(a || []), ...(b || [])].filter(t => { const k = String(t).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+    return [...(a || []), ...(b || [])].filter(t => {
+      const k = String(t).toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
   if (field.type === 'history') {
     const map = new Map();
@@ -148,7 +201,8 @@ export function displayValue(field, v) {
   if (field.type === 'list') return v.join(', ');
   if (field.type === 'party') return resolvePartyName(v) || '?';
   if (field.type === 'parties') return v.map(id => resolvePartyName(id) || '?').join(', ');
-  if (field.type === 'history') return `${v.length} операц.${v[0] ? ` · последняя ${String(v[0].date || '').slice(0, 10)}: ${v[0].delta > 0 ? '+' : ''}${v[0].delta ?? ''}` : ''}`;
+  if (field.type === 'history')
+    return `${v.length} операц.${v[0] ? ` · последняя ${String(v[0].date || '').slice(0, 10)}: ${v[0].delta > 0 ? '+' : ''}${v[0].delta ?? ''}` : ''}`;
   if (field.type === 'date') return new Date(v).toLocaleString('ru-RU');
   if (field.type === 'json') {
     const keys = Object.keys(v || {});

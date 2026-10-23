@@ -3,11 +3,28 @@ import { readFileSync } from 'node:fs';
 
 vi.mock('../js/core/ui.js', () => ({ toast: vi.fn(), confirmModal: vi.fn(async () => true) }));
 
-import { autostartNote, healAutostart, bindAutostart, getAutostart, setAutostart, relaunchElevated } from '../js/desktop/autostart.js';
+import {
+  autostartNote,
+  healAutostart,
+  bindAutostart,
+  getAutostart,
+  setAutostart,
+  relaunchElevated
+} from '../js/desktop/autostart.js';
 import { toast, confirmModal } from '../js/core/ui.js';
 
 const html = readFileSync('index.html', 'utf8');
-const info = (over = {}) => ({ supported: true, enabled: false, minimized: true, path: '', current: false, broken: false, admin: false, selfElevated: false, ...over });
+const info = (over = {}) => ({
+  supported: true,
+  enabled: false,
+  minimized: true,
+  path: '',
+  current: false,
+  broken: false,
+  admin: false,
+  selfElevated: false,
+  ...over
+});
 
 describe('автозапуск: тексты', () => {
   it('выключен, включён в трее, включён с окном, чужая копия, не Windows', () => {
@@ -75,7 +92,8 @@ describe('автозапуск: переключатели в настройка
   it('показывает текущее состояние, а изменение переключателя отправляется в Rust', async () => {
     let current = info({ enabled: true, minimized: true, current: true });
     const invoke = vi.fn(async (cmd, args) => {
-      if (cmd === 'autostart_set') current = info({ enabled: args.enabled, minimized: args.minimized, admin: args.admin, current: true });
+      if (cmd === 'autostart_set')
+        current = info({ enabled: args.enabled, minimized: args.minimized, admin: args.admin, current: true });
       return current;
     });
     await bindAutostart({ invoke });
@@ -87,12 +105,16 @@ describe('автозапуск: переключатели в настройка
 
     min.checked = false;
     min.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: true, minimized: false, admin: false }));
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: true, minimized: false, admin: false })
+    );
     await vi.waitFor(() => expect(document.getElementById('autostart-note').textContent).toContain('с окном'));
 
     on.checked = false;
     on.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: false, minimized: false, admin: false }));
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: false, minimized: false, admin: false })
+    );
     await vi.waitFor(() => expect(min.disabled).toBe(true)); // режим без автозапуска не выбирается
     expect(document.getElementById('autostart-admin').disabled).toBe(true);
   });
@@ -108,9 +130,13 @@ describe('автозапуск: переключатели в настройка
     expect(adm.checked).toBe(false);
     adm.checked = true;
     adm.dispatchEvent(new Event('change'));
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: true, minimized: true, admin: true }));
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('autostart_set', { enabled: true, minimized: true, admin: true })
+    );
     expect(toast.mock.calls[0][0]).toContain('спросит разрешение');
-    await vi.waitFor(() => expect(document.getElementById('autostart-note').textContent).toContain('от администратора'));
+    await vi.waitFor(() =>
+      expect(document.getElementById('autostart-note').textContent).toContain('от администратора')
+    );
   });
 
   it('не Windows: блок остаётся скрытым; ошибка записи показывается и состояние перечитывается', async () => {
@@ -118,7 +144,7 @@ describe('автозапуск: переключатели в настройка
     expect(document.getElementById('autostart-block').hidden).toBe(true);
 
     let fail = false;
-    const invoke = vi.fn(async (cmd) => {
+    const invoke = vi.fn(async cmd => {
       if (cmd === 'autostart_set' && fail) throw new Error('Не удалось записать автозапуск (код 5)');
       return info();
     });
@@ -153,7 +179,8 @@ describe('автозапуск: перезапуск от администрат
     expect(btn().disabled).toBe(false);
     expect(btn().textContent).toContain('Перезапустить от администратора');
 
-    document.body.innerHTML = new DOMParser().parseFromString(html, 'text/html')
+    document.body.innerHTML = new DOMParser()
+      .parseFromString(html, 'text/html')
       .getElementById('autostart-block').outerHTML;
     await bindAutostart({ invoke: async () => info({ enabled: true, admin: true, selfElevated: true }) });
     // Уже администратор: лишний запрос UAC пользователю показывать незачем
@@ -181,7 +208,7 @@ describe('автозапуск: перезапуск от администрат
   });
 
   it('отказ в правах показывается, а кнопка снова доступна', async () => {
-    const invoke = vi.fn(async (cmd) => {
+    const invoke = vi.fn(async cmd => {
       if (cmd === 'launcher_relaunch_elevated') throw new Error('Запрос прав администратора отменён');
       return info({ enabled: true, admin: true });
     });

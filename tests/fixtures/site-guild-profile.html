@@ -1,196 +1,193 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>Мой профиль - Guild Clan</title></head>
-<body class="dark-theme">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Мой профиль - Guild Clan</title>
+  </head>
+  <body class="dark-theme">
+    <div class="user">
+      <div class="container">
+        <div class="user__wrapper">
+          <!-- Раздел: Предстоящие события -->
+          <div class="user__col">
+            <div class="title">Предстоящие события</div>
+            <div class="user__events">
+              <div class="user__event user__event-active">
+                <div class="user__event-title">ГВГ атака - ГВГ ЧТ</div>
+                <div class="user__event-date">15 октября (четверг) в 22:00</div>
+                <div class="user__event-comment">Сбор за 20 минут до начала!</div>
+                <form class="event-response-form" data-event-id="462">
+                  <div class="user__event-radio--wrap">
+                    <div class="user__event-radio">
+                      <label>
+                        <input type="radio" name="response_462" value="yes" checked />
+                        <span>Пойду</span>
+                      </label>
+                    </div>
+                    <div class="user__event-radio">
+                      <label>
+                        <input type="radio" name="response_462" value="no" />
+                        <span>Не пойду</span>
+                      </label>
+                    </div>
+                  </div>
+                </form>
+                <div class="user__event-confirmation" style="display: block">Вы <span>отмечены</span> на событие</div>
+              </div>
+              <div class="user__event">
+                <div class="user__event-title">Садеман - Садэман</div>
+                <div class="user__event-date">17 октября (суббота) в 22:00</div>
+                <div class="user__event-comment">Сбор за 15 минут до начала!</div>
+                <form class="event-response-form" data-event-id="464">
+                  <div class="user__event-radio--wrap">
+                    <div class="user__event-radio">
+                      <label>
+                        <input type="radio" name="response_464" value="yes" />
+                        <span>Пойду</span>
+                      </label>
+                    </div>
+                    <div class="user__event-radio">
+                      <label>
+                        <input type="radio" name="response_464" value="no" />
+                        <span>Не пойду</span>
+                      </label>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
 
-<div class="user">
-	<div class="container">
-		<div class="user__wrapper">
+          <!-- Раздел: Информация о персонаже -->
+          <div class="user__col user__main-info">
+            <div class="title">Информация о персонаже</div>
+            <form id="updateUserInfoForm">
+              <div class="user__info">
+                <div class="user__info-row">
+                  <div>Ник</div>
+                  <div><input type="text" name="username" value="#Дреднайт" /></div>
+                </div>
+                <div class="user__info-row">
+                  <div>Класс</div>
+                  <div>
+                    <select name="class_id">
+                      <option value="1">Воин</option>
+                      <option value="4">Оборотень</option>
+                      <option value="9" selected>Лучник</option>
+                      <option value="2">Маг</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
 
-			<!-- Раздел: Предстоящие события -->
-			<div class="user__col">
-				<div class="title">Предстоящие события</div>
-				<div class="user__events">
-					<div class="user__event user__event-active">
-						<div class="user__event-title">
-							ГВГ атака - ГВГ ЧТ
-						</div>
-						<div class="user__event-date">
-							15 октября (четверг) в 22:00
-						</div>
-						<div class="user__event-comment">
-							Сбор за 20 минут до начала!
-						</div>
-						<form class="event-response-form" data-event-id="462">
-							<div class="user__event-radio--wrap">
-								<div class="user__event-radio">
-									<label>
-										<input type="radio" name="response_462" value="yes" checked>
-										<span>Пойду</span>
-									</label>
-								</div>
-								<div class="user__event-radio">
-									<label>
-										<input type="radio" name="response_462" value="no" >
-										<span>Не пойду</span>
-									</label>
-								</div>
-							</div>
-						</form>
-						<div class="user__event-confirmation" style="display: block;">
-							Вы <span>отмечены</span> на событие
-						</div>
-					</div>
-					<div class="user__event">
-						<div class="user__event-title">
-							Садеман - Садэман
-						</div>
-						<div class="user__event-date">
-							17 октября (суббота) в 22:00
-						</div>
-						<div class="user__event-comment">
-							Сбор за 15 минут до начала!
-						</div>
-						<form class="event-response-form" data-event-id="464">
-							<div class="user__event-radio--wrap">
-								<div class="user__event-radio">
-									<label>
-										<input type="radio" name="response_464" value="yes" >
-										<span>Пойду</span>
-									</label>
-								</div>
-								<div class="user__event-radio">
-									<label>
-										<input type="radio" name="response_464" value="no" >
-										<span>Не пойду</span>
-									</label>
-								</div>
-							</div>
-						</form>
-					</div>
-				</div>
-			</div>
-
-			<!-- Раздел: Информация о персонаже -->
-			<div class="user__col user__main-info">
-				<div class="title">Информация о персонаже</div>
-				<form id="updateUserInfoForm">
-					<div class="user__info">
-						<div class="user__info-row">
-							<div>Ник</div>
-							<div><input type="text" name="username" value="#Дреднайт"></div>
-						</div>
-						<div class="user__info-row">
-							<div>Класс</div>
-							<div>
-								<select name="class_id">
-									<option value="1">Воин</option>
-									<option value="4">Оборотень</option>
-									<option value="9" selected>Лучник</option>
-									<option value="2">Маг</option>
-								</select>
-							</div>
-						</div>
-					</div>
-				</form>
-			</div>
-
-			<!-- Раздел: Пати, в которых вы состоите -->
-			<div class="user__col">
-				<div class="title">Пати в которых вы состоите</div>
-				<div class="user__party">
-					<div class="user__party-col" data-users="#Ohayo #Μακαο #тирс Rakohammа">
-						<div class="user__party-top">
-							<div class="user__party-title">
-								МТВ - Пати 2											<span>(5 чел.)</span>
-							</div>
-							<button class="btn-copy btn-outline" onclick="copyToClipboard(this.dataset.users)" data-users="#Ohayo #Μακαο #тирс Rakohammа">Копировать</button>
-						</div>
-						<table class="table">
-							<thead>
-								<tr>
-									<th>Ник</th>
-									<th>ПА</th>
-									<th>ПЗ</th>
-									<th>БД</th>
-									<th>ХП</th>
-								</tr>
-							</thead>
-							<tbody>
-								<tr>
-									<td>
-										<a href="profile.php?user_id=514" target="_blank" class="table-username">
-											<img src="assets/img/classes/luk.png" alt="Лучник">
-											#Дреднайт																															(ПЛ)
-										</a>
-									</td>
-									<td>504</td>
-									<td>480</td>
-									<td>10485</td>
-									<td>94478</td>
-								</tr>
-								<tr>
-									<td>
-										<a href="profile.php?user_id=583" target="_blank" class="table-username">
-											<img src="assets/img/classes/luk.png" alt="Лучник">
-											#Ohayo																														</a>
-									</td>
-									<td>484</td>
-									<td>428</td>
-									<td>10330</td>
-									<td>88000</td>
-								</tr>
-								<tr>
-									<td>
-										<a href="profile.php?user_id=516" target="_blank" class="table-username">
-											<img src="assets/img/classes/mag.png" alt="Маг">
-											#Μακαο																														</a>
-									</td>
-									<td>495</td>
-									<td>477</td>
-									<td>10500</td>
-									<td>91200</td>
-								</tr>
-								<tr>
-									<td>
-										<a href="profile.php?user_id=792" target="_blank" class="table-username">
-											<img src="assets/img/classes/tank.png" alt="Оборотень">
-											#тирс																														</a>
-									</td>
-									<td>440</td>
-									<td>450</td>
-									<td>9641</td>
-									<td>170000</td>
-								</tr>
-								<tr>
-									<td>
-										<a href="profile.php?user_id=697" target="_blank" class="table-username">
-											<img src="assets/img/classes/luk.png" alt="Лучник">
-											Rakohammа																														</a>
-									</td>
-									<td>403</td>
-									<td>367</td>
-									<td>9778</td>
-									<td>85918</td>
-								</tr>
-							</tbody>
-						</table>
-					</div>
-					<!-- Пати без таблицы: ники только из data-users -->
-					<div class="user__party-col" data-users="#Дреднайт #Сомандор">
-						<div class="user__party-top">
-							<div class="user__party-title">
-								ГВГ атака - Пати 1											<span>(2 чел.)</span>
-							</div>
-							<button class="btn-copy btn-outline" onclick="copyToClipboard(this.dataset.users)" data-users="#Дреднайт #Сомандор">Копировать</button>
-						</div>
-					</div>
-				</div>
-			</div>
-
-		</div>
-	</div>
-</div>
-
-</body>
+          <!-- Раздел: Пати, в которых вы состоите -->
+          <div class="user__col">
+            <div class="title">Пати в которых вы состоите</div>
+            <div class="user__party">
+              <div class="user__party-col" data-users="#Ohayo #Μακαο #тирс Rakohammа">
+                <div class="user__party-top">
+                  <div class="user__party-title">МТВ - Пати 2 <span>(5 чел.)</span></div>
+                  <button
+                    class="btn-copy btn-outline"
+                    onclick="copyToClipboard(this.dataset.users)"
+                    data-users="#Ohayo #Μακαο #тирс Rakohammа"
+                  >
+                    Копировать
+                  </button>
+                </div>
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Ник</th>
+                      <th>ПА</th>
+                      <th>ПЗ</th>
+                      <th>БД</th>
+                      <th>ХП</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>
+                        <a href="profile.php?user_id=514" target="_blank" class="table-username">
+                          <img src="assets/img/classes/luk.png" alt="Лучник" />
+                          #Дреднайт (ПЛ)
+                        </a>
+                      </td>
+                      <td>504</td>
+                      <td>480</td>
+                      <td>10485</td>
+                      <td>94478</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="profile.php?user_id=583" target="_blank" class="table-username">
+                          <img src="assets/img/classes/luk.png" alt="Лучник" />
+                          #Ohayo
+                        </a>
+                      </td>
+                      <td>484</td>
+                      <td>428</td>
+                      <td>10330</td>
+                      <td>88000</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="profile.php?user_id=516" target="_blank" class="table-username">
+                          <img src="assets/img/classes/mag.png" alt="Маг" />
+                          #Μακαο
+                        </a>
+                      </td>
+                      <td>495</td>
+                      <td>477</td>
+                      <td>10500</td>
+                      <td>91200</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="profile.php?user_id=792" target="_blank" class="table-username">
+                          <img src="assets/img/classes/tank.png" alt="Оборотень" />
+                          #тирс
+                        </a>
+                      </td>
+                      <td>440</td>
+                      <td>450</td>
+                      <td>9641</td>
+                      <td>170000</td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <a href="profile.php?user_id=697" target="_blank" class="table-username">
+                          <img src="assets/img/classes/luk.png" alt="Лучник" />
+                          Rakohammа
+                        </a>
+                      </td>
+                      <td>403</td>
+                      <td>367</td>
+                      <td>9778</td>
+                      <td>85918</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Пати без таблицы: ники только из data-users -->
+              <div class="user__party-col" data-users="#Дреднайт #Сомандор">
+                <div class="user__party-top">
+                  <div class="user__party-title">ГВГ атака - Пати 1 <span>(2 чел.)</span></div>
+                  <button
+                    class="btn-copy btn-outline"
+                    onclick="copyToClipboard(this.dataset.users)"
+                    data-users="#Дреднайт #Сомандор"
+                  >
+                    Копировать
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
 </html>

@@ -72,22 +72,33 @@ export function timingReport(rows) {
   const measured = measuredRows(rows);
   // Без единого замера средних нет: показывать нули и «дольше всего» не о чем
   if (!measured.length) {
-    return `${rows.map(r => `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`).join('\n')}\n`
-      + 'Время не замерено: всех персонажей пропустили (открыто окно) или проверка упала.';
+    return (
+      `${rows.map(r => `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''}`).join('\n')}\n` +
+      'Время не замерено: всех персонажей пропустили (открыто окно) или проверка упала.'
+    );
   }
-  const lines = rows.map(r =>
-    `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''} — итого ${ms(r.totalMs)}; `
-    + `окно ${ms(r.windowMs)}, переход ${ms(r.navigateMs)}, разбор ${ms(r.parseMs)}, куки ${ms(r.cookiesMs)}`);
-  lines.push('', `Среднее по ${measured.length}: итого ${ms(avg.totalMs)}; окно ${ms(avg.windowMs)}, `
-    + `переход ${ms(avg.navigateMs)}, разбор ${ms(avg.parseMs)}, куки ${ms(avg.cookiesMs)}`);
+  const lines = rows.map(
+    r =>
+      `${r.charId}: ${r.status}${r.reason ? ` (${r.reason})` : ''} — итого ${ms(r.totalMs)}; ` +
+      `окно ${ms(r.windowMs)}, переход ${ms(r.navigateMs)}, разбор ${ms(r.parseMs)}, куки ${ms(r.cookiesMs)}`
+  );
+  lines.push(
+    '',
+    `Среднее по ${measured.length}: итого ${ms(avg.totalMs)}; окно ${ms(avg.windowMs)}, ` +
+      `переход ${ms(avg.navigateMs)}, разбор ${ms(avg.parseMs)}, куки ${ms(avg.cookiesMs)}`
+  );
   // Пропуски и ошибки в среднее не входят, но и молчать о них нельзя: иначе кажется,
   // что замерено меньше персонажей, чем на самом деле
   if (measured.length < rows.length) {
     lines.push(`Без времени: ${rows.length - measured.length} (пропущено или ошибка) — в среднее не входят.`);
   }
   // Подсказка по самому долгому этапу: обычно он и есть причина
-  const worst = Object.entries({ окно: avg.windowMs, переход: avg.navigateMs, разбор: avg.parseMs, куки: avg.cookiesMs })
-    .sort((a, b) => b[1] - a[1])[0];
+  const worst = Object.entries({
+    окно: avg.windowMs,
+    переход: avg.navigateMs,
+    разбор: avg.parseMs,
+    куки: avg.cookiesMs
+  }).sort((a, b) => b[1] - a[1])[0];
   if (worst && worst[1] > 0) lines.push(`Дольше всего: «${worst[0]}» — ${ms(worst[1])}`);
   return lines.join('\n');
 }
@@ -101,18 +112,31 @@ export function timingReport(rows) {
 export async function measureAuth(charIds, { timeoutSeconds = 4, deps = {} } = {}) {
   const rows = [];
   // Замеры идут по одному: параллельные окна мешали бы друг другу и завышали бы «окно» и «переход»
-  const run = deps.check || ((id) => checkCharacterAuth(id, { timeoutSeconds, closeAfter: true }));
+  const run = deps.check || (id => checkCharacterAuth(id, { timeoutSeconds, closeAfter: true }));
   for (const id of charIds || []) {
     try {
       rows.push(...parseTimings([await run(id)]));
     } catch (e) {
       // Одна ошибка не должна отменять замер остальных: иначе цифры будут неполными
-      rows.push({ charId: id, status: 'error', reason: String(e?.message || e), totalMs: 0, windowMs: 0, navigateMs: 0, parseMs: 0, cookiesMs: 0 });
+      rows.push({
+        charId: id,
+        status: 'error',
+        reason: String(e?.message || e),
+        totalMs: 0,
+        windowMs: 0,
+        navigateMs: 0,
+        parseMs: 0,
+        cookiesMs: 0
+      });
     }
   }
   const report = timingReport(rows);
   console.log(`[AUTH TIMING]\n${report}`);
-  try { await navigator.clipboard.writeText(report); } catch { /* буфер может быть недоступен */ }
+  try {
+    await navigator.clipboard.writeText(report);
+  } catch {
+    /* буфер может быть недоступен */
+  }
   return { rows, avg: stageAverages(rows), report };
 }
 
@@ -137,7 +161,10 @@ export async function measureAllAuth(opts = {}) {
   // По умолчанию берём первые 10: этого хватает, чтобы увидеть картину.
   const limit = opts.limit ?? 10;
   const picked = list.slice(0, limit);
-  const res = await measureAuth(picked.map(c => c.id), { timeoutSeconds: opts.timeoutSeconds ?? 4, deps: opts.deps });
+  const res = await measureAuth(
+    picked.map(c => c.id),
+    { timeoutSeconds: opts.timeoutSeconds ?? 4, deps: opts.deps }
+  );
   if (picked.length < list.length) {
     res.report += `\n\nЗамерены первые ${picked.length} из ${list.length}. Для остальных: measureAllAuth({ limit: ${list.length} })`;
   }

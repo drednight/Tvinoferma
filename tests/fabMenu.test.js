@@ -5,16 +5,27 @@ import { readFileSync } from 'node:fs';
 const createFolder = vi.fn();
 const createMarathon = vi.fn();
 vi.mock('../js/modules/characters/index.js', () => ({ openCharacterForm: vi.fn() }));
-vi.mock('../js/modules/sync/syncManager.js', () => ({ refreshAllLoginStatuses: vi.fn(), refreshAllBalances: vi.fn(), refreshAllMarathonStats: vi.fn() }));
+vi.mock('../js/modules/sync/syncManager.js', () => ({
+  refreshAllLoginStatuses: vi.fn(),
+  refreshAllBalances: vi.fn(),
+  refreshAllMarathonStats: vi.fn()
+}));
 vi.mock('../js/modules/parties/manager.js', () => ({ openCreatePartyModal: vi.fn() }));
-vi.mock('../js/modules/marathons/page.js', () => ({ createFolderFromFab: createFolder, createMarathonFromFab: createMarathon }));
+vi.mock('../js/modules/marathons/page.js', () => ({
+  createFolderFromFab: createFolder,
+  createMarathonFromFab: createMarathon
+}));
 
 let section;
 beforeEach(async () => {
   vi.resetModules();
-  createFolder.mockClear(); createMarathon.mockClear();
+  createFolder.mockClear();
+  createMarathon.mockClear();
   const html = readFileSync('index.html', 'utf8');
-  const fab = html.slice(html.indexOf('<div class="fab-container"'), html.indexOf('<!-- ====', html.indexOf('<div class="fab-container"')));
+  const fab = html.slice(
+    html.indexOf('<div class="fab-container"'),
+    html.indexOf('<!-- ====', html.indexOf('<div class="fab-container"'))
+  );
   document.body.innerHTML = `
     <nav><button class="tab" data-tab="marathons">Марафоны</button></nav>
     <section class="page active" data-section="marathons"></section>
@@ -35,7 +46,8 @@ describe('кнопка «+» на вкладке «Марафоны»', () => {
     expect(menu().hidden).toBe(false);
     expect(fab().classList.contains('is-open')).toBe(true);
     expect([...menu().querySelectorAll('.fab-orb')].map(b => b.textContent.trim())).toEqual(
-      expect.arrayContaining([expect.stringContaining('Папка'), expect.stringContaining('Марафон')]));
+      expect.arrayContaining([expect.stringContaining('Папка'), expect.stringContaining('Марафон')])
+    );
   });
 
   it('«Создать папку» и «Создать марафон» вызывают свои диалоги и закрывают меню', async () => {
@@ -50,7 +62,8 @@ describe('кнопка «+» на вкладке «Марафоны»', () => {
   });
 
   it('повторный клик, Esc, клик мимо и смена вкладки закрывают меню', () => {
-    fab().click(); fab().click();
+    fab().click();
+    fab().click();
     expect(menu().hidden).toBe(true);
     fab().click();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));

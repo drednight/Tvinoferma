@@ -26,10 +26,10 @@ export function createTask(partial = {}) {
   return {
     id: partial.id || uid(),
     title: partial.title || 'Новое задание',
-    siteTitle: partial.siteTitle || null,          // точное название задания на сайте (для сверки)
+    siteTitle: partial.siteTitle || null, // точное название задания на сайте (для сверки)
     description: partial.description || '',
     // Откуда описание: 'site' | 'news' | 'manual' (ручную правку сверка с сайтом не затирает); '' — описания нет
-    descriptionSource: partial.description ? (partial.descriptionSource || 'site') : '',
+    descriptionSource: partial.description ? partial.descriptionSource || 'site' : '',
     targetChecks: Math.max(1, Number(partial.targetChecks) || 1),
     schedule: {
       mode: partial.schedule?.mode || 'everyDay',
@@ -58,7 +58,7 @@ export function createMarathon(partial = {}) {
     title: partial.title || '',
     description: partial.description || '',
     source: {
-      type: partial.source?.type || 'manual',      // site | template | manual
+      type: partial.source?.type || 'manual', // site | template | manual
       url: partial.source?.url || null,
       siteName: partial.source?.siteName || null,
       stageKey: partial.source?.stageKey || null,
@@ -68,7 +68,11 @@ export function createMarathon(partial = {}) {
     },
     // Бонусы за количество выполненных заданий (например, «Летний ларец» за 4 из 5)
     bonuses: Array.isArray(partial.bonuses)
-      ? partial.bonuses.map(b => ({ id: b.id || uid(), needTasks: Math.max(1, Number(b.needTasks) || 1), text: String(b.text || '') }))
+      ? partial.bonuses.map(b => ({
+          id: b.id || uid(),
+          needTasks: Math.max(1, Number(b.needTasks) || 1),
+          text: String(b.text || '')
+        }))
       : [],
     startDate: partial.startDate || todayStr(),
     endDate: partial.endDate || new Date(Date.now() + 30 * 864e5).toLocaleDateString('sv'),
@@ -111,10 +115,16 @@ export function migrateMarathon(m, characters = []) {
   // --- задания: stages + base reward -> rewards ---
   const tasks = (m.tasks || []).map(t => {
     const rewards = (t.stages || []).map(s => ({
-      threshold: s.threshold, rewardText: s.rewardText, rewardCoins: s.rewardCoins
+      threshold: s.threshold,
+      rewardText: s.rewardText,
+      rewardCoins: s.rewardCoins
     }));
     if (Number(t.baseRewardCoins) > 0 || t.baseRewardText) {
-      rewards.push({ threshold: t.targetChecks, rewardText: t.baseRewardText || 'Выполнение', rewardCoins: t.baseRewardCoins });
+      rewards.push({
+        threshold: t.targetChecks,
+        rewardText: t.baseRewardText || 'Выполнение',
+        rewardCoins: t.baseRewardCoins
+      });
     }
     return createTask({ ...t, siteTitle: m.type === 'auto-detected' ? t.title : null, rewards });
   });
@@ -124,7 +134,8 @@ export function migrateMarathon(m, characters = []) {
   const assignments = {};
   (m.participantIds || []).forEach(pid => {
     const list = m.participantAssignments?.[pid];
-    assignments[pid] = Array.isArray(list) && list.length ? list.filter(id => allTaskIds.includes(id)) : [...allTaskIds];
+    assignments[pid] =
+      Array.isArray(list) && list.length ? list.filter(id => allTaskIds.includes(id)) : [...allTaskIds];
   });
 
   // --- галочки по дням -> ручные отметки ---
@@ -175,7 +186,7 @@ const DESC_RANK = { '': 0, site: 1, news: 2, manual: 3 };
 export function setTaskDescription(task, text, source) {
   const next = String(text || '').trim();
   if (!next) return false;
-  const cur = task.description ? (task.descriptionSource || 'site') : '';
+  const cur = task.description ? task.descriptionSource || 'site' : '';
   if (DESC_RANK[source] < DESC_RANK[cur]) return false;
   if (task.description === next && cur === source) return false;
   task.description = next;
@@ -209,7 +220,9 @@ export function ensureCell(progress, charId, taskId) {
     progress[charId][taskId] = { site: null, siteTotal: null, adjust: 0, marks: [], history: {}, syncedAt: null };
   }
   const c = progress[charId][taskId];
-  c.marks = c.marks || []; c.history = c.history || {}; c.adjust = Number(c.adjust) || 0;
+  c.marks = c.marks || [];
+  c.history = c.history || {};
+  c.adjust = Number(c.adjust) || 0;
   return c;
 }
 
@@ -235,10 +248,14 @@ export function totalActiveDays(m, task) {
 /** Награда за текущее количество (максимальный достигнутый порог) и следующая цель. */
 export function rewardFor(task, count) {
   const sorted = [...(task.rewards || [])].sort((a, b) => a.threshold - b.threshold);
-  let reached = null, next = null;
+  let reached = null,
+    next = null;
   for (const r of sorted) {
     if (count >= r.threshold) reached = r;
-    else { next = r; break; }
+    else {
+      next = r;
+      break;
+    }
   }
   return { reached, next };
 }
@@ -254,9 +271,11 @@ export function rewardPotential(task) {
     .sort((a, b) => a.threshold - b.threshold)
     .map(r => ({ threshold: r.threshold, coins: Number(r.rewardCoins) || 0 }));
   const max = maxRewardCoins(task);
-  const text = !max ? '' : tiers.length > 1
-    ? `до ${max} ДМ за задание (${tiers.map(t => `${t.threshold} → ${t.coins}`).join(', ')})`
-    : `${max} ДМ за задание`;
+  const text = !max
+    ? ''
+    : tiers.length > 1
+      ? `до ${max} ДМ за задание (${tiers.map(t => `${t.threshold} → ${t.coins}`).join(', ')})`
+      : `${max} ДМ за задание`;
   return { max, tiers, text };
 }
 
@@ -301,9 +320,26 @@ export function computeCell(m, charId, taskId, today = todayStr()) {
   else stateKey = 'ok';
 
   return {
-    assigned, task, target, count, base, adjust, hasSite, site, manual, driver, siteReserve, manualReserve, remaining, left, reserve,
-    reached, next, coins: assigned && reached ? Number(reached.rewardCoins) || 0 : 0,
-    state: stateKey, data,
+    assigned,
+    task,
+    target,
+    count,
+    base,
+    adjust,
+    hasSite,
+    site,
+    manual,
+    driver,
+    siteReserve,
+    manualReserve,
+    remaining,
+    left,
+    reserve,
+    reached,
+    next,
+    coins: assigned && reached ? Number(reached.rewardCoins) || 0 : 0,
+    state: stateKey,
+    data,
     percent: target > 0 ? Math.min(100, Math.round((count / target) * 100)) : 0
   };
 }
@@ -328,11 +364,21 @@ export function calendarStates(m, task, cell, today = todayStr()) {
   let dated = 0;
 
   all.forEach(d => {
-    if (!isTaskActiveOnDate(task, d, all)) { out[d] = 'inactive'; return; }
+    if (!isTaskActiveOnDate(task, d, all)) {
+      out[d] = 'inactive';
+      return;
+    }
     const covered = marks.has(d) || Number(history[d]) > 0;
-    if (covered) { out[d] = marks.has(d) ? 'marked' : 'site'; dated++; }
-    if (d < today) { if (!covered) pastUncovered.push(d); }
-    else if (!covered) { out[d] = 'normal'; futureOpen.push(d); }
+    if (covered) {
+      out[d] = marks.has(d) ? 'marked' : 'site';
+      dated++;
+    }
+    if (d < today) {
+      if (!covered) pastUncovered.push(d);
+    } else if (!covered) {
+      out[d] = 'normal';
+      futureOpen.push(d);
+    }
   });
 
   const count = cell ? Math.max(0, Math.max(Number(cell.site) || 0, marks.size) + (Number(cell.adjust) || 0)) : 0;
@@ -341,12 +387,16 @@ export function calendarStates(m, task, cell, today = todayStr()) {
 
   // Выполнения, которые сайт засчитал без даты, «закрывают» самые ранние пропущенные дни
   const credits = Math.max(0, count - dated);
-  pastUncovered.forEach((d, i) => { out[d] = done || i < credits ? 'site' : 'missed'; });
+  pastUncovered.forEach((d, i) => {
+    out[d] = done || i < credits ? 'site' : 'missed';
+  });
 
   if (!done) {
     // Запас = свободные дни впереди − сколько ещё нужно выполнить
     const reserve = Math.max(0, Math.min(futureOpen.length, futureOpen.length - Math.max(0, target - count)));
-    futureOpen.slice(futureOpen.length - reserve).forEach(d => { out[d] = 'spare'; });
+    futureOpen.slice(futureOpen.length - reserve).forEach(d => {
+      out[d] = 'spare';
+    });
   }
   return out;
 }
@@ -356,28 +406,47 @@ export function calendarStates(m, task, cell, today = todayStr()) {
 /* ------------------------------------------------------------------ */
 
 export function marathonTotals(m) {
-  let cells = 0, done = 0, coins = 0, maxCoins = 0, failing = 0;
-  const perChar = {}, perTask = {};
+  let cells = 0,
+    done = 0,
+    coins = 0,
+    maxCoins = 0,
+    failing = 0;
+  const perChar = {},
+    perTask = {};
 
-  m.tasks.forEach(t => { perTask[t.id] = { coins: 0, done: 0, assigned: 0 }; });
+  m.tasks.forEach(t => {
+    perTask[t.id] = { coins: 0, done: 0, assigned: 0 };
+  });
   m.participantIds.forEach(cid => {
     perChar[cid] = { coins: 0, done: 0, assigned: 0 };
     m.tasks.forEach(t => {
       const c = computeCell(m, cid, t.id);
       if (!c.assigned) return;
-      cells++; perChar[cid].assigned++; perTask[t.id].assigned++;
+      cells++;
+      perChar[cid].assigned++;
+      perTask[t.id].assigned++;
       maxCoins += maxRewardCoins(t);
-      if (c.state === 'done') { done++; perChar[cid].done++; perTask[t.id].done++; }
+      if (c.state === 'done') {
+        done++;
+        perChar[cid].done++;
+        perTask[t.id].done++;
+      }
       if (c.state === 'fail') failing++;
-      coins += c.coins; perChar[cid].coins += c.coins; perTask[t.id].coins += c.coins;
+      coins += c.coins;
+      perChar[cid].coins += c.coins;
+      perTask[t.id].coins += c.coins;
     });
   });
 
   // Завершённый марафон: монеты берём из зафиксированных наград
   if (m.status === 'completed' && m.awards?.length) {
     coins = 0;
-    Object.values(perChar).forEach(p => { p.coins = 0; });
-    Object.values(perTask).forEach(p => { p.coins = 0; });
+    Object.values(perChar).forEach(p => {
+      p.coins = 0;
+    });
+    Object.values(perTask).forEach(p => {
+      p.coins = 0;
+    });
     m.awards.forEach(a => {
       coins += a.coins;
       if (a.characterId && perChar[a.characterId]) perChar[a.characterId].coins += a.coins;
@@ -385,7 +454,16 @@ export function marathonTotals(m) {
     });
   }
 
-  return { cells, done, coins, maxCoins, failing, perChar, perTask, percent: cells ? Math.round(done / cells * 100) : 0 };
+  return {
+    cells,
+    done,
+    coins,
+    maxCoins,
+    failing,
+    perChar,
+    perTask,
+    percent: cells ? Math.round((done / cells) * 100) : 0
+  };
 }
 
 /** Фиксирует награды при завершении марафона. Баланс ДМ персонажей НЕ меняется (он берётся с сайта). */
@@ -397,8 +475,12 @@ export function freezeAwards(m, characters) {
       const c = computeCell(m, cid, t.id);
       if (c.assigned && c.reached && c.coins > 0) {
         awards.push({
-          characterId: cid, charNick: ch?.nick || '', taskId: t.id, taskTitle: t.title,
-          rewardText: c.reached.rewardText || `Порог ${c.reached.threshold}`, coins: c.coins
+          characterId: cid,
+          charNick: ch?.nick || '',
+          taskId: t.id,
+          taskTitle: t.title,
+          rewardText: c.reached.rewardText || `Порог ${c.reached.threshold}`,
+          coins: c.coins
         });
       }
     });
@@ -414,7 +496,9 @@ export function marathonPhase(m, today = todayStr()) {
 }
 
 export function seriesChildren(series, all) {
-  return (series.childIds || []).map(id => all.find(m => m.id === id)).filter(Boolean)
+  return (series.childIds || [])
+    .map(id => all.find(m => m.id === id))
+    .filter(Boolean)
     .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
 }
 
@@ -432,10 +516,26 @@ export function seriesPhase(series, all) {
 /*  Сверка с сайтом                                                    */
 /* ------------------------------------------------------------------ */
 
-const MONTHS = ['январ', 'феврал', 'март', 'апрел', 'ма', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+const MONTHS = [
+  'январ',
+  'феврал',
+  'март',
+  'апрел',
+  'ма',
+  'июн',
+  'июл',
+  'август',
+  'сентябр',
+  'октябр',
+  'ноябр',
+  'декабр'
+];
 
 export function normTitle(s) {
-  return String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/g, '');
+  return String(s || '')
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/g, '');
 }
 export function baseTitle(s) {
   return normTitle(String(s || '').replace(/\([^)]*\)/g, ''));
@@ -485,12 +585,11 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
     cell.siteTotal = Number(q.total) || null;
     cell.syncedAt = at;
     if (!task.siteTitle) task.siteTitle = q.title;
-    setTaskDescription(task, q.description, 'site');   // ручное описание и описание из новости не затираются
+    setTaskDescription(task, q.description, 'site'); // ручное описание и описание из новости не затираются
     if (from !== to) changes.push({ taskId: task.id, from, to });
   });
   return changes;
 }
-
 
 /** Статус бонусов персонажа: [{ bonus, done, need, reached }] */
 export function bonusStatus(m, charId) {

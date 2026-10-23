@@ -100,10 +100,11 @@ export function parseNumber(text, kind = 'int') {
  * дают близкие скелеты, а разные характеристики («атака» и «защита») остаются далёкими.
  */
 export function labelSimilarity(a, b) {
-  const skel = (t) => normalizeLabel(t)
-    .replace(/[^а-яёa-z0-9]/g, '')
-    .replace(/[оеаиуыэюяё]/g, '')      // гласные распознаются хуже всего
-    .replace(/(.)\1+/g, '$1');          // повторы букв — тоже частая ошибка
+  const skel = t =>
+    normalizeLabel(t)
+      .replace(/[^а-яёa-z0-9]/g, '')
+      .replace(/[оеаиуыэюяё]/g, '') // гласные распознаются хуже всего
+      .replace(/(.)\1+/g, '$1'); // повторы букв — тоже частая ошибка
   const sa = skel(a);
   const sb = skel(b);
   if (!sa || !sb) return 0;
@@ -188,7 +189,7 @@ export function joinByRow(lines, { fields = STAT_FIELDS, rowTolerance = 0.02 } =
   const all = (lines || []).filter(l => l && String(l.text || '').trim());
   if (!all.length) return [];
 
-  const centerY = (l) => l.y + (l.h || 0) / 2;
+  const centerY = l => l.y + (l.h || 0) / 2;
   const out = [];
 
   // 1. Строки, где подпись и значение слиты в одну («Здоровье 42 350»): берём их сразу,
@@ -231,7 +232,10 @@ export function joinByRow(lines, { fields = STAT_FIELDS, rowTolerance = 0.02 } =
       const dx = line.x - (label.x + (label.w || 0));
       if (dx < -0.01) continue;
       if (Math.abs(centerY(line) - cy) > tolerance) continue;
-      if (dx < bestDx) { bestDx = dx; bestIdx = idx; }
+      if (dx < bestDx) {
+        bestDx = dx;
+        bestIdx = idx;
+      }
     }
     if (bestIdx < 0) continue;
     const valueLine = values.find(v => v.idx === bestIdx).line;
@@ -294,11 +298,13 @@ export function readSummary(found, missed) {
   const m = (missed || []).length;
   const mod100 = n % 100;
   const mod10 = n % 10;
-  const word = mod100 > 10 && mod100 < 20 ? 'характеристик'
-    : mod10 === 1 ? 'характеристика'
-      : mod10 >= 2 && mod10 <= 4 ? 'характеристики'
-        : 'характеристик';
-  return n
-    ? `Распознано ${n} ${word}${m ? `, не найдено: ${m}` : ''}`
-    : 'Характеристики на скриншоте не распознаны';
+  const word =
+    mod100 > 10 && mod100 < 20
+      ? 'характеристик'
+      : mod10 === 1
+        ? 'характеристика'
+        : mod10 >= 2 && mod10 <= 4
+          ? 'характеристики'
+          : 'характеристик';
+  return n ? `Распознано ${n} ${word}${m ? `, не найдено: ${m}` : ''}` : 'Характеристики на скриншоте не распознаны';
 }

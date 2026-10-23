@@ -4,7 +4,12 @@
 // Зачем: окно узнаётся по нику из заголовка, а заголовок и значок слетают вместе. Окно,
 // потерявшее заголовок, показывалось как «PID 1234», и восстановить его было нечем.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { rememberLaunched, forgetLaunched, recalledOwnership, pruneLaunched } from '../js/modules/launcher/launchedWindows.js';
+import {
+  rememberLaunched,
+  forgetLaunched,
+  recalledOwnership,
+  pruneLaunched
+} from '../js/modules/launcher/launchedWindows.js';
 import { windowRows } from '../js/modules/launcher/windowList.js';
 
 const NOW = 1_700_000_000_000;
@@ -12,7 +17,14 @@ const chars = [
   { id: 'c1', nick: 'Дракон', class: 'Жнец', partyIds: ['p1'] },
   { id: 'c2', nick: 'Сокол', class: 'Лучник', partyIds: [] }
 ];
-const win = (over = {}) => ({ pid: 100, image: 'elementclient.exe', startedAt: NOW - 60_000, title: '', elevated: false, ...over });
+const win = (over = {}) => ({
+  pid: 100,
+  image: 'elementclient.exe',
+  startedAt: NOW - 60_000,
+  title: '',
+  elevated: false,
+  ...over
+});
 
 beforeEach(() => {
   window.localStorage.clear();

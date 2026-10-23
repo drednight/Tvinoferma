@@ -10,8 +10,15 @@ import { normalizeState } from '../js/core/state.js';
 import { CLAN_REMINDER_MINUTES, CLAN_ENTRY_PREFIX, isClanEntry } from '../js/modules/guild/core.js';
 
 const TODAY = '2026-06-09';
-const entry = (over = {}) => ({ id: 'p1', title: 'Собрание клана', date: TODAY, time: '19:30', reminderMinutes: 15, ...over });
-const at = (hhmm) => {
+const entry = (over = {}) => ({
+  id: 'p1',
+  title: 'Собрание клана',
+  date: TODAY,
+  time: '19:30',
+  reminderMinutes: 15,
+  ...over
+});
+const at = hhmm => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 };
@@ -34,7 +41,9 @@ describe('напоминания о начале записей', () => {
   });
 
   it('запись без напоминания молчит', () => {
-    expect(collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [entry({ reminderMinutes: 0 })] })).toEqual([]);
+    expect(
+      collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [entry({ reminderMinutes: 0 })] })
+    ).toEqual([]);
   });
 
   it('запись без времени молчит', () => {
@@ -42,22 +51,27 @@ describe('напоминания о начале записей', () => {
   });
 
   it('чужая дата не попадает в сегодняшние напоминания', () => {
-    expect(collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [entry({ date: '2026-06-10' })] })).toEqual([]);
+    expect(
+      collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [entry({ date: '2026-06-10' })] })
+    ).toEqual([]);
   });
 
   it('выполненная запись не напоминает', () => {
     const done = entry({ status: 'done' });
-    expect(collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [done], isDone: (e) => e.status === 'done' })).toEqual([]);
+    expect(
+      collectTaskAlerts({ today: TODAY, nowMinutes: at('19:25'), entries: [done], isDone: e => e.status === 'done' })
+    ).toEqual([]);
   });
 
   it('запас свой у каждой записи', () => {
     // Одна запись в 19:30 с запасом 15 минут (окно с 19:15) и одна с запасом 5 минут
     // (окно с 19:25). В 19:20 напомнит только первая — иначе запас не работал бы вовсе.
     const alerts = collectTaskAlerts({
-      today: TODAY, nowMinutes: at('19:20'),
+      today: TODAY,
+      nowMinutes: at('19:20'),
       entries: [entry({ id: 'a', reminderMinutes: 15 }), entry({ id: 'b', reminderMinutes: 5 })]
     });
-    expect(alerts.map((a) => a.entryId)).toEqual(['a']);
+    expect(alerts.map(a => a.entryId)).toEqual(['a']);
   });
 
   it('ключ у напоминания свой на запись и день: повторов не будет', () => {
@@ -82,7 +96,8 @@ describe('клановые ивенты получают напоминание'
 
   it('напоминание кланового ивента доходит до сборщика', () => {
     const alerts = collectTaskAlerts({
-      today: TODAY, nowMinutes: at('19:20'),
+      today: TODAY,
+      nowMinutes: at('19:20'),
       entries: [entry({ id: `${CLAN_ENTRY_PREFIX}42`, reminderMinutes: CLAN_REMINDER_MINUTES })]
     });
     expect(alerts).toHaveLength(1);

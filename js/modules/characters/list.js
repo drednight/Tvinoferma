@@ -20,12 +20,34 @@ import { refreshAllBalances, refreshAllLoginStatuses, openSyncHelper } from '../
 import { getAuthView, authDetails } from '../sync/authStatus.js';
 import { fillClassFilter, fillPartyFilter, filterCharacters } from './filters.js';
 import { groupChars, applyManualOrder, moveChar, ORDER_MANUAL, ORDER_NICK } from './grouping.js';
-import { getManualOrder, saveManualOrder, resetManualOrder, hasManualOrder, canSaveOrder, getViewPrefs, saveViewPrefs, listOrderPresets, saveOrderPreset, deleteOrderPreset, presetValue, presetIdFromValue } from './orderStore.js';
+import {
+  getManualOrder,
+  saveManualOrder,
+  resetManualOrder,
+  hasManualOrder,
+  canSaveOrder,
+  getViewPrefs,
+  saveViewPrefs,
+  listOrderPresets,
+  saveOrderPreset,
+  deleteOrderPreset,
+  presetValue,
+  presetIdFromValue
+} from './orderStore.js';
 import { onboardingHtml } from './onboarding.js';
 import { windowOfCharacter, refreshRunningWindows, onRunningWindows } from '../launcher/runningWindows.js';
 import { formatUptime } from '../launcher/windowList.js';
 import {
-  NO_PARTY_LABEL, partyById, hasNoParty, setMembership, setMainParty, createPartyWith, mainPartyName, mainPartyOf, additionalPartiesOf, totalCoins as totalCoinsOf
+  NO_PARTY_LABEL,
+  partyById,
+  hasNoParty,
+  setMembership,
+  setMainParty,
+  createPartyWith,
+  mainPartyName,
+  mainPartyOf,
+  additionalPartiesOf,
+  totalCoins as totalCoinsOf
 } from '../parties/membership.js';
 import { partyColorCss } from '../parties/color.js';
 
@@ -48,8 +70,8 @@ const EYE_SVG_CLOSED = `<svg width="16" height="16" viewBox="0 0 24 24" fill="no
 
 export function renderCharacters() {
   // 1. Сначала обновляем состояние кнопок синхронизации (навешиваем обработчики)
-  initSyncButtons(); 
-  
+  initSyncButtons();
+
   // 2. Затем рендерим сетку с учетом фильтров
   document.getElementById('active-character-count')?.replaceChildren(String(state.characters.length));
   document.getElementById('archived-character-count')?.replaceChildren(String(state.archivedCharacters.length));
@@ -107,7 +129,9 @@ async function maybeShowWelcome() {
   const { shouldShowOnboarding } = await import('./onboarding.js');
   if (!shouldShowOnboarding(state)) return;
   welcomeShown = true;
-  setTimeout(() => { openWelcome(); }, 400);
+  setTimeout(() => {
+    openWelcome();
+  }, 400);
 }
 
 /**
@@ -117,7 +141,7 @@ function initFilters() {
   const searchInput = document.getElementById('search-input');
   const classSelect = document.getElementById('class-filter');
   const partySelect = document.getElementById('party-filter');
-  const authSelect = document.getElementById('auth-filter'); 
+  const authSelect = document.getElementById('auth-filter');
   const tagSelect = document.getElementById('tag-filter');
 
   if (!searchInput || !classSelect || !partySelect || !authSelect) return;
@@ -145,7 +169,7 @@ function initFilters() {
   searchInput.oninput = applyFilters;
   classSelect.onchange = applyFilters;
   partySelect.onchange = applyFilters;
-  authSelect.onchange = applyFilters; 
+  authSelect.onchange = applyFilters;
 
   // «Сбросить»: заметно, когда хотя бы один фильтр включён; одним нажатием возвращает весь список
   const clearBtn = document.getElementById('filters-clear');
@@ -166,7 +190,10 @@ function initFilters() {
   const prefs = getViewPrefs();
   if (groupSelect) {
     groupSelect.value = prefs.group;
-    groupSelect.onchange = () => { saveViewPrefs({ group: groupSelect.value }); renderFilteredGrid(); };
+    groupSelect.onchange = () => {
+      saveViewPrefs({ group: groupSelect.value });
+      renderFilteredGrid();
+    };
   }
   if (orderSelect) {
     fillOrderOptions(orderSelect, prefs.order);
@@ -187,8 +214,11 @@ function initFilters() {
   const orderMenu = document.getElementById('order-menu');
   if (orderMenu) {
     orderMenu.onclick = () => openOrderMenu(orderMenu);
-    orderMenu.onkeydown = (e) => {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openOrderMenu(orderMenu); }
+    orderMenu.onkeydown = e => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openOrderMenu(orderMenu);
+      }
     };
   }
   updateOrderMenu();
@@ -216,8 +246,12 @@ export function fillOrderOptions(select, current = '') {
   select.innerHTML = `
     <option value="nick">По нику (сначала онлайн)</option>
     <option value="manual">Свой порядок</option>
-    ${presets.map(p => `
-      <option value="${escapeHtml(presetValue(p.id))}">${escapeHtml(p.name)}</option>`).join('')}`;
+    ${presets
+      .map(
+        p => `
+      <option value="${escapeHtml(presetValue(p.id))}">${escapeHtml(p.name)}</option>`
+      )
+      .join('')}`;
   select.value = selected;
   // Черта под «Свой порядок» рисуется только когда сохранённые есть: без них отделять
   // нечего, и линия под последним пунктом была бы просто чужой полоской
@@ -249,10 +283,39 @@ function openOrderMenu(btn) {
   const preset = presetId ? listOrderPresets().find(p => p.id === presetId) : null;
   const hasOrder = canSaveOrder();
   openActionMenu(btn, [
-    { id: 'save', icon: '💾', label: 'Сохранить как…', hint: 'Сохранить текущий порядок под своим именем', disabled: !hasOrder, onSelect: () => askOrderPresetName() },
-    { id: 'apply', icon: '↻', label: 'Обновить сохранённый', hint: 'Записать текущий порядок обратно в выбранный', disabled: !preset || !hasOrder, onSelect: () => applyPresetUpdate() },
-    { id: 'delete', icon: '✕', label: 'Удалить сохранённый', hint: 'Убрать выбранный порядок из списка', disabled: !preset, danger: true, onSelect: () => applyPresetDelete() },
-    { id: 'reset', icon: '↺', label: 'Сбросить порядок', hint: 'Вернуть карточки по нику', disabled: !hasOrder && !preset, onSelect: () => applyOrderReset() }
+    {
+      id: 'save',
+      icon: '💾',
+      label: 'Сохранить как…',
+      hint: 'Сохранить текущий порядок под своим именем',
+      disabled: !hasOrder,
+      onSelect: () => askOrderPresetName()
+    },
+    {
+      id: 'apply',
+      icon: '↻',
+      label: 'Обновить сохранённый',
+      hint: 'Записать текущий порядок обратно в выбранный',
+      disabled: !preset || !hasOrder,
+      onSelect: () => applyPresetUpdate()
+    },
+    {
+      id: 'delete',
+      icon: '✕',
+      label: 'Удалить сохранённый',
+      hint: 'Убрать выбранный порядок из списка',
+      disabled: !preset,
+      danger: true,
+      onSelect: () => applyPresetDelete()
+    },
+    {
+      id: 'reset',
+      icon: '↺',
+      label: 'Сбросить порядок',
+      hint: 'Вернуть карточки по нику',
+      disabled: !hasOrder && !preset,
+      onSelect: () => applyOrderReset()
+    }
   ]);
 }
 
@@ -328,7 +391,7 @@ async function applyPresetDelete() {
 
 /** Модалка ввода имени порядка. Пустая строка и Отмена — это не имя. */
 function promptOrderName(title, value = '') {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
@@ -348,17 +411,24 @@ function promptOrderName(title, value = '') {
           <button type="button" class="btn primary" data-act="ok">Сохранить</button>
         </div>
       </div>`;
-    const done = (result) => {
+    const done = result => {
       document.removeEventListener('keydown', onKey, true);
       overlay.remove();
       resolve(result);
     };
-    const onKey = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(''); }
-      if (e.key === 'Enter') { e.preventDefault(); done(input.value); }
+    const onKey = e => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        done('');
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        done(input.value);
+      }
     };
     const input = /** @type {HTMLInputElement} */ (overlay.querySelector('#order-preset-name'));
-    overlay.addEventListener('click', (e) => {
+    overlay.addEventListener('click', e => {
       const act = /** @type {HTMLElement} */ (e.target).closest?.('[data-act]')?.getAttribute('data-act');
       if (act === 'ok') done(input.value);
       else if (act === 'cancel' || e.target === overlay) done('');
@@ -374,22 +444,28 @@ function promptOrderName(title, value = '') {
 function updateClearButton() {
   const btn = document.getElementById('filters-clear');
   if (!btn) return;
-  const active = ['search-input', 'class-filter', 'party-filter', 'auth-filter', 'tag-filter']
-    .some(id => (document.getElementById(id)?.value || '') !== '');
+  const active = ['search-input', 'class-filter', 'party-filter', 'auth-filter', 'tag-filter'].some(
+    id => (document.getElementById(id)?.value || '') !== ''
+  );
   btn.hidden = !active;
 }
 
 /** Все теги персонажей (без учёта регистра), по алфавиту. */
 export function allTags() {
   const map = new Map();
-  state.characters.forEach(c => (c.tags || []).forEach(t => { if (!map.has(t.toLowerCase())) map.set(t.toLowerCase(), t); }));
+  state.characters.forEach(c =>
+    (c.tags || []).forEach(t => {
+      if (!map.has(t.toLowerCase())) map.set(t.toLowerCase(), t);
+    })
+  );
   return [...map.values()].sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
 function fillTagFilter(select) {
   const current = select.value;
   const tags = allTags();
-  select.innerHTML = '<option value="">Все теги</option><option value="__none__">Без тегов</option>' +
+  select.innerHTML =
+    '<option value="">Все теги</option><option value="__none__">Без тегов</option>' +
     tags.map(t => `<option value="${escapeHtml(t)}">#${escapeHtml(t)}</option>`).join('');
   select.value = tags.includes(current) || current === '__none__' ? current : '';
 }
@@ -432,7 +508,9 @@ function renderFilteredGrid() {
     // Подсказка первых шагов — только когда персонажей нет вовсе. Если данные есть, но фильтр
     // ничего не нашёл, показываем именно это: иначе пользователь решит, что данные пропали.
     const onb = onboardingHtml(state);
-    gridEl.innerHTML = onb || '<div class="empty-state">Ничего не найдено по заданным фильтрам.<br/><small class="muted">Измените условия или нажмите «Сбросить».</small></div>';
+    gridEl.innerHTML =
+      onb ||
+      '<div class="empty-state">Ничего не найдено по заданным фильтрам.<br/><small class="muted">Измените условия или нажмите «Сбросить».</small></div>';
     bindOnboardingEvents(gridEl);
     return;
   }
@@ -474,7 +552,9 @@ function fullManualOrder() {
 /** Карточки тянутся только в режиме «Свой порядок» и вне режима выбора. */
 function markDraggable(grid, manual) {
   const on = manual && !state.ui.selectionMode;
-  grid.querySelectorAll('.clickable-card').forEach(el => { el.draggable = on; });
+  grid.querySelectorAll('.clickable-card').forEach(el => {
+    el.draggable = on;
+  });
 }
 
 /** Перетаскивание карточек: обработчики на сетке, навешиваются один раз. Меняет только порядок. */
@@ -482,7 +562,7 @@ function bindManualDrag(grid) {
   if (grid.dataset.dragBound) return;
   grid.dataset.dragBound = 'true';
   let dragId = null;
-  grid.addEventListener('dragstart', (e) => {
+  grid.addEventListener('dragstart', e => {
     const card = e.target.closest?.('.clickable-card');
     if (!card || !card.draggable) return;
     dragId = card.dataset.charId;
@@ -490,7 +570,7 @@ function bindManualDrag(grid) {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', dragId);
   });
-  grid.addEventListener('dragover', (e) => {
+  grid.addEventListener('dragover', e => {
     const card = e.target.closest?.('.clickable-card');
     clearDropMarks(grid);
     if (!card || !dragId) return;
@@ -500,7 +580,7 @@ function bindManualDrag(grid) {
     if (card.dataset.charId === dragId) return;
     card.classList.add(dropSide(card, e.clientX) === 'after' ? 'drop-after' : 'drop-before');
   });
-  grid.addEventListener('drop', (e) => {
+  grid.addEventListener('drop', e => {
     const card = e.target.closest?.('.clickable-card');
     clearDropMarks(grid);
     if (!card || !dragId) return;
@@ -607,67 +687,74 @@ async function closeCharacterGameWindow(charId, btn) {
  * Генерация HTML одной карточки персонажа
  */
 function generateCardHTML(char, { archived = false } = {}) {
-    const iconSrc = getClassIconSrc(char.class);
-    const avatarContent = iconSrc
-      ? `<img src="${iconSrc}" alt="${escapeHtml(char.class)}" />`
-      : `<span>${(char.class || '?')[0]}</span>`;
+  const iconSrc = getClassIconSrc(char.class);
+  const avatarContent = iconSrc
+    ? `<img src="${iconSrc}" alt="${escapeHtml(char.class)}" />`
+    : `<span>${(char.class || '?')[0]}</span>`;
 
-    const skyInfo = char.sky?.name ? `${escapeHtml(char.sky.name)}${char.sky.level ? ` (Ур.${char.sky.level})` : ''}` : 'Небо не выбрано';
-    
-    const stats = char.stats || {};
-    const fmtStat = (val) => val > 0 ? val : '-';
+  const skyInfo = char.sky?.name
+    ? `${escapeHtml(char.sky.name)}${char.sky.level ? ` (Ур.${char.sky.level})` : ''}`
+    : 'Небо не выбрано';
 
-    const emailMasked = maskText(char.contacts?.email);
-    const passMasked = maskText(char.contacts?.password);
-    const hasEmail = !!char.contacts?.email;
-    const hasPass = !!char.contacts?.password;
+  const stats = char.stats || {};
+  const fmtStat = val => (val > 0 ? val : '-');
 
-    const passes = char.dungeonPasses || {};
-    const passesHtml = PASS_TYPES.map(pt => {
-      const count = passes[pt.key] || 0;
-      const imgPath = pt.img;
-      return `<span class="pass-item" title="${pt.label}: ${count}"><img class="pass-icon-img" src="${imgPath}" alt="${pt.label}" /><span>${count}</span></span>`;
-    }).join('');
+  const emailMasked = maskText(char.contacts?.email);
+  const passMasked = maskText(char.contacts?.password);
+  const hasEmail = !!char.contacts?.email;
+  const hasPass = !!char.contacts?.password;
 
-    // Предупреждение о балансе: видно сразу на карточке, а не только в профиле
-    const coinWarn = needsCoinRecheck(char)
-      ? ' <span class="coin-warn" title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить».">⚠</span>'
-      : '';
-    const coinsDisplay = `${formatCoins(char.ancientCoins || 0)}${coinWarn}`;
-    const archivedPartyLinks = archived
-      ? state.archivedParties.flatMap(party => (party.memberLinks || [])
-          .filter(link => link.characterId === char.id)
-          .map(link => ({ party, link })))
-      : [];
-    const mainName = mainPartyName(char, state.parties);
-    const extraNames = additionalPartiesOf(char, state.parties).map(p => p.name);
-    const activePartyLabel = mainName
-      ? `${escapeHtml(mainName)}${extraNames.length ? ` <span title="Дополнительные: ${escapeHtml(extraNames.join(', '))}">+${extraNames.length}</span>` : ''}`
-      : NO_PARTY_LABEL;
-    const archivedPartyLabel = archivedPartyLinks
-      .map(({ party, link }) => `${escapeHtml(party.name)}${link.isMain ? ' · основная' : ''} · архив`)
-      .join(', ');
-    const partyLabel = [activePartyLabel !== NO_PARTY_LABEL ? activePartyLabel : '', archivedPartyLabel]
-      .filter(Boolean).join(', ') || NO_PARTY_LABEL;
-    // Цвет бейджа пати: свой выбранный цвет пати, иначе автоматический оттенок по названию
-    const mainParty = mainPartyOf(char, state.parties);
-    const partyColor = mainParty ? partyColorCss(mainParty) : '';
+  const passes = char.dungeonPasses || {};
+  const passesHtml = PASS_TYPES.map(pt => {
+    const count = passes[pt.key] || 0;
+    const imgPath = pt.img;
+    return `<span class="pass-item" title="${pt.label}: ${count}"><img class="pass-icon-img" src="${imgPath}" alt="${pt.label}" /><span>${count}</span></span>`;
+  }).join('');
 
-    // ЛОГИКА ИНДИКАТОРА СТАТУСА
-    const authView = getAuthView(char);
-    const statusColor = authView.color;
-    const statusText = authView.text;
-    const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
-    const checkingAuth = !archived && state.ui?.authCheck?.[char.id] === 'checking';
+  // Предупреждение о балансе: видно сразу на карточке, а не только в профиле
+  const coinWarn = needsCoinRecheck(char)
+    ? ' <span class="coin-warn" title="Баланс записан до исправления разбора (28,5 → 285). Откройте профиль и нажмите «Перепроверить».">⚠</span>'
+    : '';
+  const coinsDisplay = `${formatCoins(char.ancientCoins || 0)}${coinWarn}`;
+  const archivedPartyLinks = archived
+    ? state.archivedParties.flatMap(party =>
+        (party.memberLinks || []).filter(link => link.characterId === char.id).map(link => ({ party, link }))
+      )
+    : [];
+  const mainName = mainPartyName(char, state.parties);
+  const extraNames = additionalPartiesOf(char, state.parties).map(p => p.name);
+  const activePartyLabel = mainName
+    ? `${escapeHtml(mainName)}${extraNames.length ? ` <span title="Дополнительные: ${escapeHtml(extraNames.join(', '))}">+${extraNames.length}</span>` : ''}`
+    : NO_PARTY_LABEL;
+  const archivedPartyLabel = archivedPartyLinks
+    .map(({ party, link }) => `${escapeHtml(party.name)}${link.isMain ? ' · основная' : ''} · архив`)
+    .join(', ');
+  const partyLabel =
+    [activePartyLabel !== NO_PARTY_LABEL ? activePartyLabel : '', archivedPartyLabel].filter(Boolean).join(', ') ||
+    NO_PARTY_LABEL;
+  // Цвет бейджа пати: свой выбранный цвет пати, иначе автоматический оттенок по названию
+  const mainParty = mainPartyOf(char, state.parties);
+  const partyColor = mainParty ? partyColorCss(mainParty) : '';
 
-    const tagsHtml = (char.tags || []).map(t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`).join('');
-    const selecting = !archived && state.ui.selectionMode;
-    const selected = selecting && state.ui.selection.has(char.id);
-    const selectBox = selecting
-      ? `<span class="select-box" title="Выбрать"><input type="checkbox" class="char-select" tabindex="-1" ${selected ? 'checked' : ''}/></span>`
-      : '';
+  // ЛОГИКА ИНДИКАТОРА СТАТУСА
+  const authView = getAuthView(char);
+  const statusColor = authView.color;
+  const statusText = authView.text;
+  const statusTitle = escapeHtml(`${authView.title}. ${authDetails(char)}`);
+  const checkingAuth = !archived && state.ui?.authCheck?.[char.id] === 'checking';
 
-    return `
+  const tagsHtml = (char.tags || [])
+    .map(
+      t => `<span class="tag-chip" data-tag="${escapeHtml(t)}" title="Показать всех с тегом">#${escapeHtml(t)}</span>`
+    )
+    .join('');
+  const selecting = !archived && state.ui.selectionMode;
+  const selected = selecting && state.ui.selection.has(char.id);
+  const selectBox = selecting
+    ? `<span class="select-box" title="Выбрать"><input type="checkbox" class="char-select" tabindex="-1" ${selected ? 'checked' : ''}/></span>`
+    : '';
+
+  return `
       <article class="card character-card clickable-card${selected ? ' is-selected' : ''}${archived ? ' archived-character-card' : ''}" data-char-id="${escapeHtml(char.id)}" style="--state-c:${statusColor}">
 
         <header class="card-header">
@@ -687,11 +774,13 @@ function generateCardHTML(char, { archived = false } = {}) {
           </div>
 
           <div class="card-head-side">
-             ${archived
-               ? '<span class="badge">В архиве</span>'
-               : `<div class="state ${authView.cls}" title="${statusTitle}">
+             ${
+               archived
+                 ? '<span class="badge">В архиве</span>'
+                 : `<div class="state ${authView.cls}" title="${statusTitle}">
                     <span class="state-dot"></span><span>${statusText}</span>
-                  </div>`}
+                  </div>`
+             }
           </div>
         </header>
 
@@ -752,12 +841,13 @@ function generateCardHTML(char, { archived = false } = {}) {
                        title="${checkingAuth ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть сайт: браузер персонажа для входа'}"
                        ${checkingAuth ? 'disabled' : ''}>🌐</button>
                ${gameWindowBtn(char, archived)}
-               ${archived
-
-                ? `<button class="card-act restore-character-action" type="button" aria-label="Восстановить"
+               ${
+                 archived
+                   ? `<button class="card-act restore-character-action" type="button" aria-label="Восстановить"
                           title="Вернуть персонажа в активный список">↩</button>`
-                : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
-                          title="Переместить персонажа в архив">📦</button>`}
+                   : `<button class="card-act archive-character-action" type="button" aria-label="В архив"
+                          title="Переместить персонажа в архив">📦</button>`
+               }
            </div>
         </footer>
       </article>
@@ -770,13 +860,13 @@ function generateCardHTML(char, { archived = false } = {}) {
 function updateKPIs(charsToCount) {
   // Если массив пуст, ставим нули
   if (!charsToCount || charsToCount.length === 0) {
-      document.getElementById('kpi-total-chars').textContent = '0';
-      document.getElementById('kpi-active-parties').textContent = '0';
-      document.getElementById('kpi-no-party').textContent = '0';
-      document.getElementById('kpi-coins').textContent = '0';
-      document.getElementById('kpi-online-count').textContent = '0';
-      document.getElementById('kpi-offline-count').textContent = '0';
-      return;
+    document.getElementById('kpi-total-chars').textContent = '0';
+    document.getElementById('kpi-active-parties').textContent = '0';
+    document.getElementById('kpi-no-party').textContent = '0';
+    document.getElementById('kpi-coins').textContent = '0';
+    document.getElementById('kpi-online-count').textContent = '0';
+    document.getElementById('kpi-offline-count').textContent = '0';
+    return;
   }
 
   // 1. Всего персонажей в выборке
@@ -797,7 +887,7 @@ function updateKPIs(charsToCount) {
   // 5. Онлайн (Авторизовано)
   const onlineCount = charsToCount.filter(c => c.isLoggedIn === true).length;
   const onlineEl = document.getElementById('kpi-online-count');
-  if(onlineEl) {
+  if (onlineEl) {
     onlineEl.textContent = onlineCount;
     onlineEl.style.color = '#9ece6a'; // Зеленый
   }
@@ -805,7 +895,7 @@ function updateKPIs(charsToCount) {
   // 6. Оффлайн (Требуется вход)
   const offlineCount = charsToCount.filter(c => c.isLoggedIn !== true).length;
   const offlineEl = document.getElementById('kpi-offline-count');
-  if(offlineEl) {
+  if (offlineEl) {
     offlineEl.textContent = offlineCount;
     offlineEl.style.color = '#f7768e'; // Красный
   }
@@ -816,63 +906,63 @@ function updateKPIs(charsToCount) {
  */
 // Кнопок может не быть в разметке (запуск скриптов идёт через меню «Скрипты»), тогда ничего не делаем.
 function initSyncButtons() {
-    // Кнопка "Проверить авторизацию"
-    const checkBtn = document.getElementById('btn-check-auth-status');
-    if(checkBtn) {
-        console.log('[SYNC BUTTONS] Found Auth Check button.');
-        
-        // Проверяем, не навешен ли уже обработчик (чтобы не дублировать события)
-        if(!checkBtn.dataset.bound) {
-            checkBtn.onclick = async () => {
-                console.log('[ACTION] Clicked: Check Authorization');
-                checkBtn.disabled = true;
-                const originalText = checkBtn.innerHTML;
-                checkBtn.innerHTML = '⏳ Проверка...';
-                
-                try {
-                    await refreshAllLoginStatuses();
-                    toast('Статусы авторизации обновлены.', 'success');
-                } catch (err) {
-                    console.error(err);
-                    toast('Ошибка проверки статусов', 'error');
-                } finally {
-                    setTimeout(() => {
-                        checkBtn.disabled = false;
-                        checkBtn.innerHTML = originalText;
-                    }, 1000);
-                }
-            };
-            checkBtn.dataset.bound = "true";
-        }
-    }
+  // Кнопка "Проверить авторизацию"
+  const checkBtn = document.getElementById('btn-check-auth-status');
+  if (checkBtn) {
+    console.log('[SYNC BUTTONS] Found Auth Check button.');
 
-    // Кнопка "Обновить балансы"
-    const balanceBtn = document.getElementById('btn-refresh-balances');
-    if(balanceBtn) {
-        console.log('[SYNC BUTTONS] Found Balance Refresh button.');
-        
-        if(!balanceBtn.dataset.bound) {
-            balanceBtn.onclick = async () => {
-                console.log('[ACTION] Clicked: Update Balances');
-                balanceBtn.disabled = true;
-                const originalText = balanceBtn.innerHTML;
-                balanceBtn.innerHTML = '⏳ Обновление...';
-                
-                try {
-                    await refreshAllBalances();
-                } catch (err) {
-                    console.error(err);
-                    toast('Ошибка обновления балансов', 'error');
-                } finally {
-                    setTimeout(() => {
-                        balanceBtn.disabled = false;
-                        balanceBtn.innerHTML = originalText;
-                    }, 1000);
-                }
-            };
-            balanceBtn.dataset.bound = "true";
+    // Проверяем, не навешен ли уже обработчик (чтобы не дублировать события)
+    if (!checkBtn.dataset.bound) {
+      checkBtn.onclick = async () => {
+        console.log('[ACTION] Clicked: Check Authorization');
+        checkBtn.disabled = true;
+        const originalText = checkBtn.innerHTML;
+        checkBtn.innerHTML = '⏳ Проверка...';
+
+        try {
+          await refreshAllLoginStatuses();
+          toast('Статусы авторизации обновлены.', 'success');
+        } catch (err) {
+          console.error(err);
+          toast('Ошибка проверки статусов', 'error');
+        } finally {
+          setTimeout(() => {
+            checkBtn.disabled = false;
+            checkBtn.innerHTML = originalText;
+          }, 1000);
         }
+      };
+      checkBtn.dataset.bound = 'true';
     }
+  }
+
+  // Кнопка "Обновить балансы"
+  const balanceBtn = document.getElementById('btn-refresh-balances');
+  if (balanceBtn) {
+    console.log('[SYNC BUTTONS] Found Balance Refresh button.');
+
+    if (!balanceBtn.dataset.bound) {
+      balanceBtn.onclick = async () => {
+        console.log('[ACTION] Clicked: Update Balances');
+        balanceBtn.disabled = true;
+        const originalText = balanceBtn.innerHTML;
+        balanceBtn.innerHTML = '⏳ Обновление...';
+
+        try {
+          await refreshAllBalances();
+        } catch (err) {
+          console.error(err);
+          toast('Ошибка обновления балансов', 'error');
+        } finally {
+          setTimeout(() => {
+            balanceBtn.disabled = false;
+            balanceBtn.innerHTML = originalText;
+          }, 1000);
+        }
+      };
+      balanceBtn.dataset.bound = 'true';
+    }
+  }
 }
 
 /**
@@ -912,7 +1002,10 @@ export function bindOnboardingEvents(container, { closeBeforeAction = false } = 
     btn.addEventListener('click', async () => {
       const action = /** @type {HTMLElement} */ (btn).dataset.onb;
       if (closeBeforeAction) closeModal();
-      if (action === 'new-character') { openCharacterForm(null); return; }
+      if (action === 'new-character') {
+        openCharacterForm(null);
+        return;
+      }
       if (action === 'new-party') {
         const { openCreatePartyModal } = await import('../parties/manager.js');
         openCreatePartyModal();
@@ -981,7 +1074,8 @@ export async function openWelcome() {
   // Esc и «Позже» тоже закрывают окно, ничего дополнительно записывать не нужно
 }
 
-function bindCharacterEvents(container, { archived = false } = {}) {  container.onclick = async (e) => {
+function bindCharacterEvents(container, { archived = false } = {}) {
+  container.onclick = async e => {
     const target = e.target;
 
     const restoreBtn = target.closest('.restore-character-action');
@@ -1002,9 +1096,9 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
 
     const closeWinBtn = target.closest('.close-game-window-action');
     if (closeWinBtn) {
-        e.stopPropagation();
-        await closeCharacterGameWindow(closeWinBtn.closest('[data-char-id]')?.dataset.charId, closeWinBtn);
-        return;
+      e.stopPropagation();
+      await closeCharacterGameWindow(closeWinBtn.closest('[data-char-id]')?.dataset.charId, closeWinBtn);
+      return;
     }
 
     const archiveBtn = target.closest('.archive-character-action');
@@ -1053,7 +1147,11 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
     if (chip) {
       e.stopPropagation();
       const tagSelect = document.getElementById('tag-filter');
-      if (tagSelect) { fillTagFilter(tagSelect); tagSelect.value = chip.dataset.tag; renderFilteredGrid(); }
+      if (tagSelect) {
+        fillTagFilter(tagSelect);
+        tagSelect.value = chip.dataset.tag;
+        renderFilteredGrid();
+      }
       return;
     }
 
@@ -1063,19 +1161,19 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
       e.stopPropagation();
       const row = eyeBtn.closest('.contact-row-mini');
       const valueSpan = row.querySelector('.mini-copy-trigger');
-      
+
       if (valueSpan && valueSpan.dataset.original) {
         const originalVal = valueSpan.dataset.original;
         const isCurrentlyMasked = valueSpan.textContent.includes('•');
-        
+
         if (isCurrentlyMasked) {
-           valueSpan.textContent = originalVal;
-           eyeBtn.innerHTML = EYE_SVG_CLOSED;
-           eyeBtn.style.opacity = '1';
+          valueSpan.textContent = originalVal;
+          eyeBtn.innerHTML = EYE_SVG_CLOSED;
+          eyeBtn.style.opacity = '1';
         } else {
-           valueSpan.textContent = maskText(originalVal);
-           eyeBtn.innerHTML = EYE_SVG_OPEN;
-           eyeBtn.style.opacity = '0.4';
+          valueSpan.textContent = maskText(originalVal);
+          eyeBtn.innerHTML = EYE_SVG_OPEN;
+          eyeBtn.style.opacity = '0.4';
         }
       }
       return;
@@ -1084,44 +1182,47 @@ function bindCharacterEvents(container, { archived = false } = {}) {  container.
     // 2. Мини-копирование
     const contactVal = target.closest('.mini-copy-trigger');
     if (contactVal && contactVal.dataset.original) {
-       e.stopPropagation();
-       navigator.clipboard.writeText(contactVal.dataset.original).then(() => {
-         toast('Скопировано!', 'success');
-         const oldBg = contactVal.style.background;
-         contactVal.style.background = 'rgba(76, 175, 80, 0.3)';
-         setTimeout(() => contactVal.style.background = oldBg, 300);
-       });
-       return;
+      e.stopPropagation();
+      navigator.clipboard.writeText(contactVal.dataset.original).then(() => {
+        toast('Скопировано!', 'success');
+        const oldBg = contactVal.style.background;
+        contactVal.style.background = 'rgba(76, 175, 80, 0.3)';
+        setTimeout(() => (contactVal.style.background = oldBg), 300);
+      });
+      return;
     }
 
     // 3. Клик по карточке -> Открыть ПРОФИЛЬ
     const card = target.closest('.clickable-card');
     if (card && !target.closest('button') && !target.closest('.contact-value')) {
-       const id = card.dataset.charId;
-       const char = (archived ? state.archivedCharacters : state.characters).find(c => c.id === id);
-       if (char) {
-         openCharacterProfile(char); // Вызываем функцию из модуля
-       }
+      const id = card.dataset.charId;
+      const char = (archived ? state.archivedCharacters : state.characters).find(c => c.id === id);
+      if (char) {
+        openCharacterProfile(char); // Вызываем функцию из модуля
+      }
     }
   };
 }
 
 // Глобальная функция для вызова из inline onclick кнопки "Открыть сайт"
-window.handleOpenSite = (charId) => {
-    const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
-    if (char) {
-        openSyncHelper(charId);
-    } else {
-        toast('Персонаж не найден', 'error');
-    }
+window.handleOpenSite = charId => {
+  const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
+  if (char) {
+    openSyncHelper(charId);
+  } else {
+    toast('Персонаж не найден', 'error');
+  }
 };
 
 // Кнопка «▶ Играть» на карточке
-window.handleLaunchChar = async (charId) => {
-    const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
-    if (!char) { toast('Персонаж не найден', 'error'); return; }
-    const { launchOne } = await import('../launcher/partyLaunch.js');
-    launchOne(char);
+window.handleLaunchChar = async charId => {
+  const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === charId);
+  if (!char) {
+    toast('Персонаж не найден', 'error');
+    return;
+  }
+  const { launchOne } = await import('../launcher/partyLaunch.js');
+  launchOne(char);
 };
 
 export function bindCharacters() {
@@ -1135,7 +1236,10 @@ export function bindCharacters() {
       });
     });
   }
-  for (const [id, archived] of [['show-active-characters', false], ['show-archived-characters', true]]) {
+  for (const [id, archived] of [
+    ['show-active-characters', false],
+    ['show-archived-characters', true]
+  ]) {
     const button = document.getElementById(id);
     if (button && !button.dataset.bound) {
       button.dataset.bound = 'true';
@@ -1156,13 +1260,14 @@ export function bindCharacters() {
   // Кнопка «Выбрать» переехала в меню круглой кнопки «+» (js/core/uiActions.js, data-fab-action="select-mode").
   // Ссылка на старую кнопку удалена — element быть больше не может, optional chaining больше не нужен.
   document.getElementById('bulk-bar')?.addEventListener('click', onBulkAction);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && state.ui.selectionMode && !document.querySelector('.modal-overlay')) setSelectionMode(false);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && state.ui.selectionMode && !document.querySelector('.modal-overlay'))
+      setSelectionMode(false);
   });
-  
+
   // ВАЖНО: Сначала инициализируем фильтры, потом рендерим
-  initFilters(); 
-  renderCharacters(); 
+  initFilters();
+  renderCharacters();
 }
 
 // --- ЭКСПОРТ ДЛЯ ДРУГИХ МОДУЛЕЙ ---
@@ -1180,7 +1285,8 @@ export function setSelectionMode(on) {
 
 function toggleSelected(id) {
   const sel = state.ui.selection;
-  if (sel.has(id)) sel.delete(id); else sel.add(id);
+  if (sel.has(id)) sel.delete(id);
+  else sel.add(id);
   const card = document.querySelector(`.character-card[data-char-id="${CSS.escape(id)}"]`);
   card?.classList.toggle('is-selected', sel.has(id));
   const box = card?.querySelector('.char-select');
@@ -1207,7 +1313,9 @@ function renderBulkBar() {
   if (!bar) return;
   // Выбор не должен «помнить» удалённых персонажей
   const ids = new Set(state.characters.map(c => c.id));
-  [...state.ui.selection].forEach(id => { if (!ids.has(id)) state.ui.selection.delete(id); });
+  [...state.ui.selection].forEach(id => {
+    if (!ids.has(id)) state.ui.selection.delete(id);
+  });
 
   bar.hidden = !state.ui.selectionMode;
   if (!state.ui.selectionMode) return;
@@ -1254,7 +1362,10 @@ function tagModal({ title, submitText, tags, onTag }) {
     cancelText: 'Отмена',
     onSubmit(formData) {
       const list = normalizeTags(formData.get('tag'));
-      if (!list.length) { toast('Введите тег', 'warning'); return false; }
+      if (!list.length) {
+        toast('Введите тег', 'warning');
+        return false;
+      }
       onTag(list);
     }
   });
@@ -1268,10 +1379,18 @@ async function onBulkAction(e) {
   const now = new Date().toISOString();
 
   switch (action) {
-    case 'all': selectAllVisible(); break;
-    case 'close': setSelectionMode(false); break;
-    case 'auth': await refreshAllLoginStatuses(chars); break;
-    case 'balance': await refreshAllBalances(chars); break;
+    case 'all':
+      selectAllVisible();
+      break;
+    case 'close':
+      setSelectionMode(false);
+      break;
+    case 'auth':
+      await refreshAllLoginStatuses(chars);
+      break;
+    case 'balance':
+      await refreshAllBalances(chars);
+      break;
     case 'promo': {
       const { openPromoDialog } = await import('../automation/promo.js');
       openPromoDialog({ ids: chars.map(c => c.id) });
@@ -1299,21 +1418,34 @@ async function onBulkAction(e) {
     }
     case 'tag-add':
       tagModal({
-        title: `Добавить тег (${chars.length} перс.)`, submitText: 'Добавить', tags: allTags(),
-        onTag: (list) => {
-          chars.forEach(c => { c.tags = normalizeTags([...(c.tags || []), ...list]); c.updatedAt = now; });
+        title: `Добавить тег (${chars.length} перс.)`,
+        submitText: 'Добавить',
+        tags: allTags(),
+        onTag: list => {
+          chars.forEach(c => {
+            c.tags = normalizeTags([...(c.tags || []), ...list]);
+            c.updatedAt = now;
+          });
           saveAndRender(`Тег добавлен: ${chars.length} перс.`);
         }
       });
       break;
     case 'tag-remove': {
       const present = [...new Set(chars.flatMap(c => c.tags || []))].sort((a, b) => a.localeCompare(b, 'ru'));
-      if (!present.length) { toast('У выбранных персонажей нет тегов', 'info'); break; }
+      if (!present.length) {
+        toast('У выбранных персонажей нет тегов', 'info');
+        break;
+      }
       tagModal({
-        title: `Убрать тег (${chars.length} перс.)`, submitText: 'Убрать', tags: present,
-        onTag: (list) => {
+        title: `Убрать тег (${chars.length} перс.)`,
+        submitText: 'Убрать',
+        tags: present,
+        onTag: list => {
           const drop = new Set(list.map(t => t.toLowerCase()));
-          chars.forEach(c => { c.tags = (c.tags || []).filter(t => !drop.has(t.toLowerCase())); c.updatedAt = now; });
+          chars.forEach(c => {
+            c.tags = (c.tags || []).filter(t => !drop.has(t.toLowerCase()));
+            c.updatedAt = now;
+          });
           saveAndRender(`Тег убран: ${chars.length} перс.`);
         }
       });
@@ -1322,8 +1454,10 @@ async function onBulkAction(e) {
     case 'party': {
       // Можно выбрать существующую пати или создать новую для выбранных персонажей
       const NEW = '__new__';
-      const options = [...state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`),
-        `<option value="${NEW}">➕ Создать новую пати…</option>`].join('');
+      const options = [
+        ...state.parties.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`),
+        `<option value="${NEW}">➕ Создать новую пати…</option>`
+      ].join('');
       showModal({
         title: `Пати (${chars.length} перс.)`,
         content: `
@@ -1344,14 +1478,24 @@ async function onBulkAction(e) {
           const partyId = String(formData.get('party') || '');
           const op = String(formData.get('op') || 'add');
           if (partyId === NEW) {
-            const res = createPartyWith(state.parties, chars, String(formData.get('newName') || ''), { asMain: op !== 'add', now });
-            if ('error' in res) { setError(res.error); return false; }
+            const res = createPartyWith(state.parties, chars, String(formData.get('newName') || ''), {
+              asMain: op !== 'add',
+              now
+            });
+            if ('error' in res) {
+              setError(res.error);
+              return false;
+            }
             saveAndRender(`Создана пати «${res.party.name}»: ${res.changed} перс.`);
             return;
           }
           const party = partyById(state.parties, partyId);
           if (op === 'clear') {
-            chars.forEach(c => { c.partyIds = []; c.mainPartyId = null; c.updatedAt = now; });
+            chars.forEach(c => {
+              c.partyIds = [];
+              c.mainPartyId = null;
+              c.updatedAt = now;
+            });
             saveAndRender(`Убраны из всех пати: ${chars.length}`);
             return;
           }
@@ -1359,9 +1503,16 @@ async function onBulkAction(e) {
           let changed = 0;
           chars.forEach(c => {
             const did = op === 'main' ? setMainParty(c, party.id) : setMembership(c, party.id, op === 'add');
-            if (did) { c.updatedAt = now; changed++; }
+            if (did) {
+              c.updatedAt = now;
+              changed++;
+            }
           });
-          const msg = { main: `Основная пати «${party.name}»`, add: `Добавлены в «${party.name}»`, remove: `Убраны из «${party.name}»` }[op];
+          const msg = {
+            main: `Основная пати «${party.name}»`,
+            add: `Добавлены в «${party.name}»`,
+            remove: `Убраны из «${party.name}»`
+          }[op];
           saveAndRender(`${msg}: ${changed}`);
         }
       });
@@ -1369,13 +1520,19 @@ async function onBulkAction(e) {
       const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById('bulk-party-select'));
       const sync = () => {
         const isNew = sel?.value === NEW;
-        const show = (el, on) => { if (el) el.style.display = on ? '' : 'none'; };
+        const show = (el, on) => {
+          if (el) el.style.display = on ? '' : 'none';
+        };
         show(document.getElementById('bulk-party-new'), isNew);
         document.querySelectorAll('#modal-root [data-existing-only]').forEach(el => show(el, !isNew));
         if (isNew) {
-          const keep = /** @type {HTMLInputElement | null} */ (document.querySelector('#modal-root input[name="op"][value="add"]'));
-          const main = /** @type {HTMLInputElement | null} */ (document.querySelector('#modal-root input[name="op"][value="main"]'));
-          if (main && !keep?.checked) main.checked = true;   // «убрать» к новой пати не относится
+          const keep = /** @type {HTMLInputElement | null} */ (
+            document.querySelector('#modal-root input[name="op"][value="add"]')
+          );
+          const main = /** @type {HTMLInputElement | null} */ (
+            document.querySelector('#modal-root input[name="op"][value="main"]')
+          );
+          if (main && !keep?.checked) main.checked = true; // «убрать» к новой пати не относится
           document.getElementById('bulk-party-name')?.focus();
         }
       };

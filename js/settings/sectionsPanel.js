@@ -8,9 +8,7 @@ import { state } from '../core/state.js';
 import { persist } from '../core/storage.js';
 import { toast } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
-import {
-  SECTIONS, canHideSection, normalizeSectionsSettings, sectionOrder, sectionById
-} from '../core/sections.js';
+import { SECTIONS, canHideSection, normalizeSectionsSettings, sectionOrder, sectionById } from '../core/sections.js';
 
 /**
  * Текущая настройка разделов в виде, пригодном для записи.
@@ -35,7 +33,7 @@ async function writeSections(next, deps = {}) {
  * @returns {string} пусто, если выключать можно
  */
 export function sectionHint(sectionId, settings = state.settings) {
-  const section = SECTIONS.find((s) => s.id === String(sectionId));
+  const section = SECTIONS.find(s => s.id === String(sectionId));
   if (section?.required) return section.required;
   if (!canHideSection(sectionId, settings)) return 'Это последний видимый раздел: убрать его будет некуда.';
   return '';
@@ -48,7 +46,7 @@ export function sectionHint(sectionId, settings = state.settings) {
  */
 export function moveSection(sectionId, direction, settings = state.settings) {
   const { hidden, order } = readSections(settings);
-  const movable = order.filter((id) => !sectionById(id)?.pin && !hidden.includes(id));
+  const movable = order.filter(id => !sectionById(id)?.pin && !hidden.includes(id));
   const at = movable.indexOf(String(sectionId));
   const to = direction === 'up' ? at - 1 : at + 1;
   if (at < 0 || to < 0 || to >= movable.length) return null;
@@ -56,7 +54,7 @@ export function moveSection(sectionId, direction, settings = state.settings) {
   // Выключенные оставляем на своих местах: их в меню нет, и на порядок видимых они не влияют.
   // Зато каждый вернётся на своё место, когда его включат.
   let cursor = 0;
-  const next = order.map((id) => (movable.includes(id) ? movable[cursor++] : id));
+  const next = order.map(id => (movable.includes(id) ? movable[cursor++] : id));
   return { hidden, order: next };
 }
 
@@ -74,11 +72,14 @@ export async function setSectionHidden(sectionId, hide, deps = {}) {
   if (current.hidden.includes(String(sectionId)) === !!hide) return false;
   if (hide) {
     const hint = sectionHint(sectionId, settings);
-    if (hint) { toast(hint, 'warning', 5000); return false; }
+    if (hint) {
+      toast(hint, 'warning', 5000);
+      return false;
+    }
   }
   const hidden = hide
     ? [...new Set([...current.hidden, String(sectionId)])]
-    : current.hidden.filter((id) => id !== String(sectionId));
+    : current.hidden.filter(id => id !== String(sectionId));
   await writeSections({ hidden, order: current.order }, deps);
   return true;
 }
@@ -99,22 +100,23 @@ export function sectionsListHtml(settings = state.settings) {
   const { hidden } = readSections(settings);
   const ordered = sectionOrder(settings);
   // Стрелки двигают раздел только по видимым: у скрытого в меню нет ни строки, ни «места выше».
-  const movable = ordered.filter((s) => !s.pin && !hidden.includes(s.id));
+  const movable = ordered.filter(s => !s.pin && !hidden.includes(s.id));
   // Рисуем именно сохранённый порядок. Раньше здесь был `SECTIONS.map(...)`, и список
   // всегда показывал порядок по умолчанию: стрелки считали позицию по сохранённому, а строки
   // стояли по каноническому — перестановка выглядела как «ничего не происходит».
-  return ordered.map((section) => {
-    const isHidden = hidden.includes(section.id);
-    const required = !!section.required;
-    const pinned = !!section.pin;
-    // Закреплённый раздел не двигается: у него нет «места выше/ниже», и стрелки у него
-    // не работали бы вхолостую — вместо них показываем, где он стоит
-    const at = required || pinned ? -1 : movable.indexOf(section);
-    const canMoveUp = at > 0;
-    const canMoveDown = at >= 0 && at < movable.length - 1;
-    const pinNote = section.pin === 'top' ? 'закреплён сверху' : section.pin === 'bottom' ? 'закреплён снизу' : '';
-    const hint = required ? section.required : (!isHidden ? sectionHint(section.id, settings) : '');
-    return `
+  return ordered
+    .map(section => {
+      const isHidden = hidden.includes(section.id);
+      const required = !!section.required;
+      const pinned = !!section.pin;
+      // Закреплённый раздел не двигается: у него нет «места выше/ниже», и стрелки у него
+      // не работали бы вхолостую — вместо них показываем, где он стоит
+      const at = required || pinned ? -1 : movable.indexOf(section);
+      const canMoveUp = at > 0;
+      const canMoveDown = at >= 0 && at < movable.length - 1;
+      const pinNote = section.pin === 'top' ? 'закреплён сверху' : section.pin === 'bottom' ? 'закреплён снизу' : '';
+      const hint = required ? section.required : !isHidden ? sectionHint(section.id, settings) : '';
+      return `
       <div class="sections-row${isHidden ? ' is-off' : ''}${required ? ' is-required' : ''}${pinned ? ' is-pinned' : ''}">
         <label class="sections-toggle" title="${escapeHtml(hint)}">
           <input type="checkbox" data-sections-id="${escapeHtml(section.id)}" ${isHidden ? '' : 'checked'}
@@ -126,14 +128,19 @@ export function sectionsListHtml(settings = state.settings) {
           </span>
         </label>
         <span class="sections-order">
-          ${pinned ? `<small class="muted sections-pin">${escapeHtml(pinNote)}</small>` : `
+          ${
+            pinned
+              ? `<small class="muted sections-pin">${escapeHtml(pinNote)}</small>`
+              : `
           <button type="button" class="btn ghost small" data-sections-move="up" data-sections-id="${escapeHtml(section.id)}"
                   title="${canMoveUp ? 'Выше' : 'Уже первый'}" ${canMoveUp ? '' : 'disabled'}>↑</button>
           <button type="button" class="btn ghost small" data-sections-move="down" data-sections-id="${escapeHtml(section.id)}"
-                  title="${canMoveDown ? 'Ниже' : 'Уже последний'}" ${canMoveDown ? '' : 'disabled'}>↓</button>`}
+                  title="${canMoveDown ? 'Ниже' : 'Уже последний'}" ${canMoveDown ? '' : 'disabled'}>↓</button>`
+          }
         </span>
       </div>`;
-  }).join('');
+    })
+    .join('');
 }
 
 /**
@@ -147,19 +154,27 @@ export function bindSectionsPanel(deps = {}) {
   const box = document.getElementById('sections-list');
   if (!box) return null;
   const settings = deps.settings || state.settings;
-  const render = () => { box.innerHTML = sectionsListHtml(settings); };
-  const changed = () => { deps.onChange?.(); render(); };
+  const render = () => {
+    box.innerHTML = sectionsListHtml(settings);
+  };
+  const changed = () => {
+    deps.onChange?.();
+    render();
+  };
 
-  box.addEventListener('change', async (e) => {
+  box.addEventListener('change', async e => {
     const input = e.target.closest('[data-sections-id]');
     if (!input) return;
-    if (input.disabled) { render(); return; }
+    if (input.disabled) {
+      render();
+      return;
+    }
     const applied = await setSectionHidden(input.dataset.sectionsId, !input.checked, { ...deps, settings });
     if (!applied) render();
     else changed();
   });
 
-  box.addEventListener('click', async (e) => {
+  box.addEventListener('click', async e => {
     const btn = e.target.closest('[data-sections-move]');
     if (!btn || btn.disabled) return;
     const next = moveSection(btn.dataset.sectionsId, btn.dataset.sectionsMove, settings);

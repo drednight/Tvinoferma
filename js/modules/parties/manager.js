@@ -14,49 +14,49 @@ import { PARTY_COLORS, hexToHsl, hslToHex, partyHue } from './color.js';
  * Открывает модальное окно для создания новой пати
  */
 export function openCreatePartyModal() {
-    const content = `
+  const content = `
         <div class="field">
             <label>Название новой группы</label>
             <input class="input" id="create-party-name-input" placeholder="Например: Main Squad" autofocus />
         </div>
     `;
 
-    showModal({
-        title: 'Создать группу',
-        content,
-        submitText: 'Создать',
-        cancelText: 'Отмена',
-        onSubmit(formData, { setError }) {
-            const nameInput = document.getElementById('create-party-name-input');
-            const name = String(nameInput.value || '').trim();
+  showModal({
+    title: 'Создать группу',
+    content,
+    submitText: 'Создать',
+    cancelText: 'Отмена',
+    onSubmit(formData, { setError }) {
+      const nameInput = document.getElementById('create-party-name-input');
+      const name = String(nameInput.value || '').trim();
 
-            if (!name) {
-                setError('Введите название.');
-                return false;
-            }
-            
-            if (partyByName([...state.parties, ...state.archivedParties], name)) {
-                setError('Такая группа уже существует.');
-                return false;
-            }
+      if (!name) {
+        setError('Введите название.');
+        return false;
+      }
 
-            // В js/parties/manager.js внутри openCreatePartyModal -> onSubmit
-            state.parties.push({
-                id: uid(),
-                name: name,
-                order: state.parties.length + 1, // Новый элемент получает следующий порядковый номер
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            });
+      if (partyByName([...state.parties, ...state.archivedParties], name)) {
+        setError('Такая группа уже существует.');
+        return false;
+      }
 
-            persist().then(() => {
-                renderPartiesGrid();
-                toast(`Группа "${name}" создана.`, 'success');
-            });
+      // В js/parties/manager.js внутри openCreatePartyModal -> onSubmit
+      state.parties.push({
+        id: uid(),
+        name: name,
+        order: state.parties.length + 1, // Новый элемент получает следующий порядковый номер
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
 
-            return true;
-        }
-    });
+      persist().then(() => {
+        renderPartiesGrid();
+        toast(`Группа "${name}" создана.`, 'success');
+      });
+
+      return true;
+    }
+  });
 }
 
 /**
@@ -80,18 +80,20 @@ export function openCreatePartyModal() {
  * @returns {string} разметка поля
  */
 export function partyColorFieldHtml(currentName, party) {
-    const current = normalizePartyColor(party?.color);
-    // Текущий оттенок по названию — «начальное значение», пока свой цвет не выбран
-    const auto = hslToHex({ h: partyHue(currentName), s: 70, l: 65 });
-    const initial = current || auto;
-    const previewHsl = hexToHsl(initial) || { h: 220, s: 70, l: 65 };
+  const current = normalizePartyColor(party?.color);
+  // Текущий оттенок по названию — «начальное значение», пока свой цвет не выбран
+  const auto = hslToHex({ h: partyHue(currentName), s: 70, l: 65 });
+  const initial = current || auto;
+  const previewHsl = hexToHsl(initial) || { h: 220, s: 70, l: 65 };
 
-    const swatches = PARTY_COLORS.map(color => `
+  const swatches = PARTY_COLORS.map(
+    color => `
         <button type="button" class="ptc-swatch${color === current ? ' is-on' : ''}"
                 style="--c:${color}" data-color="${color}"
-                title="${color}" aria-label="Цвет ${color}"></button>`).join('');
+                title="${color}" aria-label="Цвет ${color}"></button>`
+  ).join('');
 
-    return `
+  return `
         <div class="ptc" data-party-color>
             <label class="ptc-label">Цвет карточки пати</label>
             <div class="ptc-row">
@@ -122,44 +124,43 @@ export function partyColorFieldHtml(currentName, party) {
  * @param {HTMLElement} root где искать поле (`#modal-root`)
  */
 export function bindPartyColorField(root) {
-    const field = root?.querySelector('[data-party-color]');
-    if (!field) return;
-    const hexInput = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-hex'));
-    const native = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-native'));
-    const preview = /** @type {HTMLElement | null} */ (field.querySelector('#ptc-preview'));
-    const reset = /** @type {HTMLButtonElement | null} */ (field.querySelector('#ptc-reset'));
-    if (!hexInput || !native || !preview) return;
+  const field = root?.querySelector('[data-party-color]');
+  if (!field) return;
+  const hexInput = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-hex'));
+  const native = /** @type {HTMLInputElement | null} */ (field.querySelector('#ptc-native'));
+  const preview = /** @type {HTMLElement | null} */ (field.querySelector('#ptc-preview'));
+  const reset = /** @type {HTMLButtonElement | null} */ (field.querySelector('#ptc-reset'));
+  if (!hexInput || !native || !preview) return;
 
-    const paint = (value) => {
-        const hsl = hexToHsl(value);
-        if (!hsl) return;
-        preview.style.setProperty('--pt-h', String(hsl.h));
-        preview.style.setProperty('--pt-s', `${hsl.s}%`);
-        preview.style.setProperty('--pt-l', `${hsl.l}%`);
-    };
-    /** Выбран конкретный цвет: поле, образец и предпросмотр показывают одно и то же. */
-    const pick = (value) => {
-        hexInput.value = value;
-        native.value = value;
-        paint(value);
-        field.querySelectorAll('.ptc-swatch').forEach(s =>
-            s.classList.toggle('is-on', s.dataset.color === value));
-    };
+  const paint = value => {
+    const hsl = hexToHsl(value);
+    if (!hsl) return;
+    preview.style.setProperty('--pt-h', String(hsl.h));
+    preview.style.setProperty('--pt-s', `${hsl.s}%`);
+    preview.style.setProperty('--pt-l', `${hsl.l}%`);
+  };
+  /** Выбран конкретный цвет: поле, образец и предпросмотр показывают одно и то же. */
+  const pick = value => {
+    hexInput.value = value;
+    native.value = value;
+    paint(value);
+    field.querySelectorAll('.ptc-swatch').forEach(s => s.classList.toggle('is-on', s.dataset.color === value));
+  };
 
-    native.addEventListener('input', () => pick(native.value));
-    hexInput.addEventListener('input', () => {
-        const v = hexInput.value.trim();
-        if (/^#[0-9a-f]{6}$/i.test(v)) pick(v.toLowerCase());
-    });
-    field.querySelectorAll('.ptc-swatch').forEach(s => {
-        s.addEventListener('click', () => pick(/** @type {string} */ (s.dataset.color)));
-    });
-    // «По названию»: поле очищается — по нему при сохранении и узнаётся, что цвет сброшен
-    reset?.addEventListener('click', () => {
-        hexInput.value = '';
-        paint(native.value);
-        field.querySelectorAll('.ptc-swatch').forEach(s => s.classList.remove('is-on'));
-    });
+  native.addEventListener('input', () => pick(native.value));
+  hexInput.addEventListener('input', () => {
+    const v = hexInput.value.trim();
+    if (/^#[0-9a-f]{6}$/i.test(v)) pick(v.toLowerCase());
+  });
+  field.querySelectorAll('.ptc-swatch').forEach(s => {
+    s.addEventListener('click', () => pick(/** @type {string} */ (s.dataset.color)));
+  });
+  // «По названию»: поле очищается — по нему при сохранении и узнаётся, что цвет сброшен
+  reset?.addEventListener('click', () => {
+    hexInput.value = '';
+    paint(native.value);
+    field.querySelectorAll('.ptc-swatch').forEach(s => s.classList.remove('is-on'));
+  });
 }
 
 /**
@@ -170,35 +171,44 @@ export function bindPartyColorField(root) {
  * только «Запустить», «Закрыть окна» и «Настроить».
  */
 export function openEditPartyModal(currentName) {
-    const party = partyByName(state.parties, currentName);
-    if (!party) { toast('Пати не найдена.', 'error'); return; }
-    const currentMembers = charactersInParty(state.characters, party.id);
-    
-    // Для простоты UX: показываем всех персонажей с чекбоксами.
-    // Те, кто в группе — отмечены. Снятие галочки убирает из группы.
-    // Без пати — первыми: их ищем, когда набираем состав, а участники других групп в конце
-    const orderedChars = [
-        ...state.characters.filter(c => hasNoParty(c, state.parties)),
-        ...state.characters.filter(c => !hasNoParty(c, state.parties))
-    ];
-    const allCharsForCheckbox = orderedChars.map(c => {
-        const isInCurrentGroup = isInParty(c, party.id);
-        const statusIcon = getAuthView(c).icon;
-        // «Без пати» видно сразу: незадействованные персонажи не тонут среди тех, кто уже в группе
-        const free = hasNoParty(c, state.parties);
-        const place = isInCurrentGroup
-            ? (isMainParty(c, party.id) ? ' · основная' : ' · доп.')
-            : (free ? ' · без пати' : '');
-        return `
+  const party = partyByName(state.parties, currentName);
+  if (!party) {
+    toast('Пати не найдена.', 'error');
+    return;
+  }
+  const currentMembers = charactersInParty(state.characters, party.id);
+
+  // Для простоты UX: показываем всех персонажей с чекбоксами.
+  // Те, кто в группе — отмечены. Снятие галочки убирает из группы.
+  // Без пати — первыми: их ищем, когда набираем состав, а участники других групп в конце
+  const orderedChars = [
+    ...state.characters.filter(c => hasNoParty(c, state.parties)),
+    ...state.characters.filter(c => !hasNoParty(c, state.parties))
+  ];
+  const allCharsForCheckbox = orderedChars
+    .map(c => {
+      const isInCurrentGroup = isInParty(c, party.id);
+      const statusIcon = getAuthView(c).icon;
+      // «Без пати» видно сразу: незадействованные персонажи не тонут среди тех, кто уже в группе
+      const free = hasNoParty(c, state.parties);
+      const place = isInCurrentGroup
+        ? isMainParty(c, party.id)
+          ? ' · основная'
+          : ' · доп.'
+        : free
+          ? ' · без пати'
+          : '';
+      return `
             <label class="member-row${free ? ' is-free' : ''}" style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />
                 <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small><small class="muted">${place}</small></span>
             </label>
         `;
-    }).join('');
-    const freeCount = state.characters.filter(c => hasNoParty(c, state.parties)).length;
+    })
+    .join('');
+  const freeCount = state.characters.filter(c => hasNoParty(c, state.parties)).length;
 
-    const content = `
+  const content = `
         <div style="display:flex; flex-direction:column; gap:15px;">
             
             <!-- 1. Название -->
@@ -232,106 +242,106 @@ export function openEditPartyModal(currentName) {
         </div>
     `;
 
-    showModal({
-        title: `Настройка: ${currentName}`,
-        content,
-        submitText: 'Сохранить изменения',
-        cancelText: 'Отмена',
-        onSubmit(formData, { setError }) {
-            const newNameInput = document.getElementById('edit-party-name-input');
-            const newName = String(newNameInput.value || '').trim();
+  showModal({
+    title: `Настройка: ${currentName}`,
+    content,
+    submitText: 'Сохранить изменения',
+    cancelText: 'Отмена',
+    onSubmit(formData, { setError }) {
+      const newNameInput = document.getElementById('edit-party-name-input');
+      const newName = String(newNameInput.value || '').trim();
 
-            if (!newName) {
-                setError('Название не может быть пустым.');
-                return false;
-            }
+      if (!newName) {
+        setError('Название не может быть пустым.');
+        return false;
+      }
 
-            // Проверка дубликата имени
-            if (newName.toLowerCase() !== currentName.toLowerCase()) {
-                if (partyByName(state.parties, newName)) {
-                    setError('Такая группа уже существует.');
-                    return false;
-                }
-            }
-
-            const checkboxes = document.querySelectorAll('.member-checkbox');
-            const now = new Date().toISOString();
-
-            // Состав: добавляем/убираем только эту пати, остальные пати персонажа не трогаем
-            checkboxes.forEach(cb => {
-                const char = state.characters.find(c => c.id === cb.dataset.charId);
-                if (char && setMembership(char, party.id, cb.checked)) char.updatedAt = now;
-            });
-
-            // Переименование меняет только название: персонажи ссылаются на id
-            party.name = newName;
-            // Цвет читаем из поля при сохранении, а не по событию ввода: так он сохранится
-            // и если значение подставилось мимо события (вставка, автозаполнение).
-            // Пусто или некорректное значение = вернуть автоматический оттенок по названию.
-            const hex = String(document.getElementById('ptc-hex')?.value || '').trim();
-            party.color = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
-            party.updatedAt = now;
-
-            persist().then(() => {
-                renderPartiesGrid();
-                renderCharacters();
-                toast('Пати обновлена.', 'success');
-            });
-
-            return true;
+      // Проверка дубликата имени
+      if (newName.toLowerCase() !== currentName.toLowerCase()) {
+        if (partyByName(state.parties, newName)) {
+          setError('Такая группа уже существует.');
+          return false;
         }
-    });
+      }
 
-    // Живой предпросмотр цвета: пока пользователь выбирает, образец карточки меняется сразу.
-    // Окно собрано синхронно, поэтому обработчики можно вешать сразу — без setTimeout.
-    bindPartyColorField(document.getElementById('modal-root'));
+      const checkboxes = document.querySelectorAll('.member-checkbox');
+      const now = new Date().toISOString();
 
-    // Обработчики опасных зон: перенос в архив и удаление.
-    // Назначаем сразу, без setTimeout: showModal собирает окно синхронно, а отложенное
-    // назначение оставляло кнопки «мёртвыми» на первом касании.
-    const archiveBtn = document.getElementById('archive-this-party-btn');
-    if (archiveBtn) {
-        archiveBtn.onclick = async () => {
-            const ok = await confirmModal({
-                title: `Переместить «${currentName}» в архив?`,
-                text: 'Пати уберётся из активного списка, состав сохранится. Вернуть её можно из раздела «Архив» на вкладке «Пати».',
-                okText: 'В архив'
-            });
-            if (!ok) return;
-            // Закрываем настройки до архивации: после archiveParty пати в списке уже нет,
-            // и оставшееся окно настроек выглядело бы как ошибка.
-            closeModal();
-            try {
-                const { archiveParty } = await import('../archive/archive.js');
-                await archiveParty(party.id);
-            } catch (error) {
-                console.error('[ARCHIVE] Party archive failed:', error);
-                toast(`Не удалось переместить пати в архив: ${error?.message || error}`, 'error');
-            }
-        };
+      // Состав: добавляем/убираем только эту пати, остальные пати персонажа не трогаем
+      checkboxes.forEach(cb => {
+        const char = state.characters.find(c => c.id === cb.dataset.charId);
+        if (char && setMembership(char, party.id, cb.checked)) char.updatedAt = now;
+      });
+
+      // Переименование меняет только название: персонажи ссылаются на id
+      party.name = newName;
+      // Цвет читаем из поля при сохранении, а не по событию ввода: так он сохранится
+      // и если значение подставилось мимо события (вставка, автозаполнение).
+      // Пусто или некорректное значение = вернуть автоматический оттенок по названию.
+      const hex = String(document.getElementById('ptc-hex')?.value || '').trim();
+      party.color = /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
+      party.updatedAt = now;
+
+      persist().then(() => {
+        renderPartiesGrid();
+        renderCharacters();
+        toast('Пати обновлена.', 'success');
+      });
+
+      return true;
     }
-    const delBtn = document.getElementById('delete-this-party-btn');
-    if (delBtn) {
-        delBtn.onclick = async () => {
-            const ok = await confirmModal({
-                title: `Удалить группу «${currentName}»?`,
-                text: 'Все участники станут без пати. Персонажи, их монеты и марафоны не меняются.',
-                okText: 'Удалить группу',
-                danger: true
-            });
-            if (ok) {
-                state.parties = state.parties.filter(p => p.id !== party.id);
-                const now = new Date().toISOString();
-                [...state.characters, ...state.archivedCharacters].forEach(c => {
-                    if (setMembership(c, party.id, false)) c.updatedAt = now;
-                });
-                persist().then(() => {
-                    closeModal();
-                    renderPartiesGrid();
-                    renderCharacters();
-                    toast('Группа удалена.', 'success');
-                });
-            }
-        };
-    }
+  });
+
+  // Живой предпросмотр цвета: пока пользователь выбирает, образец карточки меняется сразу.
+  // Окно собрано синхронно, поэтому обработчики можно вешать сразу — без setTimeout.
+  bindPartyColorField(document.getElementById('modal-root'));
+
+  // Обработчики опасных зон: перенос в архив и удаление.
+  // Назначаем сразу, без setTimeout: showModal собирает окно синхронно, а отложенное
+  // назначение оставляло кнопки «мёртвыми» на первом касании.
+  const archiveBtn = document.getElementById('archive-this-party-btn');
+  if (archiveBtn) {
+    archiveBtn.onclick = async () => {
+      const ok = await confirmModal({
+        title: `Переместить «${currentName}» в архив?`,
+        text: 'Пати уберётся из активного списка, состав сохранится. Вернуть её можно из раздела «Архив» на вкладке «Пати».',
+        okText: 'В архив'
+      });
+      if (!ok) return;
+      // Закрываем настройки до архивации: после archiveParty пати в списке уже нет,
+      // и оставшееся окно настроек выглядело бы как ошибка.
+      closeModal();
+      try {
+        const { archiveParty } = await import('../archive/archive.js');
+        await archiveParty(party.id);
+      } catch (error) {
+        console.error('[ARCHIVE] Party archive failed:', error);
+        toast(`Не удалось переместить пати в архив: ${error?.message || error}`, 'error');
+      }
+    };
+  }
+  const delBtn = document.getElementById('delete-this-party-btn');
+  if (delBtn) {
+    delBtn.onclick = async () => {
+      const ok = await confirmModal({
+        title: `Удалить группу «${currentName}»?`,
+        text: 'Все участники станут без пати. Персонажи, их монеты и марафоны не меняются.',
+        okText: 'Удалить группу',
+        danger: true
+      });
+      if (ok) {
+        state.parties = state.parties.filter(p => p.id !== party.id);
+        const now = new Date().toISOString();
+        [...state.characters, ...state.archivedCharacters].forEach(c => {
+          if (setMembership(c, party.id, false)) c.updatedAt = now;
+        });
+        persist().then(() => {
+          closeModal();
+          renderPartiesGrid();
+          renderCharacters();
+          toast('Группа удалена.', 'success');
+        });
+      }
+    };
+  }
 }

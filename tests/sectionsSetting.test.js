@@ -3,8 +3,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  SECTIONS, applySections, canHideSection, normalizeSectionsSettings,
-  resolveSection, sectionOrder, visibleSections
+  SECTIONS,
+  applySections,
+  canHideSection,
+  normalizeSectionsSettings,
+  resolveSection,
+  sectionOrder,
+  visibleSections
 } from '../js/core/sections.js';
 import { moveSection, sectionsListHtml, sectionHint } from '../js/settings/sectionsPanel.js';
 import { normalizeState } from '../js/core/state.js';
@@ -15,39 +20,43 @@ const html = readFileSync('index.html', 'utf8');
 const NAV = ['today', 'characters', 'parties', 'marathons', 'runes', 'finance', 'tools'];
 
 /** Настройка разделов из сырых значений — так, как её приносит state.json. */
-const withSections = (sections) => normalizeState({ settings: { ui: { sections } } }).settings;
+const withSections = sections => normalizeState({ settings: { ui: { sections } } }).settings;
 
 function mountMenu() {
   document.body.innerHTML = `
     <nav class="next-nav">
-      ${NAV.map((id) => `<button class="tab${id === 'today' ? ' active' : ''}" data-tab="${id}" data-subtitle="s">
-        <span class="next-nav-copy"><strong>${id}</strong></span></button>`).join('')}
+      ${NAV.map(
+        id => `<button class="tab${id === 'today' ? ' active' : ''}" data-tab="${id}" data-subtitle="s">
+        <span class="next-nav-copy"><strong>${id}</strong></span></button>`
+      ).join('')}
     </nav>
     <div class="next-sidebar-bottom"><button class="tab" data-tab="settings"><strong>settings</strong></button></div>
-    ${NAV.concat('settings').map((id) => `<section class="page${id === 'today' ? ' active' : ''}" data-section="${id}"></section>`).join('')}
+    ${NAV.concat('settings')
+      .map(id => `<section class="page${id === 'today' ? ' active' : ''}" data-section="${id}"></section>`)
+      .join('')}
     <div id="sections-list"></div>`;
   return document;
 }
 
 describe('разделы: список и правила', () => {
   it('в списке есть все разделы меню, «Настройки» прибиты к низу', () => {
-    expect(NAV.every((id) => SECTIONS.some((s) => s.id === id))).toBe(true);
-    expect(SECTIONS.find((s) => s.id === 'settings').pin).toBe('bottom');
+    expect(NAV.every(id => SECTIONS.some(s => s.id === id))).toBe(true);
+    expect(SECTIONS.find(s => s.id === 'settings').pin).toBe('bottom');
   });
 
   it('выключать нельзя не всё, и у каждого запрета есть причина', () => {
-    const required = SECTIONS.filter((s) => s.required).map((s) => s.id);
+    const required = SECTIONS.filter(s => s.required).map(s => s.id);
     // Не только «Настройки»: «Сегодня» держит календарь, иначе его негде открыть
     expect(required).toContain('settings');
     expect(required).toContain('today');
     expect(required.length).toBeLessThan(SECTIONS.length);
-    for (const id of required) expect(SECTIONS.find((s) => s.id === id).required.length).toBeGreaterThan(10);
+    for (const id of required) expect(SECTIONS.find(s => s.id === id).required.length).toBeGreaterThan(10);
   });
 
   it('пустая настройка означает «порядок по умолчанию, все видны»', () => {
     const s = withSections(undefined);
-    expect(visibleSections(s).map((x) => x.id)).toEqual(NAV.concat('settings'));
-    expect(sectionOrder(s).map((x) => x.id)).toEqual(NAV.concat('settings'));
+    expect(visibleSections(s).map(x => x.id)).toEqual(NAV.concat('settings'));
+    expect(sectionOrder(s).map(x => x.id)).toEqual(NAV.concat('settings'));
   });
 
   it('мусор из сохранённых данных не попадает в состояние', () => {
@@ -55,7 +64,7 @@ describe('разделы: список и правила', () => {
       hidden: ['runes', 'runes', 'нет-такого', 'settings', 'today', 42],
       order: ['parties', 'parties', 'ерунда', 'tools']
     });
-    expect(hidden).toEqual(['runes']);      // дубли, неизвестные и запрещённые — отброшены
+    expect(hidden).toEqual(['runes']); // дубли, неизвестные и запрещённые — отброшены
     expect(order).toHaveLength(SECTIONS.length); // недостающие дописаны
     // Закреплённые держат свои края, переставляемые идут следом в заданном порядке
     expect(order[0]).toBe('today');
@@ -83,14 +92,14 @@ describe('разделы: что можно выключить', () => {
   it('последний видимый раздел убрать нельзя', () => {
     const s = withSections({ hidden: ['characters', 'parties', 'marathons', 'runes', 'finance', 'tools'] });
     // остались today и settings; settings прибит, значит единственный убираемый видимый — сегодня
-    expect(visibleSections(s).map((x) => x.id)).toEqual(['today', 'settings']);
+    expect(visibleSections(s).map(x => x.id)).toEqual(['today', 'settings']);
     expect(canHideSection('settings', s)).toBe(false);
   });
 
   it('запись «выключить запрещённое» в данных не делает раздел недостижимым', () => {
     const s = withSections({ hidden: ['settings', 'today', 'runes'] });
     expect(s.ui.sections.hidden).toEqual(['runes']);
-    expect(visibleSections(s).map((x) => x.id)).toContain('settings');
+    expect(visibleSections(s).map(x => x.id)).toContain('settings');
   });
 });
 
@@ -98,7 +107,7 @@ describe('разделы: применение к меню', () => {
   it('порядок пользователя и скрытые разделы применяются к кнопкам', () => {
     const doc = mountMenu();
     applySections(doc, withSections({ order: ['parties', 'marathons', 'tools'], hidden: ['tools'] }));
-    const shown = [...doc.querySelectorAll('.next-nav > .tab')].filter((t) => !t.hidden).map((t) => t.dataset.tab);
+    const shown = [...doc.querySelectorAll('.next-nav > .tab')].filter(t => !t.hidden).map(t => t.dataset.tab);
     // «Сегодня» закреплён сверху, дальше — заданный порядок; недостающие дописываются в конец
     expect(shown.slice(0, 3)).toEqual(['today', 'parties', 'marathons']);
     expect(shown).toContain('characters');
@@ -112,7 +121,9 @@ describe('разделы: применение к меню', () => {
     const doc = mountMenu();
     const before = doc.querySelector('.tab[data-tab="runes"]');
     let clicked = 0;
-    before.addEventListener('click', () => { clicked += 1; });
+    before.addEventListener('click', () => {
+      clicked += 1;
+    });
     applySections(doc, withSections({ order: ['runes', 'today'] }));
     expect(doc.querySelector('.tab[data-tab="runes"]')).toBe(before);
     before.click();
@@ -137,7 +148,7 @@ describe('разделы: применение к меню', () => {
 describe('разделы: переход в выключенный раздел', () => {
   it('ведёт на первый видимый, а не молчит', () => {
     const s = withSections({ order: ['parties', 'today'], hidden: ['parties', 'marathons'] });
-    expect(resolveSection('parties', s).id).toBe('today');   // выключен → первый видимый
+    expect(resolveSection('parties', s).id).toBe('today'); // выключен → первый видимый
     expect(resolveSection('marathons', s).id).toBe('today');
     expect(resolveSection('characters', s).id).toBe('characters'); // видим — идём туда
     expect(resolveSection('today', s).id).toBe('today');
@@ -145,7 +156,15 @@ describe('разделы: переход в выключенный раздел'
 
   it('выключенный раздел не попадает в палитру и в горячие клавиши', () => {
     const s = withSections({ hidden: ['runes'], order: ['parties', 'marathons'] });
-    expect(visibleSections(s).map((x) => x.id)).toEqual(['today', 'parties', 'marathons', 'characters', 'finance', 'tools', 'settings']);
+    expect(visibleSections(s).map(x => x.id)).toEqual([
+      'today',
+      'parties',
+      'marathons',
+      'characters',
+      'finance',
+      'tools',
+      'settings'
+    ]);
   });
 });
 
@@ -214,12 +233,18 @@ describe('разделы: панель настроек', () => {
     const box = document.getElementById('sections-list');
     const up = box.querySelector('button[data-sections-move="up"][data-sections-id="parties"]');
     up.click();
-    await vi.waitFor(() => expect(sectionOrder(settings).map((s) => s.id).slice(0, 3)).toEqual(['today', 'parties', 'characters']));
+    await vi.waitFor(() =>
+      expect(
+        sectionOrder(settings)
+          .map(s => s.id)
+          .slice(0, 3)
+      ).toEqual(['today', 'parties', 'characters'])
+    );
     expect(persist).toHaveBeenCalled();
     expect(panel).toBeTruthy();
   });
 
-it('крайние разделы не двигаются: кнопки выключены', async () => {
+  it('крайние разделы не двигаются: кнопки выключены', async () => {
     await (await import('../js/settings/sectionsPanel.js')).bindSectionsPanel({ settings, persist });
     const box = document.getElementById('sections-list');
     // Крайние среди переставляемых: «Инструменты» — последний, «Персонажи» — не край
@@ -249,23 +274,27 @@ describe('разделы: перестановка', () => {
   it('двигает на одну позицию и возвращает null на краю', () => {
     const settings = normalizeState({ settings: { ui: { sections: {} } } }).settings;
     // порядок по умолчанию: today, characters, parties, marathons, runes, finance, tools
-const up = moveSection('parties', 'up', settings);
+    const up = moveSection('parties', 'up', settings);
     expect(up.order.slice(0, 3)).toEqual(['today', 'parties', 'characters']);
     const down = moveSection('characters', 'down', settings);
     expect(down.order.slice(0, 3)).toEqual(['today', 'parties', 'characters']);
-    expect(moveSection('characters', 'up', settings)).toBeNull();  // уже первый переставляемый
-    expect(moveSection('tools', 'down', settings)).toBeNull();   // уже последний переставляемый
+    expect(moveSection('characters', 'up', settings)).toBeNull(); // уже первый переставляемый
+    expect(moveSection('tools', 'down', settings)).toBeNull(); // уже последний переставляемый
     // Закреплённые не двигаются вовсе: у них нет стрелок, а moveSection отказывает
-    expect(moveSection('today', 'down', settings)).toBeNull();     // закреплён сверху
-    expect(moveSection('settings', 'up', settings)).toBeNull();   // закреплён снизу
+    expect(moveSection('today', 'down', settings)).toBeNull(); // закреплён сверху
+    expect(moveSection('settings', 'up', settings)).toBeNull(); // закреплён снизу
   });
 
   it('выключенные не занимают мест и не сдвигают видимые', () => {
     const settings = withSections({ hidden: ['characters', 'tools'] });
     const moved = moveSection('runes', 'up', settings);
     // видимые: today, parties, marathons, runes → runes встаёт перед marathons
-    expect(moved.order.filter((id) => !['characters', 'tools'].includes(id)).slice(0, 4))
-      .toEqual(['today', 'parties', 'runes', 'marathons']);
+    expect(moved.order.filter(id => !['characters', 'tools'].includes(id)).slice(0, 4)).toEqual([
+      'today',
+      'parties',
+      'runes',
+      'marathons'
+    ]);
     expect(moved.hidden).toEqual(['characters', 'tools']);
   });
 });
@@ -284,11 +313,11 @@ describe('закреплённые разделы', () => {
   // «Сегодня» — вход в приложение, «Настройки» — место, где раздел включают обратно.
   // Оба должны стоять там, где их ожидают, независимо от того, что лежит в настройке.
   it('«Сегодня» закреплён сверху, «Настройки» снизу', () => {
-    expect(SECTIONS.find((s) => s.id === 'today').pin).toBe('top');
-    expect(SECTIONS.find((s) => s.id === 'settings').pin).toBe('bottom');
+    expect(SECTIONS.find(s => s.id === 'today').pin).toBe('top');
+    expect(SECTIONS.find(s => s.id === 'settings').pin).toBe('bottom');
   });
 
-it('порядок из настройки не может сдвинуть закреплённые с краёв', () => {
+  it('порядок из настройки не может сдвинуть закреплённые с краёв', () => {
     // Старый файл или правка руками: если бы закреплённые не держали свой край,
     // «Сегодня» могло оказаться в конце меню, а «Настройки» — наверху.
     // Недостающие разделы дописываются в конец переставляемой части — по умолчанию.
@@ -318,9 +347,10 @@ it('порядок из настройки не может сдвинуть за
 describe('панель показывает сохранённый порядок', () => {
   // Список строился по SECTIONS (порядок по умолчанию), а стрелки считали позицию по
   // сохранённому. Выглядело это так: нажал «выше» — ничего не произошло.
-  const orderOf = (html) => (html.match(/data-sections-id="([a-z]+)"/g) || [])
-    .map(m => m.replace(/.*"([a-z]+)".*/, '$1'))
-    .filter((id, i, arr) => arr.indexOf(id) === i);
+  const orderOf = html =>
+    (html.match(/data-sections-id="([a-z]+)"/g) || [])
+      .map(m => m.replace(/.*"([a-z]+)".*/, '$1'))
+      .filter((id, i, arr) => arr.indexOf(id) === i);
 
   it('строки идут в том же порядке, что сохранён', () => {
     const saved = normalizeSectionsSettings({ order: ['today', 'runes', 'characters', 'parties', 'settings'] });
@@ -336,4 +366,3 @@ describe('панель показывает сохранённый порядо�
     expect(ids.indexOf('parties')).toBeLessThan(ids.indexOf('characters'));
   });
 });
-

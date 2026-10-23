@@ -14,9 +14,15 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(16px);
-  transition: opacity 0.24s var(--ease), transform 0.24s var(--ease);
+  transition:
+    opacity 0.24s var(--ease),
+    transform 0.24s var(--ease);
 }
-.fab-container.visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.fab-container.visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
 
 .fab-main {
   width: 56px;
@@ -36,17 +42,28 @@
   outline: none;
   position: relative;
   z-index: 2;
-  transition: transform 0.16s var(--ease), box-shadow 0.16s var(--ease), filter 0.16s var(--ease);
+  transition:
+    transform 0.16s var(--ease),
+    box-shadow 0.16s var(--ease),
+    filter 0.16s var(--ease);
 }
-.fab-main:hover { transform: scale(1.06); filter: brightness(1.08); box-shadow: 0 14px 32px rgba(110, 142, 248, 0.45); }
-.fab-main:active { transform: scale(0.96); }
+.fab-main:hover {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+  box-shadow: 0 14px 32px rgba(110, 142, 248, 0.45);
+}
+.fab-main:active {
+  transform: scale(0.96);
+}
 
 .fab-icon {
   transform-origin: center;
   transition: transform 0.25s var(--ease);
   user-select: none;
 }
-.fab-main.is-open .fab-icon { transform: rotate(135deg); }
+.fab-main.is-open .fab-icon {
+  transform: rotate(135deg);
+}
 
 /* --- Speed-dial: столбик пунктов строго над кнопкой ---
    Пункты идут вертикально с одинаковым шагом: иконка стоит над центром кнопки, подпись — слева от неё.
@@ -55,14 +72,16 @@
 .fab-menu {
   position: absolute;
   right: 0;
-  bottom: 68px;                     /* кнопка 56px + зазор 12px */
+  bottom: 68px; /* кнопка 56px + зазор 12px */
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   max-height: calc(100vh - 110px);
-  pointer-events: none;             /* кликабельны только сами пункты */
+  pointer-events: none; /* кликабельны только сами пункты */
 }
-.fab-menu[hidden] { display: none; }
+.fab-menu[hidden] {
+  display: none;
+}
 
 /* Уровень меню: первый пункт разметки стоит ближе всего к кнопке */
 .fab-orbs {
@@ -73,24 +92,34 @@
   max-height: inherit;
   overflow-y: auto;
   scrollbar-width: none;
-  padding: 6px 4px 6px 8px;         /* правый отступ 4px: центр иконки 38px внутри «таблетки» совпадает с центром кнопки 56px; остальное — место под тень и сдвиг при наведении */
+  padding: 6px 4px 6px 8px; /* правый отступ 4px: центр иконки 38px внутри «таблетки» совпадает с центром кнопки 56px; остальное — место под тень и сдвиг при наведении */
   animation: fab-level-in 0.16s var(--ease);
 }
-.fab-orbs::-webkit-scrollbar { display: none; }
-.fab-orbs[hidden] { display: none !important; }
+.fab-orbs::-webkit-scrollbar {
+  display: none;
+}
+.fab-orbs[hidden] {
+  display: none !important;
+}
 @keyframes fab-level-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .fab-orb {
   /* Весь пункт — одна кнопка-«таблетка»: иконка и подпись внутри общего контейнера с фоном и рамкой */
   display: flex;
-  flex-direction: row-reverse;      /* иконка справа (над кнопкой), подпись слева */
+  flex-direction: row-reverse; /* иконка справа (над кнопкой), подпись слева */
   align-items: center;
   gap: 12px;
   min-height: 48px;
-  padding: 4px 4px 4px 18px;        /* вокруг иконки ровный зазор 4px: она вписана в «таблетку» */
+  padding: 4px 4px 4px 18px; /* вокруг иконки ровный зазор 4px: она вписана в «таблетку» */
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-pill);
   background: var(--surface-1);
@@ -99,7 +128,11 @@
   font: inherit;
   cursor: pointer;
   pointer-events: auto;
-  transition: transform 0.16s var(--ease), border-color 0.16s var(--ease), background 0.16s var(--ease), box-shadow 0.16s var(--ease);
+  transition:
+    transform 0.16s var(--ease),
+    border-color 0.16s var(--ease),
+    background 0.16s var(--ease),
+    box-shadow 0.16s var(--ease);
 }
 .fab-orb:hover,
 .fab-orb:focus-visible {
@@ -108,8 +141,13 @@
   transform: translateX(-3px);
   box-shadow: var(--shadow-3);
 }
-.fab-orb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.fab-orb:active { transform: translateX(-3px) scale(0.98); }
+.fab-orb:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.fab-orb:active {
+  transform: translateX(-3px) scale(0.98);
+}
 
 .fab-orb-ico {
   display: grid;
@@ -121,7 +159,10 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   font-size: 1.1rem;
-  transition: transform 0.16s var(--ease), border-color 0.16s var(--ease), background 0.16s var(--ease);
+  transition:
+    transform 0.16s var(--ease),
+    border-color 0.16s var(--ease),
+    background 0.16s var(--ease);
 }
 .fab-orb:hover .fab-orb-ico,
 .fab-orb:focus-visible .fab-orb-ico {
@@ -129,7 +170,9 @@
   background: var(--accent-soft);
   transform: scale(1.06);
 }
-.fab-orb-ico.is-plain { font-size: 1rem; }
+.fab-orb-ico.is-plain {
+  font-size: 1rem;
+}
 .fab-orb-label {
   color: var(--text);
   font-size: 0.9rem;
@@ -139,7 +182,9 @@
 }
 
 /* --- Выпадающее меню скриптов (настройки), прежний стиль сохранён --- */
-.action-menu-wrapper { position: relative; }
+.action-menu-wrapper {
+  position: relative;
+}
 
 .dropdown-menu {
   position: absolute;
@@ -157,8 +202,14 @@
   animation: slideDownFade 0.16s var(--ease) forwards;
 }
 @keyframes slideDownFade {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .dropdown-item {
@@ -175,25 +226,51 @@
   font-size: 0.88rem;
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
 }
-.dropdown-item:hover { background: var(--accent-soft); color: var(--accent); }
-.dropdown-sep { height: 1px; margin: 5px 8px; background: var(--border); }
+.dropdown-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.dropdown-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--border);
+}
 
 /* На странице марафона и папки кнопка не нужна: там свои действия */
-body:has(.page[data-section="marathons"].active[data-view="detail"]) .fab-container,
-body:has(.page[data-section="marathons"].active[data-view="series"]) .fab-container { display: none; }
-body:has(.modal-overlay) .fab-container { display: none; }
+body:has(.page[data-section='marathons'].active[data-view='detail']) .fab-container,
+body:has(.page[data-section='marathons'].active[data-view='series']) .fab-container {
+  display: none;
+}
+body:has(.modal-overlay) .fab-container {
+  display: none;
+}
 
 /* Видны только орбы активного раздела */
 .fab-orb.is-for-characters,
 .fab-orb.is-for-parties,
-.fab-orb.is-for-marathons { display: none; }
-.fab-container[data-section="characters"] .is-for-characters { display: flex; }
-.fab-container[data-section="parties"] .is-for-parties { display: flex; }
-.fab-container[data-section="marathons"] .is-for-marathons { display: flex; }
+.fab-orb.is-for-marathons {
+  display: none;
+}
+.fab-container[data-section='characters'] .is-for-characters {
+  display: flex;
+}
+.fab-container[data-section='parties'] .is-for-parties {
+  display: flex;
+}
+.fab-container[data-section='marathons'] .is-for-marathons {
+  display: flex;
+}
 
 @media (max-width: 560px) {
-  .fab-container { right: 16px; bottom: 16px; }
-  .dropdown-menu { min-width: 240px; }
+  .fab-container {
+    right: 16px;
+    bottom: 16px;
+  }
+  .dropdown-menu {
+    min-width: 240px;
+  }
 }

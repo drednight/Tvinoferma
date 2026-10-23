@@ -11,7 +11,7 @@ const EVERY_MS = 3000;
 let timer = null;
 let busy = false;
 
-const nickOf = (charId) => (state.characters || []).find(c => c.id === charId)?.nick || '';
+const nickOf = charId => (state.characters || []).find(c => c.id === charId)?.nick || '';
 
 /** Один опрос окон. Возвращает число новых записей журнала. */
 export async function pollCollectionReports() {
@@ -31,6 +31,9 @@ export async function pollCollectionReports() {
 
 /** Включает или выключает периодический опрос (вместе с настройкой «Мини-игра «Коллекция»»). */
 export function startCollectionSync(enabled) {
-  if (timer) { clearInterval(timer); timer = null; }
+  if (timer) {
+    clearInterval(timer);
+    timer = null;
+  }
   if (enabled && window.__TAURI_INTERNALS__) timer = setInterval(pollCollectionReports, EVERY_MS);
 }

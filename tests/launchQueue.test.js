@@ -6,33 +6,39 @@ const invoke = vi.fn(async () => ({}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => true }));
-vi.mock('../js/core/ui.js', async (orig) => {
+vi.mock('../js/core/ui.js', async orig => {
   const actual = await orig();
   return { ...actual, toast: vi.fn(), confirmModal: vi.fn(async () => true) };
 });
-vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));
+vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} }));
 
 const GC1 = { id: 'gc-1', name: 'Папка 1', path: 'D:\\GC1\\GameCenter.exe' };
 const A = () => ({
-  id: 'a', nick: 'Аа', class: 'Воин',
+  id: 'a',
+  nick: 'Аа',
+  class: 'Воин',
   launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Аа' } } }
 });
 const B = () => ({
-  id: 'b', nick: 'Бэ', class: 'Лучник',
+  id: 'b',
+  nick: 'Бэ',
+  class: 'Лучник',
   launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Бэ' } } }
 });
 const C = () => ({
-  id: 'c', nick: 'Цэ', class: 'Маг',
+  id: 'c',
+  nick: 'Цэ',
+  class: 'Маг',
   launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Цэ' } } }
 });
-const minutesAgo = (n) => new Date(Date.now() - n * 60 * 1000).toISOString();
+const minutesAgo = n => new Date(Date.now() - n * 60 * 1000).toISOString();
 
 let state, partyLaunch, ui, taskLog;
 beforeEach(async () => {
   window.localStorage.clear();
   document.body.innerHTML = '<div id="modal-root"></div><div class="topbar-right"></div>';
   invoke.mockReset();
-  invoke.mockImplementation(async (cmd) => {
+  invoke.mockImplementation(async cmd => {
     if (cmd === 'launcher_running_details') return [];
     if (cmd === 'launcher_self_elevated') return false;
     return {};
@@ -41,16 +47,22 @@ beforeEach(async () => {
   ({ state } = await import('../js/core/state.js'));
   state.settings.launcher = {
     ...(state.settings.launcher || {}),
-    gameCenters: [GC1], preferredGcId: '', decorateWindows: false,
-    skipRunning: true, preflight: 'issues', delaySec: 0
+    gameCenters: [GC1],
+    preferredGcId: '',
+    decorateWindows: false,
+    skipRunning: true,
+    preflight: 'issues',
+    delaySec: 0
   };
   partyLaunch = await import('../js/modules/launcher/partyLaunch.js');
   ui = await import('../js/core/ui.js');
   taskLog = await import('../js/core/taskLog.js');
 });
 
-const started = () => invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => String(c[1].charId).split('@')[0]);
-const dockRow = (title) => [...document.querySelectorAll('#tf-task-dock .tf-dock-row')].find(r => r.textContent.includes(title));
+const started = () =>
+  invoke.mock.calls.filter(c => c[0] === 'launcher_start').map(c => String(c[1].charId).split('@')[0]);
+const dockRow = title =>
+  [...document.querySelectorAll('#tf-task-dock .tf-dock-row')].find(r => r.textContent.includes(title));
 
 describe('очередь запуска игры', () => {
   it('запуск во время другого скрипта встаёт в очередь дока, а не отказывает', async () => {
@@ -62,9 +74,9 @@ describe('очередь запуска игры', () => {
     const row = dockRow('Пати');
     expect(row).toBeTruthy();
     expect(row.className).toContain('is-queued');
-    expect(started()).toEqual([]);          // очередь ждёт — игру ещё не запускали
+    expect(started()).toEqual([]); // очередь ждёт — игру ещё не запускали
 
-    busy.finish('Готово');                   // место освободилось — запуск пошёл
+    busy.finish('Готово'); // место освободилось — запуск пошёл
     await p;
     expect(started()).toEqual(['a']);
   });

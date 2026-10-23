@@ -21,11 +21,17 @@ export function layoutPaths(settings = state.settings) {
 
 /** Имя файла из полного пути (Windows и обычные слеши). */
 export function baseName(path) {
-  return String(path || '').split(/[\\/]/).filter(Boolean).pop() || '';
+  return (
+    String(path || '')
+      .split(/[\\/]/)
+      .filter(Boolean)
+      .pop() || ''
+  );
 }
 
 function plural(n, one, few, many) {
-  const m10 = n % 10, m100 = n % 100;
+  const m10 = n % 10,
+    m100 = n % 100;
   if (m10 === 1 && m100 !== 11) return one;
   if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
   return many;
@@ -50,13 +56,19 @@ export function layoutApplyText(report) {
   const f = report?.failed?.length || 0;
   if (r) parts.push(`заменено: ${r}`);
   if (u) parts.push(`уже совпадали: ${u}`);
-  if (f) parts.push(`с ошибкой: ${f} (${report.failed.slice(0, 3).map(x => `${x.name} — ${x.error}`).join('; ')})`);
+  if (f)
+    parts.push(
+      `с ошибкой: ${f} (${report.failed
+        .slice(0, 3)
+        .map(x => `${x.name} — ${x.error}`)
+        .join('; ')})`
+    );
   if (!parts.length) return 'Менять было нечего.';
   const backup = report?.backupDir ? ` Прежние файлы сохранены в копии: ${report.backupDir}` : '';
   return `Готово: ${parts.join(', ')}.${backup}`;
 }
 
-const errText = (e) => String(e?.message || e);
+const errText = e => String(e?.message || e);
 
 /**
  * Привязывает панель «Layout» в настройках. Поля путей сохраняет общий обработчик настроек (data-setting),
@@ -66,7 +78,7 @@ const errText = (e) => String(e?.message || e);
 export function bindLayoutPanel(deps = {}) {
   const invoke = deps.invoke || tauriInvoke;
   const ask = deps.confirm || confirmModal;
-  const $ = (id) => document.getElementById(id);
+  const $ = id => document.getElementById(id);
   const dirInput = $('layout-dir');
   const tplInput = $('layout-template');
   const summary = $('layout-summary');
@@ -83,7 +95,10 @@ export function bindLayoutPanel(deps = {}) {
   async function refresh() {
     if (!summary) return;
     const { dir, template } = layoutPaths();
-    if (!dir) { summary.textContent = 'Укажите папку Layout.'; return; }
+    if (!dir) {
+      summary.textContent = 'Укажите папку Layout.';
+      return;
+    }
     try {
       const report = await invoke('layout_scan', { dir, template: template || null });
       summary.textContent = layoutSummaryText(report, template);
@@ -96,21 +111,33 @@ export function bindLayoutPanel(deps = {}) {
     try {
       const path = await invoke(cmd, { initial: initial || null });
       if (path) await setPath(key, input, path);
-    } catch (e) { toast(errText(e), 'error'); }
+    } catch (e) {
+      toast(errText(e), 'error');
+    }
   }
 
-  $('layout-dir-btn')?.addEventListener('click', () => pick('layout_pick_folder', 'layoutDir', dirInput, layoutPaths().dir));
-  $('layout-template-btn')?.addEventListener('click', () => pick('layout_pick_file', 'layoutTemplate', tplInput, layoutPaths().dir));
+  $('layout-dir-btn')?.addEventListener('click', () =>
+    pick('layout_pick_folder', 'layoutDir', dirInput, layoutPaths().dir)
+  );
+  $('layout-template-btn')?.addEventListener('click', () =>
+    pick('layout_pick_file', 'layoutTemplate', tplInput, layoutPaths().dir)
+  );
   dirInput.addEventListener('change', refresh);
   tplInput.addEventListener('change', refresh);
 
   $('layout-apply-btn')?.addEventListener('click', async () => {
     const { dir, template } = layoutPaths();
-    if (!dir || !template) { toast('Укажите папку Layout и файл-образец.', 'warning'); return; }
+    if (!dir || !template) {
+      toast('Укажите папку Layout и файл-образец.', 'warning');
+      return;
+    }
     try {
       const scan = await invoke('layout_scan', { dir, template });
       const n = scan.targets.length;
-      if (!n) { toast('В папке нет других файлов .ini: менять нечего.', 'info'); return; }
+      if (!n) {
+        toast('В папке нет других файлов .ini: менять нечего.', 'info');
+        return;
+      }
       // Открытые окна игры не мешают: применяем сразу, как нажали. Раньше здесь был отказ от
       // действия («сначала закройте окна»), из-за чего раскладку нельзя было сменить, не
       // закрыв игру. Удерживает результат не это, а пометка «только для чтения», которую
@@ -128,19 +155,28 @@ export function bindLayoutPanel(deps = {}) {
       if (result) result.textContent = text;
       toast(text, report.failed?.length ? 'warning' : 'success', 5000);
       await refresh();
-    } catch (e) { toast(errText(e), 'error'); }
+    } catch (e) {
+      toast(errText(e), 'error');
+    }
   });
 
   $('layout-unlock-btn')?.addEventListener('click', async () => {
     const { dir, template } = layoutPaths();
-    if (!dir) { toast('Укажите папку Layout.', 'warning'); return; }
+    if (!dir) {
+      toast('Укажите папку Layout.', 'warning');
+      return;
+    }
     try {
       const done = await invoke('layout_unlock', { dir, template: template || null });
-      const text = done.length ? `«Только для чтения» снято с файлов: ${done.length}.` : 'Все файлы и так доступны для записи.';
+      const text = done.length
+        ? `«Только для чтения» снято с файлов: ${done.length}.`
+        : 'Все файлы и так доступны для записи.';
       if (result) result.textContent = text;
       toast(text, 'info');
       await refresh();
-    } catch (e) { toast(errText(e), 'error'); }
+    } catch (e) {
+      toast(errText(e), 'error');
+    }
   });
 
   refresh();

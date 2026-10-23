@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  RECURRING_EVENTS, recurringEventsForDate, recurringEventById,
-  recurringDurationMinutes, recurringEventScheduleText, weekdayOf, WEEKDAY_NAMES
+  RECURRING_EVENTS,
+  recurringEventsForDate,
+  recurringEventById,
+  recurringDurationMinutes,
+  recurringEventScheduleText,
+  weekdayOf,
+  WEEKDAY_NAMES
 } from '../js/modules/dashboard/recurringEvents.js';
 import { plannerEventsForDate, normalizePlannerEntry } from '../js/modules/dashboard/planner.js';
 import { DEFAULT_SETTINGS } from '../js/core/constants.js';
@@ -23,7 +28,7 @@ describe('постоянные ивенты', () => {
   });
 
   it('Битва Династий в понедельник и пятницу, не в среду', () => {
-    const titles = (date) => recurringEventsForDate(date).map(e => e.title);
+    const titles = date => recurringEventsForDate(date).map(e => e.title);
     expect(titles(MON)).toContain('Битва Династий');
     expect(titles(FRI)).toContain('Битва Династий');
     expect(titles(WED)).not.toContain('Битва Династий');

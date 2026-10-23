@@ -130,7 +130,7 @@ describe('гайд: шаги вперёд и назад', () => {
     const ui = await open();
     const total = mod.GUIDE_STEPS.length;
     expect(ui.body().querySelector('.gs-counter').textContent).toBe(`Шаг 1 из ${total}`);
-    expect(ui.foot().querySelector('[data-gs-back]')).toBeNull();   // с первого шага назад некуда
+    expect(ui.foot().querySelector('[data-gs-back]')).toBeNull(); // с первого шага назад некуда
 
     ui.foot().querySelector('[data-gs-next]').click();
     expect(ui.body().querySelector('.gs-counter').textContent).toBe(`Шаг 2 из ${total}`);
@@ -145,8 +145,8 @@ describe('гайд: шаги вперёд и назад', () => {
     // Шаги назад — кликом по степперу: текущий шаг неактивен, пройденные ведут назад
     const steps = [...ui.sub().querySelectorAll('.tf-step')];
     expect(steps.length).toBe(total);
-    expect(steps[2].classList.contains('is-current')).toBe(true);   // шаг 3 — текущий
-    expect(steps[3].classList.contains('is-done')).toBe(false);     // вперёд ещё не ходили
+    expect(steps[2].classList.contains('is-current')).toBe(true); // шаг 3 — текущий
+    expect(steps[3].classList.contains('is-done')).toBe(false); // вперёд ещё не ходили
     steps[1].click();
     expect(ui.body().querySelector('.gs-counter').textContent).toBe(`Шаг 2 из ${total}`);
   });
@@ -162,7 +162,7 @@ describe('гайд: шаги вперёд и назад', () => {
   it('чекбокс «не показывать снова» пишется сразу', async () => {
     const ui = await open();
     const box = ui.foot().querySelector('[data-gs-dont-show]');
-    expect(box.checked).toBe(false);            // гайд ещё не пройден
+    expect(box.checked).toBe(false); // гайд ещё не пройден
     box.checked = true;
     box.dispatchEvent(new Event('change'));
     await vi.waitFor(() => expect(state.settings.ui.guideSeen).toBe(true));

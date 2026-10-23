@@ -11,16 +11,18 @@ import { openOverlay } from '../marathons/overlay.js';
 import { resultInfo, resultLabel } from './shopCore.js';
 import { loadShopLog, clearShopLog } from './shopStore.js';
 
-const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-const fmt = (n) => formatCoins(n);
-const entryKey = (e) => `${e.at}|${e.charId}|${e.itemKey}`;
-const others = (e) => (e.members || []).filter(n => n !== e.nick);
+const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+const fmt = n => formatCoins(n);
+const entryKey = e => `${e.at}|${e.charId}|${e.itemKey}`;
+const others = e => (e.members || []).filter(n => n !== e.nick);
 
-const detailText = (e) => [e.detail, e.status === 'error' || e.status === 'unknown' ? errorText(e.code) : ''].filter(Boolean).join(' — ');
+const detailText = e =>
+  [e.detail, e.status === 'error' || e.status === 'unknown' ? errorText(e.code) : ''].filter(Boolean).join(' — ');
 
 export function detailsHtml(e) {
   const info = resultInfo(e.status);
-  const bal = e.balanceBefore != null && e.balanceAfter != null ? `${fmt(e.balanceBefore)} → ${fmt(e.balanceAfter)} мон.` : '';
+  const bal =
+    e.balanceBefore != null && e.balanceAfter != null ? `${fmt(e.balanceBefore)} → ${fmt(e.balanceAfter)} мон.` : '';
   return `
     <div class="tl-summary"><span><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> <b>${escapeHtml(e.nick)}</b>${others(e).length ? ` <span class="muted">(также: ${escapeHtml(others(e).join(', '))})</span>` : ''}</span><span class="muted">${escapeHtml(when(e.at))}</span></div>
     <div class="promo-log-h">${info.icon} ${escapeHtml(resultLabel(e))}</div>
@@ -35,24 +37,33 @@ export function detailsHtml(e) {
     ${['unknown', 'no_effect', 'error'].includes(e.status) ? '<p class="promo-warn">Сверьте с «Историей монет» на сайте (chests2.php?do=history): приложение само ничего не повторяет, чтобы не купить предмет дважды.</p>' : ''}`;
 }
 
-const entryText = (e) => [
-  `${when(e.at)} · ${e.nick}${others(e).length ? ` (также: ${others(e).join(', ')})` : ''} · ${e.item}`,
-  resultLabel(e),
-  `Потрачено: ${fmt(e.spent)} мон.`,
-  ...(detailText(e) ? [detailText(e)] : [])
-].join('\n');
+const entryText = e =>
+  [
+    `${when(e.at)} · ${e.nick}${others(e).length ? ` (также: ${others(e).join(', ')})` : ''} · ${e.item}`,
+    resultLabel(e),
+    `Потрачено: ${fmt(e.spent)} мон.`,
+    ...(detailText(e) ? [detailText(e)] : [])
+  ].join('\n');
 
 /** Окно с подробностями одной записи. */
 export function openShopEntry(index) {
   const e = loadShopLog()[index];
   if (!e) return null;
-  const ov = openOverlay({ title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарка', wide: true });
+  const ov = openOverlay({
+    title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарка',
+    wide: true
+  });
   ov.body.innerHTML = detailsHtml(e);
-  ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
+  ov.foot.innerHTML =
+    '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-copy]').onclick = async (ev) => {
-    try { await navigator.clipboard.writeText(entryText(e)); ev.target.textContent = '✔ Скопировано'; }
-    catch { ev.target.textContent = 'Не удалось скопировать'; }
+  ov.foot.querySelector('[data-copy]').onclick = async ev => {
+    try {
+      await navigator.clipboard.writeText(entryText(e));
+      ev.target.textContent = '✔ Скопировано';
+    } catch {
+      ev.target.textContent = 'Не удалось скопировать';
+    }
   };
   return ov;
 }
@@ -62,19 +73,26 @@ export const shopLogSource = {
   id: 'shop',
   title: 'Подарки',
   icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
-  list: () => loadShopLog().map(e => ({
-    key: entryKey(e), at: e.at, title: `${e.item} · ${e.bought} из ${e.requested}`,
-    status: e.status === 'done' ? 'ok' : resultInfo(e.status).level === 'error' ? 'error' : 'warn',
-    who: e.nick,
-    summary: `${fmt(e.spent)} мон.${e.status === 'done' ? '' : ` · ${resultInfo(e.status).label}`}${others(e).length ? ` · также: ${others(e).join(', ')}` : ''}${e.account ? ` · ${e.account}` : ''}`
-  })),
-  open: (item) => {
+  list: () =>
+    loadShopLog().map(e => ({
+      key: entryKey(e),
+      at: e.at,
+      title: `${e.item} · ${e.bought} из ${e.requested}`,
+      status: e.status === 'done' ? 'ok' : resultInfo(e.status).level === 'error' ? 'error' : 'warn',
+      who: e.nick,
+      summary: `${fmt(e.spent)} мон.${e.status === 'done' ? '' : ` · ${resultInfo(e.status).label}`}${others(e).length ? ` · также: ${others(e).join(', ')}` : ''}${e.account ? ` · ${e.account}` : ''}`
+    })),
+  open: item => {
     const i = loadShopLog().findIndex(e => entryKey(e) === item.key);
     if (i >= 0) openShopEntry(i);
   },
   clear: () => clearShopLog(),
-  clearConfirm: 'Очистить журнал активации подарков? Приложение забудет, что и когда покупалось. На сайте «История монет» останется.',
-  subscribe: (fn) => { window.addEventListener('tf-shop-log', fn); return () => window.removeEventListener('tf-shop-log', fn); }
+  clearConfirm:
+    'Очистить журнал активации подарков? Приложение забудет, что и когда покупалось. На сайте «История монет» останется.',
+  subscribe: fn => {
+    window.addEventListener('tf-shop-log', fn);
+    return () => window.removeEventListener('tf-shop-log', fn);
+  }
 };
 registerLogSource(shopLogSource);
 

@@ -1,18 +1,42 @@
 // Журнал запусков «Коллекции» в приложении (Issue #72): отчёты из окна недоверенные, дубли не нужны, вид логов и итоги.
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  normalizeReport, recordCollectionReports, loadCollectionLog, clearCollectionLog, totalsOf, share, LOG_KEY, LOG_MAX
+  normalizeReport,
+  recordCollectionReports,
+  loadCollectionLog,
+  clearCollectionLog,
+  totalsOf,
+  share,
+  LOG_KEY,
+  LOG_MAX
 } from '../js/modules/automation/collectionStore.js';
-import { collectionLogSource, detailsHtml, tableHtml, fmtDuration } from '../js/modules/automation/collectionLogView.js';
+import {
+  collectionLogSource,
+  detailsHtml,
+  tableHtml,
+  fmtDuration
+} from '../js/modules/automation/collectionLogView.js';
 import { collectLogs } from '../js/core/logHub.js';
 
 const report = (over = {}) => ({
-  v: 1, id: 'abc12345', start: '2026-10-08T10:00:00.000Z', end: '2026-10-08T10:05:00.000Z', ms: 300000,
-  target: 3, above: 'stop', maxCards: 0, opened: 40, unknown: 0,
+  v: 1,
+  id: 'abc12345',
+  start: '2026-10-08T10:00:00.000Z',
+  end: '2026-10-08T10:05:00.000Z',
+  ms: 300000,
+  target: 3,
+  above: 'stop',
+  maxCards: 0,
+  opened: 40,
+  unknown: 0,
   drops: { 1: 20, 2: 10, 3: 6, 4: 3, 5: 1 },
   claimed: { 1: 0, 2: 0, 3: 1, 4: 0, 5: 0, 6: 0 },
   promoted: { 1: 3, 2: 1, 3: 0, 4: 0, 5: 0 },
-  left: 100, code: 'limit', kind: 'ok', message: 'Достигнут лимит запуска: 40 карт.', ...over
+  left: 100,
+  code: 'limit',
+  kind: 'ok',
+  message: 'Достигнут лимит запуска: 40 карт.',
+  ...over
 });
 
 beforeEach(() => localStorage.clear());
@@ -20,7 +44,16 @@ beforeEach(() => localStorage.clear());
 describe('normalizeReport: отчёт из окна проверяется', () => {
   it('нормальный отчёт сохраняется как есть, ник добавляется приложением', () => {
     const e = normalizeReport(report(), 'Тёмный_Маг');
-    expect(e).toMatchObject({ id: 'abc12345', at: '2026-10-08T10:00:00.000Z', nick: 'Тёмный_Маг', target: 3, above: 'stop', opened: 40, left: 100, kind: 'ok' });
+    expect(e).toMatchObject({
+      id: 'abc12345',
+      at: '2026-10-08T10:00:00.000Z',
+      nick: 'Тёмный_Маг',
+      target: 3,
+      above: 'stop',
+      opened: 40,
+      left: 100,
+      kind: 'ok'
+    });
     expect(e.drops).toEqual({ 1: 20, 2: 10, 3: 6, 4: 3, 5: 1 });
     expect(e.claimed[3]).toBe(1);
   });
@@ -37,7 +70,9 @@ describe('normalizeReport: отчёт из окна проверяется', () 
   });
 
   it('числа ограничиваются, отрицательные и мусор становятся нулём; 6-я категория в выпадениях не хранится', () => {
-    const e = normalizeReport(report({ opened: -5, drops: { 1: '7', 2: -3, 3: 'x', 4: 1e12, 5: 2, 6: 99 }, ms: 'много', maxCards: 1e9 }));
+    const e = normalizeReport(
+      report({ opened: -5, drops: { 1: '7', 2: -3, 3: 'x', 4: 1e12, 5: 2, 6: 99 }, ms: 'много', maxCards: 1e9 })
+    );
     expect(e.drops).toEqual({ 1: 7, 2: 0, 3: 0, 4: 1000000, 5: 2 });
     expect(e.drops[6]).toBeUndefined();
     expect(e.opened).toBeGreaterThanOrEqual(1000009);
@@ -46,7 +81,10 @@ describe('normalizeReport: отчёт из окна проверяется', () 
   });
 
   it('строки обрезаются, управляющие символы убираются, неизвестный kind становится ok', () => {
-    const e = normalizeReport(report({ message: 'a\u0000b\n'.repeat(200), kind: 'hack', code: 'x<script>' }), 'N'.repeat(200));
+    const e = normalizeReport(
+      report({ message: 'a\u0000b\n'.repeat(200), kind: 'hack', code: 'x<script>' }),
+      'N'.repeat(200)
+    );
     expect(e.message.length).toBeLessThanOrEqual(200);
     expect([...e.message].some(ch => ch.charCodeAt(0) < 32)).toBe(false);
     expect(e.kind).toBe('ok');
@@ -59,12 +97,18 @@ describe('журнал: запись, дубли, порядок, предел',
   it('добавляет новые и пропускает уже записанные (окно может прислать отчёт повторно)', () => {
     expect(recordCollectionReports([report()])).toBe(1);
     expect(recordCollectionReports([report(), report({ id: 'second02', start: '2026-10-08T11:00:00.000Z' })])).toBe(1);
-    expect(loadCollectionLog().map((e) => e.id)).toEqual(['second02', 'abc12345']);
+    expect(loadCollectionLog().map(e => e.id)).toEqual(['second02', 'abc12345']);
   });
 
   it('ник берётся по id персонажа из окна; без ника остаётся id', () => {
-    recordCollectionReports([{ ...report(), char: 'Temnyy_Mag' }, { ...report({ id: 'other123' }), char: 'Unknown' }], (id) => (id === 'Temnyy_Mag' ? 'Тёмный Маг' : ''));
-    const byId = Object.fromEntries(loadCollectionLog().map((e) => [e.id, e.nick]));
+    recordCollectionReports(
+      [
+        { ...report(), char: 'Temnyy_Mag' },
+        { ...report({ id: 'other123' }), char: 'Unknown' }
+      ],
+      id => (id === 'Temnyy_Mag' ? 'Тёмный Маг' : '')
+    );
+    const byId = Object.fromEntries(loadCollectionLog().map(e => [e.id, e.nick]));
     expect(byId).toEqual({ abc12345: 'Тёмный Маг', other123: 'Unknown' });
   });
 
@@ -74,7 +118,9 @@ describe('журнал: запись, дубли, порядок, предел',
   });
 
   it(`хранит не больше ${LOG_MAX} последних запусков`, () => {
-    const many = Array.from({ length: LOG_MAX + 30 }, (_, i) => report({ id: `run${String(i).padStart(5, '0')}`, start: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString() }));
+    const many = Array.from({ length: LOG_MAX + 30 }, (_, i) =>
+      report({ id: `run${String(i).padStart(5, '0')}`, start: new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString() })
+    );
     for (let i = 0; i < many.length; i += 50) recordCollectionReports(many.slice(i, i + 50));
     const log = loadCollectionLog();
     expect(log).toHaveLength(LOG_MAX);
@@ -91,7 +137,9 @@ describe('журнал: запись, дубли, порядок, предел',
 
   it('запись нового отчёта сообщает об изменении журнала', () => {
     let n = 0;
-    const off = collectionLogSource.subscribe(() => { n++; });
+    const off = collectionLogSource.subscribe(() => {
+      n++;
+    });
     recordCollectionReports([report()]);
     clearCollectionLog();
     off();
@@ -102,7 +150,16 @@ describe('журнал: запись, дубли, порядок, предел',
 describe('totalsOf: итоги по прошлым запускам', () => {
   it('складывает категории, призы, обмены и время; скорость — карт в минуту', () => {
     const a = normalizeReport(report());
-    const b = normalizeReport(report({ id: 'second02', opened: 20, ms: 100000, drops: { 1: 10, 2: 5, 3: 3, 4: 1, 5: 1 }, claimed: { 5: 1 }, promoted: { 5: 2 } }));
+    const b = normalizeReport(
+      report({
+        id: 'second02',
+        opened: 20,
+        ms: 100000,
+        drops: { 1: 10, 2: 5, 3: 3, 4: 1, 5: 1 },
+        claimed: { 5: 1 },
+        promoted: { 5: 2 }
+      })
+    );
     const t = totalsOf([a, b]);
     expect(t.runs).toBe(2);
     expect(t.opened).toBe(60);
@@ -125,10 +182,23 @@ describe('totalsOf: итоги по прошлым запускам', () => {
 
 describe('вид логов «Коллекция»', () => {
   it('записи попадают в единый журнал: заголовок, ник, выпадения, призы, статус по итогу', () => {
-    recordCollectionReports([
-      { ...report(), char: 'Mag' },
-      { ...report({ id: 'warn0001', start: '2026-10-08T12:00:00.000Z', opened: 0, drops: {}, kind: 'warn', message: 'проверка' }), char: 'Mag' }
-    ], () => 'Маг');
+    recordCollectionReports(
+      [
+        { ...report(), char: 'Mag' },
+        {
+          ...report({
+            id: 'warn0001',
+            start: '2026-10-08T12:00:00.000Z',
+            opened: 0,
+            drops: {},
+            kind: 'warn',
+            message: 'проверка'
+          }),
+          char: 'Mag'
+        }
+      ],
+      () => 'Маг'
+    );
     const { items, counts } = collectLogs({ source: 'collection' });
     expect(counts.collection).toBe(2);
     expect(items[0]).toMatchObject({ key: 'warn0001', status: 'warn', who: 'Маг' });

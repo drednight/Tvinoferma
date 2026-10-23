@@ -14,13 +14,25 @@ import { getClassIconSrc } from '../../core/constants.js';
 import { gameCenterInfo, pickGameCenter, forgetAccount } from './launch.js';
 import { captureLogin, forgetLogin } from './partyLaunch.js';
 import {
-  attachedGcs, attachGc, detachGc, replaceGc, accountKey, newGcId, suggestGcName, samePathKey,
-  removeGameCenter, importLegacyPaths, countLaunchReady, resolveGameCenter, MAX_GAME_CENTERS,
-  launcherKind, kindLabel
+  attachedGcs,
+  attachGc,
+  detachGc,
+  replaceGc,
+  accountKey,
+  newGcId,
+  suggestGcName,
+  samePathKey,
+  removeGameCenter,
+  importLegacyPaths,
+  countLaunchReady,
+  resolveGameCenter,
+  MAX_GAME_CENTERS,
+  launcherKind,
+  kindLabel
 } from './gameCenters.js';
 import { partiesOf, NO_PARTY } from '../parties/membership.js';
 
-const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
+const errText = e => String(e?.message || e || 'неизвестная ошибка');
 const launcherSettings = () => state.settings.launcher;
 const gcs = () => launcherSettings().gameCenters;
 
@@ -48,9 +60,7 @@ export function launchBlocker(char) {
 
 /** Человеческое объяснение причины — для окна предупреждения при запуске пати. */
 export function launchBlockerText(reason) {
-  return reason === 'no-gc'
-    ? 'не прикреплён GameCenter'
-    : 'не запомнен вход в GameCenter';
+  return reason === 'no-gc' ? 'не прикреплён GameCenter' : 'не запомнен вход в GameCenter';
 }
 
 /** Подпись для настроек: сколько GameCenter и сколько персонажей готовы к запуску. */
@@ -63,7 +73,11 @@ export function gcSummaryText() {
 /** Удалить токен входа из хранилища ОС (вне приложения — ничего не делаем). */
 async function forgetKey(key) {
   if (!isTauri() || !key) return;
-  try { await forgetAccount(key); } catch (e) { console.warn('[GC] forget', e); }
+  try {
+    await forgetAccount(key);
+  } catch (e) {
+    console.warn('[GC] forget', e);
+  }
 }
 
 /**
@@ -96,11 +110,13 @@ export function openGameCentersModal(opts = {}) {
   const container = /** @type {HTMLElement | null} */ (root.closest('.modal-container'));
   if (container) container.style.maxWidth = '980px';
 
-  const save = async () => { await persist(); };
+  const save = async () => {
+    await persist();
+  };
 
   // ----- Разметка -----
 
-  const infoText = (gc) => {
+  const infoText = gc => {
     const i = info.get(gc.id);
     if (!isTauri()) return 'Проверка входа доступна только в приложении';
     if (!i || i.status === 'loading') return 'Проверяю…';
@@ -109,13 +125,32 @@ export function openGameCentersModal(opts = {}) {
   };
 
   const gcRowsHtml = () => {
-    if (!gcs().length) return '<p class="muted gcm-empty">Пока нет ни одного GameCenter. Нажмите «Добавить GameCenter» и укажите файл GameCenter.exe.</p>';
-    return gcs().map(gc => {
-      const i = info.get(gc.id);
-      const state = !isTauri() ? 'idle' : !i || i.status === 'loading' ? 'busy' : i.status === 'error' ? 'error' : i.loggedIn ? 'on' : 'off';
-      const used = state === 'on' ? 'Вход' : state === 'error' ? 'Ошибка чтения' : state === 'busy' ? 'Проверка…' : state === 'idle' ? 'Только в приложении' : 'Вход не выполнен';
-      const cls = state === 'on' ? 'is-on' : state === 'error' ? 'is-bad' : state === 'busy' ? 'is-busy' : 'is-idle';
-      return `
+    if (!gcs().length)
+      return '<p class="muted gcm-empty">Пока нет ни одного GameCenter. Нажмите «Добавить GameCenter» и укажите файл GameCenter.exe.</p>';
+    return gcs()
+      .map(gc => {
+        const i = info.get(gc.id);
+        const state = !isTauri()
+          ? 'idle'
+          : !i || i.status === 'loading'
+            ? 'busy'
+            : i.status === 'error'
+              ? 'error'
+              : i.loggedIn
+                ? 'on'
+                : 'off';
+        const used =
+          state === 'on'
+            ? 'Вход'
+            : state === 'error'
+              ? 'Ошибка чтения'
+              : state === 'busy'
+                ? 'Проверка…'
+                : state === 'idle'
+                  ? 'Только в приложении'
+                  : 'Вход не выполнен';
+        const cls = state === 'on' ? 'is-on' : state === 'error' ? 'is-bad' : state === 'busy' ? 'is-busy' : 'is-idle';
+        return `
       <div class="gcm-gc" data-gc="${escapeHtml(gc.id)}">
         <span class="gcm-gc-ico" aria-hidden="true">${launcherKind(gc) === 'astrum' ? '🅰️' : '🎮'}</span>
         <span class="gcm-tag">${escapeHtml(kindLabel(launcherKind(gc)))}</span>
@@ -128,38 +163,53 @@ export function openGameCentersModal(opts = {}) {
           <button type="button" class="btn ghost" data-act="gc-del" title="Убрать из списка (у персонажей он будет откреплён)">🗑</button>
         </div>
       </div>`;
-    }).join('');
+      })
+      .join('');
   };
 
-  const importCount = () => state.characters.filter(c =>
-    String(c.launch?.gcPath || '').trim() && !attachedGcs(c, gcs()).length).length;
+  const importCount = () =>
+    state.characters.filter(c => String(c.launch?.gcPath || '').trim() && !attachedGcs(c, gcs()).length).length;
 
   const optionsHtml = (list, selectedId = '') =>
-    list.map(g => `<option value="${escapeHtml(g.id)}"${g.id === selectedId ? ' selected' : ''}>${escapeHtml(g.name)}</option>`).join('');
+    list
+      .map(
+        g =>
+          `<option value="${escapeHtml(g.id)}"${g.id === selectedId ? ' selected' : ''}>${escapeHtml(g.name)}</option>`
+      )
+      .join('');
 
   /** Варианты фильтра по пати: «Все», «Без пати» и сами пати в их порядке. */
   const partyOptionsHtml = () => {
     const items = [...state.parties]
       .sort((a, b) => (Number(a.order) || 1e9) - (Number(b.order) || 1e9) || a.name.localeCompare(b.name, 'ru'))
-      .map(p => `<option value="${escapeHtml(p.id)}"${partyFilter === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
-    return `<option value=""${partyFilter === '' ? ' selected' : ''}>Все пати</option>`
-      + `<option value="${NO_PARTY}"${partyFilter === NO_PARTY ? ' selected' : ''}>Без пати</option>`
-      + items;
+      .map(
+        p =>
+          `<option value="${escapeHtml(p.id)}"${partyFilter === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
+      )
+      .join('');
+    return (
+      `<option value=""${partyFilter === '' ? ' selected' : ''}>Все пати</option>` +
+      `<option value="${NO_PARTY}"${partyFilter === NO_PARTY ? ' selected' : ''}>Без пати</option>` +
+      items
+    );
   };
 
-  const charHtml = (c) => {
+  const charHtml = c => {
     const attached = attachedGcs(c, gcs());
     const free = gcs().filter(g => !attached.some(a => a.id === g.id));
     const icon = getClassIconSrc(c.class);
     const parties = partiesOf(c, state.parties);
     // Пати показываем сразу: по ним персонажа и ищут
     const partyChips = parties.length
-      ? parties.map(p => `<span class="gcm-tag${p.id === c.mainPartyId ? ' is-main' : ''}">${escapeHtml(p.name)}</span>`).join('')
+      ? parties
+          .map(p => `<span class="gcm-tag${p.id === c.mainPartyId ? ' is-main' : ''}">${escapeHtml(p.name)}</span>`)
+          .join('')
       : '<span class="gcm-tag is-none">Без пати</span>';
-    const rows = attached.map((g, i) => {
-      const acc = c.launch?.gcAccounts?.[g.id];
-      const others = gcs().filter(x => x.id === g.id || !attached.some(a => a.id === x.id));
-      return `
+    const rows = attached
+      .map((g, i) => {
+        const acc = c.launch?.gcAccounts?.[g.id];
+        const others = gcs().filter(x => x.id === g.id || !attached.some(a => a.id === x.id));
+        return `
         <div class="gcm-bind" data-gc="${escapeHtml(g.id)}" data-i="${i}">
           <select class="select" data-act="swap" aria-label="GameCenter персонажа">${optionsHtml(others, g.id)}</select>
           ${i === 0 && attached.length > 1 ? '<span class="gcm-badge" title="Первый в списке: запускается, если не выбран другой">основной</span>' : ''}
@@ -168,7 +218,8 @@ export function openGameCentersModal(opts = {}) {
           ${acc ? '<button type="button" class="btn ghost" data-act="forget">Забыть</button>' : ''}
           <button type="button" class="btn ghost" data-act="detach" title="Открепить этот GameCenter от персонажа">✕</button>
         </div>`;
-    }).join('');
+      })
+      .join('');
     const own = String(c.launch?.gcPath || '').trim();
     return `
       <div class="gcm-char${attached.length ? ' is-bound' : ''}" data-char="${escapeHtml(c.id)}">
@@ -180,8 +231,12 @@ export function openGameCentersModal(opts = {}) {
         </div>
         ${rows}
         ${!attached.length && own ? `<div class="muted gcm-own" title="${escapeHtml(own)}">Свой путь из карточки: ${escapeHtml(own)}</div>` : ''}
-        ${free.length ? `<select class="select gcm-add" data-act="attach" aria-label="Прикрепить GameCenter">
-          <option value="">${attached.length ? '➕ Ещё один GameCenter…' : '➕ Выбрать GameCenter…'}</option>${optionsHtml(free)}</select>` : ''}
+        ${
+          free.length
+            ? `<select class="select gcm-add" data-act="attach" aria-label="Прикрепить GameCenter">
+          <option value="">${attached.length ? '➕ Ещё один GameCenter…' : '➕ Выбрать GameCenter…'}</option>${optionsHtml(free)}</select>`
+            : ''
+        }
       </div>`;
   };
 
@@ -189,8 +244,9 @@ export function openGameCentersModal(opts = {}) {
     const q = filter.trim().toLowerCase();
     const list = state.characters.filter(c => {
       if (q && !`${c.nick} ${c.class}`.toLowerCase().includes(q)) return false;
-      if (partyFilter === NO_PARTY) { if (partiesOf(c, state.parties).length) return false; }
-      else if (partyFilter && !(c.partyIds || []).includes(partyFilter)) return false;
+      if (partyFilter === NO_PARTY) {
+        if (partiesOf(c, state.parties).length) return false;
+      } else if (partyFilter && !(c.partyIds || []).includes(partyFilter)) return false;
       if (onlyUnbound && attachedGcs(c, gcs()).length) return false;
       // «Нет входа» — это про запомненный вход, а не про привязку: персонаж может быть
       // прикреплён, но вход не запомнен ни в одном из них. Такой при запуске пати попадёт
@@ -212,7 +268,8 @@ export function openGameCentersModal(opts = {}) {
     if (imp) {
       imp.hidden = n === 0;
       const t = imp.querySelector('span');
-      if (t) t.textContent = `В карточках персонажей найдено путей к GameCenter: ${n}. Перенести их в список (одинаковые объединятся, вход сохранится)?`;
+      if (t)
+        t.textContent = `В карточках персонажей найдено путей к GameCenter: ${n}. Перенести их в список (одинаковые объединятся, вход сохранится)?`;
     }
   };
 
@@ -233,7 +290,10 @@ export function openGameCentersModal(opts = {}) {
     }
   };
 
-  const renderAll = () => { renderGcs(); renderChars(); };
+  const renderAll = () => {
+    renderGcs();
+    renderChars();
+  };
 
   root.innerHTML = `
     <section class="gcm-sec">
@@ -272,9 +332,9 @@ export function openGameCentersModal(opts = {}) {
 
   // ----- Сведения о GameCenter (кто в нём сейчас вошёл) -----
 
-  const gcRow = (id) => [...root.querySelectorAll('.gcm-gc')].find(el => el.getAttribute('data-gc') === id) || null;
+  const gcRow = id => [...root.querySelectorAll('.gcm-gc')].find(el => el.getAttribute('data-gc') === id) || null;
 
-  const loadInfo = async (gc) => {
+  const loadInfo = async gc => {
     if (!isTauri()) return;
     info.set(gc.id, { status: 'loading' });
     const setText = () => {
@@ -290,21 +350,33 @@ export function openGameCentersModal(opts = {}) {
     }
     setText();
   };
-  const loadAllInfo = async () => { for (const gc of gcs()) await loadInfo(gc); };
+  const loadAllInfo = async () => {
+    for (const gc of gcs()) await loadInfo(gc);
+  };
   loadAllInfo();
 
   // ----- Действия -----
 
   /** Открывает проводник и возвращает путь к GameCenter.exe (или null). Ошибки показываются сразу. */
   const pickPath = async (kind = 'gamecenter') => {
-    if (!isTauri()) { toast('Выбор файла доступен только в приложении', 'error'); return null; }
-    try { return await pickGameCenter({ kind }); } catch (e) { toast(errText(e), 'error'); return null; }
+    if (!isTauri()) {
+      toast('Выбор файла доступен только в приложении', 'error');
+      return null;
+    }
+    try {
+      return await pickGameCenter({ kind });
+    } catch (e) {
+      toast(errText(e), 'error');
+      return null;
+    }
   };
 
-  const findChar = (el) => state.characters.find(c => c.id === el.closest('[data-char]')?.getAttribute('data-char'));
-  const touch = (c) => { c.updatedAt = new Date().toISOString(); };
+  const findChar = el => state.characters.find(c => c.id === el.closest('[data-char]')?.getAttribute('data-char'));
+  const touch = c => {
+    c.updatedAt = new Date().toISOString();
+  };
 
-  root.addEventListener('click', async (ev) => {
+  root.addEventListener('click', async ev => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (ev.target).closest('button[data-act]'));
     if (!btn) return;
     const act = btn.getAttribute('data-act');
@@ -314,11 +386,17 @@ export function openGameCentersModal(opts = {}) {
 
     if (act === 'gc-add' || act === 'astrum-add') {
       const kind = act === 'astrum-add' ? 'astrum' : 'gamecenter';
-      if (gcs().length >= MAX_GAME_CENTERS) { toast(`Не больше ${MAX_GAME_CENTERS} лаунчеров`, 'error'); return; }
+      if (gcs().length >= MAX_GAME_CENTERS) {
+        toast(`Не больше ${MAX_GAME_CENTERS} лаунчеров`, 'error');
+        return;
+      }
       const path = await pickPath(kind);
       if (!path) return;
       const same = gcs().find(g => samePathKey(g.path) === samePathKey(path));
-      if (same) { toast(`Этот лаунчер уже в списке: «${same.name}»`, 'error'); return; }
+      if (same) {
+        toast(`Этот лаунчер уже в списке: «${same.name}»`, 'error');
+        return;
+      }
       const created = { id: newGcId(gcs()), name: suggestGcName(path, gcs()), path, kind };
       gcs().push(created);
       await save();
@@ -339,7 +417,9 @@ export function openGameCentersModal(opts = {}) {
       const used = state.characters.filter(x => (x.launch?.gcIds || []).includes(gc.id)).length;
       const ok = await confirmModal({
         title: `Убрать «${gc.name}»?`,
-        text: used ? `Он откреплён у персонажей: ${used}. Запомненные для него входы будут удалены. Сам GameCenter и файлы на диске не меняются.` : 'Файлы на диске не меняются.',
+        text: used
+          ? `Он откреплён у персонажей: ${used}. Запомненные для него входы будут удалены. Сам GameCenter и файлы на диске не меняются.`
+          : 'Файлы на диске не меняются.',
         okText: 'Убрать',
         danger: true
       });
@@ -372,7 +452,7 @@ export function openGameCentersModal(opts = {}) {
     }
   });
 
-  root.addEventListener('change', async (ev) => {
+  root.addEventListener('change', async ev => {
     const el = /** @type {HTMLInputElement | HTMLSelectElement} */ (ev.target);
     const act = el.getAttribute?.('data-act');
     if (el.id === 'gcm-pref') {
@@ -400,7 +480,10 @@ export function openGameCentersModal(opts = {}) {
     const gc = gcs().find(g => g.id === gcId);
     if (act === 'gc-name' && gc) {
       const name = el.value.trim().slice(0, 60);
-      if (!name) { el.value = gc.name; return; }
+      if (!name) {
+        el.value = gc.name;
+        return;
+      }
       gc.name = name;
       await save();
       renderChars();
@@ -433,7 +516,7 @@ export function openGameCentersModal(opts = {}) {
     pref.value = launcherSettings().preferredGcId || '';
   }
 
-  root.addEventListener('input', (ev) => {
+  root.addEventListener('input', ev => {
     const el = /** @type {HTMLInputElement} */ (ev.target);
     if (el.id !== 'gcm-filter') return;
     filter = el.value;

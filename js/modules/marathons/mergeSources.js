@@ -20,13 +20,14 @@ export function findSiteQuest(newsQuest, siteQuests, used = new Set()) {
   const byStage = sameBase.find(q => q.stageKey && q.stageKey === newsQuest.stageKey);
   if (byStage) return byStage;
   // этап не указан в названии на сайте / в новости один этап — совпадение однозначно, если оно единственное
-  if (sameBase.length === 1 && (!sameBase[0].stageKey || newsQuest.stageKey === ALL_STAGES || !newsQuest.stageKey)) return sameBase[0];
+  if (sameBase.length === 1 && (!sameBase[0].stageKey || newsQuest.stageKey === ALL_STAGES || !newsQuest.stageKey))
+    return sameBase[0];
   return null;
 }
 
 const sameText = (a, b) => normTitle(a) === normTitle(b);
 
-const hasDates = (st) => /^\d{4}-\d{2}-\d{2}$/.test(st.startDate || '') && /^\d{4}-\d{2}-\d{2}$/.test(st.endDate || '');
+const hasDates = st => /^\d{4}-\d{2}-\d{2}$/.test(st.startDate || '') && /^\d{4}-\d{2}-\d{2}$/.test(st.endDate || '');
 
 /**
  * Страница отметок и новость — про один и тот же марафон?
@@ -35,11 +36,14 @@ const hasDates = (st) => /^\d{4}-\d{2}-\d{2}$/.test(st.startDate || '') && /^\d{
  * Признак: пересекаются сроки этапов; если у какой-то стороны сроков нет — совпадают названия заданий.
  */
 export function isSameMarathon(news, site) {
-  const ns = (news.stages || []).filter(hasDates), ss = (site.stages || []).filter(hasDates);
+  const ns = (news.stages || []).filter(hasDates),
+    ss = (site.stages || []).filter(hasDates);
   if (ns.length && ss.length) return ns.some(a => ss.some(b => a.startDate <= b.endDate && b.startDate <= a.endDate));
-  return (news.quests || []).some(nq => (site.quests || []).some(sq => sameText(sq.title, nq.title) || baseTitle(sq.title) === baseTitle(nq.title)));
+  return (news.quests || []).some(nq =>
+    (site.quests || []).some(sq => sameText(sq.title, nq.title) || baseTitle(sq.title) === baseTitle(nq.title))
+  );
 }
-const range = (st) => `${st.startDate || '?'} — ${st.endDate || '?'}`;
+const range = st => `${st.startDate || '?'} — ${st.endDate || '?'}`;
 
 /**
  * @param {{ news?: object|null, site?: object|null }} src  результаты разбора (оба — вида { name, sourceUrl, newsUrl, stages, quests })
@@ -53,24 +57,33 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
   if (!news) return { raw: { ...site, origin: 'site' }, notes };
 
   if (!isSameMarathon(news, site)) {
-    notes.push({ level: 'warn', text: `Страница отметок относится к другому марафону («${site.name || 'без названия'}», этапов ${site.stages.length}) — не использована; марафон собран только из новости «${news.name || 'без названия'}».` });
+    notes.push({
+      level: 'warn',
+      text: `Страница отметок относится к другому марафону («${site.name || 'без названия'}», этапов ${site.stages.length}) — не использована; марафон собран только из новости «${news.name || 'без названия'}».`
+    });
     return { raw: { ...news, origin: 'news' }, notes };
   }
 
   const used = new Set();
   let descDiff = 0;
-  const stageName = (key) => (news.stages.find(s => s.key === key) || site.stages.find(s => s.key === key))?.name || key;
+  const stageName = key => (news.stages.find(s => s.key === key) || site.stages.find(s => s.key === key))?.name || key;
 
   // --- задания: основа — новость, названия — со страницы отметок ---
   const quests = news.quests.map(nq => {
     const sq = findSiteQuest(nq, site.quests, used);
     if (!sq) {
-      notes.push({ level: 'info', text: `«${nq.title}»${nq.stageKey && nq.stageKey !== ALL_STAGES ? ` (${stageName(nq.stageKey)})` : ''}: нет на странице отметок — этап ещё не начался или уже закрыт` });
+      notes.push({
+        level: 'info',
+        text: `«${nq.title}»${nq.stageKey && nq.stageKey !== ALL_STAGES ? ` (${stageName(nq.stageKey)})` : ''}: нет на странице отметок — этап ещё не начался или уже закрыт`
+      });
       return { ...nq, descriptionSource: nq.description ? 'news' : '' };
     }
     used.add(sq);
     if (sq.goal && nq.goal && sq.goal !== nq.goal) {
-      notes.push({ level: 'warn', text: `«${sq.title}»: цель в новости ${nq.goal}, на странице отметок ${sq.goal} — взята цифра из новости, проверьте` });
+      notes.push({
+        level: 'warn',
+        text: `«${sq.title}»: цель в новости ${nq.goal}, на странице отметок ${sq.goal} — взята цифра из новости, проверьте`
+      });
     }
     if (nq.description && sq.description && !sameText(nq.description, sq.description)) descDiff++;
     return {
@@ -78,33 +91,51 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
       title: sq.title,
       siteTitle: sq.title,
       description: nq.description || sq.description || '',
-      descriptionSource: nq.description ? 'news' : (sq.description ? 'site' : '')
+      descriptionSource: nq.description ? 'news' : sq.description ? 'site' : ''
     };
   });
-  site.quests.filter(sq => !used.has(sq)).forEach(sq => {
-    notes.push({ level: 'warn', text: `«${sq.title}»: есть на странице отметок, но не найдено в новости — добавлено без наград` });
-    quests.push({ ...sq, siteTitle: sq.title, rewards: [], descriptionSource: sq.description ? 'site' : '' });
-  });
-  if (descDiff) notes.push({ level: 'info', text: `Описания различаются у заданий: ${descDiff}. Взяты из новости (в ней полнее).` });
+  site.quests
+    .filter(sq => !used.has(sq))
+    .forEach(sq => {
+      notes.push({
+        level: 'warn',
+        text: `«${sq.title}»: есть на странице отметок, но не найдено в новости — добавлено без наград`
+      });
+      quests.push({ ...sq, siteTitle: sq.title, rewards: [], descriptionSource: sq.description ? 'site' : '' });
+    });
+  if (descDiff)
+    notes.push({
+      level: 'info',
+      text: `Описания различаются у заданий: ${descDiff}. Взяты из новости (в ней полнее).`
+    });
 
   // --- этапы: сроки и бонусы из новости, названия и недостающие этапы — со страницы ---
   const stages = news.stages.map(ns => {
     const ss = site.stages.find(s => s.key === ns.key);
     if (!ss) return { ...ns };
     if (!ns.guessed && !ss.guessed && (ns.startDate !== ss.startDate || ns.endDate !== ss.endDate)) {
-      notes.push({ level: 'warn', text: `Сроки этапа «${ss.name}»: в новости ${range(ns)}, на странице ${range(ss)} — взяты из новости, проверьте` });
+      notes.push({
+        level: 'warn',
+        text: `Сроки этапа «${ss.name}»: в новости ${range(ns)}, на странице ${range(ss)} — взяты из новости, проверьте`
+      });
     }
-    if (ns.guessed && !ss.guessed) return { ...ns, name: ss.name, startDate: ss.startDate, endDate: ss.endDate, guessed: false };
+    if (ns.guessed && !ss.guessed)
+      return { ...ns, name: ss.name, startDate: ss.startDate, endDate: ss.endDate, guessed: false };
     return { ...ns, name: ss.name };
   });
-  site.stages.filter(ss => !stages.some(s => s.key === ss.key)).forEach(ss => {
-    notes.push({ level: 'info', text: `Этап «${ss.name}» есть только на странице отметок — добавлен без бонуса` });
-    stages.push({ ...ss });
-  });
+  site.stages
+    .filter(ss => !stages.some(s => s.key === ss.key))
+    .forEach(ss => {
+      notes.push({ level: 'info', text: `Этап «${ss.name}» есть только на странице отметок — добавлен без бонуса` });
+      stages.push({ ...ss });
+    });
   stages.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
 
   if (news.name && site.name && !sameText(news.name, site.name)) {
-    notes.push({ level: 'info', text: `Название марафона: в новости «${news.name}», на странице «${site.name}» — оставлено название со страницы.` });
+    notes.push({
+      level: 'info',
+      text: `Название марафона: в новости «${news.name}», на странице «${site.name}» — оставлено название со страницы.`
+    });
   }
 
   return {
@@ -113,7 +144,8 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
       name: site.name || news.name,
       sourceUrl: site.sourceUrl || news.sourceUrl || null,
       newsUrl: news.newsUrl || null,
-      stages, quests,
+      stages,
+      quests,
       debug: [...(news.debug || []), ...(site.debug || [])]
     },
     notes

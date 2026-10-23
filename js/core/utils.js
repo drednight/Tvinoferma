@@ -5,7 +5,7 @@ export function uid() {
 }
 
 export function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (ch) => {
+  return String(value ?? '').replace(/[&<>"']/g, ch => {
     const map = {
       '&': '&amp;',
       '<': '&lt;',

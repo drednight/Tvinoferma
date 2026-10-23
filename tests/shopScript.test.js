@@ -5,16 +5,27 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { runPageScript, fixture, editDom } from './helpers/pageScript.js';
 
-const WANTED = ['Камень светлого духа', 'Камень асуров', 'Камень лагеря', 'Камень государя', 'Знак доблести (25 штук)', 'Знак единства (25 штук)', 'Сундук средоточия', 'Ключ от Книги наставлений'];
+const WANTED = [
+  'Камень светлого духа',
+  'Камень асуров',
+  'Камень лагеря',
+  'Камень государя',
+  'Знак доблести (25 штук)',
+  'Знак единства (25 штук)',
+  'Сундук средоточия',
+  'Ключ от Книги наставлений'
+];
 const page = (body, title = 'Perfect World') => `<html><head><title>${title}</title></head><body>${body}</body></html>`;
 const run = (html, mode = 'scan', extra = {}) => {
   window.__TF_SHOP = { mode, wanted: WANTED, ...extra };
   return runPageScript('shop.js', html, 'TF_SHOP_V1_');
 };
 const shop = () => fixture('site-shop.html');
-const byName = (r, name) => r.data.items.find((i) => i.want === name);
+const byName = (r, name) => r.data.items.find(i => i.want === name);
 
-beforeEach(() => { window.__TF_SHOP = undefined; });
+beforeEach(() => {
+  window.__TF_SHOP = undefined;
+});
 
 describe('shop.js: чтение магазина (scan, только чтение)', () => {
   it('аккаунт, баланс и все найденные предметы', () => {
@@ -26,7 +37,16 @@ describe('shop.js: чтение магазина (scan, только чтени�
 
   it('камни: цена 40, «Доступно Вам: 4», кнопка «Купить», id и вид предмета', () => {
     const r = run(shop());
-    expect(byName(r, 'Камень светлого духа')).toMatchObject({ found: true, id: '42746', kind: 'item', price: 40, available: 4, label: 'Купить', blocked: false, hasLink: true });
+    expect(byName(r, 'Камень светлого духа')).toMatchObject({
+      found: true,
+      id: '42746',
+      kind: 'item',
+      price: 40,
+      available: 4,
+      label: 'Купить',
+      blocked: false,
+      hasLink: true
+    });
     expect(byName(r, 'Камень лагеря')).toMatchObject({ id: '42765', price: 40, available: 4 });
     expect(byName(r, 'Камень государя')).toMatchObject({ id: '47278', price: 40, available: 4 });
   });
@@ -38,7 +58,16 @@ describe('shop.js: чтение магазина (scan, только чтени�
 
   it('сундуки: «Открыть», 10 монет, без лимита; название в списке с «(25 штук)»', () => {
     const r = run(shop());
-    expect(byName(r, 'Знак доблести (25 штук)')).toMatchObject({ found: true, name: 'Знак доблести (25 штук)', id: '479', kind: 'chest', price: 10, label: 'Открыть', available: null, blocked: false });
+    expect(byName(r, 'Знак доблести (25 штук)')).toMatchObject({
+      found: true,
+      name: 'Знак доблести (25 штук)',
+      id: '479',
+      kind: 'chest',
+      price: 10,
+      label: 'Открыть',
+      available: null,
+      blocked: false
+    });
     expect(byName(r, 'Знак единства (25 штук)')).toMatchObject({ id: '480', kind: 'chest', price: 10 });
   });
 
@@ -52,7 +81,9 @@ describe('shop.js: чтение магазина (scan, только чтени�
   });
 
   it('картинка получает полный адрес', () => {
-    expect(byName(run(shop()), 'Камень лагеря').image).toMatch(/^https:\/\/cdn\.pwonline\.ru\/img\/promo_items\/item_\d+\.png$/);
+    expect(byName(run(shop()), 'Камень лагеря').image).toMatch(
+      /^https:\/\/cdn\.pwonline\.ru\/img\/promo_items\/item_\d+\.png$/
+    );
   });
 
   it('предметов нет на сайте (ивентовые) → found:false, остальное читается', () => {
@@ -62,7 +93,7 @@ describe('shop.js: чтение магазина (scan, только чтени�
   });
 
   it('ивентовый предмет появился на сайте: цена берётся оттуда, а не из памяти', () => {
-    const html = editDom(shop(), (d) => {
+    const html = editDom(shop(), d => {
       const li = d.querySelector('#hash_chest479').cloneNode(true);
       li.id = 'hash_chest999';
       li.querySelector('.chest_title').textContent = 'Сундук средоточия';
@@ -73,17 +104,21 @@ describe('shop.js: чтение магазина (scan, только чтени�
   });
 
   it('два предмета с одним названием → не найден, ambiguous (покупать наугад нельзя)', () => {
-    const html = editDom(shop(), (d) => d.querySelector('#chest2').appendChild(d.querySelector('#hash_item42765').cloneNode(true)));
+    const html = editDom(shop(), d =>
+      d.querySelector('#chest2').appendChild(d.querySelector('#hash_item42765').cloneNode(true))
+    );
     expect(byName(run(html), 'Камень лагеря')).toMatchObject({ found: false, ambiguous: true });
   });
 
   it('регистр и «ё» в названии не важны', () => {
     const r = run(shop(), 'scan', { wanted: ['КАМЕНЬ ЛАГЕРЯ', 'знак доблести'] });
-    expect(r.data.items.map((i) => i.found)).toEqual([true, true]);
+    expect(r.data.items.map(i => i.found)).toEqual([true, true]);
   });
 
   it('дробная цена читается: «2.50» → 2.5', () => {
-    const html = editDom(shop(), (d) => { d.querySelector('#hash_item42765 .chest_price strong').textContent = '2.50'; });
+    const html = editDom(shop(), d => {
+      d.querySelector('#hash_item42765 .chest_price strong').textContent = '2.50';
+    });
     expect(byName(run(html), 'Камень лагеря').price).toBe(2.5);
   });
 
@@ -93,9 +128,9 @@ describe('shop.js: чтение магазина (scan, только чтени�
   });
 
   it('вёрстка изменилась: нет списка предметов → pending; нет баланса → container_missing', () => {
-    const noList = editDom(shop(), (d) => d.querySelectorAll('li.chest_info_container').forEach((li) => li.remove()));
+    const noList = editDom(shop(), d => d.querySelectorAll('li.chest_info_container').forEach(li => li.remove()));
     expect(run(noList)).toEqual({ data: 'complete', error: 'pending' });
-    const noBalance = editDom(shop(), (d) => d.querySelector('.points_info').remove());
+    const noBalance = editDom(shop(), d => d.querySelector('.points_info').remove());
     expect(run(noBalance)).toEqual({ data: null, error: 'container_missing' });
   });
 });
@@ -112,20 +147,34 @@ describe('shop.js: осмотр перед покупкой (inspect, тольк
   });
 
   it('сундук «Знак доблести»: кнопка «Открыть»', () => {
-    expect(inspect('Знак доблести (25 штук)', { expectPrice: 10 }).data).toMatchObject({ state: 'ready', label: 'Открыть' });
+    expect(inspect('Знак доблести (25 штук)', { expectPrice: 10 }).data).toMatchObject({
+      state: 'ready',
+      label: 'Открыть'
+    });
   });
 
   it('лимит исчерпан → limit_reached, ничего не нажимается', () => {
-    expect(inspect('Камень асуров', { expectPrice: 40 })).toEqual({ data: { price: 40, available: 0 }, error: 'limit_reached' });
+    expect(inspect('Камень асуров', { expectPrice: 40 })).toEqual({
+      data: { price: 40, available: 0 },
+      error: 'limit_reached'
+    });
   });
 
   it('цена на сайте изменилась → price_changed с новой ценой', () => {
-    expect(inspect('Камень лагеря', { expectPrice: 35 })).toEqual({ data: { price: 40, available: 4 }, error: 'price_changed' });
+    expect(inspect('Камень лагеря', { expectPrice: 35 })).toEqual({
+      data: { price: 40, available: 4 },
+      error: 'price_changed'
+    });
   });
 
   it('не хватает монет → no_funds', () => {
-    const html = editDom(shop(), (d) => { d.querySelector('.points_info strong').textContent = '39'; });
-    expect(run(html, 'inspect', { target: 'Камень лагеря', expectPrice: 40 })).toEqual({ data: { price: 40, balance: 39 }, error: 'no_funds' });
+    const html = editDom(shop(), d => {
+      d.querySelector('.points_info strong').textContent = '39';
+    });
+    expect(run(html, 'inspect', { target: 'Камень лагеря', expectPrice: 40 })).toEqual({
+      data: { price: 40, balance: 39 },
+      error: 'no_funds'
+    });
   });
 
   it('предмета нет на сайте → item_missing', () => {
@@ -133,7 +182,7 @@ describe('shop.js: осмотр перед покупкой (inspect, тольк
   });
 
   it('у предмета пропала кнопка → button_not_found', () => {
-    const html = editDom(shop(), (d) => d.querySelector('#hash_item42765 a.chest_buy_link').remove());
+    const html = editDom(shop(), d => d.querySelector('#hash_item42765 a.chest_buy_link').remove());
     expect(run(html, 'inspect', { target: 'Камень лагеря', expectPrice: 40 }).error).toBe('button_not_found');
   });
 });
@@ -146,14 +195,20 @@ describe('shop.js: нажатие (click) — как человек: «Купи�
     document.body.innerHTML = doc.body.innerHTML;
     document.querySelector('.modalDialog').style.display = 'none';
     const clicks = [];
-    document.querySelectorAll('.chest_buy_link').forEach((a) => a.addEventListener('click', (e) => {
-      if (!prevent) return;
+    document.querySelectorAll('.chest_buy_link').forEach(a =>
+      a.addEventListener('click', e => {
+        if (!prevent) return;
+        e.preventDefault();
+        document.querySelector('.modalTitle').innerHTML =
+          shownTitle ?? a.closest('li').querySelector('.chest_title').innerHTML;
+        document.querySelector('.modalDialog .buy').setAttribute('href', a.getAttribute('href'));
+        document.querySelector('.modalDialog').style.display = 'block';
+      })
+    );
+    document.querySelector('.modalDialog .buy').addEventListener('click', e => {
       e.preventDefault();
-      document.querySelector('.modalTitle').innerHTML = shownTitle ?? a.closest('li').querySelector('.chest_title').innerHTML;
-      document.querySelector('.modalDialog .buy').setAttribute('href', a.getAttribute('href'));
-      document.querySelector('.modalDialog').style.display = 'block';
-    }));
-    document.querySelector('.modalDialog .buy').addEventListener('click', (e) => { e.preventDefault(); clicks.push(e.currentTarget.getAttribute('href')); });
+      clicks.push(e.currentTarget.getAttribute('href'));
+    });
     return clicks;
   };
   const fire = async (target, extra = {}) => {
@@ -161,14 +216,14 @@ describe('shop.js: нажатие (click) — как человек: «Купи�
     window.location.hash = '';
     const { buildScript } = await import('./helpers/pageScript.js');
     new Function(buildScript('shop.js'))();
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise(r => setTimeout(r, 700));
     const m = window.location.hash.match(/#TF_SHOP_V1_(.*)$/);
     return m ? JSON.parse(decodeURIComponent(m[1])) : null;
   };
 
   it('нажимает «Купить», сверяет окно и один раз нажимает «Да» по адресу этого предмета', async () => {
     const clicks = withSiteScript(shop());
-    expect(await fire('Камень лагеря')).toBeNull();      // ответ пишется только при отказе
+    expect(await fire('Камень лагеря')).toBeNull(); // ответ пишется только при отказе
     expect(clicks).toHaveLength(1);
     expect(clicks[0]).toContain('do=buy&id=42765&use_item=1');
   });
@@ -210,9 +265,11 @@ describe('shop.js: страница после покупки (after)', () => {
   });
 
   it('баланс и «Доступно» изменились → читаются новые значения', () => {
-    const html = editDom(shop(), (d) => {
+    const html = editDom(shop(), d => {
       d.querySelector('.points_info strong').textContent = '14';
-      d.querySelector('#hash_item42765 .img_item_cont span').innerHTML = d.querySelector('#hash_item42765 .img_item_cont span').innerHTML.replace('4 шт.', '3 шт.');
+      d.querySelector('#hash_item42765 .img_item_cont span').innerHTML = d
+        .querySelector('#hash_item42765 .img_item_cont span')
+        .innerHTML.replace('4 шт.', '3 шт.');
     });
     const r = run(html, 'after', { baseline: baseline() });
     expect(r.error).toBeNull();
@@ -233,8 +290,18 @@ describe('shop.js: история монет (history)', () => {
     expect(r.error).toBeNull();
     expect(r.data.state).toBe('history');
     expect(r.data.rows).toHaveLength(6);
-    expect(r.data.rows[0]).toEqual({ at: '2026-10-07 01:11', delta: -40, before: 54, after: 14, action: 'Покупка предмета Камень светлого духа' });
-    expect(r.data.rows[1]).toMatchObject({ at: '2026-09-15 20:07', delta: -40, action: 'Покупка предмета Камень асуров' });
+    expect(r.data.rows[0]).toEqual({
+      at: '2026-10-07 01:11',
+      delta: -40,
+      before: 54,
+      after: 14,
+      action: 'Покупка предмета Камень светлого духа'
+    });
+    expect(r.data.rows[1]).toMatchObject({
+      at: '2026-09-15 20:07',
+      delta: -40,
+      action: 'Покупка предмета Камень асуров'
+    });
   });
 
   it('нет таблицы → pending; нет входа → not_logged_in', () => {

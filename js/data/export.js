@@ -4,7 +4,14 @@ import { state } from '../core/state.js';
 import { showModal, toast } from '../core/ui.js';
 import { escapeHtml } from '../core/utils.js';
 import { SCHEMA_VERSION } from '../core/migrations.js';
-import { partyByName, partyNamesOf, mainPartyName, additionalPartiesOf, charactersInParty, hasNoParty } from '../modules/parties/membership.js';
+import {
+  partyByName,
+  partyNamesOf,
+  mainPartyName,
+  additionalPartiesOf,
+  charactersInParty,
+  hasNoParty
+} from '../modules/parties/membership.js';
 
 function downloadFile(content, filename, mimeType) {
   const blob = new Blob([content], { type: mimeType });
@@ -23,13 +30,15 @@ export function openExportDialog() {
   let selectedTypes = new Set(['marathons', 'characters', 'finance']);
   let selectedMarathonIds = new Set();
   let selectedPartyNames = new Set();
-  let selectedCharacterIds = new Set(); 
-  let partySelectedCharacters = {}; 
+  let selectedCharacterIds = new Set();
+  let partySelectedCharacters = {};
 
   const allMarathons = [...state.marathons].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  
-  const allParties = [...state.parties].sort((a, b) => (Number(a.order) || 1e9) - (Number(b.order) || 1e9)).map(p => p.name);
-  
+
+  const allParties = [...state.parties]
+    .sort((a, b) => (Number(a.order) || 1e9) - (Number(b.order) || 1e9))
+    .map(p => p.name);
+
   const allCharacters = [...state.characters].sort((a, b) => a.nick.localeCompare(b.nick, 'ru'));
 
   const contentTemplate = () => `
@@ -38,10 +47,10 @@ export function openExportDialog() {
       <!-- ШАГ 1: ТИПЫ ДАННЫХ -->
       <h4 style="margin-top:0;">1. Выберите типы данных</h4>
       <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-        <label><input type="checkbox" id="chk-marathons" ${selectedTypes.has('marathons') ? 'checked':''}/> 🏃 Марафоны (Экспорт шаблона без участников)</label>
-        <label><input type="checkbox" id="chk-characters" ${selectedTypes.has('characters') ? 'checked':''}/> 👤 Персонажи (Ручной выбор)</label>
-        <label><input type="checkbox" id="chk-parties" ${selectedTypes.has('parties') ? 'checked':''}/> 🛡️ Пати (Выбор групп и их состава)</label>
-        <label><input type="checkbox" id="chk-finance" ${selectedTypes.has('finance') ? 'checked':''}/> 💰 Финансы — раздел «Банк» (реестр, комиссионка, долги)</label>
+        <label><input type="checkbox" id="chk-marathons" ${selectedTypes.has('marathons') ? 'checked' : ''}/> 🏃 Марафоны (Экспорт шаблона без участников)</label>
+        <label><input type="checkbox" id="chk-characters" ${selectedTypes.has('characters') ? 'checked' : ''}/> 👤 Персонажи (Ручной выбор)</label>
+        <label><input type="checkbox" id="chk-parties" ${selectedTypes.has('parties') ? 'checked' : ''}/> 🛡️ Пати (Выбор групп и их состава)</label>
+        <label><input type="checkbox" id="chk-finance" ${selectedTypes.has('finance') ? 'checked' : ''}/> 💰 Финансы — раздел «Банк» (реестр, комиссионка, долги)</label>
       </div>
 
       <!-- ШАГ 2: ДЕТАЛИ ВЫБОРА -->
@@ -126,7 +135,7 @@ export function openExportDialog() {
         const incSync = document.getElementById('inc-sync')?.checked || false;
 
         // Сбор финального списка ID персонажей
-        const finalCharIds = new Set([...selectedCharacterIds]); 
+        const finalCharIds = new Set([...selectedCharacterIds]);
         Object.values(partySelectedCharacters).forEach(idsArray => {
           idsArray.forEach(id => finalCharIds.add(id));
         });
@@ -135,84 +144,92 @@ export function openExportDialog() {
 
         // Типы данных читаем с чекбоксов: selectedTypes — только значения по умолчанию
         if (chkMarathons.checked) {
-           let marathonsToExport = [];
-           
-           if (selectedMarathonIds.size === 0 && allMarathons.length > 0) {
-              marathonsToExport = [...allMarathons];
-           } else {
-              marathonsToExport = allMarathons.filter(m => selectedMarathonIds.has(m.id));
-           }
+          let marathonsToExport = [];
 
-           // ВАЖНО: Очищаем марафоны от личных данных перед сохранением в файл
-           exportData.marathons = marathonsToExport.map(m => ({
-             ...JSON.parse(JSON.stringify(m)),
-             // ОЧИСТКА ЛИЧНЫХ ДАННЫХ (структура, задания и награды сохраняются):
-             participantIds: [],
-             assignments: {},
-             progress: {},
-             lastSync: null,
-             balance: { start: {}, end: {} },
-             awards: [],
-             status: m.kind === 'series' ? undefined : 'active',
-             completedAt: null
-           }));
-           if (state.marathonTemplates?.length) exportData.marathonTemplates = JSON.parse(JSON.stringify(state.marathonTemplates));
+          if (selectedMarathonIds.size === 0 && allMarathons.length > 0) {
+            marathonsToExport = [...allMarathons];
+          } else {
+            marathonsToExport = allMarathons.filter(m => selectedMarathonIds.has(m.id));
+          }
+
+          // ВАЖНО: Очищаем марафоны от личных данных перед сохранением в файл
+          exportData.marathons = marathonsToExport.map(m => ({
+            ...JSON.parse(JSON.stringify(m)),
+            // ОЧИСТКА ЛИЧНЫХ ДАННЫХ (структура, задания и награды сохраняются):
+            participantIds: [],
+            assignments: {},
+            progress: {},
+            lastSync: null,
+            balance: { start: {}, end: {} },
+            awards: [],
+            status: m.kind === 'series' ? undefined : 'active',
+            completedAt: null
+          }));
+          if (state.marathonTemplates?.length)
+            exportData.marathonTemplates = JSON.parse(JSON.stringify(state.marathonTemplates));
         }
 
         if (chkParties.checked) {
-           const partiesToExport = state.parties.filter(p => selectedPartyNames.has(p.name));
-           if(partiesToExport.length > 0) exportData.parties = partiesToExport;
+          const partiesToExport = state.parties.filter(p => selectedPartyNames.has(p.name));
+          if (partiesToExport.length > 0) exportData.parties = partiesToExport;
         }
 
         if (chkCharacters.checked || chkParties.checked) {
-           const charsToExport = state.characters.filter(c => finalCharIds.has(c.id));
-           
-           // Структура как в state.json: импорт понимает её без преобразований
-           exportData.characters = charsToExport.map(c => {
-             const copy = JSON.parse(JSON.stringify(c));
-             const clean = {
-               id: copy.id, nick: copy.nick, class: copy.class, partyIds: copy.partyIds || [], mainPartyId: copy.mainPartyId || null, level: copy.level, sky: copy.sky,
-               createdAt: copy.createdAt, updatedAt: copy.updatedAt
-             };
-             const contacts = {};
-             if (incEmails) {
-               contacts.email = copy.contacts?.email || '';
-               contacts.recoveryEmail = copy.contacts?.recoveryEmail || '';
-               contacts.phone = copy.contacts?.phone || '';
-             }
-             if (incPasswords) contacts.password = copy.contacts?.password || '';
-             if (Object.keys(contacts).length) clean.contacts = contacts;
-             if (incStats) clean.stats = copy.stats;
-             if (incPasses) clean.dungeonPasses = copy.dungeonPasses;
-             if (incCoins) {
-               clean.ancientCoins = copy.ancientCoins;
-               clean.lastCoinUpdate = copy.lastCoinUpdate;
-               clean.coinsParserV = copy.coinsParserV || 0;
-               clean.coinHistory = copy.coinHistory;
-             }
-             if (incTags) clean.tags = copy.tags;
-             if (incNotes) clean.notes = copy.notes || '';
-             if (incSync) clean.marathonData = copy.marathonData;
-             return clean;
-           });
+          const charsToExport = state.characters.filter(c => finalCharIds.has(c.id));
 
-           // partyIds ссылаются на id партий: кладём в файл и сами партии, иначе при импорте ссылки потеряются
-           const needed = new Set(charsToExport.flatMap(c => c.partyIds || []));
-           const have = new Set((exportData.parties || []).map(p => p.id));
-           const extra = state.parties.filter(p => needed.has(p.id) && !have.has(p.id));
-           if (extra.length) exportData.parties = [...(exportData.parties || []), ...JSON.parse(JSON.stringify(extra))];
+          // Структура как в state.json: импорт понимает её без преобразований
+          exportData.characters = charsToExport.map(c => {
+            const copy = JSON.parse(JSON.stringify(c));
+            const clean = {
+              id: copy.id,
+              nick: copy.nick,
+              class: copy.class,
+              partyIds: copy.partyIds || [],
+              mainPartyId: copy.mainPartyId || null,
+              level: copy.level,
+              sky: copy.sky,
+              createdAt: copy.createdAt,
+              updatedAt: copy.updatedAt
+            };
+            const contacts = {};
+            if (incEmails) {
+              contacts.email = copy.contacts?.email || '';
+              contacts.recoveryEmail = copy.contacts?.recoveryEmail || '';
+              contacts.phone = copy.contacts?.phone || '';
+            }
+            if (incPasswords) contacts.password = copy.contacts?.password || '';
+            if (Object.keys(contacts).length) clean.contacts = contacts;
+            if (incStats) clean.stats = copy.stats;
+            if (incPasses) clean.dungeonPasses = copy.dungeonPasses;
+            if (incCoins) {
+              clean.ancientCoins = copy.ancientCoins;
+              clean.lastCoinUpdate = copy.lastCoinUpdate;
+              clean.coinsParserV = copy.coinsParserV || 0;
+              clean.coinHistory = copy.coinHistory;
+            }
+            if (incTags) clean.tags = copy.tags;
+            if (incNotes) clean.notes = copy.notes || '';
+            if (incSync) clean.marathonData = copy.marathonData;
+            return clean;
+          });
+
+          // partyIds ссылаются на id партий: кладём в файл и сами партии, иначе при импорте ссылки потеряются
+          const needed = new Set(charsToExport.flatMap(c => c.partyIds || []));
+          const have = new Set((exportData.parties || []).map(p => p.id));
+          const extra = state.parties.filter(p => needed.has(p.id) && !have.has(p.id));
+          if (extra.length) exportData.parties = [...(exportData.parties || []), ...JSON.parse(JSON.stringify(extra))];
         }
 
         // 4. ЭКСПОРТ ФИНАНСОВ (раздел «Банк» целиком)
         if (document.getElementById('chk-finance')?.checked) {
-           exportData.finance = JSON.parse(JSON.stringify(state.finance));
+          exportData.finance = JSON.parse(JSON.stringify(state.finance));
         }
 
         // Генерация файла
         let fileContent = '';
         let mimeType = '';
         let fileName = '';
-        const dateStamp = new Date().toISOString().slice(0,10);
+        const dateStamp = new Date().toISOString().slice(0, 10);
 
         if (format === 'json') {
           fileContent = JSON.stringify(exportData, null, 2);
@@ -220,19 +237,29 @@ export function openExportDialog() {
           fileName = `tvinoferma_export_${dateStamp}.json`;
         } else if (format === 'csv') {
           if (!exportData.characters || exportData.characters.length === 0) {
-             setError('Для CSV необходимо выбрать хотя бы одного персонажа.');
-             return false;
+            setError('Для CSV необходимо выбрать хотя бы одного персонажа.');
+            return false;
           }
-          
+
           const headers = ['ID', 'Nick', 'Class', 'Party', 'Extra Parties', 'Level'];
           if (incEmails) headers.push('Email');
           if (incPasses) headers.push('Weapon Passes', 'Armor Passes', 'Relic Passes');
           if (incCoins) headers.push('Ancient Coins');
 
           const rows = exportData.characters.map(c => {
-            const row = [c.id, `"${c.nick}"`, c.class || '', `"${mainPartyName(c, state.parties) || '-'}"`, `"${additionalPartiesOf(c, state.parties).map(p => p.name).join(' / ')}"`, c.level];
+            const row = [
+              c.id,
+              `"${c.nick}"`,
+              c.class || '',
+              `"${mainPartyName(c, state.parties) || '-'}"`,
+              `"${additionalPartiesOf(c, state.parties)
+                .map(p => p.name)
+                .join(' / ')}"`,
+              c.level
+            ];
             if (incEmails) row.push(`"${c.contacts?.email || ''}"`);
-            if (incPasses) row.push(c.dungeonPasses?.weapon || 0, c.dungeonPasses?.armor || 0, c.dungeonPasses?.relic || 0);
+            if (incPasses)
+              row.push(c.dungeonPasses?.weapon || 0, c.dungeonPasses?.armor || 0, c.dungeonPasses?.relic || 0);
             if (incCoins) row.push(c.ancientCoins || 0);
             return row.join(';');
           });
@@ -245,7 +272,6 @@ export function openExportDialog() {
         downloadFile(fileContent, fileName, mimeType);
         toast('Файл успешно сохранен в папку Загрузки!', 'success');
         return true;
-
       } catch (err) {
         console.error(err);
         setError(`Ошибка: ${err.message}`);
@@ -261,7 +287,7 @@ export function openExportDialog() {
   const chkParties = document.getElementById('chk-parties');
   const detailsArea = document.getElementById('selection-details-area');
   const privacySettings = document.getElementById('privacy-settings');
-  
+
   const blockMarathons = document.getElementById('block-marathons');
   const blockParties = document.getElementById('block-parties');
   const blockIndivChars = document.getElementById('block-individual-chars');
@@ -271,13 +297,13 @@ export function openExportDialog() {
   function updateVisibility() {
     const hasAny = chkMarathons.checked || chkCharacters.checked || chkParties.checked;
     detailsArea.style.display = hasAny ? 'block' : 'none';
-    
-    privacySettings.style.display = (chkCharacters.checked || chkParties.checked) ? 'block' : 'none';
+
+    privacySettings.style.display = chkCharacters.checked || chkParties.checked ? 'block' : 'none';
 
     blockMarathons.style.display = chkMarathons.checked ? 'block' : 'none';
     blockParties.style.display = chkParties.checked ? 'block' : 'none';
     blockIndivChars.style.display = chkCharacters.checked ? 'block' : 'none';
-    
+
     renderLists();
   }
 
@@ -285,130 +311,146 @@ export function openExportDialog() {
     // 1. Марафоны
     if (chkMarathons.checked) {
       const listEl = document.getElementById('list-marathons');
-      listEl.innerHTML = allMarathons.map(m => `
+      listEl.innerHTML = allMarathons
+        .map(
+          m => `
         <label style="display:block; padding:2px 0;">
-          <input type="checkbox" value="${m.id}" ${selectedMarathonIds.has(m.id) ? 'checked':''} onchange="window.handleMarathonCheck(this)" />
+          <input type="checkbox" value="${m.id}" ${selectedMarathonIds.has(m.id) ? 'checked' : ''} onchange="window.handleMarathonCheck(this)" />
           ${escapeHtml(m.title)} <small class="muted">(${m.startDate})</small>
         </label>
-      `).join('');
+      `
+        )
+        .join('');
     }
 
     // 2. Пати
     if (chkParties.checked) {
       const listEl = document.getElementById('list-parties');
       // Добавляем опцию "Без пати" (__none__)
-      const options = [`<option value="__none__">Без пати</option>`, ...allParties.map(p => `<option value="${p}">${p}</option>`)];
-      
+      const options = [
+        `<option value="__none__">Без пати</option>`,
+        ...allParties.map(p => `<option value="${p}">${p}</option>`)
+      ];
+
       listEl.innerHTML = `
         <div style="display:flex; flex-direction:column; gap:4px;">
-          ${options.map(optVal => {
-             const val = optVal.match(/value="([^"]+)"/)[1];
-             const label = optVal.match(/>([^<]+)</)[1];
-             const isChecked = selectedPartyNames.has(val);
-             return `
+          ${options
+            .map(optVal => {
+              const val = optVal.match(/value="([^"]+)"/)[1];
+              const label = optVal.match(/>([^<]+)</)[1];
+              const isChecked = selectedPartyNames.has(val);
+              return `
                <label style="display:block; padding:2px 0;">
-                 <input type="checkbox" value="${val}" ${isChecked ? 'checked':''} onchange="window.handlePartyCheck(this)" />
+                 <input type="checkbox" value="${val}" ${isChecked ? 'checked' : ''} onchange="window.handlePartyCheck(this)" />
                  ${escapeHtml(label)}
                </label>
              `;
-          }).join('')}
+            })
+            .join('')}
         </div>
       `;
-      
+
       updatePartySubList();
     }
 
     // 3. Индивидуальные персонажи
     if (chkCharacters.checked) {
-       const listEl = document.getElementById('list-individual-chars');
-       listEl.innerHTML = allCharacters.map(c => `
+      const listEl = document.getElementById('list-individual-chars');
+      listEl.innerHTML = allCharacters
+        .map(
+          c => `
          <label style="display:block; padding:2px 0;">
-           <input type="checkbox" value="${c.id}" ${selectedCharacterIds.has(c.id) ? 'checked':''} onchange="window.handleCharCheck(this)" />
+           <input type="checkbox" value="${c.id}" ${selectedCharacterIds.has(c.id) ? 'checked' : ''} onchange="window.handleCharCheck(this)" />
            ${escapeHtml(c.nick)} <small class="muted">(${escapeHtml(partyNamesOf(c, state.parties).join(', ') || '-')})</small>
          </label>
-       `).join('');
+       `
+        )
+        .join('');
     }
   }
 
   function updatePartySubList() {
-     if (selectedPartyNames.size === 0) {
-        subBlockPartyChars.style.display = 'none';
-        return;
-     }
-     
-     subBlockPartyChars.style.display = 'block';
-     listPartyCharsContainer.innerHTML = ''; // Очищаем перед перерисовкой
-     
-     selectedPartyNames.forEach(partyName => {
-        // Находим персонажей этой пати
-        let charsInParty;
-        if (partyName === '__none__') {
-           charsInParty = allCharacters.filter(c => hasNoParty(c, state.parties));
-        } else {
-           const party = partyByName(state.parties, partyName);
-           charsInParty = party ? charactersInParty(allCharacters, party.id) : [];
-        }
+    if (selectedPartyNames.size === 0) {
+      subBlockPartyChars.style.display = 'none';
+      return;
+    }
 
-        if (charsInParty.length === 0) return;
+    subBlockPartyChars.style.display = 'block';
+    listPartyCharsContainer.innerHTML = ''; // Очищаем перед перерисовкой
 
-        // Инициализируем массив выбранных ID для этой пати, если его еще нет
-        if (!partySelectedCharacters[partyName]) {
-           partySelectedCharacters[partyName] = charsInParty.map(c => c.id); // По умолчанию все выбраны
-        }
+    selectedPartyNames.forEach(partyName => {
+      // Находим персонажей этой пати
+      let charsInParty;
+      if (partyName === '__none__') {
+        charsInParty = allCharacters.filter(c => hasNoParty(c, state.parties));
+      } else {
+        const party = partyByName(state.parties, partyName);
+        charsInParty = party ? charactersInParty(allCharacters, party.id) : [];
+      }
 
-        const groupDiv = document.createElement('div');
-        groupDiv.style.marginBottom = '8px';
-        groupDiv.style.padding = '4px';
-        groupDiv.style.borderLeft = '2px solid var(--accent)';
-        groupDiv.style.background = 'rgba(255,255,255,0.02)';
+      if (charsInParty.length === 0) return;
 
-        let html = `<strong style="font-size:0.85rem; display:block; margin-bottom:4px;">${escapeHtml(partyName === '__none__' ? 'Без пати' : partyName)}</strong>`;
-        html += `<div style="display:flex; flex-wrap:wrap; gap:8px;">`;
-        
-        charsInParty.forEach(c => {
-           const isSelected = partySelectedCharacters[partyName].includes(c.id);
-           html += `
+      // Инициализируем массив выбранных ID для этой пати, если его еще нет
+      if (!partySelectedCharacters[partyName]) {
+        partySelectedCharacters[partyName] = charsInParty.map(c => c.id); // По умолчанию все выбраны
+      }
+
+      const groupDiv = document.createElement('div');
+      groupDiv.style.marginBottom = '8px';
+      groupDiv.style.padding = '4px';
+      groupDiv.style.borderLeft = '2px solid var(--accent)';
+      groupDiv.style.background = 'rgba(255,255,255,0.02)';
+
+      let html = `<strong style="font-size:0.85rem; display:block; margin-bottom:4px;">${escapeHtml(partyName === '__none__' ? 'Без пати' : partyName)}</strong>`;
+      html += `<div style="display:flex; flex-wrap:wrap; gap:8px;">`;
+
+      charsInParty.forEach(c => {
+        const isSelected = partySelectedCharacters[partyName].includes(c.id);
+        html += `
              <label style="display:inline-flex; align-items:center; gap:4px; font-size:0.85rem; cursor:pointer;">
                <input type="checkbox" value="${c.id}" data-party="${partyName}" ${isSelected ? 'checked' : ''} onchange="window.handlePartyCharCheck(this)" />
                ${escapeHtml(c.nick)}
              </label>
            `;
-        });
-        html += `</div>`;
-        
-        groupDiv.innerHTML = html;
-        listPartyCharsContainer.appendChild(groupDiv);
-     });
+      });
+      html += `</div>`;
+
+      groupDiv.innerHTML = html;
+      listPartyCharsContainer.appendChild(groupDiv);
+    });
   }
 
   // Глобальные хелперы
-  window.handleMarathonCheck = (cb) => {
-    if(cb.checked) selectedMarathonIds.add(cb.value); else selectedMarathonIds.delete(cb.value);
-  };
-  
-  window.handlePartyCheck = (cb) => {
-    if(cb.checked) selectedPartyNames.add(cb.value); else selectedPartyNames.delete(cb.value);
-    updatePartySubList();
-  };
-  
-  window.handleCharCheck = (cb) => {
-    if(cb.checked) selectedCharacterIds.add(cb.value); else selectedCharacterIds.delete(cb.value);
+  window.handleMarathonCheck = cb => {
+    if (cb.checked) selectedMarathonIds.add(cb.value);
+    else selectedMarathonIds.delete(cb.value);
   };
 
-  window.handlePartyCharCheck = (cb) => {
+  window.handlePartyCheck = cb => {
+    if (cb.checked) selectedPartyNames.add(cb.value);
+    else selectedPartyNames.delete(cb.value);
+    updatePartySubList();
+  };
+
+  window.handleCharCheck = cb => {
+    if (cb.checked) selectedCharacterIds.add(cb.value);
+    else selectedCharacterIds.delete(cb.value);
+  };
+
+  window.handlePartyCharCheck = cb => {
     const partyName = cb.dataset.party;
     const charId = cb.value;
-    
+
     if (!partySelectedCharacters[partyName]) {
-       partySelectedCharacters[partyName] = [];
+      partySelectedCharacters[partyName] = [];
     }
 
     if (cb.checked) {
-       if (!partySelectedCharacters[partyName].includes(charId)) {
-          partySelectedCharacters[partyName].push(charId);
-       }
+      if (!partySelectedCharacters[partyName].includes(charId)) {
+        partySelectedCharacters[partyName].push(charId);
+      }
     } else {
-       partySelectedCharacters[partyName] = partySelectedCharacters[partyName].filter(id => id !== charId);
+      partySelectedCharacters[partyName] = partySelectedCharacters[partyName].filter(id => id !== charId);
     }
   };
 

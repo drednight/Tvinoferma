@@ -43,21 +43,49 @@ const BLOCK_TEXT = {
  * @returns {Promise<object[]>} строки итога: по аккаунтам, у каждого предметы по порядку
  */
 export async function runShopBatch({
-  accounts, dryRun = false, signal = { cancelled: false }, invokeFn, limiter = browserSlots,
-  retries = 0, retryDelayMs = 2000, task, onRow, onPurchase, sleepFn = sleep, random = Math.random, now = () => new Date()
+  accounts,
+  dryRun = false,
+  signal = { cancelled: false },
+  invokeFn,
+  limiter = browserSlots,
+  retries = 0,
+  retryDelayMs = 2000,
+  task,
+  onRow,
+  onPurchase,
+  sleepFn = sleep,
+  random = Math.random,
+  now = () => new Date()
 }) {
   const total = accounts.reduce((n, a) => n + a.orders.length, 0);
   const wanted = wantedNames();
-  const rows = new Map();                                   // "siteKey|ключ предмета" → строка
+  const rows = new Map(); // "siteKey|ключ предмета" → строка
   let started = 0;
   let done = 0;
 
   const rowKey = (acc, order) => `${acc.siteKey}|${order.key}`;
   const baseRow = (acc, order, balance) => ({
-    siteKey: acc.siteKey, charId: acc.char.id, nick: acc.char.nick, members: (acc.members || []).map(m => m.nick), account: acc.account || '',
-    itemKey: order.key, item: itemByKey(order.key)?.name || order.key, requested: order.requested, planned: order.qty,
-    bought: 0, spent: 0, viaHistory: 0, price: order.price, balanceBefore: balance, balanceAfter: balance,
-    status: 'not_run', detail: null, code: null, clicked: false, dryRun, at: now().toISOString()
+    siteKey: acc.siteKey,
+    charId: acc.char.id,
+    nick: acc.char.nick,
+    members: (acc.members || []).map(m => m.nick),
+    account: acc.account || '',
+    itemKey: order.key,
+    item: itemByKey(order.key)?.name || order.key,
+    requested: order.requested,
+    planned: order.qty,
+    bought: 0,
+    spent: 0,
+    viaHistory: 0,
+    price: order.price,
+    balanceBefore: balance,
+    balanceAfter: balance,
+    status: 'not_run',
+    detail: null,
+    code: null,
+    clicked: false,
+    dryRun,
+    at: now().toISOString()
   });
   const emit = (acc, order, row) => {
     if (rows.has(rowKey(acc, order))) return;
@@ -69,14 +97,22 @@ export async function runShopBatch({
 
   const attempt = async (acc, order) => {
     for (let a = 0; ; a++) {
-      task?.setStep?.(`${acc.char.nick}: ${dryRun ? 'осматриваю' : 'покупаю'} «${itemByKey(order.key)?.name}»${a ? ` (повтор ${a}/${retries})` : ''}`);
+      task?.setStep?.(
+        `${acc.char.nick}: ${dryRun ? 'осматриваю' : 'покупаю'} «${itemByKey(order.key)?.name}»${a ? ` (повтор ${a}/${retries})` : ''}`
+      );
       let payload, error;
       try {
         payload = await invokeFn('buy_shop_item', {
-          charId: acc.char.id, item: itemByKey(order.key).name, expectPrice: order.price, wanted, dryRun,
+          charId: acc.char.id,
+          item: itemByKey(order.key).name,
+          expectPrice: order.price,
+          wanted,
+          dryRun,
           timeoutSeconds: Math.min(25 + 15 * a, 60)
         });
-      } catch (e) { error = e; }
+      } catch (e) {
+        error = e;
+      }
       const decision = interpretBuy(payload, error);
       if (decision.kind !== 'retry' || a >= retries || signal.cancelled) return { payload, decision };
       task?.log?.(`${acc.char.nick}: повтор ${a + 1}/${retries} (${decision.code})`, 'info');
@@ -84,20 +120,33 @@ export async function runShopBatch({
     }
   };
 
-  const worker = async (acc) => {
+  const worker = async acc => {
     let balance = acc.balance;
-    let blocked = null;                                     // статус, из-за которого остальное у аккаунта не выполняется
+    let blocked = null; // статус, из-за которого остальное у аккаунта не выполняется
     let invoked = 0;
     for (const order of acc.orders) {
       const def = itemByKey(order.key);
       const row = baseRow(acc, order, balance);
-      if (!def || !(order.qty > 0)) { emit(acc, order, { ...row, status: 'skipped', detail: order.cap === 'limit' ? 'Лимит исчерпан' : order.cap === 'funds' ? 'Не хватает монет' : null }); continue; }
-      if (signal.cancelled) { emit(acc, order, { ...row, status: 'cancelled' }); continue; }
-      if (blocked) { emit(acc, order, { ...row, status: 'not_run', detail: BLOCK_TEXT[blocked] || BLOCK_TEXT.error }); continue; }
+      if (!def || !(order.qty > 0)) {
+        emit(acc, order, {
+          ...row,
+          status: 'skipped',
+          detail: order.cap === 'limit' ? 'Лимит исчерпан' : order.cap === 'funds' ? 'Не хватает монет' : null
+        });
+        continue;
+      }
+      if (signal.cancelled) {
+        emit(acc, order, { ...row, status: 'cancelled' });
+        continue;
+      }
+      if (blocked) {
+        emit(acc, order, { ...row, status: 'not_run', detail: BLOCK_TEXT[blocked] || BLOCK_TEXT.error });
+        continue;
+      }
 
       const startedAt = now().toISOString();
       let availableNow = order.available ?? null;
-      let stop = null;                                      // { status, detail }
+      let stop = null; // { status, detail }
       const count = dryRun ? 1 : order.qty;
       for (let i = 0; i < count; i++) {
         if (signal.cancelled) break;
@@ -108,13 +157,21 @@ export async function runShopBatch({
 
         const { payload, decision } = await attempt(acc, order);
         if (payload?.clicked) row.clicked = true;
-        if (decision.kind === 'dry') { row.status = 'dry_run'; row.detail = payload.detail || null; stop = { status: 'dry_run', detail: payload.detail || null }; break; }
+        if (decision.kind === 'dry') {
+          row.status = 'dry_run';
+          row.detail = payload.detail || null;
+          stop = { status: 'dry_run', detail: payload.detail || null };
+          break;
+        }
 
         let bought = decision.kind === 'bought';
         if (decision.kind === 'block' && decision.status === 'unknown' && Array.isArray(payload?.history)) {
           // Покупка могла пройти: в «Истории монет» должно быть больше записей, чем куплено нами в этом заказе
           const seen = countHistoryPurchases(payload.history, def, order.price, startedAt);
-          if (seen > row.bought) { bought = true; row.viaHistory++; }
+          if (seen > row.bought) {
+            bought = true;
+            row.viaHistory++;
+          }
         }
         if (bought) {
           const after = afterPurchase(payload, def);
@@ -124,19 +181,33 @@ export async function runShopBatch({
           balance = after.balance ?? roundCoins(balance - order.price);
           row.balanceAfter = balance;
           availableNow = after.item?.available ?? (before != null ? Math.max(0, before - 1) : null);
-          onPurchase?.({ acc, order, def, at: now().toISOString(), balanceAfter: balance, availableBefore: before, availableAfter: availableNow, itemAfter: after.item });
+          onPurchase?.({
+            acc,
+            order,
+            def,
+            at: now().toISOString(),
+            balanceAfter: balance,
+            availableBefore: before,
+            availableAfter: availableNow,
+            itemAfter: after.item
+          });
           continue;
         }
 
         row.code = decision.code || null;
-        const detail = decision.status === 'price_changed' && decision.price != null ? `Новая цена на сайте: ${decision.price}` : (payload?.detail || (decision.status === 'error' ? decision.code : null));
+        const detail =
+          decision.status === 'price_changed' && decision.price != null
+            ? `Новая цена на сайте: ${decision.price}`
+            : payload?.detail || (decision.status === 'error' ? decision.code : null);
         stop = { status: decision.kind === 'retry' ? 'error' : decision.status, detail };
         if (decision.kind === 'block') blocked = decision.status;
         break;
       }
 
-      if (stop) { row.status = stop.status; row.detail = stop.detail ?? row.detail; }
-      else if (signal.cancelled && row.bought < order.qty) row.status = 'cancelled';
+      if (stop) {
+        row.status = stop.status;
+        row.detail = stop.detail ?? row.detail;
+      } else if (signal.cancelled && row.bought < order.qty) row.status = 'cancelled';
       else if (row.bought >= order.requested) row.status = 'done';
       else row.status = order.cap === 'limit' ? 'limit' : order.cap === 'funds' ? 'no_funds' : 'done';
       row.balanceAfter = balance;
@@ -145,14 +216,24 @@ export async function runShopBatch({
   };
 
   const entries = await runQueue(accounts, worker, {
-    limiter, retries: 0, signal,
-    onDone: (entry) => { if (entry.error) task?.log?.(`${entry.item.char.nick}: ${entry.error?.message || entry.error}`, 'error'); }
+    limiter,
+    retries: 0,
+    signal,
+    onDone: entry => {
+      if (entry.error) task?.log?.(`${entry.item.char.nick}: ${entry.error?.message || entry.error}`, 'error');
+    }
   });
   // Если «Стоп» нажат до старта аккаунта или worker упал, строки помечаются остановленными / не выполненными
-  entries.forEach(e => e.item.orders.forEach(order => {
-    if (rows.has(rowKey(e.item, order))) return;
-    emit(e.item, order, { ...baseRow(e.item, order, e.item.balance), status: e.error ? 'error' : 'cancelled', detail: e.error ? String(e.error?.message || e.error) : null });
-  }));
+  entries.forEach(e =>
+    e.item.orders.forEach(order => {
+      if (rows.has(rowKey(e.item, order))) return;
+      emit(e.item, order, {
+        ...baseRow(e.item, order, e.item.balance),
+        status: e.error ? 'error' : 'cancelled',
+        detail: e.error ? String(e.error?.message || e.error) : null
+      });
+    })
+  );
 
   return accounts.flatMap(acc => acc.orders.map(order => rows.get(rowKey(acc, order))).filter(Boolean));
 }

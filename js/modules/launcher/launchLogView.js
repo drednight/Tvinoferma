@@ -9,19 +9,30 @@ import { registerLogSource } from '../../core/logHub.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { formatDuration } from './launch.js';
 import {
-  loadLaunchLog, clearLaunchLog, statsOf, perCharacter, perDelay, delayAdvice, fmtMs, UNSTABLE_MIN_ATTEMPTS, UNSTABLE_RATE
+  loadLaunchLog,
+  clearLaunchLog,
+  statsOf,
+  perCharacter,
+  perDelay,
+  delayAdvice,
+  fmtMs,
+  UNSTABLE_MIN_ATTEMPTS,
+  UNSTABLE_RATE
 } from './launchLog.js';
 
-const when = (iso) => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
-const pct = (v) => `${Math.round(v * 100)}%`;
+const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
+const pct = v => `${Math.round(v * 100)}%`;
 
 const STATUS_TEXT = {
-  ok: '✅ запущено', failed: '❌ ошибка', cancelled: '⏹ отменено',
-  running: '⏭ уже было запущено, пропущено', nogc: '🚫 не указан GameCenter'
+  ok: '✅ запущено',
+  failed: '❌ ошибка',
+  cancelled: '⏹ отменено',
+  running: '⏭ уже было запущено, пропущено',
+  nogc: '🚫 не указан GameCenter'
 };
 
 /** Статус записи для общего журнала: ошибки — красный, пропуски и отмены — жёлтый. */
-const runStatus = (r) => (r.failed ? 'error' : r.cancelled || r.noGc ? 'warn' : 'ok');
+const runStatus = r => (r.failed ? 'error' : r.cancelled || r.noGc ? 'warn' : 'ok');
 
 /** Подпись запуска: «Запущено 4 из 5 · ошибок 1 · 1 мин 12 с». */
 export function runSummary(r) {
@@ -36,11 +47,15 @@ export function runSummary(r) {
 }
 
 export function runDetailsHtml(r) {
-  const rows = r.items.map(it => `
+  const rows = r.items
+    .map(
+      it => `
     <tr><td><b>${escapeHtml(it.nick)}</b>${it.noLogin ? ' <span class="muted" title="Вход в GameCenter не запомнен: окно открылось под открытым аккаунтом">🔓</span>' : ''}</td>
       <td>${STATUS_TEXT[it.status] || escapeHtml(it.status)}</td>
       <td>${it.status === 'ok' || it.status === 'failed' ? escapeHtml(fmtMs(it.ms)) : '—'}</td>
-      <td class="muted">${escapeHtml(it.error || '')}</td></tr>`).join('');
+      <td class="muted">${escapeHtml(it.error || '')}</td></tr>`
+    )
+    .join('');
   return `
     <div class="tl-summary"><span>🚀 <b>${escapeHtml(r.title)}</b></span><span class="muted">${escapeHtml(when(r.at))}</span></div>
     <div class="promo-log-h">${escapeHtml(runSummary(r))}</div>
@@ -48,20 +63,29 @@ export function runDetailsHtml(r) {
     <div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th><th>Время</th><th>Ошибка</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-const runText = (r) => [
-  `${when(r.at)} · ${r.title} · ${runSummary(r)}`,
-  `Пауза: ${r.delayMs / 1000} с`,
-  ...r.items.map(it => `${it.nick}: ${STATUS_TEXT[it.status] || it.status}${it.ms != null && (it.status === 'ok' || it.status === 'failed') ? ` · ${fmtMs(it.ms)}` : ''}${it.error ? ` · ${it.error}` : ''}`)
-].join('\n');
+const runText = r =>
+  [
+    `${when(r.at)} · ${r.title} · ${runSummary(r)}`,
+    `Пауза: ${r.delayMs / 1000} с`,
+    ...r.items.map(
+      it =>
+        `${it.nick}: ${STATUS_TEXT[it.status] || it.status}${it.ms != null && (it.status === 'ok' || it.status === 'failed') ? ` · ${fmtMs(it.ms)}` : ''}${it.error ? ` · ${it.error}` : ''}`
+    )
+  ].join('\n');
 
 function openWithCopy(title, body, copyText) {
   const ov = openOverlay({ title, wide: true });
   ov.body.innerHTML = body;
-  ov.foot.innerHTML = '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
+  ov.foot.innerHTML =
+    '<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать</button><button type="button" class="btn primary" data-close>Закрыть</button></div>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
-  ov.foot.querySelector('[data-copy]').onclick = async (ev) => {
-    try { await navigator.clipboard.writeText(copyText); ev.target.textContent = '✔ Скопировано'; }
-    catch { ev.target.textContent = 'Не удалось скопировать'; }
+  ov.foot.querySelector('[data-copy]').onclick = async ev => {
+    try {
+      await navigator.clipboard.writeText(copyText);
+      ev.target.textContent = '✔ Скопировано';
+    } catch {
+      ev.target.textContent = 'Не удалось скопировать';
+    }
   };
   return ov;
 }
@@ -80,13 +104,22 @@ export function statsView(log, currentDelaySec) {
   const advice = delayAdvice(delays, currentDelaySec);
   const unstable = chars.filter(c => c.unstable);
 
-  const charRows = chars.slice(0, 60).map(c => `
+  const charRows = chars
+    .slice(0, 60)
+    .map(
+      c => `
     <tr class="${c.unstable ? 'promo-alert-row' : ''}"><td><b>${escapeHtml(c.nick)}</b>${c.unstable ? ' ⚠️' : ''}</td>
       <td>${c.attempts}</td><td>${c.ok}</td><td>${c.failed}${c.attempts ? ` <span class="muted">(${pct(c.failRate)})</span>` : ''}</td>
       <td>${escapeHtml(fmtMs(c.avgMs))}</td><td>${c.skipped || '—'}</td>
-      <td class="muted">${c.lastError ? `${escapeHtml(c.lastError)} · ${escapeHtml(when(c.lastErrorAt))}` : ''}</td></tr>`).join('');
-  const delayRows = delays.map(d => `
-    <tr><td>${d.delaySec} с</td><td>${d.windows}</td><td>${d.failed} <span class="muted">(${pct(d.failRate)})</span></td><td>${escapeHtml(fmtMs(d.avgMs))}</td></tr>`).join('');
+      <td class="muted">${c.lastError ? `${escapeHtml(c.lastError)} · ${escapeHtml(when(c.lastErrorAt))}` : ''}</td></tr>`
+    )
+    .join('');
+  const delayRows = delays
+    .map(
+      d => `
+    <tr><td>${d.delaySec} с</td><td>${d.windows}</td><td>${d.failed} <span class="muted">(${pct(d.failRate)})</span></td><td>${escapeHtml(fmtMs(d.avgMs))}</td></tr>`
+    )
+    .join('');
 
   const html = `
     <div class="tl-summary"><span>📊 <b>Статистика запусков</b></span>
@@ -128,13 +161,24 @@ export const launchLogSource = {
   id: 'launch',
   title: 'Запуски',
   icon: '🚀',
-  list: () => loadLaunchLog().map(r => ({
-    key: r.id, at: r.at, title: r.title, status: runStatus(r), summary: runSummary(r)
-  })),
-  open: (item) => openLaunchRun(item.key),
+  list: () =>
+    loadLaunchLog().map(r => ({
+      key: r.id,
+      at: r.at,
+      title: r.title,
+      status: runStatus(r),
+      summary: runSummary(r)
+    })),
+  open: item => openLaunchRun(item.key),
   clear: () => clearLaunchLog(),
-  clearConfirm: 'Очистить историю запусков игры? Статистика (время запуска окон, нестабильные персонажи) тоже сбросится.',
-  actions: () => [{ id: 'stats', label: '📊 Статистика', disabled: !loadLaunchLog().length, run: () => openLaunchStats() }],
-  subscribe: (fn) => { window.addEventListener('tf-launch-log', fn); return () => window.removeEventListener('tf-launch-log', fn); }
+  clearConfirm:
+    'Очистить историю запусков игры? Статистика (время запуска окон, нестабильные персонажи) тоже сбросится.',
+  actions: () => [
+    { id: 'stats', label: '📊 Статистика', disabled: !loadLaunchLog().length, run: () => openLaunchStats() }
+  ],
+  subscribe: fn => {
+    window.addEventListener('tf-launch-log', fn);
+    return () => window.removeEventListener('tf-launch-log', fn);
+  }
 };
 registerLogSource(launchLogSource);

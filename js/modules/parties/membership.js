@@ -11,17 +11,22 @@ export const NO_PARTY = '__none__';
 /** Подпись группы персонажей без партии. */
 export const NO_PARTY_LABEL = 'Без пати';
 
-const lower = (s) => String(s ?? '').trim().toLowerCase();
+const lower = s =>
+  String(s ?? '')
+    .trim()
+    .toLowerCase();
 
 /** Массив id без пустых значений и дублей, порядок сохраняется. */
 export function normalizePartyIds(input) {
-  const list = Array.isArray(input) ? input : (input == null || input === '' ? [] : [input]);
+  const list = Array.isArray(input) ? input : input == null || input === '' ? [] : [input];
   const seen = new Set();
-  return list.map(x => String(x ?? '').trim()).filter(id => {
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
+  return list
+    .map(x => String(x ?? '').trim())
+    .filter(id => {
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
 }
 
 export const partyById = (parties, id) => (parties || []).find(p => p.id === id) || null;
@@ -30,7 +35,7 @@ export const partyByName = (parties, name) => (parties || []).find(p => lower(p.
 /** Основная пати: допустимое значение из списка id, иначе первая, иначе null. */
 export function resolveMainPartyId(partyIds, mainPartyId) {
   const ids = normalizePartyIds(partyIds);
-  return ids.includes(mainPartyId) ? mainPartyId : (ids[0] || null);
+  return ids.includes(mainPartyId) ? mainPartyId : ids[0] || null;
 }
 
 /** Приводит char.partyIds / char.mainPartyId к инварианту (мутирует). */
@@ -40,15 +45,15 @@ export function ensureMainParty(char) {
   return char;
 }
 
-const byOrder = (a, b) => (Number(a.order) || Number.MAX_SAFE_INTEGER) - (Number(b.order) || Number.MAX_SAFE_INTEGER) ||
+const byOrder = (a, b) =>
+  (Number(a.order) || Number.MAX_SAFE_INTEGER) - (Number(b.order) || Number.MAX_SAFE_INTEGER) ||
   String(a.name).localeCompare(String(b.name), 'ru');
 
 /** Партии персонажа (объекты): основная первой, затем дополнительные в порядке партий. */
 export function partiesOf(char, parties) {
   const ids = new Set(char?.partyIds || []);
   const main = char?.mainPartyId;
-  return (parties || []).filter(p => ids.has(p.id)).sort((a, b) =>
-    (b.id === main) - (a.id === main) || byOrder(a, b));
+  return (parties || []).filter(p => ids.has(p.id)).sort((a, b) => (b.id === main) - (a.id === main) || byOrder(a, b));
 }
 
 export const partyNamesOf = (char, parties) => partiesOf(char, parties).map(p => p.name);
@@ -169,12 +174,21 @@ export function createPartyWith(parties, chars, name, { asMain = true, now = new
   if (!title) return { error: 'Введите название новой пати.' };
   if (partyByName(parties, title)) return { error: `Пати «${title}» уже существует.` };
   const max = (parties || []).reduce((m, p) => Math.max(m, Number(p.order) || 0), 0);
-  const party = { id: newId(), name: title, order: Math.max(max, (parties || []).length) + 1, createdAt: now, updatedAt: now };
+  const party = {
+    id: newId(),
+    name: title,
+    order: Math.max(max, (parties || []).length) + 1,
+    createdAt: now,
+    updatedAt: now
+  };
   parties.push(party);
   let changed = 0;
   (chars || []).forEach(c => {
     const did = asMain ? setMainParty(c, party.id) : setMembership(c, party.id, true);
-    if (did) { c.updatedAt = now; changed++; }
+    if (did) {
+      c.updatedAt = now;
+      changed++;
+    }
   });
   return { party, changed };
 }
@@ -182,7 +196,9 @@ export function createPartyWith(parties, chars, name, { asMain = true, now = new
 /** Убирает партию у всех персонажей (удаление партии). Возвращает число затронутых. */
 export function removePartyFromAll(chars, partyId) {
   let n = 0;
-  (chars || []).forEach(c => { if (setMembership(c, partyId, false)) n++; });
+  (chars || []).forEach(c => {
+    if (setMembership(c, partyId, false)) n++;
+  });
   return n;
 }
 
@@ -208,7 +224,9 @@ export function remapCharacterParties(chars, idMap) {
 }
 
 function newId() {
-  return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `p-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  return globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `p-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -223,7 +241,10 @@ export function planPartyImport(localParties, incomingParties) {
   (incomingParties || []).forEach(p => {
     if (!p || !lower(p.name)) return;
     const same = byName.get(lower(p.name));
-    if (same) { idMap.set(p.id, same.id); return; }
+    if (same) {
+      idMap.set(p.id, same.id);
+      return;
+    }
     const id = p.id && !usedIds.has(p.id) ? p.id : newId();
     const created = { ...p, id };
     idMap.set(p.id, id);
@@ -254,7 +275,9 @@ export function totalCoins(chars) {
  */
 export function coinSummary(parties, chars) {
   const perParty = {};
-  (parties || []).forEach(p => { perParty[p.id] = totalCoins(charactersInMainParty(chars, p.id)); });
+  (parties || []).forEach(p => {
+    perParty[p.id] = totalCoins(charactersInMainParty(chars, p.id));
+  });
   const noParty = totalCoins((chars || []).filter(c => hasNoParty(c, parties)));
   return { perParty, noParty, overall: totalCoins(chars) };
 }

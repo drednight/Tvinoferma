@@ -3,11 +3,15 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  formatUptime, parseWindowTitle, windowRows, rowLabel, closeSelectedText
+  formatUptime,
+  parseWindowTitle,
+  windowRows,
+  rowLabel,
+  closeSelectedText
 } from '../js/modules/launcher/windowList.js';
 
 const NOW = Date.parse('2026-10-04T12:00:00Z');
-const at = (minAgo) => NOW - minAgo * 60000;
+const at = minAgo => NOW - minAgo * 60000;
 
 describe('время работы окна', () => {
   it('секунды, минуты, часы', () => {
@@ -51,7 +55,8 @@ describe('строки списка окон', () => {
   it('окно сопоставляется с персонажем по нику, класс берётся из карточки', () => {
     const rows = windowRows(
       [{ pid: 100, image: 'elementclient_64.exe', startedAt: at(10), title: 'Ауразак — Воин', elevated: false }],
-      characters, { now: NOW }
+      characters,
+      { now: NOW }
     );
     expect(rows[0]).toMatchObject({ pid: 100, nick: 'Ауразак', cls: 'Воин', known: true, charId: 'a' });
     expect(rows[0].uptimeMs).toBe(600000);
@@ -60,7 +65,8 @@ describe('строки списка окон', () => {
   it('окно не из Твинофермы остаётся безымянным и показывается как PID', () => {
     const rows = windowRows(
       [{ pid: 4242, image: 'elementclient_64.exe', startedAt: at(3), title: 'Perfect World', elevated: false }],
-      characters, { now: NOW }
+      characters,
+      { now: NOW }
     );
     expect(rows[0].known).toBe(false);
     expect(rows[0].nick).toBe('');
@@ -75,19 +81,27 @@ describe('строки списка окон', () => {
   });
 
   it('порядок: сначала узнанные персонажи по алфавиту, затем безымянные окна по PID', () => {
-    const rows = windowRows([
-      { pid: 500, title: 'Perfect World', startedAt: at(1) },
-      { pid: 200, title: 'Мираж — Маг', startedAt: at(1) },
-      { pid: 100, title: 'Ауразак — Воин', startedAt: at(1) }
-    ], characters, { now: NOW });
+    const rows = windowRows(
+      [
+        { pid: 500, title: 'Perfect World', startedAt: at(1) },
+        { pid: 200, title: 'Мираж — Маг', startedAt: at(1) },
+        { pid: 100, title: 'Ауразак — Воин', startedAt: at(1) }
+      ],
+      characters,
+      { now: NOW }
+    );
     expect(rows.map(r => r.pid)).toEqual([100, 200, 500]);
   });
 
   it('фильтр по пати оставляет только участников выбранных пати', () => {
-    const rows = windowRows([
-      { pid: 100, title: 'Ауразак — Воин', startedAt: at(1) },
-      { pid: 200, title: 'Мираж — Маг', startedAt: at(1) }
-    ], characters, { now: NOW, partyIds: ['p1'] });
+    const rows = windowRows(
+      [
+        { pid: 100, title: 'Ауразак — Воин', startedAt: at(1) },
+        { pid: 200, title: 'Мираж — Маг', startedAt: at(1) }
+      ],
+      characters,
+      { now: NOW, partyIds: ['p1'] }
+    );
     // Второе окно остаётся в списке (его нельзя потерять), но персонаж не сопоставляется
     expect(rows.find(r => r.pid === 100).known).toBe(true);
     expect(rows.find(r => r.pid === 200).known).toBe(false);

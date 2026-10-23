@@ -3,12 +3,12 @@ import { enhanceDateInputs, monthGrid, formatDateRu } from '../js/core/datePicke
 
 describe('календарь выбора даты (как у ручных отметок марафона)', () => {
   it('сетка месяца: неделя с понедельника', () => {
-    const g = monthGrid(2026, 9);                  // октябрь 2026: 1-е — четверг
+    const g = monthGrid(2026, 9); // октябрь 2026: 1-е — четверг
     expect(g.firstDow).toBe(3);
     expect(g.days).toHaveLength(31);
     expect(g.days[0]).toBe('2026-10-01');
-    expect(monthGrid(2024, 1).days).toHaveLength(29);   // февраль високосного года
-    expect(monthGrid(2026, 5).firstDow).toBe(0);        // 1 июня 2026 — понедельник
+    expect(monthGrid(2024, 1).days).toHaveLength(29); // февраль високосного года
+    expect(monthGrid(2026, 5).firstDow).toBe(0); // 1 июня 2026 — понедельник
   });
   it('формат дд.мм.гггг', () => {
     expect(formatDateRu('2026-04-25')).toBe('25.04.2026');
@@ -17,7 +17,8 @@ describe('календарь выбора даты (как у ручных от�
   });
 
   beforeEach(() => {
-    document.body.innerHTML = '<div id="root"><input class="input" type="date" data-f="startDate" value="2026-04-25"/><input class="input" type="date" data-f="endDate" value=""/></div>';
+    document.body.innerHTML =
+      '<div id="root"><input class="input" type="date" data-f="startDate" value="2026-04-25"/><input class="input" type="date" data-f="endDate" value=""/></div>';
   });
 
   it('input[type=date] заменяется скрытым полем с тем же data-f и кнопкой с датой', () => {
@@ -40,13 +41,13 @@ describe('календарь выбора даты (как у ручных от�
     document.querySelectorAll('[data-dp-btn]')[0].click();
     const pop = document.querySelector('.tf-dp-pop');
     expect(pop.textContent).toContain('Апрель 2026');
-    expect(pop.querySelector('.mr-cal-day.is-marked').dataset.dpDay).toBe('2026-04-25');   // выбранный день подсвечен как «отмечено»
-    pop.querySelector('[data-dp-nav="1"]').click();                                        // следующий месяц
+    expect(pop.querySelector('.mr-cal-day.is-marked').dataset.dpDay).toBe('2026-04-25'); // выбранный день подсвечен как «отмечено»
+    pop.querySelector('[data-dp-nav="1"]').click(); // следующий месяц
     expect(document.querySelector('.tf-dp-pop').textContent).toContain('Май 2026');
     document.querySelector('[data-dp-day="2026-05-17"]').click();
     expect(hidden.value).toBe('2026-05-17');
     expect(events).toEqual(['input', 'change']);
-    expect(document.querySelector('.tf-dp-pop')).toBeNull();                               // календарь закрылся
+    expect(document.querySelector('.tf-dp-pop')).toBeNull(); // календарь закрылся
     expect(document.querySelectorAll('[data-dp-btn]')[0].textContent).toContain('17.05.2026');
   });
 

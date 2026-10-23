@@ -7,7 +7,14 @@
 
 import { roundCoins } from '../../core/coins.js';
 import {
-  SHOP_ITEMS, itemByKey, reconcileTrack, trackAfterPurchase, needsHistory, historyPurchaseAt, addMonthMsk, siteKeyOf
+  SHOP_ITEMS,
+  itemByKey,
+  reconcileTrack,
+  trackAfterPurchase,
+  needsHistory,
+  historyPurchaseAt,
+  addMonthMsk,
+  siteKeyOf
 } from './shopCore.js';
 import { writeLogBounded } from '../../core/logStore.js';
 
@@ -15,10 +22,29 @@ export const STATE_KEY = 'tf_shop_state_v1';
 export const LOG_KEY = 'tf_shop_log_v1';
 export const LOG_MAX = 300;
 
-const store = () => { try { return window.localStorage; } catch { return null; } };
-const readJson = (key, fallback) => { try { const v = JSON.parse(store()?.getItem(key) || 'null'); return v ?? fallback; } catch { return fallback; } };
-const writeJson = (key, value) => { try { store()?.setItem(key, JSON.stringify(value)); } catch { /* квота: данные не критичны */ } };
-const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+const store = () => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+const readJson = (key, fallback) => {
+  try {
+    const v = JSON.parse(store()?.getItem(key) || 'null');
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writeJson = (key, value) => {
+  try {
+    store()?.setItem(key, JSON.stringify(value));
+  } catch {
+    /* квота: данные не критичны */
+  }
+};
+const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 
 /* ------------------------------ состояние ------------------------------ */
 
@@ -30,10 +56,20 @@ export function loadShopState() {
     catalog: isObj(raw?.catalog) ? raw.catalog : {}
   };
 }
-const saveShopState = (s) => writeJson(STATE_KEY, s);
-export function clearShopState() { store()?.removeItem(STATE_KEY); }
+const saveShopState = s => writeJson(STATE_KEY, s);
+export function clearShopState() {
+  store()?.removeItem(STATE_KEY);
+}
 
-const slim = (i) => ({ found: !!i.found, price: i.price ?? null, available: i.available ?? null, max: i.max ?? null, blocked: !!i.blocked, buyable: !!i.buyable, ambiguous: !!i.ambiguous });
+const slim = i => ({
+  found: !!i.found,
+  price: i.price ?? null,
+  available: i.available ?? null,
+  max: i.max ?? null,
+  blocked: !!i.blocked,
+  buyable: !!i.buyable,
+  ambiguous: !!i.ambiguous
+});
 
 /** Соответствия «персонаж → ключ аккаунта». */
 export const charSiteMap = () => loadShopState().charSite;
@@ -48,16 +84,35 @@ export const loadCatalog = () => loadShopState().catalog;
 export function saveScan(charIds, scan, now = new Date()) {
   const s = loadShopState();
   const siteKey = siteKeyOf(scan.account, charIds[0]);
-  charIds.forEach(id => { s.charSite[id] = siteKey; });
+  charIds.forEach(id => {
+    s.charSite[id] = siteKey;
+  });
   const acc = s.accounts[siteKey] || { tracks: {} };
   const tracks = {};
   SHOP_ITEMS.forEach(def => {
     const item = scan.items[def.key];
     const t = reconcileTrack(acc.tracks?.[def.key], item, now);
     if (t) tracks[def.key] = t;
-    if (item?.found) s.catalog[def.key] = { name: def.name, siteName: item.siteName, id: item.id, kind: item.kind, price: item.price, desc: item.desc || s.catalog[def.key]?.desc || '', image: item.image || s.catalog[def.key]?.image || '', at: scan.at };
+    if (item?.found)
+      s.catalog[def.key] = {
+        name: def.name,
+        siteName: item.siteName,
+        id: item.id,
+        kind: item.kind,
+        price: item.price,
+        desc: item.desc || s.catalog[def.key]?.desc || '',
+        image: item.image || s.catalog[def.key]?.image || '',
+        at: scan.at
+      };
   });
-  s.accounts[siteKey] = { ...acc, account: scan.account, balance: scan.balance, at: scan.at, items: Object.fromEntries(SHOP_ITEMS.map(d => [d.key, slim(scan.items[d.key] || {})])), tracks };
+  s.accounts[siteKey] = {
+    ...acc,
+    account: scan.account,
+    balance: scan.balance,
+    at: scan.at,
+    items: Object.fromEntries(SHOP_ITEMS.map(d => [d.key, slim(scan.items[d.key] || {})])),
+    tracks
+  };
   saveShopState(s);
   return { siteKey, tracks };
 }
@@ -67,12 +122,34 @@ export function getAccount(siteKey) {
   const s = loadShopState();
   const acc = s.accounts[siteKey];
   if (!acc?.items) return null;
-  const items = Object.fromEntries(SHOP_ITEMS.map(def => {
-    const mine = acc.items[def.key] || { found: false };
-    const cat = s.catalog[def.key] || {};
-    return [def.key, { key: def.key, name: def.name, siteName: cat.siteName || '', id: cat.id || '', kind: cat.kind || '', desc: cat.desc || '', image: cat.image || '', label: '', ...mine }];
-  }));
-  return { siteKey, account: acc.account || '', balance: Number(acc.balance) || 0, at: acc.at || null, items, tracks: isObj(acc.tracks) ? acc.tracks : {} };
+  const items = Object.fromEntries(
+    SHOP_ITEMS.map(def => {
+      const mine = acc.items[def.key] || { found: false };
+      const cat = s.catalog[def.key] || {};
+      return [
+        def.key,
+        {
+          key: def.key,
+          name: def.name,
+          siteName: cat.siteName || '',
+          id: cat.id || '',
+          kind: cat.kind || '',
+          desc: cat.desc || '',
+          image: cat.image || '',
+          label: '',
+          ...mine
+        }
+      ];
+    })
+  );
+  return {
+    siteKey,
+    account: acc.account || '',
+    balance: Number(acc.balance) || 0,
+    at: acc.at || null,
+    items,
+    tracks: isObj(acc.tracks) ? acc.tracks : {}
+  };
 }
 
 /** Из «Истории монет»: даты последних покупок тех лимитных предметов, у которых они неизвестны. */
@@ -90,7 +167,14 @@ export function applyHistory(siteKey, rows, now = new Date()) {
     const resetAt = addMonthMsk(at);
     // Покупка старше месяца: лимит уже обновился, запоминать нечего
     if (!resetAt || Date.parse(resetAt) <= now.getTime()) return;
-    acc.tracks[def.key] = { ...(track || {}), lastBuyAt: at, resetAt, max: track?.max ?? null, available: item.available ?? null, seenAt: now.toISOString() };
+    acc.tracks[def.key] = {
+      ...(track || {}),
+      lastBuyAt: at,
+      resetAt,
+      max: track?.max ?? null,
+      available: item.available ?? null,
+      seenAt: now.toISOString()
+    };
     changed = true;
   });
   acc.historyAt = now.toISOString();
@@ -105,15 +189,24 @@ export function accountNeedsHistory(siteKey) {
 }
 
 /** Куплен предмет: баланс, остаток лимита и срок его обновления. */
-export function recordPurchase(siteKey, key, { at, balanceAfter = null, availableBefore = null, availableAfter = null }) {
+export function recordPurchase(
+  siteKey,
+  key,
+  { at, balanceAfter = null, availableBefore = null, availableAfter = null }
+) {
   const s = loadShopState();
   const acc = s.accounts[siteKey];
   const def = itemByKey(key);
   if (!acc || !def) return;
   if (balanceAfter != null) acc.balance = roundCoins(balanceAfter);
   const item = acc.items?.[key];
-  if (item && availableAfter != null) { item.available = availableAfter; item.blocked = availableAfter === 0; item.buyable = !item.blocked && item.price != null; }
-  if (availableBefore != null || availableAfter != null) acc.tracks[key] = trackAfterPurchase(acc.tracks?.[key], { at, availableBefore, availableAfter });
+  if (item && availableAfter != null) {
+    item.available = availableAfter;
+    item.blocked = availableAfter === 0;
+    item.buyable = !item.blocked && item.price != null;
+  }
+  if (availableBefore != null || availableAfter != null)
+    acc.tracks[key] = trackAfterPurchase(acc.tracks?.[key], { at, availableBefore, availableAfter });
   saveShopState(s);
 }
 
@@ -140,17 +233,34 @@ export function pruneShopState(knownIds) {
 /** От новых записей к старым. */
 export function loadShopLog() {
   const raw = readJson(LOG_KEY, []);
-  return (Array.isArray(raw) ? raw : []).filter(r => r && r.at && r.charId).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return (Array.isArray(raw) ? raw : [])
+    .filter(r => r && r.at && r.charId)
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
-export function clearShopLog() { store()?.removeItem(LOG_KEY); }
+export function clearShopLog() {
+  store()?.removeItem(LOG_KEY);
+}
 
 /** Запись журнала по итогу заказа (аккаунт + предмет). */
 export function logEntry(row) {
   return {
-    at: row.at, charId: row.charId, nick: row.nick, members: (row.members || []).slice(0, 12), account: row.account || '',
-    itemKey: row.itemKey, item: row.item, requested: row.requested || 0, bought: row.bought || 0, price: row.price ?? null,
-    spent: row.spent || 0, balanceBefore: row.balanceBefore ?? null, balanceAfter: row.balanceAfter ?? null,
-    status: row.status, detail: row.detail || null, code: row.code || null, viaHistory: row.viaHistory || 0
+    at: row.at,
+    charId: row.charId,
+    nick: row.nick,
+    members: (row.members || []).slice(0, 12),
+    account: row.account || '',
+    itemKey: row.itemKey,
+    item: row.item,
+    requested: row.requested || 0,
+    bought: row.bought || 0,
+    price: row.price ?? null,
+    spent: row.spent || 0,
+    balanceBefore: row.balanceBefore ?? null,
+    balanceAfter: row.balanceAfter ?? null,
+    status: row.status,
+    detail: row.detail || null,
+    code: row.code || null,
+    viaHistory: row.viaHistory || 0
   };
 }
 
@@ -159,6 +269,10 @@ export function recordShopRow(row) {
   if (row?.dryRun || !(row?.bought > 0 || row?.clicked)) return null;
   const entry = logEntry(row);
   writeLogBounded(LOG_KEY, [entry, ...loadShopLog()].slice(0, LOG_MAX));
-  try { window.dispatchEvent(new CustomEvent('tf-shop-log')); } catch { /* вне браузера */ }
+  try {
+    window.dispatchEvent(new CustomEvent('tf-shop-log'));
+  } catch {
+    /* вне браузера */
+  }
   return entry;
 }

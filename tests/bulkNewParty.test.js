@@ -3,7 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Режим «Выбрать» → «👥 В пати» → «➕ Создать новую пати…» для выбранных персонажей
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/characters/index.js', () => ({ openCharacterProfile: vi.fn(), openCharacterForm: vi.fn() }));
-vi.mock('../js/modules/sync/syncManager.js', () => ({ refreshAllLoginStatuses: vi.fn(), refreshAllBalances: vi.fn(), openSyncHelper: vi.fn() }));
+vi.mock('../js/modules/sync/syncManager.js', () => ({
+  refreshAllLoginStatuses: vi.fn(),
+  refreshAllBalances: vi.fn(),
+  openSyncHelper: vi.fn()
+}));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 
 let state, list;
@@ -27,7 +31,8 @@ beforeEach(async () => {
   list = await import('../js/modules/characters/list.js');
   list.bindCharacters();
   list.setSelectionMode(true);
-  state.ui.selection.add('a'); state.ui.selection.add('b');
+  state.ui.selection.add('a');
+  state.ui.selection.add('b');
   document.getElementById('bulk-bar').hidden = false;
   document.getElementById('bulk-bar').innerHTML = '<button data-bulk="party">В пати</button>';
   document.querySelector('[data-bulk="party"]').click();

@@ -16,7 +16,10 @@ const chest = () => fixture('site-chest-activate.html');
 const CHEST_URL = '/promo_items.php?do=activate&cart_id=43915985';
 const page = (body, title = 'Perfect World') => `<html><head><title>${title}</title></head><body>${body}</body></html>`;
 
-beforeEach(() => { window.__TF_CARAVAN = undefined; window.__TF_CARAVAN_MARK = undefined; });
+beforeEach(() => {
+  window.__TF_CARAVAN = undefined;
+  window.__TF_CARAVAN_MARK = undefined;
+});
 
 describe('caravan.js: чтение инвентаря (scan, только чтение)', () => {
   it('находит четыре «Сундука караванщика» с номерами и сроком; «Подарочные мешки» считает чужими', () => {
@@ -34,8 +37,8 @@ describe('caravan.js: чтение инвентаря (scan, только чте
   });
 
   it('в инвентаре нет сундуков караванщика → пустой список, но страница прочитана', () => {
-    const html = editDom(list(), (doc) => {
-      doc.querySelectorAll('.chest_input_block').forEach((b) => {
+    const html = editDom(list(), doc => {
+      doc.querySelectorAll('.chest_input_block').forEach(b => {
         if (b.textContent.includes('Сундук караванщика')) b.remove();
       });
     });
@@ -64,7 +67,13 @@ describe('caravan.js: чтение инвентаря (scan, только чте
 describe('caravan.js: отметка предметов сундука (fill)', () => {
   it('отмечает все четыре предмета и сообщает их названия, ничего не отправляя', () => {
     let submitted = false;
-    document.addEventListener('submit', () => { submitted = true; }, { once: true });
+    document.addEventListener(
+      'submit',
+      () => {
+        submitted = true;
+      },
+      { once: true }
+    );
     const r = run(chest(), { mode: 'fill', cartId: '43915985' }, CHEST_URL);
     expect(r.error).toBeNull();
     expect(r.data).toMatchObject({ state: 'ready', cartId: '43915985', count: 4 });
@@ -80,13 +89,13 @@ describe('caravan.js: отметка предметов сундука (fill)', 
   });
 
   it('формы сундука на странице нет (уже открыт) → chest_not_found', () => {
-    const html = editDom(chest(), (doc) => doc.querySelector('form[action*="do=activate"]').remove());
+    const html = editDom(chest(), doc => doc.querySelector('form[action*="do=activate"]').remove());
     const r = run(html, { mode: 'fill', cartId: '43915985' }, CHEST_URL);
     expect(r.error).toBe('chest_not_found');
   });
 
   it('форма от другого сундука не подходит', () => {
-    const html = editDom(chest(), (doc) => {
+    const html = editDom(chest(), doc => {
       const f = doc.querySelector('form[action*="do=activate"]');
       f.setAttribute('action', f.getAttribute('action').replace('43915985', '43921742'));
     });
@@ -94,24 +103,31 @@ describe('caravan.js: отметка предметов сундука (fill)', 
   });
 
   it('нет предметов → no_items', () => {
-    const html = editDom(chest(), (doc) => doc.querySelectorAll('input[name="chest_items[]"]').forEach(b => b.remove()));
+    const html = editDom(chest(), doc => doc.querySelectorAll('input[name="chest_items[]"]').forEach(b => b.remove()));
     expect(run(html, { mode: 'fill', cartId: '43915985' }, CHEST_URL).error).toBe('no_items');
   });
 
   it('нет кнопки отправки → button_not_found', () => {
-    const html = editDom(chest(), (doc) => doc.querySelectorAll('input[type="submit"], .chest_submit_button').forEach(b => b.remove()));
+    const html = editDom(chest(), doc =>
+      doc.querySelectorAll('input[type="submit"], .chest_submit_button').forEach(b => b.remove())
+    );
     expect(run(html, { mode: 'fill', cartId: '43915985' }, CHEST_URL).error).toBe('button_not_found');
   });
 
   it('нет входа → not_logged_in', () => {
-    expect(run(page('<p>Вы не авторизованы</p>'), { mode: 'fill', cartId: '43915985' }, CHEST_URL).error).toBe('not_logged_in');
+    expect(run(page('<p>Вы не авторизованы</p>'), { mode: 'fill', cartId: '43915985' }, CHEST_URL).error).toBe(
+      'not_logged_in'
+    );
   });
 });
 
 describe('caravan.js: нажатие кнопки (click)', () => {
   const doClick = (cfg, prep = () => {}) => {
     let submits = 0;
-    const onSubmit = (e) => { e.preventDefault(); submits++; };
+    const onSubmit = e => {
+      e.preventDefault();
+      submits++;
+    };
     document.addEventListener('submit', onSubmit, true);
     window.history.replaceState(null, '', CHEST_URL);
     window.__TF_CARAVAN = { mode: 'click', cartId: '43915985', ...cfg };
@@ -125,7 +141,10 @@ describe('caravan.js: нажатие кнопки (click)', () => {
     const hash = window.location.hash.replace(`#${PREFIX}`, '');
     return { submits, reply: hash ? JSON.parse(decodeURIComponent(hash)) : null };
   };
-  const checkAll = () => document.querySelectorAll('input[name="chest_items[]"]').forEach(b => { b.checked = true; });
+  const checkAll = () =>
+    document.querySelectorAll('input[name="chest_items[]"]').forEach(b => {
+      b.checked = true;
+    });
 
   it('все предметы отмечены → форма отправляется один раз, ответа скрипт не пишет', () => {
     const r = doClick({ count: 4 }, checkAll);
@@ -135,7 +154,10 @@ describe('caravan.js: нажатие кнопки (click)', () => {
   });
 
   it('отметки изменились (отмечено 3 из 4) → selection_changed, ничего не нажато', () => {
-    const r = doClick({ count: 4 }, () => { checkAll(); document.querySelector('input[name="chest_items[]"]').checked = false; });
+    const r = doClick({ count: 4 }, () => {
+      checkAll();
+      document.querySelector('input[name="chest_items[]"]').checked = false;
+    });
     expect(r.submits).toBe(0);
     expect(r.reply.error).toBe('selection_changed');
     expect(window.__TF_CARAVAN_MARK).toBeUndefined();

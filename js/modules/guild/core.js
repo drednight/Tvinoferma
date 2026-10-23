@@ -32,7 +32,20 @@ export const CLAN_EVENT_MINUTES = 60;
  */
 export const CLAN_REMINDER_MINUTES = 15;
 /** Месяцы в родительном падеже — так их пишет сайт («15 октября»). */
-const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const MONTHS = [
+  'января',
+  'февраля',
+  'марта',
+  'апреля',
+  'мая',
+  'июня',
+  'июля',
+  'августа',
+  'сентября',
+  'октября',
+  'ноября',
+  'декабря'
+];
 /** Сколько дней назад дата ещё считается «этим годом», а не прошлым. */
 const YEAR_SLACK_DAYS = 7;
 
@@ -51,10 +64,13 @@ const NICK_SUFFIX = /\s*\([^)]*\)\s*$/;
 /** Имя файла иконки класса: `assets/img/classes/luk.png` → `luk`. */
 const ICON_STEM = /\/classes\/([a-z0-9_-]+)\.[a-z0-9]+$/i;
 
-const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+const clean = s =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** Ключ для сравнения ников: без `#` и регистра. */
-const nickKey = (nick) => clean(nick).replace(/^#+/, '').toLowerCase();
+const nickKey = nick => clean(nick).replace(/^#+/, '').toLowerCase();
 
 /** Имя файла иконки класса из `src`: у сайта `luk.png`, у нас `/assets/icons/classes/luk.webp`. */
 function iconStem(src) {
@@ -77,17 +93,17 @@ export function normalizeGuildData(raw) {
   const src = raw || {};
   return {
     events: (Array.isArray(src.events) ? src.events : [])
-      .map((e) => {
+      .map(e => {
         const response = e?.response === RESPONSE_YES || e?.response === RESPONSE_NO ? e.response : RESPONSE_NONE;
         return { id: clean(e?.id), title: clean(e?.title), when: clean(e?.when), comment: clean(e?.comment), response };
       })
-      .filter((e) => e.id),
+      .filter(e => e.id),
     parties: (Array.isArray(src.parties) ? src.parties : [])
-      .map((p) => ({
+      .map(p => ({
         name: clean(p?.name),
         members: (Array.isArray(p?.members) ? p.members : []).map(normalizeMember).filter(Boolean)
       }))
-      .filter((p) => p.name),
+      .filter(p => p.name),
     selfNick: clean(src.selfNick),
     syncedAt: Number.isFinite(Number(src.syncedAt)) && Number(src.syncedAt) > 0 ? Number(src.syncedAt) : null
   };
@@ -95,24 +111,29 @@ export function normalizeGuildData(raw) {
 
 /** Предстоящие события: у каждого свой data-event-id, текущий ответ — нажатое радио. */
 export function parseEvents(document) {
-  return [...document.querySelectorAll('.user__event')].map((el) => {
-    const form = el.querySelector('form.event-response-form');
-    const checked = el.querySelector('input[type="radio"]:checked');
-    return {
-      id: clean(form?.dataset?.eventId),
-      title: clean(el.querySelector('.user__event-title')?.textContent),
-      when: clean(el.querySelector('.user__event-date')?.textContent),
-      comment: clean(el.querySelector('.user__event-comment')?.textContent),
-      response: checked?.value === RESPONSE_YES || checked?.value === RESPONSE_NO ? checked.value : RESPONSE_NONE
-    };
-  }).filter((e) => e.id);
+  return [...document.querySelectorAll('.user__event')]
+    .map(el => {
+      const form = el.querySelector('form.event-response-form');
+      const checked = el.querySelector('input[type="radio"]:checked');
+      return {
+        id: clean(form?.dataset?.eventId),
+        title: clean(el.querySelector('.user__event-title')?.textContent),
+        when: clean(el.querySelector('.user__event-date')?.textContent),
+        comment: clean(el.querySelector('.user__event-comment')?.textContent),
+        response: checked?.value === RESPONSE_YES || checked?.value === RESPONSE_NO ? checked.value : RESPONSE_NONE
+      };
+    })
+    .filter(e => e.id);
 }
 
 /** Название пати: собственный текст заголовка без «(5 чел.)» в подписи. */
 function partyName(col) {
   const title = col.querySelector('.user__party-title');
   if (!title) return '';
-  const own = [...title.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' ');
+  const own = [...title.childNodes]
+    .filter(n => n.nodeType === 3)
+    .map(n => n.textContent)
+    .join(' ');
   return clean(own) || clean(title.textContent);
 }
 
@@ -130,7 +151,7 @@ function partyMembers(col) {
   }
   if (members.length) return members;
   const raw = clean(col.getAttribute?.('data-users'));
-  return raw ? raw.split(/\s+/).map((nick) => ({ nick, cls: '', title: '' })) : [];
+  return raw ? raw.split(/\s+/).map(nick => ({ nick, cls: '', title: '' })) : [];
 }
 
 /**
@@ -162,8 +183,9 @@ export function parseParties(column) {
  * @returns {GuildData}
  */
 export function parseProfileDocument(document) {
-  const partiesColumn = [...document.querySelectorAll('.user__col')]
-    .find((el) => clean(el.querySelector('.title')?.textContent) === PARTIES_TITLE);
+  const partiesColumn = [...document.querySelectorAll('.user__col')].find(
+    el => clean(el.querySelector('.title')?.textContent) === PARTIES_TITLE
+  );
   return {
     events: parseEvents(document),
     parties: parseParties(partiesColumn),
@@ -174,7 +196,7 @@ export function parseProfileDocument(document) {
 
 /** Ивенты, на которые человек ещё не ответил: их и показываем в первую очередь. */
 export function unansweredEvents(data) {
-  return (data?.events || []).filter((e) => e.response === RESPONSE_NONE);
+  return (data?.events || []).filter(e => e.response === RESPONSE_NONE);
 }
 
 /** Отметка одним словом — для подписи в интерфейсе. */
@@ -184,8 +206,8 @@ export function responseText(response) {
   return 'без ответа';
 }
 
-const pad2 = (n) => String(n).padStart(2, '0');
-const isoDay = (iso) => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000);
+const pad2 = n => String(n).padStart(2, '0');
+const isoDay = iso => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000);
 const isoOf = (year, month, day) => `${year}-${pad2(month)}-${pad2(day)}`;
 
 /**
@@ -211,9 +233,7 @@ export function parseEventWhen(when, today = mskDate()) {
   if (probe.getUTCMonth() !== month || probe.getUTCDate() !== day) return null;
 
   const thisYear = isoOf(year, month + 1, day);
-  const date = isoDay(thisYear) < isoDay(today) - YEAR_SLACK_DAYS
-    ? isoOf(year + 1, month + 1, day)
-    : thisYear;
+  const date = isoDay(thisYear) < isoDay(today) - YEAR_SLACK_DAYS ? isoOf(year + 1, month + 1, day) : thisYear;
 
   const clock = text.match(/(\d{1,2}):(\d{2})/);
   const time = clock ? `${pad2(Number(clock[1]))}:${clock[2]}` : '';
@@ -268,7 +288,7 @@ export function wantedClanEntries(data, today = mskDate()) {
 
 /** Ники одной пати для копирования: свой ник выбрасываем — приглашать себя незачем. */
 export function partyNicks(party, selfNick) {
-  return (party?.members || []).map((m) => m.nick).filter((nick) => nick && !isSelfNick(nick, selfNick));
+  return (party?.members || []).map(m => m.nick).filter(nick => nick && !isSelfNick(nick, selfNick));
 }
 
 /** Тот ли это персонаж, что прописан на сайте в «Информации о персонаже». */
@@ -303,9 +323,11 @@ export function allPartyNicks(data) {
 export function summaryText(data) {
   if (!data?.syncedAt) return '';
   const total = data.events.length;
-  const done = data.events.filter((e) => e.response !== RESPONSE_NONE).length;
+  const done = data.events.filter(e => e.response !== RESPONSE_NONE).length;
   const waiting = unansweredEvents(data).length;
-  const parties = data.parties.length ? data.parties.map((p) => p.name).join(', ') : 'нет';
-  const events = total ? `ивентов ${total}, отмечен ${done}${waiting ? `, ждёт ответа ${waiting}` : ''}` : 'ивентов нет';
+  const parties = data.parties.length ? data.parties.map(p => p.name).join(', ') : 'нет';
+  const events = total
+    ? `ивентов ${total}, отмечен ${done}${waiting ? `, ждёт ответа ${waiting}` : ''}`
+    : 'ивентов нет';
   return `${events} · пати: ${parties}`;
 }

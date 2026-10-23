@@ -18,7 +18,9 @@
 }
 /* Пока уведомлений нет, блока вовсе: пустой фиксированный контейнер перехватывал бы
    клики по кнопке «+» под собой (та же причина, что и у .toast-host:empty). */
-#notify-center:empty { display: none; }
+#notify-center:empty {
+  display: none;
+}
 
 .nc-card {
   position: relative;
@@ -35,17 +37,39 @@
   animation: nc-in 0.18s var(--ease);
 }
 @keyframes nc-in {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.nc-card.is-error { border-left-color: var(--danger); }
-.nc-card.is-warning { border-left-color: var(--warning); }
-.nc-card.is-accent { border-left-color: var(--accent); }
-.nc-card.is-info { border-left-color: var(--text-faint); }
+.nc-card.is-error {
+  border-left-color: var(--danger);
+}
+.nc-card.is-warning {
+  border-left-color: var(--warning);
+}
+.nc-card.is-accent {
+  border-left-color: var(--accent);
+}
+.nc-card.is-info {
+  border-left-color: var(--text-faint);
+}
 
-.nc-body { min-width: 0; flex: 1; }
-.nc-title { display: block; font-size: 0.88rem; font-weight: 650; overflow-wrap: anywhere; }
+.nc-body {
+  min-width: 0;
+  flex: 1;
+}
+.nc-title {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
 .nc-text {
   margin: 4px 0 0;
   font-size: 0.82rem;
@@ -57,13 +81,21 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
-.nc-time { display: block; margin-top: 6px; font-size: 0.72rem; color: var(--text-faint); }
+.nc-time {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
 
 .nc-close {
   position: absolute;
-  top: 6px; right: 6px;
-  width: 22px; height: 22px;
-  display: grid; place-items: center;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
   padding: 0;
   border: 0;
   border-radius: var(--radius-xs);
@@ -71,10 +103,18 @@
   color: var(--text-faint);
   font-size: 0.78rem;
   cursor: pointer;
-  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
 }
-.nc-close:hover { background: var(--surface-3); color: var(--text); }
-.nc-close:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: 1px; }
+.nc-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.nc-close:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: 1px;
+}
 
 .nc-more {
   align-self: flex-end;
@@ -87,11 +127,20 @@
   cursor: pointer;
   pointer-events: auto;
 }
-.nc-more:hover { color: var(--text); border-color: var(--border-strong); }
+.nc-more:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 
 /* Уведомление не должно накрывать круглую кнопку «+» в углу: сдвигаем стопку вверх,
    когда плавающая кнопка на месте (она тоже в правом нижнем углу). */
-body:has(.fab-container:not([hidden])) #notify-center { bottom: 92px; }
+body:has(.fab-container:not([hidden])) #notify-center {
+  bottom: 92px;
+}
 @media (max-width: 560px) {
-  #notify-center { right: 12px; left: 12px; width: auto; }
+  #notify-center {
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
 }

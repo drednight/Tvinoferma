@@ -14,12 +14,31 @@
   border-radius: var(--radius);
   background: var(--warning-soft);
 }
-.health-banner[hidden] { display: none; }
-.health-banner-text { display: flex; flex-direction: column; gap: 4px; flex: 1 1 360px; }
-.health-banner-text span { color: var(--text-dim); font-size: 0.88rem; }
-.health-banner-actions { display: flex; gap: var(--gap-sm); flex-wrap: wrap; }
+.health-banner[hidden] {
+  display: none;
+}
+.health-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 360px;
+}
+.health-banner-text span {
+  color: var(--text-dim);
+  font-size: 0.88rem;
+}
+.health-banner-actions {
+  display: flex;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
 
-.health-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; }
+.health-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 0.88rem;
+}
 .health-table th,
 .health-table td {
   padding: 8px 10px;
@@ -27,6 +46,15 @@
   text-align: left;
   vertical-align: top;
 }
-.health-table th { color: var(--text-dim); font-weight: 600; font-size: 0.83rem; }
-.health-table small { display: block; font-size: 0.78rem; }
-.health-table tr.is-problem td { background: var(--warning-soft); }
+.health-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.83rem;
+}
+.health-table small {
+  display: block;
+  font-size: 0.78rem;
+}
+.health-table tr.is-problem td {
+  background: var(--warning-soft);
+}

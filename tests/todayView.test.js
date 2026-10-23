@@ -7,8 +7,12 @@ vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNo
 let state, todayHtml, renderToday, todaySideHtml;
 
 const NOW = new Date('2026-10-05T12:00:00');
-const at = (h) => new Date(NOW.getTime() - h * 3600e3).toISOString();
-const day = (o) => { const d = new Date(NOW); d.setDate(d.getDate() + o); return d.toLocaleDateString('sv'); };
+const at = h => new Date(NOW.getTime() - h * 3600e3).toISOString();
+const day = o => {
+  const d = new Date(NOW);
+  d.setDate(d.getDate() + o);
+  return d.toLocaleDateString('sv');
+};
 
 const html = (deps = {}) => todayHtml(deps, state);
 
@@ -23,7 +27,15 @@ beforeEach(async () => {
   state.parties = [];
   state.marathons = [];
   state.characters = [
-    { id: 'a', nick: 'Аа', class: 'Воин', isLoggedIn: true, ancientCoins: 100, dungeonPasses: { weapon: 1, armor: 2, relic: 3 }, lastCoinUpdate: at(1) }
+    {
+      id: 'a',
+      nick: 'Аа',
+      class: 'Воин',
+      isLoggedIn: true,
+      ancientCoins: 100,
+      dungeonPasses: { weapon: 1, armor: 2, relic: 3 },
+      lastCoinUpdate: at(1)
+    }
   ];
 });
 
@@ -59,7 +71,9 @@ describe('разметка экрана «Сегодня»', () => {
   });
 
   it('давний баланс даёт строку с кнопкой обновления', () => {
-    state.characters = [{ id: 'a', nick: 'Аа', class: 'Воин', isLoggedIn: true, lastCoinUpdate: at(50), dungeonPasses: {} }];
+    state.characters = [
+      { id: 'a', nick: 'Аа', class: 'Воин', isLoggedIn: true, lastCoinUpdate: at(50), dungeonPasses: {} }
+    ];
     const out = html();
     expect(out).toContain('data-today-act="balance-one"');
     expect(out).toContain('Обновить баланс');
@@ -73,12 +87,19 @@ describe('разметка экрана «Сегодня»', () => {
   });
 
   it('марафон с записями дня показывается в боковой панели с кнопкой «Открыть»', () => {
-    state.marathons = [{
-      id: 'm1', kind: 'single', title: 'Лето', status: 'active',
-      startDate: day(-5), endDate: day(3), participantIds: ['a'],
-      tasks: [{ id: 't1', title: 'Вход', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }],
-      progress: {}
-    }];
+    state.marathons = [
+      {
+        id: 'm1',
+        kind: 'single',
+        title: 'Лето',
+        status: 'active',
+        startDate: day(-5),
+        endDate: day(3),
+        participantIds: ['a'],
+        tasks: [{ id: 't1', title: 'Вход', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }],
+        progress: {}
+      }
+    ];
     const out = todaySideHtml(state);
     expect(out).toContain('Лето');
     expect(out).toContain('Данж дня');
@@ -98,7 +119,6 @@ describe('разметка экрана «Сегодня»', () => {
     expect(out).toContain('data-today-act="open-party"');
     expect(out).toContain('Основа');
   });
-
 });
 
 describe('отрисовка и действия', () => {
@@ -135,12 +155,19 @@ describe('отрисовка и действия', () => {
   });
 
   it('кнопка марафона передаёт его id', () => {
-    state.marathons = [{
-      id: 'm1', kind: 'single', title: 'Лето', status: 'active',
-      startDate: day(-5), endDate: day(3), participantIds: ['a'],
-      tasks: [{ id: 't1', title: 'Вход', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }],
-      progress: {}
-    }];
+    state.marathons = [
+      {
+        id: 'm1',
+        kind: 'single',
+        title: 'Лето',
+        status: 'active',
+        startDate: day(-5),
+        endDate: day(3),
+        participantIds: ['a'],
+        tasks: [{ id: 't1', title: 'Вход', targetChecks: 3, schedule: { mode: 'everyDay', dates: [] }, rewards: [] }],
+        progress: {}
+      }
+    ];
     const run = vi.fn();
     renderToday(root(), { run });
     document.querySelector('[data-today-act="open-marathon"]').click();

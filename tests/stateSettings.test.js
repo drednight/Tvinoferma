@@ -11,7 +11,7 @@ import { DEFAULT_SETTINGS } from '../js/core/constants.js';
 import { normalizeState } from '../js/core/state.js';
 
 /** Ключи группы, которые задаёт сама нормализация, а не слияние с умолчаниями. */
-const isFlat = (group) => Object.values(group).every(v => v === null || typeof v !== 'object');
+const isFlat = group => Object.values(group).every(v => v === null || typeof v !== 'object');
 
 describe('настройки переживают нормализацию', () => {
   it('пустой state.json даёт полный набор настроек', () => {
@@ -47,8 +47,10 @@ describe('настройки переживают нормализацию', () 
       if (!isFlat(def)) {
         for (const [k, v] of Object.entries(def)) {
           if (v && typeof v === 'object') {
-            expect(Object.keys(v).filter(x => !(x in (got[k] || {}))),
-              `«${name}.${k}» потерял вложенные ключи`).toEqual([]);
+            expect(
+              Object.keys(v).filter(x => !(x in (got[k] || {}))),
+              `«${name}.${k}» потерял вложенные ключи`
+            ).toEqual([]);
           }
         }
       }

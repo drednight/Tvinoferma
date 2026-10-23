@@ -11,13 +11,13 @@ const input = () => document.querySelector('.cp-input');
 const items = () => [...document.querySelectorAll('.cp-item')];
 const activeTitle = () => document.querySelector('.cp-item.is-active .cp-item-title')?.textContent;
 
-const type = (text) => {
+const type = text => {
   const el = /** @type {HTMLInputElement} */ (input());
   el.value = text;
   el.dispatchEvent(new Event('input', { bubbles: true }));
 };
 
-const press = (key) => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+const press = key => document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
 
 beforeEach(async () => {
   vi.resetModules();
@@ -32,7 +32,9 @@ beforeEach(async () => {
   state.marathons = [];
 });
 
-afterEach(() => { closeCommandPalette(); });
+afterEach(() => {
+  closeCommandPalette();
+});
 
 describe('открытие и поиск', () => {
   it('открывается, показывает команды и ставит фокус в поиск', () => {

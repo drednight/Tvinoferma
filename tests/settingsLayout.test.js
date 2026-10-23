@@ -9,7 +9,9 @@ const css = readFileSync('css/core/layout.css', 'utf8');
 /** Сколько панелей в каждой колонке настроек по разметке index.html. */
 function columnCounts(source) {
   const doc = new DOMParser().parseFromString(source, 'text/html');
-  return [...doc.querySelectorAll('.settings-cols > .settings-col')].map(c => c.querySelectorAll(':scope > .panel').length);
+  return [...doc.querySelectorAll('.settings-cols > .settings-col')].map(
+    c => c.querySelectorAll(':scope > .panel').length
+  );
 }
 
 describe('настройки: колонки', () => {
@@ -26,7 +28,7 @@ describe('настройки: колонки', () => {
     </div>`;
     document.querySelector('[data-n="6"]').open = true;
     expect(balanceSettingsColumns()).toEqual([4, 3]);
-    const order = (col) => [...col.children].map(el => el.dataset.n).join('');
+    const order = col => [...col.children].map(el => el.dataset.n).join('');
     const [l, r] = document.querySelectorAll('.settings-col');
     expect(order(l)).toBe('1234');
     expect(order(r)).toBe('567');
@@ -61,7 +63,11 @@ describe('опасные действия: разметка', () => {
   it('блок свёрнут по умолчанию, у каждого действия есть описание и кнопка', () => {
     expect(zone).not.toBeNull();
     expect(zone.hasAttribute('open')).toBe(false);
-    for (const [kind, id] of [['parties', 'clear-all-parties-btn'], ['marathons', 'clear-all-marathons-btn'], ['characters', 'clear-all-characters-btn']]) {
+    for (const [kind, id] of [
+      ['parties', 'clear-all-parties-btn'],
+      ['marathons', 'clear-all-marathons-btn'],
+      ['characters', 'clear-all-characters-btn']
+    ]) {
       const btn = zone.querySelector(`#${id}`);
       expect(btn?.dataset.danger).toBe(kind);
       const item = btn.closest('.danger-item');
@@ -81,7 +87,9 @@ describe('опасные действия: разметка', () => {
   it('на вкладке «Марафоны» сверху больше нет кнопок «Новая папка» и «Создать»', () => {
     expect(doc.getElementById('add-folder-btn')).toBeNull();
     expect(doc.getElementById('add-marathon-btn')).toBeNull();
-    expect([...doc.querySelectorAll('#fab-menu [data-fab-action="folder"], #fab-menu [data-fab-action="marathon"]')].length).toBe(2);
+    expect(
+      [...doc.querySelectorAll('#fab-menu [data-fab-action="folder"], #fab-menu [data-fab-action="marathon"]')].length
+    ).toBe(2);
   });
 });
 
@@ -89,9 +97,18 @@ describe('опасные действия: логика', () => {
   let state;
   beforeEach(() => {
     state = {
-      parties: [{ id: 'p1', name: 'A' }, { id: 'p2', name: 'B' }],
+      parties: [
+        { id: 'p1', name: 'A' },
+        { id: 'p2', name: 'B' }
+      ],
       characters: [
-        { id: 'c1', partyIds: ['p1', 'p2'], mainPartyId: 'p1', updatedAt: 'old', launch: { gcAccounts: { g1: { nick: 'x' } } } },
+        {
+          id: 'c1',
+          partyIds: ['p1', 'p2'],
+          mainPartyId: 'p1',
+          updatedAt: 'old',
+          launch: { gcAccounts: { g1: { nick: 'x' } } }
+        },
         { id: 'c2', partyIds: [], mainPartyId: null, updatedAt: 'old' }
       ],
       marathons: [{ id: 'm1' }, { id: 'm2', kind: 'series' }],
@@ -148,22 +165,23 @@ describe('опасные действия: логика', () => {
   });
 });
 
-
 describe('смысловые группы настроек', () => {
   it('панели находятся в своих разделах, навигация ведёт к существующим блокам', () => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
     for (const [group, ids] of Object.entries({
       app: ['settings-system', 'settings-launcher', 'settings-browser', 'settings-tray', 'settings-notifications'],
       sync: ['settings-scripts', 'settings-freshness', 'log-hub-panel'],
-      updates: ['settings-update-panel'], data: ['settings-backups', 'settings-transfer', 'settings-security'],
-      help: ['guide-library', 'settings-hotkeys'],
+      updates: ['settings-update-panel'],
+      data: ['settings-backups', 'settings-transfer', 'settings-security'],
+      help: ['guide-library', 'settings-hotkeys']
     })) {
       for (const id of ids) expect(doc.querySelector(`#settings-${group} #${id}`)).not.toBeNull();
     }
     // «Состояние парсеров» — это диагностика, а не настройка: панель уехала в «Инструменты»
     expect(doc.querySelector('#settings-sync #parser-health-panel')).toBeNull();
     expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).not.toBeNull();
-    for (const link of doc.querySelectorAll('.settings-nav a')) expect(doc.querySelector(link.getAttribute('href'))).not.toBeNull();
+    for (const link of doc.querySelectorAll('.settings-nav a'))
+      expect(doc.querySelector(link.getAttribute('href'))).not.toBeNull();
     expect(doc.querySelector('#danger-zone').closest('.settings-group')).toBeNull();
     expect(doc.querySelector('[data-setting="updates.mode"] option[value="never"]')).toBeNull();
     const ids = [...doc.querySelectorAll('[id]')].map(el => el.id);
@@ -180,9 +198,12 @@ describe('смысловые группы настроек', () => {
 
 describe('информация о системе', () => {
   it('свёрнута по умолчанию, путь и режим доступны после раскрытия', () => {
-    const doc = new DOMParser().parseFromString(html, 'text/html');const panel = doc.getElementById('settings-system');
-    expect(panel.tagName).toBe('DETAILS');expect(panel.hasAttribute('open')).toBe(false);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const panel = doc.getElementById('settings-system');
+    expect(panel.tagName).toBe('DETAILS');
+    expect(panel.hasAttribute('open')).toBe(false);
     expect(panel.querySelector('summary h3').textContent).toBe('Информация о системе');
-    for (const id of ['storage-runtime','data-dir','copy-data-dir-btn']) expect(panel.querySelector(`#${id}`)).not.toBeNull();
+    for (const id of ['storage-runtime', 'data-dir', 'copy-data-dir-btn'])
+      expect(panel.querySelector(`#${id}`)).not.toBeNull();
   });
 });

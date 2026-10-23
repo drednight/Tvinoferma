@@ -3,7 +3,16 @@ import { readFileSync } from 'node:fs';
 import { fixture, parseSitePage } from './helpers/pageScript.js';
 import { parseNewsHtml } from '../js/modules/marathons/newsParser.js';
 import { mergeSiteAndNews, findSiteQuest, isSameMarathon } from '../js/modules/marathons/mergeSources.js';
-import { migrateMarathon, createTask, applySiteQuests, createMarathon, setTaskDescription, editTaskDescription, shortDescription, ensureCell } from '../js/modules/marathons/model.js';
+import {
+  migrateMarathon,
+  createTask,
+  applySiteQuests,
+  createMarathon,
+  setTaskDescription,
+  editTaskDescription,
+  shortDescription,
+  ensureCell
+} from '../js/modules/marathons/model.js';
 
 // Фикстуры — реальные страницы pwonline.ru, сохранённые в UTF-8 (issue #3).
 const fx = fixture;
@@ -26,19 +35,30 @@ describe('новость: описания заданий', () => {
 
   it('осенний марафон: цели «10/12/15» без слова «раз» и награды «20/26/34 монеты»', () => {
     const autumn = news('news-autumn-2023.html', { title: 'Осенний марафон', publishedAt: '26.10.2023' });
-    expect(autumn.sourceUrl).toBe('https://pwonline.ru/supermarathon.php');   // без завершающего «/»
+    expect(autumn.sourceUrl).toBe('https://pwonline.ru/supermarathon.php'); // без завершающего «/»
     const beasts = autumn.quests.find(q => q.title === 'Хищные звери');
     expect(beasts).toMatchObject({ goal: 15, goalFound: true });
-    expect(beasts.rewards.map(r => [r.threshold, r.rewardCoins])).toEqual([[10, 10], [12, 12], [15, 15]]);
+    expect(beasts.rewards.map(r => [r.threshold, r.rewardCoins])).toEqual([
+      [10, 10],
+      [12, 12],
+      [15, 15]
+    ]);
     const dreams = autumn.quests.find(q => q.title === 'Испытания грез');
-    expect(dreams.rewards.map(r => [r.threshold, r.rewardCoins, r.rewardText])).toEqual([[10, 20, 'Монеты'], [12, 26, 'Монеты'], [15, 34, 'Монеты']]);
+    expect(dreams.rewards.map(r => [r.threshold, r.rewardCoins, r.rewardText])).toEqual([
+      [10, 20, 'Монеты'],
+      [12, 26, 'Монеты'],
+      [15, 34, 'Монеты']
+    ]);
     expect(autumn.debug.join('\n')).not.toMatch(/не найдено «N раз»/);
   });
 
   it('весенний марафон: 4 задания по 3 порога', () => {
     const spring = news('news-spring-2025.html', { title: 'Весенний марафон', publishedAt: '25.04.2025' });
     expect(spring.quests).toHaveLength(4);
-    spring.quests.forEach(q => { expect(q.rewards).toHaveLength(3); expect(q.description).toBeTruthy(); });
+    spring.quests.forEach(q => {
+      expect(q.rewards).toHaveLength(3);
+      expect(q.description).toBeTruthy();
+    });
   });
 });
 
@@ -56,14 +76,19 @@ describe('страница отметок: скрипт marathon_detail.js', () 
   it('несколько абзацев описания не теряются', () => {
     const { data } = detail('site-supermarathon2.html');
     const q = data.quests.find(x => x.title.startsWith('Покоритель подземелий'));
-    expect(q.description).toBe('Пройти одно из подземелий ★★★★ уровня сложности и получить за него сундук(и) 25 раз.\nСписок подземелий: Остров рыцарей, Гробница шепотов и сложный режим Террасы снов.');
+    expect(q.description).toBe(
+      'Пройти одно из подземелий ★★★★ уровня сложности и получить за него сундук(и) 25 раз.\nСписок подземелий: Остров рыцарей, Гробница шепотов и сложный режим Террасы снов.'
+    );
   });
 
   it('supermarathon.php: «Ликвидатор зла», 2 задания с описаниями и целями 2 и 10', () => {
     const { data, error } = detail('site-supermarathon.html');
     expect(error).toBeNull();
     expect(data.name).toBe('Ликвидатор зла');
-    expect(data.quests.map(q => [q.title, q.goal])).toEqual([['Ночные легенды Кленового моста', 2], ['Меч, полный сомнений', 10]]);
+    expect(data.quests.map(q => [q.title, q.goal])).toEqual([
+      ['Ночные легенды Кленового моста', 2],
+      ['Меч, полный сомнений', 10]
+    ]);
     expect(data.quests[0].description).toMatch(/^Пройти в регионе Города Тяньюй/);
   });
 
@@ -75,9 +100,14 @@ describe('страница отметок: скрипт marathon_detail.js', () 
 
 describe('объединение новости и страницы отметок', () => {
   const newsRaw = news('news-summer-2026.html', { title: 'Летний марафон', publishedAt: '29.05.2026' });
-  const siteRaw = () => ({ ...detail('site-supermarathon2.html').data, sourceUrl: 'https://pwonline.ru/supermarathon2.php' });
+  const siteRaw = () => ({
+    ...detail('site-supermarathon2.html').data,
+    sourceUrl: 'https://pwonline.ru/supermarathon2.php'
+  });
   let merged;
-  beforeAll(() => { merged = mergeSiteAndNews({ news: newsRaw, site: siteRaw() }); });
+  beforeAll(() => {
+    merged = mergeSiteAndNews({ news: newsRaw, site: siteRaw() });
+  });
 
   it('только один источник — отдаётся как есть', () => {
     expect(mergeSiteAndNews({ news: newsRaw }).raw.origin).toBe('news');
@@ -138,7 +168,7 @@ describe('объединение новости и страницы отмето
 describe('описание задания в модели: приоритеты и защита ручной правки', () => {
   it('createTask: источник описания по умолчанию', () => {
     expect(createTask({ title: 'A' })).toMatchObject({ description: '', descriptionSource: '' });
-    expect(createTask({ title: 'A', description: 'Текст' }).descriptionSource).toBe('site');   // старые данные
+    expect(createTask({ title: 'A', description: 'Текст' }).descriptionSource).toBe('site'); // старые данные
     expect(createTask({ title: 'A', description: 'Текст', descriptionSource: 'news' }).descriptionSource).toBe('news');
   });
 
@@ -157,7 +187,8 @@ describe('описание задания в модели: приоритеты 
 
   it('сверка с сайтом обновляет только описания из сайта и пустые', () => {
     const m = createMarathon({
-      title: 'M', participantIds: ['c1'],
+      title: 'M',
+      participantIds: ['c1'],
       tasks: [
         createTask({ id: 'a', title: 'Первое', description: 'старое с сайта', descriptionSource: 'site' }),
         createTask({ id: 'b', title: 'Второе', description: 'из новости', descriptionSource: 'news' }),
@@ -166,7 +197,7 @@ describe('описание задания в модели: приоритеты 
       ]
     });
     ['a', 'b', 'c', 'd'].forEach(id => ensureCell(m.progress, 'c1', id));
-    const q = (title) => ({ title, description: 'новое с сайта', completed: 1, total: 5 });
+    const q = title => ({ title, description: 'новое с сайта', completed: 1, total: 5 });
     applySiteQuests(m, 'c1', [q('Первое'), q('Второе'), q('Третье'), q('Четвёртое')]);
     const d = Object.fromEntries(m.tasks.map(t => [t.id, t.description]));
     expect(d).toEqual({ a: 'новое с сайта', b: 'из новости', c: 'моё', d: 'новое с сайта' });
@@ -181,26 +212,37 @@ describe('описание задания в модели: приоритеты 
   });
 
   it('экспорт/импорт и миграция сохраняют описание и его источник', () => {
-    const m = createMarathon({ title: 'M', tasks: [createTask({ title: 'A', description: 'Описание\nвторая строка', descriptionSource: 'manual' })] });
-    const copy = migrateMarathon(JSON.parse(JSON.stringify(m)));   // как после экспорта в файл и импорта
+    const m = createMarathon({
+      title: 'M',
+      tasks: [createTask({ title: 'A', description: 'Описание\nвторая строка', descriptionSource: 'manual' })]
+    });
+    const copy = migrateMarathon(JSON.parse(JSON.stringify(m))); // как после экспорта в файл и импорта
     expect(copy.tasks[0]).toMatchObject({ description: 'Описание\nвторая строка', descriptionSource: 'manual' });
   });
 
   it('старые данные (схема v1) без описаний получают пустое описание', () => {
-    const old = migrateMarathon({ id: 'x', title: 'Старый', tasks: [{ id: 't', title: 'Задание', targetChecks: 3 }], participantIds: [] });
+    const old = migrateMarathon({
+      id: 'x',
+      title: 'Старый',
+      tasks: [{ id: 't', title: 'Задание', targetChecks: 3 }],
+      participantIds: []
+    });
     expect(old.tasks[0]).toMatchObject({ description: '', descriptionSource: '' });
   });
 });
 
 describe('новость про другой марафон + текущая страница отметок (issue #72 п.4)', () => {
-  const siteRaw = () => ({ ...detail('site-supermarathon2.html').data, sourceUrl: 'https://pwonline.ru/supermarathon2.php' });
+  const siteRaw = () => ({
+    ...detail('site-supermarathon2.html').data,
+    sourceUrl: 'https://pwonline.ru/supermarathon2.php'
+  });
 
   it('весенняя новость и летняя страница не склеиваются: марафон один, только из новости', () => {
     const spring = news('news-spring-2025.html', { title: 'Весенний марафон', publishedAt: '24.04.2025' });
     const { raw, notes } = mergeSiteAndNews({ news: spring, site: siteRaw() });
     expect(raw.origin).toBe('news');
-    expect(raw.stages.map(st => st.key)).toEqual(spring.stages.map(st => st.key));   // этапов из страницы не добавлено
-    expect(raw.quests).toHaveLength(spring.quests.length);                            // заданий из страницы не добавлено
+    expect(raw.stages.map(st => st.key)).toEqual(spring.stages.map(st => st.key)); // этапов из страницы не добавлено
+    expect(raw.quests).toHaveLength(spring.quests.length); // заданий из страницы не добавлено
     expect(notes.some(n => n.level === 'warn' && /другому марафону/.test(n.text))).toBe(true);
   });
 
@@ -211,9 +253,23 @@ describe('новость про другой марафон + текущая с�
 
   it('isSameMarathon: пересечение сроков; без сроков — по названиям заданий', () => {
     const st = (a, b) => ({ startDate: a, endDate: b });
-    expect(isSameMarathon({ stages: [st('2026-04-25', '2026-05-17')], quests: [] }, { stages: [st('2026-05-30', '2026-06-28')], quests: [] })).toBe(false);
-    expect(isSameMarathon({ stages: [st('2026-06-01', '2026-06-30')], quests: [] }, { stages: [st('2026-05-30', '2026-06-28')], quests: [] })).toBe(true);
-    expect(isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Охота (июль)' }] })).toBe(true);
-    expect(isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Другое' }] })).toBe(false);
+    expect(
+      isSameMarathon(
+        { stages: [st('2026-04-25', '2026-05-17')], quests: [] },
+        { stages: [st('2026-05-30', '2026-06-28')], quests: [] }
+      )
+    ).toBe(false);
+    expect(
+      isSameMarathon(
+        { stages: [st('2026-06-01', '2026-06-30')], quests: [] },
+        { stages: [st('2026-05-30', '2026-06-28')], quests: [] }
+      )
+    ).toBe(true);
+    expect(
+      isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Охота (июль)' }] })
+    ).toBe(true);
+    expect(
+      isSameMarathon({ stages: [], quests: [{ title: 'Охота' }] }, { stages: [], quests: [{ title: 'Другое' }] })
+    ).toBe(false);
   });
 });

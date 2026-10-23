@@ -4,3 +4,11 @@ src-tauri
 public
 package-lock.json
 *.patch
+coverage
+.git
+
+# Markdown правится автоматикой: роадмап и changelog пересобираются workflow'ами,
+# а prettier переразложил бы их целиком и следующий автопрогон снова сломал бы format:check.
+*.md
+index.html
+tests/fixtures

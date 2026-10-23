@@ -10,11 +10,18 @@ import { DEFAULT_SETTINGS } from '../../core/constants.js';
 
 let current = loadStatus();
 let inflight = null;
-let lastError = null;      // { status, error } последней неудачи; сбрасывается успешным чтением
+let lastError = null; // { status, error } последней неудачи; сбрасывается успешным чтением
 let lastAttemptAt = 0;
 const listeners = new Set();
 
-const notify = () => listeners.forEach(fn => { try { fn(getServerStatus()); } catch (e) { console.warn('[SERVERS]', e); } });
+const notify = () =>
+  listeners.forEach(fn => {
+    try {
+      fn(getServerStatus());
+    } catch (e) {
+      console.warn('[SERVERS]', e);
+    }
+  });
 
 /** Текущее состояние: последние данные (или null), идёт ли чтение, последняя ошибка. */
 export function getServerStatus() {
@@ -59,8 +66,10 @@ export function refreshServerStatus(opts) {
   inflight = (async () => {
     try {
       const res = await readServerStatus(opts);
-      if (res.status === 'ok') { current = saveStatus(res); lastError = null; }
-      else if (res.status !== 'cancelled') lastError = { status: res.status, error: res.error || null };
+      if (res.status === 'ok') {
+        current = saveStatus(res);
+        lastError = null;
+      } else if (res.status !== 'cancelled') lastError = { status: res.status, error: res.error || null };
       return res;
     } finally {
       inflight = null;
@@ -83,7 +92,11 @@ async function backgroundRead(getSettings) {
   if (!window.__TAURI_INTERNALS__) return null;
   const { invoke } = await import('@tauri-apps/api/core');
   const s = getSettings()?.scripts || {};
-  return refreshServerStatus({ invokeFn: invoke, retries: Math.min(2, Math.max(0, Number(s.retries) || 0)), retryDelayMs: 2000 });
+  return refreshServerStatus({
+    invokeFn: invoke,
+    retries: Math.min(2, Math.max(0, Number(s.retries) || 0)),
+    retryDelayMs: 2000
+  });
 }
 
 /**
@@ -92,9 +105,14 @@ async function backgroundRead(getSettings) {
  */
 export async function loadServerStatusOnStartup(getSettings, maxWaitMs = 25000) {
   let timer;
-  const limit = new Promise(resolve => { timer = setTimeout(resolve, maxWaitMs); });
-  try { await Promise.race([backgroundRead(getSettings).catch(e => console.warn('[SERVERS] startup', e)), limit]); }
-  finally { clearTimeout(timer); }
+  const limit = new Promise(resolve => {
+    timer = setTimeout(resolve, maxWaitMs);
+  });
+  try {
+    await Promise.race([backgroundRead(getSettings).catch(e => console.warn('[SERVERS] startup', e)), limit]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Фоновое расписание: каждые полминуты проверяет, не пора ли перечитать (интервал берётся из настроек «на лету»). */

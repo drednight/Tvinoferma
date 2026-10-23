@@ -1,6 +1,6 @@
 name: Идея или предложение
 description: Новая функция или улучшение
-labels: ["type/feature"]
+labels: ['type/feature']
 body:
   - type: textarea
     id: problem

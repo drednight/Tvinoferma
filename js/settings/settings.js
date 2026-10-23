@@ -16,31 +16,33 @@ import { balanceSettingsColumns } from './columns.js';
 import { bindGuides } from './guides.js';
 import { openExportDialog } from '../data/export.js';
 import { openImportDialog } from '../data/import.js';
-import '../core/taskLog.js';   // подключает вид логов «Скрипты» к единому модулю логов
+import '../core/taskLog.js'; // подключает вид логов «Скрипты» к единому модулю логов
 import { mountLogHub, logHubSummary, onLogsChange } from '../core/logHub.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
-import '../modules/automation/promoLogView.js';      // виды логов «Промокоды», «Передачи» и «Подарки»
+import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
-import '../modules/automation/shopLogView.js';       // вид логов «Подарки» (покупка за Древние монеты)
-import '../modules/launcher/launchLogView.js';      // вид логов «Запуски» (история и статистика запуска игры)
+import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
+import '../modules/launcher/launchLogView.js'; // вид логов «Запуски» (история и статистика запуска игры)
 
-export const BACKUPS_SHOWN = 5;   // сколько последних бэкапов показываем в панели
+export const BACKUPS_SHOWN = 5; // сколько последних бэкапов показываем в панели
 
 /** Tauri отдаёт { name, createdAt, size }, браузерный адаптер — строки; возвращаем от новых к старым. */
 async function loadBackups() {
   const adapter = getAdapter();
   if (!adapter) return [];
-  const list = (await adapter.listBackups()).map(b => typeof b === 'string' ? { name: b } : b);
+  const list = (await adapter.listBackups()).map(b => (typeof b === 'string' ? { name: b } : b));
   return list.sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0) || String(y.name).localeCompare(String(x.name)));
 }
 
 function backupRowsHtml(backups) {
   return backups.length
-    ? backups.map(({ name, createdAt, size }) => `
+    ? backups
+        .map(
+          ({ name, createdAt, size }) => `
           <div class="backup-item">
             <div class="meta">
               <strong>${createdAt ? escapeHtml(new Date(createdAt).toLocaleString('ru-RU')) : escapeHtml(name)}</strong>
@@ -51,7 +53,9 @@ function backupRowsHtml(backups) {
               <button class="btn danger" data-backup-delete="${escapeHtml(name)}">Удалить</button>
             </div>
           </div>
-        `).join('')
+        `
+        )
+        .join('')
     : '<div class="empty-state">Нет резервных копий.</div>';
 }
 
@@ -76,7 +80,8 @@ async function refreshBackups() {
         ? `Копий: ${backups.length}${last?.createdAt ? ` · последняя: ${new Date(last.createdAt).toLocaleString('ru-RU')}` : ''}`
         : 'Резервных копий пока нет: нажмите «Создать бэкап».';
     }
-    if (fullBackupsOverlay) fullBackupsOverlay.body.innerHTML = `<div class="list compact" id="full-backup-list">${backupRowsHtml(backups)}</div>`;
+    if (fullBackupsOverlay)
+      fullBackupsOverlay.body.innerHTML = `<div class="list compact" id="full-backup-list">${backupRowsHtml(backups)}</div>`;
   } catch (error) {
     listEl.innerHTML = `<div class="empty-state">Ошибка: ${escapeHtml(error.message || error)}</div>`;
   }
@@ -85,7 +90,13 @@ async function refreshBackups() {
 /** Окно со всеми сохранёнными бэкапами (те же кнопки «Восстановить» / «Удалить»). */
 async function openFullBackups() {
   if (fullBackupsOverlay) return;
-  const ov = openOverlay({ title: '📚 Полный список бэкапов', wide: true, onClose: () => { fullBackupsOverlay = null; } });
+  const ov = openOverlay({
+    title: '📚 Полный список бэкапов',
+    wide: true,
+    onClose: () => {
+      fullBackupsOverlay = null;
+    }
+  });
   fullBackupsOverlay = ov;
   ov.foot.innerHTML = '<button type="button" class="btn primary" data-close>Закрыть</button>';
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
@@ -104,12 +115,12 @@ function downloadJson(data, filename) {
 
 export async function renderSettings() {
   const adapter = getAdapter();
-  
+
   // Защита: если адаптера нет, выходим тихо или пишем заглушку
   if (!adapter) {
-     const runtimeEl = document.getElementById('storage-runtime');
-     if(runtimeEl) runtimeEl.textContent = 'Недоступно (нет адаптера)';
-     return;
+    const runtimeEl = document.getElementById('storage-runtime');
+    if (runtimeEl) runtimeEl.textContent = 'Недоступно (нет адаптера)';
+    return;
   }
 
   // Runtime info
@@ -132,7 +143,6 @@ export async function renderSettings() {
   // Backups
   await refreshBackups();
 
-
   // Безопасность
   const vaultEl = document.getElementById('vault-status');
   if (vaultEl) {
@@ -149,7 +159,11 @@ export async function renderSettings() {
   // Версия
   const verEl = document.getElementById('app-version');
   if (verEl && isTauri()) {
-    try { verEl.textContent = await (await import('@tauri-apps/api/app')).getVersion(); } catch (_) { /* не критично */ }
+    try {
+      verEl.textContent = await (await import('@tauri-apps/api/app')).getVersion();
+    } catch (_) {
+      /* не критично */
+    }
   }
 
   // Значения настроек
@@ -166,8 +180,10 @@ export async function renderSettings() {
   const hk = document.getElementById('hotkeys-list');
   if (hk && !hk.childElementCount) {
     // Подпись разделам собирается по текущим настройкам: выключенный или переставленный раздел
-// меняет и номера горячих клавиш, и их названия
-    hk.innerHTML = hotkeyRows().map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`).join('');
+    // меняет и номера горячих клавиш, и их названия
+    hk.innerHTML = hotkeyRows()
+      .map(h => `<span><kbd>${escapeHtml(h.keys)}</kbd></span><span>${escapeHtml(h.text)}</span>`)
+      .join('');
   }
 }
 
@@ -289,7 +305,9 @@ function renderNotifyKinds() {
       if (res !== 'played') {
         toast('Звук не прозвучал: браузер разрешает звук только после первого клика по приложению', 'warning');
       }
-      setTimeout(() => { el.textContent = label; }, 800);
+      setTimeout(() => {
+        el.textContent = label;
+      }, 800);
     });
   });
 }
@@ -321,9 +339,9 @@ function initSoundTonePicker() {
 
   const fill = () => {
     const current = soundSettings(state.settings).tone;
-    select.innerHTML = SOUND_TONES
-      .map(t => `<option value="${escapeHtml(t.id)}"${t.id === current ? ' selected' : ''}>${escapeHtml(t.title)}</option>`)
-      .join('');
+    select.innerHTML = SOUND_TONES.map(
+      t => `<option value="${escapeHtml(t.id)}"${t.id === current ? ' selected' : ''}>${escapeHtml(t.title)}</option>`
+    ).join('');
     updateHint();
   };
   const updateHint = () => {
@@ -368,9 +386,7 @@ function initSettingsSections() {
   if (!nav || !body || nav.dataset.navSpy) return;
   nav.dataset.navSpy = 'true';
   const links = [...nav.querySelectorAll('.settings-nav-item')];
-  const sections = links
-    .map(link => document.getElementById(link.getAttribute('href').slice(1)))
-    .filter(Boolean);
+  const sections = links.map(link => document.getElementById(link.getAttribute('href').slice(1))).filter(Boolean);
   if (!sections.length) return;
 
   /**
@@ -379,7 +395,9 @@ function initSettingsSections() {
    */
   function openSettingsSection(id) {
     const section = sections.find(s => s.id === id) || null;
-    sections.forEach(s => { s.hidden = !section || s !== section; });
+    sections.forEach(s => {
+      s.hidden = !section || s !== section;
+    });
     links.forEach(link => {
       const on = !!section && link.getAttribute('href') === `#${section.id}`;
       link.classList.toggle('is-active', on);
@@ -431,7 +449,10 @@ function getSetting(path) {
 function setSetting(path, value) {
   const keys = path.split('.');
   let obj = state.settings;
-  keys.slice(0, -1).forEach(k => { if (!obj[k] || typeof obj[k] !== 'object') obj[k] = {}; obj = obj[k]; });
+  keys.slice(0, -1).forEach(k => {
+    if (!obj[k] || typeof obj[k] !== 'object') obj[k] = {};
+    obj = obj[k];
+  });
   obj[keys[keys.length - 1]] = value;
 }
 
@@ -451,18 +472,24 @@ function bindSettingInputs() {
         const min = el.min !== '' ? Number(el.min) : -Infinity;
         const max = el.max !== '' ? Number(el.max) : Infinity;
         value = Math.min(max, Math.max(min, Number.isFinite(n) ? n : 0));
-        if (path.startsWith('freshness.')) value = Math.round(value);   // порог — целое число часов
+        if (path.startsWith('freshness.')) value = Math.round(value); // порог — целое число часов
         el.value = value;
         updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
-      if (path === 'updates.mode') setSetting('updates.checkOnStartup', true);   // совместимость со старыми версиями
+      if (path === 'updates.mode') setSetting('updates.checkOnStartup', true); // совместимость со старыми версиями
       await persist();
-      if (path === 'updates.mode') { refreshUpdateSchedule(); rescheduleUpdates(); }
+      if (path === 'updates.mode') {
+        refreshUpdateSchedule();
+        rescheduleUpdates();
+      }
       if (path.startsWith('tray.') || path.startsWith('browser.')) await applyDesktopSettings();
-      if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings);   // подсветка устаревших обновляется сразу
+      if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings); // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
-        toast(value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.', 'info');
+        toast(
+          value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.',
+          'info'
+        );
       }
     });
   });
@@ -544,12 +571,17 @@ export function bindSettings() {
   const logPanel = document.getElementById('log-hub-panel');
   const logBody = document.getElementById('log-hub-root');
   const logSummary = document.getElementById('log-hub-summary');
-  const refreshLogSummary = () => { if (logSummary) logSummary.textContent = logHubSummary(); };
+  const refreshLogSummary = () => {
+    if (logSummary) logSummary.textContent = logHubSummary();
+  };
   refreshLogSummary();
   onLogsChange(refreshLogSummary);
   let logMounted = false;
   logPanel?.addEventListener('toggle', () => {
-    if (logPanel.open && !logMounted && logBody) { logMounted = true; mountLogHub(logBody); }
+    if (logPanel.open && !logMounted && logBody) {
+      logMounted = true;
+      mountLogHub(logBody);
+    }
   });
 
   // Create Backup
@@ -571,7 +603,7 @@ export function bindSettings() {
   document.getElementById('all-backups-btn')?.addEventListener('click', openFullBackups);
 
   // Backup Actions (Delegate)
-  document.addEventListener('click', async (e) => {
+  document.addEventListener('click', async e => {
     const restoreBtn = e.target.closest?.('[data-backup-restore]');
     const deleteBtn = e.target.closest?.('[data-backup-delete]');
     if (!restoreBtn && !deleteBtn) return;
@@ -631,7 +663,7 @@ export function bindSettings() {
   });
 
   // Import File
-  document.getElementById('import-file')?.addEventListener('change', async (event) => {
+  document.getElementById('import-file')?.addEventListener('change', async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -647,10 +679,13 @@ export function bindSettings() {
   });
 
   // Опасные действия: описание каждого действия, подтверждение с числом записей и резервная копия перед удалением
-  const runDanger = async (kind) => {
+  const runDanger = async kind => {
     const action = DANGER_ACTIONS[kind];
     const count = action.count(state);
-    if (!count) { toast(`Удалять нечего: ${action.what} нет`, 'info'); return; }
+    if (!count) {
+      toast(`Удалять нечего: ${action.what} нет`, 'info');
+      return;
+    }
     const ok = await confirmModal({
       title: `${action.title}?`,
       text: `Будет удалено: ${count} (${action.what}). ${action.description} Перед удалением создастся резервная копия — её можно восстановить в «Резервных копиях».`,
@@ -658,8 +693,14 @@ export function bindSettings() {
       danger: true
     });
     if (!ok) return;
-    try { if (getAdapter()) { await saveNow(); await createBackup(`before-delete-${kind}`); } }
-    catch (e) { console.warn('[DANGER] backup failed', e); }
+    try {
+      if (getAdapter()) {
+        await saveNow();
+        await createBackup(`before-delete-${kind}`);
+      }
+    } catch (e) {
+      console.warn('[DANGER] backup failed', e);
+    }
     if (kind === 'parties') clearParties(state);
     else if (kind === 'marathons') clearMarathons(state);
     else {
@@ -674,7 +715,7 @@ export function bindSettings() {
     await forceRenderAndPersist();
     toast(`Удалено: ${count} (${action.what})`, 'success');
   };
-  document.getElementById('danger-zone')?.addEventListener('click', (e) => {
+  document.getElementById('danger-zone')?.addEventListener('click', e => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-danger]'));
     if (btn?.dataset.danger && DANGER_ACTIONS[btn.dataset.danger]) runDanger(btn.dataset.danger);
   });
@@ -697,30 +738,29 @@ export function bindSettings() {
   // Open/Copy Data Dir
   document.getElementById('copy-data-dir-btn')?.addEventListener('click', async () => {
     const dirText = document.getElementById('data-dir').textContent;
-    
+
     if (!dirText || dirText.includes('Недоступно') || dirText === '...') {
-       toast('Путь к данным неизвестен.', 'error');
-       return;
+      toast('Путь к данным неизвестен.', 'error');
+      return;
     }
 
     try {
       // Динамически импортируем функцию open из установленного плагина
       const { open } = await import('@tauri-apps/plugin-shell');
-      
+
       // Пытаемся открыть папку в системном файловом менеджере
       await open(dirText);
-      
+
       toast('Папка открыта в проводнике.', 'success');
-      
     } catch (e) {
       console.warn('[SHELL PLUGIN ERROR]', e);
-      
+
       // Fallback: если плагин не сработал или нет прав, копируем путь
       try {
         await navigator.clipboard.writeText(dirText);
         toast('Не удалось автоматически открыть папку. Путь скопирован в буфер обмена.', 'info');
       } catch (clipErr) {
-        prompt("Скопируйте путь вручную:", dirText);
+        prompt('Скопируйте путь вручную:', dirText);
       }
     }
   });

@@ -27,7 +27,7 @@ import { initTaskLog } from './core/taskLog.js';
 import { initStickyHeader } from './core/stickyHeader.js';
 import { bindSettings, renderSettings } from './settings/settings.js';
 import { toast } from './core/ui.js';
-import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js'; 
+import { initSyncListeners, verifySavedLoginsOnStartup } from './modules/sync/syncManager.js';
 import { mountServerStatus } from './modules/servers/serverStatusView.js';
 import { mountMskClock } from './modules/servers/mskClock.js';
 import { loadServerStatusOnStartup, startServerStatusScheduler } from './modules/servers/serverStatus.js';
@@ -37,7 +37,7 @@ import { applySections, resolveSection } from './core/sections.js';
 import { bindFinance, renderFinance } from './modules/finance/page.js';
 
 // === ИМПОРТ ФУНКЦИЙ ДЛЯ FAB ===
-import { initUiActions, updateFabVisibility } from './core/uiActions.js'; 
+import { initUiActions, updateFabVisibility } from './core/uiActions.js';
 
 // Слушатели событий поиска марафонов на сайте
 import { initDiscoveryListener } from './modules/marathons/discoveryLauncher.js';
@@ -48,14 +48,16 @@ import { initDiscoveryListener } from './modules/marathons/discoveryLauncher.js'
 async function boot() {
   try {
     console.log('[BOOT] Starting Twinoferma...');
-    
+
     // 1. Загрузка данных из хранилища
     let raw = null;
     try {
       raw = await loadData();
     } catch (e) {
       console.error('[BOOT] Failed to load state:', e);
-      alert(`Не удалось прочитать данные: ${e?.message || e}\nПриложение запустится с пустыми данными, повреждённый файл сохранён рядом с state.json.`);
+      alert(
+        `Не удалось прочитать данные: ${e?.message || e}\nПриложение запустится с пустыми данными, повреждённый файл сохранён рядом с state.json.`
+      );
     }
     let needsSave = false;
     let idAliases = {}; // { новый id: старый id } после миграции v4
@@ -63,16 +65,27 @@ async function boot() {
       // 1a. Миграции схемы: перед изменением формата делаем резервную копию исходного файла
       const migration = migrateState(raw);
       if (migration.newer) {
-        toast(`Данные созданы более новой версией приложения (схема v${migration.from}, поддерживается v${SCHEMA_VERSION}). Обновите приложение.`, 'warning');
+        toast(
+          `Данные созданы более новой версией приложения (схема v${migration.from}, поддерживается v${SCHEMA_VERSION}). Обновите приложение.`,
+          'warning'
+        );
         // Старая версия при сохранении перепишет файл в своём формате и может потерять новые поля —
         // поэтому до любой записи оставляем копию исходного файла
         if (isTauri()) {
-          try { await createBackup(`newer-schema-v${migration.from}`); } catch (e) { console.warn('[BOOT] Backup of newer data failed:', e); }
+          try {
+            await createBackup(`newer-schema-v${migration.from}`);
+          } catch (e) {
+            console.warn('[BOOT] Backup of newer data failed:', e);
+          }
         }
       } else if (migration.applied.length) {
         console.log(`[BOOT] Migrating state v${migration.from} → v${migration.to}`);
         if (isTauri()) {
-          try { await createBackup(`pre-migration-v${migration.from}`); } catch (e) { console.warn('[BOOT] Pre-migration backup failed:', e); }
+          try {
+            await createBackup(`pre-migration-v${migration.from}`);
+          } catch (e) {
+            console.warn('[BOOT] Pre-migration backup failed:', e);
+          }
         }
         needsSave = true;
       }
@@ -88,7 +101,9 @@ async function boot() {
             const { invoke } = await import('@tauri-apps/api/core');
             const failed = await invoke('rename_char_profiles', { remap });
             if (failed?.length) console.warn('[BOOT] Profiles not moved (re-login needed):', failed);
-          } catch (e) { console.warn('[BOOT] rename_char_profiles failed:', e); }
+          } catch (e) {
+            console.warn('[BOOT] rename_char_profiles failed:', e);
+          }
         }
       }
       console.log('[BOOT] State loaded successfully.');
@@ -97,10 +112,10 @@ async function boot() {
     }
 
     // 1c. Учётные данные из хранилища ОС (и перенос туда открытых паролей из старого state.json)
-    const secrets = await hydrateSecrets(
-      [...state.characters, ...state.archivedCharacters],
-      { tauri: isTauri(), aliases: idAliases }
-    );
+    const secrets = await hydrateSecrets([...state.characters, ...state.archivedCharacters], {
+      tauri: isTauri(),
+      aliases: idAliases
+    });
     if (secrets.migrated > 0) {
       needsSave = true;
       toast(`Учётные данные ${secrets.migrated} персонажей перенесены в защищённое хранилище ОС.`, 'success');
@@ -110,18 +125,18 @@ async function boot() {
     // 2. Инициализация слушателей синхронизации PW Online
     // Делаем это ДО рендера UI, чтобы не пропустить ранние события от окон
     try {
-        await initSyncListeners();
-        await initTaskLog();
-        console.log('[BOOT] Sync listeners initialized.');
+      await initSyncListeners();
+      await initTaskLog();
+      console.log('[BOOT] Sync listeners initialized.');
     } catch (e) {
-        console.error('[BOOT ERROR] Failed to initialize sync listeners:', e);
-        toast('Модуль синхронизации недоступен', 'warning');
+      console.error('[BOOT ERROR] Failed to initialize sync listeners:', e);
+      toast('Модуль синхронизации недоступен', 'warning');
     }
 
     // 3. Инициализация модулей с изоляцией ошибок
-    
+
     try {
-      bindCharacters(); 
+      bindCharacters();
       initRunningWindowsTracking();
       console.log('[BOOT] Characters bound.');
     } catch (e) {
@@ -137,17 +152,16 @@ async function boot() {
     }
 
     try {
-      bindMarathons(); 
-      
+      bindMarathons();
+
       // === ИНИЦИАЛИЗАЦИЯ СЛУШАТЕЛЯ ПОИСКА МАРАФОНОВ ===
       // Это должно быть после bindMarathons, чтобы DOM был готов
       await initDiscoveryListener();
       console.log('[BOOT] Marathon discovery listener initialized.');
-      
     } catch (e) {
       console.error('[BOOT ERROR] Failed to bind/render Marathons:', e);
       const marList = document.getElementById('marathon-list');
-      if(marList) marList.innerHTML = '<div class="empty-state" style="color:red;">Ошибка загрузки марафонов.</div>';
+      if (marList) marList.innerHTML = '<div class="empty-state" style="color:red;">Ошибка загрузки марафонов.</div>';
     }
 
     try {
@@ -200,18 +214,18 @@ async function boot() {
     // 5. Инициализация UI Actions (FAB, Меню скриптов)
     // Важно: это должно быть ПОСЛЕ рендера основных элементов, чтобы найти их в DOM
     try {
-        initUiActions();
-        initStickyHeader();
-        console.log('[BOOT] UI Actions (FAB/Menus) initialized.');
+      initUiActions();
+      initStickyHeader();
+      console.log('[BOOT] UI Actions (FAB/Menus) initialized.');
     } catch (e) {
-        console.error('[BOOT ERROR] Failed to init UI Actions:', e);
+      console.error('[BOOT ERROR] Failed to init UI Actions:', e);
     }
 
     // 6. Горячие клавиши, трей, фоновые проверки, уведомления
     initHotkeys({ switchTab });
     // Звук уведомлений: браузерный движок разрешает его только после первого клика (js/desktop/sound.js)
     initSound();
-bindNotifyCenter();
+    bindNotifyCenter();
     try {
       await initDesktop();
       initNotifications();
@@ -249,13 +263,16 @@ bindNotifyCenter();
     // 10. Обновления: обязательная тихая проверка при каждом запуске; дополнительные проверки по расписанию
     initUpdateUi();
     initParserHealthUi();
-    startFreshnessTicker(() => state.settings);   // «5 мин назад» пересчитывается раз в минуту
+    startFreshnessTicker(() => state.settings); // «5 мин назад» пересчитывается раз в минуту
     // Время последней успешной проверки хранится в настройках, чтобы расписание переживало перезапуск
     const savedCheck = state.settings?.updates?.lastCheckedAt;
     if (savedCheck) setUpdateState({ lastCheckedAt: savedCheck });
-    subscribeUpdate((s) => {
-      if ((s.status === 'uptodate' || s.status === 'available') && s.lastCheckedAt
-        && s.lastCheckedAt !== state.settings.updates?.lastCheckedAt) {
+    subscribeUpdate(s => {
+      if (
+        (s.status === 'uptodate' || s.status === 'available') &&
+        s.lastCheckedAt &&
+        s.lastCheckedAt !== state.settings.updates?.lastCheckedAt
+      ) {
         state.settings.updates = { ...state.settings.updates, lastCheckedAt: s.lastCheckedAt };
         persist();
       }
@@ -266,7 +283,6 @@ bindNotifyCenter();
         getLastChecked: () => state.settings?.updates?.lastCheckedAt
       });
     }
-
   } catch (error) {
     console.error('[BOOT CRITICAL ERROR]', error);
     alert(`Критическая ошибка запуска: ${error.message}`);
@@ -287,9 +303,11 @@ function bindNavigation() {
       // Обновляем активную вкладку визуально
       tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === targetSection));
       const sectionTitle = document.getElementById('next-section-title');
-      if (sectionTitle) sectionTitle.textContent = tab.querySelector('strong')?.textContent
-        || tab.querySelector('span:not([aria-hidden])')?.textContent
-        || targetSection;
+      if (sectionTitle)
+        sectionTitle.textContent =
+          tab.querySelector('strong')?.textContent ||
+          tab.querySelector('span:not([aria-hidden])')?.textContent ||
+          targetSection;
       const sectionSubtitle = document.getElementById('next-section-subtitle');
       if (sectionSubtitle) sectionSubtitle.textContent = tab.dataset.subtitle || '';
 
@@ -305,7 +323,7 @@ function bindNavigation() {
 
       // Вызываем рендер конкретной секции
       renderActiveTab(targetSection);
-      
+
       // === ОБНОВЛЯЕМ СОСТОЯНИЕ FAB ПРИ СМЕНЕ ВКЛАДКИ ===
       updateFabVisibility(targetSection);
     });
@@ -329,14 +347,15 @@ function renderActiveTab(sectionName) {
       case 'characters':
         renderCharacters();
         if (isTauri()) refreshRunningWindows().catch(() => {});
-        break;      case 'parties':
+        break;
+      case 'parties':
         renderParties();
         // Список окон игры нужен и на «Пати» (кнопка «🔖» подписать окна в карточке пати).
         // Он общий и меняется после запуска/закрытия, поэтому обновляем его при входе.
         if (isTauri()) refreshRunningWindows().catch(() => {});
         break;
       case 'marathons':
-        resetMarathonView();   // клик по вкладке всегда возвращает к списку марафонов
+        resetMarathonView(); // клик по вкладке всегда возвращает к списку марафонов
         renderMarathons();
         break;
       case 'runes':
@@ -356,7 +375,7 @@ function renderActiveTab(sectionName) {
       default:
         console.warn(`[NAV] Unknown section: ${sectionName}`);
     }
-    refreshNavBadges();   // число записей могло измениться во время отрисовки раздела
+    refreshNavBadges(); // число записей могло измениться во время отрисовки раздела
   } catch (err) {
     console.error(`[RENDER ERROR in ${sectionName}]`, err);
     toast(`Ошибка отображения раздела "${sectionName}". Подробности в консоли.`, 'error');

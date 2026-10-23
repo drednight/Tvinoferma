@@ -43,7 +43,9 @@ function wasPageReloaded() {
     const seen = sessionStorage.getItem(SESSION_KEY) === '1';
     sessionStorage.setItem(SESSION_KEY, '1');
     return seen;
-  } catch (_) { return false; }
+  } catch (_) {
+    return false;
+  }
 }
 
 /** Строки журнала для localStorage: без рантайм-полей, самые новые сверху. */
@@ -81,7 +83,9 @@ function loadJournal() {
     // и saveJournal записал бы пустой список, стерев журнал
     if (changed) writeLogBounded(STORAGE_KEY, journalRows(list));
     return list;
-  } catch (_) { return []; }
+  } catch (_) {
+    return [];
+  }
 }
 function saveJournal() {
   // Сохраняем и идущие задачи: иначе при перезагрузке страницы или падении приложения
@@ -93,18 +97,18 @@ function saveJournal() {
 
 const nowIso = () => new Date().toISOString();
 // Время в журнале задач — по Москве: по нему сверяют работу скриптов с игровыми событиями
-const timeOf = (iso) => mskStampSeconds(new Date(iso));
+const timeOf = iso => mskStampSeconds(new Date(iso));
 
 class Task {
   constructor(title = '', opts = {}) {
-    this.id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random()));
+    this.id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random());
     this.title = title;
     this.kind = opts.kind || 'task';
     this.dock = opts.dock !== false;
     this.startedAt = nowIso();
-    this.updatedAt = this.startedAt;   // последний признак жизни: по нему ищем зависшие задачи
+    this.updatedAt = this.startedAt; // последний признак жизни: по нему ищем зависшие задачи
     this.finishedAt = null;
-    this.status = 'running';     // running | done | warn | error (ожидание — по флагу waiting)
+    this.status = 'running'; // running | done | warn | error (ожидание — по флагу waiting)
     this.done = 0;
     this.total = opts.total || 0;
     this.step = '';
@@ -112,21 +116,21 @@ class Task {
     this.entries = [];
     this.scopes = [];
     this.open = false;
-    this.actor = null;           // кто и что делается сейчас: { nick, text }
+    this.actor = null; // кто и что делается сейчас: { nick, text }
     this.warnings = 0;
     this.errors = 0;
-    this.cancelable = !!opts.cancelable;   // показывать кнопку «Отмена»
+    this.cancelable = !!opts.cancelable; // показывать кнопку «Отмена»
     this.cancelled = false;
-    this.paused = false;                    // пауза по кнопке в доке
+    this.paused = false; // пауза по кнопке в доке
     this._onCancel = null;
     this._onPause = null;
     this._onStop = null;
-    this._waiters = [];          // ждут очереди: сработают, когда скрипт дойдёт до работы
-    this.waiting = false;        // стоит в очереди за другим скриптом
+    this._waiters = []; // ждут очереди: сработают, когда скрипт дойдёт до работы
+    this.waiting = false; // стоит в очереди за другим скриптом
   }
   get percent() {
     if (this.status !== 'running') return 100;
-    return this.total ? Math.min(100, Math.round(this.done / this.total * 100)) : 0;
+    return this.total ? Math.min(100, Math.round((this.done / this.total) * 100)) : 0;
   }
   /**
    * Ждать очереди, если она есть.
@@ -144,7 +148,11 @@ class Task {
   _releaseWaiters() {
     const list = this._waiters;
     this._waiters = [];
-    list.forEach(fn => { try { fn(); } catch (_) {} });
+    list.forEach(fn => {
+      try {
+        fn();
+      } catch (_) {}
+    });
   }
   log(message, level = 'info', scope = '') {
     this.updatedAt = nowIso();
@@ -179,7 +187,9 @@ class Task {
     this.log(withNick(scope, note || 'ошибки сняты — проверка прошла'), 'info', scope);
     return this;
   }
-  setStep(message) { return this.log(message, 'step'); }
+  setStep(message) {
+    return this.log(message, 'step');
+  }
 
   /**
    * Итоговая таблица в конце журнала: по строке на персонажа и итог счётом.
@@ -202,18 +212,29 @@ class Task {
     return this;
   }
   /** Что сделать при нажатии «Отмена» (обычно — поднять флаг для очереди). */
-  onCancel(fn) { this._onCancel = fn; return this; }
+  onCancel(fn) {
+    this._onCancel = fn;
+    return this;
+  }
   /** Что делать при паузе и продолжении. */
-  onPause(fn) { this._onPause = fn; return this; }
+  onPause(fn) {
+    this._onPause = fn;
+    return this;
+  }
   /** Что делать при мгновенной остановке (обрыв выполняющегося скрипта). */
-  onStop(fn) { this._onStop = fn; return this; }
+  onStop(fn) {
+    this._onStop = fn;
+    return this;
+  }
 
   /** Пауза: очередь не берёт следующих персонажей, текущий доводится. */
   togglePause() {
     if (this.status !== 'running' || this.cancelled) return this;
     this.paused = !this.paused;
     this.log(this.paused ? 'Пауза: очередь остановлена, текущий скрипт дойдёт до конца' : 'Продолжаю', 'info');
-    try { this._onPause?.(this.paused); } catch (_) {}
+    try {
+      this._onPause?.(this.paused);
+    } catch (_) {}
     return this;
   }
 
@@ -227,9 +248,13 @@ class Task {
     this.paused = false;
     const wasWaiting = this.waiting;
     this.waiting = false;
-    this._releaseWaiters();      // ждущий отпускается сразу: работать ему уже не о чем
-    try { this._onCancel?.(); } catch (_) {}
-    try { this._onStop?.(); } catch (_) {}
+    this._releaseWaiters(); // ждущий отпускается сразу: работать ему уже не о чем
+    try {
+      this._onCancel?.();
+    } catch (_) {}
+    try {
+      this._onStop?.();
+    } catch (_) {}
     if (wasWaiting) {
       // Остановлен скрипт в очереди: работать ему уже не о чем, поэтому закрываем задачу.
       // Иначе она навсегда осталась бы «идущей» в доке и держала очередь.
@@ -246,7 +271,9 @@ class Task {
     const wasWaiting = this.waiting;
     this.waiting = false;
     this._releaseWaiters();
-    try { this._onCancel?.(); } catch (_) {}
+    try {
+      this._onCancel?.();
+    } catch (_) {}
     if (wasWaiting) {
       // Отменён скрипт в очереди: работать ему уже не о чем, поэтому закрываем задачу.
       // Иначе она навсегда осталась бы «идущей» в доке и держала очередь.
@@ -258,14 +285,23 @@ class Task {
   }
   progress(done, total, step) {
     this.updatedAt = nowIso();
-    this.done = done; if (total != null) this.total = total;
+    this.done = done;
+    if (total != null) this.total = total;
     if (step) this.step = step;
     notify(this);
     return this;
   }
   /** Привязать события Rust с этим scope (например `char:<id>` или `scan`). */
-  watch(...scopes) { scopes.forEach(s => { if (!this.scopes.includes(s)) this.scopes.push(s); }); return this; }
-  unwatch(...scopes) { this.scopes = this.scopes.filter(s => !scopes.includes(s)); return this; }
+  watch(...scopes) {
+    scopes.forEach(s => {
+      if (!this.scopes.includes(s)) this.scopes.push(s);
+    });
+    return this;
+  }
+  unwatch(...scopes) {
+    this.scopes = this.scopes.filter(s => !scopes.includes(s));
+    return this;
+  }
   finish(summary = '', status) {
     if (this.status !== 'running') return this;
     this.status = status || (this.errors ? 'warn' : 'done');
@@ -276,7 +312,11 @@ class Task {
     this.actor = null;
     this.log(summary || 'Завершено', this.status === 'error' ? 'error' : this.status === 'warn' ? 'warn' : 'ok');
     saveJournal();
-    if (this.dock) setTimeout(() => { this._hidden = true; renderDock(); }, DOCK_AUTOHIDE_MS);
+    if (this.dock)
+      setTimeout(() => {
+        this._hidden = true;
+        renderDock();
+      }, DOCK_AUTOHIDE_MS);
     if (this.dock) startNextQueued();
     return this;
   }
@@ -372,7 +412,10 @@ export function startTask(title, opts = {}) {
   return t;
 }
 
-export function onTaskChange(fn) { subscribers.add(fn); return () => subscribers.delete(fn); }
+export function onTaskChange(fn) {
+  subscribers.add(fn);
+  return () => subscribers.delete(fn);
+}
 
 /**
  * Сигнал отмены для очереди скриптов: остановка, пауза и продолжение одним объектом.
@@ -386,8 +429,12 @@ export function onTaskChange(fn) { subscribers.add(fn); return () => subscribers
  */
 export function taskSignal(task) {
   const signal = { cancelled: false, paused: false };
-  task.onCancel(() => { signal.cancelled = true; });
-  task.onPause?.((paused) => { signal.paused = paused; });
+  task.onCancel(() => {
+    signal.cancelled = true;
+  });
+  task.onPause?.(paused => {
+    signal.paused = paused;
+  });
   task.onStop?.(() => {
     signal.cancelled = true;
     // Scope'ы снимаем с отмены перед новым запуском: тот же персонаж должен снова проверяться
@@ -401,10 +448,12 @@ export function taskSignal(task) {
 export function logScope(scope, message, level = 'info') {
   const text = withNick(scope, message);
   const nick = nickOfScope(scope);
-  tasks.filter(t => t.status === 'running' && t.scopes.includes(scope)).forEach(t => {
-    if (nick) t.actor = { nick, text: text.slice(nick.length + 2) };
-    t.log(text, level, scope);
-  });
+  tasks
+    .filter(t => t.status === 'running' && t.scopes.includes(scope))
+    .forEach(t => {
+      if (nick) t.actor = { nick, text: text.slice(nick.length + 2) };
+      t.log(text, level, scope);
+    });
 }
 
 /** Для scope `char:<id>` добавляет к строке ник персонажа (если его там ещё нет). */
@@ -426,11 +475,14 @@ async function ensureRustListener() {
   if (listenerReady || !window.__TAURI_INTERNALS__) return;
   listenerReady = true;
   try {
-    await listen('tf-task-log', (e) => {
+    await listen('tf-task-log', e => {
       const { scope, level, message } = e.payload || {};
       if (scope && message) logScope(scope, message, level || 'info');
     });
-  } catch (err) { console.warn('[TASK LOG] listener failed', err); listenerReady = false; }
+  } catch (err) {
+    console.warn('[TASK LOG] listener failed', err);
+    listenerReady = false;
+  }
 }
 export const initTaskLog = ensureRustListener;
 
@@ -457,16 +509,32 @@ function summaryTableHtml(e) {
   if (!rows.length && !totals.length) return '';
   return `<div class="tl-summary-table">
     <div class="tl-summary-title">${escapeHtml(e.message || 'Итоги')}</div>
-    ${totals.length ? `<div class="tl-summary-totals">${totals.map(t =>
-      `<span class="tl-total${t.tone ? ` is-${escapeHtml(t.tone)}` : ''}">${escapeHtml(t.label)} <b>${escapeHtml(String(t.value))}</b></span>`).join('')}</div>` : ''}
-    ${rows.length ? `<table class="tl-summary-rows">
+    ${
+      totals.length
+        ? `<div class="tl-summary-totals">${totals
+            .map(
+              t =>
+                `<span class="tl-total${t.tone ? ` is-${escapeHtml(t.tone)}` : ''}">${escapeHtml(t.label)} <b>${escapeHtml(String(t.value))}</b></span>`
+            )
+            .join('')}</div>`
+        : ''
+    }
+    ${
+      rows.length
+        ? `<table class="tl-summary-rows">
       <thead><tr><th>Персонаж</th><th>Результат</th><th>Пояснение</th></tr></thead>
-      <tbody>${rows.map(r => `<tr>
+      <tbody>${rows
+        .map(
+          r => `<tr>
         <td>${escapeHtml(r.name)}</td>
         <td><span class="tl-sum-status${r.tone ? ` is-${escapeHtml(r.tone)}` : ''}">${escapeHtml(r.status)}</span></td>
         <td class="muted">${escapeHtml(r.note || '')}</td>
-      </tr>`).join('')}</tbody>
-    </table>` : ''}
+      </tr>`
+        )
+        .join('')}</tbody>
+    </table>`
+        : ''
+    }
   </div>`;
 }
 
@@ -522,7 +590,11 @@ function notify(t) {
     el.outerHTML = taskCardHtml(t, { closable: t.status !== 'running' });
   });
   if (t.dock) renderDock();
-  subscribers.forEach(fn => { try { fn(t); } catch (_) {} });
+  subscribers.forEach(fn => {
+    try {
+      fn(t);
+    } catch (_) {}
+  });
 }
 
 /**
@@ -576,15 +648,17 @@ function dockBarHtml(current) {
   const pct = current ? current.percent : 0;
   const label = current ? current.title : 'Скрипты не выполняются';
   // Что скрипт делает прямо сейчас: шаг короче названия и меняется на каждой записи журнала
-  const step = current && !current.waiting && !current.paused ? (current.step || '') : '';
+  const step = current && !current.waiting && !current.paused ? current.step || '' : '';
   const zone = current ? (current.paused ? 'пауза' : `${pct}%`) : 'простой';
   const dot = current ? (current.paused ? 'is-paused' : 'is-busy') : '';
-  const ringState = current ? (current.paused ? 'is-paused' : (current.waiting ? 'is-queued' : '')) : 'is-idle';
-  const controls = current ? `
+  const ringState = current ? (current.paused ? 'is-paused' : current.waiting ? 'is-queued' : '') : 'is-idle';
+  const controls = current
+    ? `
     <button type="button" class="tl-icon-btn" data-dock-pause="${current.id}"
       title="${current.paused ? 'Продолжить' : 'Приостановить'}" aria-label="Пауза">${current.paused ? '▶' : '⏸'}</button>
     <button type="button" class="tl-icon-btn tl-cancel" data-dock-stop="${current.id}"
-      title="Остановить сразу, не дожидаясь конца" aria-label="Стоп">■</button>` : '';
+      title="Остановить сразу, не дожидаясь конца" aria-label="Стоп">■</button>`
+    : '';
   // Плашка повторяет вид квадрата «Московского времени»: заголовок с точкой, подписью
   // и меткой, под ним — шкала прогресса и управление скриптом. Кольцо слева показывает
   // проценты числом, поэтому «сколько осталось» видно без чтения мелкой шкалы.
@@ -622,34 +696,37 @@ export /**
  */
 function dockListHtml(list) {
   if (!list.length) return '<p class="tf-dock-empty">Скрипты не выполняются</p>';
-  return list.map(t => {
-    const running = t.status === 'running';
-    const pct = t.percent;
-    // Что задача делает: текущий шаг, у очереди — «в очереди», у паузы — отдельная пометка
-    const what = t.waiting
-      ? 'в очереди — ждёт завершения текущего скрипта'
-      : t.paused
-        ? 'на паузе — текущий скрипт дойдёт до конца'
-        : (t.step || (running ? 'начинаю…' : t.summary || ''));
-    // Состояние строки: «в очереди» и «на паузе» — свои классы (их красит CSS),
-    // остальные — по статусу задачи (готово/с ошибкой/с предупреждением).
-    const state = t.waiting ? 'is-queued' : (t.paused ? 'is-paused' : '');
-    const status = state ? '' : `tl-s-${t.status}`;
-    // Счётчик прогресса ждущему показывать нечего: он ещё не начал считать
-    const tail = [
-      !t.waiting && t.total ? `${t.done}/${t.total}` : '',
-      t.errors ? `ошибок ${t.errors}` : '',
-      t.warnings ? `предупреждений ${t.warnings}` : ''
-    ].filter(Boolean).join(' · ');
-    const mark = t.waiting ? '…' : (running ? `${pct}%` : STATUS_ICON[t.status] || '•');
-    // Ждущего можно отменить прямо в списке: он всё равно не начнёт раньше текущего
-    // скрипта, а ждать иногда не хочется. Кнопка — рядом со строкой, а не внутри неё:
-    // строка сама кликается (открывает лог) и остаётся кнопкой.
-    const cancel = t.waiting
-      ? `<button type="button" class="tf-dock-cancel" data-dock-cancel="${t.id}"
+  return list
+    .map(t => {
+      const running = t.status === 'running';
+      const pct = t.percent;
+      // Что задача делает: текущий шаг, у очереди — «в очереди», у паузы — отдельная пометка
+      const what = t.waiting
+        ? 'в очереди — ждёт завершения текущего скрипта'
+        : t.paused
+          ? 'на паузе — текущий скрипт дойдёт до конца'
+          : t.step || (running ? 'начинаю…' : t.summary || '');
+      // Состояние строки: «в очереди» и «на паузе» — свои классы (их красит CSS),
+      // остальные — по статусу задачи (готово/с ошибкой/с предупреждением).
+      const state = t.waiting ? 'is-queued' : t.paused ? 'is-paused' : '';
+      const status = state ? '' : `tl-s-${t.status}`;
+      // Счётчик прогресса ждущему показывать нечего: он ещё не начал считать
+      const tail = [
+        !t.waiting && t.total ? `${t.done}/${t.total}` : '',
+        t.errors ? `ошибок ${t.errors}` : '',
+        t.warnings ? `предупреждений ${t.warnings}` : ''
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      const mark = t.waiting ? '…' : running ? `${pct}%` : STATUS_ICON[t.status] || '•';
+      // Ждущего можно отменить прямо в списке: он всё равно не начнёт раньше текущего
+      // скрипта, а ждать иногда не хочется. Кнопка — рядом со строкой, а не внутри неё:
+      // строка сама кликается (открывает лог) и остаётся кнопкой.
+      const cancel = t.waiting
+        ? `<button type="button" class="tf-dock-cancel" data-dock-cancel="${t.id}"
            title="Отменить: скрипт в очереди не запустится" aria-label="Отменить скрипт в очереди">✕</button>`
-      : '';
-    return `<div class="tf-dock-item">
+        : '';
+      return `<div class="tf-dock-item">
       <button type="button" class="tf-dock-row ${status} ${state}" data-dock-log-row="${t.id}"
         title="${escapeHtml(`${t.title}: ${what}`)}">
         <span class="tf-dock-row-dot" aria-hidden="true"></span>
@@ -665,7 +742,8 @@ function dockListHtml(list) {
       </button>
       ${cancel}
     </div>`;
-  }).join('');
+    })
+    .join('');
 }
 
 export function renderDock() {
@@ -677,12 +755,15 @@ export function renderDock() {
     dockHost().appendChild(dock);
   }
   // Задачи, карточка которых уже видна на странице (мастер, марафон), в списке не дублируем
-  const embedded = new Set([...document.querySelectorAll('[data-task-card]')]
-    .filter(el => !dock.contains(el)).map(el => el.dataset.taskCard));
+  const embedded = new Set(
+    [...document.querySelectorAll('[data-task-card]')].filter(el => !dock.contains(el)).map(el => el.dataset.taskCard)
+  );
   // Порядок в списке: сверху идущий скрипт, под ним очередь (по порядку запуска),
   // потом завершённые (свежие сверху). `tasks.unshift`, поэтому новее — левее.
-  const visible = tasks.filter(t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt));
-  const rank = (t) => (t.status === 'running' && !t.waiting ? 0 : t.waiting ? 1 : 2);
+  const visible = tasks.filter(
+    t => t.dock && !t._hidden && !embedded.has(t.id) && (t.status === 'running' || t.finishedAt)
+  );
+  const rank = t => (t.status === 'running' && !t.waiting ? 0 : t.waiting ? 1 : 2);
   visible.sort((a, b) => rank(a) - rank(b));
   visible.length = Math.min(visible.length, 6);
   const current = dockCurrentTask();
@@ -704,8 +785,7 @@ export function renderDock() {
       listSlot.innerHTML = dockListHtml(visible);
     }
   }
-
-  }
+}
 
 /** Полный лог задачи в отдельном окне. */
 export function openTaskLog(id) {
@@ -730,11 +810,16 @@ export function openTaskLog(id) {
       <div class="tl-filter row gap">
         <label class="tf-radio"><input type="checkbox" data-only-problems${onlyProblems ? ' checked' : ''}/> Только ошибки и предупреждения</label>
       </div>
-      <div class="tl-entries tl-full">${t.entries.filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary').map(entryHtml).join('')}</div>`;
-    ov.body.querySelector('[data-only-problems]').onchange = (e) => {
+      <div class="tl-entries tl-full">${t.entries
+        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary')
+        .map(entryHtml)
+        .join('')}</div>`;
+    ov.body.querySelector('[data-only-problems]').onchange = e => {
       onlyProblems = e.target.checked;
       ov.body.querySelector('.tl-full').innerHTML = t.entries
-        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary').map(entryHtml).join('');
+        .filter(x => !onlyProblems || x.level === 'warn' || x.level === 'error' || x.level === 'summary')
+        .map(entryHtml)
+        .join('');
     };
   };
   draw();
@@ -743,7 +828,7 @@ export function openTaskLog(id) {
   ov.foot.querySelector('[data-copy]').onclick = async () => {
     // Итоговая таблица копируется строками: в буфер попадает ровно то, что человек видит,
     // и её можно вставить в отчёт или сообщение, не переписывая вручную
-    const lines = t.entries.flatMap((e) => {
+    const lines = t.entries.flatMap(e => {
       if (e.level !== 'summary') return [`${timeOf(e.at)} ${LEVEL_ICON[e.level] || '•'} ${e.message}`];
       return [
         '',
@@ -754,16 +839,33 @@ export function openTaskLog(id) {
       ];
     });
     const text = [`${t.title} — ${new Date(t.startedAt).toLocaleString('ru-RU')}`, ...lines].join('\n');
-    try { await navigator.clipboard.writeText(text); ov.foot.querySelector('[data-copy]').textContent = '✔ Скопировано'; }
-    catch (_) { ov.foot.querySelector('[data-copy]').textContent = 'Не удалось скопировать'; }
+    try {
+      await navigator.clipboard.writeText(text);
+      ov.foot.querySelector('[data-copy]').textContent = '✔ Скопировано';
+    } catch (_) {
+      ov.foot.querySelector('[data-copy]').textContent = 'Не удалось скопировать';
+    }
   };
   const unsub = onTaskChange(x => {
     if (x.id !== t.id || !ov.el.isConnected) return;
-    if (t.status !== 'running') { clearTimeout(renderTimer); renderTimer = null; draw(); return; }
+    if (t.status !== 'running') {
+      clearTimeout(renderTimer);
+      renderTimer = null;
+      draw();
+      return;
+    }
     if (renderTimer !== null) return;
-    renderTimer = setTimeout(() => { renderTimer = null; if (ov.el.isConnected) draw(); }, 100);
+    renderTimer = setTimeout(() => {
+      renderTimer = null;
+      if (ov.el.isConnected) draw();
+    }, 100);
   });
-  const origClose = ov.close; ov.close = () => { clearTimeout(renderTimer); unsub(); origClose(); };
+  const origClose = ov.close;
+  ov.close = () => {
+    clearTimeout(renderTimer);
+    unsub();
+    origClose();
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -787,11 +889,15 @@ registerLogSource({
   id: 'task',
   title: 'Скрипты',
   icon: '📄',
-  list: () => tasks.map(t => ({
-    key: t.id, at: t.startedAt, title: t.title, status: logStatus(t),
-    summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
-  })),
-  open: (item) => openTaskLog(item.key),
+  list: () =>
+    tasks.map(t => ({
+      key: t.id,
+      at: t.startedAt,
+      title: t.title,
+      status: logStatus(t),
+      summary: t.summary || (t.status === 'running' ? `${t.percent}% · ${t.step}` : '')
+    })),
+  open: item => openTaskLog(item.key),
   clear: clearTaskJournal,
   clearConfirm: 'Очистить логи скриптов? Завершённые записи будут удалены.',
   subscribe: onTaskChange
@@ -804,32 +910,85 @@ registerLogSource({
 // иначе один клик обрабатывался бы столько раз, сколько раз модуль импортировали.
 function onTaskLogClick(e) {
   const fold = e.target.closest?.('[data-dock-fold]');
-  if (fold) { dockFolded = !dockFolded; renderDock(); return; }
+  if (fold) {
+    dockFolded = !dockFolded;
+    renderDock();
+    return;
+  }
   const pause = e.target.closest?.('[data-dock-pause]');
-  if (pause) { const t = tasks.find(x => x.id === pause.dataset.dockPause); if (t) { t.togglePause(); notify(t); renderDock(); } return; }
+  if (pause) {
+    const t = tasks.find(x => x.id === pause.dataset.dockPause);
+    if (t) {
+      t.togglePause();
+      notify(t);
+      renderDock();
+    }
+    return;
+  }
   const stop = e.target.closest?.('[data-dock-stop]');
-  if (stop) { const t = tasks.find(x => x.id === stop.dataset.dockStop); if (t) { t.stop(); notify(t); renderDock(); } return; }
+  if (stop) {
+    const t = tasks.find(x => x.id === stop.dataset.dockStop);
+    if (t) {
+      t.stop();
+      notify(t);
+      renderDock();
+    }
+    return;
+  }
   // Крестик у ждущего очереди: отменить скрипт, который ещё не начал работу
   const cancelQueued = e.target.closest?.('[data-dock-cancel]');
   if (cancelQueued) {
     const t = tasks.find(x => x.id === cancelQueued.dataset.dockCancel);
-    if (t) { t.cancel(); notify(t); renderDock(); }
+    if (t) {
+      t.cancel();
+      notify(t);
+      renderDock();
+    }
     return;
   }
   // Клик по строке списка — открыть лог этой задачи. Кнопок в строке нет намеренно,
   // поэтому строка сама и есть управление.
   const row = e.target.closest?.('[data-dock-log-row]');
-  if (row) { openTaskLog(row.dataset.dockLogRow); return; }
+  if (row) {
+    openTaskLog(row.dataset.dockLogRow);
+    return;
+  }
   // Кнопка «📄» на плашке: все логи скриптов из журнала в отдельном окне
-  if (e.target.closest?.('[data-dock-open-log]')) { openScriptLogs(); return; }
+  if (e.target.closest?.('[data-dock-open-log]')) {
+    openScriptLogs();
+    return;
+  }
   const tg = e.target.closest?.('[data-task-toggle]');
-  if (tg) { const t = tasks.find(x => x.id === tg.dataset.taskToggle); if (t) { t.open = !t.open; notify(t); } return; }
+  if (tg) {
+    const t = tasks.find(x => x.id === tg.dataset.taskToggle);
+    if (t) {
+      t.open = !t.open;
+      notify(t);
+    }
+    return;
+  }
   const cn = e.target.closest?.('[data-task-cancel]');
-  if (cn) { const t = tasks.find(x => x.id === cn.dataset.taskCancel); if (t) { t.cancel(); notify(t); } return; }
+  if (cn) {
+    const t = tasks.find(x => x.id === cn.dataset.taskCancel);
+    if (t) {
+      t.cancel();
+      notify(t);
+    }
+    return;
+  }
   const lg = e.target.closest?.('[data-task-log]');
-  if (lg) { openTaskLog(lg.dataset.taskLog); return; }
+  if (lg) {
+    openTaskLog(lg.dataset.taskLog);
+    return;
+  }
   const cl = e.target.closest?.('[data-task-close]');
-  if (cl) { const t = tasks.find(x => x.id === cl.dataset.taskClose); if (t) { t._hidden = true; renderDock(); } }
+  if (cl) {
+    const t = tasks.find(x => x.id === cl.dataset.taskClose);
+    if (t) {
+      t._hidden = true;
+      renderDock();
+    }
+  }
 }
 
 const DELEGATE_KEY = '__tfTaskLogClickDelegate';

@@ -98,12 +98,11 @@ export const MAX_ALLDAY_TASKS = 5;
  * @param {number} tasks сколько задач попало в полосу (не влияет на высоту)
  */
 export function allDayHeight(tasks) {
-  void tasks;   // высота постоянна, но аргумент оставлен: вызывающий код читается понятнее
+  void tasks; // высота постоянна, но аргумент оставлен: вызывающий код читается понятнее
   return ALLDAY_BAND_HEIGHT;
 }
 
-const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн',
-  'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const WEEKDAY_NARROW = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
 
 /** Дата «1 октября» — для заголовка полосы недели. */
@@ -143,14 +142,40 @@ export function weekRangeTitle(days) {
   const last = days[days.length - 1].date;
   const year = last.slice(0, 4);
   const month = Number(last.slice(5, 7));
-  const monthName = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][month - 1] || '';
+  const monthName =
+    [
+      'января',
+      'февраля',
+      'марта',
+      'апреля',
+      'мая',
+      'июня',
+      'июля',
+      'августа',
+      'сентября',
+      'октября',
+      'ноября',
+      'декабря'
+    ][month - 1] || '';
   const firstDay = Number(first.slice(-2));
   const lastDay = Number(last.slice(-2));
   // Переход через месяц показываем явно: «30 сентября — 6 октября»
   if (first.slice(0, 7) !== last.slice(0, 7)) {
-    const firstMonth = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'][Number(first.slice(5, 7)) - 1] || '';
+    const firstMonth =
+      [
+        'января',
+        'февраля',
+        'марта',
+        'апреля',
+        'мая',
+        'июня',
+        'июля',
+        'августа',
+        'сентября',
+        'октября',
+        'ноября',
+        'декабря'
+      ][Number(first.slice(5, 7)) - 1] || '';
     return `${firstDay} ${firstMonth} — ${lastDay} ${monthName} ${year}`;
   }
   return `${firstDay} — ${lastDay} ${monthName} ${year}`;
@@ -169,13 +194,15 @@ export function weekLayout(eventsByDate) {
   return (Array.isArray(eventsByDate) ? eventsByDate : []).map(events => {
     const { allDay, blocks } = timelineBlocks(events);
     /** @type {Array<{ event: any, top: number, natural: number, startTime: any, endTime: any, lane?: number, height?: number }>} */
-    const laid = blocks.map(b => ({
-      event: b.event,
-      top: (b.start / DAY_MINUTES) * (DAY_MINUTES / 60) * HOUR_HEIGHT,
-      natural: (b.end - b.start) / 60 * HOUR_HEIGHT,   // высота по реальному интервалу
-      startTime: b.startTime,
-      endTime: eventEndTime(b.event) || b.endTime
-    })).sort((a, b) => a.top - b.top);
+    const laid = blocks
+      .map(b => ({
+        event: b.event,
+        top: (b.start / DAY_MINUTES) * (DAY_MINUTES / 60) * HOUR_HEIGHT,
+        natural: ((b.end - b.start) / 60) * HOUR_HEIGHT, // высота по реальному интервалу
+        startTime: b.startTime,
+        endTime: eventEndTime(b.event) || b.endTime
+      }))
+      .sort((a, b) => a.top - b.top);
 
     // Дорожки считаем заново — по «видимым» интервалам, а не по времени.
     //
@@ -240,7 +267,7 @@ export function weekAllDaySpans(eventsByDate) {
   const byKey = new Map();
 
   days.forEach((events, index) => {
-    for (const event of (events || [])) {
+    for (const event of events || []) {
       // В полосу идут только события «на весь день»: марафоны и записи без времени
       const allDay = event?.source === 'marathon' || timeToMinutes(event?.time) === null;
       if (!allDay) continue;
@@ -294,7 +321,9 @@ export function packAllDayRows(spans) {
     let row = 0;
     for (; row < rows.length; row++) {
       const taken = rows[row];
-      const overlaps = taken.some(s => span.startIndex < s.startIndex + s.span && s.startIndex < span.startIndex + span.span);
+      const overlaps = taken.some(
+        s => span.startIndex < s.startIndex + s.span && s.startIndex < span.startIndex + span.span
+      );
       if (!overlaps) break;
     }
     (rows[row] ||= []).push(span);
@@ -325,7 +354,7 @@ export function weekMarathonLanes(eventsByDate) {
   const perDay = days.map(events => {
     /** @type {Map<string, any>} */
     const found = new Map();
-    for (const event of (events || [])) {
+    for (const event of events || []) {
       if (event?.source !== 'marathon') continue;
       const key = String(event.marathonId || event.id);
       if (!order.has(key)) order.set(key, order.size);
@@ -337,16 +366,18 @@ export function weekMarathonLanes(eventsByDate) {
   const laneCount = Math.max(1, order.size);
   return {
     lanes: laneCount,
-    days: perDay.map(found => [...found.entries()]
-      // Дорожка у каждого марафона своя и одна и та же во всех днях
-      .map(([key, event]) => ({ key, event, lane: order.get(key) }))
-      .sort((a, b) => a.lane - b.lane)
-      .map(({ event, lane }) => ({
-        event,
-        lane,
-        leftPct: (lane / laneCount) * 100,
-        widthPct: 100 / laneCount
-      })))
+    days: perDay.map(found =>
+      [...found.entries()]
+        // Дорожка у каждого марафона своя и одна и та же во всех днях
+        .map(([key, event]) => ({ key, event, lane: order.get(key) }))
+        .sort((a, b) => a.lane - b.lane)
+        .map(({ event, lane }) => ({
+          event,
+          lane,
+          leftPct: (lane / laneCount) * 100,
+          widthPct: 100 / laneCount
+        }))
+    )
   };
 }
 
@@ -382,7 +413,7 @@ export function weekHours() {
  * только для линии, а не для прокрутки.
  */
 export function nowLineTop(nowMinutes) {
-    return ((Number(nowMinutes) || 0) / 60) * HOUR_HEIGHT;
+  return ((Number(nowMinutes) || 0) / 60) * HOUR_HEIGHT;
 }
 
 /**
@@ -394,5 +425,5 @@ export function nowLineTop(nowMinutes) {
  * @returns {number} процент от высоты шкалы
  */
 export function nowLinePct(nowMinutes) {
-    return ((Number(nowMinutes) || 0) / DAY_MINUTES) * 100;
+  return ((Number(nowMinutes) || 0) / DAY_MINUTES) * 100;
 }

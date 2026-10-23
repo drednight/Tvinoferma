@@ -30,7 +30,7 @@ export const localStorageAdapter = {
     try {
       const jsonString = localStorage.getItem(STORAGE_KEY);
       if (!jsonString) return null;
-      
+
       return JSON.parse(jsonString);
     } catch (error) {
       console.error('[LOCALSTORAGE ADAPTER] Load failed:', error);
@@ -60,7 +60,7 @@ export const localStorageAdapter = {
       return /^\d+$/.test(suffix) ? Math.max(max, Number(suffix)) : max;
     }, 0);
     const backupKey = existing.length ? `${baseKey}-${String(sequence + 1).padStart(6, '0')}` : baseKey;
-    
+
     // Сначала сохраняем новую копию. При нехватке места прежние копии не удаляются.
     localStorage.setItem(backupKey, JSON.stringify(currentData));
     const limit = Number.isFinite(Number(maxCount)) ? Math.max(1, Math.floor(Number(maxCount))) : 10;

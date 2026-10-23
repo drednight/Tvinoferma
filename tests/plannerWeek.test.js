@@ -3,8 +3,22 @@
 // Сутки показаны целиком, без прокрутки, поэтому высота часа невелика.
 import { describe, expect, it } from 'vitest';
 import {
-  weekDays, weekRangeTitle, weekLayout, weekAllDaySpans, packAllDayRows, allDayHeight,
-  weekHours, nowLineTop, nowLinePct, HOUR_HEIGHT, CELL_HEIGHT, ALLDAY_ROW_HEIGHT, ALLDAY_BAND_HEIGHT, WEEK_DAYS, DAY_MINUTES, MIN_BLOCK_HEIGHT
+  weekDays,
+  weekRangeTitle,
+  weekLayout,
+  weekAllDaySpans,
+  packAllDayRows,
+  allDayHeight,
+  weekHours,
+  nowLineTop,
+  nowLinePct,
+  HOUR_HEIGHT,
+  CELL_HEIGHT,
+  ALLDAY_ROW_HEIGHT,
+  ALLDAY_BAND_HEIGHT,
+  WEEK_DAYS,
+  DAY_MINUTES,
+  MIN_BLOCK_HEIGHT
 } from '../js/modules/dashboard/weekView.js';
 
 // 2026-10-07 — среда
@@ -20,7 +34,9 @@ describe('полоса недели', () => {
     expect(days.map(d => d.date)).toEqual([
       '2026-10-06', // вт — вчера
       '2026-10-07', // ср — сегодня
-      '2026-10-08', '2026-10-09', '2026-10-10'
+      '2026-10-08',
+      '2026-10-09',
+      '2026-10-10'
     ]);
   });
 
@@ -40,7 +56,11 @@ describe('полоса недели', () => {
 
   it('полоса переходит через границу месяца и года', () => {
     expect(weekDays('2026-11-01').map(d => d.date)).toEqual([
-      '2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04'
+      '2026-10-31',
+      '2026-11-01',
+      '2026-11-02',
+      '2026-11-03',
+      '2026-11-04'
     ]);
     expect(weekDays('2026-01-01')[0].date).toBe('2025-12-31');
   });
@@ -72,21 +92,15 @@ describe('раскладка недели', () => {
     // Причина жалобы: минимум 14 px при часе 15 px растягивал запись на 5 минут почти на час
     // шкалы, и она закрывала всё, что начиналось сразу после неё. Обрезать до свободных
     // 2.5 px тоже нельзя — подпись пропадала, поэтому дорожки считаются по видимым высотам.
-    const [day] = weekLayout([[
-      ev('12:00', { durationMinutes: 5 }),
-      ev('12:10', { durationMinutes: 30 })
-    ]]);
+    const [day] = weekLayout([[ev('12:00', { durationMinutes: 5 }), ev('12:10', { durationMinutes: 30 })]]);
     const [short, next] = day.blocks;
-    expect(short.height).toBe(MIN_BLOCK_HEIGHT);        // читаемо
-    expect(next.leftPct).toBe(50);                      // но не поверх: вторая дорожка
+    expect(short.height).toBe(MIN_BLOCK_HEIGHT); // читаемо
+    expect(next.leftPct).toBe(50); // но не поверх: вторая дорожка
     expect(short.leftPct).toBe(0);
   });
 
   it('дорожки считаются по видимым высотам: наложение по времени тоже разводится', () => {
-    const [day] = weekLayout([[
-      ev('12:00', { durationMinutes: 5 }),
-      ev('12:02', { durationMinutes: 30 })
-    ]]);
+    const [day] = weekLayout([[ev('12:00', { durationMinutes: 5 }), ev('12:02', { durationMinutes: 30 })]]);
     const [a, b] = day.blocks;
     expect(a.leftPct).toBe(0);
     expect(b.leftPct).toBe(50);
@@ -116,11 +130,13 @@ describe('раскладка недели', () => {
   });
 
   it('марафон и записи без времени уходят в «весь день», а не на шкалу', () => {
-    const [day] = weekLayout([[
-      ev('20:00'),
-      ev('', { title: 'Без времени' }),
-      { id: 'm', title: 'Марафон', source: 'marathon', color: 'purple' }
-    ]]);
+    const [day] = weekLayout([
+      [
+        ev('20:00'),
+        ev('', { title: 'Без времени' }),
+        { id: 'm', title: 'Марафон', source: 'marathon', color: 'purple' }
+      ]
+    ]);
     expect(day.allDay.map(e => e.title).sort()).toEqual(['Без времени', 'Марафон']);
     expect(day.blocks).toHaveLength(1);
   });
@@ -149,13 +165,11 @@ describe('раскладка недели', () => {
 });
 
 describe('сплошные полосы «весь день»: марафон одной линией', () => {
-  const marathon = (id) => ({ id, title: `Марафон ${id}`, source: 'marathon', marathonId: id, color: 'purple' });
-  const noTime = (id) => ({ id, title: `Заметка ${id}`, source: 'manual', color: 'blue' });
+  const marathon = id => ({ id, title: `Марафон ${id}`, source: 'marathon', marathonId: id, color: 'purple' });
+  const noTime = id => ({ id, title: `Заметка ${id}`, source: 'manual', color: 'blue' });
 
   it('марафон на четыре дня — одна полоса, а не четыре куска', () => {
-    const spans = weekAllDaySpans([
-      [], [marathon('m1')], [marathon('m1')], [marathon('m1')], [marathon('m1')], [], []
-    ]);
+    const spans = weekAllDaySpans([[], [marathon('m1')], [marathon('m1')], [marathon('m1')], [marathon('m1')], [], []]);
     expect(spans).toHaveLength(1);
     expect(spans[0]).toMatchObject({ title: 'Марафон m1', startIndex: 1, span: 4 });
   });
@@ -169,11 +183,10 @@ describe('сплошные полосы «весь день»: марафон о
 
   it('разрыв в середине недели не склеивается в одну полосу', () => {
     // Два разных марафона или один с паузой: между днями 1 и 4 нет событий
-    const spans = weekAllDaySpans([
-      [], [marathon('m1')], [marathon('m1')], [], [marathon('m2')], [marathon('m2')], []
-    ]);
+    const spans = weekAllDaySpans([[], [marathon('m1')], [marathon('m1')], [], [marathon('m2')], [marathon('m2')], []]);
     expect(spans.map(s => ({ start: s.startIndex, span: s.span }))).toEqual([
-      { start: 1, span: 2 }, { start: 4, span: 2 }
+      { start: 1, span: 2 },
+      { start: 4, span: 2 }
     ]);
   });
 

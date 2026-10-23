@@ -16,31 +16,47 @@ import { normalizePartyIds } from '../parties/membership.js';
 
 export function openCharacterForm(char = null) {
   const isEdit = !!char;
-  
+
   // Используем хелпер из stateManager для получения базы данных
   const currentChar = char || createEmptyCharacter();
-  
+
   const stats = { ...DEFAULT_STATS, ...(currentChar.stats || {}) };
   const passes = currentChar.dungeonPasses || { weapon: 0, armor: 0, relic: 0 };
   const sky = currentChar.sky || { name: '', level: '' };
   const contacts = currentChar.contacts || { email: '', password: '', recoveryEmail: '', phone: '' };
 
-  const classOptions = CLASSES.map(c => `<option value="${escapeHtml(c)}" ${currentChar.class === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  const classOptions = CLASSES.map(
+    c => `<option value="${escapeHtml(c)}" ${currentChar.class === c ? 'selected' : ''}>${escapeHtml(c)}</option>`
+  ).join('');
   const noneClassOption = `<option value="" ${!currentChar.class ? 'selected' : ''}>— Выберите класс —</option>`;
 
   // Основная пати (одна) + дополнительные (чипы). Монеты и выбор в марафон идут по основной.
   const mainId = currentChar.mainPartyId || null;
   const extraIdsSet = new Set((currentChar.partyIds || []).filter(id => id !== mainId));
-  const mainOptions = `<option value="">— Без пати —</option>` + state.parties.map(p =>
-    `<option value="${escapeHtml(p.id)}" ${mainId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+  const mainOptions =
+    `<option value="">— Без пати —</option>` +
+    state.parties
+      .map(
+        p => `<option value="${escapeHtml(p.id)}" ${mainId === p.id ? 'selected' : ''}>${escapeHtml(p.name)}</option>`
+      )
+      .join('');
   const partyChips = state.parties.length
-    ? state.parties.map(p => `<label class="party-chip"><input type="checkbox" name="extraPartyIds" value="${escapeHtml(p.id)}" ${extraIdsSet.has(p.id) ? 'checked' : ''} ${mainId === p.id ? 'disabled' : ''} /><span>${escapeHtml(p.name)}</span></label>`).join('')
+    ? state.parties
+        .map(
+          p =>
+            `<label class="party-chip"><input type="checkbox" name="extraPartyIds" value="${escapeHtml(p.id)}" ${extraIdsSet.has(p.id) ? 'checked' : ''} ${mainId === p.id ? 'disabled' : ''} /><span>${escapeHtml(p.name)}</span></label>`
+        )
+        .join('')
     : '<span class="muted">Пока нет пати. Создайте их во вкладке «Пати».</span>';
 
-  const skyNameOptions = SKIES.map(s => `<option value="${escapeHtml(s)}" ${sky.name === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('');
+  const skyNameOptions = SKIES.map(
+    s => `<option value="${escapeHtml(s)}" ${sky.name === s ? 'selected' : ''}>${escapeHtml(s)}</option>`
+  ).join('');
   const noneSkyOption = `<option value="" ${!sky.name ? 'selected' : ''}>— Не выбрано —</option>`;
 
-  const skyLevelOptions = SKY_LEVELS.map(l => `<option value="${l}" ${sky.level == l ? 'selected' : ''}>${l}</option>`).join('');
+  const skyLevelOptions = SKY_LEVELS.map(
+    l => `<option value="${l}" ${sky.level == l ? 'selected' : ''}>${l}</option>`
+  ).join('');
   const noneSkyLevelOption = `<option value="" ${!sky.level ? 'selected' : ''}>—</option>`;
 
   const statInput = (key, label) => {
@@ -74,8 +90,8 @@ export function openCharacterForm(char = null) {
 
   // Получаем текущий баланс и дату обновления для отображения подсказки
   const currentCoins = currentChar.ancientCoins || 0;
-  const lastUpdateHint = currentChar.lastCoinUpdate 
-    ? `(Последняя синхр.: ${new Date(currentChar.lastCoinUpdate).toLocaleDateString()})` 
+  const lastUpdateHint = currentChar.lastCoinUpdate
+    ? `(Последняя синхр.: ${new Date(currentChar.lastCoinUpdate).toLocaleDateString()})`
     : '(Ещё не синхронизировалось)';
 
   // Разметка повторяет вид раскрытой карточки (profileView.js): две колонки, слева —
@@ -132,7 +148,9 @@ export function openCharacterForm(char = null) {
             <div class="field cf-field">
               <label class="cf-hint-label">Теги <small class="muted">(через запятую: «основа, твин, крафт»)</small></label>
               <input class="input" type="text" name="tags" list="char-tag-list" autocomplete="off" value="${escapeHtml((currentChar.tags || []).join(', '))}" />
-              <datalist id="char-tag-list">${allTags().map(t => `<option value="${escapeHtml(t)}"></option>`).join('')}</datalist>
+              <datalist id="char-tag-list">${allTags()
+                .map(t => `<option value="${escapeHtml(t)}"></option>`)
+                .join('')}</datalist>
             </div>
           </div>
 
@@ -163,24 +181,40 @@ export function openCharacterForm(char = null) {
           <details class="pf-panel cf-fold stats-fold" open>
             <summary class="pf-panel-title">📊 Характеристики <span class="muted cf-fold-note">основные, бой, показатели, PvE</span></summary>
             <div class="cf-stat-groups">
-              ${statGroup('Основные характеристики', [
-                ['endurance', 'Выносливость'], ['intelligence', 'Интеллект'],
-                ['strength', 'Сила'], ['agility', 'Ловкость']
-              ], 'cf-stat-grid-2x2')}
+              ${statGroup(
+                'Основные характеристики',
+                [
+                  ['endurance', 'Выносливость'],
+                  ['intelligence', 'Интеллект'],
+                  ['strength', 'Сила'],
+                  ['agility', 'Ловкость']
+                ],
+                'cf-stat-grid-2x2'
+              )}
               ${statGroup('Бой и защита', [
-                ['hp', 'Здоровье'], ['mp', 'Маг. энергия'],
-                ['physAttack', 'Физ. атака'], ['physDefense', 'Физ. защита'],
-                ['magAttack', 'Маг. атака'], ['magDefense', 'Маг. защита']
+                ['hp', 'Здоровье'],
+                ['mp', 'Маг. энергия'],
+                ['physAttack', 'Физ. атака'],
+                ['physDefense', 'Физ. защита'],
+                ['magAttack', 'Маг. атака'],
+                ['magDefense', 'Маг. защита']
               ])}
               ${statGroup('Показатели боя', [
-                ['critChance', 'Шанс крит. удара (%)'], ['critDamage', 'Крит. урон (%)'],
-                ['atkSpeed', 'Скорость атаки'], ['evasion', 'Уклонение'], ['accuracy', 'Меткость'],
-                ['pa', 'Показатель атаки (ПА)'], ['pz', 'Показатель защиты (ПЗ)'], ['morale', 'Боевой дух'],
+                ['critChance', 'Шанс крит. удара (%)'],
+                ['critDamage', 'Крит. урон (%)'],
+                ['atkSpeed', 'Скорость атаки'],
+                ['evasion', 'Уклонение'],
+                ['accuracy', 'Меткость'],
+                ['pa', 'Показатель атаки (ПА)'],
+                ['pz', 'Показатель защиты (ПЗ)'],
+                ['morale', 'Боевой дух'],
                 ['levelBonus', 'Бонус к уровню (%)'],
-                ['physPenetration', 'Физ. пробивание'], ['magPenetration', 'Маг. пробивание']
+                ['physPenetration', 'Физ. пробивание'],
+                ['magPenetration', 'Маг. пробивание']
               ])}
               ${statGroup('PvE', [
-                ['pvePa', 'Урон по монстрам'], ['pvePz', 'Защита от монстров']
+                ['pvePa', 'Урон по монстрам'],
+                ['pvePz', 'Защита от монстров']
               ])}
             </div>
           </details>
@@ -203,11 +237,12 @@ export function openCharacterForm(char = null) {
     const sel = document.getElementById('char-main-party');
     const box = document.getElementById('char-extra-parties');
     if (!sel || !box) return;
-    const sync = () => box.querySelectorAll('input').forEach(cb => {
-      const isMain = cb.value === sel.value;
-      cb.disabled = isMain;
-      if (isMain) cb.checked = false;
-    });
+    const sync = () =>
+      box.querySelectorAll('input').forEach(cb => {
+        const isMain = cb.value === sel.value;
+        cb.disabled = isMain;
+        if (isMain) cb.checked = false;
+      });
     sel.addEventListener('change', sync);
   }, 0);
 
@@ -242,36 +277,50 @@ export function openCharacterForm(char = null) {
     if (!btn || btn.dataset.bound) return;
     btn.dataset.bound = 'true';
     btn.addEventListener('click', () => {
-      import('./statsImport.js').then(({ openStatsImport }) => openStatsImport({
-        current: stats,
-        onApply: (values) => {
-          let applied = 0;
-          for (const [key, value] of Object.entries(values)) {
-            // Ищем поле в пределах формы. Ключи статов — простые латинские имена,
-            // поэтому обходимся без CSS.escape (его нет в старых движках и в jsdom).
-            const input = /** @type {HTMLInputElement | null} */ (
-              document.querySelector(`#modal-root input[name="stat-${key}"]`)
-            );
-            if (!input) continue;
-            const before = Number(input.value) || 0;
-            input.value = String(value);
-            applied++;
-            // Подсвечиваем направление изменения: видно, что OCR завысил или занизил
-            input.classList.remove('is-filled', 'is-up', 'is-down');
-            if (value > before) input.classList.add('is-up');
-            else if (value < before) input.classList.add('is-down');
-            else input.classList.add('is-filled');
-            input.addEventListener('input', () => {
-              input.classList.remove('is-filled', 'is-up', 'is-down');
-            }, { once: true });
-          }
-          toast(applied ? `Характеристик перенесено: ${applied}` : 'Нечего переносить', applied ? 'success' : 'warning');
-        }
-      })).catch(err => {
-        console.error('[STATS OCR]', err);
-        // Причина чаще всего одна: разбор скриншотов есть только в приложении
-        toast(isTauri() ? 'Не удалось открыть разбор скриншота' : 'Разбор скриншота работает только в приложении', 'error');
-      });
+      import('./statsImport.js')
+        .then(({ openStatsImport }) =>
+          openStatsImport({
+            current: stats,
+            onApply: values => {
+              let applied = 0;
+              for (const [key, value] of Object.entries(values)) {
+                // Ищем поле в пределах формы. Ключи статов — простые латинские имена,
+                // поэтому обходимся без CSS.escape (его нет в старых движках и в jsdom).
+                const input = /** @type {HTMLInputElement | null} */ (
+                  document.querySelector(`#modal-root input[name="stat-${key}"]`)
+                );
+                if (!input) continue;
+                const before = Number(input.value) || 0;
+                input.value = String(value);
+                applied++;
+                // Подсвечиваем направление изменения: видно, что OCR завысил или занизил
+                input.classList.remove('is-filled', 'is-up', 'is-down');
+                if (value > before) input.classList.add('is-up');
+                else if (value < before) input.classList.add('is-down');
+                else input.classList.add('is-filled');
+                input.addEventListener(
+                  'input',
+                  () => {
+                    input.classList.remove('is-filled', 'is-up', 'is-down');
+                  },
+                  { once: true }
+                );
+              }
+              toast(
+                applied ? `Характеристик перенесено: ${applied}` : 'Нечего переносить',
+                applied ? 'success' : 'warning'
+              );
+            }
+          })
+        )
+        .catch(err => {
+          console.error('[STATS OCR]', err);
+          // Причина чаще всего одна: разбор скриншотов есть только в приложении
+          toast(
+            isTauri() ? 'Не удалось открыть разбор скриншота' : 'Разбор скриншота работает только в приложении',
+            'error'
+          );
+        });
     });
   };
 
@@ -284,12 +333,12 @@ export function openCharacterForm(char = null) {
     cancelText: 'Отмена',
     async onSubmit(formData, { setError }) {
       try {
-        const getSafeStr = (name) => String(formData.get(name) || '').trim();
-        
+        const getSafeStr = name => String(formData.get(name) || '').trim();
+
         const nick = getSafeStr('nick');
-        if (!nick) { 
-          setError('Никнейм обязателен.'); 
-          return false; 
+        if (!nick) {
+          setError('Никнейм обязателен.');
+          return false;
         }
 
         // Основная + дополнительные пати
@@ -304,7 +353,7 @@ export function openCharacterForm(char = null) {
         const newStats = {};
         Object.keys(DEFAULT_STATS).forEach(key => {
           const val = formData.get(`stat-${key}`);
-          newStats[key] = val !== null && val !== undefined ? (parseInt(val, 10) || 0) : 0;
+          newStats[key] = val !== null && val !== undefined ? parseInt(val, 10) || 0 : 0;
         });
 
         // Парсим новый баланс монет
@@ -334,9 +383,9 @@ export function openCharacterForm(char = null) {
           partyIds: partyIdsNext,
           mainPartyId: mainPartyNext,
           level: parseInt(formData.get('level'), 10) || 1,
-          sky: { 
-            name: getSafeStr('sky-name') || null, 
-            level: formData.get('sky-level') ? parseInt(formData.get('sky-level'), 10) : null 
+          sky: {
+            name: getSafeStr('sky-name') || null,
+            level: formData.get('sky-level') ? parseInt(formData.get('sky-level'), 10) : null
           },
           contacts: {
             email: getSafeStr('contact-email'),
@@ -351,13 +400,13 @@ export function openCharacterForm(char = null) {
           },
           stats: newStats,
           tags: normalizeTags(formData.get('tags')),
-          
+
           // ОБНОВЛЯЕМ БАЛАНС И ДАТУ
           ancientCoins: coinState.ancientCoins,
           lastCoinUpdate: coinState.lastCoinUpdate,
           // история: запись добавляется только при изменении баланса
           coinHistory: coinState.coinHistory,
-            
+
           updatedAt: nowISO()
         };
 
@@ -372,9 +421,9 @@ export function openCharacterForm(char = null) {
           const targetCharacters = archived ? state.archivedCharacters : state.characters;
           const idx = targetCharacters.findIndex(c => c.id === currentChar.id);
           if (idx !== -1) {
-             targetCharacters[idx] = newCharData;
+            targetCharacters[idx] = newCharData;
           } else {
-             throw new Error("Персонаж не найден для обновления");
+            throw new Error('Персонаж не найден для обновления');
           }
           // Ник изменился → id тоже (читаемый id = ник)
           if (nick !== currentChar.nick) {
@@ -403,7 +452,9 @@ export function openCharacterForm(char = null) {
 
   // Распознавание — действие формы целиком, поэтому кнопка находится в футере, а не среди полей.
   const footer = document.querySelector('#modal-root .modal-footer');
-  footer?.insertAdjacentHTML('afterbegin',
-    '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>');
+  footer?.insertAdjacentHTML(
+    'afterbegin',
+    '<button type="button" class="btn secondary" id="btn-stats-ocr" title="Выбрать скриншот окна с характеристиками: значения подставятся в поля">📷 Заполнить со скриншота</button>'
+  );
   bindStatsOcr();
 }

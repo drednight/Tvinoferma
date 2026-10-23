@@ -25,7 +25,7 @@ export const HOTKEYS = [
 
 /** Разделы, до которых доходят номера: видимые, в порядке меню, без прибитого «Настроек». */
 export function hotkeySections(settings = state.settings) {
-  return visibleSections(settings).filter((s) => !s.pin);
+  return visibleSections(settings).filter(s => !s.pin);
 }
 
 /**
@@ -36,10 +36,10 @@ export function hotkeyRows(settings = state.settings) {
   const sections = hotkeySections(settings);
   const first = sections.length ? 'Ctrl+1' : 'Ctrl+1…';
   const last = sections.length ? `Ctrl+${sections.length}` : 'Ctrl+…';
-  return HOTKEYS.map((row) => {
+  return HOTKEYS.map(row => {
     if (row.hotkeys !== 'sections') return row;
     const keys = sections.length === 1 ? first : `${first}…${last}`;
-    return { keys, text: `Разделы: ${sections.map((s) => s.title).join(' / ') || '—'}` };
+    return { keys, text: `Разделы: ${sections.map(s => s.title).join(' / ') || '—'}` };
   });
 }
 
@@ -89,7 +89,7 @@ function isTyping(e) {
 }
 
 export function initHotkeys({ switchTab }) {
-  document.addEventListener('keydown', async (e) => {
+  document.addEventListener('keydown', async e => {
     const ctrl = e.ctrlKey || e.metaKey;
     if (!ctrl) return;
     const key = e.key.toLowerCase();
@@ -130,8 +130,18 @@ export function initHotkeys({ switchTab }) {
       const { selectAllVisible } = await import('../modules/characters/list.js');
       selectAllVisible();
     } else if (e.shiftKey && !modalOpen) {
-      const action = { a: 'check-auth', ф: 'check-auth', b: 'update-balance', и: 'update-balance', m: 'update-marathons', ь: 'update-marathons' }[key];
-      if (action) { e.preventDefault(); runScript(action); }
+      const action = {
+        a: 'check-auth',
+        ф: 'check-auth',
+        b: 'update-balance',
+        и: 'update-balance',
+        m: 'update-marathons',
+        ь: 'update-marathons'
+      }[key];
+      if (action) {
+        e.preventDefault();
+        runScript(action);
+      }
     }
   });
 }
@@ -143,34 +153,49 @@ export async function applyDesktopSettings() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('set_close_to_tray', { enabled: !!tray.closeToTray });
-    } catch (e) { console.warn('[TRAY]', e); }
+    } catch (e) {
+      console.warn('[TRAY]', e);
+    }
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('set_unlimited_items', { enabled: state.settings?.browser?.unlimitedGiftItems !== false });
-    } catch (e) { console.warn('[BROWSER]', e); }
+    } catch (e) {
+      console.warn('[BROWSER]', e);
+    }
     try {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('set_collection_panel', { enabled: state.settings?.browser?.collectionPanel !== false });
-    } catch (e) { console.warn('[BROWSER]', e); }
+    } catch (e) {
+      console.warn('[BROWSER]', e);
+    }
     startCollectionSync(state.settings?.browser?.collectionPanel !== false);
   }
 
-  if (backgroundTimer) { clearInterval(backgroundTimer); backgroundTimer = null; }
+  if (backgroundTimer) {
+    clearInterval(backgroundTimer);
+    backgroundTimer = null;
+  }
   const minutes = Number(tray.backgroundAuthMinutes) || 0;
   if (minutes > 0 && window.__TAURI_INTERNALS__) {
-    backgroundTimer = setInterval(async () => {
-      // Пачка может идти дольше интервала. Не копим новые пачки и не мешаем ручной проверке.
-      if (backgroundChecking || Object.keys(state.ui?.authCheck || {}).length) return;
-      backgroundChecking = true;
-      try {
-        const { authCheckCandidates, verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
-        // Фоновый таймер может быть короче интервала автопроверки. Без этой проверки он
-        // будил бы задачу вхолостую: запускал очередь и тут же выходил, не проверив никого.
-        if (!authCheckCandidates().length) return;
-        await verifySavedLoginsOnStartup({ title: '🔐 Фоновая проверка входа', quiet: true });
-      } catch (e) { console.warn('[BACKGROUND AUTH]', e); }
-      finally { backgroundChecking = false; }
-    }, minutes * 60 * 1000);
+    backgroundTimer = setInterval(
+      async () => {
+        // Пачка может идти дольше интервала. Не копим новые пачки и не мешаем ручной проверке.
+        if (backgroundChecking || Object.keys(state.ui?.authCheck || {}).length) return;
+        backgroundChecking = true;
+        try {
+          const { authCheckCandidates, verifySavedLoginsOnStartup } = await import('../modules/sync/syncManager.js');
+          // Фоновый таймер может быть короче интервала автопроверки. Без этой проверки он
+          // будил бы задачу вхолостую: запускал очередь и тут же выходил, не проверив никого.
+          if (!authCheckCandidates().length) return;
+          await verifySavedLoginsOnStartup({ title: '🔐 Фоновая проверка входа', quiet: true });
+        } catch (e) {
+          console.warn('[BACKGROUND AUTH]', e);
+        } finally {
+          backgroundChecking = false;
+        }
+      },
+      minutes * 60 * 1000
+    );
   }
 }
 
@@ -189,27 +214,31 @@ export async function syncTrayParties() {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('set_tray_parties', { names, favorites });
     trayPartiesKey = key;
-  } catch (e) { console.warn('[TRAY]', e); }
+  } catch (e) {
+    console.warn('[TRAY]', e);
+  }
 }
 
 export async function initDesktop() {
   if (!window.__TAURI_INTERNALS__) return;
   const { listen } = await import('@tauri-apps/api/event');
-  await listen('tray-action', (e) => runScript(e.payload));
+  await listen('tray-action', e => runScript(e.payload));
   // «🛑 Закрыть все окна игры» в трее закрывает окна в Rust и присылает отчёт
-  await listen('game-closed', async (e) => {
+  await listen('game-closed', async e => {
     const { showCloseReport } = await import('../modules/launcher/partyLaunch.js');
     showCloseReport(e.payload);
   });
   // Окно игры подписывается уже после запуска; если не вышло (например, игра от администратора) — говорим почему, один раз за сеанс
   const told = new Set();
-  await listen('launcher-decorate', (e) => {
+  await listen('launcher-decorate', e => {
     const text = decorateNotice(e.payload);
     if (!text || told.has(e.payload.status)) return;
     told.add(e.payload.status);
     toast(text, 'error', 15000);
   });
-  window.addEventListener('tf-persisted', () => { syncTrayParties(); });
+  window.addEventListener('tf-persisted', () => {
+    syncTrayParties();
+  });
   await applyDesktopSettings();
   await syncTrayParties();
 }

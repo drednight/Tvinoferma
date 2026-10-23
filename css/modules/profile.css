@@ -41,12 +41,33 @@
   background: var(--surface-2);
   border: 2px solid var(--accent-line);
 }
-.pf-avatar img { width: 100%; height: 100%; object-fit: contain; }
-.pf-avatar span { font-size: 2rem; font-weight: 700; color: var(--text-dim); }
+.pf-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.pf-avatar span {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-dim);
+}
 
-.pf-head-info { flex: 1 1 auto; min-width: 0; }
-.pf-title-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.pf-nick { margin: 0; font-size: 1.5rem; letter-spacing: -0.02em; color: var(--text); }
+.pf-head-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pf-title-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.pf-nick {
+  margin: 0;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
 
 .pf-meta {
   display: flex;
@@ -57,15 +78,40 @@
   font-size: 0.86rem;
   color: var(--text-dim);
 }
-.pf-meta span + span::before { content: '·'; margin-right: 12px; color: var(--border-strong); }
-.pf-meta b, .pf-meta .char-bu { color: var(--gold); }
-.pf-meta-line { margin: 6px 0 0; font-size: 0.86rem; color: var(--text-dim); }
-.pf-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.pf-tag { cursor: pointer; }
-.pf-tag:hover { border-color: var(--accent); color: var(--text); }
+.pf-meta span + span::before {
+  content: '·';
+  margin-right: 12px;
+  color: var(--border-strong);
+}
+.pf-meta b,
+.pf-meta .char-bu {
+  color: var(--gold);
+}
+.pf-meta-line {
+  margin: 6px 0 0;
+  font-size: 0.86rem;
+  color: var(--text-dim);
+}
+.pf-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.pf-tag {
+  cursor: pointer;
+}
+.pf-tag:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
 
 /* Монеты прижаты к правому краю шапки: слева текст разной длины */
-.pf-coins { flex: none; text-align: right; min-width: 130px; }
+.pf-coins {
+  flex: none;
+  text-align: right;
+  min-width: 130px;
+}
 
 /* --- «Когда что проверено» --- */
 .pf-checks {
@@ -75,8 +121,15 @@
   background: var(--surface-2);
   padding: 4px 12px;
 }
-.pf-checks-title { cursor: pointer; padding: 8px 0; font-size: 0.88rem; font-weight: 600; }
-.pf-checks > div { padding-bottom: 10px; }
+.pf-checks-title {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.pf-checks > div {
+  padding-bottom: 10px;
+}
 
 /* --- Два столбца панелей ---
    Правая часть (характеристики) заметно тяжелее левой: их пять блоков против трёх.
@@ -89,9 +142,16 @@
   gap: 14px;
   align-items: start;
 }
-.pf-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pf-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
 @media (max-width: 1080px) {
-  .pf-cols { grid-template-columns: minmax(0, 1fr); }
+  .pf-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .pf-panel {
@@ -100,7 +160,8 @@
   background: var(--surface-1);
   padding: 10px 12px;
 }
-.pf-panel > summary, .pf-panel-title {
+.pf-panel > summary,
+.pf-panel-title {
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -110,17 +171,46 @@
   font-weight: 650;
   color: var(--text-dim);
 }
-.pf-panel-title { cursor: default; }
-.pf-panel > summary::-webkit-details-marker { color: var(--text-faint); }
-.pf-panel[open] > summary { margin-bottom: 10px; }
-.pf-hint { margin: 0 0 8px; font-size: 0.78rem; }
-.pf-label { display: block; margin: 8px 0 6px; font-size: 0.78rem; }
-.pf-launch-body { display: flex; flex-direction: column; gap: 10px; font-size: 0.84rem; }
-.pf-launch-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.pf-launch-row .input { flex: 1 1 240px; min-width: 0; }
+.pf-panel-title {
+  cursor: default;
+}
+.pf-panel > summary::-webkit-details-marker {
+  color: var(--text-faint);
+}
+.pf-panel[open] > summary {
+  margin-bottom: 10px;
+}
+.pf-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+}
+.pf-label {
+  display: block;
+  margin: 8px 0 6px;
+  font-size: 0.78rem;
+}
+.pf-launch-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+.pf-launch-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pf-launch-row .input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
 
 /* --- Контакты --- */
-.pf-contacts { display: flex; flex-direction: column; gap: 6px; }
+.pf-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .contact-row-profile {
   display: flex;
   align-items: center;
@@ -131,22 +221,51 @@
   background: rgba(255, 255, 255, 0.025);
   border: 1px solid transparent;
 }
-.contact-row-profile:hover { border-color: var(--border); }
-.contact-key-profile { font-size: 0.66rem; letter-spacing: 0.05em; color: var(--text-dim); flex: none; }
-.contact-row-profile .contact-row-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.contact-row-profile:hover {
+  border-color: var(--border);
+}
+.contact-key-profile {
+  font-size: 0.66rem;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+  flex: none;
+}
+.contact-row-profile .contact-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 /* Контакта нет — строка тусклая, глаз не нажимается */
-.contact-row-profile.is-empty { opacity: 0.55; }
-.contact-row-profile.is-empty .profile-toggle-eye { pointer-events: none; opacity: 0.3; }
-.contact-row-profile .contact-value { font-family: ui-monospace, Consolas, monospace; font-size: 0.8rem; }
-.profile-toggle-eye { padding: 2px; opacity: 0.45; display: flex; align-items: center; }
-.profile-toggle-eye:hover { opacity: 1; }
+.contact-row-profile.is-empty {
+  opacity: 0.55;
+}
+.contact-row-profile.is-empty .profile-toggle-eye {
+  pointer-events: none;
+  opacity: 0.3;
+}
+.contact-row-profile .contact-value {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.8rem;
+}
+.profile-toggle-eye {
+  padding: 2px;
+  opacity: 0.45;
+  display: flex;
+  align-items: center;
+}
+.profile-toggle-eye:hover {
+  opacity: 1;
+}
 
 /* --- Характеристики: плитки, а не строки таблицы ---
    Раньше характеристики шли строками «подпись …———— значение» или панелями в две колонки:
    двадцать строк подряд превращались в полосу из пунктирных линий и цифр, и взгляд
    цеплялся за линии, а не за значения. Плитка с подписью сверху и числом снизу читается
    списком: рамок вокруг каждой нет, ширину задаёт сетка — длинные названия не обрезаются. */
-.pf-stat-group + .pf-stat-group { margin-top: 14px; }
+.pf-stat-group + .pf-stat-group {
+  margin-top: 14px;
+}
 .pf-stat-group-title {
   font-size: 0.72rem;
   font-weight: 600;
@@ -162,9 +281,13 @@
 }
 /* Основные характеристики — 2×2: их ровно четыре, в широкий ряд они растягивались
    на всю правую колонку и между плитками оставались пустые провалы */
-.pf-stats-2x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pf-stats-2x2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 @media (max-width: 520px) {
-  .pf-stats-2x2 { grid-template-columns: minmax(0, 1fr); }
+  .pf-stats-2x2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .pf-stat {
   display: grid;
@@ -174,14 +297,21 @@
   background: rgba(255, 255, 255, 0.025);
   min-width: 0;
 }
-.pf-stat:hover { background: rgba(255, 255, 255, 0.05); }
+.pf-stat:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
 .pf-stat-label {
   font-size: 0.72rem;
   line-height: 1.3;
   color: var(--text-dim);
-  min-height: 1.9em;   /* две строки: подписи разной длины не сбивают числа в ряду */
+  min-height: 1.9em; /* две строки: подписи разной длины не сбивают числа в ряду */
 }
-.pf-stat-num { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pf-stat-num {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
 .pf-stat-value {
   font-size: 1rem;
   font-weight: 650;
@@ -195,11 +325,20 @@
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
-.pf-stat-delta.is-up { color: var(--success); background: rgba(76, 175, 80, 0.14); }
-.pf-stat-delta.is-down { color: var(--danger); background: rgba(248, 113, 113, 0.14); }
+.pf-stat-delta.is-up {
+  color: var(--success);
+  background: rgba(76, 175, 80, 0.14);
+}
+.pf-stat-delta.is-down {
+  color: var(--danger);
+  background: rgba(248, 113, 113, 0.14);
+}
 
 /* --- Последние изменения характеристик --- */
-.pf-changes { display: grid; gap: 8px; }
+.pf-changes {
+  display: grid;
+  gap: 8px;
+}
 .pf-changes-row {
   display: grid;
   grid-template-columns: minmax(96px, auto) 1fr;
@@ -207,19 +346,47 @@
   align-items: baseline;
   font-size: 0.8rem;
 }
-.pf-changes-when { color: var(--text-faint); white-space: nowrap; }
-.pf-changes-list { display: flex; flex-wrap: wrap; gap: 4px 10px; }
-.pf-change { display: inline-flex; align-items: baseline; gap: 5px; }
-.pf-change-key { color: var(--text-dim); }
-.pf-change b { font-variant-numeric: tabular-nums; }
-.pf-change b.is-up { color: var(--success); }
-.pf-change b.is-down { color: var(--danger); }
-.pf-change-more { color: var(--text-faint); }
+.pf-changes-when {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.pf-changes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.pf-change {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.pf-change-key {
+  color: var(--text-dim);
+}
+.pf-change b {
+  font-variant-numeric: tabular-nums;
+}
+.pf-change b.is-up {
+  color: var(--success);
+}
+.pf-change b.is-down {
+  color: var(--danger);
+}
+.pf-change-more {
+  color: var(--text-faint);
+}
 @media (max-width: 560px) {
-  .pf-changes-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .pf-changes-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
 }
 
-.pf-passes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pf-passes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
 .pf-pass {
   display: grid;
   justify-items: center;
@@ -229,39 +396,76 @@
   border-radius: var(--radius-xs);
   background: var(--surface-2);
 }
-.pf-pass img { width: 26px; height: 26px; object-fit: contain; }
-.pf-pass strong { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
-.pf-pass small { font-size: 0.68rem; color: var(--text-dim); }
+.pf-pass img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+.pf-pass strong {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.pf-pass small {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
 
-textarea#char-notes { width: 100%; resize: vertical; min-height: 96px; }
+textarea#char-notes {
+  width: 100%;
+  resize: vertical;
+  min-height: 96px;
+}
 
 /* ===== Окно редактирования персонажа (formEditor.js) =====
    Разметка повторяет раскрытую карточку: те же .pf-panel и .pf-cols, поэтому редактор
    и профиль выглядят как две страницы одного раздела. Классы cf-* — только здесь,
    чтобы правки окна не задели карточку. */
-.cf-grid { gap: 0; }
-.cf-grid .pf-cols { align-items: start; }
-.cf-field { margin: 0; min-width: 0; }
+.cf-grid {
+  gap: 0;
+}
+.cf-grid .pf-cols {
+  align-items: start;
+}
+.cf-field {
+  margin: 0;
+  min-width: 0;
+}
 /* Любое поле внутри колонок должно уметь сжиматься до ширины своей ячейки.
    У `<input>` и `<select>` min-width по умолчанию `auto`, то есть не меньше их собственной
    ширины (≈20 символов). В сетке из трёх колонок этого не хватало, и поля — проходки,
    ник и класс — вылезали за свои ячейки и наезжали друг на друга. */
 .pf-cols .input,
 .pf-cols .select,
-.pf-cols .field { min-width: 0; }
+.pf-cols .field {
+  min-width: 0;
+}
 .pf-cols .input,
-.pf-cols .select { width: 100%; }
+.pf-cols .select {
+  width: 100%;
+}
 .cf-field + .cf-field,
 .cf-panel .two-cols + .cf-field,
-.cf-panel .three-cols + .cf-field { margin-top: 10px; }
+.cf-panel .three-cols + .cf-field {
+  margin-top: 10px;
+}
 .cf-panel .two-cols,
-.cf-panel .three-cols { margin-top: 10px; gap: 10px; }
+.cf-panel .three-cols {
+  margin-top: 10px;
+  gap: 10px;
+}
 
 /* Поля характеристик — плитки в общей сетке, как в профиле: подпись сверху, поле снизу.
    Раньше группы характеристик были вложенными рамками одна в другую, из-за чего блок
    выглядел в четыре раза тяжелее остальных панелей и читался как «форма в форме». */
-.cf-stat-groups { display: grid; gap: 14px; margin-top: 12px; }
-.cf-stat-group + .cf-stat-group { border-top: 1px solid var(--border); padding-top: 12px; }
+.cf-stat-groups {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+.cf-stat-group + .cf-stat-group {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
 .cf-stat-group-title {
   margin: 0 0 8px;
   font-size: 0.72rem;
@@ -275,19 +479,36 @@ textarea#char-notes { width: 100%; resize: vertical; min-height: 96px; }
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 8px 10px;
 }
-.cf-stat { margin: 0; min-width: 0; }
+.cf-stat {
+  margin: 0;
+  min-width: 0;
+}
 /* Подписи в одну и две строки: резервируем две строки, иначе в ряду поле под длинной
    подписью уезжало ниже соседних и вся сетка выглядела «поехавшей» */
-.cf-stat label { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 3px; min-height: 1.9em; line-height: 1.3; }
+.cf-stat label {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+  min-height: 1.9em;
+  line-height: 1.3;
+}
 /* Поле внутри ячейки обязано уметь сжиматься: у `<input>` по умолчанию min-width: auto,
    то есть ширина не меньше его собственной (≈20 символов). Из-за этого последнее поле в
    ряду вылезало за свою ячейку и наезжало на соседнее. */
-.cf-stat .input { height: 34px; min-width: 0; width: 100%; }
+.cf-stat .input {
+  height: 34px;
+  min-width: 0;
+  width: 100%;
+}
 /* Четыре основные характеристики — ровно 2×2: их четыре, и в широкий ряд они растягивались
    на всю ширину окна, а подписи «Интеллект» и «Ловкость» оказывались на разных краях */
-.cf-stat-grid-2x2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cf-stat-grid-2x2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 @media (max-width: 560px) {
-  .cf-stat-grid-2x2 { grid-template-columns: minmax(0, 1fr); }
+  .cf-stat-grid-2x2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 /* Сворачиваемые блоки: заголовок ведёт себя как в карточке (стрелка + название + пояснение) */
 .cf-fold > .pf-panel-title {
@@ -305,11 +526,25 @@ textarea#char-notes { width: 100%; resize: vertical; min-height: 96px; }
   opacity: 0.5;
   transition: transform 0.15s ease;
 }
-.cf-fold[open] > .pf-panel-title::before { transform: rotate(90deg); }
-.cf-fold[open] > .pf-panel-title { margin-bottom: 12px; }
-.cf-fold-note { font-size: 0.76rem; font-weight: 400; }
-.cf-vault-note { margin: 0 0 10px; font-size: 0.75rem; color: var(--text-dim); }
-.cf-hint-label { display: block; margin-bottom: 6px; }
+.cf-fold[open] > .pf-panel-title::before {
+  transform: rotate(90deg);
+}
+.cf-fold[open] > .pf-panel-title {
+  margin-bottom: 12px;
+}
+.cf-fold-note {
+  font-size: 0.76rem;
+  font-weight: 400;
+}
+.cf-vault-note {
+  margin: 0 0 10px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.cf-hint-label {
+  display: block;
+  margin-bottom: 6px;
+}
 /* Под полем — прошлое значение; разница с ним считается при вводе и подписывается рядом */
 .cf-prev {
   display: block;
@@ -317,10 +552,31 @@ textarea#char-notes { width: 100%; resize: vertical; min-height: 96px; }
   font-size: 0.7rem;
   color: var(--text-faint);
 }
-.cf-prev-delta { margin-left: 6px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.cf-prev-delta.is-up { color: var(--success); }
-.cf-prev-delta.is-down { color: var(--danger); }
-.cf-coins { border-color: rgba(255, 215, 0, 0.22); background: rgba(255, 215, 0, 0.05); }
-.cf-coins-title { color: gold; }
-.cf-coins-input { font-size: 1.15rem; font-weight: 700; color: gold; }
-.cf-coins-hint { display: block; margin-top: 4px; color: var(--text-faint); }
+.cf-prev-delta {
+  margin-left: 6px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.cf-prev-delta.is-up {
+  color: var(--success);
+}
+.cf-prev-delta.is-down {
+  color: var(--danger);
+}
+.cf-coins {
+  border-color: rgba(255, 215, 0, 0.22);
+  background: rgba(255, 215, 0, 0.05);
+}
+.cf-coins-title {
+  color: gold;
+}
+.cf-coins-input {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: gold;
+}
+.cf-coins-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+}

@@ -6,11 +6,11 @@
  */
 export function getAllDatesInRange(startStr, endStr) {
   const dates = [];
-  
+
   // Парсим строки YYYY-MM-DD в объекты Date (локальное время)
-  let current = new Date(startStr + 'T00:00:00'); 
+  let current = new Date(startStr + 'T00:00:00');
   const end = new Date(endStr + 'T00:00:00');
-  
+
   // Копируем даты, чтобы не мутировать оригиналы
   const tempCurrent = new Date(current);
   const tempEnd = new Date(end);
@@ -20,13 +20,13 @@ export function getAllDatesInRange(startStr, endStr) {
     const year = tempCurrent.getFullYear();
     const month = String(tempCurrent.getMonth() + 1).padStart(2, '0');
     const day = String(tempCurrent.getDate()).padStart(2, '0');
-    
+
     dates.push(`${year}-${month}-${day}`);
-    
+
     // Добавляем один день
     tempCurrent.setDate(tempCurrent.getDate() + 1);
   }
-  
+
   return dates;
 }
 
@@ -38,9 +38,9 @@ export function getAllDatesInRange(startStr, endStr) {
  */
 export function isTaskActiveOnDate(task, dateStr, allMarathonDates) {
   if (!allMarathonDates.includes(dateStr)) return false;
-  
+
   if (task.schedule.mode === 'everyDay') return true;
-  
+
   if (task.schedule.mode === 'dates') {
     return task.schedule.dates.includes(dateStr);
   }
@@ -50,10 +50,9 @@ export function isTaskActiveOnDate(task, dateStr, allMarathonDates) {
     const d = new Date(dateStr + 'T00:00:00');
     return d.getDay() === targetWeekday;
   }
-  
+
   return false;
 }
-
 
 /** Целых дней от `from` до `to` (YYYY-MM-DD, локальные даты). Отрицательное — `to` раньше. */
 export function daysBetween(from, to) {
@@ -62,7 +61,7 @@ export function daysBetween(from, to) {
   return Math.round((b.getTime() - a.getTime()) / 86400000);
 }
 
-const daysWord = (n) => {
+const daysWord = n => {
   const k = Math.abs(n) % 100;
   const d = k % 10;
   if (k > 10 && k < 20) return 'дней';

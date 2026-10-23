@@ -12,7 +12,11 @@ const mocks = vi.hoisted(() => ({
   showCloseReport: vi.fn()
 }));
 
-vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}), isTauri: () => true }));
+vi.mock('../js/core/storage.js', () => ({
+  persist: vi.fn(async () => {}),
+  saveNow: vi.fn(async () => {}),
+  isTauri: () => true
+}));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({
   launchGroup: mocks.launchGroup,
   closePartyWindows: mocks.closePartyWindows,
@@ -25,25 +29,50 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   runningClientDetails: mocks.runningClientDetails,
   closeClientsByPid: mocks.closeClientsByPid
 }));
-vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm, showModal: vi.fn(), closeModal: vi.fn() }));
+vi.mock('../js/core/ui.js', () => ({
+  toast: mocks.toast,
+  confirmModal: mocks.confirm,
+  showModal: vi.fn(),
+  closeModal: vi.fn()
+}));
 vi.mock('../js/modules/characters/profileView.js', () => ({ openCharacterProfile: vi.fn() }));
 
 let state, renderParties, setPartyArchiveView;
 
 const cards = () => [...document.querySelectorAll('.pt-card')];
-const cardOf = (name) => cards().find(c => c.dataset.partyName === name);
-const closeBtn = (name) => cardOf(name)?.querySelector('.close-party-action-btn');
+const cardOf = name => cards().find(c => c.dataset.partyName === name);
+const closeBtn = name => cardOf(name)?.querySelector('.close-party-action-btn');
 
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
-  document.body.innerHTML = '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div><div id="toast-root"></div>';
+  document.body.innerHTML =
+    '<div id="party-summary"></div><div id="party-list"></div><div id="modal-root"></div><div id="toast-root"></div>';
   ({ state } = await import('../js/core/state.js'));
   ({ renderPartiesGrid: renderParties, setPartyArchiveView } = await import('../js/modules/parties/renderer.js'));
-  state.parties = [{ id: 'p1', name: 'Основа', order: 1 }, { id: 'p2', name: 'Фарм', order: 2 }];
+  state.parties = [
+    { id: 'p1', name: 'Основа', order: 1 },
+    { id: 'p2', name: 'Фарм', order: 2 }
+  ];
   state.characters = [
-    { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC', gcAccount: true } },
-    { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', isLoggedIn: false, launch: { gcPath: 'D:\\GC', gcAccount: true } }
+    {
+      id: 'a',
+      nick: 'Аа',
+      class: 'Воин',
+      partyIds: ['p1'],
+      mainPartyId: 'p1',
+      isLoggedIn: true,
+      launch: { gcPath: 'D:\\GC', gcAccount: true }
+    },
+    {
+      id: 'b',
+      nick: 'Бб',
+      class: 'Маг',
+      partyIds: ['p2'],
+      mainPartyId: 'p2',
+      isLoggedIn: false,
+      launch: { gcPath: 'D:\\GC', gcAccount: true }
+    }
   ];
 });
 
@@ -57,7 +86,14 @@ describe('кнопка закрытия окон в карточке пати', 
   });
 
   it('есть у всех непустых пати, включая «Без пати»', () => {
-    state.characters.push({ id: 'c', nick: 'Вв', class: 'Бард', partyIds: [], mainPartyId: null, launch: { gcPath: 'D:\\GC', gcAccount: true } });
+    state.characters.push({
+      id: 'c',
+      nick: 'Вв',
+      class: 'Бард',
+      partyIds: [],
+      mainPartyId: null,
+      launch: { gcPath: 'D:\\GC', gcAccount: true }
+    });
     renderParties();
     expect(cards().map(c => c.dataset.partyName)).toContain('Без пати');
     expect(closeBtn('Основа')).not.toBeNull();
@@ -67,7 +103,15 @@ describe('кнопка закрытия окон в карточке пати', 
 
   it('показывает архивных участников в копии пати в архиве, не включая их в активную пати', () => {
     state.archivedCharacters = [
-      { id: 'archived', nick: 'Архивный', class: 'Маг', partyIds: ['p1'], mainPartyId: 'p1', isLoggedIn: true, launch: { gcPath: 'D:\\GC', gcAccount: true } }
+      {
+        id: 'archived',
+        nick: 'Архивный',
+        class: 'Маг',
+        partyIds: ['p1'],
+        mainPartyId: 'p1',
+        isLoggedIn: true,
+        launch: { gcPath: 'D:\\GC', gcAccount: true }
+      }
     ];
     renderParties();
 

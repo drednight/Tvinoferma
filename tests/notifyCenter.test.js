@@ -6,7 +6,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-showInApp, clearInApp, dismissInApp, inAppItems, bindNotifyCenter, onNotifyCenter
+  showInApp,
+  clearInApp,
+  dismissInApp,
+  inAppItems,
+  bindNotifyCenter,
+  onNotifyCenter
 } from '../js/core/notifyCenter.js';
 
 const box = () => document.getElementById('notify-center');
@@ -29,11 +34,11 @@ describe('карточки уведомлений', () => {
   it('карточка не исчезает сама — в этом весь смысл', async () => {
     showInApp({ title: 'Не уходит' });
     // Ждём больше типичного времени жизни тоста Windows; карточка должна остаться
-    await new Promise((r) => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 60));
     expect(cards()).toHaveLength(1);
   });
 
-it('крестик закрывает нужную карточку', () => {
+  it('крестик закрывает нужную карточку', () => {
     showInApp({ title: 'Первое' });
     const id = inAppItems()[0].id;
     showInApp({ title: 'Второе' });
@@ -51,7 +56,12 @@ it('крестик закрывает нужную карточку', () => {
 
   it('клик по карточке выполняет действие и закрывает её', () => {
     let clicked = 0;
-    showInApp({ title: 'Открыть', onClick: () => { clicked++; } });
+    showInApp({
+      title: 'Открыть',
+      onClick: () => {
+        clicked++;
+      }
+    });
     box().querySelector('.nc-card').click();
     expect(clicked).toBe(1);
     expect(inAppItems()).toHaveLength(0);
@@ -98,7 +108,9 @@ it('крестик закрывает нужную карточку', () => {
 
   it('подписка на изменения вызывается', () => {
     let calls = 0;
-    const off = onNotifyCenter(() => { calls++; });
+    const off = onNotifyCenter(() => {
+      calls++;
+    });
     showInApp({ title: 'Раз' });
     expect(calls).toBe(1);
     off();

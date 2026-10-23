@@ -8,7 +8,7 @@
 import { state } from './state.js';
 import { toast } from './ui.js';
 
-const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
+const errText = e => String(e?.message || e || 'неизвестная ошибка');
 
 /**
  * Создаёт исполнитель команд палитры.
@@ -21,7 +21,10 @@ export function createCommandRunner({ switchTab }) {
       switch (action) {
         case 'open-character': {
           const char = state.characters.find(c => c.id === payload);
-          if (!char) { toast('Персонаж не найден', 'error'); return; }
+          if (!char) {
+            toast('Персонаж не найден', 'error');
+            return;
+          }
           const { openCharacterProfile } = await import('../modules/characters/profileView.js');
           openCharacterProfile(char);
           return;
@@ -48,10 +51,11 @@ export function createCommandRunner({ switchTab }) {
           // Отдельного экрана пати нет: пати живут карточками в своём разделе
           switchTab('parties');
           const party = state.parties.find(p => p.id === payload);
-          if (party) setTimeout(() => {
-            const card = [...document.querySelectorAll('.pt-card')].find(el => el.dataset.partyName === party.name);
-            card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-          }, 60);
+          if (party)
+            setTimeout(() => {
+              const card = [...document.querySelectorAll('.pt-card')].find(el => el.dataset.partyName === party.name);
+              card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }, 60);
           return;
         }
         case 'open-marathon': {
@@ -67,7 +71,10 @@ export function createCommandRunner({ switchTab }) {
         }
         case 'check-auth-one': {
           const char = state.characters.find(c => c.id === payload);
-          if (!char) { toast('Персонаж не найден', 'error'); return; }
+          if (!char) {
+            toast('Персонаж не найден', 'error');
+            return;
+          }
           const { refreshAllLoginStatuses } = await import('../modules/sync/syncManager.js');
           await refreshAllLoginStatuses([char]);
           return;
@@ -79,7 +86,10 @@ export function createCommandRunner({ switchTab }) {
         }
         case 'balance-one': {
           const char = state.characters.find(c => c.id === payload);
-          if (!char) { toast('Персонаж не найден', 'error'); return; }
+          if (!char) {
+            toast('Персонаж не найден', 'error');
+            return;
+          }
           const { refreshAllBalances } = await import('../modules/sync/syncManager.js');
           await refreshAllBalances([char]);
           return;
@@ -91,7 +101,10 @@ export function createCommandRunner({ switchTab }) {
         }
         case 'launch-one': {
           const char = state.characters.find(c => c.id === payload);
-          if (!char) { toast('Персонаж не найден', 'error'); return; }
+          if (!char) {
+            toast('Персонаж не найден', 'error');
+            return;
+          }
           const { launchOne } = await import('../modules/launcher/partyLaunch.js');
           await launchOne(char);
           return;

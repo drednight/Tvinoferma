@@ -5,8 +5,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 import {
-  getManualOrder, saveManualOrder, resetManualOrder, canSaveOrder,
-  listOrderPresets, saveOrderPreset, deleteOrderPreset, presetValue, presetIdFromValue
+  getManualOrder,
+  saveManualOrder,
+  resetManualOrder,
+  canSaveOrder,
+  listOrderPresets,
+  saveOrderPreset,
+  deleteOrderPreset,
+  presetValue,
+  presetIdFromValue
 } from '../js/modules/characters/orderStore.js';
 import { fillOrderOptions } from '../js/modules/characters/list.js';
 
@@ -140,4 +147,3 @@ describe('разделитель сохранённых порядков', () =>
     expect(select.value).toBe('nick');
   });
 });
-

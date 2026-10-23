@@ -9,7 +9,7 @@ import { openOverlay } from '../marathons/overlay.js';
 import { formatCoins, formatDelta, normalizeCoinHistory, needsCoinRecheck } from '../../core/coins.js';
 import { mskStampSeconds } from '../../core/msk.js';
 
-const fmtDate = (iso) => {
+const fmtDate = iso => {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return 'Неизвестно';
   // Время по Москве: в истории монет сравнивают с игровыми событиями, а не с часами машины
@@ -28,13 +28,17 @@ function entryHtml(h) {
 
 export function openCoinHistory(charOrId) {
   const id = typeof charOrId === 'string' ? charOrId : charOrId?.id;
-  const char = [...state.characters, ...state.archivedCharacters].find(c => c.id === id)
-    || (typeof charOrId === 'object' ? charOrId : null);
+  const char =
+    [...state.characters, ...state.archivedCharacters].find(c => c.id === id) ||
+    (typeof charOrId === 'object' ? charOrId : null);
   if (!char) return;
 
   const archived = state.archivedCharacters.some(item => item.id === char.id);
   const history = normalizeCoinHistory(char.coinHistory);
-  const ov = openOverlay({ title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История Древних монет: ${char.nick}`, wide: true });
+  const ov = openOverlay({
+    title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История Древних монет: ${char.nick}`,
+    wide: true
+  });
   const last = char.lastCoinUpdate ? fmtDate(char.lastCoinUpdate) : 'ещё не проверялся';
 
   const stale = needsCoinRecheck(char);
@@ -51,23 +55,33 @@ export function openCoinHistory(charOrId) {
   ov.foot.innerHTML = `<span></span><div class="row gap">${stale && !archived ? '<button type="button" class="btn primary" data-recheck>🔄 Перепроверить</button>' : ''}<button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   const recheck = ov.foot.querySelector('[data-recheck]');
-  if (recheck) recheck.onclick = async () => {
-    recheck.disabled = true; recheck.textContent = '⏳ Проверяю…';
-    try {
-      const { refreshBalanceFor } = await import('../sync/syncManager.js');
-      await refreshBalanceFor(char);
-      ov.close();
-      openCoinHistory(char.id);          // заново: уже с новым балансом и без предупреждения
-    } catch (e) {
-      recheck.disabled = false; recheck.textContent = '🔄 Перепроверить';
-    }
-  };
-  ov.foot.querySelector('[data-copy]').onclick = async (e) => {
+  if (recheck)
+    recheck.onclick = async () => {
+      recheck.disabled = true;
+      recheck.textContent = '⏳ Проверяю…';
+      try {
+        const { refreshBalanceFor } = await import('../sync/syncManager.js');
+        await refreshBalanceFor(char);
+        ov.close();
+        openCoinHistory(char.id); // заново: уже с новым балансом и без предупреждения
+      } catch (e) {
+        recheck.disabled = false;
+        recheck.textContent = '🔄 Перепроверить';
+      }
+    };
+  ov.foot.querySelector('[data-copy]').onclick = async e => {
     const text = [
       `История Древних монет: ${char.nick} (баланс ${formatCoins(char.ancientCoins || 0)}, проверка: ${last})`,
-      ...history.map(h => `${fmtDate(h.date || h.createdAt)}  ${formatDelta(h.delta)}${h.balanceAfter != null ? `  баланс ${formatCoins(h.balanceAfter)}` : ''}  ${h.note || 'Операция'}`)
+      ...history.map(
+        h =>
+          `${fmtDate(h.date || h.createdAt)}  ${formatDelta(h.delta)}${h.balanceAfter != null ? `  баланс ${formatCoins(h.balanceAfter)}` : ''}  ${h.note || 'Операция'}`
+      )
     ].join('\n');
-    try { await navigator.clipboard.writeText(text); e.target.textContent = '✔ Скопировано'; }
-    catch (_) { e.target.textContent = 'Не удалось скопировать'; }
+    try {
+      await navigator.clipboard.writeText(text);
+      e.target.textContent = '✔ Скопировано';
+    } catch (_) {
+      e.target.textContent = 'Не удалось скопировать';
+    }
   };
 }

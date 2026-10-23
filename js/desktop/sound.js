@@ -80,7 +80,7 @@ let ctx = null;
 /** Контекст звука или `null`, если движок его не дал (тестовая среда, старый браузер). */
 function context() {
   if (ctx) return ctx;
-  const Ctor = typeof window === 'undefined' ? null : (window.AudioContext || window.webkitAudioContext);
+  const Ctor = typeof window === 'undefined' ? null : window.AudioContext || window.webkitAudioContext;
   if (!Ctor) return null;
   try {
     ctx = new Ctor();

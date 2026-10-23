@@ -39,7 +39,9 @@ describe('календарь: записи в ячейке месяца', () => 
   const chips = day => [...day.querySelectorAll('.planner-chip')].map(c => c.textContent.trim());
 
   it('своя запись со временем показана названием, а время — в подсказке клетки', () => {
-    state.plannerEntries = [entry({ id: 'p1', title: 'Своё дело', date: '2026-10-05', time: '12:00', durationMinutes: 120, color: 'blue' })];
+    state.plannerEntries = [
+      entry({ id: 'p1', title: 'Своё дело', date: '2026-10-05', time: '12:00', durationMinutes: 120, color: 'blue' })
+    ];
     const day = cell(plannerHtml(state), '2026-10-05');
     expect(chips(day)).toEqual(expect.arrayContaining(['Своё дело']));
     expect(day.getAttribute('title')).toContain('12:00 Своё дело');
@@ -56,7 +58,9 @@ describe('календарь: записи в ячейке месяца', () => 
   });
 
   it('марафон занимает весь день и показан отдельной меткой', () => {
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     const day = cell(plannerHtml(state), '2026-10-06');
     const chip = day.querySelector('.planner-chip.is-marathon');
     expect(chip.textContent).toContain('Лето');
@@ -132,7 +136,9 @@ describe('календарь: записи в ячейке месяца', () => 
 
 describe('окно дня: полная шкала 00:00–24:00', () => {
   it('рисует часы и блоки записей по длительности', () => {
-    state.plannerEntries = [entry({ id: 'p1', title: 'Рейд', date: '2026-10-05', time: '20:00', durationMinutes: 90, color: 'red' })];
+    state.plannerEntries = [
+      entry({ id: 'p1', title: 'Рейд', date: '2026-10-05', time: '20:00', durationMinutes: 90, color: 'red' })
+    ];
     openPlannerDay('2026-10-05', {});
     const root = document.getElementById('modal-root');
     expect(root.querySelectorAll('.planner-scale-mark')).toHaveLength(5);
@@ -155,7 +161,9 @@ describe('окно дня: полная шкала 00:00–24:00', () => {
   });
 
   it('своя запись в окне дня правится и удаляется как раньше', () => {
-    state.plannerEntries = [entry({ id: 'p1', title: 'Своё дело', date: '2026-10-07', time: '10:00', durationMinutes: 60 })];
+    state.plannerEntries = [
+      entry({ id: 'p1', title: 'Своё дело', date: '2026-10-07', time: '10:00', durationMinutes: 60 })
+    ];
     openPlannerDay('2026-10-07', {});
     const row = [...document.querySelectorAll('.planner-day-row')].find(r => r.textContent.includes('Своё дело'));
     expect(row.querySelector('[data-planner-delete]')).not.toBeNull();
@@ -173,7 +181,9 @@ describe('окно дня: полная шкала 00:00–24:00', () => {
 describe('план дня собирается из всех источников', () => {
   it('ручные записи, постоянные ивенты и марафоны видны вместе', () => {
     state.plannerEntries = [entry({ id: 'p1', title: 'Своё', date: '2026-10-07', time: '10:00', durationMinutes: 60 })];
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     const all = plannerEventsForDate(state, '2026-10-07');
     expect(all.map(e => e.title)).toEqual(expect.arrayContaining(['Своё', 'Ритм Гильдии', 'Запретное учение', 'Лето']));
     expect(all.some(e => e.source === 'marathon')).toBe(true);
@@ -234,7 +244,9 @@ describe('неделя: «весь день» подписан под датой
 
   it('марафон и запись без времени — плашки под датой, колонку дня не заливают', () => {
     state.settings.ui.plannerView = 'week';
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     state.plannerEntries = [entry({ id: 'p1', title: 'Без времени', date: '2026-10-06', time: '', color: 'green' })];
     const col = dayCol(plannerHtml(state), '2026-10-06');
     const chips = [...col.querySelectorAll('.cal-day-allday .cal-chip')].map(c => c.textContent.trim());
@@ -255,22 +267,26 @@ describe('неделя: «весь день» подписан под датой
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     expect(doc.querySelector('.cal-week-allday')).toBeNull();
     expect(doc.querySelector('.cal-day-allday')).toBeNull();
-    expect(doc.querySelectorAll('.cal-line')).toHaveLength(5 * 12);   // 5 колонок по 12 ячеек сетки
+    expect(doc.querySelectorAll('.cal-line')).toHaveLength(5 * 12); // 5 колонок по 12 ячеек сетки
   });
 
   it('ячейка «без конкретного времени» появляется, когда есть марафон или запись без времени', () => {
     state.settings.ui.plannerView = 'week';
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     expect(doc.querySelector('.cal-week-allday')).not.toBeNull();
-    expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(5);   // столько же, сколько колонок
+    expect(doc.querySelectorAll('.cal-day-allday')).toHaveLength(5); // столько же, сколько колонок
   });
 
   it('колонка часов начинается на уровне колонок дней, а не выше', () => {
     // Без пустого места на высоту шапки дня подписи 00:00, 01:00 ехали на 34px вверх
     // и налезали на плашки «без конкретного времени».
     state.settings.ui.plannerView = 'week';
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     const side = doc.querySelector('.cal-week-side');
     // Пустое место стоит первым — ровно на высоту шапки дня
@@ -283,7 +299,9 @@ describe('неделя: «весь день» подписан под датой
   it('полоса подписана понятно: «без конкретного времени», а не «весь день»', () => {
     // «Весь день» ничего не объяснял: читалось как обрывок слова в узкой колонке.
     state.settings.ui.plannerView = 'week';
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Лето', status: 'active', startDate: '2026-10-01', endDate: '2026-10-10' }
+    ];
     const doc = new DOMParser().parseFromString(`<div>${plannerHtml(state)}</div>`, 'text/html');
     const label = doc.querySelector('.cal-week-allday-label');
     expect(label.textContent).toBe('без конкретного времени');

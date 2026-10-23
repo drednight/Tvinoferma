@@ -1,7 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import {
-  normalizeGameCenters, resolveGameCenter, accountKey, attachGc, detachGc, replaceGc, setGcAccount,
-  accountKeysOf, removeGameCenter, importLegacyPaths, suggestGcName, samePathKey, countLaunchReady, pickMajorityGc
+  normalizeGameCenters,
+  resolveGameCenter,
+  accountKey,
+  attachGc,
+  detachGc,
+  replaceGc,
+  setGcAccount,
+  accountKeysOf,
+  removeGameCenter,
+  importLegacyPaths,
+  suggestGcName,
+  samePathKey,
+  countLaunchReady,
+  pickMajorityGc
 } from '../js/modules/launcher/gameCenters.js';
 import { launchCharacters, launchable, launchPlan, loginStatusText } from '../js/modules/launcher/launch.js';
 import { normalizeCharacter, normalizeState } from '../js/core/state.js';
@@ -13,7 +25,14 @@ const ch = (id, launch = {}) => ({ id, nick: id, launch });
 
 describe('GameCenter: общий список', () => {
   it('список очищается: без id/пути и повторов, имя по умолчанию', () => {
-    const list = normalizeGameCenters([GC1, { ...GC1, name: 'дубль' }, { id: '', path: 'x' }, { id: 'z', path: '' }, { id: 'n', path: 'P' }, null]);
+    const list = normalizeGameCenters([
+      GC1,
+      { ...GC1, name: 'дубль' },
+      { id: '', path: 'x' },
+      { id: 'z', path: '' },
+      { id: 'n', path: 'P' },
+      null
+    ]);
     expect(list.map(g => g.id)).toEqual(['gc-1', 'n']);
     expect(list[1].name).toBe('GameCenter');
     expect(normalizeGameCenters(null)).toEqual([]);
@@ -30,16 +49,28 @@ describe('GameCenter: общий список', () => {
   });
 
   it('настройки: список и выбранный GameCenter нормализуются, лишний выбор сбрасывается', () => {
-    const s = normalizeState({ characters: [], settings: { launcher: { gameCenters: [GC1, GC2], preferredGcId: 'gc-2' } } }).settings.launcher;
+    const s = normalizeState({
+      characters: [],
+      settings: { launcher: { gameCenters: [GC1, GC2], preferredGcId: 'gc-2' } }
+    }).settings.launcher;
     expect(s.gameCenters).toHaveLength(2);
     expect(s.preferredGcId).toBe('gc-2');
-    const bad = normalizeState({ characters: [], settings: { launcher: { gameCenters: [GC1], preferredGcId: 'нет-такого' } } }).settings.launcher;
+    const bad = normalizeState({
+      characters: [],
+      settings: { launcher: { gameCenters: [GC1], preferredGcId: 'нет-такого' } }
+    }).settings.launcher;
     expect(bad.preferredGcId).toBe('');
     expect(normalizeState({ characters: [], settings: {} }).settings.launcher.gameCenters).toEqual([]);
   });
 
   it('персонаж: gcIds без повторов, gcAccounts только объекты', () => {
-    const c = normalizeCharacter({ nick: 'X', launch: { gcIds: ['gc-1', ' gc-1 ', '', 'gc-2'], gcAccounts: { 'gc-1': { nick: ' Twin ', legacy: true, token: 'SECRET' }, bad: 5 } } });
+    const c = normalizeCharacter({
+      nick: 'X',
+      launch: {
+        gcIds: ['gc-1', ' gc-1 ', '', 'gc-2'],
+        gcAccounts: { 'gc-1': { nick: ' Twin ', legacy: true, token: 'SECRET' }, bad: 5 }
+      }
+    });
     expect(c.launch.gcIds).toEqual(['gc-1', 'gc-2']);
     expect(c.launch.gcAccounts).toEqual({ 'gc-1': { nick: ' Twin ', legacy: true } });
     expect(JSON.stringify(c)).not.toContain('SECRET');
@@ -125,7 +156,9 @@ describe('GameCenter: выбор по большинству участнико�
 describe('GameCenter: привязка персонажей', () => {
   it('прикрепить, не дублировать, заменить, открепить', () => {
     const c = ch('a');
-    attachGc(c, 'gc-1'); attachGc(c, 'gc-1'); attachGc(c, 'gc-2');
+    attachGc(c, 'gc-1');
+    attachGc(c, 'gc-1');
+    attachGc(c, 'gc-2');
     expect(c.launch.gcIds).toEqual(['gc-1', 'gc-2']);
     setGcAccount(c, 'gc-1', 'Twin');
     replaceGc(c, 0, 'gc-2'); // gc-2 уже есть — замена не выполняется
@@ -170,7 +203,10 @@ describe('GameCenter: привязка персонажей', () => {
 describe('GameCenter: запуск', () => {
   it('в команду запуска уходит путь выбранного GameCenter и ключ входа этого GameCenter', async () => {
     const seen = [];
-    const invoke = async (cmd, args) => { seen.push(args); return {}; };
+    const invoke = async (cmd, args) => {
+      seen.push(args);
+      return {};
+    };
     const a = ch('a', { gcIds: ['gc-1', 'gc-2'], gcAccounts: { 'gc-2': { nick: 'Twin' } } });
     const b = ch('b', { gcIds: ['gc-1'] });
     const own = ch('own', { gcPath: 'D:\\own' });
@@ -178,9 +214,9 @@ describe('GameCenter: запуск', () => {
     // loginSaved идёт вместе с ключом входа: по нему Rust узнает, что токен обязан быть
     // в хранилище ОС (у «a» он есть, у «b» и «own» — нет, и запускать их нельзя)
     expect(seen.map(x => [x.path, x.charId, x.loginSaved])).toEqual([
-      [GC2.path, 'a@gc-2', true],  // «Папка 2» есть
+      [GC2.path, 'a@gc-2', true], // «Папка 2» есть
       [GC1.path, 'b@gc-1', false], // «Папки 2» нет — из доступной
-      ['D:\\own', 'own', false]    // старый путь из карточки
+      ['D:\\own', 'own', false] // старый путь из карточки
     ]);
   });
 
@@ -192,7 +228,9 @@ describe('GameCenter: запуск', () => {
 
   it('подсказка в карточке называет GameCenter и сохранённый вход', () => {
     const c = ch('a', { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'Twin' } } });
-    expect(loginStatusText(c, ctx())).toBe('GameCenter «Папка 1». Вход запомнен «Twin». При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.');
+    expect(loginStatusText(c, ctx())).toBe(
+      'GameCenter «Папка 1». Вход запомнен «Twin». При запуске этот GameCenter будет закрыт и откроется под этим аккаунтом.'
+    );
     expect(loginStatusText(ch('b', { gcIds: ['gc-2'] }), ctx())).toContain('Вход не запомнен');
   });
 });

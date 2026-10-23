@@ -5,7 +5,16 @@ import { readFileSync } from 'node:fs';
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 
-const SERVERS = { status: 'ok', recommended: 'Капелла', servers: [{ name: 'Центавр', online: true }, { name: 'Фенрир', online: true }, { name: 'Мицар', online: false }, { name: 'Капелла', online: true }] };
+const SERVERS = {
+  status: 'ok',
+  recommended: 'Капелла',
+  servers: [
+    { name: 'Центавр', online: true },
+    { name: 'Фенрир', online: true },
+    { name: 'Мицар', online: false },
+    { name: 'Капелла', online: true }
+  ]
+};
 let ss, view;
 
 beforeEach(async () => {
@@ -16,7 +25,10 @@ beforeEach(async () => {
   ss = await import('../js/modules/servers/serverStatus.js');
   view = await import('../js/modules/servers/serverStatusView.js');
 });
-afterEach(() => { vi.useRealTimers(); delete window.__TAURI_INTERNALS__; });
+afterEach(() => {
+  vi.useRealTimers();
+  delete window.__TAURI_INTERNALS__;
+});
 
 describe('настройка «Статус серверов» (Свежесть данных)', () => {
   it('по умолчанию 10 минут (сайт обновляет страницу раз в 10 минут); 0 допустим; мусор → значение по умолчанию', () => {
@@ -40,7 +52,7 @@ describe('настройка «Статус серверов» (Свежесть
 
   it('isStatusDue: данных нет — пора; свежие — нет; 0 — никогда; недавняя попытка тоже считается', () => {
     const now = Date.parse('2026-01-01T12:00:00Z');
-    const at = (minAgo) => ({ at: new Date(now - minAgo * 60000).toISOString() });
+    const at = minAgo => ({ at: new Date(now - minAgo * 60000).toISOString() });
     expect(ss.isStatusDue(null, 10, now)).toBe(true);
     expect(ss.isStatusDue(at(5), 10, now)).toBe(false);
     expect(ss.isStatusDue(at(11), 10, now)).toBe(true);
@@ -60,7 +72,10 @@ describe('чтение', () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
     expect(mocks.invoke).toHaveBeenCalledWith('read_server_status', { timeoutSeconds: 20 });
     expect(ss.getServerStatus().status.servers.map(s => s.name)).toEqual(['Центавр', 'Фенрир', 'Мицар', 'Капелла']);
-    expect(seen).toEqual([[true, 0], [false, 4]]);
+    expect(seen).toEqual([
+      [true, 0],
+      [false, 4]
+    ]);
     expect(JSON.parse(window.localStorage.getItem('tf_transfer_servers_v1')).recommended).toBe('Капелла');
   });
 
@@ -77,9 +92,11 @@ describe('чтение', () => {
 
   it('при запуске читается сразу и не задерживает дальнейшее больше, чем на maxWaitMs', async () => {
     vi.useFakeTimers();
-    mocks.invoke.mockImplementation(() => new Promise(() => {}));   // сайт «завис»
+    mocks.invoke.mockImplementation(() => new Promise(() => {})); // сайт «завис»
     let done = false;
-    ss.loadServerStatusOnStartup(() => ({}), 5000).then(() => { done = true; });
+    ss.loadServerStatusOnStartup(() => ({}), 5000).then(() => {
+      done = true;
+    });
     await vi.advanceTimersByTimeAsync(4000);
     expect(done).toBe(false);
     await vi.advanceTimersByTimeAsync(1500);
@@ -99,15 +116,15 @@ describe('расписание', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T12:00:00Z'));
     const settings = { freshness: { serverStatusMinutes: 10 } };
-    ss.setServerStatus({ servers: [{ name: 'Фенрир', online: true }] });   // данные «от 12:00»
+    ss.setServerStatus({ servers: [{ name: 'Фенрир', online: true }] }); // данные «от 12:00»
     const stop = ss.startServerStatusScheduler(() => settings, 30000);
     await vi.advanceTimersByTimeAsync(5 * 60000);
-    expect(mocks.invoke).not.toHaveBeenCalled();                          // 5 минут < 10
+    expect(mocks.invoke).not.toHaveBeenCalled(); // 5 минут < 10
     await vi.advanceTimersByTimeAsync(6 * 60000);
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);                        // прошло 11 минут
+    expect(mocks.invoke).toHaveBeenCalledTimes(1); // прошло 11 минут
     settings.freshness.serverStatusMinutes = 0;
     await vi.advanceTimersByTimeAsync(60 * 60000);
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);                        // выключено
+    expect(mocks.invoke).toHaveBeenCalledTimes(1); // выключено
     settings.freshness.serverStatusMinutes = 1;
     await vi.advanceTimersByTimeAsync(2 * 60000);
     expect(mocks.invoke.mock.calls.length).toBeGreaterThan(1);
@@ -120,7 +137,7 @@ describe('расписание', () => {
     mocks.invoke.mockImplementation(async () => ({ status: 'error', error: 'timeout' }));
     const stop = ss.startServerStatusScheduler(() => ({ freshness: { serverStatusMinutes: 10 } }), 30000);
     await vi.advanceTimersByTimeAsync(9 * 60000);
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);   // данных нет → одна попытка в начале, дальше ждём интервал
+    expect(mocks.invoke).toHaveBeenCalledTimes(1); // данных нет → одна попытка в начале, дальше ждём интервал
     await vi.advanceTimersByTimeAsync(2 * 60000);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     stop();
@@ -128,12 +145,27 @@ describe('расписание', () => {
 });
 
 describe('плашка', () => {
-  const snap = (o = {}) => ({ status: { at: new Date().toISOString(), recommended: 'Капелла', servers: SERVERS.servers }, busy: false, error: null, ...o });
+  const snap = (o = {}) => ({
+    status: { at: new Date().toISOString(), recommended: 'Капелла', servers: SERVERS.servers },
+    busy: false,
+    error: null,
+    ...o
+  });
 
   it('просто перечисляет серверы с отметкой онлайн/оффлайн, без кнопок и полей', () => {
     document.body.innerHTML = view.serverStatusHtml(snap());
-    expect([...document.querySelectorAll('.srv')].map(e => e.textContent)).toEqual(['Центавр', 'Фенрир', 'Мицар', 'Капелла']);
-    expect([...document.querySelectorAll('.srv')].map(e => e.className.replace('srv ', ''))).toEqual(['is-on', 'is-on', 'is-off', 'is-on']);
+    expect([...document.querySelectorAll('.srv')].map(e => e.textContent)).toEqual([
+      'Центавр',
+      'Фенрир',
+      'Мицар',
+      'Капелла'
+    ]);
+    expect([...document.querySelectorAll('.srv')].map(e => e.className.replace('srv ', ''))).toEqual([
+      'is-on',
+      'is-on',
+      'is-off',
+      'is-on'
+    ]);
     expect(document.querySelectorAll('button, input, select, a')).toHaveLength(0);
     expect(document.querySelector('.srv-head b').textContent).toBe('Статус серверов');
     expect(document.querySelector('.srv-age').textContent).toBe('обновлено только что');
@@ -142,7 +174,10 @@ describe('плашка', () => {
   it('состояния подписи: нет данных, чтение, сбой при старых данных', () => {
     expect(view.serverStatusMeta({ status: null, busy: false, error: null }).text).toBe('нет данных');
     expect(view.serverStatusMeta({ status: null, busy: true, error: null }).text).toContain('читаю');
-    expect(view.serverStatusMeta({ status: null, busy: false, error: { status: 'error' } })).toEqual({ text: '⚠ не удалось прочитать', warn: true });
+    expect(view.serverStatusMeta({ status: null, busy: false, error: { status: 'error' } })).toEqual({
+      text: '⚠ не удалось прочитать',
+      warn: true
+    });
     const old = snap({ error: { status: 'challenge', error: null } });
     old.status.at = new Date(Date.now() - 3 * 3600000).toISOString();
     expect(view.serverStatusMeta(old)).toEqual({ text: '⚠ не обновилось, данные: 3 ч назад', warn: true });

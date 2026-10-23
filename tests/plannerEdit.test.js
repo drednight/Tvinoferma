@@ -27,22 +27,25 @@ beforeEach(async () => {
   state.marathons = [];
 });
 
-const sample = () => normalizePlannerEntry({
-  title: 'Собрать пати',
-  date: '2026-10-05',
-  time: '19:30',
-  durationMinutes: 120,
-  kind: 'task',
-  priority: 'high',
-  color: 'red',
-  recurrence: 'weekly',
-  status: 'todo'
-});
+const sample = () =>
+  normalizePlannerEntry({
+    title: 'Собрать пати',
+    date: '2026-10-05',
+    time: '19:30',
+    durationMinutes: 120,
+    kind: 'task',
+    priority: 'high',
+    color: 'red',
+    recurrence: 'weekly',
+    status: 'todo'
+  });
 
 /** Форма, открытая из окна дня. */
 const openForm = () => document.querySelector('#modal-root form');
-const submit = () => [...document.querySelectorAll('#modal-root .modal-footer button')]
-  .find(b => /Сохранить|Добавить/.test(b.textContent));
+const submit = () =>
+  [...document.querySelectorAll('#modal-root .modal-footer button')].find(b =>
+    /Сохранить|Добавить/.test(b.textContent)
+  );
 
 const setField = (name, value) => {
   const el = openForm().querySelector(`[name="${name}"]`);
@@ -52,11 +55,13 @@ const setField = (name, value) => {
 describe('правка записи календаря', () => {
   it('у своей записи есть кнопка правки, у марафона — нет', () => {
     state.plannerEntries = [sample()];
-    state.marathons = [{ id: 'm1', kind: 'single', title: 'Марафон', status: 'active', startDate: '2026-10-05', endDate: '2026-10-05' }];
+    state.marathons = [
+      { id: 'm1', kind: 'single', title: 'Марафон', status: 'active', startDate: '2026-10-05', endDate: '2026-10-05' }
+    ];
     openPlannerDay('2026-10-05', {});
     const doc = document.querySelector('#modal-root');
     expect(doc.querySelector('[data-planner-edit]')).toBeTruthy();
-    expect(doc.querySelectorAll('[data-planner-edit]')).toHaveLength(1);   // только своя запись
+    expect(doc.querySelectorAll('[data-planner-edit]')).toHaveLength(1); // только своя запись
   });
 
   it('форма правки заполнена текущими значениями записи', async () => {
@@ -87,7 +92,7 @@ describe('правка записи календаря', () => {
     submit().click();
     await vi.waitFor(() => expect(state.plannerEntries[0].title).toBe('Собрать пати (перенесено)'));
 
-    expect(state.plannerEntries).toHaveLength(1);          // не добавилась вторая
+    expect(state.plannerEntries).toHaveLength(1); // не добавилась вторая
     expect(state.plannerEntries[0].id).toBe(id);
     expect(state.plannerEntries[0].createdAt).toBe(createdAt);
     expect(state.plannerEntries[0].time).toBe('20:15');
@@ -113,12 +118,12 @@ describe('правка записи календаря', () => {
     document.querySelector('[data-planner-edit]').click();
     setField('title', '   ');
     submit().click();
-    await vi.waitFor(() => expect(openForm()).toBeTruthy());   // форма осталась открытой
+    await vi.waitFor(() => expect(openForm()).toBeTruthy()); // форма осталась открытой
     expect(state.plannerEntries[0].title).toBe('Собрать пати'); // и запись не тронута
   });
 
   it('повтор на другой день правится целиком, и об этом сказано в форме', () => {
-    const e = sample();                       // повтор по понедельникам, начало 05.10
+    const e = sample(); // повтор по понедельникам, начало 05.10
     state.plannerEntries = [e];
     // 12 октября — тоже понедельник, поэтому запись попадает в этот день
     openPlannerDay('2026-10-12', {});
@@ -133,7 +138,7 @@ describe('правка записи календаря', () => {
     document.querySelector('[data-planner-add]').click();
     const form = openForm();
     expect(form.querySelector('[name="title"]').value).toBe('');
-    expect(form.querySelector('[name="status"]')).toBeNull();   // состояния у новой записи нет
+    expect(form.querySelector('[name="status"]')).toBeNull(); // состояния у новой записи нет
     setField('title', 'Новая задача');
     submit().click();
     await vi.waitFor(() => expect(state.plannerEntries).toHaveLength(1));

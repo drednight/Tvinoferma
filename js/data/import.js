@@ -25,14 +25,19 @@ export function liftLegacyContacts(raw) {
     characters: raw.characters.map(c => {
       if (!c || typeof c !== 'object' || CONTACT_KEYS.every(k => !(k in c))) return c;
       const contacts = { ...(c.contacts || {}) };
-      CONTACT_KEYS.forEach(k => { if (c[k] != null && !contacts[k]) contacts[k] = c[k]; });
+      CONTACT_KEYS.forEach(k => {
+        if (c[k] != null && !contacts[k]) contacts[k] = c[k];
+      });
       const { email, password, recoveryEmail, phone, ...rest } = c;
       return { ...rest, contacts };
     })
   };
 }
 
-const nickKey = nick => String(nick || '').trim().toLowerCase();
+const nickKey = nick =>
+  String(nick || '')
+    .trim()
+    .toLowerCase();
 
 /**
  * Слияние финансов: реестры объединяются по id (при дубле побеждает локальная запись),
@@ -85,9 +90,18 @@ export function planImport(localChars, incomingChars, presentFor = () => null, a
     let local = byId.get(inc.id);
     let archived = false;
     if (!local || usedLocal.has(local.id)) local = byNick.get(nickKey(inc.nick));
-    if (!local || usedLocal.has(local.id)) { local = archivedById.get(inc.id); archived = true; }
-    if (!local || usedLocal.has(local.id)) { local = archivedByNick.get(nickKey(inc.nick)); archived = true; }
-    if (!local || usedLocal.has(local.id)) { plan.added.push(inc); return; }
+    if (!local || usedLocal.has(local.id)) {
+      local = archivedById.get(inc.id);
+      archived = true;
+    }
+    if (!local || usedLocal.has(local.id)) {
+      local = archivedByNick.get(nickKey(inc.nick));
+      archived = true;
+    }
+    if (!local || usedLocal.has(local.id)) {
+      plan.added.push(inc);
+      return;
+    }
     usedLocal.add(local.id);
     const present = presentFor(inc);
     const diffs = diffCharacters(local, inc, present);
@@ -97,7 +111,9 @@ export function planImport(localChars, incomingChars, presentFor = () => null, a
   return plan;
 }
 
-function hasKey(raw, key) { return raw && Object.prototype.hasOwnProperty.call(raw, key); }
+function hasKey(raw, key) {
+  return raw && Object.prototype.hasOwnProperty.call(raw, key);
+}
 
 /** Точка входа: файл уже прочитан как JSON. */
 export function openImportDialog(raw) {
@@ -117,12 +133,13 @@ export function openImportDialog(raw) {
 
   const localMarathons = new Map(state.marathons.map(m => [m.id, m]));
   const newMarathons = incoming.marathons.filter(m => !localMarathons.has(m.id));
-  const newerMarathons = incoming.marathons.filter(m => localMarathons.has(m.id) &&
-    new Date(m.updatedAt || 0) > new Date(localMarathons.get(m.id).updatedAt || 0));
+  const newerMarathons = incoming.marathons.filter(
+    m => localMarathons.has(m.id) && new Date(m.updatedAt || 0) > new Date(localMarathons.get(m.id).updatedAt || 0)
+  );
   const localTpl = new Set((state.marathonTemplates || []).map(t => t.id));
   const newTemplates = (incoming.marathonTemplates || []).filter(t => !localTpl.has(t.id));
 
-  const list = (items, render) => items.length ? `<div class="imp-list">${items.map(render).join('')}</div>` : '';
+  const list = (items, render) => (items.length ? `<div class="imp-list">${items.map(render).join('')}</div>` : '');
 
   showModal({
     title: 'Импорт данных',
@@ -149,7 +166,16 @@ export function openImportDialog(raw) {
         </div>
         <div class="imp-section">
           <h4 style="margin:0 0 6px;">⚖️ Совпадают, но отличаются: ${plan.conflicts.length}</h4>
-          ${list(plan.conflicts, x => `<label><input type="checkbox" name="cmp" value="${escapeHtml(x.local.id)}" checked /> ${escapeHtml(x.local.nick)}${x.archived ? ' <small class="muted">· в архиве</small>' : ''} <small class="muted">— отличий: ${x.diffs.length} (${escapeHtml(x.diffs.slice(0, 4).map(f => f.label).join(', '))}${x.diffs.length > 4 ? '…' : ''})</small></label>`)}
+          ${list(
+            plan.conflicts,
+            x =>
+              `<label><input type="checkbox" name="cmp" value="${escapeHtml(x.local.id)}" checked /> ${escapeHtml(x.local.nick)}${x.archived ? ' <small class="muted">· в архиве</small>' : ''} <small class="muted">— отличий: ${x.diffs.length} (${escapeHtml(
+                x.diffs
+                  .slice(0, 4)
+                  .map(f => f.label)
+                  .join(', ')
+              )}${x.diffs.length > 4 ? '…' : ''})</small></label>`
+          )}
           ${plan.conflicts.length ? '<p class="muted" style="font-size:0.8rem; margin:4px 0 0;">Снимите галочку, чтобы оставить текущую карточку без сравнения.</p>' : ''}
         </div>
         ${plan.identical.length ? `<p class="muted">✔ Полностью совпадают (пропускаются): ${plan.identical.length}${plan.identical.some(x => x.archived) ? ` (в архиве: ${plan.identical.filter(x => x.archived).length})` : ''}</p>` : ''}
@@ -178,12 +204,19 @@ export function openImportDialog(raw) {
       const addIds = new Set(formData.getAll('add'));
       const cmpIds = new Set(formData.getAll('cmp'));
       // Закрываем сводку и идём по сравнениям (они открываются в том же modal-root)
-      setTimeout(() => runMerge({
-        added: plan.added.filter(c => addIds.has(c.id)),
-        conflicts: plan.conflicts.filter(x => cmpIds.has(x.local.id)),
-        newParties, newMarathons, newerMarathons, newTemplates,
-        finance: hasKey(source, 'finance') ? incoming.finance : null
-      }), 0);
+      setTimeout(
+        () =>
+          runMerge({
+            added: plan.added.filter(c => addIds.has(c.id)),
+            conflicts: plan.conflicts.filter(x => cmpIds.has(x.local.id)),
+            newParties,
+            newMarathons,
+            newerMarathons,
+            newTemplates,
+            finance: hasKey(source, 'finance') ? incoming.finance : null
+          }),
+        0
+      );
       return true;
     }
   });
@@ -191,7 +224,12 @@ export function openImportDialog(raw) {
 
 async function backupBeforeImport() {
   if (state.settings?.backups?.createBeforeImport === false) return;
-  try { await saveNow(); await createBackup('pre-import'); } catch (e) { console.warn('[IMPORT] backup failed', e); }
+  try {
+    await saveNow();
+    await createBackup('pre-import');
+  } catch (e) {
+    console.warn('[IMPORT] backup failed', e);
+  }
 }
 
 async function runMerge({ added, conflicts, newParties, newMarathons, newerMarathons, newTemplates, finance }) {
@@ -200,8 +238,13 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
   let bulk = null;
   for (let i = 0; i < conflicts.length; i++) {
     const { local, incoming, present, archived } = conflicts[i];
-    let res = bulk ? { action: bulk } : await openCompareDialog(local, incoming, { index: i + 1, total: conflicts.length, present, archived });
-    if (res.action === 'cancel') { toast('Импорт отменён', 'info'); return; }
+    let res = bulk
+      ? { action: bulk }
+      : await openCompareDialog(local, incoming, { index: i + 1, total: conflicts.length, present, archived });
+    if (res.action === 'cancel') {
+      toast('Импорт отменён', 'info');
+      return;
+    }
     if (res.action === 'all-local' || res.action === 'all-incoming') {
       bulk = res.action === 'all-local' ? 'keep' : 'take';
       res = { action: bulk };
@@ -212,9 +255,10 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
   await backupBeforeImport();
 
   // 2. Применение
-  let changed = 0, addedCount = 0;
+  let changed = 0,
+    addedCount = 0;
   const taken = () => [...state.characters, ...state.archivedCharacters].map(c => c.id);
-  const addAsNew = (c) => {
+  const addAsNew = c => {
     const copy = normalizeCharacter({ ...c, id: characterIdFor(c.nick, taken()) });
     state.characters.push(copy);
     addedCount++;
@@ -227,9 +271,10 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
     if (activeIdx === -1 && archivedIdx === -1) continue;
     if (d.action === 'merge' || d.action === 'take') {
       // «Взять из файла» = все отличающиеся поля, которые есть в файле, берутся из него
-      const merged = d.action === 'take'
-        ? buildMerged(d.local, d.incoming, Object.fromEntries(d.diffs.map(f => [f.path, 'incoming'])))
-        : d.character;
+      const merged =
+        d.action === 'take'
+          ? buildMerged(d.local, d.incoming, Object.fromEntries(d.diffs.map(f => [f.path, 'incoming'])))
+          : d.character;
       const next = normalizeCharacter(merged);
       // Архивная карточка обновляется на месте: активный список не пополняется дубликатом.
       if (activeIdx !== -1) state.characters[activeIdx] = next;
@@ -245,7 +290,10 @@ async function runMerge({ added, conflicts, newParties, newMarathons, newerMarat
 
   newParties.forEach(p => state.parties.push({ ...p, order: state.parties.length + 1 }));
   newMarathons.forEach(m => state.marathons.push(m));
-  newerMarathons.forEach(m => { const i = state.marathons.findIndex(x => x.id === m.id); if (i !== -1) state.marathons[i] = m; });
+  newerMarathons.forEach(m => {
+    const i = state.marathons.findIndex(x => x.id === m.id);
+    if (i !== -1) state.marathons[i] = m;
+  });
   newTemplates.forEach(t => state.marathonTemplates.push(t));
   if (finance) state.finance = mergeFinance(state.finance, finance);
 

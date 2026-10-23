@@ -1,17 +1,38 @@
 import { describe, it, expect } from 'vitest';
 import {
-  createMarathon, migrateMarathon, computeCell, rewardFor, marathonTotals,
-  marathonPhase, matchQuest, applySiteQuests, freezeAwards, SCHEMA_VERSION
+  createMarathon,
+  migrateMarathon,
+  computeCell,
+  rewardFor,
+  marathonTotals,
+  marathonPhase,
+  matchQuest,
+  applySiteQuests,
+  freezeAwards,
+  SCHEMA_VERSION
 } from '../js/modules/marathons/model.js';
 
-const marathon = (over = {}) => createMarathon({
-  id: 'm1', title: 'Тест', startDate: '2026-06-01', endDate: '2026-06-10',
-  participantIds: ['c1'],
-  tasks: [{ id: 't1', title: 'Испытание снов (июнь)', targetChecks: 5,
-    rewards: [{ threshold: 3, rewardCoins: 10 }, { threshold: 5, rewardCoins: 30 }] }],
-  assignments: { c1: ['t1'] },
-  ...over
-});
+const marathon = (over = {}) =>
+  createMarathon({
+    id: 'm1',
+    title: 'Тест',
+    startDate: '2026-06-01',
+    endDate: '2026-06-10',
+    participantIds: ['c1'],
+    tasks: [
+      {
+        id: 't1',
+        title: 'Испытание снов (июнь)',
+        targetChecks: 5,
+        rewards: [
+          { threshold: 3, rewardCoins: 10 },
+          { threshold: 5, rewardCoins: 30 }
+        ]
+      }
+    ],
+    assignments: { c1: ['t1'] },
+    ...over
+  });
 
 describe('rewardFor', () => {
   it('берёт максимальный достигнутый порог и следующий', () => {
@@ -90,9 +111,16 @@ describe('сверка с сайтом', () => {
 describe('migrateMarathon', () => {
   it('конвертирует старую схему (stages, records, пустые назначения)', () => {
     const legacy = {
-      id: 'old', title: 'Старый', type: 'auto-detected', startDate: '2026-06-01', endDate: '2026-06-05',
-      participantIds: ['c1'], participantAssignments: { c1: [] },
-      tasks: [{ id: 't1', title: 'Задание', targetChecks: 3, stages: [{ threshold: 2, rewardCoins: 5 }], baseRewardCoins: 15 }],
+      id: 'old',
+      title: 'Старый',
+      type: 'auto-detected',
+      startDate: '2026-06-01',
+      endDate: '2026-06-05',
+      participantIds: ['c1'],
+      participantAssignments: { c1: [] },
+      tasks: [
+        { id: 't1', title: 'Задание', targetChecks: 3, stages: [{ threshold: 2, rewardCoins: 5 }], baseRewardCoins: 15 }
+      ],
       records: [{ characterId: 'c1', taskId: 't1', date: '2026-06-01', completed: true }],
       description: 'Источник: https://pwonline.ru/supermarathon.php'
     };

@@ -7,8 +7,8 @@ export const CODE_RE = /^[A-Za-z0-9_-]{4,40}$/;
 /** Сколько разных кодов можно ввести за один запуск. */
 export const MAX_CODES = 10;
 
-export const normalizeCode = (raw) => String(raw ?? '').trim();
-export const codeKey = (code) => normalizeCode(code).toLowerCase();
+export const normalizeCode = raw => String(raw ?? '').trim();
+export const codeKey = code => normalizeCode(code).toLowerCase();
 
 /** @returns {{ ok: boolean, code: string, error: string|null }} */
 export function validateCode(raw) {
@@ -26,15 +26,24 @@ export function validateCode(raw) {
  *   invalid — куски, которые не похожи на код; extra — сколько кодов не поместилось в лимит.
  */
 export function parseCodes(raw, max = MAX_CODES) {
-  const tokens = String(raw ?? '').split(/[\s,;]+/).map(t => t.trim()).filter(Boolean);
+  const tokens = String(raw ?? '')
+    .split(/[\s,;]+/)
+    .map(t => t.trim())
+    .filter(Boolean);
   const codes = [];
   const invalid = [];
   const seen = new Set();
   let duplicates = 0;
   for (const t of tokens) {
-    if (!CODE_RE.test(t)) { invalid.push(t); continue; }
+    if (!CODE_RE.test(t)) {
+      invalid.push(t);
+      continue;
+    }
     const k = codeKey(t);
-    if (seen.has(k)) { duplicates++; continue; }
+    if (seen.has(k)) {
+      duplicates++;
+      continue;
+    }
     seen.add(k);
     codes.push(t);
   }
@@ -57,26 +66,36 @@ export const STATUS_INFO = {
   not_run: { icon: '⏭', label: 'Пропущен', level: 'info' }
 };
 
-export const statusInfo = (status) => STATUS_INFO[status] || STATUS_INFO.error;
+export const statusInfo = status => STATUS_INFO[status] || STATUS_INFO.error;
 
 /** Подпись строки результата: «Уже введён ранее» для пропущенных по журналу. */
-export const rowLabel = (row) => (row?.skipped && isOk(row.status) ? 'Уже введён ранее' : row?.status === 'not_run' && row.detail ? row.detail : statusInfo(row?.status).label);
+export const rowLabel = row =>
+  row?.skipped && isOk(row.status)
+    ? 'Уже введён ранее'
+    : row?.status === 'not_run' && row.detail
+      ? row.detail
+      : statusInfo(row?.status).label;
 
 /** Введён (или сайт сообщил, что уже введён) — для пользователя это успех. */
-export const isOk = (status) => status === 'success' || status === 'already_used';
+export const isOk = status => status === 'success' || status === 'already_used';
 /** Ответ сайта про сам код: такой код нигде не сохраняется. */
-export const isInvalid = (status) => status === 'invalid_code' || status === 'expired';
+export const isInvalid = status => status === 'invalid_code' || status === 'expired';
 
 /** Строка награды: «Метеорит ×100». */
-export const rewardLine = (r) => `${r.name}${r.qty > 1 ? ` ×${r.qty}` : ''}`;
-export const rewardText = (reward) => (Array.isArray(reward) ? reward.map(rewardLine).join('; ') : '');
+export const rewardLine = r => `${r.name}${r.qty > 1 ? ` ×${r.qty}` : ''}`;
+export const rewardText = reward => (Array.isArray(reward) ? reward.map(rewardLine).join('; ') : '');
 
 /** Награды из ответа Rust: оставляем только понятные поля. */
 export function cleanRewards(list) {
   if (!Array.isArray(list)) return null;
   const out = list
     .filter(r => r && typeof r.name === 'string' && r.name.trim())
-    .map(r => ({ name: r.name.trim().slice(0, 120), qty: Number(r.qty) > 0 ? Number(r.qty) : 1, id: r.id ? String(r.id) : null, bound: !!r.bound }));
+    .map(r => ({
+      name: r.name.trim().slice(0, 120),
+      qty: Number(r.qty) > 0 ? Number(r.qty) : 1,
+      id: r.id ? String(r.id) : null,
+      bound: !!r.bound
+    }));
   return out.length ? out : null;
 }
 
@@ -87,7 +106,15 @@ export function cleanRewards(list) {
 export function rowFromPayload(char, code, payload, error, now = new Date()) {
   const base = { code, charId: char.id, nick: char.nick, skipped: false, at: now.toISOString() };
   if (error || !payload) {
-    return { ...base, status: 'error', error: String(error?.message || error || 'no_response'), detail: null, clicked: false, dryRun: false, rewards: null };
+    return {
+      ...base,
+      status: 'error',
+      error: String(error?.message || error || 'no_response'),
+      detail: null,
+      clicked: false,
+      dryRun: false,
+      rewards: null
+    };
   }
   return {
     ...base,
@@ -101,8 +128,20 @@ export function rowFromPayload(char, code, payload, error, now = new Date()) {
 }
 
 /** Строка без запуска: пропущена по журналу, остановлена, не выполнялась. */
-export const plainRow = (char, code, status, detail = null, extra = {}, now = new Date()) =>
-  ({ code, charId: char.id, nick: char.nick, status, error: null, detail, clicked: false, dryRun: false, rewards: null, skipped: false, at: now.toISOString(), ...extra });
+export const plainRow = (char, code, status, detail = null, extra = {}, now = new Date()) => ({
+  code,
+  charId: char.id,
+  nick: char.nick,
+  status,
+  error: null,
+  detail,
+  clicked: false,
+  dryRun: false,
+  rewards: null,
+  skipped: false,
+  at: now.toISOString(),
+  ...extra
+});
 
 /**
  * Можно ли повторить запрос САМИ (без участия пользователя): кнопка не нажата, а причина временная —
@@ -116,14 +155,15 @@ export function canAutoRetry(row, isTransientError = () => false) {
 
 /** Ошибки команды, после которых имеет смысл подождать и повторить. */
 export const TRANSIENT_ERRORS = new Set(['timeout', 'button_not_found', 'pending', 'click_failed']);
-export const isTransient = (code) => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
+export const isTransient = code => !!code && (TRANSIENT_ERRORS.has(code) || String(code).startsWith('exception_'));
 
 /** Строки, которые «Повторить ввод» запустит снова: не введены и это не «нажато, но результат неясен». */
-export const isRerunnable = (row) => !!row && !isOk(row.status) && !(row.clicked && row.status === 'unknown') && !row.dryRun;
+export const isRerunnable = row =>
+  !!row && !isOk(row.status) && !(row.clicked && row.status === 'unknown') && !row.dryRun;
 
 /** Общий итог по набору строк. */
 export function summarize(rows) {
-  const count = (pred) => rows.filter(pred).length;
+  const count = pred => rows.filter(pred).length;
   const ok = count(r => isOk(r.status));
   return {
     total: rows.length,
@@ -136,7 +176,15 @@ export function summarize(rows) {
     notRun: count(r => r.status === 'not_run' || r.status === 'cancelled'),
     rerun: count(isRerunnable),
     dry: count(r => r.status === 'dry_run'),
-    failed: count(r => !isOk(r.status) && !isInvalid(r.status) && r.status !== 'unknown' && r.status !== 'dry_run' && r.status !== 'not_run' && r.status !== 'cancelled')
+    failed: count(
+      r =>
+        !isOk(r.status) &&
+        !isInvalid(r.status) &&
+        r.status !== 'unknown' &&
+        r.status !== 'dry_run' &&
+        r.status !== 'not_run' &&
+        r.status !== 'cancelled'
+    )
   };
 }
 

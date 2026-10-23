@@ -3,7 +3,10 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  charactersInPartyOrdered, applyPartyOrder, movePartyMember, partyOrderOf
+  charactersInPartyOrdered,
+  applyPartyOrder,
+  movePartyMember,
+  partyOrderOf
 } from '../js/modules/parties/membership.js';
 import { normalizeState } from '../js/core/state.js';
 
@@ -44,7 +47,14 @@ describe('порядок участников пати', () => {
     expect(movePartyMember(list, 'p1', 'a', 'c')).toBe(true);
     expect(order(list)).toEqual(['b', 'a', 'c']);
     // Номера непрерывные: 1, 2, 3
-    expect(order(list).map(id => partyOrderOf(list.find(c => c.id === id), 'p1'))).toEqual([1, 2, 3]);
+    expect(
+      order(list).map(id =>
+        partyOrderOf(
+          list.find(c => c.id === id),
+          'p1'
+        )
+      )
+    ).toEqual([1, 2, 3]);
   });
 
   it('наведение на нижнюю половину строки ставит персонажа после неё', () => {
@@ -74,14 +84,19 @@ describe('порядок участников пати', () => {
     const list = chars();
     expect(movePartyMember(list, 'p1', 'a', 'a')).toBe(false);
     expect(movePartyMember(list, 'p1', 'нет', 'a')).toBe(false);
-    expect(movePartyMember(list, 'p1', 'a', 'd')).toBe(false);   // «d» не в этой пати
+    expect(movePartyMember(list, 'p1', 'a', 'd')).toBe(false); // «d» не в этой пати
   });
 
   it('персонаж из другой пати в порядок не попадает', () => {
     const list = chars();
     applyPartyOrder(list, 'p1', ['d']);
-    expect(partyOrderOf(list.find(c => c.id === 'd'), 'p1')).toBe(1);
-    expect(order(list)).toEqual(['a', 'b', 'c']);   // список пати p1 не изменился
+    expect(
+      partyOrderOf(
+        list.find(c => c.id === 'd'),
+        'p1'
+      )
+    ).toBe(1);
+    expect(order(list)).toEqual(['a', 'b', 'c']); // список пати p1 не изменился
   });
 });
 
@@ -102,14 +117,19 @@ describe('порядок переживает сохранение и загру
 
   it('мусор в partyOrder отбрасывается, а не ломает порядок', () => {
     const state = normalizeState({
-      characters: [{ id: 'a', nick: 'Аа', partyIds: ['p1'], mainPartyId: 'p1', partyOrder: { p1: 0, p2: -3, p3: 'abc', p4: 2.6 } }],
+      characters: [
+        { id: 'a', nick: 'Аа', partyIds: ['p1'], mainPartyId: 'p1', partyOrder: { p1: 0, p2: -3, p3: 'abc', p4: 2.6 } }
+      ],
       parties: [{ id: 'p1', name: 'P', order: 1 }]
     });
     expect(state.characters[0].partyOrder).toEqual({ p4: 3 });
   });
 
   it('без partyOrder персонаж загружается как раньше', () => {
-    const state = normalizeState({ characters: [{ id: 'a', nick: 'Аа', partyIds: [], mainPartyId: null }], parties: [] });
+    const state = normalizeState({
+      characters: [{ id: 'a', nick: 'Аа', partyIds: [], mainPartyId: null }],
+      parties: []
+    });
     expect(state.characters[0].partyOrder).toEqual({});
   });
 });

@@ -61,33 +61,35 @@ export function openCommandPalette(deps = {}) {
     if (activeIndex < 0) activeIndex = 0;
     const activeId = items[activeIndex]?.id;
     let lastGroup = '';
-    listEl.innerHTML = visible.map(c => {
-      if (isHeading(c)) {
-        lastGroup = c.group;
-        return `<div class="cp-group">${escapeHtml(c.title)}</div>`;
-      }
-      if (c.group !== lastGroup) lastGroup = c.group;
-      const isActive = c.id === activeId;
-      return `<button type="button" class="cp-item${isActive ? ' is-active' : ''}" role="option"
+    listEl.innerHTML = visible
+      .map(c => {
+        if (isHeading(c)) {
+          lastGroup = c.group;
+          return `<div class="cp-group">${escapeHtml(c.title)}</div>`;
+        }
+        if (c.group !== lastGroup) lastGroup = c.group;
+        const isActive = c.id === activeId;
+        return `<button type="button" class="cp-item${isActive ? ' is-active' : ''}" role="option"
         aria-selected="${isActive}" data-cmd="${escapeHtml(c.id)}">
         <span class="cp-item-title">${escapeHtml(c.title)}</span>
         ${c.subtitle ? `<span class="cp-item-sub muted">${escapeHtml(c.subtitle)}</span>` : ''}
       </button>`;
-    }).join('');
+      })
+      .join('');
     // Активная строка должна быть видна при переходе стрелками.
     // scrollIntoView есть не везде (нет в jsdom и в старых движках), поэтому вызываем осторожно.
     const active = /** @type {HTMLElement | undefined} */ (listEl.querySelector('.cp-item.is-active'));
     if (typeof active?.scrollIntoView === 'function') active.scrollIntoView({ block: 'nearest' });
   };
 
-  const applyQuery = (value) => {
+  const applyQuery = value => {
     visible = filterCommands(commands, value);
     activeIndex = 0;
     draw();
   };
 
   /** Выполняет команду и закрывает палитру. */
-  const runCommand = (id) => {
+  const runCommand = id => {
     const command = commands.find(c => c.id === id);
     if (!command || isHeading(command)) return;
     close();
@@ -102,17 +104,28 @@ export function openCommandPalette(deps = {}) {
     }, 0);
   };
 
-  const onKey = (e) => {
+  const onKey = e => {
     const items = selectable();
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (items.length) { activeIndex = (activeIndex + 1) % items.length; draw(); }
+      if (items.length) {
+        activeIndex = (activeIndex + 1) % items.length;
+        draw();
+      }
       return;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      if (items.length) { activeIndex = (activeIndex - 1 + items.length) % items.length; draw(); }
+      if (items.length) {
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+        draw();
+      }
       return;
     }
     if (e.key === 'Enter') {
@@ -145,17 +158,22 @@ export function openCommandPalette(deps = {}) {
 
   input.addEventListener('input', () => applyQuery(input.value));
   // Клик мимо окна закрывает палитру: она лёгкая и вызывается одной клавишей
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
-  listEl.addEventListener('click', (e) => {
+  overlay.addEventListener('mousedown', e => {
+    if (e.target === overlay) close();
+  });
+  listEl.addEventListener('click', e => {
     const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-cmd]'));
     if (item?.dataset.cmd) runCommand(item.dataset.cmd);
   });
-  listEl.addEventListener('mousemove', (e) => {
+  listEl.addEventListener('mousemove', e => {
     const item = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-cmd]'));
     if (!item?.dataset.cmd) return;
     const items = selectable();
     const idx = items.findIndex(c => c.id === item.dataset.cmd);
-    if (idx >= 0 && idx !== activeIndex) { activeIndex = idx; draw(); }
+    if (idx >= 0 && idx !== activeIndex) {
+      activeIndex = idx;
+      draw();
+    }
   });
 
   document.body.appendChild(overlay);

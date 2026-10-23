@@ -21,10 +21,18 @@ export function createGameServer(options = {}) {
     info: options.info ?? null
   };
 
-  const snapshot = () => JSON.stringify({
-    rows: { row1: game.rows[1], row2: game.rows[2], row3: game.rows[3], row4: game.rows[4], row5: game.rows[5], row6: game.rows[6] },
-    quantity: game.quantity
-  });
+  const snapshot = () =>
+    JSON.stringify({
+      rows: {
+        row1: game.rows[1],
+        row2: game.rows[2],
+        row3: game.rows[3],
+        row4: game.rows[4],
+        row5: game.rows[5],
+        row6: game.rows[6]
+      },
+      quantity: game.quantity
+    });
 
   game.fetch = async (url, init) => {
     const u = new URL(url, window.location.href);
@@ -42,12 +50,17 @@ export function createGameServer(options = {}) {
     } else if (doo === 'get_item' && !game.ignore.has('get_item') && game.rows[category] >= LIMITS[category]) {
       game.rows[category] -= LIMITS[category];
       game.rewards[category] += 1;
-    } else if (doo === 'get_next' && !game.ignore.has('get_next') && category < 6 && game.rows[category] >= LIMITS[category]) {
+    } else if (
+      doo === 'get_next' &&
+      !game.ignore.has('get_next') &&
+      category < 6 &&
+      game.rows[category] >= LIMITS[category]
+    ) {
       game.rows[category] -= LIMITS[category];
       game.rows[category + 1] += 1;
     }
     return { ok: true, text: async () => body };
   };
-  game.count = (doo) => game.calls.filter((c) => c.doo === doo).length;
+  game.count = doo => game.calls.filter(c => c.doo === doo).length;
   return game;
 }

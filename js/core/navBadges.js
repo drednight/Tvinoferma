@@ -22,7 +22,10 @@ export function navCounts(appState = state) {
 export function countLabel(n) {
   const num = Number(n) || 0;
   if (num < 1000) return String(num);
-  return `${(num / 1000).toFixed(num < 10000 ? 1 : 0).replace('.', ',').replace(/,0$/, '')} тыс.`;
+  return `${(num / 1000)
+    .toFixed(num < 10000 ? 1 : 0)
+    .replace('.', ',')
+    .replace(/,0$/, '')} тыс.`;
 }
 
 /**
@@ -42,9 +45,10 @@ export function refreshNavBadges(doc = document) {
       if (el.textContent !== label) el.textContent = label;
     });
     doc.querySelectorAll(`.tab[data-tab="${section}"]`).forEach(tab => {
-      const title = tab.querySelector('.next-nav-copy strong')?.textContent
-        || tab.querySelector('span:not(.tab-ico):not(.tab-count)')?.textContent
-        || section;
+      const title =
+        tab.querySelector('.next-nav-copy strong')?.textContent ||
+        tab.querySelector('span:not(.tab-ico):not(.tab-count)')?.textContent ||
+        section;
       tab.setAttribute('aria-label', `${title}: ${value}`);
     });
   }

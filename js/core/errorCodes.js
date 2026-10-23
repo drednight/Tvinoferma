@@ -59,4 +59,4 @@ export const ERROR_TEXT = {
   session_lost_during_parse: 'сессия потеряна во время чтения'
 };
 
-export const errorText = (code) => ERROR_TEXT[code] || (code ? String(code) : 'неизвестная ошибка');
+export const errorText = code => ERROR_TEXT[code] || (code ? String(code) : 'неизвестная ошибка');

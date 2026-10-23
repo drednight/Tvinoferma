@@ -9,7 +9,9 @@
   display: flex;
   flex-direction: column;
 }
-.app-shell > .content { flex: 1 1 auto; }
+.app-shell > .content {
+  flex: 1 1 auto;
+}
 
 /* --- Шапка --- */
 .topbar {
@@ -49,7 +51,9 @@
   flex-shrink: 0;
 }
 
-.brand-text { min-width: 0; }
+.brand-text {
+  min-width: 0;
+}
 .brand-sub {
   color: var(--text-dim);
   font-size: 0.76rem;
@@ -89,19 +93,29 @@
   font-size: 0.88rem;
   font-weight: 550;
   white-space: nowrap;
-  transition: background var(--speed) var(--ease), color var(--speed) var(--ease);
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
 }
-.tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
 /* Раздел, выключенный в настройках (js/core/sections.js). Правило `display` выше перебивает
    `hidden` из таблицы браузера, поэтому без этой строки кнопка оставалась бы на месте. */
-.tab[hidden] { display: none; }
+.tab[hidden] {
+  display: none;
+}
 .tab.active {
   background: var(--surface-3);
   border-color: var(--border-strong);
   color: var(--text);
   box-shadow: var(--shadow-1);
 }
-.tab-ico { font-size: 0.95rem; line-height: 1; }
+.tab-ico {
+  font-size: 0.95rem;
+  line-height: 1;
+}
 
 /* Счётчик записей в разделе: видно, где есть данные, не открывая вкладку */
 .tab-count {
@@ -115,8 +129,13 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.tab.active .tab-count { background: var(--accent-soft); color: var(--accent); }
-.tab-count[hidden] { display: none; }
+.tab.active .tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tab-count[hidden] {
+  display: none;
+}
 
 /* --- Содержимое --- */
 .content {
@@ -126,8 +145,12 @@
   padding: 22px;
 }
 
-.page { display: none; }
-.page.active { display: block; }
+.page {
+  display: none;
+}
+.page.active {
+  display: block;
+}
 
 /* --- Панель фильтров --- */
 .toolbar {
@@ -151,8 +174,13 @@
   background: var(--surface-1);
   box-shadow: var(--shadow-1);
 }
-.filters .input { flex: 1 1 200px; min-width: 160px; }
-.filters .select { max-width: 210px; }
+.filters .input {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.filters .select {
+  max-width: 210px;
+}
 /* Кнопка «Сбросить» появляется, только когда есть что сбрасывать (js/modules/characters/list.js) */
 .filters-clear {
   display: inline-flex;
@@ -166,10 +194,19 @@
   border-radius: var(--radius-sm);
   font-size: 0.82rem;
   white-space: nowrap;
-  transition: color var(--speed) var(--ease), border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    color var(--speed) var(--ease),
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.filters-clear:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.05); }
-.filters-clear[hidden] { display: none; }
+.filters-clear:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+.filters-clear[hidden] {
+  display: none;
+}
 
 .actions {
   display: flex;
@@ -223,12 +260,28 @@
   color: var(--text-faint);
   font-size: 0.74rem;
 }
-.stat.is-accent { --stat-c: var(--accent); }
-.stat.is-violet { --stat-c: var(--accent-2); --stat-t: var(--accent-2); }
-.stat.is-gold   { --stat-c: var(--gold); --stat-t: var(--gold); }
-.stat.is-ok     { --stat-c: var(--success); --stat-t: var(--success); }
-.stat.is-bad    { --stat-c: var(--danger); --stat-t: var(--danger); }
-.stat.is-plain  { --stat-c: var(--border-strong); }
+.stat.is-accent {
+  --stat-c: var(--accent);
+}
+.stat.is-violet {
+  --stat-c: var(--accent-2);
+  --stat-t: var(--accent-2);
+}
+.stat.is-gold {
+  --stat-c: var(--gold);
+  --stat-t: var(--gold);
+}
+.stat.is-ok {
+  --stat-c: var(--success);
+  --stat-t: var(--success);
+}
+.stat.is-bad {
+  --stat-c: var(--danger);
+  --stat-t: var(--danger);
+}
+.stat.is-plain {
+  --stat-c: var(--border-strong);
+}
 
 /* --- Готовые сетки --- */
 .card-grid {
@@ -251,7 +304,9 @@
   display: grid;
   gap: var(--gap);
 }
-.list.compact { margin-top: 14px; }
+.list.compact {
+  margin-top: 14px;
+}
 
 /* --- Панель и строка настройки --- */
 .panel {
@@ -262,8 +317,14 @@
   box-shadow: var(--shadow-1);
 }
 
-.row { display: flex; align-items: center; }
-.row.gap { gap: var(--gap-sm); flex-wrap: wrap; }
+.row {
+  display: flex;
+  align-items: center;
+}
+.row.gap {
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
 
 .setting-row {
   display: flex;
@@ -273,12 +334,21 @@
   padding: 13px 0;
   border-bottom: 1px solid var(--border);
 }
-.setting-row:last-child { border-bottom: none; }
-.setting-row strong { font-weight: 600; }
-.setting-row .muted { font-size: 0.82rem; max-width: 68ch; }
+.setting-row:last-child {
+  border-bottom: none;
+}
+.setting-row strong {
+  font-weight: 600;
+}
+.setting-row .muted {
+  font-size: 0.82rem;
+  max-width: 68ch;
+}
 
 /* Выбор набора звука и кнопка «Послушать»: список и кнопка в одной строке, пояснение под ними */
-.sound-row { align-items: flex-start; }
+.sound-row {
+  align-items: flex-start;
+}
 .sound-controls {
   display: flex;
   flex-wrap: wrap;
@@ -286,11 +356,21 @@
   gap: 8px;
   flex: none;
 }
-.sound-controls .select { min-width: 150px; }
-.sound-tone-hint { flex-basis: 100%; font-size: 0.78rem; }
+.sound-controls .select {
+  min-width: 150px;
+}
+.sound-tone-hint {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
 @media (max-width: 720px) {
-  .sound-row { flex-direction: column; align-items: stretch; }
-  .sound-controls { justify-content: flex-start; }
+  .sound-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sound-controls {
+    justify-content: flex-start;
+  }
 }
 
 /* Сворачиваемая панель: в свёрнутом виде видны название и описание */
@@ -300,7 +380,9 @@
   cursor: pointer;
   list-style: none;
 }
-.panel.fold > summary::-webkit-details-marker { display: none; }
+.panel.fold > summary::-webkit-details-marker {
+  display: none;
+}
 .panel.fold > summary::after {
   content: '';
   position: absolute;
@@ -313,33 +395,106 @@
   transform: rotate(45deg);
   transition: transform var(--speed) var(--ease);
 }
-.panel.fold[open] > summary::after { transform: rotate(225deg); top: 11px; }
-.panel.fold > summary h3 { margin: 0 0 3px; }
-.panel.fold > summary p { margin: 0; }
-.panel.fold[open] > summary { margin-bottom: 14px; }
-.panel.fold:hover { border-color: var(--border-strong); }
+.panel.fold[open] > summary::after {
+  transform: rotate(225deg);
+  top: 11px;
+}
+.panel.fold > summary h3 {
+  margin: 0 0 3px;
+}
+.panel.fold > summary p {
+  margin: 0;
+}
+.panel.fold[open] > summary {
+  margin-bottom: 14px;
+}
+.panel.fold:hover {
+  border-color: var(--border-strong);
+}
 
 /* Единый журнал (core/logHub.js) */
-.lh-list { max-height: 360px; overflow-y: auto; }
-.lh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.lh-chip { border: 1px solid var(--border); background: transparent; color: inherit; border-radius: var(--radius-pill); padding: 4px 12px; cursor: pointer; font-size: 0.85rem; }
-.lh-chip:hover { border-color: var(--accent); }
-.lh-chip.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
-.lh-chip.active .muted { color: inherit; opacity: 0.75; }
-.lh-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
-.lh-filters .input { flex: 1 1 220px; min-width: 0; }
-.lh-count { margin-bottom: 6px; font-size: 0.85rem; }
-.lh-actions { margin-top: 10px; flex-wrap: wrap; align-items: center; }
-.lh-more { margin-top: 6px; }
+.lh-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.lh-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lh-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.lh-chip:hover {
+  border-color: var(--accent);
+}
+.lh-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+.lh-chip.active .muted {
+  color: inherit;
+  opacity: 0.75;
+}
+.lh-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.lh-filters .input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.lh-count {
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+.lh-actions {
+  margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.lh-more {
+  margin-top: 6px;
+}
 
 /* Настройки: две колонки свёрнутых карточек, раскрытая растёт вниз только в своей колонке */
-.settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-md); align-items: start; }
-.settings-col { display: flex; flex-direction: column; gap: var(--gap-md); min-width: 0; }
-.settings-col > .panel { margin: 0; }
-@media (max-width: 900px) { .settings-cols { grid-template-columns: minmax(0, 1fr); } }
+.settings-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-md);
+  align-items: start;
+}
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  min-width: 0;
+}
+.settings-col > .panel {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .settings-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
 /* Свёрнутая карточка: описание в одну строку, поэтому карточки одной высоты и ряды выровнены */
-.settings-col > .panel.fold > summary { min-height: 54px; }
+.settings-col > .panel.fold > summary {
+  min-height: 54px;
+}
 .settings-col > .panel.fold:not([open]) > summary p {
   white-space: nowrap;
   overflow: hidden;
@@ -348,24 +503,62 @@
 }
 
 /* Опасные действия */
-.panel.fold.danger-zone { border-color: rgba(247, 118, 142, 0.32); margin-top: var(--gap-md); }
-.panel.fold.danger-zone > summary h3 { color: var(--danger); }
-.danger-item {
-  display: flex; justify-content: space-between; align-items: center; gap: var(--gap-md);
-  padding: 13px 0; border-top: 1px solid rgba(247, 118, 142, 0.15);
+.panel.fold.danger-zone {
+  border-color: rgba(247, 118, 142, 0.32);
+  margin-top: var(--gap-md);
 }
-.danger-item > div { min-width: 0; }
-.danger-item p { margin: 4px 0 0; max-width: 70ch; font-size: 0.82rem; }
-.danger-item .btn { flex: 0 0 auto; white-space: nowrap; min-width: 200px; }
-.danger-more { margin-top: 4px; border-top: 1px dashed rgba(247, 118, 142, 0.25); }
-.danger-more > summary { padding: 10px 0 2px; cursor: pointer; color: var(--text-dim); font-size: 0.85rem; }
-.danger-more > summary:hover { color: var(--danger); }
+.panel.fold.danger-zone > summary h3 {
+  color: var(--danger);
+}
+.danger-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: 13px 0;
+  border-top: 1px solid rgba(247, 118, 142, 0.15);
+}
+.danger-item > div {
+  min-width: 0;
+}
+.danger-item p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+  font-size: 0.82rem;
+}
+.danger-item .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 200px;
+}
+.danger-more {
+  margin-top: 4px;
+  border-top: 1px dashed rgba(247, 118, 142, 0.25);
+}
+.danger-more > summary {
+  padding: 10px 0 2px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.danger-more > summary:hover {
+  color: var(--danger);
+}
 
 @media (max-width: 760px) {
-  .content { padding: 16px; }
-  .topbar { padding: 10px 14px; }
-  .danger-item { flex-direction: column; align-items: stretch; }
-  .danger-item .btn { min-width: 0; }
+  .content {
+    padding: 16px;
+  }
+  .topbar {
+    padding: 10px 14px;
+  }
+  .danger-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .danger-item .btn {
+    min-width: 0;
+  }
 }
 
 /* Настройки: две колонки — слева разделы, справа открытый раздел целиком.
@@ -379,11 +572,15 @@
   gap: 24px;
   align-items: start;
 }
-.settings-body { min-width: 0; }
+.settings-body {
+  min-width: 0;
+}
 /* Панели настроек умеют сжиматься: иначе длинные подписи (путь к папке, адрес сайта)
    растягивали колонку и выталкивали список разделов */
 .settings-body .input,
-.settings-body .select { min-width: 0; }
+.settings-body .select {
+  min-width: 0;
+}
 
 .settings-nav {
   position: sticky;
@@ -395,7 +592,10 @@
 }
 /* На узком окне места для колонки нет: разделы возвращаются в ряд карточек сверху */
 @media (max-width: 980px) {
-  .settings-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
   .settings-nav {
     position: static;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -412,7 +612,10 @@
   border-radius: var(--radius-sm);
   background: var(--surface-1);
   text-decoration: none;
-  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease), transform var(--speed) var(--ease);
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease),
+    transform var(--speed) var(--ease);
 }
 .settings-nav-item:hover {
   border-color: var(--border-strong);
@@ -424,7 +627,9 @@
    показывает наведение рамкой и подъёмом, а линия под текстом и иконкой выглядела
    так, будто наведение не сработало. */
 .settings-nav-item:hover,
-.settings-nav-item.is-active:hover { text-decoration: none; }
+.settings-nav-item.is-active:hover {
+  text-decoration: none;
+}
 .settings-nav-item.is-active {
   border-color: var(--accent-line);
   background: linear-gradient(180deg, var(--accent-soft), transparent);
@@ -441,9 +646,20 @@
   color: var(--text-dim);
   font-size: 0.95rem;
 }
-.settings-nav-item.is-active .settings-nav-icon { border-color: var(--accent-line); color: var(--accent); }
-.settings-nav-copy { display: grid; gap: 1px; min-width: 0; }
-.settings-nav-copy strong { font-size: 0.85rem; font-weight: 650; color: var(--text); }
+.settings-nav-item.is-active .settings-nav-icon {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.settings-nav-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.settings-nav-copy strong {
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--text);
+}
 .settings-nav-copy small {
   font-size: 0.7rem;
   color: var(--text-faint);
@@ -451,19 +667,48 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.settings-group { margin-bottom: 32px; scroll-margin-top: 140px; min-width: 0; }
-.settings-group-head { margin-bottom: 12px; }
-.settings-group-head h3 { margin: 0 0 4px; font-size: 1.25rem; }
-.settings-group-head p { margin: 0; }
-#danger-zone { scroll-margin-top: 140px; }
-.settings-group .mono { overflow-wrap: anywhere; }
-.settings-group .setting-row { flex-wrap: wrap; }
-.settings-group .setting-row > div { min-width: 0; }
+.settings-group {
+  margin-bottom: 32px;
+  scroll-margin-top: 140px;
+  min-width: 0;
+}
+.settings-group-head {
+  margin-bottom: 12px;
+}
+.settings-group-head h3 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+}
+.settings-group-head p {
+  margin: 0;
+}
+#danger-zone {
+  scroll-margin-top: 140px;
+}
+.settings-group .mono {
+  overflow-wrap: anywhere;
+}
+.settings-group .setting-row {
+  flex-wrap: wrap;
+}
+.settings-group .setting-row > div {
+  min-width: 0;
+}
 @media (max-width: 700px) {
-  .settings-group .setting-row { align-items: flex-start; }
-  .settings-group select { max-width: 100%; }
-  .settings-nav { gap: 6px; }
+  .settings-group .setting-row {
+    align-items: flex-start;
+  }
+  .settings-group select {
+    max-width: 100%;
+  }
+  .settings-nav {
+    gap: 6px;
+  }
 }
 
 /* Таблица диагностики прокручивается внутри панели, а не раздвигает всю страницу. */
-#parser-health-list { min-width: 0; max-width: 100%; overflow-x: auto; }
+#parser-health-list {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}

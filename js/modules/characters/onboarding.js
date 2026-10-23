@@ -46,8 +46,9 @@ export const ONBOARDING_STEPS = [
 ];
 
 /** Вводный текст окна: что это за приложение и что оно делает. */
-export const ONBOARDING_INTRO = 'Это кабинет для нескольких аккаунтов Perfect World: вход на сайт, баланс монет, '
-  + 'марафоны и запуск игры. Начните с трёх шагов ниже — они займут пару минут.';
+export const ONBOARDING_INTRO =
+  'Это кабинет для нескольких аккаунтов Perfect World: вход на сайт, баланс монет, ' +
+  'марафоны и запуск игры. Начните с трёх шагов ниже — они займут пару минут.';
 
 /** Разметка приветственного окна: те же шаги, но карточками в ряд. */
 export function onboardingModalHtml() {
@@ -58,7 +59,8 @@ export function onboardingModalHtml() {
         <p class="muted">${escapeHtml(ONBOARDING_INTRO)}</p>
       </div>
       <ol class="onb-cards">
-        ${ONBOARDING_STEPS.map((s, i) => `
+        ${ONBOARDING_STEPS.map(
+          (s, i) => `
           <li class="onb-card">
             <span class="onb-card-top">
               <span class="onb-num">${i + 1}</span>
@@ -67,7 +69,8 @@ export function onboardingModalHtml() {
             <b>${escapeHtml(s.title)}</b>
             <p class="muted">${escapeHtml(s.text)}</p>
             <button type="button" class="btn secondary small" data-onb="${escapeHtml(s.action)}">${escapeHtml(s.button)}</button>
-          </li>`).join('')}
+          </li>`
+        ).join('')}
       </ol>
       <p class="muted onb-note">Данные хранятся только на этом компьютере. Приложение читает страницы сайта,
         но ничего не нажимает за вас. Это окно можно открыть снова — кнопка «С чего начать» в разделе «Персонажи».</p>
@@ -87,7 +90,8 @@ export function onboardingHtml(appState = state) {
         <p class="muted">Три шага, чтобы приложение стало полезным. Подсказка исчезнет, как только появится первый персонаж.</p>
       </div>
       <ol class="onb-steps">
-        ${ONBOARDING_STEPS.map((s, i) => `
+        ${ONBOARDING_STEPS.map(
+          (s, i) => `
           <li class="onb-step">
             <span class="onb-num">${i + 1}</span>
             <span class="onb-ico" aria-hidden="true">${s.icon}</span>
@@ -96,7 +100,8 @@ export function onboardingHtml(appState = state) {
               <p class="muted">${escapeHtml(s.text)}</p>
             </div>
             <button type="button" class="btn secondary small" data-onb="${escapeHtml(s.action)}">${escapeHtml(s.button)}</button>
-          </li>`).join('')}
+          </li>`
+        ).join('')}
       </ol>
       <p class="muted onb-note">Данные хранятся только на этом компьютере. Приложение читает страницы сайта, но ничего не нажимает за вас.</p>
     </div>`;

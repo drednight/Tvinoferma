@@ -4,11 +4,21 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/sync/authStatus.js', () => ({ getAuthView: () => ({ icon: '' }) }));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({
-  syncMarathons: vi.fn(), marathonUrlOf: () => null, SITE_PAGES: [], customPages: () => [], rememberCustomPage: vi.fn(),
-  scanTitles: vi.fn(), parseMarathonPage: vi.fn(), pickScannerCharacter: () => null, loadNewsPage: vi.fn(), isNewsUrl: () => false
+  syncMarathons: vi.fn(),
+  marathonUrlOf: () => null,
+  SITE_PAGES: [],
+  customPages: () => [],
+  rememberCustomPage: vi.fn(),
+  scanTitles: vi.fn(),
+  parseMarathonPage: vi.fn(),
+  pickScannerCharacter: () => null,
+  loadNewsPage: vi.fn(),
+  isNewsUrl: () => false
 }));
 
-const LONG = 'Пройти одно из подземелий ★★★★ уровня сложности и получить за него сундук(и) 25 раз. ' + 'Список подземелий: Остров рыцарей, Гробница шепотов и сложный режим Террасы снов. '.repeat(3);
+const LONG =
+  'Пройти одно из подземелий ★★★★ уровня сложности и получить за него сундук(и) 25 раз. ' +
+  'Список подземелий: Остров рыцарей, Гробница шепотов и сложный режим Террасы снов. '.repeat(3);
 
 let page, state, model;
 beforeEach(async () => {
@@ -18,7 +28,9 @@ beforeEach(async () => {
   model = await import('../js/modules/marathons/model.js');
   page = await import('../js/modules/marathons/page.js');
   const m = model.createMarathon({
-    title: 'Тест', startDate: '2026-08-01', endDate: '2026-08-30',
+    title: 'Тест',
+    startDate: '2026-08-01',
+    endDate: '2026-08-30',
     tasks: [
       model.createTask({ id: 't1', title: 'Покоритель подземелий', description: LONG, descriptionSource: 'news' }),
       model.createTask({ id: 't2', title: 'Без описания' })

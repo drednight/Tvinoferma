@@ -5,9 +5,20 @@
    в настройках пати — тогда js/modules/parties/renderer.js (partyStyleVars) переводит выбранный
    `#rrggbb` в те же три переменные, и вид карточки остаётся прежним. */
 
-.pt-head-row { align-items: flex-end; }
-.pt-head-actions { display: flex; align-items: center; gap: var(--gap); flex-wrap: wrap; }
-.pt-summary { display: flex; flex-wrap: wrap; gap: var(--gap-sm); }
+.pt-head-row {
+  align-items: flex-end;
+}
+.pt-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+.pt-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-sm);
+}
 .pt-chip {
   padding: 5px 12px;
   border-radius: var(--radius-pill);
@@ -17,8 +28,15 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
-.pt-chip b { color: var(--text); font-weight: 700; margin-left: 2px; font-variant-numeric: tabular-nums; }
-.pt-chip-gold b { color: var(--gold); }
+.pt-chip b {
+  color: var(--text);
+  font-weight: 700;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.pt-chip-gold b {
+  color: var(--gold);
+}
 
 .pt-grid {
   display: grid;
@@ -45,9 +63,18 @@
     radial-gradient(120% 90% at 0% 0%, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.12), transparent 62%),
     var(--surface-1);
   box-shadow: var(--shadow-1);
-  transition: transform var(--speed) var(--ease), border-color var(--speed) var(--ease), box-shadow var(--speed) var(--ease);
+  transition:
+    transform var(--speed) var(--ease),
+    border-color var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
 }
-.pt-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--pt-c); }
+.pt-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--pt-c);
+}
 .pt-card:hover {
   transform: translateY(-2px);
   border-color: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.5);
@@ -62,8 +89,12 @@
   user-select: none;
   cursor: pointer;
 }
-.pt-head.draggable-area { cursor: grab; }
-.pt-head.draggable-area:active { cursor: grabbing; }
+.pt-head.draggable-area {
+  cursor: grab;
+}
+.pt-head.draggable-area:active {
+  cursor: grabbing;
+}
 .pt-badge-icon {
   flex: 0 0 auto;
   display: grid;
@@ -71,17 +102,45 @@
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)), hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%)));
+  background: linear-gradient(
+    135deg,
+    hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)),
+    hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%))
+  );
   color: #0b0d12;
   font-weight: 800;
   font-size: 0.86rem;
   letter-spacing: 0.02em;
 }
-.pt-card.is-none .pt-badge-icon { background: var(--surface-2); color: var(--text-dim); border: 1px dashed var(--border-strong); }
-.pt-title { flex: 1; min-width: 0; }
-.pt-title h3 { margin: 0; font-size: 1rem; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pt-sub { font-size: 0.76rem; color: var(--text-dim); }
-.pt-coins { flex: 0 0 auto; font-weight: 700; font-size: 0.88rem; color: var(--gold); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pt-card.is-none .pt-badge-icon {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px dashed var(--border-strong);
+}
+.pt-title {
+  flex: 1;
+  min-width: 0;
+}
+.pt-title h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pt-sub {
+  font-size: 0.76rem;
+  color: var(--text-dim);
+}
+.pt-coins {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--gold);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .pt-arrow {
   flex: 0 0 auto;
   width: 8px;
@@ -92,12 +151,29 @@
   transform: rotate(45deg);
   transition: transform var(--speed) var(--ease);
 }
-.pt-card.is-expanded .pt-arrow { transform: rotate(225deg); margin-bottom: 0; margin-top: 4px; }
+.pt-card.is-expanded .pt-arrow {
+  transform: rotate(225deg);
+  margin-bottom: 0;
+  margin-top: 4px;
+}
 
-.pt-glance { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); padding: 4px 14px 10px 17px; }
-.pt-stack { display: inline-flex; }
-.pt-stack .pt-ava { margin-left: -8px; box-shadow: 0 0 0 2px var(--surface-1); }
-.pt-stack .pt-ava:first-child { margin-left: 0; }
+.pt-glance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding: 4px 14px 10px 17px;
+}
+.pt-stack {
+  display: inline-flex;
+}
+.pt-stack .pt-ava {
+  margin-left: -8px;
+  box-shadow: 0 0 0 2px var(--surface-1);
+}
+.pt-stack .pt-ava:first-child {
+  margin-left: 0;
+}
 .pt-ava {
   position: relative;
   display: inline-grid;
@@ -113,15 +189,46 @@
   font-weight: 700;
   color: var(--text-dim);
 }
-.pt-ava img { width: 100%; height: 100%; object-fit: cover; }
-.pt-ava.is-online { border-color: var(--success); }
-.pt-ava.is-archived { filter: grayscale(1); opacity: 0.55; }
-.pt-ava-more { background: var(--surface-2); color: var(--text); margin-left: -8px; }
-.pt-empty-note { font-size: 0.8rem; }
-.pt-online { flex: 1; max-width: 110px; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.pt-online span { display: block; height: 100%; background: var(--success); border-radius: 3px; }
+.pt-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pt-ava.is-online {
+  border-color: var(--success);
+}
+.pt-ava.is-archived {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+.pt-ava-more {
+  background: var(--surface-2);
+  color: var(--text);
+  margin-left: -8px;
+}
+.pt-empty-note {
+  font-size: 0.8rem;
+}
+.pt-online {
+  flex: 1;
+  max-width: 110px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.pt-online span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  border-radius: 3px;
+}
 
-.pt-actions { display: flex; gap: var(--gap-sm); padding: 0 14px 14px 17px; }
+.pt-actions {
+  display: flex;
+  gap: var(--gap-sm);
+  padding: 0 14px 14px 17px;
+}
 .pt-btn {
   display: inline-flex;
   align-items: center;
@@ -137,29 +244,69 @@
   font-size: 0.86rem;
   font-weight: 550;
   cursor: pointer;
-  transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease), transform 0.1s var(--ease);
+  transition:
+    background var(--speed) var(--ease),
+    border-color var(--speed) var(--ease),
+    transform 0.1s var(--ease);
 }
-.pt-btn:hover:not(:disabled) { border-color: var(--pt-c); }
-.pt-btn:active:not(:disabled) { transform: scale(0.97); }
-.pt-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.pt-btn small { opacity: 0.78; font-variant-numeric: tabular-nums; }
+.pt-btn:hover:not(:disabled) {
+  border-color: var(--pt-c);
+}
+.pt-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.pt-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pt-btn small {
+  opacity: 0.78;
+  font-variant-numeric: tabular-nums;
+}
 .pt-btn-launch {
   flex: 1;
-  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) 42% / 0.9), hsl(calc(var(--pt-h) + 40) var(--pt-s) 38% / 0.9));
+  background: linear-gradient(
+    135deg,
+    hsl(var(--pt-h) var(--pt-s) 42% / 0.9),
+    hsl(calc(var(--pt-h) + 40) var(--pt-s) 38% / 0.9)
+  );
   border-color: transparent;
   font-weight: 600;
   color: #fff;
 }
-.pt-card.is-none .pt-btn-launch { background: var(--surface-2); border-color: var(--border); color: var(--text-dim); }
-.pt-btn-icon { width: 36px; padding: 0; font-size: 1rem; }
+.pt-card.is-none .pt-btn-launch {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.pt-btn-icon {
+  width: 36px;
+  padding: 0;
+  font-size: 1rem;
+}
 
 /* Кнопка выбора цвета пати была в карточке — теперь цвет меняется в настройках пати. */
 
 /* --- Выбор цвета пати (поле в окне настроек пати) --- */
-.ptc { display: grid; gap: 10px; }
-.ptc-label { font-weight: 600; font-size: 0.86rem; }
-.ptc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ptc-hex { width: 120px; font-family: ui-monospace, Consolas, monospace; text-transform: lowercase; }
+.ptc {
+  display: grid;
+  gap: 10px;
+}
+.ptc-label {
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.ptc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ptc-hex {
+  width: 120px;
+  font-family: ui-monospace, Consolas, monospace;
+  text-transform: lowercase;
+}
 .ptc-native {
   display: inline-flex;
   align-items: center;
@@ -180,7 +327,11 @@
   background: none;
   cursor: pointer;
 }
-.ptc-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 6px; }
+.ptc-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(30px, 1fr));
+  gap: 6px;
+}
 .ptc-swatch {
   height: 28px;
   border: 1px solid var(--border);
@@ -188,10 +339,18 @@
   background: var(--c);
   cursor: pointer;
   padding: 0;
-  transition: transform 0.1s var(--ease), box-shadow var(--speed) var(--ease);
+  transition:
+    transform 0.1s var(--ease),
+    box-shadow var(--speed) var(--ease);
 }
-.ptc-swatch:hover { transform: translateY(-2px); }
-.ptc-swatch.is-on { box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--text); }
+.ptc-swatch:hover {
+  transform: translateY(-2px);
+}
+.ptc-swatch.is-on {
+  box-shadow:
+    0 0 0 2px var(--surface-1),
+    0 0 0 4px var(--text);
+}
 
 /* Предпросмотр: та же карточка из трёх элементов, что и настоящая (полоска, значок, название) */
 .ptc-preview {
@@ -207,24 +366,43 @@
     radial-gradient(120% 90% at 0% 0%, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%) / 0.12), transparent 62%),
     var(--surface-1);
 }
-.ptc-preview-stripe { position: absolute; inset: 0 auto 0 0; width: 3px; background: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)); }
+.ptc-preview-stripe {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%));
+}
 .ptc-preview-badge {
   display: grid;
   place-items: center;
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: linear-gradient(135deg, hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)), hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%)));
+  background: linear-gradient(
+    135deg,
+    hsl(var(--pt-h) var(--pt-s) var(--pt-l, 65%)),
+    hsl(calc(var(--pt-h) + 40) var(--pt-s) var(--pt-l, 65%))
+  );
   color: #0b0d12;
   font-weight: 800;
   font-size: 0.8rem;
 }
-.ptc-preview-text { font-weight: 650; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ptc-preview-text {
+  font-weight: 650;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Список доступных персонажей в настройках пати: кто ещё не состоит ни в одной пати.
    Помечены и поставлены первыми — иначе незадействованные теряются среди участников. */
-.member-row.is-free strong { color: var(--success); }
-.member-free-note { color: var(--success); }
+.member-row.is-free strong {
+  color: var(--success);
+}
+.member-free-note {
+  color: var(--success);
+}
 
 /* Опасная зона настроек пати: архив и удаление. Удаление — красное, архив — обычное: он обратим. */
 .pt-danger {
@@ -236,19 +414,68 @@
 }
 
 /* Список участников раскрывается плавно (grid 0fr → 1fr) */
-.pt-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.25s var(--ease); }
-.pt-card.is-expanded .pt-body { grid-template-rows: 1fr; }
-.pt-body-inner { overflow: hidden; min-height: 0; }
-.pt-members { list-style: none; margin: 0; padding: 4px 8px 10px 13px; border-top: 1px solid var(--border); }
-.pt-member { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; }
-.pt-member:hover { background: rgba(255, 255, 255, 0.05); }
-.pt-member.is-archived { cursor: default; opacity: 0.7; }
-.pt-member.is-archived:hover { background: transparent; }
-.pt-member-name { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; overflow: hidden; }
-.pt-member-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pt-member-name small { white-space: nowrap; }
-.pt-badge { padding: 1px 7px; border-radius: var(--radius-pill); background: rgba(255, 255, 255, 0.07); color: var(--text-dim); font-size: 0.68rem; }
-.pt-dot { font-size: 0.8rem; }
+.pt-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s var(--ease);
+}
+.pt-card.is-expanded .pt-body {
+  grid-template-rows: 1fr;
+}
+.pt-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.pt-members {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px 10px 13px;
+  border-top: 1px solid var(--border);
+}
+.pt-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.pt-member:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.pt-member.is-archived {
+  cursor: default;
+  opacity: 0.7;
+}
+.pt-member.is-archived:hover {
+  background: transparent;
+}
+.pt-member-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+.pt-member-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pt-member-name small {
+  white-space: nowrap;
+}
+.pt-badge {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+}
+.pt-dot {
+  font-size: 0.8rem;
+}
 .pt-open {
   padding: 4px 10px;
   border-radius: var(--radius-xs);
@@ -257,10 +484,21 @@
   color: var(--accent);
   font-size: 0.76rem;
   cursor: pointer;
-  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.pt-open:hover { border-color: var(--accent); background: var(--accent-soft); }
-.pt-empty { text-align: center; padding: 16px; margin: 0; border-top: 1px solid var(--border); font-size: 0.82rem; }
+.pt-open:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.pt-empty {
+  text-align: center;
+  padding: 16px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
 
 /* Порядок запуска: ручка перетаскивания и номер места в очереди */
 .pt-drag {
@@ -273,8 +511,13 @@
   border-radius: var(--radius-xs);
   user-select: none;
 }
-.pt-drag:hover { color: var(--accent); background: var(--accent-soft); }
-.pt-drag:active { cursor: grabbing; }
+.pt-drag:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.pt-drag:active {
+  cursor: grabbing;
+}
 .pt-num {
   flex: 0 0 auto;
   min-width: 18px;
@@ -284,12 +527,24 @@
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
-.pt-member-dragging { opacity: 0.45; }
+.pt-member-dragging {
+  opacity: 0.45;
+}
 /* Куда встанет персонаж: наведение на верхнюю половину — перед строкой, на нижнюю — после неё.
    Линия показывает место вставки, поэтому понятно, что персонаж сдвинет соседа, а не встанет под ним. */
-.pt-member-over { box-shadow: inset 0 2px 0 0 var(--success); }
-.pt-member-over-after { box-shadow: inset 0 -2px 0 0 var(--success); }
+.pt-member-over {
+  box-shadow: inset 0 2px 0 0 var(--success);
+}
+.pt-member-over-after {
+  box-shadow: inset 0 -2px 0 0 var(--success);
+}
 
 /* Перетаскивание карточек (смена порядка пати) */
-.party-card-dragging { opacity: 0.5; outline: 2px dashed var(--accent); }
-.party-card-drop-target { outline: 2px solid var(--success); box-shadow: 0 0 14px rgba(158, 206, 106, 0.35); }
+.party-card-dragging {
+  opacity: 0.5;
+  outline: 2px dashed var(--accent);
+}
+.party-card-drop-target {
+  outline: 2px solid var(--success);
+  box-shadow: 0 0 14px rgba(158, 206, 106, 0.35);
+}

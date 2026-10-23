@@ -31,7 +31,9 @@ describe('категории настроек: разметка', () => {
     // «подчёркивать при наведении» (base.css). Без отдельного правила под текстом
     // и иконкой появлялась линия, и карточка выглядела сломанной
     const css = readFileSync('css/core/layout.css', 'utf8');
-    expect(css).toMatch(/\.settings-nav-item:hover,\s*\n?\.settings-nav-item\.is-active:hover \{ text-decoration: none; \}/);
+    expect(css).toMatch(
+      /\.settings-nav-item:hover,\s*\n?\.settings-nav-item\.is-active:hover \{ text-decoration: none; \}/
+    );
   });
 });
 

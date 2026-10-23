@@ -3,8 +3,16 @@
 // Логика статусов — в js/core/parserHealth.js.
 
 import {
-  PARSERS, STATUS_LABEL, NEVER_CHECKED, FAIL_THRESHOLD,
-  subscribeHealth, getParserHealth, problemParsers, buildDiagnostics, formatHealthTime, selectorsVersion
+  PARSERS,
+  STATUS_LABEL,
+  NEVER_CHECKED,
+  FAIL_THRESHOLD,
+  subscribeHealth,
+  getParserHealth,
+  problemParsers,
+  buildDiagnostics,
+  formatHealthTime,
+  selectorsVersion
 } from '../core/parserHealth.js';
 import { errorText } from '../core/errorCodes.js';
 import { escapeHtml, copyToClipboard } from '../core/utils.js';
@@ -17,10 +25,12 @@ const dismissed = new Map();
 export function bannerHtml(problems) {
   if (!problems.length) return '';
   const names = problems.map(p => PARSERS[p.id].short);
-  const title = problems.length === 1
-    ? `Парсер ${names[0]} устарел`
-    : `Устарели парсеры: ${names.join(', ')}`;
-  const lastOk = problems.map(p => p.lastOkAt).filter(Boolean).sort().pop();
+  const title = problems.length === 1 ? `Парсер ${names[0]} устарел` : `Устарели парсеры: ${names.join(', ')}`;
+  const lastOk = problems
+    .map(p => p.lastOkAt)
+    .filter(Boolean)
+    .sort()
+    .pop();
   return `
     <div class="health-banner-text">
       <strong>⚠️ ${escapeHtml(title)}</strong>
@@ -36,11 +46,12 @@ export function bannerHtml(problems) {
 
 /** HTML таблицы «Состояние парсеров». */
 export function healthTableHtml(health) {
-  const rows = Object.keys(PARSERS).map(id => {
-    const e = health[id];
-    const status = e.status ? STATUS_LABEL[e.status] : NEVER_CHECKED;
-    const cls = e.status === 'layout_changed' && e.failStreak >= FAIL_THRESHOLD ? ' is-problem' : '';
-    return `
+  const rows = Object.keys(PARSERS)
+    .map(id => {
+      const e = health[id];
+      const status = e.status ? STATUS_LABEL[e.status] : NEVER_CHECKED;
+      const cls = e.status === 'layout_changed' && e.failStreak >= FAIL_THRESHOLD ? ' is-problem' : '';
+      return `
       <tr class="${cls.trim()}">
         <td><strong>${escapeHtml(PARSERS[id].title)}</strong><small class="muted">${escapeHtml(PARSERS[id].page)}</small></td>
         <td>${escapeHtml(status)}${e.failStreak ? `<small class="muted">неудач подряд: ${e.failStreak}</small>` : ''}</td>
@@ -48,7 +59,8 @@ export function healthTableHtml(health) {
         <td>${e.lastError ? escapeHtml(errorText(e.lastError)) : '—'}${e.lastError ? `<small class="muted">${escapeHtml(e.lastError)}</small>` : ''}</td>
         <td><button type="button" class="btn small ghost" data-health-copy="${id}" title="Скопировать диагностику этого парсера">📋</button></td>
       </tr>`;
-  }).join('');
+    })
+    .join('');
   return `
     <table class="health-table">
       <thead><tr><th>Парсер</th><th>Последняя проверка</th><th>Последняя успешная</th><th>Последняя ошибка</th><th></th></tr></thead>
@@ -75,7 +87,10 @@ function render(health) {
 
 async function copyDiagnostics(which) {
   const ok = await copyToClipboard(buildDiagnostics(which === 'all' ? undefined : which));
-  toast(ok ? 'Диагностика скопирована. Пароли и почты в неё не попадают.' : 'Не удалось скопировать диагностику', ok ? 'success' : 'error');
+  toast(
+    ok ? 'Диагностика скопирована. Пароли и почты в неё не попадают.' : 'Не удалось скопировать диагностику',
+    ok ? 'success' : 'error'
+  );
 }
 
 /**
@@ -90,11 +105,14 @@ export function refreshParserHealthPanel() {
 
 /** Подключает плашку и раздел настроек. Вызывать один раз при старте. Возвращает функцию отключения. */
 export function initParserHealthUi() {
-  const onClick = (e) => {
+  const onClick = e => {
     const target = e.target instanceof Element ? e.target : null;
     if (!target) return;
     const copy = target.closest('[data-health-copy]');
-    if (copy) { copyDiagnostics(copy.getAttribute('data-health-copy') || 'all'); return; }
+    if (copy) {
+      copyDiagnostics(copy.getAttribute('data-health-copy') || 'all');
+      return;
+    }
     if (target.closest('[data-health-hide]')) {
       problemParsers().forEach(p => dismissed.set(p.id, p.failStreak));
       render(getParserHealth());
@@ -104,11 +122,14 @@ export function initParserHealthUi() {
       // «Состояние парсеров» живёт в разделе «Инструменты»: это диагностика, а не настройка
       document.querySelector('.tab[data-tab="tools"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
       const panel = document.getElementById('parser-health-panel');
-      if (panel instanceof HTMLDetailsElement) panel.open = true;   // панель свёрнута по умолчанию
+      if (panel instanceof HTMLDetailsElement) panel.open = true; // панель свёрнута по умолчанию
       panel?.scrollIntoView({ block: 'start' });
     }
   };
   document.addEventListener('click', onClick);
   const unsubscribe = subscribeHealth(render);
-  return () => { document.removeEventListener('click', onClick); unsubscribe(); };
+  return () => {
+    document.removeEventListener('click', onClick);
+    unsubscribe();
+  };
 }

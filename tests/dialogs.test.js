@@ -21,17 +21,25 @@ describe('подтверждения в стиле приложения', () => 
     expect(JS_FILES.length).toBeGreaterThan(20);
   });
 
-  it.each(JS_FILES.filter(f => !f.endsWith('core/ui.js')))('%s: без window.confirm', (file) => {
+  it.each(JS_FILES.filter(f => !f.endsWith('core/ui.js')))('%s: без window.confirm', file => {
     const src = readFileSync(file, 'utf8');
     // Разрешаем упоминание в комментариях, но не вызов
-    const calls = [...src.matchAll(/(?<![\w.])(?:window\.)?confirm\s*\(/g)]
-      .filter(m => !/^\s*(\/\/|\*)/.test(src.slice(Math.max(0, m.index - 40), m.index).split('\n').pop() || ''));
+    const calls = [...src.matchAll(/(?<![\w.])(?:window\.)?confirm\s*\(/g)].filter(
+      m =>
+        !/^\s*(\/\/|\*)/.test(
+          src
+            .slice(Math.max(0, m.index - 40), m.index)
+            .split('\n')
+            .pop() || ''
+        )
+    );
     expect(calls, 'вызов confirm').toEqual([]);
   });
 
   it('confirmDialog больше не используется: он удалён как источник системных окон', () => {
-    const offenders = JS_FILES.filter(f => !f.endsWith('core/ui.js'))
-      .filter(f => /confirmDialog/.test(readFileSync(f, 'utf8')));
+    const offenders = JS_FILES.filter(f => !f.endsWith('core/ui.js')).filter(f =>
+      /confirmDialog/.test(readFileSync(f, 'utf8'))
+    );
     expect(offenders).toEqual([]);
   });
 
@@ -68,9 +76,9 @@ describe('подтверждения в стиле приложения', () => 
 describe('alert в коде', () => {
   it('в интерфейсе не осталось системных alert', () => {
     const allowed = ['core/ui.js', 'core/storageAdapters/localStorageAdapter.js'];
-    const offenders = JS_FILES
-      .filter(f => !allowed.some(a => f.endsWith(a)))
-      .filter(f => /(?<![\w.])window\.alert\s*\(/.test(readFileSync(f, 'utf8')));
+    const offenders = JS_FILES.filter(f => !allowed.some(a => f.endsWith(a))).filter(f =>
+      /(?<![\w.])window\.alert\s*\(/.test(readFileSync(f, 'utf8'))
+    );
     expect(offenders).toEqual([]);
   });
 });

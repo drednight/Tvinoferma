@@ -13,16 +13,23 @@
   color: var(--text);
   padding: 9px 14px;
   outline: none;
-  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease),
-    box-shadow var(--speed) var(--ease), transform 0.08s var(--ease);
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease),
+    transform 0.08s var(--ease);
 }
 
 .input::placeholder,
-.textarea::placeholder { color: var(--text-faint); }
+.textarea::placeholder {
+  color: var(--text-faint);
+}
 
 .input:hover,
 .select:hover,
-.textarea:hover { border-color: var(--border-strong); }
+.textarea:hover {
+  border-color: var(--border-strong);
+}
 
 .input:focus,
 .select:focus,
@@ -33,7 +40,10 @@
 
 .input[disabled],
 .select[disabled],
-.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
 /* Список порядка карточек: сохранённые отделены нижней границей у «Свой порядок».
    `.select` объявлен с `appearance: none`, поэтому выпадающий список рисует сам Chromium
@@ -41,7 +51,9 @@
    `<option>` игнорируются. Класс `.has-presets` ставит список, когда сохранённые порядки
    есть: без них отделять нечего, и линия под последним пунктом была бы просто чужой
    полоской в конце списка. */
-#order-filter option { padding: 9px 14px; }
+#order-filter option {
+  padding: 9px 14px;
+}
 #order-filter.has-presets option[value='manual'] {
   border-bottom: 1px solid var(--border-strong);
   margin-bottom: 4px;
@@ -51,10 +63,15 @@
 .select {
   padding-right: 30px;
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
     linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
-  background-position: calc(100% - 15px) 51%, calc(100% - 10px) 51%;
-  background-size: 5px 5px, 5px 5px;
+  background-position:
+    calc(100% - 15px) 51%,
+    calc(100% - 10px) 51%;
+  background-size:
+    5px 5px,
+    5px 5px;
   background-repeat: no-repeat;
   cursor: pointer;
 }
@@ -64,8 +81,13 @@
   font-weight: 550;
   white-space: nowrap;
 }
-.btn:hover:not([disabled]) { border-color: var(--border-strong); background: var(--surface-3); }
-.btn:active:not([disabled]) { transform: translateY(1px); }
+.btn:hover:not([disabled]) {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+.btn:active:not([disabled]) {
+  transform: translateY(1px);
+}
 
 .btn.primary {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
@@ -74,22 +96,40 @@
   font-weight: 700;
   box-shadow: 0 6px 18px rgba(110, 142, 248, 0.22);
 }
-.btn.primary:hover:not([disabled]) { filter: brightness(1.08); background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.btn.primary:hover:not([disabled]) {
+  filter: brightness(1.08);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
 
-.btn.secondary { background: var(--surface-2); }
+.btn.secondary {
+  background: var(--surface-2);
+}
 
-.btn.ghost { background: transparent; }
-.btn.ghost:hover:not([disabled]) { background: rgba(255, 255, 255, 0.06); }
+.btn.ghost {
+  background: transparent;
+}
+.btn.ghost:hover:not([disabled]) {
+  background: rgba(255, 255, 255, 0.06);
+}
 
 .btn.danger {
   border-color: rgba(247, 118, 142, 0.42);
   color: var(--danger);
   background: transparent;
 }
-.btn.danger:hover:not([disabled]) { background: var(--danger-soft); border-color: var(--danger); }
+.btn.danger:hover:not([disabled]) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
 
-.btn.small { padding: 6px 11px; font-size: 0.85rem; }
-.btn.tiny { padding: 3px 8px; font-size: 0.76rem; }
+.btn.small {
+  padding: 6px 11px;
+  font-size: 0.85rem;
+}
+.btn.tiny {
+  padding: 3px 8px;
+  font-size: 0.76rem;
+}
 
 .icon-btn {
   border: none;
@@ -99,9 +139,14 @@
   font-size: 1rem;
   padding: 4px 8px;
   border-radius: var(--radius-xs);
-  transition: color var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.icon-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.07); }
+.icon-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
 
 /* --- Значки --- */
 .badge {
@@ -116,8 +161,15 @@
   font-size: 0.8rem;
   white-space: nowrap;
 }
-.badge.party { color: var(--accent); border-color: var(--accent-line); }
-.badge.coins { color: var(--gold); border-color: rgba(232, 192, 90, 0.3); background: var(--gold-soft); }
+.badge.party {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+.badge.coins {
+  color: var(--gold);
+  border-color: rgba(232, 192, 90, 0.3);
+  background: var(--gold-soft);
+}
 
 /* Единый стиль состояния: точка + подпись; цвет не единственный носитель смысла */
 .state {
@@ -135,12 +187,26 @@
   background: currentColor;
   flex: none;
 }
-.state.is-on { color: var(--success); }
-.state.is-off { color: var(--danger); }
-.state.is-busy { color: var(--warning); }
-.state.is-idle { color: var(--text-faint); }
-.state.is-busy .state-dot { animation: state-pulse 1.2s ease-in-out infinite; }
-@keyframes state-pulse { 50% { opacity: 0.3; } }
+.state.is-on {
+  color: var(--success);
+}
+.state.is-off {
+  color: var(--danger);
+}
+.state.is-busy {
+  color: var(--warning);
+}
+.state.is-idle {
+  color: var(--text-faint);
+}
+.state.is-busy .state-dot {
+  animation: state-pulse 1.2s ease-in-out infinite;
+}
+@keyframes state-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
 
 /* --- Уведомления (тосты) --- */
 #toast-root,
@@ -159,8 +225,12 @@
    круглой кнопкой «+» давал фантомные глифы «-1» (пропадали/появлялись при переключении слоёв в
    инспекторе). Пока тостов нет — хоста для рендера нет вовсе; при появлении .toast display вернётся. */
 #toast-root:empty,
-.toast-host:empty { display: none; }
-.toast { display: block; }
+.toast-host:empty {
+  display: none;
+}
+.toast {
+  display: block;
+}
 
 .toast {
   min-width: 240px;
@@ -175,90 +245,237 @@
   pointer-events: auto;
   opacity: 0;
   transform: translateY(8px);
-  transition: opacity var(--speed) var(--ease), transform var(--speed) var(--ease);
+  transition:
+    opacity var(--speed) var(--ease),
+    transform var(--speed) var(--ease);
 }
-.toast.show { opacity: 1; transform: translateY(0); }
-.toast-success, .toast.success { border-left-color: var(--success); }
-.toast-error, .toast.error { border-left-color: var(--danger); }
-.toast-warning, .toast.warning { border-left-color: var(--warning); }
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast-success,
+.toast.success {
+  border-left-color: var(--success);
+}
+.toast-error,
+.toast.error {
+  border-left-color: var(--danger);
+}
+.toast-warning,
+.toast.warning {
+  border-left-color: var(--warning);
+}
 
 @keyframes toastIn {
-  from { transform: translateY(8px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* --- Формы --- */
-.form-grid { display: grid; gap: var(--gap); }
-.field { display: grid; gap: 6px; }
-.field > label { color: var(--text-dim); font-size: 0.86rem; }
-.field .muted { font-size: 0.8rem; }
-
-.two-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
-.three-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); }
-@media (max-width: 700px) {
-  .two-cols, .three-cols { grid-template-columns: minmax(0, 1fr); }
+.form-grid {
+  display: grid;
+  gap: var(--gap);
+}
+.field {
+  display: grid;
+  gap: 6px;
+}
+.field > label {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+}
+.field .muted {
+  font-size: 0.8rem;
 }
 
-.inline-field { display: flex; gap: var(--gap-sm); align-items: center; }
-.inline-field .input,
-.inline-field .select { flex: 1; }
+.two-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.three-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--gap);
+}
+@media (max-width: 700px) {
+  .two-cols,
+  .three-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 
-.settings-checks { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.inline-field {
+  display: flex;
+  gap: var(--gap-sm);
+  align-items: center;
+}
+.inline-field .input,
+.inline-field .select {
+  flex: 1;
+}
+
+.settings-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
 .settings-checks label,
-.switch-row { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.88rem; }
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
 .settings-checks input[type='checkbox'],
-.switch-row input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
-.setting-num { width: 76px; }
+.switch-row input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.setting-num {
+  width: 76px;
+}
 
 /* Панель «Разделы приложения»: переключатель видимости + перестановка стрелками */
-.sections-list { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+.sections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+}
 .sections-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
 }
-.sections-row:hover { background: var(--surface-2); }
-/* Подпись только на переключателе с названием: кнопки порядка должны жать только себя */
-.sections-toggle { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; cursor: pointer; }
-.sections-toggle input[type='checkbox'] {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-  border: 0; clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+.sections-row:hover {
+  background: var(--surface-2);
 }
-.sections-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-.sections-copy b { font-weight: 600; }
+/* Подпись только на переключателе с названием: кнопки порядка должны жать только себя */
+.sections-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.sections-toggle input[type='checkbox'] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.sections-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.sections-copy b {
+  font-weight: 600;
+}
 /* Причина, почему раздел нельзя выключить, — мелким шрифтом под названием */
-.sections-copy small { font-size: 0.75rem; line-height: 1.25; }
+.sections-copy small {
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
 /* Выключенный раздел остаётся в списке настроек, но гаснет: его ещё можно вернуть */
-.sections-row.is-off .sections-copy b { color: var(--text-dim); text-decoration: line-through; }
+.sections-row.is-off .sections-copy b {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
 /* Недоступный переключатель не должен наводиться как рабочий */
-.sections-row.is-required .sections-toggle { cursor: default; }
-.sections-row.is-required:hover { background: none; }
-.sections-order { display: flex; gap: 4px; flex: none; align-items: center; }
-.sections-order .btn { min-width: 30px; padding: 4px 8px; }
+.sections-row.is-required .sections-toggle {
+  cursor: default;
+}
+.sections-row.is-required:hover {
+  background: none;
+}
+.sections-order {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  align-items: center;
+}
+.sections-order .btn {
+  min-width: 30px;
+  padding: 4px 8px;
+}
 /* Закреплённый раздел («Сегодня» сверху, «Настройки» снизу) вместо стрелок показывает,
    где он стоит: иначе непонятно, что он не двигается, — кнопки просто седели бы */
-.sections-pin { font-size: 0.75rem; white-space: nowrap; }
-.sections-row.is-pinned:hover { background: none; }
-.sections-row.is-pinned .sections-toggle { cursor: default; }
+.sections-pin {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.sections-row.is-pinned:hover {
+  background: none;
+}
+.sections-row.is-pinned .sections-toggle {
+  cursor: default;
+}
 
 /* Переключатель «вкл/выкл». Настоящий checkbox остаётся в разметке (с клавиатуры и для
    скринридеров работает он), а видимая часть — нарисованная дорожка с ползунком. */
 .switch {
-  position: relative; flex: none;
-  width: 38px; height: 22px; border-radius: 999px;
-  background: var(--surface-3); border: 1px solid var(--border);
-  transition: background var(--speed) var(--ease), border-color var(--speed) var(--ease);
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  transition:
+    background var(--speed) var(--ease),
+    border-color var(--speed) var(--ease);
 }
 .switch::after {
-  content: ''; position: absolute; top: 2px; left: 2px;
-  width: 16px; height: 16px; border-radius: 50%;
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   background: var(--text-dim);
-  transition: transform var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    transform var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.sections-toggle input:checked + .switch { background: var(--accent); border-color: var(--accent); }
-.sections-toggle input:checked + .switch::after { transform: translateX(16px); background: #fff; }
-.sections-toggle input:disabled + .switch { opacity: 0.5; }
-.sections-toggle input:focus-visible + .switch { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sections-toggle input:checked + .switch {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.sections-toggle input:checked + .switch::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+.sections-toggle input:disabled + .switch {
+  opacity: 0.5;
+}
+.sections-toggle input:focus-visible + .switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 
 .hotkeys-list {
   margin-top: 10px;
@@ -281,8 +498,16 @@
    Место под теги резервируется всегда, даже когда их нет: иначе карточка без тегов была бы
    выше, и блоки «статы / контакты / проходки» у соседей по ряду начинали бы на разной
    высоте. Одна строка чипов — 22px (2px рамка + 0.72rem текст), плюс зазор до следующего блока. */
-.card-tags { min-height: 22px; display: flex; align-items: flex-start; }
-.tag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.card-tags {
+  min-height: 22px;
+  display: flex;
+  align-items: flex-start;
+}
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .tag-chip {
   font-size: 0.72rem;
   padding: 2px 8px;
@@ -294,10 +519,16 @@
   white-space: nowrap;
   transition: background var(--speed) var(--ease);
 }
-.tag-chip:hover { background: rgba(110, 142, 248, 0.26); }
+.tag-chip:hover {
+  background: rgba(110, 142, 248, 0.26);
+}
 
 /* --- Режим выбора и массовые действия --- */
-#btn-select-mode.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+#btn-select-mode.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 
 .bulk-bar {
   position: sticky;
@@ -314,19 +545,50 @@
   background: var(--surface-2);
   box-shadow: var(--shadow-2);
 }
-.bulk-bar[hidden] { display: none; }
-.bulk-bar .btn[disabled] { opacity: 0.4; pointer-events: none; }
-.bulk-count { margin-right: 4px; font-weight: 650; }
-.bulk-sep { flex: 1 1 12px; }
+.bulk-bar[hidden] {
+  display: none;
+}
+.bulk-bar .btn[disabled] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.bulk-count {
+  margin-right: 4px;
+  font-weight: 650;
+}
+.bulk-sep {
+  flex: 1 1 12px;
+}
 
-.select-box { display: flex; align-items: center; }
-.select-box input { width: 18px; height: 18px; pointer-events: none; accent-color: var(--accent); }
-.character-card.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+.select-box {
+  display: flex;
+  align-items: center;
+}
+.select-box input {
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  accent-color: var(--accent);
+}
+.character-card.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 
 /* --- Выбор нескольких пати в форме персонажа (issue #4) --- */
-.party-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.party-chip { cursor: pointer; }
-.party-chip input { position: absolute; opacity: 0; pointer-events: none; }
+.party-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.party-chip {
+  cursor: pointer;
+}
+.party-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
 .party-chip span {
   display: inline-block;
   font-size: 0.8rem;
@@ -342,4 +604,7 @@
   border-color: var(--accent);
   color: var(--accent);
 }
-.party-chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.party-chip input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

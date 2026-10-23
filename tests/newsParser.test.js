@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { parseNewsHtml } from '../js/modules/marathons/newsParser.js';
 
 const html = readFileSync('tests/fixtures/news-marathon.html', 'utf8');
-const parsed = parseNewsHtml(html, { title: 'Летний марафон', publishedAt: '25.05.2026', newsUrl: 'https://pwonline.ru/news.php?article=1' });
+const parsed = parseNewsHtml(html, {
+  title: 'Летний марафон',
+  publishedAt: '25.05.2026',
+  newsUrl: 'https://pwonline.ru/news.php?article=1'
+});
 
 describe('parseNewsHtml', () => {
   it('находит ссылку на страницу отметок', () => {
@@ -25,8 +29,18 @@ describe('parseNewsHtml', () => {
   it('разбирает задания, пороги и монеты', () => {
     expect(parsed.quests).toHaveLength(3);
     const dreams = parsed.quests[0];
-    expect(dreams).toMatchObject({ title: 'Испытание снов (июнь)', goal: 15, goalFound: true, stageKey: 'июнь', weekly: false });
-    expect(dreams.rewards.map(r => [r.threshold, r.rewardCoins])).toEqual([[5, 10], [10, 20], [15, 30]]);
+    expect(dreams).toMatchObject({
+      title: 'Испытание снов (июнь)',
+      goal: 15,
+      goalFound: true,
+      stageKey: 'июнь',
+      weekly: false
+    });
+    expect(dreams.rewards.map(r => [r.threshold, r.rewardCoins])).toEqual([
+      [5, 10],
+      [10, 20],
+      [15, 30]
+    ]);
   });
 
   it('распознаёт еженедельные задания и награды без монет', () => {

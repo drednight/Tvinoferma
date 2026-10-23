@@ -23,13 +23,16 @@ export const SHOP_ITEMS = Object.freeze([
   { key: 'guide', name: 'Ключ от Книги наставлений', icon: '🗝️', event: true, oldPrice: 50 }
 ]);
 
-export const itemByKey = (key) => SHOP_ITEMS.find(i => i.key === key) || null;
+export const itemByKey = key => SHOP_ITEMS.find(i => i.key === key) || null;
 export const wantedNames = () => SHOP_ITEMS.map(i => i.name);
 
-const squash = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-const lower = (s) => squash(s).toLowerCase().replace(/ё/g, 'е');
-const baseName = (s) => squash(String(s).replace(/\s*\([^)]*\)\s*$/, ''));
-const numOrNull = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const squash = s =>
+  String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+const lower = s => squash(s).toLowerCase().replace(/ё/g, 'е');
+const baseName = s => squash(String(s).replace(/\s*\([^)]*\)\s*$/, ''));
+const numOrNull = v => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /* ------------------------------------------------------------------ */
 /*  Ответ сайта                                                         */
@@ -37,7 +40,12 @@ const numOrNull = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ?
 
 /** Описание с сайта: без служебной подписи «Описание:», по строкам. */
 export function cleanDesc(text) {
-  return String(text ?? '').split('\n').map(l => squash(l).replace(/^Описание:\s*/i, '')).filter(Boolean).join('\n').slice(0, 700);
+  return String(text ?? '')
+    .split('\n')
+    .map(l => squash(l).replace(/^Описание:\s*/i, ''))
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, 700);
 }
 
 /**
@@ -45,14 +53,34 @@ export function cleanDesc(text) {
  * `available` — сколько ещё можно купить (null — у предмета нет лимита); `buyable` — кнопку «Купить» можно нажать.
  */
 export function normalizeScanItem(raw, def) {
-  const empty = { key: def.key, name: def.name, found: false, ambiguous: raw?.ambiguous === true, buyable: false, price: null, available: null, max: null, blocked: false, id: '', kind: '', desc: '', image: '', label: '' };
+  const empty = {
+    key: def.key,
+    name: def.name,
+    found: false,
+    ambiguous: raw?.ambiguous === true,
+    buyable: false,
+    price: null,
+    available: null,
+    max: null,
+    blocked: false,
+    id: '',
+    kind: '',
+    desc: '',
+    image: '',
+    label: ''
+  };
   if (!raw || raw.found !== true) return empty;
   const price = numOrNull(raw.price);
   const available = numOrNull(raw.available) == null ? null : Math.max(0, Math.floor(Number(raw.available)));
   const blocked = raw.blocked === true || available === 0;
   return {
-    key: def.key, name: def.name, found: true, ambiguous: false,
-    siteName: squash(raw.name), id: String(raw.id ?? ''), kind: raw.kind === 'chest' ? 'chest' : 'item',
+    key: def.key,
+    name: def.name,
+    found: true,
+    ambiguous: false,
+    siteName: squash(raw.name),
+    id: String(raw.id ?? ''),
+    kind: raw.kind === 'chest' ? 'chest' : 'item',
     price: price != null && price > 0 ? roundCoins(price) : null,
     available,
     max: numOrNull(raw.max) != null ? Math.max(0, Math.floor(Number(raw.max))) : null,
@@ -71,7 +99,12 @@ export function normalizeScan(payload, now = new Date()) {
   if (balance == null || balance < 0) return null;
   const list = Array.isArray(payload.items) ? payload.items : [];
   const items = {};
-  SHOP_ITEMS.forEach(def => { items[def.key] = normalizeScanItem(list.find(i => i?.want === def.name), def); });
+  SHOP_ITEMS.forEach(def => {
+    items[def.key] = normalizeScanItem(
+      list.find(i => i?.want === def.name),
+      def
+    );
+  });
   return { account: squash(payload.account).slice(0, 60), balance: roundCoins(balance), at: now.toISOString(), items };
 }
 
@@ -95,7 +128,13 @@ export function groupAccounts(chars, charSite = {}) {
 /** Кто из персонажей аккаунта читает сайт и покупает: с известным входом, лучше из `prefer`; без входа — никто. */
 export function pickRepresentative(members, prefer = new Set()) {
   const ok = (members || []).filter(c => c.isLoggedIn !== false);
-  return ok.find(c => c.isLoggedIn === true && prefer.has(c.id)) || ok.find(c => prefer.has(c.id)) || ok.find(c => c.isLoggedIn === true) || ok[0] || null;
+  return (
+    ok.find(c => c.isLoggedIn === true && prefer.has(c.id)) ||
+    ok.find(c => prefer.has(c.id)) ||
+    ok.find(c => c.isLoggedIn === true) ||
+    ok[0] ||
+    null
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -110,7 +149,7 @@ export function planQty({ requested, price, balance, available = null }) {
   const byFunds = Math.max(0, Math.floor((bal + 1e-6) / price + 1e-9));
   const byLimit = available == null ? Infinity : Math.max(0, Math.floor(available));
   const qty = Math.min(want, byFunds, byLimit);
-  const cap = qty >= want ? null : (byLimit <= byFunds ? 'limit' : 'funds');
+  const cap = qty >= want ? null : byLimit <= byFunds ? 'limit' : 'funds';
   const cost = roundCoins(qty * price);
   return { requested: want, qty, cost, fullCost: roundCoins(want * price), left: roundCoins(bal - cost), cap };
 }
@@ -126,11 +165,18 @@ export function planAccount({ balance, orders }) {
     left = plan.left;
     return { key: o.key, price: o.price, ...plan };
   });
-  return { rows, spent: roundCoins(balance - left), left, qty: rows.reduce((n, r) => n + r.qty, 0), requested: rows.reduce((n, r) => n + r.requested, 0) };
+  return {
+    rows,
+    spent: roundCoins(balance - left),
+    left,
+    qty: rows.reduce((n, r) => n + r.qty, 0),
+    requested: rows.reduce((n, r) => n + r.requested, 0)
+  };
 }
 
 /** Хватит ли монет хотя бы на один предмет из списка (учитывается только то, что можно купить). */
-export const canAffordAny = (balance, items) => (items || []).some(i => i?.buyable && i.price != null && roundCoins(balance) + 1e-6 >= i.price);
+export const canAffordAny = (balance, items) =>
+  (items || []).some(i => i?.buyable && i.price != null && roundCoins(balance) + 1e-6 >= i.price);
 
 /**
  * Сначала те, кто может позволить хотя бы один предмет, затем остальные. Внутри групп: если передан `balance` — по убыванию
@@ -156,9 +202,17 @@ export function addMonthMsk(iso) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return null;
   const d = new Date(t + MSK_MS);
-  const y = d.getUTCFullYear(), m = d.getUTCMonth();
+  const y = d.getUTCFullYear(),
+    m = d.getUTCMonth();
   const lastDay = new Date(Date.UTC(y, m + 2, 0)).getUTCDate();
-  const next = Date.UTC(y, m + 1, Math.min(d.getUTCDate(), lastDay), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds());
+  const next = Date.UTC(
+    y,
+    m + 1,
+    Math.min(d.getUTCDate(), lastDay),
+    d.getUTCHours(),
+    d.getUTCMinutes(),
+    d.getUTCSeconds()
+  );
   return new Date(next - MSK_MS).toISOString();
 }
 
@@ -179,8 +233,14 @@ export function siteStampToIso(at) {
 export function reconcileTrack(track, item, now = new Date()) {
   if (!item?.found || item.available == null) return null;
   const t = { lastBuyAt: null, resetAt: null, max: null, available: null, ...(track || {}) };
-  if (t.resetAt && Date.parse(t.resetAt) <= now.getTime()) { t.lastBuyAt = null; t.resetAt = null; }
-  if (t.available != null && item.available > t.available) { t.lastBuyAt = null; t.resetAt = null; }
+  if (t.resetAt && Date.parse(t.resetAt) <= now.getTime()) {
+    t.lastBuyAt = null;
+    t.resetAt = null;
+  }
+  if (t.available != null && item.available > t.available) {
+    t.lastBuyAt = null;
+    t.resetAt = null;
+  }
   t.max = Math.max(t.max || 0, item.max || 0, item.available) || null;
   t.available = item.available;
   t.seenAt = now.toISOString();
@@ -224,11 +284,13 @@ export function countHistoryPurchases(rows, def, price, sinceIso) {
   const since = Date.parse(sinceIso) - 60000;
   return (Array.isArray(rows) ? rows : []).filter(r => {
     const iso = siteStampToIso(r?.at);
-    return isPurchaseOf(r, def) && Math.abs(Math.abs(Number(r.delta)) - price) < 0.05 && iso && Date.parse(iso) >= since;
+    return (
+      isPurchaseOf(r, def) && Math.abs(Math.abs(Number(r.delta)) - price) < 0.05 && iso && Date.parse(iso) >= since
+    );
   }).length;
 }
 
-const fmtDate = (iso) => mskStamp(iso).slice(0, 10);
+const fmtDate = iso => mskStamp(iso).slice(0, 10);
 
 /** Как показать лимит: { limited, available, max, exhausted, resetAt, daysLeft, text } или null, если лимита нет. */
 export function limitView(item, track, now = new Date()) {
@@ -237,9 +299,23 @@ export function limitView(item, track, now = new Date()) {
   const resetAt = track?.resetAt && Date.parse(track.resetAt) > now.getTime() ? track.resetAt : null;
   const daysLeft = resetAt ? Math.max(0, Math.ceil((Date.parse(resetAt) - now.getTime()) / DAY_MS)) : null;
   const max = Math.max(track?.max || 0, item.max || 0) || null;
-  const left = resetAt ? `обновится ${fmtDate(resetAt)} (${daysLeft > 0 ? `через ${daysLeft} дн.` : 'сегодня'})` : (exhausted ? 'дата обновления лимита неизвестна' : '');
-  const head = exhausted ? 'лимит исчерпан' : `доступно ${item.available}${max && max >= item.available ? ` из ${max}` : ''}`;
-  return { limited: true, available: item.available, max, exhausted, resetAt, daysLeft, text: left ? `${head}, ${left}` : head };
+  const left = resetAt
+    ? `обновится ${fmtDate(resetAt)} (${daysLeft > 0 ? `через ${daysLeft} дн.` : 'сегодня'})`
+    : exhausted
+      ? 'дата обновления лимита неизвестна'
+      : '';
+  const head = exhausted
+    ? 'лимит исчерпан'
+    : `доступно ${item.available}${max && max >= item.available ? ` из ${max}` : ''}`;
+  return {
+    limited: true,
+    available: item.available,
+    max,
+    exhausted,
+    resetAt,
+    daysLeft,
+    text: left ? `${head}, ${left}` : head
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -249,7 +325,11 @@ export function limitView(item, track, now = new Date()) {
 export const RESULT_INFO = {
   done: { icon: '✅', label: 'Куплено', level: 'ok' },
   limit: { icon: '🔒', label: 'Куплено до лимита', level: 'warn' },
-  no_funds: { icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', label: 'Не хватило монет', level: 'warn' },
+  no_funds: {
+    icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+    label: 'Не хватило монет',
+    level: 'warn'
+  },
   price_changed: { icon: '💱', label: 'Цена изменилась — остановлено', level: 'warn' },
   missing: { icon: '🚫', label: 'Нет в магазине', level: 'warn' },
   no_effect: { icon: '⚠️', label: 'Сайт не провёл покупку', level: 'warn' },
@@ -262,20 +342,25 @@ export const RESULT_INFO = {
   not_run: { icon: '⏭', label: 'Не выполнялось', level: 'info' },
   skipped: { icon: '➖', label: 'Не покупалось', level: 'info' }
 };
-export const resultInfo = (status) => RESULT_INFO[status] || RESULT_INFO.error;
+export const resultInfo = status => RESULT_INFO[status] || RESULT_INFO.error;
 
 /** Подпись итога: «Куплено до лимита: 4 из 6». */
 export function resultLabel(row) {
   const info = resultInfo(row?.status);
   const n = Number(row?.requested) || 0;
   if (row?.status === 'limit' && !row.bought) return 'Лимит исчерпан — не куплено';
-  if (['done', 'limit', 'no_funds', 'unknown', 'no_effect', 'price_changed', 'cancelled'].includes(row?.status) && n && (row.bought || row.status !== 'cancelled')) return `${info.label}: ${row.bought || 0} из ${n}`;
+  if (
+    ['done', 'limit', 'no_funds', 'unknown', 'no_effect', 'price_changed', 'cancelled'].includes(row?.status) &&
+    n &&
+    (row.bought || row.status !== 'cancelled')
+  )
+    return `${info.label}: ${row.bought || 0} из ${n}`;
   return info.label;
 }
 
 /** Ошибки, после которых имеет смысл подождать и повторить (покупка ещё не нажата). */
 export const SHOP_TRANSIENT = new Set(['timeout', 'pending', 'click_failed', 'modal_missing', 'button_not_found']);
-export const isTransient = (code) => !!code && (SHOP_TRANSIENT.has(code) || isPromoTransient(code));
+export const isTransient = code => !!code && (SHOP_TRANSIENT.has(code) || isPromoTransient(code));
 
 /**
  * Что делать после ответа `buy_shop_item` (или ошибки вызова).
@@ -283,19 +368,30 @@ export const isTransient = (code) => !!code && (SHOP_TRANSIENT.has(code) || isPr
  * не выполнять; `retry` — можно повторить (покупка не нажималась); `dry` — пробный запуск.
  */
 export function interpretBuy(payload, error) {
-  if (error || !payload) return { kind: 'retry', status: 'error', code: String(error?.message || error || 'no_response') };
+  if (error || !payload)
+    return { kind: 'retry', status: 'error', code: String(error?.message || error || 'no_response') };
   const code = payload.error || null;
   switch (payload.status) {
-    case 'success': return { kind: 'bought', status: 'done' };
-    case 'dry_run': return { kind: 'dry', status: 'dry_run' };
-    case 'limit_reached': return { kind: 'stop', status: 'limit' };
-    case 'no_funds': return { kind: 'stop', status: 'no_funds' };
-    case 'price_changed': return { kind: 'stop', status: 'price_changed', price: numOrNull(payload.info?.price) };
-    case 'item_missing': return { kind: 'stop', status: 'missing' };
-    case 'no_effect': return { kind: 'stop', status: 'no_effect' };
-    case 'unknown': return { kind: 'block', status: 'unknown', code };
-    case 'not_logged_in': return { kind: 'block', status: 'not_logged_in' };
-    case 'challenge': return { kind: 'block', status: 'challenge' };
+    case 'success':
+      return { kind: 'bought', status: 'done' };
+    case 'dry_run':
+      return { kind: 'dry', status: 'dry_run' };
+    case 'limit_reached':
+      return { kind: 'stop', status: 'limit' };
+    case 'no_funds':
+      return { kind: 'stop', status: 'no_funds' };
+    case 'price_changed':
+      return { kind: 'stop', status: 'price_changed', price: numOrNull(payload.info?.price) };
+    case 'item_missing':
+      return { kind: 'stop', status: 'missing' };
+    case 'no_effect':
+      return { kind: 'stop', status: 'no_effect' };
+    case 'unknown':
+      return { kind: 'block', status: 'unknown', code };
+    case 'not_logged_in':
+      return { kind: 'block', status: 'not_logged_in' };
+    case 'challenge':
+      return { kind: 'block', status: 'challenge' };
     default:
       if (code === 'window_open') return { kind: 'block', status: 'error', code };
       if (!payload.clicked && isTransient(code)) return { kind: 'retry', status: 'error', code };
@@ -316,7 +412,7 @@ export function afterPurchase(payload, def) {
 /** Итог по набору строк. */
 export function summarizeRows(rows) {
   const list = rows || [];
-  const sum = (f) => list.reduce((n, r) => n + (f(r) || 0), 0);
+  const sum = f => list.reduce((n, r) => n + (f(r) || 0), 0);
   return {
     total: list.length,
     bought: sum(r => r.bought),
@@ -326,7 +422,9 @@ export function summarizeRows(rows) {
     noFunds: list.filter(r => r.status === 'no_funds').length,
     unknown: list.filter(r => r.status === 'unknown').length,
     dry: list.filter(r => r.status === 'dry_run').length,
-    failed: list.filter(r => ['error', 'not_logged_in', 'challenge', 'no_effect', 'missing', 'price_changed'].includes(r.status)).length,
+    failed: list.filter(r =>
+      ['error', 'not_logged_in', 'challenge', 'no_effect', 'missing', 'price_changed'].includes(r.status)
+    ).length,
     notRun: list.filter(r => r.status === 'cancelled' || r.status === 'not_run').length
   };
 }

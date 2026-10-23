@@ -17,7 +17,7 @@ export const UPDATE_MODE_LABEL = {
   weekly: 'при запуске и еженедельно (понедельник, 00:00)'
 };
 
-export const isScheduledMode = (mode) => mode === 'daily' || mode === 'weekly';
+export const isScheduledMode = mode => mode === 'daily' || mode === 'weekly';
 
 /**
  * Режим из настроек. Старые данные хранят только флаг checkOnStartup:

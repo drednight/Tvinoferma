@@ -38,14 +38,20 @@ const body = `
   <div id="modal-root"></div><div id="toast-root"></div>`;
 
 const full = () => ({
-  id: 'a', nick: 'Твин', class: 'Воин', level: 130,
+  id: 'a',
+  nick: 'Твин',
+  class: 'Воин',
+  level: 130,
   sky: { name: 'Небесный пет', level: 5 },
-  isLoggedIn: true, lastLoginCheck: new Date().toISOString(),
-  partyIds: ['p1'], mainPartyId: 'p1',
+  isLoggedIn: true,
+  lastLoginCheck: new Date().toISOString(),
+  partyIds: ['p1'],
+  mainPartyId: 'p1',
   stats: { hp: 12345, pa: 5678, pz: 91011, pvePa: 1213, pvePz: 1415, levelBonus: 3 },
   contacts: { email: 'player@example.com', password: 'SuperSecret1' },
   dungeonPasses: { weapon: 12, armor: 345, relic: 6 },
-  tags: ['мейн', 'твиноферма'], ancientCoins: 285,
+  tags: ['мейн', 'твиноферма'],
+  ancientCoins: 285,
   launch: { gcPath: 'C:\\GameCenter' }
 });
 
@@ -106,14 +112,18 @@ describe('карточка персонажа: состав', () => {
     expect(party.getAttribute('style')).toContain('--party-c:');
     expect(card.querySelector('.card-coins').textContent).toContain('285');
     // Ряд значек один: пати, монеты и теги не занимают три строки, как раньше
-    expect([...card.querySelector('.card-meta').children].map(el => el.className.split(' ')[0]))
-      .toEqual(['badge', 'badge', 'card-tags']);
+    expect([...card.querySelector('.card-meta').children].map(el => el.className.split(' ')[0])).toEqual([
+      'badge',
+      'badge',
+      'card-tags'
+    ]);
     expect(card.querySelectorAll('.tag-chip').length).toBe(2);
   });
 
   it('все пять показателей HP/PA/PZ/PvE-PA/PvE-PZ на месте', () => {
-    const cells = [...card.querySelectorAll('.card-stats > div')]
-      .map(d => `${d.querySelector('.muted').textContent}=${d.querySelector('strong').textContent}`);
+    const cells = [...card.querySelectorAll('.card-stats > div')].map(
+      d => `${d.querySelector('.muted').textContent}=${d.querySelector('strong').textContent}`
+    );
     expect(cells.join(' ')).toBe('HP=12345 PA=5678 PZ=91011 PvE-PA=1213 PvE-PZ=1415');
   });
 
@@ -121,7 +131,7 @@ describe('карточка персонажа: состав', () => {
     const email = card.querySelector('.contact-value[data-type="email"]');
     const pass = card.querySelector('.contact-value[data-type="password"]');
     expect(email.dataset.original).toBe('player@example.com');
-    expect(email.textContent).toContain('•••');           // по умолчанию замаскировано
+    expect(email.textContent).toContain('•••'); // по умолчанию замаскировано
     expect(pass.dataset.original).toBe('SuperSecret1');
     expect(email.closest('.contact-row-mini').classList.contains('is-empty')).toBe(false);
     // Глаз — кнопка рядом со значением, копирование — по значению

@@ -222,7 +222,12 @@ export function partyOverview(state) {
   const characters = state?.characters || [];
   const out = (state?.parties || []).map(p => {
     const members = charactersInParty(characters, p.id);
-    return { id: p.id, name: p.name, members: members.length, online: members.filter(c => c.isLoggedIn === true).length };
+    return {
+      id: p.id,
+      name: p.name,
+      members: members.length,
+      online: members.filter(c => c.isLoggedIn === true).length
+    };
   });
   const none = characters.filter(c => hasNoParty(c, state?.parties || []));
   if (none.length) {

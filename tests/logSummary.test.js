@@ -33,18 +33,14 @@ describe('итоговая таблица в журнале', () => {
 
   it('строки без имени в таблицу не попадают', () => {
     const rows = authSummaryRows([char('Коля', true), { isLoggedIn: true }], []);
-    expect(rows.map((r) => r.name)).toEqual(['Коля']);
+    expect(rows.map(r => r.name)).toEqual(['Коля']);
   });
 });
 
 describe('строки итогов проверки входа', () => {
   it('три состояния не смешиваются', () => {
-    const rows = authSummaryRows([
-      char('Коля', true),
-      char('Сокол', false),
-      char('Дима', null)
-    ], []);
-    expect(rows.map((r) => [r.name, r.status, r.tone])).toEqual([
+    const rows = authSummaryRows([char('Коля', true), char('Сокол', false), char('Дима', null)], []);
+    expect(rows.map(r => [r.name, r.status, r.tone])).toEqual([
       ['Коля', 'Авторизован', 'ok'],
       ['Сокол', 'Не авторизован', 'warn'],
       // «Нет входа» — это ответ сайта, «не получилось» — наша неудача. Смешивать нельзя.
@@ -63,12 +59,12 @@ describe('строки итогов проверки входа', () => {
   it('пропущенные не молчат: их тоже видно в таблице', () => {
     // Персонаж с открытым окном не проверяли — молчать о нём нельзя, иначе итог врёт
     const rows = authSummaryRows([char('Коля', true)], ['Дима']);
-    expect(rows.map((r) => r.status)).toEqual(['Авторизован', 'Пропущен']);
+    expect(rows.map(r => r.status)).toEqual(['Авторизован', 'Пропущен']);
     expect(rows[1].note).toContain('окно');
   });
 
   it('порядок строк совпадает с порядком проверки', () => {
     const rows = authSummaryRows([char('Б', true), char('А', true), char('В', true)], []);
-    expect(rows.map((r) => r.name)).toEqual(['Б', 'А', 'В']);
+    expect(rows.map(r => r.name)).toEqual(['Б', 'А', 'В']);
   });
 });

@@ -4,7 +4,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('../js/modules/launcher/runningWindows.js', () => ({
-  runningWindows: () => [], onRunningWindows: () => () => {}, refreshRunningWindows: vi.fn(async () => [])
+  runningWindows: () => [],
+  onRunningWindows: () => () => {},
+  refreshRunningWindows: vi.fn(async () => [])
 }));
 
 let state, todoListHtml, renderToday, normalizePlannerEntry;
@@ -25,15 +27,25 @@ beforeEach(async () => {
   state.marathons = [];
   state.plannerEntries = [];
   state.characters = [
-    { id: 'a', nick: 'Аа', class: 'Воин', isLoggedIn: true, ancientCoins: 100, dungeonPasses: { weapon: 1, armor: 2, relic: 3 }, lastCoinUpdate: NOW.toISOString() }
+    {
+      id: 'a',
+      nick: 'Аа',
+      class: 'Воин',
+      isLoggedIn: true,
+      ancientCoins: 100,
+      dungeonPasses: { weapon: 1, armor: 2, relic: 3 },
+      lastCoinUpdate: NOW.toISOString()
+    }
   ];
 });
 
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 // Своя запись в том виде, какой выдаёт `plannerEventsForDate`: с признаком источника
 const mine = (title, status) => ({ ...normalizePlannerEntry({ title, date: TODAY, status }), source: 'manual' });
-const parse = (html) => {
+const parse = html => {
   const host = document.createElement('div');
   host.innerHTML = html;
   return host;
@@ -50,23 +62,30 @@ describe('задачи на день: разметка', () => {
   });
 
   it('статусы подписаны словами, а не выведены из галочки', () => {
-    const host = parse(todoListHtml([
-      mine('Ожидает', 'todo'), mine('В работе', 'doing'), mine('Сделано', 'done')
-    ], TODAY));
-    expect([...host.querySelectorAll('.todo-status')].map(b => b.textContent.trim()))
-      .toEqual(['Ожидает', 'В работе', 'Выполнено']);
+    const host = parse(
+      todoListHtml([mine('Ожидает', 'todo'), mine('В работе', 'doing'), mine('Сделано', 'done')], TODAY)
+    );
+    expect([...host.querySelectorAll('.todo-status')].map(b => b.textContent.trim())).toEqual([
+      'Ожидает',
+      'В работе',
+      'Выполнено'
+    ]);
     // Галочка отмечена только у выполненного: «в работе» — не производное от неё
-    expect([...host.querySelectorAll('[data-todo-toggle]')].map(i => i.checked))
-      .toEqual([false, false, true]);
+    expect([...host.querySelectorAll('[data-todo-toggle]')].map(i => i.checked)).toEqual([false, false, true]);
     expect(host.querySelectorAll('.todo-row')[1].className).toContain('is-doing');
     expect(host.querySelectorAll('.todo-row')[1].querySelector('[data-todo-toggle]').checked).toBe(false);
   });
 
   it('марафоны и ивенты остаются читаемыми, но без чекбокса и статуса', () => {
-    const host = parse(todoListHtml([
-      mine('Своё дело', 'todo'),
-      { id: 'marathon-m1', title: 'Марафон', source: 'marathon', marathonId: 'm1', color: 'purple' }
-    ], TODAY));
+    const host = parse(
+      todoListHtml(
+        [
+          mine('Своё дело', 'todo'),
+          { id: 'marathon-m1', title: 'Марафон', source: 'marathon', marathonId: 'm1', color: 'purple' }
+        ],
+        TODAY
+      )
+    );
     const readonly = host.querySelector('.todo-row.is-readonly');
     expect(readonly.textContent).toContain('Марафон');
     expect(readonly.querySelector('[data-todo-toggle]')).toBeNull();
@@ -76,10 +95,17 @@ describe('задачи на день: разметка', () => {
   });
 
   it('счётчик показывает невыполненные дела, а не все записи', () => {
-    const host = parse(todoListHtml([
-      mine('А', 'done'), mine('Б', 'doing'), mine('В', 'todo'),
-      { id: 'marathon-m1', title: 'Марафон', source: 'marathon', marathonId: 'm1' }
-    ], TODAY));
+    const host = parse(
+      todoListHtml(
+        [
+          mine('А', 'done'),
+          mine('Б', 'doing'),
+          mine('В', 'todo'),
+          { id: 'marathon-m1', title: 'Марафон', source: 'marathon', marathonId: 'm1' }
+        ],
+        TODAY
+      )
+    );
     expect(host.querySelector('.today-count').textContent).toBe('2');
   });
 
@@ -99,9 +125,9 @@ describe('туду лист: выполненные отдельно', () => {
   });
 
   it('выполненные уходят в отдельный список под рабочим и остаются в нём', () => {
-    const host = parse(todoListHtml([
-      mine('Ждёт', 'todo'), mine('Сделано', 'done'), mine('Тоже сделано', 'done')
-    ], TODAY));
+    const host = parse(
+      todoListHtml([mine('Ждёт', 'todo'), mine('Сделано', 'done'), mine('Тоже сделано', 'done')], TODAY)
+    );
     const doneTitle = host.querySelector('.todo-done-title');
     expect(doneTitle).not.toBeNull();
     expect(doneTitle.textContent).toContain('Выполненные');
@@ -126,9 +152,7 @@ describe('туду лист: выполненные отдельно', () => {
   });
 
   it('счётчик в заголовке считает только невыполненные', () => {
-    const host = parse(todoListHtml([
-      mine('А', 'done'), mine('Б', 'doing'), mine('В', 'todo')
-    ], TODAY));
+    const host = parse(todoListHtml([mine('А', 'done'), mine('Б', 'doing'), mine('В', 'todo')], TODAY));
     const titles = [...host.querySelectorAll('.today-title')];
     expect(titles[0].textContent).toContain('Задачи на день');
     expect(titles[0].querySelector('.today-count').textContent).toBe('2');
@@ -164,18 +188,32 @@ describe('задачи на день: действия', () => {
     const root = document.getElementById('today-root');
     renderToday(root, {});
     const click = () => document.querySelector('.todo-status').click();
-    click(); await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('doing'));
-    click(); await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('done'));
-    click(); await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('todo'));
+    click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('doing'));
+    click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('done'));
+    click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('todo'));
   });
 
   it('марафон отметкой не трогается: у него нет ни галочки, ни статуса', async () => {
     state.plannerEntries = [];
-    state.marathons = [{
-      id: 'm1', title: 'Марафон', kind: 'single', status: 'active',
-      startDate: TODAY, endDate: TODAY, participantIds: ['a'], balance: { start: {} },
-      tasks: [], coins: {}, awards: {}, lastSync: null
-    }];
+    state.marathons = [
+      {
+        id: 'm1',
+        title: 'Марафон',
+        kind: 'single',
+        status: 'active',
+        startDate: TODAY,
+        endDate: TODAY,
+        participantIds: ['a'],
+        balance: { start: {} },
+        tasks: [],
+        coins: {},
+        awards: {},
+        lastSync: null
+      }
+    ];
     renderToday(document.getElementById('today-root'), {});
     expect(document.querySelector('[data-todo-toggle]')).toBeNull();
   });
@@ -183,9 +221,13 @@ describe('задачи на день: действия', () => {
 
 describe('повтор в списке задач на день', () => {
   // Свойство отметок по дням: у повтора состояние своё у каждого вхождения.
-  const daily = (title, extra = {}) => normalizePlannerEntry({
-    title, date: '2026-10-04', recurrence: 'daily', ...extra
-  });
+  const daily = (title, extra = {}) =>
+    normalizePlannerEntry({
+      title,
+      date: '2026-10-04',
+      recurrence: 'daily',
+      ...extra
+    });
 
   it('дела, отмеченные вчера, сегодня приходят неотмеченными', () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
@@ -211,8 +253,10 @@ describe('повтор в списке задач на день', () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
     renderToday(document.getElementById('today-root'), {});
     const click = () => document.querySelector('.todo-status').click();
-    click(); await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('doing'));
-    click(); await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
+    click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('doing'));
+    click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
     // Вчерашний день остался выполненным, а не переписан новым состоянием
     expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
   });
@@ -231,35 +275,46 @@ describe('сколько задач видно сразу', () => {
 
   it('незанятые места отходят другому списку', () => {
     // Две невыполненные — значит у выполненных свободно ещё два места
-    const host = parse(todoListHtml([
-      mine('а', 'todo'), mine('б', 'doing'),
-      ...['1', '2', '3', '4', '5', '6', '7', '8'].map(t => mine(t, 'done'))
-    ], TODAY));
+    const host = parse(
+      todoListHtml(
+        [mine('а', 'todo'), mine('б', 'doing'), ...['1', '2', '3', '4', '5', '6', '7', '8'].map(t => mine(t, 'done'))],
+        TODAY
+      )
+    );
     expect(rowsOf(host, '.todo-list')).toBe('2');
     expect(rowsOf(host, '.todo-done-list')).toBe('6');
   });
 
   it('обратный случай: невыполненных больше, чем выполненных', () => {
-    const host = parse(todoListHtml([
-      ...['а', 'б', 'в', 'г', 'д', 'е', 'ж'].map(t => mine(t, 'todo')),
-      mine('1', 'done'), mine('2', 'done')
-    ], TODAY));
+    const host = parse(
+      todoListHtml(
+        [...['а', 'б', 'в', 'г', 'д', 'е', 'ж'].map(t => mine(t, 'todo')), mine('1', 'done'), mine('2', 'done')],
+        TODAY
+      )
+    );
     // У выполненных мест меньше четырёх — освободившиеся два отходят невыполненным
     expect(rowsOf(host, '.todo-list')).toBe('6');
     expect(rowsOf(host, '.todo-done-list')).toBe('2');
   });
 
   it('дел пять или меньше — не делим, показываем всё', () => {
-    const host = parse(todoListHtml([
-      mine('а', 'todo'), mine('б', 'todo'), mine('в', 'doing'),
-      mine('1', 'done'), mine('2', 'done')
-    ], TODAY));
+    const host = parse(
+      todoListHtml(
+        [mine('а', 'todo'), mine('б', 'todo'), mine('в', 'doing'), mine('1', 'done'), mine('2', 'done')],
+        TODAY
+      )
+    );
     expect(rowsOf(host, '.todo-list')).toBe('3');
     expect(rowsOf(host, '.todo-done-list')).toBe('2');
   });
 
   it('пустая категория отдаёт все места другой', () => {
-    const host = parse(todoListHtml(['1', '2', '3', '4', '5', '6'].map(t => mine(t, 'done')), TODAY));
+    const host = parse(
+      todoListHtml(
+        ['1', '2', '3', '4', '5', '6'].map(t => mine(t, 'done')),
+        TODAY
+      )
+    );
     expect(rowsOf(host, '.todo-done-list')).toBe('6');
     // Незаполненной половины нет вовсе — вместо неё подсказка
     expect(host.querySelector('.todo-list:not(.todo-done-list)')).toBeNull();

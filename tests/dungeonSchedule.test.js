@@ -3,8 +3,15 @@
 import { describe, it, expect } from 'vitest';
 
 import {
-  DUNGEON_CYCLE, ANCHOR_DATE, ANCHOR_DUNGEON, DUNGEON_COLORS,
-  daysBetween, shiftDate, dungeonForDate, dungeonInfoForDate, dungeonStrip
+  DUNGEON_CYCLE,
+  ANCHOR_DATE,
+  ANCHOR_DUNGEON,
+  DUNGEON_COLORS,
+  daysBetween,
+  shiftDate,
+  dungeonForDate,
+  dungeonInfoForDate,
+  dungeonStrip
 } from '../js/modules/dungeons/schedule.js';
 
 const day = (offset, base = ANCHOR_DATE) => shiftDate(base, offset);
@@ -42,7 +49,7 @@ describe('расписание на даты', () => {
   });
 
   it('через месяц и год остаток деления не сбивается', () => {
-    expect(dungeonForDate(day(30))).toBe(dungeonForDate(day(0)));   // 30 = 3×10, цикл целыми
+    expect(dungeonForDate(day(30))).toBe(dungeonForDate(day(0))); // 30 = 3×10, цикл целыми
     // 363 = 3×121 — снова Оружие; дальше цикл продолжается без сдвига
     expect(dungeonForDate(day(363))).toBe('weapon');
     expect(dungeonForDate(day(364))).toBe('armor');
@@ -50,8 +57,12 @@ describe('расписание на даты', () => {
   });
 
   it('как в игре: 06.10 — Оружие, 07.10 — Доспех, 08.10 — Реликвия, 09.10 — Оружие', () => {
-    expect(['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map(dungeonForDate))
-      .toEqual(['weapon', 'armor', 'relic', 'weapon']);
+    expect(['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map(dungeonForDate)).toEqual([
+      'weapon',
+      'armor',
+      'relic',
+      'weapon'
+    ]);
   });
 
   it('полоса на неделю: вчера → +5 дней, каждый день знает свой цвет', () => {
@@ -72,9 +83,9 @@ describe('расписание на даты', () => {
   it('дни между датами и сдвиг считаются без часовых поясов', () => {
     expect(daysBetween('2026-06-10', '2026-06-11')).toBe(1);
     expect(daysBetween('2026-06-11', '2026-06-10')).toBe(-1);
-    expect(shiftDate('2026-06-30', 1)).toBe('2026-07-01');   // через границу месяца
-    expect(shiftDate('2026-12-31', 1)).toBe('2027-01-01');   // через границу года
-    expect(shiftDate('2024-03-01', -1)).toBe('2024-02-29');  // високосный год
+    expect(shiftDate('2026-06-30', 1)).toBe('2026-07-01'); // через границу месяца
+    expect(shiftDate('2026-12-31', 1)).toBe('2027-01-01'); // через границу года
+    expect(shiftDate('2024-03-01', -1)).toBe('2024-02-29'); // високосный год
   });
 });
 

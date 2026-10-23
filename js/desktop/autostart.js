@@ -9,7 +9,7 @@ async function tauriInvoke(cmd, args) {
   return invoke(cmd, args);
 }
 
-const errText = (e) => String(e?.message || e);
+const errText = e => String(e?.message || e);
 
 /**
  * Ответ Rust: что сейчас записано в автозагрузке.
@@ -54,7 +54,8 @@ export function autostartNote(info) {
   const now = info.selfElevated ? 'Сейчас Твиноферма запущена от администратора. ' : '';
   if (!info.enabled) return `${now}Выключен.`;
   const how = info.minimized ? 'сразу в трей, без окна' : 'с окном';
-  if (!info.current) return `${now}Включён (${how}), но запись ведёт на другую копию: ${info.path}. Чтобы привязать к этой копии, выключите и включите снова.`;
+  if (!info.current)
+    return `${now}Включён (${how}), но запись ведёт на другую копию: ${info.path}. Чтобы привязать к этой копии, выключите и включите снова.`;
   const where = info.admin
     ? 'Запись: Планировщик заданий → «Tvinoferma autostart» (Панель управления → Планировщик заданий). В «Диспетчере задач → Автозагрузка» её не видно — там только записи реестра и папка «Автозагрузка».'
     : 'Запись: «Диспетчер задач → Автозагрузка», имя — Tvinoferma.';
@@ -82,7 +83,7 @@ export async function bindAutostart(deps = {}) {
   if (!block || !on || !min || !adm) return;
   if (!deps.invoke && !window.__TAURI_INTERNALS__) return;
 
-  const show = (info) => {
+  const show = info => {
     block.hidden = !info.supported;
     on.checked = info.enabled;
     min.checked = info.minimized;
@@ -110,12 +111,17 @@ export async function bindAutostart(deps = {}) {
   let wasAdmin = adm.checked;
   const apply = async () => {
     on.disabled = min.disabled = adm.disabled = true;
-    if (adm.checked !== wasAdmin) toast('Windows спросит разрешение на изменение автозапуска от администратора', 'info', 5000);
+    if (adm.checked !== wasAdmin)
+      toast('Windows спросит разрешение на изменение автозапуска от администратора', 'info', 5000);
     try {
       show(await setAutostart(on.checked, min.checked, adm.checked, deps));
     } catch (e) {
       toast(`Автозапуск: ${errText(e)}`, 'error', 6000);
-      try { show(await getAutostart(deps)); } catch { /* оставляем как есть */ }
+      try {
+        show(await getAutostart(deps));
+      } catch {
+        /* оставляем как есть */
+      }
     } finally {
       on.disabled = false;
       min.disabled = adm.disabled = !on.checked;
@@ -130,8 +136,9 @@ export async function bindAutostart(deps = {}) {
     if (relaunch.disabled) return;
     const ok = await confirmModal({
       title: 'Перезапустить от администратора?',
-      text: 'Windows спросит разрешение. Твиноферма закроется и откроется заново с правами '
-        + 'администратора — иначе она не может подписывать и закрывать окна игры, запущенные с правами администратора.',
+      text:
+        'Windows спросит разрешение. Твиноферма закроется и откроется заново с правами ' +
+        'администратора — иначе она не может подписывать и закрывать окна игры, запущенные с правами администратора.',
       okText: 'Перезапустить',
       danger: false
     });

@@ -26,7 +26,9 @@ export function openOverlay({ title = '', wide = false, onClose } = {}) {
     sub: overlay.querySelector('.tf-dialog-sub'),
     body: overlay.querySelector('.tf-dialog-body'),
     foot: overlay.querySelector('.tf-dialog-foot'),
-    setTitle(t) { overlay.querySelector('.tf-dialog-title').textContent = t; },
+    setTitle(t) {
+      overlay.querySelector('.tf-dialog-title').textContent = t;
+    },
     close() {
       if (closed) return;
       closed = true;
@@ -36,7 +38,9 @@ export function openOverlay({ title = '', wide = false, onClose } = {}) {
       onClose?.();
     }
   };
-  const onKey = (e) => { if (e.key === 'Escape' && isTopModal(overlay)) api.close(); };
+  const onKey = e => {
+    if (e.key === 'Escape' && isTopModal(overlay)) api.close();
+  };
   const unregister = registerModal(overlay, () => api.close());
   document.addEventListener('keydown', onKey);
   overlay.querySelector('.tf-close').onclick = () => api.close();

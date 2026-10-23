@@ -21,7 +21,7 @@ describe('новые команды зарегистрированы в Rust', (
     'stats_ocr::stats_ocr_available',
     'stats_ocr::stats_ocr_read',
     'commands::factory_reset::factory_reset'
-  ])('%s', (name) => {
+  ])('%s', name => {
     expect(rustLib).toContain(name);
   });
 
@@ -59,7 +59,10 @@ describe('список окон игры: параметры совпадают'
 });
 
 describe('повторная подпись окон: параметры совпадают', () => {
-  const target = rustLauncher.slice(rustLauncher.indexOf('pub struct DecorateTarget'), rustLauncher.indexOf('pub struct DecorateResult'));
+  const target = rustLauncher.slice(
+    rustLauncher.indexOf('pub struct DecorateTarget'),
+    rustLauncher.indexOf('pub struct DecorateResult')
+  );
 
   it('Rust ждёт pid, title и значки в camelCase', () => {
     for (const field of ['pid', 'title', 'icon_small', 'icon_big']) {

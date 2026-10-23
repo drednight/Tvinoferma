@@ -13,9 +13,11 @@ const run = (html, mode = 'inspect', extra = {}) => {
   return runPageScript('promo.js', html, 'TF_PIN_V1_');
 };
 const sigOfInput = () => run(fixture('site-pin-code.html')).data.sig;
-const result = (file) => run(fixture(file), 'result', { baseline: sigOfInput() });
+const result = file => run(fixture(file), 'result', { baseline: sigOfInput() });
 
-beforeEach(() => { window.__TF_PIN = undefined; });
+beforeEach(() => {
+  window.__TF_PIN = undefined;
+});
 
 describe('promo.js: страница ввода (inspect, только чтение)', () => {
   it('/pin/<код>: код подставлен, кнопка «Активировать» найдена', () => {
@@ -35,27 +37,39 @@ describe('promo.js: страница ввода (inspect, только чтен�
   });
 
   it('вёрстка изменилась: нет формы / кнопки / подпись другая → pending, а не «успех»', () => {
-    const noForm = editDom(fixture('site-pin-code.html'), (d) => d.querySelector('form').remove());
+    const noForm = editDom(fixture('site-pin-code.html'), d => d.querySelector('form').remove());
     expect(run(noForm)).toEqual({ data: 'complete', error: 'pending' });
-    const noBtn = editDom(fixture('site-pin-code.html'), (d) => d.querySelector('input[type=submit]').remove());
+    const noBtn = editDom(fixture('site-pin-code.html'), d => d.querySelector('input[type=submit]').remove());
     expect(run(noBtn).error).toBe('pending');
-    const renamed = editDom(fixture('site-pin-code.html'), (d) => { d.querySelector('input[type=submit]').value = 'Что-то другое'; });
+    const renamed = editDom(fixture('site-pin-code.html'), d => {
+      d.querySelector('input[type=submit]').value = 'Что-то другое';
+    });
     expect(run(renamed).error).toBe('pending');
-    const later = editDom(fixture('site-pin-code.html'), (d) => { d.querySelector('input[type=submit]').value = 'Активировать позже'; });
+    const later = editDom(fixture('site-pin-code.html'), d => {
+      d.querySelector('input[type=submit]').value = 'Активировать позже';
+    });
     expect(run(later).error).toBe('pending');
   });
 
   it('посторонние кнопки страницы (выход, меню) не учитываются; невидимая кнопка не считается', () => {
-    const extra = editDom(fixture('site-pin-code.html'), (d) => { d.body.insertAdjacentHTML('beforeend', '<button>Активировать</button>'); });
+    const extra = editDom(fixture('site-pin-code.html'), d => {
+      d.body.insertAdjacentHTML('beforeend', '<button>Активировать</button>');
+    });
     expect(run(extra).data.state).toBe('ready');
-    const hiddenBtn = editDom(fixture('site-pin-code.html'), (d) => d.querySelector('input[type=submit]').setAttribute('hidden', ''));
+    const hiddenBtn = editDom(fixture('site-pin-code.html'), d =>
+      d.querySelector('input[type=submit]').setAttribute('hidden', '')
+    );
     expect(run(hiddenBtn).error).toBe('pending');
   });
 
   it('две кнопки в форме → button_ambiguous; выбор аккаунта → needs_choice', () => {
-    const two = editDom(fixture('site-pin-code.html'), (d) => d.querySelector('form').insertAdjacentHTML('beforeend', '<input type="submit" value="Активировать">'));
+    const two = editDom(fixture('site-pin-code.html'), d =>
+      d.querySelector('form').insertAdjacentHTML('beforeend', '<input type="submit" value="Активировать">')
+    );
     expect(run(two)).toEqual({ data: 2, error: 'button_ambiguous' });
-    const choice = editDom(fixture('site-pin-code.html'), (d) => d.querySelector('form').insertAdjacentHTML('beforeend', '<select><option>1</option><option>2</option></select>'));
+    const choice = editDom(fixture('site-pin-code.html'), d =>
+      d.querySelector('form').insertAdjacentHTML('beforeend', '<select><option>1</option><option>2</option></select>')
+    );
     expect(run(choice)).toEqual({ data: null, error: 'needs_choice' });
   });
 
@@ -71,7 +85,10 @@ describe('promo.js: страница ввода (inspect, только чтен�
 
 describe('promo.js: ответ сайта после нажатия (result, настоящие страницы)', () => {
   it('страница не изменилась → pending (текст до нажатия нельзя принять за ответ)', () => {
-    expect(run(fixture('site-pin-code.html'), 'result', { baseline: sigOfInput() })).toEqual({ data: 'complete', error: 'pending' });
+    expect(run(fixture('site-pin-code.html'), 'result', { baseline: sigOfInput() })).toEqual({
+      data: 'complete',
+      error: 'pending'
+    });
   });
 
   it('успех: все 13 наград с названием, количеством, ID и признаком «привязанный»', () => {
@@ -87,11 +104,17 @@ describe('promo.js: ответ сайта после нажатия (result, н�
   });
 
   it('«Вы уже активировали этот пин-код!» → already_used', () => {
-    expect(result('site-pin-result-used.html')).toEqual({ data: 'Вы уже активировали этот пин-код!', error: 'already_used' });
+    expect(result('site-pin-result-used.html')).toEqual({
+      data: 'Вы уже активировали этот пин-код!',
+      error: 'already_used'
+    });
   });
 
   it('«Время действия пин-кода истекло!» → expired', () => {
-    expect(result('site-pin-result-expired.html')).toEqual({ data: 'Время действия пин-кода истекло!', error: 'expired' });
+    expect(result('site-pin-result-expired.html')).toEqual({
+      data: 'Время действия пин-кода истекло!',
+      error: 'expired'
+    });
   });
 
   it('«Не добавлены бонусы для этого типа пин-кода» → invalid_code (код неверный или ещё не настроен)', () => {
@@ -103,7 +126,9 @@ describe('promo.js: ответ сайта после нажатия (result, н�
   });
 
   it('страница изменилась, но ответ не распознан → unknown + кусок текста для разбора', () => {
-    const r = run(page('<div id="content_body"><p>Что-то странное произошло</p></div>'), 'result', { baseline: sigOfInput() });
+    const r = run(page('<div id="content_body"><p>Что-то странное произошло</p></div>'), 'result', {
+      baseline: sigOfInput()
+    });
     expect(r.error).toBe('unknown');
     expect(r.data).toContain('Что-то странное');
   });
@@ -118,7 +143,9 @@ describe('promo.js: ответ сайта после нажатия (result, н�
   });
 
   it('успех без списка наград: success с пустым списком (не ошибка)', () => {
-    const html = page('<h2>Вы успешно активировали пин-код ABCD1234</h2><div id="content_body"><div class="pin_bonuses_list"><p>Вам было выдано:</p></div></div>');
+    const html = page(
+      '<h2>Вы успешно активировали пин-код ABCD1234</h2><div id="content_body"><div class="pin_bonuses_list"><p>Вам было выдано:</p></div></div>'
+    );
     const r = run(html, 'result', { baseline: sigOfInput() });
     expect(r.data.state).toBe('success');
     expect(r.data.rewards).toEqual([]);
@@ -128,7 +155,12 @@ describe('promo.js: ответ сайта после нажатия (result, н�
 describe('promo.js: нажатие (click)', () => {
   const prepare = (html, code = CODE) => {
     if (!('innerText' in HTMLElement.prototype)) {
-      Object.defineProperty(HTMLElement.prototype, 'innerText', { get() { return this.textContent; }, configurable: true });
+      Object.defineProperty(HTMLElement.prototype, 'innerText', {
+        get() {
+          return this.textContent;
+        },
+        configurable: true
+      });
     }
     const doc = new DOMParser().parseFromString(html, 'text/html');
     document.title = doc.title;
@@ -141,7 +173,7 @@ describe('promo.js: нажатие (click)', () => {
 
   it('на /pin/<код>: нажимает «Активировать» ровно один раз, код в поле не трогает, ответа не пишет', () => {
     prepare(fixture('site-pin-code.html'));
-    const onClick = vi.fn((e) => e.preventDefault());
+    const onClick = vi.fn(e => e.preventDefault());
     document.querySelector('input[type=submit]').addEventListener('click', onClick);
     exec();
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -151,7 +183,7 @@ describe('promo.js: нажатие (click)', () => {
 
   it('пустое поле: код сам НЕ вводится и кнопка не нажимается', () => {
     prepare(fixture('site-pin-empty.html'));
-    const onClick = vi.fn((e) => e.preventDefault());
+    const onClick = vi.fn(e => e.preventDefault());
     document.querySelector('input[type=submit]').addEventListener('click', onClick);
     exec();
     expect(onClick).not.toHaveBeenCalled();
@@ -160,14 +192,22 @@ describe('promo.js: нажатие (click)', () => {
   });
 
   it('не нажимает, если кнопок две, нужен выбор аккаунта или сайт уже сообщил об ошибке', () => {
-    const clicked = vi.fn((e) => e.preventDefault());
+    const clicked = vi.fn(e => e.preventDefault());
     [
-      editDom(fixture('site-pin-code.html'), (d) => d.querySelector('form').insertAdjacentHTML('beforeend', '<input type="submit" value="Активировать">')),
-      editDom(fixture('site-pin-code.html'), (d) => d.querySelector('form').insertAdjacentHTML('beforeend', '<select><option>1</option><option>2</option></select>')),
-      editDom(fixture('site-pin-code.html'), (d) => d.querySelector('#content_body').insertAdjacentHTML('afterbegin', '<div class="m_error">Время действия пин-кода истекло!</div>'))
-    ].forEach((html) => {
+      editDom(fixture('site-pin-code.html'), d =>
+        d.querySelector('form').insertAdjacentHTML('beforeend', '<input type="submit" value="Активировать">')
+      ),
+      editDom(fixture('site-pin-code.html'), d =>
+        d.querySelector('form').insertAdjacentHTML('beforeend', '<select><option>1</option><option>2</option></select>')
+      ),
+      editDom(fixture('site-pin-code.html'), d =>
+        d
+          .querySelector('#content_body')
+          .insertAdjacentHTML('afterbegin', '<div class="m_error">Время действия пин-кода истекло!</div>')
+      )
+    ].forEach(html => {
       prepare(html);
-      document.querySelectorAll('input[type=submit]').forEach((b) => b.addEventListener('click', clicked));
+      document.querySelectorAll('input[type=submit]').forEach(b => b.addEventListener('click', clicked));
       exec();
     });
     expect(clicked).not.toHaveBeenCalled();

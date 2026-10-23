@@ -5,17 +5,31 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(async () => tr
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({ scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }) }));
-vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));
+vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} }));
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
 
-const $ = (s) => document.querySelector(s);
+const $ = s => document.querySelector(s);
 const wait = (ms = 50) => new Promise(r => setTimeout(r, ms));
 let state, openCaravanDialog;
 
-const chars = [{ id: 'a', nick: 'Аа' }, { id: 'b', nick: 'Бб' }, { id: 'c', nick: 'Вв', isLoggedIn: true }];
+const chars = [
+  { id: 'a', nick: 'Аа' },
+  { id: 'b', nick: 'Бб' },
+  { id: 'c', nick: 'Вв', isLoggedIn: true }
+];
 const reply = (charId, over = {}) => ({
-  charId, status: 'success', error: null, dryRun: false, clicked: true, found: 2, other: 0, opened: 2,
-  chests: [{ cartId: '1', until: '15:04 10.10.2026', state: 'opened', error: null, items: ['x'] }, { cartId: '2', until: '', state: 'opened', error: null, items: ['y'] }],
+  charId,
+  status: 'success',
+  error: null,
+  dryRun: false,
+  clicked: true,
+  found: 2,
+  other: 0,
+  opened: 2,
+  chests: [
+    { cartId: '1', until: '15:04 10.10.2026', state: 'opened', error: null, items: ['x'] },
+    { cartId: '2', until: '', state: 'opened', error: null, items: ['y'] }
+  ],
   ...over
 });
 
@@ -27,7 +41,8 @@ beforeEach(async () => {
   mocks.toast.mockReset();
   document.body.innerHTML = '<div id="modal-root"></div>';
   ({ state } = await import('../js/core/state.js'));
-  state.characters = chars.map(c => ({ ...c })); state.parties = [];
+  state.characters = chars.map(c => ({ ...c }));
+  state.parties = [];
   ({ openCaravanDialog } = await import('../js/modules/automation/caravan.js'));
 });
 
@@ -72,7 +87,8 @@ describe('форма «Сундук караванщика»', () => {
 });
 
 describe('персонажи без входа на сайт', () => {
-  const noLogin = () => state.characters.map(c => c.id === 'c' ? { ...c, isLoggedIn: true } : { ...c, isLoggedIn: false });
+  const noLogin = () =>
+    state.characters.map(c => (c.id === 'c' ? { ...c, isLoggedIn: true } : { ...c, isLoggedIn: false }));
 
   it('в форме видна подсказка с ними по именам', () => {
     state.characters = noLogin();
@@ -100,7 +116,7 @@ describe('персонажи без входа на сайт', () => {
     openCaravanDialog({ ids: ['a', 'b', 'c'] });
     $('[data-act="start"]').click();
     await wait(200);
-    expect(mocks.confirm).toHaveBeenCalledTimes(2);          // «пропустить?» и подтверждение открытия
+    expect(mocks.confirm).toHaveBeenCalledTimes(2); // «пропустить?» и подтверждение открытия
     expect(mocks.confirm.mock.calls[0][0].text).toContain('Пропущу 2 из 3');
     expect(mocks.confirm.mock.calls[0][0].text).toContain('Аа, Бб');
     expect(mocks.confirm.mock.calls[1][0].text).toContain('Персонажей: 1');
@@ -120,7 +136,10 @@ describe('персонажи без входа на сайт', () => {
 
   it('у кого вход есть — лишних вопросов нет', async () => {
     mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
-    state.characters = [{ id: 'a', nick: 'Аа' }, { id: 'c', nick: 'Вв', isLoggedIn: true }];
+    state.characters = [
+      { id: 'a', nick: 'Аа' },
+      { id: 'c', nick: 'Вв', isLoggedIn: true }
+    ];
     openCaravanDialog({ ids: ['a', 'c'] });
     expect($('#caravan-nologin').hidden).toBe(true);
     $('[data-act="start"]').click();
@@ -156,9 +175,23 @@ describe('запуск', () => {
   });
 
   it('«Только посчитать» не спрашивает подтверждение, шлёт dryRun и предлагает открыть найденное', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId, a.charId === 'a'
-      ? { status: 'dry_run', dryRun: true, clicked: false, opened: 0, chests: [{ cartId: '7', until: '', state: 'found', error: null, items: [] }, { cartId: '8', until: '', state: 'found', error: null, items: [] }] }
-      : { status: 'nothing', found: 0, opened: 0, clicked: false, chests: [] }));
+    mocks.invoke.mockImplementation(async (_, a) =>
+      reply(
+        a.charId,
+        a.charId === 'a'
+          ? {
+              status: 'dry_run',
+              dryRun: true,
+              clicked: false,
+              opened: 0,
+              chests: [
+                { cartId: '7', until: '', state: 'found', error: null, items: [] },
+                { cartId: '8', until: '', state: 'found', error: null, items: [] }
+              ]
+            }
+          : { status: 'nothing', found: 0, opened: 0, clicked: false, chests: [] }
+      )
+    );
     openCaravanDialog({ ids: ['a', 'b'] });
     $('[data-act="dry"]').click();
     await wait(150);
@@ -179,9 +212,18 @@ describe('запуск', () => {
   });
 
   it('частичный итог: «Повторить» запускает только тех, у кого осталось', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => (a.charId === 'a'
-      ? reply('a', { status: 'partial', opened: 1, chests: [{ cartId: '1', until: '', state: 'opened', error: null, items: [] }, { cartId: '2', until: '', state: 'not_opened', error: null, items: [] }] })
-      : reply(a.charId)));
+    mocks.invoke.mockImplementation(async (_, a) =>
+      a.charId === 'a'
+        ? reply('a', {
+            status: 'partial',
+            opened: 1,
+            chests: [
+              { cartId: '1', until: '', state: 'opened', error: null, items: [] },
+              { cartId: '2', until: '', state: 'not_opened', error: null, items: [] }
+            ]
+          })
+        : reply(a.charId)
+    );
     openCaravanDialog({ ids: ['a', 'b'] });
     $('[data-act="start"]').click();
     await wait(150);
@@ -197,9 +239,14 @@ describe('запуск', () => {
   });
 
   it('нет входа и ошибка видны в таблице, «Повторить» недоступно, если повторять нечего', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId, a.charId === 'a'
-      ? { status: 'not_logged_in', found: 0, opened: 0, clicked: false, chests: [] }
-      : { status: 'nothing', found: 0, opened: 0, clicked: false, chests: [] }));
+    mocks.invoke.mockImplementation(async (_, a) =>
+      reply(
+        a.charId,
+        a.charId === 'a'
+          ? { status: 'not_logged_in', found: 0, opened: 0, clicked: false, chests: [] }
+          : { status: 'nothing', found: 0, opened: 0, clicked: false, chests: [] }
+      )
+    );
     openCaravanDialog({ ids: ['a', 'b'] });
     $('[data-act="start"]').click();
     await wait(150);
@@ -219,11 +266,16 @@ describe('запуск', () => {
   it('«Стоп» во время работы: начатые заканчиваются, остальные не стартуют', async () => {
     state.characters.push({ id: 'd', nick: 'Гг' }, { id: 'e', nick: 'Дд' });
     const releases = [];
-    mocks.invoke.mockImplementation((_, a) => new Promise(r => { releases.push(() => r(reply(a.charId))); }));
+    mocks.invoke.mockImplementation(
+      (_, a) =>
+        new Promise(r => {
+          releases.push(() => r(reply(a.charId)));
+        })
+    );
     openCaravanDialog({ ids: ['a', 'b', 'c', 'd', 'e'] });
     $('[data-act="start"]').click();
     await wait(150);
-    expect(releases).toHaveLength(3);          // по лимиту окон — три одновременно
+    expect(releases).toHaveLength(3); // по лимиту окон — три одновременно
     $('[data-act="stop"]').click();
     releases.forEach(f => f());
     await wait(200);

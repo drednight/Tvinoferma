@@ -87,7 +87,14 @@ describe('импорт: сборка карточки', () => {
     const tags = ALL_FIELDS.find(f => f.path === 'tags');
     expect(mergeValues(tags, ['a', 'B'], ['b', 'c'])).toEqual(['a', 'B', 'c']);
     const hist = ALL_FIELDS.find(f => f.path === 'coinHistory');
-    const merged = mergeValues(hist, [{ id: '1', date: '2024-01-01' }], [{ id: '1', date: '2024-01-01' }, { id: '2', date: '2024-02-01' }]);
+    const merged = mergeValues(
+      hist,
+      [{ id: '1', date: '2024-01-01' }],
+      [
+        { id: '1', date: '2024-01-01' },
+        { id: '2', date: '2024-02-01' }
+      ]
+    );
     expect(merged.map(h => h.id)).toEqual(['2', '1']);
   });
 

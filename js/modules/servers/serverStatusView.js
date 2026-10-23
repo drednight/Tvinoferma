@@ -23,7 +23,12 @@ function titleText(snapshot, meta) {
   const lines = ['Статус серверов — страница pwonline.ru/server_status.php'];
   if (status?.recommended) lines.push(`Рекомендуемый сервер: ${status.recommended}`);
   if (status?.at) lines.push(`Прочитано: ${new Date(status.at).toLocaleString('ru-RU')}`);
-  if (error) lines.push(error.status === 'challenge' ? 'Сайт показал проверку безопасности' : `Ошибка чтения: ${error.error || error.status}`);
+  if (error)
+    lines.push(
+      error.status === 'challenge'
+        ? 'Сайт показал проверку безопасности'
+        : `Ошибка чтения: ${error.error || error.status}`
+    );
   lines.push('Обновляется при запуске и по расписанию (Настройки → Свежесть данных)');
   return lines.join('\n') || meta.text;
 }
@@ -36,11 +41,13 @@ export function serverStatusHtml(snapshot, now = Date.now()) {
   const meta = serverStatusMeta(snapshot, now);
   const servers = snapshot.status?.servers || [];
   const list = servers.length
-    ? `<ul class="srv-list">${servers.map(s => {
-      const cls = s.online === true ? 'is-on' : s.online === false ? 'is-off' : 'is-unknown';
-      const tip = s.online === true ? 'Онлайн' : s.online === false ? 'Оффлайн' : 'Состояние неизвестно';
-      return `<li class="srv ${cls}" title="${tip}"><span class="srv-dot"></span>${escapeHtml(s.name)}</li>`;
-    }).join('')}</ul>`
+    ? `<ul class="srv-list">${servers
+        .map(s => {
+          const cls = s.online === true ? 'is-on' : s.online === false ? 'is-off' : 'is-unknown';
+          const tip = s.online === true ? 'Онлайн' : s.online === false ? 'Оффлайн' : 'Состояние неизвестно';
+          return `<li class="srv ${cls}" title="${tip}"><span class="srv-dot"></span>${escapeHtml(s.name)}</li>`;
+        })
+        .join('')}</ul>`
     : '';
   return `<div class="srv-plaque${snapshot.busy ? ' is-busy' : ''}${meta.warn ? ' is-warn' : ''}" title="${escapeHtml(titleText(snapshot, meta))}">
       <div class="srv-head"><b>Статус серверов</b><span class="srv-age">${escapeHtml(meta.text)}</span></div>${list}</div>`;
@@ -52,9 +59,14 @@ export function serverStatusHtml(snapshot, now = Date.now()) {
  */
 export function mountServerStatus(el, { tickMs = 60000 } = {}) {
   if (!el) return () => {};
-  const draw = () => { el.innerHTML = serverStatusHtml(getServerStatus()); };
+  const draw = () => {
+    el.innerHTML = serverStatusHtml(getServerStatus());
+  };
   draw();
   const off = onServerStatus(draw);
   const id = setInterval(draw, tickMs);
-  return () => { off(); clearInterval(id); };
+  return () => {
+    off();
+    clearInterval(id);
+  };
 }

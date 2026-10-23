@@ -14,9 +14,24 @@ const history = () => {
   window.__TF_SHOP = { mode: 'history', wanted: [] };
   return runPageScript('shop.js', fixture('site-shop-history.html'), 'TF_SHOP_V1_').data.rows;
 };
-const row = (i, extra = {}) => ({ at: new Date(NOW.getTime() + i * 1000).toISOString(), charId: 'a', nick: 'А', members: ['А'], itemKey: 'valor', item: 'Знак доблести (25 штук)', requested: 1, bought: 1, price: 10, spent: 10, status: 'done', ...extra });
+const row = (i, extra = {}) => ({
+  at: new Date(NOW.getTime() + i * 1000).toISOString(),
+  charId: 'a',
+  nick: 'А',
+  members: ['А'],
+  itemKey: 'valor',
+  item: 'Знак доблести (25 штук)',
+  requested: 1,
+  bought: 1,
+  price: 10,
+  spent: 10,
+  status: 'done',
+  ...extra
+});
 
-beforeEach(() => { window.localStorage.clear(); });
+beforeEach(() => {
+  window.localStorage.clear();
+});
 
 describe('состояние', () => {
   it('запись чтения: персонажи привязываются к аккаунту, баланс и предметы сохраняются', () => {
@@ -49,11 +64,20 @@ describe('состояние', () => {
 
   it('покупка: баланс, остаток лимита и срок обновления от неё', () => {
     const { siteKey } = store.saveScan(['a'], scan(), NOW);
-    store.recordPurchase(siteKey, 'light', { at: '2026-10-08T10:00:00.000Z', balanceAfter: 14, availableBefore: 4, availableAfter: 3 });
+    store.recordPurchase(siteKey, 'light', {
+      at: '2026-10-08T10:00:00.000Z',
+      balanceAfter: 14,
+      availableBefore: 4,
+      availableAfter: 3
+    });
     const acc = store.getAccount(siteKey);
     expect(acc.balance).toBe(14);
     expect(acc.items.light.available).toBe(3);
-    expect(acc.tracks.light).toMatchObject({ lastBuyAt: '2026-10-08T10:00:00.000Z', resetAt: '2026-11-08T10:00:00.000Z', max: 4 });
+    expect(acc.tracks.light).toMatchObject({
+      lastBuyAt: '2026-10-08T10:00:00.000Z',
+      resetAt: '2026-11-08T10:00:00.000Z',
+      max: 4
+    });
     store.recordPurchase(siteKey, 'light', { at: '2026-10-08T10:05:00.000Z', availableAfter: 0 });
     expect(store.getAccount(siteKey).items.light).toMatchObject({ available: 0, blocked: true, buyable: false });
     expect(store.getAccount(siteKey).tracks.light.resetAt).toBe('2026-11-08T10:05:00.000Z');
@@ -89,7 +113,7 @@ describe('журнал', () => {
     expect(store.recordShopRow(row(4))).toBeTruthy();
     const log = store.loadShopLog();
     expect(log).toHaveLength(2);
-    expect(log[0].at > log[1].at).toBe(true);        // новые сверху
+    expect(log[0].at > log[1].at).toBe(true); // новые сверху
   });
 
   it('общий журнал хранит последние 300 записей', () => {
@@ -103,7 +127,9 @@ describe('журнал', () => {
 
   it('запись сообщает подписчикам и очищается', () => {
     let n = 0;
-    const fn = () => { n++; };
+    const fn = () => {
+      n++;
+    };
     window.addEventListener('tf-shop-log', fn);
     store.recordShopRow(row(1));
     window.removeEventListener('tf-shop-log', fn);

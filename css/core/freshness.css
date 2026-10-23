@@ -8,9 +8,17 @@
   align-items: center;
   font-size: 0.73rem;
 }
-.fresh-chip { white-space: nowrap; color: var(--text-faint); }
-.fresh-chip.is-stale { color: var(--warning); font-weight: 600; }
-.fresh-chip.is-stale::before { content: '⏳ '; }
+.fresh-chip {
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+.fresh-chip.is-stale {
+  color: var(--warning);
+  font-weight: 600;
+}
+.fresh-chip.is-stale::before {
+  content: '⏳ ';
+}
 
 /* Окно «Когда что проверено» в профиле персонажа */
 .pf-checks {
@@ -20,8 +28,14 @@
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
 }
-.pf-checks-title { font-weight: 650; color: var(--text-dim); cursor: pointer; }
-.pf-checks[open] > .pf-checks-title { margin-bottom: 8px; }
+.pf-checks-title {
+  font-weight: 650;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.pf-checks[open] > .pf-checks-title {
+  margin-bottom: 8px;
+}
 .pf-check-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) auto auto;
@@ -30,9 +44,22 @@
   padding: 4px 0;
   font-size: 0.88rem;
 }
-.pf-check-when { color: var(--text); font-variant-numeric: tabular-nums; }
-.pf-check-note { margin-top: 6px; font-size: 0.78rem; }
+.pf-check-when {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pf-check-note {
+  margin-top: 6px;
+  font-size: 0.78rem;
+}
 
 /* Подпись «= 1 день» рядом с полем часов */
-.hours-field { display: flex; align-items: center; gap: 10px; }
-.hours-hint { min-width: 120px; font-size: 0.8rem; }
+.hours-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hours-hint {
+  min-width: 120px;
+  font-size: 0.8rem;
+}

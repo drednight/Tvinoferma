@@ -1,27 +1,50 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Диалог «Активация подарков» (покупка за Древние монеты) и вид «Подарки» в «Настройки → Журналы»
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), confirm: vi.fn(async () => true), toast: vi.fn(), refresh: vi.fn(), rerender: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  confirm: vi.fn(async () => true),
+  toast: vi.fn(),
+  refresh: vi.fn(),
+  rerender: vi.fn()
+}));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../js/modules/sync/syncManager.js', () => ({
-  scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }), refreshAllBalances: mocks.refresh, rerenderLists: mocks.rerender
+  scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }),
+  refreshAllBalances: mocks.refresh,
+  rerenderLists: mocks.rerender
 }));
-vi.mock('../js/modules/sync/queue.js', async (orig) => ({ ...(await orig()), sleep: async () => {} }));   // без реальных пауз
+vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} })); // без реальных пауз
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));
 
-const $ = (s) => document.querySelector(s);
-const $$ = (s) => [...document.querySelectorAll(s)];
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
 const wait = (ms = 300) => new Promise(r => setTimeout(r, ms));
 const nicks = () => $$('tr.shop-row').map(r => r.querySelector('b').textContent);
-const rowOf = (nick) => $$('tr.shop-row').find(r => r.querySelector('b').textContent === nick);
+const rowOf = nick => $$('tr.shop-row').find(r => r.querySelector('b').textContent === nick);
 const qtyInput = (nick, key) => rowOf(nick).querySelector(`[data-qty$="|${key}"]`);
-const type = (el, v) => { el.value = String(v); el.dispatchEvent(new Event('input', { bubbles: true })); };
-const clickFoot = async (act, ms = 600) => { document.querySelector(`.tf-dialog-foot [data-act="${act}"]`).click(); await wait(ms); };
+const type = (el, v) => {
+  el.value = String(v);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+};
+const clickFoot = async (act, ms = 600) => {
+  document.querySelector(`.tf-dialog-foot [data-act="${act}"]`).click();
+  await wait(ms);
+};
 
-const WANTED = ['Камень светлого духа', 'Камень асуров', 'Камень лагеря', 'Камень государя', 'Знак доблести (25 штук)', 'Знак единства (25 штук)', 'Сундук средоточия', 'Ключ от Книги наставлений'];
-const ACCOUNT_OF = { a: 'U2', b: 'U1', c: 'U1' };       // «Бб» и «Вв» — один аккаунт сайта, «Аа» — другой
-let site;                                               // модель сайта: у каждого аккаунта баланс и остаток лимитов
+const WANTED = [
+  'Камень светлого духа',
+  'Камень асуров',
+  'Камень лагеря',
+  'Камень государя',
+  'Знак доблести (25 штук)',
+  'Знак единства (25 штук)',
+  'Сундук средоточия',
+  'Ключ от Книги наставлений'
+];
+const ACCOUNT_OF = { a: 'U2', b: 'U1', c: 'U1' }; // «Бб» и «Вв» — один аккаунт сайта, «Аа» — другой
+let site; // модель сайта: у каждого аккаунта баланс и остаток лимитов
 let state, openShopDialog, store, core, mountLogHub;
 
 const freshSite = () => ({
@@ -33,16 +56,41 @@ const DEF = {
   'Камень асуров': { key: 'asura', id: '2', price: 40, desc: '' },
   'Камень лагеря': { key: 'camp', id: '3', price: 40, desc: '' },
   'Камень государя': { key: 'sovereign', id: '4', price: 40, desc: '' },
-  'Знак доблести (25 штук)': { key: 'valor', id: '479', price: 10, chest: true, desc: 'Активировав сундучок, вы получите: Знак доблести x 25' },
+  'Знак доблести (25 штук)': {
+    key: 'valor',
+    id: '479',
+    price: 10,
+    chest: true,
+    desc: 'Активировав сундучок, вы получите: Знак доблести x 25'
+  },
   'Знак единства (25 штук)': { key: 'unity', id: '480', price: 10, chest: true, desc: '' }
 };
 const rawItem = (acc, want) => {
   const d = DEF[want];
   if (!d) return { want, found: false, ambiguous: false };
   const left = d.chest ? null : site[acc].left[d.key];
-  return { want, found: true, name: want.replace(/ \(.*\)$/, ''), id: d.id, kind: d.chest ? 'chest' : 'item', price: d.price, available: left, max: null, blocked: left === 0, hasLink: true, label: d.chest ? 'Открыть' : 'Купить', desc: d.desc, image: '' };
+  return {
+    want,
+    found: true,
+    name: want.replace(/ \(.*\)$/, ''),
+    id: d.id,
+    kind: d.chest ? 'chest' : 'item',
+    price: d.price,
+    available: left,
+    max: null,
+    blocked: left === 0,
+    hasLink: true,
+    label: d.chest ? 'Открыть' : 'Купить',
+    desc: d.desc,
+    image: ''
+  };
 };
-const scanPayload = (acc) => ({ status: 'ok', account: `acc_${acc}`, balance: site[acc].balance, items: WANTED.map(w => rawItem(acc, w)) });
+const scanPayload = acc => ({
+  status: 'ok',
+  account: `acc_${acc}`,
+  balance: site[acc].balance,
+  items: WANTED.map(w => rawItem(acc, w))
+});
 
 const chars = () => [
   { id: 'a', nick: 'Аа', isLoggedIn: true, ancientCoins: 5 },
@@ -78,8 +126,11 @@ beforeEach(async () => {
   mocks.confirm.mockReset().mockResolvedValue(true);
   mocks.toast.mockReset();
   mocks.rerender.mockReset();
-  mocks.refresh.mockReset().mockImplementation(async (list) => {
-    list.forEach(c => { c.ancientCoins = site[ACCOUNT_OF[c.id]].balance; c.lastCoinUpdate = new Date().toISOString(); });
+  mocks.refresh.mockReset().mockImplementation(async list => {
+    list.forEach(c => {
+      c.ancientCoins = site[ACCOUNT_OF[c.id]].balance;
+      c.lastCoinUpdate = new Date().toISOString();
+    });
     return { updated: list.length, failed: 0 };
   });
   document.body.innerHTML = '<div id="modal-root"></div><div id="log-root"></div>';
@@ -123,7 +174,9 @@ describe('окно: предметы', () => {
       await wait();
       expect($('[data-item="focus"]').disabled).toBe(false);
       expect($('[data-card="focus"] .shop-price').textContent).toBe('10 мон. за сундук');
-    } finally { delete DEF['Сундук средоточия']; }
+    } finally {
+      delete DEF['Сундук средоточия'];
+    }
   });
 
   it('лимит исчерпан: счётчик у карточки и «лимит исчерпан» в ячейке аккаунта', async () => {
@@ -142,9 +195,13 @@ describe('окно: ход проверки на сайте', () => {
   it('пока идёт проверка — проценты готовности и полоса; по окончании — «Данные с сайта»', async () => {
     const gates = [];
     const base = mocks.invoke.getMockImplementation();
-    mocks.invoke.mockImplementation((cmd, args) => (cmd === 'read_shop'
-      ? new Promise(res => { gates.push(() => res(scanPayload(ACCOUNT_OF[args.charId]))); })
-      : base(cmd, args)));
+    mocks.invoke.mockImplementation((cmd, args) =>
+      cmd === 'read_shop'
+        ? new Promise(res => {
+            gates.push(() => res(scanPayload(ACCOUNT_OF[args.charId])));
+          })
+        : base(cmd, args)
+    );
     openShopDialog();
     await wait();
     expect(gates).toHaveLength(3);
@@ -154,7 +211,8 @@ describe('окно: ход проверки на сайте', () => {
     await wait();
     expect($('#shop-scan').textContent).toContain('33%');
     expect($('#shop-scan').textContent).toContain('1 из 3');
-    gates[1](); gates[2]();
+    gates[1]();
+    gates[2]();
     await wait();
     expect($('#shop-scan').textContent).toContain('Данные с сайта');
     expect($('#shop-scan .shop-bar')).toBeNull();
@@ -194,8 +252,10 @@ describe('окно: аккаунты', () => {
       prefill();
       openShopDialog();
       await wait();
-      expect(nicks()).toEqual(['Вв', 'Яя', 'Аа']);          // 54, 20, и 5 монет — ниже всех
-    } finally { delete ACCOUNT_OF.d; }
+      expect(nicks()).toEqual(['Вв', 'Яя', 'Аа']); // 54, 20, и 5 монет — ниже всех
+    } finally {
+      delete ACCOUNT_OF.d;
+    }
   });
 
   it('без входа: внизу, отметить нельзя, сайт не читается', async () => {
@@ -209,19 +269,24 @@ describe('окно: аккаунты', () => {
       expect(last.querySelector('b').textContent).toBe('Яя');
       expect(last.textContent).toContain('нет входа');
       expect(last.querySelector('[data-sel]').disabled).toBe(true);
-    } finally { delete ACCOUNT_OF.z; }
+    } finally {
+      delete ACCOUNT_OF.z;
+    }
   });
 
   it('фильтр по пати: все / без пати / конкретная; поиск', async () => {
     state.parties = [{ id: 'p1', name: 'Основа' }];
-    state.characters[1].partyIds = ['p1'];            // «Бб» и «Вв» (один аккаунт) — в пати, «Аа» — без пати
+    state.characters[1].partyIds = ['p1']; // «Бб» и «Вв» (один аккаунт) — в пати, «Аа» — без пати
     state.characters[2].partyIds = ['p1'];
     prefill();
     openShopDialog();
     await wait();
     const opts = $$('#shop-party option').map(o => o.textContent);
     expect(opts).toEqual(['Все пати', 'Без пати', 'Основа']);
-    const pick = (v) => { $('#shop-party').value = v; $('#shop-party').dispatchEvent(new Event('change', { bubbles: true })); };
+    const pick = v => {
+      $('#shop-party').value = v;
+      $('#shop-party').dispatchEvent(new Event('change', { bubbles: true }));
+    };
     pick('p1');
     expect(nicks()).toEqual(['Вв']);
     pick('__none__');
@@ -231,7 +296,7 @@ describe('окно: аккаунты', () => {
     type($('#shop-search'), 'основа');
     expect(nicks()).toEqual(['Вв']);
     type($('#shop-search'), 'бб');
-    expect(nicks()).toEqual(['Вв']);                   // «Бб» — член того же аккаунта
+    expect(nicks()).toEqual(['Вв']); // «Бб» — член того же аккаунта
   });
 
   it('«Выбрать всех» / «Снять выбор»', async () => {
@@ -258,7 +323,7 @@ describe('окно: количество, сумма и остаток', () => {
     expect(row.querySelector('[data-total]').textContent).toContain('остаток: 24');
     expect(row.querySelector('[data-sel]').checked).toBe(true);
     expect($('#shop-summary').textContent).toContain('К покупке: 3 шт. на 30');
-    expect(input.isConnected).toBe(true);              // ввод не перерисовывает поле
+    expect(input.isConnected).toBe(true); // ввод не перерисовывает поле
   });
 
   it('больше, чем хватает монет, — предупреждение «купится K из N»', async () => {
@@ -288,7 +353,9 @@ describe('окно: количество, сумма и остаток', () => {
     $('[data-item="valor"]').click();
     type(qtyInput('Вв', 'light'), 1);
     type(qtyInput('Вв', 'valor'), 3);
-    expect(rowOf('Вв').querySelector('[data-calc$="|valor"]').textContent).toContain('купится 1 из 3 (не хватает монет)');
+    expect(rowOf('Вв').querySelector('[data-calc$="|valor"]').textContent).toContain(
+      'купится 1 из 3 (не хватает монет)'
+    );
     expect(rowOf('Вв').querySelector('[data-total]').textContent).toContain('остаток: 4');
   });
 
@@ -366,8 +433,11 @@ describe('покупка', () => {
 
   it('пробный запуск: без подтверждения, dryRun, без записи в журнал и проверки баланса', async () => {
     await setup();
-    mocks.invoke.mockImplementation(async (cmd, args) => (cmd === 'buy_shop_item'
-      ? { status: 'dry_run', clicked: false, detail: 'Открыть' } : scanPayload(ACCOUNT_OF[args.charId])));
+    mocks.invoke.mockImplementation(async (cmd, args) =>
+      cmd === 'buy_shop_item'
+        ? { status: 'dry_run', clicked: false, detail: 'Открыть' }
+        : scanPayload(ACCOUNT_OF[args.charId])
+    );
     $('[data-item="valor"]').click();
     type(qtyInput('Вв', 'valor'), 3);
     await clickFoot('dry', 900);
@@ -408,9 +478,32 @@ describe('покупка', () => {
 
 describe('журнал покупок', () => {
   it('общий журнал: записи с ником, предметом, суммой; поиск по нику; подробности', async () => {
-    const mk = (i, nick, charId, extra = {}) => ({ at: new Date(Date.now() + i * 1000).toISOString(), charId, nick, members: [nick], itemKey: 'valor', item: 'Знак доблести (25 штук)', requested: 3, bought: 3, price: 10, spent: 30, status: 'done', ...extra });
+    const mk = (i, nick, charId, extra = {}) => ({
+      at: new Date(Date.now() + i * 1000).toISOString(),
+      charId,
+      nick,
+      members: [nick],
+      itemKey: 'valor',
+      item: 'Знак доблести (25 штук)',
+      requested: 3,
+      bought: 3,
+      price: 10,
+      spent: 30,
+      status: 'done',
+      ...extra
+    });
     store.recordShopRow(mk(1, 'Аа', 'a'));
-    store.recordShopRow(mk(2, 'Вв', 'c', { bought: 4, requested: 6, status: 'limit', itemKey: 'camp', item: 'Камень лагеря', spent: 160, price: 40 }));
+    store.recordShopRow(
+      mk(2, 'Вв', 'c', {
+        bought: 4,
+        requested: 6,
+        status: 'limit',
+        itemKey: 'camp',
+        item: 'Камень лагеря',
+        spent: 160,
+        price: 40
+      })
+    );
     await import('../js/modules/automation/shopLogView.js');
     mountLogHub($('#log-root'), { source: 'shop' });
     const text = $('#log-root').textContent;
@@ -419,7 +512,7 @@ describe('журнал покупок', () => {
     expect(text).toContain('Камень лагеря');
     const { shopLogSource, detailsHtml } = await import('../js/modules/automation/shopLogView.js');
     expect(shopLogSource.list()).toHaveLength(2);
-    expect(shopLogSource.list()[0].status).toBe('warn');          // «куплено до лимита»
+    expect(shopLogSource.list()[0].status).toBe('warn'); // «куплено до лимита»
     expect(detailsHtml(store.loadShopLog()[0])).toContain('Куплено до лимита: 4 из 6');
   });
 });

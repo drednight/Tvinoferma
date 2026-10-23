@@ -8,7 +8,7 @@ export default defineConfig({
     // ВАЖНОЕ ИЗМЕНЕНИЕ НИЖЕ:
     watch: {
       // Игнорируем папку src-tauri/target, чтобы OneDrive/Vite не конфликтовали с Cargo
-      ignored: ['**/src-tauri/target/**'] 
+      ignored: ['**/src-tauri/target/**']
     }
   },
   build: {

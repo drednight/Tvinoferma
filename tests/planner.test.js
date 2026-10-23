@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
-  localDate, monthMatrix, normalizePlannerEntry, plannerEventsForDate,
-  entryStatusForDate, setEntryStatusForDate
+  localDate,
+  monthMatrix,
+  normalizePlannerEntry,
+  plannerEventsForDate,
+  entryStatusForDate,
+  setEntryStatusForDate
 } from '../js/modules/dashboard/planner.js';
 
 describe('месячный планер', () => {
@@ -13,15 +17,33 @@ describe('месячный планер', () => {
     expect(cells.filter(Boolean).at(-1)).toBe('2026-10-31');
   });
 
-it('нормализует расширенные поля записи', () => {
-expect(normalizePlannerEntry({
-      id: 'x', title: '  Сделать  ', date: '2026-10-05', kind: 'note',
-      priority: 'high', reminderMinutes: 60, recurrence: 'weekly',
-      recurrenceEnd: '2026-12-01', color: 'red', done: true, durationMinutes: 90
-    })).toMatchObject({
-      id: 'x', title: 'Сделать', date: '2026-10-05', kind: 'note',
-      priority: 'high', reminderMinutes: 60, recurrence: 'weekly',
-      recurrenceEnd: '2026-12-01', color: 'red', status: 'done', durationMinutes: 90
+  it('нормализует расширенные поля записи', () => {
+    expect(
+      normalizePlannerEntry({
+        id: 'x',
+        title: '  Сделать  ',
+        date: '2026-10-05',
+        kind: 'note',
+        priority: 'high',
+        reminderMinutes: 60,
+        recurrence: 'weekly',
+        recurrenceEnd: '2026-12-01',
+        color: 'red',
+        done: true,
+        durationMinutes: 90
+      })
+    ).toMatchObject({
+      id: 'x',
+      title: 'Сделать',
+      date: '2026-10-05',
+      kind: 'note',
+      priority: 'high',
+      reminderMinutes: 60,
+      recurrence: 'weekly',
+      recurrenceEnd: '2026-12-01',
+      color: 'red',
+      status: 'done',
+      durationMinutes: 90
     });
   });
 
@@ -42,14 +64,21 @@ expect(normalizePlannerEntry({
   it('в списке задач на день сначала «в работе», потом «ожидает», выполненные — в конце', () => {
     const mk = (title, status) => normalizePlannerEntry({ title, date: '2026-10-05', status });
     const state = { plannerEntries: [mk('Сделано', 'done'), mk('Ждёт', 'todo'), mk('Делаю', 'doing')] };
-    expect(plannerEventsForDate(state, '2026-10-05').filter(e => e.source === 'manual').map(e => e.title))
-      .toEqual(['Делаю', 'Ждёт', 'Сделано']);
+    expect(
+      plannerEventsForDate(state, '2026-10-05')
+        .filter(e => e.source === 'manual')
+        .map(e => e.title)
+    ).toEqual(['Делаю', 'Ждёт', 'Сделано']);
   });
 
   it('длительность записи: по умолчанию час, битое значение не проходит', () => {
     expect(normalizePlannerEntry({ id: 'a', title: 'A', date: '2026-10-05' }).durationMinutes).toBe(60);
-    expect(normalizePlannerEntry({ id: 'b', title: 'B', date: '2026-10-05', durationMinutes: 0 }).durationMinutes).toBe(60);
-    expect(normalizePlannerEntry({ id: 'c', title: 'C', date: '2026-10-05', durationMinutes: 99999 }).durationMinutes).toBe(1440);
+    expect(normalizePlannerEntry({ id: 'b', title: 'B', date: '2026-10-05', durationMinutes: 0 }).durationMinutes).toBe(
+      60
+    );
+    expect(
+      normalizePlannerEntry({ id: 'c', title: 'C', date: '2026-10-05', durationMinutes: 99999 }).durationMinutes
+    ).toBe(1440);
   });
 
   it('показывает повторы и активные марафоны', () => {
@@ -90,9 +119,14 @@ expect(normalizePlannerEntry({
 
   // Свойство отметок по дням: у повтора состояние не общее, иначе «сделал вчера»
   // автоматически означало бы «сделал сегодня» и новый день приходил бы отмеченным.
-  const daily = (extra = {}) => normalizePlannerEntry({
-    id: 'daily', title: 'Поранки', date: '2026-10-01', recurrence: 'daily', ...extra
-  });
+  const daily = (extra = {}) =>
+    normalizePlannerEntry({
+      id: 'daily',
+      title: 'Поранки',
+      date: '2026-10-01',
+      recurrence: 'daily',
+      ...extra
+    });
 
   it('отметка повтора не тащится в следующий день', () => {
     const entry = daily();
@@ -102,7 +136,7 @@ expect(normalizePlannerEntry({
     expect(entryStatusForDate(entry, '2026-10-17')).toBe('todo');
 
     const state = { plannerEntries: [entry], marathons: [] };
-    const on = (date) => plannerEventsForDate(state, date).find(e => e.source === 'manual');
+    const on = date => plannerEventsForDate(state, date).find(e => e.source === 'manual');
     expect(on('2026-10-01').status).toBe('done');
     expect(on('2026-10-02').status).toBe('todo');
   });
@@ -145,8 +179,10 @@ expect(normalizePlannerEntry({
   });
 
   it('состояния по дням нормализуются: мусор из данных не попадает в состояние', () => {
-    expect(normalizePlannerEntry({ statusByDate: { '2026-10-02': 'done', 'вчера': 'done', '2026-10-03': 'ерунда' } }).statusByDate)
-      .toEqual({ '2026-10-02': 'done' });
+    expect(
+      normalizePlannerEntry({ statusByDate: { '2026-10-02': 'done', вчера: 'done', '2026-10-03': 'ерунда' } })
+        .statusByDate
+    ).toEqual({ '2026-10-02': 'done' });
     expect(normalizePlannerEntry({ statusByDate: 'ерунда' }).statusByDate).toEqual({});
     expect(normalizePlannerEntry({ statusByDate: ['2026-10-02'] }).statusByDate).toEqual({});
   });

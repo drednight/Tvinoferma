@@ -1,16 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import {
-  timeToMinutes, minutesToTime, eventDuration, eventEndMinutes, eventEndTime,
-  timelineBlocks, isAllDayEvent, hourMarks, DAY_MINUTES, DEFAULT_DURATION_MINUTES
+  timeToMinutes,
+  minutesToTime,
+  eventDuration,
+  eventEndMinutes,
+  eventEndTime,
+  timelineBlocks,
+  isAllDayEvent,
+  hourMarks,
+  DAY_MINUTES,
+  DEFAULT_DURATION_MINUTES
 } from '../js/modules/dashboard/timeline.js';
 
-const ev = (time, extra = {}) => ({ id: time || 'x', title: `T${time}`, time, color: 'blue', source: 'manual', ...extra });
+const ev = (time, extra = {}) => ({
+  id: time || 'x',
+  title: `T${time}`,
+  time,
+  color: 'blue',
+  source: 'manual',
+  ...extra
+});
 
 describe('шкала дня', () => {
   it('переводит время в минуты и обратно', () => {
     expect(timeToMinutes('00:00')).toBe(0);
     expect(timeToMinutes('20:20')).toBe(1220);
-    expect(timeToMinutes('24:00')).toBe(null);   // «24:00» — не время начала, а конец суток
+    expect(timeToMinutes('24:00')).toBe(null); // «24:00» — не время начала, а конец суток
     expect(timeToMinutes('25:00')).toBe(null);
     expect(timeToMinutes('')).toBe(null);
     expect(minutesToTime(1220)).toBe('20:20');
@@ -27,7 +42,10 @@ describe('шкала дня', () => {
 
   it('марафон занимает весь день и уходит в верхнюю группу', () => {
     expect(isAllDayEvent({ source: 'marathon' })).toBe(true);
-    const { allDay, blocks } = timelineBlocks([ev('20:20'), { id: 'm', title: 'Марафон', source: 'marathon', color: 'purple' }]);
+    const { allDay, blocks } = timelineBlocks([
+      ev('20:20'),
+      { id: 'm', title: 'Марафон', source: 'marathon', color: 'purple' }
+    ]);
     expect(allDay.map(x => x.event.title)).toEqual(['Марафон']);
     expect(allDay[0].full).toBe(true);
     expect(blocks).toHaveLength(1);
@@ -63,10 +81,7 @@ describe('шкала дня', () => {
     expect(blocks.map(b => b.lane)).toEqual([0, 0]);
     expect(blocks[0].widthPct).toBe(100);
 
-    const overlap = timelineBlocks([
-      ev('19:00', { durationMinutes: 120 }),
-      ev('19:30', { durationMinutes: 30 })
-    ]);
+    const overlap = timelineBlocks([ev('19:00', { durationMinutes: 120 }), ev('19:30', { durationMinutes: 30 })]);
     expect(overlap.lanes).toBe(2);
     expect(overlap.blocks.map(b => b.lane)).toEqual([0, 1]);
     expect(overlap.blocks[1].leftPct).toBe(50);

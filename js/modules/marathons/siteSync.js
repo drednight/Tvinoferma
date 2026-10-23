@@ -31,15 +31,21 @@ export async function initSiteListeners() {
   if (listenersReady || !window.__TAURI_INTERNALS__) return;
   listenersReady = true;
 
-  await listen('scan-progress-update', (e) => progressHandler?.(e.payload));
-  await listen('marathon-titles-scanned-global', (e) => {
-    const w = titlesWaiter; titlesWaiter = null; w?.(e.payload);
+  await listen('scan-progress-update', e => progressHandler?.(e.payload));
+  await listen('marathon-titles-scanned-global', e => {
+    const w = titlesWaiter;
+    titlesWaiter = null;
+    w?.(e.payload);
   });
-  await listen('single-marathon-parsed-global', (e) => {
-    const w = detailWaiter; detailWaiter = null; w?.(e.payload);
+  await listen('single-marathon-parsed-global', e => {
+    const w = detailWaiter;
+    detailWaiter = null;
+    w?.(e.payload);
   });
-  await listen('marathon-news-parsed-global', (e) => {
-    const w = newsWaiter; newsWaiter = null; w?.(e.payload);
+  await listen('marathon-news-parsed-global', e => {
+    const w = newsWaiter;
+    newsWaiter = null;
+    w?.(e.payload);
   });
 }
 
@@ -68,27 +74,45 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const extra = customPages();
   const task = startTask('🔍 Поиск марафонов на сайте', { dock, total: 100 }).watch('scan');
-  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
-  task.log(scanner ? `Профиль для поиска: ${scanner.nick} (вход выполнен)` : 'Нет персонажа со входом — сайт может не показать марафон', scanner ? 'info' : 'warn');
+  task.log(
+    scanner
+      ? `Профиль для поиска: ${scanner.nick} (вход выполнен)`
+      : 'Нет персонажа со входом — сайт может не показать марафон',
+    scanner ? 'info' : 'warn'
+  );
   task.log(`Страницы: ${[...SITE_PAGES.map(p => p.label), ...extra].join(', ')}`);
-  progressHandler = (p) => { task.progress(p.percent ?? task.done, 100, p.message); onProgress?.(p); };
-  const wait = new Promise(r => { titlesWaiter = r; });
+  progressHandler = p => {
+    task.progress(p.percent ?? task.done, 100, p.message);
+    onProgress?.(p);
+  };
+  const wait = new Promise(r => {
+    titlesWaiter = r;
+  });
   try {
     await invoke('get_available_marathon_titles', { charId: scanner?.id || null, extraUrls: extra });
   } catch (e) {
-    titlesWaiter = null; progressHandler = null;
+    titlesWaiter = null;
+    progressHandler = null;
     task.finish(`Ошибка запуска: ${e}`, 'error');
     return { titles: [], errors: [String(e)], scanner, task };
   }
   const res = await withTimeout(wait, 90000, { titles: [], errors: ['timeout'] });
   progressHandler = null;
-  const titles = res.titles || [], errors = res.errors || [];
+  const titles = res.titles || [],
+    errors = res.errors || [];
   if (titles.length) recordParserResult('titles', null);
-  else { const worst = classifyErrors(errors); recordParserResult('titles', worst.error, { status: worst.status }); }
+  else {
+    const worst = classifyErrors(errors);
+    recordParserResult('titles', worst.error, { status: worst.status });
+  }
   titles.forEach(t => task.log(`Найден: «${t.name}» — ${t.url}`, 'ok'));
   errors.forEach(e => task.log(`Ошибка: ${errorText(e)}`, 'warn'));
-  task.finish(titles.length ? `Найдено марафонов: ${titles.length}` : 'Марафоны не найдены', titles.length ? (errors.length ? 'warn' : 'done') : 'error');
+  task.finish(
+    titles.length ? `Найдено марафонов: ${titles.length}` : 'Марафоны не найдены',
+    titles.length ? (errors.length ? 'warn' : 'done') : 'error'
+  );
   return { titles, errors, scanner, task };
 }
 
@@ -96,12 +120,14 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
 export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const task = startTask('📥 Загрузка заданий марафона', { dock }).watch('detail');
-  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Страница: ${url}`);
   task.log(scanner ? `Профиль: ${scanner.nick}` : 'Без профиля со входом', scanner ? 'info' : 'warn');
   task.setStep('Открываю страницу…');
-  const wait = new Promise(r => { detailWaiter = r; });
+  const wait = new Promise(r => {
+    detailWaiter = r;
+  });
   try {
     await invoke('parse_specific_marathon_page', { url, charId: scanner?.id || null });
   } catch (e) {
@@ -118,12 +144,16 @@ export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   }
   (m.debug || []).forEach(line => task.log(line, /не распозн|не найд/i.test(line) ? 'warn' : 'info'));
   task.log(`Марафон «${m.name}»: этапов ${m.stages?.length || 0}, заданий ${m.quests?.length || 0}`, 'ok');
-  (m.stages || []).forEach(st => task.log(`Этап «${st.name}»: ${st.startDate} — ${st.endDate}, заданий ${(m.quests || []).filter(q => q.stageKey === st.key).length}`));
+  (m.stages || []).forEach(st =>
+    task.log(
+      `Этап «${st.name}»: ${st.startDate} — ${st.endDate}, заданий ${(m.quests || []).filter(q => q.stageKey === st.key).length}`
+    )
+  );
   return { ...res, task };
 }
 
 /** Ссылка похожа на новость pwonline.ru (news.php?article=…). */
-export const isNewsUrl = (url) => /news\.php\?.*article=\d+/i.test(String(url || ''));
+export const isNewsUrl = url => /news\.php\?.*article=\d+/i.test(String(url || ''));
 
 /**
  * Загружает новость о марафоне и разбирает этапы, задания, награды.
@@ -131,10 +161,12 @@ export const isNewsUrl = (url) => /news\.php\?.*article=\d+/i.test(String(url ||
  */
 export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   const task = startTask('📰 Разбор новости о марафоне', { dock }).watch('news');
-  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Новость: ${url}`);
-  const wait = new Promise(r => { newsWaiter = r; });
+  const wait = new Promise(r => {
+    newsWaiter = r;
+  });
   try {
     await invoke('fetch_marathon_news', { url, charId: pickScannerCharacter()?.id || null });
   } catch (e) {
@@ -151,14 +183,26 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   task.log(`Заголовок: «${res.news.title}», опубликовано ${res.news.publishedAt || '—'}`);
   let parsed;
   try {
-    parsed = parseNewsHtml(res.news.html, { title: res.news.title, publishedAt: res.news.publishedAt, newsUrl: res.news.url || url });
+    parsed = parseNewsHtml(res.news.html, {
+      title: res.news.title,
+      publishedAt: res.news.publishedAt,
+      newsUrl: res.news.url || url
+    });
   } catch (e) {
     task.finish(`Ошибка разбора: ${e.message}`, 'error');
     return { marathon: null, error: e.message, task };
   }
   parsed.debug.forEach(line => task.log(line, /не найден|вручную|проверьте/i.test(line) ? 'warn' : 'info'));
-  parsed.stages.forEach(st => task.log(`Этап «${st.name}»: ${st.startDate || '?'} — ${st.endDate || '?'}, заданий ${parsed.quests.filter(q => q.stageKey === st.key).length}`));
-  parsed.quests.forEach(q => task.log(`  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${q.rewards.map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || '—'}`));
+  parsed.stages.forEach(st =>
+    task.log(
+      `Этап «${st.name}»: ${st.startDate || '?'} — ${st.endDate || '?'}, заданий ${parsed.quests.filter(q => q.stageKey === st.key).length}`
+    )
+  );
+  parsed.quests.forEach(q =>
+    task.log(
+      `  ${q.title}: цель ${q.goal}${q.weekly ? ' (еженедельно)' : ''}, награды ${q.rewards.map(r => `${r.threshold}→<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>${r.rewardCoins}`).join(', ') || '—'}`
+    )
+  );
   if (!parsed.quests.length) {
     task.finish('В новости не найдена таблица заданий', 'error');
     return { marathon: null, error: 'no_quests', task };
@@ -174,14 +218,16 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
  */
 export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, onTask } = {}) {
   const task = startTask('🔎 Поиск новости о марафоне', { dock }).watch('news');
-  await task.waitTurn();      // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   const loaded = [];
   let firstError = null;
   for (let page = 1; page <= pages; page++) {
     const url = newsListUrl(page);
     task.log(`Страница ${page} из ${pages}: ${url}`);
-    const wait = new Promise(r => { newsWaiter = r; });
+    const wait = new Promise(r => {
+      newsWaiter = r;
+    });
     try {
       await invoke('fetch_marathon_news', { url, charId: pickScannerCharacter()?.id || null });
     } catch (e) {
@@ -202,7 +248,7 @@ export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, on
   }
   const items = mergeNewsPages(loaded);
   // Страницы архива открылись, а новостей в них не нашлось — признак изменившейся вёрстки списка
-  recordParserResult('news', items.length ? null : (firstError || 'no_news_list'));
+  recordParserResult('news', items.length ? null : firstError || 'no_news_list');
   if (!items.length) {
     task.finish(`Список новостей не получен: ${errorText(firstError || 'пусто')}`, 'error');
     return { items: [], error: firstError || 'empty', task };
@@ -218,7 +264,10 @@ export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, on
 /** Вызывается из syncManager при событии marathon-progress-result-global. */
 export function onCharMarathonData(charId, quests, error) {
   const resolve = charWaiters.get(charId);
-  if (resolve) { charWaiters.delete(charId); resolve({ quests, error }); }
+  if (resolve) {
+    charWaiters.delete(charId);
+    resolve({ quests, error });
+  }
 }
 
 function marathonUrlOf(m) {
@@ -260,10 +309,15 @@ function applyToMarathons(charId, quests, url, at) {
  */
 export async function syncMarathons(marathons, callbacks = {}) {
   const at = new Date().toISOString();
-  const nick = (id) => state.characters.find(c => c.id === id)?.nick || id;
-  const task = startTask(marathons.length === 1 ? `🔄 Сверка: ${marathons[0].title}` : `🔄 Сверка марафонов (${marathons.length})`, { cancelable: true });
+  const nick = id => state.characters.find(c => c.id === id)?.nick || id;
+  const task = startTask(
+    marathons.length === 1 ? `🔄 Сверка: ${marathons[0].title}` : `🔄 Сверка марафонов (${marathons.length})`,
+    { cancelable: true }
+  );
   const signal = { cancelled: false };
-  task.onCancel(() => { signal.cancelled = true; });
+  task.onCancel(() => {
+    signal.cancelled = true;
+  });
   // Ждём своей очереди: пока идёт другой скрипт, запросы не отправляем
   await task.waitTurn();
   callbacks.onTask?.(task);
@@ -271,7 +325,10 @@ export async function syncMarathons(marathons, callbacks = {}) {
   const noUrl = [];
   marathons.forEach(m => {
     const url = marathonUrlOf(m);
-    if (!url) { noUrl.push(m); return; }
+    if (!url) {
+      noUrl.push(m);
+      return;
+    }
     if (!byUrl.has(url)) byUrl.set(url, new Set());
     m.participantIds.forEach(id => byUrl.get(url).add(id));
   });
@@ -279,58 +336,75 @@ export async function syncMarathons(marathons, callbacks = {}) {
   const jobs = [];
   byUrl.forEach((ids, url) => ids.forEach(charId => jobs.push({ charId, url })));
   const total = jobs.length;
-  task.cancelable = total > 1;      // «Отмена» нужна, только если запросов несколько
+  task.cancelable = total > 1; // «Отмена» нужна, только если запросов несколько
   let done = 0;
   task.progress(0, total, `В очереди ${total} запросов, по ${browserSlots.max} одновременно`);
   noUrl.forEach(m => task.log(`«${m.title}»: не указана страница на сайте — пропущен`, 'warn'));
   byUrl.forEach((ids, url) => task.log(`${url}: ${ids.size} перс.`));
   task.watch(...jobs.map(j => `char:${j.charId}`));
 
-  const report = {};             // marathonId -> { changes: [], errors: [] }
-  marathons.forEach(m => { report[m.id] = { changes: [], errors: [] }; });
+  const report = {}; // marathonId -> { changes: [], errors: [] }
+  marathons.forEach(m => {
+    report[m.id] = { changes: [], errors: [] };
+  });
 
   const retries = Number(state.settings?.scripts?.retries ?? 2);
-  await runQueue(jobs, async ({ charId, url }, attempt) => {
-    if (signal.cancelled) return { skipped: true };      // отмена: запрос не отправляется
-    callbacks.onStart?.(charId);
-    task.log(`${nick(charId)}: открываю ${url.replace('https://', '')}${attempt ? ` (повтор ${attempt}/${retries})` : ''}`, 'step');
-    return await fetchChar(charId, url);
-  }, {
-    retries,
-    retryDelayMs: Number(state.settings?.scripts?.retryDelayMs ?? 2000),
-    signal,
-    shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
-    onDone: ({ item, result, error: thrown }) => {
-      const { charId, url } = item;
-      if (result?.skipped) { callbacks.onDone?.(charId, { error: null, changes: {}, skipped: true }); return; }
-      const quests = result?.quests;
-      const error = result?.error || (thrown ? String(thrown) : null);
-      let changesForChar = {};
-      recordParserResult('progress', error, { empty: !error && Array.isArray(quests) && !quests.length });
-      if (!error && Array.isArray(quests)) {
-        changesForChar = applyToMarathons(charId, quests, url, at);
-        if (!quests.length) {
-          marathons.filter(m => marathonUrlOf(m) === url && m.participantIds.includes(charId))
-            .forEach(m => report[m.id].errors.push({ charId, error: 'no_quests' }));
+  await runQueue(
+    jobs,
+    async ({ charId, url }, attempt) => {
+      if (signal.cancelled) return { skipped: true }; // отмена: запрос не отправляется
+      callbacks.onStart?.(charId);
+      task.log(
+        `${nick(charId)}: открываю ${url.replace('https://', '')}${attempt ? ` (повтор ${attempt}/${retries})` : ''}`,
+        'step'
+      );
+      return await fetchChar(charId, url);
+    },
+    {
+      retries,
+      retryDelayMs: Number(state.settings?.scripts?.retryDelayMs ?? 2000),
+      signal,
+      shouldRetry: (res, err) => !!err || isRetryableCode(res?.error),
+      onDone: ({ item, result, error: thrown }) => {
+        const { charId, url } = item;
+        if (result?.skipped) {
+          callbacks.onDone?.(charId, { error: null, changes: {}, skipped: true });
+          return;
         }
-      } else {
-        const char = state.characters.find(c => c.id === charId);
-        if (error === 'not_logged_in' && char) char.isLoggedIn = false;
+        const quests = result?.quests;
+        const error = result?.error || (thrown ? String(thrown) : null);
+        let changesForChar = {};
+        recordParserResult('progress', error, { empty: !error && Array.isArray(quests) && !quests.length });
+        if (!error && Array.isArray(quests)) {
+          changesForChar = applyToMarathons(charId, quests, url, at);
+          if (!quests.length) {
+            marathons
+              .filter(m => marathonUrlOf(m) === url && m.participantIds.includes(charId))
+              .forEach(m => report[m.id].errors.push({ charId, error: 'no_quests' }));
+          }
+        } else {
+          const char = state.characters.find(c => c.id === charId);
+          if (error === 'not_logged_in' && char) char.isLoggedIn = false;
+        }
+        marathons.forEach(m => {
+          if (!m.participantIds.includes(charId) || marathonUrlOf(m) !== url) return;
+          if (error) report[m.id].errors.push({ charId, error });
+          (changesForChar[m.id] || []).forEach(ch => report[m.id].changes.push({ charId, ...ch }));
+        });
+        done++;
+        const nChanges = Object.values(changesForChar).reduce((a, l) => a + l.length, 0);
+        if (error) task.log(`${nick(charId)}: ${errorText(error)}`, error === 'not_logged_in' ? 'warn' : 'error');
+        else
+          task.log(
+            `${nick(charId)}: заданий на сайте ${quests.length}, изменений ${nChanges}`,
+            quests.length ? 'ok' : 'warn'
+          );
+        task.progress(done, total, nick(charId));
+        callbacks.onDone?.(charId, { error, changes: changesForChar });
+        callbacks.onProgress?.(done, total);
       }
-      marathons.forEach(m => {
-        if (!m.participantIds.includes(charId) || marathonUrlOf(m) !== url) return;
-        if (error) report[m.id].errors.push({ charId, error });
-        (changesForChar[m.id] || []).forEach(ch => report[m.id].changes.push({ charId, ...ch }));
-      });
-      done++;
-      const nChanges = Object.values(changesForChar).reduce((a, l) => a + l.length, 0);
-      if (error) task.log(`${nick(charId)}: ${errorText(error)}`, error === 'not_logged_in' ? 'warn' : 'error');
-      else task.log(`${nick(charId)}: заданий на сайте ${quests.length}, изменений ${nChanges}`, quests.length ? 'ok' : 'warn');
-      task.progress(done, total, nick(charId));
-      callbacks.onDone?.(charId, { error, changes: changesForChar });
-      callbacks.onProgress?.(done, total);
     }
-  });
+  );
 
   marathons.forEach(m => {
     if (!marathonUrlOf(m)) return;
@@ -340,14 +414,20 @@ export async function syncMarathons(marathons, callbacks = {}) {
   await persist();
   const allChanges = Object.values(report).reduce((a, r) => a + r.changes.length, 0);
   const allErrors = Object.values(report).reduce((a, r) => a + r.errors.length, 0);
-  if (signal.cancelled) task.finish(`Отменено: сверено ${done} из ${total}, изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`, 'warn');
+  if (signal.cancelled)
+    task.finish(
+      `Отменено: сверено ${done} из ${total}, изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`,
+      'warn'
+    );
   else task.finish(`Изменений ${allChanges}${allErrors ? `, ошибок ${allErrors}` : ''}`, allErrors ? 'warn' : 'done');
   return { report, noUrl, total, task, cancelled: signal.cancelled };
 }
 
 /** Для меню скриптов: сверить все идущие марафоны. */
 export async function syncAllActiveMarathons(callbacks) {
-  const active = state.marathons.filter(m => m.kind !== 'series' && m.status !== 'completed' && m.participantIds.length);
+  const active = state.marathons.filter(
+    m => m.kind !== 'series' && m.status !== 'completed' && m.participantIds.length
+  );
   if (!active.length) return { report: {}, noUrl: [], total: 0 };
   return syncMarathons(active, callbacks);
 }

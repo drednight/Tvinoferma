@@ -1,16 +1,40 @@
 const SPREADSHEET_ID = 'PASTE_GOOGLE_SPREADSHEET_ID_HERE';
 const SHEET_NAME = 'Предложения рун';
 const VALID_CLASSES = [
-  'Оборотень', 'Друид', 'Странник', 'Воин', 'Маг', 'Стрелок', 'Жрец', 'Лучник',
-  'Паладин', 'Убийца', 'Шаман', 'Бард', 'Мистик', 'Страж', 'Дух Крови', 'Жнец', 'Призрак', 'Канглонг'
+  'Оборотень',
+  'Друид',
+  'Странник',
+  'Воин',
+  'Маг',
+  'Стрелок',
+  'Жрец',
+  'Лучник',
+  'Паладин',
+  'Убийца',
+  'Шаман',
+  'Бард',
+  'Мистик',
+  'Страж',
+  'Дух Крови',
+  'Жнец',
+  'Призрак',
+  'Канглонг'
 ];
-const HEADERS = ['Дата получения', 'Класс', 'Автор', 'PvE руны', 'PvP руны', 'Дополнительные руны', 'Примечание', 'Статус', 'ID', 'JSON-объект для runes'];
+const HEADERS = [
+  'Дата получения',
+  'Класс',
+  'Автор',
+  'PvE руны',
+  'PvP руны',
+  'Дополнительные руны',
+  'Примечание',
+  'Статус',
+  'ID',
+  'JSON-объект для runes'
+];
 
 function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('Руны')
-    .addItem('Обновить оформление и JSON', 'setupInboxSheet')
-    .addToUi();
+  SpreadsheetApp.getUi().createMenu('Руны').addItem('Обновить оформление и JSON', 'setupInboxSheet').addToUi();
 }
 
 function doPost(event) {
@@ -26,9 +50,16 @@ function doPost(event) {
       const receivedAt = new Date();
       const entry = createCatalogEntry_(submission, `rune-${Utilities.getUuid()}`, receivedAt);
       sheet.appendRow([
-        receivedAt, submission.class, safeCell(submission.author), safeCell(submission.pve),
-        safeCell(submission.pvp), safeCell(submission.additional), safeCell(submission.note), 'На проверке',
-        entry.id, JSON.stringify(entry)
+        receivedAt,
+        submission.class,
+        safeCell(submission.author),
+        safeCell(submission.pve),
+        safeCell(submission.pvp),
+        safeCell(submission.additional),
+        safeCell(submission.note),
+        'На проверке',
+        entry.id,
+        JSON.stringify(entry)
       ]);
       formatInboxSheet_(sheet);
     } finally {
@@ -76,8 +107,12 @@ function refreshCatalogEntries_(sheet) {
     const id = row[8] || `rune-${Utilities.getUuid()}`;
     const receivedAt = row[0] instanceof Date ? row[0] : new Date(row[0] || Date.now());
     const submission = {
-      class: String(row[1]), author: String(row[2] || ''), pve: String(row[3] || ''),
-      pvp: String(row[4] || ''), additional: String(row[5] || ''), note: String(row[6] || '')
+      class: String(row[1]),
+      author: String(row[2] || ''),
+      pve: String(row[3] || ''),
+      pvp: String(row[4] || ''),
+      additional: String(row[5] || ''),
+      note: String(row[6] || '')
     };
     return [id, JSON.stringify(createCatalogEntry_(submission, id, receivedAt))];
   });
@@ -118,7 +153,8 @@ function formatInboxSheet_(sheet) {
   sheet.setHiddenGridlines(true);
   sheet.setTabColor('#315f45');
   sheet.setRowHeight(1, 48);
-  sheet.getRange(1, 1, 1, columns)
+  sheet
+    .getRange(1, 1, 1, columns)
     .setBackground('#183b2b')
     .setFontColor('#ffffff')
     .setFontWeight('bold')
@@ -131,14 +167,19 @@ function formatInboxSheet_(sheet) {
 
   [155, 135, 165, 230, 230, 235, 330, 150, 250, 480].forEach((width, index) => sheet.setColumnWidth(index + 1, width));
   if (rows > 1) {
-    sheet.getRange(2, 1, rows - 1, columns)
+    sheet
+      .getRange(2, 1, rows - 1, columns)
       .setFontFamily('Arial')
       .setFontSize(10)
       .setFontColor('#26372d')
       .setVerticalAlignment('top')
       .setWrap(true);
     sheet.getRange(2, 1, rows - 1, 1).setNumberFormat('dd.mm.yyyy hh:mm');
-    sheet.getRange(2, 10, rows - 1, 1).setFontFamily('Consolas').setFontSize(9).setFontColor('#345f46');
+    sheet
+      .getRange(2, 10, rows - 1, 1)
+      .setFontFamily('Consolas')
+      .setFontSize(9)
+      .setFontColor('#345f46');
     const statusRange = sheet.getRange(2, 8, rows - 1, 1);
     const statusValidation = SpreadsheetApp.newDataValidation()
       .requireValueInList(['На проверке', 'Одобрено', 'Отклонено'], true)
@@ -148,9 +189,21 @@ function formatInboxSheet_(sheet) {
 
     if (sheet.getConditionalFormatRules().length === 0) {
       sheet.setConditionalFormatRules([
-        SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('На проверке').setBackground('#fff2cc').setRanges([statusRange]).build(),
-        SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Одобрено').setBackground('#d9ead3').setRanges([statusRange]).build(),
-        SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('Отклонено').setBackground('#f4cccc').setRanges([statusRange]).build()
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenTextEqualTo('На проверке')
+          .setBackground('#fff2cc')
+          .setRanges([statusRange])
+          .build(),
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenTextEqualTo('Одобрено')
+          .setBackground('#d9ead3')
+          .setRanges([statusRange])
+          .build(),
+        SpreadsheetApp.newConditionalFormatRule()
+          .whenTextEqualTo('Отклонено')
+          .setBackground('#f4cccc')
+          .setRanges([statusRange])
+          .build()
       ]);
     }
   }
@@ -167,6 +220,5 @@ function safeCell(value) {
 }
 
 function jsonResponse(value) {
-  return ContentService.createTextOutput(JSON.stringify(value))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
 }

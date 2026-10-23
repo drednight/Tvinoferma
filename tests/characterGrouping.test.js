@@ -1,6 +1,13 @@
 // tests/characterGrouping.test.js
 import { describe, it, expect } from 'vitest';
-import { groupChars, applyManualOrder, moveChar, GROUP_PARTY, GROUP_CLASS, GROUP_NONE } from '../js/modules/characters/grouping.js';
+import {
+  groupChars,
+  applyManualOrder,
+  moveChar,
+  GROUP_PARTY,
+  GROUP_CLASS,
+  GROUP_NONE
+} from '../js/modules/characters/grouping.js';
 
 const parties = [
   { id: 'p2', name: 'Вторая', order: 2 },

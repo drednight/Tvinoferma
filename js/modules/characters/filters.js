@@ -21,8 +21,13 @@ export function fillFilterSelect(select, { allLabel, fixed = [], values, prefix 
   if (!select) return '';
   const current = select.value;
   // values — строки или { value, label } (для пати: значение — id, подпись — название)
-  const options = [{ value: '', label: allLabel }, ...fixed,
-    ...values.map(v => (typeof v === 'object' ? { value: v.value, label: prefix + v.label } : { value: v, label: prefix + v }))];
+  const options = [
+    { value: '', label: allLabel },
+    ...fixed,
+    ...values.map(v =>
+      typeof v === 'object' ? { value: v.value, label: prefix + v.label } : { value: v, label: prefix + v }
+    )
+  ];
   // Не трогаем DOM, если список вариантов не изменился (иначе открытый выпадающий список «моргает»
   // при фоновых обновлениях балансов и входов)
   const html = options.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
@@ -56,8 +61,9 @@ export function filterCharacters(chars, { search = '', tag = '', cls = '', party
   // Поиск по нику (и по тегам: «#тег» или просто слово)
   if (searchTerm) {
     const term = searchTerm.replace(/^#/, '');
-    out = out.filter(c => c.nick.toLowerCase().includes(searchTerm) ||
-      (c.tags || []).some(t => t.toLowerCase().includes(term)));
+    out = out.filter(
+      c => c.nick.toLowerCase().includes(searchTerm) || (c.tags || []).some(t => t.toLowerCase().includes(term))
+    );
   }
 
   if (tag === '__none__') {

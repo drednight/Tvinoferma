@@ -22,7 +22,11 @@
 import { state } from '../core/state.js';
 import { mskDate, mskMinutes, mskParts } from '../core/msk.js';
 import { computeCell, marathonPhase } from '../modules/marathons/model.js';
-import { RECURRING_EVENTS, recurringEventsForDate, recurringEventScheduleText } from '../modules/dashboard/recurringEvents.js';
+import {
+  RECURRING_EVENTS,
+  recurringEventsForDate,
+  recurringEventScheduleText
+} from '../modules/dashboard/recurringEvents.js';
 import { entryStatusForDate } from '../modules/dashboard/planner.js';
 import { playNotificationSound, soundSettings, soundDiagnostics } from './sound.js';
 import { showInApp } from '../core/notifyCenter.js';
@@ -104,9 +108,12 @@ export function notificationKind(kind, settings) {
  * сообщения сходятся в шум, и пользователь перестаёт их замечать. Список дел — в теле.
  * @returns {Array<{ key: string, title: string, body: string, kind: string }>}
  */
-export function collectAlerts(st, { today = todayStr(), hour = mskParts().hour, settings = st.settings?.notifications || {} } = {}) {
+export function collectAlerts(
+  st,
+  { today = todayStr(), hour = mskParts().hour, settings = st.settings?.notifications || {} } = {}
+) {
   const alerts = [];
-  const nick = (id) => st.characters.find(c => c.id === id)?.nick || '?';
+  const nick = id => st.characters.find(c => c.id === id)?.nick || '?';
   const active = (st.marathons || []).filter(m => m.kind !== 'series' && marathonPhase(m, today) === 'active');
   const behind = [];
   const tight = [];
@@ -115,14 +122,16 @@ export function collectAlerts(st, { today = todayStr(), hour = mskParts().hour, 
 
   active.forEach(m => {
     let unfinished = 0;
-    m.participantIds.forEach(cid => m.tasks.forEach(t => {
-      const c = computeCell(m, cid, t.id, today);
-      if (!c.assigned || c.state === 'done') return;
-      unfinished++;
-      const task = `${m.title} — ${nick(cid)} — «${t.title}»`;
-      if (c.state === 'fail') behind.push(`${task} (не хватает ${-c.reserve} дн.)`);
-      else if (c.state === 'warn') tight.push(task);
-    }));
+    m.participantIds.forEach(cid =>
+      m.tasks.forEach(t => {
+        const c = computeCell(m, cid, t.id, today);
+        if (!c.assigned || c.state === 'done') return;
+        unfinished++;
+        const task = `${m.title} — ${nick(cid)} — «${t.title}»`;
+        if (c.state === 'fail') behind.push(`${task} (не хватает ${-c.reserve} дн.)`);
+        else if (c.state === 'warn') tight.push(task);
+      })
+    );
     openCells += unfinished;
     const left = daysBetween(today, m.endDate);
     if (left >= 0 && left <= 2 && unfinished > 0) {
@@ -134,25 +143,28 @@ export function collectAlerts(st, { today = todayStr(), hour = mskParts().hour, 
   // собственные дела человек узнавал, только открыв приложение
   const dayTasks = (st.plannerEntries || []).filter(entry => entry.date === today && entry.status !== 'done');
 
-  const rows = (list) => list.slice(0, 4).join('\n') + (list.length > 4 ? `\n…и ещё ${list.length - 4}` : '');
-  const kind = (kind) => notificationKind(kind, settings);
+  const rows = list => list.slice(0, 4).join('\n') + (list.length > 4 ? `\n…и ещё ${list.length - 4}` : '');
+  const kind = kind => notificationKind(kind, settings);
   if (kind('behind').popup && behind.length) {
     alerts.push({
-      kind: 'behind', key: 'behind',
+      kind: 'behind',
+      key: 'behind',
       title: `⚠️ Не успевают задания: ${behind.length}`,
       body: rows(behind)
     });
   }
   if (kind('tight').popup && tight.length) {
     alerts.push({
-      kind: 'tight', key: 'tight',
+      kind: 'tight',
+      key: 'tight',
       title: `⏳ Запас ≤ 1 дня: ${tight.length}`,
       body: rows(tight)
     });
   }
   if (kind('ending').popup && ending.length) {
     alerts.push({
-      kind: 'ending', key: 'ending',
+      kind: 'ending',
+      key: 'ending',
       title: `🏁 Марафоны заканчиваются: ${ending.length}`,
       body: rows(ending)
     });
@@ -161,7 +173,8 @@ export function collectAlerts(st, { today = todayStr(), hour = mskParts().hour, 
     const parts = [`Идёт марафонов: ${active.length}, невыполненных заданий: ${openCells}.`];
     if (dayTasks.length) parts.push(`Дел на сегодня: ${dayTasks.length}.`);
     alerts.push({
-      kind: 'daily', key: 'daily',
+      kind: 'daily',
+      key: 'daily',
       title: '📅 Ежедневные задания',
       body: `${parts.join(' ')} Не забудьте отметиться!`
     });
@@ -245,12 +258,22 @@ export function collectTaskAlerts({ today = todayStr(), nowMinutes = mskMinutes(
 }
 
 function loadSent(key) {
-  try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { return {}; }
+  try {
+    return JSON.parse(localStorage.getItem(key) || '{}');
+  } catch (_) {
+    return {};
+  }
 }
 function saveSent(key, sent, today) {
   // Храним только сегодняшние записи, чтобы журнал не рос бесконечно
-  Object.keys(sent).forEach(k => { if (sent[k] !== today) delete sent[k]; });
-  try { localStorage.setItem(key, JSON.stringify(sent)); } catch (_) { /* переполнение хранилища не критично */ }
+  Object.keys(sent).forEach(k => {
+    if (sent[k] !== today) delete sent[k];
+  });
+  try {
+    localStorage.setItem(key, JSON.stringify(sent));
+  } catch (_) {
+    /* переполнение хранилища не критично */
+  }
 }
 
 /** Уже отправляли это уведомление сегодня? */
@@ -283,7 +306,9 @@ function api() {
  */
 export async function notify(title, body, kind = null) {
   const settings = state.settings?.notifications || {};
-  const conf = kind ? notificationKind(kind, settings) : { popup: true, inapp: true, sound: soundSettings(settings).enabled };
+  const conf = kind
+    ? notificationKind(kind, settings)
+    : { popup: true, inapp: true, sound: soundSettings(settings).enabled };
   const master = settings.enabled !== false;
   const wantInApp = master && conf.inapp;
   const wantPopup = master && conf.popup;
@@ -379,9 +404,16 @@ export async function runEventCheck({ force = false, now = new Date() } = {}) {
  * Возвращает человекочитаемые причины, а не молчаливый отказ.
  */
 export async function notificationDiagnostics() {
-  const out = { tauri: !!window.__TAURI_INTERNALS__, permission: 'unknown', sound: soundDiagnostics(), reasons: /** @type {string[]} */ ([]) };
+  const out = {
+    tauri: !!window.__TAURI_INTERNALS__,
+    permission: 'unknown',
+    sound: soundDiagnostics(),
+    reasons: /** @type {string[]} */ ([])
+  };
   if (!out.tauri) {
-    out.reasons.push('Приложение открыто в браузере (Vite): системные уведомления Windows в этом режиме не работают — нужна установленная версия или `npm run tauri dev`.');
+    out.reasons.push(
+      'Приложение открыто в браузере (Vite): системные уведомления Windows в этом режиме не работают — нужна установленная версия или `npm run tauri dev`.'
+    );
     return out;
   }
   try {

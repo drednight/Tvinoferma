@@ -10,37 +10,42 @@ import { planCharacterIds, remapIdsDeep } from './ids.js';
 
 export const SCHEMA_VERSION = 10;
 
-const clone = (v) => JSON.parse(JSON.stringify(v));
+const clone = v => JSON.parse(JSON.stringify(v));
 
-const newPartyId = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID()
-  : `p-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`);
+const newPartyId = () =>
+  globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `p-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 export const MIGRATIONS = {
   // v1 → v2: исторический формат (поле `version`), партии без порядка
-  2: (s) => {
+  2: s => {
     s.parties = (Array.isArray(s.parties) ? s.parties : []).map((p, i) =>
-      typeof p === 'string' ? { name: p, order: i + 1 } : { ...p, order: Number(p?.order) || i + 1 });
+      typeof p === 'string' ? { name: p, order: i + 1 } : { ...p, order: Number(p?.order) || i + 1 }
+    );
     s.characters = Array.isArray(s.characters) ? s.characters : [];
     s.marathons = Array.isArray(s.marathons) ? s.marathons : [];
     return s;
   },
 
   // v2 → v3: теги персонажей, служебные поля экспорта убраны, контакты могут жить в keychain ОС
-  3: (s) => {
+  3: s => {
     s.characters = s.characters.map(c => ({
       ...c,
       tags: Array.isArray(c.tags) ? c.tags : [],
       contacts: c.contacts ?? null
     }));
     s.marathonTemplates = Array.isArray(s.marathonTemplates) ? s.marathonTemplates : [];
-    delete s.app; delete s.exportedAt; delete s.scope;
+    delete s.app;
+    delete s.exportedAt;
+    delete s.scope;
     return s;
   },
 
   // v3 → v4: id персонажей строятся из ника (DragonSlayer#1 → DragonSlayer_1).
   // Ссылки в марафонах и шаблонах переименовываются; карта old → new возвращается
   // в migrateState().idRemap, чтобы перенести профили браузера и ключи хранилища ОС.
-  4: (s) => {
+  4: s => {
     const remap = planCharacterIds(s.characters);
     if (remap.size) {
       s.characters = s.characters.map(c => ({ ...c, id: remap.get(c.id) || c.id }));
@@ -55,11 +60,14 @@ export const MIGRATIONS = {
   // character.party (название) → character.partyIds (id партий) + mainPartyId (основная); у каждой партии гарантирован id.
   // Название, которое есть у персонажа, но нет в списке партий, превращается в новую партию
   // (раньше такие «неявные» партии рисовались из персонажей и теряли порядок).
-  5: (s) => {
+  5: s => {
     const parties = (Array.isArray(s.parties) ? s.parties : [])
       .map(p => (typeof p === 'string' ? { name: p } : { ...p }))
       .map(p => ({ ...p, id: p.id || newPartyId() }));
-    const key = (name) => String(name || '').trim().toLowerCase();
+    const key = name =>
+      String(name || '')
+        .trim()
+        .toLowerCase();
     const byName = new Map(parties.map(p => [key(p.name), p]));
     let nextOrder = Math.max(0, ...parties.map(p => Number(p.order) || 0)) + 1;
     const now = new Date().toISOString();
@@ -78,7 +86,7 @@ export const MIGRATIONS = {
         if (!ids.includes(p.id)) ids.push(p.id);
       }
       // Единственная пати из старого формата становится основной
-      const mainPartyId = ids.includes(c.mainPartyId) ? c.mainPartyId : (ids[0] || null);
+      const mainPartyId = ids.includes(c.mainPartyId) ? c.mainPartyId : ids[0] || null;
       return { ...rest, partyIds: ids, mainPartyId, notes: typeof c.notes === 'string' ? c.notes : '' };
     });
     s.parties = parties;
@@ -86,13 +94,13 @@ export const MIGRATIONS = {
   },
 
   // v5 → v6: порог свежести входа по умолчанию стал 24 ч (в первой версии настройки было 12 ч и оно сохранилось в файле)
-  6: (s) => {
+  6: s => {
     if (s.settings?.freshness?.loginHours === 12) s.settings.freshness.loginHours = 24;
     return s;
   },
 
   // v6 → v7: запуск игры. У каждого аккаунта свой GameCenter (VK Play): путь к папке или GameCenter.exe
-  7: (s) => {
+  7: s => {
     s.characters = (Array.isArray(s.characters) ? s.characters : []).map(c => ({
       ...c,
       launch: { gcPath: String(c?.launch?.gcPath || '').trim() }
@@ -101,7 +109,7 @@ export const MIGRATIONS = {
   },
 
   // v7 → v8: отдельные списки архивных персонажей и партий
-  8: (s) => {
+  8: s => {
     s.archivedCharacters = Array.isArray(s.archivedCharacters) ? s.archivedCharacters : [];
     s.archivedParties = Array.isArray(s.archivedParties) ? s.archivedParties : [];
     return s;
@@ -110,10 +118,8 @@ export const MIGRATIONS = {
   // v8 → v9: раздел «Учёт» — реестр денег, комиссионный магазин, голд и долги.
   // Миграция только заводит пустой раздел: приведение к схеме делает normalizeFinance
   // при чтении, как и остальные разделы
-  9: (s) => {
-    s.finance = s.finance && typeof s.finance === 'object' && !Array.isArray(s.finance)
-      ? s.finance
-      : {};
+  9: s => {
+    s.finance = s.finance && typeof s.finance === 'object' && !Array.isArray(s.finance) ? s.finance : {};
     return s;
   },
 
@@ -123,7 +129,7 @@ export const MIGRATIONS = {
   // старую версию видел бы файл с чужим ключом, посчитал бы его битым и записал поверх
   // него умолчания — то есть откат молча стирал бы настройку. С номером схемы старая
   // версия вместо этого увидит `newer` и не тронет файл.
-  10: (s) => {
+  10: s => {
     const settings = s.settings && typeof s.settings === 'object' && !Array.isArray(s.settings) ? s.settings : {};
     if (settings.guild === undefined && settings.eternals !== undefined) {
       settings.guild = settings.eternals;
@@ -147,7 +153,14 @@ export function detectVersion(raw) {
  */
 export function migrateState(raw) {
   if (!raw || typeof raw !== 'object') {
-    return { state: { schemaVersion: SCHEMA_VERSION }, from: SCHEMA_VERSION, to: SCHEMA_VERSION, applied: [], newer: false, idRemap: {} };
+    return {
+      state: { schemaVersion: SCHEMA_VERSION },
+      from: SCHEMA_VERSION,
+      to: SCHEMA_VERSION,
+      applied: [],
+      newer: false,
+      idRemap: {}
+    };
   }
   const from = detectVersion(raw);
   if (from > SCHEMA_VERSION) {
@@ -157,7 +170,10 @@ export function migrateState(raw) {
   const applied = [];
   for (let v = from + 1; v <= SCHEMA_VERSION; v++) {
     const step = MIGRATIONS[v];
-    if (step) { s = step(s) || s; applied.push(v); }
+    if (step) {
+      s = step(s) || s;
+      applied.push(v);
+    }
   }
   s.schemaVersion = SCHEMA_VERSION;
   delete s.version;

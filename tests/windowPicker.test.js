@@ -29,8 +29,8 @@ const clients = () => [
 
 const foot = () => document.querySelector('.tf-dialog-foot');
 const rows = () => [...document.querySelectorAll('.winp-row')];
-const btn = (act) => foot().querySelector(`[data-act="${act}"]`);
-const box = (pid) => document.querySelector(`.winp-row input[data-pid="${pid}"]`);
+const btn = act => foot().querySelector(`[data-act="${act}"]`);
+const box = pid => document.querySelector(`.winp-row input[data-pid="${pid}"]`);
 
 beforeEach(async () => {
   vi.resetModules();

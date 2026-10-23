@@ -5,7 +5,7 @@ on:
   issues:
     types: [opened, closed, reopened, edited, deleted, milestoned, demilestoned]
   schedule:
-    - cron: "0 6 * * 1"   # по понедельникам, на случай пропущенных событий
+    - cron: '0 6 * * 1' # по понедельникам, на случай пропущенных событий
   workflow_dispatch:
 
 permissions:

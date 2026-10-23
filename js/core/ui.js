@@ -32,15 +32,15 @@ export function showModal({
   const container = document.createElement('div');
   // `wide` — окну с двумя столбцами (профиль персонажа): обычная ширина режет содержимое
   container.className = wide ? 'modal-container modal-wide' : 'modal-container';
-  
+
   // Шапка (БЕЗ КРЕСТИКА)
   const header = document.createElement('div');
   header.className = 'modal-header';
-  
+
   header.innerHTML = `
     <h3>${escapeHtml(title)}</h3>
   `;
-  
+
   // Тело
   const body = document.createElement('div');
   body.className = 'modal-body';
@@ -48,14 +48,14 @@ export function showModal({
 
   // ФУТЕР
   let footer = null;
-  
+
   const hasSubmit = submitText !== null && submitText !== false && submitText !== undefined;
   const hasCancel = cancelText !== null && cancelText !== false && cancelText !== undefined;
 
   if (hasSubmit || hasCancel) {
     footer = document.createElement('div');
     footer.className = 'modal-footer';
-    
+
     // Кнопка Отмены
     if (hasCancel) {
       const btnCancel = document.createElement('button');
@@ -72,31 +72,31 @@ export function showModal({
       const btnSubmit = document.createElement('button');
       btnSubmit.className = 'btn primary';
       btnSubmit.textContent = String(submitText);
-      
+
       btnSubmit.onclick = async () => {
         try {
           const formElement = body.querySelector('form') || body;
-          
+
           let formData;
           if (formElement.tagName === 'FORM') {
-             formData = new FormData(formElement);
+            formData = new FormData(formElement);
           } else {
-             formData = new FormData();
-             const inputs = formElement.querySelectorAll('input[name], select[name], textarea[name]');
-             inputs.forEach(input => {
-               if (input.type === 'checkbox' && !input.checked) return;
-               if (input.type === 'radio' && !input.checked) return;
-               formData.append(input.name, input.value);
-             });
+            formData = new FormData();
+            const inputs = formElement.querySelectorAll('input[name], select[name], textarea[name]');
+            inputs.forEach(input => {
+              if (input.type === 'checkbox' && !input.checked) return;
+              if (input.type === 'radio' && !input.checked) return;
+              formData.append(input.name, input.value);
+            });
           }
 
-          const result = await onSubmit(formData, { 
-            setError: (msg) => {
+          const result = await onSubmit(formData, {
+            setError: msg => {
               console.error(msg);
-              alert(msg); 
-            } 
+              alert(msg);
+            }
           });
-          
+
           if (result !== false) {
             // Кнопка «Начать»/«Сохранить» тоже должна известить о закрытии, как кнопка отмены:
             // иначе окна, которым важно запомнить факт закрытия, молча теряли это событие
@@ -114,8 +114,8 @@ export function showModal({
   // Сборка DOM
   container.appendChild(header);
   container.appendChild(body);
-  if (footer) container.appendChild(footer); 
-  
+  if (footer) container.appendChild(footer);
+
   overlay.appendChild(container);
   root.appendChild(overlay);
 
@@ -123,7 +123,7 @@ export function showModal({
   // Теперь окно можно закрыть ТОЛЬКО через кнопки или Esc.
 
   let closed = false;
-  const handleEsc = (e) => {
+  const handleEsc = e => {
     if (e.key === 'Escape' && isTopModal(overlay)) close();
   };
   const close = () => {
@@ -150,7 +150,7 @@ export function toast(message, type = 'info', durationMs = 3000) {
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
   el.textContent = message;
-  
+
   root.appendChild(el);
 
   requestAnimationFrame(() => {
@@ -169,7 +169,7 @@ export function toast(message, type = 'info', durationMs = 3000) {
  * @param {{ title: string, text: string, okText?: string, cancelText?: string, danger?: boolean }} opts
  */
 export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отмена', danger = false }) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay tf-confirm-overlay';
     overlay.innerHTML = `
@@ -181,18 +181,18 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
           <button type="button" class="btn ${danger ? 'danger' : 'primary'}" data-act="ok">${escapeHtml(okText)}</button>
         </div>
       </div>`;
-    const done = (value) => {
+    const done = value => {
       document.removeEventListener('keydown', onKey, true);
       overlay.remove();
       resolve(value);
     };
-    const onKey = (e) => {
+    const onKey = e => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
       done(false);
     };
-    overlay.addEventListener('click', (e) => {
+    overlay.addEventListener('click', e => {
       const act = /** @type {HTMLElement} */ (e.target).closest?.('[data-act]')?.getAttribute('data-act');
       if (act === 'ok') done(true);
       else if (act === 'cancel' || e.target === overlay) done(false);
@@ -225,38 +225,40 @@ export function openActionMenu(anchor, items) {
   wrap.className = 'dropdown-menu';
   wrap.dataset.open = '1';
   wrap.setAttribute('role', 'menu');
-  wrap.innerHTML = items.map((it, i) => (
-    it.separator
-      ? '<div class="dropdown-sep"></div>'
-      : `<button type="button" role="menuitem" class="dropdown-item" data-id="${escapeHtml(it.id)}"
+  wrap.innerHTML = items
+    .map((it, i) =>
+      it.separator
+        ? '<div class="dropdown-sep"></div>'
+        : `<button type="button" role="menuitem" class="dropdown-item" data-id="${escapeHtml(it.id)}"
            ${it.disabled ? 'disabled' : ''} ${it.danger ? 'style="color:var(--danger)"' : ''}
            title="${escapeHtml(it.hint || it.label)}">
            ${it.icon ? `<span aria-hidden="true">${escapeHtml(it.icon)}</span>` : ''}
            <span>${escapeHtml(it.label)}</span>
          </button>`
-  )).join('');
+    )
+    .join('');
 
   const close = () => {
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('mousedown', onOutside, true);
     wrap.remove();
   };
-  const onKey = (e) => {
+  const onKey = e => {
     if (e.key !== 'Escape') return;
     e.preventDefault();
     e.stopPropagation();
     close();
   };
-  const onOutside = (e) => {
+  const onOutside = e => {
     if (wrap.contains(/** @type {Node} */ (e.target)) || anchor.contains(/** @type {Node} */ (e.target))) return;
     close();
   };
 
-  wrap.addEventListener('click', (e) => {
+  wrap.addEventListener('click', e => {
     const id = /** @type {HTMLElement} */ (e.target).closest?.('[data-id]')?.getAttribute('data-id');
     if (!id) return;
     close();
-    items.find((it) => it.id === id)?.onSelect?.();
+    items.find(it => it.id === id)?.onSelect?.();
   });
 
   // Обёртка с position: relative — иначе меню уехало бы к краю окна

@@ -9,24 +9,30 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-      globals: { ...globals.browser },
+      globals: { ...globals.browser }
     },
     rules: {
-      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
-      'no-empty': ['error', { allowEmptyCatch: true }],
-    },
+      'no-unused-vars': [
+        'warn',
+        { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }
+      ],
+      'no-empty': ['error', { allowEmptyCatch: true }]
+    }
   },
   {
     files: ['tests/**/*.js', 'scripts/**/*.{js,mjs}', 'vite.config.js', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-      globals: { ...globals.node, ...globals.browser },
+      globals: { ...globals.node, ...globals.browser }
     },
     rules: {
-      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
-      'no-empty': ['error', { allowEmptyCatch: true }],
-    },
+      'no-unused-vars': [
+        'warn',
+        { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }
+      ],
+      'no-empty': ['error', { allowEmptyCatch: true }]
+    }
   },
   {
     // Прототип в docs/visuals: обычные скрипты в браузере, глобальная переменная TV.
@@ -34,11 +40,14 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',
-      globals: { ...globals.browser, TV: 'writable' },
+      globals: { ...globals.browser, TV: 'writable' }
     },
     rules: {
-      'no-unused-vars': ['warn', { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }],
-      'no-empty': ['error', { allowEmptyCatch: true }],
-    },
-  },
+      'no-unused-vars': [
+        'warn',
+        { args: 'none', ignoreRestSiblings: true, caughtErrors: 'none', varsIgnorePattern: '^_' }
+      ],
+      'no-empty': ['error', { allowEmptyCatch: true }]
+    }
+  }
 ];

@@ -6,11 +6,18 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
 import { mskStamp } from '../../core/msk.js';
-import { freshnessOf, freshnessChipHtml, marathonSyncList, formatWhen, formatHoursSpan, thresholdHours } from '../../core/freshness.js';
+import {
+  freshnessOf,
+  freshnessChipHtml,
+  marathonSyncList,
+  formatWhen,
+  formatHoursSpan,
+  thresholdHours
+} from '../../core/freshness.js';
 import { openCoinHistory } from './coinHistory.js';
 import { showModal, toast, confirmModal, closeModal } from '../../core/ui.js';
 import { getClassIconSrc } from '../../core/constants.js';
-import { openCharacterForm } from './formEditor.js'; 
+import { openCharacterForm } from './formEditor.js';
 import { levelBonusLabel } from './stateManager.js';
 import { statChange, statsChangeLog } from './statsHistory.js';
 import { ALL_FIELDS } from '../../data/characterFields.js';
@@ -58,9 +65,9 @@ function contactRowHtml(type, label, value) {
 export function openCharacterProfile(char) {
   const isArchived = state.archivedCharacters.some(item => item.id === char.id);
   const archivedPartyLinks = isArchived
-    ? state.archivedParties.flatMap(party => (party.memberLinks || [])
-        .filter(link => link.characterId === char.id)
-        .map(link => ({ party, link })))
+    ? state.archivedParties.flatMap(party =>
+        (party.memberLinks || []).filter(link => link.characterId === char.id).map(link => ({ party, link }))
+      )
     : [];
   const activeMainParty = mainPartyName(char, state.parties);
   const archivedMainParty = archivedPartyLinks.find(({ link }) => link.isMain);
@@ -73,8 +80,7 @@ export function openCharacterProfile(char) {
   // Подписи статов для списка изменений берём из `characterFields.js`: названия уже есть,
   // и второй список с ними со временем разошёлся бы с первым
   const STAT_LABELS = Object.fromEntries(
-    ALL_FIELDS.filter(f => f.path.startsWith('stats.'))
-      .map(f => [f.path.slice(6), f.label.replace(/\s*\(.*\)$/, '')])
+    ALL_FIELDS.filter(f => f.path.startsWith('stats.')).map(f => [f.path.slice(6), f.label.replace(/\s*\(.*\)$/, '')])
   );
 
   // Характеристика — плитка: подпись сверху, значение снизу, рядом разница с прошлым.
@@ -84,9 +90,10 @@ export function openCharacterProfile(char) {
   const statRow = (label, key) => {
     const value = Number(stats[key]) || 0;
     const change = statChange(char, key);
-    const delta = change && change.delta !== 0
-      ? `<span class="pf-stat-delta ${change.delta > 0 ? 'is-up' : 'is-down'}">${change.delta > 0 ? '+' : '−'}${Math.abs(change.delta).toLocaleString('ru-RU')}</span>`
-      : '';
+    const delta =
+      change && change.delta !== 0
+        ? `<span class="pf-stat-delta ${change.delta > 0 ? 'is-up' : 'is-down'}">${change.delta > 0 ? '+' : '−'}${Math.abs(change.delta).toLocaleString('ru-RU')}</span>`
+        : '';
     const tip = change
       ? ` title="Прошлое значение: ${change.previous.toLocaleString('ru-RU')}${change.at ? ` · ${formatWhen(change.at)}` : ''}"`
       : '';
@@ -104,18 +111,24 @@ export function openCharacterProfile(char) {
   // Последние изменения характеристик: когда и что именно поменялось
   const changeLog = statsChangeLog(char, 6);
   const changeLogHtml = changeLog.length
-    ? changeLog.map(entry => {
-        const shown = entry.changes.filter(c => STAT_LABELS[c.key]).slice(0, 6);
-        const rest = entry.changes.length - shown.length;
-        return `
+    ? changeLog
+        .map(entry => {
+          const shown = entry.changes.filter(c => STAT_LABELS[c.key]).slice(0, 6);
+          const rest = entry.changes.length - shown.length;
+          return `
           <div class="pf-changes-row">
             <span class="pf-changes-when">${entry.at ? escapeHtml(formatWhen(entry.at)) : 'дата не известна'}</span>
-            <span class="pf-changes-list">${shown.map(c => `<span class="pf-change">
+            <span class="pf-changes-list">${shown
+              .map(
+                c => `<span class="pf-change">
               <span class="pf-change-key">${escapeHtml(STAT_LABELS[c.key])}</span>
               <b class="${c.delta > 0 ? 'is-up' : 'is-down'}">${c.delta > 0 ? '+' : '−'}${Math.abs(c.delta).toLocaleString('ru-RU')}</b>
-            </span>`).join('')}${rest > 0 ? `<span class="pf-change-more">и ещё ${rest}</span>` : ''}</span>
+            </span>`
+              )
+              .join('')}${rest > 0 ? `<span class="pf-change-more">и ещё ${rest}</span>` : ''}</span>
           </div>`;
-      }).join('')
+        })
+        .join('')
     : '<p class="pf-hint">Изменений пока не было — история появится, когда характеристики поменяются.</p>';
 
   const tagsHtml = (char.tags || []).length
@@ -128,9 +141,11 @@ export function openCharacterProfile(char) {
         <!-- Шапка: кто это, главные строки и баланс справа -->
         <div class="pf-head">
           <div class="pf-avatar">
-            ${getClassIconSrc(char.class)
-              ? `<img src="${getClassIconSrc(char.class)}" alt="" />`
-              : `<span>${escapeHtml((char.class || '?')[0])}</span>`}
+            ${
+              getClassIconSrc(char.class)
+                ? `<img src="${getClassIconSrc(char.class)}" alt="" />`
+                : `<span>${escapeHtml((char.class || '?')[0])}</span>`
+            }
           </div>
           <div class="pf-head-info">
             <div class="pf-title-row">
@@ -281,13 +296,17 @@ export function openCharacterProfile(char) {
             </button>
             <button id="btn-open-sync-helper-footer" class="btn secondary" type="button" ${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'disabled' : ''} title="${!isArchived && state.ui?.authCheck?.[char.id] === 'checking' ? 'Идёт проверка входа — дождитесь окончания' : 'Открыть браузер для входа'}">🌐 Сайт</button>
             <button id="btn-coin-history-footer" class="btn secondary" type="button" title="История изменений баланса Древних монет"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> История</button>
-            ${isArchived ? '<span class="muted" title="Персонажи архива исключены из проверок">Проверки отключены</span>' : `<div class="pf-menu" id="pf-check-menu">
+            ${
+              isArchived
+                ? '<span class="muted" title="Персонажи архива исключены из проверок">Проверки отключены</span>'
+                : `<div class="pf-menu" id="pf-check-menu">
                <button type="button" class="btn secondary" id="btn-pf-check" aria-haspopup="true" aria-expanded="false" title="Проверить вход или обновить баланс">🔄 Проверить ▾</button>
                <div class="pf-menu-list" hidden>
                   <button type="button" data-pf-check="auth">🔐 Вход на сайт</button>
                   <button type="button" data-pf-check="coins" data-pf-coins>${needsCoinRecheck(char) ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Перепроверить баланс' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс Древних монет'}</button>
                </div>
-            </div>`}
+            </div>`
+            }
          </div>
 
          <div class="pf-footer-end">
@@ -312,7 +331,7 @@ export function openCharacterProfile(char) {
   // Привязка событий после рендера
   setTimeout(() => {
     const modalRoot = document.getElementById('modal-root');
-    if(!modalRoot) return;
+    if (!modalRoot) return;
 
     // Глаз у контакта: показать или скрыть значение.
     // Логика в одной функции, потому что ею пользуются и глаз в строке, и кнопка
@@ -328,7 +347,7 @@ export function openCharacterProfile(char) {
       btn.title = show ? 'Скрыть' : 'Показать/Скрыть';
     };
     modalRoot.querySelectorAll('.profile-toggle-eye').forEach(btn => {
-      btn.onclick = (e) => {
+      btn.onclick = e => {
         e.stopPropagation();
         const row = btn.closest('.contact-row-profile');
         const valueSpan = row?.querySelector('.profile-copy-trigger');
@@ -339,7 +358,7 @@ export function openCharacterProfile(char) {
 
     // «Показать все» / «Скрыть все»: один глаз на все контакты вместо четырёх кликов
     const toggleAll = document.getElementById('pf-contacts-toggle-all');
-    toggleAll?.addEventListener('click', (e) => {
+    toggleAll?.addEventListener('click', e => {
       e.stopPropagation();
       const show = toggleAll.textContent !== 'Скрыть все';
       modalRoot.querySelectorAll('.profile-toggle-eye').forEach(btn => setEye(btn, show));
@@ -353,15 +372,15 @@ export function openCharacterProfile(char) {
 
     // Copy Triggers
     modalRoot.querySelectorAll('.profile-copy-trigger').forEach(span => {
-      span.onclick = (e) => {
+      span.onclick = e => {
         e.stopPropagation();
         if (span.dataset.original) {
-           navigator.clipboard.writeText(span.dataset.original).then(() => {
-             toast('Скопировано!', 'success');
-             const oldBg = span.style.background;
-             span.style.background = 'rgba(76, 175, 80, 0.3)';
-             setTimeout(() => span.style.background = oldBg, 300);
-           });
+          navigator.clipboard.writeText(span.dataset.original).then(() => {
+            toast('Скопировано!', 'success');
+            const oldBg = span.style.background;
+            span.style.background = 'rgba(76, 175, 80, 0.3)';
+            setTimeout(() => (span.style.background = oldBg), 300);
+          });
         }
       };
     });
@@ -372,7 +391,8 @@ export function openCharacterProfile(char) {
     if (notesEl) {
       let timer = null;
       const saveNotes = async () => {
-        clearTimeout(timer); timer = null;
+        clearTimeout(timer);
+        timer = null;
         const next = notesEl.value.slice(0, NOTES_MAX_LENGTH);
         if (next === (char.notes || '')) return;
         char.notes = next;
@@ -394,7 +414,7 @@ export function openCharacterProfile(char) {
 
     // Close Button
     const closeBtn = document.getElementById('btn-close-profile');
-    if(closeBtn) {
+    if (closeBtn) {
       closeBtn.onclick = () => closeModal();
     }
 
@@ -412,7 +432,7 @@ export function openCharacterProfile(char) {
 
     // Edit Button
     const editBtn = document.getElementById('btn-edit-from-profile');
-    if(editBtn) {
+    if (editBtn) {
       editBtn.onclick = () => {
         closeModal();
         openCharacterForm(char);
@@ -421,7 +441,7 @@ export function openCharacterProfile(char) {
 
     // Delete Button
     const delBtn = document.getElementById('btn-delete-from-profile');
-    if(delBtn) {
+    if (delBtn) {
       delBtn.onclick = async () => {
         const ok = await confirmModal({
           title: `Удалить персонажа «${char.nick}»?`,
@@ -429,24 +449,26 @@ export function openCharacterProfile(char) {
           okText: 'Удалить персонажа',
           danger: true
         });
-        if(ok) {
-           // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
-           accountKeysOf(char).forEach(key => import('../launcher/launch.js').then(m => m.forgetAccount(key)).catch(() => {}));
-           import('../../core/state.js').then(({ state }) => {
-             import('../../core/storage.js').then(({ persist }) => {
-               state.characters = state.characters.filter(c => c.id !== char.id);
-               state.archivedCharacters = state.archivedCharacters.filter(c => c.id !== char.id);
-               state.archivedParties.forEach(party => {
-                 party.memberLinks = (party.memberLinks || []).filter(link => link.characterId !== char.id);
-               });
-               persist().then(() => {
-                 closeModal();
-                 import('./list.js').then(mod => mod.renderCharacters());
-                 import('../parties/index.js').then(mod => mod.renderParties());
-                 toast('Персонаж удален', 'success');
-               });
-             });
-           });
+        if (ok) {
+          // сохранённый вход GameCenter лежит в хранилище ОС: вместе с персонажем удаляем и его
+          accountKeysOf(char).forEach(key =>
+            import('../launcher/launch.js').then(m => m.forgetAccount(key)).catch(() => {})
+          );
+          import('../../core/state.js').then(({ state }) => {
+            import('../../core/storage.js').then(({ persist }) => {
+              state.characters = state.characters.filter(c => c.id !== char.id);
+              state.archivedCharacters = state.archivedCharacters.filter(c => c.id !== char.id);
+              state.archivedParties.forEach(party => {
+                party.memberLinks = (party.memberLinks || []).filter(link => link.characterId !== char.id);
+              });
+              persist().then(() => {
+                closeModal();
+                import('./list.js').then(mod => mod.renderCharacters());
+                import('../parties/index.js').then(mod => mod.renderParties());
+                toast('Персонаж удален', 'success');
+              });
+            });
+          });
         }
       };
     }
@@ -471,7 +493,9 @@ export function openCharacterProfile(char) {
         const { pickGameCenter } = await import('../launcher/launch.js');
         const picked = await pickGameCenter();
         if (picked && gcInput) gcInput.value = picked;
-      } catch (e) { toast(String(e?.message || e), 'error'); }
+      } catch (e) {
+        toast(String(e?.message || e), 'error');
+      }
     });
     document.getElementById('pf-gc-manage')?.addEventListener('click', async () => {
       const { openGameCentersModal } = await import('../launcher/gcSettingsModal.js');
@@ -510,9 +534,9 @@ export function openCharacterProfile(char) {
 
     // NEW: Open Site / Sync Helper Button (в футере)
     const syncFooterBtn = document.getElementById('btn-open-sync-helper-footer');
-    if(syncFooterBtn) {
+    if (syncFooterBtn) {
       syncFooterBtn.onclick = () => {
-        openSyncHelper(char.id); 
+        openSyncHelper(char.id);
       };
     }
 
@@ -520,23 +544,36 @@ export function openCharacterProfile(char) {
     const menu = document.getElementById('pf-check-menu');
     const menuBtn = document.getElementById('btn-pf-check');
     const menuList = menu?.querySelector('.pf-menu-list');
-    const setMenu = (open) => { if (!menuList) return; menuList.hidden = !open; menuBtn.setAttribute('aria-expanded', String(open)); };
-    if (menuBtn) menuBtn.onclick = (e) => { e.stopPropagation(); setMenu(menuList.hidden); };
+    const setMenu = open => {
+      if (!menuList) return;
+      menuList.hidden = !open;
+      menuBtn.setAttribute('aria-expanded', String(open));
+    };
+    if (menuBtn)
+      menuBtn.onclick = e => {
+        e.stopPropagation();
+        setMenu(menuList.hidden);
+      };
     const redraw = () => {
       const line = document.getElementById('profile-auth-line');
       if (line) line.innerHTML = authLineHtml(char);
       const checks = document.getElementById('profile-checks-block');
       if (checks) checks.innerHTML = checksBlockHtml(char);
       const coins = document.getElementById('profile-coins-block');
-      if (coins) coins.innerHTML = coinBlockHtml(char);          // красная пометка исчезает, если баланс перечитан
+      if (coins) coins.innerHTML = coinBlockHtml(char); // красная пометка исчезает, если баланс перечитан
       const item = document.querySelector('[data-pf-coins]');
-      if (item) item.textContent = needsCoinRecheck(char) ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Перепроверить баланс' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс Древних монет';
+      if (item)
+        item.textContent = needsCoinRecheck(char)
+          ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Перепроверить баланс'
+          : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс Древних монет';
     };
     menu?.querySelectorAll('[data-pf-check]').forEach(btn => {
       btn.onclick = async () => {
         const kind = btn.dataset.pfCheck;
         setMenu(false);
-        menu.querySelectorAll('[data-pf-check]').forEach(b => { b.disabled = true; });
+        menu.querySelectorAll('[data-pf-check]').forEach(b => {
+          b.disabled = true;
+        });
         try {
           if (kind === 'auth') await refreshAuthFor(char);
           else await refreshBalanceFor(char);
@@ -544,18 +581,22 @@ export function openCharacterProfile(char) {
           console.error(err);
           toast(kind === 'auth' ? 'Не удалось запустить проверку входа' : 'Ошибка запуска проверки', 'error');
         } finally {
-          menu.querySelectorAll('[data-pf-check]').forEach(b => { b.disabled = false; });
+          menu.querySelectorAll('[data-pf-check]').forEach(b => {
+            b.disabled = false;
+          });
           redraw();
         }
       };
     });
     // клик вне меню закрывает его
-    const closeOnOutside = (e) => {
-      if (!menu || !document.body.contains(menu)) { document.removeEventListener('click', closeOnOutside); return; }   // профиль закрыт
+    const closeOnOutside = e => {
+      if (!menu || !document.body.contains(menu)) {
+        document.removeEventListener('click', closeOnOutside);
+        return;
+      } // профиль закрыт
       if (!menuList.hidden && !menu.contains(e.target)) setMenu(false);
     };
     document.addEventListener('click', closeOnOutside);
-
   }, 100);
 }
 
@@ -578,11 +619,17 @@ function checksBlockHtml(char) {
     </div>`;
   const marathons = marathonSyncList(char.id, state.marathons);
   const rows = [
-    row('<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>', 'Баланс монет', freshnessOf('balance', char.lastCoinUpdate, state.settings)),
+    row(
+      '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+      'Баланс монет',
+      freshnessOf('balance', char.lastCoinUpdate, state.settings)
+    ),
     row('🔐', 'Вход на сайт', freshnessOf('login', char.lastLoginCheck, state.settings)),
-    ...marathons.map(({ marathon, at }) => row('🏆', `Марафон «${marathon.title}»`, freshnessOf('marathon', at, state.settings)))
+    ...marathons.map(({ marathon, at }) =>
+      row('🏆', `Марафон «${marathon.title}»`, freshnessOf('marathon', at, state.settings))
+    )
   ];
-  const limit = (kind) => formatHoursSpan(thresholdHours(state.settings, kind));
+  const limit = kind => formatHoursSpan(thresholdHours(state.settings, kind));
   return `
     ${rows.join('')}
     ${marathons.length ? '' : '<div class="pf-check-note muted">🏆 Идущих марафонов с адресом страницы на сайте нет — прогресс не сверяется.</div>'}
@@ -607,9 +654,11 @@ function coinBlockHtml(char) {
 function extraPartiesHtml(char) {
   const extra = additionalPartiesOf(char, state.parties);
   const archivedExtra = state.archivedCharacters.some(item => item.id === char.id)
-    ? state.archivedParties.flatMap(party => (party.memberLinks || [])
-        .filter(link => link.characterId === char.id && !link.isMain)
-        .map(() => `${party.name} · архив`))
+    ? state.archivedParties.flatMap(party =>
+        (party.memberLinks || [])
+          .filter(link => link.characterId === char.id && !link.isMain)
+          .map(() => `${party.name} · архив`)
+      )
     : [];
   const labels = [...extra.map(party => party.name), ...archivedExtra];
   if (!labels.length) return '';

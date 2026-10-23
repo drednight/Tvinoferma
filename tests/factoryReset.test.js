@@ -3,16 +3,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import {
-  contactKeysOf, accountKeysOfAll, secretsToRemove, resetSummary, resetWarning
+  contactKeysOf,
+  accountKeysOfAll,
+  secretsToRemove,
+  resetSummary,
+  resetWarning
 } from '../js/settings/factoryReset.js';
 
 const characters = () => [
   {
-    id: 'Ауразак', nick: 'Ауразак',
+    id: 'Ауразак',
+    nick: 'Ауразак',
     launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'aura' } }, gcAccount: true, gcPath: 'D:\\GC' }
   },
   {
-    id: 'Мираж', nick: 'Мираж',
+    id: 'Мираж',
+    nick: 'Мираж',
     launch: { gcIds: ['gc-2'], gcAccounts: { 'gc-2': { nick: 'mirage' }, 'gc-2legacy': { nick: 'old', legacy: true } } }
   },
   { id: 'Пустой', nick: 'Пустой' }
@@ -92,13 +98,18 @@ describe('performFactoryReset: порядок и обработка ошибок
 
   beforeEach(async () => {
     vi.resetModules();
-    invokeMock.mockReset(); toastMock.mockReset();
+    invokeMock.mockReset();
+    toastMock.mockReset();
     vi.doMock('@tauri-apps/api/core', () => ({ invoke: (...a) => invokeMock(...a) }));
     vi.doMock('../js/core/ui.js', () => ({ toast: (...a) => toastMock(...a) }));
     window.__TAURI_INTERNALS__ = {};
     ({ performFactoryReset: perform } = await import('../js/settings/factoryReset.js'));
   });
-  afterEach(() => { delete window.__TAURI_INTERNALS__; vi.doUnmock('@tauri-apps/api/core'); vi.doUnmock('../js/core/ui.js'); });
+  afterEach(() => {
+    delete window.__TAURI_INTERNALS__;
+    vi.doUnmock('@tauri-apps/api/core');
+    vi.doUnmock('../js/core/ui.js');
+  });
 
   it('вне приложения сброс не выполняется и ничего не удаляет', async () => {
     delete window.__TAURI_INTERNALS__;
@@ -112,7 +123,9 @@ describe('performFactoryReset: порядок и обработка ошибок
     const reload = vi.fn();
     vi.stubGlobal('location', { ...window.location, reload });
     expect(await perform({ characters: characters() })).toBe(true);
-    expect(invokeMock).toHaveBeenCalledWith('factory_reset', { keys: expect.arrayContaining(['Ауразак', 'Ауразак@gc-1', 'Мираж@gc-2']) });
+    expect(invokeMock).toHaveBeenCalledWith('factory_reset', {
+      keys: expect.arrayContaining(['Ауразак', 'Ауразак@gc-1', 'Мираж@gc-2'])
+    });
     vi.unstubAllGlobals();
   });
 

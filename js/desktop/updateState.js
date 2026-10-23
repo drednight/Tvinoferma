@@ -32,7 +32,13 @@ export const getUpdateState = () => ({ ...current });
 export function setUpdateState(patch) {
   current = { ...current, ...patch };
   const snapshot = { ...current };
-  subscribers.forEach((fn) => { try { fn(snapshot); } catch (e) { console.warn('[UPDATE STATE]', e); } });
+  subscribers.forEach(fn => {
+    try {
+      fn(snapshot);
+    } catch (e) {
+      console.warn('[UPDATE STATE]', e);
+    }
+  });
 }
 
 /** Подписка; callback вызывается сразу и при каждом изменении. Возвращает функцию отписки. */
@@ -48,7 +54,7 @@ export function resetUpdateState() {
 }
 
 /** "0.3.0" → "v0.3.0" */
-export const formatVersion = (v) => (v ? (String(v).startsWith('v') ? String(v) : `v${v}`) : '');
+export const formatVersion = v => (v ? (String(v).startsWith('v') ? String(v) : `v${v}`) : '');
 
 /** Есть ли найденное обновление, о котором надо напоминать кнопкой. */
 export const hasUpdate = (s = current) =>
@@ -59,20 +65,28 @@ export const isBusy = (s = current) => s.status === 'downloading' || s.status ==
 /** Подпись кнопки в шапке. */
 export function badgeLabel(s = current) {
   switch (s.status) {
-    case 'downloading': return s.progress == null ? '⬇️ Загрузка обновления…' : `⬇️ Загрузка ${s.progress}%`;
-    case 'installing': return '⏳ Установка, перезапуск…';
-    case 'error': return '⚠️ Ошибка обновления: повторить';
-    default: return `⬆️ Доступно обновление ${formatVersion(s.version)}`;
+    case 'downloading':
+      return s.progress == null ? '⬇️ Загрузка обновления…' : `⬇️ Загрузка ${s.progress}%`;
+    case 'installing':
+      return '⏳ Установка, перезапуск…';
+    case 'error':
+      return '⚠️ Ошибка обновления: повторить';
+    default:
+      return `⬆️ Доступно обновление ${formatVersion(s.version)}`;
   }
 }
 
 /** Подпись кнопки установки в настройках. */
 export function installButtonLabel(s = current) {
   switch (s.status) {
-    case 'downloading': return s.progress == null ? 'Загрузка…' : `Загрузка ${s.progress}%`;
-    case 'installing': return 'Установка…';
-    case 'error': return `Повторить обновление до ${formatVersion(s.version)}`;
-    default: return `⬆️ Обновить до ${formatVersion(s.version)}`;
+    case 'downloading':
+      return s.progress == null ? 'Загрузка…' : `Загрузка ${s.progress}%`;
+    case 'installing':
+      return 'Установка…';
+    case 'error':
+      return `Повторить обновление до ${formatVersion(s.version)}`;
+    default:
+      return `⬆️ Обновить до ${formatVersion(s.version)}`;
   }
 }
 
@@ -80,14 +94,22 @@ export function installButtonLabel(s = current) {
 export function statusText(s = current, { supported = true } = {}) {
   if (!supported) return 'Автообновление работает только в установленном приложении.';
   switch (s.status) {
-    case 'checking': return 'Проверяю наличие обновлений…';
-    case 'uptodate': return 'Установлена последняя версия.';
-    case 'available': return `Доступна версия ${formatVersion(s.version)} (сейчас ${formatVersion(s.currentVersion)}).`;
-    case 'downloading': return `Загружаю версию ${formatVersion(s.version)}…`;
-    case 'installing': return `Устанавливаю версию ${formatVersion(s.version)}, приложение перезапустится.`;
-    case 'error': return `Не удалось установить ${formatVersion(s.version)}: ${s.error || 'неизвестная ошибка'}`;
-    case 'check_error': return `Не удалось проверить обновления: ${s.error || 'нет ответа'}`;
-    default: return 'Обновления скачиваются из GitHub Releases.';
+    case 'checking':
+      return 'Проверяю наличие обновлений…';
+    case 'uptodate':
+      return 'Установлена последняя версия.';
+    case 'available':
+      return `Доступна версия ${formatVersion(s.version)} (сейчас ${formatVersion(s.currentVersion)}).`;
+    case 'downloading':
+      return `Загружаю версию ${formatVersion(s.version)}…`;
+    case 'installing':
+      return `Устанавливаю версию ${formatVersion(s.version)}, приложение перезапустится.`;
+    case 'error':
+      return `Не удалось установить ${formatVersion(s.version)}: ${s.error || 'неизвестная ошибка'}`;
+    case 'check_error':
+      return `Не удалось проверить обновления: ${s.error || 'нет ответа'}`;
+    default:
+      return 'Обновления скачиваются из GitHub Releases.';
   }
 }
 

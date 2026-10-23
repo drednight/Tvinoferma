@@ -4,7 +4,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => false }));
 vi.mock('../js/modules/launcher/launch.js', () => ({
-  gameCenterInfo: vi.fn(), pickGameCenter: vi.fn(), forgetAccount: vi.fn()
+  gameCenterInfo: vi.fn(),
+  pickGameCenter: vi.fn(),
+  forgetAccount: vi.fn()
 }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ captureLogin: vi.fn(), forgetLogin: vi.fn() }));
 
@@ -23,7 +25,14 @@ beforeEach(async () => {
   ];
   state.characters = [
     { id: 'a', nick: 'Аа', class: 'Воин', partyIds: ['p1'], mainPartyId: 'p1', launch: {} },
-    { id: 'b', nick: 'Бб', class: 'Маг', partyIds: ['p2'], mainPartyId: 'p2', launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'bb' } } } },
+    {
+      id: 'b',
+      nick: 'Бб',
+      class: 'Маг',
+      partyIds: ['p2'],
+      mainPartyId: 'p2',
+      launch: { gcIds: ['gc-1'], gcAccounts: { 'gc-1': { nick: 'bb' } } }
+    },
     { id: 'c', nick: 'Вв', class: 'Жрец', partyIds: ['p1', 'p2'], mainPartyId: 'p1', launch: {} },
     { id: 'd', nick: 'Гг', class: 'Бард', partyIds: [], mainPartyId: null, launch: {} }
   ];
@@ -33,7 +42,7 @@ beforeEach(async () => {
 const root = () => document.getElementById('gcm-root');
 const shownChars = () => [...root().querySelectorAll('.gcm-char')].map(el => el.querySelector('b').textContent);
 const partySelect = () => root().querySelector('#gcm-party');
-const setParty = (value) => {
+const setParty = value => {
   const sel = partySelect();
   sel.value = value;
   sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -73,7 +82,7 @@ describe('фильтр по пати', () => {
     const box = root().querySelector('#gcm-unbound');
     box.checked = true;
     box.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(shownChars()).not.toContain('Бб');   // у него уже есть GameCenter
+    expect(shownChars()).not.toContain('Бб'); // у него уже есть GameCenter
     expect(shownChars()).toEqual(['Аа', 'Вв', 'Гг']);
   });
 

@@ -57,7 +57,7 @@ export function groupChars(chars, key, parties = []) {
       const party = characterParty(c, parties);
       gKey = party ? `p:${party.id}` : 'p:none';
       title = party ? party.name : NO_PARTY_TITLE;
-      order = party ? (Number(party.order) || 1e9) : Infinity;
+      order = party ? Number(party.order) || 1e9 : Infinity;
     } else {
       gKey = c.class ? `c:${c.class}` : 'c:none';
       title = c.class || NO_CLASS_TITLE;
@@ -69,7 +69,7 @@ export function groupChars(chars, key, parties = []) {
   const out = [...groups.values()];
   if (key === GROUP_PARTY) {
     // Партии — в их порядке, затем по названию; «Без пати» всегда последней
-    out.sort((a, b) => (a.order - b.order) || a.title.localeCompare(b.title, 'ru'));
+    out.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, 'ru'));
   } else {
     // Классы — по алфавиту, «Без класса» последней
     out.sort((a, b) => {
@@ -94,10 +94,12 @@ function countOnline(chars) {
  */
 export function applyManualOrder(chars, orderIds = []) {
   const pos = new Map();
-  orderIds.forEach((id, i) => { if (!pos.has(id)) pos.set(id, i); });
+  orderIds.forEach((id, i) => {
+    if (!pos.has(id)) pos.set(id, i);
+  });
   return (chars || [])
     .map((c, i) => ({ c, i, p: pos.has(c.id) ? pos.get(c.id) : Infinity }))
-    .sort((a, b) => (a.p - b.p) || (a.i - b.i))
+    .sort((a, b) => a.p - b.p || a.i - b.i)
     .map(x => x.c);
 }
 

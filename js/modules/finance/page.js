@@ -13,11 +13,29 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
 import {
-  CURRENCIES, CURRENCY_IDS, DEFAULT_CURRENCY, DEFAULT_COMMISSION_PCT,
-  money, roundFor, formatAmount, formatInputNumber, todayIso, normalizeFinance, currentBalances,
-  groupByMonth, shopTotals, shopItemTotal, findShopItem, shopDealOperation,
-  goldDeal, goldDealOperations, commissionLossPct,
-  loanStatus, loanOperation, paymentSplit, spanLabel
+  CURRENCIES,
+  CURRENCY_IDS,
+  DEFAULT_CURRENCY,
+  DEFAULT_COMMISSION_PCT,
+  money,
+  roundFor,
+  formatAmount,
+  formatInputNumber,
+  todayIso,
+  normalizeFinance,
+  currentBalances,
+  groupByMonth,
+  shopTotals,
+  shopItemTotal,
+  findShopItem,
+  shopDealOperation,
+  goldDeal,
+  goldDealOperations,
+  commissionLossPct,
+  loanStatus,
+  loanOperation,
+  paymentSplit,
+  spanLabel
 } from './model.js';
 
 const root = () => document.getElementById('finance-root');
@@ -63,7 +81,11 @@ function cur(id) {
 /** Поле формы → число. `\s` в JS покрывает и неразрывный пробел, поэтому «1 000» и «1,5»
  *  читаются одинаково. Пустая строка даёт 0, а не NaN: иначе в итог уехал бы NaN. */
 function num(value) {
-  const n = Number(String(value ?? '').replace(/\s/g, '').replace(',', '.'));
+  const n = Number(
+    String(value ?? '')
+      .replace(/\s/g, '')
+      .replace(',', '.')
+  );
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -78,9 +100,7 @@ function signed(value, currency = DEFAULT_CURRENCY) {
 
 /** Сумма списка по валюте: без валюты складываем только золото (основную). */
 function sumFor(list, ccy) {
-  return list
-    .filter(o => !ccy || o.currency === ccy)
-    .reduce((a, o) => a + (o.kind === 'in' ? o.amount : -o.amount), 0);
+  return list.filter(o => !ccy || o.currency === ccy).reduce((a, o) => a + (o.kind === 'in' ? o.amount : -o.amount), 0);
 }
 
 /** Цвет плитки из названия: одинаковые предметы всегда одного цвета. */
@@ -145,11 +165,13 @@ function balancesRow() {
   const debt = loanExposure();
   return `
     <div class="fin-holdings">
-      ${CURRENCY_IDS.map(id => `
+      ${CURRENCY_IDS.map(
+        id => `
         <span class="fin-holding ${now[id] < 0 ? 'fin-out' : ''}">
           ${cur(id).icon} ${escapeHtml(cur(id).title)}: <b>${fmt(now[id], id)}</b>
           ${debt[id] ? `<small class="fin-holding-debt">из них в долгах ${fmt(debt[id], id)}</small>` : ''}
-        </span>`).join('')}
+        </span>`
+      ).join('')}
     </div>`;
 }
 
@@ -175,21 +197,25 @@ function panels() {
   const totals = shopTotals(shopItems);
   const lent = loans.filter(l => l.direction !== 'borrowed');
   const borrowed = loans.filter(l => l.direction === 'borrowed');
-  const sum = (list) => list.reduce((s, l) => s + loanStatus(l).total, 0);
+  const sum = list => list.reduce((s, l) => s + loanStatus(l).total, 0);
   return `
     <div class="pans">
-      ${CURRENCY_IDS.map(id => `
+      ${CURRENCY_IDS.map(
+        id => `
         <div class="pan">
           <span class="pan-label">${cur(id).icon} ${escapeHtml(cur(id).title)}</span>
           <span class="pan-value ${now[id] < 0 ? 'fin-out' : ''}">${fmt(now[id], id)}</span>
           <span class="pan-sub">за ${escapeHtml(first ? first.label : '—')} ${signed(netOf(first, id), id)}</span>
-        </div>`).join('')}
+        </div>`
+      ).join('')}
       <div class="pan">
         <span class="pan-label">🤝 Долги</span>
-        ${loans.length
-          ? `<span class="pan-row"><span>должны вернуть</span><b class="fin-in">${fmt(sum(lent))}</b></span>
+        ${
+          loans.length
+            ? `<span class="pan-row"><span>должны вернуть</span><b class="fin-in">${fmt(sum(lent))}</b></span>
              <span class="pan-row"><span>я должен</span><b class="fin-out">${fmt(sum(borrowed))}</b></span>`
-          : '<span class="pan-value fin-in">нет</span>'}
+            : '<span class="pan-value fin-in">нет</span>'
+        }
       </div>
       <div class="pan">
         <span class="pan-label">🏪 Комиссионка</span>
@@ -207,14 +233,18 @@ function monthsList() {
   // В списке — итог ЗА месяц (без переноса прошлого): по нему видно, в плюсе месяц или нет.
   return `
     <div class="months-list">
-      ${months.map(m => `
+      ${months
+        .map(
+          m => `
         <button type="button" class="month-item ${m.month === selected ? 'active' : ''}" data-month="${m.month}">
           <b>${escapeHtml(m.label)}</b>
           <span class="mi-sum">
             ${CURRENCY_IDS.map(id => `<span class="${netOf(m, id) < 0 ? 'fin-out' : 'fin-in'}">${signed(netOf(m, id), id)}</span>`).join('<br>')}
           </span>
           <small>${m.operations.length} записей</small>
-        </button>`).join('')}
+        </button>`
+        )
+        .join('')}
     </div>`;
 }
 
@@ -222,9 +252,10 @@ function operationRow(op) {
   const isIn = op.kind === 'in';
   // Голд-сделка — обмен валюты, а не расход: отдельная метка, чтобы не путать
   // «покупку голда за золото» с обычными тратами.
-  const chip = op.source === 'gold'
-    ? '<span class="fin-chip is-conv">Конвертация</span>'
-    : `<span class="fin-chip ${isIn ? 'is-in' : 'is-out'}">${KIND_LABEL[op.kind]}</span>`;
+  const chip =
+    op.source === 'gold'
+      ? '<span class="fin-chip is-conv">Конвертация</span>'
+      : `<span class="fin-chip ${isIn ? 'is-in' : 'is-out'}">${KIND_LABEL[op.kind]}</span>`;
   return `
     <tr class="fin-row">
       <td class="fin-date">${escapeHtml(op.date.slice(8))}.${escapeHtml(op.date.slice(5, 7))}</td>
@@ -249,14 +280,17 @@ function operationRow(op) {
 function monthOpen() {
   const months = groupByMonth(fin().operations);
   const sel = months.find(m => m.month === selected);
-  if (!sel) return '<div class="month-right"><p class="fin-empty">Записей пока нет. Нажмите «Записать движение».</p></div>';
+  if (!sel)
+    return '<div class="month-right"><p class="fin-empty">Записей пока нет. Нажмите «Записать движение».</p></div>';
 
   const q = query.trim().toLowerCase();
   let list = sel.operations;
   if (sourceFilter) list = list.filter(o => o.source === sourceFilter);
   if (currencyFilter) list = list.filter(o => o.currency === currencyFilter);
-  if (q) list = list.filter(o =>
-    (o.counterparty || '').toLowerCase().includes(q) || (o.note || '').toLowerCase().includes(q));
+  if (q)
+    list = list.filter(
+      o => (o.counterparty || '').toLowerCase().includes(q) || (o.note || '').toLowerCase().includes(q)
+    );
 
   // «Итог» считаем снизу вверх по порядку строк: нижняя строка — первое действие,
   // каждая следующая сверху добавляет к ней. Так видно, как копился остаток.
@@ -280,7 +314,12 @@ function monthOpen() {
         <div class="chips">
           <span class="chips-label">Источник:</span>
           <button type="button" class="chip-btn ${sourceFilter === null ? 'active' : ''}" data-source="">Все</button>
-          ${Object.keys(SOURCE_LABEL).map(k => `<button type="button" class="chip-btn ${sourceFilter === k ? 'active' : ''}" data-source="${k}">${escapeHtml(SOURCE_LABEL[k])}</button>`).join('')}
+          ${Object.keys(SOURCE_LABEL)
+            .map(
+              k =>
+                `<button type="button" class="chip-btn ${sourceFilter === k ? 'active' : ''}" data-source="${k}">${escapeHtml(SOURCE_LABEL[k])}</button>`
+            )
+            .join('')}
         </div>
         <div class="chips">
           <span class="chips-label">Валюта:</span>
@@ -290,14 +329,18 @@ function monthOpen() {
         <span class="spacer"></span>
         <label class="check"><input type="checkbox" data-balance ${showBalance ? 'checked' : ''} /> Итог</label>
       </div>
-      ${anyFilter ? `
+      ${
+        anyFilter
+          ? `
         <div class="filter-bar">
           <span class="muted">Показано:</span>
           ${sourceFilter ? `<span class="filter-chip">${escapeHtml(SOURCE_LABEL[sourceFilter])}<button type="button" data-clear-source>×</button></span>` : ''}
           ${currencyFilter ? `<span class="filter-chip">${escapeHtml(cur(currencyFilter).title)}<button type="button" data-clear-currency>×</button></span>` : ''}
           ${q ? `<span class="filter-chip">«${escapeHtml(query)}»<button type="button" data-clear-query>×</button></span>` : ''}
           <span class="muted">${list.length} записей · ${signed(sumFor(list, currencyFilter), sumCcy)}</span>
-        </div>` : ''}
+        </div>`
+          : ''
+      }
       <h3 class="block-h">${escapeHtml(sel.label)} · ${list.length} записей</h3>
       <div class="month-body">
         <div class="fin-table-wrap">
@@ -318,7 +361,11 @@ function shopSide(side) {
   const totals = shopTotals(fin().shopItems);
   const sum = isSell ? totals.sell : totals.buy;
   const qty = items.reduce((a, i) => a + i.qty, 0);
-  const cells = items.slice(0, 20).map(i => `
+  const cells =
+    items
+      .slice(0, 20)
+      .map(
+        i => `
     <div class="slot is-filled" style="--hue: ${hueOf(i.name)}"
          title="${escapeHtml(i.name)} — ${fmt(i.qty)} шт. по ${fmt(i.price)}"
          data-fin-act="deal-item" data-id="${escapeHtml(i.id)}">
@@ -328,8 +375,12 @@ function shopSide(side) {
         <button type="button" class="slot-btn" data-fin-act="edit-item" data-id="${escapeHtml(i.id)}" title="Изменить">✏️</button>
         <button type="button" class="slot-btn" data-fin-act="del-item" data-id="${escapeHtml(i.id)}" title="Убрать">🗑️</button>
       </span>
-    </div>`).join('')
-    + `<button type="button" class="slot is-empty" data-fin-act="add-item" data-side="${side}" title="Добавить предмет">+</button>`.repeat(Math.max(0, 20 - items.length));
+    </div>`
+      )
+      .join('') +
+    `<button type="button" class="slot is-empty" data-fin-act="add-item" data-side="${side}" title="Добавить предмет">+</button>`.repeat(
+      Math.max(0, 20 - items.length)
+    );
   return `
     <div class="shop-side">
       <div class="shop-side-head"><h4>${isSell ? 'Продажа' : 'Покупка'}</h4></div>
@@ -352,8 +403,8 @@ function loanCard(loan) {
   const lent = loan.direction !== 'borrowed';
   // Долг живёт в своей валюте, поэтому и суммы в карточке округляются под неё
   const ccy = loan.currency || DEFAULT_CURRENCY;
-  const n = (v) => fmt(v, ccy);
-  const pct = st.principal > 0 ? Math.min(100, Math.round(st.paid / st.principal * 100)) : 0;
+  const n = v => fmt(v, ccy);
+  const pct = st.principal > 0 ? Math.min(100, Math.round((st.paid / st.principal) * 100)) : 0;
   return `
     <div class="fin-loan ${lent ? 'is-lent' : 'is-borrowed'}">
       <div class="fin-loan-main">
@@ -368,36 +419,44 @@ function loanCard(loan) {
           <div class="fin-bar ${lent ? '' : 'is-neg'}"><i style="width:${pct}%"></i></div>
           <span class="fin-loan-meta">погашено ${n(st.paid)} из ${n(st.principal)}</span>
         </div>
-        ${loan.payments.length ? `
+        ${
+          loan.payments.length
+            ? `
           <details class="fin-payments" ${st.settled ? 'open' : ''}>
             <summary>История выплат: ${loan.payments.length} на ${fmt(st.paid + st.interestPaid, ccy)}</summary>
             <div class="fin-table-wrap">
               <table class="fin-table fin-table-compact">
                 <tbody>
-                  ${loan.payments.map(p => {
-                    const split = paymentSplit(loan, p);
-                    return `<tr class="fin-row">
+                  ${loan.payments
+                    .map(p => {
+                      const split = paymentSplit(loan, p);
+                      return `<tr class="fin-row">
                       <td class="fin-date">${escapeHtml(p.date)}</td>
                       <td class="fin-amount fin-in">+${n(p.amount)}</td>
                       <td class="muted fin-split">проценты ${n(split.interest)} · тело ${n(split.principal)}</td>
                       <td class="fin-actions"><button type="button" class="btn ghost small fin-icon" data-fin-act="del-payment"
                         data-loan="${escapeHtml(loan.id)}" data-id="${escapeHtml(p.id)}" title="Убрать выплату">🗑️</button></td>
                     </tr>`;
-                  }).join('')}
+                    })
+                    .join('')}
                 </tbody>
               </table>
             </div>
-          </details>` : ''}
+          </details>`
+            : ''
+        }
         <div class="fin-loan-actions">
-          ${st.settled
-            ? `<button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️ Изменить</button>
+          ${
+            st.settled
+              ? `<button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️ Изменить</button>
                <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️ Удалить</button>`
-            : `<button type="button" class="btn primary small" data-fin-act="pay-all" data-id="${escapeHtml(loan.id)}" title="Выплатить всю сумму долга сразу">💵 Выплатить всё</button>
+              : `<button type="button" class="btn primary small" data-fin-act="pay-all" data-id="${escapeHtml(loan.id)}" title="Выплатить всю сумму долга сразу">💵 Выплатить всё</button>
                <button type="button" class="btn small" data-fin-act="add-payment" data-id="${escapeHtml(loan.id)}">💸 Частично</button>
                <button type="button" class="btn ghost small" data-fin-act="close-loan" data-id="${escapeHtml(loan.id)}"
                        title="Списать остаток долга — деньги больше не вернутся">✅ Закрыть</button>
                <button type="button" class="btn ghost small" data-fin-act="edit-loan" data-id="${escapeHtml(loan.id)}">✏️</button>
-               <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️</button>`}
+               <button type="button" class="btn ghost small" data-fin-act="del-loan" data-id="${escapeHtml(loan.id)}">🗑️</button>`
+          }
         </div>
       </div>
       <div class="fin-loan-due">
@@ -465,8 +524,13 @@ export function renderFinance() {
 
 function operationForm(existing = null) {
   const op = existing || {
-    date: todayIso(), kind: 'in', amount: '', currency: DEFAULT_CURRENCY,
-    counterparty: '', note: '', status: ''
+    date: todayIso(),
+    kind: 'in',
+    amount: '',
+    currency: DEFAULT_CURRENCY,
+    counterparty: '',
+    note: '',
+    status: ''
   };
   showModal({
     title: existing ? 'Изменить запись' : 'Новая запись',
@@ -476,17 +540,24 @@ function operationForm(existing = null) {
         { value: 'in', label: 'Получил' },
         { value: 'out', label: 'Потратил' }
       ])}
-      ${selectField('Валюта', 'currency', op.currency,
-        CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
+      ${selectField(
+        'Валюта',
+        'currency',
+        op.currency,
+        CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` }))
+      )}
       ${field('Сумма', 'amount', op.amount, { type: 'number', step: '0.01', min: 0, required: true, money: true })}
       ${field('Дата', 'date', op.date, { type: 'date', required: true })}
       ${textField('Откуда / на что', 'counterparty', op.counterparty, 'источник или статья расхода')}
       ${textField('Примечание', 'note', op.note, 'детали операции')}
       ${textField('Статус', 'status', op.status, 'необязательно')}
     </form>`,
-    onSubmit: (form) => {
+    onSubmit: form => {
       const amount = num(form.get('amount'));
-      if (amount <= 0) { alert('Сумма должна быть больше нуля.'); return false; }
+      if (amount <= 0) {
+        alert('Сумма должна быть больше нуля.');
+        return false;
+      }
       const entry = {
         id: existing?.id || uid(),
         date: str(form.get('date')) || todayIso(),
@@ -503,7 +574,8 @@ function operationForm(existing = null) {
       };
       const ops = fin().operations;
       const at = ops.findIndex(o => o.id === entry.id);
-      if (at >= 0) ops[at] = entry; else ops.unshift(entry);
+      if (at >= 0) ops[at] = entry;
+      else ops.unshift(entry);
       save();
     }
   });
@@ -530,14 +602,27 @@ function shopItemForm(existing = null, side = 'sell') {
         реально продал или купил.
       </p>
     </form>`,
-    onSubmit: (form) => {
+    onSubmit: form => {
       const qty = num(form.get('qty'));
       const price = num(form.get('price'));
-      if (!str(form.get('name'))) { alert('Впишите название предмета.'); return false; }
-      if (qty <= 0 || price <= 0) { alert('Цена и количество должны быть больше нуля.'); return false; }
+      if (!str(form.get('name'))) {
+        alert('Впишите название предмета.');
+        return false;
+      }
+      if (qty <= 0 || price <= 0) {
+        alert('Цена и количество должны быть больше нуля.');
+        return false;
+      }
 
       const side = form.get('side') === 'buy' ? 'buy' : 'sell';
-      const draft = { side, name: str(form.get('name')), price, qty, date: str(form.get('date')) || todayIso(), note: str(form.get('note')) };
+      const draft = {
+        side,
+        name: str(form.get('name')),
+        price,
+        qty,
+        date: str(form.get('date')) || todayIso(),
+        note: str(form.get('note'))
+      };
       const items = fin().shopItems;
 
       // Доливаем в существующую позицию вместо дубли — это и просил «те же самые предметы»
@@ -551,7 +636,8 @@ function shopItemForm(existing = null, side = 'sell') {
       }
       const record = { id: existing?.id || uid(), ...draft };
       const at = items.findIndex(i => i.id === record.id);
-      if (at >= 0) items[at] = record; else items.unshift(record);
+      if (at >= 0) items[at] = record;
+      else items.unshift(record);
       save();
     }
   });
@@ -572,10 +658,13 @@ function shopDealForm(item) {
         Деньги запишутся в «Банк»: ${sold ? 'приход' : 'расход'} Золота.
       </p>
     </form>`,
-    onSubmit: (form) => {
+    onSubmit: form => {
       let qty = num(form.get('qty'));
-      if (qty <= 0) { alert('Количество должно быть больше нуля.'); return false; }
-      if (qty > item.qty) qty = item.qty;   // больше, чем на складе, продать нельзя
+      if (qty <= 0) {
+        alert('Количество должно быть больше нуля.');
+        return false;
+      }
+      if (qty > item.qty) qty = item.qty; // больше, чем на складе, продать нельзя
       const date = str(form.get('date')) || todayIso();
       const op = shopDealOperation({ item, qty, date });
       item.qty = money(Math.max(0, item.qty - qty));
@@ -590,7 +679,10 @@ function shopDealForm(item) {
   const preview = form.querySelector('[data-fin-preview]');
   const update = () => {
     const qty = Math.min(num(form.elements.qty?.value), item.qty);
-    if (qty <= 0) { preview.textContent = 'Впиши количество.'; return; }
+    if (qty <= 0) {
+      preview.textContent = 'Впиши количество.';
+      return;
+    }
     const rest = money(item.qty - qty);
     preview.innerHTML = `${sold ? 'Приход' : 'Расход'} <b>${fmt(shopItemTotal({ price: item.price, qty }))} золота</b>
       (${fmt(item.price)} × ${fmt(qty)}).<br>На складе останется: <b>${fmt(rest)}</b> шт.`;
@@ -624,11 +716,14 @@ function goldForm() {
         Курс и комиссию из этой формы можно сохранить как текущие.
       </p>
     </form>`,
-    onSubmit: (form) => {
+    onSubmit: form => {
       const side = form.get('side') === 'buy' ? 'buy' : 'sell';
       const coins = num(form.get('coins'));
       const rate = num(form.get('rate'));
-      if (coins <= 0 || rate <= 0) { alert('Нужны количество голда и курс.'); return false; }
+      if (coins <= 0 || rate <= 0) {
+        alert('Нужны количество голда и курс.');
+        return false;
+      }
       const commissionPct = num(form.get('commissionPct'));
       const { deal, operations } = goldDealOperations({ side, coins, rate, commissionPct });
 
@@ -637,7 +732,10 @@ function goldForm() {
       state.finance.settings.goldRateAt = todayIso();
       state.finance.operations.unshift(...operations);
       save();
-      toast(`${side === 'sell' ? 'Продано' : 'Куплено'} ${fmt(deal.coins, 'coins')} голд · ${fmt(deal.gold, 'gold')} золота`, 'success');
+      toast(
+        `${side === 'sell' ? 'Продано' : 'Куплено'} ${fmt(deal.coins, 'coins')} голд · ${fmt(deal.gold, 'gold')} золота`,
+        'success'
+      );
     }
   });
 
@@ -650,10 +748,13 @@ function goldForm() {
     const coins = num(form.elements.coins?.value);
     const course = num(form.elements.rate?.value);
     const pct = num(form.elements.commissionPct?.value);
-    if (!coins || !course) { preview.textContent = 'Впишите количество и курс.'; return; }
+    if (!coins || !course) {
+      preview.textContent = 'Впишите количество и курс.';
+      return;
+    }
     const d = goldDeal({ side: isSell ? 'sell' : 'buy', coins, rate: course, commissionPct: pct });
     // Курс показываем с копейками: это цена за 1 голд, округлять её до целых нельзя
-    const rateText = (v) => formatAmount('coins', v);
+    const rateText = v => formatAmount('coins', v);
     const loss = commissionLossPct(d.effectiveRate, course);
     preview.innerHTML = isSell
       ? `Голд: уйдёт <b>${fmt(d.coinsTotal, 'coins')}</b> (${fmt(coins, 'coins')} + комиссия ${fmt(d.commissionCoins, 'coins')}) · остаток станет ${fmt(now.coins - d.coinsTotal, 'coins')}<br>
@@ -668,20 +769,37 @@ function goldForm() {
 }
 
 function loanForm(existing = null, direction = 'lent') {
-  const loan = existing || { direction, who: '', principal: '', percent: 5, start: todayIso(), end: '', currency: DEFAULT_CURRENCY, note: '' };
+  const loan = existing || {
+    direction,
+    who: '',
+    principal: '',
+    percent: 5,
+    start: todayIso(),
+    end: '',
+    currency: DEFAULT_CURRENCY,
+    note: ''
+  };
   showModal({
-    title: existing ? 'Изменить долг' : (loan.direction === 'borrowed' ? 'Взять в долг' : 'Дать в долг'),
+    title: existing ? 'Изменить долг' : loan.direction === 'borrowed' ? 'Взять в долг' : 'Дать в долг',
     submitText: 'Сохранить',
     content: `<form class="fin-form">
-      ${existing ? '' : selectField('Направление', 'direction', loan.direction, [
-        { value: 'lent', label: 'Я даю в долг' },
-        { value: 'borrowed', label: 'Я беру в долг' }
-      ])}
+      ${
+        existing
+          ? ''
+          : selectField('Направление', 'direction', loan.direction, [
+              { value: 'lent', label: 'Я даю в долг' },
+              { value: 'borrowed', label: 'Я беру в долг' }
+            ])
+      }
       ${textField('Кто', 'who', loan.who, 'ник или имя в игре')}
       ${field('Сумма долга', 'principal', loan.principal, { type: 'number', step: '0.01', min: 0, required: true, money: true })}
       ${field('Процент в месяц', 'percent', loan.percent, { type: 'number', step: '0.01', min: 0 })}
-      ${selectField('Валюта', 'currency', loan.currency,
-        CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` })))}
+      ${selectField(
+        'Валюта',
+        'currency',
+        loan.currency,
+        CURRENCY_IDS.map(id => ({ value: id, label: `${cur(id).icon} ${cur(id).title}` }))
+      )}
       ${field('Начало', 'start', loan.start, { type: 'date', required: true })}
       ${field('Конец (срок)', 'end', loan.end, { type: 'date' })}
       ${textField('Примечание', 'note', loan.note)}
@@ -691,9 +809,15 @@ function loanForm(existing = null, direction = 'lent') {
         Без даты конца проценты не идут вовсе.
       </p>
     </form>`,
-    onSubmit: (form) => {
-      if (!str(form.get('who'))) { alert('Впишите, кому долг.'); return false; }
-      if (num(form.get('principal')) <= 0) { alert('Сумма долга должна быть больше нуля.'); return false; }
+    onSubmit: form => {
+      if (!str(form.get('who'))) {
+        alert('Впишите, кому долг.');
+        return false;
+      }
+      if (num(form.get('principal')) <= 0) {
+        alert('Сумма долга должна быть больше нуля.');
+        return false;
+      }
       const start = str(form.get('start')) || todayIso();
       const end = str(form.get('end'));
       const draft = {
@@ -732,7 +856,8 @@ function syncLoanOperation(loan) {
   const op = loanOperation(loan);
   const ops = state.finance.operations;
   const at = loan.opId ? ops.findIndex(o => o.id === loan.opId) : -1;
-  if (at >= 0) ops[at] = op; else ops.unshift(op);
+  if (at >= 0) ops[at] = op;
+  else ops.unshift(op);
   loan.opId = op.id;
 }
 
@@ -751,9 +876,12 @@ function paymentForm(loan) {
       </div>
       <div class="fin-preview" data-fin-preview>—</div>
     </form>`,
-    onSubmit: (form) => {
+    onSubmit: form => {
       const amount = num(form.get('amount'));
-      if (amount <= 0) { alert('Сумма выплаты должна быть больше нуля.'); return false; }
+      if (amount <= 0) {
+        alert('Сумма выплаты должна быть больше нуля.');
+        return false;
+      }
       if (!addPayment(loan, amount, str(form.get('date')) || todayIso())) return false;
     }
   });
@@ -770,7 +898,10 @@ function paymentForm(loan) {
   });
   const update = () => {
     const amount = num(form.elements.amount?.value);
-    if (amount <= 0) { preview.textContent = 'Впишите сумму выплаты.'; return; }
+    if (amount <= 0) {
+      preview.textContent = 'Впишите сумму выплаты.';
+      return;
+    }
     const split = paymentSplit(loan, { id: '__preview__', date: todayIso(), amount });
     // Остаток считаем на дату СЕГОДНЯ, а не на дату выплаты: иначе предпросмотр
     // врал бы в обе стороны — показывал проценты, которых ещё не будет, или
@@ -832,7 +963,7 @@ export function bindFinance() {
   if (!el || el.dataset.financeBound) return;
   el.dataset.financeBound = 'true';
 
-  el.addEventListener('click', async (event) => {
+  el.addEventListener('click', async event => {
     const month = /** @type {HTMLElement} */ (event.target).closest('[data-month]');
     if (month) {
       selected = month.dataset.month || null;
@@ -840,7 +971,9 @@ export function bindFinance() {
       return;
     }
 
-    const clear = /** @type {HTMLElement} */ (event.target).closest('[data-clear-source],[data-clear-currency],[data-clear-query]');
+    const clear = /** @type {HTMLElement} */ (event.target).closest(
+      '[data-clear-source],[data-clear-currency],[data-clear-query]'
+    );
     if (clear) {
       if (clear.hasAttribute('data-clear-source')) sourceFilter = null;
       if (clear.hasAttribute('data-clear-currency')) currencyFilter = null;
@@ -869,7 +1002,14 @@ export function bindFinance() {
     if (act === 'del-op') {
       const op = operations.find(o => o.id === btn.dataset.id);
       if (!op) return;
-      if (await confirmModal({ title: 'Удалить запись?', text: op.counterparty || 'Запись без названия', okText: 'Удалить', danger: true })) {
+      if (
+        await confirmModal({
+          title: 'Удалить запись?',
+          text: op.counterparty || 'Запись без названия',
+          okText: 'Удалить',
+          danger: true
+        })
+      ) {
         state.finance.operations = operations.filter(o => o.id !== btn.dataset.id);
         save();
       }
@@ -890,7 +1030,14 @@ export function bindFinance() {
     if (act === 'del-item') {
       const item = shopItems.find(i => i.id === btn.dataset.id);
       if (!item) return;
-      if (await confirmModal({ title: 'Убрать позицию?', text: `${item.name} — ${fmt(item.qty)} шт.`, okText: 'Убрать', danger: true })) {
+      if (
+        await confirmModal({
+          title: 'Убрать позицию?',
+          text: `${item.name} — ${fmt(item.qty)} шт.`,
+          okText: 'Убрать',
+          danger: true
+        })
+      ) {
         state.finance.shopItems = shopItems.filter(i => i.id !== btn.dataset.id);
         save();
       }
@@ -912,7 +1059,8 @@ export function bindFinance() {
         text: loan.payments.length
           ? `Вместе с долгом пропадут ${loan.payments.length} выплат и их записи в «Банке».`
           : 'Запись в «Банке» об открытии долга тоже пропадёт.',
-        okText: 'Удалить', danger: true
+        okText: 'Удалить',
+        danger: true
       });
       if (!ok) return;
       const loanId = loan.id;
@@ -934,8 +1082,9 @@ export function bindFinance() {
       const lent = loan.direction !== 'borrowed';
       const ok = await confirmModal({
         title: lent ? `Записать выплату от «${loan.who}»?` : `Записать возврат «${loan.who}»?`,
-        text: `Вся сумма долга: ${fmt(st.total, ccy)} `
-          + `(тело ${fmt(st.outstanding, ccy)}, проценты ${fmt(st.interestDue, ccy)}). Долг будет закрыт.`,
+        text:
+          `Вся сумма долга: ${fmt(st.total, ccy)} ` +
+          `(тело ${fmt(st.outstanding, ccy)}, проценты ${fmt(st.interestDue, ccy)}). Долг будет закрыт.`,
         okText: 'Записать выплату'
       });
       if (!ok) return;
@@ -949,8 +1098,9 @@ export function bindFinance() {
       const st = loanStatus(loan);
       const ok = await confirmModal({
         title: `Закрыть долг «${loan.who}», не выплачивая?`,
-        text: `Остаток ${fmt(st.total, ccy)} списывается: деньги уже не придут, но долг перестанет`
-          + ' начислять проценты. История выплат сохранится.',
+        text:
+          `Остаток ${fmt(st.total, ccy)} списывается: деньги уже не придут, но долг перестанет` +
+          ' начислять проценты. История выплат сохранится.',
         okText: 'Закрыть долг',
         danger: true
       });
@@ -962,7 +1112,12 @@ export function bindFinance() {
       return;
     }
     if (act === 'del-payment') {
-      const ok = await confirmModal({ title: 'Убрать выплату?', text: 'Долг вернётся к состоянию без неё.', okText: 'Убрать', danger: true });
+      const ok = await confirmModal({
+        title: 'Убрать выплату?',
+        text: 'Долг вернётся к состоянию без неё.',
+        okText: 'Убрать',
+        danger: true
+      });
       if (!ok) return;
       const loan = loans.find(l => l.id === btn.dataset.loan);
       if (!loan) return;
@@ -972,7 +1127,7 @@ export function bindFinance() {
   });
 
   // Поиск и чекбокс «Итог» — не кнопки, поэтому слушаются отдельно.
-  el.addEventListener('input', (event) => {
+  el.addEventListener('input', event => {
     const input = /** @type {HTMLInputElement} */ (event.target).closest('[data-query]');
     if (!input) return;
     query = input.value;
@@ -982,10 +1137,14 @@ export function bindFinance() {
       const fresh = el.querySelector('[data-query]');
       fresh?.focus();
       const n = fresh ? fresh.value.length : 0;
-      try { fresh?.setSelectionRange(n, n); } catch { /* type=search не всегда ставит каретку */ }
+      try {
+        fresh?.setSelectionRange(n, n);
+      } catch {
+        /* type=search не всегда ставит каретку */
+      }
     }
   });
-  el.addEventListener('change', (event) => {
+  el.addEventListener('change', event => {
     const input = /** @type {HTMLInputElement} */ (event.target).closest('[data-balance]');
     if (!input) return;
     showBalance = input.checked;
@@ -997,7 +1156,7 @@ export function bindFinance() {
   const modalRoot = document.getElementById('modal-root');
   if (modalRoot && !modalRoot.dataset.moneyBound) {
     modalRoot.dataset.moneyBound = 'true';
-    modalRoot.addEventListener('input', (event) => {
+    modalRoot.addEventListener('input', event => {
       const input = /** @type {HTMLInputElement} */ (event.target)?.closest?.('.fin-money');
       if (!input) return;
       const pos = input.selectionStart ?? input.value.length;
@@ -1018,7 +1177,11 @@ export function bindFinance() {
           caret++;
         }
       }
-      try { input.setSelectionRange(caret, caret); } catch { /* не все поля ставят каретку */ }
+      try {
+        input.setSelectionRange(caret, caret);
+      } catch {
+        /* не все поля ставят каретку */
+      }
     });
   }
 }

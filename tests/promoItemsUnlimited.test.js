@@ -16,8 +16,11 @@ let shadow;
 const origAttach = Element.prototype.attachShadow;
 
 function siteLimiter() {
-  document.addEventListener('change', (e) => {
-    if (e.target.matches(BOXES) && checked() > 6) { e.target.checked = false; alerts++; }
+  document.addEventListener('change', e => {
+    if (e.target.matches(BOXES) && checked() > 6) {
+      e.target.checked = false;
+      alerts++;
+    }
   });
 }
 function mount(search = '') {
@@ -28,21 +31,29 @@ function mount(search = '') {
   localStorage.clear();
 }
 const run = () => new Function(SCRIPT)();
-const clickAll = (n) => boxes().slice(0, n).forEach(b => b.click());
+const clickAll = n =>
+  boxes()
+    .slice(0, n)
+    .forEach(b => b.click());
 const rows = () => [...shadow.querySelectorAll('.row')];
-const rowOf = (type) => rows().find(r => r.querySelector('.tname').textContent === type);
+const rowOf = type => rows().find(r => r.querySelector('.tname').textContent === type);
 const btn = (root, text) => [...root.querySelectorAll('button')].find(b => b.textContent === text);
 
 beforeEach(() => {
-  alerts = 0; shadow = null;
+  alerts = 0;
+  shadow = null;
   document.body.innerHTML = '';
   // closed shadow DOM в тесте делаем открытым, чтобы его можно было проверить
-  Element.prototype.attachShadow = function (init) { shadow = origAttach.call(this, { ...init, mode: 'open' }); return shadow; };
+  Element.prototype.attachShadow = function (init) {
+    shadow = origAttach.call(this, { ...init, mode: 'open' });
+    return shadow;
+  };
 });
 
 describe('promo_items_unlimited.js: лимит', () => {
   it('контроль: без скрипта сайт пропускает только 6 галочек', () => {
-    mount(); siteLimiter();
+    mount();
+    siteLimiter();
     expect(boxes().length).toBeGreaterThan(8);
     clickAll(10);
     expect(checked()).toBe(6);
@@ -57,7 +68,7 @@ describe('promo_items_unlimited.js: лимит', () => {
     expect(checked()).toBe(7);
     expect(alerts).toBe(0);
     expect(shadow.querySelector('.count').textContent).toBe(`Отмечено: 7 из ${boxes().length}`);
-    boxes()[0].click();                       // снять галочку по-прежнему можно
+    boxes()[0].click(); // снять галочку по-прежнему можно
     await wait();
     expect(shadow.querySelector('.count').textContent).toBe(`Отмечено: 6 из ${boxes().length}`);
   });
@@ -77,16 +88,26 @@ describe('promo_items_unlimited.js: лимит', () => {
 
 describe('promo_items_unlimited.js: панель «Типы предметов»', () => {
   it('только типы, которые есть на странице: по алфавиту, с количеством; у каждого «Отметить» и «Снять»', () => {
-    mount(); run();
+    mount();
+    run();
     expect(document.getElementById('__tf_items_panel__')).not.toBeNull();
-    expect(rows().map(r => r.querySelector('.tname').textContent)).toEqual(['Артефакт', 'Валюта', 'Магические карты', 'Опыт', 'Пропуск', 'Расходник', 'Ресурс']);
+    expect(rows().map(r => r.querySelector('.tname').textContent)).toEqual([
+      'Артефакт',
+      'Валюта',
+      'Магические карты',
+      'Опыт',
+      'Пропуск',
+      'Расходник',
+      'Ресурс'
+    ]);
     expect(rowOf('Расходник').querySelector('.tcnt').textContent).toBe('0/2');
     expect(rows().every(r => btn(r, 'Отметить') && btn(r, 'Снять'))).toBe(true);
-    expect(shadow.textContent).not.toContain('Без типа');     // строки без галочки (сундуки, отметки) в панель не попадают
+    expect(shadow.textContent).not.toContain('Без типа'); // строки без галочки (сундуки, отметки) в панель не попадают
   });
 
   it('«Отметить» / «Снять» действуют только на свой тип', async () => {
-    mount(); run();
+    mount();
+    run();
     btn(rowOf('Расходник'), 'Отметить').click();
     expect(checked()).toBe(2);
     expect(rowOf('Расходник').querySelector('.tcnt').textContent).toBe('2/2');
@@ -102,19 +123,21 @@ describe('promo_items_unlimited.js: панель «Типы предметов»
   });
 
   it('список «какой предмет к какому типу» скрыт при запуске и описывает предметы по типам', () => {
-    mount(); run();
+    mount();
+    run();
     const det = shadow.querySelector('details');
     expect(det.open).toBe(false);
     const text = det.textContent;
     expect(text).toContain('Пропуск (2)');
     expect(text).toContain('Самоцвет грез (оружие) x50');
-    expect(text).not.toContain('до 13');                      // срок «до …» в названия не попадает
+    expect(text).not.toContain('до 13'); // срок «до …» в названия не попадает
     const li = [...det.querySelectorAll('.grp')].find(g => g.textContent.startsWith('Расходник'));
     expect(li.nextElementSibling.querySelectorAll('li')).toHaveLength(2);
   });
 
   it('панель сворачивается во вкладку и помнит это; список снова скрыт при новом запуске окна', () => {
-    mount(); run();
+    mount();
+    run();
     shadow.querySelector('details').open = true;
     btn(shadow, '–').click();
     expect(shadow.querySelector('.tab').textContent).toContain('Типы предметов');
@@ -122,7 +145,9 @@ describe('promo_items_unlimited.js: панель «Типы предметов»
     shadow.querySelector('.tab').click();
     expect(shadow.querySelector('.card')).not.toBeNull();
     // новый документ (переход/перезапуск окна)
-    mount(); localStorage.setItem('__tf_ip_collapsed', '0'); run();
+    mount();
+    localStorage.setItem('__tf_ip_collapsed', '0');
+    run();
     expect(shadow.querySelector('details').open).toBe(false);
   });
 
@@ -134,17 +159,19 @@ describe('promo_items_unlimited.js: панель «Типы предметов»
     document.body.appendChild(login);
     run();
     expect(document.getElementById('__tf_items_panel__').style.top).toBe('410px');
-    mount(); run();
+    mount();
+    run();
     expect(document.getElementById('__tf_items_panel__').style.top).toBe('90px');
   });
 });
 
 describe('promo_items_unlimited.js: режим «По акциям»', () => {
   const promoRows = () => rows().map(r => r.querySelector('.tname').textContent);
-  const cnt = (name) => rowOf(name).querySelector('.tcnt').textContent;
+  const cnt = name => rowOf(name).querySelector('.tcnt').textContent;
 
   it('по умолчанию «По типам»; переключатель показывает акции в порядке страницы и только те, где есть галочки', () => {
-    mount(); run();
+    mount();
+    run();
     expect(shadow.querySelector('.seg button.on').textContent).toBe('По типам');
     btn(shadow, 'По акциям').click();
     expect(shadow.querySelector('.seg button.on').textContent).toBe('По акциям');
@@ -156,7 +183,9 @@ describe('promo_items_unlimited.js: режим «По акциям»', () => {
   });
 
   it('«Отметить» / «Снять» акции действуют только на галочки под её заголовком (больше лимита сайта) и обновляют счётчики', () => {
-    mount(); siteLimiter(); run();
+    mount();
+    siteLimiter();
+    run();
     btn(shadow, 'По акциям').click();
     btn(rowOf('День рождения «Мицара»'), 'Отметить').click();
     expect(checked()).toBe(5);
@@ -178,7 +207,8 @@ describe('promo_items_unlimited.js: режим «По акциям»', () => {
   });
 
   it('галочки акции — именно те, что стоят до следующего заголовка акции', () => {
-    mount(); run();
+    mount();
+    run();
     btn(shadow, 'По акциям').click();
     btn(rowOf('Идеальный шанс'), 'Отметить').click();
     const heads = [...document.querySelectorAll('.promo_container_content_body')];
@@ -190,7 +220,9 @@ describe('promo_items_unlimited.js: режим «По акциям»', () => {
   });
 
   it('режим запоминается; список «в какой акции» описывает предметы по акциям', () => {
-    mount(); localStorage.setItem('__tf_ip_mode', 'promo'); run();
+    mount();
+    localStorage.setItem('__tf_ip_mode', 'promo');
+    run();
     expect(shadow.querySelector('.seg button.on').textContent).toBe('По акциям');
     const det = shadow.querySelector('details');
     expect(det.querySelector('summary').textContent).toContain('в какой акции');
@@ -201,13 +233,14 @@ describe('promo_items_unlimited.js: режим «По акциям»', () => {
   });
 
   it('щелчок по названию акции прокручивает страницу к её первому предмету', () => {
-    mount(); run();
+    mount();
+    run();
     btn(shadow, 'По акциям').click();
     const spy = vi.fn();
     Element.prototype.scrollIntoView = spy;
     rowOf('День рождения «Мицара»').querySelector('.tname').click();
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.contexts[0]).toBe(boxes()[2].closest('tr'));   // первая галочка «Мицара»: в «Идеальном шансе» их две
+    expect(spy.mock.contexts[0]).toBe(boxes()[2].closest('tr')); // первая галочка «Мицара»: в «Идеальном шансе» их две
     delete Element.prototype.scrollIntoView;
   });
 });

@@ -5,7 +5,10 @@ import { GUIDE_CATEGORIES, GUIDES, guideSearchText } from '../js/settings/guideD
 
 const source = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
 const $ = selector => document.querySelector(selector);
-const search = query => { $('#guide-search').value = query; $('#guide-search').dispatchEvent(new Event('input', { bubbles: true })); };
+const search = query => {
+  $('#guide-search').value = query;
+  $('#guide-search').dispatchEvent(new Event('input', { bubbles: true }));
+};
 const open = id => $(`[data-guide-open="${id}"], [data-guide-id="${id}"]`).click();
 
 beforeEach(() => {
@@ -23,8 +26,14 @@ describe('данные справки', () => {
       for (const field of ['title', 'summary', 'where', 'result']) expect(guide[field].length).toBeGreaterThan(10);
       expect(guide.steps.length).toBeGreaterThanOrEqual(3);
       expect(guide.steps.length).toBeLessThanOrEqual(6);
-      for (const item of guide.steps) { expect(item.title.length).toBeGreaterThan(5); expect(item.text.length).toBeGreaterThan(30); }
-      for (const id of guide.related || []) { expect(ids.has(id)).toBe(true); expect(id).not.toBe(guide.id); }
+      for (const item of guide.steps) {
+        expect(item.title.length).toBeGreaterThan(5);
+        expect(item.text.length).toBeGreaterThan(30);
+      }
+      for (const id of guide.related || []) {
+        expect(ids.has(id)).toBe(true);
+        expect(id).not.toBe(guide.id);
+      }
       if (guide.notice) expect(['info', 'warning', 'danger']).toContain(guide.notice.tone);
       if (guide.screen) {
         expect(guide.screen.src).toMatch(/^\/assets\/guides\/.+\.webp$/);
@@ -36,7 +45,12 @@ describe('данные справки', () => {
   });
 
   it('гайды скриптов показывают сами диалоги или выполнение задачи, не страницу персонажей', () => {
-    const expected = { 'sync-data': 'sync-task', promo: 'promo-dialog', transfer: 'transfer-dialog', shop: 'shop-dialog' };
+    const expected = {
+      'sync-data': 'sync-task',
+      promo: 'promo-dialog',
+      transfer: 'transfer-dialog',
+      shop: 'shop-dialog'
+    };
     for (const [id, image] of Object.entries(expected)) {
       expect(GUIDES.find(guide => guide.id === id).screen.src).toBe(`/assets/guides/${image}.webp`);
     }
@@ -73,7 +87,9 @@ describe('каталог и область чтения', () => {
   it('категория обновляет список; выбор статьи показывает её шаги и устанавливает фокус', () => {
     bindGuides();
     $('[data-category="parties"]').click();
-    expect(document.querySelectorAll('.guide-index-item')).toHaveLength(GUIDES.filter(guide => guide.category === 'parties').length);
+    expect(document.querySelectorAll('.guide-index-item')).toHaveLength(
+      GUIDES.filter(guide => guide.category === 'parties').length
+    );
     $('[data-guide-id="gamecenter"]').click();
     expect($('#guide-reader-title').textContent).toContain('GameCenter');
     expect($('.guide-meta').textContent).toContain('5 шагов');
@@ -97,7 +113,8 @@ describe('каталог и область чтения', () => {
   });
 
   it('быстрые карточки и связанные инструкции сбрасывают поиск и открывают нужную тему', () => {
-    bindGuides(); search('что-то неизвестное');
+    bindGuides();
+    search('что-то неизвестное');
     open('gamecenter');
     expect($('#guide-search').value).toBe('');
     expect($('[data-category="parties"]').getAttribute('aria-pressed')).toBe('true');
@@ -107,7 +124,8 @@ describe('каталог и область чтения', () => {
   });
 
   it('нет результатов: понятное сообщение и работающий сброс', () => {
-    bindGuides(); search('несуществующее_слово');
+    bindGuides();
+    search('несуществующее_слово');
     expect($('#guide-reader-title').textContent).toBe('Ничего не найдено');
     expect($('#guide-status').textContent).toContain('0 инструкций');
     expect(document.querySelectorAll('.guide-index-item')).toHaveLength(0);
@@ -118,8 +136,10 @@ describe('каталог и область чтения', () => {
   });
 
   it('снимок открывается крупно, закрывается и возвращает фокус', () => {
-    bindGuides(); $('.guide-image-details').open = true;
-    const button = $('[data-guide-image]'); button.click();
+    bindGuides();
+    $('.guide-image-details').open = true;
+    const button = $('[data-guide-image]');
+    button.click();
     expect($('.guide-screenshot-full').getAttribute('src')).toBe('/assets/guides/characters.webp');
     expect(document.querySelectorAll('.tf-overlay')).toHaveLength(1);
     $('[data-guide-zoom]').click();
@@ -134,7 +154,9 @@ describe('каталог и область чтения', () => {
   });
 
   it('повторная инициализация не дублирует обработчики', () => {
-    bindGuides(); bindGuides(); $('.guide-image-details').open = true;
+    bindGuides();
+    bindGuides();
+    $('.guide-image-details').open = true;
     $('[data-guide-image]').click();
     expect(document.querySelectorAll('.tf-overlay')).toHaveLength(1);
     $('[data-close]').click();
@@ -151,11 +173,13 @@ describe('каталог и область чтения', () => {
     expect(open).not.toBeNull();
     expect(open.textContent).toContain('Персонажи');
     open.click();
-    expect(document.querySelector('.tab[data-tab="characters"]')).toBeNull();   // в тесте разделов нет
+    expect(document.querySelector('.tab[data-tab="characters"]')).toBeNull(); // в тесте разделов нет
   });
 
   it('кнопка панели настроек раскрывает нужную панель', () => {
-    document.body.innerHTML = '<div id="modal-root"></div><details id="settings-launcher"></details>' + source.getElementById('guide-library').outerHTML;
+    document.body.innerHTML =
+      '<div id="modal-root"></div><details id="settings-launcher"></details>' +
+      source.getElementById('guide-library').outerHTML;
     bindGuides();
     $('[data-category="all"]').click();
     $('[data-guide-id="gamecenter"]').click();

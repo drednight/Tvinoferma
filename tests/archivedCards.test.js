@@ -45,16 +45,35 @@ describe('карточки персонажей в архиве', () => {
     ({ bindCharacters } = await import('../js/modules/characters/list.js'));
     state.parties = [{ id: 'p1', name: 'Основная' }];
     state.archivedParties = [];
-    state.characters = [{
-      id: 'active', nick: 'Активный', class: 'Воин', level: 1,
-      partyIds: [], mainPartyId: null, contacts: {}, stats: {}, dungeonPasses: {}
-    }];
-    state.archivedCharacters = [{
-      id: 'archived', nick: 'Архивный', class: 'Маг', level: 100,
-      partyIds: ['p1'], mainPartyId: 'p1', contacts: { email: 'arch@example.com', password: 'secret' },
-      stats: { hp: 1234, pa: 567 }, dungeonPasses: { weapon: 3, armor: 2, relic: 1 },
-      launch: { gcPath: 'C:\\GameCenter' }, tags: ['архив'], ancientCoins: 42
-    }];
+    state.characters = [
+      {
+        id: 'active',
+        nick: 'Активный',
+        class: 'Воин',
+        level: 1,
+        partyIds: [],
+        mainPartyId: null,
+        contacts: {},
+        stats: {},
+        dungeonPasses: {}
+      }
+    ];
+    state.archivedCharacters = [
+      {
+        id: 'archived',
+        nick: 'Архивный',
+        class: 'Маг',
+        level: 100,
+        partyIds: ['p1'],
+        mainPartyId: 'p1',
+        contacts: { email: 'arch@example.com', password: 'secret' },
+        stats: { hp: 1234, pa: 567 },
+        dungeonPasses: { weapon: 3, armor: 2, relic: 1 },
+        launch: { gcPath: 'C:\\GameCenter' },
+        tags: ['архив'],
+        ancientCoins: 42
+      }
+    ];
     bindCharacters();
     document.getElementById('show-archived-characters').click();
   });

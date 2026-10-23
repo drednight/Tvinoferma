@@ -21,7 +21,7 @@ body[data-ui-style='next'] .app-shell {
      вылезал за подвал шапки прямо на границу содержимого. Свою минимальную высоту
      шапка задаёт сама (min-height ниже). */
   grid-template-rows: auto minmax(0, 1fr);
-  }
+}
 
 body[data-ui-style='next'] .next-sidebar {
   grid-column: 1;
@@ -134,7 +134,11 @@ body[data-ui-style='next'] .next-sidebar {
   margin-top: auto;
   padding-top: 10px;
 }
-.next-sidebar-divider { height: 1px; margin: 3px 0; background: var(--border); }
+.next-sidebar-divider {
+  height: 1px;
+  margin: 3px 0;
+  background: var(--border);
+}
 .next-sidebar-bottom .tab {
   width: 100%;
   justify-content: flex-start;
@@ -175,8 +179,8 @@ body[data-ui-style='next'] .next-sidebar {
 .next-sidebar .srv {
   padding: 2px 6px;
   border-radius: var(--radius-pill);
-  background: rgba(255,255,255,.04);
-  font-size: .7rem;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.7rem;
 }
 
 body[data-ui-style='next'] .topbar {
@@ -209,7 +213,7 @@ body[data-ui-style='next'] .next-page-heading {
 .next-page-heading .section-sub {
   overflow: hidden;
   margin: 0;
-  font-size: .8rem;
+  font-size: 0.8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -231,7 +235,10 @@ body[data-ui-style='next'] .content {
 }
 /* Активная страница растягивается по всей высоте: фон и пустое место принадлежат ей,
    а не «провисающему» между шапкой и содержимым. */
-body[data-ui-style='next'] .page.active { flex: 1 0 auto; min-width: 0; }
+body[data-ui-style='next'] .page.active {
+  flex: 1 0 auto;
+  min-width: 0;
+}
 body[data-ui-style='next'] .section-head {
   margin-bottom: 22px;
 }

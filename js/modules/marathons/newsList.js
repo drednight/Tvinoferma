@@ -9,10 +9,14 @@ export const NEWS_LIST_PAGES = 3;
 export const newsListUrl = (page = 1) =>
   `${NEWS_ORIGIN}/news.php?archive=news&type=event&page=${Math.max(1, Number(page) || 1)}`;
 
-const norm = (s) => String(s || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+const norm = s =>
+  String(s || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** «24.09.2026» → «2026-09-24» (для сортировки); иначе ''. */
-const toIso = (ddmmyyyy) => {
+const toIso = ddmmyyyy => {
   const m = String(ddmmyyyy || '').match(/(\d{2})\.(\d{2})\.(\d{4})/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 };
@@ -24,13 +28,14 @@ const toIso = (ddmmyyyy) => {
  */
 export function parseNewsList(html) {
   const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
-  const out = [], seen = new Set();
+  const out = [],
+    seen = new Set();
   doc.querySelectorAll('a[href*="article="]').forEach(a => {
     const id = (a.getAttribute('href').match(/article=(\d+)/) || [])[1];
     const title = norm(a.textContent);
     if (!id || !title || seen.has(id)) return;
     const row = a.closest('tr');
-    if (!row) return;                       // ссылки вне таблицы списка (меню, «читайте также»)
+    if (!row) return; // ссылки вне таблицы списка (меню, «читайте также»)
     const date = (norm(row.textContent).match(/\d{2}\.\d{2}\.\d{4}/) || [''])[0];
     seen.add(id);
     out.push({ id, url: `${NEWS_ORIGIN}/news.php?article=${id}`, title, date, isoDate: toIso(date) });
@@ -39,7 +44,7 @@ export function parseNewsList(html) {
 }
 
 /** Название похоже на новость о марафоне (в т.ч. «Летний марафон», «Весенний марафон»). */
-export const isMarathonTitle = (title) => /марафон/i.test(String(title || ''));
+export const isMarathonTitle = title => /марафон/i.test(String(title || ''));
 
 /** Фильтр списка: по умолчанию только марафоны; новые сверху. */
 export function filterNews(items, { all = false } = {}) {

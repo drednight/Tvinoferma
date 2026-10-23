@@ -1,15 +1,47 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveMainPartyId, ensureMainParty, setMainParty, mainPartyName, additionalPartiesOf, charactersInMainParty, isMainParty,
-  normalizePartyIds, partiesOf, partyNamesOf, hasNoParty, charactersInParty,
-  setMembership, removePartyFromAll, sweepPartyIds, planPartyImport, remapCharacterParties, totalCoins, coinSummary
+  resolveMainPartyId,
+  ensureMainParty,
+  setMainParty,
+  mainPartyName,
+  additionalPartiesOf,
+  charactersInMainParty,
+  isMainParty,
+  normalizePartyIds,
+  partiesOf,
+  partyNamesOf,
+  hasNoParty,
+  charactersInParty,
+  setMembership,
+  removePartyFromAll,
+  sweepPartyIds,
+  planPartyImport,
+  remapCharacterParties,
+  totalCoins,
+  coinSummary
 } from '../js/modules/parties/membership.js';
 import { planImport } from '../js/data/import.js';
 import { normalizeState, normalizeCharacter } from '../js/core/state.js';
-import { presentPaths, diffCharacters, mergeValues, ALL_FIELDS, displayValue, setPartyNameResolver } from '../js/data/characterFields.js';
+import {
+  presentPaths,
+  diffCharacters,
+  mergeValues,
+  ALL_FIELDS,
+  displayValue,
+  setPartyNameResolver
+} from '../js/data/characterFields.js';
 
-const parties = [{ id: 'a', name: 'Основа', order: 1 }, { id: 'b', name: 'Крипы', order: 2 }];
-const mk = (id, partyIds = [], coins = 0, mainPartyId = partyIds[0] || null) => ({ id, nick: id, partyIds, mainPartyId, ancientCoins: coins });
+const parties = [
+  { id: 'a', name: 'Основа', order: 1 },
+  { id: 'b', name: 'Крипы', order: 2 }
+];
+const mk = (id, partyIds = [], coins = 0, mainPartyId = partyIds[0] || null) => ({
+  id,
+  nick: id,
+  partyIds,
+  mainPartyId,
+  ancientCoins: coins
+});
 
 describe('членство в партиях (issue #4)', () => {
   it('normalizePartyIds: без пустых и дублей', () => {
@@ -117,7 +149,10 @@ describe('монеты: по основной пати, двойного счё�
 describe('импорт: партии из файла (старый и новый формат)', () => {
   it('партии сопоставляются по названию, новые добавляются, id в персонажах переписываются', () => {
     const local = [{ id: 'L1', name: 'основа', order: 1 }];
-    const incoming = [{ id: 'f1', name: 'Основа' }, { id: 'f2', name: 'Новая' }];
+    const incoming = [
+      { id: 'f1', name: 'Основа' },
+      { id: 'f2', name: 'Новая' }
+    ];
     const plan = planPartyImport(local, incoming);
     expect(plan.idMap.get('f1')).toBe('L1');
     expect(plan.newParties.map(p => p.name)).toEqual(['Новая']);
@@ -134,7 +169,14 @@ describe('импорт: партии из файла (старый и новый
   });
 
   it('файл старого формата (party: название) открывается без потерь', () => {
-    const raw = { schemaVersion: 4, parties: [{ name: 'Основа', order: 1 }], characters: [{ id: 'A', nick: 'A', party: 'Основа' }, { id: 'B', nick: 'B', party: 'Другая' }] };
+    const raw = {
+      schemaVersion: 4,
+      parties: [{ name: 'Основа', order: 1 }],
+      characters: [
+        { id: 'A', nick: 'A', party: 'Основа' },
+        { id: 'B', nick: 'B', party: 'Другая' }
+      ]
+    };
     const st = normalizeState(raw);
     expect(st.parties.map(p => p.name)).toEqual(['Основа', 'Другая']);
     expect(partyNamesOf(st.characters[0], st.parties)).toEqual(['Основа']);

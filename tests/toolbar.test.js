@@ -11,11 +11,14 @@ beforeEach(() => {
   document.documentElement.removeAttribute('style');
   origAttach = origAttach || Element.prototype.attachShadow;
   const orig = origAttach;
-  Element.prototype.attachShadow = function (init) { shadow = orig.call(this, { ...init, mode: 'open' }); return shadow; };
+  Element.prototype.attachShadow = function (init) {
+    shadow = orig.call(this, { ...init, mode: 'open' });
+    return shadow;
+  };
   api = { go: vi.fn(), back: vi.fn(), forward: vi.fn(), reload: vi.fn() };
 });
 
-const btn = (title) => [...shadow.querySelectorAll('button')].find(b => b.title === title);
+const btn = title => [...shadow.querySelectorAll('button')].find(b => b.title === title);
 const labels = () => [...shadow.querySelectorAll('button')].map(b => b.textContent);
 
 describe('SITE_LINKS', () => {

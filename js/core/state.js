@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS } from './constants.js';
 import { SCHEMA_VERSION } from './migrations.js';
 import { defaultFinance } from '../modules/finance/model.js';
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
+const clone = value => JSON.parse(JSON.stringify(value));
 
 export const state = {
   schemaVersion: SCHEMA_VERSION,

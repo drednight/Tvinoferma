@@ -10,13 +10,11 @@ import { isTauri } from '../core/storage.js';
 import { toast } from '../core/ui.js';
 import { accountKeysOf } from '../modules/launcher/gameCenters.js';
 
-const errText = (e) => String(e?.message || e || 'неизвестная ошибка');
+const errText = e => String(e?.message || e || 'неизвестная ошибка');
 
 /** Ключи контактов персонажей (email, пароль, телефон) в хранилище ОС. */
 export function contactKeysOf(characters) {
-  return (characters || [])
-    .map(c => String(c?.id || '').trim())
-    .filter(Boolean);
+  return (characters || []).map(c => String(c?.id || '').trim()).filter(Boolean);
 }
 
 /** Ключи запомненных входов GameCenter (со своим списком GameCenter у каждого персонажа). */
@@ -47,9 +45,11 @@ export function resetWarning(summary) {
   if (summary.parties) parts.push(`пати: ${summary.parties}`);
   if (summary.marathons) parts.push(`марафонов: ${summary.marathons}`);
   const list = parts.length ? `Будет удалено — ${parts.join(', ')}. ` : '';
-  return `${list}Также удаляются настройки, журналы, история монет, сессии и профили браузера персонажей, `
-    + `пароли и запомненные входы в хранилище учётных данных ОС${summary.secrets ? ` (записей: ${summary.secrets})` : ''}. `
-    + 'Резервные копии тоже удаляются, поэтому откатить это действие нельзя. Если данные нужны — сначала сделайте экспорт.';
+  return (
+    `${list}Также удаляются настройки, журналы, история монет, сессии и профили браузера персонажей, ` +
+    `пароли и запомненные входы в хранилище учётных данных ОС${summary.secrets ? ` (записей: ${summary.secrets})` : ''}. ` +
+    'Резервные копии тоже удаляются, поэтому откатить это действие нельзя. Если данные нужны — сначала сделайте экспорт.'
+  );
 }
 
 /**

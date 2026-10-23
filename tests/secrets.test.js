@@ -9,7 +9,11 @@ function fakeVault(initial = {}, { available = true } = {}) {
     calls.push(cmd);
     if (cmd === 'secrets_available') return available;
     if (cmd === 'secrets_get_many') return Object.fromEntries(args.keys.filter(k => store[k]).map(k => [k, store[k]]));
-    if (cmd === 'secrets_set_many') Object.entries(args.items).forEach(([k, v]) => { if (v) store[k] = v; else delete store[k]; });
+    if (cmd === 'secrets_set_many')
+      Object.entries(args.items).forEach(([k, v]) => {
+        if (v) store[k] = v;
+        else delete store[k];
+      });
     if (cmd === 'secrets_delete_many') args.keys.forEach(k => delete store[k]);
   };
   return { store, calls, invoke };
@@ -18,12 +22,17 @@ function fakeVault(initial = {}, { available = true } = {}) {
 const contacts = (email, password = '') => ({ email, password, recoveryEmail: '', phone: '' });
 
 describe('secrets', () => {
-  beforeEach(() => { state.settings.security = { useVault: true }; });
+  beforeEach(() => {
+    state.settings.security = { useVault: true };
+  });
 
   it('переносит открытые контакты из файла в хранилище и убирает их из снимка', async () => {
     const v = fakeVault();
     __setInvoke(v.invoke);
-    const chars = [{ id: 'a', contacts: contacts('a@x.ru', 'pw') }, { id: 'b', contacts: contacts('') }];
+    const chars = [
+      { id: 'a', contacts: contacts('a@x.ru', 'pw') },
+      { id: 'b', contacts: contacts('') }
+    ];
     expect(await hydrateSecrets(chars)).toEqual({ migrated: 1 });
     const disk = await prepareForDisk({ characters: chars });
     expect(disk.secretsInVault).toBe(true);
@@ -46,7 +55,10 @@ describe('secrets', () => {
   it('удаляет записи удалённых персонажей', async () => {
     const v = fakeVault({ a: contactsJson(contacts('a')), b: contactsJson(contacts('b')) });
     __setInvoke(v.invoke);
-    const chars = [{ id: 'a', contacts: contacts('') }, { id: 'b', contacts: contacts('') }];
+    const chars = [
+      { id: 'a', contacts: contacts('') },
+      { id: 'b', contacts: contacts('') }
+    ];
     await hydrateSecrets(chars);
     await prepareForDisk({ characters: [chars[0]] });
     expect(Object.keys(v.store)).toEqual(['a']);

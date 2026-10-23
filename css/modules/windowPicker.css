@@ -19,12 +19,22 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
-  transition: border-color var(--speed) var(--ease), background var(--speed) var(--ease);
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
 }
-.winp-row:hover { border-color: var(--border-strong); background: var(--surface-2); }
-.winp-row:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.winp-row:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.winp-row:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 /* Окно, запущенное не из Твинофермы: ник неизвестен, значок класса не определить */
-.winp-row.is-unknown { background: rgba(255, 255, 255, 0.02); }
+.winp-row.is-unknown {
+  background: rgba(255, 255, 255, 0.02);
+}
 
 /* Кликабельная часть строки: галочка, значок класса и ник */
 .winp-pick-main {
@@ -34,12 +44,32 @@
   min-width: 0;
   cursor: pointer;
 }
-.winp-pick-main input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex: none; }
-.winp-style { white-space: nowrap; }
+.winp-pick-main input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+.winp-style {
+  white-space: nowrap;
+}
 
 /* Диалог «Вид окна»: подсказки и противоречивый выбор */
-.ws-clear { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 0.86rem; cursor: pointer; }
-.ws-clear input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.ws-clear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.ws-clear input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 .winp-ava {
   display: grid;
@@ -54,13 +84,33 @@
   font-size: 0.85rem;
   font-weight: 700;
 }
-.winp-ava img { width: 100%; height: 100%; object-fit: cover; }
+.winp-ava img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
-.winp-who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.winp-who b { font-size: 0.94rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.winp-who small { font-size: 0.76rem; }
+.winp-who {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.winp-who b {
+  font-size: 0.94rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.winp-who small {
+  font-size: 0.76rem;
+}
 
-.winp-meta { font-size: 0.78rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.winp-meta {
+  font-size: 0.78rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .winp-flag {
   font-size: 0.68rem;
   padding: 1px 7px;
@@ -71,13 +121,41 @@
   white-space: nowrap;
 }
 
-.winp-count { font-size: 0.85rem; }
-.winp-spacer { flex: 1; }
-.winp-picks { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
-.winp-pick { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; }
-.winp-pick input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+.winp-count {
+  font-size: 0.85rem;
+}
+.winp-spacer {
+  flex: 1;
+}
+.winp-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.winp-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.winp-pick input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 
 @media (max-width: 700px) {
-  .winp-row { grid-template-columns: minmax(0, 1fr); row-gap: 4px; }
-  .winp-meta, .winp-flag, .winp-style { grid-column: 1; justify-self: start; }
+  .winp-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 4px;
+  }
+  .winp-meta,
+  .winp-flag,
+  .winp-style {
+    grid-column: 1;
+    justify-self: start;
+  }
 }

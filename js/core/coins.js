@@ -6,7 +6,9 @@
 
 /*PARSE_START*/
 function parseCoins(text) {
-  let s = String(text == null ? '' : text).replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/[^0-9.,]/g, '');
+  let s = String(text == null ? '' : text)
+    .replace(/[\s\u00a0\u202f\u2009]/g, '')
+    .replace(/[^0-9.,]/g, '');
   if (!/[0-9]/.test(s)) return NaN;
   s = s.replace(/[.,]+$/, '').replace(/^[.,]/, '0$&');
   const hasDot = s.indexOf('.') !== -1;
@@ -18,14 +20,14 @@ function parseCoins(text) {
     const thousands = dec === '.' ? ',' : '.';
     if (s.split(dec).length > 2) return NaN;
     const groups = s.slice(0, s.lastIndexOf(dec)).split(thousands);
-    if (!groups.slice(1).every((g) => g.length === 3)) return NaN;
+    if (!groups.slice(1).every(g => g.length === 3)) return NaN;
     num = s.split(thousands).join('').replace(dec, '.');
   } else if (hasDot || hasComma) {
     const sep = hasDot ? '.' : ',';
     const parts = s.split(sep);
     if (parts.length > 2) {
       // Несколько одинаковых знаков — это разделители тысяч ("1,285,000"); группы по 3 цифры
-      if (!parts.slice(1).every((p) => p.length === 3)) return NaN;
+      if (!parts.slice(1).every(p => p.length === 3)) return NaN;
       num = parts.join('');
     } else if (parts[1].length === 3 && parts[0] !== '' && parts[0] !== '0' && parts[0].length <= 3) {
       // Ровно 3 цифры после знака и 1–3 цифры перед ним: "1,285" — тысячи
@@ -67,10 +69,14 @@ export function formatDelta(delta) {
 /** История: без записей «+0», новые сверху. Количество записей не ограничено. */
 export function normalizeCoinHistory(list) {
   if (!Array.isArray(list)) return [];
-  const time = (h) => new Date(h?.date || h?.createdAt).getTime() || 0;
+  const time = h => new Date(h?.date || h?.createdAt).getTime() || 0;
   return list
-    .filter((h) => h && Number(h.delta) !== 0)
-    .map((h) => ({ ...h, delta: roundCoins(h.delta), ...(h.balanceAfter != null ? { balanceAfter: roundCoins(h.balanceAfter) } : {}) }))
+    .filter(h => h && Number(h.delta) !== 0)
+    .map(h => ({
+      ...h,
+      delta: roundCoins(h.delta),
+      ...(h.balanceAfter != null ? { balanceAfter: roundCoins(h.balanceAfter) } : {})
+    }))
     .sort((a, b) => time(b) - time(a));
 }
 
@@ -99,7 +105,8 @@ export function needsCoinRecheck(char) {
  */
 export function applyCoinBalance(char, balance, { note, now = new Date().toISOString() } = {}) {
   // Первая проверка после исправления разбора: пометка в истории, чтобы было видно, почему значение «скакнуло»
-  if (note == null) note = needsCoinRecheck(char) ? 'Перепроверка после исправления разбора баланса' : 'Автосинхронизация PW Online';
+  if (note == null)
+    note = needsCoinRecheck(char) ? 'Перепроверка после исправления разбора баланса' : 'Автосинхронизация PW Online';
   char.coinsParserV = COIN_PARSER_VERSION;
   const oldBalance = roundCoins(char.ancientCoins || 0);
   const newBalance = roundCoins(balance);
@@ -111,8 +118,15 @@ export function applyCoinBalance(char, balance, { note, now = new Date().toISOSt
   const delta = roundCoins(newBalance - oldBalance);
   char.ancientCoins = newBalance;
   char.coinHistory = normalizeCoinHistory([
-    { id: globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `h-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      date: now, delta, note, balanceAfter: newBalance },
+    {
+      id: globalThis.crypto?.randomUUID
+        ? globalThis.crypto.randomUUID()
+        : `h-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      date: now,
+      delta,
+      note,
+      balanceAfter: newBalance
+    },
     ...(char.coinHistory || [])
   ]);
   return { changed: true, delta };

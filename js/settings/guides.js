@@ -5,7 +5,8 @@ import { GUIDE_CATEGORIES, GUIDES, guideSearchText } from './guideData.js';
 const byId = new Map(GUIDES.map(guide => [guide.id, guide]));
 const categoryLabel = id => GUIDE_CATEGORIES.find(category => category.id === id)?.label || '';
 const plural = new Intl.PluralRules('ru');
-const countText = count => `${count} ${({ one: 'инструкция', few: 'инструкции', many: 'инструкций', other: 'инструкции' })[plural.select(count)]}`;
+const countText = count =>
+  `${count} ${{ one: 'инструкция', few: 'инструкции', many: 'инструкций', other: 'инструкции' }[plural.select(count)]}`;
 
 /**
  * Снимок интерфейса статьи. `notes` — на что смотреть: снимок не всегда равноценен
@@ -42,8 +43,13 @@ const GUIDE_PANEL_LABEL = {
 
 /** Разделы приложения: кнопка статьи открывает тот раздел, о котором инструкция. */
 const GUIDE_TAB_LABEL = {
-  today: 'Сегодня', characters: 'Персонажи', parties: 'Пати', marathons: 'Марафоны',
-  runes: 'Руны', tools: 'Инструменты', settings: 'Настройки'
+  today: 'Сегодня',
+  characters: 'Персонажи',
+  parties: 'Пати',
+  marathons: 'Марафоны',
+  runes: 'Руны',
+  tools: 'Инструменты',
+  settings: 'Настройки'
 };
 
 /** Кнопка «перейти к этому в приложении»: инструкция не заставляет искать раздел вручную. */
@@ -65,7 +71,7 @@ function articleHtml(guide) {
   const notice = guide.notice;
   return `<article class="guide-article">
     <header class="guide-article-head">
-      <div class="guide-meta"><span>${escapeHtml(categoryLabel(guide.category))}</span><span>${guide.steps.length} ${({ one: 'шаг', few: 'шага', many: 'шагов', other: 'шага' })[plural.select(guide.steps.length)]}</span>${guide.desktop ? '<span>Для установленного приложения</span>' : ''}</div>
+      <div class="guide-meta"><span>${escapeHtml(categoryLabel(guide.category))}</span><span>${guide.steps.length} ${{ one: 'шаг', few: 'шага', many: 'шагов', other: 'шага' }[plural.select(guide.steps.length)]}</span>${guide.desktop ? '<span>Для установленного приложения</span>' : ''}</div>
       <h3 id="guide-reader-title">${escapeHtml(guide.title)}</h3>
       <p class="guide-intro">${escapeHtml(guide.summary)}</p>
     </header>
@@ -106,21 +112,29 @@ export function bindGuides() {
     const matched = GUIDES.filter(guide => words.every(word => searchIndex.get(guide.id).includes(word)));
     const visible = matched.filter(guide => st.category === 'all' || guide.category === st.category);
     const categories = [{ id: 'all', label: 'Все темы' }, ...GUIDE_CATEGORIES];
-    filters.innerHTML = categories.map(category => {
-      const count = category.id === 'all' ? matched.length : matched.filter(guide => guide.category === category.id).length;
-      return `<button type="button" class="guide-category${st.category === category.id ? ' is-active' : ''}" data-category="${category.id}" aria-pressed="${st.category === category.id}">${escapeHtml(category.label)} <span class="guide-category-count">${count}</span></button>`;
-    }).join('');
+    filters.innerHTML = categories
+      .map(category => {
+        const count =
+          category.id === 'all' ? matched.length : matched.filter(guide => guide.category === category.id).length;
+        return `<button type="button" class="guide-category${st.category === category.id ? ' is-active' : ''}" data-category="${category.id}" aria-pressed="${st.category === category.id}">${escapeHtml(category.label)} <span class="guide-category-count">${count}</span></button>`;
+      })
+      .join('');
     status.textContent = `${st.query ? 'Найдено: ' : ''}${countText(visible.length)}${st.category === 'all' ? ' во всех темах' : ` · ${categoryLabel(st.category)}`}`;
     reset.hidden = !st.query && st.category === 'start';
     if (!visible.length) {
       list.innerHTML = '<p class="guide-empty">В этой теме нет подходящих инструкций.</p>';
-      reader.innerHTML = '<div class="guide-empty-state"><h3 id="guide-reader-title">Ничего не найдено</h3><p>Попробуйте другое слово или выберите «Все темы». Поиск учитывает не только названия, но и шаги инструкции.</p><button type="button" class="btn" data-guide-reset>Сбросить поиск и фильтры</button></div>';
+      reader.innerHTML =
+        '<div class="guide-empty-state"><h3 id="guide-reader-title">Ничего не найдено</h3><p>Попробуйте другое слово или выберите «Все темы». Поиск учитывает не только названия, но и шаги инструкции.</p><button type="button" class="btn" data-guide-reset>Сбросить поиск и фильтры</button></div>';
       return;
     }
     if (!visible.some(guide => guide.id === st.selected)) st.selected = visible[0].id;
-    list.innerHTML = visible.map(guide => `<button type="button" class="guide-index-item${guide.id === st.selected ? ' is-active' : ''}" data-guide-id="${guide.id}"${guide.id === st.selected ? ' aria-current="page"' : ''}>
+    list.innerHTML = visible
+      .map(
+        guide => `<button type="button" class="guide-index-item${guide.id === st.selected ? ' is-active' : ''}" data-guide-id="${guide.id}"${guide.id === st.selected ? ' aria-current="page"' : ''}>
       <strong>${escapeHtml(guide.title)}</strong><span>${escapeHtml(guide.summary)}</span>
-    </button>`).join('');
+    </button>`
+      )
+      .join('');
     reader.innerHTML = articleHtml(byId.get(st.selected));
   };
 
@@ -139,8 +153,12 @@ export function bindGuides() {
     focusReader();
   };
   const resetFilters = () => {
-    st.category = 'start'; st.selected = 'first-character'; st.query = ''; search.value = '';
-    render(); search.focus();
+    st.category = 'start';
+    st.selected = 'first-character';
+    st.query = '';
+    search.value = '';
+    render();
+    search.focus();
   };
   // Наружу отдаём только открытие статьи: базовый гайд ссылается на справочник,
   // а справочник про гайд ничего не знает
@@ -149,25 +167,33 @@ export function bindGuides() {
   library.addEventListener('click', event => {
     const target = event.target.closest?.('button');
     if (!target || !library.contains(target)) return;
-    if (target.hasAttribute('data-guide-reset')) { resetFilters(); return; }
+    if (target.hasAttribute('data-guide-reset')) {
+      resetFilters();
+      return;
+    }
     if (target.dataset.guideImage) {
       const ov = openOverlay({ title: target.dataset.guideLabel, wide: true, onClose: () => target.focus() });
       ov.body.innerHTML = `<div class="guide-image-viewport" tabindex="0" aria-label="Скриншот: ${escapeHtml(target.dataset.guideLabel)}"><img class="guide-screenshot-full" src="${escapeHtml(target.dataset.guideImage)}" alt="${escapeHtml(target.dataset.guideLabel)}" /></div><p class="guide-image-hint">Для мелких подписей включите «Масштаб 100%» и прокручивайте изображение.</p>`;
       ov.foot.classList.add('guide-image-actions');
-      ov.foot.innerHTML = '<button type="button" class="btn" data-guide-zoom aria-pressed="false">Масштаб 100%</button><button type="button" class="btn primary" data-close>Закрыть</button>';
+      ov.foot.innerHTML =
+        '<button type="button" class="btn" data-guide-zoom aria-pressed="false">Масштаб 100%</button><button type="button" class="btn primary" data-close>Закрыть</button>';
       const viewport = ov.body.querySelector('.guide-image-viewport');
       const zoom = ov.foot.querySelector('[data-guide-zoom]');
       zoom.onclick = () => {
         const enlarged = viewport.classList.toggle('is-zoomed');
         zoom.setAttribute('aria-pressed', String(enlarged));
         zoom.textContent = enlarged ? 'Вписать в окно' : 'Масштаб 100%';
-        viewport.scrollTop = 0; viewport.scrollLeft = 0;
+        viewport.scrollTop = 0;
+        viewport.scrollLeft = 0;
       };
       ov.foot.querySelector('[data-close]').onclick = () => ov.close();
       ov.foot.querySelector('[data-close]').focus();
       return;
     }
-    if (target.dataset.guideOpen) { openGuide(target.dataset.guideOpen); return; }
+    if (target.dataset.guideOpen) {
+      openGuide(target.dataset.guideOpen);
+      return;
+    }
     // Кнопки «перейти к этому»: раздел приложения или панель настроек. Справочник при
     // этом остаётся открытым, чтобы к инструкции можно было вернуться.
     if (target.dataset.guideTab) {
@@ -187,10 +213,14 @@ export function bindGuides() {
       return;
     }
     if (target.dataset.guideId) {
-      st.selected = target.dataset.guideId; render(); focusReader(); return;
+      st.selected = target.dataset.guideId;
+      render();
+      focusReader();
+      return;
     }
     if (target.dataset.category) {
-      st.category = target.dataset.category; render();
+      st.category = target.dataset.category;
+      render();
       filters.querySelector(`[data-category="${st.category}"]`)?.focus();
     }
   });

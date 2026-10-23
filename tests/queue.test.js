@@ -6,12 +6,18 @@ const tick = (ms = 5) => new Promise(r => setTimeout(r, ms));
 describe('createLimiter', () => {
   it('не превышает лимит параллельности', async () => {
     const limiter = createLimiter(2);
-    let active = 0, peak = 0;
-    await Promise.all(Array.from({ length: 6 }, () => limiter.run(async () => {
-      active++; peak = Math.max(peak, active);
-      await tick();
-      active--;
-    })));
+    let active = 0,
+      peak = 0;
+    await Promise.all(
+      Array.from({ length: 6 }, () =>
+        limiter.run(async () => {
+          active++;
+          peak = Math.max(peak, active);
+          await tick();
+          active--;
+        })
+      )
+    );
     expect(peak).toBe(2);
   });
 });
@@ -23,18 +29,30 @@ describe('runQueue', () => {
       return { ok: item };
     });
     const res = await runQueue(['a', 'flaky'], worker, {
-      limiter: createLimiter(3), retries: 3, retryDelayMs: 1,
+      limiter: createLimiter(3),
+      retries: 3,
+      retryDelayMs: 1,
       shouldRetry: (r, e) => !!e || isRetryableCode(r?.error)
     });
-    expect(res.map(r => [r.item, r.attempts, r.result.ok])).toEqual([['a', 1, 'a'], ['flaky', 3, 'flaky']]);
+    expect(res.map(r => [r.item, r.attempts, r.result.ok])).toEqual([
+      ['a', 1, 'a'],
+      ['flaky', 3, 'flaky']
+    ]);
   });
 
   it('не повторяет окончательные ошибки и учитывает лимит повторов', async () => {
     const worker = vi.fn(async () => ({ error: 'not_logged_in' }));
-    const [r] = await runQueue(['x'], worker, { limiter: createLimiter(1), retries: 5, retryDelayMs: 1, shouldRetry: (res) => isRetryableCode(res?.error) });
+    const [r] = await runQueue(['x'], worker, {
+      limiter: createLimiter(1),
+      retries: 5,
+      retryDelayMs: 1,
+      shouldRetry: res => isRetryableCode(res?.error)
+    });
     expect(r.attempts).toBe(1);
 
-    const thrower = vi.fn(async () => { throw new Error('boom'); });
+    const thrower = vi.fn(async () => {
+      throw new Error('boom');
+    });
     const [t] = await runQueue(['y'], thrower, { limiter: createLimiter(1), retries: 2, retryDelayMs: 1 });
     expect(t.attempts).toBe(3);
     expect(t.error.message).toBe('boom');
@@ -42,7 +60,10 @@ describe('runQueue', () => {
 
   it('сообщает прогресс', async () => {
     const seen = [];
-    await runQueue([1, 2, 3], async (n) => n, { limiter: createLimiter(2), onDone: (_e, done, total) => seen.push(`${done}/${total}`) });
+    await runQueue([1, 2, 3], async n => n, {
+      limiter: createLimiter(2),
+      onDone: (_e, done, total) => seen.push(`${done}/${total}`)
+    });
     expect(seen).toEqual(['1/3', '2/3', '3/3']);
   });
 });

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { migrateState, detectVersion, SCHEMA_VERSION } from '../js/core/migrations.js';
 import { normalizeState, normalizeTags, NOTES_MAX_LENGTH } from '../js/core/state.js';
 
-const fixture = (name) => JSON.parse(readFileSync(`tests/fixtures/${name}`, 'utf8'));
+const fixture = name => JSON.parse(readFileSync(`tests/fixtures/${name}`, 'utf8'));
 
 /**
  * Список миграций от `from` до текущей схемы.
@@ -13,7 +13,7 @@ const fixture = (name) => JSON.parse(readFileSync(`tests/fixtures/${name}`, 'utf
  * где дело было. Список выводится из номера версии: добавили миграцию — правок в тестах
  * не нужно, а пропущенный шаг по-прежнему ловится.
  */
-const chainFrom = (from) => Array.from({ length: SCHEMA_VERSION - from }, (_, i) => from + 1 + i);
+const chainFrom = from => Array.from({ length: SCHEMA_VERSION - from }, (_, i) => from + 1 + i);
 
 describe('migrateState', () => {
   it('определяет версию по schemaVersion или старому полю version', () => {
@@ -40,7 +40,10 @@ describe('migrateState', () => {
   it('v1: партии-строки получают порядок', () => {
     const { state, applied } = migrateState({ parties: ['A', { name: 'B' }], characters: [] });
     expect(applied).toEqual(chainFrom(1));
-    expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([{ name: 'A', order: 1 }, { name: 'B', order: 2 }]);
+    expect(state.parties.map(p => ({ name: p.name, order: p.order }))).toEqual([
+      { name: 'A', order: 1 },
+      { name: 'B', order: 2 }
+    ]);
     expect(state.parties.every(p => typeof p.id === 'string' && p.id)).toBe(true);
   });
 
@@ -59,11 +62,13 @@ describe('migrateState', () => {
     const normalized = normalizeState({
       schemaVersion: SCHEMA_VERSION,
       parties: [{ id: 'active-party', name: 'Активная' }],
-      archivedParties: [{
-        id: 'archived-party',
-        name: 'Архивная',
-        memberLinks: [{ characterId: 'archived-char', isMain: true, order: null }]
-      }],
+      archivedParties: [
+        {
+          id: 'archived-party',
+          name: 'Архивная',
+          memberLinks: [{ characterId: 'archived-char', isMain: true, order: null }]
+        }
+      ],
       characters: [{ id: 'active-char', nick: 'Активный', partyIds: ['archived-party'] }],
       archivedCharacters: [{ id: 'archived-char', nick: 'Архивный', partyIds: ['archived-party'] }]
     });
@@ -85,11 +90,14 @@ describe('migrateState', () => {
 describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
   const v4 = () => ({
     schemaVersion: 4,
-    parties: [{ id: 'p1', name: 'Основа', order: 1 }, { name: 'Крипы', order: 2 }],
+    parties: [
+      { id: 'p1', name: 'Основа', order: 1 },
+      { name: 'Крипы', order: 2 }
+    ],
     characters: [
-      { id: 'A', nick: 'A', party: 'основа' },            // регистр не важен
-      { id: 'B', nick: 'B', party: 'Крипы' },             // у партии не было id
-      { id: 'C', nick: 'C', party: 'Неявная' },           // партии нет в списке — создаётся
+      { id: 'A', nick: 'A', party: 'основа' }, // регистр не важен
+      { id: 'B', nick: 'B', party: 'Крипы' }, // у партии не было id
+      { id: 'C', nick: 'C', party: 'Неявная' }, // партии нет в списке — создаётся
       { id: 'D', nick: 'D', party: null }
     ]
   });
@@ -97,7 +105,7 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
   it('party (название) → partyIds (id), поле party удаляется, notes по умолчанию пустые', () => {
     const { state, applied } = migrateState(v4());
     expect(applied).toEqual(chainFrom(4));
-    const id = (name) => state.parties.find(p => p.name === name).id;
+    const id = name => state.parties.find(p => p.name === name).id;
     expect(state.parties.every(p => p.id)).toBe(true);
     expect(state.parties.find(p => p.name === 'Основа').id).toBe('p1');
     const by = Object.fromEntries(state.characters.map(c => [c.id, c]));
@@ -121,9 +129,11 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
   });
 
   it('normalizeState: несуществующие id партий убираются, примечание обрезается по лимиту', () => {
-    const st = normalizeState({ schemaVersion: 5, parties: [{ id: 'p1', name: 'X' }], characters: [
-      { id: 'a', nick: 'A', partyIds: ['p1', 'ghost', 'p1'], notes: 'я'.repeat(NOTES_MAX_LENGTH + 10) }
-    ] });
+    const st = normalizeState({
+      schemaVersion: 5,
+      parties: [{ id: 'p1', name: 'X' }],
+      characters: [{ id: 'a', nick: 'A', partyIds: ['p1', 'ghost', 'p1'], notes: 'я'.repeat(NOTES_MAX_LENGTH + 10) }]
+    });
     expect(st.characters[0].partyIds).toEqual(['p1']);
     expect(st.characters[0].notes).toHaveLength(NOTES_MAX_LENGTH);
   });
@@ -131,9 +141,18 @@ describe('миграция v5: partyIds и notes (issues #4, #20)', () => {
 
 describe('миграция v6: порог свежести входа 24 ч (issue #16)', () => {
   it('старое значение по умолчанию 12 ч заменяется на 24 ч, остальные не трогаются', () => {
-    const run = (freshness) => migrateState({ schemaVersion: 5, settings: { freshness }, characters: [] }).state.settings.freshness;
-    expect(run({ balanceHours: 24, loginHours: 12, marathonHours: 24 })).toEqual({ balanceHours: 24, loginHours: 24, marathonHours: 24 });
-    expect(run({ balanceHours: 6, loginHours: 18, marathonHours: 48 })).toEqual({ balanceHours: 6, loginHours: 18, marathonHours: 48 });
+    const run = freshness =>
+      migrateState({ schemaVersion: 5, settings: { freshness }, characters: [] }).state.settings.freshness;
+    expect(run({ balanceHours: 24, loginHours: 12, marathonHours: 24 })).toEqual({
+      balanceHours: 24,
+      loginHours: 24,
+      marathonHours: 24
+    });
+    expect(run({ balanceHours: 6, loginHours: 18, marathonHours: 48 })).toEqual({
+      balanceHours: 6,
+      loginHours: 18,
+      marathonHours: 48
+    });
   });
 
   it('без settings.freshness миграция не падает', () => {
@@ -153,7 +172,9 @@ describe('normalizeState', () => {
   });
 
   it('сохраняет все характеристики и теги', () => {
-    const st = normalizeState({ characters: [{ id: 'c', nick: 'N', stats: { hp: '100', critChance: 5 }, tags: ['твин', ' Твин ', 'крафт'] }] });
+    const st = normalizeState({
+      characters: [{ id: 'c', nick: 'N', stats: { hp: '100', critChance: 5 }, tags: ['твин', ' Твин ', 'крафт'] }]
+    });
     expect(st.characters[0].stats).toMatchObject({ hp: 100, critChance: 5, pa: 0 });
     expect(st.characters[0].tags).toEqual(['твин', 'крафт']);
   });
@@ -190,7 +211,17 @@ describe('миграция v9: раздел «Учёт»', () => {
     const finance = {
       operations: [{ id: 'o1', date: '2026-06-09', kind: 'in', amount: 1000, currency: 'gold', counterparty: 'Ежа' }],
       shopItems: [{ id: 'i1', side: 'sell', name: 'Зелье', price: 100, qty: 3 }],
-      loans: [{ id: 'l1', direction: 'lent', who: 'Шкила', principal: 500, percent: 5, start: '2026-06-01', end: '2026-12-01' }],
+      loans: [
+        {
+          id: 'l1',
+          direction: 'lent',
+          who: 'Шкила',
+          principal: 500,
+          percent: 5,
+          start: '2026-06-01',
+          end: '2026-12-01'
+        }
+      ],
       settings: { goldRate: 1000000, commissionPct: 8, goldRateAt: '2026-06-09' }
     };
     const normalized = normalizeState(migrateState({ schemaVersion: 8, finance, characters: [] }).state);
@@ -220,7 +251,11 @@ describe('цепочка миграций для релиза 1.0', () => {
   });
 
   it('персонаж со старыми полями (party, ник с #) сохраняется со всеми данными', () => {
-    const raw = { version: 2, characters: [{ id: 'Dragon#1', nick: 'Dragon#1', party: 'Рейд', notes: 'важно' }], parties: [] };
+    const raw = {
+      version: 2,
+      characters: [{ id: 'Dragon#1', nick: 'Dragon#1', party: 'Рейд', notes: 'важно' }],
+      parties: []
+    };
     const { state } = migrateState(raw);
     const [c] = state.characters;
     expect(c.id).toBe('Dragon_1');
@@ -247,7 +282,7 @@ describe('цепочка миграций для релиза 1.0', () => {
 describe('миграция v10: раздел клана eternals → guild', () => {
   // Переименование ключа настроек через миграцию, а не правкой на чтении: иначе откат на
   // старую версию увидел бы незнакомый ключ, счёл файл битым и записал поверх умолчания.
-  const old = (settings) => ({ schemaVersion: 9, settings });
+  const old = settings => ({ schemaVersion: 9, settings });
 
   it('настройки клана переезжают в новый ключ', () => {
     const { state, applied } = migrateState(old({ eternals: { enabled: true, syncedAt: 1700000000000 } }));
@@ -284,7 +319,7 @@ describe('миграция v10: раздел клана eternals → guild', () 
     expect(twice.state.settings.guild.enabled).toBe(true);
   });
 
-it('файл из более новой версии не трогается — этим и защищён откат', () => {
+  it('файл из более новой версии не трогается — этим и защищён откат', () => {
     // Старая версия, увидев файл с большим номером схемы, обязана оставить его как есть.
     // Именно это делает переименование ключа безопасным при откате: без миграции старая
     // версия сочла бы файл битым и записала поверх него умолчания.
@@ -295,4 +330,3 @@ it('файл из более новой версии не трогается —
     expect(res.state).toEqual(fromFuture);
   });
 });
-

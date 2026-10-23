@@ -16,14 +16,20 @@ vi.mock('@tauri-apps/api/core', () => ({
   })
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/core/ui.js', () => ({ toast: (...a) => mocks.toast(...a), showModal: vi.fn(), closeModal: vi.fn(), confirmModal: vi.fn(async () => true) }));
+vi.mock('../js/core/ui.js', () => ({
+  toast: (...a) => mocks.toast(...a),
+  showModal: vi.fn(),
+  closeModal: vi.fn(),
+  confirmModal: vi.fn(async () => true)
+}));
 vi.mock('../js/modules/characters/list.js', () => ({ renderCharacters: vi.fn() }));
 vi.mock('../js/modules/parties/index.js', () => ({ renderParties: vi.fn() }));
 
 let health, ui, state, disposeUi;
 
 beforeEach(async () => {
-  disposeUi?.(); disposeUi = null;
+  disposeUi?.();
+  disposeUi = null;
   vi.resetModules();
   localStorage.clear();
   document.body.innerHTML = '';
@@ -77,21 +83,30 @@ describe('recordParserResult: серия неудач и плашка', () => {
     expect(health.problemParsers()).toEqual([]);
     health.recordParserResult('balance', 'container_missing');
     expect(health.problemParsers().map(p => p.id)).toEqual(['balance']);
-    expect(health.getParserHealth().balance).toMatchObject({ status: 'layout_changed', failStreak: 2, lastError: 'container_missing' });
+    expect(health.getParserHealth().balance).toMatchObject({
+      status: 'layout_changed',
+      failStreak: 2,
+      lastError: 'container_missing'
+    });
   });
 
   it('успех сбрасывает серию и запоминает время последней успешной проверки', () => {
     health.recordParserResult('balance', 'parse_nan', { at: '2026-05-01T10:00:00.000Z' });
     health.recordParserResult('balance', null, { at: '2026-05-01T11:00:00.000Z' });
     expect(health.getParserHealth().balance).toEqual({
-      status: 'ok', lastCheckAt: '2026-05-01T11:00:00.000Z', lastOkAt: '2026-05-01T11:00:00.000Z', lastError: null, failStreak: 0
+      status: 'ok',
+      lastCheckAt: '2026-05-01T11:00:00.000Z',
+      lastOkAt: '2026-05-01T11:00:00.000Z',
+      lastError: null,
+      failStreak: 0
     });
     expect(health.problemParsers()).toEqual([]);
   });
 
   it('нет входа, проверка безопасности и таймаут серию не увеличивают и не сбрасывают', () => {
     health.recordParserResult('auth', 'pending');
-    for (const code of ['not_logged_in', 'challenge', 'timeout', 'странная ошибка']) health.recordParserResult('auth', code);
+    for (const code of ['not_logged_in', 'challenge', 'timeout', 'странная ошибка'])
+      health.recordParserResult('auth', code);
     expect(health.getParserHealth().auth.failStreak).toBe(1);
     health.recordParserResult('auth', 'pending');
     expect(health.problemParsers().map(p => p.id)).toEqual(['auth']);
@@ -115,7 +130,7 @@ describe('recordParserResult: серия неудач и плашка', () => {
 
   it('статусы переживают перезапуск (localStorage) и подписчики получают изменения', async () => {
     const seen = [];
-    health.subscribeHealth((h) => seen.push(h.balance.status));
+    health.subscribeHealth(h => seen.push(h.balance.status));
     health.recordParserResult('balance', 'no_value_tag');
     expect(seen).toEqual([null, 'layout_changed']);
     vi.resetModules();
@@ -194,7 +209,10 @@ describe('плашка и таблица', () => {
 
   it('несколько парсеров перечисляются в одной плашке', () => {
     mount();
-    for (let i = 0; i < 2; i++) { health.recordParserResult('balance', 'parse_nan'); health.recordParserResult('progress', 'no_progress_found'); }
+    for (let i = 0; i < 2; i++) {
+      health.recordParserResult('balance', 'parse_nan');
+      health.recordParserResult('progress', 'no_progress_found');
+    }
     expect(banner().textContent).toContain('Устарели парсеры: баланса, прогресса марафона');
   });
 
@@ -210,7 +228,9 @@ describe('плашка и таблица', () => {
     expect(auth.textContent).toContain('сайт изменил вёрстку');
     expect(auth.textContent).toContain('pending');
     expect(rows.find(r => r.textContent.includes('Новости')).textContent).toContain('ещё не проверялся');
-    expect(document.getElementById('parser-health-config').textContent).toMatch(/Версия selectors\.json в этой сборке: \d+/);
+    expect(document.getElementById('parser-health-config').textContent).toMatch(
+      /Версия selectors\.json в этой сборке: \d+/
+    );
   });
 
   it('«Скопировать диагностику» кладёт текст в буфер обмена', async () => {
@@ -227,7 +247,14 @@ describe('плашка и таблица', () => {
 });
 
 describe('данные в базе не затираются, а статус записывается', () => {
-  const mkChar = () => ({ id: 'c', nick: 'Ник', isLoggedIn: true, ancientCoins: 120, coinHistory: [{ at: '2026-05-01T10:00:00.000Z', balance: 120 }], lastCoinUpdate: '2026-05-01T10:00:00.000Z' });
+  const mkChar = () => ({
+    id: 'c',
+    nick: 'Ник',
+    isLoggedIn: true,
+    ancientCoins: 120,
+    coinHistory: [{ at: '2026-05-01T10:00:00.000Z', balance: 120 }],
+    lastCoinUpdate: '2026-05-01T10:00:00.000Z'
+  });
 
   it('баланс: ошибка вёрстки не меняет монеты и историю, но попадает в состояние парсера', async () => {
     const sync = await import('../js/modules/sync/syncManager.js');
@@ -261,8 +288,12 @@ describe('данные в базе не затираются, а статус з
     state.settings = { scripts: { retries: 0, retryDelayMs: 0 } };
     state.characters = [mkChar()];
     const m = createMarathon({
-      id: 'm', title: 'Летний', participantIds: ['c'], source: { type: 'site', url: 'https://pwonline.ru/supermarathon.php' },
-      tasks: [{ id: 't', title: 'Задание', targetChecks: 25 }], assignments: { c: ['t'] }
+      id: 'm',
+      title: 'Летний',
+      participantIds: ['c'],
+      source: { type: 'site', url: 'https://pwonline.ru/supermarathon.php' },
+      tasks: [{ id: 't', title: 'Задание', targetChecks: 25 }],
+      assignments: { c: ['t'] }
     });
     m.progress.c = { t: { site: 7, siteTotal: 25, adjust: 0, marks: [], history: {} } };
     state.marathons = [m];

@@ -10,7 +10,12 @@ export function panelDataFor(char) {
   const c = char?.contacts || {};
   return {
     nick: char?.nick || '',
-    contacts: { email: c.email || '', password: c.password || '', recoveryEmail: c.recoveryEmail || '', phone: c.phone || '' }
+    contacts: {
+      email: c.email || '',
+      password: c.password || '',
+      recoveryEmail: c.recoveryEmail || '',
+      phone: c.phone || ''
+    }
   };
 }
 
@@ -27,8 +32,10 @@ export function panelBootstrap(DATA) {
   const create = Document.prototype.createElement;
   const attach = Element.prototype.attachShadow;
   const later = window.setTimeout.bind(window);
-  const clip = navigator.clipboard && navigator.clipboard.writeText
-    ? navigator.clipboard.writeText.bind(navigator.clipboard) : null;
+  const clip =
+    navigator.clipboard && navigator.clipboard.writeText
+      ? navigator.clipboard.writeText.bind(navigator.clipboard)
+      : null;
   const FIELDS = [
     ['email', 'Email / Логин', false],
     ['password', 'Пароль', true],
@@ -54,7 +61,11 @@ export function panelBootstrap(DATA) {
     'summary{cursor:pointer}'
   ].join('');
   let collapsed = false;
-  try { collapsed = window.localStorage.getItem(STORE_KEY) === '1'; } catch (e) { collapsed = false; }
+  try {
+    collapsed = window.localStorage.getItem(STORE_KEY) === '1';
+  } catch (e) {
+    collapsed = false;
+  }
   let revealed = false;
 
   const make = (tag, cls, text) => {
@@ -79,7 +90,14 @@ export function panelBootstrap(DATA) {
 
     const copy = async (value, btn) => {
       let ok = false;
-      try { if (clip) { await clip(value); ok = true; } } catch (e) { ok = false; }
+      try {
+        if (clip) {
+          await clip(value);
+          ok = true;
+        }
+      } catch (e) {
+        ok = false;
+      }
       if (!ok) {
         try {
           const ta = make('textarea');
@@ -89,15 +107,23 @@ export function panelBootstrap(DATA) {
           ta.select();
           ok = doc.execCommand('copy');
           ta.remove();
-        } catch (e) { ok = false; }
+        } catch (e) {
+          ok = false;
+        }
       }
       btn.textContent = ok ? '✔' : '⚠';
-      later(() => { btn.textContent = '📋'; }, 900);
+      later(() => {
+        btn.textContent = '📋';
+      }, 900);
     };
 
-    const setCollapsed = (v) => {
+    const setCollapsed = v => {
       collapsed = v;
-      try { window.localStorage.setItem(STORE_KEY, v ? '1' : '0'); } catch (e) { /* не критично */ }
+      try {
+        window.localStorage.setItem(STORE_KEY, v ? '1' : '0');
+      } catch (e) {
+        /* не критично */
+      }
       draw();
     };
 
@@ -118,10 +144,13 @@ export function panelBootstrap(DATA) {
       min.addEventListener('click', () => setCollapsed(true));
       head.appendChild(min);
       card.appendChild(head);
-      FIELDS.forEach((f) => {
+      FIELDS.forEach(f => {
         const value = DATA.contacts[f[0]];
         card.appendChild(make('div', 'lbl', f[1]));
-        if (!value) { card.appendChild(make('div', 'val empty', 'Не указано')); return; }
+        if (!value) {
+          card.appendChild(make('div', 'val empty', 'Не указано'));
+          return;
+        }
         const line = make('div', 'line');
         const val = make('div', 'val clickable', f[2] && !revealed ? '••••••••' : value);
         val.title = 'Нажмите, чтобы скопировать';
@@ -129,7 +158,10 @@ export function panelBootstrap(DATA) {
         if (f[2]) {
           const eye = make('button', '', revealed ? '🙈' : '👁');
           eye.title = 'Показать/скрыть';
-          eye.addEventListener('click', () => { revealed = !revealed; draw(); });
+          eye.addEventListener('click', () => {
+            revealed = !revealed;
+            draw();
+          });
           line.appendChild(eye);
         }
         const cp = make('button', '', '📋');
@@ -176,7 +208,9 @@ export function toolbarBootstrap(LINKS, HEIGHT, api) {
   const create = Document.prototype.createElement;
   const attach = Element.prototype.attachShadow;
   const nav = api || {
-    go: (url) => { window.location.href = url; },
+    go: url => {
+      window.location.href = url;
+    },
     back: () => window.history.back(),
     forward: () => window.history.forward(),
     reload: () => window.location.reload()
@@ -184,7 +218,9 @@ export function toolbarBootstrap(LINKS, HEIGHT, api) {
   const CSS = [
     ':host{all:initial}',
     '*{box-sizing:border-box;font-family:Segoe UI,Arial,sans-serif}',
-    '.bar{display:flex;align-items:center;gap:6px;width:100%;height:' + HEIGHT + 'px;background:#1c1f26;color:#e8e8ea;border-bottom:1px solid #3a3f4b;padding:0 10px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:12px}',
+    '.bar{display:flex;align-items:center;gap:6px;width:100%;height:' +
+      HEIGHT +
+      'px;background:#1c1f26;color:#e8e8ea;border-bottom:1px solid #3a3f4b;padding:0 10px;box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:12px}',
     '.sep{width:1px;height:16px;background:#3a3f4b;margin:0 4px}',
     'button{background:#2d323d;color:#e8e8ea;border:1px solid #444a58;border-radius:5px;cursor:pointer;padding:3px 10px;font-size:12px;white-space:nowrap}',
     'button:hover{border-color:#f0b84a}',
@@ -221,7 +257,7 @@ export function toolbarBootstrap(LINKS, HEIGHT, api) {
     bar.appendChild(btn('▶', 'Вперёд', () => nav.forward()));
     bar.appendChild(btn('⟳', 'Обновить страницу', () => nav.reload()));
     bar.appendChild(make('div', 'sep'));
-    LINKS.forEach((l) => {
+    LINKS.forEach(l => {
       const here = window.location.hostname === 'pwonline.ru' && window.location.pathname === l[2];
       bar.appendChild(btn(l[0], l[1], () => nav.go(l[1]), here ? 'on' : ''));
     });
@@ -236,6 +272,8 @@ export function toolbarBootstrap(LINKS, HEIGHT, api) {
 
 /** Готовый скрипт для внедрения в окно браузера персонажа: панель контактов + тулбар навигации. */
 export function buildPanelScript(data) {
-  return `(${panelBootstrap.toString()})(${JSON.stringify(data)});`
-    + `(${toolbarBootstrap.toString()})(${JSON.stringify(SITE_LINKS)},${TOOLBAR_HEIGHT});`;
+  return (
+    `(${panelBootstrap.toString()})(${JSON.stringify(data)});` +
+    `(${toolbarBootstrap.toString()})(${JSON.stringify(SITE_LINKS)},${TOOLBAR_HEIGHT});`
+  );
 }

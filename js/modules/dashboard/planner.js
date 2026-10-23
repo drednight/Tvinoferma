@@ -110,7 +110,9 @@ export function normalizePlannerEntry(input = {}) {
   const duration = Math.round(Number(input.durationMinutes));
   return {
     id: String(input.id || crypto.randomUUID?.() || `planner-${Date.now()}`),
-    title: String(input.title || '').trim().slice(0, 160),
+    title: String(input.title || '')
+      .trim()
+      .slice(0, 160),
     date,
     time: /^\d{2}:\d{2}$/.test(String(input.time || '')) ? String(input.time) : '',
     // Длительность нужна шкале дня: высота блока = сколько идёт запись
@@ -163,8 +165,15 @@ export function plannerEventsForDate(appState, date) {
     // Иначе отметка за вчерашний день тащилась бы в сегодняшний, а вхождение врало бы про дату.
     .map(entry => ({ ...entry, date, status: entryStatusForDate(entry, date), source: 'manual' }));
   const marathons = (appState?.marathons || [])
-    .filter(m => m?.kind !== 'series' && m?.status !== 'completed' && m.startDate && m.endDate
-      && date >= m.startDate && date <= m.endDate)
+    .filter(
+      m =>
+        m?.kind !== 'series' &&
+        m?.status !== 'completed' &&
+        m.startDate &&
+        m.endDate &&
+        date >= m.startDate &&
+        date <= m.endDate
+    )
     .map(m => ({
       id: `marathon-${m.id}`,
       title: m.title || 'Марафон',
@@ -178,10 +187,12 @@ export function plannerEventsForDate(appState, date) {
     }));
   // Постоянные ивенты приходят из расписания, а не из состояния: их нельзя изменить или удалить
   const recurring = recurringEventsForDate(date);
-  return [...manual, ...recurring, ...marathons].sort((a, b) =>
-    // У псевдо-записей марафонов и постоянных ивентов статуса нет — они попадают в середину
-    (STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1)
-    || ({ high: 0, normal: 1, low: 2 }[a.priority] ?? 1) - ({ high: 0, normal: 1, low: 2 }[b.priority] ?? 1)
-    || String(a.time || '').localeCompare(String(b.time || ''))
-    || a.title.localeCompare(b.title, 'ru'));
+  return [...manual, ...recurring, ...marathons].sort(
+    (a, b) =>
+      // У псевдо-записей марафонов и постоянных ивентов статуса нет — они попадают в середину
+      (STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1) ||
+      ({ high: 0, normal: 1, low: 2 }[a.priority] ?? 1) - ({ high: 0, normal: 1, low: 2 }[b.priority] ?? 1) ||
+      String(a.time || '').localeCompare(String(b.time || '')) ||
+      a.title.localeCompare(b.title, 'ru')
+  );
 }

@@ -16,7 +16,13 @@ vi.mock('../js/modules/launcher/launch.js', () => ({
   applyWindowStyle: mocks.applyStyle,
   WINDOW_ICON_SMALL: 16,
   WINDOW_ICON_BIG: 48,
-  applyStyleText: (r) => ({ missing: 'Окно игры не найдено: возможно, оно уже закрыто', failed: 'нет доступа', fixed: 'Окно обновлено', ok: 'Изменений не потребовалось' }[r?.status] || '')
+  applyStyleText: r =>
+    ({
+      missing: 'Окно игры не найдено: возможно, оно уже закрыто',
+      failed: 'нет доступа',
+      fixed: 'Окно обновлено',
+      ok: 'Изменений не потребовалось'
+    })[r?.status] || ''
 }));
 vi.mock('../js/core/storage.js', () => ({ isTauri: () => true, persist: vi.fn(async () => {}) }));
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: vi.fn(async () => true) }));
@@ -29,7 +35,7 @@ const clients = () => [
   { pid: 300, image: 'elementclient_64.exe', startedAt: null, title: 'Perfect World', elevated: false }
 ];
 
-const styleBtn = (pid) => document.querySelector(`[data-style="${pid}"]`);
+const styleBtn = pid => document.querySelector(`[data-style="${pid}"]`);
 const dialog = () => [...document.querySelectorAll('.tf-dialog')].at(-1);
 
 beforeEach(async () => {
@@ -76,7 +82,12 @@ describe('кнопка «Вид…» в списке окон', () => {
     d.querySelector('#ws-class').value = 'Маг';
     d.querySelector('[data-x="apply"]').click();
     await vi.waitFor(() => expect(mocks.applyStyle).toHaveBeenCalled());
-    expect(mocks.applyStyle.mock.calls[0][0]).toMatchObject({ pid: 100, title: 'Моё окно', class: 'Маг', clearIcon: false });
+    expect(mocks.applyStyle.mock.calls[0][0]).toMatchObject({
+      pid: 100,
+      title: 'Моё окно',
+      class: 'Маг',
+      clearIcon: false
+    });
     await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalled());
   });
 

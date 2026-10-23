@@ -1,6 +1,6 @@
 name: Ошибка
 description: Что-то работает неправильно
-labels: ["type/bug"]
+labels: ['type/bug']
 body:
   - type: markdown
     attributes:
@@ -11,7 +11,7 @@ body:
     attributes:
       label: Версия приложения
       description: Настройки → Обновления
-      placeholder: "0.2.2"
+      placeholder: '0.2.2'
     validations:
       required: true
   - type: dropdown

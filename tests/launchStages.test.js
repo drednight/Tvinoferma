@@ -13,9 +13,15 @@ describe('итог запуска по этапам', () => {
 
   it('итог собирается из этапов: закрытие, запись входа, ожидание окна, паузы', () => {
     const text = launchStageSummary({
-      gcClose: 2100, account: 120, clientWait: 15400, delay: 9000, total: 26620
+      gcClose: 2100,
+      account: 120,
+      clientWait: 15400,
+      delay: 9000,
+      total: 26620
     });
-    expect(text).toBe('Итого 26.6 с: закрытие GameCenter 2.1 с, запись входа в GameCenter.ini 0.1 с, GameCenter до клиента 15.4 с, пауза между запусками 9 с.');
+    expect(text).toBe(
+      'Итого 26.6 с: закрытие GameCenter 2.1 с, запись входа в GameCenter.ini 0.1 с, GameCenter до клиента 15.4 с, пауза между запусками 9 с.'
+    );
   });
 
   it('нулевые этапы не показываются: иначе строка засоряется нолями', () => {

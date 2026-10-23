@@ -43,7 +43,15 @@ export function normalizeGameCenters(list) {
     const kind = raw?.kind === 'astrum' ? 'astrum' : 'gamecenter';
     if (!id || !path || seen.has(id) || out.length >= MAX_GAME_CENTERS) continue;
     seen.add(id);
-    out.push({ id, name: String(raw?.name || '').trim().slice(0, 60) || kindLabel(kind), path, kind });
+    out.push({
+      id,
+      name:
+        String(raw?.name || '')
+          .trim()
+          .slice(0, 60) || kindLabel(kind),
+      path,
+      kind
+    });
   }
   return out;
 }
@@ -63,7 +71,12 @@ export function launcherKind(gc) {
  * Имя файла важнее имени папки: `...\AstrumPlay\GameCenter.exe` — это GameCenter.
  */
 export function kindForPath(path) {
-  const base = String(path || '').replace(/\//g, '\\').split('\\').filter(Boolean).pop() || '';
+  const base =
+    String(path || '')
+      .replace(/\//g, '\\')
+      .split('\\')
+      .filter(Boolean)
+      .pop() || '';
   return base.replace(/\.exe$/i, '').toLowerCase() === 'astrumplay' ? 'astrum' : 'gamecenter';
 }
 
@@ -76,7 +89,11 @@ export function kindLabel(kind) {
 export function newGcId(existing = []) {
   const taken = new Set((existing || []).map(g => g.id));
   for (let i = 0; i < 1000; i++) {
-    const rnd = (globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`).replace(/-/g, '').slice(0, 8);
+    const rnd = (
+      globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`
+    )
+      .replace(/-/g, '')
+      .slice(0, 8);
     const id = `gc-${rnd}`;
     if (!taken.has(id)) return id;
   }
@@ -85,7 +102,10 @@ export function newGcId(existing = []) {
 
 /** Название по умолчанию: имя папки, где лежит GameCenter.exe («GameCenter2»), иначе «GameCenter N». */
 export function suggestGcName(path, existing = []) {
-  const parts = String(path || '').replace(/\//g, '\\').split('\\').filter(Boolean);
+  const parts = String(path || '')
+    .replace(/\//g, '\\')
+    .split('\\')
+    .filter(Boolean);
   if (parts.length && /\.exe$/i.test(parts[parts.length - 1])) parts.pop();
   const folder = parts[parts.length - 1] || '';
   const taken = new Set((existing || []).map(g => String(g.name || '').toLowerCase()));
@@ -124,7 +144,14 @@ export function resolveGameCenter(char, ctx = {}) {
   if (attached.length) {
     const gc = attached.find(g => g.id === ctx.preferredId) || attached[0];
     const acc = char.launch?.gcAccounts?.[gc.id];
-    return { path: gc.path, key: accountKey(char, gc.id), nick: acc?.nick || '', saved: !!acc, gc, kind: launcherKind(gc) };
+    return {
+      path: gc.path,
+      key: accountKey(char, gc.id),
+      nick: acc?.nick || '',
+      saved: !!acc,
+      gc,
+      kind: launcherKind(gc)
+    };
   }
   const own = String(char?.launch?.gcPath || '').trim();
   if (own) {

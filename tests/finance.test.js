@@ -40,15 +40,19 @@ vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNo
  * ровно; для проверки дробных процентов есть отдельные тесты ниже.
  */
 const LOAN = {
-  principal: 10000, percent: 5, start: '2026-01-01', end: '2026-07-01',
-  currency: 'coins', payments: []
+  principal: 10000,
+  percent: 5,
+  start: '2026-01-01',
+  end: '2026-07-01',
+  currency: 'coins',
+  payments: []
 };
 
 describe('дни между датами', () => {
   it('считает целые дни', () => {
     expect(daysBetween('2026-01-01', '2026-02-01')).toBe(31);
     expect(daysBetween('2026-02-01', '2026-03-01')).toBe(28);
-    expect(daysBetween('2024-02-01', '2024-03-01')).toBe(29);   // високосный год
+    expect(daysBetween('2024-02-01', '2024-03-01')).toBe(29); // високосный год
     expect(daysBetween('2026-01-01', '2026-01-15')).toBe(14);
   });
 
@@ -105,7 +109,7 @@ describe('децималы зависят от валюты', () => {
   it('у голда децималы живут, и сумма строк совпадает с итогом', () => {
     const ops = Array.from({ length: 37 }, () => ({ amount: 10.5, currency: 'coins', kind: 'in', date: '2026-06-01' }));
     const totals = ledgerTotals(ops, 'coins');
-    expect(totals.income).toBe(388.5);   // 37 × 10,5 — ровно
+    expect(totals.income).toBe(388.5); // 37 × 10,5 — ровно
   });
 
   it('сумма золота в реестре всегда целая — иначе остаток не сошёлся бы', () => {
@@ -137,7 +141,10 @@ describe('децималы зависят от валюты', () => {
   });
 
   it('проценты золотого долга всегда целые', () => {
-    const acc = loanAccrual({ principal: 999, percent: 5, start: '2026-01-01', end: '2026-03-01', currency: 'gold', payments: [] }, '2026-03-01');
+    const acc = loanAccrual(
+      { principal: 999, percent: 5, start: '2026-01-01', end: '2026-03-01', currency: 'gold', payments: [] },
+      '2026-03-01'
+    );
     for (const key of ['interest', 'interestDue', 'total', 'outstanding']) {
       expect(Number.isInteger(acc[key])).toBe(true);
     }
@@ -145,7 +152,9 @@ describe('децималы зависят от валюты', () => {
 
   it('формат вывода золота без дробной части, голд с ней', () => {
     expect(formatAmount('gold', 1234.7)).toBe(new Intl.NumberFormat('ru-RU').format(1235));
-    expect(formatAmount('coins', 1234.55)).toBe(new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(1234.55));
+    expect(formatAmount('coins', 1234.55)).toBe(
+      new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(1234.55)
+    );
   });
 });
 
@@ -177,10 +186,10 @@ describe('пробелы в полях сумм', () => {
 describe('голд и комиссия 2%', () => {
   it('по умолчанию комиссия 2%, и она берётся голдом', () => {
     const deal = goldDeal({ side: 'sell', coins: 1000, rate: 1000000 });
-    expect(deal.commissionCoins).toBe(20);       // ровно его пример: «20 голды»
+    expect(deal.commissionCoins).toBe(20); // ровно его пример: «20 голды»
     expect(deal.coinsTotal).toBe(1020);
     expect(deal.gold).toBe(1000000000);
-    expect(deal.effectiveRate).toBe(980392.16);  // 1 000 000 000 / 1020
+    expect(deal.effectiveRate).toBe(980392.16); // 1 000 000 000 / 1020
   });
 
   it('потеря курса от комиссии 2% равна 1.96%, а не 2%', () => {
@@ -220,7 +229,7 @@ describe('сделка с голдом пишет обе валюты', () => {
     const coins = operations.find(o => o.currency === 'coins');
     const gold = operations.find(o => o.currency === 'gold');
     expect(coins.kind).toBe('out');
-    expect(coins.amount).toBe(1020);          // 1000 + комиссия 20
+    expect(coins.amount).toBe(1020); // 1000 + комиссия 20
     expect(gold.kind).toBe('in');
     expect(gold.amount).toBe(1000000000);
   });
@@ -247,7 +256,15 @@ describe('сделка с голдом пишет обе валюты', () => {
 
 describe('деньги долга и комиссионки попадают в «Банк»', () => {
   it('дал в долг — расход из остатка', () => {
-    const op = loanOperation({ id: 'l1', direction: 'lent', who: 'Шкила', principal: 10000, percent: 5, start: '2026-01-01', end: '2026-07-01' });
+    const op = loanOperation({
+      id: 'l1',
+      direction: 'lent',
+      who: 'Шкила',
+      principal: 10000,
+      percent: 5,
+      start: '2026-01-01',
+      end: '2026-07-01'
+    });
     expect(op.kind).toBe('out');
     expect(op.amount).toBe(10000);
     expect(op.currency).toBe('gold');
@@ -256,7 +273,15 @@ describe('деньги долга и комиссионки попадают в 
   });
 
   it('взял в долг — приход в остаток', () => {
-    const op = loanOperation({ id: 'l2', direction: 'borrowed', who: 'Ракохаме', principal: 2000, percent: 3, start: '2026-01-01', end: '2026-07-01' });
+    const op = loanOperation({
+      id: 'l2',
+      direction: 'borrowed',
+      who: 'Ракохаме',
+      principal: 2000,
+      percent: 3,
+      start: '2026-01-01',
+      end: '2026-07-01'
+    });
     expect(op.kind).toBe('in');
     expect(balances([op]).gold).toBe(2000);
   });
@@ -265,7 +290,7 @@ describe('деньги долга и комиссионки попадают в 
     const item = { id: 'i1', side: 'sell', name: 'Зелье', price: 120000, qty: 5 };
     const op = shopDealOperation({ item, qty: 2 });
     expect(op.kind).toBe('in');
-    expect(op.amount).toBe(240000);           // 120000 × 2
+    expect(op.amount).toBe(240000); // 120000 × 2
     expect(op.counterparty).toContain('Банк');
     expect(op.source).toBe('shop');
     expect(op.ref).toBe('i1');
@@ -292,10 +317,10 @@ describe('долг: проценты на остаток, ежедневно п�
 
   it('полный месяц стоит месячную ставку независимо от числа дней в нём', () => {
     const rate = (start, end) => loanAccrual({ ...LOAN, start, end }, end).interest;
-    expect(rate('2026-01-01', '2026-02-01')).toBe(500);   // 31 день
-    expect(rate('2026-02-01', '2026-03-01')).toBe(500);   // 28 дней
-    expect(rate('2024-02-01', '2024-03-01')).toBe(500);   // високосный, 29 дней
-    expect(rate('2026-01-15', '2026-02-15')).toBe(500);   // выдача 15-го
+    expect(rate('2026-01-01', '2026-02-01')).toBe(500); // 31 день
+    expect(rate('2026-02-01', '2026-03-01')).toBe(500); // 28 дней
+    expect(rate('2024-02-01', '2024-03-01')).toBe(500); // високосный, 29 дней
+    expect(rate('2026-01-15', '2026-02-15')).toBe(500); // выдача 15-го
   });
 
   it('выдача 31-го обрывается в последний день месяца и всё равно стоит месяц', () => {
@@ -312,7 +337,7 @@ describe('долг: проценты на остаток, ежедневно п�
   it('смена месяца меняет цену дня: в феврале день дороже, чем в марте', () => {
     const perDayJan = loanAccrual({ ...LOAN, end: '2026-01-02' }, '2026-01-02').interest;
     const perDayFeb = loanAccrual({ ...LOAN, start: '2026-02-01', end: '2026-02-02' }, '2026-02-02').interest;
-    expect(perDayFeb).toBeGreaterThan(perDayJan);   // 500/28 > 500/31
+    expect(perDayFeb).toBeGreaterThan(perDayJan); // 500/28 > 500/31
   });
 
   it('выплата 5000 на 4-й месяц гасит проценты, а остаток уменьшает базу', () => {
@@ -323,9 +348,9 @@ describe('долг: проценты на остаток, ежедневно п�
     expect(acc.interestPaid).toBe(1500);
     expect(acc.paid).toBe(3500);
     expect(acc.outstanding).toBe(6500);
-    expect(acc.interest).toBe(2475);        // 1500 + 3 × 6500 × 0.05
-    expect(acc.interestDue).toBe(975);      // не погашенные проценты после выплаты
-    expect(acc.total).toBe(7475);           // 6500 тела + 975 процентов
+    expect(acc.interest).toBe(2475); // 1500 + 3 × 6500 × 0.05
+    expect(acc.interestDue).toBe(975); // не погашенные проценты после выплаты
+    expect(acc.total).toBe(7475); // 6500 тела + 975 процентов
   });
 
   it('выплата разбивается: сначала проценты, потом тело долга', () => {
@@ -352,30 +377,43 @@ describe('долг: проценты на остаток, ежедневно п�
 
   it('выплата ПОСЛЕ срока засчитывается, а проценты сверх срока не капают', () => {
     // Регрессия: выплаты фильтровались по дате срока, и «Выплатить всё» не работало:
-  // долг, закрытый после срока, навсегда оставался с остатком. Проверено вручную.
+    // долг, закрытый после срока, навсегда оставался с остатком. Проверено вручную.
     const loan = { ...LOAN, payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }] };
     const st = loanStatus(loan, '2026-10-15');
     expect(st.outstanding).toBe(6500);
-    expect(st.interestDue).toBe(975);   // проценты застыли на дату срока
+    expect(st.interestDue).toBe(975); // проценты застыли на дату срока
     expect(st.total).toBe(7475);
 
-    const paid = loanAccrual({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] }, '2026-10-15');
+    const paid = loanAccrual(
+      { ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] },
+      '2026-10-15'
+    );
     expect(paid.total).toBe(0);
     expect(paid.outstanding).toBe(0);
-    expect(loanStatus({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] }, '2026-10-15').settled).toBe(true);
+    expect(
+      loanStatus(
+        { ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 7475 }] },
+        '2026-10-15'
+      ).settled
+    ).toBe(true);
 
     // Частичная выплата после срока уменьшает остаток ровно на тело
-    const part = loanAccrual({ ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 3000 }] }, '2026-10-15');
-    expect(part.total).toBe(4475);   // 7 475 − 3 000
+    const part = loanAccrual(
+      { ...loan, payments: [...loan.payments, { id: 'p2', date: '2026-10-15', amount: 3000 }] },
+      '2026-10-15'
+    );
+    expect(part.total).toBe(4475); // 7 475 − 3 000
   });
 
-it('выплата, оформленная на будущее, сегодняшний долг не уменьшает', () => {
+  it('выплата, оформленная на будущее, сегодняшний долг не уменьшает', () => {
     // Отсекается только выплата БУДУЩЕЕ, а не все, что позже даты расчёта:
-  // выплата раньше сегодняшнего дня засчитывается всегда, даже за пределами срока
+    // выплата раньше сегодняшнего дня засчитывается всегда, даже за пределами срока
     const loan = { ...LOAN, payments: [{ id: 'p1', date: '2026-06-01', amount: 5000 }] };
     expect(loanAccrual(loan, '2026-03-01').outstanding).toBe(10000);
     // А вот будущая выплата (после даты расчёта) ещё не засчитана
-    expect(loanAccrual({ ...LOAN, payments: [{ id: 'p2', date: '2027-01-01', amount: 5000 }] }, '2026-03-01').outstanding).toBe(10000);
+    expect(
+      loanAccrual({ ...LOAN, payments: [{ id: 'p2', date: '2027-01-01', amount: 5000 }] }, '2026-03-01').outstanding
+    ).toBe(10000);
     // К июню набегает 5 полных месяцев по 500, поэтому из 5000 на проценты уходит 2500
     // и только 2500 гасят тело долга
     const acc = loanAccrual(loan, '2026-07-01');
@@ -387,7 +425,9 @@ it('выплата, оформленная на будущее, сегодняш
   it('много выплат подряд не ломают расчёт', () => {
     // Регрессия: расчёт обязан быть одним проходом, рекурсия выплат уронила бы стек
     const payments = Array.from({ length: 40 }, (_, i) => ({
-      id: `p${i}`, date: `2026-${String(i % 12 + 1).padStart(2, '0')}-01`, amount: 100
+      id: `p${i}`,
+      date: `2026-${String((i % 12) + 1).padStart(2, '0')}-01`,
+      amount: 100
     }));
     const acc = loanAccrual({ ...LOAN, payments }, '2026-07-01');
     expect(acc.paid + acc.outstanding).toBeLessThanOrEqual(10000);
@@ -442,7 +482,10 @@ describe('реестр: нормализация', () => {
   it('долг без имени и позиция без названия не сохраняются', () => {
     const f = normalizeFinance({
       loans: [{ principal: 100 }, { principal: 100, who: 'Шкила' }],
-      shopItems: [{ price: 10, qty: 1 }, { price: 10, qty: 1, name: 'Зелье' }]
+      shopItems: [
+        { price: 10, qty: 1 },
+        { price: 10, qty: 1, name: 'Зелье' }
+      ]
     });
     expect(f.loans).toHaveLength(1);
     expect(f.shopItems).toHaveLength(1);
@@ -469,10 +512,17 @@ describe('реестр: нормализация', () => {
 
   it('выплаты внутри долга сортируются по дате', () => {
     const [loan] = normalizeFinance({
-      loans: [{
-        who: 'Ежа', principal: 100, start: '2026-01-01',
-        payments: [{ amount: 2, date: '2026-05-01' }, { amount: 1, date: '2026-02-01' }]
-      }]
+      loans: [
+        {
+          who: 'Ежа',
+          principal: 100,
+          start: '2026-01-01',
+          payments: [
+            { amount: 2, date: '2026-05-01' },
+            { amount: 1, date: '2026-02-01' }
+          ]
+        }
+      ]
     }).loans;
     expect(loan.payments.map(p => p.date)).toEqual(['2026-02-01', '2026-05-01']);
   });
@@ -506,7 +556,7 @@ describe('реестр: итоги', () => {
 });
 
 describe('поправки по месяцам (переносы из таблицы)', () => {
-  const mon = (date) => ({ date, currency: 'gold', kind: 'in', amount: 0 });
+  const mon = date => ({ date, currency: 'gold', kind: 'in', amount: 0 });
 
   it('monthAdjust правит итог месяца, не трогая записи', () => {
     const ops = [
@@ -545,7 +595,9 @@ describe('поправки по месяцам (переносы из табли
   });
 
   it('normalizeFinance выбрасывает битые поправки', () => {
-    const finance = normalizeFinance({ settings: { monthAdjust: { сломано: { gold: 5 }, '2026-09': { gold: 'ерунда' } } } });
+    const finance = normalizeFinance({
+      settings: { monthAdjust: { сломано: { gold: 5 }, '2026-09': { gold: 'ерунда' } } }
+    });
     expect(finance.settings.monthAdjust).toEqual({});
   });
 
@@ -627,9 +679,36 @@ describe('комиссионный магазин', () => {
 
 const FINANCE = {
   operations: [
-    { id: 'o1', date: '2026-06-09', kind: 'in', currency: 'gold', amount: 500000000, counterparty: 'Ежа', note: 'сундуки', source: 'manual' },
-    { id: 'o2', date: '2026-06-10', kind: 'out', currency: 'gold', amount: 50000000, counterparty: 'голд', note: 'на релики', source: 'manual' },
-    { id: 'o3', date: '2026-06-11', kind: 'in', currency: 'coins', amount: 1000, counterparty: 'Шкила', note: '', source: 'debt' }
+    {
+      id: 'o1',
+      date: '2026-06-09',
+      kind: 'in',
+      currency: 'gold',
+      amount: 500000000,
+      counterparty: 'Ежа',
+      note: 'сундуки',
+      source: 'manual'
+    },
+    {
+      id: 'o2',
+      date: '2026-06-10',
+      kind: 'out',
+      currency: 'gold',
+      amount: 50000000,
+      counterparty: 'голд',
+      note: 'на релики',
+      source: 'manual'
+    },
+    {
+      id: 'o3',
+      date: '2026-06-11',
+      kind: 'in',
+      currency: 'coins',
+      amount: 1000,
+      counterparty: 'Шкила',
+      note: '',
+      source: 'debt'
+    }
   ],
   shopItems: [
     { id: 'i1', side: 'sell', name: 'Зелье', price: 100, qty: 3, date: '2026-06-09', note: '' },
@@ -637,14 +716,29 @@ const FINANCE = {
   ],
   loans: [
     {
-      id: 'l1', direction: 'lent', who: 'Шкила', principal: 10000, percent: 5,
-      start: '2026-01-01', end: '2026-07-01', currency: 'gold', note: '',
+      id: 'l1',
+      direction: 'lent',
+      who: 'Шкила',
+      principal: 10000,
+      percent: 5,
+      start: '2026-01-01',
+      end: '2026-07-01',
+      currency: 'gold',
+      note: '',
       payments: [{ id: 'p1', date: '2026-04-01', amount: 5000 }]
     },
     // Второй долг без выплат: на нём проверяем отсутствие истории и подписи форм
     {
-      id: 'l2', direction: 'borrowed', who: 'Ракохаме', principal: 2000000, percent: 3,
-      start: '2026-06-01', end: '2026-12-01', currency: 'gold', note: '', payments: []
+      id: 'l2',
+      direction: 'borrowed',
+      who: 'Ракохаме',
+      principal: 2000000,
+      percent: 3,
+      start: '2026-06-01',
+      end: '2026-12-01',
+      currency: 'gold',
+      note: '',
+      payments: []
     }
   ],
   settings: { goldRate: 1000000, commissionPct: 2, goldRateAt: '2026-06-09' }
@@ -681,7 +775,7 @@ async function render() {
  * Текст с обычными пробелами. toLocaleString('ru-RU') разделяет разряды неразрывным
  * пробелом (U+00A0), и искать по нему обычным пробелом бессмысленно.
  */
-const text = (el) => el.textContent.replace(/\u00a0/g, ' ');
+const text = el => el.textContent.replace(/\u00a0/g, ' ');
 
 describe('раздел «Банк»: один экран', () => {
   it('рисует KPI, месяцы, комиссионку и долги на одном экране', async () => {
@@ -721,14 +815,25 @@ describe('раздел «Банк»: один экран', () => {
     // Перенос (поправка) 400 — как в таблице, он входит в итог месяца.
     state.finance.operations = [
       ...state.finance.operations,
-      { id: 'c1', date: '2026-06-12', kind: 'in', currency: 'coins', amount: 1000, counterparty: 'Голд', note: '', status: '', source: 'manual', ref: null }
+      {
+        id: 'c1',
+        date: '2026-06-12',
+        kind: 'in',
+        currency: 'coins',
+        amount: 1000,
+        counterparty: 'Голд',
+        note: '',
+        status: '',
+        source: 'manual',
+        ref: null
+      }
     ];
     state.finance.settings.monthAdjust = { '2026-06': { coins: 400 } };
     state.finance.settings.monthCarry = { '2026-06': { coins: 400 } };
     const { el } = await render();
     const coins = el.querySelector('.pans .pan:nth-child(2)');
-    expect(text(coins.querySelector('.pan-value'))).toContain('2 400');   // сейчас = итог месяца с переносом
-    expect(text(coins.querySelector('.pan-sub'))).toContain('2 000');    // за месяц — без переноса
+    expect(text(coins.querySelector('.pan-value'))).toContain('2 400'); // сейчас = итог месяца с переносом
+    expect(text(coins.querySelector('.pan-sub'))).toContain('2 000'); // за месяц — без переноса
     expect(text(el.querySelector('.month-item .mi-sum'))).toContain('2 000');
   });
 
@@ -750,8 +855,30 @@ describe('раздел «Банк»: один экран', () => {
     // Сентябрь закрыт листом (поправка 500), октябрь вбиту руками — листа ещё нет.
     state.finance = normalizeFinance({
       operations: [
-        { id: 'a', date: '2026-09-01', kind: 'in', currency: 'gold', amount: 100, counterparty: 'Сент', note: '', status: '', source: 'manual', ref: null },
-        { id: 'b', date: '2026-10-01', kind: 'in', currency: 'gold', amount: 50, counterparty: 'Окт', note: '', status: '', source: 'manual', ref: null }
+        {
+          id: 'a',
+          date: '2026-09-01',
+          kind: 'in',
+          currency: 'gold',
+          amount: 100,
+          counterparty: 'Сент',
+          note: '',
+          status: '',
+          source: 'manual',
+          ref: null
+        },
+        {
+          id: 'b',
+          date: '2026-10-01',
+          kind: 'in',
+          currency: 'gold',
+          amount: 50,
+          counterparty: 'Окт',
+          note: '',
+          status: '',
+          source: 'manual',
+          ref: null
+        }
       ],
       settings: { monthAdjust: { '2026-09': { gold: 500 } } }
     });
@@ -781,9 +908,9 @@ describe('раздел «Банк»: один экран', () => {
     expect(heads).toContain('Итог');
     // Нижняя строка — первое действие, верхняя — последнее: сложение идёт от низа
     const its = [...el.querySelectorAll('.month-body .fin-row')].map(r => text(r.querySelector('.fin-num')));
-    expect(its[0]).toContain('1 000');        // верх: последнее (голд)
-    expect(its[1]).toContain('450 000 000');  // середина
-    expect(its[2]).toContain('500 000 000');  // низ: первое
+    expect(its[0]).toContain('1 000'); // верх: последнее (голд)
+    expect(its[1]).toContain('450 000 000'); // середина
+    expect(its[2]).toContain('500 000 000'); // низ: первое
   });
 
   it('чекбокс «Итог» убирает колонку', async () => {
@@ -821,7 +948,18 @@ describe('раздел «Банк»: один экран', () => {
   it('клик по месяцу выбирает его', async () => {
     const { el, page } = await render();
     const { state } = await import('../js/core/state.js');
-    state.finance.operations.unshift({ id: 'ox', date: '2026-05-05', kind: 'in', currency: 'gold', amount: 100, counterparty: 'Май', note: '', status: '', source: 'manual', ref: null });
+    state.finance.operations.unshift({
+      id: 'ox',
+      date: '2026-05-05',
+      kind: 'in',
+      currency: 'gold',
+      amount: 100,
+      counterparty: 'Май',
+      note: '',
+      status: '',
+      source: 'manual',
+      ref: null
+    });
     page.renderFinance();
     const may = [...el.querySelectorAll('.month-item')].find(m => text(m).includes('май 2026'));
     may.click();
@@ -843,7 +981,7 @@ describe('раздел «Банк»: один экран', () => {
     expect(form.querySelector('select[name="side"]')).toBeTruthy();
     const details = form.querySelector('.fin-details');
     expect(details).toBeTruthy();
-    expect(details.open).toBe(false);                 // по умолчанию комиссия не видна
+    expect(details.open).toBe(false); // по умолчанию комиссия не видна
     expect(details.querySelector('input[name="commissionPct"]').value).toBe('2');
   });
 
@@ -912,8 +1050,8 @@ describe('раздел «Банк»: один экран', () => {
   it('у позиции комиссионки есть «продано», «изменить» и «убрать»', async () => {
     const { el } = await render();
     const acts = [...el.querySelectorAll('.shop-side [data-fin-act]')].map(b => b.dataset.finAct);
-    expect(acts).toContain('deal-item');     // записать, сколько продано
-    expect(acts).toContain('edit-item');     // изменить
+    expect(acts).toContain('deal-item'); // записать, сколько продано
+    expect(acts).toContain('edit-item'); // изменить
     expect(acts).toContain('del-item');
     // Кнопки «долить» больше нет — просили заменить на «изменить»
     expect(acts).not.toContain('bump-item');
@@ -930,7 +1068,18 @@ describe('раздел «Банк»: один экран', () => {
   it('голд-сделка помечена «Конвертация», а не «Потратил»', async () => {
     const { el, page } = await render();
     const { state } = await import('../js/core/state.js');
-    state.finance.operations.unshift({ id: 'g1', date: '2026-06-12', kind: 'out', currency: 'gold', amount: 1000, counterparty: 'Покупка голда', note: '', status: '', source: 'gold', ref: null });
+    state.finance.operations.unshift({
+      id: 'g1',
+      date: '2026-06-12',
+      kind: 'out',
+      currency: 'gold',
+      amount: 1000,
+      counterparty: 'Покупка голда',
+      note: '',
+      status: '',
+      source: 'gold',
+      ref: null
+    });
     page.renderFinance();
     const row = [...el.querySelectorAll('.month-body .fin-row')].find(r => r.textContent.includes('Покупка голда'));
     expect(text(row.querySelector('.fin-chip'))).toBe('Конвертация');
@@ -939,7 +1088,9 @@ describe('раздел «Банк»: один экран', () => {
   it('в долге есть «Выплатить всё», «Частично», «Закрыть» и история', async () => {
     const { el } = await render();
     const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
-    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
+    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(
+      b => b.dataset.finAct
+    );
     expect(acts).toContain('pay-all');
     expect(acts).toContain('add-payment');
     expect(acts).toContain('close-loan');
@@ -989,7 +1140,9 @@ describe('раздел «Банк»: один экран', () => {
     expect(loanStatus(loan).settled).toBe(true);
     page.renderFinance();
     const card = [...el.querySelectorAll('.fin-loan')].find(c => c.textContent.includes('Шкила'));
-    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(b => b.dataset.finAct);
+    const acts = [...card.querySelector('.fin-loan-actions').querySelectorAll('[data-fin-act]')].map(
+      b => b.dataset.finAct
+    );
     expect(acts).not.toContain('pay-all');
     expect(acts).not.toContain('close-loan');
     // История закрытого долга раскрыта сама — иначе её не увидеть без клика
@@ -1033,7 +1186,7 @@ describe('раздел «Банк»: один экран', () => {
     item.qty = money(item.qty - 2);
     state.finance.operations.unshift(shopDealOperation({ item, qty: 2 }));
 
-    expect(item.qty).toBe(1);                       // было 3
+    expect(item.qty).toBe(1); // было 3
     expect(balances(state.finance.operations).gold).toBe(goldBefore + 200);
     expect(state.finance.operations[0].counterparty).toContain('Банк');
     expect(state.finance.operations[0].source).toBe('shop');
@@ -1045,7 +1198,18 @@ describe('раздел «Банк»: один экран', () => {
     const { state } = await import('../js/core/state.js');
     const { loanOperation } = await import('../js/modules/finance/model.js');
 
-    const lent = { id: 'lx', direction: 'lent', who: 'Новый', principal: 5000, percent: 5, start: '2026-06-01', end: '2026-12-01', currency: 'gold', opId: null, payments: [] };
+    const lent = {
+      id: 'lx',
+      direction: 'lent',
+      who: 'Новый',
+      principal: 5000,
+      percent: 5,
+      start: '2026-06-01',
+      end: '2026-12-01',
+      currency: 'gold',
+      opId: null,
+      payments: []
+    };
     const op = loanOperation(lent);
     lent.opId = op.id;
     state.finance.loans.unshift(lent);
@@ -1054,7 +1218,18 @@ describe('раздел «Банк»: один экран', () => {
     const goldBefore = ledgerTotals(FINANCE.operations, 'gold').balance;
     expect(afterLent).toBe(goldBefore - 5000);
 
-    const borrowed = { id: 'ly', direction: 'borrowed', who: 'Другой', principal: 3000, percent: 3, start: '2026-06-01', end: '2026-12-01', currency: 'gold', opId: null, payments: [] };
+    const borrowed = {
+      id: 'ly',
+      direction: 'borrowed',
+      who: 'Другой',
+      principal: 3000,
+      percent: 3,
+      start: '2026-06-01',
+      end: '2026-12-01',
+      currency: 'gold',
+      opId: null,
+      payments: []
+    };
     const op2 = loanOperation(borrowed);
     borrowed.opId = op2.id;
     state.finance.loans.unshift(borrowed);

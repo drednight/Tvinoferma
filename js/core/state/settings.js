@@ -9,13 +9,13 @@
 
 import { DEFAULT_SETTINGS } from '../constants.js';
 import { SOUND_TONES, DEFAULT_TONE } from '../../desktop/sound.js';
-const SOUND_TONE_IDS = new Set(SOUND_TONES.map((t) => t.id));
+const SOUND_TONE_IDS = new Set(SOUND_TONES.map(t => t.id));
 import { normalizeGameCenters } from '../../modules/launcher/gameCenters.js';
 import { normalizeGuildData } from '../../modules/guild/core.js';
 import { normalizePreflightMode } from '../../modules/launcher/preflight.js';
 import { normalizeSectionsSettings } from '../sections.js';
 
-const clone = (value) => JSON.parse(JSON.stringify(value));
+const clone = value => JSON.parse(JSON.stringify(value));
 
 /**
  * Настройки кланового сайта (скрытая фича). Рядом с флагом `enabled` лежит кэш сводки —
@@ -35,9 +35,10 @@ function normalizeLauncherSettings(input = {}) {
   /** @type {any} */
   const rawDelay = merged.delaySec;
   const delay = Number(rawDelay);
-  merged.delaySec = rawDelay !== '' && rawDelay !== null && rawDelay !== undefined && Number.isFinite(delay)
-    ? Math.min(120, Math.max(0, delay))
-    : DEFAULT_SETTINGS.launcher.delaySec;
+  merged.delaySec =
+    rawDelay !== '' && rawDelay !== null && rawDelay !== undefined && Number.isFinite(delay)
+      ? Math.min(120, Math.max(0, delay))
+      : DEFAULT_SETTINGS.launcher.delaySec;
   merged.skipRunning = merged.skipRunning !== false;
   merged.preflight = normalizePreflightMode(merged.preflight);
   merged.layoutDir = String(merged.layoutDir ?? '').trim();
@@ -75,7 +76,7 @@ function normalizeNotificationSettings(input = {}) {
   }
   // Старые галочки «не успевает», «заканчивается» и «ежедневно» держали по одному выключателю
   // на несколько видов. Переносим их выбор, иначе после обновления выбор молча сбросится.
-  const oldOff = (flag) => raw[flag] === false;
+  const oldOff = flag => raw[flag] === false;
   if (oldOff('marathonBehind')) {
     kinds.behind.popup = false;
     kinds.tight.popup = false;

@@ -108,7 +108,7 @@ export function mskWeekday(value = new Date()) {
  */
 export function mskAddDays(date, n) {
   if (!DATE_RE.test(String(date || ''))) return '';
-  const base = new Date(`${date}T00:00:00Z`);   // UTC: календарная арифметика без часовых поясов
+  const base = new Date(`${date}T00:00:00Z`); // UTC: календарная арифметика без часовых поясов
   base.setUTCDate(base.getUTCDate() + (Number(n) || 0));
   return base.toISOString().slice(0, 10);
 }
@@ -121,7 +121,9 @@ export function mskAddDays(date, n) {
  */
 export function mskDateTime(date, time) {
   if (!DATE_RE.test(String(date || ''))) return new Date(NaN);
-  const [h, m] = String(time || '00:00').split(':').map(Number);
+  const [h, m] = String(time || '00:00')
+    .split(':')
+    .map(Number);
   const stamp = Date.parse(`${date}T00:00:00Z`);
   if (Number.isNaN(stamp)) return new Date(NaN);
   return new Date(stamp + ((Number(h) || 0) * 60 + (Number(m) || 0) - MSK_OFFSET_MINUTES) * 60000);
@@ -150,6 +152,12 @@ export function mskStampSeconds(value) {
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
   const date = d.toLocaleDateString('ru-RU', { timeZone: ZONE, day: '2-digit', month: '2-digit', year: 'numeric' });
-  const time = d.toLocaleTimeString('ru-RU', { timeZone: ZONE, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  const time = d.toLocaleTimeString('ru-RU', {
+    timeZone: ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
   return `${date} ${time}`;
 }

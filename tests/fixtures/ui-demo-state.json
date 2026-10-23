@@ -2,9 +2,27 @@
   "schemaVersion": 7,
   "savedAt": "2026-10-04T09:00:00.000Z",
   "parties": [
-    { "id": "p-main", "name": "Основа", "order": 1, "createdAt": "2026-08-01T10:00:00.000Z", "updatedAt": "2026-08-01T10:00:00.000Z" },
-    { "id": "p-farm", "name": "Фарм-Крипта", "order": 2, "createdAt": "2026-08-01T10:05:00.000Z", "updatedAt": "2026-08-01T10:05:00.000Z" },
-    { "id": "p-mar", "name": "Марафон", "order": 3, "createdAt": "2026-08-01T10:10:00.000Z", "updatedAt": "2026-08-01T10:10:00.000Z" }
+    {
+      "id": "p-main",
+      "name": "Основа",
+      "order": 1,
+      "createdAt": "2026-08-01T10:00:00.000Z",
+      "updatedAt": "2026-08-01T10:00:00.000Z"
+    },
+    {
+      "id": "p-farm",
+      "name": "Фарм-Крипта",
+      "order": 2,
+      "createdAt": "2026-08-01T10:05:00.000Z",
+      "updatedAt": "2026-08-01T10:05:00.000Z"
+    },
+    {
+      "id": "p-mar",
+      "name": "Марафон",
+      "order": 3,
+      "createdAt": "2026-08-01T10:10:00.000Z",
+      "updatedAt": "2026-08-01T10:10:00.000Z"
+    }
   ],
   "characters": [
     {
@@ -21,7 +39,15 @@
       "dungeonPasses": { "weapon": 4, "armor": 2, "relic": 1 },
       "stats": { "hp": 42000, "pa": 1850, "pz": 640, "pvePa": 900, "pvePz": 310 },
       "ancientCoins": 2850,
-      "coinHistory": [{ "id": "h1", "delta": 350, "note": "Награда марафона", "source": "marathon", "createdAt": "2026-10-03T18:20:00.000Z" }],
+      "coinHistory": [
+        {
+          "id": "h1",
+          "delta": 350,
+          "note": "Награда марафона",
+          "source": "marathon",
+          "createdAt": "2026-10-03T18:20:00.000Z"
+        }
+      ],
       "isLoggedIn": true,
       "lastLoginCheck": "2026-10-04T08:40:00.000Z",
       "lastCoinUpdate": "2026-10-04T08:41:00.000Z",
@@ -37,7 +63,12 @@
       "partyIds": ["p-main", "p-mar"],
       "mainPartyId": "p-main",
       "tags": ["дд", "марафон"],
-      "contacts": { "email": "mirage.example@example.com", "password": "demo-pass-2", "recoveryEmail": "backup.example@example.com", "phone": "+70000000002" },
+      "contacts": {
+        "email": "mirage.example@example.com",
+        "password": "demo-pass-2",
+        "recoveryEmail": "backup.example@example.com",
+        "phone": "+70000000002"
+      },
       "dungeonPasses": { "weapon": 1, "armor": 0, "relic": 0 },
       "stats": { "hp": 31000, "pa": 2100, "pz": 480, "pvePa": 1150, "pvePz": 240 },
       "ancientCoins": 1420,
@@ -138,7 +169,15 @@
       "seriesId": null,
       "title": "Летний марафон",
       "description": "Ежедневные задания и бонусный ларец.",
-      "source": { "type": "site", "url": "https://pwonline.ru/supermarathon.php", "siteName": "Летний марафон", "stageKey": null, "stageName": null, "templateId": null, "newsUrl": null },
+      "source": {
+        "type": "site",
+        "url": "https://pwonline.ru/supermarathon.php",
+        "siteName": "Летний марафон",
+        "stageKey": null,
+        "stageName": null,
+        "templateId": null,
+        "newsUrl": null
+      },
       "bonuses": [{ "id": "b1", "needTasks": 4, "text": "Летний ларец" }],
       "startDate": "2026-09-28",
       "endDate": "2026-10-08",
@@ -146,24 +185,107 @@
       "participantIds": ["Ауразак_1", "Мираж_77", "Тихая_Сова", "Ночной_Бард"],
       "assignments": {},
       "tasks": [
-        { "id": "t1", "title": "Ежедневный вход", "siteTitle": "Ежедневный вход", "description": "Зайти на сайт и забрать ежедневную награду.", "descriptionSource": "site", "targetChecks": 10, "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 }, "rewards": [{ "id": "r1", "threshold": 10, "rewardText": "Летний ларец", "rewardCoins": 500 }] },
-        { "id": "t2", "title": "Задания подземелий", "siteTitle": "Задания подземелий", "description": "Пройти три подземелья за день.", "descriptionSource": "site", "targetChecks": 10, "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 }, "rewards": [] },
-        { "id": "t3", "title": "PvP-арена", "siteTitle": "PvP-арена", "description": "Пять боёв на арене.", "descriptionSource": "news", "targetChecks": 10, "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 }, "rewards": [] }
+        {
+          "id": "t1",
+          "title": "Ежедневный вход",
+          "siteTitle": "Ежедневный вход",
+          "description": "Зайти на сайт и забрать ежедневную награду.",
+          "descriptionSource": "site",
+          "targetChecks": 10,
+          "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 },
+          "rewards": [{ "id": "r1", "threshold": 10, "rewardText": "Летний ларец", "rewardCoins": 500 }]
+        },
+        {
+          "id": "t2",
+          "title": "Задания подземелий",
+          "siteTitle": "Задания подземелий",
+          "description": "Пройти три подземелья за день.",
+          "descriptionSource": "site",
+          "targetChecks": 10,
+          "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 },
+          "rewards": []
+        },
+        {
+          "id": "t3",
+          "title": "PvP-арена",
+          "siteTitle": "PvP-арена",
+          "description": "Пять боёв на арене.",
+          "descriptionSource": "news",
+          "targetChecks": 10,
+          "schedule": { "mode": "everyDay", "dates": [], "weekStartDay": 1 },
+          "rewards": []
+        }
       ],
       "progress": {
         "Ауразак_1": {
-          "t1": { "site": 8, "siteTotal": 10, "adjust": 0, "marks": ["2026-10-01", "2026-10-02", "2026-10-03"], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" },
-          "t2": { "site": 6, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" },
-          "t3": { "site": 4, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" }
+          "t1": {
+            "site": 8,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": ["2026-10-01", "2026-10-02", "2026-10-03"],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          },
+          "t2": {
+            "site": 6,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          },
+          "t3": {
+            "site": 4,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          }
         },
         "Мираж_77": {
-          "t1": { "site": 3, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-09-30T07:00:00.000Z" },
-          "t2": { "site": 5, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-09-30T07:00:00.000Z" }
+          "t1": {
+            "site": 3,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-09-30T07:00:00.000Z"
+          },
+          "t2": {
+            "site": 5,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-09-30T07:00:00.000Z"
+          }
         },
         "Тихая_Сова": {
-          "t1": { "site": 10, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" },
-          "t2": { "site": 9, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" },
-          "t3": { "site": 7, "siteTotal": 10, "adjust": 0, "marks": [], "history": {}, "syncedAt": "2026-10-04T08:41:00.000Z" }
+          "t1": {
+            "site": 10,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          },
+          "t2": {
+            "site": 9,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          },
+          "t3": {
+            "site": 7,
+            "siteTotal": 10,
+            "adjust": 0,
+            "marks": [],
+            "history": {},
+            "syncedAt": "2026-10-04T08:41:00.000Z"
+          }
         }
       },
       "lastSync": "2026-10-04T08:41:00.000Z",
@@ -189,7 +311,13 @@
   "settings": {
     "security": { "useVault": false },
     "freshness": { "balanceHours": 24, "loginHours": 24, "marathonHours": 24, "serverStatusMinutes": 10 },
-    "notifications": { "enabled": true, "marathonBehind": true, "marathonEnding": true, "dailyReminder": true, "dailyHour": 20 },
+    "notifications": {
+      "enabled": true,
+      "marathonBehind": true,
+      "marathonEnding": true,
+      "dailyReminder": true,
+      "dailyHour": 20
+    },
     "launcher": { "notify": true, "gameCenters": [], "preferredGcId": "", "decorateWindows": true },
     "updates": { "checkOnStartup": true, "lastCheckedAt": "2026-10-04T08:00:00.000Z" },
     "ui": { "theme": "dark" }

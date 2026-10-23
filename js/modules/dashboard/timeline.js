@@ -70,7 +70,10 @@ export function eventEndTime(event) {
 /** Дорожка для блока: соседние по времени блоки встают рядом, а не перекрывают друг друга. */
 function pickLane(lanes, start, end) {
   for (let i = 0; i < lanes.length; i++) {
-    if (lanes[i] <= start) { lanes[i] = end; return i; }
+    if (lanes[i] <= start) {
+      lanes[i] = end;
+      return i;
+    }
   }
   lanes.push(end);
   return lanes.length - 1;
@@ -121,7 +124,7 @@ export function timelineBlocks(events) {
     startTime: minutesToTime(start),
     endTime: minutesToTime(end % DAY_MINUTES),
     topPct: (start / DAY_MINUTES) * 100,
-    heightPct: Math.max(((end - start) / DAY_MINUTES) * 100, 0.7),   // минимальная высота, чтобы блок читался
+    heightPct: Math.max(((end - start) / DAY_MINUTES) * 100, 0.7), // минимальная высота, чтобы блок читался
     lane,
     laneCount,
     leftPct: (lane / laneCount) * 100,

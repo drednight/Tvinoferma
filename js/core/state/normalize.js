@@ -22,9 +22,7 @@ export function normalizeState(raw) {
     schemaVersion: SCHEMA_VERSION,
     savedAt: input?.savedAt || null,
     parties: [],
-    characters: Array.isArray(input?.characters)
-      ? input.characters.map(normalizeCharacter)
-      : [],
+    characters: Array.isArray(input?.characters) ? input.characters.map(normalizeCharacter) : [],
     archivedCharacters: Array.isArray(input?.archivedCharacters)
       ? input.archivedCharacters.map(normalizeCharacter)
       : [],
@@ -66,9 +64,7 @@ export function normalizeState(raw) {
   // 2. Нормализация ПАРТИЙ с гарантией поля ORDER: партия без номера получает его по
   // позиции в массиве, иначе визуальный порядок после загрузки старого файла был бы случайным
   if (Array.isArray(input?.parties)) {
-    const tempParties = input.parties
-      .map(normalizeParty)
-      .filter((p) => p && p.name); // Убираем пустые/битые записи
+    const tempParties = input.parties.map(normalizeParty).filter(p => p && p.name); // Убираем пустые/битые записи
 
     tempParties.forEach((party, index) => {
       if (typeof party.order !== 'number' || isNaN(party.order)) party.order = index + 1;
