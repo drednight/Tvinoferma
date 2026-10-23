@@ -229,7 +229,7 @@ describe('сверка календаря с ответами на сайте', 
   const own = { id: 'p1', title: 'Своё дело', date: '2026-10-20', time: '12:00' };
 
   it('свои записи не трогает, клановые заводит', () => {
-    const { entries, changed } = planClanEntries([own], { events: [event('462', RESPONSE_YES)] });
+    const { entries, changed } = planClanEntries([own], { events: [event('462', RESPONSE_YES)] }, today);
     expect(changed).toBe(true);
     expect(entries[0]).toBe(own);
     expect(entries[1]).toMatchObject({ id: `${CLAN_ENTRY_PREFIX}462`, date: '2026-10-15', time: '22:00' });

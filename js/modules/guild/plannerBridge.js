@@ -19,11 +19,12 @@ import { isClanEntry, wantedClanEntries } from './core.js';
  * свои записи возвращает как есть, клановые — добавляет, обновляет и убирает.
  * @param {object[]} current записи календаря
  * @param {object} data сводка клана
+ * @param {string} [today] «ГГГГ-ММ-ДД» по Москве, по умолчанию — сегодня
  * @returns {{ entries: object[], changed: boolean }}
  */
-export function planClanEntries(current, data) {
+export function planClanEntries(current, data, today) {
   const source = Array.isArray(current) ? current : [];
-  const wanted = wantedClanEntries(data);
+  const wanted = wantedClanEntries(data, today);
   const kept = [];
   let changed = false;
 

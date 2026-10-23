@@ -253,13 +253,14 @@ export function isClanEntry(entry) {
  * Какие записи клана должны быть в календаре: у каждого события с ответом «Пойду» — своя
  * запись на час. «Не пойду» и без ответа записи не дают.
  * @param {GuildData} data
+ * @param {string} today «ГГГГ-ММ-ДД» по Москве
  * @returns {Map<string, object>}
  */
-export function wantedClanEntries(data) {
+export function wantedClanEntries(data, today = mskDate()) {
   const wanted = new Map();
   for (const event of data?.events || []) {
     if (event.response !== RESPONSE_YES) continue;
-    const entry = plannerEntryFor(event);
+    const entry = plannerEntryFor(event, today);
     if (entry) wanted.set(entry.id, entry);
   }
   return wanted;
