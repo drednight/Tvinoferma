@@ -1,0 +1,16 @@
+# Все текстовые файлы хранятся в репозитории с LF, на диске Git отдаёт LF.
+# Это убирает ложные «изменения всего файла» из-за CRLF на Windows.
+* text=auto eol=lf
+
+# Бинарные файлы не трогаем
+*.webp binary
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.xlsx binary
+*.pdf binary
