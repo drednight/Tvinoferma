@@ -8,7 +8,8 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
 import { confirmModal, toast } from '../../core/ui.js';
-import { getAuthView } from '../sync/authStatus.js';
+import { getAuthState } from '../sync/authStatus.js';
+import { getClassIconSrc } from '../../core/constants.js';
 import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 import { openOverlay } from './overlay.js';
 import { openMarathonWizard, setWizardSavedHandler } from './wizard.js';
@@ -528,6 +529,7 @@ function renderDetail(root, m) {
           </span>
           ${m.source?.newsUrl ? `<span>📰 ${escapeHtml(m.source.newsUrl.replace('https://', ''))}</span>` : ''}
         </div>
+        ${moreInfoBlock(m)}
       </div>
       <div class="row gap mr-head-actions">
         ${!completed ? `<button class="btn primary" data-act="sync" ${url && !ui.syncProgress && m.participantIds.length ? '' : 'disabled'}>${ui.syncProgress ? `⏳ ${ui.syncProgress}` : '🔄 Сверить с сайтом'}</button>` : ''}
@@ -547,8 +549,6 @@ function renderDetail(root, m) {
     </div>
 
     ${ui.syncTask && ui.syncTaskFor === m.id ? taskCardHtml(ui.syncTask) : ''}
-    ${syncPanel(m)}
-    ${descriptionsBlock(m)}
 
     <!-- Фильтры и легенда одной панелью: раньше это были два разрозненных ряда -->
     <div class="mr-filters">
@@ -570,6 +570,7 @@ function renderDetail(root, m) {
 
   bindCrumbs(root);
   bindDetail(root, m);
+  bindDescriptions(root, m);
 }
 
 const DESC_SOURCE_LABEL = { site: 'со страницы сайта', news: 'из новости', manual: 'изменено вручную' };
@@ -611,16 +612,59 @@ function descriptionsBlock(m) {
     })
     .join('');
   return `
-    <details class="panel mr-descs" ${ui.descOpen.has(m.id) ? 'open' : ''}>
+    <details class="mr-mini mr-descs" ${ui.descOpen.has(m.id) ? 'open' : ''}>
       <summary>📋 Описания заданий <span class="muted">(${filled} из ${m.tasks.length})</span></summary>
       <div class="mr-desc-list">${items}</div>
     </details>`;
 }
 
+function syncPanelMini(m) {
+  const ls = m.lastSync;
+  if (!ls || (!ls.changes.length && !ls.errors.length)) return '';
+  const taskTitle = id => m.tasks.find(t => t.id === id)?.title || '—';
+  return `
+    <details class="mr-mini mr-sync-mini">
+      <summary>🔄 Сверка ${fmtDateTime(ls.at)} · +${ls.changes.length}${ls.errors.length ? ` · ош. ${ls.errors.length}` : ''}</summary>
+      <div class="mr-sync-grid">
+        ${ls.changes
+          .map(
+            c => `<div class="mr-sync-row"><strong>${escapeHtml(charById(c.charId)?.nick || '—')}</strong><span>${escapeHtml(taskTitle(c.taskId))}</span>
+          <span>${c.from ?? '—'} → <b>${c.to}</b> ${c.from != null ? `<span class="mr-green">(+${c.to - c.from})</span>` : '<span class="muted">(первые данные)</span>'}</span></div>`
+          )
+          .join('')}
+        ${ls.errors
+          .map(
+            e => `<div class="mr-sync-row mr-sync-err"><strong>${escapeHtml(charById(e.charId)?.nick || '—')}</strong><span>❌ ${escapeHtml(ERROR_TEXT[e.error] || e.error)}</span>
+          ${e.error === 'not_logged_in' ? `<button class="btn small" data-login="${e.charId}">Войти</button>` : '<span></span>'}</div>`
+          )
+          .join('')}
+      </div>
+    </details>`;
+}
+
+function moreInfoBlock(m) {
+  const desc = descriptionsBlock(m);
+  const sync = syncPanelMini(m);
+  if (!desc && !sync) return '';
+  return `
+    <details class="mr-more" ${ui.showSync ? '' : ''}>
+      <summary>Больше информации</summary>
+      <div class="mr-more-grid">
+        <div class="mr-more-col">${desc || ''}</div>
+        <div class="mr-more-col">${sync || '<div class="muted" style="padding:6px 8px">Сверка ещё не выполнялась</div>'}</div>
+      </div>
+    </details>`;
+}
+
 function bindDescriptions(root, m) {
-  root.querySelector('.mr-descs')?.addEventListener('toggle', e => {
-    if (e.target.open) ui.descOpen.add(m.id);
-    else ui.descOpen.delete(m.id);
+  root.querySelectorAll('.mr-descs').forEach(el => {
+    el.addEventListener('toggle', e => {
+      if (e.target.open) ui.descOpen.add(m.id);
+      else ui.descOpen.delete(m.id);
+    });
+  });
+  root.querySelector('.mr-more')?.addEventListener('toggle', e => {
+    ui.showSync = e.target.open;
   });
 }
 
@@ -629,8 +673,8 @@ function syncPanel(m) {
   if (!ls || (!ls.changes.length && !ls.errors.length)) return '';
   const taskTitle = id => m.tasks.find(t => t.id === id)?.title || '—';
   return `
-    <details class="panel mr-sync" ${ui.showSync ? 'open' : ''}>
-      <summary>🔄 Результат сверки ${fmtDateTime(ls.at)} — изменений: <strong>${ls.changes.length}</strong>${ls.errors.length ? `, ошибок: <strong class="mr-red">${ls.errors.length}</strong>` : ''}</summary>
+    <details class="panel mr-sync" ${ui.showSync ? '' : ''}>
+      <summary>🔄 Сверка ${fmtDateTime(ls.at)} · +${ls.changes.length}${ls.errors.length ? ` · ош. ${ls.errors.length}` : ''}</summary>
       <div class="mr-sync-grid">
         ${ls.changes
           .map(
@@ -675,9 +719,19 @@ function matrix(m) {
           const coins = cells.reduce((a, x) => a + x.coins, 0);
           const syncing = ui.syncing.has(c.id),
             queued = ui.syncQueue.has(c.id);
+          const authState = getAuthState(c);
+          const className = escapeHtml(c.class || '');
           return `
-        <tr class="${syncing ? 'is-syncing' : ''}">
-          <td class="mr-name">${getAuthView(c).icon} <strong>${escapeHtml(c.nick)}</strong><br/><small class="muted">${escapeHtml(c.class || '')}${syncing ? ' · ⏳ сверка…' : queued ? ' · в очереди' : ''}</small></td>
+        <tr class="${syncing ? 'is-syncing' : ''} mr-row mr-row--${authState}">
+          <td class="mr-name" style="--state-c:${authState === 'online' ? 'var(--ok)' : authState === 'checking' ? 'var(--warn)' : 'var(--danger)'}">
+            <div class="mr-name-inner">
+              <span class="mr-class-cell" title="${className || ''}">${className ? `<img src="${escapeHtml(getClassIconSrc(c.class))}" alt="" />` : ''}</span>
+              <div class="mr-name-text">
+                <div class="mr-name-line"><strong>${escapeHtml(c.nick)}</strong></div>
+                <small class="muted">${syncing ? '⏳ сверка…' : queued ? 'в очереди' : authState === 'online' ? 'Онлайн' : authState === 'checking' ? 'Проверка…' : 'Оффлайн'}</small>
+              </div>
+            </div>
+          </td>
           ${cells.map((x, i) => cellHtml(m, c.id, m.tasks[i].id, x)).join('')}
           <td class="mr-total"><strong>${done}/${assigned}</strong><br/><small class="mr-gold">${coin(coins)}</small></td>
         </tr>`;
@@ -715,7 +769,7 @@ function thTitle(t) {
   const head = pot ? `${base}\n<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${pot}` : base;
   if (!t.description) return head;
   const [short] = shortDescription(t.description, 400);
-  return `${head}\n\n${short}`;
+  return `${base}\n\n${short}`;
 }
 
 function cellHtml(m, charId, taskId, x) {
@@ -758,15 +812,19 @@ function coinsSection(m, t) {
     <div class="mr-two">
       <div class="panel mr-section">
         <h3><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> По персонажам</h3>
-        <table class="mr-table"><thead><tr><th>Персонаж</th><th>Выполнено</th><th>Награды</th>${hasBonus ? '<th>🎁 Бонус</th>' : ''}<th title="Изменение баланса ДМ с сайта с первой сверки (для сравнения)">Δ баланса ДМ</th></tr></thead>
-        <tbody>${charRows.map(r => `<tr><td>${escapeHtml(charById(r.cid)?.nick || '—')}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td>${hasBonus ? `<td>${bonusCell(r.cid)}</td>` : ''}<td>${balanceDelta(r.cid)}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td><strong>Всего</strong></td><td>${t.done}/${t.cells}</td><td class="mr-gold"><strong>${coin(t.coins)}</strong></td>${hasBonus ? `<td><strong>${m.participantIds.filter(cid => bonusStatus(m, cid).some(b => b.reached)).length}</strong> получат</td>` : ''}<td></td></tr></tfoot></table>
+        <div class="mr-table-wrap">
+          <table class="mr-table"><thead><tr><th>Персонаж</th><th>Выполнено</th><th>Награды</th>${hasBonus ? '<th>🎁 Бонус</th>' : ''}<th title="Изменение баланса ДМ с сайта с первой сверки (для сравнения)">Δ баланса ДМ</th></tr></thead>
+          <tbody>${charRows.map(r => `<tr><td>${escapeHtml(charById(r.cid)?.nick || '—')}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td>${hasBonus ? `<td>${bonusCell(r.cid)}</td>` : ''}<td>${balanceDelta(r.cid)}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td><strong>Всего</strong></td><td>${t.done}/${t.cells}</td><td class="mr-gold"><strong>${coin(t.coins)}</strong></td>${hasBonus ? `<td><strong>${m.participantIds.filter(cid => bonusStatus(m, cid).some(b => b.reached)).length}</strong> получат</td>` : ''}<td></td></tr></tfoot></table>
+        </div>
         ${hasBonus ? `<p class="muted tf-small">🎁 ${m.bonuses.map(b => `${escapeHtml(b.text || 'Бонус')} — за ${b.needTasks} выполн. заданий`).join('; ')}</p>` : ''}
       </div>
       <div class="panel mr-section">
         <h3>📋 По заданиям</h3>
-        <table class="mr-table"><thead><tr><th>Задание</th><th>Выполнили</th><th>Награды</th></tr></thead>
-        <tbody>${taskRows.map(r => `<tr><td>${escapeHtml(r.task.title)}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td></tr>`).join('')}</tbody></table>
+        <div class="mr-table-wrap">
+          <table class="mr-table"><thead><tr><th>Задание</th><th>Выполнили</th><th>Награды</th></tr></thead>
+          <tbody>${taskRows.map(r => `<tr><td>${escapeHtml(r.task.title)}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td></tr>`).join('')}</tbody></table>
+        </div>
         ${m.status === 'completed' ? '<p class="muted tf-small">Итог зафиксирован при завершении. Баланс ДМ персонажей не изменяется — он берётся с сайта.</p>' : ''}
       </div>
     </div>`;
@@ -832,10 +890,15 @@ function bindDetail(root, m) {
     ui.onlyProblems = e.target.checked;
     renderMarathons();
   };
-  root.querySelector('.mr-sync')?.addEventListener('toggle', e => {
+  root.querySelector('.mr-more')?.addEventListener('toggle', e => {
     ui.showSync = e.target.open;
   });
-  bindDescriptions(root, m);
+  root.querySelectorAll('.mr-descs').forEach(el => {
+    el.addEventListener('toggle', e => {
+      if (e.target.open) ui.descOpen.add(m.id);
+      else ui.descOpen.delete(m.id);
+    });
+  });
   root.querySelectorAll('[data-login]').forEach(
     b =>
       (b.onclick = async () => {

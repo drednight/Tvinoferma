@@ -75,6 +75,12 @@ export function openUpdateDialog() {
   return ov;
 }
 
+function renderUpdateHistory() {
+  const list = document.getElementById('update-history-list');
+  if (!list) return;
+  list.innerHTML = '<div class="muted">Историю обновлений можно посмотреть в CHANGELOG.md в корне проекта или на GitHub.</div>';
+}
+
 /** Обновляет строку «Следующая проверка» (после смены режима в настройках). */
 export function refreshUpdateSchedule() {
   const el = document.getElementById('update-next-check');
@@ -89,6 +95,8 @@ export function initUpdateUi() {
   const installBtn = document.getElementById('install-update-btn');
   const checkBtn = document.getElementById('check-updates-btn');
   const supported = !!window.__TAURI_INTERNALS__;
+
+  renderUpdateHistory();
 
   badge?.addEventListener('click', () => openUpdateDialog());
   installBtn?.addEventListener('click', () => {

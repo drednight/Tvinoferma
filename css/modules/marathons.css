@@ -113,24 +113,9 @@
    карточки ~750px, и четыре колонки там уже нечитаемы. */
 .mr-cards {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
   align-items: stretch;
-}
-@media (max-width: 1450px) {
-  .mr-cards {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-@media (max-width: 1250px) {
-  .mr-cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-@media (max-width: 1050px) {
-  .mr-cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 @media (max-width: 800px) {
   .mr-cards {
@@ -290,8 +275,8 @@
 /* Папка шире обычной карточки: внутри неё список марафонов с полосками прогресса,
    в одну колонку он читался плохо. Занимает две колонки, но не больше 350px */
 .mr-card.mr-series {
-  grid-column: span 2;
-  max-width: 350px;
+  grid-column: span 1;
+  max-width: none;
 }
 @media (max-width: 800px) {
   .mr-card.mr-series {
@@ -433,7 +418,9 @@
   display: grid;
   gap: 6px;
   min-width: 0;
-  flex: 1 1 320px;
+  flex: 1 1 auto;
+  width: 100%;
+  align-content: start;
 }
 .mr-head-title {
   display: flex;
@@ -528,32 +515,113 @@
 
 /* --- панель сверки --- */
 .mr-sync {
-  margin: 14px 0;
-  padding: 12px 16px;
+  margin: 8px 0 10px;
+  padding: 6px 10px;
 }
 .mr-sync summary {
   cursor: pointer;
+  font-size: 0.86rem;
+}
+.mr-sync-mini {
+  padding: 6px 10px;
 }
 .mr-sync-grid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 10px;
-  max-height: 260px;
+  gap: 3px;
+  margin-top: 6px;
+  max-height: 200px;
   overflow: auto;
 }
 .mr-sync-row {
   display: grid;
-  grid-template-columns: 160px 1fr auto;
-  gap: 12px;
+  grid-template-columns: 130px 1fr auto;
+  gap: 8px;
   align-items: center;
-  padding: 6px 10px;
+  padding: 3px 6px;
   background: var(--panel-2);
   border-radius: 8px;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 .mr-sync-err {
   border-left: 3px solid var(--mr-fail);
+}
+.mr-more {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  width: 100%;
+  align-self: start;
+}
+.mr-more > summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+.mr-more-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  align-items: start;
+  align-content: start;
+}
+.mr-more-col {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  align-items: flex-start;
+}
+.mr-more-col .mr-mini {
+  width: 100%;
+  height: auto;
+  align-self: flex-start;
+}
+.mr-more-col .mr-mini > summary {
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mr-more-col .mr-mini[open] {
+  display: flex;
+  flex-direction: column;
+}
+.mr-more-col .mr-mini[open] > :not(summary) {
+  overflow: hidden;
+}
+.mr-mini {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  width: 100%;
+}
+.mr-mini > summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  min-height: 30px;
+  box-sizing: border-box;
+}
+.mr-mini .mr-desc-list {
+  padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  max-height: 360px;
+}
+.mr-mini .mr-desc-item {
+  grid-template-columns: 1fr;
+}
+.mr-mini .mr-sync-grid {
+  overflow: auto;
+  max-height: 360px;
 }
 
 /* --- матрица --- */
@@ -584,6 +652,12 @@
 .mr-matrix tbody tr:not(.mr-group):hover .mr-name {
   background: var(--panel-2);
 }
+.mr-matrix tbody tr:not(.mr-group) .mr-name::before {
+  background: var(--state-c, var(--border));
+  top: 4px;
+  bottom: 4px;
+  width: 5px;
+}
 .mr-matrix thead th {
   position: sticky;
   top: 0;
@@ -593,6 +667,17 @@
   min-width: 88px;
   padding: 10px 12px;
   vertical-align: bottom;
+}
+.mr-matrix thead .mr-name {
+  z-index: 3;
+  background: var(--panel-2);
+  padding: 6px 4px 6px 14px;
+}
+.mr-matrix thead .mr-name::before {
+  background: color-mix(in srgb, var(--text-faint) 40%, transparent);
+  top: 4px;
+  bottom: 4px;
+  width: 5px;
 }
 .mr-matrix tfoot td {
   position: sticky;
@@ -611,19 +696,106 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
 }
+.mr-status-head {
+  display: none;
+}
+.mr-status-col {
+  display: none;
+}
+.mr-status-col--online,
+.mr-status-col--checking,
+.mr-status-col--offline {
+  display: none;
+}
 .mr-name {
   position: sticky;
   left: 0;
   background: var(--panel);
   z-index: 1;
   text-align: left !important;
-  min-width: 110px;
+  min-width: 150px;
+  max-width: 240px;
   white-space: nowrap;
+  padding-left: 14px;
+}
+.mr-name::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 5px;
+  border-radius: 0 3px 3px 0;
+  background: var(--state-c, var(--border));
+}
+.mr-name-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mr-class-cell {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  flex: none;
+  overflow: hidden;
+}
+.mr-class-cell img {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+.mr-name-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.mr-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mr-name-line strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mr-row--offline .mr-name {
+  opacity: 0.95;
 }
 .mr-matrix thead .mr-name {
   z-index: 3;
   background: var(--panel-2);
-  padding: 6px;
+  padding: 6px 4px 6px 8px;
+  box-shadow: inset 3px 0 0 0 color-mix(in srgb, var(--text-faint) 40%, transparent);
+}
+.mr-matrix {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+.mr-matrix th:not(.mr-name):not(.mr-total),
+.mr-matrix td:not(.mr-name):not(.mr-total) {
+  min-width: 90px;
+}
+.mr-matrix .mr-name {
+  min-width: 190px;
+  max-width: 240px;
+}
+.mr-matrix {
+  width: 100%;
+  table-layout: fixed;
+}
+.mr-matrix th:not(.mr-name):not(.mr-total),
+.mr-matrix td:not(.mr-name):not(.mr-total) {
+  width: 90px;
+}
+.mr-matrix .mr-name {
+  width: 190px;
 }
 .mr-group td {
   background: rgba(187, 154, 247, 0.08);
@@ -708,6 +880,27 @@ tr.is-syncing td {
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
   gap: 14px;
   margin-top: 16px;
+}
+.mr-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mr-table-wrap .mr-table {
+  margin: 0;
+}
+.mr-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  z-index: 1;
+}
+.mr-table-wrap tfoot td {
+  position: sticky;
+  bottom: 0;
+  background: var(--panel-2);
+  z-index: 1;
 }
 .mr-section h3 {
   margin: 0 0 10px;

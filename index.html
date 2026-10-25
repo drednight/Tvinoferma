@@ -282,6 +282,7 @@
           <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
           <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
           <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
+          <a class="settings-nav-item" href="#settings-feedback"><span class="settings-nav-icon" aria-hidden="true">💬</span><span class="settings-nav-copy"><strong>Предложения</strong><small>Идеи и обратная связь</small></span></a>
           <a class="settings-nav-item" href="#danger-zone"><span class="settings-nav-icon" aria-hidden="true">⚠</span><span class="settings-nav-copy"><strong>Опасные действия</strong><small>Удаление и полный сброс</small></span></a>
         </nav>
         <div class="settings-body">
@@ -537,11 +538,13 @@
           <header class="settings-group-head"><h3 id="settings-updates-title">Обновления</h3><p class="muted">Проверка новой версии обязательна при каждом запуске.</p></header>
           <div class="settings-cols">
             <div class="settings-col">
-<details class="panel fold" id="settings-update-panel">
-          <summary>
-            <h3>⬆️ Обновления</h3>
-            <p class="muted">Версия <span id="app-version">—</span> · проверка при каждом запуске, вручную и по расписанию.</p>
-          </summary>
+<div class="panel" id="settings-update-panel">
+          <div class="panel-head">
+            <div>
+              <h3>⬆️ Обновления</h3>
+              <p class="muted">Версия <span id="app-version">—</span> · проверка при каждом запуске, вручную и по расписанию.</p>
+            </div>
+          </div>
           <div class="setting-row">
             <div>
               <p class="muted" id="update-status">Обновления скачиваются из GitHub Releases.</p>
@@ -565,10 +568,38 @@
 
             </select>
           </div>
-        </details>
+          <div class="update-changelog">
+            <strong>История обновлений</strong>
+            <p class="muted">Список версий и изменения в них.</p>
+            <div id="update-history-list" class="update-history-list"></div>
+          </div>
+        </div>
             </div>
             <div class="settings-col">
             </div>
+          </div>
+        </section>
+        <section class="settings-group" id="settings-feedback" aria-labelledby="settings-feedback-title">
+          <header class="settings-group-head"><h3 id="settings-feedback-title">Предложения</h3><p class="muted">Идеи по улучшению и пожелания по приложению.</p></header>
+          <div class="settings-cols">
+            <div class="settings-col">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h3>Обратная связь</h3>
+                    <p class="muted">Предложи идею или улучшение. Мы обсудим варианты реализации.</p>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>Связь с автором</strong>
+                    <p class="muted">Форма обратной связи будет добавлена позже. Пока можешь написать в Issues на GitHub.</p>
+                  </div>
+                  <a class="btn primary" href="https://github.com/drednight/Tvinoferma/issues/new/choose" target="_blank" rel="noopener">Открыть GitHub Issues</a>
+                </div>
+              </div>
+            </div>
+            <div class="settings-col"></div>
           </div>
         </section>
         <section class="settings-group" id="settings-data" aria-labelledby="settings-data-title">
