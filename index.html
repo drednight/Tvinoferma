@@ -248,21 +248,6 @@
       <!-- РАЗДЕЛ: ИНСТРУМЕНТЫ -->
       <section class="page" data-section="tools">
         <div id="tools-root"></div>
-        <!-- Панель парсеров в разметке, а не в скрипте: она нужна всегда, даже если раздел
-             ещё не открывали, и её свёрнутое состояние проверяется тестами. -->
-        <section class="tools-block">
-          <details class="panel fold" id="parser-health-panel">
-            <summary>
-              <h3>🩺 Состояние парсеров</h3>
-              <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
-            </summary>
-            <div id="parser-health-list"></div>
-            <div class="setting-row">
-              <p class="muted" id="parser-health-config"></p>
-              <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
-            </div>
-          </details>
-        </section>
       </section>
 
       <!-- РАЗДЕЛ: УЧЁТ -->
@@ -279,6 +264,7 @@
         <nav class="settings-nav" aria-label="Разделы настроек">
           <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
           <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты и свежесть данных</small></span></a>
+          <a class="settings-nav-item" href="#settings-optimization"><span class="settings-nav-icon" aria-hidden="true">🩺</span><span class="settings-nav-copy"><strong>Оптимизация</strong><small>Состояние парсеров и диагностика</small></span></a>
           <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
           <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
           <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
@@ -534,10 +520,26 @@
             </div>
           </div>
         </section>
+        <section class="settings-group" id="settings-optimization" aria-labelledby="settings-optimization-title">
+          <header class="settings-group-head"><h3 id="settings-optimization-title">Оптимизация</h3><p class="muted">Здоровье парсеров: как приложение читает сайт и что делать, если сайт изменился.</p></header>
+          <!-- Панель во всю ширину раздела: таблица парсеров широкая, колонка её сжимала.
+               В разметке, а не в скрипте: нужна всегда, и свёрнутое состояние проверяется тестами. -->
+          <details class="panel fold" id="parser-health-panel">
+            <summary>
+              <h3>🩺 Состояние парсеров</h3>
+              <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
+            </summary>
+            <div id="parser-health-list"></div>
+            <div class="setting-row">
+              <p class="muted" id="parser-health-config"></p>
+              <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
+            </div>
+          </details>
+        </section>
         <section class="settings-group" id="settings-updates" aria-labelledby="settings-updates-title">
           <header class="settings-group-head"><h3 id="settings-updates-title">Обновления</h3><p class="muted">Проверка новой версии обязательна при каждом запуске.</p></header>
-          <div class="settings-cols">
-            <div class="settings-col">
+          <!-- Панель одна и занимает всю ширину раздела: история обновлений читается
+               как таблица, а в половине колонки ей было тесно. -->
 <div class="panel" id="settings-update-panel">
           <div class="panel-head">
             <div>
@@ -570,36 +572,74 @@
           </div>
           <div class="update-changelog">
             <strong>История обновлений</strong>
-            <p class="muted">Список версий и изменения в них.</p>
+            <p class="muted">Список версий и изменения в них: нажмите на версию, чтобы раскрыть.</p>
             <div id="update-history-list" class="update-history-list"></div>
           </div>
         </div>
-            </div>
-            <div class="settings-col">
-            </div>
-          </div>
         </section>
         <section class="settings-group" id="settings-feedback" aria-labelledby="settings-feedback-title">
-          <header class="settings-group-head"><h3 id="settings-feedback-title">Предложения</h3><p class="muted">Идеи по улучшению и пожелания по приложению.</p></header>
+          <header class="settings-group-head"><h3 id="settings-feedback-title">Предложения</h3><p class="muted">Идеи по улучшению, сообщения об ошибках и связь с автором.</p></header>
           <div class="settings-cols">
             <div class="settings-col">
               <div class="panel">
                 <div class="panel-head">
                   <div>
-                    <h3>Обратная связь</h3>
-                    <p class="muted">Предложи идею или улучшение. Мы обсудим варианты реализации.</p>
+                    <h3>💬 Обратная связь</h3>
+                    <p class="muted">Удобнее всего — через GitHub Issues: ошибка или идея попадает прямо к автору, там же видны ответ и история.</p>
                   </div>
                 </div>
                 <div class="setting-row">
                   <div>
-                    <strong>Связь с автором</strong>
-                    <p class="muted">Форма обратной связи будет добавлена позже. Пока можешь написать в Issues на GitHub.</p>
+                    <strong>🐞 Сообщить об ошибке</strong>
+                    <p class="muted">Откроется форма на GitHub, где уже заполнены версия приложения и диагностика парсеров; диагностика также скопируется в буфер обмена. Останется описать, что произошло, и приложить скриншот. Пароли и почты в диагностику не попадают.</p>
                   </div>
-                  <a class="btn primary" href="https://github.com/drednight/Tvinoferma/issues/new/choose" target="_blank" rel="noopener">Открыть GitHub Issues</a>
+                  <button id="feedback-bug-btn" class="btn primary" type="button">Скопировать диагностику и открыть форму</button>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>💡 Предложить идею</strong>
+                    <p class="muted">Форма «Идея или предложение»: какую проблему решает и как вы это видите.</p>
+                  </div>
+                  <a class="btn" href="https://github.com/drednight/Tvinoferma/issues/new?template=feature_request.yml" target="_blank" rel="noopener">Открыть форму идеи</a>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>❔ Задать вопрос</strong>
+                    <p class="muted">Вопросы по работе приложения — обычной заявкой без шаблона. Перед отправкой поищите похожую: возможно, ответ уже есть.</p>
+                  </div>
+                  <a class="btn ghost" href="https://github.com/drednight/Tvinoferma/issues" target="_blank" rel="noopener">Открыть список заявок</a>
                 </div>
               </div>
             </div>
-            <div class="settings-col"></div>
+            <div class="settings-col">
+              <div class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h3>📮 Связь и статус</h3>
+                    <p class="muted">Что приложить к заявке и что происходит дальше.</p>
+                  </div>
+                </div>
+                <div class="setting-row" id="feedback-telegram-row" hidden>
+                  <div>
+                    <strong>Telegram автора</strong>
+                    <p class="muted">Быстрый способ написать вживую: вопросы, идеи и скриншоты ошибок.</p>
+                  </div>
+                  <a class="btn" id="feedback-telegram-link" href="#" target="_blank" rel="noopener">Открыть Telegram</a>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>Что приложить к ошибке</strong>
+                    <p class="muted">Версию приложения, ОС, шаги «что нажали — что ждали — что получилось», диагностику (кнопка слева) и скриншот. Не прикладывайте пароли, e-mail и куки.</p>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <strong>Что происходит дальше</strong>
+                    <p class="muted">Заявка получает метку (bug или feature), автор отвечает в ней же. Реализованное попадает в «Историю обновлений» в разделе «Обновления» — по номеру версии видно, что изменилось.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
         <section class="settings-group" id="settings-data" aria-labelledby="settings-data-title">

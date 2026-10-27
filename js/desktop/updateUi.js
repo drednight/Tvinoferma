@@ -4,6 +4,7 @@
 
 import { escapeHtml } from '../core/utils.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
+import { parseChangelog, renderHistoryHtml } from './changelog.js';
 import { state as appState } from '../core/state.js';
 import { installUpdate, checkForUpdates } from './updater.js';
 import { resolveUpdateMode, nextCheckText } from './updateSchedule.js';
@@ -78,8 +79,8 @@ export function openUpdateDialog() {
 function renderUpdateHistory() {
   const list = document.getElementById('update-history-list');
   if (!list) return;
-  list.innerHTML =
-    '<div class="muted">Историю обновлений можно посмотреть в CHANGELOG.md в корне проекта или на GitHub.</div>';
+  // CHANGELOG.md вшит в сборку: история открывается и без сети, и в веб-версии
+  list.innerHTML = renderHistoryHtml(parseChangelog());
 }
 
 /** Обновляет строку «Следующая проверка» (после смены режима в настройках). */

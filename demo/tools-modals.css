@@ -921,3 +921,69 @@
   gap: 6px;
   flex-wrap: wrap;
 }
+
+/* ===== Сценарии лаборатории: переключатель скриптов и блоки параметров ===== */
+
+.lab-script-pick {
+  margin: 4px 0 10px;
+}
+.lab-script-note {
+  margin-top: 0;
+}
+.sc-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.sc-type {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease);
+}
+.sc-type:hover {
+  border-color: var(--border-strong);
+}
+.sc-type small {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+.sc-gifts {
+  display: grid;
+  gap: 6px;
+}
+.sc-gift {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: border-color var(--speed) var(--ease);
+}
+.sc-gift:hover {
+  border-color: var(--border-strong);
+}
+.sc-gift-name {
+  flex: 1;
+}
+.sc-gift-price {
+  color: var(--accent);
+  white-space: nowrap;
+}
+.sc-count-input {
+  max-width: 160px;
+}
+.sc-rare {
+  color: var(--accent-2);
+  font-weight: 700;
+}

@@ -9,7 +9,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')).rep
 describe('категории настроек: разметка', () => {
   it('каждая категория — карточка с обозначением, подписью и ссылкой на существующий раздел', () => {
     const items = [...doc.querySelectorAll('.settings-nav-item')];
-    expect(items).toHaveLength(7); // 7-я категория — «Предложения» (#settings-feedback)
+    expect(items).toHaveLength(8); // «Оптимизация» (#settings-optimization) встала после «Синхронизации»
     for (const item of items) {
       expect(item.querySelector('.settings-nav-icon'), item.textContent).not.toBeNull();
       expect(item.querySelector('.settings-nav-copy strong').textContent.length, item.textContent).toBeGreaterThan(3);

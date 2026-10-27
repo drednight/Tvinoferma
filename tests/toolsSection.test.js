@@ -38,12 +38,12 @@ describe('разметка раздела «Инструменты»', () => {
     expect(doc.querySelector('.next-nav [data-tab="tools"]').title).toBe('Ctrl+7');
   });
 
-  it('страница раздела есть и в ней панель состояния парсеров', () => {
+  it('страница раздела есть; панель парсеров уехала в «Настройки → Оптимизация»', () => {
     const doc = new DOMParser().parseFromString(html(), 'text/html');
     expect(doc.querySelector('[data-section="tools"] #tools-root')).not.toBeNull();
-    // Диагностика уехала из настроек: это инструмент, а не настройка
-    expect(doc.querySelector('#settings-sync #parser-health-panel')).toBeNull();
-    expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).not.toBeNull();
+    // В «Инструментах» остались действия; диагностика вернулась в настройки
+    expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).toBeNull();
+    expect(doc.querySelector('#settings-optimization #parser-health-panel')).not.toBeNull();
   });
 
   it('круглая кнопка «+» больше не содержит скриптов и окон игры', () => {
@@ -77,18 +77,9 @@ describe('содержимое раздела', () => {
 
   it('все скрипты видны сразу списком, без второго нажатия', () => {
     const ids = [...root.querySelectorAll('[data-script-action]')].map(b => b.dataset.scriptAction);
-    expect(ids).toEqual([
-      'check-auth',
-      'update-balance',
-      'update-marathons',
-      'promo',
-      'transfer',
-      'shop',
-      'caravan',
-      'close-game'
-    ]);
+    expect(ids).toEqual(['check-auth', 'update-balance', 'update-marathons', 'promo', 'transfer', 'shop', 'caravan']);
     // Под каждым — что именно он сделает
-    expect(root.querySelectorAll('.tools-card-body small').length).toBe(8);
+    expect(root.querySelectorAll('.tools-card-body small').length).toBe(7);
   });
 
   it('скрипты разделены на две зоны: проверки и операции', () => {
@@ -105,13 +96,7 @@ describe('содержимое раздела', () => {
       'update-balance',
       'update-marathons'
     ]);
-    expect([...actionCards].map(c => c.dataset.scriptAction)).toEqual([
-      'promo',
-      'transfer',
-      'shop',
-      'caravan',
-      'close-game'
-    ]);
+    expect([...actionCards].map(c => c.dataset.scriptAction)).toEqual(['promo', 'transfer', 'shop', 'caravan']);
   });
 
   it('тип скрипта виден по модификатору карточки, без чипа', () => {
@@ -121,10 +106,10 @@ describe('содержимое раздела', () => {
     expect(root.querySelector('[data-script-action="check-auth"]').classList).toContain('tools-card--check');
     expect(root.querySelector('[data-script-action="update-balance"]').classList).toContain('tools-card--check');
     expect(root.querySelector('[data-script-action="promo"]').classList).toContain('tools-card--action');
-    expect(root.querySelector('[data-script-action="close-game"]').classList).toContain('tools-card--action');
-    // Все восемь карточек размечены, ни одна не осталась без типа
+    expect(root.querySelector('[data-script-action="caravan"]').classList).toContain('tools-card--action');
+    // Все семь карточек размечены, ни одна не осталась без типа
     expect(root.querySelectorAll('.tools-card--check').length).toBe(3);
-    expect(root.querySelectorAll('.tools-card--action').length).toBe(5);
+    expect(root.querySelectorAll('.tools-card--action').length).toBe(4);
   });
 
   it('клик по карточке запускает скрипт с её id', async () => {
@@ -135,13 +120,13 @@ describe('содержимое раздела', () => {
   it('у каждого скрипта подпись объясняет, что он сделает', () => {
     // Подпись «Передать предметы с сайта в игру» обещала не то, что делает скрипт:
     // он переносит с сайта все предметы, а не выбранные.
-    expect(root.querySelectorAll('.tools-card-body small').length).toBe(8);
+    expect(root.querySelectorAll('.tools-card-body small').length).toBe(7);
     const hints = Object.fromEntries(
       [...root.querySelectorAll('.tools-card')].map(c => [c.dataset.scriptAction, c.title])
     );
     expect(hints.transfer).toBe('Передать все предметы с сайта');
     expect(hints['check-auth']).toContain('вход');
-    expect(hints['close-game']).toContain('окн');
+    expect(hints.caravan).toContain('сундук');
   });
 
   it('окна игры показаны списком с закрытием конкретного окна', () => {
