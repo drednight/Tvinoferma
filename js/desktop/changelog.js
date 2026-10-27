@@ -92,14 +92,15 @@ function pluralItems(n) {
 }
 
 /**
- * HTML аккордеона истории: карточка на выпуск, самый свежий раскрыт.
+ * HTML аккордеона истории: карточка на выпуск, все свёрнуты —
+ * в списке видно последние пять выпусков, остальные достижимы прокруткой.
  * @param {Release[]} releases
  * @returns {string}
  */
 export function renderHistoryHtml(releases) {
   if (!releases.length) return '<p class="muted">История обновлений пуста.</p>';
   return releases
-    .map((r, i) => {
+    .map(r => {
       const count = r.sections.reduce((acc, s) => acc + s.items.length, 0);
       const name = r.version.toLowerCase() === 'unreleased' ? '🚧 В разработке' : `Версия ${escapeHtml(r.version)}`;
       const sections = r.sections
@@ -110,7 +111,7 @@ export function renderHistoryHtml(releases) {
               .join('')}</ul>`
         )
         .join('');
-      return `<details class="update-history-item"${i === 0 ? ' open' : ''}>
+      return `<details class="update-history-item">
         <summary><strong class="uh-ver">${name}</strong>${
           r.date ? `<span class="uh-date">${escapeHtml(r.date)}</span>` : ''
         }<span class="uh-count">${pluralItems(count)}</span></summary>

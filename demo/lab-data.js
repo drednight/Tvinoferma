@@ -5,17 +5,31 @@
 // Данные фейковые: персонажи вымышлены, ничего не уходит на сайт игры.
 
 import { escapeHtml } from '../js/core/utils.js';
+import { getClassIconSrc } from '../js/core/constants.js';
 
+// account — вымышленный аккаунт сайта: у нескольких персонажей может быть общий
+// инвентарь и баланс. checking — идёт проверка входа на сайт (не статус окна игры).
 export const CHARS = [
-  { id: 'c1', nick: 'Звеномир', cls: 'Воин', party: 'Альфа', isLoggedIn: true },
-  { id: 'c2', nick: 'Тихомир', cls: 'Маг', party: 'Альфа', isLoggedIn: true },
-  { id: 'c3', nick: 'Радовика', cls: 'Лучница', party: 'Браво', isLoggedIn: false },
-  { id: 'c4', nick: 'Светолика', cls: 'Жрица', party: 'Альфа', isLoggedIn: true },
-  { id: 'c5', nick: 'Братислав', cls: 'Воин', party: 'Браво', isLoggedIn: null },
-  { id: 'c6', nick: 'Милослава', cls: 'Маг', party: 'Браво', isLoggedIn: true },
-  { id: 'c7', nick: 'Горыня', cls: 'Варвар', party: 'Альфа', isLoggedIn: false },
-  { id: 'c8', nick: 'Ярополк', cls: 'Паладин', party: 'Браво', isLoggedIn: true }
+  { id: 'c1', nick: 'Звеномир', cls: 'Воин', party: 'Альфа', account: 'site-1', isLoggedIn: true },
+  { id: 'c2', nick: 'Тихомир', cls: 'Маг', party: 'Альфа', account: 'site-1', isLoggedIn: true },
+  { id: 'c3', nick: 'Радовика', cls: 'Лучник', party: 'Браво', account: 'site-2', isLoggedIn: false },
+  { id: 'c4', nick: 'Светолика', cls: 'Жрец', party: 'Альфа', account: 'site-3', isLoggedIn: true },
+  { id: 'c5', nick: 'Братислав', cls: 'Воин', party: 'Браво', account: 'site-4', isLoggedIn: true, checking: true },
+  { id: 'c6', nick: 'Милослава', cls: 'Маг', party: 'Браво', account: 'site-3', isLoggedIn: true },
+  { id: 'c7', nick: 'Горыня', cls: 'Оборотень', party: 'Альфа', account: 'site-5', isLoggedIn: false },
+  { id: 'c8', nick: 'Ярополк', cls: 'Паладин', party: 'Браво', account: 'site-5', isLoggedIn: true }
 ];
+
+/** Визуальные состояния как у карточек: это вход на сайт, не статус игры. */
+export const stripeCls = c => `st-${c.checking ? 'checking' : c.isLoggedIn === true ? 'online' : 'offline'}`;
+export const statusTitle = c =>
+  c.checking ? 'Проверка входа на сайт' : c.isLoggedIn === true ? 'Есть вход на сайт' : 'Нет входа на сайт';
+export function classIconHtml(c) {
+  const src = getClassIconSrc(c.cls);
+  return src
+    ? `<img class="char-class-ico" src="../${escapeHtml(src)}" alt="${escapeHtml(c.cls)}" title="${escapeHtml(c.cls)}">`
+    : `<span class="char-class-ico char-class-letter" title="${escapeHtml(c.cls)}">${escapeHtml(c.cls?.[0] || '?')}</span>`;
+}
 
 export const PARTIES = [...new Set(CHARS.map(c => c.party))];
 
@@ -102,7 +116,7 @@ export function gridTableHtml(units, chars, byKey, cellFn) {
     .sort(byNick)
     .map(
       ch =>
-        `<tr><td><b>${dot(ch)} ${escapeHtml(ch.nick)}</b></td>${units
+        `<tr class="${stripeCls(ch)}" title="${escapeHtml(statusTitle(ch))}"><td><b>${classIconHtml(ch)} ${escapeHtml(ch.nick)}</b></td>${units
           .map(u => {
             const row = byKey.get(`${ch.id}|${u.key}`);
             return `<td data-cell="${escapeHtml(ch.id)}|${escapeHtml(u.key)}">${cellFn(row, u)}</td>`;
@@ -181,8 +195,8 @@ export function targetListsHtml(t, idp) {
     .sort(byNick)
     .map(
       c =>
-        `<label class="promo-item"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${t.chars.has(c.id) ? 'checked' : ''}>
-      <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)} · ${escapeHtml(c.cls)}</span></label>`
+        `<label class="promo-item ${stripeCls(c)}" title="${escapeHtml(statusTitle(c))}"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${t.chars.has(c.id) ? 'checked' : ''}>
+      ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)} · ${escapeHtml(c.cls)}</span></label>`
     )
     .join('');
   return `

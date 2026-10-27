@@ -93,7 +93,7 @@ async function copyDiagnostics(which) {
   );
 }
 
-/** Наполнить панель состояния парсеров сейчас (панель живёт в «Настройки → Оптимизация»). */
+/** Наполнить панель состояния парсеров сейчас (панель живёт в «Настройки → Синхронизация»). */
 export function refreshParserHealthPanel() {
   render(getParserHealth());
 }
@@ -114,10 +114,10 @@ export function initParserHealthUi() {
       return;
     }
     if (target.closest('[data-health-open]')) {
-      // «Состояние парсеров» живёт в «Настройки → Оптимизация»: открываем вкладку настроек,
+      // «Состояние парсеров» живёт в «Настройки → Синхронизация»: открываем вкладку настроек,
       // переключаем раздел (остальные скрыты) и раскрываем панель
       document.querySelector('.tab[data-tab="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: 'settings-optimization' } }));
+      window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: 'settings-sync' } }));
       const panel = document.getElementById('parser-health-panel');
       if (panel instanceof HTMLDetailsElement) panel.open = true; // панель свёрнута по умолчанию
       panel?.scrollIntoView({ block: 'start' });

@@ -19,6 +19,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.jpg': 'image/jpeg',
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
@@ -36,7 +37,9 @@ const server = createServer(async (req, res) => {
       res.end();
       return;
     }
-    const file = join(ROOT, normalize(pathname));
+    // Как Vite: public/assets доступен в браузере по /assets — общие иконки классов.
+    const assetPath = pathname.startsWith('/assets/') ? `/public${pathname}` : pathname;
+    const file = join(ROOT, normalize(assetPath));
     // Защита от выхода за корень репозитория (../../etc)
     if (file !== ROOT && !file.startsWith(ROOT + sep)) {
       res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });

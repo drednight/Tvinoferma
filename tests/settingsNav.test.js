@@ -9,7 +9,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')).rep
 describe('категории настроек: разметка', () => {
   it('каждая категория — карточка с обозначением, подписью и ссылкой на существующий раздел', () => {
     const items = [...doc.querySelectorAll('.settings-nav-item')];
-    expect(items).toHaveLength(8); // «Оптимизация» (#settings-optimization) встала после «Синхронизации»
+    expect(items).toHaveLength(7); // «Состояние парсеров» живёт внутри «Синхронизации»: отдельного раздела нет
     for (const item of items) {
       expect(item.querySelector('.settings-nav-icon'), item.textContent).not.toBeNull();
       expect(item.querySelector('.settings-nav-copy strong').textContent.length, item.textContent).toBeGreaterThan(3);
@@ -24,6 +24,16 @@ describe('категории настроек: разметка', () => {
     const css = readFileSync('css/core/layout.css', 'utf8');
     expect(css).toMatch(/\.settings-nav-item\.is-active/);
     expect(css).toMatch(/\.settings-nav \{[^}]*grid-template-columns:/);
+  });
+
+  it('меню занимает доступную высоту, а при нехватке места прокручивается', () => {
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    const menu = css.match(/\.settings-nav \{([^}]*)\}/)?.[1] || '';
+    expect(menu).toMatch(/height:\s*max\(0px,\s*calc\(100vh\s*-\s*var\(--topbar-h/);
+    expect(menu).toMatch(/grid-auto-rows:\s*minmax\(72px,\s*1fr\)/);
+    expect(menu).toMatch(/overflow-y:\s*auto/);
+    expect(doc.querySelector('#settings-optimization')).toBeNull();
+    expect(doc.querySelector('#settings-sync #parser-health-panel')).not.toBeNull();
   });
 
   it('пункт при наведении не подчёркивается: карточка и так показывает наведение рамкой', () => {

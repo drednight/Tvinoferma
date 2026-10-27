@@ -38,12 +38,12 @@ describe('разметка раздела «Инструменты»', () => {
     expect(doc.querySelector('.next-nav [data-tab="tools"]').title).toBe('Ctrl+7');
   });
 
-  it('страница раздела есть; панель парсеров уехала в «Настройки → Оптимизация»', () => {
+  it('страница раздела есть; панель парсеров уехала в «Настройки → Синхронизация»', () => {
     const doc = new DOMParser().parseFromString(html(), 'text/html');
     expect(doc.querySelector('[data-section="tools"] #tools-root')).not.toBeNull();
     // В «Инструментах» остались действия; диагностика вернулась в настройки
     expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).toBeNull();
-    expect(doc.querySelector('#settings-optimization #parser-health-panel')).not.toBeNull();
+    expect(doc.querySelector('#settings-sync #parser-health-panel')).not.toBeNull();
   });
 
   it('круглая кнопка «+» больше не содержит скриптов и окон игры', () => {

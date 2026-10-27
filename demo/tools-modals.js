@@ -6,14 +6,12 @@
 // Данные фейковые: персонажи вымышлены, «запуск» имитируется simulate(), ничего не уходит
 // на сайт игры и не пишется в хранилище приложения.
 //
-// Пять вариантов окон × четыре сценария. «Промокод» нарисован здесь вручную,
-// остальные три («Передача», «Подарки», «Сундук караванщика») открывает общий
-// движок demo/scenarios.js — сценарий выбирается переключателем над карточками:
-//   0 current — копия текущего диалога promo.js;
-//   A wizard  — мастер шагов «Коды → Персонажи → Проверка → Выполнение»;
-//   B split   — два столбца: настройка слева, живой ход работы справа;
-//   C quick   — компактное окно параметров + фоновый док с прогрессом;
-//   D console — консоль: activate КОДЫ --target=logged, поток строк, stop/status.
+// По решению автора в лаборатории оставлен один стиль окон — вариант B (split):
+// настройка слева, сканирование и живой ход работы справа. «Передачу», «Подарки»
+// и «Сундук караванщика» рисует demo/scenarios.js — окна со сканированием сайта;
+// «Промокод» — openSplit() ниже. Рукописные окна прошлых вариантов (копия текущего
+// диалога openCurrent, мастер openWizard, быстрый запуск openQuick, консоль
+// openConsole) со страницы убраны, но код сохранён — на случай возвращения к сравнению.
 
 import { openOverlay } from '../js/modules/marathons/overlay.js';
 import { toast, confirmModal } from '../js/core/ui.js';
@@ -32,7 +30,20 @@ import {
   MAX_CODES,
   codeKey
 } from '../js/modules/automation/promoCore.js';
-import { CHARS, PARTIES, sleep, rand, pick, byNick, dot, hhmmss, el } from './lab-data.js';
+import {
+  CHARS,
+  PARTIES,
+  sleep,
+  rand,
+  pick,
+  byNick,
+  dot,
+  hhmmss,
+  el,
+  classIconHtml,
+  stripeCls,
+  statusTitle
+} from './lab-data.js';
 import { openScenario } from './scenarios.js';
 
 /* ==================== фейковые данные сценария «Промокод» ==================== */
@@ -143,7 +154,7 @@ function promoTableHtml(codes, chars, byKey) {
     .sort(byNick)
     .map(
       ch =>
-        `<tr><td><b>${dot(ch)} ${escapeHtml(ch.nick)}</b></td>${codes
+        `<tr class="${stripeCls(ch)}" title="${escapeHtml(statusTitle(ch))}"><td><b>${classIconHtml(ch)} ${escapeHtml(ch.nick)}</b></td>${codes
           .map(code => {
             const row = byKey.get(`${ch.id}|${codeKey(code)}`);
             return `<td data-cell="${escapeHtml(ch.id)}|${escapeHtml(codeKey(code))}">${cellHtml(row)}</td>`;
@@ -877,8 +888,8 @@ function openSplit() {
       .sort(byNick)
       .map(
         c =>
-          `<label class="promo-item"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${manual.has(c.id) ? 'checked' : ''}>
-        <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)}</span></label>`
+          `<label class="promo-item ${stripeCls(c)}" title="${escapeHtml(statusTitle(c))}"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${manual.has(c.id) ? 'checked' : ''}>
+        ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)} · ${escapeHtml(c.cls)}</span></label>`
       )
       .join('');
   }
@@ -920,10 +931,40 @@ function openSplit() {
 
   function resetFooter(plan) {
     dlg.foot.innerHTML = `
-      <span class="promo-muted">Изменения слева сразу пересчитывают план справа.</span>
+      <button class="btn secondary" data-act="refresh">🔄 Обновить статусы</button>
       <span class="sd-foot-spacer"></span>
+      <button class="btn ghost" data-act="close">Закрыть</button>
       <button class="btn secondary" data-act="dry">👁 Пробный</button>
       <button class="btn primary" data-act="start">▶ Запустить${plan ? ` (${plan.jobs.length})` : ''}</button>`;
+  }
+
+  // В демо проверка только показывает процесс; реального обращения к сайту нет.
+  async function refresh() {
+    const chars = targetChars();
+    if (!chars.length) return toast('Выберите персонажей', 'warning');
+    const signal = { cancelled: false };
+    running = signal;
+    $('sp-side').classList.add('is-locked');
+    $('sp-side').inert = true;
+    $('sp-status').classList.add('is-running');
+    dlg.foot.innerHTML =
+      '<span class="promo-muted">Демо: проверка имитируется.</span><span class="sd-foot-spacer"></span><button class="btn danger" data-act="stop">⏹ Стоп</button>';
+    let done = 0;
+    for (const char of chars) {
+      if (!alive() || signal.cancelled) break;
+      $('sp-status').textContent = `🔄 Демо-проверка: ${char.nick}`;
+      await sleep(110);
+      if (!alive() || signal.cancelled) break;
+      done++;
+      setBar(done, chars.length);
+      $('sp-count').textContent = `${done} из ${chars.length}`;
+    }
+    running = null;
+    if (!alive()) return;
+    $('sp-side').classList.remove('is-locked');
+    $('sp-side').inert = false;
+    updatePlan();
+    $('sp-status').textContent = signal.cancelled ? '⏹ Проверка остановлена' : '✅ Демо-проверка статусов завершена';
   }
 
   async function start(dry) {
@@ -948,6 +989,7 @@ function openSplit() {
     running = signal;
     last = null;
     $('sp-side').classList.add('is-locked');
+    $('sp-side').inert = true;
     $('sp-status').textContent = dry ? '👁 Пробный запуск' : 'Идёт ввод…';
     $('sp-status').classList.add('is-running');
     $('sp-chips').innerHTML = '';
@@ -974,6 +1016,7 @@ function openSplit() {
     if (!alive()) return;
     const s = summarize(rows);
     $('sp-side').classList.remove('is-locked');
+    $('sp-side').inert = false;
     $('sp-status').classList.remove('is-running');
     $('sp-status').textContent = signal.cancelled ? '⏹ Остановлено' : dry ? '👁 Пробный завершён' : '✅ Завершено';
     $('sp-chips').innerHTML = resultChips(s, dry);
@@ -984,6 +1027,7 @@ function openSplit() {
           ? 'Ничего не нажато и не сохранено.'
           : `Введено ${s.ok} из ${s.total}${s.failed ? `, ошибок ${s.failed}` : ''}.`
       }</span>
+      <button class="btn secondary" data-act="refresh">🔄 Обновить статусы</button>
       <span class="sd-foot-spacer"></span>
       ${rerun ? `<button class="btn secondary" data-act="retry">🔁 Повторить ошибки (${rerun})</button>` : ''}
       <button class="btn ghost" data-act="close">Закрыть</button>`;
@@ -1033,6 +1077,7 @@ function openSplit() {
       btn.textContent = '⏳ Останавливаю…';
       return;
     }
+    if (act === 'refresh') return refresh();
     if (act === 'dry') return start(true);
     if (act === 'start') return start(false);
     if (act === 'retry') {
@@ -1559,7 +1604,7 @@ function renderToolsReplica() {
         <div class="tools-grid tools-grid--check">${checks.map(card).join('')}</div>
       </div>
       <div class="tools-group">
-        <header class="tools-group-head"><h4>Операции</h4><p class="muted">Открывают большие диалоги — в демо у каждой операции своё окно.</p></header>
+        <header class="tools-group-head"><h4>Операции</h4><p class="muted">В демо каждая операция открывается в окне варианта B: слева настройка, справа сканирование и ход работы.</p></header>
         <div class="tools-grid tools-grid--action">${actions.map(card).join('')}</div>
       </div>
     </div>`;
@@ -1567,21 +1612,16 @@ function renderToolsReplica() {
     const btn = e.target.closest('[data-replica]');
     if (!btn) return;
     const id = btn.dataset.replica;
-    if (id === 'promo') return openCurrent();
-    if (id === 'transfer' || id === 'shop' || id === 'caravan') return openScenario(id, 'current');
+    // По решению автора все операции открываются в варианте B (split)
+    if (id === 'promo') return openSplit();
+    if (id === 'transfer' || id === 'shop' || id === 'caravan') return openScenario(id);
     if (id === 'check-auth' || id === 'update-balance' || id === 'update-marathons') {
-      return toast(
-        'У проверок окон нет: тост «запускаю…», работа в журнале, тост «завершено». Идея №6 — прогресс прямо на карточке.',
-        'info',
-        4200
-      );
+      return toast('У этих проверок отдельного окна пока нет: ход работы показывается в журнале задач.', 'info', 4200);
     }
   });
 }
 
-const VARIANTS = { current: openCurrent, wizard: openWizard, split: openSplit, quick: openQuick, console: openConsole };
-
-/** Сценарий, выбранный переключателем над карточками: promo нарисован здесь, остальные — в scenarios.js. */
+/** Сценарий, выбранный переключателем над карточкой: promo нарисован здесь, остальные — в scenarios.js. */
 let currentScript = 'promo';
 
 document.addEventListener('click', e => {
@@ -1593,9 +1633,9 @@ document.addEventListener('click', e => {
   }
   const btn = e.target.closest('[data-open-variant]');
   if (!btn) return;
-  const variant = btn.dataset.openVariant;
-  if (currentScript === 'promo') return VARIANTS[variant]?.();
-  return openScenario(currentScript, variant);
+  if (btn.dataset.openVariant !== 'split') return;
+  if (currentScript === 'promo') return openSplit();
+  return openScenario(currentScript);
 });
 
 renderToolsReplica();
