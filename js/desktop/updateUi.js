@@ -78,7 +78,8 @@ export function openUpdateDialog() {
 function renderUpdateHistory() {
   const list = document.getElementById('update-history-list');
   if (!list) return;
-  list.innerHTML = '<div class="muted">Историю обновлений можно посмотреть в CHANGELOG.md в корне проекта или на GitHub.</div>';
+  list.innerHTML =
+    '<div class="muted">Историю обновлений можно посмотреть в CHANGELOG.md в корне проекта или на GitHub.</div>';
 }
 
 /** Обновляет строку «Следующая проверка» (после смены режима в настройках). */

@@ -470,11 +470,11 @@
 }
 
 /* Настройки: две колонки свёрнутых карточек, раскрытая растёт вниз только в своей колонке */
-.settings-cols { 
+.settings-cols {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)); 
-  gap: var(--gap-md); 
-  align-items: start; 
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-md);
+  align-items: start;
 }
 .settings-col {
   display: flex;
@@ -485,10 +485,10 @@
 .settings-col > .panel {
   margin: 0;
 }
-@media (max-width: 900px) { 
-  .settings-cols { 
+@media (max-width: 900px) {
+  .settings-cols {
     grid-template-columns: minmax(0, 1fr);
-  } 
+  }
 }
 
 /* Свёрнутая карточка: описание в одну строку, поэтому карточки одной высоты и ряды выровнены */
@@ -627,8 +627,8 @@
    показывает наведение рамкой и подъёмом, а линия под текстом и иконкой выглядела
    так, будто наведение не сработало. */
 .settings-nav-item:hover,
-.settings-nav-item.is-active:hover { 
-  text-decoration: none; 
+.settings-nav-item.is-active:hover {
+  text-decoration: none;
 }
 .settings-nav-item.is-active {
   border-color: var(--accent-line);
