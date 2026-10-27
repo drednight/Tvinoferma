@@ -36,8 +36,8 @@ describe('данные справки', () => {
       }
       if (guide.notice) expect(['info', 'warning', 'danger']).toContain(guide.notice.tone);
       if (guide.screen) {
-        expect(guide.screen.src).toMatch(/^\/assets\/guides\/.+\.webp$/);
-        expect(existsSync(`public${guide.screen.src}`)).toBe(true);
+        expect(guide.screen.src).toMatch(/^assets\/guides\/.+\.webp$/);
+        expect(existsSync(`public/${guide.screen.src}`)).toBe(true);
         expect(guide.screen.alt.length).toBeGreaterThan(10);
       }
     }
@@ -52,7 +52,7 @@ describe('данные справки', () => {
       shop: 'shop-dialog'
     };
     for (const [id, image] of Object.entries(expected)) {
-      expect(GUIDES.find(guide => guide.id === id).screen.src).toBe(`/assets/guides/${image}.webp`);
+      expect(GUIDES.find(guide => guide.id === id).screen.src).toBe(`assets/guides/${image}.webp`);
     }
   });
 
@@ -140,7 +140,7 @@ describe('каталог и область чтения', () => {
     $('.guide-image-details').open = true;
     const button = $('[data-guide-image]');
     button.click();
-    expect($('.guide-screenshot-full').getAttribute('src')).toBe('/assets/guides/characters.webp');
+    expect($('.guide-screenshot-full').getAttribute('src')).toBe('assets/guides/characters.webp');
     expect(document.querySelectorAll('.tf-overlay')).toHaveLength(1);
     $('[data-guide-zoom]').click();
     expect($('.guide-image-viewport').classList.contains('is-zoomed')).toBe(true);

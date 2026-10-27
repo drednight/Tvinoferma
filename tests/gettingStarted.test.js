@@ -46,7 +46,7 @@ describe('шаги гайда', () => {
       if (step.tab) expect(html, step.id).toContain(`data-tab="${step.tab}"`);
       if (step.screen) {
         // Снимок должен существовать: сломанная ссылка в гайде виднее всего
-        expect(step.screen.src).toMatch(/^\/assets\/guides\/.+\.webp$/);
+        expect(step.screen.src).toMatch(/^assets\/guides\/.+\.webp$/);
       }
     }
   });

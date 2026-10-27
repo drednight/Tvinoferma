@@ -2,7 +2,7 @@
 // js/core/constants.js
 
 // Базовый путь к иконкам (относительно public/assets/icons/classes/)
-const ICON_BASE_PATH = '/assets/icons/classes/';
+const ICON_BASE_PATH = 'assets/icons/classes/';
 
 export const CLASSES = [
   'Оборотень',
@@ -84,9 +84,9 @@ export const SKIES = [
 export const SKY_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
 
 export const PASS_TYPES = [
-  { key: 'weapon', label: 'Оружие', icon: '⚔️', img: '/assets/icons/dungeons/pass-weapon.webp' },
-  { key: 'armor', label: 'Доспех', icon: '🛡️', img: '/assets/icons/dungeons/pass-armor.webp' },
-  { key: 'relic', label: 'Реликвия', icon: '💎', img: '/assets/icons/dungeons/pass-relic.webp' }
+  { key: 'weapon', label: 'Оружие', icon: '⚔️', img: 'assets/icons/dungeons/pass-weapon.webp' },
+  { key: 'armor', label: 'Доспех', icon: '🛡️', img: 'assets/icons/dungeons/pass-armor.webp' },
+  { key: 'relic', label: 'Реликвия', icon: '💎', img: 'assets/icons/dungeons/pass-relic.webp' }
 ];
 
 export const DEFAULT_SETTINGS = {

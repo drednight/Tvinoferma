@@ -8,7 +8,7 @@ const PUBLIC = join(import.meta.dirname, '..', 'public');
 describe('иконки допусков в данжи', () => {
   it('каждая иконка — существующий WebP небольшого размера', () => {
     for (const pt of PASS_TYPES) {
-      expect(pt.img, pt.key).toMatch(/^\/assets\/icons\/dungeons\/pass-[a-z]+\.webp$/);
+      expect(pt.img, pt.key).toMatch(/^assets\/icons\/dungeons\/pass-[a-z]+\.webp$/);
       const file = join(PUBLIC, pt.img);
       expect(existsSync(file), pt.img).toBe(true);
       const head = readFileSync(file).subarray(0, 12);
