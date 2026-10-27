@@ -52,7 +52,7 @@ export const GUIDE_STEPS = [
     hint: 'В фильтрах сверху ищут по нику, классу, пати, статусу и тегам. Тег в профиле открывает список персонажей с этим тегом.',
     guides: ['first-character', 'character-edit', 'character-stats'],
     screen: {
-      src: '/assets/guides/characters.webp',
+      src: 'assets/guides/characters.webp',
       alt: 'Карточки персонажей, фильтры и кнопка «+»',
       notes: [
         'Слева фильтры: по нику, классу, пати и статусу',
@@ -69,7 +69,7 @@ export const GUIDE_STEPS = [
     hint: 'В редакторе под каждым полем видно прошлое значение и разницу с ним — она пересчитывается при вводе. Значения можно заполнить из скриншота окна характеристик.',
     guides: ['character-stats', 'character-edit'],
     screen: {
-      src: '/assets/guides/character-profile.webp',
+      src: 'assets/guides/character-profile.webp',
       alt: 'Профиль персонажа: контакты, характеристики, проходки',
       notes: [
         'Контакты и «Запуск игры» — слева, характеристики и проходки — справа',
@@ -85,7 +85,7 @@ export const GUIDE_STEPS = [
     text: 'Пати — это группы аккаунтов: из карточки пати игра запускается одной кнопкой, а порядок запуска задаётся перетаскиванием. Чтобы кнопка «Запуск» работала, персонажам привязывают GameCenter — это делается в настройках запуска игры.',
     guides: ['party-create', 'gamecenter', 'party-launch'],
     screen: {
-      src: '/assets/guides/parties.webp',
+      src: 'assets/guides/parties.webp',
       alt: 'Список пати и кнопка запуска окон игры',
       notes: [
         'Слева пати, в каждой — состав и кнопка запуска',
@@ -100,7 +100,7 @@ export const GUIDE_STEPS = [
     text: '«Сегодня» — дела дня со статусами «ожидает / в работе / выполнено» и общая сводка. В календаре записи рисуются на шкале времени, повтор задаётся выбором дней, постоянные игровые ивенты показываются отдельной полосой.',
     guides: ['calendar-read', 'calendar-entry'],
     screen: {
-      src: '/assets/guides/today.webp',
+      src: 'assets/guides/today.webp',
       alt: 'Вкладка «Сегодня» и календарь записей',
       notes: [
         'Слева календарь на неделю, справа — дела на сегодня',
@@ -117,7 +117,7 @@ export const GUIDE_STEPS = [
     hint: 'Папка группирует марафоны сезона: она шире обычной карточки, внутри видно прогресс каждого.',
     guides: ['marathon-manual', 'marathon-progress', 'marathon-finish'],
     screen: {
-      src: '/assets/guides/marathons.webp',
+      src: 'assets/guides/marathons.webp',
       alt: 'Список марафонов: карточки с прогрессом и монетами',
       notes: [
         'Сверху — сводка: сколько марафонов в каждом состоянии и сколько заработано',
@@ -133,7 +133,7 @@ export const GUIDE_STEPS = [
     text: '«Инструменты» — вход на сайт, балансы, промокоды, передача и подарки, список запущенных окон игры и состояние парсеров. Каждый скрипт показывает, что именно сделает, а ход работы виден в журнале.',
     guides: ['promo', 'transfer', 'logs'],
     screen: {
-      src: '/assets/guides/scripts.webp',
+      src: 'assets/guides/scripts.webp',
       alt: 'Подменю скриптов сайта',
       notes: [
         'Скрипты идут сеткой: до четырёх в ряд на широком окне',
@@ -149,7 +149,7 @@ export const GUIDE_STEPS = [
     hint: 'В уведомлениях можно выбрать набор звука и нажать «Послушать» — так сразу понятно, какой слышно поверх игры.',
     guides: ['backups', 'notifications', 'move-computer'],
     screen: {
-      src: '/assets/guides/settings-app.webp',
+      src: 'assets/guides/settings-app.webp',
       alt: 'Настройки приложения',
       notes: [
         'Слева — шесть разделов, открыт ровно один',

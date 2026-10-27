@@ -3,7 +3,7 @@
 const step = (title, text) => ({ title, text });
 /** Снимок интерфейса. `notes` — на что смотреть: снимок не равноценен живому окну,
  *  поэтому подписываем то, что на нём важно разглядеть. */
-const screen = (file, alt, notes = []) => ({ src: `/assets/guides/${file}.webp`, alt, notes });
+const screen = (file, alt, notes = []) => ({ src: `assets/guides/${file}.webp`, alt, notes });
 
 export const GUIDE_CATEGORIES = [
   { id: 'start', label: 'Первый запуск' },

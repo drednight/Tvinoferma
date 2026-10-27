@@ -72,7 +72,7 @@ const clean = s =>
 /** Ключ для сравнения ников: без `#` и регистра. */
 const nickKey = nick => clean(nick).replace(/^#+/, '').toLowerCase();
 
-/** Имя файла иконки класса из `src`: у сайта `luk.png`, у нас `/assets/icons/classes/luk.webp`. */
+/** Имя файла иконки класса из `src`: у сайта `luk.png`, у нас `assets/icons/classes/luk.webp`. */
 function iconStem(src) {
   return clean(src).match(ICON_STEM)?.[1] || '';
 }

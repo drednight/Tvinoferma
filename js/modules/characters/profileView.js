@@ -221,9 +221,9 @@ export function openCharacterProfile(char) {
             <div class="pf-panel">
               <div class="pf-panel-title">Проходки в данжи</div>
               <div class="pf-passes">
-                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-weapon.webp" alt="" /><strong>${passes.weapon || 0}</strong><small>Оружие</small></div>
-                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-armor.webp" alt="" /><strong>${passes.armor || 0}</strong><small>Доспех</small></div>
-                <div class="pf-pass"><img src="/assets/icons/dungeons/pass-relic.webp" alt="" /><strong>${passes.relic || 0}</strong><small>Реликвия</small></div>
+                <div class="pf-pass"><img src="assets/icons/dungeons/pass-weapon.webp" alt="" /><strong>${passes.weapon || 0}</strong><small>Оружие</small></div>
+                <div class="pf-pass"><img src="assets/icons/dungeons/pass-armor.webp" alt="" /><strong>${passes.armor || 0}</strong><small>Доспех</small></div>
+                <div class="pf-pass"><img src="assets/icons/dungeons/pass-relic.webp" alt="" /><strong>${passes.relic || 0}</strong><small>Реликвия</small></div>
               </div>
             </div>
 
