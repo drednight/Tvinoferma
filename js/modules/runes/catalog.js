@@ -4,7 +4,9 @@
 import { CLASSES } from '../../core/constants.js';
 
 export const RUNE_CATALOG_URL = 'https://raw.githubusercontent.com/drednight/Tvinoferma/main/public/data/runes.json';
-const BUNDLED_CATALOG_URL = '/data/runes.json';
+// Без ведущего слэша: относительный путь работает и из корня приложения (Tauri, dev-сервер),
+// и из подпапки GitHub Pages (/Tvinoferma/) — абсолютный там ушёл бы в корень домена.
+const BUNDLED_CATALOG_URL = 'data/runes.json';
 const CACHE_KEY = 'tvinoferma-runes-catalog-v1';
 
 export function validateRuneCatalog(payload) {

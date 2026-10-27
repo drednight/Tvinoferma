@@ -1,9 +1,9 @@
 // tests/notifyCenter.test.js
 // Свои уведомления внутри приложения (js/core/notifyCenter.js).
 //
-// Замена всплывающему окну Windows, которое живёт несколько секунд: карточка стоит,
-// пока её не закроют, иначе напоминание приходится запоминать по обрывку.
-import { describe, it, expect, beforeEach } from 'vitest';
+// Карточка не мигает, как системный тост: её спокойно читаешь, а по таймеру она
+// уходит сама (обычная — через 15 с, ошибка — через 60 с).
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   showInApp,
@@ -31,11 +31,30 @@ describe('карточки уведомлений', () => {
     expect(cards()[0].textContent).toContain('Второе');
   });
 
-  it('карточка не исчезает сама — в этом весь смысл', async () => {
-    showInApp({ title: 'Не уходит' });
-    // Ждём больше типичного времени жизни тоста Windows; карточка должна остаться
-    await new Promise(r => setTimeout(r, 60));
-    expect(cards()).toHaveLength(1);
+  it('карточка не мигает и уходит сама по таймеру', () => {
+    vi.useFakeTimers();
+    try {
+      showInApp({ title: 'Напоминание' });
+      vi.advanceTimersByTime(60);
+      expect(cards()).toHaveLength(1); // живёт дольше системного тоста: успеваешь прочитать
+      vi.advanceTimersByTime(15000);
+      expect(cards()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ошибка живёт дольше обычного уведомления', () => {
+    vi.useFakeTimers();
+    try {
+      showInApp({ title: 'Сбой запуска', kind: 'launchError' });
+      vi.advanceTimersByTime(15001);
+      expect(cards()).toHaveLength(1);
+      vi.advanceTimersByTime(45000);
+      expect(cards()).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('крестик закрывает нужную карточку', () => {

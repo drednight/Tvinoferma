@@ -126,7 +126,7 @@ export function buildCommands(state, deps = {}) {
   });
   push({
     id: 'act-balance',
-    title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновить балансы',
+    title: '🪙 Обновить балансы',
     group: 'Действия',
     keywords: ['монеты', 'деньги', 'обновить'],
     run: () => deps.run?.('update-balance')
@@ -161,8 +161,7 @@ export function buildCommands(state, deps = {}) {
   });
   push({
     id: 'act-shop',
-    title:
-      '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков (покупка за Древние монеты)',
+    title: '🪙 Активация подарков (покупка за Древние монеты)',
     group: 'Действия',
     keywords: ['активация', 'магазин', 'подарки', 'подарок', 'камень', 'знак', 'сундук', 'купить'],
     run: () => deps.run?.('shop')
@@ -249,7 +248,7 @@ export function buildCommands(state, deps = {}) {
       });
       push({
         id: `char-balance-${c.id}`,
-        title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновить баланс: ${c.nick}`,
+        title: `🪙 Обновить баланс: ${c.nick}`,
         group: 'Команды персонажа',
         subtitle: where,
         keywords: ['монеты'],

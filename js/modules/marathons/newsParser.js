@@ -145,14 +145,16 @@ function toNominative(text) {
     .join(' ');
 }
 
-/** Текст ячейки: <br> и абзацы превращаются в переводы строк, лишние пробелы убираются. */
+/** Текст ячейки: <br> и абзацы превращаются в переводы строк, мягкие переносы исходника HTML — в пробелы. */
 function cellText(td) {
   const c = td.cloneNode(true);
-  c.querySelectorAll('br').forEach(b => b.replaceWith('\n'));
-  c.querySelectorAll('p, div, li').forEach(b => b.append('\n'));
+  // Структурные границы помечаем.sentinel-символом, а не '\n': собственные переносы строк
+  // исходника HTML не должны рвать фразу («Список\nподземелий:»), а границы абзацев — должны.
+  c.querySelectorAll('br').forEach(b => b.replaceWith('\u0000'));
+  c.querySelectorAll('p, div, li').forEach(b => b.append('\u0000'));
   return c.textContent
     .replace(/\u00a0/g, ' ')
-    .split('\n')
+    .split('\u0000')
     .map(l => l.replace(/\s+/g, ' ').trim())
     .filter(Boolean)
     .join('\n');

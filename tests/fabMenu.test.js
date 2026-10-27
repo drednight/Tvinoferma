@@ -79,8 +79,13 @@ describe('кнопка «+» на вкладке «Марафоны»', () => {
 
   it('на странице марафона или папки кнопку прячет CSS (у страницы свои кнопки)', () => {
     const css = readFileSync('css/core/fab.css', 'utf8');
-    expect(css).toContain('.page[data-section="marathons"].active[data-view="detail"]) .fab-container');
-    expect(css).toContain('.page[data-section="marathons"].active[data-view="series"]) .fab-container');
+    // Кавычки атрибутов и переносы задаёт prettier — проверяем правило регексом, а не дословной строкой
+    expect(css).toMatch(
+      /\.page\[data-section=['"]marathons['"]\]\.active\[data-view=['"]detail['"]\]\)\s*\.fab-container/
+    );
+    expect(css).toMatch(
+      /\.page\[data-section=['"]marathons['"]\]\.active\[data-view=['"]series['"]\]\)\s*\.fab-container/
+    );
     expect(section.dataset.view).toBeUndefined(); // атрибут ставит page.js при отрисовке
   });
 });
