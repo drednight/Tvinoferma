@@ -2,7 +2,9 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'public/**', 'coverage/**'] },
+  // demo/ — площадка макетов (лаборатория окон скриптов), не код приложения: линтер там
+  // лишний, форматирование обеспечивает prettier, в сборку и тесты демо не попадает.
+  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'public/**', 'coverage/**', 'demo/**'] },
   js.configs.recommended,
   {
     files: ['js/**/*.js'],

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo": "node demo/serve.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",

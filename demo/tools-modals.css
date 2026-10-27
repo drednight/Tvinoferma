@@ -1,0 +1,923 @@
+/* demo/tools-modals.css
+   Стили лаборатории окон скриптов и четырёх новых вариантов (wz-, sp-, ql-, cn-).
+   Всё построено на токенах темы из css/core/variables.css — ни одного «своего» цвета:
+   так сразу видно, как варианты живут в настоящем оформлении приложения. */
+
+/* ============================== страница лаборатории ============================== */
+
+.lab {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 30px 20px 72px;
+  display: grid;
+  gap: 24px;
+}
+
+.lab-hero h1 {
+  margin: 8px 0 10px;
+  font-size: 1.45rem;
+  line-height: 1.25;
+}
+.lab-hero p {
+  color: var(--text-dim);
+  max-width: 86ch;
+  margin: 0 0 8px;
+}
+.lab-hero code,
+.lab-block code,
+.lab-foot code {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-size: 0.84em;
+}
+.lab-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border: 1px solid rgba(224, 175, 104, 0.45);
+  border-radius: var(--radius-pill);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.lab-hint {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+
+.lab-block {
+  padding: 18px 20px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+}
+.lab-block > h2 {
+  font-size: 1.08rem;
+  margin: 0 0 4px;
+}
+.lab-lead {
+  color: var(--text-dim);
+  font-size: 0.86rem;
+  max-width: 92ch;
+  margin: 0 0 14px;
+}
+.lab-replica {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+}
+
+/* Карточки вариантов */
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.variant-card {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.variant-card[data-tone='now'] {
+  border-color: var(--border-strong);
+}
+.variant-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.variant-head h3 {
+  font-size: 0.95rem;
+  margin: 0;
+}
+.variant-badge {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.variant-card[data-tone='now'] .variant-badge {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-strong);
+  color: var(--text-dim);
+}
+.variant-essence {
+  color: var(--text-dim);
+  font-size: 0.83rem;
+  margin: 0;
+}
+.proscons {
+  display: grid;
+  gap: 8px;
+}
+.proscons b {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+.proscons ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.pc-plus b {
+  color: var(--success);
+}
+.pc-minus b {
+  color: var(--danger);
+}
+.variant-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.variant-note {
+  font-size: 0.74rem;
+}
+
+/* Идеи реализации */
+.idea-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.idea-card {
+  position: relative;
+  padding: 14px 16px 14px 52px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.idea-card h3 {
+  font-size: 0.92rem;
+  margin: 0 0 6px;
+}
+.idea-card p {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  margin: 0;
+}
+.idea-n {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* Таблица сравнения */
+.table-scroll {
+  overflow-x: auto;
+}
+.lab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.lab-table th,
+.lab-table td {
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.lab-table th {
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lab-verdict {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: 0.86rem;
+}
+.lab-foot {
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+/* ============================================================================ */
+/* Вариант A · Мастер шагов (wz-)                                                */
+/* ============================================================================ */
+
+.wz-steps {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wz-step {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-width: 0;
+}
+.wz-step > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-step-n {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.wz-step.is-done {
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.wz-step.is-done .wz-step-n {
+  background: var(--success-soft);
+  border-color: transparent;
+  color: var(--success);
+}
+.wz-step.is-active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.wz-step.is-active .wz-step-n {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--on-accent);
+}
+
+.wz-pane {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  animation: wzIn 0.18s var(--ease);
+}
+@keyframes wzIn {
+  from {
+    opacity: 0;
+    transform: translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wz-pane {
+    animation: none;
+  }
+}
+
+.wz-code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.wz-code-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 0.8rem;
+}
+.wz-code-chip.is-known {
+  border-color: rgba(224, 175, 104, 0.45);
+  background: var(--warning-soft);
+}
+.wz-code-chip.is-bad {
+  border-color: rgba(247, 118, 142, 0.5);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.wz-list {
+  max-height: 300px;
+}
+
+.wz-review {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.wz-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.86rem;
+}
+.wz-review-row > span:first-child {
+  color: var(--text-dim);
+  flex: none;
+}
+.wz-review-row .wz-code-chips {
+  justify-content: flex-end;
+}
+.wz-review-big b {
+  font-size: 1.35rem;
+  color: var(--accent);
+}
+.wz-nicks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.wz-nick {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+
+/* ============================================================================ */
+/* Вариант B · Два столбца (sp-)                                                 */
+/* ============================================================================ */
+
+.sp-container {
+  max-width: 1150px;
+}
+.sp-container .tf-dialog-body {
+  padding: 0;
+  gap: 0;
+  display: block;
+  overflow: hidden;
+}
+.sp-body {
+  display: grid;
+  grid-template-columns: minmax(280px, 350px) minmax(0, 1fr);
+  height: min(620px, calc(100vh - 240px));
+  min-height: 380px;
+}
+.sp-side {
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 14px 16px;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  transition: opacity var(--speed) var(--ease);
+}
+.sp-side.is-locked {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.sp-field {
+  display: grid;
+  gap: 6px;
+}
+.sp-field > label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sp-radios {
+  display: grid;
+  gap: 6px;
+}
+.sp-radio {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  cursor: pointer;
+  font-size: 0.84rem;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+.sp-radio input {
+  grid-row: span 2;
+}
+.sp-radio small {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+.sp-radio:hover {
+  border-color: var(--border-strong);
+}
+.sp-radio:has(input:checked) {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.sp-manual {
+  max-height: 220px;
+}
+.sp-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.sp-summary {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: 0.82rem;
+}
+.sp-summary > b {
+  font-size: 1.5rem;
+  line-height: 1.1;
+  color: var(--accent);
+}
+
+.sp-main {
+  padding: 12px 16px 16px;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.sp-progress {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.sp-progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+}
+.sp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.sp-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.sp-status.is-running {
+  color: var(--accent);
+}
+.sp-status.is-running::before {
+  background: var(--accent);
+  animation: spPulse 1s ease-in-out infinite;
+}
+@keyframes spPulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sp-status.is-running::before {
+    animation: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .sp-body {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .sp-side {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* ============================================================================ */
+/* Вариант C · Быстрый запуск + док (ql-)                                        */
+/* ============================================================================ */
+
+.ql-container {
+  max-width: 480px;
+}
+.ql-field {
+  display: grid;
+  gap: 6px;
+}
+.ql-field > label {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.ql-code-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.ql-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  font-size: 0.76rem;
+}
+.ql-chip.is-known {
+  border-color: rgba(224, 175, 104, 0.45);
+  background: var(--warning-soft);
+}
+.ql-seg {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.ql-seg button {
+  display: grid;
+  gap: 1px;
+  place-items: center;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  cursor: pointer;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+.ql-seg button b {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+.ql-seg button:hover {
+  border-color: var(--border-strong);
+}
+.ql-seg button.is-on {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.ql-seg button.is-on b {
+  color: var(--accent);
+}
+.ql-manual {
+  max-height: 200px;
+  margin-top: 2px;
+}
+.ql-summary {
+  margin: 2px 0 0;
+  font-size: 0.84rem;
+  color: var(--text-dim);
+}
+.ql-summary b {
+  color: var(--text);
+}
+.ql-go {
+  flex: 1;
+  font-weight: 650;
+}
+
+/* Док: пилюля + панель хода работы */
+.ql-dock {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1200;
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  animation: qlIn 0.22s var(--ease);
+}
+@keyframes qlIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ql-dock {
+    animation: none;
+  }
+}
+.ql-pill {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 340px;
+  padding: 10px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.ql-pill:hover {
+  border-color: var(--accent-line);
+}
+.ql-pill-copy {
+  display: grid;
+  min-width: 0;
+}
+.ql-pill-copy b {
+  font-size: 0.84rem;
+}
+.ql-pill-copy small {
+  color: var(--text-dim);
+  font-size: 0.74rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ql-pill.is-done {
+  border-color: rgba(158, 206, 106, 0.55);
+}
+.ql-pill.is-stopped {
+  border-color: rgba(224, 175, 104, 0.55);
+}
+.ql-pill-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.ql-pill-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.25s var(--ease);
+}
+.ql-pill.is-done .ql-pill-bar > i {
+  background: var(--success);
+}
+.ql-pill.is-stopped .ql-pill-bar > i {
+  background: var(--warning);
+}
+.ql-spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: qlSpin 0.9s linear infinite;
+}
+@keyframes qlSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ql-spin {
+    animation-duration: 2.5s;
+  }
+}
+
+.ql-panel {
+  width: min(400px, calc(100vw - 36px));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+  animation: qlIn 0.18s var(--ease);
+}
+.ql-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.84rem;
+}
+.ql-panel-acts {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.ql-events {
+  max-height: 230px;
+  overflow: auto;
+  padding: 8px 12px;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  font-size: 0.79rem;
+}
+.ql-event {
+  display: flex;
+  gap: 8px;
+  line-height: 1.45;
+}
+.ql-event time {
+  flex: none;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.ql-event code {
+  font-size: 0.95em;
+}
+.ql-ok span {
+  color: var(--text);
+}
+.ql-warn span {
+  color: var(--warning);
+}
+.ql-error span {
+  color: var(--danger);
+}
+.ql-info span {
+  color: var(--text-dim);
+}
+.ql-panel-foot {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+}
+.ql-panel-foot:empty {
+  display: none;
+}
+.ql-dock-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ============================================================================ */
+/* Вариант D · Консоль (cn-)                                                     */
+/* ============================================================================ */
+
+.cn-container {
+  max-width: 880px;
+}
+.cn-container .tf-dialog-body {
+  padding: 0;
+  gap: 0;
+  display: block;
+}
+.cn-log {
+  height: min(440px, calc(100vh - 340px));
+  min-height: 220px;
+  overflow: auto;
+  padding: 14px 16px;
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  background: #0a0d13;
+  font-family: ui-monospace, 'Cascadia Mono', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.79rem;
+  line-height: 1.55;
+}
+.cn-line {
+  display: flex;
+  gap: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cn-line time {
+  flex: none;
+  color: #46506a;
+  font-variant-numeric: tabular-nums;
+}
+.cn-ok {
+  color: var(--success);
+}
+.cn-err {
+  color: var(--danger);
+}
+.cn-warn {
+  color: var(--warning);
+}
+.cn-dim {
+  color: var(--text-faint);
+}
+.cn-acc {
+  color: var(--accent);
+}
+.cn-progress {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+.cn-cmdline {
+  color: var(--text);
+  font-weight: 600;
+}
+.cn-input-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.cn-prompt {
+  flex: none;
+  color: var(--success);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.84rem;
+}
+.cn-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 0.84rem;
+}
+.cn-input::placeholder {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
+.cn-hints {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
