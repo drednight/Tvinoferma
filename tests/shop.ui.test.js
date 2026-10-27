@@ -154,7 +154,8 @@ describe('окно: предметы', () => {
     const desc = $('[data-card="valor"] .shop-desc');
     expect(desc.textContent).toContain('вы получите');
     expect(desc.closest('label')).toBeNull();
-    expect($('.tf-dialog-title').innerHTML).toContain('i-coin');
+    // Заголовок окна экранируется: иконка — эмодзи в видимом тексте, а не разметка
+    expect($('.tf-dialog-title').textContent).toContain('🪙');
   });
 
   it('ивентовых предметов нет на сайте: карточки заблокированы, видно прежнюю цену', async () => {

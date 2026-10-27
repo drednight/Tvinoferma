@@ -9,7 +9,7 @@ const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>')).rep
 describe('категории настроек: разметка', () => {
   it('каждая категория — карточка с обозначением, подписью и ссылкой на существующий раздел', () => {
     const items = [...doc.querySelectorAll('.settings-nav-item')];
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(7); // 7-я категория — «Предложения» (#settings-feedback)
     for (const item of items) {
       expect(item.querySelector('.settings-nav-icon'), item.textContent).not.toBeNull();
       expect(item.querySelector('.settings-nav-copy strong').textContent.length, item.textContent).toBeGreaterThan(3);
@@ -31,8 +31,9 @@ describe('категории настроек: разметка', () => {
     // «подчёркивать при наведении» (base.css). Без отдельного правила под текстом
     // и иконкой появлялась линия, и карточка выглядела сломанной
     const css = readFileSync('css/core/layout.css', 'utf8');
+    // Регекс нечувствителен к переносам строк: layout.css форматирует prettier, правила многострочные
     expect(css).toMatch(
-      /\.settings-nav-item:hover,\s*\n?\.settings-nav-item\.is-active:hover \{ text-decoration: none; \}/
+      /\.settings-nav-item:hover,\s*\.settings-nav-item\.is-active:hover\s*\{\s*text-decoration:\s*none;\s*\}/
     );
   });
 });

@@ -483,10 +483,11 @@ export async function refreshAllBalances(
     return { updated: 0, failed: 0 };
   }
   const { retries, retryDelayMs } = scriptSettings();
-  const task = startTask(
-    title || `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Обновление балансов (${list.length} акк.)`,
-    { total: list.length, cancelable: list.length > 1 }
-  );
+  // Заголовок задачи попадает в док и журнал через escapeHtml — разметка в нём показывается кодом, поэтому эмодзи
+  const task = startTask(title || `🪙 Обновление балансов (${list.length} акк.)`, {
+    total: list.length,
+    cancelable: list.length > 1
+  });
   const signal = { cancelled: false };
   task.onCancel(() => {
     signal.cancelled = true;
@@ -561,7 +562,7 @@ export async function refreshAllBalances(
 /** Баланс одного персонажа (кнопка в профиле). */
 export async function refreshBalanceFor(char) {
   return refreshAllBalances([char], {
-    title: `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Баланс: ${char.nick}`,
+    title: `🪙 Баланс: ${char.nick}`,
     onlyLoggedIn: false
   });
 }

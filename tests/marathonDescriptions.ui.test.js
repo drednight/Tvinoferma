@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Дымовой тест интерфейса описаний на странице марафона (issue #3).
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('../js/modules/sync/authStatus.js', () => ({ getAuthView: () => ({ icon: '' }) }));
+vi.mock('../js/modules/sync/authStatus.js', () => ({
+  getAuthView: () => ({ icon: '' }),
+  getAuthState: () => 'online'
+}));
 vi.mock('../js/modules/marathons/siteSync.js', () => ({
   syncMarathons: vi.fn(),
   marathonUrlOf: () => null,

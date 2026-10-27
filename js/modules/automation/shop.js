@@ -89,7 +89,7 @@ export function openShopDialog({ ids = [] } = {}) {
   let last = null; // итог последнего запуска: { rows, accounts, dry, stopped, checking, balances }
 
   const dlg = openOverlay({
-    title: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков',
+    title: '🪙 Активация подарков',
     wide: true,
     onClose: () => {
       closed = true;
@@ -645,7 +645,7 @@ export function openShopDialog({ ids = [] } = {}) {
 
     const total = accounts.reduce((n, a) => n + a.orders.length, 0);
     const task = startTask(
-      `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`,
+      `🪙 Активация подарков${dry ? ' (пробный запуск)' : ''}: ${accounts.length} акк., ${totalQty(accounts)} шт.`,
       { total, cancelable: true }
     );
     const signal = { cancelled: false };

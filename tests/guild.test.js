@@ -270,24 +270,24 @@ describe('сверка календаря с ответами на сайте', 
   });
 
   it('повторная сверка ничего не меняет и не дублирует', () => {
-    const first = planClanEntries([own], { events: [event('462', RESPONSE_YES)] });
-    const second = planClanEntries(first.entries, { events: [event('462', RESPONSE_YES)] });
+    const first = planClanEntries([own], { events: [event('462', RESPONSE_YES)] }, today);
+    const second = planClanEntries(first.entries, { events: [event('462', RESPONSE_YES)] }, today);
     expect(second.changed).toBe(false);
     expect(second.entries).toHaveLength(2);
   });
 
   it('«Не пойду» убирает запись из календаря', () => {
-    const first = planClanEntries([], { events: [event('462', RESPONSE_YES)] });
-    const after = planClanEntries(first.entries, { events: [event('462', RESPONSE_NO)] });
+    const first = planClanEntries([], { events: [event('462', RESPONSE_YES)] }, today);
+    const after = planClanEntries(first.entries, { events: [event('462', RESPONSE_NO)] }, today);
     expect(after.changed).toBe(true);
     expect(after.entries).toEqual([]);
   });
 
   it('переехавшее на сайте событие обновляет дату, но не трогает цвет и статус', () => {
-    const first = planClanEntries([], { events: [event('462', RESPONSE_YES)] });
+    const first = planClanEntries([], { events: [event('462', RESPONSE_YES)] }, today);
     const entry = { ...first.entries[0], color: 'green', status: 'done' };
     const moved = { events: [{ ...event('462', RESPONSE_YES), when: '16 октября (пятница) в 20:00' }] };
-    const after = planClanEntries([entry], moved);
+    const after = planClanEntries([entry], moved, today);
     expect(after.changed).toBe(true);
     expect(after.entries[0]).toMatchObject({ date: '2026-10-16', time: '20:00', color: 'green', status: 'done' });
   });

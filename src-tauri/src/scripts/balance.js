@@ -3,7 +3,9 @@
 (function () {
   /*PARSE_START*/
   function parseCoins(text) {
-    let s = String(text == null ? '' : text).replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/[^0-9.,]/g, '');
+    let s = String(text == null ? '' : text)
+      .replace(/[\s\u00a0\u202f\u2009]/g, '')
+      .replace(/[^0-9.,]/g, '');
     if (!/[0-9]/.test(s)) return NaN;
     s = s.replace(/[.,]+$/, '').replace(/^[.,]/, '0$&');
     const hasDot = s.indexOf('.') !== -1;
@@ -15,14 +17,14 @@
       const thousands = dec === '.' ? ',' : '.';
       if (s.split(dec).length > 2) return NaN;
       const groups = s.slice(0, s.lastIndexOf(dec)).split(thousands);
-      if (!groups.slice(1).every((g) => g.length === 3)) return NaN;
+      if (!groups.slice(1).every(g => g.length === 3)) return NaN;
       num = s.split(thousands).join('').replace(dec, '.');
     } else if (hasDot || hasComma) {
       const sep = hasDot ? '.' : ',';
       const parts = s.split(sep);
       if (parts.length > 2) {
         // Несколько одинаковых знаков — это разделители тысяч ("1,285,000"); группы по 3 цифры
-        if (!parts.slice(1).every((p) => p.length === 3)) return NaN;
+        if (!parts.slice(1).every(p => p.length === 3)) return NaN;
         num = parts.join('');
       } else if (parts[1].length === 3 && parts[0] !== '' && parts[0] !== '0' && parts[0].length <= 3) {
         // Ровно 3 цифры после знака и 1–3 цифры перед ним: "1,285" — тысячи

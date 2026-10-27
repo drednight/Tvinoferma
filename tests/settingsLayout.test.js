@@ -43,8 +43,13 @@ describe('настройки: колонки', () => {
   });
 
   it('правила колонок: две равные колонки, на узком окне — одна', () => {
-    expect(css).toContain('.settings-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr))');
-    expect(css).toContain('@media (max-width: 900px) { .settings-cols { grid-template-columns: minmax(0, 1fr); } }');
+    // Регексы нечувствительны к переносам строк и пробелам: layout.css форматирует prettier
+    expect(css).toMatch(
+      /\.settings-cols\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.settings-cols\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/
+    );
   });
 });
 

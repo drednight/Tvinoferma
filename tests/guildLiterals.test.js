@@ -30,7 +30,8 @@ describe('клановый сайт: литералы не переименов�
   });
 
   it('сравнение фразы не чувствительно к регистру и пробелам', () => {
-    const fn = promo.match(/const isSecretPhrase = \(value\) =>([^\n]+)/);
+    // Функцию форматирует prettier: аргумент без скобок, тело на следующих строках — ловим её до первой ';'
+    const fn = promo.match(/const isSecretPhrase = \(?value\)? =>([\s\S]*?);/);
     expect(fn, 'нет функции сверки фразы').toBeTruthy();
     expect(fn[1]).toContain('toLowerCase');
     expect(fn[1]).toContain('trim()');

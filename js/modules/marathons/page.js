@@ -668,30 +668,6 @@ function bindDescriptions(root, m) {
   });
 }
 
-function syncPanel(m) {
-  const ls = m.lastSync;
-  if (!ls || (!ls.changes.length && !ls.errors.length)) return '';
-  const taskTitle = id => m.tasks.find(t => t.id === id)?.title || '—';
-  return `
-    <details class="panel mr-sync" ${ui.showSync ? '' : ''}>
-      <summary>🔄 Сверка ${fmtDateTime(ls.at)} · +${ls.changes.length}${ls.errors.length ? ` · ош. ${ls.errors.length}` : ''}</summary>
-      <div class="mr-sync-grid">
-        ${ls.changes
-          .map(
-            c => `<div class="mr-sync-row"><strong>${escapeHtml(charById(c.charId)?.nick || '—')}</strong><span>${escapeHtml(taskTitle(c.taskId))}</span>
-          <span>${c.from ?? '—'} → <b>${c.to}</b> ${c.from != null ? `<span class="mr-green">(+${c.to - c.from})</span>` : '<span class="muted">(первые данные)</span>'}</span></div>`
-          )
-          .join('')}
-        ${ls.errors
-          .map(
-            e => `<div class="mr-sync-row mr-sync-err"><strong>${escapeHtml(charById(e.charId)?.nick || '—')}</strong><span>❌ ${escapeHtml(ERROR_TEXT[e.error] || e.error)}</span>
-          ${e.error === 'not_logged_in' ? `<button class="btn small" data-login="${e.charId}">Войти</button>` : '<span></span>'}</div>`
-          )
-          .join('')}
-      </div>
-    </details>`;
-}
-
 function matrix(m) {
   if (!m.participantIds.length)
     return '<div class="empty-state">Нет участников. Откройте «✏️ Редактировать» → «Участники».</div>';
