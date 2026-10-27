@@ -8,7 +8,8 @@
 //
 // Сюда переехали из FAB: все скрипты (вход, балансы, промокод, передача, подарки,
 // сундук караванщика, марафоны) и управление окнами игры.
-// Из Настроек переехало «Состояние парсеров» — это тоже диагностика, а не настройка.
+// «Состояние парсеров» живёт в «Настройки → Оптимизация», а «Закрыть все окна игры» —
+// в блоке «Окна игры» ниже: в «Операциях» остались только действия над данными.
 //
 // Чего здесь нет и не должно быть: интервалов, порогов и прочего, что настраивают
 // каждый раз. Это Настройки.
@@ -17,7 +18,6 @@ import { escapeHtml } from '../../core/utils.js';
 import { toast } from '../../core/ui.js';
 import { runningWindows, onRunningWindows, refreshRunningWindows } from '../launcher/runningWindows.js';
 import { rowLabel, formatUptime } from '../launcher/windowList.js';
-import { refreshParserHealthPanel } from '../../settings/parserHealthUi.js';
 
 /**
  * Скрипты раздела. `id` совпадает со значением `data-script-action`, которое уже
@@ -52,14 +52,9 @@ const SCRIPTS = [
     label: 'Подарки',
     hint: 'Купить подарки за Древние монеты'
   },
-  { id: 'caravan', type: 'action', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
-  {
-    id: 'close-game',
-    type: 'action',
-    ico: '🛑',
-    label: 'Закрыть все окна игры',
-    hint: 'Закрыть все запущенные окна игры'
-  }
+  { id: 'caravan', type: 'action', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' }
+  // «Закрыть все окна игры» здесь не карточка скрипта: действие живёт в блоке «Окна игры»
+  // ниже, рядом со списком окон, к которому относится.
 ];
 
 const CHECKS = SCRIPTS.filter(s => s.type === 'check');
@@ -136,8 +131,6 @@ export function renderTools() {
       </div>
     </section>`;
   fillWindows();
-  // Таблица парсеров подписана на изменения, но раздел мог ещё не открываться
-  refreshParserHealthPanel();
 }
 
 /** Список окон игры: сначала кэш, потом живое обновление из Rust. */

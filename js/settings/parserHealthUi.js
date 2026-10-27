@@ -93,12 +93,7 @@ async function copyDiagnostics(which) {
   );
 }
 
-/**
- * Наполнить панель состояния парсеров, если она есть на странице.
- *
- * Раздел «Инструменты» рисуется при переходе на вкладку, то есть позже подписки
- * на изменения: без этого вызова таблица осталась бы пустой до первого события.
- */
+/** Наполнить панель состояния парсеров сейчас (панель живёт в «Настройки → Оптимизация»). */
 export function refreshParserHealthPanel() {
   render(getParserHealth());
 }
@@ -119,8 +114,10 @@ export function initParserHealthUi() {
       return;
     }
     if (target.closest('[data-health-open]')) {
-      // «Состояние парсеров» живёт в разделе «Инструменты»: это диагностика, а не настройка
-      document.querySelector('.tab[data-tab="tools"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      // «Состояние парсеров» живёт в «Настройки → Оптимизация»: открываем вкладку настроек,
+      // переключаем раздел (остальные скрыты) и раскрываем панель
+      document.querySelector('.tab[data-tab="settings"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      window.dispatchEvent(new CustomEvent('tf:open-section', { detail: { id: 'settings-optimization' } }));
       const panel = document.getElementById('parser-health-panel');
       if (panel instanceof HTMLDetailsElement) panel.open = true; // панель свёрнута по умолчанию
       panel?.scrollIntoView({ block: 'start' });

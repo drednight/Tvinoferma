@@ -176,15 +176,16 @@ describe('смысловые группы настроек', () => {
     for (const [group, ids] of Object.entries({
       app: ['settings-system', 'settings-launcher', 'settings-browser', 'settings-tray', 'settings-notifications'],
       sync: ['settings-scripts', 'settings-freshness', 'log-hub-panel'],
+      optimization: ['parser-health-panel'],
       updates: ['settings-update-panel'],
       data: ['settings-backups', 'settings-transfer', 'settings-security'],
       help: ['guide-library', 'settings-hotkeys']
     })) {
       for (const id of ids) expect(doc.querySelector(`#settings-${group} #${id}`)).not.toBeNull();
     }
-    // «Состояние парсеров» — это диагностика, а не настройка: панель уехала в «Инструменты»
+    // «Состояние парсеров» переехало из «Инструментов» в «Настройки → Оптимизация»
     expect(doc.querySelector('#settings-sync #parser-health-panel')).toBeNull();
-    expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).not.toBeNull();
+    expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).toBeNull();
     for (const link of doc.querySelectorAll('.settings-nav a'))
       expect(doc.querySelector(link.getAttribute('href'))).not.toBeNull();
     expect(doc.querySelector('#danger-zone').closest('.settings-group')).toBeNull();

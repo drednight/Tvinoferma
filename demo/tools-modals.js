@@ -6,7 +6,9 @@
 // Данные фейковые: персонажи вымышлены, «запуск» имитируется simulate(), ничего не уходит
 // на сайт игры и не пишется в хранилище приложения.
 //
-// Пять окон на одном сценарии «Промокод»:
+// Пять вариантов окон × четыре сценария. «Промокод» нарисован здесь вручную,
+// остальные три («Передача», «Подарки», «Сундук караванщика») открывает общий
+// движок demo/scenarios.js — сценарий выбирается переключателем над карточками:
 //   0 current — копия текущего диалога promo.js;
 //   A wizard  — мастер шагов «Коды → Персонажи → Проверка → Выполнение»;
 //   B split   — два столбца: настройка слева, живой ход работы справа;
@@ -30,19 +32,11 @@ import {
   MAX_CODES,
   codeKey
 } from '../js/modules/automation/promoCore.js';
+import { CHARS, PARTIES, sleep, rand, pick, byNick, dot, hhmmss, el } from './lab-data.js';
+import { openScenario } from './scenarios.js';
 
-/* ============================== фейковые данные ============================== */
-
-const CHARS = [
-  { id: 'c1', nick: 'Звеномир', cls: 'Воин', party: 'Альфа', isLoggedIn: true },
-  { id: 'c2', nick: 'Тихомир', cls: 'Маг', party: 'Альфа', isLoggedIn: true },
-  { id: 'c3', nick: 'Радовика', cls: 'Лучница', party: 'Браво', isLoggedIn: false },
-  { id: 'c4', nick: 'Светолика', cls: 'Жрица', party: 'Альфа', isLoggedIn: true },
-  { id: 'c5', nick: 'Братислав', cls: 'Воин', party: 'Браво', isLoggedIn: null },
-  { id: 'c6', nick: 'Милослава', cls: 'Маг', party: 'Браво', isLoggedIn: true },
-  { id: 'c7', nick: 'Горыня', cls: 'Варвар', party: 'Альфа', isLoggedIn: false },
-  { id: 'c8', nick: 'Ярополк', cls: 'Паладин', party: 'Браво', isLoggedIn: true }
-];
+/* ==================== фейковые данные сценария «Промокод» ==================== */
+// Персонажи, пати и мелкие помощники общие для всех сценариев — живут в lab-data.js.
 
 const CODES_DEFAULT = 'PWZNANIYA26, PWMIZAR2026HB';
 
@@ -56,19 +50,6 @@ const REWARDS = [
   [{ name: 'Подарок гильдии', qty: 1, bound: true }],
   null
 ];
-
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-const rand = (a, b) => a + Math.random() * (b - a);
-const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
-const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
-const hhmmss = (d = new Date()) => d.toLocaleTimeString('ru-RU', { hour12: false });
-const el = (tag, cls, html) => {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (html != null) n.innerHTML = html;
-  return n;
-};
 
 /* ============================== имитация запуска ============================== */
 
@@ -819,7 +800,8 @@ function openWizard() {
 
 function openSplit() {
   let codesRaw = CODES_DEFAULT;
-  let target = 'logged'; // all | logged | alpha | manual
+  let target = 'logged'; // all | logged | party | manual
+  const parties = new Set([PARTIES[0]]);
   const manual = new Set(CHARS.filter(c => c.isLoggedIn === true).map(c => c.id));
   let running = null;
   let last = null;
@@ -838,7 +820,7 @@ function openSplit() {
   function targetChars() {
     if (target === 'all') return [...CHARS].sort(byNick);
     if (target === 'logged') return CHARS.filter(c => c.isLoggedIn === true).sort(byNick);
-    if (target === 'alpha') return CHARS.filter(c => c.party === 'Альфа').sort(byNick);
+    if (target === 'party') return CHARS.filter(c => parties.has(c.party)).sort(byNick);
     return CHARS.filter(c => manual.has(c.id)).sort(byNick);
   }
 
@@ -857,9 +839,10 @@ function openSplit() {
           <div class="sp-radios" id="sp-radios">
             <label class="sp-radio"><input type="radio" name="sp-target" value="logged" checked><span>🟢 Только с входом</span><small>${CHARS.filter(c => c.isLoggedIn === true).length} персонажей</small></label>
             <label class="sp-radio"><input type="radio" name="sp-target" value="all"><span>👥 Все</span><small>${CHARS.length} персонажей</small></label>
-            <label class="sp-radio"><input type="radio" name="sp-target" value="alpha"><span>⚔️ Пати «Альфа»</span><small>${CHARS.filter(c => c.party === 'Альфа').length} персонажей</small></label>
+            <label class="sp-radio"><input type="radio" name="sp-target" value="party"><span>🛡 По пати…</span><small>${PARTIES.length} пати на выбор</small></label>
             <label class="sp-radio"><input type="radio" name="sp-target" value="manual"><span>🖐 Выбрать вручную</span><small>отметить в списке</small></label>
           </div>
+          <div class="promo-list sp-manual" id="sp-parties" hidden></div>
           <div class="promo-list sp-manual" id="sp-manual" hidden></div>
         </div>
         <label class="sp-check"><input type="checkbox" checked disabled> Пропускать уже введённые (по журналу)</label>
@@ -898,6 +881,14 @@ function openSplit() {
         <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)}</span></label>`
       )
       .join('');
+  }
+
+  function partiesListHtml() {
+    return PARTIES.map(
+      p =>
+        `<label class="promo-item"><input type="checkbox" data-party="${escapeHtml(p)}" ${parties.has(p) ? 'checked' : ''}>
+        <b>🛡 ${escapeHtml(p)}</b><span class="promo-muted promo-item-tags">${CHARS.filter(c => c.party === p).length} персонажей</span></label>`
+    ).join('');
   }
 
   /** Пересчёт плана: числа слева, таблица справа (в состоянии «план»), подпись кнопки запуска. */
@@ -1015,7 +1006,13 @@ function openSplit() {
     const t = e.target;
     if (t.name === 'sp-target') {
       target = t.value;
+      $('sp-parties').hidden = target !== 'party';
       $('sp-manual').hidden = target !== 'manual';
+      updatePlan();
+    }
+    if (t.matches('[data-party]')) {
+      if (t.checked) parties.add(t.dataset.party);
+      else parties.delete(t.dataset.party);
       updatePlan();
     }
     if (t.matches('[data-mid]')) {
@@ -1046,6 +1043,7 @@ function openSplit() {
       manual.clear();
       chars.forEach(c => manual.add(c.id));
       dlg.body.querySelector('input[name="sp-target"][value="manual"]').checked = true;
+      $('sp-parties').hidden = true;
       $('sp-manual').hidden = false;
       $('sp-manual').innerHTML = manualListHtml();
       updatePlan();
@@ -1053,6 +1051,7 @@ function openSplit() {
     }
   });
 
+  $('sp-parties').innerHTML = partiesListHtml();
   $('sp-manual').innerHTML = manualListHtml();
   updatePlan();
   return dlg;
@@ -1064,7 +1063,8 @@ function openSplit() {
 
 function openQuick() {
   let codesRaw = CODES_DEFAULT;
-  let target = 'logged'; // all | logged | alpha | manual
+  let target = 'logged'; // all | logged | party | manual
+  const parties = new Set([PARTIES[0]]);
   const manual = new Set(CHARS.filter(c => c.isLoggedIn === true).map(c => c.id));
 
   const dlg = openOverlay({ title: '🎁 Промокоды' });
@@ -1074,7 +1074,7 @@ function openQuick() {
   function targetChars() {
     if (target === 'all') return [...CHARS].sort(byNick);
     if (target === 'logged') return CHARS.filter(c => c.isLoggedIn === true).sort(byNick);
-    if (target === 'alpha') return CHARS.filter(c => c.party === 'Альфа').sort(byNick);
+    if (target === 'party') return CHARS.filter(c => parties.has(c.party)).sort(byNick);
     return CHARS.filter(c => manual.has(c.id)).sort(byNick);
   }
 
@@ -1091,9 +1091,10 @@ function openQuick() {
       <div class="ql-seg" id="ql-seg" role="radiogroup" aria-label="Кому активировать коды">
         <button type="button" data-t="all">Все <b>${CHARS.length}</b></button>
         <button type="button" data-t="logged" class="is-on">С входом <b>${CHARS.filter(c => c.isLoggedIn === true).length}</b></button>
-        <button type="button" data-t="alpha">Альфа <b>${CHARS.filter(c => c.party === 'Альфа').length}</b></button>
+        <button type="button" data-t="party">Пати <b>${PARTIES.length}</b></button>
         <button type="button" data-t="manual">Вручную <b id="ql-manual-n">${manual.size}</b></button>
       </div>
+      <div class="promo-list ql-manual" id="ql-parties" hidden></div>
       <div class="promo-list ql-manual" id="ql-manual" hidden></div>
     </div>
     <p class="ql-summary" id="ql-summary"></p>`;
@@ -1123,6 +1124,11 @@ function openQuick() {
     $('ql-manual-n').textContent = String(manual.size);
   }
 
+  $('ql-parties').innerHTML = PARTIES.map(
+    p =>
+      `<label class="promo-item"><input type="checkbox" data-party="${escapeHtml(p)}" ${parties.has(p) ? 'checked' : ''}>
+      <b>🛡 ${escapeHtml(p)}</b><span class="promo-muted promo-item-tags">${CHARS.filter(c => c.party === p).length} персонажей</span></label>`
+  ).join('');
   $('ql-manual').innerHTML = [...CHARS]
     .sort(byNick)
     .map(
@@ -1140,6 +1146,11 @@ function openQuick() {
   });
   dlg.body.addEventListener('change', e => {
     const t = e.target;
+    if (t.matches('[data-party]')) {
+      if (t.checked) parties.add(t.dataset.party);
+      else parties.delete(t.dataset.party);
+      updateSummary();
+    }
     if (t.matches('[data-mid]')) {
       if (t.checked) manual.add(t.dataset.mid);
       else manual.delete(t.dataset.mid);
@@ -1153,6 +1164,7 @@ function openQuick() {
     $('ql-seg')
       .querySelectorAll('button')
       .forEach(b => b.classList.toggle('is-on', b === seg));
+    $('ql-parties').hidden = target !== 'party';
     $('ql-manual').hidden = target !== 'manual';
     updateSummary();
   });
@@ -1533,8 +1545,7 @@ function renderToolsReplica() {
       label: 'Подарки',
       hint: 'Купить подарки за Древние монеты'
     },
-    { id: 'caravan', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' },
-    { id: 'close-game', ico: '🛑', label: 'Закрыть все окна игры', hint: 'Закрыть все запущенные окна игры' }
+    { id: 'caravan', ico: '🧰', label: 'Сундук караванщика', hint: 'Открыть сундуки в инвентаре' }
   ];
   const card = s => `
     <button type="button" class="tools-card" data-replica="${escapeHtml(s.id)}" title="${escapeHtml(s.hint)}">
@@ -1548,7 +1559,7 @@ function renderToolsReplica() {
         <div class="tools-grid tools-grid--check">${checks.map(card).join('')}</div>
       </div>
       <div class="tools-group">
-        <header class="tools-group-head"><h4>Операции</h4><p class="muted">Открывают большие диалоги. В демо все показаны на сценарии «Промокод».</p></header>
+        <header class="tools-group-head"><h4>Операции</h4><p class="muted">Открывают большие диалоги — в демо у каждой операции своё окно.</p></header>
         <div class="tools-grid tools-grid--action">${actions.map(card).join('')}</div>
       </div>
     </div>`;
@@ -1557,6 +1568,7 @@ function renderToolsReplica() {
     if (!btn) return;
     const id = btn.dataset.replica;
     if (id === 'promo') return openCurrent();
+    if (id === 'transfer' || id === 'shop' || id === 'caravan') return openScenario(id, 'current');
     if (id === 'check-auth' || id === 'update-balance' || id === 'update-marathons') {
       return toast(
         'У проверок окон нет: тост «запускаю…», работа в журнале, тост «завершено». Идея №6 — прогресс прямо на карточке.',
@@ -1564,22 +1576,26 @@ function renderToolsReplica() {
         4200
       );
     }
-    if (id === 'close-game')
-      return toast(
-        '«Закрыть окна» открывает только подтверждение (confirmModal) — его вариант не нужен.',
-        'info',
-        4200
-      );
-    toast('В демо все диалоги показаны на сценарии «Промокод» — откройте любой вариант ниже.', 'info', 4200);
   });
 }
 
 const VARIANTS = { current: openCurrent, wizard: openWizard, split: openSplit, quick: openQuick, console: openConsole };
 
+/** Сценарий, выбранный переключателем над карточками: promo нарисован здесь, остальные — в scenarios.js. */
+let currentScript = 'promo';
+
 document.addEventListener('click', e => {
+  const scriptBtn = e.target.closest('[data-script-pick]');
+  if (scriptBtn) {
+    currentScript = scriptBtn.dataset.scriptPick;
+    document.querySelectorAll('[data-script-pick]').forEach(b => b.classList.toggle('is-on', b === scriptBtn));
+    return;
+  }
   const btn = e.target.closest('[data-open-variant]');
   if (!btn) return;
-  VARIANTS[btn.dataset.openVariant]?.();
+  const variant = btn.dataset.openVariant;
+  if (currentScript === 'promo') return VARIANTS[variant]?.();
+  return openScenario(currentScript, variant);
 });
 
 renderToolsReplica();

@@ -587,7 +587,7 @@
   top: 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 0;
 }
 /* На узком окне места для колонки нет: разделы возвращаются в ряд карточек сверху */
@@ -603,24 +603,48 @@
   }
 }
 .settings-nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 52px;
-  padding: 8px 11px;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 13px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-1);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
   text-decoration: none;
+  overflow: hidden;
   transition:
     border-color var(--speed) var(--ease),
     background var(--speed) var(--ease),
+    transform var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
+}
+/* Акцентная полоса у левого края: вырастает на активном разделе */
+.settings-nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 62%;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  opacity: 0;
+  transform: translateY(-50%) scaleY(0.25);
+  transition:
+    opacity var(--speed) var(--ease),
     transform var(--speed) var(--ease);
 }
 .settings-nav-item:hover {
   border-color: var(--border-strong);
-  background: var(--surface-2);
-  transform: translateY(-1px);
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.settings-nav-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 /* Пункт настроек — ссылка, а для ссылок в приложении действует общее правило
    «подчёркивать при наведении» (base.css). Здесь оно неуместно: карточка уже
@@ -632,23 +656,38 @@
 }
 .settings-nav-item.is-active {
   border-color: var(--accent-line);
-  background: linear-gradient(180deg, var(--accent-soft), transparent);
+  background: linear-gradient(180deg, var(--accent-soft), var(--surface-1) 72%);
+}
+.settings-nav-item.is-active::before {
+  opacity: 1;
+  transform: translateY(-50%) scaleY(1);
 }
 .settings-nav-icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-dim);
-  font-size: 0.95rem;
+  font-size: 1.15rem;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
+}
+.settings-nav-item:hover .settings-nav-icon {
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 .settings-nav-item.is-active .settings-nav-icon {
   border-color: var(--accent-line);
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-2));
   color: var(--accent);
+  box-shadow: 0 0 14px rgba(110, 142, 248, 0.28);
 }
 .settings-nav-copy {
   display: grid;
@@ -656,16 +695,30 @@
   min-width: 0;
 }
 .settings-nav-copy strong {
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 650;
   color: var(--text);
+  letter-spacing: 0.01em;
+}
+.settings-nav-item.is-active .settings-nav-copy strong {
+  color: var(--accent);
 }
 .settings-nav-copy small {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-nav-item,
+  .settings-nav-item::before,
+  .settings-nav-icon {
+    transition: none;
+  }
+  .settings-nav-item:hover {
+    transform: none;
+  }
 }
 .settings-group {
   margin-bottom: 32px;
@@ -720,19 +773,61 @@
   border-radius: var(--radius-sm);
   background: var(--surface-1);
 }
+.update-history-item {
+  overflow: hidden;
+}
 .update-history-item summary {
-  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   cursor: pointer;
   font-weight: 600;
 }
+.update-history-item summary:hover {
+  background: var(--surface-2);
+}
+.update-history-item summary .uh-ver {
+  font-size: 0.9rem;
+}
+.uh-date {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.uh-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
 .update-history-body {
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px 14px 12px;
   border-top: 1px solid var(--border);
   font-size: 0.82rem;
-  white-space: pre-wrap;
-  max-height: 260px;
+  max-height: 320px;
   overflow: auto;
+}
+.uh-lead {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+}
+.uh-h {
+  margin: 12px 0 4px;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.uh-ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.uh-ul li::marker {
+  color: var(--text-faint);
 }
 
 /* Таблица диагностики прокручивается внутри панели, а не раздвигает всю страницу. */
