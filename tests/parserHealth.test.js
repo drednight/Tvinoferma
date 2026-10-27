@@ -233,6 +233,28 @@ describe('плашка и таблица', () => {
     );
   });
 
+  it('кнопка плашки открывает «Синхронизацию» и раскрывает состояние парсеров', () => {
+    mount();
+    const oldPanel = document.getElementById('parser-health-panel');
+    const panel = document.createElement('details');
+    panel.id = oldPanel.id;
+    panel.innerHTML = oldPanel.innerHTML;
+    panel.scrollIntoView = vi.fn();
+    oldPanel.replaceWith(panel);
+    const section = vi.fn();
+    const tab = vi.fn();
+    window.addEventListener('tf:open-section', section);
+    document.querySelector('.tab[data-tab="settings"]').addEventListener('click', tab);
+    health.recordParserResult('balance', 'container_missing');
+    health.recordParserResult('balance', 'container_missing');
+    banner().querySelector('[data-health-open]').click();
+    expect(tab).toHaveBeenCalledOnce();
+    expect(section.mock.calls[0][0].detail.id).toBe('settings-sync');
+    expect(panel.open).toBe(true);
+    expect(panel.scrollIntoView).toHaveBeenCalled();
+    window.removeEventListener('tf:open-section', section);
+  });
+
   it('«Скопировать диагностику» кладёт текст в буфер обмена', async () => {
     mount();
     const writeText = vi.fn(async () => {});

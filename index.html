@@ -92,7 +92,7 @@
           <span class="next-nav-icon" aria-hidden="true">₽</span>
           <span class="next-nav-copy"><strong>Банк</strong><small>Деньги и магазин</small></span>
         </button>
-        <button class="tab" data-tab="tools" data-subtitle="Скрипты, окна игры и состояние парсеров." title="Ctrl+7">
+        <button class="tab" data-tab="tools" data-subtitle="Скрипты и окна игры." title="Ctrl+7">
           <span class="next-nav-icon" aria-hidden="true">⚡</span>
           <span class="next-nav-copy"><strong>Инструменты</strong><small>Скрипты и окна игры</small></span>
         </button>
@@ -263,8 +263,7 @@
         <div class="settings-layout">
         <nav class="settings-nav" aria-label="Разделы настроек">
           <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
-          <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты и свежесть данных</small></span></a>
-          <a class="settings-nav-item" href="#settings-optimization"><span class="settings-nav-icon" aria-hidden="true">🩺</span><span class="settings-nav-copy"><strong>Оптимизация</strong><small>Состояние парсеров и диагностика</small></span></a>
+          <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты, свежесть и диагностика</small></span></a>
           <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
           <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
           <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
@@ -519,10 +518,8 @@
         </details>
             </div>
           </div>
-        </section>
-        <section class="settings-group" id="settings-optimization" aria-labelledby="settings-optimization-title">
-          <header class="settings-group-head"><h3 id="settings-optimization-title">Оптимизация</h3><p class="muted">Здоровье парсеров: как приложение читает сайт и что делать, если сайт изменился.</p></header>
-          <!-- Панель во всю ширину раздела: таблица парсеров широкая, колонка её сжимала.
+          <!-- «Состояние парсеров» — часть «Синхронизации»: отдельного раздела «Оптимизация» нет (решение автора).
+               Панель во всю ширину раздела: таблица парсеров широкая, колонка её сжимала.
                В разметке, а не в скрипте: нужна всегда, и свёрнутое состояние проверяется тестами. -->
           <details class="panel fold" id="parser-health-panel">
             <summary>
@@ -572,8 +569,8 @@
           </div>
           <div class="update-changelog">
             <strong>История обновлений</strong>
-            <p class="muted">Список версий и изменения в них: нажмите на версию, чтобы раскрыть.</p>
-            <div id="update-history-list" class="update-history-list"></div>
+            <p class="muted">Нажмите на версию, чтобы раскрыть изменения. Более ранние записи доступны прокруткой списка.</p>
+            <div id="update-history-list" class="update-history-list" role="region" aria-label="История обновлений" tabindex="0"></div>
           </div>
         </div>
         </section>
@@ -621,8 +618,8 @@
                 </div>
                 <div class="setting-row" id="feedback-telegram-row" hidden>
                   <div>
-                    <strong>Telegram автора</strong>
-                    <p class="muted">Быстрый способ написать вживую: вопросы, идеи и скриншоты ошибок.</p>
+                    <strong>Обратная связь в Telegram</strong>
+                    <p class="muted">Вопросы, идеи и скриншоты ошибок. Не отправляйте пароли и другие секреты.</p>
                   </div>
                   <a class="btn" id="feedback-telegram-link" href="#" target="_blank" rel="noopener">Открыть Telegram</a>
                 </div>

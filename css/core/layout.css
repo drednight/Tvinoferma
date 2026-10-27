@@ -584,9 +584,15 @@
 
 .settings-nav {
   position: sticky;
-  top: 16px;
+  top: calc(var(--topbar-h, 64px) + 16px);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  /* Явная высота нужна, чтобы 1fr действительно распределял свободное место.
+     Когда строкам не хватает места, сохраняем их минимальную высоту и прокрутку. */
+  height: max(0px, calc(100vh - var(--topbar-h, 64px) - 56px));
+  grid-auto-rows: minmax(72px, 1fr);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   gap: 8px;
   margin-bottom: 0;
 }
@@ -599,6 +605,10 @@
   .settings-nav {
     position: static;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    height: auto;
+    max-height: min(40vh, 360px);
+    grid-auto-rows: minmax(64px, auto);
+    overflow-y: auto;
     gap: 8px;
   }
 }
@@ -765,22 +775,31 @@
   gap: 8px;
 }
 .update-history-list {
-  display: grid;
-  gap: 8px;
+  --history-gap: 8px;
+  --history-row: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--history-gap);
+  /* Пять заголовков по 48px и четыре промежутка. Раскрытая запись
+     тоже прокручивается внутри списка, а старые версии остаются доступными. */
+  max-height: calc(5 * var(--history-row) + 4 * var(--history-gap));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .update-history-item {
+  flex: 0 0 auto; /* свёрнутые записи не сжимаются, даже если их много */
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-1);
-}
-.update-history-item {
-  overflow: hidden;
 }
 .update-history-item summary {
   display: flex;
   align-items: center;
   gap: 10px;
+  height: calc(var(--history-row) - 2px); /* ещё 2px — рамка карточки */
   padding: 10px 12px;
+  overflow: hidden;
   cursor: pointer;
   font-weight: 600;
 }

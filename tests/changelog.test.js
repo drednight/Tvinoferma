@@ -54,12 +54,13 @@ describe('разбор CHANGELOG.md', () => {
 });
 
 describe('HTML истории', () => {
-  it('карточка на выпуск: первая раскрыта, версия, дата и число записей', () => {
+  it('карточка на выпуск: все свёрнуты, версия, дата и число записей', () => {
     const html = renderHistoryHtml(parseChangelog(real));
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const items = [...doc.querySelectorAll('details.update-history-item')];
     expect(items.length).toBeGreaterThanOrEqual(15);
-    expect(items[0].hasAttribute('open')).toBe(true);
+    // Все выпуски свёрнуты: в списке видно последние пять, более старые — за прокруткой
+    expect(items[0].hasAttribute('open')).toBe(false);
     expect(items[1].hasAttribute('open')).toBe(false);
     expect(items[0].querySelector('.uh-ver').textContent).toBe('🚧 В разработке');
     const v220 = items.find(d => d.querySelector('.uh-ver').textContent.includes('2.2.0'));
@@ -67,6 +68,22 @@ describe('HTML истории', () => {
     expect(v220?.querySelector('.uh-count').textContent).toMatch(/запис/);
     expect(v220?.querySelectorAll('.uh-ul li').length).toBeGreaterThan(5);
     expect(v220?.querySelector('.uh-h').textContent).toMatch(/Улучшения|Исправления/);
+  });
+
+  it('все выпуски остаются в списке, который ограничен пятью заголовками и прокручивается', () => {
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    const list = css.match(/\.update-history-list \{([^}]*)\}/)?.[1] || '';
+    expect(list).toMatch(/--history-row:\s*48px/);
+    expect(list).toMatch(/max-height:\s*calc\(5\s*\*\s*var\(--history-row\)/);
+    expect(list).toMatch(/overflow-y:\s*auto/);
+    expect(css).toMatch(/\.update-history-item \{[^}]*flex:\s*0 0 auto/);
+    const doc = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+    const region = doc.querySelector('#update-history-list');
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(region.getAttribute('aria-label')).toBe('История обновлений');
+    expect(renderHistoryHtml(parseChangelog(real)).match(/class="update-history-item"/g)).toHaveLength(
+      parseChangelog(real).length
+    );
   });
 
   it('версии и текст экранируются', () => {

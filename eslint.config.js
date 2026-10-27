@@ -2,8 +2,8 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  // demo/ — площадка макетов (лаборатория окон скриптов), не код приложения: линтер там
-  // лишний, форматирование обеспечивает prettier, в сборку и тесты демо не попадает.
+  // demo/ — отдельная площадка макетов, в сборку приложения не входит. Её сценарии
+  // проверяются тестами в tests/, форматирование обеспечивает prettier.
   { ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'public/**', 'coverage/**', 'demo/**'] },
   js.configs.recommended,
   {
