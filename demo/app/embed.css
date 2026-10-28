@@ -1,0 +1,65 @@
+.demo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.is-demo-embedded {
+  --text-faint: #8b96ac;
+}
+/* Встроенный снимок использует родительскую навигацию, но сохраняет все страницы и их стили. */
+.is-demo-embedded body[data-ui-style='next'] .app-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+.is-demo-embedded body[data-ui-style='next'] .next-sidebar,
+.is-demo-embedded body[data-ui-style='next'] .topbar {
+  display: none !important;
+}
+.is-demo-embedded body[data-ui-style='next'] .content {
+  --next-content-inset: 24px;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: 24px 24px 82px;
+}
+.is-demo-embedded body[data-ui-style='next'] .page.active {
+  min-width: 0;
+}
+.is-demo-embedded body[data-ui-style='next'] .settings-layout {
+  min-height: 0;
+}
+.is-demo-embedded .demo-replica-banner {
+  display: none;
+}
+.demo-replica-banner {
+  padding: 9px 20px;
+  background: #342d50;
+  color: #f2eeff;
+  border-bottom: 1px solid #6f619e;
+  font:
+    600 13px/1.5 system-ui,
+    sans-serif;
+}
+.demo-replica-banner a {
+  color: #e7deff;
+  text-decoration: underline;
+  margin-left: 12px;
+}
+@media (max-width: 620px) {
+  .is-demo-embedded body[data-ui-style='next'] .content {
+    --next-content-inset: 14px;
+    padding: 18px 14px 82px;
+  }
+  .is-demo-embedded #character-grid,
+  .is-demo-embedded .pt-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .is-demo-embedded .character-card .card-footer,
+  .is-demo-embedded .pt-actions {
+    flex-wrap: wrap;
+  }
+}

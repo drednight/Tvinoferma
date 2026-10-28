@@ -1,0 +1,203 @@
+/* css/core/serverStatus.css
+   Плашка «Статус серверов» (шапка и окно передачи предметов, Issue #26).
+   Смысл несут точка и подпись, цвет — только подкрепление. */
+
+.server-status {
+  flex: 1 1 280px;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+.srv-plaque {
+  max-width: 100%;
+  min-width: 0;
+  padding: 7px 14px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  display: grid;
+  gap: 5px;
+}
+.srv-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.76rem;
+}
+.srv-head b {
+  font-size: 0.8rem;
+}
+.srv-age {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.srv-plaque.is-warn .srv-age {
+  color: var(--warning);
+}
+.srv-plaque.is-busy .srv-age {
+  color: var(--accent);
+}
+/* Сетка, а не перенос строки: при flex-wrap каждая следующая строка начиналась заново от
+   левого края, и точка «Капеллы» вставала левее точки «Фенрира» — строки опирались на
+   разную ширину названий. В сетке колонки общие, поэтому точки стоят друг под другом. */
+.srv-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6em, max-content));
+  gap: 4px 14px;
+  justify-content: start;
+}
+.srv {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  min-width: 0;
+}
+.srv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex: none;
+}
+.srv.is-on .srv-dot {
+  background: var(--success);
+  box-shadow: 0 0 0 2px rgba(158, 206, 106, 0.18);
+}
+.srv.is-off .srv-dot {
+  background: var(--danger);
+}
+.srv.is-off {
+  color: var(--text-dim);
+}
+
+/* В окне передачи плашка занимает всю ширину слева от кнопок обновления */
+.tr-top .server-status {
+  justify-content: flex-start;
+}
+.tr-top .srv-plaque {
+  width: 100%;
+}
+@media (max-width: 900px) {
+  .server-status {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+/* --- Сворачиваемый блок «Статус серверов» в окне передачи (js/modules/automation/transfer.js) ---
+   Сам список серверов в передаче не участвует (сервер выбирается в каждой строке), поэтому
+   свёрнут: видно только заголовок, точки «в сети/не в сети» в списках строк работают как раньше. */
+.tr-servers {
+  margin-bottom: 10px;
+}
+.tr-servers > summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 4px 0;
+  list-style: revert;
+}
+.tr-servers > summary:hover {
+  color: var(--text);
+}
+.tr-servers[open] > summary {
+  margin-bottom: 8px;
+}
+
+/* --- Часы по Москве над плашкой «Статус серверов» (js/modules/servers/mskClock.js) ---
+   Цифры моноширинные (tabular-nums): ширина не прыгает при смене секунды. */
+.msk-clock {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 9px 12px 10px;
+  border: 1px solid rgba(110, 142, 248, 0.2);
+  border-radius: 10px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(110, 142, 248, 0.16), transparent 62%),
+    linear-gradient(135deg, rgba(110, 142, 248, 0.06), rgba(18, 22, 31, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.msk-clock-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.msk-clock-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px rgba(110, 142, 248, 0.2);
+  animation: msk-clock-pulse 2s ease-in-out infinite;
+}
+.msk-clock-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msk-clock-zone {
+  padding: 1px 6px;
+  border: 1px solid var(--accent-line, rgba(110, 142, 248, 0.3));
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft, rgba(110, 142, 248, 0.12));
+  color: var(--accent);
+  letter-spacing: 0.04em;
+}
+.msk-clock-time {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 16px rgba(110, 142, 248, 0.35);
+  user-select: none;
+}
+.msk-clock-time b {
+  font-weight: inherit;
+  min-width: 1.2em;
+  text-align: center;
+}
+.msk-clock-time b[data-part='s'] {
+  color: var(--accent);
+}
+.msk-clock-time i {
+  padding: 0 1px;
+  color: var(--text-faint);
+  font-style: normal;
+  font-weight: 500;
+  transform: translateY(-1px);
+}
+@keyframes msk-clock-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .msk-clock-dot {
+    animation: none;
+  }
+}

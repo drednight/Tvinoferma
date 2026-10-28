@@ -1,0 +1,270 @@
+/* css/modules/guild.css
+   Скрытая панель клана под разделом «Сегодня». Вкладки у неё нет: панель появляется
+   после пасхалки в разделе промокодов. */
+
+/* Панель скрыта, пока фича выключена (атрибут hidden должен побеждать стили) */
+#guild-today[hidden] {
+  display: none !important;
+}
+
+/* Панель под колонками календаря */
+#guild-today:not([hidden]) {
+  margin: 12px 0;
+}
+
+.guild-card {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #d8ddd8);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--surface-1, transparent);
+}
+
+.guild-card h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.guild-card p {
+  margin: 0;
+}
+
+.guild-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.guild-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border, #d8ddd8);
+}
+
+.guild-event:first-of-type {
+  border-top: 0;
+}
+
+.guild-event-main {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.guild-event-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.guild-state {
+  min-width: 90px;
+  color: var(--muted, #68736b);
+  font-size: 0.85rem;
+}
+
+/* Ответ «Пойду»: событие остаётся на экране и выделяется синим градиентом */
+.guild-event.is-going,
+.guild-event.is-out {
+  margin: 2px 0;
+  padding: 8px 10px;
+  border-top-color: transparent;
+  border-radius: var(--radius-sm, 8px);
+}
+
+.guild-event.is-going {
+  background: linear-gradient(90deg, var(--accent-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+/* Ответ «Не пойду»: тот же вид, но красным */
+.guild-event.is-out {
+  background: linear-gradient(90deg, var(--danger-soft), transparent 72%);
+  box-shadow: inset 3px 0 0 0 var(--danger);
+}
+
+.guild-event.is-going + .guild-event,
+.guild-event.is-out + .guild-event {
+  border-top-color: transparent;
+}
+
+/* Две колонки в блоке клана на «Сегодня»: события слева, пати справа */
+.guild-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.guild-col {
+  min-width: 0;
+}
+
+.guild-col--parties {
+  padding-left: 14px;
+  border-left: 1px solid var(--border, #d8ddd8);
+}
+
+/* Событий и пати бывает много — колонки прокручиваются, а не растягивают «Сегодня» */
+.guild-cols .guild-events,
+.guild-cols .guild-parties {
+  max-height: 340px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+@media (max-width: 900px) {
+  .guild-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .guild-col--parties {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--border, #d8ddd8);
+    padding-top: 12px;
+  }
+}
+
+/* Опрос располагается отдельно, под событиями и пати, и целиком скрыт, если его нет. */
+.guild-poll {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.guild-poll-title {
+  margin: 0 0 8px;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.guild-poll a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guild-poll-hint {
+  font-size: 0.84rem;
+}
+
+.guild-poll-options {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  min-width: 0;
+  margin: 10px 0;
+  padding: 0;
+  border: 0;
+}
+
+.guild-poll-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.guild-poll-option:hover {
+  background: var(--surface-2);
+}
+
+.guild-poll-option input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: var(--accent);
+}
+
+.guild-poll-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Пати с составом: название, размер и копирование ников */
+.guild-parties-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.guild-parties-head b {
+  flex: 1 1 auto;
+}
+
+.guild-parties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guild-party {
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #d8ddd8);
+}
+
+.guild-party:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.guild-party-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.guild-party-head b {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Участник пати: иконка класса и ник */
+.guild-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+
+.guild-member {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--border, #d8ddd8);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-2, transparent);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.guild-member-ico {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+/* Свой персонаж: в списке виден, но в копирование не попадает */
+.guild-member.is-self {
+  border-color: var(--accent-line, #6e8ef8);
+  background: var(--accent-soft, rgba(110, 142, 248, 0.14));
+}

@@ -24,6 +24,25 @@ export const CHARS = [
 
 export const PARTIES = [...new Set(CHARS.map(c => c.party))];
 
+/** Когда окна открываются из полной копии, используют текущий вымышленный состав демо. */
+export function setLabRoster(characters, parties) {
+  const names = new Map(parties.map(party => [party.id, party.name]));
+  CHARS.splice(
+    0,
+    CHARS.length,
+    ...characters.map((character, index) => ({
+      id: character.id,
+      nick: character.nick,
+      cls: character.class || '',
+      party: names.get(character.mainPartyId) || '',
+      account: `site-${(index % 5) + 1}`,
+      isLoggedIn: character.isLoggedIn === true,
+      checking: character.checking === true
+    }))
+  );
+  PARTIES.splice(0, PARTIES.length, ...new Set(parties.map(party => party.name)));
+}
+
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const rand = (a, b) => a + Math.random() * (b - a);
 export const pick = arr => arr[Math.floor(Math.random() * arr.length)];

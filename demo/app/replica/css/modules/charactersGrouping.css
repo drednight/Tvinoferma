@@ -1,0 +1,42 @@
+/* css/modules/charactersGrouping.css
+   Группы и свой порядок в списке «Персонажи». */
+
+/* Заголовок группы: строка сетки во всю ширину */
+#character-grid > .chars-group-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 14px 0 2px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border, #d8ddd8);
+  font-size: 0.95rem;
+}
+
+#character-grid > .chars-group-head:first-child {
+  margin-top: 0;
+}
+
+/* Карточка, которую тянем */
+#character-grid .character-card[draggable='true'] {
+  cursor: grab;
+}
+
+#character-grid .character-card.is-dragging {
+  opacity: 0.45;
+  outline: 2px dashed var(--accent, #47785c);
+  outline-offset: 2px;
+}
+
+#character-grid .character-card[draggable='true']:hover {
+  box-shadow: 0 0 0 1px var(--accent-line, #47785c);
+}
+
+/* Место вставки: яркая полоса с той стороны карточки, куда встанет перетаскиваемая */
+#character-grid .character-card.drop-before {
+  box-shadow: -8px 0 0 0 var(--accent, #47785c);
+}
+
+#character-grid .character-card.drop-after {
+  box-shadow: 8px 0 0 0 var(--accent, #47785c);
+}

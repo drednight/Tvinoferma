@@ -1,0 +1,367 @@
+/* Экспериментальный каркас интерфейса.
+   Все правила ограничены data-ui-style="next": классический вариант остаётся без изменений. */
+
+.next-sidebar,
+.next-page-heading {
+  display: none;
+}
+
+body[data-ui-style='next'] {
+  --next-sidebar-w: 248px;
+  --content-max: 1720px;
+  background: radial-gradient(circle at 46% -12%, rgba(110, 142, 248, 0.08), transparent 34rem), var(--bg);
+}
+
+body[data-ui-style='next'] .app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--next-sidebar-w) minmax(0, 1fr);
+  /* Строка шапки — по содержимому, а не фиксированные 82px: док задач бывает выше
+     (две строки названия, шкала прогресса, кнопки), и при фиксированной высоте он
+     вылезал за подвал шапки прямо на границу содержимого. Свою минимальную высоту
+     шапка задаёт сама (min-height ниже). */
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+body[data-ui-style='next'] .next-sidebar {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px 14px;
+  border-right: 1px solid var(--border);
+  background: rgba(14, 18, 26, 0.96);
+  backdrop-filter: blur(18px);
+}
+
+.next-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 8px 22px;
+}
+.next-brand .brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+}
+.next-brand > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.next-brand strong {
+  font-size: 0.98rem;
+  letter-spacing: -0.01em;
+}
+.next-brand span {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-nav {
+  display: grid;
+  gap: 4px;
+}
+.next-nav .tab,
+.next-sidebar-bottom .tab {
+  width: 100%;
+  min-height: 54px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+.next-nav .tab.active,
+.next-sidebar-bottom .tab.active {
+  border-color: rgba(110, 142, 248, 0.22);
+  background: linear-gradient(90deg, rgba(110, 142, 248, 0.18), rgba(110, 142, 248, 0.08));
+  box-shadow: none;
+}
+.next-nav-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  background: var(--surface-1);
+  font-size: 0.72rem;
+}
+.next-nav .tab.active .next-nav-icon,
+.next-sidebar-bottom .tab.active .next-nav-icon {
+  border-color: var(--accent-line);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.next-nav-copy {
+  min-width: 0;
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+.next-nav-copy strong {
+  overflow: hidden;
+  font-size: 0.86rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+}
+.next-nav-copy small {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.69rem;
+  font-weight: 450;
+  text-overflow: ellipsis;
+}
+.next-nav .tab-count {
+  margin-left: auto;
+}
+
+.next-sidebar-bottom {
+  display: grid;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+.next-sidebar-divider {
+  height: 1px;
+  margin: 3px 0;
+  background: var(--border);
+}
+.next-sidebar-bottom .tab {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 12px;
+  text-align: left;
+}
+.next-sidebar .server-status {
+  width: 100%;
+  display: block;
+  flex: none;
+}
+.next-sidebar .srv-plaque {
+  width: 100%;
+  padding: 10px 11px;
+  border-radius: 10px;
+  border-color: rgba(110, 142, 248, 0.2);
+  background: linear-gradient(135deg, rgba(110, 142, 248, 0.1), rgba(18, 22, 31, 0.92));
+}
+.next-sidebar .srv-head {
+  display: grid;
+  gap: 2px;
+  align-items: start;
+}
+.next-sidebar .srv-head b {
+  color: var(--text);
+  font-size: 0.76rem;
+}
+/* Сетка, а не flex-wrap: при переносе каждая строка начиналась от левого края, и точки
+   вставали не друг под другом (ширина названий в строке разная). Здесь селектор с двумя
+   классами перебивал общее правило в serverStatus.css — поэтому сетку нужно задать и здесь. */
+.next-sidebar .srv-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6em, max-content));
+  justify-content: start;
+  margin-top: 3px;
+  gap: 5px 14px;
+}
+.next-sidebar .srv {
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.7rem;
+}
+
+body[data-ui-style='next'] .topbar {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  min-height: 82px;
+  padding: 12px 32px;
+  flex-wrap: nowrap;
+  background: rgba(11, 14, 20, 0.82);
+}
+body[data-ui-style='next'] .topbar > .brand,
+body[data-ui-style='next'] .topbar .tabs {
+  display: none;
+}
+body[data-ui-style='next'] .next-page-heading {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  margin-right: auto;
+}
+.next-page-heading h2 {
+  overflow: hidden;
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.next-page-heading .section-sub {
+  overflow: hidden;
+  margin: 0;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body[data-ui-style='next'] .topbar-right {
+  margin-left: auto;
+}
+
+body[data-ui-style='next'] .content {
+  --next-content-inset: 32px;
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  /* Контент занимает всё место между шапкой и низом окна: прежняя граница ширины
+     оставляла по бокам пустоты, а короткая страница — пустоту внизу. */
+  max-width: none;
+  margin: 0;
+  padding: 28px var(--next-content-inset) 42px;
+  display: flex;
+  flex-direction: column;
+}
+/* Меню настроек доходит до next-sidebar, а разделитель и основное содержимое
+   остаются на своём месте. У остальных страниц отступы не меняются. */
+@media (min-width: 981px) {
+  body[data-ui-style='next'] .page[data-section='settings'] .settings-layout {
+    margin-left: calc(-1 * var(--next-content-inset));
+    grid-template-columns: calc(var(--settings-nav-width) + var(--next-content-inset)) minmax(0, 1fr);
+  }
+}
+/* Когда меню расположено над содержимым, расширяем только его, а не всю страницу. */
+@media (min-width: 681px) and (max-width: 980px) {
+  body[data-ui-style='next'] .page[data-section='settings'] .settings-nav {
+    margin-left: calc(-1 * var(--next-content-inset));
+  }
+}
+/* Активная страница растягивается по всей высоте: фон и пустое место принадлежат ей,
+   а не «провисающему» между шапкой и содержимым. */
+body[data-ui-style='next'] .page.active {
+  flex: 1 0 auto;
+  min-width: 0;
+}
+body[data-ui-style='next'] .section-head {
+  margin-bottom: 22px;
+}
+body[data-ui-style='next'] .section-head h2 {
+  font-size: 1.65rem;
+  letter-spacing: -0.025em;
+}
+body[data-ui-style='next'] .section-sub {
+  max-width: 72ch;
+}
+body[data-ui-style='next'] .panel,
+body[data-ui-style='next'] .stat,
+body[data-ui-style='next'] .filters {
+  border-radius: 12px;
+}
+body[data-ui-style='next'] .stat-strip {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+@media (max-width: 980px) {
+  body[data-ui-style='next'] {
+    --next-sidebar-w: 76px;
+  }
+  body[data-ui-style='next'] .next-sidebar {
+    padding-inline: 10px;
+  }
+  .next-brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .next-brand > div:last-child,
+  .next-nav-copy,
+  .next-sidebar-bottom .next-nav-copy {
+    display: none;
+  }
+  .next-nav .tab,
+  .next-sidebar-bottom .tab {
+    justify-content: center;
+    padding-inline: 8px;
+  }
+  .next-nav .tab-count {
+    position: absolute;
+    margin: -28px -28px 0 0;
+  }
+  .next-sidebar .server-status,
+  .next-sidebar .msk-clock,
+  .next-sidebar-divider {
+    display: none;
+  }
+  body[data-ui-style='next'] .today-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'attention' 'summary';
+  }
+}
+
+@media (max-width: 680px) {
+  body[data-ui-style='next'] .app-shell {
+    display: flex;
+    padding-bottom: 70px;
+  }
+  body[data-ui-style='next'] .next-sidebar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 180;
+    width: auto;
+    height: 64px;
+    padding: 7px 10px;
+    border-top: 1px solid var(--border);
+    border-right: 0;
+    flex-direction: row;
+    gap: 6px;
+  }
+  .next-brand {
+    display: none;
+  }
+  .next-nav {
+    flex: 4;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+  .next-sidebar-bottom {
+    flex: 1;
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .next-sidebar-bottom .tab {
+    min-height: 48px;
+  }
+  .next-nav .tab {
+    min-height: 48px;
+  }
+  .next-nav-icon {
+    border: 0;
+    background: transparent;
+  }
+  body[data-ui-style='next'] .topbar {
+    min-height: 72px;
+    padding: 9px 16px;
+  }
+  body[data-ui-style='next'] .next-sidebar .server-status,
+  body[data-ui-style='next'] .next-sidebar .msk-clock {
+    display: none;
+  }
+  body[data-ui-style='next'] .content {
+    --next-content-inset: 16px;
+    padding: 20px var(--next-content-inset) 30px;
+  }
+}
