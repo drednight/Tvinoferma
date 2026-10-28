@@ -413,7 +413,10 @@ function initSettingsSections() {
     if (!link) return;
     event.preventDefault();
     openSettingsSection(link.getAttribute('href').slice(1));
-    body.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+    // В узком окне меню находится над содержимым, а не сбоку: прокрутка к body
+    // прятала его за шапкой сразу после выбора раздела.
+    const compact = window.matchMedia?.('(max-width: 980px)').matches;
+    (compact ? nav : body).scrollIntoView?.({ block: 'start', behavior: 'auto' });
   });
 
   // Переход по прямой ссылке: справочник и гайд ведут и на раздел (`#settings-sync`),

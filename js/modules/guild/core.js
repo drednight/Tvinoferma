@@ -8,10 +8,10 @@
 // выполняется в окне сайта, где модули приложения недоступны. Расхождение видно на тестах
 // по фикстуре tests/fixtures/site-guild-profile.html.
 //
-// Из страницы берём только две вещи: предстоящие события и «Пати в которых вы состоите».
-// Ники, твины и состав клана приложению не нужны.
+// Из страницы берём предстоящие события, свои пати и активный опрос.
 
 import { mskDate } from '../../core/msk.js';
+import { normalizeGuildPoll, parseGuildPoll } from './poll.js';
 
 /** Отметка на ивенте: значения радио на сайте. */
 export const RESPONSE_YES = 'yes';
@@ -53,7 +53,7 @@ const YEAR_SLACK_DAYS = 7;
  * @typedef {{ nick: string, cls: string, title: string }} GuildMember
  * @typedef {{ name: string, members: GuildMember[] }} GuildParty
  * @typedef {{ id: string, title: string, when: string, comment: string, response: string }} GuildEvent
- * @typedef {{ events: GuildEvent[], parties: GuildParty[], selfNick: string, syncedAt: number | null }} GuildData
+ * @typedef {{ events: GuildEvent[], parties: GuildParty[], selfNick: string, poll: any, syncedAt: number | null }} GuildData
  */
 
 const PARTIES_TITLE = 'Пати в которых вы состоите';
@@ -105,6 +105,7 @@ export function normalizeGuildData(raw) {
       }))
       .filter(p => p.name),
     selfNick: clean(src.selfNick),
+    poll: normalizeGuildPoll(src.poll),
     syncedAt: Number.isFinite(Number(src.syncedAt)) && Number(src.syncedAt) > 0 ? Number(src.syncedAt) : null
   };
 }
@@ -190,6 +191,7 @@ export function parseProfileDocument(document) {
     events: parseEvents(document),
     parties: parseParties(partiesColumn),
     selfNick: clean(document.querySelector(SELF_NICK)?.value),
+    poll: parseGuildPoll(document),
     syncedAt: null
   };
 }

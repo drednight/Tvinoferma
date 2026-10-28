@@ -516,22 +516,21 @@
           <p class="muted" style="margin-bottom: 8px;">По умолчанию показаны только записи текущего запуска. История не удаляется: включите «Показать прошлые сеансы», чтобы открыть прежние логи. Все логи в одном месте: скрипты (вход, балансы, марафоны), промокоды, передача предметов и запуски «Коллекции». Выберите вид, найдите запись поиском, нажмите на неё — откроются подробности. Если что-то пошло не так, скопируйте лог или сохраните список в файл и отправьте разработчику. Пароли и почты в логи не попадают. Данные лежат только на этом компьютере.</p>
           <div id="log-hub-root"></div>
         </details>
+        <!-- Диагностика — такая же сворачиваемая карточка, как остальные настройки синхронизации. -->
+        <details class="panel fold" id="parser-health-panel">
+          <summary>
+            <h3>🩺 Состояние парсеров</h3>
+            <p class="muted">Последние проверки страниц сайта и ошибки чтения.</p>
+          </summary>
+          <p class="muted health-explain">Если сайт изменит вёрстку, сохранённые данные останутся прежними; после повторных ошибок появится предупреждение «Парсер устарел».</p>
+          <div id="parser-health-list" role="region" aria-label="Состояние парсеров" tabindex="0"></div>
+          <div class="health-panel-footer">
+            <p class="muted" id="parser-health-config"></p>
+            <button type="button" class="btn small" data-health-copy="all">📋 Скопировать диагностику</button>
+          </div>
+        </details>
             </div>
           </div>
-          <!-- «Состояние парсеров» — часть «Синхронизации»: отдельного раздела «Оптимизация» нет (решение автора).
-               Панель во всю ширину раздела: таблица парсеров широкая, колонка её сжимала.
-               В разметке, а не в скрипте: нужна всегда, и свёрнутое состояние проверяется тестами. -->
-          <details class="panel fold" id="parser-health-panel">
-            <summary>
-              <h3>🩺 Состояние парсеров</h3>
-              <p class="muted">Приложение читает страницы pwonline.ru. Если сайт изменит вёрстку, парсер перестанет находить нужные элементы: вместо нулей вы увидите плашку «Парсер устарел», а данные в приложении останутся прежними. Внутри — результат последней проверки каждого парсера.</p>
-            </summary>
-            <div id="parser-health-list"></div>
-            <div class="setting-row">
-              <p class="muted" id="parser-health-config"></p>
-              <button type="button" class="btn" data-health-copy="all">📋 Скопировать диагностику</button>
-            </div>
-          </details>
         </section>
         <section class="settings-group" id="settings-updates" aria-labelledby="settings-updates-title">
           <header class="settings-group-head"><h3 id="settings-updates-title">Обновления</h3><p class="muted">Проверка новой версии обязательна при каждом запуске.</p></header>

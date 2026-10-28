@@ -173,7 +173,13 @@ describe('нормализация кэша', () => {
   });
 
   it('пустое значение даёт пустую сводку', () => {
-    expect(normalizeGuildData(undefined)).toEqual({ events: [], parties: [], selfNick: '', syncedAt: null });
+    expect(normalizeGuildData(undefined)).toEqual({
+      events: [],
+      parties: [],
+      selfNick: '',
+      poll: null,
+      syncedAt: null
+    });
   });
 });
 

@@ -8,7 +8,7 @@ import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, formatDelta, roundCoins } from '../../core/coins.js';
 import { confirmModal, toast } from '../../core/ui.js';
-import { getAuthState } from '../sync/authStatus.js';
+import { getAuthState, getAuthView } from '../sync/authStatus.js';
 import { getClassIconSrc } from '../../core/constants.js';
 import { mainPartyName, NO_PARTY_LABEL } from '../parties/membership.js';
 import { openOverlay } from './overlay.js';
@@ -57,6 +57,12 @@ const fmtDateTime = iso =>
     : '—';
 const coin = n => `<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> ${formatCoins(n || 0)}`;
 const charById = id => state.characters.find(c => c.id === id);
+/** Те же цвета и подписи авторизации, что на карточках персонажей и в скриптах. */
+const authAttrs = c => {
+  const auth = getAuthView(c);
+  return `data-auth-char="${escapeHtml(c.id)}" style="--state-c:${auth.color}" title="Вход на сайт: ${escapeHtml(auth.text)}"`;
+};
+const characterCell = c => (c ? `<td class="mr-status-name" ${authAttrs(c)}>${escapeHtml(c.nick)}</td>` : '<td>—</td>');
 /** Группа персонажа в марафоне — его основная пати; без пати — «Без пати». */
 const partyLabel = c => mainPartyName(c, state.parties) || NO_PARTY_LABEL;
 const findM = id => state.marathons.find(m => m.id === id);
@@ -104,6 +110,26 @@ export function renderMarathons() {
 }
 
 export function bindMarathons() {
+  if (!document.body.dataset.marathonAuthBound) {
+    document.body.dataset.marathonAuthBound = 'true';
+    document.addEventListener('tf:auth-status-changed', event => {
+      const char = charById(event.detail?.charId);
+      if (!char) return;
+      const auth = getAuthView(char);
+      document.querySelectorAll('#marathon-list [data-auth-char]').forEach(cell => {
+        if (cell.dataset.authChar !== String(char.id)) return;
+        cell.style.setProperty('--state-c', auth.color);
+        cell.title = `Вход на сайт: ${auth.text}`;
+        const label = cell.querySelector('[data-auth-label]');
+        if (label) label.textContent = auth.text;
+        const row = cell.closest('.mr-row');
+        if (row) {
+          row.classList.remove('mr-row--online', 'mr-row--offline', 'mr-row--checking');
+          row.classList.add(`mr-row--${getAuthState(char)}`);
+        }
+      });
+    });
+  }
   renderMarathons();
 }
 
@@ -451,7 +477,7 @@ function renderSeries(root, s) {
         <tbody>${charIds
           .map(cid => {
             const per = totals.map(x => x.t.perChar[cid]?.coins || 0);
-            return `<tr><td>${escapeHtml(charById(cid)?.nick || '—')}</td>${per.map(v => `<td>${v ? coin(v) : '<span class="muted">—</span>'}</td>`).join('')}<td><strong class="mr-gold">${coin(per.reduce((a, b) => a + b, 0))}</strong></td></tr>`;
+            return `<tr>${characterCell(charById(cid))}${per.map(v => `<td>${v ? coin(v) : '<span class="muted">—</span>'}</td>`).join('')}<td><strong class="mr-gold">${coin(per.reduce((a, b) => a + b, 0))}</strong></td></tr>`;
           })
           .join('')}</tbody>
         <tfoot><tr><td><strong>Всего</strong></td>${totals.map(x => `<td><strong>${coin(x.t.coins)}</strong></td>`).join('')}<td><strong class="mr-gold">${coin(coins)}</strong></td></tr></tfoot>
@@ -699,12 +725,12 @@ function matrix(m) {
           const className = escapeHtml(c.class || '');
           return `
         <tr class="${syncing ? 'is-syncing' : ''} mr-row mr-row--${authState}">
-          <td class="mr-name" style="--state-c:${authState === 'online' ? 'var(--ok)' : authState === 'checking' ? 'var(--warn)' : 'var(--danger)'}">
+          <td class="mr-name" ${authAttrs(c)}>
             <div class="mr-name-inner">
               <span class="mr-class-cell" title="${className || ''}">${className ? `<img src="${escapeHtml(getClassIconSrc(c.class))}" alt="" />` : ''}</span>
               <div class="mr-name-text">
                 <div class="mr-name-line"><strong>${escapeHtml(c.nick)}</strong></div>
-                <small class="muted">${syncing ? '⏳ сверка…' : queued ? 'в очереди' : authState === 'online' ? 'Онлайн' : authState === 'checking' ? 'Проверка…' : 'Оффлайн'}</small>
+                <small class="muted" ${syncing || queued ? '' : 'data-auth-label'}>${syncing ? '⏳ сверка…' : queued ? 'в очереди' : getAuthView(c).text}</small>
               </div>
             </div>
           </td>
@@ -790,7 +816,7 @@ function coinsSection(m, t) {
         <h3><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> По персонажам</h3>
         <div class="mr-table-wrap">
           <table class="mr-table"><thead><tr><th>Персонаж</th><th>Выполнено</th><th>Награды</th>${hasBonus ? '<th>🎁 Бонус</th>' : ''}<th title="Изменение баланса ДМ с сайта с первой сверки (для сравнения)">Δ баланса ДМ</th></tr></thead>
-          <tbody>${charRows.map(r => `<tr><td>${escapeHtml(charById(r.cid)?.nick || '—')}</td><td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td>${hasBonus ? `<td>${bonusCell(r.cid)}</td>` : ''}<td>${balanceDelta(r.cid)}</td></tr>`).join('')}</tbody>
+          <tbody>${charRows.map(r => `<tr>${characterCell(charById(r.cid))}<td>${r.done}/${r.assigned}</td><td class="mr-gold">${coin(r.coins)}</td>${hasBonus ? `<td>${bonusCell(r.cid)}</td>` : ''}<td>${balanceDelta(r.cid)}</td></tr>`).join('')}</tbody>
           <tfoot><tr><td><strong>Всего</strong></td><td>${t.done}/${t.cells}</td><td class="mr-gold"><strong>${coin(t.coins)}</strong></td>${hasBonus ? `<td><strong>${m.participantIds.filter(cid => bonusStatus(m, cid).some(b => b.reached)).length}</strong> получат</td>` : ''}<td></td></tr></tfoot></table>
         </div>
         ${hasBonus ? `<p class="muted tf-small">🎁 ${m.bonuses.map(b => `${escapeHtml(b.text || 'Бонус')} — за ${b.needTasks} выполн. заданий`).join('; ')}</p>` : ''}

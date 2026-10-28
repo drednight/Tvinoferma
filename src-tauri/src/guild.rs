@@ -3,13 +3,14 @@
 //! Зачем отдельный модуль, а не `open_sync_window`: окно персонажа имеет метку `sync-win-<id>`,
 //! и открыть в нём чужой сайт значит подменить окно pwonline.ru и сломать синхронизацию.
 //!
-//! Сводка профиля (события и пати) забирается командой `guild_sync`. Если окна клана нет,
+//! Сводка профиля (события, пати и опрос) забирается командой `guild_sync`. Если окна клана нет,
 //! она открывает СКРЫТОЕ окно с тем же профилем: вход сохраняется в профиле, поэтому после
 //! первого входа обновление работает без открытия сайта. Если сессия истекла, команда
 //! возвращает ошибку `login`.
 //!
 //! Отметка на ивенте уходит тем же запросом, что и форма сайта (`handlers/event_response.php`),
-//! ответ возвращается в hash (`#TFETA1_`).
+//! ответ возвращается в hash (`#TFETA1_`). Голос в опросе отправляется в `handlers/vote.php`
+//! только после проверки актуальных вариантов, результат возвращается в `#TFETV1_`.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,6 +28,8 @@ const GUILD_SCRIPT: &str = include_str!("scripts/guild.js");
 const REPORT_HASH: &str = "#TFETE1_";
 /// Начало hash с результатом отметки на ивенте.
 const ACTION_HASH: &str = "#TFETA1_";
+/// Отдельный hash с результатом голосования в опросе.
+const VOTE_HASH: &str = "#TFETV1_";
 /// Сколько ждём страницу профиля при обновлении, секунд.
 const SYNC_TIMEOUT_SECS: u64 = 25;
 /// Сколько ждём ответ сайта на отметку, секунд.
@@ -60,6 +63,9 @@ fn clan_window(app: &AppHandle) -> Option<WebviewWindow> {
 /// к взаимной блокировке, и `invoke` тогда не возвращается.
 fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, String> {
     let url = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
+    let origin =
+        serde_json::to_string(&url.origin().ascii_serialization()).map_err(|e| e.to_string())?;
+    let script = format!("window.__tfGuildOrigin = {};\n{}", origin, GUILD_SCRIPT);
     let handle = app.clone();
     WebviewWindowBuilder::new(app, GUILD_LABEL, WebviewUrl::External(url))
         .title("Клан")
@@ -67,7 +73,7 @@ fn create_clan_window(app: &AppHandle, visible: bool) -> Result<WebviewWindow, S
         .resizable(true)
         .visible(visible)
         .data_directory(profile_dir(app)?)
-        .initialization_script(GUILD_SCRIPT)
+        .initialization_script(script)
         .on_new_window(move |url, _features| {
             // Ссылки, которые сайт открывает в новом окне, показываем в этом же окне
             if matches!(url.scheme(), "http" | "https") {
@@ -237,14 +243,118 @@ async fn send_response(
     wait_for_hash(win, ACTION_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await
 }
 
+/// Проверяем ввод до передачи в веб-окно. Даже из повреждённого кэша нельзя подставить
+/// JavaScript, повторить один вариант или отправить пустой / чрезмерно длинный список.
+fn valid_vote(poll_id: &str, option_ids: &[String]) -> bool {
+    fn numeric_id(value: &str) -> bool {
+        !value.is_empty() && value.len() <= 12 && value.chars().all(|c| c.is_ascii_digit())
+    }
+    if !numeric_id(poll_id) || option_ids.is_empty() || option_ids.len() > 200 {
+        return false;
+    }
+    let mut seen = std::collections::HashSet::new();
+    option_ids
+        .iter()
+        .all(|id| numeric_id(id) && seen.insert(id.as_str()))
+}
+
+/// Голосует в актуальном опросе профиля клана; пустой выбор не отправляется.
+#[command]
+pub async fn guild_vote_poll(
+    app: AppHandle,
+    poll_id: String,
+    option_ids: Vec<String>,
+) -> Result<serde_json::Value, String> {
+    if !valid_vote(&poll_id, &option_ids) {
+        return Err("Некорректные варианты опроса".into());
+    }
+    if SYNC_BUSY.swap(true, Ordering::SeqCst) {
+        return Err("busy".into());
+    }
+    let result = run_vote(&app, &poll_id, &option_ids).await;
+    SYNC_BUSY.store(false, Ordering::SeqCst);
+    result
+}
+
+async fn run_vote(
+    app: &AppHandle,
+    poll_id: &str,
+    option_ids: &[String],
+) -> Result<serde_json::Value, String> {
+    let (win, created) = match clan_window(app) {
+        Some(win) => (win, false),
+        None => (create_clan_window(app, false)?, true),
+    };
+    let result = send_vote(&win, poll_id, option_ids, created).await;
+    if created {
+        let _ = win.destroy();
+    }
+    result
+}
+
+/// Видимое окно могло перейти по ссылке на другой сайт. Не отправляем данные или
+/// команды туда и не меняем страницу пользователя; в скрытом окне сперва ждём загрузку.
+fn ensure_guild_origin(win: &WebviewWindow) -> Result<(), String> {
+    let current = win.url().map_err(|e| e.to_string())?;
+    let expected = Url::parse(GUILD_URL).map_err(|e| e.to_string())?;
+    if current.origin() != expected.origin() {
+        return Err("wrong_site".into());
+    }
+    Ok(())
+}
+
+async fn send_vote(
+    win: &WebviewWindow,
+    poll_id: &str,
+    option_ids: &[String],
+    fresh_window: bool,
+) -> Result<serde_json::Value, String> {
+    if !fresh_window {
+        ensure_guild_origin(win)?;
+    }
+    // Дожидаемся профиля и проверяем вход; на странице входа вернётся `login`.
+    wait_for_report(win).await?;
+    ensure_guild_origin(win)?;
+    let origin = Url::parse(GUILD_URL)
+        .map_err(|e| e.to_string())?
+        .origin()
+        .ascii_serialization();
+    let origin = serde_json::to_string(&origin).map_err(|e| e.to_string())?;
+    let poll = serde_json::to_string(poll_id).map_err(|e| e.to_string())?;
+    let options = serde_json::to_string(option_ids).map_err(|e| e.to_string())?;
+    win.eval(format!(
+        "if (location.origin === {origin}) {{\
+         history.replaceState(null, '', location.pathname + location.search);\
+         if (window.__tfGuildVote) window.__tfGuildVote({poll}, {options});\
+         }}"
+    ))
+    .map_err(|e| e.to_string())?;
+    wait_for_hash(win, VOTE_HASH, Duration::from_secs(RESPOND_TIMEOUT_SECS)).await
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
     fn hash_prefixes_do_not_clash_with_collection_or_sync_hashes() {
         // Разные префиксы: окно клана не должно принять чужой hash за свой и наоборот
         assert_ne!(super::REPORT_HASH, super::ACTION_HASH);
+        assert_ne!(super::REPORT_HASH, super::VOTE_HASH);
+        assert_ne!(super::ACTION_HASH, super::VOTE_HASH);
         assert!(!super::REPORT_HASH.starts_with("#TF_"));
         assert!(!super::ACTION_HASH.starts_with("#TF_"));
         assert!(!super::REPORT_HASH.starts_with("#TFCOL"));
+    }
+
+    #[test]
+    fn poll_vote_requires_unique_numeric_ids() {
+        assert!(super::valid_vote("901", &["501".into(), "502".into()]));
+        assert!(!super::valid_vote("", &["501".into()]));
+        assert!(!super::valid_vote("1;alert(1)", &["501".into()]));
+        assert!(!super::valid_vote("901", &[]));
+        assert!(!super::valid_vote("901", &["501".into(), "501".into()]));
+        assert!(!super::valid_vote("901", &["-1".into()]));
+        assert!(!super::valid_vote("901", &["1234567890123".into()]));
+        let too_many: Vec<_> = (1..=201).map(|id| id.to_string()).collect();
+        assert!(!super::valid_vote("901", &too_many));
     }
 }

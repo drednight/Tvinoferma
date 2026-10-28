@@ -44,28 +44,27 @@ export function bannerHtml(problems) {
     </div>`;
 }
 
-/** HTML таблицы «Состояние парсеров». */
-export function healthTableHtml(health) {
-  const rows = Object.keys(PARSERS)
+/** Компактные карточки не требуют широкой таблицы и помещаются в колонку настроек. */
+export function healthCardsHtml(health) {
+  const cards = Object.keys(PARSERS)
     .map(id => {
       const e = health[id];
+      const parser = PARSERS[id];
       const status = e.status ? STATUS_LABEL[e.status] : NEVER_CHECKED;
       const cls = e.status === 'layout_changed' && e.failStreak >= FAIL_THRESHOLD ? ' is-problem' : '';
       return `
-      <tr class="${cls.trim()}">
-        <td><strong>${escapeHtml(PARSERS[id].title)}</strong><small class="muted">${escapeHtml(PARSERS[id].page)}</small></td>
-        <td>${escapeHtml(status)}${e.failStreak ? `<small class="muted">неудач подряд: ${e.failStreak}</small>` : ''}</td>
-        <td>${escapeHtml(formatHealthTime(e.lastOkAt))}</td>
-        <td>${e.lastError ? escapeHtml(errorText(e.lastError)) : '—'}${e.lastError ? `<small class="muted">${escapeHtml(e.lastError)}</small>` : ''}</td>
-        <td><button type="button" class="btn small ghost" data-health-copy="${id}" title="Скопировать диагностику этого парсера">📋</button></td>
-      </tr>`;
+      <li class="health-card${cls}" data-health-parser="${escapeHtml(id)}">
+        <div class="health-card-head">
+          <div class="health-card-title"><strong>${escapeHtml(parser.title)}</strong><small>${escapeHtml(parser.page)}</small></div>
+          <button type="button" class="btn small ghost health-card-copy" data-health-copy="${escapeHtml(id)}" aria-label="Скопировать диагностику: ${escapeHtml(parser.title)}" title="Скопировать диагностику этого парсера">📋</button>
+        </div>
+        <div class="health-card-status">${escapeHtml(status)}${e.failStreak ? `<small>неудач подряд: ${e.failStreak}</small>` : ''}</div>
+        <div class="health-card-meta"><span>Последняя успешная:</span> ${escapeHtml(formatHealthTime(e.lastOkAt))}</div>
+        ${e.lastError ? `<div class="health-card-meta"><span>Последняя ошибка:</span> ${escapeHtml(errorText(e.lastError))} <code>${escapeHtml(e.lastError)}</code></div>` : ''}
+      </li>`;
     })
     .join('');
-  return `
-    <table class="health-table">
-      <thead><tr><th>Парсер</th><th>Последняя проверка</th><th>Последняя успешная</th><th>Последняя ошибка</th><th></th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+  return `<ul class="health-list">${cards}</ul>`;
 }
 
 function visibleProblems() {
@@ -79,8 +78,8 @@ function render(health) {
     banner.hidden = !problems.length;
     banner.innerHTML = bannerHtml(problems);
   }
-  const table = document.getElementById('parser-health-list');
-  if (table) table.innerHTML = healthTableHtml(health);
+  const list = document.getElementById('parser-health-list');
+  if (list) list.innerHTML = healthCardsHtml(health);
   const cfg = document.getElementById('parser-health-config');
   if (cfg) cfg.textContent = `Версия selectors.json в этой сборке: ${selectorsVersion()}`;
 }

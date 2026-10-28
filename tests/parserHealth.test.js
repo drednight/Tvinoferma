@@ -168,10 +168,10 @@ describe('buildDiagnostics', () => {
   });
 });
 
-describe('плашка и таблица', () => {
+describe('плашка и карточки парсеров', () => {
   const mount = () => {
     document.body.innerHTML = `<button class="tab" data-tab="settings"></button><div id="parser-health-banner" hidden></div>
-      <div id="parser-health-panel"><div id="parser-health-list"></div><span id="parser-health-config"></span></div>`;
+      <div id="parser-health-panel"><div id="parser-health-list"></div><span id="parser-health-config"></span><button data-health-copy="all">Скопировать диагностику</button></div>`;
     disposeUi = ui.initParserHealthUi();
   };
   const banner = () => document.getElementById('parser-health-banner');
@@ -216,21 +216,24 @@ describe('плашка и таблица', () => {
     expect(banner().textContent).toContain('Устарели парсеры: баланса, прогресса марафона');
   });
 
-  it('таблица в настройках: все парсеры, статус, последняя успешная проверка, версия конфига', () => {
+  it('карточки в настройках: все парсеры, статус, последняя успешная проверка, ошибка и версия конфига', () => {
     mount();
     health.recordParserResult('balance', null, { at: '2026-05-01T10:00:00.000Z' });
     health.recordParserResult('auth', 'pending');
-    const rows = [...document.querySelectorAll('#parser-health-list tbody tr')];
-    expect(rows).toHaveLength(Object.keys(health.PARSERS).length);
-    expect(rows[0].textContent).toContain('работает');
-    expect(rows[0].textContent).toMatch(/01\.05\.2026/);
-    const auth = rows.find(r => r.textContent.includes('Проверка входа'));
+    const cards = [...document.querySelectorAll('#parser-health-list [data-health-parser]')];
+    expect(cards).toHaveLength(Object.keys(health.PARSERS).length);
+    expect(cards[0].textContent).toContain('работает');
+    expect(cards[0].textContent).toMatch(/01\.05\.2026/);
+    const auth = cards.find(r => r.dataset.healthParser === 'auth');
     expect(auth.textContent).toContain('сайт изменил вёрстку');
     expect(auth.textContent).toContain('pending');
-    expect(rows.find(r => r.textContent.includes('Новости')).textContent).toContain('ещё не проверялся');
+    expect(auth.querySelector('[data-health-copy="auth"]').getAttribute('aria-label')).toContain('Проверка входа');
+    expect(cards.find(r => r.dataset.healthParser === 'news').textContent).toContain('ещё не проверялся');
     expect(document.getElementById('parser-health-config').textContent).toMatch(
       /Версия selectors\.json в этой сборке: \d+/
     );
+    health.recordParserResult('auth', 'pending');
+    expect(document.querySelector('[data-health-parser="auth"]').classList.contains('is-problem')).toBe(true);
   });
 
   it('кнопка плашки открывает «Синхронизацию» и раскрывает состояние парсеров', () => {
@@ -255,15 +258,19 @@ describe('плашка и таблица', () => {
     window.removeEventListener('tf:open-section', section);
   });
 
-  it('«Скопировать диагностику» кладёт текст в буфер обмена', async () => {
+  it('копирование отдельной и общей диагностики сохраняет нужные данные', async () => {
     mount();
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     health.recordParserResult('balance', 'container_missing');
     document.querySelector('#parser-health-list [data-health-copy="balance"]').click();
-    await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledOnce());
     expect(writeText.mock.calls[0][0]).toContain('Парсер: Баланс монет (balance)');
     expect(writeText.mock.calls[0][0]).not.toContain('(auth)');
+    document.querySelector('#parser-health-panel [data-health-copy="all"]').click();
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(writeText.mock.calls[1][0]).toContain('(balance)');
+    expect(writeText.mock.calls[1][0]).toContain('(auth)');
     await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('скопирована'), 'success'));
   });
 });

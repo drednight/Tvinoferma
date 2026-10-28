@@ -4,7 +4,7 @@
 // (см. state.js), который по умолчанию выключен у всех и переключается только пасхалкой
 // в разделе промокодов.
 //
-// Берём из сайта только предстоящие события и «Пати в которых вы состоите».
+// Берём с сайта предстоящие события, «Пати в которых вы состоите» и активный опрос.
 // Обновление работает и без открытого окна, если вход на сайте уже сделан: через минуту
 // после старта приложения и потом каждый день в 00:00 по Москве.
 
@@ -12,10 +12,11 @@ import { toast } from '../../core/ui.js';
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
 import { isTauri } from '../../core/storage.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
-import { guildEnabled, readGuildData, writeGuildData } from './state.js';
+import { guildEnabled, readGuildData, writeGuildData, rememberGuildPollVote } from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
-import { openGuild, syncGuildFromSite, respondToEvent } from './window.js';
+import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
+import { guildPollHtml, safePollLink } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
 const START_DELAY_MS = 60 * 1000;
@@ -51,9 +52,23 @@ export function bindGuild() {
   if (document.body.dataset.guildBound) return;
   document.body.dataset.guildBound = 'true';
   document.addEventListener('click', onClick);
+  document.addEventListener('submit', onPollSubmit);
 }
 
 async function onClick(e) {
+  const link = e.target.closest?.('a[data-guild-poll-link]');
+  if (link && isTauri()) {
+    e.preventDefault();
+    const url = safePollLink(link.href);
+    if (!url) return;
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open(url);
+    } catch {
+      toast('Не удалось открыть ссылку в браузере', 'error');
+    }
+    return;
+  }
   const btn = e.target.closest('[data-guild]');
   if (!btn || btn.disabled || !isTauri()) return;
   const act = btn.dataset.guild;
@@ -82,6 +97,81 @@ async function run(btn, fn) {
   } finally {
     btn.disabled = false;
     renderGuildToday();
+  }
+}
+
+let votePending = false;
+
+/** Голос отправляется только после выбора, через сессию кланового окна. */
+async function onPollSubmit(e) {
+  const form = e.target.closest?.('form[data-guild-poll]');
+  if (!form) return;
+  e.preventDefault();
+  if (!isTauri()) {
+    toast('Голосование доступно в установленной Твиноферме после входа на сайт клана.', 'info');
+    return;
+  }
+  if (votePending) return;
+  const pollId = form.dataset.pollId;
+  const poll = readGuildData().poll;
+  if (!poll || poll.id !== pollId || poll.loadError) {
+    toast('Опрос изменился. Обновите сводку клана.', 'warning');
+    return;
+  }
+  const selected = [...form.querySelectorAll('input[name="guild-poll-option"]:checked')].map(input => input.value);
+  if (!selected.length) {
+    toast('Выберите вариант ответа.', 'warning');
+    return;
+  }
+  const available = new Set(poll.options.map(option => option.id));
+  if (selected.some(id => !available.has(id)) || (poll.type !== 'multiple' && selected.length !== 1)) {
+    toast('Варианты опроса изменились. Обновите сводку клана.', 'warning');
+    return;
+  }
+  votePending = true;
+  const controls = [...form.querySelectorAll('input, button')];
+  controls.forEach(control => (control.disabled = true));
+  let accepted = false;
+  try {
+    const result = await voteInGuildPoll(pollId, selected);
+    if (!result?.ok) {
+      toast(result?.message || 'Сайт не принял голос.', 'error');
+      return;
+    }
+    accepted = true;
+    let fresh = false;
+    try {
+      fresh = await syncGuild({ silent: true });
+    } catch {
+      // Голос уже принят: не заявляем, что отправка не удалась, из-за ошибки сохранения.
+    }
+    if (!fresh) {
+      try {
+        await rememberGuildPollVote(pollId, selected);
+      } catch {
+        // Ответ принят сайтом, но кэш недоступен; повторное обновление покажет его.
+      }
+      toast('Голос учтён, но обновить сводку не удалось. Обновите её позже.', 'warning');
+    } else if (readGuildData().poll?.loadError) {
+      toast('Голос учтён, но варианты не удалось перечитать. Обновите сводку позже.', 'warning');
+    } else {
+      toast('Голос учтён.', 'success');
+    }
+  } catch (error) {
+    const code = String(error?.message || error);
+    const message =
+      code === 'login'
+        ? 'Нужно войти на сайт клана через кнопку «Открыть сайт».'
+        : code === 'busy'
+          ? 'Обновление клана уже идёт. Попробуйте ещё раз.'
+          : code === 'wrong_site'
+            ? 'Вернитесь к профилю в окне клана и обновите сводку.'
+            : 'Не удалось подтвердить голос. Обновите сводку перед повторной попыткой.';
+    toast(message, 'warning');
+  } finally {
+    votePending = false;
+    if (accepted) renderGuildToday();
+    else controls.forEach(control => (control.disabled = false));
   }
 }
 
@@ -310,5 +400,6 @@ export function renderGuildToday() {
         <div class="guild-col">${events}</div>
         <div class="guild-col guild-col--parties">${partiesHtml(data)}</div>
       </div>
+      ${guildPollHtml(data.poll)}
     </section>`;
 }

@@ -183,7 +183,8 @@ describe('смысловые группы настроек', () => {
       for (const id of ids) expect(doc.querySelector(`#settings-${group} #${id}`)).not.toBeNull();
     }
     // «Состояние парсеров» переехало из «Инструментов» в «Настройки → Синхронизация»
-    expect(doc.querySelector('#settings-sync #parser-health-panel')).not.toBeNull();
+    expect(doc.querySelector('#settings-sync .settings-col > #parser-health-panel')).not.toBeNull();
+    expect(doc.querySelector('#settings-sync #parser-health-list').getAttribute('tabindex')).toBe('0');
     expect(doc.querySelector('[data-section="tools"] #parser-health-panel')).toBeNull();
     for (const link of doc.querySelectorAll('.settings-nav a'))
       expect(doc.querySelector(link.getAttribute('href'))).not.toBeNull();

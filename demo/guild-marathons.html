@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Твиноферма · Клан и марафоны — демо</title>
+    <link rel="stylesheet" href="../css/core/variables.css" />
+    <link rel="stylesheet" href="../css/core/base.css" />
+    <link rel="stylesheet" href="../css/core/components.css" />
+    <link rel="stylesheet" href="../css/modules/guild.css" />
+    <link rel="stylesheet" href="../css/modules/marathons.css" />
+    <link rel="stylesheet" href="./tools-modals.css" />
+    <link rel="stylesheet" href="./guild-marathons.css" />
+  </head>
+  <body>
+    <main class="lab">
+      <header class="lab-hero">
+        <span class="lab-tag">демо · вымышленные данные · без запросов к сайту</span>
+        <h1>Клан Eternals и марафоны</h1>
+        <p>
+          Проверьте опрос под кланом и цветные полосы авторизации в марафоне. Здесь всё вымышленное: голосование только
+          имитируется и не меняет сайт или данные приложения.
+        </p>
+        <p><a href="./tools-modals.html">← Лаборатория окон скриптов</a></p>
+      </header>
+      <section class="lab-block">
+        <h2>Опрос в клане</h2>
+        <p class="lab-lead">
+          Переключите пример: опрос с несколькими или одним ответом, отсутствие опроса или ошибка загрузки.
+        </p>
+        <div class="demo-poll-controls" role="group" aria-label="Пример опроса">
+          <button class="btn" data-example="multiple" type="button">Несколько ответов</button>
+          <button class="btn" data-example="single" type="button">Один ответ</button>
+          <button class="btn" data-example="none" type="button">Без опроса</button>
+          <button class="btn" data-example="error" type="button">Ошибка загрузки</button>
+        </div>
+        <section class="guild-card">
+          <div class="guild-card-head"><strong>🛡️ Клан Eternals</strong><span class="muted">Пример сводки</span></div>
+          <div class="guild-cols">
+            <div class="guild-col">
+              <h3>Предстоящие события</h3>
+              <p class="muted">Встреча клана · завтра в 20:00</p>
+            </div>
+            <div class="guild-col guild-col--parties">
+              <h3>Мои пати</h3>
+              <p class="muted">Пати «Пример» · 3 участника</p>
+            </div>
+          </div>
+          <div id="poll-slot"></div>
+        </section>
+        <p class="demo-message" role="status" aria-live="polite"></p>
+      </section>
+      <section class="lab-block">
+        <h2>Марафон · статус входа</h2>
+        <p class="lab-lead">
+          Зелёный — вход подтверждён, красный — нет входа, жёлтый — проверка. Это авторизация на сайте, а не состояние
+          игрового окна. Прокрутите таблицу вбок и наведите на строку.
+        </p>
+        <div class="tf-mx-wrap">
+          <table class="mr-matrix">
+            <thead>
+              <tr>
+                <th class="mr-name">Персонаж</th>
+                <th>Задание 1</th>
+                <th>Задание 2</th>
+                <th>Задание 3</th>
+                <th>Задание 4</th>
+                <th>Задание 5</th>
+                <th>Задание 6</th>
+                <th>Итого</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="mr-row mr-row--online">
+                <td class="mr-name" style="--state-c: #9ece6a" title="Вход на сайт: Онлайн">
+                  <div class="mr-name-inner">
+                    <span class="mr-class-cell">⚔️</span>
+                    <div class="mr-name-text"><strong>Персонаж А</strong><small class="muted">Онлайн</small></div>
+                  </div>
+                </td>
+                <td>8/10</td>
+                <td>5/10</td>
+                <td>9/10</td>
+                <td>4/10</td>
+                <td>6/10</td>
+                <td>3/10</td>
+                <td>35/60</td>
+              </tr>
+              <tr class="mr-row mr-row--offline">
+                <td class="mr-name" style="--state-c: #f7768e" title="Вход на сайт: Оффлайн">
+                  <div class="mr-name-inner">
+                    <span class="mr-class-cell">🏹</span>
+                    <div class="mr-name-text"><strong>Персонаж Б</strong><small class="muted">Оффлайн</small></div>
+                  </div>
+                </td>
+                <td>3/10</td>
+                <td>4/10</td>
+                <td>8/10</td>
+                <td>5/10</td>
+                <td>7/10</td>
+                <td>2/10</td>
+                <td>29/60</td>
+              </tr>
+              <tr class="mr-row mr-row--checking">
+                <td class="mr-name" style="--state-c: #e0af68" title="Вход на сайт: Проверка">
+                  <div class="mr-name-inner">
+                    <span class="mr-class-cell">✨</span>
+                    <div class="mr-name-text"><strong>Персонаж В</strong><small class="muted">Проверка…</small></div>
+                  </div>
+                </td>
+                <td>7/10</td>
+                <td>3/10</td>
+                <td>4/10</td>
+                <td>9/10</td>
+                <td>5/10</td>
+                <td>6/10</td>
+                <td>34/60</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./guild-marathons.js"></script>
+  </body>
+</html>

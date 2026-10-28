@@ -46,3 +46,18 @@ export async function writeGuildData(data) {
   };
   await persist();
 }
+
+/** Если голос принят, а сводку перечитать не удалось, сохраняем только сам ответ. */
+export async function rememberGuildPollVote(pollId, optionIds) {
+  const data = readGuildData();
+  if (!data.poll || data.poll.id !== String(pollId)) return false;
+  const selected = new Set(optionIds.map(String));
+  const poll = {
+    ...data.poll,
+    options: data.poll.options.map(option => ({ ...option, selected: selected.has(option.id) }))
+  };
+  // syncedAt остаётся временем последней настоящей сводки, а не неудачного обновления.
+  state.settings.guild = { ...guildSettings(), poll };
+  await persist();
+  return true;
+}

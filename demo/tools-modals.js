@@ -42,7 +42,12 @@ import {
   el,
   classIconHtml,
   stripeCls,
-  statusTitle
+  statusTitle,
+  defaultTarget,
+  targetChars as selectedTargetChars,
+  targetHtml,
+  bindTarget,
+  closeTargetPicker
 } from './lab-data.js';
 import { openScenario } from './scenarios.js';
 
@@ -811,9 +816,7 @@ function openWizard() {
 
 function openSplit() {
   let codesRaw = CODES_DEFAULT;
-  let target = 'logged'; // all | logged | party | manual
-  const parties = new Set([PARTIES[0]]);
-  const manual = new Set(CHARS.filter(c => c.isLoggedIn === true).map(c => c.id));
+  const target = defaultTarget();
   let running = null;
   let last = null;
 
@@ -822,18 +825,14 @@ function openSplit() {
     wide: true,
     onClose: () => {
       if (running) running.cancelled = true;
+      closeTargetPicker(dlg.body);
     }
   });
   dlg.foot.classList.add('sd-foot');
   dlg.el.querySelector('.modal-container').classList.add('sp-container');
   const alive = () => dlg.el.isConnected;
 
-  function targetChars() {
-    if (target === 'all') return [...CHARS].sort(byNick);
-    if (target === 'logged') return CHARS.filter(c => c.isLoggedIn === true).sort(byNick);
-    if (target === 'party') return CHARS.filter(c => parties.has(c.party)).sort(byNick);
-    return CHARS.filter(c => manual.has(c.id)).sort(byNick);
-  }
+  const targetChars = () => selectedTargetChars(target);
 
   dlg.sub.textContent =
     'Слева — что запускаем, справа — на ком и как идёт. Ничего не переключается: план, ход и итог живут в одном виде.';
@@ -847,14 +846,7 @@ function openSplit() {
         </div>
         <div class="sp-field">
           <label>Кого запускать</label>
-          <div class="sp-radios" id="sp-radios">
-            <label class="sp-radio"><input type="radio" name="sp-target" value="logged" checked><span>🟢 Только с входом</span><small>${CHARS.filter(c => c.isLoggedIn === true).length} персонажей</small></label>
-            <label class="sp-radio"><input type="radio" name="sp-target" value="all"><span>👥 Все</span><small>${CHARS.length} персонажей</small></label>
-            <label class="sp-radio"><input type="radio" name="sp-target" value="party"><span>🛡 По пати…</span><small>${PARTIES.length} пати на выбор</small></label>
-            <label class="sp-radio"><input type="radio" name="sp-target" value="manual"><span>🖐 Выбрать вручную</span><small>отметить в списке</small></label>
-          </div>
-          <div class="promo-list sp-manual" id="sp-parties" hidden></div>
-          <div class="promo-list sp-manual" id="sp-manual" hidden></div>
+          ${targetHtml(target, 'sp')}
         </div>
         <label class="sp-check"><input type="checkbox" checked disabled> Пропускать уже введённые (по журналу)</label>
         <div class="sp-summary">
@@ -882,25 +874,6 @@ function openSplit() {
     <button class="btn primary" data-act="start">▶ Запустить</button>`;
 
   const $ = id => dlg.body.querySelector('#' + id);
-
-  function manualListHtml() {
-    return [...CHARS]
-      .sort(byNick)
-      .map(
-        c =>
-          `<label class="promo-item ${stripeCls(c)}" title="${escapeHtml(statusTitle(c))}"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${manual.has(c.id) ? 'checked' : ''}>
-        ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)} · ${escapeHtml(c.cls)}</span></label>`
-      )
-      .join('');
-  }
-
-  function partiesListHtml() {
-    return PARTIES.map(
-      p =>
-        `<label class="promo-item"><input type="checkbox" data-party="${escapeHtml(p)}" ${parties.has(p) ? 'checked' : ''}>
-        <b>🛡 ${escapeHtml(p)}</b><span class="promo-muted promo-item-tags">${CHARS.filter(c => c.party === p).length} персонажей</span></label>`
-    ).join('');
-  }
 
   /** Пересчёт плана: числа слева, таблица справа (в состоянии «план»), подпись кнопки запуска. */
   function updatePlan() {
@@ -1046,25 +1019,7 @@ function openSplit() {
       updatePlan();
     }
   });
-  dlg.body.addEventListener('change', e => {
-    const t = e.target;
-    if (t.name === 'sp-target') {
-      target = t.value;
-      $('sp-parties').hidden = target !== 'party';
-      $('sp-manual').hidden = target !== 'manual';
-      updatePlan();
-    }
-    if (t.matches('[data-party]')) {
-      if (t.checked) parties.add(t.dataset.party);
-      else parties.delete(t.dataset.party);
-      updatePlan();
-    }
-    if (t.matches('[data-mid]')) {
-      if (t.checked) manual.add(t.dataset.mid);
-      else manual.delete(t.dataset.mid);
-      updatePlan();
-    }
-  });
+  const syncTarget = bindTarget(dlg.body, target, 'sp', updatePlan);
 
   dlg.foot.addEventListener('click', async e => {
     const btn = e.target.closest('[data-act]');
@@ -1084,20 +1039,15 @@ function openSplit() {
       if (!last) return;
       const chars = rerunCharsOf(last.rows, last.chars);
       if (!chars.length) return toast('Повторять нечего', 'info');
-      target = 'manual';
-      manual.clear();
-      chars.forEach(c => manual.add(c.id));
-      dlg.body.querySelector('input[name="sp-target"][value="manual"]').checked = true;
-      $('sp-parties').hidden = true;
-      $('sp-manual').hidden = false;
-      $('sp-manual').innerHTML = manualListHtml();
+      target.mode = 'manual';
+      target.chars.clear();
+      chars.forEach(c => target.chars.add(c.id));
+      syncTarget();
       updatePlan();
       return start(false);
     }
   });
 
-  $('sp-parties').innerHTML = partiesListHtml();
-  $('sp-manual').innerHTML = manualListHtml();
   updatePlan();
   return dlg;
 }

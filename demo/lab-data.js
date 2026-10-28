@@ -5,7 +5,9 @@
 // Данные фейковые: персонажи вымышлены, ничего не уходит на сайт игры.
 
 import { escapeHtml } from '../js/core/utils.js';
-import { getClassIconSrc } from '../js/core/constants.js';
+import { openCharacterPicker, classIconHtml, stripeCls, statusTitle } from './character-picker.js';
+
+export { classIconHtml, stripeCls, statusTitle };
 
 // account — вымышленный аккаунт сайта: у нескольких персонажей может быть общий
 // инвентарь и баланс. checking — идёт проверка входа на сайт (не статус окна игры).
@@ -19,17 +21,6 @@ export const CHARS = [
   { id: 'c7', nick: 'Горыня', cls: 'Оборотень', party: 'Альфа', account: 'site-5', isLoggedIn: false },
   { id: 'c8', nick: 'Ярополк', cls: 'Паладин', party: 'Браво', account: 'site-5', isLoggedIn: true }
 ];
-
-/** Визуальные состояния как у карточек: это вход на сайт, не статус игры. */
-export const stripeCls = c => `st-${c.checking ? 'checking' : c.isLoggedIn === true ? 'online' : 'offline'}`;
-export const statusTitle = c =>
-  c.checking ? 'Проверка входа на сайт' : c.isLoggedIn === true ? 'Есть вход на сайт' : 'Нет входа на сайт';
-export function classIconHtml(c) {
-  const src = getClassIconSrc(c.cls);
-  return src
-    ? `<img class="char-class-ico" src="../${escapeHtml(src)}" alt="${escapeHtml(c.cls)}" title="${escapeHtml(c.cls)}">`
-    : `<span class="char-class-ico char-class-letter" title="${escapeHtml(c.cls)}">${escapeHtml(c.cls?.[0] || '?')}</span>`;
-}
 
 export const PARTIES = [...new Set(CHARS.map(c => c.party))];
 
@@ -153,9 +144,8 @@ export function eventLineHtml(row) {
 }
 
 /* ============================== кого запускать ============================== */
-// Правило лаборатории (оно же правило приложения): список персонажей появляется,
-// только когда выбран «Выбрать вручную», а «По пати» даёт список пати — так же,
-// как список персонажей, отметками.
+// «По пати» показывает список пати, а ручной выбор открывает отдельное окно.
+// Пока окно не сохранено, режим и выбранные персонажи родительского плана не меняются.
 
 export function defaultTarget() {
   return {
@@ -180,66 +170,97 @@ export function targetRadiosHtml(t, idp) {
     <label class="sp-radio"><input type="radio" name="tg-${idp}" value="logged" ${on('logged')}><span>🟢 Только с входом</span><small>${nLogged} персонажей</small></label>
     <label class="sp-radio"><input type="radio" name="tg-${idp}" value="all" ${on('all')}><span>👥 Все</span><small>${CHARS.length} персонажей</small></label>
     <label class="sp-radio"><input type="radio" name="tg-${idp}" value="party" ${on('party')}><span>🛡 По пати…</span><small>${PARTIES.length} пати на выбор</small></label>
-    <label class="sp-radio"><input type="radio" name="tg-${idp}" value="manual" ${on('manual')}><span>🖐 Выбрать вручную</span><small>отметить в списке</small></label>
+    <label class="sp-radio"><input type="radio" name="tg-${idp}" value="manual" ${on('manual')}><span>🖐 Выбрать вручную</span><small>открыть выбор персонажей</small></label>
   </div>`;
 }
 
-/** Списки пати и персонажей; виден только тот, что соответствует режиму. */
+/** Список пати остаётся в родительском окне; для ручного выбора видна только сводка. */
 export function targetListsHtml(t, idp) {
   const parties = PARTIES.map(
     p =>
       `<label class="promo-item"><input type="checkbox" data-party="${escapeHtml(p)}" ${t.parties.has(p) ? 'checked' : ''}>
       <b>🛡 ${escapeHtml(p)}</b><span class="promo-muted promo-item-tags">${CHARS.filter(c => c.party === p).length} персонажей</span></label>`
   ).join('');
-  const chars = [...CHARS]
-    .sort(byNick)
-    .map(
-      c =>
-        `<label class="promo-item ${stripeCls(c)}" title="${escapeHtml(statusTitle(c))}"><input type="checkbox" data-mid="${escapeHtml(c.id)}" ${t.chars.has(c.id) ? 'checked' : ''}>
-      ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(c.party)} · ${escapeHtml(c.cls)}</span></label>`
-    )
-    .join('');
   return `
     <div class="promo-list sp-manual" data-tg-parties="${idp}" hidden>${parties}</div>
-    <div class="promo-list sp-manual" data-tg-manual="${idp}" hidden>${chars}</div>`;
+    <div class="sp-manual-summary" data-tg-manual="${idp}" hidden>
+      <span>Выбрано: <b data-tg-count>${t.chars.size}</b></span>
+      <button type="button" class="btn small ghost" data-tg-edit="${idp}">Изменить</button>
+    </div>`;
 }
 
 export const targetHtml = (t, idp) => targetRadiosHtml(t, idp) + targetListsHtml(t, idp);
 
-/**
- * Привязка выбора целей: радио переключают режим, отметки пати и персонажей
- * обновляют набор. Слушатель на root ставится один раз (перерисовка тела окна
- * не должна плодить копии), видимость списков синхронизируется при каждом вызове.
- * Возвращает функцию синхронизации видимости.
- */
+// Если родительское окно закрыто программно, вложенный выбор не должен остаться поверх страницы.
+const activePickers = new WeakMap();
+export function closeTargetPicker(root) {
+  activePickers.get(root)?.close();
+}
+
+/** Привязать режимы и атомарный ручной выбор; слушатели сохраняются при перерисовке панели. */
 export function bindTarget(root, t, idp, onChange) {
   const sync = () => {
     const partiesBox = root.querySelector(`[data-tg-parties="${idp}"]`);
     const manualBox = root.querySelector(`[data-tg-manual="${idp}"]`);
     if (partiesBox) partiesBox.hidden = t.mode !== 'party';
-    if (manualBox) manualBox.hidden = t.mode !== 'manual';
+    if (manualBox) {
+      manualBox.hidden = t.mode !== 'manual';
+      manualBox.querySelector('[data-tg-count]').textContent = String(t.chars.size);
+    }
+    root.querySelectorAll(`input[name="tg-${idp}"]`).forEach(radio => {
+      radio.checked = radio.value === t.mode;
+    });
   };
   sync();
   const boundKey = `tgBound${idp}`;
   if (root.dataset[boundKey]) return sync;
   root.dataset[boundKey] = 'true';
+
+  const chooseCharacters = origin => {
+    if (activePickers.get(root)?.el.isConnected) return;
+    const picker = openCharacterPicker({
+      characters: CHARS,
+      selected: t.chars,
+      parent: root.closest('.modal-overlay'),
+      returnFocus: origin,
+      onClose: selection => {
+        activePickers.delete(root);
+        if (!root.isConnected) return;
+        if (selection !== null) {
+          t.mode = 'manual';
+          t.chars.clear();
+          selection.forEach(id => t.chars.add(id));
+          sync();
+          onChange?.();
+        } else sync();
+      }
+    });
+    activePickers.set(root, picker);
+  };
+
+  root.addEventListener('click', e => {
+    const edit = e.target.closest?.(`[data-tg-edit="${idp}"]`);
+    const manual = e.target.closest?.(`input[name="tg-${idp}"][value="manual"]`);
+    // Повторное нажатие на уже выбранное радио тоже открывает выбор.
+    if (edit || (manual && t.mode === 'manual')) chooseCharacters(edit || manual);
+  });
   root.addEventListener('change', e => {
     const radio = e.target.closest?.(`input[name="tg-${idp}"]`);
     if (radio) {
-      t.mode = radio.value;
-      sync();
-      onChange?.();
+      if (radio.value === 'manual') {
+        // До сохранения оставляем прежний режим и план нетронутыми.
+        sync();
+        chooseCharacters(radio);
+      } else {
+        t.mode = radio.value;
+        sync();
+        onChange?.();
+      }
       return;
     }
     if (e.target.matches?.('[data-party]')) {
       if (e.target.checked) t.parties.add(e.target.dataset.party);
       else t.parties.delete(e.target.dataset.party);
-      onChange?.();
-      return;
-    }
-    if (e.target.matches?.('[data-mid]')) {
-      if (e.target.checked) t.chars.add(e.target.dataset.mid);
-      else t.chars.delete(e.target.dataset.mid);
       onChange?.();
     }
   });
