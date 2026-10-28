@@ -814,7 +814,7 @@ function openWizard() {
 /* Вариант B · Два столбца: настройка слева, живой ход справа                    */
 /* ============================================================================ */
 
-function openSplit() {
+export function openSplit() {
   let codesRaw = CODES_DEFAULT;
   const target = defaultTarget();
   let running = null;
@@ -835,7 +835,7 @@ function openSplit() {
   const targetChars = () => selectedTargetChars(target);
 
   dlg.sub.textContent =
-    'Слева — что запускаем, справа — на ком и как идёт. Ничего не переключается: план, ход и итог живут в одном виде.';
+    'Слева — настройка, справа — план и ход. Демо: данные вымышлены, запуск и проверка имитируются, запросов к сайту нет.';
   dlg.body.innerHTML = `
     <div class="sp-body">
       <aside class="sp-side" id="sp-side">

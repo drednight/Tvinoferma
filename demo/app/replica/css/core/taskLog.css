@@ -1,0 +1,822 @@
+/* css/core/taskLog.css
+   Док и карточки задач (js/core/taskLog.js): проверка входа, балансы, запуск игры, поиск марафонов.
+   Док — панель в левом нижнем углу (справа остаётся круглая кнопка «+»). У каждой задачи:
+   кольцо с процентом, название и текущий шаг, кнопки (■ остановить, 📄 лог, ▾ подробности), полоса прогресса. */
+
+/* Док задач — модуль шапки: сама плашка физически лежит в топбаре и не выезжает за его края,
+   а раскрытый список подробностей свисает вниз на страницу. Раньше док висел поверх окна
+   в левом нижнем углу и наезжал на кнопку «Настройки», а свернуть его было нечем.
+   Обводка — как у плашки «Статус серверов». Виден всегда, даже когда задач нет. */
+/* Ширина плашки и выпадающего списка — одна величина.
+   Раньше плашка была 288px, а список 320px: на скриншоте список заметно вылезал вправо и
+   вниз за плашку, и выглядело это как два разных элемента. Теперь обе части берут размер
+   из `--tf-dock-w` и одинаково ограничены по ширине окна, поэтому совпадают всегда. */
+#tf-task-dock {
+  --tf-dock-w: 320px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: var(--tf-dock-w);
+  max-width: min(var(--tf-dock-w), 40vw);
+  pointer-events: none;
+}
+
+/* Плашка дока: заголовок с точкой, названием и меткой, шкала прогресса и управление
+   скриптом. Раскрытый список выпадает вниз отдельным модулем (не растягивает шапку). */
+.tf-dock-slot-bar {
+  pointer-events: auto;
+  /* По высоте не тянется: плашка ровно по содержимому, иначе она снова достанет до подвала шапки */
+  flex: 0 0 auto;
+  width: 100%;
+  gap: 5px;
+  padding: 7px 12px 8px;
+}
+/* Плашка дока в экспериментальном каркасе.
+   Раньше это была отдельная «пилюля» с собственной рамкой и скруглением: она стояла
+   в шапке отдельным пятном и доходила до её нижней границы. Теперь док — часть шапки:
+   без скругления и без собственной рамки, а от левой части её отделяет одна вертикальная
+   линия (как разделитель колонок). Высота шапки теперь растёт под содержимое
+   (`grid-template-rows: auto` в newStyle.css), поэтому док за её подвал больше не выходит. */
+body[data-ui-style='next'] #tf-task-dock {
+  --tf-dock-w: 292px;
+  align-self: center;
+  height: auto;
+  margin: 0 0 0 auto;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+body[data-ui-style='next'] #tf-task-dock .tf-dock-slot-bar {
+  padding: 3px 0 4px;
+  gap: 5px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+/* Кольцо и кнопки чуть мельче: плашка должна помещаться в шапку по высоте */
+body[data-ui-style='next'] .tf-dock-ring {
+  width: 24px;
+  height: 24px;
+}
+body[data-ui-style='next'] .tf-dock-bar {
+  height: 4px;
+}
+body[data-ui-style='next'] .tf-dock-toggle {
+  width: 20px;
+  height: 20px;
+}
+#tf-task-dock.is-idle .tf-dock-slot-bar {
+  opacity: 0.72;
+}
+
+.tf-dock-dot.is-busy {
+  animation: msk-clock-pulse 2s ease-in-out infinite;
+}
+.tf-dock-dot.is-paused {
+  animation: none;
+  opacity: 0.45;
+  background: var(--warning);
+}
+
+/* Кольцо прогресса на плашке: проценты читаются числом, а не длиной шкалы */
+.tf-dock-ring {
+  --pct: 0;
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.1) 0);
+  transition: background 0.25s ease-out;
+}
+.tf-dock-ring::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--surface-1);
+}
+.tf-dock-ring b {
+  position: relative;
+  z-index: 1;
+  font-size: 0.6rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+#tf-task-dock.is-idle .tf-dock-ring b {
+  color: var(--text-faint);
+}
+.tf-dock-ring.is-paused {
+  background: conic-gradient(var(--warning) calc(var(--pct) * 1%), rgba(255, 255, 255, 0.1) 0);
+}
+.tf-dock-ring.is-paused b {
+  color: var(--warning);
+}
+.tf-dock-ring.is-queued {
+  background: rgba(255, 255, 255, 0.1);
+}
+.tf-dock-ring.is-queued b {
+  color: var(--text-faint);
+}
+/* Кольцо в списке: то же кольцо, но меньше и без фона-«внутренности» */
+.tf-dock-ring-sm {
+  width: 22px;
+  height: 22px;
+}
+.tf-dock-ring-sm::after {
+  inset: 2px;
+}
+.tf-dock-ring-sm b {
+  font-size: 0.54rem;
+}
+
+/* Заголовок плашки: название скрипта и его текущее дело двумя строками */
+.tf-dock-title {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.tf-dock-title .msk-clock-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tf-dock-step {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.tf-dock-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.tf-dock-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+#tf-task-dock:not(.is-idle) .tf-dock-bar > span {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+  background-size: 200% 100%;
+  animation: tl-shimmer 1.6s linear infinite;
+}
+
+.tf-dock-ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.tf-dock-ctrl .tl-icon-btn {
+  flex: none;
+}
+.tf-dock-toggle {
+  margin-right: auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+.tf-dock-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+/* Свёрнутый док — единственное состояние по умолчанию, поэтому кнопка разворачивания
+   должна быть заметнее: приглушённый цвет читался как «здесь ничего нет». */
+.tf-dock-toggle {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+#tf-task-dock.is-open .tf-dock-toggle {
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+
+/* Выпадающий список — отдельным модулем под плашкой: в шапке ему места нет,
+   поэтому он позиционирован и не растягивает топбар. Логи скриптов открываются
+   не здесь, а отдельным модальным окном (кнопка «📄» на плашке). */
+.tf-dock-slot-list {
+  display: none;
+}
+#tf-task-dock.is-open .tf-dock-slot-list {
+  display: grid;
+}
+.tf-dock-slot-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 9000;
+  gap: 8px;
+  /* Ширина та же, что у плашки: список должен висеть ровно под ней, а не шире */
+  width: var(--tf-dock-w, 320px);
+  max-width: min(var(--tf-dock-w, 320px), 40vw);
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+/* --- Список «что делает скрипт» под плашкой ---
+   Строки списка — кнопки: клик открывает полный лог этого скрипта. У каждой строки своё
+   кольцо с процентами, поэтому «кто на каком шаге» видно без раскрытия журнала.
+
+   Вид: раньше это был почти прозрачный слой с разделителями между строками — строки
+   сливались с шапкой, а полупрозрачный фон на тёмном фоне выглядел грязным. Теперь это
+   отдельная плотная панель с тенью, а каждая строка — отдельная карточка-кнопка. */
+.tf-dock-slot-list {
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-3);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.tf-dock-empty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  text-align: center;
+}
+/* Строка списка и её кнопка — рядом: строка кликается (открывает лог),
+   крестик справа отменяет скрипт, ждущий очереди. */
+.tf-dock-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.tf-dock-item .tf-dock-row {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.tf-dock-cancel {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
+}
+.tf-dock-cancel:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.tf-dock-cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tf-dock-row {
+  --tf-row-color: var(--accent);
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Левая метка — статус строки: бегущий скрипт, завершённый, с ошибкой или на паузе */
+  box-shadow: inset 3px 0 0 var(--tf-row-color);
+  transition:
+    background var(--speed) var(--ease),
+    border-color var(--speed) var(--ease);
+}
+.tf-dock-row:hover {
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+.tf-dock-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+/* Разделителей между строками нет: строка — карточка, а не пункт списка */
+.tf-dock-row.tl-s-done {
+  --tf-row-color: var(--success);
+}
+.tf-dock-row.tl-s-warn {
+  --tf-row-color: var(--warning);
+}
+.tf-dock-row.tl-s-error {
+  --tf-row-color: var(--danger);
+}
+.tf-dock-row.is-paused {
+  --tf-row-color: var(--warning);
+}
+/* Ждущий очереди: работа не идёт, точка не мигает и не пульсирует */
+.tf-dock-row.is-queued {
+  --tf-row-color: var(--text-faint);
+}
+.tf-dock-row.is-queued .tf-dock-row-dot {
+  opacity: 0.5;
+}
+.tf-dock-row.is-queued .tf-dock-row-top b {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.tf-dock-row.is-queued .tf-dock-row-pct {
+  color: var(--text-faint);
+}
+.tf-dock-row-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tf-row-color);
+}
+.tf-dock-row.tl-s-running .tf-dock-row-dot {
+  animation: msk-clock-pulse 2s ease-in-out infinite;
+}
+.tf-dock-row.is-paused .tf-dock-row-dot {
+  opacity: 0.45;
+}
+.tf-dock-row-body {
+  min-width: 0;
+  display: grid;
+  /* Колонка не должна расти под длинное название: иначе строка шире панели,
+     и название обрезается краем панели, а не многоточием внутри строки. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+.tf-dock-row-top {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tf-dock-row-top b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--text);
+}
+.tf-dock-row-pct {
+  flex: none;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.tf-dock-row-step {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 0.74rem;
+}
+.tf-dock-row-bar {
+  display: block;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.tf-dock-row-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--tf-row-color);
+  transition: width 0.25s ease-out;
+}
+.tf-dock-row-tail {
+  flex: none;
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+}
+
+.tl-card {
+  --tl-color: var(--accent);
+  position: relative;
+  overflow: hidden;
+  margin: 10px 0;
+  padding: 12px 12px 10px;
+  font-size: 0.85rem;
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}
+/* Цветная полоска сверху: состояние задачи видно с первого взгляда */
+.tl-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--tl-color);
+  opacity: 0.9;
+}
+.tl-card.tl-s-done {
+  --tl-color: var(--success);
+}
+.tl-card.tl-s-warn {
+  --tl-color: var(--warning);
+}
+.tl-card.tl-s-error {
+  --tl-color: var(--danger);
+}
+
+.tl-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tl-main {
+  flex: 1;
+  min-width: 0;
+}
+.tl-title {
+  font-weight: 650;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-step {
+  margin-top: 1px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Кольцо прогресса: заполняется по --p (0…100) */
+.tl-ring {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: conic-gradient(var(--tl-color) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.09) 0);
+  transition: background 0.25s;
+}
+.tl-ring b {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.tl-ring-end {
+  background: var(--tl-color);
+}
+.tl-ring-end b {
+  background: color-mix(in srgb, var(--tl-color) 18%, var(--surface-1));
+  color: var(--tl-color);
+  font-size: 1rem;
+}
+
+.tl-head-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.tl-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
+}
+.tl-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+.tl-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tl-icon-btn.tl-cancel {
+  color: var(--danger);
+}
+.tl-icon-btn.tl-cancel:hover {
+  background: var(--danger-soft);
+}
+
+.tl-bar {
+  height: 5px;
+  margin: 10px 0 2px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.tl-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--tl-color);
+  transition: width 0.25s ease-out;
+}
+.tl-card.tl-s-running .tl-bar span {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--accent));
+  background-size: 200% 100%;
+  animation: tl-shimmer 1.6s linear infinite;
+}
+@keyframes tl-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-card.tl-s-running .tl-bar span {
+    animation: none;
+  }
+}
+
+.tl-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.tl-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tl-chip-err {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.tl-chip-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.tl-actor {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 5px 8px;
+  font-size: 0.78rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+.tl-actor > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.tl-actor-nick {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+/* Строки лога: слева цветная линия уровня, время приглушено */
+.tl-entries {
+  margin-top: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.74rem;
+}
+.tl-entries.tl-full {
+  max-height: 55vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+}
+.tl-entry {
+  display: grid;
+  grid-template-columns: 64px 18px 1fr;
+  gap: 4px;
+  padding: 2px 0 2px 6px;
+  line-height: 1.35;
+  border-left: 2px solid transparent;
+}
+.tl-time {
+  color: var(--text-faint);
+}
+.tl-entry.tl-l-warn {
+  color: var(--warning);
+  border-left-color: var(--warning);
+}
+.tl-entry.tl-l-error {
+  color: var(--danger);
+  border-left-color: var(--danger);
+}
+.tl-entry.tl-l-ok {
+  color: var(--success);
+  border-left-color: var(--success);
+}
+.tl-entry.tl-l-step {
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+/* Окно полного лога и список «Журналы» в настройках (logHub.js) */
+.tl-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap);
+  align-items: center;
+  margin-bottom: 10px;
+}
+.tl-filter {
+  margin-bottom: 8px;
+}
+.tl-journal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tl-jrow {
+  display: grid;
+  grid-template-columns: 24px 1.4fr 110px 1.6fr;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: border-color var(--speed) var(--ease);
+}
+.tl-jrow:hover {
+  border-color: var(--accent);
+}
+.tl-jsum {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl-warn-c {
+  color: var(--warning);
+}
+
+/* --- Итоговая таблица в конце журнала ---
+   Отдельный блок, а не строка в общем списке: по журналу итог приходилось собирать глазами
+   по всем строкам («Коля: ок», «Сокол: ок», «Дима: таймаут»), и сколько в сети — непонятно,
+   пока не сложишь руками. */
+.tl-summary-table {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.tl-summary-title {
+  font-weight: 650;
+  font-size: 0.9rem;
+  margin-bottom: 8px;
+}
+.tl-summary-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+.tl-total {
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-1);
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
+.tl-total b {
+  color: var(--text);
+}
+.tl-total.is-ok {
+  border-color: var(--success);
+  color: var(--success);
+}
+.tl-total.is-ok b {
+  color: var(--success);
+}
+.tl-total.is-warn {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.tl-total.is-warn b {
+  color: var(--warning);
+}
+.tl-total.is-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.tl-total.is-error b {
+  color: var(--danger);
+}
+
+.tl-summary-rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.tl-summary-rows th {
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 8px 5px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.tl-summary-rows td {
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.tl-summary-rows tr:last-child td {
+  border-bottom: 0;
+}
+/* Ник не должен раздувать колонку на всю ширину окна */
+.tl-summary-rows td:first-child {
+  max-width: 40%;
+  overflow-wrap: anywhere;
+}
+.tl-sum-status {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tl-sum-status.is-ok {
+  color: var(--success);
+}
+.tl-sum-status.is-warn {
+  color: var(--warning);
+}
+.tl-sum-status.is-error {
+  color: var(--danger);
+}
+.tl-sum-status.is-info {
+  color: var(--text-dim);
+}
+
+@media (max-width: 520px) {
+  #tf-task-dock {
+    left: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+}

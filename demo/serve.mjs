@@ -10,6 +10,10 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT || 1420);
+// Можно открыть нужную лабораторию сразу в предпросмотре, не меняя стандартный адрес.
+const entry = /^\/demo\/[a-z0-9/._-]+\.html$/i.test(process.env.DEMO_ENTRY || '')
+  ? process.env.DEMO_ENTRY
+  : '/demo/tools-modals.html';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -32,8 +36,17 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const pathname = decodeURIComponent(url.pathname);
+    // Opaque-origin iframe загружает публичные модули и шрифты по CORS. Не открываем
+    // произвольные файлы репозитория (в частности .git и локальные настройки) другим сайтам.
+    const corsPath = pathname.replace(/^\/(?:Tvinoferma|dist)(?=\/)/, '');
+    if (
+      !/(?:^|\/)\./.test(corsPath) &&
+      /^\/(?:demo|js|css|assets)\/[^?#]+\.(?:js|mjs|css|woff2?|png|webp|svg)$/i.test(corsPath)
+    ) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
     if (pathname === '/' || pathname === '/index.html') {
-      res.writeHead(302, { Location: '/demo/tools-modals.html' });
+      res.writeHead(302, { Location: entry });
       res.end();
       return;
     }
@@ -65,5 +78,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Лаборатория окон скриптов: http://localhost:${PORT}/demo/tools-modals.html`);
+  console.log(`Лаборатория Твинофермы: http://localhost:${PORT}${entry}`);
 });

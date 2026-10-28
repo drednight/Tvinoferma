@@ -1,0 +1,848 @@
+/* css/core/layout.css
+   Каркас окна: шапка с навигацией, содержимое, панель фильтров, сетка, панели настроек.
+
+   Почему колонка, а не сетка: липкая шапка работает только внутри блока, который выше неё.
+   В сетке область шапки — одна строка, и «прилипнуть» она не может. */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell > .content {
+  flex: 1 1 auto;
+}
+
+/* --- Шапка --- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px) saturate(1.2);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--on-accent);
+  font-weight: 800;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 18px rgba(110, 142, 248, 0.28);
+  flex-shrink: 0;
+}
+
+.brand-text {
+  min-width: 0;
+}
+.brand-sub {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-right {
+  display: flex;
+  gap: var(--gap);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* --- Навигация: один сегментированный блок вместо отдельных «пилюль» --- */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.22);
+  flex-wrap: wrap;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  padding: 7px 15px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease);
+}
+.tab:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Раздел, выключенный в настройках (js/core/sections.js). Правило `display` выше перебивает
+   `hidden` из таблицы браузера, поэтому без этой строки кнопка оставалась бы на месте. */
+.tab[hidden] {
+  display: none;
+}
+.tab.active {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.tab-ico {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+/* Счётчик записей в разделе: видно, где есть данные, не открывая вкладку */
+.tab-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.tab.active .tab-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tab-count[hidden] {
+  display: none;
+}
+
+/* --- Содержимое --- */
+.content {
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 22px;
+}
+
+.page {
+  display: none;
+}
+.page.active {
+  display: block;
+}
+
+/* --- Панель фильтров --- */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--gap-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--gap-md);
+}
+
+.filters {
+  display: flex;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 1 1 460px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+.filters .input {
+  flex: 1 1 200px;
+  min-width: 160px;
+}
+.filters .select {
+  max-width: 210px;
+}
+/* Кнопка «Сбросить» появляется, только когда есть что сбрасывать (js/modules/characters/list.js) */
+.filters-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  transition:
+    color var(--speed) var(--ease),
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+.filters-clear:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.05);
+}
+.filters-clear[hidden] {
+  display: none;
+}
+
+.actions {
+  display: flex;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+/* --- Полоса показателей раздела --- */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: var(--gap);
+  margin-bottom: 18px;
+}
+.stat {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+/* Тонкая цветная линия сверху: цвет показателя виден, но не спорит с текстом */
+.stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--stat-c, var(--accent));
+  opacity: 0.85;
+}
+.stat-label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  margin-bottom: 6px;
+}
+.stat-value {
+  display: block;
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--stat-t, var(--text));
+  font-variant-numeric: tabular-nums;
+}
+.stat-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+}
+.stat.is-accent {
+  --stat-c: var(--accent);
+}
+.stat.is-violet {
+  --stat-c: var(--accent-2);
+  --stat-t: var(--accent-2);
+}
+.stat.is-gold {
+  --stat-c: var(--gold);
+  --stat-t: var(--gold);
+}
+.stat.is-ok {
+  --stat-c: var(--success);
+  --stat-t: var(--success);
+}
+.stat.is-bad {
+  --stat-c: var(--danger);
+  --stat-t: var(--danger);
+}
+.stat.is-plain {
+  --stat-c: var(--border-strong);
+}
+
+/* --- Готовые сетки --- */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(304px, 1fr));
+  gap: var(--gap-md);
+  align-items: start;
+  width: 100%;
+}
+
+/* Карточки персонажей: колонка шире базовой (360px), иначе в полноэкранном режиме
+   при `--content-max` в сетку влезает лишняя колонка, карточки становятся уже обычных,
+   и подвал не вмещает проходки с кнопками в одну строку. Ширину задаёт сам `#character-grid`,
+   а не `.card-grid`: им пользуются и другие разделы, для них 304px — нормально. */
+#character-grid {
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+}
+
+.list {
+  display: grid;
+  gap: var(--gap);
+}
+.list.compact {
+  margin-top: 14px;
+}
+
+/* --- Панель и строка настройки --- */
+.panel {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow-1);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+}
+.row.gap {
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--gap-md);
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child {
+  border-bottom: none;
+}
+.setting-row strong {
+  font-weight: 600;
+}
+.setting-row .muted {
+  font-size: 0.82rem;
+  max-width: 68ch;
+}
+
+/* Выбор набора звука и кнопка «Послушать»: список и кнопка в одной строке, пояснение под ними */
+.sound-row {
+  align-items: flex-start;
+}
+.sound-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.sound-controls .select {
+  min-width: 150px;
+}
+.sound-tone-hint {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+}
+@media (max-width: 720px) {
+  .sound-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .sound-controls {
+    justify-content: flex-start;
+  }
+}
+
+/* Сворачиваемая панель: в свёрнутом виде видны название и описание */
+.panel.fold > summary {
+  position: relative;
+  padding-right: 30px;
+  cursor: pointer;
+  list-style: none;
+}
+.panel.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.panel.fold > summary::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--text-faint);
+  border-bottom: 2px solid var(--text-faint);
+  transform: rotate(45deg);
+  transition: transform var(--speed) var(--ease);
+}
+.panel.fold[open] > summary::after {
+  transform: rotate(225deg);
+  top: 11px;
+}
+.panel.fold > summary h3 {
+  margin: 0 0 3px;
+}
+.panel.fold > summary p {
+  margin: 0;
+}
+.panel.fold[open] > summary {
+  margin-bottom: 14px;
+}
+.panel.fold:hover {
+  border-color: var(--border-strong);
+}
+
+/* Единый журнал (core/logHub.js) */
+.lh-list {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.lh-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lh-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  border-radius: var(--radius-pill);
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.lh-chip:hover {
+  border-color: var(--accent);
+}
+.lh-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 650;
+}
+.lh-chip.active .muted {
+  color: inherit;
+  opacity: 0.75;
+}
+.lh-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.lh-filters .input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.lh-count {
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+.lh-actions {
+  margin-top: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.lh-more {
+  margin-top: 6px;
+}
+
+/* Настройки: две колонки свёрнутых карточек, раскрытая растёт вниз только в своей колонке */
+.settings-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap-md);
+  align-items: start;
+}
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-md);
+  min-width: 0;
+}
+.settings-col > .panel {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .settings-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Свёрнутая карточка: описание в одну строку, поэтому карточки одной высоты и ряды выровнены */
+.settings-col > .panel.fold > summary {
+  min-height: 54px;
+}
+.settings-col > .panel.fold:not([open]) > summary p {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 24px;
+}
+
+/* Опасные действия */
+.panel.fold.danger-zone {
+  border-color: rgba(247, 118, 142, 0.32);
+  margin-top: var(--gap-md);
+}
+.panel.fold.danger-zone > summary h3 {
+  color: var(--danger);
+}
+.danger-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap-md);
+  padding: 13px 0;
+  border-top: 1px solid rgba(247, 118, 142, 0.15);
+}
+.danger-item > div {
+  min-width: 0;
+}
+.danger-item p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+  font-size: 0.82rem;
+}
+.danger-item .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-width: 200px;
+}
+.danger-more {
+  margin-top: 4px;
+  border-top: 1px dashed rgba(247, 118, 142, 0.25);
+}
+.danger-more > summary {
+  padding: 10px 0 2px;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.danger-more > summary:hover {
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .content {
+    padding: 16px;
+  }
+  .topbar {
+    padding: 10px 14px;
+  }
+  .danger-item {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .danger-item .btn {
+    min-width: 0;
+  }
+}
+
+/* Настройки: две колонки — слева разделы, справа открытый раздел целиком.
+   Раньше все шесть разделов шли одной длинной страницей, а список категорий был полосой
+   карточек наверху: чтобы дойти до нужного раздела, каждый раз надо было прокручивать вниз.
+   Теперь открыт ровно один раздел (переключает js/settings/settings.js), а список стоит
+   сбоку и следует за прокруткой. */
+.settings-layout {
+  --settings-nav-width: 272px;
+  display: grid;
+  grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+}
+.settings-body {
+  min-width: 0;
+  padding-left: 20px;
+}
+/* Панели настроек умеют сжиматься: иначе длинные подписи (путь к папке, адрес сайта)
+   растягивали колонку и выталкивали список разделов */
+.settings-body .input,
+.settings-body .select {
+  min-width: 0;
+}
+
+.settings-nav {
+  --settings-item-radius: 0;
+  position: sticky;
+  top: calc(var(--topbar-h, 64px) + 16px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* Разделитель тянется до низа, но сами пункты остаются компактными наверху. */
+  height: max(0px, calc(100vh - var(--topbar-h, 64px) - 56px));
+  grid-auto-rows: minmax(66px, auto);
+  align-content: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  gap: 0;
+  margin-bottom: 0;
+  padding: 2px 0;
+  border-right: 1px solid var(--border);
+}
+/* На узком окне меню становится компактной сеткой над содержимым. */
+@media (max-width: 980px) {
+  .settings-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .settings-nav {
+    --settings-item-radius: var(--radius-md);
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    height: auto;
+    max-height: min(42vh, 360px);
+    gap: 4px;
+    padding: 2px 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-body {
+    padding-left: 0;
+  }
+}
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 8px 14px 8px 8px;
+  border: 0;
+  /* Место под правую отметку зарезервировано и у остальных пунктов, чтобы не было сдвига. */
+  border-right: 3px solid transparent;
+  border-radius: var(--settings-item-radius);
+  background: transparent;
+  text-decoration: none;
+  overflow: hidden;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+/* Линии проходят между пунктами, не добавляя промежутков в область нажатия. */
+.settings-nav-item:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+/* Подсветка заполняет строку, не сдвигая её за границу при наведении. */
+.settings-nav-item:hover {
+  background: var(--surface-2);
+}
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+/* Пункт настроек — ссылка, но наведение показано самой строкой, а не подчёркиванием. */
+.settings-nav-item:hover,
+.settings-nav-item.is-active:hover {
+  text-decoration: none;
+}
+/* Акцент — только справа, вплотную к разделительной линии. */
+.settings-nav-item.is-active {
+  border-right-color: var(--accent);
+  background: linear-gradient(90deg, var(--surface-2), var(--accent-soft));
+}
+/* В узкой сетке границы нужны и между колонками; разница толщины правой рамки
+   компенсируется отступом, чтобы текст не сдвигался при выборе. */
+@media (max-width: 980px) {
+  .settings-nav-item {
+    padding-right: 16px;
+    border: 1px solid var(--border);
+  }
+  .settings-nav-item.is-active {
+    padding-right: 14px;
+    border-right: 3px solid var(--accent);
+  }
+}
+.settings-nav-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 1.15rem;
+  transition:
+    border-color var(--speed) var(--ease),
+    background var(--speed) var(--ease),
+    color var(--speed) var(--ease),
+    box-shadow var(--speed) var(--ease);
+}
+.settings-nav-item:hover .settings-nav-icon {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.settings-nav-item.is-active .settings-nav-icon {
+  border-color: var(--accent-line);
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-2));
+  color: var(--accent);
+  box-shadow: 0 0 14px rgba(110, 142, 248, 0.28);
+}
+.settings-nav-copy {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+.settings-nav-copy strong {
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+.settings-nav-item.is-active .settings-nav-copy strong {
+  color: var(--accent);
+}
+.settings-nav-copy small {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-nav-item,
+  .settings-nav-icon {
+    transition: none;
+  }
+}
+.settings-group {
+  margin-bottom: 32px;
+  scroll-margin-top: 140px;
+  min-width: 0;
+}
+.settings-group-head {
+  margin-bottom: 12px;
+}
+.settings-group-head h3 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+}
+.settings-group-head p {
+  margin: 0;
+}
+#danger-zone {
+  scroll-margin-top: 140px;
+}
+.settings-group .mono {
+  overflow-wrap: anywhere;
+}
+.settings-group .setting-row {
+  flex-wrap: wrap;
+}
+.settings-group .setting-row > div {
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  .settings-group .setting-row {
+    align-items: flex-start;
+  }
+  .settings-group select {
+    max-width: 100%;
+  }
+}
+
+.update-changelog {
+  margin-top: 16px;
+  display: grid;
+  gap: 8px;
+}
+.update-history-list {
+  --history-gap: 8px;
+  --history-row: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--history-gap);
+  /* Пять заголовков по 48px и четыре промежутка. Раскрытая запись
+     тоже прокручивается внутри списка, а старые версии остаются доступными. */
+  max-height: calc(5 * var(--history-row) + 4 * var(--history-gap));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.update-history-item {
+  flex: 0 0 auto; /* свёрнутые записи не сжимаются, даже если их много */
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.update-history-item summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: calc(var(--history-row) - 2px); /* ещё 2px — рамка карточки */
+  padding: 10px 12px;
+  overflow: hidden;
+  cursor: pointer;
+  font-weight: 600;
+}
+.update-history-item summary:hover {
+  background: var(--surface-2);
+}
+.update-history-item summary .uh-ver {
+  font-size: 0.9rem;
+}
+.uh-date {
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.uh-count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.update-history-body {
+  margin: 0;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  max-height: 320px;
+  overflow: auto;
+}
+.uh-lead {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+}
+.uh-h {
+  margin: 12px 0 4px;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.uh-ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+.uh-ul li::marker {
+  color: var(--text-faint);
+}

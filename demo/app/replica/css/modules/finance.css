@@ -1,0 +1,1100 @@
+/* css/modules/finance.css
+   Раздел «Банк»: приход и расход, комиссионный магазин и голд.
+
+   Почему свой файл: это первый раздел, где числа стоят рядом с текстом и их нужно
+   сравнивать глазом (курс против фактического, остаток против суммы строк). Поэтому
+   колонки с числами выровнены вправо и моноширинны, а приход и расход различаются
+   цветом, а не только знаком «+»/«−»: различать их приходится быстро, и на длинных
+   списках одного знака мало. */
+
+.fin-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.fin-subnav-btn {
+  padding: 7px 13px;
+  font-size: 0.86rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition:
+    border-color var(--speed) var(--ease),
+    color var(--speed) var(--ease),
+    background var(--speed) var(--ease);
+}
+.fin-subnav-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.fin-subnav-btn.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+}
+.fin-subnav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* --- Числа --- */
+.fin-in {
+  color: var(--success);
+}
+.fin-out {
+  color: var(--danger);
+}
+/* Моноширинный шрифт: суммы выровнены по разрядам, и «на 1000 больше» видно сразу,
+   не складывая в уме две строки с разным количеством цифр. */
+.fin-num,
+.fin-amount,
+.fin-balance {
+  font-variant-numeric: tabular-nums;
+}
+
+.fin-empty {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.fin-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+/* Шапка «Банка»: наличные и кнопки одной строкой, между ними и сводкой — воздух.
+   Раньше кнопки стояли в общем потоке и прилипали к таблице, а после них не было
+   отступа до сводки. */
+.fin-bank-head {
+  margin-bottom: 18px;
+}
+.fin-bank-head .fin-actions-row {
+  margin-top: 0;
+}
+/* Подпись «Сейчас в наличии»: без неё две полосы с числами читались как одна,
+   и было не видно, какая из них про всё время, а какая про месяц. */
+.fin-now h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+.fin-now .fin-holdings {
+  margin-bottom: 0;
+}
+.fin-summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 10px;
+}
+.fin-summary-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.fin-summary-head span {
+  font-size: 0.8rem;
+}
+/* Полоса «сколько в наличии»: она же показывается в форме сделки с голдом */
+.fin-holdings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+.fin-holding b {
+  font-size: 0.95rem;
+}
+/* «Из них в долгах» — вторая строка под числом: долг нельзя складывать с наличными,
+   поэтому он стоит отдельно и мелким шрифтом. */
+.fin-holding-debt {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+}
+.fin-pay-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fin-shop-hint {
+  margin: 12px 0 0;
+  font-size: 0.8rem;
+  max-width: 78ch;
+}
+/* Та же полоса внутри модального окна: отступ сверху лишний, окно и так с полями */
+.fin-modal .fin-holdings {
+  margin: 0;
+}
+
+/* --- Сводка по валютам --- */
+.fin-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.fin-summary-cell {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-summary-label {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.fin-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.fin-summary-row small {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+}
+.fin-summary-row b {
+  font-variant-numeric: tabular-nums;
+}
+.fin-summary-total {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 1.05rem;
+}
+
+/* --- Таблицы реестра и магазина --- */
+.fin-month {
+  margin-bottom: 12px;
+}
+.fin-month summary {
+  cursor: pointer;
+}
+.fin-month summary h3 {
+  display: inline;
+  font-size: 0.95rem;
+}
+.fin-month-totals {
+  display: inline-flex;
+  gap: 12px;
+  margin-left: 10px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Прокрутка по горизонтали вместо сжатия колонок.
+   Без неё таблица на узком окне сжимает «Откуда / на что» до нуля, а кнопки действий
+   выдавливаются за пределы ячейки — значки оказывались за границей блока. */
+.fin-table-wrap {
+  overflow-x: auto;
+}
+/* Комиссионка: горизонтальный скроллбар здесь не нужен — колонка предмета сжимается,
+   а не растягивает таблицу. Цифры остаются узкими, поэтому таблица всегда влезает. */
+.fin-shop .fin-table-wrap {
+  overflow-x: visible;
+}
+.fin-shop .fin-what {
+  min-width: 5rem;
+  max-width: none;
+}
+.fin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+/* min-width: 0 обязателен в гриде: иначе содержимое растягивает колонку и таблица
+   уезжает за пределы блока, откуда и появлялся скроллбар. */
+.fin-shop .fin-table {
+  table-layout: fixed;
+}
+.fin-shop .fin-actions .fin-icon {
+  width: 26px;
+  margin-left: 2px;
+}
+.fin-table th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.fin-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.fin-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.fin-table .fin-num {
+  text-align: right;
+  white-space: nowrap;
+}
+.fin-table-compact td,
+.fin-table-compact th {
+  padding: 5px 6px;
+  font-size: 0.8rem;
+}
+/* Предмет не должен раздувать таблицу: текст переносится, а колонка чисел остаётся узкой. */
+.fin-what {
+  min-width: 9rem;
+  max-width: 22rem;
+}
+/* В комиссионке предмет — единственная широкая колонка, и перенос по словам тут
+   единственный способ уместить название: без него буква падала на свою строку. */
+.fin-shop .fin-what {
+  min-width: 0;
+  max-width: none;
+}
+.fin-shop .fin-what b,
+.fin-shop .fin-what small {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+/* При table-layout: fixed ширину колонок задаёт шапка, а длинное название предмета
+   переносится по словам вместо того, чтобы растянуть всю таблицу. */
+/* Предмет забирает всё, что осталось после чисел и кнопок: width: auto, а не 100%.
+   При table-layout: fixed ширины из шапки складываются, и 100% плюс фиксированные
+   колонки превышали ширину — предмету оставалось 25 px, и каждая буква названия
+   вставала в отдельную строку. */
+.fin-shop .fin-table th:first-child {
+  width: auto;
+}
+/* При table-layout: fixed ширины колонок берутся только из шапки, и width: 1% на
+   числовых колонках схлопывал их до одного символа — цифры наезжали на кнопки.
+   Поэтому у каждой колонки своя ширина, и сумма их меньше ширины колонки. */
+.fin-shop .fin-table th.fin-head-price {
+  width: 64px;
+}
+.fin-shop .fin-table th:nth-child(3) {
+  width: 62px;
+}
+.fin-shop .fin-table th:nth-child(4) {
+  width: 74px;
+}
+.fin-shop .fin-table th.fin-head-actions {
+  width: 92px;
+}
+.fin-shop .fin-actions {
+  width: auto;
+}
+/* Единица измерения под заголовком: без неё «Цена» и «Итого» выглядят одинаково,
+   и столбцы чисел читались как одна полоса цифр. */
+.fin-head-unit {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+.fin-date,
+.fin-balance {
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.fin-amount {
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 650;
+}
+.fin-what b {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.fin-what small {
+  display: block;
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+/* Колонка действий не сжимается: `flex: none` иначе отдаёт кнопкам ширину по содержимому,
+   они наезжали друг на друга и вылезали за поле строки. */
+.fin-actions {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+.fin-actions .fin-icon {
+  flex: none;
+  width: 30px;
+  height: 28px;
+  margin-left: 4px;
+  padding: 0;
+}
+.fin-source {
+  color: var(--text-faint);
+  font-size: 0.7rem;
+}
+.fin-split {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 0.76rem;
+}
+
+.fin-chip {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.fin-chip.is-in {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.fin-chip.is-out {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.fin-chip.is-warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.fin-chip.is-done {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* --- Комиссионный магазин: две колонки, как в игре --- */
+.fin-shop {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 900px) {
+  .fin-shop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.fin-shop-col {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+/* Колонка «Покупка» без позиций была вдвое короче продажи, и подпись «На складе»
+   подвисала на середине. Флекс-колонка прижимает её к низу своей колонки. */
+.fin-shop-col > .fin-table-wrap {
+  flex: 1;
+}
+.fin-shop-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.fin-shop-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.fin-shop-head-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fin-shop-head-right span {
+  font-size: 0.78rem;
+}
+.fin-shop-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: auto;
+  padding-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Голд --- */
+.fin-gold-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-gold-hint {
+  margin: 10px 0 0;
+  max-width: 78ch;
+  font-size: 0.82rem;
+}
+
+/* --- Долги --- */
+.fin-loans {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.fin-loan {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-loan.is-borrowed {
+  border-left-color: var(--danger);
+}
+
+.fin-loan-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.fin-loan-head b {
+  font-size: 1rem;
+}
+
+.fin-loan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+.fin-loan-grid span {
+  display: grid;
+  gap: 1px;
+}
+.fin-loan-grid small {
+  color: var(--text-faint);
+  font-size: 0.7rem;
+}
+.fin-loan-grid b {
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.fin-loan-grid-sum {
+  padding: 9px 10px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+}
+.fin-loan-due b {
+  font-size: 1.02rem;
+  color: var(--warning);
+}
+.fin-loan-term {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.fin-payments {
+  font-size: 0.82rem;
+}
+.fin-payments summary {
+  cursor: pointer;
+  color: var(--text-dim);
+}
+.fin-loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* --- Формы в модальных окнах --- */
+.fin-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.fin-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.fin-field span {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.fin-field input,
+.fin-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+.fin-field input:focus-visible,
+.fin-field select:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+/* Примечание и «кто» — длинный текст, во всю ширину окна */
+.fin-field-wide,
+.fin-form-hint,
+.fin-preview {
+  grid-column: 1 / -1;
+}
+.fin-form-hint {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+/* Комиссия аукциона спрятана под раскрывающийся комментарий: по умолчанию 2%,
+   и поле не мозолит глаза, пока его не раскрыли */
+.fin-details {
+  grid-column: 1 / -1;
+}
+.fin-details > summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+.fin-details .fin-field {
+  margin-top: 8px;
+}
+
+/* Итог сделки: пересчитывается на лету, чтобы человек увидел комиссию до записи */
+.fin-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-xs);
+  background: var(--accent-soft);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  /* Предпросмотр растёт текстом при длинных числах и подписи: без переноса он
+     вылезал за границы окна. */
+  overflow-wrap: anywhere;
+}
+/* Числа в предпросмотре не должны прижиматься к границе окна */
+.fin-preview b,
+.fin-preview small {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 560px) {
+  .fin-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* --- Раскладка «Рабочий стол» (вариант 6) ---
+   Один экран: KPI → журнал выбранного месяца (месяцы слева) → комиссионка и долги
+   двумя колонками. Панель действий и поиск — сверху, фильтры журнала — над рамкой. */
+
+.desk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.desk-bar .grp {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.desk-bar .grp-label {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+.desk-search {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.desk-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+.desk-search input:focus-visible {
+  outline: none;
+  border-color: var(--accent-line);
+  box-shadow: var(--focus-ring);
+}
+
+.desk-section {
+  margin-bottom: 34px;
+}
+.block-h {
+  margin: 0 0 10px;
+  font-size: 0.98rem;
+}
+
+/* --- KPI-панели --- */
+.pans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.pan {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.pan-label {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+}
+.pan-value {
+  font-size: 1.45rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.pan-sub {
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+.pan-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.pan-row span {
+  color: var(--text-faint);
+}
+
+/* --- Месяцы: список слева, журнал справа --- */
+.month-open {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+@media (max-width: 900px) {
+  .month-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Правая колонка — фиксированной высоты: сверху инструменты и заголовок, ниже рамка.
+   Список месяцев занимает ровно её высоту, поэтому начинается на уровне month-tools
+   и заканчивается на уровне конца month-body, а лишнее уходит в скролл. */
+.month-right {
+  display: flex;
+  flex-direction: column;
+  height: 540px;
+  min-height: 400px;
+}
+.months-list {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
+  height: 100%;
+  min-height: 360px;
+  max-height: 540px;
+}
+.month-item {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: inherit;
+  cursor: pointer;
+}
+.month-item:hover {
+  border-color: var(--accent-line);
+}
+.month-item.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.month-item b {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.month-item .mi-sum {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.month-item small {
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.month-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.month-tools .spacer {
+  flex: 1;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chips-label {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+}
+.chip-btn {
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chip-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.chip-btn.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.filter-chip button {
+  padding: 0 3px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.month-body {
+  flex: 1 1 auto;
+  min-height: 320px;
+  max-height: 470px;
+  overflow-y: auto;
+  padding-right: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.month-body::-webkit-scrollbar {
+  width: 10px;
+}
+.month-body::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+}
+
+/* --- Комиссионка: плитки 5×4 --- */
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 560px) {
+  .shop-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.shop-side {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  padding: 12px 14px;
+}
+.shop-side-head {
+  margin-bottom: 10px;
+}
+.shop-side-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.slots {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  max-width: min(620px, 100%);
+  margin: 0 auto;
+}
+.slot {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--radius-xs);
+  border: 1px dashed var(--border);
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 3px;
+  /* Размер плитки задаёт aspect-ratio, а не содержимое. Без ограничения имени и обрезки
+     содержимого длинное название распирало плитку: заполненные становились выше пустых,
+     ряд выглядел неровным, а сетка вылезала из блока. */
+  overflow: hidden;
+}
+.slot.is-empty {
+  color: var(--text-faint);
+  font-size: 1rem;
+}
+.slot.is-empty:hover {
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.slot.is-filled {
+  border: 1px solid hsl(var(--hue) 45% 38%);
+  background: hsl(var(--hue) 42% 20%);
+  color: hsl(var(--hue) 75% 90%);
+  font-weight: 600;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-align: center;
+  overflow-wrap: anywhere;
+  /* Отступ только снизу — под количество «×7». Справа места не резервируем: плитка узкая,
+     и отступ в 20px съедал треть её ширины — короткие названия («Чешуя») начинали
+     переноситься, хотя раньше помещались целиком. По центру строки углы пустые,
+     поэтому «×7» там не мешает. */
+  padding: 3px 3px 13px;
+}
+.slot.is-filled:hover {
+  background: hsl(var(--hue) 45% 26%);
+}
+/* Название переносится на две строки, а что не влезло — многоточием.
+   Двух строк хватает всем реальным названиям (самое длинное — «Ключ от Книги наставлений»),
+   а полное название всё равно лежит в подсказке плитки, поэтому обрезка ничего не теряет. */
+.slot-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: 2.4em;
+}
+/* 0.7rem = 11.2px: в проекте мельче 11px текст не читается (см. правила интерфейса) */
+.slot-qty {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  opacity: 0.9;
+  font-variant-numeric: tabular-nums;
+}
+/* Управление позицией прячем до наведения: плитка остаётся чистой, но позицию
+   можно изменить или убрать, наведясь на неё. */
+.slot-acts {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--speed) var(--ease);
+}
+.slot.is-filled:hover .slot-acts,
+.slot.is-filled:focus-within .slot-acts {
+  opacity: 1;
+}
+.slot-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: 0.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.slot-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.shop-side-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Долги: строки с полосой погашения --- */
+.fin-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.fin-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--success);
+}
+.fin-bar.is-neg > i {
+  background: var(--danger);
+}
+.stack {
+  display: grid;
+  gap: 14px;
+}
+.fin-loan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--success);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+}
+.fin-loan.is-borrowed {
+  border-left-color: var(--danger);
+}
+.fin-loan-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+.fin-loan-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.fin-loan-title b {
+  font-size: 0.95rem;
+}
+.fin-loan-meta {
+  color: var(--text-faint);
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+.fin-loan-prog {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.fin-loan-due {
+  text-align: right;
+}
+.fin-loan-due small {
+  display: block;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+.fin-loan-due b {
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--warning);
+}
+.fin-loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.fin-chip.is-conv {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* --- Низ страницы: комиссионка слева, долги справа --- */
+.bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .bottom-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
