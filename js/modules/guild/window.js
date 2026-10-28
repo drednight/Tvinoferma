@@ -31,7 +31,7 @@ export async function isGuildOpen(deps = {}) {
 
 /**
  * Обновляет сводку: события и пати. Работает без открытого окна, если сессия на сайте жива.
- * Возвращает `{ events, parties }`. Ошибки приходят строкой: `login`, `timeout`, `busy`.
+ * Возвращает `{ events, parties, poll }`. Ошибки приходят строкой: `login`, `timeout`, `busy`.
  */
 export async function syncGuildFromSite(deps = {}) {
   return (deps.invoke || callRust)('guild_sync');
@@ -48,4 +48,12 @@ export async function setGuildResponse(eventId, response, deps = {}) {
  */
 export async function respondToEvent(eventId, response, deps = {}) {
   return setGuildResponse(eventId, response, deps);
+}
+
+/** Голосование через сохранённую сессию окна клана; Rust перепроверяет опрос и варианты. */
+export async function voteInGuildPoll(pollId, optionIds, deps = {}) {
+  return (deps.invoke || callRust)('guild_vote_poll', {
+    pollId: String(pollId),
+    optionIds: optionIds.map(String)
+  });
 }

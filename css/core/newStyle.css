@@ -222,6 +222,7 @@ body[data-ui-style='next'] .topbar-right {
 }
 
 body[data-ui-style='next'] .content {
+  --next-content-inset: 32px;
   grid-column: 2;
   grid-row: 2;
   min-width: 0;
@@ -229,9 +230,23 @@ body[data-ui-style='next'] .content {
      оставляла по бокам пустоты, а короткая страница — пустоту внизу. */
   max-width: none;
   margin: 0;
-  padding: 28px 32px 42px;
+  padding: 28px var(--next-content-inset) 42px;
   display: flex;
   flex-direction: column;
+}
+/* Меню настроек доходит до next-sidebar, а разделитель и основное содержимое
+   остаются на своём месте. У остальных страниц отступы не меняются. */
+@media (min-width: 981px) {
+  body[data-ui-style='next'] .page[data-section='settings'] .settings-layout {
+    margin-left: calc(-1 * var(--next-content-inset));
+    grid-template-columns: calc(var(--settings-nav-width) + var(--next-content-inset)) minmax(0, 1fr);
+  }
+}
+/* Когда меню расположено над содержимым, расширяем только его, а не всю страницу. */
+@media (min-width: 681px) and (max-width: 980px) {
+  body[data-ui-style='next'] .page[data-section='settings'] .settings-nav {
+    margin-left: calc(-1 * var(--next-content-inset));
+  }
 }
 /* Активная страница растягивается по всей высоте: фон и пустое место принадлежат ей,
    а не «провисающему» между шапкой и содержимым. */
@@ -346,6 +361,7 @@ body[data-ui-style='next'] .stat-strip {
     display: none;
   }
   body[data-ui-style='next'] .content {
-    padding: 20px 16px 30px;
+    --next-content-inset: 16px;
+    padding: 20px var(--next-content-inset) 30px;
   }
 }

@@ -2,11 +2,10 @@
 // Скрипт окна клана Guild (pw-eternals.ru). Внедряется во все страницы этого окна.
 //
 // 1) Панель навигации сверху: назад, вперёд, обновить страницу.
-// 2) На странице профиля разбирает предстоящие события и «Пати в которых вы состоите»
+// 2) На странице профиля разбирает события, пати и опрос, загружая варианты из API сайта,
 //    и отдаёт их в hash адреса: #TFETE1_<encodeURIComponent({"data":{...},"error":null})>.
-// 3) По запросу приложения отмечает событие тем же запросом, что и форма сайта
-//    (handlers/event_response.php, поля event_id и response), и отдаёт результат в hash:
-//    #TFETA1_<encodeURIComponent({ok, eventId, response, message})>.
+// 3) По запросу приложения отмечает событие (handlers/event_response.php, #TFETA1_)
+//    или голосует в опросе (handlers/vote.php, #TFETV1_).
 //
 // Hash меняется через history.replaceState, а не location.hash: иначе каждая сводка
 // добавляла бы запись в историю, и кнопка «назад» переключала бы hash вместо страниц.
@@ -22,6 +21,9 @@
   const NAV_HEIGHT = 36;
 
   const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  const validId = (value) => /^\d{1,12}$/.test(String(value));
+  // Адрес задаётся Rust при создании окна; сторонняя страница не должна получать запросы клана.
+  const isGuildOrigin = () => !!window.__tfGuildOrigin && location.origin === window.__tfGuildOrigin;
 
   /* ---------------------------- панель навигации ---------------------------- */
 
@@ -115,13 +117,92 @@
     return parties;
   }
 
+  // HTML заголовка и вариантов сводим к тексту и http(s)-ссылкам: никакие теги
+  // и обработчики сайта не передаются в приложение. См. js/modules/guild/poll.js.
+  function safePollLink(value, base) {
+    if (!value || String(value).length > 2048) return '';
+    try {
+      const url = new URL(String(value), base || undefined);
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password ? url.href : '';
+    } catch (e) { return ''; }
+  }
+
+  function pollTextParts(root) {
+    if (!root) return [];
+    const parts = [];
+    const skip = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'TEMPLATE', 'NOSCRIPT']);
+    const visit = (node) => {
+      if (node.nodeType === 3) { parts.push({ text: node.textContent || '' }); return; }
+      if (node.nodeType !== 1 && node.nodeType !== 11) return;
+      if (node.nodeType === 1 && skip.has(node.tagName)) return;
+      if (node.nodeType === 1 && node.tagName === 'BR') { parts.push({ text: ' ' }); return; }
+      if (node.nodeType === 1 && node.tagName === 'A') {
+        parts.push({ text: node.textContent || '', href: safePollLink(node.getAttribute('href'), document.baseURI) });
+        return;
+      }
+      for (const child of node.childNodes) visit(child);
+    };
+    visit(root);
+    const normalized = parts.slice(0, 100).flatMap((part) => {
+      const text = String(part.text || '').replace(/\s+/g, ' ').slice(0, 1000);
+      if (!text) return [];
+      const href = safePollLink(part.href);
+      return [href ? { text, href } : { text }];
+    });
+    if (normalized.length) {
+      normalized[0].text = normalized[0].text.trimStart();
+      normalized[normalized.length - 1].text = normalized[normalized.length - 1].text.trimEnd();
+    }
+    return normalized.filter((part) => part.text);
+  }
+
+  function parsePoll(doc) {
+    const root = doc.querySelector('#mainPoll');
+    const id = clean(root?.getAttribute('data-poll-id'));
+    if (!root || !validId(id)) return null;
+    return { id, title: pollTextParts(root.querySelector('.poll__title')), type: 'single', options: [], loadError: false };
+  }
+
+  // Варианты и уже выбранные ответы сайт возвращает отдельным JSON-запросом.
+  async function fetchPoll(id) {
+    if (!isGuildOrigin() || !validId(id)) throw new Error('wrong_site');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const reply = await fetch(`/handlers/get_poll.php?poll_id=${encodeURIComponent(id)}`, {
+        credentials: 'include', cache: 'no-store', signal: controller.signal
+      });
+      if (!reply.ok) throw new Error('poll_unavailable');
+      const data = await reply.json();
+      if (!data?.poll || !Array.isArray(data.options) || !Array.isArray(data.user_vote)) throw new Error('poll_invalid');
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function applyPollOptions(poll, data) {
+    const selected = new Set(data.user_vote.map(String));
+    const seen = new Set();
+    const options = data.options.slice(0, 200).flatMap((option) => {
+      const id = clean(option?.id);
+      if (!validId(id) || seen.has(id)) return [];
+      seen.add(id);
+      const template = document.createElement('template');
+      template.innerHTML = String(option.option_text || '');
+      return [{ id, text: pollTextParts(template.content), selected: selected.has(id) }];
+    });
+    return { ...poll, type: data.poll.poll_type === 'multiple' ? 'multiple' : 'single', options, loadError: false };
+  }
+
   function parseProfile(doc) {
     const partiesColumn = [...doc.querySelectorAll('.user__col')]
       .find((el) => clean(el.querySelector('.title')?.textContent) === 'Пати в которых вы состоите');
     return {
       events: parseEvents(doc),
       parties: parseParties(partiesColumn),
-      selfNick: clean(doc.querySelector('#updateUserInfoForm input[name="username"]')?.value)
+      selfNick: clean(doc.querySelector('#updateUserInfoForm input[name="username"]')?.value),
+      poll: parsePoll(doc)
     };
   }
 
@@ -130,10 +211,21 @@
     history.replaceState(null, '', location.pathname + location.search + hash);
   }
 
-  // Сводка профиля. На странице входа отвечаем признаком error: 'login' — так обновление без окна не ждёт зря.
+  // Повторный разбор отменяет публикацию предыдущего: медленный ответ API не должен
+  // затереть более свежую сводку после нажатия «Обновить».
+  let scrapeSequence = 0;
   window.__tfGuildScrape = function () {
+    const sequence = ++scrapeSequence;
     if (document.querySelector('.user__events, .user__col')) {
-      publish('TFETE1_', { data: parseProfile(document), error: null });
+      const data = parseProfile(document);
+      if (!data.poll) {
+        publish('TFETE1_', { data, error: null });
+      } else {
+        fetchPoll(data.poll.id)
+          .then((reply) => { data.poll = applyPollOptions(data.poll, reply); })
+          .catch(() => { data.poll.loadError = true; })
+          .finally(() => { if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null }); });
+      }
       return true;
     }
     if (document.querySelector('input[type="password"]')) {
@@ -169,6 +261,50 @@
     }
     console.log('[TF clan] отметка', result.eventId, '→', result.response, '| ok:', result.ok, '| ответ:', result.detail);
     publish('TFETA1_', result);
+    return result.ok;
+  };
+
+  // Голос идёт только на тот опрос, который сейчас открыт на странице клана.
+  // Перед POST перечитываем варианты: устаревший кэш не должен отправить чужой голос.
+  window.__tfGuildVote = async function (pollId, optionIds) {
+    const id = String(pollId || '');
+    const selected = Array.isArray(optionIds) ? optionIds.map(String) : [];
+    const result = { ok: false, pollId: id, message: '' };
+    try {
+      if (!isGuildOrigin()) throw new Error('Откройте страницу профиля клана и обновите сводку.');
+      if (!validId(id) || !selected.length || selected.length > 200 ||
+          selected.some((value) => !validId(value)) || new Set(selected).size !== selected.length) {
+        throw new Error('Выберите корректные варианты ответа.');
+      }
+      const currentPoll = () => clean(document.querySelector('#mainPoll')?.getAttribute('data-poll-id'));
+      if (currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
+      const poll = await fetchPoll(id);
+      const available = new Set(poll.options.map((option) => String(option.id)));
+      if (selected.some((value) => !available.has(value)) ||
+          (poll.poll.poll_type !== 'multiple' && selected.length !== 1)) {
+        throw new Error('Варианты опроса изменились. Обновите сводку клана.');
+      }
+      if (!isGuildOrigin() || currentPoll() !== id) throw new Error('Опрос изменился. Обновите сводку клана.');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const reply = await fetch('/handlers/vote.php', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ poll_id: id, option_ids: selected.map(Number) }), signal: controller.signal
+        });
+        const data = await reply.json();
+        result.ok = reply.ok && data?.success === true;
+        result.message = result.ok ? '' : clean(data?.error || 'Сайт не подтвердил голос.').slice(0, 200);
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (e) {
+      result.message = clean(e?.message || e);
+      if (!result.message || ['AbortError', 'TypeError', 'SyntaxError'].includes(e?.name)) {
+        result.message = 'Не удалось подтвердить голос. Обновите сводку перед повторной попыткой.';
+      }
+    }
+    publish('TFETV1_', { data: result, error: null });
     return result.ok;
   };
 

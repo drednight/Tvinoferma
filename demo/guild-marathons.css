@@ -1,0 +1,32 @@
+.lab {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.lab-block {
+  min-width: 0;
+}
+
+.demo-poll-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.demo-poll-controls button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.demo-message {
+  min-height: 1.5em;
+  color: var(--success);
+}
+
+.lab .guild-card {
+  margin: 18px 0 8px;
+}
+
+.lab .tf-mx-wrap {
+  max-height: none;
+}

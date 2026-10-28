@@ -22,7 +22,7 @@ export const FAIL_THRESHOLD = 2;
 /** @typedef {'ok'|'empty'|'layout_changed'|'not_logged_in'|'challenge'|'timeout'|'error'} HealthStatus */
 /** @typedef {{ status: HealthStatus|null, lastCheckAt: string|null, lastOkAt: string|null, lastError: string|null, failStreak: number }} HealthEntry */
 
-/** Парсеры: ключ → подпись для таблицы, родительный падеж для плашки и страница сайта. */
+/** Парсеры: ключ → подпись для диагностики, родительный падеж для плашки и страница сайта. */
 export const PARSERS = {
   balance: { title: 'Баланс монет', short: 'баланса', page: 'chests2.php' },
   auth: { title: 'Проверка входа', short: 'проверки входа', page: 'usercp.php' },

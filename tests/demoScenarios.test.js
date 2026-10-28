@@ -62,7 +62,7 @@ describe('Лаборатория, вариант B', () => {
     ['transfer', openTransferSplit],
     ['shop', openShopSplit],
     ['caravan', openCaravanSplit]
-  ])('%s: во время проверки запуск недоступен, списки видны только в соответствующем режиме', async (_, open) => {
+  ])('%s: ручной выбор открывается отдельно и применяется только после сохранения', async (_, open) => {
     const dlg = open();
     expect(dlg.el.querySelector('.sp-container')).toBeTruthy();
     expect(dlg.foot.querySelector('[data-act="start"]')).toBeNull();
@@ -75,10 +75,24 @@ describe('Лаборатория, вариант B', () => {
     expect(parties().hidden).toBe(false);
     expect(manual().hidden).toBe(true);
     expect(parties().querySelectorAll('[data-party]')).toHaveLength(2);
+
     mode(dlg, 'manual');
+    const picker = document.querySelector('.cp-dialog');
+    expect(picker).toBeTruthy();
+    expect(picker.querySelectorAll('[data-picker-id]')).toHaveLength(CHARS.length);
+    expect(picker.querySelectorAll('.char-class-ico')).toHaveLength(CHARS.length);
+    expect(dlg.el.inert).toBe(true);
+    expect(dlg.body.querySelector('input[value="party"]').checked).toBe(true);
+    expect(parties().hidden).toBe(false); // план не меняется до сохранения
+    click(picker.querySelector('[data-picker-save]'));
+    expect(document.querySelector('.cp-dialog')).toBeNull();
+    expect(dlg.el.inert).toBe(false);
+    expect(dlg.body.querySelector('input[value="manual"]').checked).toBe(true);
     expect(parties().hidden).toBe(true);
     expect(manual().hidden).toBe(false);
-    expect(manual().querySelectorAll('.char-class-ico')).toHaveLength(CHARS.length);
+    expect(manual().textContent).toContain('Выбрано: 6');
+    expect(manual().querySelectorAll('input')).toHaveLength(0);
+
     mode(dlg, 'all');
     expect(parties().hidden).toBe(true);
     expect(manual().hidden).toBe(true);
@@ -193,22 +207,72 @@ describe('Лаборатория, вариант B', () => {
     expect(second.textContent).toContain('Нет предметов к передаче');
   });
 
-  it('промокоды: доступен только B, списки скрыты по умолчанию и обновление имитируется', async () => {
+  it('промокоды: ручной выбор открывается в том же окне, сохранение пересчитывает план', async () => {
     document.body.insertAdjacentHTML('beforeend', '<div id="lab-tools-replica"></div>');
     await import('../demo/tools-modals.js');
     click(document.querySelector('[data-replica="promo"]'));
-    expect(document.querySelector('#sp-manual').hidden).toBe(true);
-    expect(document.querySelector('#sp-parties').hidden).toBe(true);
-    click(document.querySelector('input[name="sp-target"][value="manual"]'));
-    expect(document.querySelector('#sp-manual').hidden).toBe(false);
-    expect(document.querySelector('#sp-parties').hidden).toBe(true);
-    expect(document.querySelectorAll('#sp-manual .char-class-ico')).toHaveLength(CHARS.length);
-    click(document.querySelector('input[name="sp-target"][value="party"]'));
-    expect(document.querySelector('#sp-manual').hidden).toBe(true);
-    expect(document.querySelector('#sp-parties').hidden).toBe(false);
-    click(document.querySelector('.tf-dialog-foot [data-act="refresh"]'));
+    const parent = document.querySelector('.sp-container').closest('.modal-overlay');
+    const manual = () => parent.querySelector('[data-tg-manual]');
+    const parties = () => parent.querySelector('[data-tg-parties]');
+    expect(manual().hidden).toBe(true);
+    expect(parties().hidden).toBe(true);
+    click(parent.querySelector('input[name="tg-sp"][value="manual"]'));
+    let picker = document.querySelector('.cp-dialog');
+    expect(picker).toBeTruthy();
+    click(picker.querySelector('[data-picker-none]'));
+    click(picker.querySelector('[data-picker-id="c3"]'));
+    click(picker.querySelector('[data-picker-save]'));
+    expect(manual().hidden).toBe(false);
+    expect(manual().textContent).toContain('Выбрано: 1');
+    expect(parent.querySelector('#sp-chars').textContent).toBe('1');
+    expect(parent.querySelector('#sp-table').textContent).toContain('Радовика');
+    expect(parent.querySelector('#sp-table').textContent).not.toContain('Звеномир');
+    click(parent.querySelector('[data-tg-edit]'));
+    picker = document.querySelector('.cp-dialog');
+    expect(picker.querySelector('[data-picker-id="c3"]').checked).toBe(true);
+    click(picker.querySelector('[data-picker-cancel]'));
+    click(parent.querySelector('input[name="tg-sp"][value="party"]'));
+    expect(manual().hidden).toBe(true);
+    expect(parties().hidden).toBe(false);
+    click(parent.querySelector('.tf-dialog-foot [data-act="refresh"]'));
     await finish();
-    expect(document.querySelector('#sp-status').textContent).toContain('Демо-проверка статусов завершена');
+    expect(parent.querySelector('#sp-status').textContent).toContain('Демо-проверка статусов завершена');
+  });
+
+  it('отмена выбора сохраняет предыдущую пати, повторное нажатие открывает окно, закрытие родителя убирает его', async () => {
+    const dlg = openTransferSplit();
+    await scan(dlg);
+    mode(dlg, 'party');
+    const before = dlg.body.querySelector('[data-table]').textContent;
+    mode(dlg, 'manual');
+    click(document.querySelector('.cp-dialog [data-picker-id="c3"]'));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(dlg.body.querySelector('input[value="party"]').checked).toBe(true);
+    expect(dlg.body.querySelector('[data-tg-parties]').hidden).toBe(false);
+    expect(dlg.body.querySelector('[data-table]').textContent).toBe(before);
+
+    mode(dlg, 'manual');
+    click(document.querySelector('.cp-dialog [data-picker-save]'));
+    expect(dlg.body.querySelector('input[value="manual"]').checked).toBe(true);
+    mode(dlg, 'manual'); // радио уже выбрано, но выбор можно открыть снова
+    expect(document.querySelector('.cp-dialog')).toBeTruthy();
+    dlg.close();
+    expect(document.querySelectorAll('#modal-root .modal-overlay')).toHaveLength(0);
+  });
+
+  it('ячейки состояния заполняются персонажами и для общего аккаунта сохраняют разные статусы', async () => {
+    const dlg = openShopSplit();
+    await scan(dlg);
+    const cells = [...dlg.body.querySelectorAll('.sc-character-cell')];
+    expect(cells.length).toBeGreaterThan(1);
+    const shared = cells.find(cell => cell.querySelectorAll('.sc-character').length > 1);
+    expect(shared.style.getPropertyValue('--sc-cell-min-height')).toBe('112px');
+    const mixed = cells.find(cell => cell.querySelector('.st-online') && cell.querySelector('.st-offline'));
+    expect(mixed).toBeTruthy();
+    expect(mixed.querySelectorAll('.sc-character-stack > .sc-character')).toHaveLength(2);
+    const css = readFileSync('demo/tools-modals.css', 'utf8');
+    expect(css).toMatch(/\.promo-table td\.sc-character-cell\s*\{[^}]*position:\s*relative/);
+    expect(css).toMatch(/\.sc-character-stack\s*\{[^}]*inset:\s*0/);
   });
 
   it('остановка и закрытие во время проверки не запускают действия', async () => {

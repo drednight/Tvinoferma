@@ -17,6 +17,7 @@ import {
   targetChars,
   targetHtml,
   bindTarget,
+  closeTargetPicker,
   classIconHtml,
   stripeCls,
   statusTitle
@@ -38,6 +39,7 @@ function splitFrame(title, sub) {
     wide: true,
     onClose: () => {
       if (signal) signal.cancelled = true;
+      closeTargetPicker(dlg.body);
     }
   });
   dlg.el.querySelector('.modal-container').classList.add('sp-container');
@@ -149,8 +151,18 @@ async function confirmDemo(title, text) {
   });
 }
 
-function characterHtml(char) {
-  return `<span class="sc-character ${stripeCls(char)}" title="${esc(statusTitle(char))}">${classIconHtml(char)}<span>${esc(char.nick)}</span></span>`;
+function characterHtml(char, account = '') {
+  return `<span class="sc-character ${stripeCls(char)}" title="${esc(statusTitle(char))}">
+    ${classIconHtml(char)}<span class="sc-character-copy"><b>${esc(char.nick)}</b>${account ? `<small class="sc-acc" title="${esc(account)}">${esc(account)}</small>` : ''}</span>
+  </span>`;
+}
+
+// Стопка растягивается на всю высоту ячейки: при общем аккаунте полоса каждого
+// персонажа занимает свою часть, а не окрашивает весь аккаунт одним статусом.
+function characterCell(characters, account) {
+  return `<td class="sc-character-cell" style="--sc-cell-min-height:${characters.length * 56}px"><div class="sc-character-stack">${characters
+    .map((char, i) => characterHtml(char, i === 0 ? account : ''))
+    .join('')}</div></td>`;
 }
 
 function emptyOrError(record) {
@@ -246,7 +258,7 @@ export function openTransferSplit() {
                 : plan.run
                   ? '✅ Готово к передаче'
                   : `${transferStatusInfo(plan.status).icon} ${transferStatusInfo(plan.status).label}`);
-          return `<tr class="${stripeCls(c)}"><td>${characterHtml(c)}<small class="sc-acc">${esc(demoAccountName(c.account))}</small></td>
+          return `<tr class="${stripeCls(c)}">${characterCell([c], demoAccountName(c.account))}
           <td>${itemsHtml(r)}</td><td>${serverHtml(c, r)}</td><td data-transfer-result="${esc(c.id)}">${esc(status)}</td></tr>`;
         })
         .join('')}</tbody></table></div>`;
@@ -496,11 +508,11 @@ export function openShopSplit() {
           const record = recordOf(g);
           const rep = pickRepresentative(g.members, selectedIds()) || g.members[0];
           const plan = planFor(g);
-          const memberHtml = g.members.map(characterHtml).join('');
           const account = demoAccountName(g.members[0].account);
+          const memberCell = characterCell(g.members, account);
           if (!plan)
-            return `<tr class="${stripeCls(rep)}"><td>${memberHtml}<small class="sc-acc">${esc(account)}</small></td><td colspan="${products.length + 2}">${emptyOrError(record)}</td></tr>`;
-          return `<tr class="${stripeCls(rep)}"><td>${memberHtml}<small class="sc-acc">${esc(account)}</small></td><td>${fmt(record.data.balance)} мон.</td>
+            return `<tr class="${stripeCls(rep)}">${memberCell}<td colspan="${products.length + 2}">${emptyOrError(record)}</td></tr>`;
+          return `<tr class="${stripeCls(rep)}">${memberCell}<td>${fmt(record.data.balance)} мон.</td>
           ${products
             .map(def => {
               const item = record.data.items[def.key];
@@ -717,7 +729,7 @@ export function openCaravanSplit() {
     frame.table.innerHTML = `<div class="promo-scroll"><table class="promo-table sc-scan-table"><thead><tr><th>Персонаж / вход</th><th>Найдено сундуков</th><th>План / результат</th></tr></thead>
       <tbody>${list
         .map(
-          p => `<tr class="${stripeCls(p.c)}"><td>${characterHtml(p.c)}<small class="sc-acc">${esc(demoAccountName(p.c.account))}</small></td>
+          p => `<tr class="${stripeCls(p.c)}">${characterCell([p.c], demoAccountName(p.c.account))}
         <td>${st.reads[p.c.id]?.status === 'ok' ? st.reads[p.c.id].count : emptyOrError(st.reads[p.c.id])}</td><td>${esc(st.results[p.c.id] || p.text)}</td></tr>`
         )
         .join('')}</tbody></table></div>`;

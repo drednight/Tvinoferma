@@ -78,7 +78,7 @@ state.json на диске (commands/state.rs) + пароли в хранили�
 | `modules/characters/`, `modules/parties/` | Список, карточка, форма персонажа; пати (цвет пати — `parties/color.js`) |
 | `modules/launcher/runningWindows.js` | Общий кэш запущенных окон игры: один опрос Rust на приложение (кнопка «🛑» в карточке персонажа и блок «Окна игры» на вкладке «Сегодня» берут один и тот же список) |
 | `modules/marathons/` | Марафоны: модель (`model.js`), сверка с сайтом (`siteSync.js`), мастер добавления (`wizard.js`), страница (`page.js`), разбор новости (`newsParser.js`, `newsList.js`), слияние источников (`mergeSources.js`) |
-| `desktop/`, `settings/` | Уведомления, автообновление (`updater.js`, `updateState.js`, `updateUi.js`), окно приложения; настройки, плашка «Парсер устарел» и таблица «Состояние парсеров» (`parserHealthUi.js`) |
+| `desktop/`, `settings/` | Уведомления, автообновление (`updater.js`, `updateState.js`, `updateUi.js`), окно приложения; настройки, плашка «Парсер устарел» и карточки «Состояние парсеров» (`parserHealthUi.js`) |
 | `modules/{arena,automation,bank,dungeons,injection,runes,cloud}` | Заготовки будущих разделов, помечены ссылками на Issues |
 
 ## Состояние парсеров

@@ -26,20 +26,66 @@ describe('категории настроек: разметка', () => {
     expect(css).toMatch(/\.settings-nav \{[^}]*grid-template-columns:/);
   });
 
-  it('меню занимает доступную высоту, а при нехватке места прокручивается', () => {
+  it('разделитель занимает доступную высоту, а пункты собраны компактно и прокручиваются при нехватке места', () => {
     const css = readFileSync('css/core/layout.css', 'utf8');
     const menu = css.match(/\.settings-nav \{([^}]*)\}/)?.[1] || '';
     expect(menu).toMatch(/height:\s*max\(0px,\s*calc\(100vh\s*-\s*var\(--topbar-h/);
-    expect(menu).toMatch(/grid-auto-rows:\s*minmax\(72px,\s*1fr\)/);
+    expect(menu).toMatch(/grid-auto-rows:\s*minmax\(66px,\s*auto\)/);
+    expect(menu).toMatch(/align-content:\s*start/);
+    expect(menu).toMatch(/gap:\s*0/);
+    expect(menu).toMatch(/padding:\s*2px 0/);
     expect(menu).toMatch(/overflow-y:\s*auto/);
+    expect(menu).toMatch(/border-right:\s*1px solid var\(--border\)/);
+    expect(css).toMatch(/border-bottom:\s*1px solid var\(--border\)/); // разделитель при узком окне
+    const hover = css.match(/\.settings-nav-item:hover \{([^}]*)\}/)?.[1] || '';
+    expect(hover).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(hover).not.toMatch(/transform\s*:/); // верхний пункт не вылезает за область прокрутки
+    expect(hover).not.toMatch(/box-shadow\s*:/);
     expect(doc.querySelector('#settings-optimization')).toBeNull();
     expect(doc.querySelector('#settings-sync #parser-health-panel')).not.toBeNull();
   });
 
-  it('пункт при наведении не подчёркивается: карточка и так показывает наведение рамкой', () => {
+  it('пункты немного выше и разделены тонкой линией, в том числе активный', () => {
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    const item = css.match(/\.settings-nav-item \{([^}]*)\}/)?.[1] || '';
+    expect(item).toMatch(/min-height:\s*66px/);
+    expect(css).toMatch(/\.settings-nav-item:not\(:last-child\)\s*\{[^}]*border-bottom:\s*1px solid var\(--border\)/);
+    expect(css).not.toMatch(/\.settings-nav-item\.is-active\s*\{[^}]*border-bottom/);
+    // На узком экране пункты стоят сеткой, поэтому границы нужны и между колонками.
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*980px\)\s*\{\s*\.settings-nav-item\s*\{[^}]*border:\s*1px solid var\(--border\)/
+    );
+    expect(css).toMatch(/\.settings-nav-item\.is-active\s*\{[^}]*border-right:\s*3px solid var\(--accent\)/);
+  });
+
+  it('активная вкладка отмечается правой границей, без псевдоэлементов', () => {
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    const item = css.match(/\.settings-nav-item \{([^}]*)\}/)?.[1] || '';
+    const active = css.match(/\.settings-nav-item\.is-active \{([^}]*)\}/)?.[1] || '';
+    expect(item).toMatch(/border-right:\s*3px solid transparent/);
+    expect(active).toMatch(/border-right-color:\s*var\(--accent\)/);
+    expect(`${css}\n${readFileSync('css/core/newStyle.css', 'utf8')}`).not.toMatch(
+      /\.settings-nav-item[^\s,{]*::(?:before|after)/
+    );
+  });
+
+  it('меню нового интерфейса примыкает к боковой панели, не сдвигая содержимое', () => {
+    const css = readFileSync('css/core/layout.css', 'utf8');
+    const shell = readFileSync('css/core/newStyle.css', 'utf8');
+    expect(css).toMatch(/\.settings-layout \{[^}]*--settings-nav-width:\s*272px/);
+    expect(shell).toMatch(/--next-content-inset:\s*32px/);
+    expect(shell).toMatch(/@media\s*\(max-width:\s*680px\)[\s\S]*--next-content-inset:\s*16px/);
+    expect(shell).toMatch(
+      /@media\s*\(min-width:\s*981px\)\s*\{\s*body\[data-ui-style='next'\] \.page\[data-section='settings'\] \.settings-layout\s*\{[^}]*margin-left:\s*calc\(-1 \* var\(--next-content-inset\)\);[^}]*grid-template-columns:\s*calc\(var\(--settings-nav-width\) \+ var\(--next-content-inset\)\)/
+    );
+    expect(shell).toMatch(
+      /@media\s*\(min-width:\s*681px\) and \(max-width:\s*980px\)\s*\{\s*body\[data-ui-style='next'\] \.page\[data-section='settings'\] \.settings-nav\s*\{[^}]*margin-left:\s*calc\(-1 \* var\(--next-content-inset\)\)/
+    );
+  });
+
+  it('при наведении пункт не подчёркивается', () => {
     // Пункт — это ссылка, а для ссылок в приложении действует общее правило
-    // «подчёркивать при наведении» (base.css). Без отдельного правила под текстом
-    // и иконкой появлялась линия, и карточка выглядела сломанной
+    // «подчёркивать при наведении» (base.css). Подсветки фона здесь достаточно.
     const css = readFileSync('css/core/layout.css', 'utf8');
     // Регекс нечувствителен к переносам строк: layout.css форматирует prettier, правила многострочные
     expect(css).toMatch(
@@ -59,9 +105,12 @@ describe('категории настроек: подсветка', () => {
     bindSettings();
     const items = [...document.querySelectorAll('.settings-nav-item')];
     expect(items[0].classList.contains('is-active')).toBe(true);
+    expect(items[0].getAttribute('aria-current')).toBe('true');
     items[3].click();
     expect(items[3].classList.contains('is-active')).toBe(true);
+    expect(items[3].getAttribute('aria-current')).toBe('true');
     expect(items[0].classList.contains('is-active')).toBe(false);
+    expect(items[0].hasAttribute('aria-current')).toBe(false);
   });
 
   it('открыт ровно один раздел: остальные скрыты, а не висят под ним', async () => {
@@ -73,6 +122,25 @@ describe('категории настроек: подсветка', () => {
     expect(groups.find(g => !g.hidden).id).toBe('settings-app');
     document.querySelectorAll('.settings-nav-item')[1].click();
     expect(groups.filter(g => !g.hidden).map(g => g.id)).toEqual(['settings-sync']);
+  });
+
+  it('в узком окне переключение раздела не прокручивает меню за шапку', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn(() => ({ matches: true }));
+    try {
+      const { bindSettings } = await import('../js/settings/settings.js');
+      const nav = document.querySelector('.settings-nav');
+      const settingsBody = document.querySelector('.settings-body');
+      nav.scrollIntoView = vi.fn();
+      settingsBody.scrollIntoView = vi.fn();
+      bindSettings();
+      nav.querySelector('[href="#settings-sync"]').click();
+      expect(nav.scrollIntoView).toHaveBeenCalledOnce();
+      expect(settingsBody.scrollIntoView).not.toHaveBeenCalled();
+      expect(document.querySelector('#settings-sync').hidden).toBe(false);
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   it('ссылка на панель внутри раздела открывает этот раздел', async () => {

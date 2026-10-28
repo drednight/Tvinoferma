@@ -26,6 +26,10 @@ export function setAuthChecking(charId, isChecking) {
   if (!state.ui.authCheck) state.ui.authCheck = {};
   if (isChecking) state.ui.authCheck[charId] = 'checking';
   else delete state.ui.authCheck[charId];
+  // Марафоны обновляют только цвет и подпись, не перерисовывая открытую таблицу.
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('tf:auth-status-changed', { detail: { charId } }));
+  }
 }
 
 const fmtCheck = iso => {

@@ -1,0 +1,9 @@
+{
+  "poll": { "id": 901, "poll_type": "multiple" },
+  "options": [
+    { "id": 501, "option_text": "Первый вариант" },
+    { "id": 502, "option_text": "<a href=\"https://example.com/details\">Второй вариант</a>" },
+    { "id": 503, "option_text": "Третий вариант" }
+  ],
+  "user_vote": [501]
+}

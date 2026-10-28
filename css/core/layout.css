@@ -567,13 +567,15 @@
    Теперь открыт ровно один раздел (переключает js/settings/settings.js), а список стоит
    сбоку и следует за прокруткой. */
 .settings-layout {
+  --settings-nav-width: 272px;
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
+  gap: 0;
   align-items: start;
 }
 .settings-body {
   min-width: 0;
+  padding-left: 20px;
 }
 /* Панели настроек умеют сжиматься: иначе длинные подписи (путь к папке, адрес сайта)
    растягивали колонку и выталкивали список разделов */
@@ -583,102 +585,102 @@
 }
 
 .settings-nav {
+  --settings-item-radius: 0;
   position: sticky;
   top: calc(var(--topbar-h, 64px) + 16px);
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  /* Явная высота нужна, чтобы 1fr действительно распределял свободное место.
-     Когда строкам не хватает места, сохраняем их минимальную высоту и прокрутку. */
+  /* Разделитель тянется до низа, но сами пункты остаются компактными наверху. */
   height: max(0px, calc(100vh - var(--topbar-h, 64px) - 56px));
-  grid-auto-rows: minmax(72px, 1fr);
+  grid-auto-rows: minmax(66px, auto);
+  align-content: start;
   overflow-y: auto;
-  scrollbar-gutter: stable;
-  gap: 8px;
+  overflow-x: hidden;
+  gap: 0;
   margin-bottom: 0;
+  padding: 2px 0;
+  border-right: 1px solid var(--border);
 }
-/* На узком окне места для колонки нет: разделы возвращаются в ряд карточек сверху */
+/* На узком окне меню становится компактной сеткой над содержимым. */
 @media (max-width: 980px) {
   .settings-layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
+    gap: 16px;
   }
   .settings-nav {
+    --settings-item-radius: var(--radius-md);
     position: static;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     height: auto;
-    max-height: min(40vh, 360px);
-    grid-auto-rows: minmax(64px, auto);
-    overflow-y: auto;
-    gap: 8px;
+    max-height: min(42vh, 360px);
+    gap: 4px;
+    padding: 2px 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-body {
+    padding-left: 0;
   }
 }
 .settings-nav-item {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 64px;
-  padding: 10px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  gap: 10px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 8px 14px 8px 8px;
+  border: 0;
+  /* Место под правую отметку зарезервировано и у остальных пунктов, чтобы не было сдвига. */
+  border-right: 3px solid transparent;
+  border-radius: var(--settings-item-radius);
+  background: transparent;
   text-decoration: none;
   overflow: hidden;
   transition:
     border-color var(--speed) var(--ease),
-    background var(--speed) var(--ease),
-    transform var(--speed) var(--ease),
-    box-shadow var(--speed) var(--ease);
+    background var(--speed) var(--ease);
 }
-/* Акцентная полоса у левого края: вырастает на активном разделе */
-.settings-nav-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 3px;
-  height: 62%;
-  border-radius: 0 3px 3px 0;
-  background: linear-gradient(180deg, var(--accent), var(--accent-2));
-  opacity: 0;
-  transform: translateY(-50%) scaleY(0.25);
-  transition:
-    opacity var(--speed) var(--ease),
-    transform var(--speed) var(--ease);
+/* Линии проходят между пунктами, не добавляя промежутков в область нажатия. */
+.settings-nav-item:not(:last-child) {
+  border-bottom: 1px solid var(--border);
 }
+/* Подсветка заполняет строку, не сдвигая её за границу при наведении. */
 .settings-nav-item:hover {
-  border-color: var(--border-strong);
-  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+  background: var(--surface-2);
 }
 .settings-nav-item:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }
-/* Пункт настроек — ссылка, а для ссылок в приложении действует общее правило
-   «подчёркивать при наведении» (base.css). Здесь оно неуместно: карточка уже
-   показывает наведение рамкой и подъёмом, а линия под текстом и иконкой выглядела
-   так, будто наведение не сработало. */
+/* Пункт настроек — ссылка, но наведение показано самой строкой, а не подчёркиванием. */
 .settings-nav-item:hover,
 .settings-nav-item.is-active:hover {
   text-decoration: none;
 }
+/* Акцент — только справа, вплотную к разделительной линии. */
 .settings-nav-item.is-active {
-  border-color: var(--accent-line);
-  background: linear-gradient(180deg, var(--accent-soft), var(--surface-1) 72%);
+  border-right-color: var(--accent);
+  background: linear-gradient(90deg, var(--surface-2), var(--accent-soft));
 }
-.settings-nav-item.is-active::before {
-  opacity: 1;
-  transform: translateY(-50%) scaleY(1);
+/* В узкой сетке границы нужны и между колонками; разница толщины правой рамки
+   компенсируется отступом, чтобы текст не сдвигался при выборе. */
+@media (max-width: 980px) {
+  .settings-nav-item {
+    padding-right: 16px;
+    border: 1px solid var(--border);
+  }
+  .settings-nav-item.is-active {
+    padding-right: 14px;
+    border-right: 3px solid var(--accent);
+  }
 }
 .settings-nav-icon {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-dim);
@@ -701,12 +703,14 @@
 }
 .settings-nav-copy {
   display: grid;
+  flex: 1;
   gap: 1px;
   min-width: 0;
 }
 .settings-nav-copy strong {
   font-size: 0.9rem;
   font-weight: 650;
+  line-height: 1.25;
   color: var(--text);
   letter-spacing: 0.01em;
 }
@@ -715,6 +719,7 @@
 }
 .settings-nav-copy small {
   font-size: 0.72rem;
+  line-height: 1.3;
   color: var(--text-faint);
   white-space: nowrap;
   overflow: hidden;
@@ -722,12 +727,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .settings-nav-item,
-  .settings-nav-item::before,
   .settings-nav-icon {
     transition: none;
-  }
-  .settings-nav-item:hover {
-    transform: none;
   }
 }
 .settings-group {
@@ -763,9 +764,6 @@
   }
   .settings-group select {
     max-width: 100%;
-  }
-  .settings-nav {
-    gap: 6px;
   }
 }
 
@@ -847,11 +845,4 @@
 }
 .uh-ul li::marker {
   color: var(--text-faint);
-}
-
-/* Таблица диагностики прокручивается внутри панели, а не раздвигает всю страницу. */
-#parser-health-list {
-  min-width: 0;
-  max-width: 100%;
-  overflow-x: auto;
 }
