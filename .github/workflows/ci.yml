@@ -53,5 +53,5 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: cargo install cargo-audit --locked
-      - run: cargo audit --file src-tauri/Cargo.lock
+      - run: bash ./.github/scripts/run-cargo-audit.sh
         continue-on-error: true

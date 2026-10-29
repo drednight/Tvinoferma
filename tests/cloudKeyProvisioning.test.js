@@ -176,6 +176,63 @@ describe('локальная подготовка ключа (без диска 
     ).rejects.toThrow();
   }, 30_000);
 
+  it('отмена во время проверки backup не начинает установку', async () => {
+    const ipc = fakeIPC();
+    const { attempt } = await prepare(ipc, customBackup);
+    const confirming = attempt.confirmBackup({ secret: customBackup.secret, savedSeparately: true });
+    expect(attempt.cancel()).toEqual({ status: 'cancelled' });
+    expect(await confirming).toEqual({ status: 'cancelled' });
+    expect(ipc.record()).toBeNull();
+    expect(ipc.invoke.mock.calls.filter(([command]) => command === 'cloud_key_state_install')).toHaveLength(0);
+  }, 30_000);
+
+  it('отмена во время установки не выдаёт ложной отмены и не повторяет запись', async () => {
+    let releaseInstall;
+    let announceInstall;
+    let raw = null;
+    const started = new Promise(resolve => {
+      announceInstall = resolve;
+    });
+    const gate = new Promise(resolve => {
+      releaseInstall = resolve;
+    });
+    const protectedStore = {
+      read: vi.fn(async () => (raw === null ? { status: 'empty' } : { status: 'ready', raw })),
+      install: vi.fn(async value => {
+        raw = (await createKeyStateRecord(value, cryptoSource)).raw;
+        announceInstall();
+        await gate;
+        return { status: 'installed' };
+      })
+    };
+    const provisioner = createKeyProvisioner({ store: protectedStore, cryptoSource });
+    const attempt = await provisioner.begin({ primary, backup: customBackup, newDatasetConfirmed: true });
+    const confirming = attempt.confirmBackup({ secret: customBackup.secret, savedSeparately: true });
+    await started;
+    expect(attempt.cancel()).toEqual({ status: 'installation_in_progress' });
+    releaseInstall();
+    expect(await confirming).toEqual({ status: 'installed' });
+    expect(protectedStore.install).toHaveBeenCalledTimes(1);
+  }, 30_000);
+
+  it('сбой контрольного чтения после записи возвращает неизвестный результат без автоматического повтора', async () => {
+    let reads = 0;
+    const protectedStore = {
+      read: vi.fn(async () => {
+        if (++reads === 1) return { status: 'empty' };
+        throw new Error('PRIVATE readback');
+      }),
+      install: vi.fn(async () => ({ status: 'installed' }))
+    };
+    const provisioner = createKeyProvisioner({ store: protectedStore, cryptoSource });
+    const attempt = await provisioner.begin({ primary, backup: customBackup, newDatasetConfirmed: true });
+    expect(await attempt.confirmBackup({ secret: customBackup.secret, savedSeparately: true })).toEqual({
+      status: 'installation_uncertain'
+    });
+    expect(protectedStore.install).toHaveBeenCalledTimes(1);
+    await expect(attempt.confirmBackup({ secret: customBackup.secret, savedSeparately: true })).rejects.toThrow();
+  }, 30_000);
+
   it('повреждённые, перепривязанные и неканонические записи не становятся готовыми', async () => {
     const ipc = fakeIPC();
     const { native, attempt } = await prepare(ipc, customBackup);
