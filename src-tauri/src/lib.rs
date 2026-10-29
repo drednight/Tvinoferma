@@ -34,6 +34,8 @@ mod cloud_credential_service;
 #[cfg(windows)]
 mod cloud_credential_store;
 mod cloud_disk_transport;
+#[cfg(windows)]
+mod cloud_key_state;
 mod cloud_oauth_callback;
 mod cloud_oauth_transport;
 #[cfg(windows)]
@@ -202,6 +204,11 @@ pub fn run() {
             commands::cloud_credentials::cloud_credential_install,
             commands::cloud_credentials::cloud_credential_compare_exchange,
             commands::cloud_credentials::cloud_credential_forget,
+            // Экспериментальный ключ данных; настройка в UI ещё не реализована.
+            commands::cloud_key_state::cloud_key_state_read,
+            commands::cloud_key_state::cloud_key_state_install,
+            commands::cloud_key_state::cloud_key_state_compare_exchange,
+            commands::cloud_key_state::cloud_key_state_forget,
             // Очередь ещё не подключена к UI и не управляет реальной отправкой.
             commands::cloud_outbox::cloud_outbox_read,
             commands::cloud_outbox::cloud_outbox_install,

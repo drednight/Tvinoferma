@@ -191,3 +191,16 @@ fn yandex_record_is_install_only_and_cannot_be_silently_replaced() {
         Ok(Outcome::Installed)
     );
 }
+
+#[test]
+fn oauth_service_never_accepts_the_key_state_namespace() {
+    let mut vault = Vault::default();
+    assert_eq!(
+        cloud_credential_service::install(&mut vault, Provider::KeyState, SLOT, &ready(REV1)),
+        Err(StoreError::Invalid)
+    );
+    assert!(matches!(
+        cloud_credential_service::read(&mut vault, Provider::KeyState),
+        Ok(Inspection::Empty)
+    ));
+}

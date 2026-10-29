@@ -110,15 +110,18 @@ fn first_install_and_restart_read_a_long_record_without_losing_parts() {
 }
 
 #[test]
-fn two_providers_do_not_share_head_or_parts() {
+fn provider_and_key_namespaces_do_not_share_head_or_parts() {
     let mut vault = FakeVault::default();
     install(&mut vault, GOOGLE, "google-test-secret");
     install(&mut vault, YANDEX, "yandex-test-secret");
+    install(&mut vault, Provider::KeyState, "key-test-secret");
     assert_eq!(ready(&mut vault, GOOGLE).1, "google-test-secret");
     assert_eq!(ready(&mut vault, YANDEX).1, "yandex-test-secret");
+    assert_eq!(ready(&mut vault, Provider::KeyState).1, "key-test-secret");
     assert_eq!(store::forget(&mut vault, GOOGLE), Ok(Outcome::Forgotten));
     assert!(is_empty(&mut vault, GOOGLE));
     assert_eq!(ready(&mut vault, YANDEX).1, "yandex-test-secret");
+    assert_eq!(ready(&mut vault, Provider::KeyState).1, "key-test-secret");
 }
 
 #[test]

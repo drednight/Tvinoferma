@@ -235,7 +235,7 @@ mod windows_backend {
         let lock = CredentialLock::try_acquire(app_dir).map_err(|_| ERROR.to_owned())?;
         let mut vault = NativeVault;
         let mut failed = false;
-        for provider in [Provider::Google, Provider::Yandex] {
+        for provider in [Provider::Google, Provider::Yandex, Provider::KeyState] {
             match cloud_credential_store::inspect(&mut vault, provider) {
                 Ok(Inspection::Empty) => {}
                 Ok(Inspection::Ready { .. } | Inspection::Blocked) => {

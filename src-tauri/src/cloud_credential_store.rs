@@ -36,6 +36,8 @@ pub(crate) trait CredentialVault {
 pub(crate) enum Provider {
     Google,
     Yandex,
+    // Отдельное пространство локального ключа; OAuth-служба его не разбирает.
+    KeyState,
 }
 
 impl Provider {
@@ -43,6 +45,7 @@ impl Provider {
         match self {
             Self::Google => "google",
             Self::Yandex => "yandex",
+            Self::KeyState => "key-state",
         }
     }
 

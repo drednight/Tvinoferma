@@ -129,7 +129,7 @@ fn valid_client(provider: Provider, value: &str) -> bool {
             _ => return false,
         },
         Provider::Yandex if (16..=128).contains(&value.len()) => value,
-        Provider::Yandex => return false,
+        Provider::Yandex | Provider::KeyState => return false,
     };
     id.bytes()
         .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
@@ -164,6 +164,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
         Provider::Yandex => {
             c.literal("{\"format\":\"tvinoferma-yandex-oauth-access\",\"version\":1,\"slotId\":")?
         }
+        Provider::KeyState => return None,
     }
     let slot_id = c.string()?;
     c.literal(",\"clientId\":")?;
@@ -227,6 +228,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
             }
             (Phase::Yandex, None)
         }
+        Provider::KeyState => return None,
     };
     c.literal("}")?;
     c.end()?;

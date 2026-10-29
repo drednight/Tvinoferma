@@ -366,6 +366,7 @@ describe('transfer.js: click (единственное нажатие «Пере
       const yes = vi.fn();
       document.querySelector('.js-transfer-done').addEventListener('click', yes);
       exec();
+      vi.advanceTimersByTime(700);
       expect(go.__h).toHaveBeenCalledTimes(1);
       expect(yes).not.toHaveBeenCalled();
       expect(window.location.hash).toBe('');

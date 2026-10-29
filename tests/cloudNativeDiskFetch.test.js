@@ -7,6 +7,9 @@ import {
   generateSyncId
 } from '../js/modules/cloudSync/envelope.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
+import { createKeyProvisioner } from '../js/modules/cloudSync/keyProvisioning.js';
+import { openKeyBundle } from '../js/modules/cloudSync/keyBundle.js';
+import { createNativeKeyStateStore } from '../js/modules/cloudSync/providers/nativeKeyStateStore.js';
 import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
 import { openNativeCloudSession } from '../js/modules/cloudSync/providers/nativeCloudSession.js';
 import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
@@ -537,4 +540,109 @@ describe.each(['google', 'yandex'])('%s: сквозная отправка с с
     }
     second.session.dispose();
   });
+});
+
+describe.each(['google', 'yandex'])('%s: ключ → очередь → восстановление (fake IPC)', provider => {
+  it('создаёт ключ после проверки backup, шифрует версию и не повторяет потерянную отправку', async () => {
+    const fake = fakeCredentialsAndJournal(provider);
+    let localKey = null;
+    const invoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_key_state_read') return localKey ? { status: 'ready', ...localKey } : { status: 'empty' };
+      if (command === 'cloud_key_state_install') {
+        if (localKey) return { status: 'occupied' };
+        localKey = { slotId: args.slotId, record: args.record };
+        return { status: 'installed' };
+      }
+      return fake.invoke(command, args);
+    });
+    const local = createNativeKeyStateStore({ invoke, cryptoSource: webcrypto });
+    const provisioner = createKeyProvisioner({ store: local, cryptoSource: webcrypto });
+    const attempt = await provisioner.begin({
+      primary: { kind: 'password', secret: 'Синтетический основной пароль 123456!' },
+      backup: { kind: 'generated' },
+      newDatasetConfirmed: true
+    });
+    expect(attempt.status).toBe('prepared');
+    expect(await attempt.confirmBackup({ secret: attempt.generatedBackupSecret, savedSeparately: true })).toEqual({
+      status: 'installed'
+    });
+    const state = (await createNativeKeyStateStore({ invoke, cryptoSource: webcrypto }).read()).state;
+    const newDataset = state.datasetId;
+    const dataKey = state.dataKey;
+    const { ui, ...original } = normalizeState({
+      schemaVersion: 10,
+      characters: [{ id: 'hero', nick: 'СИНТЕТИЧЕСКИЙ ГЕРОЙ' }]
+    });
+    const snapshot = buildPublicSnapshot(planSyncIdentities({ snapshot: original, cryptoSource: webcrypto }).snapshot);
+    const version = await sealHistoryVersion({
+      publicSnapshot: snapshot,
+      parent: null,
+      recoveryKey: dataKey,
+      datasetId: newDataset,
+      versionId: generateSyncId(webcrypto),
+      cryptoSource: webcrypto
+    });
+    const openSession = () =>
+      openNativeCloudSession({
+        provider,
+        ...fake.binding,
+        datasetId: newDataset,
+        invoke,
+        now: () => 100_000,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    const deviceId = generateSyncId(webcrypto);
+    const slotId = generateSyncId(webcrypto);
+    const openQueue = session =>
+      createDurableCloudOutbox({
+        provider,
+        clientId: fake.binding.clientId,
+        accountKey,
+        datasetId: newDataset,
+        deviceId,
+        slotId,
+        dataKey,
+        store: createNativeOutboxStore({ provider, invoke }),
+        session,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    const first = await openSession();
+    expect(first.status).toBe('opened');
+    const queue = openQueue(first.session);
+    expect(await queue.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await queue.enqueue(version.envelope)).toEqual({ status: 'queued' });
+    expect(await queue.sendNext()).toEqual({ status: 'needs_verification' });
+    first.session.dispose();
+    const second = await openSession();
+    expect(second.status).toBe('opened');
+    const resumed = openQueue(second.session);
+    expect(await resumed.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(await resumed.verifyNext()).toEqual({ status: 'confirmed' });
+    expect(await resumed.sendNext()).toEqual({ status: 'idle' });
+    expect(
+      fake.backend.disk.calls.filter(call => call.operation === (provider === 'google' ? 'create' : 'upload_content'))
+    ).toHaveLength(1);
+    const file = [...fake.backend.disk.files.values()][0].body;
+    expect(file).not.toContain('СИНТЕТИЧЕСКИЙ ГЕРОЙ');
+    expect(file).not.toContain(dataKey);
+    expect(fake.backend.journal().record).not.toContain(dataKey);
+    const recovered = await openKeyBundle({
+      bundle: state.bundle,
+      expectedDatasetId: newDataset,
+      expectedPin: attempt.pin,
+      role: 'backup',
+      secret: attempt.generatedBackupSecret,
+      cryptoSource: webcrypto
+    });
+    const decrypted = await decryptSnapshot({
+      envelope: JSON.parse(file),
+      recoveryKey: recovered.dataKey,
+      expectedDatasetId: newDataset,
+      cryptoSource: webcrypto
+    });
+    expect(decrypted.publicSnapshot).toEqual(snapshot);
+    second.session.dispose();
+  }, 30_000);
 });

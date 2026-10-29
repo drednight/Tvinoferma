@@ -42,6 +42,9 @@ jobs:
       # generate_context! требует собранный фронтенд (frontendDist = ../dist)
       - run: mkdir dist
       - run: ./.github/scripts/run-cargo-windows.ps1 test
+        env:
+          # Отдельные временные имена; значения синтетические и очищаются после теста.
+          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
       - run: ./.github/scripts/run-cargo-windows.ps1 fmt
       - run: ./.github/scripts/run-cargo-windows.ps1 clippy
 

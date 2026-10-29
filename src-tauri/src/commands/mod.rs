@@ -3,6 +3,7 @@
 pub mod backup;
 pub mod cloud_credentials;
 pub mod cloud_disk_transport;
+pub mod cloud_key_state;
 pub mod cloud_oauth;
 pub mod cloud_oauth_transport;
 pub mod cloud_outbox;

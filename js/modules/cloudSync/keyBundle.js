@@ -369,11 +369,39 @@ async function makeBundle(crypto, datasetId, master, creds, previousBundleId = n
   }
 }
 
+/** Проверяет форму и возвращает независимую копию без дополнительных полей или getter. */
+export function copyKeyBundle(bundle) {
+  return parseBundle(bundle);
+}
+
 /** Только структурный отпечаток. Доверять ему можно лишь после независимой проверки и сохранения. */
 export async function fingerprintKeyBundle(bundle, cryptoSource) {
   const data = parseBundle(bundle);
   const crypto = cryptoProvider(cryptoSource);
   return fingerprint(crypto, data);
+}
+
+/**
+ * Проверяет внутренний ключ по доверенному отпечатку и доказательству обеих обёрток.
+ * Не подтверждает свежесть отпечатка или защищённость места его хранения.
+ * Ключ передаётся только в памяти и не должен попадать в журналы.
+ * @param {{bundle: any, expectedDatasetId: string, expectedPin: any, dataKey: string, cryptoSource?: Crypto}} options
+ */
+export async function verifyKeyBundleDataKey(options) {
+  const input = object(options, ['bundle', 'expectedDatasetId', 'expectedPin', 'dataKey'], ['cryptoSource']);
+  const data = parseBundle(input.bundle);
+  const expected = pin(input.expectedPin);
+  if (!isSyncId(input.expectedDatasetId)) throw invalidBundle();
+  const crypto = cryptoProvider(input.cryptoSource);
+  const master = dataKeyBytes(input.dataKey);
+  try {
+    if (data.datasetId !== input.expectedDatasetId) throw cannotOpen();
+    await checkPin(crypto, data, expected);
+    if (!(await verifyProof(crypto, master, data))) throw cannotOpen();
+    return true;
+  } finally {
+    master.fill(0);
+  }
 }
 
 /**
