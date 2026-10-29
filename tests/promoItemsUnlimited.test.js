@@ -2,7 +2,7 @@
 // панель «Типы предметов» (Issue #26). Лимит сайта в тесте воспроизведён так, как его обычно пишут:
 // обработчик change на документе снимает 7-ю галочку.
 import { readFileSync } from 'node:fs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fixture } from './helpers/pageScript.js';
 
 const SCRIPT = readFileSync('src-tauri/src/scripts/promo_items_unlimited.js', 'utf8');
@@ -13,15 +13,20 @@ const wait = (ms = 20) => new Promise(r => setTimeout(r, ms));
 
 let alerts;
 let shadow;
+let timers;
+let intervals;
+let limiters;
 const origAttach = Element.prototype.attachShadow;
 
 function siteLimiter() {
-  document.addEventListener('change', e => {
+  const handler = e => {
     if (e.target.matches(BOXES) && checked() > 6) {
       e.target.checked = false;
       alerts++;
     }
-  });
+  };
+  limiters.push(handler);
+  document.addEventListener('change', handler);
 }
 function mount(search = '') {
   const doc = new DOMParser().parseFromString(fixture('site-promoitems.html'), 'text/html');
@@ -42,12 +47,36 @@ const btn = (root, text) => [...root.querySelectorAll('button')].find(b => b.tex
 beforeEach(() => {
   alerts = 0;
   shadow = null;
+  timers = [];
+  intervals = [];
+  limiters = [];
   document.body.innerHTML = '';
+  // Следящий таймер скрипта живёт до 15 секунд; очищаем его до закрытия jsdom.
+  const setTimeout = window.setTimeout.bind(window);
+  const setInterval = window.setInterval.bind(window);
+  vi.spyOn(window, 'setTimeout').mockImplementation((...args) => {
+    const id = setTimeout(...args);
+    timers.push(id);
+    return id;
+  });
+  vi.spyOn(window, 'setInterval').mockImplementation((...args) => {
+    const id = setInterval(...args);
+    intervals.push(id);
+    return id;
+  });
   // closed shadow DOM в тесте делаем открытым, чтобы его можно было проверить
   Element.prototype.attachShadow = function (init) {
     shadow = origAttach.call(this, { ...init, mode: 'open' });
     return shadow;
   };
+});
+
+afterEach(() => {
+  for (const id of timers) window.clearTimeout(id);
+  for (const id of intervals) window.clearInterval(id);
+  for (const handler of limiters) document.removeEventListener('change', handler);
+  vi.restoreAllMocks();
+  Element.prototype.attachShadow = origAttach;
 });
 
 describe('promo_items_unlimited.js: лимит', () => {
