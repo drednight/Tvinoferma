@@ -45,8 +45,8 @@ fn canonical_base64url(value: &str) -> bool {
     let last = base64url_value(value.as_bytes()[value.len() - 1]).unwrap_or(0);
     match value.len() % 4 {
         0 => true,
-        2 => last % 16 == 0,
-        3 => last % 4 == 0,
+        2 => last & 15 == 0,
+        3 => last & 3 == 0,
         _ => false,
     }
 }
