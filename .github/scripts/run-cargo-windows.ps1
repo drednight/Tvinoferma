@@ -10,9 +10,9 @@ param(
 $ErrorActionPreference = 'Continue'
 $env:CARGO_TERM_COLOR = 'never'
 $arguments = switch ($Check) {
-    'test' { @('test', '--manifest-path', 'src-tauri/Cargo.toml') }
+    'test' { @('test', '--locked', '--manifest-path', 'src-tauri/Cargo.toml') }
     'fmt' { @('fmt', '--manifest-path', 'src-tauri/Cargo.toml', '--check') }
-    'clippy' { @('clippy', '--manifest-path', 'src-tauri/Cargo.toml', '--all-targets', '--', '-D', 'warnings') }
+    'clippy' { @('clippy', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--all-targets', '--', '-D', 'warnings') }
 }
 $tail = [System.Collections.Generic.Queue[string]]::new()
 & cargo @arguments 2>&1 | ForEach-Object {
