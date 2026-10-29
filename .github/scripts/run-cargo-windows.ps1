@@ -8,6 +8,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
+$env:CARGO_TERM_COLOR = 'never'
 $arguments = switch ($Check) {
     'test' { @('test', '--manifest-path', 'src-tauri/Cargo.toml') }
     'fmt' { @('fmt', '--manifest-path', 'src-tauri/Cargo.toml', '--check') }
@@ -23,7 +24,8 @@ $tail = [System.Collections.Generic.Queue[string]]::new()
 $exitCode = $LASTEXITCODE
 if ($exitCode -ne 0) {
     $details = $tail.ToArray() -join "`n"
-    if ($details.Length -gt 16000) { $details = $details.Substring($details.Length - 16000) }
+    # GitHub truncates long annotation messages; keep the END (actual errors).
+    if ($details.Length -gt 3000) { $details = $details.Substring($details.Length - 3000) }
     $details = $details.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
     Write-Host "::error title=Windows cargo $Check failed::$details"
     exit $exitCode
