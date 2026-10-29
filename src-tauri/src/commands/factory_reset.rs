@@ -235,6 +235,10 @@ pub async fn factory_reset(
                 "локальный доступ к облаку: не удалось проверить или удалить все записи".into(),
             );
         }
+        if super::cloud_outbox::cleanup_for_reset(&app_dir).is_err() {
+            problems
+                .push("локальная очередь облака: не удалось удалить все известные части".into());
+        }
 
         match keyring::Entry::new(SERVICE, COOKIE_BANK_KEY) {
             Ok(entry) => match entry.delete_credential() {

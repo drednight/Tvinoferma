@@ -122,7 +122,7 @@ fn canonical_base64url(value: &str, minimum: usize, maximum: usize) -> bool {
 /// Принимаем только канонический JSON, который строит copyCloudEnvelope в JS.
 /// Так невозможны дополнительные поля, повторные ключи, переносы MIME и открытые
 /// строки вне поля ciphertext. Проверка не доказывает реальное AES-GCM шифрование.
-fn canonical_envelope(body: &str, dataset: &str, version: &str) -> bool {
+pub(crate) fn canonical_envelope(body: &str, dataset: &str, version: &str) -> bool {
     if body.len() > MAX_VERSION_BYTES || !sync_id(dataset) || !sync_id(version) {
         return false;
     }

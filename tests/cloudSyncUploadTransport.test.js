@@ -195,7 +195,9 @@ describe('двухэтапная загрузка Яндекс Диска', () =
 
   it.each([400, 401, 403, 404, 409, 429, 500, 503])('после ошибки ссылки %i не отправляет PUT', async status => {
     const fetch = vi.fn(async () => json({ error: token }, status));
-    expect(await create('yandex', fetch).upload({ envelope })).toEqual({ status: 'not_sent' });
+    expect(await create('yandex', fetch).upload({ envelope })).toEqual({
+      status: status === 409 ? 'conflict' : 'not_sent'
+    });
     expect(fetch).toHaveBeenCalledOnce();
   });
 

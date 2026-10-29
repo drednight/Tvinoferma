@@ -1,6 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { webcrypto } from 'node:crypto';
-import { decryptSnapshot, encryptSnapshot, generateRecoveryKey } from '../js/modules/cloudSync/envelope.js';
+import { createHash, webcrypto } from 'node:crypto';
+import {
+  decryptSnapshot,
+  encryptSnapshot,
+  generateRecoveryKey,
+  generateSyncId
+} from '../js/modules/cloudSync/envelope.js';
+import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
+import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
+import { openNativeCloudSession } from '../js/modules/cloudSync/providers/nativeCloudSession.js';
+import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
+import { prepareYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
+import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
+import { normalizeState } from '../js/core/state.js';
+import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
+import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
+import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { versionFileName } from '../js/modules/cloudSync/providers/common.js';
 import { googleCreateRequest, googleListRequest } from '../js/modules/cloudSync/providers/googleDrive.js';
 import { createCloudUploadTransport } from '../js/modules/cloudSync/providers/uploadTransport.js';
@@ -301,5 +316,225 @@ describe('экспериментальный native bridge — ограниче�
     );
     await vi.waitFor(() => expect(upload.isBusy()).toBe(false));
     expect(invoke).toHaveBeenCalledOnce();
+  });
+});
+// Сеть, journal IPC и OS vault здесь подменены in-memory. Это проверяет
+// последовательность компонентов, но не реальную устойчивость Windows/Tauri.
+function fakeNativeWithJournal(provider, loseUploadReply = false) {
+  const disk = fakeNative(provider);
+  let journal = { status: 'empty' };
+  let lost = false;
+  const invoke = vi.fn(async (command, wrapper) => {
+    if (command === 'cloud_disk_network') {
+      const result = await disk.invoke(command, wrapper);
+      if (
+        loseUploadReply &&
+        !lost &&
+        (wrapper.args.operation === 'create' || wrapper.args.operation === 'upload_content')
+      ) {
+        lost = true;
+        throw new Error('PRIVATE: fake ответ потерян после записи');
+      }
+      return result;
+    }
+    if (wrapper.provider !== provider) throw new Error('wrong fake provider');
+    if (command === 'cloud_outbox_read') return structuredClone(journal);
+    if (command === 'cloud_outbox_install' || command === 'cloud_outbox_compare_exchange') {
+      const next = wrapper.args;
+      if (command === 'cloud_outbox_install' && journal.status !== 'empty') return { status: 'occupied' };
+      if (command === 'cloud_outbox_compare_exchange') {
+        if (journal.status !== 'ready') return { status: 'blocked' };
+        if (next.expectedRevisionId !== journal.revisionId || next.expectedSha256 !== journal.sha256)
+          return { status: 'mismatch' };
+      }
+      const { slotId, datasetId, deviceId, revisionId, record } = next;
+      journal = {
+        status: 'ready',
+        slotId,
+        datasetId,
+        deviceId,
+        revisionId,
+        record,
+        sha256: createHash('sha256').update(record).digest('hex')
+      };
+      return { status: command === 'cloud_outbox_install' ? 'installed' : 'swapped' };
+    }
+    throw new Error('unexpected fake IPC');
+  });
+  return { disk, invoke, journal: () => journal };
+}
+
+describe.each(['google', 'yandex'])('%s: журнал + авторизованный диск через fake IPC', provider => {
+  it('после потерянного ответа перечитывает точную версию и не отправляет её повторно', async () => {
+    const fake = fakeNativeWithJournal(provider, true);
+    const fetchImpl = createNativeDiskFetch({ provider, invoke: fake.invoke });
+    const session = createAuthenticatedCloudSession({
+      provider,
+      clientId: clientIds[provider],
+      accountKey,
+      datasetId,
+      accessToken,
+      fetchImpl,
+      cryptoSource: webcrypto,
+      ...(provider === 'google' ? { folderId } : {})
+    });
+    const deviceId = generateSyncId(webcrypto);
+    const slotId = generateSyncId(webcrypto);
+    const versionId = generateSyncId(webcrypto);
+    const { ui, ...snapshot } = normalizeState({
+      schemaVersion: 10,
+      characters: [{ id: 'hero', nick: 'СЕКРЕТНЫЙ ПЕРСОНАЖ' }]
+    });
+    const publicSnapshot = buildPublicSnapshot(planSyncIdentities({ snapshot, cryptoSource: webcrypto }).snapshot);
+    const version = await sealHistoryVersion({
+      publicSnapshot,
+      parent: null,
+      recoveryKey,
+      datasetId,
+      versionId,
+      cryptoSource: webcrypto
+    });
+    const open = () =>
+      createDurableCloudOutbox({
+        provider,
+        clientId: clientIds[provider],
+        accountKey,
+        datasetId,
+        deviceId,
+        slotId,
+        dataKey: recoveryKey,
+        store: createNativeOutboxStore({ provider, invoke: fake.invoke }),
+        session,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    const first = open();
+    expect(await first.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await first.enqueue(version.envelope)).toEqual({ status: 'queued' });
+    expect(await first.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(fake.disk.files.size).toBe(1);
+    expect(fake.journal().record).not.toContain('СЕКРЕТНЫЙ ПЕРСОНАЖ');
+    expect(fake.journal().record).not.toContain(recoveryKey);
+    const resumed = open();
+    expect(await resumed.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(await resumed.verifyNext()).toEqual({ status: 'confirmed' });
+    expect(await resumed.sendNext()).toEqual({ status: 'idle' });
+    const writes = fake.disk.calls.filter(
+      call => call.operation === (provider === 'google' ? 'create' : 'upload_content')
+    );
+    expect(writes).toHaveLength(1);
+    for (const file of fake.disk.files.values()) {
+      expect(file.body).not.toContain('СЕКРЕТНЫЙ ПЕРСОНАЖ');
+      expect(file.body).not.toContain(recoveryKey);
+      expect(file.body).not.toContain(accessToken);
+    }
+  });
+});
+
+function fakeCredentialsAndJournal(provider) {
+  const backend = fakeNativeWithJournal(provider, true);
+  const credentialSlot = generateSyncId(webcrypto);
+  const binding = { slotId: credentialSlot, clientId: clientIds[provider], accountKey };
+  let record =
+    provider === 'google'
+      ? prepareGoogleCredentialRecord({
+          ...binding,
+          revision: generateSyncId(webcrypto),
+          refreshToken: 'FAKE_REFRESH_TOKEN',
+          refreshExpiresAt: null
+        })
+      : prepareYandexCredentialRecord({
+          ...binding,
+          revision: generateSyncId(webcrypto),
+          accessToken,
+          expiresAt: 4_000_000
+        });
+  const invoke = vi.fn(async (command, args) => {
+    if (command === 'cloud_credential_read') return { status: 'ready', slotId: credentialSlot, record };
+    if (command === 'cloud_credential_compare_exchange') {
+      if (record !== args.expected) return { status: 'mismatch' };
+      record = args.next;
+      return { status: 'swapped' };
+    }
+    if (command === 'cloud_oauth_network' && args.operation === 'refresh') {
+      expect(JSON.parse(record)).toMatchObject({ phase: 'pending', refreshToken: null });
+      return {
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: accessToken,
+          token_type: 'Bearer',
+          expires_in: 3600,
+          scope: OAUTH_PROVIDERS.google.scope
+        })
+      };
+    }
+    return backend.invoke(command, args);
+  });
+  return { backend, binding, invoke };
+}
+
+describe.each(['google', 'yandex'])('%s: сквозная отправка с сохранённым доступом и fake IPC', provider => {
+  it('после потерянного ответа восстанавливает очередь и сверяет файл без второго POST', async () => {
+    const fake = fakeCredentialsAndJournal(provider);
+    const openSession = () =>
+      openNativeCloudSession({
+        provider,
+        ...fake.binding,
+        datasetId,
+        invoke: fake.invoke,
+        now: () => 100_000,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    const deviceId = generateSyncId(webcrypto);
+    const slotId = generateSyncId(webcrypto);
+    const versionId = generateSyncId(webcrypto);
+    const { ui, ...state } = normalizeState({ schemaVersion: 10, characters: [{ id: 'hero', nick: 'ЛИЧНЫЙ ГЕРОЙ' }] });
+    const snapshot = buildPublicSnapshot(planSyncIdentities({ snapshot: state, cryptoSource: webcrypto }).snapshot);
+    const version = await sealHistoryVersion({
+      publicSnapshot: snapshot,
+      parent: null,
+      recoveryKey,
+      datasetId,
+      versionId,
+      cryptoSource: webcrypto
+    });
+    const openQueue = session =>
+      createDurableCloudOutbox({
+        provider,
+        clientId: fake.binding.clientId,
+        accountKey,
+        datasetId,
+        deviceId,
+        slotId,
+        dataKey: recoveryKey,
+        store: createNativeOutboxStore({ provider, invoke: fake.invoke }),
+        session,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    const first = await openSession();
+    expect(first.status).toBe('opened');
+    const queue = openQueue(first.session);
+    expect(await queue.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await queue.enqueue(version.envelope)).toEqual({ status: 'queued' });
+    expect(await queue.sendNext()).toEqual({ status: 'needs_verification' });
+    first.session.dispose();
+    const second = await openSession();
+    expect(second.status).toBe('opened');
+    const resumed = openQueue(second.session);
+    expect(await resumed.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(await resumed.verifyNext()).toEqual({ status: 'confirmed' });
+    expect(await resumed.sendNext()).toEqual({ status: 'idle' });
+    expect(
+      fake.backend.disk.calls.filter(call => call.operation === (provider === 'google' ? 'create' : 'upload_content'))
+    ).toHaveLength(1);
+    expect(fake.backend.journal().record).not.toContain('ЛИЧНЫЙ ГЕРОЙ');
+    for (const file of fake.backend.disk.files.values()) {
+      expect(file.body).not.toContain('ЛИЧНЫЙ ГЕРОЙ');
+      expect(file.body).not.toContain(recoveryKey);
+      expect(file.body).not.toContain(accessToken);
+    }
+    second.session.dispose();
   });
 });

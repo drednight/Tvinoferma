@@ -1,9 +1,11 @@
-//! Узкий сетевой канал только для разовой диагностики OAuth.
+//! Узкий сетевой канал для разовой диагностики и экспериментального refresh Google.
 //! Команда не читает/записывает файлы диска и не сохраняет учётные данные.
 //! Адреса зафиксированы в Rust; входные секреты и исходные ошибки не журналируются.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::cloud_oauth_transport::{valid_access_token, valid_code_form, Provider};
+use crate::cloud_oauth_transport::{
+    valid_access_token, valid_code_form, valid_google_refresh_form, Provider,
+};
 use serde::Serialize;
 
 const ERROR: &str = "Не удалось безопасно выполнить запрос авторизации";
@@ -70,6 +72,12 @@ async fn execute(
         "exchange" if access_token.is_none() => {
             let body = form
                 .filter(|value| valid_code_form(provider, value))
+                .ok_or_else(fail)?;
+            (provider.token_url(), Some(body), None)
+        }
+        "refresh" if provider == Provider::Google && access_token.is_none() => {
+            let body = form
+                .filter(|value| valid_google_refresh_form(value))
                 .ok_or_else(fail)?;
             (provider.token_url(), Some(body), None)
         }

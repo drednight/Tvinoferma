@@ -1,0 +1,213 @@
+// @ts-check
+// Экспериментальная связка уже подтверждённой локальной записи, доступа к диску
+// и проверки аккаунта. Она НЕ подключена к UI/настоящим токенам. Ожидаемая
+// привязка должна поступать из ранее проверенной защищённой конфигурации; сама
+// запись ОС, текущий ответ провайдера и этот код не доказывают согласие/свежесть.
+// Секреты, записи, параметры IPC, аккаунты и исходные ошибки не журналируются.
+import { object } from '../exportSchema.js';
+import { isSyncId } from '../envelope.js';
+import { validGoogleId } from './common.js';
+import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
+import { validCredentialId, parseGoogleCredentialRecord } from './oauthCredentialRecord.js';
+import { parseYandexCredentialRecord } from './oauthYandexCredentialRecord.js';
+import { createNativeGoogleCredentialStore } from './nativeCredentialStore.js';
+import { createNativeGoogleRefreshFetch } from './nativeGoogleRefreshFetch.js';
+import { createGoogleCredentialRotation } from './oauthCredentialRotation.js';
+import { createGoogleAccountIdentityReader } from './oauthAccountIdentity.js';
+import { createNativeDiskFetch } from './nativeDiskFetch.js';
+import { createAuthenticatedCloudSession } from './authenticatedSession.js';
+
+const ERROR = 'Не удалось безопасно подготовить облачную сессию';
+const EXPIRY_MARGIN_MS = 5000;
+function failed() {
+  return new Error(ERROR);
+}
+function status(value) {
+  return Object.freeze({ status: value });
+}
+async function within(invoke, command, args, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => invoke(command, args)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(failed()), timeoutMs);
+      })
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+function credentialMatches(record, binding) {
+  return (
+    record.slotId === binding.slotId && record.clientId === binding.clientId && record.accountKey === binding.accountKey
+  );
+}
+function clock(now) {
+  let last = null;
+  return () => {
+    const current = now();
+    if (!Number.isSafeInteger(current) || current < 0 || (last !== null && current < last)) throw failed();
+    last = current;
+    return current;
+  };
+}
+
+/**
+ * Обновляет Google-доступ через CAS ready→pending→ready или читает ограниченный
+ * по сроку access Яндекса; refresh Яндекса намеренно не выполняется. Перед каждой
+ * операцией повторно проверяет локальную запись и срок, а сетевой слой отдельно
+ * сверяет тот же аккаунт. Это не атомарно с последующим сетевым вызовом; другая
+ * программа, откат/удаление обеих частей, системное время и память не защищены.
+ * Для Google ошибка после POST может оставить pending и потребовать новый вход.
+ *
+ * @param {{provider:'google'|'yandex',slotId:string,clientId:string,accountKey:string,
+ * datasetId:string,folderId?:string,invoke:(command:string,args:any)=>Promise<any>,
+ * cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number}} options
+ */
+export async function openNativeCloudSession(options) {
+  let input;
+  try {
+    input = object(
+      options,
+      ['provider', 'slotId', 'clientId', 'accountKey', 'datasetId', 'invoke'],
+      ['folderId', 'cryptoSource', 'now', 'timeoutMs']
+    );
+    if (
+      !['google', 'yandex'].includes(input.provider) ||
+      !validCredentialId(input.slotId) ||
+      !validOAuthClientId(input.provider, input.clientId) ||
+      !validOAuthAccountKey(input.accountKey) ||
+      !isSyncId(input.datasetId) ||
+      (input.provider === 'google' ? !validGoogleId(input.folderId) : input.folderId !== undefined) ||
+      typeof input.invoke !== 'function' ||
+      (input.now !== undefined && typeof input.now !== 'function') ||
+      (input.timeoutMs !== undefined &&
+        (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 20 || input.timeoutMs > 120_000))
+    )
+      throw failed();
+  } catch {
+    throw failed();
+  }
+  const provider = /** @type {'google'|'yandex'} */ (input.provider);
+  const { slotId, clientId, accountKey, datasetId, invoke } = input;
+  const timeoutMs = /** @type {number} */ (input.timeoutMs ?? 25_000);
+  const now = clock(input.now || (() => Date.now()));
+  const binding = { slotId, clientId, accountKey };
+  try {
+    const diskFetch = createNativeDiskFetch({ provider, invoke });
+    let read;
+    let raw;
+    let token;
+    let expiresAt;
+    if (provider === 'google') {
+      const store = createNativeGoogleCredentialStore({ ...binding, invoke, timeoutMs });
+      read = store.read;
+      const rotation = createGoogleCredentialRotation({
+        ...binding,
+        store,
+        fetchImpl: createNativeGoogleRefreshFetch({ invoke }),
+        verifyAccount: createGoogleAccountIdentityReader({ fetchImpl: diskFetch, timeoutMs }),
+        now,
+        timeoutMs,
+        identityTimeoutMs: timeoutMs,
+        ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
+      });
+      const current = /** @type {{status:string,revision?:string}} */ (await rotation.inspect());
+      if (current.status === 'refresh_expired') return status('login_required');
+      if (current.status !== 'ready' || typeof current.revision !== 'string') return status('credential_blocked');
+      const result = /** @type {{status:string,access?:{summary:{expiresAt:number},takeAccessToken:()=>string}}} */ (
+        await rotation.refresh({ expectedRevision: current.revision })
+      );
+      if (result.status === 'refresh_expired') return status('login_required');
+      if (result.status !== 'refreshed' || !result.access) return status('credential_blocked');
+      expiresAt = result.access.summary.expiresAt;
+      token = result.access.takeAccessToken();
+      raw = await read();
+      if (typeof raw !== 'string') return status('credential_blocked');
+      const parsed = parseGoogleCredentialRecord(raw);
+      if (!credentialMatches(parsed, binding) || parsed.phase !== 'ready') return status('credential_blocked');
+    } else {
+      read = async () => {
+        const reply = object(
+          await within(invoke, 'cloud_credential_read', { provider }, timeoutMs),
+          ['status'],
+          ['slotId', 'record']
+        );
+        if (reply.status === 'empty' && Object.keys(reply).length === 1) return null;
+        if (reply.status !== 'ready' || Object.keys(reply).length !== 3 || reply.slotId !== slotId) throw failed();
+        const parsed = parseYandexCredentialRecord(reply.record);
+        if (!credentialMatches(parsed, binding)) throw failed();
+        return reply.record;
+      };
+      raw = await read();
+      if (raw === null) return status('credential_blocked');
+      const parsed = parseYandexCredentialRecord(raw);
+      token = parsed.accessToken;
+      expiresAt = parsed.expiresAt;
+    }
+    if (now() + EXPIRY_MARGIN_MS >= expiresAt) return status('login_required');
+    const base = createAuthenticatedCloudSession({
+      provider,
+      clientId,
+      accountKey,
+      datasetId,
+      accessToken: token,
+      fetchImpl: diskFetch,
+      timeoutMs,
+      ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
+      ...(provider === 'google' ? { folderId: input.folderId } : {})
+    });
+    let active = false;
+    let disposed = false;
+    async function guard(work, write = false) {
+      if (disposed || active) return status('account_unavailable');
+      active = true;
+      try {
+        try {
+          if (
+            now() + EXPIRY_MARGIN_MS >= expiresAt ||
+            (await read()) !== raw ||
+            disposed ||
+            now() + EXPIRY_MARGIN_MS >= expiresAt
+          )
+            return status('account_unavailable');
+        } catch {
+          // Здесь вызов сети ещё не начался.
+          return status('account_unavailable');
+        }
+        try {
+          return await work();
+        } catch {
+          // После начала work исключение не доказывает отсутствие отправки.
+          return status(write ? 'unknown' : 'unavailable');
+        }
+      } finally {
+        active = false;
+      }
+    }
+    const session = Object.freeze({
+      generateFileId() {
+        return guard(() => base.generateFileId());
+      },
+      upload(args) {
+        return guard(() => base.upload(args), true);
+      },
+      verify(args) {
+        return guard(() => base.verify(args));
+      },
+      listWithDates() {
+        return guard(() => base.listWithDates());
+      },
+      read(versionId) {
+        return guard(() => base.read(versionId));
+      },
+      dispose() {
+        disposed = true;
+      }
+    });
+    return Object.freeze({ status: 'opened', session });
+  } catch {
+    return status('credential_unavailable');
+  }
+}

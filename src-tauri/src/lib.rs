@@ -36,6 +36,8 @@ mod cloud_credential_store;
 mod cloud_disk_transport;
 mod cloud_oauth_callback;
 mod cloud_oauth_transport;
+#[cfg(windows)]
+mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
@@ -200,6 +202,10 @@ pub fn run() {
             commands::cloud_credentials::cloud_credential_install,
             commands::cloud_credentials::cloud_credential_compare_exchange,
             commands::cloud_credentials::cloud_credential_forget,
+            // Очередь ещё не подключена к UI и не управляет реальной отправкой.
+            commands::cloud_outbox::cloud_outbox_read,
+            commands::cloud_outbox::cloud_outbox_install,
+            commands::cloud_outbox::cloud_outbox_compare_exchange,
             // Разовая диагностика OAuth; синхронизация пока не включена.
             commands::cloud_oauth::cloud_oauth_callback_begin,
             commands::cloud_oauth::cloud_oauth_callback_poll,

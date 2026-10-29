@@ -295,6 +295,13 @@ where
     replace_inner_mode(path, contents, false, hook)
 }
 
+/// Создаёт новый файл без замены существующего имени, с проверкой содержимого.
+/// Ошибка после публикации не доказывает, что файл отсутствует.
+#[cfg(windows)]
+pub(super) fn create_new_state(path: &Path, contents: &[u8]) -> Result<(), String> {
+    replace_inner_mode(path, contents, true, |_| Ok(()))
+}
+
 /// Сначала проверяется подготовленный файл, затем выполняется rename и проверка результата.
 /// На ошибку после rename нельзя отвечать автоматическим повтором или откатом вслепую.
 pub(super) fn replace_state(path: &Path, contents: &[u8]) -> Result<(), String> {

@@ -1,7 +1,7 @@
-//! Ограниченная политика для одноразовой проверки OAuth в настольном приложении.
-//! Нельзя передать произвольный URL, заголовки, refresh token или команду работы
-//! с файлами. Сетевой исполнитель находится в commands/cloud_oauth_transport.rs.
-//! Формы и токены не включаются в ошибки или журналы.
+//! Ограниченная политика OAuth в настольном приложении: одноразовый обмен и
+//! экспериментальный refresh Google. Нельзя передать произвольный URL, заголовки
+//! или команду работы с файлами. Refresh Яндекса намеренно не поддерживается.
+//! Сетевой исполнитель в commands/cloud_oauth_transport.rs не журналирует секреты.
 
 const GOOGLE_TOKEN: &str = "https://oauth2.googleapis.com/token";
 const YANDEX_TOKEN: &str = "https://oauth.yandex.com/token";
@@ -168,6 +168,45 @@ pub fn valid_code_form(provider: Provider, body: &str) -> bool {
         }
 }
 
+/// Только refresh Google без client_secret. Вызывающий обязан до сетевой
+/// попытки надёжно зафиксировать pending и не повторять неизвестный результат.
+/// Сама проверка формы не доказывает соблюдение этого требования.
+pub fn valid_google_refresh_form(body: &str) -> bool {
+    if !visible_ascii(body, MAX_FORM_BYTES) {
+        return false;
+    }
+    let mut grant = None;
+    let mut client = None;
+    let mut refresh = None;
+    for part in body.split('&') {
+        let Some((name, value)) = part.split_once('=') else {
+            return false;
+        };
+        let Some(name) = decode_form_part(name) else {
+            return false;
+        };
+        let Some(value) = decode_form_part(value) else {
+            return false;
+        };
+        let field = match name.as_str() {
+            "grant_type" => &mut grant,
+            "client_id" => &mut client,
+            "refresh_token" => &mut refresh,
+            _ => return false,
+        };
+        if field.replace(value).is_some() {
+            return false;
+        }
+    }
+    grant.as_deref() == Some("refresh_token")
+        && client
+            .as_deref()
+            .is_some_and(|value| valid_client_id(Provider::Google, value))
+        && refresh
+            .as_deref()
+            .is_some_and(|value| visible_ascii(value, MAX_TOKEN_BYTES))
+}
+
 /// Токен допустим исключительно в Authorization header, без пробелов и CR/LF.
 pub fn valid_access_token(value: &str) -> bool {
     if value.is_empty() || value.len() > MAX_TOKEN_BYTES {
@@ -221,6 +260,42 @@ mod tests {
         }
         assert_eq!(Provider::Google.authorization_prefix(), "Bearer ");
         assert_eq!(Provider::Yandex.authorization_prefix(), "OAuth ");
+    }
+
+    #[test]
+    fn google_refresh_accepts_only_the_exact_three_fields() {
+        let body = "grant_type=refresh_token&client_id=123-example.apps.googleusercontent.com&refresh_token=tok%2Ben%2Fvalue";
+        assert!(valid_google_refresh_form(body));
+        assert!(!valid_google_refresh_form(""));
+        assert!(!valid_google_refresh_form(
+            &(body.to_owned() + "&client_secret=private")
+        ));
+        assert!(!valid_google_refresh_form(
+            &(body.to_owned() + "&refresh_token=twice")
+        ));
+        assert!(!valid_google_refresh_form(
+            &(body.to_owned() + "&%72efresh_token=twice")
+        ));
+        assert!(!valid_google_refresh_form(
+            &body.replace("refresh_token=tok", "refresh_token=%0Atok")
+        ));
+        assert!(!valid_google_refresh_form(
+            &body.replace("tok%2Ben%2Fvalue", "")
+        ));
+        assert!(!valid_google_refresh_form(
+            &body.replace("tok%2Ben%2Fvalue", "%zz")
+        ));
+        assert!(!valid_google_refresh_form(&body.replace(
+            "123-example.apps.googleusercontent.com",
+            "yandex-app-id"
+        )));
+        assert!(!valid_google_refresh_form(&body.replace(
+            "grant_type=refresh_token",
+            "grant_type=authorization_code"
+        )));
+        assert!(!valid_google_refresh_form(
+            &body.replace("tok%2Ben%2Fvalue", &"a".repeat(8193))
+        ));
     }
 
     #[test]

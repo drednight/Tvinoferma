@@ -353,7 +353,9 @@ export function createCloudUploadTransport(options) {
         );
         if (response.status !== 200) {
           cancelBody(response.body);
-          return { status: 'not_sent' };
+          // При 409 цель уже занята: PUT в этой попытке не выполнялся, но файл
+          // нужно сверить, а не автоматически повторять запрос ссылки.
+          return { status: response.status === 409 ? 'conflict' : 'not_sent' };
         }
         const link = object(parseReply(await boundedText(response)), ['href', 'method', 'templated']);
         requireLive();
