@@ -119,7 +119,13 @@ export function createNativeGoogleRefreshFetch(options) {
       active = true;
       return new Promise((resolve, reject) => {
         let finished = false;
-        const end = () => request.signal.removeEventListener('abort', abort);
+        const end = () => {
+          try {
+            request.signal.removeEventListener('abort', abort);
+          } catch {
+            // Нестандартный signal не должен раскрывать исходное исключение.
+          }
+        };
         const rejectOnce = () => {
           if (finished) return;
           finished = true;
@@ -127,7 +133,14 @@ export function createNativeGoogleRefreshFetch(options) {
           reject(failed());
         };
         const abort = () => rejectOnce();
-        request.signal.addEventListener('abort', abort, { once: true });
+        try {
+          request.signal.addEventListener('abort', abort, { once: true });
+        } catch {
+          // До запуска IPC; слот можно освободить, исходную ошибку не выдаём.
+          active = false;
+          rejectOnce();
+          return;
+        }
         Promise.resolve()
           .then(() => {
             if (finished || request.signal.aborted) throw failed();
@@ -150,7 +163,11 @@ export function createNativeGoogleRefreshFetch(options) {
             active = false;
             rejectOnce();
           });
-        if (request.signal.aborted) abort();
+        try {
+          if (request.signal.aborted) abort();
+        } catch {
+          rejectOnce();
+        }
       });
     }
   );

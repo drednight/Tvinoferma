@@ -186,6 +186,39 @@ describe('экспериментальный refresh Google через fake IPC'
     expect(invoke).toHaveBeenCalledTimes(2);
   });
 
+  it('не раскрывает исключения нестандартного signal и не оставляет слот занятым до IPC', async () => {
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    const invoke = vi.fn(async () => ({ body: '{}', contentType: 'application/json' }));
+    const fetch = createNativeGoogleRefreshFetch({ invoke });
+    const signal = {
+      aborted: false,
+      addEventListener() {
+        throw new Error('PRIVATE сигнал');
+      },
+      removeEventListener() {
+        throw new Error('PRIVATE очистка');
+      }
+    };
+    await expect(fetch(request.url, init(request.body, signal))).rejects.not.toThrow('PRIVATE');
+    expect(invoke).not.toHaveBeenCalled();
+    let reads = 0;
+    const getterThrows = {
+      get aborted() {
+        if (++reads > 1) throw new Error('PRIVATE состояние');
+        return false;
+      },
+      addEventListener() {},
+      removeEventListener() {}
+    };
+    await expect(fetch(request.url, init(request.body, getterThrows))).rejects.not.toThrow('PRIVATE');
+    await Promise.resolve();
+    expect(invoke).not.toHaveBeenCalled();
+    const cleanupThrows = { ...signal, addEventListener() {} };
+    await expect(fetch(request.url, init(request.body, cleanupThrows))).resolves.toMatchObject({ status: 200 });
+    await expect(fetch(request.url, init(request.body))).resolves.toMatchObject({ status: 200 });
+    expect(invoke).toHaveBeenCalledTimes(2);
+  });
+
   it('скрывает ошибки и не принимает некорректные ответы IPC', async () => {
     const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
     for (const value of [
