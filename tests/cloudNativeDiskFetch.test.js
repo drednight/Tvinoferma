@@ -7,8 +7,11 @@ import {
   generateSyncId
 } from '../js/modules/cloudSync/envelope.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
+import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
 import { createKeyProvisioner } from '../js/modules/cloudSync/keyProvisioning.js';
-import { openKeyBundle } from '../js/modules/cloudSync/keyBundle.js';
+import { createKeyRecoverer } from '../js/modules/cloudSync/keyRecovery.js';
+import { findPortableKeyVersions } from '../js/modules/cloudSync/portableKeyDiscovery.js';
+import { createPairingCode, parsePairingCode } from '../js/modules/cloudSync/pairingCode.js';
 import { createNativeKeyStateStore } from '../js/modules/cloudSync/providers/nativeKeyStateStore.js';
 import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
 import { openNativeCloudSession } from '../js/modules/cloudSync/providers/nativeCloudSession.js';
@@ -18,7 +21,7 @@ import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.j
 import { normalizeState } from '../js/core/state.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
-import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
+import { sealHistoryVersion, verifyHistory } from '../js/modules/cloudSync/history.js';
 import { versionFileName } from '../js/modules/cloudSync/providers/common.js';
 import { googleCreateRequest, googleListRequest } from '../js/modules/cloudSync/providers/googleDrive.js';
 import { createCloudUploadTransport } from '../js/modules/cloudSync/providers/uploadTransport.js';
@@ -580,6 +583,8 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       recoveryKey: dataKey,
       datasetId: newDataset,
       versionId: generateSyncId(webcrypto),
+      keyBundle: state.bundle,
+      keyPin: state.pin,
       cryptoSource: webcrypto
     });
     const openSession = () =>
@@ -628,21 +633,85 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     expect(file).not.toContain('СИНТЕТИЧЕСКИЙ ГЕРОЙ');
     expect(file).not.toContain(dataKey);
     expect(fake.backend.journal().record).not.toContain(dataKey);
-    const recovered = await openKeyBundle({
-      bundle: state.bundle,
+    expect(file).not.toContain(attempt.generatedBackupSecret);
+    expect(file).not.toContain('Синтетический основной пароль');
+    expect(JSON.parse(file).version).toBe(2);
+    // Второй ПК получает файл с диска, код по отдельному доверенному каналу и backup.
+    const code = createPairingCode({ datasetId: attempt.datasetId, keyPin: attempt.pin, rootPin: version.pin });
+    expect(code).not.toContain(dataKey);
+    expect(code).not.toContain(attempt.generatedBackupSecret);
+    const pairing = parsePairingCode(code);
+    const listing = await findPortableKeyVersions({
+      session: second.session,
+      datasetId: pairing.datasetId,
+      cryptoSource: webcrypto,
+      now: () => Date.parse('2026-10-30T10:30:00.000Z')
+    });
+    expect(listing).toEqual({
+      status: 'listed',
+      checkedAt: '2026-10-30T10:30:00.000Z',
+      candidates: [{ versionId: version.envelope.versionId, modifiedAt: '2026-10-29T12:00:00.000Z', pin: attempt.pin }],
+      legacy: []
+    });
+    const received = await second.session.read(listing.candidates[0].versionId);
+    expect(received.status).toBe('found');
+    expect(received.envelope).toEqual(JSON.parse(file));
+    let secondKey = null;
+    const secondInvoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_key_state_read')
+        return secondKey ? { status: 'ready', ...secondKey } : { status: 'empty' };
+      if (command === 'cloud_key_state_install') {
+        if (secondKey) return { status: 'occupied' };
+        secondKey = { slotId: args.slotId, record: args.record };
+        return { status: 'installed' };
+      }
+      throw new Error('unexpected second-PC fake IPC');
+    });
+    const secondStore = createNativeKeyStateStore({ invoke: secondInvoke, cryptoSource: webcrypto });
+    const recoverer = createKeyRecoverer({ store: secondStore, cryptoSource: webcrypto });
+    const recovery = await recoverer.begin({
+      envelope: received.envelope,
+      expectedDatasetId: pairing.datasetId,
+      expectedPin: pairing.keyPin,
+      independentPinConfirmed: true
+    });
+    expect(recovery.status).toBe('prepared');
+    expect(await recovery.recover({ role: 'backup', secret: attempt.generatedBackupSecret })).toEqual({
+      status: 'installed'
+    });
+    const recoveredState = (await secondStore.read()).state;
+    expect(recoveredState.dataKey).toBe(dataKey);
+    const history = await verifyHistory({
+      envelopes: [received.envelope],
       expectedDatasetId: newDataset,
-      expectedPin: attempt.pin,
-      role: 'backup',
-      secret: attempt.generatedBackupSecret,
+      recoveryKey: recoveredState.dataKey,
+      root: pairing.rootPin,
+      knownPins: [],
       cryptoSource: webcrypto
     });
-    const decrypted = await decryptSnapshot({
-      envelope: JSON.parse(file),
-      recoveryKey: recovered.dataKey,
-      expectedDatasetId: newDataset,
+    expect(history.publicSnapshot(pairing.rootPin)).toEqual(snapshot);
+    // Локальная правка не применяется и не переименовывается в удаление/«самую новую».
+    const localSnapshot = structuredClone(snapshot);
+    localSnapshot.sections.characters.records[0].fields.nick = 'ДРУГАЯ ЛОКАЛЬНАЯ ВЕРСИЯ';
+    const comparison = await prepareCloudReview({
+      provider,
+      session: second.session,
+      datasetId: pairing.datasetId,
+      dataKey: recoveredState.dataKey,
+      rootPin: pairing.rootPin,
+      knownPins: [],
+      localSnapshot,
+      localSavedAt: null,
+      now: () => Date.parse('2026-10-30T10:30:00.000Z'),
       cryptoSource: webcrypto
     });
-    expect(decrypted.publicSnapshot).toEqual(snapshot);
+    expect(comparison.status).toBe('ready_for_review');
+    expect(comparison.versions).toHaveLength(1);
+    const changes = comparison.compare(comparison.versions[0].pin);
+    expect(changes.cloudModifiedAt).toBe('2026-10-29T12:00:00.000Z');
+    expect(changes.checkedAt).toBe('2026-10-30T10:30:00.000Z');
+    expect(changes.localSavedAt).toBeNull();
+    expect(changes.differences.entries.map(item => item.kind)).toEqual(['changed']);
     second.session.dispose();
   }, 30_000);
 });

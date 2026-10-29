@@ -6,6 +6,7 @@
 import { decryptSnapshot, encryptSnapshot, isSyncId, validateEnvelope } from './envelope.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { array, object } from './exportSchema.js';
+import { makePortableKeyCapsule, verifyPortableEnvelopeBinding } from './portableKeyCapsule.js';
 
 const PAYLOAD_FORMAT = 'tvinoferma-public-history';
 const PAYLOAD_VERSION = 1;
@@ -14,6 +15,7 @@ const PAYLOAD_VERSION = 1;
 const PLANNER_DELETION_VERSION = 2;
 const MAX_PLANNER_DELETIONS = 10_000;
 const HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v1';
+const PORTABLE_HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v2';
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
 export const MAX_HISTORY_VERSIONS = 128;
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
@@ -50,7 +52,10 @@ function cryptoApi(source) {
 
 // Порядок полей и домен зафиксированы; порядок ключей во входном объекте роли не играет.
 async function envelopePin(envelope, crypto) {
-  const canonical = JSON.stringify([HASH_DOMAIN, ...ENVELOPE_FIELDS.map(key => envelope[key])]);
+  const fields = ENVELOPE_FIELDS.map(key => envelope[key]);
+  const canonical = JSON.stringify(
+    envelope.version === 2 ? [PORTABLE_HASH_DOMAIN, ...fields, envelope.keyCapsule] : [HASH_DOMAIN, ...fields]
+  );
   const bytes = new TextEncoder().encode(canonical);
   try {
     const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
@@ -78,13 +83,14 @@ function validatePublic(snapshot) {
  * allowlist-экспорт; текстовые поля могут содержать секреты, структурная проверка этого
  * не обнаружит. Проверка не заменяет импортные схемы. Результат ещё не помещён в очередь
  * и не сохранён. Корень задаётся parent: null; сам родитель здесь не проверяется.
- * @param {{publicSnapshot: any, parent: any, recoveryKey: string, datasetId: string, versionId: string, cryptoSource?: Crypto}} options
+ * keyBundle/keyPin добавляются вместе, чтобы восстановление использовало тот же файл и очередь.
+ * @param {{publicSnapshot: any, parent: any, recoveryKey: string, datasetId: string, versionId: string, keyBundle?: any, keyPin?: any, cryptoSource?: Crypto}} options
  */
 export async function sealHistoryVersion(options) {
   const input = object(
     options,
     ['publicSnapshot', 'parent', 'recoveryKey', 'datasetId', 'versionId'],
-    ['cryptoSource']
+    ['cryptoSource', 'keyBundle', 'keyPin']
   );
   if (!isSyncId(input.datasetId) || !isSyncId(input.versionId)) throw historyError();
   const parent = input.parent === null ? null : copyPin(input.parent);
@@ -98,13 +104,24 @@ export async function sealHistoryVersion(options) {
     throw historyError();
   }
   validatePublic(publicSnapshot);
-  // encryptSnapshot сериализует весь payload до первого await и проверяет предел размера.
+  if (Object.hasOwn(input, 'keyBundle') !== Object.hasOwn(input, 'keyPin')) throw historyError();
+  const capsule = Object.hasOwn(input, 'keyBundle')
+    ? await makePortableKeyCapsule({
+        bundle: input.keyBundle,
+        pin: input.keyPin,
+        dataKey: input.recoveryKey,
+        datasetId: input.datasetId,
+        cryptoSource: input.cryptoSource
+      })
+    : undefined;
+  // Снимок и родитель уже скопированы; encryptSnapshot ограничивает размер.
   const payload = { format: PAYLOAD_FORMAT, version: PAYLOAD_VERSION, parent, publicSnapshot };
   const envelope = await encryptSnapshot({
     snapshot: payload,
     recoveryKey: input.recoveryKey,
     datasetId: input.datasetId,
     versionId: input.versionId,
+    ...(capsule === undefined ? {} : { keyCapsule: capsule }),
     cryptoSource: input.cryptoSource
   });
   const pin = await envelopePin(envelope, cryptoApi(input.cryptoSource));
@@ -113,9 +130,17 @@ export async function sealHistoryVersion(options) {
 
 function snapshotEnvelope(value) {
   // Копируем через дескрипторы и не вызываем getters в непроверенных облачных объектах.
-  const data = object(value, ENVELOPE_FIELDS);
-  if (typeof data.ciphertext !== 'string' || typeof data.iv !== 'string') throw historyError();
-  return Object.fromEntries(ENVELOPE_FIELDS.map(key => [key, data[key]]));
+  const data = object(value, ENVELOPE_FIELDS, ['keyCapsule']);
+  if (
+    typeof data.ciphertext !== 'string' ||
+    typeof data.iv !== 'string' ||
+    (Object.hasOwn(data, 'keyCapsule') && typeof data.keyCapsule !== 'string')
+  )
+    throw historyError();
+  const fields = Object.hasOwn(data, 'keyCapsule')
+    ? ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'keyCapsule', 'iv', 'ciphertext']
+    : ENVELOPE_FIELDS;
+  return Object.fromEntries(fields.map(key => [key, data[key]]));
 }
 
 function validateList(value, max, convert) {
@@ -150,13 +175,13 @@ function checkPlannerDeletionTransition(parentIds, childIds, deleted) {
  * человека или сохранения файла. История, резервная копия и фактическая запись не меняются.
  * Старые приложения не понимают этот формат; не публиковать его до согласования протокола.
  * @param {{history: any, publicSnapshot: any, parent: any, deletedIds: string[], confirmedDeletion: boolean,
- * recoveryKey: string, datasetId: string, versionId: string, cryptoSource?: Crypto}} options
+ * recoveryKey: string, datasetId: string, versionId: string, keyBundle?: any, keyPin?: any, cryptoSource?: Crypto}} options
  */
 export async function sealHistoryVersionWithPlannerDeletions(options) {
   const input = object(
     options,
     ['history', 'publicSnapshot', 'parent', 'deletedIds', 'confirmedDeletion', 'recoveryKey', 'datasetId', 'versionId'],
-    ['cryptoSource']
+    ['cryptoSource', 'keyBundle', 'keyPin']
   );
   if (!isVerifiedHistory(input.history) || input.confirmedDeletion !== true) throw historyError();
   if (!isSyncId(input.datasetId) || !isSyncId(input.versionId)) throw historyError();
@@ -181,11 +206,22 @@ export async function sealHistoryVersionWithPlannerDeletions(options) {
     publicSnapshot: snapshot,
     plannerDeletedIds: deleted
   };
+  if (Object.hasOwn(input, 'keyBundle') !== Object.hasOwn(input, 'keyPin')) throw historyError();
+  const capsule = Object.hasOwn(input, 'keyBundle')
+    ? await makePortableKeyCapsule({
+        bundle: input.keyBundle,
+        pin: input.keyPin,
+        dataKey: input.recoveryKey,
+        datasetId: input.datasetId,
+        cryptoSource: input.cryptoSource
+      })
+    : undefined;
   const envelope = await encryptSnapshot({
     snapshot: payload,
     recoveryKey: input.recoveryKey,
     datasetId: input.datasetId,
     versionId: input.versionId,
+    ...(capsule === undefined ? {} : { keyCapsule: capsule }),
     cryptoSource: input.cryptoSource
   });
   return { envelope, pin: await envelopePin(envelope, cryptoApi(input.cryptoSource)) };
@@ -217,7 +253,7 @@ export async function verifyHistory(options) {
   let total = 0;
   const ids = new Set();
   for (const envelope of envelopes) {
-    total += envelope.ciphertext.length + envelope.iv.length;
+    total += envelope.ciphertext.length + envelope.iv.length + (envelope.keyCapsule?.length || 0);
     if (total > MAX_HISTORY_CHARS) throw new Error('История синхронизации слишком большая');
     validateEnvelope(envelope);
     if (envelope.datasetId !== input.expectedDatasetId || ids.has(envelope.versionId)) throw historyError();
@@ -232,6 +268,10 @@ export async function verifyHistory(options) {
     const pin = await envelopePin(envelope, crypto);
     let payload;
     try {
+      if (envelope.version === 2) {
+        // HMAC проверяет связь капсулы с dataKey, но не свежесть и не доверенный pin.
+        await verifyPortableEnvelopeBinding({ envelope, dataKey: input.recoveryKey, cryptoSource: crypto });
+      }
       payload = await decryptSnapshot({
         envelope,
         recoveryKey: input.recoveryKey,

@@ -20,6 +20,7 @@ const MAX_SMALL_REPLY_BYTES: usize = 64 * 1024;
 const MAX_IDENTITY_BYTES: usize = 8_192;
 const MAX_GOOGLE_MULTIPART_BYTES: usize = 5_000_000;
 const MAX_CIPHER_BYTES: usize = 32 * 1024 * 1024 + 16;
+const MAX_KEY_CAPSULE_BYTES: usize = 8_192;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// Параметры одной известной операции. Неизвестные поля от Tauri запрещены.
@@ -120,16 +121,29 @@ fn canonical_base64url(value: &str, minimum: usize, maximum: usize) -> bool {
 }
 
 /// Принимаем только канонический JSON, который строит copyCloudEnvelope в JS.
-/// Так невозможны дополнительные поля, повторные ключи, переносы MIME и открытые
-/// строки вне поля ciphertext. Проверка не доказывает реальное AES-GCM шифрование.
+/// В v2 base64url-капсула содержит зашифрованные обёртки; её содержимое и
+/// привязку к ключу проверяет JS. Формат не доказывает реальное шифрование.
 pub(crate) fn canonical_envelope(body: &str, dataset: &str, version: &str) -> bool {
     if body.len() > MAX_VERSION_BYTES || !sync_id(dataset) || !sync_id(version) {
         return false;
     }
-    let prefix = format!(
+    let prefix_v1 = format!(
         "{{\"format\":\"tvinoferma-cloud-sync\",\"version\":1,\"algorithm\":\"AES-256-GCM\",\"datasetId\":\"{dataset}\",\"versionId\":\"{version}\",\"iv\":\""
     );
-    let Some(rest) = body.strip_prefix(&prefix) else {
+    let prefix_v2 = format!(
+        "{{\"format\":\"tvinoferma-cloud-sync\",\"version\":2,\"algorithm\":\"AES-256-GCM\",\"datasetId\":\"{dataset}\",\"versionId\":\"{version}\",\"keyCapsule\":\""
+    );
+    let rest = if let Some(rest) = body.strip_prefix(&prefix_v1) {
+        rest
+    } else if let Some(rest) = body.strip_prefix(&prefix_v2) {
+        let Some((capsule, rest)) = rest.split_once("\",\"iv\":\"") else {
+            return false;
+        };
+        if !canonical_base64url(capsule, 64, MAX_KEY_CAPSULE_BYTES) {
+            return false;
+        }
+        rest
+    } else {
         return false;
     };
     let Some((iv, tail)) = rest.split_once("\",\"ciphertext\":\"") else {
@@ -461,6 +475,36 @@ mod tests {
         }
         assert!(!canonical_envelope(&body, VERSION, DATASET));
         assert!(!canonical_envelope(&body, DATASET, "bad"));
+    }
+
+    #[test]
+    fn portable_envelope_has_a_bounded_canonical_capsule_and_exact_fields() {
+        // Синтетический base64: валидатор формы намеренно не подтверждает bundle или AES.
+        let capsule = "A".repeat(88); // 66 декодированных байт
+        let body = envelope()
+            .replace("\"version\":1", "\"version\":2")
+            .replace("\"iv\":", &format!("\"keyCapsule\":\"{capsule}\",\"iv\":"));
+        assert!(canonical_envelope(&body, DATASET, VERSION));
+        for changed in [
+            body.replace(&capsule, "A"),
+            body.replace(&capsule, &"A".repeat(11_000)),
+            body.replace(&capsule, &format!("{capsule}=")),
+            body.replace(&capsule, &format!("{capsule}\\n")),
+            body.replace(
+                "\"keyCapsule\":",
+                "\"secret\":\"plaintext\",\"keyCapsule\":",
+            ),
+            body.replace(
+                "\"keyCapsule\":",
+                "\"keyCapsule\":\"duplicate\",\"keyCapsule\":",
+            ),
+            body.replace("\"version\":2", "\"version\":1"),
+            body.replace("\"keyCapsule\":", "\"other\":"),
+            format!("{body}\n"),
+        ] {
+            assert!(!canonical_envelope(&changed, DATASET, VERSION));
+        }
+        assert!(!canonical_envelope(&body, VERSION, DATASET));
     }
 
     #[test]

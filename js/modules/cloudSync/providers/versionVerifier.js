@@ -61,7 +61,8 @@ export function createCloudVersionVerifier(options) {
             ? await reader.readExact(expected.versionId, args.fileId)
             : await reader.readExact(expected.versionId);
         if (result.status === 'not_found') return { status: 'not_found' };
-        if (result.status === 'identity_mismatch') return { status: 'mismatch' };
+        if (result.status === 'identity_mismatch' || result.status === 'content_mismatch')
+          return { status: 'mismatch' };
         if (result.status !== 'found' || typeof result.serialized !== 'string') return { status: 'unavailable' };
         return { status: result.serialized === expectedBytes ? 'verified' : 'mismatch' };
       } catch {

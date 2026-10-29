@@ -5,6 +5,7 @@
 
 const FORMAT = 'tvinoferma-cloud-sync';
 const VERSION = 1;
+const PORTABLE_VERSION = 2;
 const ALGORITHM = 'AES-256-GCM';
 const KEY_PREFIX = 'TF1-';
 const KEY_BYTES = 32;
@@ -12,10 +13,12 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 export const MAX_SNAPSHOT_BYTES = 32 * 1024 * 1024;
 const MAX_CIPHER_BYTES = MAX_SNAPSHOT_BYTES + TAG_BYTES;
+export const MAX_KEY_CAPSULE_BYTES = 8192;
 const MAX_NODES = 500_000;
 const MAX_DEPTH = 64;
 const ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ENVELOPE_FIELDS = ['algorithm', 'ciphertext', 'datasetId', 'format', 'iv', 'version', 'versionId'];
+const PORTABLE_ENVELOPE_FIELDS = [...ENVELOPE_FIELDS, 'keyCapsule'];
 const unsafeKeys = new Set(['__proto__', 'constructor', 'prototype']);
 
 function webCrypto(source) {
@@ -120,36 +123,55 @@ function validSnapshot(snapshot) {
   visit(snapshot, 0);
 }
 
+function checkCapsule(value) {
+  const bytes = base64UrlToBytes(value, MAX_KEY_CAPSULE_BYTES);
+  if (bytes.length < 64) throw new Error('Некорректный облачный файл');
+}
+
 function checkEnvelope(envelope) {
   if (!plainObject(envelope)) throw new Error('Некорректный облачный файл');
   const descriptors = Object.getOwnPropertyDescriptors(envelope);
   const keys = Reflect.ownKeys(envelope);
+  const version = descriptors.version && 'value' in descriptors.version ? descriptors.version.value : undefined;
+  // v2 без капсулы не является допустимым файлом v2. Старые файлы и их AAD не меняются.
+  if (version === PORTABLE_VERSION && !descriptors.keyCapsule) throw new Error('Неподдерживаемый облачный файл');
+  const required = version === PORTABLE_VERSION ? PORTABLE_ENVELOPE_FIELDS : ENVELOPE_FIELDS;
   if (
     keys.some(key => typeof key !== 'string') ||
-    keys.length !== ENVELOPE_FIELDS.length ||
-    ENVELOPE_FIELDS.some(key => !descriptors[key] || !('value' in descriptors[key]) || !descriptors[key].enumerable)
+    keys.length !== required.length ||
+    required.some(key => !descriptors[key] || !('value' in descriptors[key]) || !descriptors[key].enumerable)
   ) {
     throw new Error('Некорректный облачный файл');
   }
-  const fields = Object.fromEntries(ENVELOPE_FIELDS.map(key => [key, descriptors[key].value]));
+  const fields = Object.fromEntries(required.map(key => [key, descriptors[key].value]));
   if (
     fields.format !== FORMAT ||
-    fields.version !== VERSION ||
+    ![VERSION, PORTABLE_VERSION].includes(fields.version) ||
     fields.algorithm !== ALGORITHM ||
     !isSyncId(fields.datasetId) ||
     !isSyncId(fields.versionId)
   ) {
     throw new Error('Неподдерживаемый облачный файл');
   }
+  if (fields.version === PORTABLE_VERSION) checkCapsule(fields.keyCapsule);
   const iv = base64UrlToBytes(fields.iv, IV_BYTES);
   const ciphertext = base64UrlToBytes(fields.ciphertext, MAX_CIPHER_BYTES);
   if (iv.length !== IV_BYTES || ciphertext.length < TAG_BYTES) throw new Error('Некорректный облачный файл');
-  return { iv, ciphertext, datasetId: fields.datasetId, versionId: fields.versionId };
+  return {
+    iv,
+    ciphertext,
+    datasetId: fields.datasetId,
+    versionId: fields.versionId,
+    version: fields.version,
+    keyCapsule: fields.keyCapsule
+  };
 }
 
-function associatedData(datasetId, versionId) {
-  // Порядок и формат фиксированы; изменение идентификаторов или типа нарушит проверку GCM.
-  return new TextEncoder().encode(JSON.stringify([FORMAT, VERSION, ALGORITHM, datasetId, versionId]));
+function associatedData(datasetId, versionId, version = VERSION, keyCapsule = undefined) {
+  // v1 остаётся байт-в-байт совместимым. В v2 вся капсула привязана к GCM.
+  const values = [FORMAT, version, ALGORITHM, datasetId, versionId];
+  if (version === PORTABLE_VERSION) values.push(keyCapsule);
+  return new TextEncoder().encode(JSON.stringify(values));
 }
 
 async function importKey(crypto, recoveryKey, usage) {
@@ -184,9 +206,13 @@ export function generateSyncId(cryptoSource) {
 
 /**
  * Шифрует JSON-снимок AES-256-GCM с новой случайной nonce. Никакой сети и записи здесь нет.
- * @param {{ snapshot?: any, recoveryKey?: string, datasetId?: string, versionId?: string, cryptoSource?: Crypto }} [options]
+ * keyCapsule предназначена только для проверенной обёртки portableKeyCapsule.js; формат
+ * здесь не доказывает, что её можно открыть. Внешний пароль не передаётся в AES.
+ * @param {{ snapshot?: any, recoveryKey?: string, datasetId?: string, versionId?: string, keyCapsule?: string, cryptoSource?: Crypto }} [options]
  */
-export async function encryptSnapshot({ snapshot, recoveryKey, datasetId, versionId, cryptoSource } = {}) {
+export async function encryptSnapshot({ snapshot, recoveryKey, datasetId, versionId, keyCapsule, cryptoSource } = {}) {
+  const version = keyCapsule === undefined ? VERSION : PORTABLE_VERSION;
+  if (version === PORTABLE_VERSION) checkCapsule(keyCapsule);
   if (!isSyncId(datasetId) || !isSyncId(versionId)) throw new Error('Некорректный идентификатор синхронизации');
   validSnapshot(snapshot);
   const plaintext = new TextEncoder().encode(JSON.stringify(snapshot));
@@ -199,16 +225,22 @@ export async function encryptSnapshot({ snapshot, recoveryKey, datasetId, versio
     const key = await importKey(crypto, recoveryKey, 'encrypt');
     const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
     const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv, additionalData: associatedData(datasetId, versionId), tagLength: 128 },
+      {
+        name: 'AES-GCM',
+        iv,
+        additionalData: associatedData(datasetId, versionId, version, keyCapsule),
+        tagLength: 128
+      },
       key,
       plaintext
     );
     return {
       format: FORMAT,
-      version: VERSION,
+      version,
       algorithm: ALGORITHM,
       datasetId,
       versionId,
+      ...(version === PORTABLE_VERSION ? { keyCapsule } : {}),
       iv: bytesToBase64Url(iv),
       ciphertext: bytesToBase64Url(new Uint8Array(encrypted))
     };
@@ -235,7 +267,7 @@ export function validateEnvelope(envelope) {
  */
 export async function decryptSnapshot({ envelope, recoveryKey, expectedDatasetId, cryptoSource } = {}) {
   // Зафиксировать заголовок до первого await: внешний объект может быть изменён вызывающей стороной.
-  const { iv, ciphertext, datasetId, versionId } = checkEnvelope(envelope);
+  const { iv, ciphertext, datasetId, versionId, version, keyCapsule } = checkEnvelope(envelope);
   if (!isSyncId(expectedDatasetId) || datasetId !== expectedDatasetId) {
     throw new Error('Облачный файл относится к другому набору данных');
   }
@@ -245,7 +277,12 @@ export async function decryptSnapshot({ envelope, recoveryKey, expectedDatasetId
   try {
     plaintext = new Uint8Array(
       await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv, additionalData: associatedData(datasetId, versionId), tagLength: 128 },
+        {
+          name: 'AES-GCM',
+          iv,
+          additionalData: associatedData(datasetId, versionId, version, keyCapsule),
+          tagLength: 128
+        },
         key,
         ciphertext
       )

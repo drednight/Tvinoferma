@@ -56,7 +56,7 @@ function exclusive(storage, key, action) {
 }
 
 function sameEnvelope(a, b) {
-  return ENVELOPE_KEYS.every(key => a[key] === b[key]);
+  return ENVELOPE_KEYS.every(key => a[key] === b[key]) && a.keyCapsule === b.keyCapsule;
 }
 
 function validateState(data, deviceId, datasetId) {
@@ -199,7 +199,7 @@ export class EncryptedOutbox {
   acknowledgeConfirmed(envelope) {
     // Забираем именно значения собственных data-descriptor до ожидания. Нельзя
     // проверять descriptor, а затем читать поля через Proxy/getter повторно.
-    const expected = object(envelope, ENVELOPE_KEYS);
+    const expected = object(envelope, ENVELOPE_KEYS, ['keyCapsule']);
     validateEnvelope(expected);
     return exclusive(this.storage, this.key, () => {
       const state = this.#read();

@@ -335,3 +335,23 @@ describe('Яндекс: только чтение зашифрованных в�
     }
   });
 });
+
+describe.each(['google', 'yandex'])('%s: канонические байты для чтения и сверки', provider => {
+  it('отклоняет повторные ключи при чтении и различает изменённый файл от сбоя сети', async () => {
+    const { envelope } = await encrypted();
+    const duplicate = JSON.stringify(envelope).replace('"version":1', '"version":1,"version":1');
+    const file = googleFile(v1);
+    const send = vi.fn(async request => {
+      const url = new URL(request.url);
+      if (provider === 'google' && url.pathname === '/drive/v3/files') return page({ files: [file] });
+      if (provider === 'yandex' && url.hostname === 'cloud-api.yandex.net') {
+        return page({ href: signedHref, method: 'GET', templated: false });
+      }
+      return { status: 200, body: duplicate };
+    });
+    const reader = provider === 'google' ? google(send) : yandex(send);
+    await expect(reader.read(v1)).rejects.toThrow();
+    const exact = provider === 'google' ? await reader.readExact(v1, file.id) : await reader.readExact(v1);
+    expect(exact).toEqual({ status: 'content_mismatch' });
+  });
+});

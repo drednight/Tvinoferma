@@ -6,6 +6,7 @@
 // недостаточно. После неизвестного исхода НЕЛЬЗЯ автоматически повторять отправку.
 // Ключи, зашифрованные записи, аккаунты, ответы и исходные ошибки не журналируются.
 import { decryptSnapshot, encryptSnapshot, generateSyncId, isSyncId } from './envelope.js';
+import { verifyPortableEnvelopeBinding } from './portableKeyCapsule.js';
 import { object } from './exportSchema.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
@@ -124,6 +125,10 @@ function validParent(value, versionId) {
 // Доказательство AES-GCM для конкретного ключа и базовая проверка формата истории.
 // Это не доказывает полного облачного списка, общего предка или бизнес-валидности.
 async function validateVersion(envelope, dataKey, binding, crypto) {
+  if (envelope.version === 2) {
+    // HMAC связывает капсулу с внутренним ключом, но не проверяет свежесть или оба секрета.
+    await verifyPortableEnvelopeBinding({ envelope, dataKey, cryptoSource: crypto });
+  }
   const payload = await decryptSnapshot({
     envelope,
     recoveryKey: dataKey,

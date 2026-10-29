@@ -6,7 +6,7 @@
 // безопасное локальное применение и реальные аккаунты нужны отдельно.
 import { object, array } from '../exportSchema.js';
 import { isSyncId, validateEnvelope } from '../envelope.js';
-import { validGoogleId, versionFileName } from './common.js';
+import { copyCloudEnvelope, validGoogleId, versionFileName } from './common.js';
 import { googleDownloadRequest, googleListRequest } from './googleDrive.js';
 import { yandexDownloadContentRequest, yandexDownloadLinkRequest, yandexListRequest } from './yandexDisk.js';
 import { parseCloudModifiedTime } from './modifiedTime.js';
@@ -62,12 +62,14 @@ function envelope(text, datasetId, versionId) {
   const parsed = json(text);
   try {
     validateEnvelope(parsed);
-    if (parsed.datasetId !== datasetId || parsed.versionId !== versionId) throw malformed();
+    const copy = copyCloudEnvelope(parsed, datasetId);
+    // Писатель создаёт канонический JSON: иная запись может скрывать дубли полей.
+    if (copy.versionId !== versionId || JSON.stringify(copy) !== text) throw malformed();
+    // Это ещё не проверка AES-GCM, доверенного pin или истории.
+    return copy;
   } catch {
     throw malformed();
   }
-  // JSON.parse уже дал независимый объект; это ещё не проверка AES-GCM или истории.
-  return parsed;
 }
 function sameManifest(a, b) {
   return a.length === b.length && a.every((item, index) => item === b[index]);
@@ -161,7 +163,15 @@ export function createGoogleVersionReader(options) {
     if (expectedFileId !== undefined && files[0].id !== expectedFileId) return { status: 'identity_mismatch' };
     const response = await sendSafe(send, googleDownloadRequest(files[0].id), MAX_VERSION_TEXT);
     if (response.status !== 200) throw failed();
-    const parsed = envelope(response.body, datasetId, versionId);
+    let parsed;
+    try {
+      parsed = envelope(response.body, datasetId, versionId);
+    } catch {
+      // Для readExact ответ сервиса получен: некорректные байты точно не совпадают
+      // с отправленным каноническим файлом, а не являются сетевой недоступностью.
+      if (includeSerialized) return { status: 'content_mismatch' };
+      throw malformed();
+    }
     return { status: 'found', envelope: parsed, ...(includeSerialized ? { serialized: response.body } : {}) };
   }
   return Object.freeze({
@@ -284,7 +294,13 @@ export function createYandexVersionReader(options) {
     // Не используем путь или хост из ответа без повторной проверки строителем запроса.
     const content = await sendSafe(send, yandexDownloadContentRequest(link), MAX_VERSION_TEXT);
     if (content.status !== 200) throw failed();
-    const parsed = envelope(content.body, datasetId, versionId);
+    let parsed;
+    try {
+      parsed = envelope(content.body, datasetId, versionId);
+    } catch {
+      if (includeSerialized) return { status: 'content_mismatch' };
+      throw malformed();
+    }
     return { status: 'found', envelope: parsed, ...(includeSerialized ? { serialized: content.body } : {}) };
   }
   return Object.freeze({
