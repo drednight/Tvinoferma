@@ -50,6 +50,7 @@ import {
   closeTargetPicker
 } from './lab-data.js';
 import { openScenario } from './scenarios.js';
+import { demoReport, openDemoReport } from './script-report.js';
 
 /* ==================== фейковые данные сценария «Промокод» ==================== */
 // Персонажи, пати и мелкие помощники общие для всех сценариев — живут в lab-data.js.
@@ -819,6 +820,7 @@ export function openSplit() {
   const target = defaultTarget();
   let running = null;
   let last = null;
+  let reports = [];
 
   const dlg = openOverlay({
     title: '🎁 Промокоды — настройка и ход работы в одном окне',
@@ -940,13 +942,19 @@ export function openSplit() {
     $('sp-status').textContent = signal.cancelled ? '⏹ Проверка остановлена' : '✅ Демо-проверка статусов завершена';
   }
 
-  async function start(dry) {
+  async function start(dry, retryRows = null) {
     const p = parseCodes(codesRaw);
     if (!p.codes.length) return toast('Введите хотя бы один промокод', 'warning');
     const chars = targetChars();
     if (!chars.length) return toast('Выберите персонажей', 'warning');
     const plan = planRows(p.codes, chars);
-    if (!plan.jobs.length && !dry) return toast('Все выбранные уже получили эти коды', 'info');
+    if (retryRows) {
+      const allowed = new Set(retryRows.filter(isRerunnable).map(r => `${r.charId}|${codeKey(r.code)}`));
+      plan.jobs = plan.jobs.filter(job => allowed.has(`${job.ch.id}|${codeKey(job.code)}`));
+      plan.skipped = [];
+      plan.total = plan.jobs.length;
+    }
+    if (!plan.jobs.length && !dry) return toast('Повторять нечего', 'info');
     if (
       !dry &&
       !(await confirmModal({
@@ -986,6 +994,8 @@ export function openSplit() {
     });
     running = null;
     last = { rows, codes: p.codes, chars, dry, stopped: signal.cancelled };
+    if (!retryRows) reports = [];
+    reports.push(demoReport('promo', rows, dry));
     if (!alive()) return;
     const s = summarize(rows);
     $('sp-side').classList.remove('is-locked');
@@ -1001,6 +1011,7 @@ export function openSplit() {
           : `Введено ${s.ok} из ${s.total}${s.failed ? `, ошибок ${s.failed}` : ''}.`
       }</span>
       <button class="btn secondary" data-act="refresh">🔄 Обновить статусы</button>
+      <button class="btn secondary" data-act="report">📋 Таблица действий</button>
       <span class="sd-foot-spacer"></span>
       ${rerun ? `<button class="btn secondary" data-act="retry">🔁 Повторить ошибки (${rerun})</button>` : ''}
       <button class="btn ghost" data-act="close">Закрыть</button>`;
@@ -1019,7 +1030,7 @@ export function openSplit() {
       updatePlan();
     }
   });
-  const syncTarget = bindTarget(dlg.body, target, 'sp', updatePlan);
+  bindTarget(dlg.body, target, 'sp', updatePlan);
 
   dlg.foot.addEventListener('click', async e => {
     const btn = e.target.closest('[data-act]');
@@ -1033,18 +1044,13 @@ export function openSplit() {
       return;
     }
     if (act === 'refresh') return refresh();
+    if (act === 'report') return openDemoReport(reports);
     if (act === 'dry') return start(true);
     if (act === 'start') return start(false);
     if (act === 'retry') {
       if (!last) return;
-      const chars = rerunCharsOf(last.rows, last.chars);
-      if (!chars.length) return toast('Повторять нечего', 'info');
-      target.mode = 'manual';
-      target.chars.clear();
-      chars.forEach(c => target.chars.add(c.id));
-      syncTarget();
-      updatePlan();
-      return start(false);
+      if (!last.rows.some(isRerunnable)) return toast('Повторять нечего', 'info');
+      return start(false, last.rows);
     }
   });
 

@@ -191,6 +191,29 @@ describe('запуск', () => {
     expect($('.tf-dialog-sub').textContent).toContain('уже были введены раньше: 1');
   });
 
+  it('неясный результат остаётся заблокированным после нескольких повторов, а таблица показывает обе попытки', async () => {
+    mocks.invoke.mockImplementation(async (_, a) =>
+      a.charId === 'a'
+        ? { status: 'unknown', clicked: true }
+        : a.charId === 'b'
+          ? { status: 'challenge', clicked: true }
+          : { status: 'error', error: 'timeout', clicked: false }
+    );
+    await run('AAAA1111', ['a', 'b', 'c']);
+    expect(mocks.invoke).toHaveBeenCalledTimes(3);
+    $('[data-act="retry"]').click();
+    await wait(400);
+    $('[data-act="retry"]').click();
+    await wait(400);
+    expect(mocks.invoke.mock.calls.filter(call => call[1].charId === 'a')).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.filter(call => call[1].charId === 'b')).toHaveLength(1);
+    expect(mocks.invoke.mock.calls.filter(call => call[1].charId === 'c')).toHaveLength(3);
+    $('[data-act="report"]').click();
+    const report = document.querySelectorAll('.tf-dialog');
+    expect(report[report.length - 1].textContent).toContain('Таблица действий');
+    expect(report[report.length - 1].textContent).toContain('Предыдущий ответ неясен');
+  });
+
   it('кнопка «Стоп» есть во время ввода; введённое сохраняется', async () => {
     let release;
     const { browserSlots } = await import('../js/modules/sync/queue.js');

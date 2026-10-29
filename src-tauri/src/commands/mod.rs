@@ -1,10 +1,15 @@
 //! Команды хранилища: state.json, резервные копии, учётные данные в keychain ОС.
 
 pub mod backup;
+pub mod cloud_credentials;
+pub mod cloud_disk_transport;
+pub mod cloud_oauth;
+pub mod cloud_oauth_transport;
 pub mod factory_reset;
 pub mod layout;
 pub mod secrets;
 pub mod state;
+mod state_files;
 
 use std::fs;
 use std::path::PathBuf;

@@ -1,7 +1,22 @@
 // js/settings/settings.js
 
-import { getAdapter, saveNow, forceRenderAndPersist, persist, createBackup, isTauri } from '../core/storage.js';
+import {
+  getAdapter,
+  saveNow,
+  forceRenderAndPersist,
+  persist,
+  createBackup,
+  isTauri,
+  inspectStoredBackup,
+  forgetStoredBackupInspection,
+  restoreStoredBackup,
+  deleteStoredBackup,
+  assertStateWriteAvailable,
+  haltAfterPartialStateChange
+} from '../core/storage.js';
 import { state, serializeState } from '../core/state.js';
+import { SCHEMA_VERSION } from '../core/migrations.js';
+import { isUncertainStateWrite } from '../core/stateWriteOutcome.js';
 import { escapeHtml } from '../core/utils.js';
 import { vaultStatus } from '../core/secrets.js';
 import { hotkeyRows, applyDesktopSettings } from '../desktop/desktop.js';
@@ -24,6 +39,7 @@ import { refreshFreshnessLabels, formatHoursSpan } from '../core/freshness.js';
 import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
+import { bindCloudRegistrationCheck } from '../modules/cloudSync/ui/registrationCheckPanel.js';
 import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
@@ -79,7 +95,7 @@ async function refreshBackups() {
       const last = backups[0];
       summaryEl.textContent = backups.length
         ? `Копий: ${backups.length}${last?.createdAt ? ` · последняя: ${new Date(last.createdAt).toLocaleString('ru-RU')}` : ''}`
-        : 'Резервных копий пока нет: нажмите «Создать бэкап».';
+        : 'Копий состояния пока нет: нажмите «Создать копию состояния».';
     }
     if (fullBackupsOverlay)
       fullBackupsOverlay.body.innerHTML = `<div class="list compact" id="full-backup-list">${backupRowsHtml(backups)}</div>`;
@@ -111,8 +127,51 @@ function downloadJson(data, filename) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // The browser may need the URL after this event handler returns.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
+
+// May contain contacts/passwords. Keep only in memory, never display or log it;
+// JS strings cannot be reliably wiped. `ui` is not part of saved state.
+function stateReviewWitness() {
+  const { ui: _ui, ...persisted } = state;
+  const raw = JSON.stringify(persisted);
+  if (typeof raw !== 'string') throw new Error('no state');
+  return raw;
+}
+
+function stateStillMatches(expected) {
+  try {
+    return stateReviewWitness() === expected;
+  } catch {
+    return false;
+  }
+}
+
+function reviewDescription(review) {
+  const count = value => (value === null ? 'не определено' : String(value));
+  const marker =
+    review.vaultReference === 'os-referenced'
+      ? 'В копии есть ссылка на хранилище ОС, но самих контактов ОС в ней нет.'
+      : review.vaultReference === 'unknown'
+        ? 'Отметку хранилища ОС не удалось определить.'
+        : 'Явной отметки хранилища ОС нет; это не доказывает, что отдельных записей ОС не было.';
+  const current =
+    review.currentState === 'missing'
+      ? 'Текущий файл состояния не найден.'
+      : review.currentState === 'damaged'
+        ? 'Текущий файл повреждён; перед заменой будут сохранены его точные байты.'
+        : 'Перед заменой будет создана отдельная копия текущего сохранённого файла.';
+  const missingSections = [review.characters, review.archivedCharacters, review.plannerEntries].some(
+    value => value === null
+  )
+    ? ' Некоторые разделы в копии не определены и после восстановления могут оказаться пустыми.'
+    : '';
+  return `Версия данных: ${review.schemaVersion}; персонажей: ${count(review.characters)}, в архиве: ${count(review.archivedCharacters)}, задач и событий: ${count(review.plannerEntries)}.${missingSections} ${marker} ${current} Несохранённые изменения, контакты ОС, входы GameCenter, сессии и отдельные журналы в эти копии не входят. Контакты ОС после восстановления останутся прежними и могут не соответствовать копии. Завершите выполняющиеся операции; приложение перезапустится.`;
+}
+
+let reviewingBackup = false;
+let exportingAll = false;
 
 export async function renderSettings() {
   const adapter = getAdapter();
@@ -148,13 +207,17 @@ export async function renderSettings() {
   const vaultEl = document.getElementById('vault-status');
   if (vaultEl) {
     const v = vaultStatus();
-    vaultEl.textContent = !isTauri()
-      ? 'Недоступно в браузерном режиме — контакты хранятся в localStorage.'
-      : state.settings.security?.useVault === false
-        ? '⚠️ Выключено: email и пароли хранятся в state.json открытым текстом.'
-        : v.ready
-          ? `✅ Email, пароли и телефоны хранятся в хранилище учётных данных ОС (записей: ${v.count}). В state.json и бэкапах их нет.`
-          : `⚠️ Хранилище ОС недоступно (${v.error || 'нет ответа'}) — контакты сохраняются в state.json.`;
+    vaultEl.textContent = v.blocked
+      ? `⚠️ ${v.error || 'Хранилище учётных данных недоступно'}. Сохранение остановлено; проверьте данные и копии перед перезапуском. Копии state.json могут не содержать контакты.`
+      : !isTauri()
+        ? 'Недоступно в браузерном режиме — контакты хранятся в localStorage.'
+        : state.settings.security?.useVault === false
+          ? '⚠️ Выключено: email и пароли хранятся в state.json открытым текстом.'
+          : v.ready
+            ? `✅ Хранилище учётных данных ОС доступно (записей: ${v.count}). При успешном сохранении контакты не попадают в state.json; прежние резервные копии могут их содержать.`
+            : v.error
+              ? `⚠️ Хранилище ОС недоступно (${v.error}) — контакты сохраняются в state.json.`
+              : '⚠️ Хранилище ОС ещё не проверено в этом сеансе. Контакты пока остаются в state.json; после перезапуска они будут проверены перед переносом.';
   }
 
   // Версия
@@ -491,7 +554,9 @@ function bindSettingInputs() {
       if (path.startsWith('freshness.')) refreshFreshnessLabels(state.settings); // подсветка устаревших обновляется сразу
       if (path === 'security.useVault') {
         toast(
-          value ? 'Контакты перенесутся в хранилище ОС после перезапуска.' : 'Контакты будут храниться в state.json.',
+          value
+            ? 'Перед переносом контакты проверяются; при расхождении с хранилищем сохранение будет остановлено.'
+            : 'Контакты будут храниться в state.json.',
           'info'
         );
       }
@@ -500,6 +565,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  bindCloudRegistrationCheck({ desktop: isTauri() });
   bindGuides();
   bindFeedback();
   balanceSettingsColumns();
@@ -596,7 +662,7 @@ export function bindSettings() {
     try {
       await saveNow();
       const name = await createBackup();
-      toast(`Бэкап создан: ${name}`, 'success');
+      toast(`Копия состояния создана: ${name}. Отдельные контакты ОС в неё не входят.`, 'success');
       await refreshBackups();
     } catch (e) {
       toast(`Ошибка: ${e.message}`, 'error');
@@ -616,20 +682,60 @@ export function bindSettings() {
     if (!adapter) return;
 
     if (restoreBtn) {
+      if (reviewingBackup) return;
+      reviewingBackup = true;
+      restoreBtn.disabled = true;
       const name = restoreBtn.dataset.backupRestore;
-      const ok = await confirmModal({
-        title: 'Восстановить из копии?',
-        text: `Данные будут заменены содержимым копии «${name}». Текущее состояние сохранится отдельной копией, приложение перезапустится.`,
-        okText: 'Восстановить',
-        danger: true
-      });
-      if (ok) {
-        try {
-          await adapter.restoreBackup(name);
-          window.location.reload();
-        } catch (err) {
-          toast(`Ошибка восстановления: ${err.message}`, 'error');
+      let inspection;
+      try {
+        const approvedState = stateReviewWitness();
+        inspection = await inspectStoredBackup(name);
+        if (!stateStillMatches(approvedState)) {
+          toast('Данные изменились во время проверки. Откройте копию заново.', 'warning', 60000);
+          return;
         }
+        if (inspection.schemaVersion === null) {
+          toast('Не удалось определить версию данных копии; восстановление остановлено.', 'error', 60000);
+          return;
+        }
+        if (inspection.schemaVersion > SCHEMA_VERSION) {
+          toast('Копия создана более новой версией приложения. Сначала обновите Твиноферму.', 'error', 60000);
+          return;
+        }
+        if (inspection.vaultReference === 'unknown') {
+          toast('Не удалось проверить отметку хранилища ОС в копии; восстановление остановлено.', 'error', 60000);
+          return;
+        }
+        const ok = await confirmModal({
+          title: 'Восстановить файл состояния?',
+          text: `Выбрана копия «${name}». ${reviewDescription(inspection)}`,
+          okText: 'Восстановить состояние',
+          danger: true
+        });
+        if (!ok) return;
+        await restoreStoredBackup(name, inspection, () => stateStillMatches(approvedState));
+        window.location.reload();
+      } catch (err) {
+        // Неопределённый результат отдельно показывается постояннее через tf-storage-uncertain.
+        // Непроверенные исключения могут содержать личные данные и не выводятся в журнал.
+        if (!isUncertainStateWrite(err)) {
+          const message = err instanceof Error ? err.message : '';
+          const known = [
+            'Данные изменились после просмотра; откройте копию заново',
+            'Данные или выбранная копия изменились после просмотра; восстановление остановлено',
+            'Данные или выбранная копия изменились; восстановление остановлено',
+            'Не удалось проверить выбранную копию; обновите список и попробуйте снова'
+          ];
+          toast(
+            known.includes(message) ? message : 'Не удалось подтвердить восстановление. Проверьте данные и копии.',
+            'error',
+            60000
+          );
+        }
+      } finally {
+        if (inspection) forgetStoredBackupInspection(inspection);
+        restoreBtn.disabled = false;
+        reviewingBackup = false;
       }
     }
 
@@ -643,23 +749,54 @@ export function bindSettings() {
       });
       if (ok) {
         try {
-          await adapter.deleteBackup(name);
+          await deleteStoredBackup(name);
           toast('Удалено', 'success');
           await refreshBackups();
         } catch (err) {
           toast(`Ошибка удаления: ${err.message}`, 'error');
+          await refreshBackups();
         }
       }
     }
   });
 
-  // Export All (Старый быстрый экспорт всего JSON)
+  // The legacy JSON export is deliberately separate from cloud encryption and
+  // can contain passwords in plaintext. Require explicit confirmation each time.
   document.getElementById('export-all-btn')?.addEventListener('click', async () => {
-    await saveNow();
-    const data = serializeState();
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadJson(data, `tvinoferma-export-${stamp}.json`);
-    toast('Экспорт выполнен', 'success');
+    if (exportingAll) return;
+    exportingAll = true;
+    try {
+      const status = vaultStatus();
+      if (status.blocked || (isTauri() && state.settings?.security?.useVault !== false && !status.ready)) {
+        toast('Экспорт остановлен: контакты из хранилища ОС не удалось проверить.', 'error', 60000);
+        return;
+      }
+      const approvedState = stateReviewWitness();
+      const ok = await confirmModal({
+        title: 'Экспортировать открытый JSON?',
+        text: 'Файл не шифруется и может содержать email, телефоны и пароли персонажей открытым текстом, в том числе из хранилища ОС. Любой, кто получит файл, сможет их прочитать. Это не полная резервная копия хранилища ОС, GameCenter, сессий и отдельных журналов. Сохраняйте его только в доверенном месте.',
+        okText: 'Экспортировать открытый JSON',
+        danger: true
+      });
+      if (!ok) return;
+      if (!stateStillMatches(approvedState)) {
+        toast('Данные изменились после подтверждения. Начните экспорт заново.', 'warning', 60000);
+        return;
+      }
+      await saveNow();
+      if (!stateStillMatches(approvedState)) {
+        toast('Данные изменились во время сохранения. Начните экспорт заново.', 'warning', 60000);
+        return;
+      }
+      const data = serializeState();
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      downloadJson(data, `tvinoferma-export-${stamp}.json`);
+      toast('Сохранение файла запрошено. Проверьте его; JSON не зашифрован.', 'warning', 60000);
+    } catch {
+      toast('Экспорт остановлен: не удалось подтвердить сохранение данных или подготовить файл.', 'error', 60000);
+    } finally {
+      exportingAll = false;
+    }
   });
 
   // NEW: Advanced Export Button (Гибкий экспорт с выбором полей)
@@ -683,6 +820,33 @@ export function bindSettings() {
     }
   });
 
+  // Только одно подтверждение/удаление за раз в этом UI. Другие окна и прямые IPC
+  // не участвуют в этой блокировке.
+  let dangerBusy = false;
+  const runExclusiveDanger = async operation => {
+    if (dangerBusy) {
+      toast('Другое опасное действие ещё выполняется. Дождитесь его завершения.', 'warning');
+      return;
+    }
+    dangerBusy = true;
+    try {
+      await operation();
+    } catch {
+      toast('Результат действия не подтверждён и может быть частичным. Проверьте данные и копии.', 'error', 60000);
+    } finally {
+      dangerBusy = false;
+    }
+  };
+
+  // Свидетельство может содержать секреты: держим его только в памяти и не журналируем.
+  // Оно не является проверкой файла или межпроцессной блокировкой.
+  const dangerStateWitness = () => {
+    const { ui: _ui, ...persisted } = state;
+    const snapshot = JSON.stringify(persisted);
+    if (typeof snapshot !== 'string') throw new Error('Нет снимка состояния');
+    return snapshot;
+  };
+
   // Опасные действия: описание каждого действия, подтверждение с числом записей и резервная копия перед удалением
   const runDanger = async kind => {
     const action = DANGER_ACTIONS[kind];
@@ -691,53 +855,142 @@ export function bindSettings() {
       toast(`Удалять нечего: ${action.what} нет`, 'info');
       return;
     }
+    let approvedState;
+    try {
+      approvedState = dangerStateWitness();
+    } catch {
+      toast('Удаление остановлено: не удалось проверить данные. Проверьте состояние и резервные копии.', 'error');
+      return;
+    }
+    const isUnchanged = () => {
+      try {
+        return dangerStateWitness() === approvedState;
+      } catch {
+        return false;
+      }
+    };
+    const reportChanged = () =>
+      toast(
+        'Данные изменились после подготовки удаления. Проверьте их и подтвердите действие заново.',
+        'warning',
+        60000
+      );
+    const accountWarning =
+      kind === 'characters'
+        ? ' Копия состояния не содержит контакты из хранилища ОС и сохранённые входы GameCenter: после удаления восстановить их из этой копии нельзя. Сохраните нужные данные отдельно.'
+        : '';
     const ok = await confirmModal({
       title: `${action.title}?`,
-      text: `Будет удалено: ${count} (${action.what}). ${action.description} Перед удалением создастся резервная копия — её можно восстановить в «Резервных копиях».`,
+      text: `Будет удалено: ${count} (${action.what}). ${action.description} Перед удалением создастся копия состояния; если это не удастся подтвердить, удаление остановится.${accountWarning}`,
       okText: `Удалить (${count})`,
       danger: true
     });
     if (!ok) return;
+    if (!isUnchanged()) {
+      reportChanged();
+      return;
+    }
     try {
-      if (getAdapter()) {
-        await saveNow();
-        await createBackup(`before-delete-${kind}`);
+      if (!getAdapter()) throw new Error('Хранилище недоступно');
+      await saveNow();
+      if (!isUnchanged()) {
+        reportChanged();
+        return;
       }
-    } catch (e) {
-      console.warn('[DANGER] backup failed', e);
+      const name = await createBackup(`before-delete-${kind}`);
+      if (typeof name !== 'string' || !name.trim()) throw new Error('Копия не подтверждена');
+    } catch {
+      // Детали ошибки могут включать путь или чувствительные данные.
+      console.warn('[DANGER] Не удалось подтвердить резервную копию; удаление остановлено.');
+      toast(
+        'Удаление остановлено: не удалось подтвердить сохранение и резервную копию. Проверьте данные и список копий.',
+        'error',
+        60000
+      );
+      return;
     }
-    if (kind === 'parties') clearParties(state);
-    else if (kind === 'marathons') clearMarathons(state);
-    else {
-      const { accountKeysOf } = await import('../modules/launcher/gameCenters.js');
-      const { accountKeys } = clearCharacters(state, accountKeysOf);
-      if (isTauri() && accountKeys.length) {
-        const { forgetAccount } = await import('../modules/launcher/launch.js');
-        await Promise.all(accountKeys.map(k => forgetAccount(k).catch(() => {})));
+    let accountRemovalUnconfirmed = false;
+    let mutationStarted = false;
+    try {
+      // Импорт до последней проверки: во время ожидания данные могли измениться.
+      const accountKeysOf =
+        kind === 'characters' ? (await import('../modules/launcher/gameCenters.js')).accountKeysOf : undefined;
+      if (!isUnchanged()) {
+        reportChanged();
+        return;
       }
+      // Без await между проверкой и началом изменения в этом JS-контексте.
+      assertStateWriteAvailable();
+      mutationStarted = true;
+      if (kind === 'parties') clearParties(state);
+      else if (kind === 'marathons') clearMarathons(state);
+      else {
+        const { accountKeys } = clearCharacters(state, accountKeysOf);
+        if (isTauri() && accountKeys.length) {
+          const { forgetAccount } = await import('../modules/launcher/launch.js');
+          const results = await Promise.allSettled(accountKeys.map(k => forgetAccount(k)));
+          accountRemovalUnconfirmed = results.some(
+            result => result.status === 'rejected' || (result.value !== null && result.value !== undefined)
+          );
+        }
+      }
+      // forceRenderAndPersist сохраняет данные и перерисовывает все вкладки
+      await forceRenderAndPersist();
+    } catch {
+      if (mutationStarted) {
+        haltAfterPartialStateChange();
+        toast(
+          'Результат удаления не подтверждён и может быть частичным. Сохранение и восстановление остановлены; проверьте данные и копии перед перезапуском.',
+          'error',
+          60000
+        );
+      } else {
+        toast('Удаление остановлено: сохранение недоступно. Проверьте данные и резервные копии.', 'error', 60000);
+      }
+      return;
     }
-    // forceRenderAndPersist сохраняет данные и перерисовывает все вкладки
-    await forceRenderAndPersist();
-    toast(`Удалено: ${count} (${action.what})`, 'success');
+    if (accountRemovalUnconfirmed) {
+      toast(
+        'Персонажи удалены, но удаление некоторых сохранённых входов не подтверждено. Проверьте хранилище ОС.',
+        'warning',
+        60000
+      );
+    } else {
+      toast(`Удалено: ${count} (${action.what})`, 'success');
+    }
   };
   document.getElementById('danger-zone')?.addEventListener('click', e => {
     const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-danger]'));
-    if (btn?.dataset.danger && DANGER_ACTIONS[btn.dataset.danger]) runDanger(btn.dataset.danger);
+    if (btn?.dataset.danger && DANGER_ACTIONS[btn.dataset.danger]) {
+      runExclusiveDanger(() => runDanger(btn.dataset.danger));
+    }
   });
 
-  // Полный сброс: приложение возвращается к состоянию сразу после установки.
+  // Полный сброс известных локальных данных. Некоторые записи ОС и журналы могут остаться.
   // Подтверждение отдельное и явное: действие необратимо, потому что копии тоже удаляются.
-  document.getElementById('factory-reset-btn')?.addEventListener('click', async () => {
-    const { resetSummary, resetWarning, performFactoryReset } = await import('./factoryReset.js');
-    const summary = resetSummary(state);
-    const ok = await confirmModal({
-      title: 'Вернуть к заводским настройкам?',
-      text: resetWarning(summary),
-      okText: 'Удалить всё и сбросить',
-      danger: true
+  document.getElementById('factory-reset-btn')?.addEventListener('click', () => {
+    runExclusiveDanger(async () => {
+      const { prepareFactoryReset, discardFactoryResetPlan, resetWarning, performFactoryReset } =
+        await import('./factoryReset.js');
+      let plan;
+      try {
+        plan = prepareFactoryReset(state);
+      } catch {
+        toast('Не удалось подготовить список данных для сброса. Проверьте состояние и резервные копии.', 'error');
+        return;
+      }
+      const ok = await confirmModal({
+        title: 'Удалить локальные данные?',
+        text: resetWarning(plan.summary),
+        okText: 'Удалить данные и копии',
+        danger: true
+      });
+      if (!ok) {
+        discardFactoryResetPlan(plan);
+        return;
+      }
+      await performFactoryReset(state, plan);
     });
-    if (!ok) return;
-    await performFactoryReset(state);
   });
 
   // Open/Copy Data Dir

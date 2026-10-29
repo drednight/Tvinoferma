@@ -429,6 +429,11 @@ export function openCharacterForm(char = null) {
           if (nick !== currentChar.nick) {
             const res = await syncIdWithNick(newCharData);
             if (res.changed) idNote = ` (id: ${res.id})`;
+            else if (res.error === 'references_conflict')
+              idNote = '. id не изменён: обнаружен конфликт ссылок персонажа; проверьте марафоны';
+            else if (res.error === 'profile_rename_unconfirmed')
+              idNote =
+                '. id не изменён: состояние поменялось во время переноса профиля; проверьте профиль перед повтором';
             else if (res.error) idNote = '. id не изменён: закройте окно браузера персонажа и сохраните ещё раз';
           }
         } else {

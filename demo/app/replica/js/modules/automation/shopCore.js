@@ -368,9 +368,13 @@ export const isTransient = code => !!code && (SHOP_TRANSIENT.has(code) || isProm
  * не выполнять; `retry` — можно повторить (покупка не нажималась); `dry` — пробный запуск.
  */
 export function interpretBuy(payload, error) {
-  if (error || !payload)
-    return { kind: 'retry', status: 'error', code: String(error?.message || error || 'no_response') };
+  // Вызов мог отклониться уже после нажатия: без ответа повторять покупку нельзя.
+  if (error || !payload || typeof payload !== 'object' || !payload.status || typeof payload.clicked !== 'boolean')
+    return { kind: 'block', status: 'unknown', code: String(error?.message || error || 'no_response') };
   const code = payload.error || null;
+  // После нажатия безопасны только явно подтверждённая покупка или проверенный отказ без изменения баланса.
+  if (payload.clicked && !['success', 'no_effect', 'unknown'].includes(payload.status))
+    return { kind: 'block', status: 'unknown', code };
   switch (payload.status) {
     case 'success':
       return { kind: 'bought', status: 'done' };
@@ -393,8 +397,9 @@ export function interpretBuy(payload, error) {
     case 'challenge':
       return { kind: 'block', status: 'challenge' };
     default:
+      if (payload.clicked) return { kind: 'block', status: 'unknown', code };
       if (code === 'window_open') return { kind: 'block', status: 'error', code };
-      if (!payload.clicked && isTransient(code)) return { kind: 'retry', status: 'error', code };
+      if (isTransient(code)) return { kind: 'retry', status: 'error', code };
       return { kind: 'stop', status: 'error', code };
   }
 }
@@ -407,6 +412,37 @@ export function afterPurchase(payload, def) {
     balance: numOrNull(payload?.balanceAfter),
     item: raw ? normalizeScanItem(raw, def) : null
   };
+}
+
+/** План повтора: только невыполненный остаток, и ни одной строки аккаунта с неясным исходом. */
+export function planShopRetry(accounts, rows, balances = new Map()) {
+  const byKey = new Map((rows || []).map(row => [`${row.siteKey}|${row.itemKey}`, row]));
+  const blocked = new Set(
+    (rows || []).filter(row => row.status === 'unknown' || row.retryBlocked).map(row => row.siteKey)
+  );
+  const retryable = new Set(['error', 'not_logged_in', 'challenge', 'cancelled', 'not_run']);
+  return (accounts || [])
+    .filter(account => !blocked.has(account.siteKey))
+    .map(account => {
+      const orders = account.orders
+        .map(order => {
+          const row = byKey.get(`${account.siteKey}|${order.key}`);
+          if (!row || !retryable.has(row.status) || row.retryBlocked) return null;
+          const qty = Math.max(0, Number(order.qty) - Math.max(0, Number(row.bought) || 0));
+          return qty ? { ...order, qty, requested: qty } : null;
+        })
+        .filter(Boolean);
+      const balance = balances.get(account.siteKey);
+      const spent = (rows || [])
+        .filter(row => row.siteKey === account.siteKey)
+        .reduce((n, row) => n + (Number(row.spent) || 0), 0);
+      return {
+        ...account,
+        balance: balance?.ok ? balance.balance : Math.max(0, roundCoins(account.balance - spent)),
+        orders
+      };
+    })
+    .filter(account => account.orders.length);
 }
 
 /** Итог по набору строк. */

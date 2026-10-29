@@ -1,6 +1,7 @@
 // Счётчики разделов в навигации (js/core/navBadges.js): число показывается только там, где есть записи,
 // и обновляется после сохранения и при переключении вкладки.
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 vi.mock('../js/core/state.js', () => ({ state: { characters: [], parties: [], marathons: [] } }));
 
@@ -65,6 +66,43 @@ describe('счётчики разделов', () => {
     refreshNavBadges();
     expect(document.querySelector('.tab[data-tab="parties"]').getAttribute('aria-label')).toBe('Пати: 2');
   });
+
+  it('доступное имя нового меню содержит весь видимый текст и полное число', () => {
+    document.body.innerHTML = `
+      <button class="tab" data-tab="characters">
+        <span class="next-nav-icon" aria-hidden="true">●</span>
+        <span class="next-nav-copy"><strong>Персонажи</strong> <small>Сегодня и аккаунты</small></span>
+        <span class="tab-count" data-count-mirror="characters" hidden></span>
+      </button>`;
+    const tab = document.querySelector('.tab');
+    state.characters = Array.from({ length: 1200 }, (_, id) => ({ id }));
+    refreshNavBadges();
+    expect(tab.getAttribute('aria-label')).toBe('Персонажи Сегодня и аккаунты 1,2 тыс. (1200)');
+    expect(tab.querySelector('.tab-count').textContent).toBe('1,2 тыс.');
+    state.characters = [];
+    refreshNavBadges();
+    expect(tab.getAttribute('aria-label')).toBe('Персонажи Сегодня и аккаунты (0)');
+    expect(tab.querySelector('.tab-count').hidden).toBe(true);
+  });
+
+  it.each(['index.html', 'demo/app/index.html'])(
+    'подписи в %s отделены пробелом и совпадают с доступным именем',
+    path => {
+      const doc = new DOMParser().parseFromString(readFileSync(path, 'utf8'), 'text/html');
+      state.characters = [{ id: 'a' }, { id: 'b' }];
+      state.parties = [{ id: 'p' }];
+      state.marathons = [{ id: 'm', kind: 'single', status: 'active' }];
+      refreshNavBadges(doc);
+      for (const section of ['characters', 'parties', 'marathons']) {
+        const tab = doc.querySelector(`.tab[data-tab="${section}"]`);
+        const title = tab.querySelector('.next-nav-copy strong');
+        const subtitle = tab.querySelector('.next-nav-copy small');
+        expect(title.nextSibling.nodeType).toBe(Node.TEXT_NODE);
+        expect(title.nextSibling.textContent).toMatch(/\s/);
+        expect(tab.getAttribute('aria-label')).toContain(`${title.textContent} ${subtitle.textContent}`);
+      }
+    }
+  );
 
   it('без разметки ничего не падает', () => {
     document.body.innerHTML = '';

@@ -14,8 +14,51 @@ if (!window.__DEMO_GUARD_READY__) {
   const { marathonTotals } = await import('./replica/js/modules/marathons/model.js');
   const { mskDate } = await import('./replica/js/core/msk.js');
   const { toast } = await import('./replica/js/core/ui.js');
+  // В отдельном источнике общего журнала видны только вымышленные действия этой вкладки.
+  const { createDemoCloudLogSource } = await import('../cloud-sync/logSource.js');
+  const demoCloudLog = createDemoCloudLogSource();
 
   await boot();
+  const { mountCloudSyncDemo } = await import('../cloud-sync/view.js');
+  mountCloudSyncDemo(document.getElementById('demo-cloud-sync'), {
+    onLog: demoCloudLog.add,
+    onReset: demoCloudLog.clear,
+    openLog: demoCloudLog.open,
+    getLogs: demoCloudLog.getEntries,
+    subscribeLogs: demoCloudLog.subscribe
+  });
+  // Примеры и результаты запуска записываются только в изолированный журнал копии.
+  const { startTask } = await import('./replica/js/core/taskLog.js');
+  const { makeScriptReport } = await import('./replica/js/modules/automation/scriptReport.js');
+  const saveDemoReport = report => {
+    const task = startTask(report.title, { dock: false });
+    task.setScriptReport(report);
+    task.finish('Демонстрационный результат: на сайт ничего не отправлялось.', 'done');
+  };
+  window.addEventListener('tf-demo:script-report', event => saveDemoReport(event.detail));
+  const first = state.characters[0];
+  const second = state.characters[1];
+  const sample = makeScriptReport('transfer', [
+    {
+      charId: first.id,
+      nick: first.nick,
+      status: 'success',
+      server: 'Сервер 1 (пример)',
+      recipient: first.nick,
+      done: [{ name: 'Камень светлого духа', qty: 2 }]
+    },
+    {
+      charId: second.id,
+      nick: second.nick,
+      status: 'unknown',
+      uncertain: true,
+      server: 'Сервер 1 (пример)',
+      recipient: second.nick,
+      items: [{ name: 'Подарок акции', qty: 1 }]
+    }
+  ]);
+  sample.title = 'Демо · Пример передачи';
+  saveDemoReport(sample);
   // В настоящем приложении «проверяется» — временное состояние, не поле на диске.
   state.ui.authCheck.c5 = 'checking';
   let savedPoll = state.settings.guild.poll;
@@ -167,4 +210,15 @@ if (!window.__DEMO_GUARD_READY__) {
 
   sendSnapshot();
   post({ type: 'tf-demo:ready' });
+  // Прямые ссылки для просмотра отдельных идей в разделе синхронизации.
+  const show = new URLSearchParams(location.search).get('show');
+  if (show === 'statistics' || show === 'cloud-sync') {
+    document.querySelector('.tab[data-tab="settings"]')?.click();
+    document.querySelector('a[href="#settings-sync"]')?.click();
+  }
+  if (show === 'statistics') {
+    document.querySelector('#log-hub-panel > summary')?.click();
+    const { openTaskStatistics } = await import('./replica/js/core/taskLog.js');
+    openTaskStatistics();
+  }
 }

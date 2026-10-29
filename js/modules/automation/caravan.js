@@ -24,6 +24,8 @@ import {
 } from './caravanCore.js';
 import { runCaravanBatch } from './caravanRunner.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
+import { makeScriptReport } from './scriptReport.js';
+import { openScriptStatistics } from './scriptReportView.js';
 
 const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -55,6 +57,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
   let lastRows = []; // результаты последнего запуска
   let lastChars = [];
   let lastDry = false;
+  let lastReports = []; // включает прошлые попытки текущего повтора
 
   const dlg = openOverlay({
     title: '🧰 Сундук караванщика',
@@ -162,7 +165,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
   /* --------------------------- запуск ---------------------------- */
 
-  async function start(chars, { dry = false } = {}) {
+  async function start(chars, { dry = false, historyReports = [] } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
@@ -184,6 +187,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
     renderRunning(chars, signal, dry);
 
     let rows;
+    const finishedRows = [];
     try {
       rows = await runCaravanBatch({
         chars,
@@ -197,6 +201,8 @@ export function openCaravanDialog({ ids = [] } = {}) {
           if (alive()) setCell(char.id, '<span class="promo-muted">🌐 работаю…</span>');
         },
         onRow: (row, done, all) => {
+          finishedRows.push(row);
+          task.setScriptReport(makeScriptReport('caravan', finishedRows, { dryRun: dry }));
           if (alive()) updateRunning(row, done, all);
         }
       });
@@ -204,7 +210,9 @@ export function openCaravanDialog({ ids = [] } = {}) {
       running = null;
     }
 
+    task.setScriptReport(makeScriptReport('caravan', rows, { dryRun: dry }));
     task.finish(summaryText(rows, { dry, stopped: signal.cancelled }), taskLevel(rows));
+    lastReports = [...historyReports, { ...makeScriptReport('caravan', rows, { dryRun: dry }), at: task.startedAt }];
     lastRows = rows;
     lastChars = chars;
     lastDry = dry;
@@ -281,11 +289,12 @@ export function openCaravanDialog({ ids = [] } = {}) {
           .join('')}</tbody></table></div>`
       })}
       ${lastDry ? '<p class="promo-muted">Ничего не открыто и не нажато. Если сундуки найдены — можно открывать по-настоящему.</p>' : ''}
-      ${s.unknown ? '<p class="promo-warn">❓ «Результат не проверен»: кнопка нажата, но инвентарь после этого прочитать не удалось. Проверьте инвентарь на сайте.</p>' : ''}
+      ${s.unknown ? '<p class="promo-warn">❓ Результат не подтверждён: кнопка могла быть нажата. Проверьте инвентарь на сайте; автоматически такие строки не повторяются.</p>' : ''}
       ${s.partial ? '<p class="promo-warn">⚠ Часть сундуков осталась в инвентаре: «Повторить» откроет только их.</p>' : ''}`;
     const found = lastDry && s.found > 0;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
+      <button class="btn secondary" data-act="report">📋 Таблица действий</button>
       <span class="sd-foot-spacer"></span>
       ${found ? '<button class="btn primary" data-act="real">📦 Открыть найденные сундуки</button>' : ''}
       ${
@@ -361,6 +370,13 @@ export function openCaravanDialog({ ids = [] } = {}) {
       renderForm();
       return;
     }
+    if (act === 'report') {
+      openScriptStatistics(lastReports, {
+        title: '📋 Таблица действий: сундуки',
+        note: 'Результаты запуска и его повторов: отдельно показано, какие сундуки открыты и какие остались непроверенными.'
+      });
+      return;
+    }
     if (act === 'dry-again') {
       const again = await dropWithoutLogin(lastChars);
       if (again?.length) await start(again, { dry: true });
@@ -375,7 +391,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
     if (act === 'retry') {
       const rerun = lastChars.filter(c => isRerunnable(lastRows.find(r => r.charId === c.id)));
       const again = rerun.length ? await dropWithoutLogin(rerun) : null;
-      if (again?.length && (await confirmRun(again))) await start(again);
+      if (again?.length && (await confirmRun(again))) await start(again, { historyReports: lastReports });
       return;
     }
     if (act === 'start' || act === 'dry') {

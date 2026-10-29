@@ -2,6 +2,8 @@
 // js/core/state/party.js
 // Приведение партий к схеме — чистые функции без доступа к общему состоянию.
 
+import { preserveSyncId } from './syncIdentity.js';
+
 /**
  * Цвет пати, выбранный пользователем: `#rrggbb` или null («считать по названию»).
  * Любое другое значение отбрасывается — иначе битый файл state.json покрасит карточку
@@ -15,6 +17,7 @@ export function normalizePartyColor(value) {
 export function normalizeParty(input = {}) {
   return {
     id: input.id || crypto.randomUUID?.() || String(Date.now()),
+    ...preserveSyncId(input),
     name: String(input.name || '').trim(),
     order: Number(input.order) || null,
     // Свой цвет пати; null — взять оттенок по названию

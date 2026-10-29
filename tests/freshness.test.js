@@ -335,7 +335,11 @@ describe('карточки персонажей и настройки', () => {
       isTauri: () => false,
       getAdapter: () => ({ getDataDir: async () => '/d', listBackups: async () => [] })
     }));
-    state.settings = { freshness: { balanceHours: 24, loginHours: 72, marathonHours: 30 } };
+    const { DEFAULT_SETTINGS } = await import('../js/core/constants.js');
+    state.settings = {
+      ...structuredClone(DEFAULT_SETTINGS),
+      freshness: { balanceHours: 24, loginHours: 72, marathonHours: 30 }
+    };
     const { renderSettings, bindSettings } = await import('../js/settings/settings.js');
     await renderSettings();
     const hint = key => document.querySelector(`[data-hours-for="freshness.${key}"]`).textContent;
@@ -352,6 +356,9 @@ describe('карточки персонажей и настройки', () => {
     input.value = '';
     input.dispatchEvent(new Event('input'));
     expect(hint('balanceHours')).toBe('');
+    // bindSettings запускает ленивые панели. Дожидаемся их до снятия моков и закрытия
+    // окружения, иначе поздний импорт storage может завершиться уже после теста.
+    await vi.dynamicImportSettled();
     vi.doUnmock('../js/core/storage.js');
   });
 

@@ -7,12 +7,14 @@
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { escapeHtml } from './utils.js';
+import { toast } from './ui.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 import { registerLogSource, openLogHub } from './logHub.js';
 import { ERROR_TEXT, errorText } from './errorCodes.js';
 import { mskStampSeconds } from './msk.js';
 import { state } from './state.js';
 import { writeLogBounded } from './logStore.js';
+import { openScriptStatistics } from '../modules/automation/scriptReportView.js';
 
 const STORAGE_KEY = 'tf_task_journal_v1';
 // Отметка «страница уже открывалась в этой вкладке»: sessionStorage живёт до перезагрузки,
@@ -92,7 +94,7 @@ function saveJournal() {
   // скрипт исчезал из журнала бесследно. На загрузке такие записи помечаются как прерванные.
   // Места в localStorage общие на все журналы приложения, и при нехватке запись молча
   // не состоялась бы. `writeLogBounded` вместо этого ужимает журнал, выбрасывая самые старые.
-  writeLogBounded(STORAGE_KEY, journalRows(tasks));
+  return writeLogBounded(STORAGE_KEY, journalRows(tasks));
 }
 
 const nowIso = () => new Date().toISOString();
@@ -113,6 +115,7 @@ class Task {
     this.total = opts.total || 0;
     this.step = '';
     this.summary = '';
+    this.scriptReport = null; // безопасный структурированный итог для статистики по персонажам
     this.entries = [];
     this.scopes = [];
     this.open = false;
@@ -208,6 +211,17 @@ class Task {
     const list = rows.filter(r => r && r.name);
     this.entries.push({ at: nowIso(), level: 'summary', message: title, rows: list, totals, scope: '' });
     // Запись не строка, а объект: копирование в буфер обрезает её, а строками её не вернуть
+    notify(this);
+    return this;
+  }
+  /** Сохраняет подробности по мере завершения персонажей, не дожидаясь конца скрипта. */
+  setScriptReport(report) {
+    this.scriptReport = report;
+    this.updatedAt = nowIso();
+    if (!saveJournal() && !this._reportStorageWarned) {
+      this._reportStorageWarned = true;
+      toast('Не удалось сохранить подробный отчёт в журнале. Проверьте доступное место.', 'warning');
+    }
     notify(this);
     return this;
   }
@@ -671,7 +685,7 @@ function dockBarHtml(current) {
       </span>
       <span class="msk-clock-zone">${escapeHtml(zone)}</span>
     </div>
-    <div class="tf-dock-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+    <div class="tf-dock-bar" role="progressbar" aria-label="Прогресс выполнения скрипта" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
     <div class="tf-dock-ctrl">
       <button type="button" class="tf-dock-toggle" data-dock-fold title="${dockFolded ? 'Развернуть' : 'Свернуть'}"
         aria-expanded="${!dockFolded}"><span aria-hidden="true">${dockFolded ? '▾' : '▴'}</span></button>
@@ -786,6 +800,20 @@ export function renderDock() {
   }
 }
 
+/** Подробные результаты одной задачи или всех сохранённых задач журнала. */
+export function openTaskStatistics(id = '') {
+  const chosen = id ? tasks.filter(task => task.id === id) : tasks;
+  const reports = chosen
+    .filter(task => task.scriptReport && Array.isArray(task.scriptReport.rows))
+    .map(task => ({ ...task.scriptReport, at: task.startedAt }));
+  return openScriptStatistics(reports, {
+    title: id ? '📊 Результат по персонажам' : '📊 Статистика по персонажам',
+    note: id
+      ? 'Показаны результаты этого запуска. Пробный запуск ничего не изменяет; неподтверждённые действия отмечены отдельно.'
+      : 'Показаны подробные отчёты из сохранённого журнала задач, без фильтров списка. Старые записи без отчёта остаются в журнале.'
+  });
+}
+
 /** Полный лог задачи в отдельном окне. */
 export function openTaskLog(id) {
   const t = tasks.find(x => x.id === id);
@@ -822,7 +850,8 @@ export function openTaskLog(id) {
     };
   };
   draw();
-  ov.foot.innerHTML = `<span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
+  ov.foot.innerHTML = `<button type="button" class="btn secondary" data-task-statistics>📊 Статистика по персонажам</button><span></span><div class="row gap"><button type="button" class="btn" data-copy>📋 Скопировать лог</button><button type="button" class="btn primary" data-close>Закрыть</button></div>`;
+  ov.foot.querySelector('[data-task-statistics]').onclick = () => openTaskStatistics(t.id);
   ov.foot.querySelector('[data-close]').onclick = () => ov.close();
   ov.foot.querySelector('[data-copy]').onclick = async () => {
     // Итоговая таблица копируется строками: в буфер попадает ровно то, что человек видит,

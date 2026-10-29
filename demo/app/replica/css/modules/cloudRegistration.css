@@ -1,0 +1,94 @@
+/* Временная диагностика регистрации: не подключение облачной синхронизации. */
+.cloud-registration {
+  margin-bottom: 16px;
+}
+.cloud-registration-body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 16px 18px;
+  color: var(--text);
+}
+.cloud-registration-body > p,
+.cloud-registration-body form > p {
+  margin: 0;
+  line-height: 1.5;
+}
+.cloud-registration-warning {
+  padding: 12px 14px;
+  border: 1px solid rgba(232, 192, 90, 0.45);
+  border-radius: 10px;
+  background: rgba(232, 192, 90, 0.08);
+}
+.cloud-registration-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(220px, 1.3fr);
+  gap: 12px;
+}
+.cloud-registration-fields label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  font-weight: 600;
+}
+.cloud-registration-fields .input {
+  width: 100%;
+  min-width: 0;
+}
+.cloud-registration-body form {
+  display: grid;
+  gap: 10px;
+}
+.cloud-registration-config {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(150, 150, 150, 0.09);
+  font-size: 0.9em;
+}
+.cloud-registration-config code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.cloud-registration-config[hidden] {
+  display: none;
+}
+.cloud-registration-actions,
+.cloud-registration-future {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.cloud-registration-actions [hidden] {
+  display: none;
+}
+.cloud-registration-status {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent, #e8c05a);
+  border-radius: 4px;
+  background: rgba(150, 150, 150, 0.09);
+}
+.cloud-registration-account {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid rgba(150, 150, 150, 0.4);
+  border-radius: 10px;
+}
+.cloud-registration-account[hidden] {
+  display: none;
+}
+.cloud-registration-account bdi {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-weight: 700;
+}
+.cloud-registration-account small {
+  line-height: 1.45;
+}
+.cloud-registration-future {
+  padding-top: 4px;
+}
+@media (max-width: 640px) {
+  .cloud-registration-fields {
+    grid-template-columns: 1fr;
+  }
+}

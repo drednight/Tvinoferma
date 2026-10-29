@@ -289,13 +289,50 @@ describe('сверка календаря с ответами на сайте', 
     expect(after.entries).toEqual([]);
   });
 
+  it('не стирает события и отметки, отсутствующие в неполной или ошибочной сводке', () => {
+    const initial = planClanEntries([], { events: [event('462', RESPONSE_YES)] }, today).entries[0];
+    const entry = { ...initial, status: 'done', statusByDate: { '2026-10-15': 'done' } };
+    for (const data of [
+      null,
+      {},
+      { events: [] },
+      { events: [{ ...event('462', RESPONSE_YES), when: 'не удалось прочитать' }] },
+      { events: [event('462', '')] }
+    ]) {
+      const after = planClanEntries([entry], data, today);
+      expect(after.changed).toBe(false);
+      expect(after.entries).toEqual([entry]);
+      expect(after.entries[0].statusByDate).toEqual({ '2026-10-15': 'done' });
+    }
+  });
+
+  it('не удаляет и не создаёт запись по неоднозначной сводке с повторным site ID', () => {
+    const initial = planClanEntries([], { events: [event('462', RESPONSE_YES)] }, today).entries[0];
+    const ambiguous = { events: [event('462', RESPONSE_NO), event('462', RESPONSE_YES)] };
+    expect(planClanEntries([initial], ambiguous, today)).toEqual({ entries: [initial], changed: false });
+    expect(planClanEntries([], ambiguous, today)).toEqual({ entries: [], changed: false });
+  });
+
   it('переехавшее на сайте событие обновляет дату, но не трогает цвет и статус', () => {
     const first = planClanEntries([], { events: [event('462', RESPONSE_YES)] }, today);
-    const entry = { ...first.entries[0], color: 'green', status: 'done' };
+    const entry = {
+      ...first.entries[0],
+      color: 'green',
+      status: 'done',
+      syncId: '8cd68f9b-900f-4efe-91f3-028fca46b6db',
+      statusByDate: { '2026-10-15': 'done' }
+    };
     const moved = { events: [{ ...event('462', RESPONSE_YES), when: '16 октября (пятница) в 20:00' }] };
     const after = planClanEntries([entry], moved, today);
     expect(after.changed).toBe(true);
-    expect(after.entries[0]).toMatchObject({ date: '2026-10-16', time: '20:00', color: 'green', status: 'done' });
+    expect(after.entries[0]).toMatchObject({
+      date: '2026-10-16',
+      time: '20:00',
+      color: 'green',
+      status: 'done',
+      syncId: entry.syncId,
+      statusByDate: { '2026-10-15': 'done' }
+    });
   });
 
   it('пустой календарь и пустая сводка не ломаются', () => {

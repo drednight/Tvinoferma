@@ -9,6 +9,7 @@
 // Считает всё модель (finance/model.js) — здесь только разметка и обработчики.
 
 import { state } from '../../core/state.js';
+import { preserveSyncId } from '../../core/state/syncIdentity.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml, uid } from '../../core/utils.js';
 import { showModal, toast, confirmModal } from '../../core/ui.js';
@@ -560,6 +561,7 @@ function operationForm(existing = null) {
       }
       const entry = {
         id: existing?.id || uid(),
+        ...preserveSyncId(existing),
         date: str(form.get('date')) || todayIso(),
         kind: form.get('kind') === 'in' ? 'in' : 'out',
         currency: CURRENCY_IDS.includes(str(form.get('currency'))) ? str(form.get('currency')) : DEFAULT_CURRENCY,
@@ -634,7 +636,7 @@ function shopItemForm(existing = null, side = 'sell') {
         toast(`Добавлено к позиции «${target.name}»: стало ${fmt(target.qty)} шт.`, 'success');
         return;
       }
-      const record = { id: existing?.id || uid(), ...draft };
+      const record = { id: existing?.id || uid(), ...preserveSyncId(existing), ...draft };
       const at = items.findIndex(i => i.id === record.id);
       if (at >= 0) items[at] = record;
       else items.unshift(record);
@@ -821,7 +823,7 @@ function loanForm(existing = null, direction = 'lent') {
       const start = str(form.get('start')) || todayIso();
       const end = str(form.get('end'));
       const draft = {
-        direction: form.get('direction') === 'borrowed' ? 'borrowed' : 'lent',
+        direction: existing ? existing.direction : form.get('direction') === 'borrowed' ? 'borrowed' : 'lent',
         who: str(form.get('who')),
         principal: num(form.get('principal')),
         percent: num(form.get('percent')),
@@ -856,7 +858,7 @@ function syncLoanOperation(loan) {
   const op = loanOperation(loan);
   const ops = state.finance.operations;
   const at = loan.opId ? ops.findIndex(o => o.id === loan.opId) : -1;
-  if (at >= 0) ops[at] = op;
+  if (at >= 0) ops[at] = { ...op, ...preserveSyncId(ops[at]) };
   else ops.unshift(op);
   loan.opId = op.id;
 }

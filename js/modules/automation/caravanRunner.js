@@ -10,7 +10,7 @@
 // Без интерфейса: всё внешнее передаётся параметрами (так проще тестировать).
 
 import { runQueue, sleep, browserSlots } from '../sync/queue.js';
-import { rowFromPayload, plainRow, canAutoRetry, statusInfo, rowLabel } from './caravanCore.js';
+import { rowFromPayload, plainRow, canAutoRetry, isRerunnable, statusInfo, rowLabel } from './caravanCore.js';
 
 /** Разброс старта новых персонажей, мс: окна открываются не одновременно. */
 export const START_STAGGER_MS = [400, 1400];
@@ -72,7 +72,19 @@ export async function runCaravanBatch({
       } catch (e) {
         error = e;
       }
-      const row = rowFromPayload(char, payload, error);
+      let row = rowFromPayload(char, payload, error);
+      // Rust может вернуть ошибку уже после нажатия на предыдущем сундуке.
+      if (
+        (error ||
+          !payload ||
+          typeof payload !== 'object' ||
+          !payload.status ||
+          typeof payload.clicked !== 'boolean' ||
+          (payload.status === 'partial' && !isRerunnable(row))) &&
+        !dryRun
+      )
+        row = { ...row, status: 'unknown', uncertain: true };
+      else if (dryRun) row.dryRun = true;
       if (a >= retries || signal.cancelled || !canAutoRetry(row)) return row;
       task?.log?.(
         `${char.nick}: повтор ${a + 1}/${retries} (${row.status === 'challenge' ? 'проверка безопасности' : row.error})`,
@@ -103,7 +115,17 @@ export async function runCaravanBatch({
     }
   );
   // «Стоп» нажат до старта персонажа (или его worker упал): строка остановленного
-  entries.forEach(e => emit(e.item, e.error ? rowFromPayload(e.item, null, e.error) : plainRow(e.item, 'cancelled')));
+  entries.forEach(e =>
+    emit(
+      e.item,
+      e.error
+        ? {
+            ...rowFromPayload(e.item, null, e.error),
+            ...(dryRun ? { dryRun: true } : { status: 'unknown', uncertain: true })
+          }
+        : plainRow(e.item, 'cancelled')
+    )
+  );
 
   chars.forEach(c => {
     const row = rows.get(c.id);

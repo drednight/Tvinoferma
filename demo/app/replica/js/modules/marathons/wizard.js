@@ -3,6 +3,7 @@
 // Несколько выбранных этапов сайта создают СЕРИЮ (папку) с отдельным марафоном на каждый этап.
 
 import { state } from '../../core/state.js';
+import { withoutSyncId } from '../../core/state/syncIdentity.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { toast } from '../../core/ui.js';
@@ -634,10 +635,14 @@ export function openMarathonWizard(opts = {}) {
         createMarathon({
           title: t.name,
           tasks: t.tasks.map(x =>
-            createTask({ ...clone(x), id: uid(), rewards: (x.rewards || []).map(r => ({ ...r, id: uid() })) })
+            createTask({
+              ...withoutSyncId(clone(x)),
+              id: uid(),
+              rewards: (x.rewards || []).map(r => ({ ...withoutSyncId(r), id: uid() }))
+            })
           ),
           source: { type: 'template', templateId: t.id, url: t.sourceUrl || null },
-          bonuses: (t.bonuses || []).map(b => ({ ...b, id: uid() }))
+          bonuses: (t.bonuses || []).map(b => ({ ...withoutSyncId(b), id: uid() }))
         })
       ];
     } else {
@@ -1225,7 +1230,7 @@ export function openMarathonWizard(opts = {}) {
         if (i === W.active) return;
         other.tasks.forEach((t, idx) => {
           const src = d.tasks.find(x => stripParen(x.title) === stripParen(t.title)) || d.tasks[idx];
-          if (src) t.rewards = src.rewards.map(r => ({ ...r, id: uid() }));
+          if (src) t.rewards = src.rewards.map(r => ({ ...withoutSyncId(r), id: uid() }));
         });
       });
       toast('Награды скопированы на все этапы', 'success');
@@ -1321,7 +1326,7 @@ export function openMarathonWizard(opts = {}) {
         }
         matched++;
         t.targetChecks = q.goal;
-        t.rewards = q.rewards.map(r => ({ ...r, id: uid() }));
+        t.rewards = q.rewards.map(r => ({ ...withoutSyncId(r), id: uid() }));
         setTaskDescription(t, q.description, 'news'); // описание из новости полнее; ручное не трогаем
         if (q.weekly) t.schedule = { ...t.schedule, mode: 'weekly' };
       });
@@ -1419,9 +1424,9 @@ export function openMarathonWizard(opts = {}) {
           descriptionSource: t.descriptionSource,
           targetChecks: t.targetChecks,
           schedule: clone(t.schedule),
-          rewards: clone(t.rewards)
+          rewards: (t.rewards || []).map(r => withoutSyncId(clone(r)))
         })),
-        bonuses: clone(d.bonuses || []),
+        bonuses: (d.bonuses || []).map(b => withoutSyncId(clone(b))),
         createdAt: now
       });
     }

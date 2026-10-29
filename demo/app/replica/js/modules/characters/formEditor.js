@@ -104,7 +104,7 @@ export function openCharacterForm(char = null) {
           <div class="pf-panel">
             <h4 class="pf-panel-title">Персонаж</h4>
             <div class="two-cols">
-              <div class="field cf-field"><label>Никнейм *</label><input class="input" name="nick" value="${escapeHtml(currentChar.nick)}" required /></div>
+              <div class="field cf-field"><label>Никнейм *</label><input class="input" name="nick" value="${escapeHtml(currentChar.nick)}" required autofocus /></div>
               <div class="field cf-field">
                 <label>Класс</label>
                 <select class="select" name="class">
@@ -429,6 +429,11 @@ export function openCharacterForm(char = null) {
           if (nick !== currentChar.nick) {
             const res = await syncIdWithNick(newCharData);
             if (res.changed) idNote = ` (id: ${res.id})`;
+            else if (res.error === 'references_conflict')
+              idNote = '. id не изменён: обнаружен конфликт ссылок персонажа; проверьте марафоны';
+            else if (res.error === 'profile_rename_unconfirmed')
+              idNote =
+                '. id не изменён: состояние поменялось во время переноса профиля; проверьте профиль перед повтором';
             else if (res.error) idNote = '. id не изменён: закройте окно браузера персонажа и сохраните ещё раз';
           }
         } else {

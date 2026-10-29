@@ -142,6 +142,7 @@ describe('характеристики одним сворачиваемым б�
     it('сохраняет изменения в архиве, не возвращая персонажа в активный список', async () => {
       const archived = {
         id: 'archived',
+        syncId: 'a9115bf2-e834-444d-aeb6-7c3af1db8890',
         nick: 'Архивный',
         class: 'Маг',
         level: 10,
@@ -181,6 +182,7 @@ describe('характеристики одним сворачиваемым б�
       expect(await mocks.submit(formData, { setError: vi.fn() })).toBe(true);
       expect(state.archivedCharacters[0]).toMatchObject({
         id: 'archived',
+        syncId: 'a9115bf2-e834-444d-aeb6-7c3af1db8890',
         nick: 'Архивный изменённый',
         level: 20,
         tags: ['сохранённый'],

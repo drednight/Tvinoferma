@@ -124,13 +124,22 @@ function renderArchivedCharacters() {
  * а не перекрывало пустой экран в момент загрузки.
  */
 let welcomeShown = false;
+let automaticWelcomeSuppressed = false;
+
+/** При ошибке загрузки пустой экран не означает первый запуск. */
+export function suppressAutomaticWelcome() {
+  automaticWelcomeSuppressed = true;
+}
+
 async function maybeShowWelcome() {
-  if (welcomeShown) return;
+  if (welcomeShown || automaticWelcomeSuppressed) return;
   const { shouldShowOnboarding } = await import('./onboarding.js');
-  if (!shouldShowOnboarding(state)) return;
+  if (automaticWelcomeSuppressed || !shouldShowOnboarding(state)) return;
   welcomeShown = true;
   setTimeout(() => {
-    openWelcome();
+    if (!automaticWelcomeSuppressed) {
+      openWelcome().catch(error => console.warn('[ONBOARDING] Не удалось сохранить отметку:', error));
+    }
   }, 400);
 }
 

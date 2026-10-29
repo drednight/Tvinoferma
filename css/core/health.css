@@ -17,6 +17,12 @@
 .health-banner[hidden] {
   display: none;
 }
+.storage-readonly-banner {
+  border-color: var(--danger);
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  overflow-wrap: anywhere;
+}
 .health-banner-text {
   display: flex;
   flex-direction: column;

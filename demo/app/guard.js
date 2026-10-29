@@ -71,6 +71,17 @@
       },
       configurable: false
     });
+    // Экспорт создаёт и нажимает отсоединённую ссылку: её click не доходит до
+    // document, поэтому одного обработчика ниже недостаточно. В копии приложения
+    // object URL используются только для скачивания файлов.
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: () => {
+        notify('Сохранение файлов в демо отключено.');
+        throw new Error('Сохранение файлов в демо отключено.');
+      },
+      configurable: false,
+      writable: false
+    });
     window.fetch = async () => {
       throw new Error('В демо обращения к сети и отправка данных отключены.');
     };

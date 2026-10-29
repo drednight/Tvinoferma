@@ -4,6 +4,7 @@
 
 import { getAllDatesInRange, isTaskActiveOnDate } from './dates.js';
 import { mskDate } from '../../core/msk.js';
+import { preserveSyncId } from '../../core/state/syncIdentity.js';
 
 export const SCHEMA_VERSION = 2;
 
@@ -25,6 +26,7 @@ const todayStr = () => mskDate();
 export function createTask(partial = {}) {
   return {
     id: partial.id || uid(),
+    ...preserveSyncId(partial),
     title: partial.title || 'Новое задание',
     siteTitle: partial.siteTitle || null, // точное название задания на сайте (для сверки)
     description: partial.description || '',
@@ -40,6 +42,7 @@ export function createTask(partial = {}) {
     rewards: Array.isArray(partial.rewards)
       ? partial.rewards.map(r => ({
           id: r.id || uid(),
+          ...preserveSyncId(r),
           threshold: Math.max(1, Number(r.threshold) || 1),
           rewardText: String(r.rewardText || ''),
           rewardCoins: Math.max(0, Number(r.rewardCoins) || 0)
@@ -52,6 +55,7 @@ export function createMarathon(partial = {}) {
   const now = new Date().toISOString();
   return {
     id: partial.id || uid(),
+    ...preserveSyncId(partial),
     schemaVersion: SCHEMA_VERSION,
     kind: 'single',
     seriesId: partial.seriesId || null,
@@ -70,6 +74,7 @@ export function createMarathon(partial = {}) {
     bonuses: Array.isArray(partial.bonuses)
       ? partial.bonuses.map(b => ({
           id: b.id || uid(),
+          ...preserveSyncId(b),
           needTasks: Math.max(1, Number(b.needTasks) || 1),
           text: String(b.text || '')
         }))
@@ -94,6 +99,7 @@ export function createSeries(partial = {}) {
   const now = new Date().toISOString();
   return {
     id: partial.id || uid(),
+    ...preserveSyncId(partial),
     schemaVersion: SCHEMA_VERSION,
     kind: 'series',
     title: partial.title || '',

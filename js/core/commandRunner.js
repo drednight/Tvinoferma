@@ -165,16 +165,11 @@ export function createCommandRunner({ switchTab }) {
         }
         case 'export': {
           switchTab('settings');
-          const { loadData } = await import('./storage.js');
-          const data = await loadData();
-          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `tvinoferma-export-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-          a.click();
-          URL.revokeObjectURL(url);
-          toast('Экспорт выполнен', 'success');
+          // Палитра использует тот же путь с предупреждением и проверкой vault,
+          // что и кнопка в настройках, а не отдельный незащищённый экспорт.
+          const button = document.getElementById('export-all-btn');
+          if (!button) throw new Error('Кнопка экспорта недоступна.');
+          button.click();
           return;
         }
         case 'import': {

@@ -111,14 +111,23 @@ describe('разбор скриншота: параметры совпадают
 describe('полный сброс: параметры совпадают', () => {
   it('Rust принимает ключи хранилища ОС и отдаёт отчёт', () => {
     // Сигнатура может быть записана в одну строку или разбита rustfmt — проверяем суть
-    expect(rustReset).toMatch(/pub async fn factory_reset\([\s\S]{0,120}?keys: Vec<String>/);
+    expect(rustReset).toMatch(
+      /pub async fn factory_reset\([\s\S]{0,160}?keys: Vec<String>[\s\S]{0,60}?account_keys: Vec<String>/
+    );
     expect(rustReset).toContain('pub struct FactoryResetReport');
-    expect(jsReset).toContain("invoke('factory_reset', { keys })");
+    expect(rustReset).toContain('expected_raw: Option<String>');
+    expect(jsReset).toContain("invoke('load_state_raw')");
+    expect(jsReset).toMatch(
+      /invoke\('factory_reset',\s*\{\s*keys:\s*record\.keys,\s*accountKeys:\s*record\.accountKeys,\s*expectedRaw\s*\}\s*\)/
+    );
   });
 
-  it('интерфейс передаёт ключи, собранные из данных', () => {
-    expect(jsReset).toContain("invoke('factory_reset', { keys })");
-    expect(jsReset).toContain('secretsToRemove(appState.characters)');
+  it('интерфейс передаёт раздельные ключи из активных и архивных данных', () => {
+    expect(jsReset).toMatch(
+      /invoke\('factory_reset',\s*\{\s*keys:\s*record\.keys,\s*accountKeys:\s*record\.accountKeys,\s*expectedRaw\s*\}\s*\)/
+    );
+    expect(jsReset).toContain('appState?.archivedCharacters');
+    expect(rustReset).toContain('const ACCOUNT_PREFIX: &str = "gc-magic"');
   });
 
   it('сброс удаляет и файлы, и записи хранилища ОС', () => {
@@ -134,6 +143,17 @@ describe('полный сброс: параметры совпадают', () =>
     expect(zone.indexOf('factory-reset-btn')).toBeGreaterThan(-1);
     // Кнопка внутри вложенного сворачиваемого блока — случайно не нажать
     expect(html).toContain('data-factory-reset="1"');
+  });
+
+  it('страницы не обещают удалить неизвестные записи ОС и все отдельные журналы', () => {
+    for (const file of ['index.html', 'demo/app/index.html']) {
+      const html = readFileSync(file, 'utf8');
+      const zone = html.slice(html.indexOf('id="danger-zone"'));
+      expect(zone).toContain('Полный сброс ниже удаляет и копии');
+      expect(zone).toContain('Отдельные локальные журналы и неизвестные записи хранилища ОС могут остаться');
+      expect(zone).not.toContain('Приложение станет таким же, как сразу после установки');
+      expect(zone).not.toContain('Удаляется всё:');
+    }
   });
 
   it('кнопки проверки окон игры больше нет', () => {

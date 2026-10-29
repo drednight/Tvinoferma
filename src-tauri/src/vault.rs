@@ -34,6 +34,15 @@ pub fn set_password(entry: &Entry, service: &str, user: &str, value: &str) -> Re
     }
 }
 
+/// Запись именно на этот компьютер для локального журнала облачного доступа.
+/// Обычный `keyring` на Windows может выбрать enterprise/roaming persistence;
+/// здесь это нежелательно, поскольку связанные части и lock относятся к одному ПК.
+/// Ошибки вызывающей стороне нужно заменять общим сообщением без значения записи.
+#[cfg(windows)]
+pub(crate) fn set_local_password(service: &str, user: &str, value: &str) -> Result<(), String> {
+    win::write_local_machine(&cred_target_name(service, user), user, value)
+}
+
 /// Что делать, если обычная запись не прошла.
 #[cfg(windows)]
 fn fallback_on_failure(
@@ -131,7 +140,7 @@ mod win {
 
         // Комментарий виден пользователю в Менеджере учётных данных, это тоже
         // строка с лимитом.
-        const COMMENT: &str = "Твиноферма: запомнить вход (локальная запись)";
+        const COMMENT: &str = "Твиноферма: защищённая локальная запись";
         if COMMENT.chars().count() > CRED_MAX_STRING_LENGTH as usize {
             return Err(format!(
                 "комментарий записи длиннее лимита Credential Manager ({} символов)",

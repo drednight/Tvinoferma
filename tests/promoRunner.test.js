@@ -180,7 +180,8 @@ describe('runPromoBatch: пропуск, повторы, стоп', () => {
       return ok(a.charId);
     });
     const rows = await runPromoBatch(base({ invokeFn, retries: 0 }));
-    expect(rows.map(r => r.status)).toEqual(['success', 'error', 'success']);
+    expect(rows.map(r => r.status)).toEqual(['success', 'unknown', 'success']);
+    expect(rows[1].uncertain).toBe(true);
     expect(rows[1].error).toBe('boom');
   });
 

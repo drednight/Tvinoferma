@@ -3,6 +3,7 @@
 import { mskDate } from '../../core/msk.js';
 import { recurringEventsForDate } from './recurringEvents.js';
 import { DEFAULT_DURATION_MINUTES } from './timeline.js';
+import { preserveSyncId } from '../../core/state/syncIdentity.js';
 
 const COLORS = new Set(['blue', 'green', 'yellow', 'red', 'purple', 'gray']);
 const PRIORITIES = new Set(['low', 'normal', 'high']);
@@ -110,6 +111,7 @@ export function normalizePlannerEntry(input = {}) {
   const duration = Math.round(Number(input.durationMinutes));
   return {
     id: String(input.id || crypto.randomUUID?.() || `planner-${Date.now()}`),
+    ...preserveSyncId(input),
     title: String(input.title || '')
       .trim()
       .slice(0, 160),
@@ -146,10 +148,12 @@ export function monthMatrix(year, month) {
   return cells;
 }
 
-function occursOn(entry, date) {
+/** Есть ли конкретное вхождение записи в этот календарный день. */
+export function entryOccursOn(entry, date) {
   if (!entry?.date || date < entry.date) return false;
   if (entry.recurrenceEnd && date > entry.recurrenceEnd) return false;
-  if (entry.recurrence === 'none') return date === entry.date;
+  // Нормализованная запись имеет 'none'; старые/тестовые записи могут не иметь поля.
+  if (!entry.recurrence || entry.recurrence === 'none') return date === entry.date;
   const start = new Date(`${entry.date}T00:00:00`);
   const current = new Date(`${date}T00:00:00`);
   const days = Math.round((current - start) / 86400000);
@@ -160,7 +164,7 @@ function occursOn(entry, date) {
 
 export function plannerEventsForDate(appState, date) {
   const manual = (appState?.plannerEntries || [])
-    .filter(entry => occursOn(entry, date))
+    .filter(entry => entryOccursOn(entry, date))
     // Вхождение повтора — это запись на конкретный день: своя дата и своё состояние.
     // Иначе отметка за вчерашний день тащилась бы в сегодняшний, а вхождение врало бы про дату.
     .map(entry => ({ ...entry, date, status: entryStatusForDate(entry, date), source: 'manual' }));

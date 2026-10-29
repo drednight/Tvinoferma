@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# SHA-256 для свидетелей backup и целостности локальных частей OAuth; не хеш пароля.
+sha2 = "0.10"
 tauri-plugin-shell = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
@@ -51,6 +53,11 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # Фича zip выключена: приложение публикует .msi и -setup.exe, zip-артефакты не нужны,
 # а в zip 4.6.1 числится critical-уязвимость (symlink escape при распаковке).
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+# Узкие HTTPS-каналы для разовой проверки OAuth и экспериментальных операций с диском.
+# Тот же rustls/ring, что у updater; перенаправления, системный proxy, сжатие и
+# повторы отключаются в самих клиентах.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # Релизная сборка: меньше установщик и exe. Время сборки в CI вырастет (полный LTO, один codegen-unit).
 # panic = "abort" не включён намеренно: сейчас паника в фоновой задаче не роняет всё приложение.

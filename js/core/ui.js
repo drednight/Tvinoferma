@@ -163,6 +163,8 @@ export function toast(message, type = 'info', durationMs = 3000) {
   }, durationMs);
 }
 
+let confirmMessageId = 0;
+
 /**
  * Подтверждение в стиле приложения (вместо системного окна «Сообщение с localhost»).
  * Не трогает уже открытые окна. Возвращает Promise<boolean>; Esc и клик по фону — «Отмена».
@@ -171,11 +173,12 @@ export function toast(message, type = 'info', durationMs = 3000) {
 export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отмена', danger = false }) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
+    const messageId = `tf-confirm-message-${++confirmMessageId}`;
     overlay.className = 'modal-overlay tf-confirm-overlay';
     overlay.innerHTML = `
-      <div class="modal-container tf-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <div class="modal-container tf-confirm" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}" aria-describedby="${messageId}">
         <div class="modal-header"><h3>${escapeHtml(title)}</h3></div>
-        <div class="modal-body"><p style="margin:0; line-height:1.5;">${escapeHtml(text)}</p></div>
+        <div class="modal-body" tabindex="0"><p id="${messageId}" style="margin:0; line-height:1.5;">${escapeHtml(text)}</p></div>
         <div class="modal-footer">
           <button type="button" class="btn ghost" data-act="cancel">${escapeHtml(cancelText)}</button>
           <button type="button" class="btn ${danger ? 'danger' : 'primary'}" data-act="ok">${escapeHtml(okText)}</button>
@@ -199,7 +202,10 @@ export function confirmModal({ title, text, okText = 'OK', cancelText = 'Отм�
     });
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
-    /** @type {HTMLElement | null} */ (overlay.querySelector('[data-act="ok"]'))?.focus();
+    // Для опасных действий Enter по умолчанию выбирает отмену, а не замену/удаление.
+    /** @type {HTMLElement | null} */ (
+      overlay.querySelector(danger ? '[data-act="cancel"]' : '[data-act="ok"]')
+    )?.focus();
   });
 }
 

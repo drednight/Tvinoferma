@@ -156,17 +156,18 @@ describe('runShopBatch: неясный исход и повторы', () => {
       base({ retries: 2, accounts: [acct('a', [order('valor', 1)])], invokeFn: clicked })
     );
     expect(clicked).toHaveBeenCalledTimes(1);
-    expect(rows2[0]).toMatchObject({ status: 'error', bought: 0, clicked: true });
+    expect(rows2[0]).toMatchObject({ status: 'unknown', bought: 0, clicked: true });
   });
 
-  it('исключение вызова — это повторяемая ошибка до нажатия', async () => {
+  it('исключение вызова — исход неизвестен, автоматически не повторяем', async () => {
     let n = 0;
     const invokeFn = async () => {
       if (++n === 1) throw new Error('ipc');
       return ok();
     };
     const rows = await runShopBatch(base({ retries: 1, accounts: [acct('a', [order('valor', 1)])], invokeFn }));
-    expect(rows[0].status).toBe('done');
+    expect(rows[0].status).toBe('unknown');
+    expect(n).toBe(1);
   });
 });
 

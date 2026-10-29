@@ -115,12 +115,20 @@ export function canAutoRetry(row, isTransientError = isTransient) {
   return row.status === 'error' && isTransientError(row.error);
 }
 
-/**
- * Строки, которые кнопка «Повторить» запустит снова. Повтор безопасен: команда сначала читает инвентарь
- * и открывает только те сундуки, которые в нём ещё лежат.
- */
+/** Повторяем только известные ошибки и частичный результат с перечитанным инвентарём. */
 export const isRerunnable = row =>
-  !!row && !row.dryRun && ['partial', 'error', 'challenge', 'unknown', 'cancelled', 'not_run'].includes(row.status);
+  !!row &&
+  !row.dryRun &&
+  !row.uncertain &&
+  !row.chests?.some(chest => chest.state === 'sent') &&
+  ((row.status === 'partial' &&
+    row.clicked &&
+    Array.isArray(row.chests) &&
+    row.chests.some(chest => ['opened', 'not_opened'].includes(chest.state)) &&
+    row.chests.every(
+      chest => chest.cartId && ['opened', 'not_opened', 'found', 'gone', 'error'].includes(chest.state)
+    )) ||
+    (!row.clicked && ['error', 'challenge', 'not_logged_in', 'cancelled', 'not_run'].includes(row.status)));
 
 /** Короткая подпись результата для таблицы. */
 export function rowLabel(row) {
@@ -133,7 +141,9 @@ export function rowLabel(row) {
     case 'dry_run':
       return `Сундуков караванщика: ${row.found}`;
     case 'unknown':
-      return `Нажато, но список не перечитан (сундуков: ${row.found})`;
+      return row.uncertain
+        ? 'Неизвестно, было ли нажатие — проверьте инвентарь'
+        : `Нажато, но список не перечитан (сундуков: ${row.found})`;
     case 'error':
       return row.error ? `Ошибка: ${caravanErrorText(row.error)}` : info.label;
     default:

@@ -186,6 +186,7 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
     const canClear = !!cur?.clear && collectLogs({ ...st, source: cur.id }).items.length > 0;
     $('[data-lh-actions]').innerHTML = `
       <button type="button" class="btn ghost danger" data-lh-clear ${canClear ? '' : 'disabled'} title="${cur?.clear ? '' : 'Выберите вид логов, чтобы очистить именно его'}">🧹 Очистить${cur ? `: ${escapeHtml(cur.title)}` : ''}</button>
+      <button type="button" class="btn secondary" data-lh-statistics>📊 Статистика по персонажам</button>
       ${extra.map(a => `<button type="button" class="btn ghost" data-lh-action="${escapeHtml(a.id)}" ${a.disabled ? 'disabled' : ''}>${escapeHtml(a.label)}</button>`).join('')}
       <span style="flex:1"></span>
       <button type="button" class="btn" data-lh-copy ${items.length ? '' : 'disabled'}>📋 Скопировать список</button>
@@ -210,6 +211,11 @@ export function mountLogHub(root, { source = 'all', sessionOnly = false } = {}) 
       const src = sources.get(row.dataset.lhFrom);
       const item = listOf(src).find(it => it.key === row.dataset.lhKey);
       if (src && item) src.open(item);
+      return;
+    }
+    if (e.target.closest('[data-lh-statistics]')) {
+      const { openTaskStatistics } = await import('./taskLog.js');
+      openTaskStatistics();
       return;
     }
     const cur = sources.get(st.source);

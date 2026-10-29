@@ -20,19 +20,19 @@
 // должно срабатывать по игровым часам, а не по часам компьютера.
 
 import { state } from '../core/state.js';
-import { mskDate, mskMinutes, mskParts } from '../core/msk.js';
+import { mskAddDays, mskDate, mskMinutes, mskParts } from '../core/msk.js';
 import { computeCell, marathonPhase } from '../modules/marathons/model.js';
 import {
   RECURRING_EVENTS,
   recurringEventsForDate,
   recurringEventScheduleText
 } from '../modules/dashboard/recurringEvents.js';
-import { entryStatusForDate } from '../modules/dashboard/planner.js';
+import { entryOccursOn, entryStatusForDate } from '../modules/dashboard/planner.js';
 import { playNotificationSound, soundSettings, soundDiagnostics } from './sound.js';
 import { showInApp } from '../core/notifyCenter.js';
 
 const SENT_KEY = 'tf_notifications_sent_v1';
-/** Журнал уведомлений об ивентах: ключ «ивент + дата» → дата (чистим по прошествии суток). */
+/** Журнал: для задачи значение — дата вхождения, для встроенного ивента — дата отправки. */
 const EVENT_SENT_KEY = 'tf_event_notifications_sent_v1';
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 const EVENT_CHECK_INTERVAL_MS = 30 * 1000;
@@ -50,6 +50,9 @@ const DEFAULT_LEAD_MINUTES = 10;
 
 let timer = null;
 let eventTimer = null;
+// При ошибке localStorage не повторяем одно уведомление каждые 30 секунд в этой сессии.
+// После перезапуска такая временная копия, разумеется, не сохраняется.
+const volatileSent = new Map();
 
 const todayStr = () => mskDate();
 const daysBetween = (a, b) => Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 864e5);
@@ -185,7 +188,8 @@ export function collectAlerts(
 /** «ЧЧ:ММ» → минуты от полуночи. */
 function timeMinutes(time) {
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(time || ''));
-  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
 }
 
 /** «За 5 минут», «За 1 час» — подпись для уведомления. */
@@ -234,45 +238,77 @@ export function collectEventAlerts({ today = todayStr(), nowMinutes = mskMinutes
  * при перезапуске приложения пришло бы «через минуту после начала».
  *
  * @param {{ today?: string, nowMinutes?: number, entries?: Array<any>, isDone?: (e: any, date: string) => boolean }} [opts]
- * @returns {Array<{ key: string, title: string, body: string, kind: string, entryId: string }>}
+ * Проверяются сегодняшнее и завтрашнее вхождения для доступных в форме запасов до суток;
+ * длинные нестандартные запасы пока сохраняют прежнее поведение — только в день события.
+ * Журнал использует дату вхождения, а не дату отправки, чтобы не повторять сообщение в полночь.
+ * @returns {Array<{ key: string, title: string, body: string, kind: string, entryId: string, occurrenceDate: string }>}
  */
 export function collectTaskAlerts({ today = todayStr(), nowMinutes = mskMinutes(), entries = [], isDone = null } = {}) {
   const out = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || !Number.isFinite(nowMinutes) || nowMinutes < 0 || nowMinutes >= 1440)
+    return out;
+  let tomorrow = '';
+  try {
+    tomorrow = mskAddDays(today, 1);
+  } catch {
+    // Некорректная/крайняя дата не должна останавливать остальные напоминания.
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tomorrow)) tomorrow = '';
   for (const entry of entries || []) {
     const lead = Math.round(Number(entry?.reminderMinutes) || 0);
-    if (lead <= 0 || entry?.date !== today) continue;
+    if (!Number.isFinite(lead) || lead <= 0) continue;
     const start = timeMinutes(entry.time);
     if (start === null) continue;
-    if (isDone?.(entry, today)) continue;
-    if (nowMinutes < start - lead || nowMinutes >= start) continue;
-    const left = Math.max(0, start - nowMinutes);
-    out.push({
-      kind: 'task',
-      entryId: String(entry.id),
-      key: `task:${entry.id}:${today}`,
-      title: `⏰ ${entry.title || 'Запись'} — через ${left} мин.`,
-      body: `Начало в ${entry.time} (МСК)${left > 1 ? ` · осталось ${left} мин.` : ' · начинается сейчас'}`
-    });
+    const days = [{ date: today, offset: 0 }];
+    if (tomorrow && lead <= 1440) days.push({ date: tomorrow, offset: 1440 });
+    for (const occurrence of days) {
+      if (!entryOccursOn(entry, occurrence.date) || isDone?.(entry, occurrence.date)) continue;
+      const left = occurrence.offset + start - nowMinutes;
+      if (left <= 0 || left > lead) continue;
+      const dateText = occurrence.date === today ? '' : ` ${occurrence.date}`;
+      out.push({
+        kind: 'task',
+        entryId: String(entry.id),
+        occurrenceDate: occurrence.date,
+        key: `task:${entry.id}:${occurrence.date}`,
+        title: `⏰ ${entry.title || 'Запись'} — через ${left} мин.`,
+        body: `Начало${dateText} в ${entry.time} (МСК)${left > 1 ? ` · осталось ${left} мин.` : ' · начинается сейчас'}`
+      });
+    }
   }
   return out;
 }
 
 function loadSent(key) {
+  let value = {};
   try {
-    return JSON.parse(localStorage.getItem(key) || '{}');
+    const parsed = JSON.parse(localStorage.getItem(key) || '{}');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) value = parsed;
   } catch (_) {
-    return {};
+    // Продолжаем с временным журналом этой сессии.
   }
+  return Object.assign(Object.create(null), value, volatileSent.get(key) || {});
 }
 function saveSent(key, sent, today) {
-  // Храним только сегодняшние записи, чтобы журнал не рос бесконечно
+  // Будущее вхождение задачи сохраняем до его даты, иначе после полуночи оно придёт повторно.
+  // Для прочих видов остаётся прежнее правило: только записи текущего дня.
   Object.keys(sent).forEach(k => {
-    if (sent[k] !== today) delete sent[k];
+    const date = k.slice(-10);
+    const futureTask =
+      key === EVENT_SENT_KEY &&
+      k.startsWith('task:') &&
+      /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+      k.endsWith(`:${date}`) &&
+      sent[k] === date &&
+      date >= today;
+    if (sent[k] !== today && !futureTask) delete sent[k];
   });
   try {
     localStorage.setItem(key, JSON.stringify(sent));
+    volatileSent.delete(key);
   } catch (_) {
-    /* переполнение хранилища не критично */
+    // Не выдаём ту же запись на каждом тике до завершения этой сессии.
+    volatileSent.set(key, { ...sent });
   }
 }
 
@@ -390,10 +426,11 @@ export async function runEventCheck({ force = false, now = new Date() } = {}) {
       isDone: (entry, date) => entryStatusForDate(entry, date) === 'done'
     })
   ];
-  const fresh = alerts.filter(a => force || sent[a.key] !== today);
+  const sentDate = a => (a.kind === 'task' ? a.occurrenceDate : today);
+  const fresh = alerts.filter(a => force || sent[a.key] !== sentDate(a));
   for (const a of fresh) {
     a.delivered = await notify(a.title, a.body, a.kind);
-    if (a.delivered) sent[a.key] = today;
+    if (a.delivered) sent[a.key] = sentDate(a);
   }
   saveSent(EVENT_SENT_KEY, sent, today);
   return fresh;

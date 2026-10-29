@@ -236,9 +236,13 @@ describe('запуск', () => {
     await wait(150);
     const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'open_caravan_chests');
     expect(calls.map(c => c[1].charId)).toEqual(['a']);
+    $('[data-act="report"]').click();
+    const report = [...document.querySelectorAll('.tf-dialog')].at(-1);
+    expect(report.textContent).toContain('Сундук №1');
+    expect(report.textContent).toContain('остался в инвентаре');
   });
 
-  it('нет входа и ошибка видны в таблице, «Повторить» недоступно, если повторять нечего', async () => {
+  it('нет входа виден в таблице и его можно повторить после восстановления входа', async () => {
     mocks.invoke.mockImplementation(async (_, a) =>
       reply(
         a.charId,
@@ -251,7 +255,7 @@ describe('запуск', () => {
     $('[data-act="start"]').click();
     await wait(150);
     expect($('.tf-dialog').textContent).toContain('Нет входа на сайт');
-    expect($('[data-act="retry"]').disabled).toBe(true);
+    expect($('[data-act="retry"]').disabled).toBe(false);
   });
 
   it('«← К списку» возвращает форму с сохранённым выбором', async () => {

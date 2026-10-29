@@ -159,7 +159,12 @@ export const isTransient = code => !!code && (TRANSIENT_ERRORS.has(code) || Stri
 
 /** Строки, которые «Повторить ввод» запустит снова: не введены и это не «нажато, но результат неясен». */
 export const isRerunnable = row =>
-  !!row && !isOk(row.status) && !(row.clicked && row.status === 'unknown') && !row.dryRun;
+  !!row &&
+  !isOk(row.status) &&
+  !row.dryRun &&
+  !row.uncertain &&
+  row.status !== 'unknown' &&
+  (!row.clicked || isInvalid(row.status));
 
 /** Общий итог по набору строк. */
 export function summarize(rows) {

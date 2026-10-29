@@ -60,6 +60,7 @@ export async function runShopBatch({
   const total = accounts.reduce((n, a) => n + a.orders.length, 0);
   const wanted = wantedNames();
   const rows = new Map(); // "siteKey|ключ предмета" → строка
+  const working = new Map(); // подтверждённые покупки внутри ещё не завершённого заказа
   let started = 0;
   let done = 0;
 
@@ -69,6 +70,7 @@ export async function runShopBatch({
     charId: acc.char.id,
     nick: acc.char.nick,
     members: (acc.members || []).map(m => m.nick),
+    memberChars: (acc.members || []).map(m => ({ id: m.id || '', nick: m.nick })),
     account: acc.account || '',
     itemKey: order.key,
     item: itemByKey(order.key)?.name || order.key,
@@ -127,6 +129,7 @@ export async function runShopBatch({
     for (const order of acc.orders) {
       const def = itemByKey(order.key);
       const row = baseRow(acc, order, balance);
+      working.set(rowKey(acc, order), row);
       if (!def || !(order.qty > 0)) {
         emit(acc, order, {
           ...row,
@@ -140,7 +143,12 @@ export async function runShopBatch({
         continue;
       }
       if (blocked) {
-        emit(acc, order, { ...row, status: 'not_run', detail: BLOCK_TEXT[blocked] || BLOCK_TEXT.error });
+        emit(acc, order, {
+          ...row,
+          status: 'not_run',
+          detail: BLOCK_TEXT[blocked] || BLOCK_TEXT.error,
+          retryBlocked: blocked === 'unknown'
+        });
         continue;
       }
 
@@ -189,7 +197,9 @@ export async function runShopBatch({
             balanceAfter: balance,
             availableBefore: before,
             availableAfter: availableNow,
-            itemAfter: after.item
+            itemAfter: after.item,
+            // Снимок уже подтверждённого в текущем заказе — журнал не ждёт конца серии.
+            row: { ...row, status: 'done', detail: 'Покупка выполняется; показана подтверждённая часть.' }
           });
           continue;
         }
@@ -227,9 +237,11 @@ export async function runShopBatch({
   entries.forEach(e =>
     e.item.orders.forEach(order => {
       if (rows.has(rowKey(e.item, order))) return;
+      const progress = working.get(rowKey(e.item, order));
       emit(e.item, order, {
-        ...baseRow(e.item, order, e.item.balance),
-        status: e.error ? 'error' : 'cancelled',
+        ...(progress || baseRow(e.item, order, e.item.balance)),
+        status: e.error ? (progress && !dryRun ? 'unknown' : 'not_run') : 'cancelled',
+        retryBlocked: !!e.error && !dryRun,
         detail: e.error ? String(e.error?.message || e.error) : null
       });
     })

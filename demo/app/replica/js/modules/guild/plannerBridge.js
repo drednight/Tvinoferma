@@ -5,14 +5,14 @@
 // они узнаются и после перезапуска — поля «источник» у записи календаря нет, а лишние
 // поля `normalizePlannerEntry` всё равно отбрасывает при загрузке.
 //
-// Отметка снимается один раз и навсегда: запись заводится на ответ «Пойду» и убирается,
-// как только ответ сменился на «Не пойду» или его больше нет. Повторное обновление сводки
-// ничего не дублирует.
+// Запись заводится на ответ «Пойду». Убираем её только при явном ответе «Не пойду»:
+// отсутствие события или ответа в сводке может означать неполную загрузку. Данные
+// пользователя (в том числе отметки по датам) не должны исчезать из-за такой ошибки.
 
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { normalizePlannerEntry } from '../dashboard/planner.js';
-import { isClanEntry, wantedClanEntries } from './core.js';
+import { clanEntryId, isClanEntry, RESPONSE_NO, wantedClanEntries } from './core.js';
 
 /**
  * Список записей календаря после сверки с ответами на сайте. Чистая функция:
@@ -24,7 +24,15 @@ import { isClanEntry, wantedClanEntries } from './core.js';
  */
 export function planClanEntries(current, data, today) {
   const source = Array.isArray(current) ? current : [];
-  const wanted = wantedClanEntries(data, today);
+  // Совпадающие site ID делают сводку неоднозначной — ни одна из двух строк не
+  // может служить основанием для удаления или создания календарной записи.
+  const observed = new Map();
+  for (const event of Array.isArray(data?.events) ? data.events : []) {
+    if (!event || typeof event.id !== 'string' || !event.id.trim()) continue;
+    const id = clanEntryId(event.id);
+    observed.set(id, observed.has(id) ? null : event);
+  }
+  const wanted = wantedClanEntries({ events: [...observed.values()].filter(Boolean) }, today);
   const kept = [];
   let changed = false;
 
@@ -36,7 +44,11 @@ export function planClanEntries(current, data, today) {
     const next = wanted.get(entry.id);
     wanted.delete(entry.id);
     if (!next) {
-      changed = true;
+      // Только явное «Не пойду» в однозначной сводке — действие пользователя.
+      // Отсутствующая строка, пустой/неизвестный ответ или непарсируемая дата
+      // не доказывают удаление и не должны стирать локальные отметки.
+      if (observed.get(entry.id)?.response === RESPONSE_NO) changed = true;
+      else kept.push(entry);
       continue;
     }
     // Дату и время ведёт сайт. Всё остальное (цвет, статус, длительность) — дело человека:

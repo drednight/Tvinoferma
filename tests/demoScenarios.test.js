@@ -163,6 +163,44 @@ describe('Лаборатория, вариант B', () => {
     expect(row.textContent).toContain('не хватает монет');
   });
 
+  it('демо-покупка: имитация ошибки, таблица и повтор только невыполненного аккаунта', async () => {
+    const dlg = openShopSplit();
+    await scan(dlg);
+    input(dlg.body.querySelector('[data-qty="acc:site-4|valor"]'), 1);
+    click(dlg.body.querySelector('[data-demo-fail]'));
+    click(dlg.foot.querySelector('[data-act="start"]'));
+    click(document.querySelector('.tf-confirm-overlay [data-act="ok"]'));
+    await finish();
+    expect(content(dlg)).toContain('Демо-ошибка до покупки');
+    expect(dlg.foot.querySelector('[data-act="retry"]')).toBeTruthy();
+    click(dlg.foot.querySelector('[data-act="report"]'));
+    expect(document.querySelectorAll('.tf-dialog')).toHaveLength(2);
+    expect([...document.querySelectorAll('.tf-dialog')].at(-1).textContent).toContain('Таблица действий');
+    click(document.querySelector('[data-sr-close]'));
+    click(dlg.foot.querySelector('[data-act="retry"]'));
+    click(document.querySelector('.tf-confirm-overlay [data-act="ok"]'));
+    await finish();
+    expect(content(dlg)).toContain('В демо куплено 1 шт.');
+    expect(dlg.foot.querySelector('[data-act="retry"]')).toBeNull();
+    click(dlg.foot.querySelector('[data-act="report"]'));
+    expect(document.querySelectorAll('.sr-table tbody tr').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('демо-караван: повтор не открывает уже выполненные сундуки', async () => {
+    const dlg = openCaravanSplit();
+    await scan(dlg);
+    click(dlg.body.querySelector('[data-demo-fail]'));
+    click(dlg.foot.querySelector('[data-act="start"]'));
+    click(document.querySelector('.tf-confirm-overlay [data-act="ok"]'));
+    await finish();
+    expect(dlg.foot.querySelector('[data-act="retry"]')).toBeTruthy();
+    click(dlg.foot.querySelector('[data-act="retry"]'));
+    click(document.querySelector('.tf-confirm-overlay [data-act="ok"]'));
+    await finish();
+    click(dlg.foot.querySelector('[data-act="report"]'));
+    expect([...document.querySelectorAll('.tf-dialog')].at(-1).textContent).toContain('Сундук №пример');
+  });
+
   it('дополнительное окно описания закрывается по Escape, родитель остаётся', async () => {
     const dlg = openShopSplit();
     await scan(dlg);

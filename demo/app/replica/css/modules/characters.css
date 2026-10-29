@@ -506,6 +506,21 @@
   gap: 4px;
 }
 
+/* Имена резервных копий могут содержать длинные технические суффиксы. */
+.backup-item {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.backup-item .meta {
+  min-width: 0;
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
+.backup-item .row {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
 /* ===== Окно «История Древних монет» ===== */
 .ch-entry {
   grid-template-columns: 150px 22px 1fr;

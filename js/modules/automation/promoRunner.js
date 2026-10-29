@@ -83,7 +83,14 @@ export async function runPromoBatch({
       } catch (e) {
         error = e;
       }
-      const row = rowFromPayload(char, code, payload, error);
+      let row = rowFromPayload(char, code, payload, error);
+      // Отклонённый IPC-вызов не доказывает, что команда не успела нажать кнопку.
+      if (
+        (error || !payload || typeof payload !== 'object' || !payload.status || typeof payload.clicked !== 'boolean') &&
+        !dryRun
+      )
+        row = { ...row, status: 'unknown', uncertain: true };
+      else if (dryRun) row.dryRun = true;
       if (a >= retries || signal.cancelled || !canAutoRetry(row, isTransient)) return row;
       task?.log?.(
         `${char.nick}: повтор ${a + 1}/${retries} (${row.status === 'challenge' ? 'проверка безопасности' : row.error})`,
@@ -103,7 +110,12 @@ export async function runPromoBatch({
         emit(
           char,
           code,
-          plainRow(char, code, skips[i].status || 'already_used', skips[i].detail ?? null, { skipped: true })
+          plainRow(char, code, skips[i].status || 'already_used', skips[i].detail ?? null, {
+            skipped: true,
+            clicked: !!skips[i].clicked,
+            uncertain: !!skips[i].uncertain,
+            error: skips[i].error || null
+          })
         );
         continue;
       }
@@ -159,7 +171,21 @@ export async function runPromoBatch({
     }
   });
   // Если «Стоп» нажат до старта персонажа, его worker не запускался: помечаем строки остановленными
-  entries.forEach(e => codes.forEach(code => emit(e.item, code, plainRow(e.item, code, 'cancelled'))));
+  entries.forEach(e =>
+    codes.forEach(code =>
+      emit(
+        e.item,
+        code,
+        e.error
+          ? plainRow(e.item, code, dryRun ? 'error' : 'unknown', null, {
+              error: String(e.error?.message || e.error),
+              dryRun,
+              uncertain: !dryRun
+            })
+          : plainRow(e.item, code, 'cancelled')
+      )
+    )
+  );
 
   return chars.flatMap(char => codes.map(code => rows.get(key(char, code))).filter(Boolean));
 }

@@ -10,6 +10,7 @@ import { STATS_HISTORY_LIMIT } from '../../modules/characters/statsHistory.js';
 import { DEFAULT_STATS } from '../../modules/characters/stateManager.js';
 import { roundCoins, normalizeCoinHistory } from '../coins.js';
 import { normalizePartyIds, resolveMainPartyId } from '../../modules/parties/membership.js';
+import { preserveSyncId } from './syncIdentity.js';
 
 /** Максимальная длина примечания к персонажу (символов). */
 export const NOTES_MAX_LENGTH = 5000;
@@ -94,6 +95,7 @@ export function normalizePartyOrder(map) {
 export function normalizeCharacter(input = {}) {
   return {
     id: input.id ? String(input.id) : null, // пустой id назначается из ника в normalizeState
+    ...preserveSyncId(input), // не зависит от ника или папки профиля; назначается только при настройке облака
     nick: String(input.nick || ''),
     favorite: input.favorite === true,
     class: String(input.class || ''),

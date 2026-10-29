@@ -1,4 +1,4 @@
-﻿import { state } from '../../core/state.js';
+import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { showModal, closeModal, confirmModal, toast } from '../../core/ui.js';
@@ -480,6 +480,21 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
   // Состояние в форме — состояние того вхождения, которое открыто, а не всей записи:
   // у повтора у каждого дня оно своё, и форма обязана показывать то же, что показал день.
   const shownStatus = edit ? entryStatusForDate(entry, date) : 'todo';
+  const reminderOptions = [
+    ['0', 'Не напоминать'],
+    ['15', 'За 15 минут'],
+    ['60', 'За час'],
+    ['1440', 'За день']
+  ];
+  const savedReminder = edit ? Number(entry.reminderMinutes) : 0;
+  if (
+    Number.isFinite(savedReminder) &&
+    savedReminder > 0 &&
+    !reminderOptions.some(([value]) => value === String(savedReminder))
+  ) {
+    const limitation = savedReminder > 1440 ? ' · пока только в день события' : '';
+    reminderOptions.push([String(savedReminder), `За ${savedReminder} мин. (сохранено${limitation})`]);
+  }
 
   showModal({
     title: edit ? 'Изменить запись' : 'Новая запись',
@@ -508,12 +523,7 @@ export function openPlannerEntryForm(date, deps = {}, entry = null) {
           ['high', 'Высокий'],
           ['low', 'Низкий']
         ])}</label>
-        <label class="field">Напомнить${sel('reminderMinutes', String(edit ? entry.reminderMinutes : 0), [
-          ['0', 'Не напоминать'],
-          ['15', 'За 15 минут'],
-          ['60', 'За час'],
-          ['1440', 'За день']
-        ])}</label>
+        <label class="field">Напомнить${sel('reminderMinutes', String(savedReminder), reminderOptions)}</label>
       </div>
       ${
         edit

@@ -410,6 +410,33 @@ describe('покупка', () => {
     expect(log[0].members).toContain('Бб');
   });
 
+  it('повтор покупает только остаток после подтверждения; таблица включает обе попытки и общий аккаунт', async () => {
+    await setup();
+    const actual = mocks.invoke.getMockImplementation();
+    let attempts = 0;
+    mocks.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === 'buy_shop_item' && ++attempts === 2) return { status: 'error', error: 'timeout', clicked: false };
+      return actual(cmd, args);
+    });
+    $('[data-item="valor"]').click();
+    type(qtyInput('Вв', 'valor'), 3);
+    await clickFoot('start', 900);
+    expect(attempts).toBe(2);
+    expect($('[data-act="retry"]').disabled).toBe(false);
+    mocks.confirm.mockResolvedValueOnce(false);
+    await clickFoot('retry', 50);
+    expect(attempts).toBe(2);
+    await clickFoot('retry', 900);
+    expect(attempts).toBe(4); // одна ранее куплена, две оставшиеся, один неудачный вызов
+    expect(mocks.confirm.mock.calls.at(-1)[0].text).toContain('2 шт.');
+    $('[data-act="report"]').click();
+    const dialog = [...document.querySelectorAll('.tf-dialog')].at(-1);
+    expect(dialog.textContent).toContain('Таблица действий');
+    expect(dialog.textContent).toContain('Бб');
+    expect(dialog.textContent).toContain('Вв');
+    expect(dialog.textContent).toContain('общий результат аккаунта');
+  });
+
   it('отказ в подтверждении: ничего не куплено', async () => {
     await setup();
     mocks.confirm.mockResolvedValue(false);

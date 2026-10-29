@@ -266,24 +266,35 @@ describe('срок обновления лимита', () => {
 
 describe('итоги покупки', () => {
   it('статусы ответа → решение', () => {
-    expect(interpretBuy({ status: 'success' })).toMatchObject({ kind: 'bought', status: 'done' });
-    expect(interpretBuy({ status: 'dry_run' }).kind).toBe('dry');
-    expect(interpretBuy({ status: 'limit_reached' })).toMatchObject({ kind: 'stop', status: 'limit' });
-    expect(interpretBuy({ status: 'no_funds' })).toMatchObject({ kind: 'stop', status: 'no_funds' });
-    expect(interpretBuy({ status: 'price_changed', info: { price: 50 } })).toMatchObject({
+    expect(interpretBuy({ clicked: true, status: 'success' })).toMatchObject({ kind: 'bought', status: 'done' });
+    expect(interpretBuy({ clicked: false, status: 'dry_run' }).kind).toBe('dry');
+    expect(interpretBuy({ clicked: false, status: 'limit_reached' })).toMatchObject({ kind: 'stop', status: 'limit' });
+    expect(interpretBuy({ clicked: false, status: 'no_funds' })).toMatchObject({ kind: 'stop', status: 'no_funds' });
+    expect(interpretBuy({ clicked: false, status: 'price_changed', info: { price: 50 } })).toMatchObject({
       status: 'price_changed',
       price: 50
     });
-    expect(interpretBuy({ status: 'unknown', error: 'x' })).toMatchObject({ kind: 'block', status: 'unknown' });
-    expect(interpretBuy({ status: 'not_logged_in' })).toMatchObject({ kind: 'block', status: 'not_logged_in' });
-    expect(interpretBuy({ status: 'no_effect' })).toMatchObject({ kind: 'stop', status: 'no_effect' });
+    expect(interpretBuy({ clicked: true, status: 'unknown', error: 'x' })).toMatchObject({
+      kind: 'block',
+      status: 'unknown'
+    });
+    expect(interpretBuy({ clicked: false, status: 'not_logged_in' })).toMatchObject({
+      kind: 'block',
+      status: 'not_logged_in'
+    });
+    expect(interpretBuy({ clicked: true, status: 'no_effect' })).toMatchObject({ kind: 'stop', status: 'no_effect' });
   });
   it('повтор только пока кнопка не нажата', () => {
     expect(interpretBuy({ status: 'error', error: 'timeout', clicked: false }).kind).toBe('retry');
-    expect(interpretBuy({ status: 'error', error: 'timeout', clicked: true }).kind).toBe('stop');
+    expect(interpretBuy({ status: 'error', error: 'timeout', clicked: true })).toMatchObject({
+      kind: 'block',
+      status: 'unknown'
+    });
     expect(interpretBuy({ status: 'error', error: 'modal_missing', clicked: false }).kind).toBe('retry');
     expect(interpretBuy({ status: 'error', error: 'window_open' }).kind).toBe('block');
-    expect(interpretBuy(null, new Error('boom')).kind).toBe('retry');
+    expect(interpretBuy(null, new Error('boom'))).toMatchObject({ kind: 'block', status: 'unknown' });
+    expect(interpretBuy({ status: 'challenge', clicked: true })).toMatchObject({ kind: 'block', status: 'unknown' });
+    expect(interpretBuy({ status: 'challenge' })).toMatchObject({ kind: 'block', status: 'unknown' });
   });
   it('подписи: куплено до лимита, «Лимит исчерпан — не куплено»', () => {
     expect(resultLabel({ status: 'limit', bought: 4, requested: 6 })).toBe('Куплено до лимита: 4 из 6');

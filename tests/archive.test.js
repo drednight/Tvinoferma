@@ -30,17 +30,28 @@ describe('архив персонажей', () => {
   it('перемещает персонажа из активного списка и восстанавливает без потери данных', async () => {
     const char = character('c1');
     char.contacts = { email: 'login@example.com', password: 'pw' };
+    char.syncId = 'a9115bf2-e834-444d-aeb6-7c3af1db8890';
     char.notes = 'сохранить';
     state.characters = [char];
     const { archiveCharacters, restoreCharacter } = await import('../js/modules/archive/archive.js');
 
     await archiveCharacters(['c1']);
     expect(state.characters).toEqual([]);
-    expect(state.archivedCharacters[0]).toMatchObject({ id: 'c1', notes: 'сохранить', contacts: char.contacts });
+    expect(state.archivedCharacters[0]).toMatchObject({
+      id: 'c1',
+      syncId: char.syncId,
+      notes: 'сохранить',
+      contacts: char.contacts
+    });
 
     await restoreCharacter('c1');
     expect(state.archivedCharacters).toEqual([]);
-    expect(state.characters[0]).toMatchObject({ id: 'c1', notes: 'сохранить', contacts: char.contacts });
+    expect(state.characters[0]).toMatchObject({
+      id: 'c1',
+      syncId: char.syncId,
+      notes: 'сохранить',
+      contacts: char.contacts
+    });
   });
 
   it('при ошибке сохранения возвращает исходные списки', async () => {
@@ -62,7 +73,7 @@ describe('архив пати', () => {
     state.characters = [member];
     state.archivedCharacters = [archivedMember];
     state.parties = [
-      { id: 'p1', name: 'Основная', order: 1 },
+      { id: 'p1', syncId: 'b9115bf2-e834-444d-aeb6-7c3af1db8890', name: 'Основная', order: 1 },
       { id: 'p2', name: 'Другая', order: 2 }
     ];
     const { archiveParty, restoreParty } = await import('../js/modules/archive/archive.js');
@@ -70,6 +81,7 @@ describe('архив пати', () => {
     await archiveParty('p1');
     expect(state.parties.map(party => party.id)).toEqual(['p2']);
     expect(state.characters[0]).toMatchObject({ partyIds: ['p2'], mainPartyId: 'p2', partyOrder: { p2: 1 } });
+    expect(state.archivedParties[0].syncId).toBe('b9115bf2-e834-444d-aeb6-7c3af1db8890');
     expect(state.archivedParties[0].memberLinks).toEqual([
       { characterId: 'member', isMain: true, order: 3 },
       { characterId: 'archived-member', isMain: true, order: null }
@@ -78,6 +90,7 @@ describe('архив пати', () => {
 
     await restoreParty('p1');
     expect(state.archivedParties).toEqual([]);
+    expect(state.parties.find(p => p.id === 'p1').syncId).toBe('b9115bf2-e834-444d-aeb6-7c3af1db8890');
     expect(state.characters[0]).toMatchObject({
       partyIds: ['p2', 'p1'],
       mainPartyId: 'p1',
