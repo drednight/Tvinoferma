@@ -360,13 +360,19 @@ describe('transfer.js: click (единственное нажатие «Пере
   };
 
   it('нажимает «Передать» ровно один раз; окна подтверждения нет — «Да» не нажимается', () => {
-    ready();
-    const yes = vi.fn();
-    document.querySelector('.js-transfer-done').addEventListener('click', yes);
-    exec();
-    expect(go.__h).toHaveBeenCalledTimes(1);
-    expect(yes).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe('');
+    vi.useFakeTimers();
+    try {
+      ready();
+      const yes = vi.fn();
+      document.querySelector('.js-transfer-done').addEventListener('click', yes);
+      exec();
+      expect(go.__h).toHaveBeenCalledTimes(1);
+      expect(yes).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('');
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('сайт показал свой диалог «Вы уверены…» → «Да» нажимается один раз', () => {

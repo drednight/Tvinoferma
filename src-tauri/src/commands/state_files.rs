@@ -321,14 +321,11 @@ where
 {
     replace_inner(path, contents, |stage| {
         hook(stage)?;
-        if stage == WriteStage::Verified {
-            let metadata = fs::symlink_metadata(path)?;
-            if !metadata.file_type().is_file() || fs::read(path)? != expected {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "state changed before replacement",
-                ));
-            }
+        if stage == WriteStage::Verified && !regular_file_matches(path, expected)? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "state changed before replacement",
+            ));
         }
         Ok(())
     })
@@ -613,6 +610,22 @@ mod tests {
         assert_eq!(fs::read(&state).unwrap(), b"changed");
         replace_state_if_unchanged(&state, b"candidate", b"changed").unwrap();
         assert_eq!(fs::read(&state).unwrap(), b"candidate");
+    }
+
+    #[test]
+    fn guarded_replacement_rejects_file_grown_after_preparation() {
+        let dir = TestDir::new();
+        let state = dir.0.join("state.json");
+        fs::write(&state, b"before").unwrap();
+        let result = replace_guarded_inner(&state, b"candidate", b"before", |point| {
+            if point == WriteStage::Verified {
+                let file = OpenOptions::new().write(true).open(&state)?;
+                file.set_len(128 * 1024 * 1024 + 1)?;
+            }
+            Ok(())
+        });
+        assert!(result.is_err());
+        assert_eq!(fs::metadata(&state).unwrap().len(), 128 * 1024 * 1024 + 1);
     }
 
     #[test]

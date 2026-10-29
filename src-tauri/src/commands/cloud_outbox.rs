@@ -375,6 +375,160 @@ mod windows_backend {
         lock.verify().map_err(|_| ERROR.to_owned())?;
         result
     }
+
+    // Настоящие Windows-файлы в синтетическом временном каталоге; vault здесь
+    // поддельный. Тесты не доказывают fsync, безопасность сетевой ФС или гонок
+    // с некооперативным процессом.
+    #[cfg(test)]
+    mod file_tests {
+        use super::*;
+        use std::collections::BTreeMap;
+        use std::path::Path;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+        struct TestDir(PathBuf);
+        impl TestDir {
+            fn new() -> Self {
+                for _ in 0..100 {
+                    let path = std::env::temp_dir().join(format!(
+                        "tf-outbox-test-{}-{}",
+                        std::process::id(),
+                        NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+                    ));
+                    match fs::create_dir(&path) {
+                        Ok(()) => return Self(path),
+                        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                        Err(_) => panic!("could not create the test directory"),
+                    }
+                }
+                panic!("could not allocate the test directory")
+            }
+            fn path(&self) -> &Path {
+                &self.0
+            }
+            fn file(&self) -> NativeFile {
+                NativeFile {
+                    path: self.0.join("queue.tfqo"),
+                }
+            }
+        }
+        impl Drop for TestDir {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        #[derive(Default)]
+        struct Vault(BTreeMap<String, String>);
+        impl CredentialVault for Vault {
+            fn read(&mut self, name: &str) -> Result<Option<String>, ()> {
+                Ok(self.0.get(name).cloned())
+            }
+            fn write(&mut self, name: &str, value: &str) -> Result<(), ()> {
+                self.0.insert(name.into(), value.into());
+                Ok(())
+            }
+            fn remove(&mut self, name: &str) -> Result<(), ()> {
+                self.0.remove(name);
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn real_file_create_compare_replace_and_reset() {
+            let dir = TestDir::new();
+            let mut file = dir.file();
+            assert_eq!(file.read(), Ok(None));
+            assert_eq!(file.publish(None, "synthetic first"), Ok(()));
+            assert_eq!(file.read().unwrap().as_deref(), Some("synthetic first"));
+            assert!(file.publish(None, "other").is_err());
+            assert!(file.publish(Some("wrong"), "other").is_err());
+            assert_eq!(file.read().unwrap().as_deref(), Some("synthetic first"));
+            assert_eq!(
+                file.publish(Some("synthetic first"), "synthetic second"),
+                Ok(())
+            );
+            assert_eq!(file.read().unwrap().as_deref(), Some("synthetic second"));
+            assert_eq!(file.remove_for_reset(), Ok(()));
+            assert_eq!(file.read(), Ok(None));
+        }
+
+        #[test]
+        fn hard_link_and_unreadable_contents_are_not_silently_deleted() {
+            let dir = TestDir::new();
+            let mut file = dir.file();
+            fs::write(&file.path, b"synthetic").unwrap();
+            let alias = dir.path().join("alias.tfqo");
+            fs::hard_link(&file.path, &alias).unwrap();
+            assert!(file.read().is_err());
+            assert!(file.remove_for_reset().is_err());
+            assert!(alias.exists() && file.path.exists());
+            fs::remove_file(alias).unwrap();
+            assert_eq!(file.read().unwrap().as_deref(), Some("synthetic"));
+            fs::write(&file.path, [0xff, 0xfe]).unwrap();
+            assert!(file.read().is_err());
+            assert!(file.remove_for_reset().is_err());
+            assert!(file.path.exists());
+        }
+
+        #[test]
+        fn held_exclusive_handle_and_oversized_files_are_rejected() {
+            let dir = TestDir::new();
+            let mut file = dir.file();
+            fs::write(&file.path, b"synthetic").unwrap();
+            let held = OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&file.path)
+                .unwrap();
+            assert!(file.read().is_err());
+            drop(held);
+            let oversized = OpenOptions::new().write(true).open(&file.path).unwrap();
+            oversized
+                .set_len(MAX_OUTBOX_RECORD_BYTES as u64 + 1)
+                .unwrap();
+            drop(oversized);
+            assert!(file.read().is_err());
+            assert!(file.remove_for_reset().is_err());
+            assert!(file.path.exists());
+        }
+
+        #[test]
+        fn fake_head_and_real_file_enforce_two_phase_journal_and_reset() {
+            const SLOT: &str = "01234567-89ab-4cde-8f01-23456789abcd";
+            const DATASET: &str = "11234567-89ab-4cde-8f01-23456789abcd";
+            const DEVICE: &str = "21234567-89ab-4cde-8f01-23456789abcd";
+            const REVISION: &str = "31234567-89ab-4cde-8f01-23456789abcd";
+            let dir = TestDir::new();
+            let _lock = CredentialLock::try_acquire(dir.path()).unwrap();
+            let mut file = dir.file();
+            let mut vault = Vault::default();
+            let raw = format!("{{\"format\":\"tvinoferma-cloud-sync\",\"version\":1,\"algorithm\":\"AES-256-GCM\",\"datasetId\":\"{DATASET}\",\"versionId\":\"{REVISION}\",\"iv\":\"AAAAAAAAAAAAAAAA\",\"ciphertext\":\"AAAAAAAAAAAAAAAAAAAAAA\"}}");
+            let next = NewRecord {
+                slot_id: SLOT,
+                dataset_id: DATASET,
+                device_id: DEVICE,
+                revision_id: REVISION,
+                record: &raw,
+            };
+            assert_eq!(
+                cloud_outbox_store::install(&mut vault, &mut file, Target::Google, &next),
+                Ok(Outcome::Installed)
+            );
+            assert!(matches!(
+                cloud_outbox_store::inspect(&mut vault, &mut file, Target::Google),
+                Ok(Inspection::Ready(_))
+            ));
+            assert_eq!(
+                cloud_outbox_store::remove_for_reset(&mut vault, &mut file, Target::Google),
+                Ok(())
+            );
+            assert!(matches!(
+                cloud_outbox_store::inspect(&mut vault, &mut file, Target::Google),
+                Ok(Inspection::Empty)
+            ));
+        }
+    }
 }
 
 #[cfg(windows)]
