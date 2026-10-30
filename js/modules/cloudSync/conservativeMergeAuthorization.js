@@ -23,7 +23,10 @@ function freezeMarker(marker) {
           resolution: Object.freeze({
             ...marker.resolution,
             cloudRecords: Object.freeze(marker.resolution.cloudRecords.map(row => Object.freeze({ ...row }))),
-            cloudSettings: Object.freeze([...marker.resolution.cloudSettings])
+            cloudSettings: Object.freeze([...marker.resolution.cloudSettings]),
+            ...(marker.resolution.plannerCopies
+              ? { plannerCopies: Object.freeze(marker.resolution.plannerCopies.map(row => Object.freeze({ ...row }))) }
+              : {})
           })
         }
       : {}),

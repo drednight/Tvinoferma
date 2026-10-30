@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { webcrypto } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCloudReviewPanel } from '../js/modules/cloudSync/ui/cloudReviewPanel.js';
 import { state } from '../js/core/state.js';
@@ -77,6 +78,7 @@ function setup(options = {}) {
   const confirm = options.confirm || vi.fn(() => true);
   bindCloudReviewPanel({
     desktop: options.desktop !== false,
+    cryptoSource: options.cryptoSource || webcrypto,
     check,
     stage,
     ...(options.useDefaultConfirmation ? {} : { confirm }),
@@ -448,7 +450,9 @@ describe('интерфейс ограниченного объединения',
     await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
     expect(merge.mock.calls[1][0].resolution.cloudRecords).toEqual([{ section: 'planner', id: ids.changed }]);
     expect(f.confirm).toHaveBeenLastCalledWith(
-      expect.stringContaining('без галочки местная запись сохраняется, но согласование останавливается')
+      expect.stringContaining(
+        'без галочки и без отдельного выбора копии местная запись сохраняется, но согласование останавливается'
+      )
     );
   });
 
@@ -683,5 +687,127 @@ describe('интерфейс ограниченного объединения',
     await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('отменено'));
     expect(merge).not.toHaveBeenCalled();
     expect(ack.checked).toBe(false);
+  });
+});
+
+function copyConflictReview() {
+  const value = review();
+  const prior = value.compare;
+  value.compare = () => ({
+    ...prior(),
+    localRecord: () => ({ fields: { title: 'МЕСТНАЯ ЗАДАЧА' } }),
+    differences: {
+      entries: [
+        {
+          section: 'planner',
+          id: ids.changed,
+          kind: 'marked_cloud_deletion',
+          deletionSelectable: true,
+          label: 'Местная задача',
+          changes: []
+        }
+      ],
+      uncomparedSettings: []
+    }
+  });
+  return value;
+}
+const copyConflict = () => ({
+  status: 'conflicts',
+  reviewHash: 'e'.repeat(64),
+  conflicts: [{ section: 'planner', id: ids.changed, path: ['deletion'], reason: 'cloud-planner-deletion' }]
+});
+function toggleCopy(checked = true) {
+  const box = document.querySelector('[data-cloud-planner-copy]');
+  box.checked = checked;
+  box.dispatchEvent(new Event('change', { bubbles: true }));
+  return box;
+}
+describe('явный выбор новой копии вместо потери местной задачи', () => {
+  it('ничего не выбирает автоматически; отправляет отдельный выбор копии с новым ID', async () => {
+    const merge = vi
+      .fn()
+      .mockResolvedValueOnce(copyConflict())
+      .mockResolvedValueOnce({ status: 'merged', backup: 'backup.json' });
+    const f = setup({ check: vi.fn(async () => copyConflictReview()), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(document.querySelector('[data-cloud-planner-copy]')).not.toBeNull());
+    expect(document.querySelector('[data-cloud-planner-copy]').checked).toBe(false);
+    toggleCopy();
+    expect(el('cloud-review-list').querySelector('input').checked).toBe(false);
+    click('cloud-review-resolve');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
+    expect(merge.mock.calls[1][0].resolution).toMatchObject({
+      reviewHash: 'e'.repeat(64),
+      cloudRecords: [],
+      plannerCopies: [{ id: ids.changed, newId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]
+    });
+    expect(merge.mock.calls[1][0].resolution.plannerCopies[0].newId).not.toBe(ids.changed);
+    expect(f.confirm).toHaveBeenLastCalledWith(expect.stringContaining('Старый ID не воскрешается'));
+  });
+  it('не разрешает одновременно отметить удаление и копию; массовый выбор копии не включает', async () => {
+    const merge = vi.fn(async () => copyConflict());
+    setup({ check: vi.fn(async () => copyConflictReview()), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(document.querySelector('[data-cloud-planner-copy]')).not.toBeNull());
+    const original = el('cloud-review-list').querySelector('input');
+    original.checked = true;
+    const copy = toggleCopy();
+    expect(original.checked).toBe(false);
+    original.checked = true;
+    original.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(copy.checked).toBe(false);
+    toggleCopy();
+    click('cloud-review-select-all');
+    expect(copy.checked).toBe(false);
+    expect(original.checked).toBe(true);
+    toggleCopy();
+    click('cloud-review-select-none');
+    expect(copy.checked).toBe(false);
+    expect(original.checked).toBe(false);
+  });
+  it('не меняет выбор копии во время окна подтверждения', async () => {
+    let release;
+    const waiting = new Promise(resolve => (release = resolve));
+    const merge = vi.fn(async () => copyConflict());
+    setup({
+      check: vi.fn(async () => copyConflictReview()),
+      merge,
+      confirm: vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(waiting)
+    });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(document.querySelector('[data-cloud-planner-copy]')).not.toBeNull());
+    const box = toggleCopy();
+    click('cloud-review-resolve');
+    box.checked = false;
+    release(true);
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('отменено'));
+    expect(merge).toHaveBeenCalledTimes(1);
+  });
+  it('не использует небезопасный случайный ID при недоступной криптографии', async () => {
+    const merge = vi.fn(async () => copyConflict());
+    setup({ check: vi.fn(async () => copyConflictReview()), merge, cryptoSource: {} });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(document.querySelector('[data-cloud-planner-copy]')).not.toBeNull());
+    expect(toggleCopy().checked).toBe(false);
+    expect(el('cloud-review-status').textContent).toContain('Не удалось безопасно создать ID');
+    expect(merge).toHaveBeenCalledTimes(1);
+  });
+  it('смена провайдера очищает отдельное решение', async () => {
+    const merge = vi.fn(async () => copyConflict());
+    setup({ check: vi.fn(async () => copyConflictReview()), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(document.querySelector('[data-cloud-planner-copy]')).not.toBeNull());
+    toggleCopy();
+    change('cloud-registration-provider', 'google');
+    expect(document.querySelector('[data-cloud-planner-copy]')).toBeNull();
+    expect(el('cloud-review-conflicts').hidden).toBe(true);
+    click('cloud-review-resolve');
+    expect(merge).toHaveBeenCalledTimes(1);
   });
 });

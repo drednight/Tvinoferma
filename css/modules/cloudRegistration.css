@@ -157,6 +157,10 @@
 .cloud-review-settings legend {
   padding: 0 5px;
 }
+.cloud-review-pending .btn {
+  max-width: 100%;
+  white-space: normal;
+}
 .cloud-review-pending {
   display: grid;
   gap: 10px;

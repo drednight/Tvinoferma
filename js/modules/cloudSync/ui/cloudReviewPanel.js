@@ -9,6 +9,7 @@ import { reconcileExactCloudBase } from '../reconcileExactCloudBase.js';
 import { reconcileConservativeMerge, cancelPendingConservativeMerge } from '../reconcileConservativeMerge.js';
 import { readPendingConservativeMerge } from '../pendingConservativeMerge.js';
 import { state } from '../../../core/state.js';
+import { generateSyncId } from '../envelope.js';
 import { pendingSelectiveApplyEvents } from '../pendingSelectiveApply.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
@@ -55,7 +56,7 @@ const MESSAGES = Object.freeze({
   state_changed_during_write_restart:
     'Данные изменились во время записи. Новые сохранения остановлены; проверьте данные и копию перед перезапуском.',
   deletion_not_accepted:
-    'Удаление не выбрано: местная запись сохранена, согласование остановлено. Для продолжения нужно явно принять показанное удаление; старый ID не воскрешается.',
+    'Не выбраны удаление или сохранение новой копии: местная запись сохранена, согласование остановлено. Для продолжения нужно явно принять показанное удаление; старый ID не воскрешается.',
   deleted_identity_resurrection: 'Ранее удалённый ID появился снова или изменил источник. Согласование остановлено.',
   not_exact:
     'Данные не совпадают полностью с выбранной версией. Сначала разрешите все различия; отправка не разрешена.',
@@ -178,7 +179,7 @@ function description(entry) {
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * check?:typeof checkConnectedCloud,stage?:typeof stageReviewedCloudApply,prepareIdentities?:typeof stageSyncIdentities,
  * reconcile?:typeof reconcileExactCloudBase,merge?:typeof reconcileConservativeMerge,
- * cancelMerge?:typeof cancelPendingConservativeMerge,confirm?:(message:string)=>boolean|Promise<boolean>}} options
+ * cancelMerge?:typeof cancelPendingConservativeMerge,cryptoSource?:Crypto,confirm?:(message:string)=>boolean|Promise<boolean>}} options
  */
 export function bindCloudReviewPanel(options) {
   const doc = options.doc || document;
@@ -268,6 +269,7 @@ export function bindCloudReviewPanel(options) {
   let selected = null;
   let choices = [];
   let conflictReview = null;
+  const plannerCopyChoices = new Map();
   let pendingMerge = null;
   let malformedMerge = false;
   function refreshPending() {
@@ -309,8 +311,11 @@ export function bindCloudReviewPanel(options) {
     cancelMergeButton.disabled = !options.desktop || value || !pendingMerge || pendingMerge.provider !== provider.value;
     for (const box of settingBoxes) box.disabled = value;
     for (const box of choiceBoxes()) box.disabled = value || box.dataset.locked === 'true';
+    for (const { box } of plannerCopyChoices.values())
+      box.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
   }
   function clearConflictReview() {
+    plannerCopyChoices.clear();
     conflictReview = null;
     conflictBox.hidden = true;
     conflictList.replaceChildren();
@@ -542,7 +547,37 @@ export function bindCloudReviewPanel(options) {
       }
       const li = doc.createElement('li');
       const name = entry.label || (entry.group && GROUPS[entry.group]) || '';
-      li.textContent = `${LABELS[conflict.section] || 'Данные'}${name ? ` · ${name}` : ''}: ${conflict.reason === 'cloud-planner-deletion' ? 'подтверждённое удаление против местной записи; отметьте её для удаления вместе с местными правками' : conflict.path.join(' › ') || 'запись целиком'}`;
+      li.textContent = `${LABELS[conflict.section] || 'Данные'}${name ? ` · ${name}` : ''}: ${conflict.reason === 'cloud-planner-deletion' ? 'подтверждённое удаление против местной записи; отметьте удаление вместе с местными правками в списке выше или отдельно сохраните местную версию новой задачей ниже' : conflict.path.join(' › ') || 'запись целиком'}`;
+      if (conflict.reason === 'cloud-planner-deletion' && !plannerCopyChoices.has(conflict.id)) {
+        const label = doc.createElement('label');
+        label.className = 'cloud-connection-ack';
+        const box = doc.createElement('input');
+        box.type = 'checkbox';
+        box.dataset.cloudPlannerCopy = conflict.id;
+        const choice = { box, newId: null };
+        plannerCopyChoices.set(conflict.id, choice);
+        label.append(
+          box,
+          doc.createTextNode(
+            'Сохранить местную версию как новую задачу при разрешении конфликта. Старый ID останется удалённым; новая задача с местными правками будет синхронизироваться отдельно.'
+          )
+        );
+        li.append(doc.createElement('br'), label);
+        box.addEventListener('change', () => {
+          if (!box.checked) return;
+          try {
+            choice.newId ||= generateSyncId(options.cryptoSource);
+          } catch {
+            box.checked = false;
+            note('Не удалось безопасно создать ID копии. Ничего не изменено.');
+            return;
+          }
+          for (const original of choiceBoxes()) {
+            const row = choices[Number(original.dataset.selectionIndex)];
+            if (row?.kind === 'deletion' && row.id === conflict.id) original.checked = false;
+          }
+        });
+      }
       conflictList.append(li);
     }
     conflictBox.hidden = false;
@@ -553,7 +588,11 @@ export function bindCloudReviewPanel(options) {
     const relevant = selectedChoices.filter(choice =>
       reviewed.conflicts.some(row => choiceMatchesConflict(choice, row))
     );
+    const plannerCopies = [...plannerCopyChoices]
+      .filter(([, choice]) => choice.box.checked && choice.newId)
+      .map(([id, choice]) => ({ id, newId: choice.newId }));
     return {
+      ...(plannerCopies.length ? { plannerCopies } : {}),
       reviewHash: reviewed.reviewHash,
       cloudRecords: relevant
         .filter(choice => choice.kind === 'record' || choice.kind === 'deletion')
@@ -673,7 +712,7 @@ export function bindCloudReviewPanel(options) {
           (resume
             ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
             : resolveConflicts
-              ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Для подтверждённых удалений календаря галочка означает удаление записи вместе с местными правками; без галочки местная запись сохраняется, но согласование останавливается. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID (включая задания и бонусы шаблонов, теги и навигацию) заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Изменение шаблона не меняет уже созданные марафоны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
+              ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Для подтверждённых удалений календаря галочка означает удаление записи вместе с местными правками; без галочки и без отдельного выбора копии местная запись сохраняется, но согласование останавливается. Отдельная галочка «Сохранить местную версию как новую задачу» означает удалить старый ID и создать новую задачу с новым ID, сохранив местные поля и отметки повторов. Старый ID не воскрешается, в облако позже отправится новая задача. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID (включая задания и бонусы шаблонов, теги и навигацию) заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Изменение шаблона не меняет уже созданные марафоны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
               : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец (включая новые шаблоны) и выбранные настройки. Задания и бонусы шаблонов, теги и списки навигации без общих ID согласуются целыми списками, а не по названиям или позициям. Конфликтующие списки требуют выбора стороны. Изменение порядка sync-сущностей и неподдерживаемые удаления останавливают операцию. Для подтверждённых удалений ручного календаря сначала будет показан отдельный выбор; без него местная запись не удаляется. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.')
       );
     } catch {
@@ -948,10 +987,21 @@ export function bindCloudReviewPanel(options) {
     void runCheck();
   });
   versions.addEventListener('change', showComparison);
+  list.addEventListener('change', event => {
+    const box = event.target;
+    if (!(box instanceof HTMLInputElement) || !box.checked) return;
+    const choice = choices[Number(box.dataset.selectionIndex)];
+    if (choice?.kind === 'deletion') {
+      const copy = plannerCopyChoices.get(choice.id);
+      if (copy) copy.box.checked = false;
+    }
+  });
   all.addEventListener('click', () => {
+    for (const { box } of plannerCopyChoices.values()) box.checked = false;
     for (const box of choiceBoxes()) if (!box.disabled) box.checked = true;
   });
   none.addEventListener('click', () => {
+    for (const { box } of plannerCopyChoices.values()) box.checked = false;
     for (const box of choiceBoxes()) box.checked = false;
   });
   apply.addEventListener('click', () => {

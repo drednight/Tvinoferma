@@ -46,9 +46,9 @@ function marker(value) {
     'settingsSelections',
     'localHash',
     'mergedHash',
-    ...([2, 3, 4].includes(version) ? ['resolution'] : []),
-    ...([3, 4].includes(version) ? ['appliedIntentHash'] : []),
-    ...(version === 4 ? ['privateCarryConfirmed'] : [])
+    ...([2, 3, 4, 5].includes(version) ? ['resolution'] : []),
+    ...([3, 4, 5].includes(version) ? ['appliedIntentHash'] : []),
+    ...([4, 5].includes(version) ? ['privateCarryConfirmed'] : [])
   ]);
   const basePin = pin(item.basePin);
   const targetPin = pin(item.targetPin);
@@ -66,7 +66,7 @@ function marker(value) {
   )
     throw invalid();
   if (
-    ![1, 2, 3, 4].includes(item.version) ||
+    ![1, 2, 3, 4, 5].includes(item.version) ||
     !isSyncId(item.operationId) ||
     !['google', 'yandex'].includes(item.provider) ||
     !isSyncId(item.datasetId) ||
@@ -81,12 +81,15 @@ function marker(value) {
     !HEX.test(item.localHash) ||
     typeof item.mergedHash !== 'string' ||
     !HEX.test(item.mergedHash) ||
-    ([3, 4].includes(item.version) &&
-      !(item.version === 4 && item.appliedIntentHash === null) &&
+    ([3, 4, 5].includes(item.version) &&
+      !([4, 5].includes(item.version) && item.appliedIntentHash === null) &&
       (typeof item.appliedIntentHash !== 'string' || !HEX.test(item.appliedIntentHash) || pendingPin === null)) ||
-    (item.version === 4 && item.privateCarryConfirmed !== true)
+    (item.version === 4 && item.privateCarryConfirmed !== true) ||
+    (item.version === 5 && typeof item.privateCarryConfirmed !== 'boolean')
   )
     throw invalid();
+  const resolution = item.resolution == null ? null : parseConservativeMergeChoices(item.resolution);
+  if ((item.version === 5) !== !!resolution?.plannerCopies) throw invalid();
   return {
     version: item.version,
     operationId: item.operationId,
@@ -102,16 +105,16 @@ function marker(value) {
     settingsSelections: [...item.settingsSelections],
     localHash: item.localHash,
     mergedHash: item.mergedHash,
-    ...([2, 3, 4].includes(item.version)
+    ...([2, 3, 4, 5].includes(item.version)
       ? {
           resolution:
-            [3, 4].includes(item.version) && item.resolution === null
+            [3, 4, 5].includes(item.version) && item.resolution === null
               ? null
               : parseConservativeMergeChoices(item.resolution)
         }
       : {}),
-    ...([3, 4].includes(item.version) ? { appliedIntentHash: item.appliedIntentHash } : {}),
-    ...(item.version === 4 ? { privateCarryConfirmed: true } : {})
+    ...([3, 4, 5].includes(item.version) ? { appliedIntentHash: item.appliedIntentHash } : {}),
+    ...([4, 5].includes(item.version) ? { privateCarryConfirmed: item.privateCarryConfirmed } : {})
   };
 }
 function settingsObject(settings) {
@@ -154,7 +157,7 @@ export async function conservativeSnapshotHash(snapshot, cryptoSource = globalTh
   return Array.from(digest, value => value.toString(16).padStart(2, '0')).join('');
 }
 
-/** v4 also carries the optional, authenticated deletion-only repair witness. */
+/** v4/v5 also carry the optional, authenticated deletion-only repair witness. */
 export function mergeRetainsAppliedIntent(marker) {
-  return !!marker && (marker.version === 3 || (marker.version === 4 && marker.appliedIntentHash !== null));
+  return !!marker && (marker.version === 3 || ([4, 5].includes(marker.version) && marker.appliedIntentHash !== null));
 }

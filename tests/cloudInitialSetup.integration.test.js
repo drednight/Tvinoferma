@@ -4399,3 +4399,232 @@ describe.each(['google', 'yandex'])('%s: архив персонажей чер�
         }, 30000);
       }
 });
+
+// Synthetic native storage and providers, not a live API or two real PCs.
+describe.each(['google', 'yandex'])('%s: сохранить местную задачу новой копией вместо облачного удаления', provider => {
+  for (const phase of ['queued', 'prepared'])
+    for (const privateCarry of [false, true])
+      for (const interrupted of [false, true]) {
+        it(`очередь ${phase}; carry=${privateCarry}; прерывание=${interrupted}`, async () => {
+          const f = await publicationFixture(provider);
+          f.state.plannerEntries[0].title = 'МЕСТНАЯ ПРАВКА ДЛЯ НОВОЙ ЗАДАЧИ';
+          f.state.plannerEntries[0].recurrence = 'daily';
+          f.state.plannerEntries[0].statusByDate = { '2026-10-30': 'done' };
+          f.state.characters[0].notes = 'НЕЗАВИСИМАЯ ЗАМЕТКА';
+          await f.storage.saveNow();
+          expect((await f.queue()).status).toBe('queued');
+          if (phase === 'prepared') {
+            f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+            expect((await f.send()).status).toBe('deferred');
+          }
+          const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+          const root = (await inspectMergeQueue(f, provider)).confirmedPin;
+          const oldId = f.state.plannerEntries[0].syncId;
+          const remote = privateCarry
+            ? await incomingPrivateCarry(f, provider, s => {
+                s.sections.planner.records = [];
+                s.sections.planner.order = [];
+              })
+            : await incomingPlannerDeletionForMerge(f, provider, root);
+          const before = localStorage.getItem(STORAGE_KEY),
+            queueBefore = structuredClone(f.fake.queue(provider));
+          const extra = privateCarry ? { privateCarryConfirmed: true } : {};
+          const preview = await mergePin(f, provider, remote.pin, extra);
+          expect(preview.status).toBe('conflicts');
+          expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+          expect(f.fake.queue(provider)).toEqual(queueBefore);
+          const newId = generateSyncId(webcrypto);
+          const resolution = {
+            reviewHash: preview.reviewHash,
+            cloudRecords: [],
+            cloudSettings: [],
+            cloudFinanceSettings: false,
+            plannerCopies: [{ id: oldId, newId }]
+          };
+          let current = f.state;
+          if (interrupted) {
+            f.fake.loseNextCompare();
+            expect((await mergePin(f, provider, remote.pin, { ...extra, resolution })).status).toBe(
+              'journal_uncertain'
+            );
+            expect(f.state.settings.cloudSyncPendingMerge).toMatchObject({
+              version: 5,
+              privateCarryConfirmed: privateCarry,
+              resolution: { plannerCopies: [{ id: oldId, newId }] }
+            });
+            expect(JSON.stringify(f.state.settings.cloudSyncPendingMerge)).not.toContain('МЕСТНАЯ ПРАВКА');
+            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            vi.resetModules();
+            const { state, normalizeState } = await import('../js/core/state.js');
+            Object.assign(state, normalizeState(saved));
+            current = state;
+            const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+            expect(
+              (
+                await publication.queueConnectedSavedSnapshot({
+                  provider,
+                  invoke: f.fake.invoke,
+                  cryptoSource: webcrypto
+                })
+              ).status
+            ).toBe('provenance_review_required');
+            expect(
+              (
+                await mergePin(f, provider, remote.pin, {
+                  resolution: { ...resolution, plannerCopies: [{ id: oldId, newId: generateSyncId(webcrypto) }] }
+                })
+              ).status
+            ).toBe('merge_intent_mismatch');
+          }
+          expect((await mergePin(f, provider, remote.pin, interrupted ? {} : { ...extra, resolution })).status).toBe(
+            'merged'
+          );
+          expect(current.plannerEntries).toEqual([
+            expect.objectContaining({
+              syncId: newId,
+              title: 'МЕСТНАЯ ПРАВКА ДЛЯ НОВОЙ ЗАДАЧИ',
+              recurrence: 'daily',
+              statusByDate: { '2026-10-30': 'done' }
+            })
+          ]);
+          expect(current.characters[0]).toMatchObject({
+            notes: 'НЕЗАВИСИМАЯ ЗАМЕТКА',
+            contacts: { password: 'PRIVATE_PASSWORD' }
+          });
+          expect(current.settings.cloudSyncPendingMerge).toBeUndefined();
+          expect(
+            Object.keys(localStorage).some(
+              key => key.startsWith('tvinoferma_backup_') && localStorage.getItem(key) === before
+            )
+          ).toBe(true);
+          expect((await mergePin(f, provider, remote.pin)).status).toBe('already_on_base');
+          expect(current.plannerEntries).toHaveLength(1);
+          const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+          const options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+          expect((await publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true })).status).toBe(
+            'queued'
+          );
+          expect(
+            (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+          ).toBe('sent_verified');
+          const payload = await fixturePrivatePayload(f);
+          expect(payload.plannerTombstones).toContain(oldId);
+          expect(payload.publicSnapshot.sections.planner.records).toEqual([
+            expect.objectContaining({
+              id: newId,
+              fields: expect.objectContaining({ title: 'МЕСТНАЯ ПРАВКА ДЛЯ НОВОЙ ЗАДАЧИ' })
+            })
+          ]);
+          expect(JSON.stringify(payload.publicSnapshot)).not.toContain('PRIVATE_PASSWORD');
+          if (privateCarry) expect(payload.privateSnapshot.records[0].fields.password).toBe('REMOTE_CARRY_SECRET');
+          else expect(payload.privateSnapshot).toBeUndefined();
+          expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+        }, 30000);
+      }
+  it('отклоняет устаревший выбор после новой местной правки и оставляет старую задачу', async () => {
+    const f = await publicationFixture(provider);
+    const root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    f.state.plannerEntries[0].title = 'ПЕРВАЯ ПРАВКА';
+    await f.storage.saveNow();
+    await f.queue();
+    const remote = await incomingPlannerDeletionForMerge(f, provider, root);
+    const conflict = await mergePin(f, provider, remote.pin);
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const resolution = {
+      reviewHash: conflict.reviewHash,
+      cloudRecords: [],
+      cloudSettings: [],
+      cloudFinanceSettings: false,
+      plannerCopies: [{ id: remote.id, newId: generateSyncId(webcrypto) }]
+    };
+    f.state.plannerEntries[0].title = 'БОЛЕЕ НОВАЯ ПРАВКА';
+    await f.storage.saveNow();
+    await f.queue();
+    const queue = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote.pin, { resolution })).status).toBe('conflicts_changed');
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect(f.state.plannerEntries[0].title).toBe('БОЛЕЕ НОВАЯ ПРАВКА');
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+  }, 30000);
+});
+
+describe.each(['google', 'yandex'])('%s: новая копия после ранее выбранного удаления другой задачи', provider => {
+  it('восстанавливает v5 с apply-хешем, не теряет очередь и снимает обе отметки', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+        f.state.plannerEntries.push({
+          ...structuredClone(f.state.plannerEntries[0]),
+          id: 'second',
+          syncId: generateSyncId(webcrypto),
+          title: 'ВТОРАЯ ЗАДАЧА'
+        });
+        await f.storage.saveNow();
+      }
+    });
+    const removedId = f.state.plannerEntries[0].syncId,
+      sourceId = f.state.plannerEntries[1].syncId;
+    f.state.plannerEntries[1].title = 'КОПИРОВАТЬ ЭТУ МЕСТНУЮ ПРАВКУ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await incomingPrivateCarry(f, provider, s => {
+      s.sections.planner.records = [];
+      s.sections.planner.order = [];
+    });
+    const { stageReviewedCloudApply } = await import('../js/modules/cloudSync/commitReviewedCloud.js');
+    const review = await fixturePrivateReview(f, provider);
+    expect(
+      (
+        await stageReviewedCloudApply({
+          review,
+          pin: remote.pin,
+          selectedRecords: [],
+          selectedPlannerDeletions: [removedId],
+          cryptoSource: webcrypto
+        }).commit({ confirmed: true })
+      ).status
+    ).toBe('applied');
+    const preview = await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true });
+    expect(preview.status).toBe('conflicts');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const newId = generateSyncId(webcrypto);
+    const resolution = {
+      reviewHash: preview.reviewHash,
+      cloudRecords: [],
+      cloudSettings: [],
+      cloudFinanceSettings: false,
+      plannerCopies: [{ id: sourceId, newId }]
+    };
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, remote.pin, { resolution, privateCarryConfirmed: true })).status).toBe(
+      'journal_uncertain'
+    );
+    expect(f.state.settings.cloudSyncPendingMerge).toMatchObject({
+      version: 5,
+      appliedIntentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      privateCarryConfirmed: true
+    });
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    expect((await mergePin(f, provider, remote.pin)).status).toBe('merged');
+    expect(state.plannerEntries).toEqual([
+      expect.objectContaining({ syncId: newId, title: 'КОПИРОВАТЬ ЭТУ МЕСТНУЮ ПРАВКУ' })
+    ]);
+    expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(state.settings.cloudSyncPendingApply).toBeUndefined();
+    const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+    const options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+    expect((await publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true })).status).toBe(
+      'queued'
+    );
+    expect(
+      (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+    ).toBe('sent_verified');
+    const payload = await fixturePrivatePayload(f);
+    expect(payload.plannerTombstones).toEqual([removedId, sourceId].sort());
+    expect(payload.privateSnapshot.records[0].fields.password).toBe('REMOTE_CARRY_SECRET');
+    expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+  }, 30000);
+});

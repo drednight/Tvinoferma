@@ -72,6 +72,12 @@ function resolutionFitsConflicts(choices, conflicts) {
   const finance = conflicts.some(row => row.section === 'finance' && !row.id);
   return (
     choices.cloudRecords.every(row => records.has(`${row.section}:${row.id}`)) &&
+    (choices.plannerCopies || []).every(row =>
+      conflicts.some(
+        conflict =>
+          conflict.section === 'planner' && conflict.id === row.id && conflict.reason === 'cloud-planner-deletion'
+      )
+    ) &&
     choices.cloudSettings.every(group => settings.has(group)) &&
     (!choices.cloudFinanceSettings || finance)
   );
@@ -354,7 +360,15 @@ export async function reconcileConservativeMerge(options) {
     if (before.status !== 'ready' || before.revisionId !== head.revisionId) return result('queue_changed');
     if (!marker) {
       marker = {
-        version: proof.privateCarryConfirmed ? 4 : appliedIntentSnapshot ? 3 : resolution ? 2 : 1,
+        version: resolution?.plannerCopies
+          ? 5
+          : proof.privateCarryConfirmed
+            ? 4
+            : appliedIntentSnapshot
+              ? 3
+              : resolution
+                ? 2
+                : 1,
         operationId: generateSyncId(input.cryptoSource),
         provider: context.provider,
         datasetId: context.binding.datasetId,
@@ -368,22 +382,30 @@ export async function reconcileConservativeMerge(options) {
         settingsSelections: [...head.settingsSelections],
         localHash: await conservativeSnapshotHash(local, input.cryptoSource),
         mergedHash: await conservativeSnapshotHash(proof.plan().snapshot(), input.cryptoSource),
-        ...(proof.privateCarryConfirmed
+        ...(resolution?.plannerCopies
           ? {
-              privateCarryConfirmed: true,
-              resolution: resolution || null,
+              privateCarryConfirmed: proof.privateCarryConfirmed === true,
+              resolution,
               appliedIntentHash: appliedIntentSnapshot
                 ? await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
                 : null
             }
-          : appliedIntentSnapshot
+          : proof.privateCarryConfirmed
             ? {
+                privateCarryConfirmed: true,
                 resolution: resolution || null,
-                appliedIntentHash: await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+                appliedIntentHash: appliedIntentSnapshot
+                  ? await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+                  : null
               }
-            : resolution
-              ? { resolution }
-              : {})
+            : appliedIntentSnapshot
+              ? {
+                  resolution: resolution || null,
+                  appliedIntentHash: await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+                }
+              : resolution
+                ? { resolution }
+                : {})
       };
       const checkpoint = structuredClone(original);
       checkpoint.settings = addPendingConservativeMerge(checkpoint.settings, marker);
