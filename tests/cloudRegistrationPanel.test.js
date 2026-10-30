@@ -354,6 +354,23 @@ describe('экспериментальный локальный доступ в 
     expect(connection('forget').disabled).toBe(true);
   });
 
+  it('ошибка загрузки моста до удаления не объявляется начавшейся записью', async () => {
+    let loads = 0;
+    const invoke = vi.fn();
+    const loadNative = vi.fn(async () => {
+      if (++loads > 1) throw new Error(PRIVATE);
+      return { invoke, openBrowser: vi.fn() };
+    });
+    const s = bind({ loadNative, readBinding: vi.fn(async () => ready()) });
+    await inspectConnection();
+    approveInput('forget-approve');
+    connection('forget').click();
+    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Локальная запись не изменялась'));
+    expect(s.forget).not.toHaveBeenCalled();
+    expect(connection('forget-approve').disabled).toBe(false);
+    expect(document.body.textContent).not.toContain(PRIVATE);
+  });
+
   it('неповторяет удаление с неизвестным исходом даже после повторного чтения', async () => {
     const forget = vi.fn(async () => {
       throw new Error(PRIVATE);

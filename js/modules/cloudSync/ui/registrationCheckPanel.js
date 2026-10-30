@@ -472,8 +472,10 @@ export function bindCloudRegistrationCheck(options) {
     forgetApprove.checked = false;
     setBusy();
     progress.textContent = 'Проверяем привязку и удаляем локальный доступ…';
+    let forgetStarted = false;
     try {
       const native = await loadNative();
+      forgetStarted = true;
       const outcome = await forget({ provider: selected, slotId, invoke: native.invoke, confirmed: true });
       observed = null;
       if (outcome === 'forgotten') {
@@ -491,7 +493,8 @@ export function bindCloudRegistrationCheck(options) {
         throw new Error();
       }
     } catch {
-      uncertainOutcome(selected);
+      if (forgetStarted) uncertainOutcome(selected);
+      else progress.textContent = 'Не удалось запустить удаление. Локальная запись не изменялась.';
     } finally {
       operation.finish(uncertain.has(selected));
       if (active === session) {

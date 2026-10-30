@@ -44,6 +44,10 @@ jobs:
         env:
           # Отдельные временные имена; значения синтетические и очищаются после теста.
           TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
+      # Явно проверяем, что opt-in тест не был пропущен или отфильтрован.
+      - run: ./.github/scripts/run-cargo-windows.ps1 credential-smoke
+        env:
+          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
       - run: ./.github/scripts/run-cargo-windows.ps1 fmt
       - run: ./.github/scripts/run-cargo-windows.ps1 clippy
 
