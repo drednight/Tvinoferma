@@ -1,0 +1,537 @@
+// @ts-check
+// Экспериментальный интерфейс первого снимка и восстановления. Не включает
+// автоматическую синхронизацию и не выдаёт неподтверждённый результат за успех.
+// Секреты не записываются в журнал и не выводятся в текст статуса.
+import { createInitialCloudSetup, readLocalCloudPairingCode } from '../initialCloudSetup.js';
+import { sendInitialCloudRoot } from '../sendInitialCloudRoot.js';
+import { createCloudRecovery } from '../recoverCloudConnection.js';
+import { confirmModal } from '../../../core/ui.js';
+import { recordCloudActivity } from '../cloudEventLog.js';
+
+const MESSAGES = Object.freeze({
+  credential_missing_or_blocked: 'Сначала сохраните и проверьте доступ к выбранному диску.',
+  dataset_binding_present:
+    'На этом ПК уже есть привязка набора. Ничего не изменено; воспользуйтесь существующим кодом или восстановлением.',
+  key_present:
+    'Внутренний ключ уже существует. Не создаём новый; проверьте восстановление или продолжите прерванную настройку.',
+  key_missing: 'Внутренний ключ на этом ПК не найден. Используйте основной пароль или запасной ключ.',
+  existing_key_requires_confirmation:
+    'Ключ уже сохранён на этом ПК. Выберите восстановление с уже сохранённым внутренним ключом.',
+  key_mismatch: 'Сохранённый внутренний ключ не совпадает с независимым кодом. Ничего не изменено.',
+  key_missing_or_blocked: 'Внутренний ключ не найден или требует проверки. Ничего не изменено.',
+  queue_present: 'Локальная очередь уже существует. Не создаём новый набор поверх неё.',
+  queue_blocked: 'Локальная очередь не подтверждена или относится к другому набору. Ничего не отправлено.',
+  other_queue_present_or_blocked:
+    'На другом диске уже есть очередь или незавершённая настройка. Автоматически второй набор не создаём.',
+  queue_not_initialized: 'Очередь не создана или изменилась. Проверьте локальное состояние перед продолжением.',
+  binding_not_installed: 'Привязка не подтверждена. Проверьте сохранённый ключ и очередь перед продолжением.',
+  local_binding_changed: 'Доступ, ключ или очередь изменились. Повторите проверку после изучения локального состояния.',
+  data_unprepared:
+    'Сначала подготовьте локальные идентификаторы и сохраните данные. Если было выборочное применение, требуется согласование происхождения.',
+  disk_changed_or_unsaved: 'Память и сохранённый файл не совпадают. Сначала сохраните данные и повторите проверку.',
+  state_changed_or_unsaved: 'Данные изменились или не сохранены. Первый снимок не отправлен.',
+  state_changed: 'Локальные данные изменились после просмотра. Действие остановлено; начните сравнение заново.',
+  key_installed_state_changed:
+    'Ключ сохранён, но данные изменились до подготовки снимка. Сохраните их и продолжите прерванную настройку.',
+  backup_unconfirmed_restart:
+    'Копия не подтверждена. Сохранение остановлено; проверьте данные и резервные копии перед перезапуском.',
+  state_changed_after_backup_restart:
+    'Данные изменились во время копирования. Проверьте несохранённые правки и копию перед перезапуском.',
+  setup_uncertain:
+    'Результат локальной операции не подтверждён. Не повторяйте её сейчас: проверьте данные, копии и состояние после перезапуска.',
+  busy_or_restart_required: 'Другая операция выполняется или требуется проверка после перезапуска.',
+  invalid_backup: 'Запасной ключ не совпал. Попробуйте ввести сохранённую копию ещё раз.',
+  invalid_secret_or_file:
+    'Не удалось открыть файл этим секретом. Проверьте код, выбранный диск и секрет; данные не изменены.',
+  root_unavailable:
+    'Корневая версия не найдена или диск недоступен. Старое облако могло находиться в другой папке или Client ID.',
+  root_mismatch: 'Файл не совпадает с независимым кодом сверки. Ничего не изменено.',
+  history_unverified: 'История не прошла проверку корня и известных версий. Данные не изменены.',
+  cloud_changed: 'Облачный список изменился после просмотра или стал недоступен. Повторите сравнение.',
+  prepared_snapshot_outdated:
+    'Первый подготовленный снимок уже устарел. Отправка остановлена; обновление подготовленного корня пока не реализовано.',
+  provenance_review_required: 'После выборочного применения требуется согласование происхождения перед отправкой.',
+  queue_changed: 'Очередь изменилась во время проверки. Отправка остановлена.',
+  verification_pending:
+    'Отправка могла выполниться, но чтение и сверка ещё не подтвердились. Повторный запрос создания не выполняется.',
+  cloud_content_mismatch: 'Облачный файл не совпал с подготовленным. Не повторяйте отправку; требуется проверка.',
+  already_confirmed: 'Первый снимок уже подтверждён. Последующие изменения пока не отправляются.',
+  sent_verified: 'Первый зашифрованный снимок отправлен и сверен чтением. Последующие изменения пока не отправляются.',
+  unavailable:
+    'Операция не завершена. Ничего не считайте отправленным или применённым; проверьте состояние и повторите проверку.'
+});
+function name(provider) {
+  return provider === 'google' ? 'Google Диск' : 'Яндекс Диск';
+}
+function record(provider, action, status) {
+  const outcome = ['prepared', 'connected', 'sent_verified', 'already_confirmed'].includes(status)
+    ? 'success'
+    : ['setup_uncertain', 'verification_pending', 'key_installed_state_changed'].includes(status)
+      ? 'uncertain'
+      : status === 'unavailable'
+        ? 'unavailable'
+        : 'blocked';
+  try {
+    recordCloudActivity(provider, action, outcome);
+  } catch {
+    /* журнал не влияет на действие */
+  }
+}
+
+/**
+ * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
+ * makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
+ * readCode?:typeof readLocalCloudPairingCode,confirm?:(message:string)=>boolean|Promise<boolean>,
+ * reviewPanel?:{showExternalReview:(value:any,readOnly?:boolean)=>boolean,hasPreviewSelection:()=>boolean,clearExternalReview?:()=>void}}} options
+ */
+export function bindInitialCloudPanel(options) {
+  const doc = options.doc || document;
+  const panel = doc.getElementById('cloud-setup-title')?.closest('.cloud-setup');
+  const provider = /** @type {HTMLSelectElement|null} */ (doc.getElementById('cloud-registration-provider'));
+  const ids = [
+    'main-kind',
+    'main',
+    'main-repeat',
+    'backup-kind',
+    'custom-label',
+    'custom',
+    'new-approve',
+    'create',
+    'resume',
+    'confirm',
+    'generated-label',
+    'generated',
+    'reveal',
+    'backup-confirm',
+    'saved',
+    'confirm-button',
+    'cancel',
+    'show-code',
+    'send-root',
+    'code-label',
+    'code',
+    'status'
+  ];
+  const elements = Object.fromEntries(ids.map(id => [id, doc.getElementById(`cloud-setup-${id}`)]));
+  const recoveryIds = [
+    'code',
+    'role',
+    'secret-label',
+    'secret',
+    'approve',
+    'reviewed-label',
+    'reviewed',
+    'check',
+    'connect',
+    'cancel'
+  ];
+  const recovery = Object.fromEntries(recoveryIds.map(id => [id, doc.getElementById(`cloud-recovery-${id}`)]));
+  if (
+    !panel ||
+    !provider ||
+    Object.values(elements).some(value => !value) ||
+    Object.values(recovery).some(value => !value)
+  )
+    return;
+  if (panel.getAttribute('data-cloud-setup-bound') === 'true') return;
+  panel.setAttribute('data-cloud-setup-bound', 'true');
+  const el = /** @type {Record<string,any>} */ (elements);
+  const rec = /** @type {Record<string,any>} */ (recovery);
+  const loadNative = options.loadNative || (async () => ({ invoke: (await import('@tauri-apps/api/core')).invoke }));
+  const makeSetup = options.makeSetup || createInitialCloudSetup;
+  const makeRecovery = options.makeRecovery || createCloudRecovery;
+  const send = options.send || sendInitialCloudRoot;
+  const readCode = options.readCode || readLocalCloudPairingCode;
+  const askConfirmation =
+    options.confirm ||
+    (text => confirmModal({ title: 'Подтверждение синхронизации', text, okText: 'Продолжить', danger: true }));
+  const settingBoxes = [...doc.querySelectorAll('[data-cloud-review-setting]')].map(
+    box => /** @type {HTMLInputElement} */ (box)
+  );
+  const controls = [...panel.querySelectorAll('input,button,select,textarea')].map(
+    control => /** @type {HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement} */ (control)
+  );
+  let busy = false;
+  let generation = 0;
+  let attempt = null;
+  let mode = null;
+  let selected = null;
+  let attemptGeneration = -1;
+  const selections = () => settingBoxes.filter(box => box.checked).map(box => box.value);
+  const selectedProvider = () => /** @type {'google'|'yandex'} */ (provider.value === 'google' ? 'google' : 'yandex');
+  const note = value => {
+    el.status.textContent = value;
+  };
+  function status(value) {
+    return MESSAGES[value] || MESSAGES.unavailable;
+  }
+  function update() {
+    for (const control of controls) control.disabled = !options.desktop || busy;
+    if (!options.desktop || busy) return;
+    const pending = !!attempt;
+    for (const id of ['create', 'resume', 'show-code', 'send-root']) el[id].disabled = pending;
+    rec.check.disabled = pending;
+    el['confirm-button'].disabled = mode !== 'new';
+    el.cancel.disabled = mode !== 'new';
+    rec.connect.disabled = mode !== 'recovery';
+    rec.cancel.disabled = mode !== 'recovery';
+    el['custom-label'].hidden = el['backup-kind'].value !== 'custom';
+    rec['secret-label'].hidden = rec.role.value === 'existing';
+  }
+  function forgetSecrets() {
+    for (const input of [el.main, el['main-repeat'], el.custom, el.generated, el['backup-confirm'], rec.secret])
+      input.value = '';
+    el.generated.type = 'password';
+    el.reveal.textContent = 'Показать запасной ключ';
+    el.saved.checked = false;
+  }
+  function clearAttempt(cancel = false) {
+    if (cancel) attempt?.cancel?.();
+    attempt = null;
+    mode = null;
+    selected = null;
+    attemptGeneration = -1;
+    el.confirm.hidden = true;
+    el['generated-label'].hidden = true;
+    el.reveal.hidden = true;
+    rec.connect.hidden = true;
+    rec.cancel.hidden = true;
+    rec['reviewed-label'].hidden = true;
+    rec.reviewed.checked = false;
+    forgetSecrets();
+  }
+  function showCode(code) {
+    el.code.value = code;
+    el['code-label'].hidden = false;
+  }
+  async function withBusy(work) {
+    if (busy || !options.desktop) return;
+    busy = true;
+    update();
+    try {
+      await work();
+    } finally {
+      busy = false;
+      if (attempt && (generation !== attemptGeneration || selectedProvider() !== selected)) {
+        clearAttempt(true);
+        options.reviewPanel?.clearExternalReview?.();
+        note('Выбор изменился. Незавершённое действие отменено; проверьте локальное состояние.');
+      }
+      update();
+    }
+  }
+  function invalidate() {
+    generation++;
+    if (!busy && attempt) {
+      clearAttempt(true);
+      options.reviewPanel?.clearExternalReview?.();
+      note('Выбор диска или настроек изменён. Предварительное действие отменено.');
+    }
+    el.code.value = '';
+    el['code-label'].hidden = true;
+    update();
+  }
+  provider.addEventListener('change', invalidate);
+  for (const box of settingBoxes) box.addEventListener('change', invalidate);
+  el['backup-kind'].addEventListener('change', update);
+  rec.role.addEventListener('change', update);
+  el.reveal.addEventListener('click', () => {
+    const visible = el.generated.type === 'text';
+    el.generated.type = visible ? 'password' : 'text';
+    el.reveal.textContent = visible ? 'Показать запасной ключ' : 'Скрыть запасной ключ';
+  });
+  el.cancel.addEventListener('click', () => {
+    if (busy || mode !== 'new') return;
+    clearAttempt(true);
+    note('Подготовка отменена. Созданная локальная копия остаётся; ключ и облако не изменены.');
+    update();
+  });
+  rec.cancel.addEventListener('click', () => {
+    if (busy || mode !== 'recovery') return;
+    clearAttempt(true);
+    options.reviewPanel?.clearExternalReview?.();
+    note('Восстановление отменено. Локальные данные и облако не изменены.');
+    update();
+  });
+  el.create.addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt || !el['new-approve'].checked) {
+          note('Подтвердите, что хотите создать именно новый независимый набор.');
+          return;
+        }
+        if (!el.main.value || el.main.value !== el['main-repeat'].value) {
+          note('Основной секрет и его повторение не совпадают.');
+          return;
+        }
+        const thisGeneration = generation;
+        const chosen = selectedProvider();
+        const primary = { kind: el['main-kind'].value, secret: el.main.value };
+        const backup =
+          el['backup-kind'].value === 'custom' ? { kind: 'custom', secret: el.custom.value } : { kind: 'generated' };
+        el.main.value = '';
+        el['main-repeat'].value = '';
+        el.custom.value = '';
+        note('Создаём локальную копию и готовим ключи. Это может занять несколько секунд…');
+        try {
+          const native = await loadNative();
+          const setup = makeSetup({ provider: chosen, invoke: native.invoke, settingsSelections: selections() });
+          const prepared = await setup.begin({ primary, backup, newDatasetConfirmed: true });
+          if (generation !== thisGeneration || selectedProvider() !== chosen) {
+            prepared.cancel?.();
+            note('Выбор изменился. Подготовка отменена; проверьте локальную копию.');
+            return;
+          }
+          if (prepared.status !== 'prepared') {
+            record(chosen, 'prepare', prepared.status);
+            note(status(prepared.status));
+            return;
+          }
+          attempt = prepared;
+          mode = 'new';
+          selected = chosen;
+          attemptGeneration = thisGeneration;
+          el.confirm.hidden = false;
+          el.saved.checked = false;
+          el['backup-confirm'].value = '';
+          if (prepared.generatedBackupSecret) {
+            el.generated.value = prepared.generatedBackupSecret;
+            el['generated-label'].hidden = false;
+            el.reveal.hidden = false;
+          }
+          note(
+            'Ключи подготовлены в памяти. Сохраните и повторно введите запасной ключ; на диск ничего не отправлено.'
+          );
+        } catch {
+          note('Не удалось подготовить набор. Проверьте длину и различие секретов, локальные данные и копии.');
+        }
+      })
+  );
+  el['confirm-button'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (!attempt || mode !== 'new' || !el.saved.checked) {
+          note('Подтвердите, что отдельно сохранили запасной ключ.');
+          return;
+        }
+        const current = attempt;
+        const chosen = selected;
+        const thisGeneration = generation;
+        const secret = el['backup-confirm'].value;
+        el['backup-confirm'].value = '';
+        note('Проверяем запасной ключ и сохраняем локальную привязку…');
+        try {
+          const result = await current.confirmBackup({ secret, savedSeparately: true });
+          record(chosen, 'prepare', result.status);
+          if (result.status === 'invalid_backup' || result.status === 'confirmation_required') {
+            note(status(result.status));
+            return;
+          }
+          clearAttempt();
+          if (result.status === 'prepared' && generation === thisGeneration && selectedProvider() === chosen) {
+            showCode(result.pairingCode);
+            note(
+              `Локальный набор подготовлен для ${name(chosen)}. Копия: ${result.backup}. Ничего не отправлено; сохраните код сверки отдельно.`
+            );
+          } else if (result.status === 'prepared') {
+            note('Набор подготовлен на прежнем диске. Выберите его снова, чтобы показать код сверки.');
+          } else note(status(result.status));
+        } catch {
+          record(chosen, 'prepare', 'setup_uncertain');
+          clearAttempt();
+          note(status('setup_uncertain'));
+        }
+      })
+  );
+  el.resume.addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        if (
+          !(await askConfirmation(
+            'Продолжить прерванную настройку выбранного диска? Подтвердите, что запасной ключ уже сохранён отдельно. Старое облако не ищется и не удаляется.'
+          ))
+        )
+          return;
+        if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+        note('Проверяем ключ, локальную копию и незавершённую очередь…');
+        try {
+          const native = await loadNative();
+          const outcome = await makeSetup({
+            provider: chosen,
+            invoke: native.invoke,
+            settingsSelections: selections()
+          }).resume({ resumeConfirmed: true, backupKeySaved: true });
+          record(chosen, 'prepare', outcome.status);
+          if (outcome.status === 'prepared' && generation === thisGeneration && selectedProvider() === chosen) {
+            showCode(outcome.pairingCode);
+            note(`Локальная настройка продолжена. Копия: ${outcome.backup}. На диск ничего не отправлено.`);
+          } else note(status(outcome.status));
+        } catch {
+          record(chosen, 'prepare', 'setup_uncertain');
+          note(status('setup_uncertain'));
+        }
+      })
+  );
+  el['show-code'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        try {
+          const native = await loadNative();
+          const outcome = /** @type {any} */ (await readCode({ provider: chosen, invoke: native.invoke }));
+          if (outcome.status === 'ready' && generation === thisGeneration && selectedProvider() === chosen) {
+            showCode(outcome.pairingCode);
+            note('Код сверки показан. Передавайте его независимо от облачного файла.');
+          } else note(status(outcome.status));
+        } catch {
+          note(status('unavailable'));
+        }
+      })
+  );
+  el['send-root'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        if (
+          !(await askConfirmation(
+            `Отправить первый зашифрованный снимок на ${name(chosen)}? Это экспериментальная однократная отправка: последующие сохранения пока не синхронизируются. Старое облако не проверяется и не удаляется.`
+          ))
+        )
+          return;
+        if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+        note('Отправляем подготовленный снимок и проверяем его чтением…');
+        try {
+          const native = await loadNative();
+          const outcome = await send({
+            provider: chosen,
+            invoke: native.invoke,
+            confirmed: true,
+            settingsSelections: selections()
+          });
+          record(chosen, 'send', outcome.status);
+          note(status(outcome.status));
+        } catch {
+          record(chosen, 'send', 'verification_pending');
+          note(status('verification_pending'));
+        }
+      })
+  );
+  rec.check.addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt || !rec.approve.checked || !rec.code.value) {
+          note('Введите код и подтвердите его независимый доверенный источник.');
+          return;
+        }
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        const secret = rec.secret.value;
+        rec.secret.value = '';
+        note('Проверяем независимый код, диск и создаём локальную копию…');
+        try {
+          const native = await loadNative();
+          const recovery = makeRecovery({ provider: chosen, invoke: native.invoke, settingsSelections: selections() });
+          const prepared = await recovery.begin({
+            pairingCode: rec.code.value,
+            independentPinConfirmed: true,
+            role: rec.role.value,
+            secret
+          });
+          if (generation !== thisGeneration || selectedProvider() !== chosen) {
+            prepared.cancel?.();
+            note('Выбор изменился. Восстановление отменено; данные не применялись.');
+            return;
+          }
+          if (prepared.status !== 'ready_for_confirmation') {
+            record(chosen, 'recover', prepared.status);
+            note(status(prepared.status));
+            return;
+          }
+          attempt = prepared;
+          mode = 'recovery';
+          selected = chosen;
+          attemptGeneration = thisGeneration;
+          rec.connect.hidden = false;
+          rec.cancel.hidden = false;
+          rec['reviewed-label'].hidden = false;
+          rec.reviewed.checked = false;
+          const shown = options.reviewPanel?.showExternalReview(prepared.review, true);
+          note(
+            shown
+              ? `Предварительное сравнение готово ниже. Копия: ${prepared.backup}. Изучите версии и различия, затем подтвердите подключение.`
+              : `История проверена. Копия: ${prepared.backup}. Подтвердите подключение, затем проверьте различия в блоке ниже.`
+          );
+        } catch {
+          note(status('unavailable'));
+        }
+      })
+  );
+  rec.connect.addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (!attempt || mode !== 'recovery') return;
+        if (!rec.reviewed.checked || !options.reviewPanel?.hasPreviewSelection()) {
+          note(
+            'Сначала выберите версию в предварительном сравнении ниже и подтвердите, что изучили различия. Если сравнение закрыто, отмените восстановление и начните его заново.'
+          );
+          return;
+        }
+        const current = attempt;
+        const chosen = selected;
+        const thisGeneration = generation;
+        if (
+          !(await askConfirmation(
+            'Подключить проверенный набор? Локальные данные не будут изменены. После подключения выберите версии и записи в сравнении; применение создаст отдельную копию.'
+          ))
+        )
+          return;
+        if (generation !== thisGeneration || selectedProvider() !== chosen) {
+          clearAttempt(true);
+          options.reviewPanel?.clearExternalReview?.();
+          note('Выбор изменился. Подключение отменено.');
+          return;
+        }
+        note('Повторно проверяем облако и закрепляем локальную привязку…');
+        try {
+          const outcome = await current.connect({ confirmed: true });
+          record(chosen, 'recover', outcome.status);
+          clearAttempt();
+          if (outcome.status === 'connected' && generation === thisGeneration && selectedProvider() === chosen) {
+            options.reviewPanel?.showExternalReview(outcome.review, false);
+            note(
+              `Подключение восстановлено. Копия: ${outcome.backup}. Выберите изменения в сравнении ниже; они ещё не применены.`
+            );
+          } else {
+            options.reviewPanel?.clearExternalReview?.();
+            note(status(outcome.status));
+          }
+        } catch {
+          record(chosen, 'recover', 'setup_uncertain');
+          clearAttempt();
+          options.reviewPanel?.clearExternalReview?.();
+          note(status('setup_uncertain'));
+        }
+      })
+  );
+  doc.defaultView?.addEventListener('pagehide', () => {
+    if (!busy) clearAttempt(true);
+    forgetSecrets();
+  });
+  update();
+  if (!options.desktop)
+    note('Первичная настройка доступна только в настольном приложении; в браузере диск не подключается.');
+}

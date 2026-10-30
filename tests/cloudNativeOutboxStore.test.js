@@ -15,7 +15,7 @@ function ipc() {
   let state = { status: 'empty' };
   const invoke = vi.fn(async (command, input) => {
     if (command === 'cloud_outbox_read') return structuredClone(state);
-    if (command === 'cloud_outbox_install') {
+    if (command === 'cloud_outbox_install' || command === 'cloud_outbox_install_initial') {
       if (state.status !== 'empty') return { status: 'occupied' };
       const { slotId, datasetId, deviceId, revisionId, record } = input.args;
       state = { status: 'ready', slotId, datasetId, deviceId, revisionId, record, sha256: digest(record) };
@@ -88,6 +88,26 @@ describe.each(['google', 'yandex'])('%s native IPC: адаптер журнал�
     expect(requests).not.toContain('ДРУГАЯ ЛИЧНАЯ ЗАПИСЬ');
     expect(requests).not.toContain(dataKey);
     expect(fake.invoke.mock.calls.every(call => call[1].provider === provider)).toBe(true);
+  });
+
+  it('для первого корня требует отдельную нативную проверку обеих очередей и привязок', async () => {
+    const fake = ipc();
+    const guard = { accountSlotId: id(), keySlotId: id(), bundleId: id(), fingerprint: 'a'.repeat(64) };
+    const noGuard = createNativeOutboxStore({ provider, invoke: fake.invoke });
+    expect(() => noGuard.installInitial(args())).toThrow();
+    expect(fake.invoke).not.toHaveBeenCalled();
+    const store = createNativeOutboxStore({ provider, invoke: fake.invoke, initialGuard: guard });
+    guard.fingerprint = 'b'.repeat(64);
+    expect(await store.installInitial(args())).toEqual({ status: 'installed' });
+    expect(fake.invoke).toHaveBeenCalledWith('cloud_outbox_install_initial', {
+      provider,
+      args: args(),
+      guard: { ...guard, fingerprint: 'a'.repeat(64) }
+    });
+    expect(await store.read()).toMatchObject({ status: 'ready' });
+    expect(() =>
+      createNativeOutboxStore({ provider, invoke: fake.invoke, initialGuard: { ...guard, keySlotId: 'bad' } })
+    ).toThrow();
   });
 
   it('не принимает лишние поля, повреждённый конверт, повторные ключи и неправильные ID', async () => {

@@ -6,6 +6,7 @@ import { checkConnectedCloud } from '../checkConnectedCloud.js';
 import { stageReviewedCloudApply } from '../commitReviewedCloud.js';
 import { stageSyncIdentities } from '../commitSyncIdentities.js';
 import { confirmModal } from '../../../core/ui.js';
+import { recordCloudActivity } from '../cloudEventLog.js';
 
 const LABELS = Object.freeze({
   characters: 'Персонажи',
@@ -52,6 +53,13 @@ const MAX_DETAIL_CHARS = 25_000;
 const MAX_SHOWN_ENTRIES = 1_000;
 function providerName(provider) {
   return provider === 'google' ? 'Google Диск' : 'Яндекс Диск';
+}
+function record(provider, action, outcome) {
+  try {
+    recordCloudActivity(provider, action, outcome);
+  } catch {
+    /* журнал не влияет на действие */
+  }
 }
 function dateText(value) {
   if (value === null || value === undefined) return 'неизвестно';
@@ -156,6 +164,7 @@ export function bindCloudReviewPanel(options) {
   let active = false;
   let controller = null;
   let review = null;
+  let previewOnly = false;
   let selected = null;
   let choices = [];
   function choiceBoxes() {
@@ -168,12 +177,13 @@ export function bindCloudReviewPanel(options) {
     versions.disabled = value;
     all.disabled = value;
     none.disabled = value;
-    apply.disabled = value;
+    apply.disabled = value || previewOnly;
     for (const box of settingBoxes) box.disabled = value;
     for (const box of choiceBoxes()) box.disabled = value || box.dataset.locked === 'true';
   }
   function clearView() {
     review = null;
+    previewOnly = false;
     selected = null;
     choices = [];
     result.hidden = true;
@@ -185,8 +195,9 @@ export function bindCloudReviewPanel(options) {
   function note(text) {
     status.textContent = text;
   }
-  function putReview(value) {
+  function putReview(value, readOnly = false) {
     review = value;
+    previewOnly = readOnly;
     selected = null;
     choices = [];
     list.replaceChildren();
@@ -206,7 +217,9 @@ export function bindCloudReviewPanel(options) {
     result.hidden = false;
     note(
       value.versions.length
-        ? 'Проверка завершена. Выберите конкретную версию для сравнения.'
+        ? readOnly
+          ? 'Предварительное сравнение: выберите версию и изучите различия. Применение доступно после подтверждения подключения.'
+          : 'Проверка завершена. Выберите конкретную версию для сравнения.'
         : 'Подтверждённых версий не найдено. Отсутствие не доказывает удаление.'
     );
   }
@@ -220,22 +233,29 @@ export function bindCloudReviewPanel(options) {
     try {
       const native = await loadNative();
       if (current.signal.aborted) return;
-      const value = await check({
-        provider: /** @type {'google'|'yandex'} */ (selectedProvider),
-        invoke: native.invoke,
-        settingsSelections: settingBoxes.filter(box => box.checked).map(box => box.value),
-        signal: current.signal
-      });
+      const value = /** @type {any} */ (
+        await check({
+          provider: /** @type {'google'|'yandex'} */ (selectedProvider),
+          invoke: native.invoke,
+          settingsSelections: settingBoxes.filter(box => box.checked).map(box => box.value),
+          signal: current.signal
+        })
+      );
       if (current.signal.aborted || provider.value !== selectedProvider) return;
+      if (value.status === 'ready_for_review')
+        record(selectedProvider, 'check', value.versions.length ? 'success' : 'empty');
+      else if (value.status !== 'binding_missing' || !automatic) record(selectedProvider, 'check', 'blocked');
       if (value.status === 'ready_for_review') putReview(value);
       else if (!automatic || value.status !== 'binding_missing')
         note(MESSAGES[value.status] || 'Проверка не завершена. Данные не применялись.');
       else note('Автопроверка: выбранный диск ещё не настроен. Старые облачные данные могли сохраниться.');
     } catch {
-      if (!current.signal.aborted)
+      if (!current.signal.aborted) {
+        record(selectedProvider, 'check', 'unavailable');
         note(
           `${automatic ? 'Автопроверка' : 'Проверка'} ${providerName(selectedProvider)} не выполнена. Данные не применялись.`
         );
+      }
     } finally {
       if (controller === current) controller = null;
       setBusy(false);
@@ -316,6 +336,10 @@ export function bindCloudReviewPanel(options) {
       .filter(Boolean);
   }
   async function applySelection() {
+    if (previewOnly) {
+      note('Это предварительный просмотр. Сначала подтвердите подключение восстановленного набора.');
+      return;
+    }
     if (active || !review || !selected) return;
     const chosen = checkedChoices();
     if (!chosen.length) {
@@ -365,6 +389,11 @@ export function bindCloudReviewPanel(options) {
     note('Создаём резервную копию и сохраняем выбранные изменения…');
     try {
       const outcome = await operation.commit({ confirmed: true });
+      record(
+        originalProvider,
+        'apply',
+        outcome.status === 'applied' ? 'success' : outcome.status.endsWith('_restart') ? 'uncertain' : 'blocked'
+      );
       if (outcome.status === 'applied') {
         clearView();
         note(
@@ -373,6 +402,7 @@ export function bindCloudReviewPanel(options) {
         doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-applied'));
       } else note(MESSAGES[outcome.status] || 'Применение не подтверждено. Проверьте данные и резервные копии.');
     } catch {
+      record(originalProvider, 'apply', 'uncertain');
       note('Применение не подтверждено. Не повторяйте его до проверки данных и копий.');
     } finally {
       setBusy(false);
@@ -392,6 +422,7 @@ export function bindCloudReviewPanel(options) {
       note('Не удалось подготовить локальные данные. Проверьте связи записей и сохранение. Диск не изменялся.');
       return;
     }
+    const identityProvider = provider.value;
     setBusy(true);
     let approved;
     try {
@@ -410,11 +441,17 @@ export function bindCloudReviewPanel(options) {
     note('Создаём копию и сохраняем локальные идентификаторы…');
     try {
       const outcome = await prepared.operation.commit({ confirmed: true });
+      record(
+        identityProvider,
+        'identities',
+        outcome.status === 'applied' ? 'success' : outcome.status.endsWith('_restart') ? 'uncertain' : 'blocked'
+      );
       if (outcome.status === 'applied') {
         clearView();
         note(`Локальные данные подготовлены. Копия: ${outcome.backup}. Облачный диск не изменялся.`);
       } else note(MESSAGES[outcome.status] || 'Подготовка не подтверждена. Проверьте данные и резервные копии.');
     } catch {
+      record(identityProvider, 'identities', 'uncertain');
       note('Подготовка не подтверждена. Не повторяйте её до проверки данных и копий.');
     } finally {
       setBusy(false);
@@ -436,12 +473,14 @@ export function bindCloudReviewPanel(options) {
   provider.addEventListener('change', () => {
     controller?.abort();
     clearView();
+    setBusy(active);
     note('Выбран другой диск. Проверьте его обновления отдельно.');
   });
   for (const box of settingBoxes)
     box.addEventListener('change', () => {
       controller?.abort();
       clearView();
+      setBusy(active);
       note('Выбор настроек изменён. Повторите проверку.');
     });
   let startupStarted = false;
@@ -468,6 +507,8 @@ export function bindCloudReviewPanel(options) {
           })
         );
         if (!current.signal.aborted && provider.value === first) {
+          if (value.status === 'ready_for_review') record(other, 'check', value.versions.length ? 'success' : 'empty');
+          else if (!['binding_missing', 'cancelled'].includes(value.status)) record(other, 'check', 'blocked');
           if (value.status === 'ready_for_review' && value.versions.length)
             note(
               `${status.textContent} На ${providerName(other)} тоже найдены проверенные версии; выберите этот диск для просмотра.`
@@ -480,8 +521,10 @@ export function bindCloudReviewPanel(options) {
             note(`${status.textContent} ${providerName(other)}: ${MESSAGES[value.status] || 'проверка не завершена.'}`);
         }
       } catch {
-        if (!current.signal.aborted && provider.value === first)
+        if (!current.signal.aborted && provider.value === first) {
+          record(other, 'check', 'unavailable');
           note(`${status.textContent} Второй диск автоматически проверить не удалось.`);
+        }
       } finally {
         if (controller === current) controller = null;
         setBusy(false);
@@ -491,4 +534,31 @@ export function bindCloudReviewPanel(options) {
   setBusy(false);
   if (!options.desktop)
     note('Проверка доступна только в настольном приложении; в браузерном примере диск не подключается.');
+  return Object.freeze({
+    /** Показывает проверенный предварительный просмотр без передачи личных данных через DOM-события. */
+    showExternalReview(value, readOnly = true) {
+      if (
+        !options.desktop ||
+        active ||
+        !value ||
+        value.status !== 'ready_for_review' ||
+        value.provider !== provider.value
+      )
+        return false;
+      clearView();
+      putReview(value, readOnly);
+      setBusy(false);
+      return true;
+    },
+    hasPreviewSelection() {
+      return !active && previewOnly && !!review && !!selected;
+    },
+    clearExternalReview() {
+      if (!active && previewOnly) {
+        clearView();
+        setBusy(false);
+        note('Предварительное сравнение отменено. Данные не применены.');
+      }
+    }
+  });
 }

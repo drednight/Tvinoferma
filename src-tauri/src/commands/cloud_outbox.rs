@@ -1,6 +1,7 @@
 //! Экспериментальный Windows backend журнала исходящих облачных версий.
-//! Реальному UI ещё не подключён. Только главное окно, фиксированные имена,
-//! зашифрованный конверт и отдельная OS-отметка; исходные ошибки не выдаются.
+//! Используется экспериментальным сценарием первого снимка. Только главное окно,
+//! фиксированные имена, зашифрованный конверт и отдельная OS-отметка; исходные
+//! ошибки не выдаются. Полная и автоматическая синхронизация не реализована.
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
@@ -17,6 +18,16 @@ pub struct OutboxWrite {
     device_id: String,
     revision_id: String,
     record: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub struct OutboxInitialGuard {
+    account_slot_id: String,
+    key_slot_id: String,
+    bundle_id: String,
+    fingerprint: String,
 }
 
 #[derive(Deserialize)]
@@ -54,6 +65,10 @@ pub struct OutboxReply {
 enum Action {
     Read,
     Install(OutboxWrite),
+    InstallInitial {
+        args: OutboxWrite,
+        guard: OutboxInitialGuard,
+    },
     CompareExchange(OutboxSwap),
 }
 
@@ -88,6 +103,22 @@ pub async fn cloud_outbox_install(
     perform(app, provider, Action::Install(args)).await
 }
 
+/// Первое намерение для нового набора: обе очереди и привязки проверяются
+/// внутри одного общего lock, до установки любого нового корня.
+#[tauri::command]
+pub async fn cloud_outbox_install_initial(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    provider: String,
+    args: OutboxWrite,
+    guard: OutboxInitialGuard,
+) -> Result<OutboxReply, String> {
+    if window.label() != "main" {
+        return Err(ERROR.into());
+    }
+    perform(app, provider, Action::InstallInitial { args, guard }).await
+}
+
 #[tauri::command]
 pub async fn cloud_outbox_compare_exchange(
     window: tauri::WebviewWindow,
@@ -111,6 +142,7 @@ mod windows_backend {
     use super::{Action, AppHandle, OutboxReply, ERROR};
     use crate::cloud_credential_lock::CredentialLock;
     use crate::cloud_credential_store::CredentialVault;
+    use crate::cloud_initial_outbox;
     use crate::cloud_outbox_store::{
         self, Expected, Inspection, NewRecord, OutboxFile, Outcome, Receipt, Target,
         MAX_OUTBOX_RECORD_BYTES,
@@ -352,6 +384,38 @@ mod windows_backend {
                 cloud_outbox_store::install(&mut vault, &mut file, target, &next)
                     .map(outcome)
                     .map_err(|_| ERROR.to_owned())
+            }
+            Action::InstallInitial { args, guard } => {
+                let next = NewRecord {
+                    slot_id: &args.slot_id,
+                    dataset_id: &args.dataset_id,
+                    device_id: &args.device_id,
+                    revision_id: &args.revision_id,
+                    record: &args.record,
+                };
+                let expected = cloud_initial_outbox::Guard {
+                    account_slot: &guard.account_slot_id,
+                    key_slot: &guard.key_slot_id,
+                    bundle_id: &guard.bundle_id,
+                    fingerprint: &guard.fingerprint,
+                };
+                let other_name = match target {
+                    Target::Google => "cloud-outbox-v1-yandex.tfqo",
+                    Target::Yandex => "cloud-outbox-v1-google.tfqo",
+                };
+                let mut other_file = NativeFile {
+                    path: app_dir.join(other_name),
+                };
+                cloud_initial_outbox::install(
+                    &mut vault,
+                    &mut file,
+                    &mut other_file,
+                    target,
+                    &next,
+                    &expected,
+                )
+                .map(outcome)
+                .map_err(|_| ERROR.to_owned())
             }
             Action::CompareExchange(args) => {
                 let next = NewRecord {

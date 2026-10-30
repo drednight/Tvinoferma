@@ -154,6 +154,7 @@ async function validateVersion(envelope, dataKey, binding, crypto) {
   )
     throw invalid();
   publicSnapshotIdentityTypes(history.publicSnapshot);
+  return { parent: history.parent, publicSnapshot: history.publicSnapshot };
 }
 
 function entryFor(value, binding) {
@@ -357,7 +358,7 @@ export function createDurableCloudOutbox(options) {
     });
     return { status: 'ready', receipt: reply, state: checkState(decoded, binding) };
   }
-  async function write(previous, state) {
+  async function write(previous, state, initial = false) {
     const clean = checkState(state, binding);
     const revisionId = distinctId(crypto, [
       binding.datasetId,
@@ -393,7 +394,9 @@ export function createDurableCloudOutbox(options) {
             expectedRevisionId: previous.receipt.revisionId,
             expectedSha256: previous.receipt.sha256
           })
-        : await store.install(common);
+        : initial
+          ? await store.installInitial(common)
+          : await store.install(common);
       const checked = object(result, ['status']);
       if (!['installed', 'swapped', 'occupied', 'mismatch', 'blocked'].includes(checked.status)) throw invalid();
       if (checked.status === 'occupied' || checked.status === 'mismatch') return { status: 'changed' };
@@ -444,6 +447,156 @@ export function createDurableCloudOutbox(options) {
         if (before.status !== 'empty') return unavailable(before);
         const saved = await write(null, bindingState(binding));
         return response(saved.status === 'ready' ? 'initialized' : saved.status);
+      });
+    },
+    /**
+     * Первое намерение и корень сохраняются одним CAS. Закреплять root pin или
+     * выполнять сетевую запись до этого нельзя: пустая очередь не доказывает,
+     * какая именно случайная ciphertext-версия создавалась перед перезапуском.
+     * Неизвестный результат требует остановки, а не создания другого корня.
+     * @param {unknown} envelope
+     * @param {boolean} confirmedNew
+     */
+    async initializeWithRoot(envelope, confirmedNew) {
+      if (confirmedNew !== true) throw invalid();
+      if (typeof store.installInitial !== 'function') return response('initial_guard_unavailable');
+      let copy;
+      try {
+        copy = copyCloudEnvelope(envelope, binding.datasetId);
+        if (copy.version !== 2 || (binding.provider === 'google' && JSON.stringify(copy).length > MAX_GOOGLE_ENVELOPE))
+          throw invalid();
+      } catch {
+        throw invalid();
+      }
+      return run(async () => {
+        try {
+          const verified = await validateVersion(copy, dataKey, binding, crypto);
+          if (verified.parent !== null) return response('invalid_root');
+        } catch {
+          return response('invalid_root');
+        }
+        const rootPin = await historyEnvelopePin({
+          envelope: copy,
+          expectedDatasetId: binding.datasetId,
+          cryptoSource: crypto
+        });
+        const before = await read();
+        if (before.status === 'ready') return response('already_initialized');
+        if (before.status !== 'empty') return unavailable(before);
+        const initial = bindingState(binding);
+        initial.entries = [{ envelope: copy, phase: 'queued', fileId: null, attemptId: null }];
+        const saved = await write(null, initial, true);
+        return saved.status === 'ready' ? Object.freeze({ status: 'initialized', rootPin }) : response(saved.status);
+      });
+    },
+    /**
+     * Пустой журнал после восстановления УЖЕ проверенного облачного root.
+     * Первоначальную установку по-прежнему выполняет native под общим lock;
+     * сам этот метод не подтверждает код сверки или подлинность облака.
+     * @param {boolean} confirmedRecovery
+     */
+    async initializeRecovered(confirmedRecovery) {
+      if (confirmedRecovery !== true) throw invalid();
+      if (typeof store.installInitial !== 'function') return response('initial_guard_unavailable');
+      return run(async () => {
+        const before = await read();
+        if (before.status === 'ready') return response('already_initialized');
+        if (before.status !== 'empty') return unavailable(before);
+        const saved = await write(null, bindingState(binding), true);
+        return response(saved.status === 'ready' ? 'initialized' : saved.status);
+      });
+    },
+    /**
+     * Продолжение первичной настройки возможно только с единственным корнем,
+     * который ещё ни разу не пытались отправить. Сам конверт не показывается.
+     */
+    async pendingInitializationRoot(expectedKeyPin) {
+      if (!expectedKeyPin) throw invalid();
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (current.state.confirmedReceipts.length || current.state.entries.length !== 1)
+          return response('not_initial_root');
+        const [entry] = current.state.entries;
+        if (entry.phase !== 'queued' || entry.envelope.version !== 2) return response('not_initial_root');
+        try {
+          await verifyPortableEnvelopeBinding({
+            envelope: entry.envelope,
+            dataKey,
+            expectedPin: expectedKeyPin,
+            cryptoSource: crypto
+          });
+          const verified = await validateVersion(entry.envelope, dataKey, binding, crypto);
+          if (verified.parent !== null) return response('not_initial_root');
+        } catch {
+          return response('invalid_root');
+        }
+        return Object.freeze({
+          status: 'ready',
+          rootPin: await historyEnvelopePin({
+            envelope: entry.envelope,
+            expectedDatasetId: binding.datasetId,
+            cryptoSource: crypto
+          })
+        });
+      });
+    },
+    /** Пустая очередь без квитанций подходит для продолжения восстановления. */
+    async recoveryInitializationEmpty() {
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        return response(
+          current.state.entries.length === 0 && current.state.confirmedReceipts.length === 0 ? 'empty' : 'not_empty'
+        );
+      });
+    },
+    /**
+     * Проверяет единственный root перед ПЕРВОЙ отправкой или сверкой неизвестного
+     * результата. Возвращает только фазу и признак совпадения со снимком памяти;
+     * локальная запись и независимое подтверждение сохранения проверяются caller.
+     * @param {{expectedKeyPin:any,expectedRootPin:any,publicSnapshot?:any}} value
+     */
+    async inspectInitialRoot(value) {
+      const request = object(value, ['expectedKeyPin', 'expectedRootPin'], ['publicSnapshot']);
+      const expected = object(request.expectedRootPin, ['versionId', 'sha256']);
+      if (!isSyncId(expected.versionId) || typeof expected.sha256 !== 'string' || !HEX.test(expected.sha256))
+        throw invalid();
+      let local = null;
+      if (Object.hasOwn(request, 'publicSnapshot')) {
+        publicSnapshotIdentityTypes(request.publicSnapshot);
+        local = JSON.stringify(structuredClone(request.publicSnapshot));
+      }
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (current.state.confirmedReceipts.length || current.state.entries.length !== 1)
+          return response('not_initial_root');
+        const [entry] = current.state.entries;
+        if (entry.envelope.version !== 2) return response('not_initial_root');
+        try {
+          await verifyPortableEnvelopeBinding({
+            envelope: entry.envelope,
+            dataKey,
+            expectedPin: request.expectedKeyPin,
+            cryptoSource: crypto
+          });
+          const verified = await validateVersion(entry.envelope, dataKey, binding, crypto);
+          const pin = await historyEnvelopePin({
+            envelope: entry.envelope,
+            expectedDatasetId: binding.datasetId,
+            cryptoSource: crypto
+          });
+          if (verified.parent !== null || pin.versionId !== expected.versionId || pin.sha256 !== expected.sha256)
+            return response('invalid_root');
+          return Object.freeze({
+            status: 'ready',
+            phase: entry.phase,
+            snapshotMatches: local === null ? null : local === JSON.stringify(verified.publicSnapshot)
+          });
+        } catch {
+          return response('invalid_root');
+        }
       });
     },
     /** Подтверждённый сохранённый локальный снимок должен подготовить вызывающий код. */

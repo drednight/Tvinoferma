@@ -88,14 +88,27 @@ async function callWithin(invoke, command, args, timeoutMs) {
  * Хранилище и lock должны выполнять договорённости durableOutbox; результат readback
  * не является доказательством fsync или защиты от согласованного отката обоих хранилищ.
  * Любая ошибка IPC не содержит исходного исключения и переводит объект в карантин.
- * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number}} options
+ * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number,
+ * initialGuard?:{accountSlotId:string,keySlotId:string,bundleId:string,fingerprint:string}}} options
  */
 export function createNativeOutboxStore(options) {
   let input;
   let timeoutMs;
   try {
-    input = object(options, ['provider', 'invoke'], ['timeoutMs']);
+    input = object(options, ['provider', 'invoke'], ['timeoutMs', 'initialGuard']);
     if (!['google', 'yandex'].includes(input.provider) || typeof input.invoke !== 'function') throw failed();
+    if (input.initialGuard !== undefined) {
+      const guard = object(input.initialGuard, ['accountSlotId', 'keySlotId', 'bundleId', 'fingerprint']);
+      if (
+        !id(guard.accountSlotId) ||
+        !id(guard.keySlotId) ||
+        !id(guard.bundleId) ||
+        typeof guard.fingerprint !== 'string' ||
+        !HEX.test(guard.fingerprint)
+      )
+        throw failed();
+      input.initialGuard = Object.freeze({ ...guard });
+    }
     timeoutMs = timeout(input.timeoutMs);
   } catch {
     throw failed();
@@ -127,6 +140,20 @@ export function createNativeOutboxStore(options) {
         throw failed();
       }
       return call('cloud_outbox_install', { provider, args }, ['installed', 'occupied', 'blocked']);
+    },
+    installInitial(value) {
+      if (!input.initialGuard) throw failed();
+      let args;
+      try {
+        args = writeArgs(value, false);
+      } catch {
+        throw failed();
+      }
+      return call('cloud_outbox_install_initial', { provider, args, guard: input.initialGuard }, [
+        'installed',
+        'occupied',
+        'blocked'
+      ]);
     },
     compareExchange(value) {
       let args;

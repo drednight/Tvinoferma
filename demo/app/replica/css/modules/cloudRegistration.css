@@ -176,3 +176,78 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.cloud-setup,
+.cloud-setup-fold,
+.cloud-setup-fields,
+.cloud-setup-confirm {
+  display: grid;
+  gap: 10px;
+}
+.cloud-setup {
+  padding: 14px;
+  border: 1px solid rgba(150, 150, 150, 0.35);
+  border-radius: 10px;
+}
+.cloud-setup h4,
+.cloud-setup p {
+  margin: 0;
+  line-height: 1.5;
+}
+.cloud-setup-fold {
+  padding: 12px;
+  border: 1px solid rgba(150, 150, 150, 0.3);
+  border-radius: 8px;
+}
+.cloud-setup-fold summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.cloud-setup-fold[open] summary {
+  margin-bottom: 10px;
+}
+.cloud-setup-fold[open] > :not(summary) + :not(summary) {
+  margin-top: 10px;
+}
+.cloud-setup-fields {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.cloud-setup label:not(.cloud-connection-ack) {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  font-weight: 600;
+}
+.cloud-setup .input {
+  width: 100%;
+  min-width: 0;
+}
+.cloud-setup textarea {
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+.cloud-setup [hidden] {
+  display: none !important;
+}
+.cloud-activity {
+  padding: 12px;
+  border: 1px solid rgba(150, 150, 150, 0.3);
+  border-radius: 8px;
+}
+.cloud-activity summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.cloud-activity p {
+  margin: 10px 0;
+  line-height: 1.5;
+}
+.cloud-activity ol {
+  max-height: 280px;
+  overflow: auto;
+  padding-left: 1.4rem;
+}
+.cloud-activity li {
+  margin: 6px 0;
+  line-height: 1.4;
+}

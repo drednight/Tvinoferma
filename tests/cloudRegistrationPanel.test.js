@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCloudRegistrationCheck } from '../js/modules/cloudSync/ui/registrationCheckPanel.js';
 
 const html = readFileSync('index.html', 'utf8');
-const source = html.match(/<details class="panel fold cloud-registration"[\s\S]*?<\/details>/)?.[0];
+const source = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const clientId = '0123456789abcdef0123456789abcdef';
 function byId(id) {
   return document.getElementById(`cloud-registration-${id}`);
@@ -69,9 +69,9 @@ afterEach(() => {
 describe('демо показывает состояние реализации без подключения', () => {
   it('отдельный пример свёрнут, поле и кнопки отключены, сетевая политика демо не ослаблена', () => {
     const demoHtml = readFileSync('demo/app/index.html', 'utf8');
-    const preview = demoHtml.match(
-      /<details class="panel fold cloud-registration" id="demo-registration-preview"[\s\S]*?<\/details>/
-    )?.[0];
+    const preview = new DOMParser()
+      .parseFromString(demoHtml, 'text/html')
+      .getElementById('demo-registration-preview')?.outerHTML;
     expect(preview).toBeTruthy();
     document.body.innerHTML = `<main>${preview}</main>`;
     expect(document.getElementById('demo-registration-preview').open).toBe(false);
@@ -91,7 +91,7 @@ describe('настоящие настройки: диагностика и эк�
     const s = bind();
     expect(byId('panel').open).toBe(false);
     expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
-    expect(byId('panel').textContent).toContain('только для уже настроенного набора');
+    expect(byId('panel').textContent).toContain('Последующие изменения пока не отправляются автоматически');
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');

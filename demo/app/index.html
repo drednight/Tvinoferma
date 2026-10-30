@@ -489,7 +489,7 @@
               <p class="muted">Внешний вид экспериментальных настроек в настоящем приложении</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Здесь только пример.</strong> Первичная настройка и отправка ещё не готовы. В настоящем приложении добавлены экспериментальные проверка и выборочное применение только для уже закреплённого набора. Реальные сервисы и настольная сборка ещё не испытаны; в демо подключение отключено.</p>
+              <p class="cloud-registration-warning"><strong>Здесь только пример.</strong> В настоящем приложении доступны экспериментальные подготовка, отправка первого снимка, восстановление и сравнение; последующие сохранения не отправляются автоматически. Реальные сервисы и настольная сборка ещё не испытаны; в демо подключение отключено.</p>
               <p>В настоящей проверке сервис может сохранить выданное разрешение даже после отмены. Отзыв доступа может отключить и другие устройства этой регистрации. В демо браузер авторизации не открывается, разрешение не запрашивается.</p>
               <div class="cloud-registration-fields">
                 <label for="demo-registration-provider">Облачный диск<select class="input" id="demo-registration-provider" disabled><option>Яндекс Диск</option><option>Google Диск</option></select></label>
@@ -514,6 +514,73 @@
                   <button type="button" class="btn ghost" disabled>Забыть локальный доступ</button>
                 </div>
               </section>
+              <section class="cloud-setup" aria-labelledby="demo-cloud-setup-title">
+                <h4 id="demo-cloud-setup-title">Первый снимок и восстановление · пример</h4><p>В примере ввод и все действия отключены; не вводите настоящие ключи.</p>
+                <p>Сначала сохраните доступ выше и подготовьте локальные идентификаторы кнопкой в блоке сравнения. При подготовке создаётся копия state, но не копия хранилища паролей Windows. Существующее облако автоматически не ищется и не удаляется; при наличии старого набора сначала воспользуйтесь восстановлением.</p>
+                <p class="cloud-registration-warning">Здесь можно отправить только первый сохранённый снимок. Последующие сохранения и объединение веток пока не работают. Google использует корень «Моего диска», Яндекс — папку приложения. Проверка настоящих аккаунтов ещё не выполнена. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
+                <details class="cloud-setup-fold">
+                  <summary>Создать новый независимый набор на этом ПК</summary>
+                  <div class="cloud-setup-fields">
+                    <label>Основной секрет
+                      <select disabled class="input" id="demo-cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
+                    </label>
+                    <label>Пароль или основной ключ
+                      <input disabled class="input" id="demo-cloud-setup-main" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Повторите основной секрет
+                      <input disabled class="input" id="demo-cloud-setup-main-repeat" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Запасной ключ
+                      <select disabled class="input" id="demo-cloud-setup-backup-kind"><option value="generated">Создать случайный</option><option value="custom">Задать свой</option></select>
+                    </label>
+                    <label id="demo-cloud-setup-custom-label" hidden>Мой запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-custom" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                  </div>
+                  <p>Новые секреты: не менее 16 символов, разные для основного и запасного. Слабый пароль можно подбирать по облачному файлу. Сохраните запасной ключ отдельно: без ключей и других копий восстановление невозможно.</p>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-setup-new-approve" /> <span>Я создаю именно новый независимый набор. Старое облако может существовать; оно не проверяется и не будет удалено.</span></label>
+                  <div class="cloud-registration-actions">
+                    <button disabled type="button" class="btn" id="demo-cloud-setup-create">Подготовить новый набор</button>
+                    <button disabled type="button" class="btn ghost" id="demo-cloud-setup-resume">Продолжить после прерванной настройки</button>
+                  </div>
+                  <div class="cloud-setup-confirm" id="demo-cloud-setup-confirm" hidden>
+                    <p>Сохраните запасной ключ отдельно от этого компьютера. Повторите его вручную: до подтверждения ключ и очередь на ПК не устанавливаются.</p>
+                    <label id="demo-cloud-setup-generated-label" hidden>Созданный запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-generated" type="password" readonly autocomplete="off" />
+                    </label>
+                    <button disabled type="button" class="btn ghost small" id="demo-cloud-setup-reveal" hidden>Показать запасной ключ</button>
+                    <label>Введите сохранённый запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-backup-confirm" type="password" maxlength="1024" autocomplete="off" />
+                    </label>
+                    <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-setup-saved" /> <span>Я отдельно сохранил запасной ключ и смогу найти его без этого ПК.</span></label>
+                    <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="demo-cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button disabled type="button" class="btn ghost" id="demo-cloud-setup-cancel">Отменить</button></div>
+                  </div>
+                </details>
+                <details class="cloud-setup-fold">
+                  <summary>Восстановить набор с другого ПК</summary>
+                  <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
+                  <label>Код сверки
+                    <textarea disabled class="input" id="demo-cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>
+                  </label>
+                  <label>Способ восстановления
+                    <select disabled class="input" id="demo-cloud-recovery-role"><option value="main">Пароль или основной ключ</option><option value="backup">Запасной ключ</option><option value="existing">Уже сохранённый внутренний ключ на этом ПК</option></select>
+                  </label>
+                  <label id="demo-cloud-recovery-secret-label">Пароль или ключ
+                    <input disabled class="input" id="demo-cloud-recovery-secret" type="password" maxlength="1024" autocomplete="off" />
+                  </label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-recovery-approve" /> <span>Я получил код от доверенного ПК отдельно от облачного файла и проверил выбранный аккаунт.</span></label>
+                  <label class="cloud-connection-ack" id="demo-cloud-recovery-reviewed-label" hidden><input disabled type="checkbox" id="demo-cloud-recovery-reviewed" /> <span>Я выбрал версию и изучил предварительное сравнение ниже.</span></label>
+                  <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="demo-cloud-recovery-check">Сравнить перед подключением</button><button disabled type="button" class="btn ghost" id="demo-cloud-recovery-connect" hidden>Подтвердить подключение</button><button disabled type="button" class="btn ghost" id="demo-cloud-recovery-cancel" hidden>Отменить</button></div>
+                </details>
+                <div class="cloud-registration-actions">
+                  <button disabled type="button" class="btn ghost" id="demo-cloud-setup-show-code">Показать код сверки этого ПК</button>
+                  <button disabled type="button" class="btn" id="demo-cloud-setup-send-root">Отправить первый снимок</button>
+                </div>
+                <label id="demo-cloud-setup-code-label" hidden>Код сверки — передавайте отдельно от облака
+                  <textarea disabled class="input" id="demo-cloud-setup-code" rows="3" readonly spellcheck="false"></textarea>
+                </label>
+                <p class="cloud-registration-status" id="demo-cloud-setup-status" role="status" aria-live="polite">Ожидание действия. Данные не отправлены.</p>
+              </section>
               <section class="cloud-review" aria-labelledby="demo-review-title">
                 <h4 id="demo-review-title">Проверить обновления · экспериментально</h4>
                 <p>Проверяется выбранный диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. При выборе целой записи применятся все её переносимые поля; контакты, пароли, входы и пути остаются на этом ПК.</p>
@@ -527,6 +594,7 @@
                 <div class="cloud-registration-actions"><button type="button" class="btn ghost" disabled>Подготовить данные на этом ПК</button><button type="button" class="btn ghost" disabled>Проверить обновления</button></div>
                 <p class="cloud-registration-status">Демо: проверка и применение реальных файлов отключены.</p>
               </section>
+              <details class="cloud-activity"><summary>Журнал синхронизации на этом ПК</summary><p>В настоящем приложении журнал показывает только события и результаты без содержимого записей, паролей и кода сверки. В демо журнал пуст; действия отключены.</p><button type="button" class="btn ghost small" disabled>Очистить местный журнал</button></details>
               <div class="cloud-registration-future" aria-label="Отправка пока недоступна"><button type="button" class="btn" disabled>Отправить на диск</button></div>
             </div>
           </details>

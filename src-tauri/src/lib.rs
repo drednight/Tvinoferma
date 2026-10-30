@@ -39,6 +39,8 @@ mod cloud_credential_store;
 mod cloud_dataset_binding;
 mod cloud_disk_transport;
 #[cfg(windows)]
+mod cloud_initial_outbox;
+#[cfg(windows)]
 mod cloud_key_state;
 mod cloud_oauth_callback;
 mod cloud_oauth_transport;
@@ -218,9 +220,10 @@ pub fn run() {
             commands::cloud_key_state::cloud_key_state_install,
             commands::cloud_key_state::cloud_key_state_compare_exchange,
             commands::cloud_key_state::cloud_key_state_forget,
-            // Очередь ещё не подключена к UI и не управляет реальной отправкой.
+            // Экспериментальная очередь первого снимка; автосинхронизация ещё не готова.
             commands::cloud_outbox::cloud_outbox_read,
             commands::cloud_outbox::cloud_outbox_install,
+            commands::cloud_outbox::cloud_outbox_install_initial,
             commands::cloud_outbox::cloud_outbox_compare_exchange,
             // Диагностика и первый вход OAuth; синхронизация пока не включена.
             commands::cloud_oauth::cloud_oauth_callback_begin,

@@ -254,6 +254,7 @@ fn disconnect_requires_the_same_ready_account_and_preserves_key_state() {
             Ok(cloud_credential_binding::Pair::Empty)
         ));
         // No dataset/key deletion, including the key shared with the other disk.
+        assert!(before.keys().any(|name| name.contains(":key-state:")));
         for (name, value) in before
             .iter()
             .filter(|(name, _)| name.contains(":key-state:"))

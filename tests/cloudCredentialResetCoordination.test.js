@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let beginOperation;
+let beginData;
 let beginReset;
 beforeEach(async () => {
   vi.resetModules();
-  ({ beginCloudCredentialOperation: beginOperation, beginCloudCredentialReset: beginReset } =
-    await import('../js/modules/cloudSync/credentialResetCoordination.js'));
+  ({
+    beginCloudCredentialOperation: beginOperation,
+    beginCloudDataOperation: beginData,
+    beginCloudCredentialReset: beginReset
+  } = await import('../js/modules/cloudSync/credentialResetCoordination.js'));
 });
 
 describe('барьер OAuth-сценариев и локального сброса', () => {
@@ -37,6 +41,24 @@ describe('барьер OAuth-сценариев и локального сбро
     const third = beginOperation();
     third.finish(false);
     expect(() => beginReset()).toThrow();
+  });
+
+  it('операции с данными эксклюзивны и не продолжаются после неизвестного результата', () => {
+    const oauth = beginOperation();
+    expect(() => beginData()).toThrow();
+    oauth.finish(false);
+    const data = beginData();
+    expect(() => beginData()).toThrow();
+    expect(() => beginOperation()).toThrow();
+    expect(() => beginReset()).toThrow();
+    data.finish(true);
+    expect(() => data.finish(false)).toThrow();
+    expect(() => beginData()).toThrow();
+    expect(() => beginReset()).toThrow();
+    // Диагностика OAuth по прежнему контракту допустима, но не сбрасывает карантин.
+    const diagnostic = beginOperation();
+    diagnostic.finish(false);
+    expect(() => beginData()).toThrow();
   });
 
   it('старый release не снимает новый барьер', () => {

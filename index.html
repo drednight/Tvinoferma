@@ -467,7 +467,7 @@
               <p class="muted">В разработке · проверка регистрации и сохранения доступа</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Полная синхронизация ещё не готова.</strong> Первичная настройка и отправка пока недоступны. Проверка и выборочное применение ниже экспериментальны, работают только для уже настроенного набора и ещё не проверены с настоящими дисками.</p>
+              <p class="cloud-registration-warning"><strong>Полная синхронизация ещё не готова.</strong> Ниже экспериментально доступны локальная подготовка, отправка первого снимка, восстановление и сравнение. Последующие изменения пока не отправляются автоматически, согласование после выборочного применения не готово. Настоящие диски и настольная сборка ещё не проверены.</p>
               <p>Разовая проверка регистрации не сохраняет токены. Авторизация открывается в системном браузере. Сервис может сохранить выданное разрешение даже после отмены; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа с реальными сервисами и настольной сборкой ещё не подтверждена.</p>
               <form id="cloud-registration-form" autocomplete="off" novalidate>
                 <div class="cloud-registration-fields">
@@ -511,6 +511,73 @@
                   <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
                 </div>
               </section>
+              <section class="cloud-setup" aria-labelledby="cloud-setup-title">
+                <h4 id="cloud-setup-title">Первый снимок и восстановление · экспериментально</h4>
+                <p>Сначала сохраните доступ выше и подготовьте локальные идентификаторы кнопкой в блоке сравнения. При подготовке создаётся копия state, но не копия хранилища паролей Windows. Существующее облако автоматически не ищется и не удаляется; при наличии старого набора сначала воспользуйтесь восстановлением.</p>
+                <p class="cloud-registration-warning">Здесь можно отправить только первый сохранённый снимок. Последующие сохранения и объединение веток пока не работают. Google использует корень «Моего диска», Яндекс — папку приложения. Проверка настоящих аккаунтов ещё не выполнена. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
+                <details class="cloud-setup-fold">
+                  <summary>Создать новый независимый набор на этом ПК</summary>
+                  <div class="cloud-setup-fields">
+                    <label>Основной секрет
+                      <select class="input" id="cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
+                    </label>
+                    <label>Пароль или основной ключ
+                      <input class="input" id="cloud-setup-main" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Повторите основной секрет
+                      <input class="input" id="cloud-setup-main-repeat" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Запасной ключ
+                      <select class="input" id="cloud-setup-backup-kind"><option value="generated">Создать случайный</option><option value="custom">Задать свой</option></select>
+                    </label>
+                    <label id="cloud-setup-custom-label" hidden>Мой запасной ключ
+                      <input class="input" id="cloud-setup-custom" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                  </div>
+                  <p>Новые секреты: не менее 16 символов, разные для основного и запасного. Слабый пароль можно подбирать по облачному файлу. Сохраните запасной ключ отдельно: без ключей и других копий восстановление невозможно.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-new-approve" /> <span>Я создаю именно новый независимый набор. Старое облако может существовать; оно не проверяется и не будет удалено.</span></label>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn" id="cloud-setup-create">Подготовить новый набор</button>
+                    <button type="button" class="btn ghost" id="cloud-setup-resume">Продолжить после прерванной настройки</button>
+                  </div>
+                  <div class="cloud-setup-confirm" id="cloud-setup-confirm" hidden>
+                    <p>Сохраните запасной ключ отдельно от этого компьютера. Повторите его вручную: до подтверждения ключ и очередь на ПК не устанавливаются.</p>
+                    <label id="cloud-setup-generated-label" hidden>Созданный запасной ключ
+                      <input class="input" id="cloud-setup-generated" type="password" readonly autocomplete="off" />
+                    </label>
+                    <button type="button" class="btn ghost small" id="cloud-setup-reveal" hidden>Показать запасной ключ</button>
+                    <label>Введите сохранённый запасной ключ
+                      <input class="input" id="cloud-setup-backup-confirm" type="password" maxlength="1024" autocomplete="off" />
+                    </label>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-saved" /> <span>Я отдельно сохранил запасной ключ и смогу найти его без этого ПК.</span></label>
+                    <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button type="button" class="btn ghost" id="cloud-setup-cancel">Отменить</button></div>
+                  </div>
+                </details>
+                <details class="cloud-setup-fold">
+                  <summary>Восстановить набор с другого ПК</summary>
+                  <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
+                  <label>Код сверки
+                    <textarea class="input" id="cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>
+                  </label>
+                  <label>Способ восстановления
+                    <select class="input" id="cloud-recovery-role"><option value="main">Пароль или основной ключ</option><option value="backup">Запасной ключ</option><option value="existing">Уже сохранённый внутренний ключ на этом ПК</option></select>
+                  </label>
+                  <label id="cloud-recovery-secret-label">Пароль или ключ
+                    <input class="input" id="cloud-recovery-secret" type="password" maxlength="1024" autocomplete="off" />
+                  </label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-recovery-approve" /> <span>Я получил код от доверенного ПК отдельно от облачного файла и проверил выбранный аккаунт.</span></label>
+                  <label class="cloud-connection-ack" id="cloud-recovery-reviewed-label" hidden><input type="checkbox" id="cloud-recovery-reviewed" /> <span>Я выбрал версию и изучил предварительное сравнение ниже.</span></label>
+                  <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-recovery-check">Сравнить перед подключением</button><button type="button" class="btn ghost" id="cloud-recovery-connect" hidden>Подтвердить подключение</button><button type="button" class="btn ghost" id="cloud-recovery-cancel" hidden>Отменить</button></div>
+                </details>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn ghost" id="cloud-setup-show-code">Показать код сверки этого ПК</button>
+                  <button type="button" class="btn" id="cloud-setup-send-root">Отправить первый снимок</button>
+                </div>
+                <label id="cloud-setup-code-label" hidden>Код сверки — передавайте отдельно от облака
+                  <textarea class="input" id="cloud-setup-code" rows="3" readonly spellcheck="false"></textarea>
+                </label>
+                <p class="cloud-registration-status" id="cloud-setup-status" role="status" aria-live="polite">Ожидание действия. Данные не отправлены.</p>
+              </section>
               <section class="cloud-review" aria-labelledby="cloud-review-title">
                 <h4 id="cloud-review-title">Проверить обновления · экспериментально</h4>
                 <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. При выборе целой записи применятся все её переносимые поля; контакты, пароли, входы и пути остаются на этом ПК.</p>
@@ -542,6 +609,13 @@
                   </div>
                 </div>
               </section>
+              <details class="cloud-activity" id="cloud-activity-panel">
+                <summary>Журнал синхронизации на этом ПК</summary>
+                <p>Только события и результаты без содержимого записей, паролей и кода сверки. Журнал хранится локально и пока не переносится между ПК; он не доказывает полноту облака.</p>
+                <p class="cloud-registration-status" id="cloud-activity-status" aria-live="polite"></p>
+                <ol id="cloud-activity-list"></ol>
+                <button type="button" class="btn ghost small" id="cloud-activity-clear">Очистить местный журнал</button>
+              </details>
               <div class="cloud-registration-future" aria-label="Отправка пока недоступна">
                 <button type="button" class="btn" disabled>Отправить на диск</button>
               </div>

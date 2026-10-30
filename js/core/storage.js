@@ -228,6 +228,19 @@ export async function beginGuardedMigration(snapshot, label) {
 }
 
 /**
+ * Завершает только чтение и проверенное копирование, без записи state. Вызывающий
+ * обязан синхронно проверить неизменность данных в памяти перед этим вызовом;
+ * если она нарушена, следует использовать abortGuardedMigration. Как и сама копия,
+ * эта блокировка охватывает лишь текущий JS-контекст, а не другие процессы.
+ */
+export function finishGuardedBackup() {
+  const session = migration;
+  if (!session || session.phase !== 'ready' || outcomeUncertain || protectedState) throw blockedWriteError();
+  forgetLoadedState(session.snapshot);
+  migration = null;
+}
+
+/**
  * Сохраняет миграцию только если хранилище всё ещё содержит исходный JSON.
  * Подготовка vault и перенос профилей не входят в эту файловую транзакцию.
  * Иной процесс или вкладка могут изменить файл между проверкой и заменой.
