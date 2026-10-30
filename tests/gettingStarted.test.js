@@ -51,6 +51,19 @@ describe('шаги гайда', () => {
     }
   });
 
+  it('справка честно описывает ограничения копии и полного сброса', async () => {
+    const { GUIDES } = await import('../js/settings/guideData.js');
+    const reset = GUIDES.find(guide => guide.id === 'danger-reset');
+    expect(reset.before).toContain('не включает отдельные журналы, сессии, профили и входы GameCenter');
+    expect(reset.before).toContain('открытые контакты и пароли');
+    expect(reset.result).toContain('могут остаться');
+    expect(reset.notice.text).toContain('Неизвестные записи ОС');
+    expect(reset.notice.text).toContain('Экспорт JSON не включает всё');
+    const backups = GUIDES.find(guide => guide.id === 'backups');
+    expect(backups.notice.text).toContain('не входят в state.json');
+    expect(backups.screen.notes.join(' ')).toContain('могут удаляться автоматически');
+  });
+
   it('последний шаг закрывает гайд, а не уводит в раздел', () => {
     const last = mod.GUIDE_STEPS[mod.GUIDE_STEPS.length - 1];
     expect(last.tab).toBeUndefined();
@@ -86,6 +99,19 @@ describe('гайд: показ и точки входа', () => {
     // Повторный вызов не пишет: состояние и так верное
     await mod.markGuideSeen(state);
     expect(mocks.persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('при запрещённом автопоказе остаётся доступным вручную', () => {
+    vi.useFakeTimers();
+    try {
+      mod.initGettingStarted({ autoOpen: false });
+      vi.advanceTimersByTime(21000);
+      expect(document.querySelector('.tf-overlay')).toBeNull();
+      document.getElementById('guide-start-btn').click();
+      expect(document.querySelector('.tf-overlay')).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('гайд открывается кнопкой в шапке; в «Справке» кнопки нет', async () => {

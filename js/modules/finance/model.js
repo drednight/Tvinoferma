@@ -23,6 +23,7 @@
 // chart.js уже прописан в зависимостях package.json, но кода на нём нет.
 
 import { uid } from '../../core/utils.js';
+import { preserveSyncId } from '../../core/state/syncIdentity.js';
 
 /**
  * Две валюты. Идентификаторы короткие, потому что лежат в state.json:
@@ -217,6 +218,7 @@ function normalizeOperation(input = {}) {
   const currency = CURRENCY_IDS.includes(input.currency) ? input.currency : DEFAULT_CURRENCY;
   return {
     id: String(input.id || uid()),
+    ...preserveSyncId(input),
     date: isDate(input.date) ? input.date : todayIso(),
     currency,
     // Чужое значение в kind не должно превращать расход в приход
@@ -239,6 +241,7 @@ function normalizeOperation(input = {}) {
 function normalizeShopItem(input = {}) {
   return {
     id: String(input.id || uid()),
+    ...preserveSyncId(input),
     side: input.side === 'buy' ? 'buy' : 'sell',
     name: String(input.name || '').slice(0, 200),
     price: money(positive(input.price)),
@@ -251,6 +254,7 @@ function normalizeShopItem(input = {}) {
 function normalizeLoanPayment(input = {}) {
   return {
     id: String(input.id || uid()),
+    ...preserveSyncId(input),
     date: isDate(input.date) ? input.date : todayIso(),
     // На сколько ушло в проценты, а на сколько в тело долга, вычисляется само
     // (paymentSplit) и не хранится: оно выводится из суммы, поэтому не может разойтись с ней
@@ -261,6 +265,7 @@ function normalizeLoanPayment(input = {}) {
 function normalizeLoan(input = {}) {
   return {
     id: String(input.id || uid()),
+    ...preserveSyncId(input),
     direction: input.direction === 'borrowed' ? 'borrowed' : 'lent',
     who: String(input.who || '').slice(0, 200),
     principal: money(positive(input.principal)),

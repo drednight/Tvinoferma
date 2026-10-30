@@ -25,6 +25,27 @@ mod auth;
 mod automation;
 mod autostart;
 mod balance;
+#[cfg(windows)]
+mod cloud_credential_binding;
+#[cfg(windows)]
+mod cloud_credential_lock;
+#[cfg(windows)]
+mod cloud_credential_records;
+#[cfg(windows)]
+mod cloud_credential_service;
+#[cfg(windows)]
+mod cloud_credential_store;
+#[cfg(windows)]
+mod cloud_dataset_binding;
+mod cloud_disk_transport;
+#[cfg(windows)]
+mod cloud_initial_outbox;
+#[cfg(windows)]
+mod cloud_key_state;
+mod cloud_oauth_callback;
+mod cloud_oauth_transport;
+#[cfg(windows)]
+mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
@@ -170,16 +191,46 @@ pub fn run() {
             marathons::fetch_marathon_news,
             // хранилище
             commands::state::load_state,
+            commands::state::load_state_raw,
             commands::state::save_state,
+            commands::state::save_state_if_unchanged,
             commands::state::get_data_dir,
             commands::backup::create_backup,
+            commands::backup::create_migration_backup,
             commands::backup::list_backups,
+            commands::backup::inspect_backup,
             commands::backup::restore_backup,
             commands::backup::delete_backup,
             commands::secrets::secrets_available,
             commands::secrets::secrets_get_many,
             commands::secrets::secrets_set_many,
             commands::secrets::secrets_delete_many,
+            // Экспериментальная локальная авторизация; обмен файлами ещё не подключён.
+            commands::cloud_credentials::cloud_credential_read,
+            commands::cloud_credentials::cloud_credential_binding_read,
+            commands::cloud_credentials::cloud_credential_install,
+            commands::cloud_credentials::cloud_credential_compare_exchange,
+            commands::cloud_credentials::cloud_credential_forget,
+            commands::cloud_credentials::cloud_credential_forget_if_unbound,
+            // Экспериментальный ключ данных; настройка в UI ещё не реализована.
+            commands::cloud_dataset_binding::cloud_dataset_binding_read,
+            commands::cloud_dataset_binding::cloud_dataset_binding_install,
+            commands::cloud_dataset_binding::cloud_dataset_binding_forget,
+            commands::cloud_key_state::cloud_key_state_read,
+            commands::cloud_key_state::cloud_key_state_install,
+            commands::cloud_key_state::cloud_key_state_compare_exchange,
+            commands::cloud_key_state::cloud_key_state_forget,
+            // Экспериментальная очередь первого снимка; автосинхронизация ещё не готова.
+            commands::cloud_outbox::cloud_outbox_read,
+            commands::cloud_outbox::cloud_outbox_install_initial,
+            commands::cloud_outbox::cloud_outbox_compare_exchange,
+            // Диагностика и первый вход OAuth; синхронизация пока не включена.
+            commands::cloud_oauth::cloud_oauth_callback_begin,
+            commands::cloud_oauth::cloud_oauth_callback_poll,
+            commands::cloud_oauth::cloud_oauth_callback_cancel,
+            commands::cloud_oauth_transport::cloud_oauth_network,
+            // Экспериментальные операции с версиями; UI и очередь не подключены.
+            commands::cloud_disk_transport::cloud_disk_network,
             // полный сброс: «Вернуть к заводским настройкам»
             commands::factory_reset::factory_reset,
             // трей

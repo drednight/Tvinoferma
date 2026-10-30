@@ -5,6 +5,7 @@
 // монет есть вариант «Объединить»).
 
 import { escapeHtml } from '../core/utils.js';
+import { closeModalRoot, isTopModal, registerModal } from '../core/modalLifecycle.js';
 import { FIELD_GROUPS, getPath, displayValue, buildMerged, diffCharacters } from './characterFields.js';
 
 /**
@@ -14,7 +15,7 @@ import { FIELD_GROUPS, getPath, displayValue, buildMerged, diffCharacters } from
 export function openCompareDialog(local, incoming, { index = 1, total = 1, present = null, archived = false } = {}) {
   return new Promise(resolve => {
     const root = document.getElementById('modal-root');
-    if (!root) return resolve({ action: 'keep' });
+    if (!root?.isConnected) return resolve({ action: 'cancel' });
 
     const diffs = new Set(diffCharacters(local, incoming, present).map(f => f.path));
     const missing = path => present && !present.has(path);
@@ -57,7 +58,7 @@ export function openCompareDialog(local, incoming, { index = 1, total = 1, prese
           <button type="button" class="btn primary" data-act="merge">Сохранить выбранное</button>
         </div>
       </div>`;
-    root.innerHTML = '';
+    closeModalRoot(root);
     root.appendChild(overlay);
 
     const table = overlay.querySelector('[data-table]');
@@ -130,14 +131,27 @@ export function openCompareDialog(local, incoming, { index = 1, total = 1, prese
       }
     });
 
+    let closed = false;
+    let observer;
+    let unregister = () => {};
     const finish = result => {
+      if (closed) return;
+      closed = true;
       document.removeEventListener('keydown', onKey);
-      root.innerHTML = '';
+      observer?.disconnect();
+      unregister();
+      overlay.remove(); // Не удаляем другое окно, уже открытое вместо сравнения.
       resolve(result);
     };
     const onKey = e => {
-      if (e.key === 'Escape') finish({ action: 'cancel' });
+      if (e.key === 'Escape' && isTopModal(overlay)) finish({ action: 'cancel' });
     };
+    unregister = registerModal(overlay, () => finish({ action: 'cancel' }));
+    // Не оставляем ожидающий импорт навсегда, если окно удалили мимо общего lifecycle.
+    observer = new MutationObserver(() => {
+      if (!overlay.isConnected || !root.contains(overlay)) finish({ action: 'cancel' });
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
     document.addEventListener('keydown', onKey);
 
     overlay.addEventListener('click', e => {

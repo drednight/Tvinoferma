@@ -27,6 +27,7 @@ import {
   resultInfo,
   resultLabel,
   summarizeRows,
+  planShopRetry,
   isTransient
 } from './shopCore.js';
 import {
@@ -44,6 +45,8 @@ import {
 import { runShopBatch } from './shopRunner.js';
 import { openShopLog } from './shopLogView.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
+import { makeScriptReport } from './scriptReport.js';
+import { openScriptStatistics } from './scriptReportView.js';
 
 const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -87,6 +90,7 @@ export function openShopDialog({ ids = [] } = {}) {
   let renderTimer = null;
   let closed = false;
   let last = null; // итог последнего запуска: { rows, accounts, dry, stopped, checking, balances }
+  let confirmingRetry = false;
 
   const dlg = openOverlay({
     title: '🪙 Активация подарков',
@@ -637,7 +641,7 @@ export function openShopDialog({ ids = [] } = {}) {
       })}`;
   }
 
-  async function start(accounts, dry) {
+  async function start(accounts, dry, { historyReports = [] } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
@@ -672,6 +676,11 @@ export function openShopDialog({ ids = [] } = {}) {
     };
 
     const bought = new Map();
+    const finishedRows = new Map();
+    const saveReport = row => {
+      finishedRows.set(`${row.siteKey}|${row.itemKey}`, row);
+      task.setScriptReport(makeScriptReport('shop', [...finishedRows.values()], { dryRun: dry }));
+    };
     const setCell = (key, html) => {
       const td = [...dlg.body.querySelectorAll('[data-run]')].find(el => el.dataset.run === key);
       if (td) td.innerHTML = html;
@@ -687,6 +696,7 @@ export function openShopDialog({ ids = [] } = {}) {
         retries,
         retryDelayMs,
         onPurchase: info => {
+          saveReport(info.row);
           // Купленное запоминаем сразу: «Стоп», сбой или закрытие окна ничего не теряют
           recordPurchase(info.acc.siteKey, info.order.key, {
             at: info.at,
@@ -703,6 +713,7 @@ export function openShopDialog({ ids = [] } = {}) {
             );
         },
         onRow: (row, done, all) => {
+          saveReport(row);
           recordShopRow(row);
           if (!alive()) return;
           const info = resultInfo(row.status);
@@ -737,7 +748,16 @@ export function openShopDialog({ ids = [] } = {}) {
         )
       );
 
-    last = { rows, accounts, dry, stopped: signal.cancelled, checking: false, balances: new Map() };
+    task.setScriptReport(makeScriptReport('shop', rows, { dryRun: dry }));
+    last = {
+      rows,
+      accounts,
+      dry,
+      stopped: signal.cancelled,
+      checking: false,
+      balances: new Map(),
+      historyReports: [...historyReports, { ...makeScriptReport('shop', rows, { dryRun: dry }), at: task.startedAt }]
+    };
     if (!alive()) {
       if (!dry) await checkBalances(accounts, last);
       return;
@@ -858,17 +878,20 @@ export function openShopDialog({ ids = [] } = {}) {
     phase = 'results';
     const { rows, dry, stopped, checking } = last;
     const s = summarizeRows(rows);
+    const retryAccounts = dry ? [] : planShopRetry(last.accounts, rows, last.balances);
     dlg.sub.textContent = dry
       ? `${stopped ? '⏹ Остановлено. ' : ''}👁 Пробный запуск: кнопка найдена ${s.dry} из ${s.total}. Ничего не куплено и не записано в журнал.`
       : `${stopped ? '⏹ Остановлено. ' : ''}Куплено: ${s.bought} шт. на ${fmt(s.spent)} мон.${s.limited ? ` · до лимита: ${s.limited}` : ''}${s.noFunds ? ` · не хватило монет: ${s.noFunds}` : ''}${s.unknown ? ` · неясно: ${s.unknown}` : ''}${s.failed ? ` · проблем: ${s.failed}` : ''}${s.notRun ? ` · не выполнено: ${s.notRun}` : ''}`;
     dlg.body.innerHTML = `${resultChips(s, dry)}
       ${sectionHtml('Итог по аккаунтам', { body: resultsHtml() })}
-      ${s.unknown ? '<p class="shop-warn">❓ «Результат не распознан»: кнопка нажата, но итог неясен. Проверьте «Историю монет» на сайте; автоматически эти покупки не повторяются.</p>' : ''}
+      ${s.unknown ? '<p class="shop-warn">❓ Результат не подтверждён: покупка могла выполниться. Проверьте «Историю монет»; весь этот аккаунт не участвует в повторе.</p>' : ''}
       ${checking ? '<p class="shop-muted">⏳ Проверяю баланс всех аккаунтов этого запуска…</p>' : ''}`;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="log">📜 Журнал</button>
+      <button class="btn secondary" data-act="report">📋 Таблица действий</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
+      ${!dry ? `<button class="btn secondary" data-act="retry" ${checking || !retryAccounts.length ? 'disabled' : ''}>🔁 Повторить неудачные${retryAccounts.length ? ` (${retryAccounts.length} акк.)` : ''}</button>` : ''}
       ${
         dry
           ? '<button class="btn secondary" data-act="back">← К выбору</button><button class="btn primary" data-act="real"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить по-настоящему</button>'
@@ -954,14 +977,46 @@ export function openShopDialog({ ids = [] } = {}) {
   });
 
   dlg.foot.addEventListener('click', async e => {
-    const act = e.target.closest('[data-act]')?.dataset.act;
-    if (!act) return;
+    const btn = e.target.closest('[data-act]');
+    const act = btn?.dataset.act;
+    if (!act || btn.disabled) return;
     if (act === 'close') {
       dlg.close();
       return;
     }
     if (act === 'log') {
       openShopLog();
+      return;
+    }
+    if (act === 'report') {
+      openScriptStatistics(last?.historyReports || [], {
+        title: '📋 Таблица действий: подарки',
+        note: 'Покупки относятся к общему аккаунту сайта. Подтверждённые, пробные и неясные результаты показаны отдельно.'
+      });
+      return;
+    }
+    if (act === 'retry') {
+      if (!last || last.dry || last.checking || running || confirmingRetry) return;
+      const previous = last;
+      const accounts = planShopRetry(previous.accounts, previous.rows, previous.balances);
+      if (!accounts.length) return;
+      const qty = totalQty(accounts);
+      confirmingRetry = true;
+      btn.disabled = true;
+      let ok;
+      try {
+        ok = await confirmModal({
+          title: 'Повторить неудачные покупки?',
+          text: `Будет куплен только оставшийся подтверждённо невыполненный объём: ${qty} шт. на сумму до ${fmt(totalCost(accounts))} монет. Аккаунты с неясным исходом исключены. Покупка необратима.`,
+          okText: `Повторить (${qty})`,
+          danger: true
+        });
+      } finally {
+        confirmingRetry = false;
+        if (btn.isConnected) btn.disabled = false;
+      }
+      if (ok && alive() && last === previous && !running)
+        await start(accounts, false, { historyReports: previous.historyReports });
       return;
     }
     if (act === 'back') {

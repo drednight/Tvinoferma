@@ -142,6 +142,8 @@ body[data-ui-style='next'] .tf-dock-toggle {
   flex: 1 1 auto;
 }
 .tf-dock-title .msk-clock-label {
+  /* В пустом доке родитель приглушён: сохраняем читаемый контраст названия. */
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -819,4 +821,87 @@ body[data-ui-style='next'] .tf-dock-toggle {
     bottom: 10px;
     width: calc(100vw - 20px);
   }
+}
+
+/* Подробности завершённого скрипта и статистика журнала по персонажам. */
+.sr-controls {
+  margin-bottom: 14px;
+}
+.sr-controls label {
+  display: grid;
+  gap: 6px;
+  max-width: 380px;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+.sr-group {
+  min-width: 0;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.sr-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 13px;
+  background: var(--surface-2);
+}
+.sr-group-head h4 {
+  margin: 0;
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+}
+.sr-table-wrap {
+  overflow-x: auto;
+}
+.sr-table {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.sr-table th,
+.sr-table td {
+  padding: 9px 12px;
+  vertical-align: top;
+  text-align: left;
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.sr-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.sr-table td:nth-child(1) {
+  width: 18%;
+}
+.sr-table td:nth-child(2),
+.sr-table td:nth-child(3) {
+  width: 19%;
+}
+.sr-status {
+  font-weight: 600;
+}
+.sr-status.is-ok {
+  color: var(--success);
+}
+.sr-status.is-warn {
+  color: var(--warning);
+}
+.sr-status.is-error {
+  color: var(--danger);
+}
+.sr-dry {
+  color: var(--warning);
+  font-size: 0.75rem;
+}
+.sr-details {
+  margin: 0;
+  padding-left: 1.1em;
+}
+.sr-details li + li {
+  margin-top: 4px;
 }

@@ -152,3 +152,83 @@ describe('мастер: поиск новости о марафоне (issue #72
     await vi.waitFor(() => expect($('.tf-news-search .tf-warn')).not.toBeNull());
   });
 });
+
+describe('устойчивые идентификаторы в настоящем мастере', () => {
+  const ids = [
+    'a9115bf2-e834-444d-aeb6-7c3af1db8890',
+    'b9115bf2-e834-444d-aeb6-7c3af1db8890',
+    'c9115bf2-e834-444d-aeb6-7c3af1db8890',
+    'd9115bf2-e834-444d-aeb6-7c3af1db8890'
+  ];
+
+  it('редактирование марафона сохраняет его ID и ID заданий, наград и бонусов', async () => {
+    const { createMarathon } = await import('../js/modules/marathons/model.js');
+    const marathon = createMarathon({
+      id: 'm',
+      syncId: ids[0],
+      title: 'До',
+      startDate: '2026-10-01',
+      endDate: '2026-10-31',
+      participantIds: ['c1'],
+      assignments: { c1: ['t'] },
+      tasks: [{ id: 't', syncId: ids[1], title: 'Задание', rewards: [{ id: 'r', syncId: ids[2], threshold: 1 }] }],
+      bonuses: [{ id: 'b', syncId: ids[3], needTasks: 1, text: 'Бонус' }]
+    });
+    state.marathons = [marathon];
+    openMarathonWizard({ marathon });
+    const title = $('[data-f="title"]');
+    title.value = 'После';
+    title.dispatchEvent(new Event('input'));
+    click('[data-act="save"]');
+    await vi.waitFor(() => expect(state.marathons[0].title).toBe('После'));
+    expect(state.marathons[0]).toMatchObject({
+      syncId: ids[0],
+      tasks: [{ syncId: ids[1], rewards: [{ syncId: ids[2] }] }],
+      bonuses: [{ syncId: ids[3] }]
+    });
+  });
+
+  it('создание из шаблона и новый шаблон не наследуют ID копируемых вложений', async () => {
+    state.marathonTemplates = [
+      {
+        id: 'tpl',
+        name: 'Шаблон',
+        createdAt: '2026-10-01',
+        sourceUrl: null,
+        tasks: [
+          {
+            id: 'old-task',
+            syncId: ids[0],
+            title: 'Задание',
+            targetChecks: 1,
+            schedule: { mode: 'everyDay', dates: [], weekStartDay: 1 },
+            rewards: [{ id: 'old-reward', syncId: ids[1], threshold: 1, rewardText: 'Подарок', rewardCoins: 0 }]
+          }
+        ],
+        bonuses: [{ id: 'old-bonus', syncId: ids[2], needTasks: 1, text: 'Бонус' }]
+      }
+    ];
+    openMarathonWizard({ source: 'template' });
+    const radio = $('input[name="tpl"]');
+    radio.checked = true;
+    radio.dispatchEvent(new Event('change'));
+    click('[data-act="next"]');
+    click('[data-act="next"]');
+    click('[data-act="all"]');
+    click('[data-act="next"]');
+    const saveTemplate = $('[data-act="tpl"]');
+    saveTemplate.checked = true;
+    saveTemplate.dispatchEvent(new Event('change'));
+    click('[data-act="save"]');
+    await vi.waitFor(() => expect(state.marathons).toHaveLength(1));
+    const created = state.marathons[0];
+    expect(created.tasks[0]).not.toHaveProperty('syncId');
+    expect(created.tasks[0].rewards[0]).not.toHaveProperty('syncId');
+    expect(created.bonuses[0]).not.toHaveProperty('syncId');
+    expect(created.tasks[0].id).not.toBe('old-task');
+    expect(state.marathonTemplates).toHaveLength(2);
+    expect(state.marathonTemplates[1].tasks[0].rewards[0]).not.toHaveProperty('syncId');
+    expect(state.marathonTemplates[1].bonuses[0]).not.toHaveProperty('syncId');
+    expect(state.marathonTemplates[0].tasks[0].syncId).toBe(ids[0]);
+  });
+});

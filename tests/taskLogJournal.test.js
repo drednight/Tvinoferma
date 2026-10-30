@@ -142,6 +142,7 @@ describe('док задач в шапке', () => {
     expect(dock.querySelector('.msk-clock-label').textContent).toBe('Проверка входа');
     expect(dock.querySelector('.msk-clock-zone').textContent).toBe('25%');
     expect(dock.querySelector('.tf-dock-bar > span').getAttribute('style')).toContain('width:25%');
+    expect(dock.querySelector('.tf-dock-bar').getAttribute('aria-label')).toBe('Прогресс выполнения скрипта');
     // Пауза и стоп — у выполняемого скрипта
     expect(dock.querySelector('[data-dock-pause]')).not.toBeNull();
     expect(dock.querySelector('[data-dock-stop]')).not.toBeNull();

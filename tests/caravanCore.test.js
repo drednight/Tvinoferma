@@ -143,10 +143,13 @@ describe('повторы', () => {
     expect(isTransient('no_items')).toBe(false);
   });
 
-  it('«Повторить» предлагается для частичных, ошибочных и неясных, но не для успешных и пробных', () => {
+  it('«Повторить» допускает частичный проверенный результат и ошибки до нажатия, но не неясный исход', () => {
     const r = (status, extra) => ({ ...rowFromPayload(ch, payload({ status, ...extra })) });
-    ['partial', 'error', 'challenge', 'unknown'].forEach(s => expect(isRerunnable(r(s))).toBe(true));
-    ['success', 'nothing', 'dry_run', 'not_logged_in'].forEach(s => expect(isRerunnable(r(s))).toBe(false));
+    expect(isRerunnable(r('partial'))).toBe(true);
+    ['error', 'challenge', 'not_logged_in'].forEach(s => expect(isRerunnable(r(s, { clicked: false }))).toBe(true));
+    ['success', 'nothing', 'dry_run', 'unknown'].forEach(s => expect(isRerunnable(r(s))).toBe(false));
+    expect(isRerunnable(r('partial', { chests: [chest({ state: 'sent' })] }))).toBe(false);
+    expect(isRerunnable(r('error', { clicked: true }))).toBe(false);
     expect(isRerunnable(plainRow(ch, 'cancelled'))).toBe(true);
     expect(isRerunnable(r('error', { dryRun: true }))).toBe(false);
   });
@@ -169,7 +172,7 @@ describe('сводка', () => {
       noLogin: 1,
       found: 5,
       opened: 3,
-      rerun: 1
+      rerun: 2
     });
   });
 
@@ -233,7 +236,8 @@ describe('runCaravanBatch', () => {
       return ok(a.charId);
     };
     const rows = await runCaravanBatch(base({ invokeFn }));
-    expect(rows.map(r => r.status)).toEqual(['success', 'error', 'success']);
+    expect(rows.map(r => r.status)).toEqual(['success', 'unknown', 'success']);
+    expect(rows[1].uncertain).toBe(true);
     expect(rows[1].error).toBe('сломалось');
   });
 

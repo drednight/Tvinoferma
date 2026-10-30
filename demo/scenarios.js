@@ -23,6 +23,7 @@ import {
   statusTitle
 } from './lab-data.js';
 import { createDemoSite, demoAccountName, demoRoster } from './scenario-fixtures.js';
+import { demoReport, openDemoReport } from './script-report.js';
 
 const SCAN_DELAY = 110;
 const ACTION_DELAY = 180;
@@ -64,6 +65,13 @@ function splitFrame(title, sub) {
     side: $('[data-side]'),
     table: $('[data-table]'),
     result: $('[data-result]'),
+    reports: [],
+    retry: null,
+    saveResult(kind, rows, dry, retry = null, append = false) {
+      if (!append) this.reports = [];
+      this.reports.push(demoReport(kind, rows, dry));
+      this.retry = retry;
+    },
     alive: () => dlg.el.isConnected,
     get busy() {
       return !!signal;
@@ -110,6 +118,8 @@ function footer(frame, { ready = false, canRun = false, startLabel = 'Запус
     ? `<span class="promo-muted">Демо · кнопка «Стоп» не начинает новые действия.</span><span class="sd-foot-spacer"></span>
        <button class="btn danger" data-act="stop">⏹ Стоп</button>`
     : `<button class="btn secondary" data-act="refresh" ${confirming ? 'disabled' : ''}>🔄 Обновить данные</button>
+       ${frame.reports.length ? '<button class="btn secondary" data-act="report">📋 Таблица действий</button>' : ''}
+       ${frame.retry ? `<button class="btn secondary" data-act="retry" ${confirming ? 'disabled' : ''}>🔁 Повторить неудачные</button>` : ''}
        <span class="sd-foot-spacer"></span>
        <button class="btn ghost" data-act="close">Закрыть</button>
        <button class="btn secondary" data-act="dry" ${ready && canRun && !confirming ? '' : 'disabled'}>👁 Пробный</button>
@@ -126,6 +136,12 @@ function bindFooter(frame, handlers) {
         break;
       case 'refresh':
         void handlers.scan();
+        break;
+      case 'report':
+        openDemoReport(frame.reports);
+        break;
+      case 'retry':
+        if (frame.retry) void frame.retry();
         break;
       case 'dry':
         void handlers.run(true);
@@ -184,7 +200,8 @@ export function openTransferSplit() {
     results: {},
     scanned: false,
     stale: false,
-    confirming: false
+    confirming: false,
+    failOnce: false
   };
   const chosen = () => targetChars(st.target);
   const plans = () => {
@@ -197,6 +214,7 @@ export function openTransferSplit() {
   };
 
   function targetChanged() {
+    frame.retry = null;
     st.results = {};
     renderTable();
     renderFooter();
@@ -208,7 +226,8 @@ export function openTransferSplit() {
       st.target,
       `
       <div class="sp-note">Автоматический скрипт отмечает все доступные предметы на странице аккаунта. Заблокированные строки и запомненные ограничения учитываются отдельно; сундуки с выбором награды не открываются.</div>
-      <div class="sp-note">В ручном окне сайта есть группировка по типам и акциям, но автоматический план категории не выбирает. После проверки выберите сервер и получателя. Общий аккаунт обрабатывается один раз.</div>`,
+      <div class="sp-note">В ручном окне сайта есть группировка по типам и акциям, но автоматический план категории не выбирает. После проверки выберите сервер и получателя. Общий аккаунт обрабатывается один раз.</div>
+      <label class="sp-check"><input type="checkbox" data-demo-fail ${st.failOnce ? 'checked' : ''}> Показать пример ошибки на одном шаге</label>`,
       targetChanged
     );
   }
@@ -276,6 +295,7 @@ export function openTransferSplit() {
   async function scan() {
     if (frame.busy || st.confirming) return;
     const op = frame.begin('scan');
+    frame.retry = null;
     st.scanned = false;
     st.reads = {};
     st.results = {};
@@ -307,8 +327,8 @@ export function openTransferSplit() {
     renderFooter();
   }
 
-  async function run(dry) {
-    if (frame.busy || st.confirming || !st.scanned || st.stale || !plans().some(p => p.run)) return;
+  async function run(dry, retryIds = null) {
+    if (frame.busy || st.confirming || !st.scanned || (st.stale && !retryIds) || !plans().some(p => p.run)) return;
     if (!dry) {
       st.confirming = true;
       renderFooter();
@@ -323,14 +343,18 @@ export function openTransferSplit() {
         return;
       }
     }
-    const work = plans();
+    const work = plans().filter(p => !retryIds || retryIds.has(p.char.id));
     const op = frame.begin('run');
-    st.results = {};
+    if (!retryIds) st.results = {};
     frame.result.innerHTML = '';
     renderSide();
     renderTable();
     renderFooter();
     let sent = 0;
+    let failureShown = false;
+    const reportRows = [];
+    const processed = new Set();
+    const retry = [];
     for (let i = 0; i < work.length; i++) {
       const p = work[i];
       if (op.cancelled || !frame.alive()) break;
@@ -338,8 +362,28 @@ export function openTransferSplit() {
         frame.status(`${dry ? '👁 Пробная проверка' : '📦 Демо-передача'}: ${p.char.nick}`, true);
         await sleep(ACTION_DELAY);
         if (op.cancelled || !frame.alive()) break;
-        st.results[p.char.id] = dry ? '👁 Найдено, ничего не передано' : '✅ Передано в демо';
-        if (!dry) {
+        const items = clone(site[p.char.account].pending);
+        const failed = !dry && st.failOnce && !retryIds && !failureShown;
+        if (failed) failureShown = true;
+        st.results[p.char.id] = failed
+          ? '❌ Демо-ошибка до передачи'
+          : dry
+            ? '👁 Найдено, ничего не передано'
+            : '✅ Передано в демо';
+        processed.add(p.char.id);
+        if (failed) retry.push(p.char.id);
+        reportRows.push({
+          charId: p.char.id,
+          nick: p.char.nick,
+          server: p.serverName,
+          recipient: p.recipient?.name || '',
+          status: failed ? 'error' : dry ? 'dry_run' : 'success',
+          dryRun: dry,
+          error: failed ? 'timeout' : null,
+          items,
+          done: !dry && !failed ? items : []
+        });
+        if (!dry && !failed) {
           site[p.char.account].pending = [];
           sent++;
         }
@@ -347,9 +391,21 @@ export function openTransferSplit() {
       frame.progress(i + 1, work.length);
       renderTable();
     }
+    for (const p of work.filter(p => p.run && !processed.has(p.char.id))) {
+      retry.push(p.char.id);
+      reportRows.push({
+        charId: p.char.id,
+        nick: p.char.nick,
+        server: p.serverName,
+        recipient: p.recipient?.name || '',
+        status: 'cancelled',
+        dryRun: dry
+      });
+    }
     frame.end(op);
     if (!frame.alive()) return;
-    st.stale = sent > 0;
+    frame.saveResult('transfer', reportRows, dry, retry.length ? () => run(dry, new Set(retry)) : null, !!retryIds);
+    st.stale = st.stale || sent > 0;
     frame.status(op.cancelled ? '⏹ Остановлено' : dry ? '👁 Пробная проверка завершена' : '✅ Демо-передача завершена');
     frame.result.textContent = dry
       ? 'Пробный запуск: инвентарь не изменился.'
@@ -364,12 +420,18 @@ export function openTransferSplit() {
   frame.dlg.body.addEventListener('change', e => {
     const input = e.target;
     if (frame.busy || st.confirming) return;
+    if (input.matches('[data-demo-fail]')) {
+      st.failOnce = input.checked;
+      return;
+    }
     if (input.matches('[data-server]')) {
+      frame.retry = null;
       st.shards[input.dataset.server] = input.value;
       st.results = {};
       renderTable();
       renderFooter();
     } else if (input.matches('[data-recipient]')) {
+      frame.retry = null;
       const id = input.dataset.recipient;
       const sid = st.shards[id];
       st.picks[id] ||= {};
@@ -416,7 +478,8 @@ export function openShopSplit() {
     results: {},
     scanned: false,
     stale: false,
-    confirming: false
+    confirming: false,
+    failOnce: false
   };
   const selectedIds = () => new Set(targetChars(st.target).map(c => c.id));
   const selectedGroups = () => {
@@ -445,6 +508,7 @@ export function openShopSplit() {
   }
 
   function targetChanged() {
+    frame.retry = null;
     st.results = {};
     frame.result.textContent = '';
     renderTable();
@@ -475,7 +539,8 @@ export function openShopSplit() {
       frame,
       st.target,
       `${catalogHtml()}
-      <div class="sp-note">У персонажей одного аккаунта сайта общий баланс и лимиты: количество задаётся один раз на аккаунт. Цены и описания на настоящем сайте могут отличаться от примера.</div>`,
+      <div class="sp-note">У персонажей одного аккаунта сайта общий баланс и лимиты: количество задаётся один раз на аккаунт. Цены и описания на настоящем сайте могут отличаться от примера.</div>
+      <label class="sp-check"><input type="checkbox" data-demo-fail ${st.failOnce ? 'checked' : ''}> Показать пример ошибки на одном шаге</label>`,
       targetChanged
     );
   }
@@ -555,6 +620,7 @@ export function openShopSplit() {
   async function scan() {
     if (frame.busy || st.confirming) return;
     const op = frame.begin('scan');
+    frame.retry = null;
     st.scanned = false;
     st.reads = {};
     st.results = {};
@@ -586,11 +652,11 @@ export function openShopSplit() {
     renderFooter();
   }
 
-  async function run(dry) {
-    if (frame.busy || st.confirming || !st.scanned || st.stale) return;
+  async function run(dry, retryIds = null) {
+    if (frame.busy || st.confirming || !st.scanned || (st.stale && !retryIds)) return;
     const work = selectedGroups()
       .map(group => ({ group, plan: planFor(group) }))
-      .filter(x => x.plan?.qty > 0);
+      .filter(x => x.plan?.qty > 0 && (!retryIds || retryIds.has(x.group.siteKey)));
     if (!work.length) return;
     if (!dry) {
       st.confirming = true;
@@ -607,12 +673,36 @@ export function openShopSplit() {
       }
     }
     const op = frame.begin('run');
-    st.results = {};
+    if (!retryIds) st.results = {};
     frame.result.innerHTML = '';
     renderSide();
     renderTable();
     renderFooter();
     let completed = 0;
+    let failureShown = false;
+    const reportRows = [];
+    const processed = new Set();
+    const retry = [];
+    const addRows = ({ group, plan }, status) => {
+      const rep = pickRepresentative(group.members, selectedIds()) || group.members[0];
+      plan.rows
+        .filter(row => row.qty > 0)
+        .forEach(row =>
+          reportRows.push({
+            charId: rep.id,
+            nick: rep.nick,
+            memberChars: group.members.map(c => ({ id: c.id, nick: c.nick })),
+            members: group.members.map(c => c.nick),
+            itemKey: row.key,
+            item: SHOP_ITEMS.find(d => d.key === row.key)?.name,
+            status,
+            dryRun: dry,
+            requested: row.qty,
+            bought: status === 'done' ? row.qty : 0,
+            spent: status === 'done' ? row.cost : 0
+          })
+        );
+    };
     for (let i = 0; i < work.length; i++) {
       const { group, plan } = work[i];
       if (op.cancelled || !frame.alive()) break;
@@ -622,10 +712,17 @@ export function openShopSplit() {
       );
       await sleep(ACTION_DELAY);
       if (op.cancelled || !frame.alive()) break;
-      st.results[group.siteKey] = dry
-        ? `Пробный: баланс не изменён, прогноз ${fmt(plan.left)} мон.`
-        : `В демо куплено ${plan.qty} шт.; осталось ${fmt(plan.left)} мон.`;
-      if (!dry) {
+      const failed = !dry && st.failOnce && !retryIds && !failureShown;
+      if (failed) failureShown = true;
+      processed.add(group.siteKey);
+      if (failed) retry.push(group.siteKey);
+      addRows({ group, plan }, failed ? 'error' : dry ? 'dry_run' : 'done');
+      st.results[group.siteKey] = failed
+        ? '❌ Демо-ошибка до покупки'
+        : dry
+          ? `Пробный: баланс не изменён, прогноз ${fmt(plan.left)} мон.`
+          : `В демо куплено ${plan.qty} шт.; осталось ${fmt(plan.left)} мон.`;
+      if (!dry && !failed) {
         const account = site[group.members[0].account];
         account.balance = plan.left;
         for (const row of plan.rows)
@@ -635,9 +732,14 @@ export function openShopSplit() {
       frame.progress(i + 1, work.length);
       renderTable();
     }
+    for (const item of work.filter(item => !processed.has(item.group.siteKey))) {
+      retry.push(item.group.siteKey);
+      addRows(item, 'cancelled');
+    }
     frame.end(op);
     if (!frame.alive()) return;
-    st.stale = completed > 0;
+    frame.saveResult('shop', reportRows, dry, retry.length ? () => run(dry, new Set(retry)) : null, !!retryIds);
+    st.stale = st.stale || completed > 0;
     frame.status(op.cancelled ? '⏹ Остановлено' : dry ? '👁 Пробная проверка завершена' : '✅ Демо-покупка завершена');
     frame.result.textContent = dry
       ? 'Пробный запуск: монеты и наличие не изменились.'
@@ -652,7 +754,12 @@ export function openShopSplit() {
   frame.dlg.body.addEventListener('change', e => {
     const input = e.target;
     if (frame.busy || st.confirming) return;
+    if (input.matches('[data-demo-fail]')) {
+      st.failOnce = input.checked;
+      return;
+    }
     if (input.matches('[data-item]')) {
+      frame.retry = null;
       if (input.checked) st.selected.add(input.dataset.item);
       else st.selected.delete(input.dataset.item);
       st.results = {};
@@ -664,6 +771,7 @@ export function openShopSplit() {
   frame.dlg.body.addEventListener('input', e => {
     const input = e.target;
     if (!input.matches('[data-qty]') || frame.busy || st.confirming) return;
+    frame.retry = null;
     st.qty.set(input.dataset.qty, Math.max(0, Math.min(999, Math.floor(Number(input.value) || 0))));
     st.results = {};
     frame.result.textContent = '';
@@ -689,10 +797,19 @@ export function openShopSplit() {
 export function openCaravanSplit() {
   const frame = splitFrame('🧰 Сундук караванщика', 'Проверка инвентарей → найденные сундуки → открытие.');
   const site = createDemoSite();
-  const st = { target: defaultTarget(), reads: {}, results: {}, scanned: false, stale: false, confirming: false };
+  const st = {
+    target: defaultTarget(),
+    reads: {},
+    results: {},
+    scanned: false,
+    stale: false,
+    confirming: false,
+    failOnce: false
+  };
   const chosen = () => targetChars(st.target);
 
   function targetChanged() {
+    frame.retry = null;
     st.results = {};
     frame.result.textContent = '';
     renderTable();
@@ -703,7 +820,8 @@ export function openCaravanSplit() {
       frame,
       st.target,
       `<div class="sp-note">В настоящем скрипте открываются все найденные «Сундуки караванщика»; другие виды сундуков не затрагиваются.
-      Персонажи одного аккаунта сайта используют общий инвентарь.</div>`,
+      Персонажи одного аккаунта сайта используют общий инвентарь.</div>
+      <label class="sp-check"><input type="checkbox" data-demo-fail ${st.failOnce ? 'checked' : ''}> Показать пример ошибки на одном шаге</label>`,
       targetChanged
     );
   }
@@ -745,6 +863,7 @@ export function openCaravanSplit() {
   async function scan() {
     if (frame.busy || st.confirming) return;
     const op = frame.begin('scan');
+    frame.retry = null;
     st.scanned = false;
     st.reads = {};
     st.results = {};
@@ -770,9 +889,9 @@ export function openCaravanSplit() {
     renderTable();
     renderFooter();
   }
-  async function run(dry) {
-    if (frame.busy || st.confirming || !st.scanned || st.stale) return;
-    const work = plan().filter(p => p.run);
+  async function run(dry, retryIds = null) {
+    if (frame.busy || st.confirming || !st.scanned || (st.stale && !retryIds)) return;
+    const work = plan().filter(p => p.run && (!retryIds || retryIds.has(p.c.id)));
     if (!work.length) return;
     if (!dry) {
       st.confirming = true;
@@ -786,12 +905,16 @@ export function openCaravanSplit() {
       }
     }
     const op = frame.begin('run');
-    st.results = {};
+    if (!retryIds) st.results = {};
     frame.result.textContent = '';
     renderSide();
     renderTable();
     renderFooter();
     let opened = 0;
+    let failureShown = false;
+    const reportRows = [];
+    const processed = new Set();
+    const retry = [];
     for (let i = 0; i < work.length; i++) {
       const { c } = work[i];
       if (op.cancelled || !frame.alive()) break;
@@ -799,17 +922,43 @@ export function openCaravanSplit() {
       await sleep(ACTION_DELAY);
       if (op.cancelled || !frame.alive()) break;
       const n = site[c.account].chests;
-      st.results[c.id] = dry ? `👁 Найдено ${n}, ничего не открыто` : `✅ Открыто в демо: ${n}`;
-      if (!dry) {
+      const failed = !dry && st.failOnce && !retryIds && !failureShown;
+      if (failed) failureShown = true;
+      processed.add(c.id);
+      if (failed) retry.push(c.id);
+      st.results[c.id] = failed
+        ? '❌ Демо-ошибка до открытия'
+        : dry
+          ? `👁 Найдено ${n}, ничего не открыто`
+          : `✅ Открыто в демо: ${n}`;
+      reportRows.push({
+        charId: c.id,
+        nick: c.nick,
+        status: failed ? 'error' : dry ? 'dry_run' : 'success',
+        dryRun: dry,
+        found: n,
+        opened: !dry && !failed ? n : 0,
+        chests: Array.from({ length: n }, (_, i) => ({
+          cartId: `пример-${i + 1}`,
+          state: !dry && !failed ? 'opened' : 'found',
+          items: []
+        }))
+      });
+      if (!dry && !failed) {
         site[c.account].chests = 0;
         opened += n;
       }
       frame.progress(i + 1, work.length);
       renderTable();
     }
+    for (const { c } of work.filter(p => !processed.has(p.c.id))) {
+      retry.push(c.id);
+      reportRows.push({ charId: c.id, nick: c.nick, status: 'cancelled', dryRun: dry });
+    }
     frame.end(op);
     if (!frame.alive()) return;
-    st.stale = opened > 0;
+    frame.saveResult('caravan', reportRows, dry, retry.length ? () => run(dry, new Set(retry)) : null, !!retryIds);
+    st.stale = st.stale || opened > 0;
     frame.status(op.cancelled ? '⏹ Остановлено' : dry ? '👁 Пробная проверка завершена' : '✅ Демо-открытие завершено');
     frame.result.textContent = dry
       ? 'Пробный запуск: сундуки не изменились.'
@@ -820,6 +969,9 @@ export function openCaravanSplit() {
     renderTable();
     renderFooter();
   }
+  frame.dlg.body.addEventListener('change', e => {
+    if (e.target.matches('[data-demo-fail]') && !frame.busy) st.failOnce = e.target.checked;
+  });
   bindFooter(frame, { scan, run });
   renderSide();
   renderTable();

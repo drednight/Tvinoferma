@@ -157,7 +157,8 @@ describe('runTransferBatch', () => {
       return sent(a);
     });
     const rows = await runTransferBatch(base({ invokeFn }));
-    expect(rows.map(r => r.status)).toEqual(['success', 'error', 'success']);
+    expect(rows.map(r => r.status)).toEqual(['success', 'unknown', 'success']);
+    expect(rows[1].uncertain).toBe(true);
     expect(rows[1].error).toBe('boom');
   });
 

@@ -1,10 +1,13 @@
 //! Учётные данные персонажей (email, пароль, телефон) в хранилище ОС:
 //! Windows Credential Manager, macOS Keychain, Secret Service (Linux).
-//! В state.json они больше не попадают.
+//! При отключённом vault контакты могут оставаться в state.json и его копиях.
 
 use std::collections::HashMap;
 
 const SERVICE: &str = "com.tvinoferma.desktop";
+// Не относится к пространству имён contacts:<id>: пробная запись не должна
+// перезаписать или удалить контакты персонажа с необычным ID.
+const PROBE_USER: &str = "vault-availability-probe";
 
 fn entry(key: &str) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, &user(key)).map_err(|e| e.to_string())
@@ -27,8 +30,9 @@ async fn blocking<T: Send + 'static>(
 #[tauri::command]
 pub async fn secrets_available() -> bool {
     blocking(|| {
-        let probe = entry("__probe__")?;
-        crate::vault::set_password(&probe, SERVICE, &user("__probe__"), "ok")?;
+        let _guard = super::state::lock_state_io()?;
+        let probe = keyring::Entry::new(SERVICE, PROBE_USER).map_err(|e| e.to_string())?;
+        crate::vault::set_password(&probe, SERVICE, PROBE_USER, "ok")?;
         let ok = probe.get_password().map(|v| v == "ok").unwrap_or(false);
         let _ = probe.delete_credential();
         Ok(ok)
@@ -41,6 +45,7 @@ pub async fn secrets_available() -> bool {
 #[tauri::command]
 pub async fn secrets_get_many(keys: Vec<String>) -> Result<HashMap<String, String>, String> {
     blocking(move || {
+        let _guard = super::state::lock_state_io()?;
         let mut out = HashMap::new();
         for key in keys {
             match entry(&key)?.get_password() {
@@ -60,6 +65,7 @@ pub async fn secrets_get_many(keys: Vec<String>) -> Result<HashMap<String, Strin
 #[tauri::command]
 pub async fn secrets_set_many(items: HashMap<String, String>) -> Result<(), String> {
     blocking(move || {
+        let _guard = super::state::lock_state_io()?;
         for (key, value) in items {
             let e = entry(&key)?;
             if value.is_empty() {
@@ -80,6 +86,7 @@ pub async fn secrets_set_many(items: HashMap<String, String>) -> Result<(), Stri
 #[tauri::command]
 pub async fn secrets_delete_many(keys: Vec<String>) -> Result<(), String> {
     blocking(move || {
+        let _guard = super::state::lock_state_io()?;
         for key in keys {
             match entry(&key)?.delete_credential() {
                 Ok(()) | Err(keyring::Error::NoEntry) => {}
@@ -89,4 +96,16 @@ pub async fn secrets_delete_many(keys: Vec<String>) -> Result<(), String> {
         Ok(())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{user, PROBE_USER};
+
+    #[test]
+    fn availability_probe_is_outside_contact_namespace() {
+        assert!(!PROBE_USER.starts_with("contacts:"));
+        assert_ne!(user("__probe__"), PROBE_USER);
+        assert_ne!(user(PROBE_USER), PROBE_USER);
+    }
 }

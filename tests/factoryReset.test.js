@@ -82,6 +82,17 @@ describe('сводка и предупреждение', () => {
     expect(text).toContain('сессии');
     expect(text).toContain('откатить это действие нельзя');
     expect(text).toContain('сначала сделайте экспорт');
+    expect(text).toContain('открытые контакты и пароли');
+    expect(text).toContain('не включает отдельные журналы, сессии, профили и входы GameCenter');
+    expect(text).toContain('пытается удалить известные локальные записи доступа к облаку');
+    expect(text).toContain('привязки набора');
+    expect(text).toContain('внутренний ключ синхронизации');
+    expect(text).toContain('локальную очередь отправки');
+    expect(text).toContain(
+      'сохранённый набор ключей, независимый код сверки и пароль или запасной ключ, сохранённый отдельно'
+    );
+    expect(text).toContain('облачные файлы и разрешения, выданные провайдерам, сохраняются');
+    expect(text).toContain('неизвестные записи хранилища ОС могут остаться');
   });
 
   it('на пустых данных предупреждение не перечисляет ничего лишнего', () => {
@@ -95,6 +106,8 @@ describe('performFactoryReset: порядок и обработка ошибок
   const invokeMock = vi.fn();
   const toastMock = vi.fn();
   let perform;
+  let prepare;
+  let discard;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -103,7 +116,11 @@ describe('performFactoryReset: порядок и обработка ошибок
     vi.doMock('@tauri-apps/api/core', () => ({ invoke: (...a) => invokeMock(...a) }));
     vi.doMock('../js/core/ui.js', () => ({ toast: (...a) => toastMock(...a) }));
     window.__TAURI_INTERNALS__ = {};
-    ({ performFactoryReset: perform } = await import('../js/settings/factoryReset.js'));
+    ({
+      performFactoryReset: perform,
+      prepareFactoryReset: prepare,
+      discardFactoryResetPlan: discard
+    } = await import('../js/settings/factoryReset.js'));
   });
   afterEach(() => {
     delete window.__TAURI_INTERNALS__;
@@ -118,20 +135,55 @@ describe('performFactoryReset: порядок и обработка ошибок
     expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('только в приложении'), 'error');
   });
 
-  it('в Rust уходит полный список ключей хранилища ОС', async () => {
-    invokeMock.mockResolvedValue({ problems: [] });
+  it('не выполняется без одноразового плана от диалога подтверждения', async () => {
+    const appState = { characters: characters() };
+    const plan = prepare(appState);
+    expect(await perform(appState)).toBe(false);
+    expect(await perform(appState, { ...plan })).toBe(false);
+    expect(await perform({ characters: characters() }, plan)).toBe(false);
+    discard(plan);
+    expect(await perform(appState, plan)).toBe(false);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('передаёт разные пространства имён и учитывает архивных персонажей', async () => {
+    invokeMock.mockImplementation(async command =>
+      command === 'load_state_raw'
+        ? '{"fictional":true}'
+        : {
+            stateRemoved: true,
+            backupsRemoved: 1,
+            sessionsRemoved: true,
+            profilesRemoved: true,
+            secretsRemoved: 4,
+            problems: [],
+            message: 'Готово'
+          }
+    );
     const reload = vi.fn();
     vi.stubGlobal('location', { ...window.location, reload });
-    expect(await perform({ characters: characters() })).toBe(true);
+    const archived = { id: 'Архив', launch: { gcIds: ['gc-old'] } };
+    const appState = { characters: characters(), archivedCharacters: [archived] };
+    expect(await perform(appState, prepare(appState))).toBe(true);
     expect(invokeMock).toHaveBeenCalledWith('factory_reset', {
-      keys: expect.arrayContaining(['Ауразак', 'Ауразак@gc-1', 'Мираж@gc-2'])
+      keys: expect.arrayContaining(['Ауразак', 'Мираж', 'Архив']),
+      accountKeys: expect.arrayContaining(['Ауразак', 'Ауразак@gc-1', 'Мираж@gc-2', 'Архив', 'Архив@gc-old']),
+      expectedRaw: '{"fictional":true}'
     });
+    expect(reload).toHaveBeenCalledTimes(1);
     vi.unstubAllGlobals();
   });
 
-  it('ошибка Rust: сообщение пользователю, окно не перезагружается', async () => {
-    invokeMock.mockRejectedValue(new Error('файл занят'));
-    expect(await perform({ characters: characters() })).toBe(false);
-    expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('файл занят'), 'error');
+  it('ошибка IPC считается неизвестным исходом и не раскрывает сообщение системы', async () => {
+    invokeMock.mockImplementation(async command => {
+      if (command === 'load_state_raw') return null;
+      throw new Error('PRIVATE-PATH');
+    });
+    const appState = { characters: characters() };
+    expect(await perform(appState, prepare(appState))).toBe(false);
+    expect(toastMock).toHaveBeenCalledWith(expect.stringContaining('Сброс мог затронуть часть данных'), 'error', 60000);
+    expect(JSON.stringify(toastMock.mock.calls)).not.toContain('PRIVATE-PATH');
+    expect(await perform(appState, prepare(appState))).toBe(false);
+    expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 });

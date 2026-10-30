@@ -49,7 +49,16 @@ export function refreshNavBadges(doc = document) {
         tab.querySelector('.next-nav-copy strong')?.textContent ||
         tab.querySelector('span:not(.tab-ico):not(.tab-count)')?.textContent ||
         section;
-      tab.setAttribute('aria-label', `${title}: ${value}`);
+      const subtitle = tab.querySelector('.next-nav-copy small')?.textContent?.trim();
+      // Доступное имя включает видимые название, подзаголовок и сокращённый счётчик:
+      // иначе голосовой ввод не находит кнопку по тексту, который видит пользователь.
+      if (subtitle) {
+        const displayed = value ? ` ${label}` : '';
+        const exact = !value || label !== String(value) ? ` (${value})` : '';
+        tab.setAttribute('aria-label', `${title.trim()} ${subtitle}${displayed}${exact}`);
+      } else {
+        tab.setAttribute('aria-label', `${title}: ${value}`);
+      }
     });
   }
 }

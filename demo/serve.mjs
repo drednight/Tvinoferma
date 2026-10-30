@@ -5,13 +5,13 @@
 // Только для локального просмотра демо — в сборку приложения не попадает.
 
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT || 1420);
 // Можно открыть нужную лабораторию сразу в предпросмотре, не меняя стандартный адрес.
-const entry = /^\/demo\/[a-z0-9/._-]+\.html$/i.test(process.env.DEMO_ENTRY || '')
+const entry = /^\/demo\/[a-z0-9/._-]+\.html(?:\?show=(?:statistics|cloud-sync))?$/i.test(process.env.DEMO_ENTRY || '')
   ? process.env.DEMO_ENTRY
   : '/demo/tools-modals.html';
 
@@ -25,6 +25,8 @@ const MIME = {
   '.png': 'image/png',
   '.webp': 'image/webp',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
   '.ico': 'image/x-icon',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
@@ -32,48 +34,76 @@ const MIME = {
   '.md': 'text/plain; charset=utf-8'
 };
 
+// Только ресурсы, необходимые лаборатории. Сервер слушает 0.0.0.0 для preview,
+// поэтому запрет доступа к .git и произвольным файлам нужен и без CORS.
+const IMAGE_TYPES = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2']);
+const ROUTES = [
+  { prefix: '/demo/', dir: resolve(ROOT, 'demo'), extensions: new Set(['.html', '.js', '.css', ...IMAGE_TYPES]) },
+  { prefix: '/js/', dir: resolve(ROOT, 'js'), extensions: new Set(['.js']) },
+  { prefix: '/css/', dir: resolve(ROOT, 'css'), extensions: new Set(['.css']) },
+  { prefix: '/assets/', dir: resolve(ROOT, 'public/assets'), extensions: IMAGE_TYPES }
+];
+
+const notFound = res => {
+  res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end('404 Not Found');
+};
+
 const server = createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, 'http://localhost');
-    const pathname = decodeURIComponent(url.pathname);
-    // Opaque-origin iframe загружает публичные модули и шрифты по CORS. Не открываем
-    // произвольные файлы репозитория (в частности .git и локальные настройки) другим сайтам.
-    const corsPath = pathname.replace(/^\/(?:Tvinoferma|dist)(?=\/)/, '');
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { Allow: 'GET, HEAD' });
+      res.end();
+      return;
+    }
+    // Проверяем до нормализации URL: иначе ../ и закодированные точки исчезнут.
+    const pathname = decodeURIComponent((req.url || '').split('?')[0]);
     if (
-      !/(?:^|\/)\./.test(corsPath) &&
-      /^\/(?:demo|js|css|assets)\/[^?#]+\.(?:js|mjs|css|woff2?|png|webp|svg)$/i.test(corsPath)
+      !pathname.startsWith('/') ||
+      pathname.includes('\\') ||
+      pathname.includes('\0') ||
+      pathname.includes('%') ||
+      pathname.split('/').some(part => part.startsWith('.'))
     ) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      notFound(res);
+      return;
     }
     if (pathname === '/' || pathname === '/index.html') {
       res.writeHead(302, { Location: entry });
       res.end();
       return;
     }
-    // Как Vite: public/assets доступен в браузере по /assets — общие иконки классов.
-    const assetPath = pathname.startsWith('/assets/') ? `/public${pathname}` : pathname;
-    const file = join(ROOT, normalize(assetPath));
-    // Защита от выхода за корень репозитория (../../etc)
-    if (file !== ROOT && !file.startsWith(ROOT + sep)) {
-      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('403 Forbidden');
+    const route = ROUTES.find(candidate => pathname.startsWith(candidate.prefix));
+    const extension = extname(pathname).toLowerCase();
+    if (!route || !route.extensions.has(extension)) {
+      notFound(res);
+      return;
+    }
+    const base = await realpath(route.dir);
+    const requested = resolve(base, pathname.slice(route.prefix.length));
+    const file = await realpath(requested).catch(() => null);
+    // Не следуем по символическим ссылкам, даже на скрытый файл внутри каталога.
+    if (!file || file !== requested || !file.startsWith(base + sep)) {
+      notFound(res);
       return;
     }
     const info = await stat(file).catch(() => null);
     if (!info?.isFile()) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('404 Not Found');
+      notFound(res);
       return;
     }
-    const body = await readFile(file);
-    res.writeHead(200, {
-      'Content-Type': MIME[extname(file).toLowerCase()] || 'application/octet-stream',
-      'Cache-Control': 'no-store'
-    });
+    const body = req.method === 'HEAD' ? null : await readFile(file);
+    const headers = {
+      'Content-Type': MIME[extension] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    };
+    // Opaque-origin iframe должен загружать только опубликованные модули и стили.
+    if (extension !== '.html') headers['Access-Control-Allow-Origin'] = '*';
+    res.writeHead(200, headers);
     res.end(body);
   } catch {
-    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('500 Server error');
+    notFound(res);
   }
 });
 

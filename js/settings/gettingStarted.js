@@ -311,9 +311,10 @@ function bindEntries() {
  * Инициализация гайда: кнопки входа и один автоматический показ.
  * Вызывается из `js/main.js` при загрузке приложения.
  */
-export function initGettingStarted() {
+/** @param {{ autoOpen?: boolean }} [options] */
+export function initGettingStarted({ autoOpen = true } = {}) {
   bindEntries();
-  if (!shouldShowGuide()) return;
+  if (!autoOpen || !shouldShowGuide()) return;
   // Не сразу: при первом запуске сначала открывается приветствие «С чего начать»,
   // и два окна друг на друге только мешали бы
   setTimeout(() => {

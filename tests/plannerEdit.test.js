@@ -99,6 +99,34 @@ describe('правка записи календаря', () => {
     expect(persist).toHaveBeenCalled();
   });
 
+  it('не теряет сохранённый нестандартный запас напоминания при другой правке', async () => {
+    const e = sample();
+    e.reminderMinutes = 45;
+    state.plannerEntries = [e];
+    openPlannerDay('2026-10-05', {});
+    document.querySelector('[data-planner-edit]').click();
+    expect(openForm().querySelector('[name="reminderMinutes"]').value).toBe('45');
+    setField('title', 'Другое название');
+    submit().click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].title).toBe('Другое название'));
+    expect(state.plannerEntries[0].reminderMinutes).toBe(45);
+  });
+
+  it('показывает ограничение сохранённого напоминания больше суток', async () => {
+    const e = sample();
+    e.reminderMinutes = 2880;
+    state.plannerEntries = [e];
+    openPlannerDay('2026-10-05', {});
+    document.querySelector('[data-planner-edit]').click();
+    const select = openForm().querySelector('[name="reminderMinutes"]');
+    expect(select.value).toBe('2880');
+    expect(select.selectedOptions[0].textContent).toContain('только в день события');
+    setField('title', 'Сохранить запись');
+    submit().click();
+    await vi.waitFor(() => expect(state.plannerEntries[0].title).toBe('Сохранить запись'));
+    expect(state.plannerEntries[0].reminderMinutes).toBe(2880);
+  });
+
   it('в форме правки можно сменить состояние и цвет', async () => {
     const e = sample();
     state.plannerEntries = [e];

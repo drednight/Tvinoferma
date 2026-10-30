@@ -40,14 +40,21 @@ jobs:
           workspaces: src-tauri -> target
       # generate_context! требует собранный фронтенд (frontendDist = ../dist)
       - run: mkdir dist
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - run: ./.github/scripts/run-cargo-windows.ps1 test
+        env:
+          # Отдельные временные имена; значения синтетические и очищаются после теста.
+          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
+      # Явно проверяем, что opt-in тест не был пропущен или отфильтрован.
+      - run: ./.github/scripts/run-cargo-windows.ps1 credential-smoke
+        env:
+          TF_RUN_CREDENTIAL_MANAGER_TESTS: '1'
+      - run: ./.github/scripts/run-cargo-windows.ps1 fmt
+      - run: ./.github/scripts/run-cargo-windows.ps1 clippy
 
   rust-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - run: cargo install cargo-audit --locked
-      - run: cargo audit --file src-tauri/Cargo.lock
+      - run: bash ./.github/scripts/run-cargo-audit.sh
         continue-on-error: true

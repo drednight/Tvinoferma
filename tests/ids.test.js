@@ -76,3 +76,70 @@ describe('смена ника', () => {
     expect(state.ui.selection.has('New_Name-2')).toBe(true);
   });
 });
+
+describe('переименование меняет только ссылки персонажа', () => {
+  it('сохраняет совпадающие имена, id заданий и sync-ID, но переносит все связи', async () => {
+    const oldId = 'a9115bf2-e834-444d-aeb6-7c3af1db8890';
+    const charSync = 'b9115bf2-e834-444d-aeb6-7c3af1db8890';
+    state.characters = [{ id: oldId, nick: 'Новое имя', syncId: charSync }];
+    state.archivedCharacters = [];
+    state.archivedParties = [{ id: 'p', memberLinks: [{ characterId: oldId, isMain: true, order: 1 }] }];
+    state.marathonTemplates = [{ id: 'tpl', name: oldId, tasks: [{ title: oldId }] }];
+    state.marathons = [
+      {
+        id: oldId,
+        syncId: oldId,
+        title: oldId,
+        participantIds: [oldId],
+        tasks: [{ id: oldId, syncId: oldId, title: oldId }],
+        assignments: { [oldId]: [oldId] },
+        progress: { [oldId]: { [oldId]: { adjust: 2 } } },
+        balance: { start: { [oldId]: { coins: 5 } }, end: {} },
+        awards: [{ characterId: oldId, charNick: oldId, taskId: oldId }],
+        lastSync: { changes: [{ charId: oldId, taskId: oldId }], errors: [{ charId: oldId, error: 'x' }] }
+      }
+    ];
+    state.ui.authCheck = { [oldId]: true };
+    state.ui.revealedContacts = { [oldId]: true };
+    state.ui.expandedCharacterId = oldId;
+    state.ui.selection = new Set([oldId]);
+    const res = await syncIdWithNick(state.characters[0]);
+    const newId = 'Novoe_imya';
+    expect(res).toEqual({ id: newId, changed: true });
+    expect(state.characters[0].syncId).toBe(charSync);
+    expect(state.marathons[0]).toMatchObject({
+      id: oldId,
+      syncId: oldId,
+      title: oldId,
+      participantIds: [newId],
+      tasks: [{ id: oldId, syncId: oldId, title: oldId }],
+      assignments: { [newId]: [oldId] },
+      progress: { [newId]: { [oldId]: { adjust: 2 } } },
+      balance: { start: { [newId]: { coins: 5 } } },
+      awards: [{ characterId: newId, charNick: oldId, taskId: oldId }],
+      lastSync: { changes: [{ charId: newId, taskId: oldId }], errors: [{ charId: newId }] }
+    });
+    expect(state.archivedParties[0].memberLinks[0].characterId).toBe(newId);
+    expect(state.marathonTemplates[0]).toEqual({ id: 'tpl', name: oldId, tasks: [{ title: oldId }] });
+    expect(state.ui.selection.has(newId)).toBe(true);
+    expect(state.ui.expandedCharacterId).toBe(newId);
+  });
+
+  it('не затирает историю, если новый локальный ключ уже занят в марафоне', async () => {
+    state.characters = [{ id: 'Old', nick: 'New' }];
+    state.archivedCharacters = [];
+    state.archivedParties = [];
+    state.marathons = [{ id: 'm', progress: { Old: { t: 1 }, New: { t: 2 } } }];
+    state.ui.authCheck = {};
+    state.ui.revealedContacts = {};
+    state.ui.selection = new Set();
+    const before = JSON.stringify(state.marathons);
+    expect(await syncIdWithNick(state.characters[0])).toEqual({
+      id: 'Old',
+      changed: false,
+      error: 'references_conflict'
+    });
+    expect(state.characters[0].id).toBe('Old');
+    expect(JSON.stringify(state.marathons)).toBe(before);
+  });
+});

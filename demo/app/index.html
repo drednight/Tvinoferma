@@ -56,11 +56,13 @@
   <link rel="stylesheet" href="demo/app/replica/css/modules/statsImport.css" />
   <link rel="stylesheet" href="demo/app/replica/css/modules/tools.css" />
   <link rel="stylesheet" href="demo/app/replica/css/modules/finance.css" />
+  <link rel="stylesheet" href="demo/app/replica/css/modules/cloudRegistration.css" />
   <link rel="stylesheet" href="demo/tools-modals.css" />
+  <link rel="stylesheet" href="demo/cloud-sync/sync.css" />
   <link rel="stylesheet" href="demo/app/embed.css" />
 </head>
 <body data-ui-style="next">
-  <div class="demo-replica-banner">Демо: данные вымышлены, сеть и системные действия отключены. <a href="demo/today/index.html" data-demo-back>← Все варианты</a><span id="demo-guard-message" role="status"></span></div>
+  <div class="demo-replica-banner" role="region" aria-label="Демонстрационный режим">Демо: данные вымышлены, сеть и системные действия отключены. <a href="demo/today/index.html" data-demo-back>← Все варианты</a><span id="demo-guard-message" role="status"></span></div>
   <!-- SVG-иконки: монетка и кошелёк -->
   <svg width="0" height="0" style="position: absolute" aria-hidden="true">
     <symbol id="i-coin" viewBox="0 0 24 24">
@@ -89,17 +91,17 @@
 
         <button class="tab" data-tab="characters" data-subtitle="Вход, баланс монет, характеристики и контакты." title="Ctrl+2">
           <span class="next-nav-icon" aria-hidden="true">●</span>
-          <span class="next-nav-copy"><strong>Персонажи</strong><small>Сегодня и аккаунты</small></span>
+          <span class="next-nav-copy"><strong>Персонажи</strong> <small>Сегодня и аккаунты</small></span>
           <span class="tab-count" data-count-mirror="characters" hidden></span>
         </button>
         <button class="tab" data-tab="parties" data-subtitle="Состав, порядок запуска, общий баланс и окна игры." title="Ctrl+3">
           <span class="next-nav-icon" aria-hidden="true">◆</span>
-          <span class="next-nav-copy"><strong>Пати</strong><small>Запуск и окна игры</small></span>
+          <span class="next-nav-copy"><strong>Пати</strong> <small>Запуск и окна игры</small></span>
           <span class="tab-count" data-count-mirror="parties" hidden></span>
         </button>
         <button class="tab" data-tab="marathons" data-subtitle="Задания, прогресс персонажей и сверка с сайтом." title="Ctrl+4">
           <span class="next-nav-icon" aria-hidden="true">▲</span>
-          <span class="next-nav-copy"><strong>Марафоны</strong><small>Задания и прогресс</small></span>
+          <span class="next-nav-copy"><strong>Марафоны</strong> <small>Задания и прогресс</small></span>
           <span class="tab-count" data-count-mirror="marathons" hidden></span>
         </button>
         <button class="tab" data-tab="runes" data-subtitle="Подборки PvE и PvP рун от игроков." title="Ctrl+5">
@@ -148,6 +150,11 @@
     <main class="content">
       <h1 class="demo-sr-only">Демо Твинофермы</h1>
       <h2 id="demo-section-heading" class="demo-sr-only">Сегодня</h2>
+
+      <!-- Предупреждение остаётся видимым до перезапуска при заблокированной записи. -->
+      <div id="storage-readonly-banner" class="health-banner storage-readonly-banner" role="alert" hidden>
+        <div class="health-banner-text"><strong>Сохранение остановлено</strong><span data-storage-warning-text></span></div>
+      </div>
 
       <!-- Плашка «Парсер устарел» (js/settings/parserHealthUi.js): появляется, когда парсер несколько раз подряд не нашёл элементы на странице сайта -->
       <div id="parser-health-banner" class="health-banner" role="alert" hidden></div>
@@ -283,7 +290,7 @@
         <div class="settings-layout">
         <nav class="settings-nav" aria-label="Разделы настроек">
           <a class="settings-nav-item" href="#settings-app"><span class="settings-nav-icon" aria-hidden="true">🎮</span><span class="settings-nav-copy"><strong>Приложение</strong><small>Запуск игры, окна, трей, уведомления</small></span></a>
-          <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Скрипты, свежесть и диагностика</small></span></a>
+          <a class="settings-nav-item" href="#settings-sync"><span class="settings-nav-icon" aria-hidden="true">🔄</span><span class="settings-nav-copy"><strong>Синхронизация</strong><small>Компьютеры, скрипты и диагностика</small></span></a>
           <a class="settings-nav-item" href="#settings-updates"><span class="settings-nav-icon" aria-hidden="true">⬆</span><span class="settings-nav-copy"><strong>Обновления</strong><small>Проверка и установка версий</small></span></a>
           <a class="settings-nav-item" href="#settings-data"><span class="settings-nav-icon" aria-hidden="true">🗄</span><span class="settings-nav-copy"><strong>Данные и безопасность</strong><small>Копии, экспорт, пароли</small></span></a>
           <a class="settings-nav-item" href="#settings-help"><span class="settings-nav-icon" aria-hidden="true">❔</span><span class="settings-nav-copy"><strong>Справка</strong><small>Инструкции и горячие клавиши</small></span></a>
@@ -474,7 +481,154 @@
           </div>
         </section>
         <section class="settings-group" id="settings-sync" aria-labelledby="settings-sync-title">
-          <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Фоновые проверки, свежесть данных и диагностика.</p></header>
+          <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Компьютеры, фоновые проверки, свежесть данных и диагностика.</p></header>
+          <div id="demo-cloud-sync" aria-label="Демонстрация синхронизации между компьютерами"></div>
+          <details class="panel fold cloud-registration" id="demo-registration-preview">
+            <summary>
+              <h3>Проверка регистрации и доступа · текущий этап</h3>
+              <p class="muted">Внешний вид экспериментальных настроек в настоящем приложении</p>
+            </summary>
+            <div class="cloud-registration-body">
+              <p class="cloud-registration-warning"><strong>Здесь только пример.</strong> В настоящем приложении экспериментально доступны первый снимок, восстановление, сравнение, отправка сохранений и ограниченное объединение с выбором при конфликтах. Расходящиеся облачные ветви пока блокируются; подтверждённые удаления поддерживаются только для ручных записей календаря; перенос паролей и контактов пока не подключён. Реальные сервисы и настольная сборка ещё не испытаны; в демо подключение отключено.</p>
+              <p>В настоящей проверке сервис может сохранить выданное разрешение даже после отмены. Отзыв доступа может отключить и другие устройства этой регистрации. В демо браузер авторизации не открывается, разрешение не запрашивается.</p>
+              <div class="cloud-registration-fields">
+                <label for="demo-registration-provider">Облачный диск<select class="input" id="demo-registration-provider" disabled><option>Яндекс Диск</option><option>Google Диск</option></select></label>
+                <label for="demo-registration-client">ID зарегистрированного приложения<input class="input" id="demo-registration-client" disabled placeholder="Ввод в примере отключён" /></label>
+              </div>
+              <p class="muted">В настоящем приложении вводится только открытый Client ID, не пароль и не Client Secret. Не вводите реальные данные в демо.</p>
+              <p class="cloud-registration-config">Яндекс: Redirect URI <code dir="ltr">http://127.0.0.1:37181/oauth/cloud/callback</code> и разрешение <code dir="ltr">cloud_api:disk.app_folder</code>. При несовпадении сервис может использовать другой зарегистрированный адрес.</p>
+              <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Проверить регистрацию</button></div>
+              <p class="cloud-registration-status">Демо: проверка недоступна, диск не подключён.</p>
+              <section class="cloud-connection" aria-labelledby="demo-connection-title">
+                <h4 id="demo-connection-title">Сохранить доступ на этом ПК · экспериментально</h4>
+                <p>В настоящем приложении после входа и сверки аккаунта запись доступа сохраняется в диспетчере учётных данных Windows. Файлы не проверяются и не изменяются; синхронизация не включается. В демо ничего не сохраняется.</p>
+                <p class="cloud-registration-status">Демо: локальная запись не проверяется.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" disabled>Проверить локальную запись</button></div>
+                <label class="cloud-connection-ack"><input type="checkbox" disabled /> <span>Я понимаю, что доступ будет сохранён только на этом ПК. Само сохранение доступа не проверяет старое облако и не подключает набор данных.</span></label>
+                <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Сохранить доступ</button></div>
+                <p class="cloud-registration-status">Демо: вход недоступен.</p>
+                <div class="cloud-connection-disconnect">
+                  <h5>Забыть доступ на этом ПК</h5>
+                  <p>В настоящем приложении действие не удаляет облачные файлы, ключи или разрешение у сервиса и блокируется при существующей привязке набора.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" disabled /> <span>Я хочу удалить сохранённый доступ на этом ПК и понимаю, что разрешение у сервиса останется.</span></label>
+                  <button type="button" class="btn ghost" disabled>Забыть локальный доступ</button>
+                </div>
+              </section>
+              <section class="cloud-setup" aria-labelledby="demo-cloud-setup-title">
+                <h4 id="demo-cloud-setup-title">Первый снимок и восстановление · пример</h4><p>В примере ввод и все действия отключены; не вводите настоящие ключи.</p>
+                <p>Сначала сохраните доступ выше и подготовьте локальные идентификаторы кнопкой в блоке сравнения. При подготовке создаётся копия state, но не копия хранилища паролей Windows. Существующее облако автоматически не ищется и не удаляется; при наличии старого набора сначала воспользуйтесь восстановлением.</p>
+                <p class="cloud-registration-warning">Здесь отправляется первый снимок. Последующие сохранения отправляются в отдельном блоке ниже; объединение расходящихся облачных ветвей пока не работает. Google использует корень «Моего диска», Яндекс — папку приложения. Настоящие аккаунты ещё не проверены. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
+                <details class="cloud-setup-fold">
+                  <summary>Создать новый независимый набор на этом ПК</summary>
+                  <div class="cloud-setup-fields">
+                    <label>Основной секрет
+                      <select disabled class="input" id="demo-cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
+                    </label>
+                    <label>Пароль или основной ключ
+                      <input disabled class="input" id="demo-cloud-setup-main" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Повторите основной секрет
+                      <input disabled class="input" id="demo-cloud-setup-main-repeat" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Запасной ключ
+                      <select disabled class="input" id="demo-cloud-setup-backup-kind"><option value="generated">Создать случайный</option><option value="custom">Задать свой</option></select>
+                    </label>
+                    <label id="demo-cloud-setup-custom-label" hidden>Мой запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-custom" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                  </div>
+                  <p>Новые секреты: не менее 16 символов, разные для основного и запасного. Слабый пароль можно подбирать по облачному файлу. Сохраните запасной ключ отдельно: без ключей и других копий восстановление невозможно.</p>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-setup-new-approve" /> <span>Я создаю именно новый независимый набор. Старое облако может существовать; оно не проверяется и не будет удалено.</span></label>
+                  <div class="cloud-registration-actions">
+                    <button disabled type="button" class="btn" id="demo-cloud-setup-create">Подготовить новый набор</button>
+                    <button disabled type="button" class="btn ghost" id="demo-cloud-setup-resume">Продолжить после прерванной настройки</button>
+                  </div>
+                  <div class="cloud-setup-confirm" id="demo-cloud-setup-confirm" hidden>
+                    <p>Сохраните запасной ключ отдельно от этого компьютера. Повторите его вручную: до подтверждения ключ и очередь на ПК не устанавливаются.</p>
+                    <label id="demo-cloud-setup-generated-label" hidden>Созданный запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-generated" type="password" readonly autocomplete="off" />
+                    </label>
+                    <button disabled type="button" class="btn ghost small" id="demo-cloud-setup-reveal" hidden>Показать запасной ключ</button>
+                    <label>Введите сохранённый запасной ключ
+                      <input disabled class="input" id="demo-cloud-setup-backup-confirm" type="password" maxlength="1024" autocomplete="off" />
+                    </label>
+                    <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-setup-saved" /> <span>Я отдельно сохранил запасной ключ и смогу найти его без этого ПК.</span></label>
+                    <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="demo-cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button disabled type="button" class="btn ghost" id="demo-cloud-setup-cancel">Отменить</button></div>
+                  </div>
+                </details>
+                <details class="cloud-setup-fold">
+                  <summary>Восстановить набор с другого ПК</summary>
+                  <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
+                  <label>Код сверки
+                    <textarea disabled class="input" id="demo-cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>
+                  </label>
+                  <label>Способ восстановления
+                    <select disabled class="input" id="demo-cloud-recovery-role"><option value="main">Пароль или основной ключ</option><option value="backup">Запасной ключ</option><option value="existing">Уже сохранённый внутренний ключ на этом ПК</option></select>
+                  </label>
+                  <label id="demo-cloud-recovery-secret-label">Пароль или ключ
+                    <input disabled class="input" id="demo-cloud-recovery-secret" type="password" maxlength="1024" autocomplete="off" />
+                  </label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" id="demo-cloud-recovery-approve" /> <span>Я получил код от доверенного ПК отдельно от облачного файла и проверил выбранный аккаунт.</span></label>
+                  <label class="cloud-connection-ack" id="demo-cloud-recovery-reviewed-label" hidden><input disabled type="checkbox" id="demo-cloud-recovery-reviewed" /> <span>Я выбрал версию и изучил предварительное сравнение ниже.</span></label>
+                  <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="demo-cloud-recovery-check">Сравнить перед подключением</button><button disabled type="button" class="btn ghost" id="demo-cloud-recovery-connect" hidden>Подтвердить подключение</button><button disabled type="button" class="btn ghost" id="demo-cloud-recovery-cancel" hidden>Отменить</button></div>
+                </details>
+                <div class="cloud-registration-actions">
+                  <button disabled type="button" class="btn ghost" id="demo-cloud-setup-show-code">Показать код сверки этого ПК</button>
+                  <button disabled type="button" class="btn" id="demo-cloud-setup-send-root">Отправить первый снимок</button>
+                </div>
+                <label id="demo-cloud-setup-code-label" hidden>Код сверки — передавайте отдельно от облака
+                  <textarea disabled class="input" id="demo-cloud-setup-code" rows="3" readonly spellcheck="false"></textarea>
+                </label>
+                <p class="cloud-registration-status" id="demo-cloud-setup-status" role="status" aria-live="polite">Ожидание действия. Данные не отправлены.</p>
+              </section>
+              <section class="cloud-publication" aria-labelledby="demo-publication-title">
+                <h4 id="demo-publication-title">Отправить последующие изменения · экспериментально</h4>
+                <p>Работает после подтверждения первого снимка. На восстановленном ПК нужно подтвердить полное совпадение; изменения другого устройства можно согласовать ограниченным объединением или подтвердить полное совпадение. Данные сначала шифруются и сохраняются в очереди. Без сети очередь остаётся на этом ПК. При расходящихся изменениях, неподтверждённых удалениях или неразрешённом выборочном применении отправка останавливается. Удаления ручных записей календаря нужно проверить отдельной кнопкой; другие удаления пока не поддерживаются. Обычная отправка не читает новые местные контакты. Отдельно подготовленная секретная партия остаётся в зашифрованных потомках.</p>
+                <label class="cloud-connection-ack"><input type="checkbox" disabled /> <span>Автоматически готовить и отправлять сохранения на выбранный диск</span></label>
+                <p class="muted">Автоотправка на этом ПК выключена.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Отправить сохранённые изменения</button><button type="button" class="btn ghost" disabled>Проверить удаления календаря</button></div>
+                <p class="cloud-registration-status">Демо: отправка и автоматизация отключены.</p>
+              </section>
+              <section class="cloud-publication" id="cloud-private-panel" aria-labelledby="cloud-private-title">
+                <h4 id="cloud-private-title">Контакты и пароли · отдельная ручная передача</h4>
+                <p class="muted">По умолчанию не передаются. Разрешение действует только на одну подготовленную партию и не сохраняется. Обычные сохранения не выгружают новые местные контакты автоматически. Ранее явно переданная секретная часть остаётся зашифрованной в следующих версиях; снятие галочек не удаляет её с диска и не отменяет уже подготовленную очередь. Значения в сравнении не показываются.</p>
+                <fieldset><legend>Разрешённые категории этой операции</legend>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="email" /> <span>Email</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="recoveryEmail" /> <span>Запасная почта</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="phone" /> <span>Телефон</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="password" /> <span>Пароль персонажа</span></label>
+                </fieldset>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-source" /> <span>Местные контакты загружены полностью; понимаю, что явно выбранное пустое поле очищает значение.</span></label>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-risk" /> <span>Для паролей: понимаю риск раскрытия всем, у кого есть ключ набора. Ключ и запасной ключ нужно хранить отдельно.</span></label>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-backup" /> <span>Перед применением сохранил отдельную защищённую копию прежних контактов. Копия state.json при OS-хранилище может содержать только ссылки, не прежние значения vault.</span></label>
+                <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="cloud-private-prepare">Подготовить передачу выбранных контактов</button><button disabled type="button" class="btn ghost" id="cloud-private-check">Проверить контакты на диске</button></div>
+                <div id="cloud-private-incoming" hidden>
+                  <p class="muted" id="cloud-private-times"></p>
+                  <label for="cloud-private-version">Проверенная версия контактов</label><select disabled class="input" id="cloud-private-version"></select>
+                  <div id="cloud-private-list"></div>
+                  <button disabled type="button" class="btn danger" id="cloud-private-apply">Применить только отмеченные поля</button>
+                </div>
+                <p id="cloud-private-status" role="status" aria-live="polite">Категории не выбраны. Передача секретов не разрешена. На сайте и в демо нативная передача недоступна.</p>
+              </section>
+              <section class="cloud-review" aria-labelledby="demo-review-title">
+                <h4 id="demo-review-title">Проверить обновления · экспериментально</h4>
+                <p>Проверяется выбранный диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельное объединение пока работает для существующих записей, некоторых добавлений в конец (включая новые шаблоны) и настроек; задания и бонусы существующих шаблонов, теги и списки навигации согласуются целыми списками, при конфликте выбирается сторона; изменение шаблона не меняет уже созданные марафоны. Снятие отметки повтора и штатный лимит истории характеристик поддерживаются отдельно; перестановка sync-сущностей и неподдерживаемые удаления останавливают объединение. Подтверждённые удаления ручного календаря можно согласовать отдельно с явным выбором удаления местных правок и сохранением неотправленного намерения до проверки потомка; для конфликтов поддерживаемых полей можно отдельно выбрать местную или облачную сторону записи. Входы и пути остаются на этом ПК; контакты и пароли передаются только через отдельный ручной блок с разрешением по категориям. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию.</p>
+                <fieldset class="cloud-review-settings" disabled>
+                  <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
+                  <label><input type="checkbox" disabled /> Тема</label>
+                  <label><input type="checkbox" disabled /> Меню разделов</label>
+                  <label><input type="checkbox" disabled /> Вид календаря</label>
+                  <label><input type="checkbox" disabled /> Напоминания о событиях</label>
+                </fieldset>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" disabled>Подготовить данные на этом ПК</button><button type="button" class="btn ghost" disabled>Проверить обновления</button></div>
+                <p class="cloud-registration-status">Демо: проверка, объединение и применение реальных файлов отключены.</p>
+                <label class="cloud-connection-ack"><input type="checkbox" disabled /> При объединении отдельно разрешаю сохранить уже имеющуюся на диске зашифрованную партию контактов в будущих версиях, без замены или выгрузки местных контактов.</label>
+                <button type="button" class="btn ghost" disabled hidden>Объединить все поддерживаемые изменения</button>
+                <button type="button" class="btn ghost" disabled hidden>Подтвердить полное совпадение и разрешить отправку</button>
+              </section>
+              <details class="cloud-activity"><summary>Журнал синхронизации на этом ПК</summary><p>В настоящем приложении журнал показывает только события и результаты без содержимого записей, паролей и кода сверки. В демо журнал пуст; действия отключены.</p><button type="button" class="btn ghost small" disabled>Очистить местный журнал</button></details>
+            </div>
+          </details>
           <div class="settings-cols">
             <div class="settings-col">
 <details class="panel fold" id="settings-scripts">
@@ -664,11 +818,12 @@
             <div class="settings-col">
 <details class="panel fold" id="settings-backups">
           <summary>
-            <h3>☁️ Резервные копии</h3>
+            <h3>🗄️ Локальные копии состояния</h3>
             <p class="muted" id="backup-summary">Загрузка списка резервных копий…</p>
           </summary>
+          <p class="muted">Эти копии содержат только файл состояния, не контакты из хранилища ОС, не входы GameCenter, сессии и не отдельные журналы. При восстановлении контакты ОС останутся прежними. Копии не шифруются и могут содержать открытые пароли, если хранилище ОС выключено.</p>
           <div class="row gap" style="margin-bottom: 12px;">
-            <button id="create-backup-btn" class="btn" title="Сохранить снимок данных в отдельный файл">☁️ Создать бэкап</button>
+            <button id="create-backup-btn" class="btn" title="Сохранить только локальный файл состояния">🗄️ Создать копию состояния</button>
             <button id="refresh-backups-btn" class="btn ghost">🔄 Обновить список</button>
             <button id="all-backups-btn" class="btn" hidden>📚 Полный список бэкапов</button>
           </div>
@@ -691,7 +846,7 @@
             </label>
           </div>
           <p class="muted">
-            • «Экспорт всех данных» сохраняет всё: персонажей со всеми полями (статы, проходки, монеты и история, теги, контакты), пати, марафоны, настройки.<br/>
+            • «Экспорт всех данных» создаёт незашифрованный JSON состояния: персонажи, пати, марафоны, задачи и события, финансы и настройки. Контакты и пароли могут находиться в нём открытым текстом. Это не полная копия хранилища ОС, GameCenter, сессий и отдельных журналов.<br/>
             • «Гибкий экспорт» — выбранные персонажи/пати/марафоны; можно исключить пароли и другие группы полей.<br/>
             • Импорт: новые персонажи добавляются, для совпадающих (тот же ник) открывается сравнение карточек — по каждому полю выбираете, что сохранить.
           </p>
@@ -752,7 +907,7 @@
 <details class="panel fold danger-zone" id="danger-zone">
           <summary>
             <h3>⚠️ Опасные действия</h3>
-            <p class="muted">Массовое удаление пати, марафонов и персонажей. Перед удалением автоматически создаётся резервная копия.</p>
+            <p class="muted">Массовое удаление пати, марафонов и персонажей с резервной копией. Полный сброс ниже удаляет и копии.</p>
           </summary>
           <div class="danger-item">
             <div>
@@ -774,17 +929,17 @@
             <div class="danger-item">
               <div>
                 <strong>Удалить всех персонажей</strong>
-                <p class="muted">Удаляются ВСЕ персонажи: данные, пароли в хранилище ОС, запомненные входы в GameCenter, история монет. Пати остаются пустыми, у марафонов исчезают участники.</p>
+                <p class="muted">Удаляются ВСЕ персонажи и их данные; приложение также пытается удалить известные контакты и входы в хранилище ОС. Копия состояния не включает контакты в хранилище ОС и входы GameCenter. Пати остаются пустыми, у марафонов исчезают участники.</p>
               </div>
               <button id="clear-all-characters-btn" class="btn danger" data-danger="characters" type="button" title="Удалить ВСЕХ персонажей">🗑 Удалить персонажей</button>
             </div>
-            <!-- Полный сброс: приложение возвращается к состоянию сразу после установки -->
+            <!-- Полный сброс удаляет известные локальные данные и резервные копии -->
             <div class="danger-item">
               <div>
                 <strong>Вернуть к заводским настройкам</strong>
-                <p class="muted">Удаляется всё: персонажи, пати, марафоны, настройки, журналы и история монет, пароли в хранилище ОС, запомненные входы в GameCenter, сессии и профили браузера персонажей. Приложение станет таким же, как сразу после установки. Копии на диске тоже удаляются, поэтому откатить это действие нельзя — если данные нужны, сначала сделайте экспорт.</p>
+                <p class="muted">Удаляются локальные персонажи, пати, марафоны, настройки, сессии и профили браузера. Приложение также пытается удалить известные контакты, входы, локальные записи доступа к облаку, привязки набора, внутренний ключ синхронизации и очередь отправки. Облачные файлы и выданные провайдерам разрешения остаются. Для восстановления шифрованного облака потребуются сохранённый набор ключей, независимый код сверки и пароль или запасной ключ, сохранённый отдельно. Резервные копии тоже удаляются — откатить это действие нельзя. Отдельные локальные журналы и неизвестные записи хранилища ОС могут остаться. Экспорт JSON не содержит всех данных и может включать открытые пароли. Завершите операции, закройте другие окна и заранее сохраните нужные данные.</p>
               </div>
-              <button id="factory-reset-btn" class="btn danger" data-factory-reset="1" type="button" title="Удалить все данные и вернуть приложение к чистому состоянию">🧨 Вернуть к заводским настройкам</button>
+              <button id="factory-reset-btn" class="btn danger" data-factory-reset="1" type="button" title="Удалить известные локальные данные и резервные копии">🧨 Вернуть к заводским настройкам</button>
             </div>
           </details>
         </details>

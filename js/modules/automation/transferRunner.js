@@ -169,7 +169,14 @@ export async function runTransferBatch({
       } catch (e) {
         error = e;
       }
-      const row = rowFromPayload(plan, payload, error);
+      let row = rowFromPayload(plan, payload, error);
+      // Без ответа команды нельзя знать, успела ли она нажать «Передать».
+      if (
+        (error || !payload || typeof payload !== 'object' || !payload.status || typeof payload.clicked !== 'boolean') &&
+        !dryRun
+      )
+        row = { ...row, status: 'unknown', uncertain: true };
+      else if (dryRun) row.dryRun = true;
       if (a >= retries || signal.cancelled || !canAutoRetry(row)) return row;
       task?.log?.(
         `${plan.char.nick}: повтор ${a + 1}/${retries} (${row.status === 'challenge' ? 'проверка безопасности' : row.error})`,
@@ -204,7 +211,12 @@ export async function runTransferBatch({
     emit(
       e.item,
       e.error
-        ? { ...plainRow(e.item, 'error'), error: String(e.error?.message || e.error) }
+        ? {
+            ...plainRow(e.item, dryRun ? 'error' : 'unknown'),
+            error: String(e.error?.message || e.error),
+            dryRun,
+            uncertain: !dryRun
+          }
         : plainRow(e.item, 'cancelled')
     )
   );

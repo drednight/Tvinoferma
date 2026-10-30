@@ -1,0 +1,306 @@
+import { describe, expect, it, vi } from 'vitest';
+import { webcrypto } from 'node:crypto';
+import { createNativeGoogleRefreshFetch } from '../js/modules/cloudSync/providers/nativeGoogleRefreshFetch.js';
+import { createGoogleRefreshRequest } from '../js/modules/cloudSync/providers/oauthTokenTransport.js';
+import { createNativeGoogleCredentialStore } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
+import {
+  prepareGoogleCredentialRecord,
+  parseGoogleCredentialRecord,
+  serializeGoogleCredentialRecord
+} from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
+import { createGoogleCredentialRotation } from '../js/modules/cloudSync/providers/oauthCredentialRotation.js';
+import { createGoogleAccountIdentityReader } from '../js/modules/cloudSync/providers/oauthAccountIdentity.js';
+import { createNativeDiskFetch } from '../js/modules/cloudSync/providers/nativeDiskFetch.js';
+import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
+
+const slotId = '01234567-89ab-4cde-8f01-23456789abcd';
+const revision = '11234567-89ab-4cde-8f01-23456789abcd';
+const clientId = 'fake-client.apps.googleusercontent.com';
+const accountKey = 'FAKE_PRIVATE_ACCOUNT';
+const oldRefresh = 'FAKE_OLD_REFRESH:+/';
+const newRefresh = 'FAKE_NEW_REFRESH';
+const accessToken = 'FAKE_ACCESS_TOKEN';
+function initialRecord() {
+  return prepareGoogleCredentialRecord({
+    slotId,
+    revision,
+    clientId,
+    accountKey,
+    refreshToken: oldRefresh,
+    refreshExpiresAt: null
+  });
+}
+function validClaim() {
+  const expected = initialRecord();
+  const before = parseGoogleCredentialRecord(expected);
+  const pending = serializeGoogleCredentialRecord({
+    ...before,
+    revision: '21234567-89ab-4cde-8f01-23456789abcd',
+    phase: 'pending',
+    attemptId: '31234567-89ab-4cde-8f01-23456789abcd',
+    refreshToken: null,
+    refreshExpiresAt: null
+  });
+  return { slotId, expected, pending };
+}
+function init(body, signal = new AbortController().signal) {
+  return {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body,
+    redirect: 'error',
+    credentials: 'omit',
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
+    signal
+  };
+}
+function deferred() {
+  let resolve;
+  const promise = new Promise(yes => {
+    resolve = yes;
+  });
+  return { promise, resolve };
+}
+function fakeNative({ lost = false, identity = accountKey } = {}) {
+  let record = initialRecord();
+  const invoke = vi.fn(async (command, args) => {
+    if (command === 'cloud_credential_read') return { status: 'ready', slotId, record };
+    if (command === 'cloud_credential_compare_exchange') {
+      if (args.slotId !== slotId || args.expected !== record) return { status: 'mismatch' };
+      record = args.next;
+      return { status: 'swapped' };
+    }
+    if (command === 'cloud_oauth_network') {
+      expect(args.provider).toBe('google');
+      expect(args.operation).toBe('refresh');
+      expect(args.accessToken).toBeNull();
+      expect(new URLSearchParams(args.form).get('refresh_token')).toBe(oldRefresh);
+      expect(args.refreshClaim.slotId).toBe(slotId);
+      if (args.refreshClaim.expected !== record) throw new Error('PRIVATE stale claim');
+      record = args.refreshClaim.pending;
+      expect(parseGoogleCredentialRecord(record)).toMatchObject({ phase: 'pending', refreshToken: null });
+      if (lost) throw new Error('PRIVATE результат refresh мог быть потерян');
+      return {
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: accessToken,
+          token_type: 'Bearer',
+          expires_in: 3600,
+          refresh_token: newRefresh,
+          scope: OAUTH_PROVIDERS.google.scope
+        })
+      };
+    }
+    if (command === 'cloud_disk_network' && args.args.operation === 'identity') {
+      expect(args.args.accessToken).toBe(accessToken);
+      expect(parseGoogleCredentialRecord(record).phase).toBe('pending');
+      return {
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ user: { permissionId: identity } })
+      };
+    }
+    throw new Error('PRIVATE unexpected fake IPC');
+  });
+  return { invoke, record: () => record };
+}
+function coordinator(native) {
+  const store = createNativeGoogleCredentialStore({ slotId, clientId, accountKey, invoke: native.invoke });
+  const verifyAccount = createGoogleAccountIdentityReader({
+    fetchImpl: createNativeDiskFetch({ provider: 'google', invoke: native.invoke })
+  });
+  return createGoogleCredentialRotation({
+    slotId,
+    clientId,
+    accountKey,
+    store,
+    makeGuardedFetch: claim => createNativeGoogleRefreshFetch({ invoke: native.invoke, claim }),
+    verifyAccount,
+    cryptoSource: webcrypto,
+    now: () => 100000,
+    timeoutMs: 1000,
+    identityTimeoutMs: 1000
+  });
+}
+
+describe('экспериментальный refresh Google через fake IPC', () => {
+  it('согласует credential CAS, POST и проверку аккаунта до выдачи одноразового access', async () => {
+    const native = fakeNative();
+    const rotation = coordinator(native);
+    expect(await rotation.inspect()).toEqual({ status: 'ready', revision });
+    const result = await rotation.refresh({ expectedRevision: revision });
+    expect(result.status).toBe('refreshed');
+    expect(JSON.stringify(result)).not.toContain(accessToken);
+    expect(result.access.takeAccessToken()).toBe(accessToken);
+    expect(() => result.access.takeAccessToken()).toThrow();
+    expect(parseGoogleCredentialRecord(native.record())).toMatchObject({ phase: 'ready', refreshToken: newRefresh });
+    expect(native.record()).not.toContain(oldRefresh);
+    expect(native.record()).not.toContain(accessToken);
+    expect(native.invoke.mock.calls.filter(([command]) => command === 'cloud_oauth_network')).toHaveLength(1);
+  });
+
+  it('не повторяет неизвестный refresh после перезапуска и не возвращает секреты в ошибках', async () => {
+    const native = fakeNative({ lost: true });
+    const rotation = coordinator(native);
+    expect(await rotation.refresh({ expectedRevision: revision })).toEqual({ status: 'exchange_uncertain' });
+    expect(parseGoogleCredentialRecord(native.record())).toMatchObject({ phase: 'pending', refreshToken: null });
+    expect(await rotation.inspect()).toEqual({ status: 'blocked_in_session' });
+    const reopened = coordinator(native);
+    expect(await reopened.inspect()).toEqual({ status: 'blocked_pending' });
+    expect(await reopened.refresh({ expectedRevision: revision })).toEqual({ status: 'blocked_pending' });
+    expect(native.invoke.mock.calls.filter(([command]) => command === 'cloud_oauth_network')).toHaveLength(1);
+  });
+
+  it('другой аккаунт после POST оставляет pending и не выдаёт токен', async () => {
+    const native = fakeNative({ identity: 'OTHER_ACCOUNT' });
+    const rotation = coordinator(native);
+    expect(await rotation.refresh({ expectedRevision: revision })).toEqual({ status: 'account_changed' });
+    expect(parseGoogleCredentialRecord(native.record())).toMatchObject({ phase: 'pending', refreshToken: null });
+  });
+
+  it('не даёт создать refresh без готового claim и связывает форму с токеном и клиентом', async () => {
+    const invoke = vi.fn(async () => ({ body: '{}', contentType: 'application/json' }));
+    expect(() => createNativeGoogleRefreshFetch({ invoke })).toThrow();
+    const valid = validClaim();
+    for (const claim of [
+      { ...valid, slotId: revision },
+      { ...valid, pending: valid.expected },
+      { ...valid, pending: valid.pending.replace(accountKey, 'OTHER_ACCOUNT') },
+      { ...valid, pending: valid.pending.replace(clientId, 'other.apps.googleusercontent.com') }
+    ])
+      expect(() => createNativeGoogleRefreshFetch({ invoke, claim })).toThrow();
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: valid });
+    const otherToken = createGoogleRefreshRequest({ clientId, refreshToken: 'FAKE_OTHER_TOKEN' });
+    const otherClient = createGoogleRefreshRequest({
+      clientId: 'other.apps.googleusercontent.com',
+      refreshToken: oldRefresh
+    });
+    await expect(fetch(otherToken.url, init(otherToken.body))).rejects.toThrow();
+    await expect(fetch(otherClient.url, init(otherClient.body))).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    await expect(fetch(request.url, init(request.body))).resolves.toMatchObject({ status: 200 });
+    expect(invoke.mock.calls[0][1].refreshClaim).toEqual(valid);
+    await expect(fetch(request.url, init(request.body))).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('не выдаёт access, если bridge ответил, но точный pending не записал', async () => {
+    const native = fakeNative();
+    const invoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_oauth_network')
+        return {
+          contentType: 'application/json',
+          body: JSON.stringify({
+            access_token: accessToken,
+            token_type: 'Bearer',
+            expires_in: 3600,
+            scope: OAUTH_PROVIDERS.google.scope
+          })
+        };
+      return native.invoke(command, args);
+    });
+    const rotation = coordinator({ invoke });
+    expect(await rotation.refresh({ expectedRevision: revision })).toEqual({ status: 'exchange_uncertain' });
+    expect(await rotation.inspect()).toEqual({ status: 'blocked_in_session' });
+    expect(parseGoogleCredentialRecord(native.record()).phase).toBe('ready');
+    expect(invoke.mock.calls.some(([command]) => command === 'cloud_disk_network')).toBe(false);
+  });
+
+  it('отклоняет неизвестные адреса, поля, типы, повторные ключи и Яндекс до IPC', async () => {
+    const invoke = vi.fn();
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    const good = init(request.body);
+    for (const [url, candidate] of [
+      ['https://oauth.yandex.com/token', good],
+      [request.url + '?extra=1', good],
+      [request.url, { ...good, method: 'GET' }],
+      [request.url, { ...good, redirect: 'follow' }],
+      [request.url, { ...good, headers: { ...good.headers, Cookie: 'PRIVATE' } }],
+      [request.url, { ...good, body: `${request.body}&refresh_token=twice` }],
+      [request.url, { ...good, body: `${request.body}&client_secret=PRIVATE` }],
+      [request.url, { ...good, body: request.body.replace('refresh_token', 'authorization_code') }],
+      [
+        request.url,
+        { ...good, body: request.body.replace('fake-client.apps.googleusercontent.com', 'yandex-client-id') }
+      ]
+    ])
+      await expect(fetch(url, candidate)).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('отмена не освобождает слот до завершения native POST', async () => {
+    const gate = deferred();
+    const invoke = vi.fn(() => gate.promise);
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    const controller = new AbortController();
+    const first = fetch(request.url, init(request.body, controller.signal));
+    await Promise.resolve();
+    controller.abort();
+    await expect(first).rejects.toThrow();
+    await expect(fetch(request.url, init(request.body))).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    gate.resolve({ body: '{}', contentType: 'application/json' });
+    await gate.promise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    const later = fetch(request.url, init(request.body));
+    await expect(later).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('не раскрывает исключения нестандартного signal и не оставляет слот занятым до IPC', async () => {
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    const invoke = vi.fn(async () => ({ body: '{}', contentType: 'application/json' }));
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
+    const signal = {
+      aborted: false,
+      addEventListener() {
+        throw new Error('PRIVATE сигнал');
+      },
+      removeEventListener() {
+        throw new Error('PRIVATE очистка');
+      }
+    };
+    await expect(fetch(request.url, init(request.body, signal))).rejects.not.toThrow('PRIVATE');
+    expect(invoke).not.toHaveBeenCalled();
+    let reads = 0;
+    const getterThrows = {
+      get aborted() {
+        if (++reads > 1) throw new Error('PRIVATE состояние');
+        return false;
+      },
+      addEventListener() {},
+      removeEventListener() {}
+    };
+    await expect(fetch(request.url, init(request.body, getterThrows))).rejects.not.toThrow('PRIVATE');
+    await Promise.resolve();
+    expect(invoke).not.toHaveBeenCalled();
+    const cleanupThrows = { ...signal, addEventListener() {} };
+    await expect(fetch(request.url, init(request.body, cleanupThrows))).resolves.toMatchObject({ status: 200 });
+    await expect(fetch(request.url, init(request.body))).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('скрывает ошибки и не принимает некорректные ответы IPC', async () => {
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    for (const value of [
+      null,
+      { body: 'PRIVATE', contentType: '' },
+      { body: 'x'.repeat(65537), contentType: 'application/json' },
+      { body: '{}', contentType: 'application/json', extra: 'PRIVATE' }
+    ]) {
+      const fetch = createNativeGoogleRefreshFetch({ invoke: vi.fn(async () => value), claim: validClaim() });
+      await expect(fetch(request.url, init(request.body))).rejects.not.toThrow('PRIVATE');
+    }
+    const fetch = createNativeGoogleRefreshFetch({
+      invoke: vi.fn(async () => {
+        throw new Error('PRIVATE REFRESH');
+      }),
+      claim: validClaim()
+    });
+    await expect(fetch(request.url, init(request.body))).rejects.not.toThrow('PRIVATE');
+  });
+});

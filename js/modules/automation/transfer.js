@@ -40,6 +40,8 @@ import { getServerStatus, refreshServerStatus, onServerStatus } from '../servers
 import { serverStatusHtml } from '../servers/serverStatusView.js';
 import { openTransferLog } from './transferLogView.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
+import { makeScriptReport } from './scriptReport.js';
+import { openScriptStatistics } from './scriptReportView.js';
 
 const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
@@ -98,6 +100,7 @@ export function openTransferDialog({ ids = [] } = {}) {
   let lastRows = [];
   let lastPlans = [];
   let lastDry = false;
+  let lastReports = []; // включает прошлые попытки текущего повтора
   let force = false; // «обойти ограничения приложения»: запомненные ограничения по серверам не применяются (не запоминается между открытиями)
 
   let offStatus = () => {};
@@ -523,7 +526,7 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   /* ----------------------------- запуск ----------------------------- */
 
-  async function start(plans, dry) {
+  async function start(plans, dry, { historyReports = [] } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
@@ -549,6 +552,7 @@ export function openTransferDialog({ ids = [] } = {}) {
 
     const { invoke } = await import('@tauri-apps/api/core');
     let rows;
+    const finishedRows = [];
     try {
       rows = await runTransferBatch({
         plans,
@@ -559,6 +563,8 @@ export function openTransferDialog({ ids = [] } = {}) {
         retries,
         retryDelayMs,
         onRow: (row, done, all) => {
+          finishedRows.push(row);
+          task.setScriptReport(makeScriptReport('transfer', finishedRows, { dryRun: dry }));
           // В журнал и список «что ждёт» — сразу: «Стоп» или закрытие окна ничего не теряют
           if (!dry && row.clicked) {
             recordTransfer(row);
@@ -587,6 +593,8 @@ export function openTransferDialog({ ids = [] } = {}) {
         )
       );
 
+    task.setScriptReport(makeScriptReport('transfer', rows, { dryRun: dry }));
+    lastReports = [...historyReports, { ...makeScriptReport('transfer', rows, { dryRun: dry }), at: task.startedAt }];
     lastRows = rows;
     lastPlans = plans;
     lastDry = dry;
@@ -680,6 +688,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
       <button class="btn ghost" data-act="log">📜 Журнал</button>
+      <button class="btn secondary" data-act="report">📋 Таблица действий</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить неудачные${s.rerun ? ` (${s.rerun})` : ''}</button>
       <button class="btn primary" data-act="close">Закрыть</button>`;
@@ -761,6 +770,13 @@ export function openTransferDialog({ ids = [] } = {}) {
       openTransferLog();
       return;
     }
+    if (act === 'report') {
+      openScriptStatistics(lastReports, {
+        title: '📋 Таблица действий: передача',
+        note: 'Записи истории подтверждают передачу на сайте, но не доказывают получение предметов в игре. Показаны также пробные и неясные результаты.'
+      });
+      return;
+    }
     if (act === 'dry') {
       await run(true);
       return;
@@ -773,8 +789,17 @@ export function openTransferDialog({ ids = [] } = {}) {
       const byId = new Map(lastRows.map(r => [r.charId, r]));
       const plans = lastPlans.filter(p => p.run && isRerunnable(byId.get(p.char.id)));
       if (!plans.length) return;
-      if (!lastDry && !(await ensureBackup())) return;
-      await start(plans, lastDry);
+      if (!lastDry) {
+        if (!(await ensureBackup())) return;
+        const ok = await confirmModal({
+          title: 'Повторить передачу?',
+          text: `Будет повторено ${plans.length} неудачных передач, где команда сообщила, что кнопка не нажата. Выбранные серверы и получатели сохраняются. Передача необратима.`,
+          okText: `Повторить (${plans.length})`,
+          danger: true
+        });
+        if (!ok) return;
+      }
+      await start(plans, lastDry, { historyReports: lastReports });
     }
   });
   // Кнопки обновления стоят в теле формы, а не внизу: обрабатываем здесь

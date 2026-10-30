@@ -458,6 +458,11 @@ describe('запуск', () => {
     expect(document.querySelectorAll('[data-lh-key]')).toHaveLength(2);
     // «что ждёт» после передачи считается устаревшим
     expect($('[data-act="back"]')).not.toBeNull();
+    $('[data-act="report"]').click();
+    const report = [...document.querySelectorAll('.tf-dialog')].at(-1);
+    expect(report.textContent).toContain('Метеорит');
+    expect(report.textContent).toContain('Первый');
+    expect(report.textContent).toContain('не подтверждает получение');
   });
 
   it('«Стоп»: начатая передача завершается и записывается, остальные не начинаются', async () => {
