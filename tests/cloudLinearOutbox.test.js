@@ -6,6 +6,7 @@ import { createKeyBundle } from '../js/modules/cloudSync/keyBundle.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
+import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
 
 // Это синтетический CAS и синтетический диск: тесты не подтверждают fsync,
@@ -181,6 +182,37 @@ describe.each(['google', 'yandex'])('%s: последующая локальна
     ).rejects.toThrow();
     expect(await a.inspect(box)).toEqual({ status: 'no_local_lineage' });
     expect(a.session.upload).not.toHaveBeenCalled();
+  });
+
+  it('capability точного совпадения и её линия неизменяемы; копия не считается доказательством', async () => {
+    const a = setup(provider);
+    const box = a.open();
+    await box.initializeRecovered(true);
+    const checked = await prepareCloudReview({
+      provider,
+      datasetId,
+      dataKey: keys.dataKey,
+      rootPin: root.pin,
+      knownPins: [root.pin],
+      localSnapshot: base,
+      localSavedAt: null,
+      cryptoSource,
+      session: {
+        listWithDates: async () => ({
+          status: 'listed',
+          versions: [{ versionId: root.pin.versionId, modifiedAt: null }]
+        }),
+        read: async () => ({ status: 'found', envelope: root.envelope })
+      }
+    });
+    const proof = checked.prepareExactAdoption(root.pin, {});
+    expect(proof.status).toBe('ready_for_adoption');
+    expect(Object.isFrozen(proof.lineage)).toBe(true);
+    expect(Object.isFrozen(proof.lineage[0])).toBe(true);
+    expect(() => proof.lineage.push({ ...root.pin })).toThrow();
+    expect(() => (proof.lineage[0].sha256 = 'a'.repeat(64))).toThrow();
+    await expect(box.adoptReviewedBase({ ...a.pins, proof: structuredClone(proof) })).rejects.toThrow();
+    expect((await box.adoptReviewedBase({ ...a.pins, proof })).status).toBe('adopted');
   });
 
   it('не выбирает родителя из пустой восстановленной очереди и ждёт подтверждения корня', async () => {

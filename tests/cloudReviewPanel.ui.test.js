@@ -139,6 +139,20 @@ describe('интерфейс проверенного сравнения', () =>
     expect(event).toHaveBeenCalledOnce();
   });
 
+  it('показывает, почему нельзя принять основу без ранее подтверждённых локальных версий', async () => {
+    const value = review();
+    const originalCompare = value.compare;
+    value.compare = () => ({ ...originalCompare(), differences: { entries: [], uncomparedSettings: [] } });
+    const reconcile = vi.fn(async () => ({ status: 'local_lineage_not_ancestor' }));
+    setup({ check: vi.fn(async () => value), reconcile });
+    await openComparison();
+    click('cloud-review-reconcile');
+    await vi.waitFor(() =>
+      expect(el('cloud-review-status').textContent).toContain('не входят в выбранную облачную ветвь')
+    );
+    expect(el('cloud-review-result').hidden).toBe(false);
+  });
+
   it('не предлагает согласование при различиях или нескольких наблюдаемых ветвях', async () => {
     const value = review();
     setup({ check: vi.fn(async () => value) });

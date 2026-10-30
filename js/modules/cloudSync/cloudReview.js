@@ -216,6 +216,9 @@ export async function prepareCloudReview(options) {
           datasetId,
           rootPin: Object.freeze({ ...root }),
           pin: Object.freeze({ ...current }),
+          // Точные пины всей наблюдаемой линии нужны для безопасного переноса
+          // уже подтверждённой локальной очереди на более новую основу.
+          lineage: Object.freeze(lineage.map(value => Object.freeze({ ...value }))),
           envelope: Object.freeze({ ...found })
         });
         verifiedAdoptions.add(proof);

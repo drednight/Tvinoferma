@@ -17,6 +17,8 @@ import { validOAuthAccountKey, validOAuthClientId } from './providers/oauthCommo
 const FORMAT = 'tvinoferma-durable-outbox';
 const VERSION = 2;
 const ADOPTED_VERSION = 3;
+// Принятая голова с сохранением известных предков и прежних квитанций.
+const REBASED_VERSION = 4;
 const LEGACY_VERSION = 1;
 const KEY_CONTEXT = 'tvinoferma-durable-outbox-key-v1';
 const MAX_ENTRIES = 16;
@@ -40,6 +42,17 @@ function versionPin(value) {
 }
 function sameVersionPin(left, right) {
   return left?.versionId === right?.versionId && left?.sha256 === right?.sha256;
+}
+function uniquePins(values) {
+  const found = new Map();
+  for (const value of values) {
+    const pin = versionPin(value);
+    const previous = found.get(pin.versionId);
+    if (previous && !sameVersionPin(previous, pin)) throw invalid();
+    found.set(pin.versionId, pin);
+  }
+  if (found.size > MAX_HISTORY_VERSIONS) throw invalid();
+  return [...found.values()];
 }
 function bytesToBase64Url(bytes) {
   let binary = '';
@@ -167,17 +180,70 @@ async function validateVersion(envelope, dataKey, binding, crypto) {
   return { parent: history.parent, publicSnapshot: history.publicSnapshot, historyVersion: history.version };
 }
 
+function baseFor(value) {
+  if (value === null) return null;
+  const base = object(value, ['pin', 'anchorId']);
+  const pin = versionPin(base.pin);
+  if (!isSyncId(base.anchorId) || base.anchorId === pin.versionId) throw invalid();
+  return { pin, anchorId: base.anchorId };
+}
 function entryFor(value, binding, version) {
-  const row = object(value, ['envelope', 'phase', 'fileId', 'attemptId'], ['anchorId']);
+  const row = object(
+    value,
+    ['envelope', 'phase', 'fileId', 'attemptId'],
+    ['anchorId', 'lineage', 'priorReceiptCount', 'previousBase']
+  );
   const envelope = copyCloudEnvelope(row.envelope, binding.datasetId);
   if (binding.provider === 'google' && JSON.stringify(envelope).length > MAX_GOOGLE_ENVELOPE) throw invalid();
   if (!['queued', 'prepared', 'attempting', 'confirmed', 'adopted'].includes(row.phase)) throw invalid();
   if (row.phase === 'adopted') {
-    if (version !== ADOPTED_VERSION || row.fileId !== null || row.attemptId !== null || !isSyncId(row.anchorId))
+    if (
+      ![ADOPTED_VERSION, REBASED_VERSION].includes(version) ||
+      row.fileId !== null ||
+      row.attemptId !== null ||
+      !isSyncId(row.anchorId)
+    )
       throw invalid();
-    return { envelope, phase: row.phase, fileId: null, attemptId: null, anchorId: row.anchorId };
+    if (version === ADOPTED_VERSION) {
+      if (['lineage', 'priorReceiptCount', 'previousBase'].some(key => Object.hasOwn(row, key))) throw invalid();
+      return { envelope, phase: row.phase, fileId: null, attemptId: null, anchorId: row.anchorId };
+    }
+    if (
+      !Array.isArray(row.lineage) ||
+      !row.lineage.length ||
+      row.lineage.length > MAX_HISTORY_VERSIONS ||
+      !Number.isSafeInteger(row.priorReceiptCount) ||
+      row.priorReceiptCount < 0 ||
+      !Object.hasOwn(row, 'previousBase')
+    )
+      throw invalid();
+    const lineage = row.lineage.map(versionPin);
+    if (
+      new Set(lineage.map(pin => pin.versionId)).size !== lineage.length ||
+      lineage.at(-1).versionId !== envelope.versionId ||
+      lineage.some(pin => pin.versionId === row.anchorId)
+    )
+      throw invalid();
+    const previousBase = baseFor(row.previousBase);
+    if (
+      previousBase &&
+      (!lineage.some(pin => sameVersionPin(pin, previousBase.pin)) ||
+        [binding.datasetId, binding.deviceId, binding.slotId].includes(previousBase.anchorId))
+    )
+      throw invalid();
+    return {
+      envelope,
+      phase: row.phase,
+      fileId: null,
+      attemptId: null,
+      anchorId: row.anchorId,
+      lineage,
+      priorReceiptCount: row.priorReceiptCount,
+      previousBase
+    };
   }
-  if (Object.hasOwn(row, 'anchorId')) throw invalid();
+  if (['anchorId', 'lineage', 'priorReceiptCount', 'previousBase'].some(key => Object.hasOwn(row, key)))
+    throw invalid();
   if (row.phase === 'queued') {
     if (row.fileId !== null || row.attemptId !== null) throw invalid();
   } else {
@@ -220,7 +286,7 @@ function checkState(value, binding) {
   );
   if (
     state.format !== FORMAT ||
-    ![LEGACY_VERSION, VERSION, ADOPTED_VERSION].includes(state.version) ||
+    ![LEGACY_VERSION, VERSION, ADOPTED_VERSION, REBASED_VERSION].includes(state.version) ||
     (state.version === LEGACY_VERSION && Object.hasOwn(state, 'confirmedReceipts')) ||
     (state.version !== LEGACY_VERSION && !Object.hasOwn(state, 'confirmedReceipts')) ||
     state.provider !== binding.provider ||
@@ -239,8 +305,9 @@ function checkState(value, binding) {
   const entries = state.entries.map(row => entryFor(row, binding, state.version));
   const adopted = entries.filter(row => row.phase === 'adopted');
   if (
-    (state.version === ADOPTED_VERSION && (adopted.length !== 1 || entries[0].phase !== 'adopted')) ||
-    (state.version !== ADOPTED_VERSION && adopted.length)
+    ([ADOPTED_VERSION, REBASED_VERSION].includes(state.version) &&
+      (adopted.length !== 1 || entries[0].phase !== 'adopted')) ||
+    (![ADOPTED_VERSION, REBASED_VERSION].includes(state.version) && adopted.length)
   )
     throw invalid();
   const confirmedReceipts =
@@ -270,9 +337,34 @@ function checkState(value, binding) {
     }
   }
   if (adopted.length && (versions.has(adopted[0].anchorId) || attempts.has(adopted[0].anchorId))) throw invalid();
+  if (state.version === REBASED_VERSION) {
+    const base = adopted[0];
+    if (base.priorReceiptCount > confirmedReceipts.length) throw invalid();
+    const ancestors = new Map(base.lineage.map((pin, index) => [pin.versionId, { pin, index }]));
+    let previousIndex = -1;
+    for (const receipt of confirmedReceipts.slice(0, base.priorReceiptCount)) {
+      const found = ancestors.get(receipt.versionId);
+      if (!found || !sameVersionPin(found.pin, receipt) || found.index <= previousIndex) throw invalid();
+      previousIndex = found.index;
+    }
+    if (
+      confirmedReceipts.slice(base.priorReceiptCount).some(receipt => ancestors.has(receipt.versionId)) ||
+      entries.slice(1).some(row => ancestors.has(row.envelope.versionId)) ||
+      [...attempts].some(id => ancestors.has(id))
+    )
+      throw invalid();
+    if (
+      base.previousBase &&
+      (base.previousBase.anchorId === base.anchorId ||
+        versions.has(base.previousBase.anchorId) ||
+        attempts.has(base.previousBase.anchorId) ||
+        ancestors.has(base.previousBase.anchorId))
+    )
+      throw invalid();
+  }
   const clean = {
     ...bindingState(binding),
-    version: state.version === ADOPTED_VERSION ? ADOPTED_VERSION : VERSION,
+    version: [ADOPTED_VERSION, REBASED_VERSION].includes(state.version) ? state.version : VERSION,
     entries,
     confirmedReceipts
   };
@@ -399,6 +491,8 @@ export function createDurableCloudOutbox(options) {
       ...clean.entries.map(row => row.envelope.versionId),
       ...clean.entries.map(row => row.attemptId).filter(Boolean),
       ...clean.entries.map(row => row.anchorId).filter(Boolean),
+      ...clean.entries.flatMap(row => row.lineage?.map(pin => pin.versionId) || []),
+      ...clean.entries.map(row => row.previousBase?.anchorId).filter(Boolean),
       ...clean.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
     ]);
     const encrypted = await encryptSnapshot({
@@ -495,16 +589,28 @@ export function createDurableCloudOutbox(options) {
     }
     let adopted = null;
     let start = 0;
+    let priorReceiptCount = 0;
     let parent;
     if (rows[0].phase === 'adopted') {
       adopted = await verified(rows[0]);
       if (sameVersionPin(adopted.pin, rootPin) ? adopted.contents.parent !== null : adopted.contents.parent === null)
         throw invalid();
+      if (current.state.version === REBASED_VERSION) {
+        const lineage = adopted.row.lineage;
+        if (
+          !sameVersionPin(lineage[0], rootPin) ||
+          !sameVersionPin(lineage.at(-1), adopted.pin) ||
+          (lineage.length > 1 && !sameVersionPin(lineage.at(-2), adopted.contents.parent))
+        )
+          throw invalid();
+        priorReceiptCount = adopted.row.priorReceiptCount;
+      }
       versions.push(adopted);
       start = 1;
-      parent = receipts.length
-        ? { versionId: receipts[receipts.length - 1].versionId, sha256: receipts[receipts.length - 1].sha256 }
-        : adopted.pin;
+      parent =
+        receipts.length > priorReceiptCount
+          ? { versionId: receipts[receipts.length - 1].versionId, sha256: receipts[receipts.length - 1].sha256 }
+          : adopted.pin;
     } else {
       if (receipts.length && !sameVersionPin(receipts[0], rootPin)) throw invalid();
       parent = receipts.length
@@ -533,10 +639,10 @@ export function createDurableCloudOutbox(options) {
       versions.push(version);
       parent = version.pin;
     }
-    if (receipts.length && rows[start]?.phase !== 'confirmed') throw invalid();
+    if (receipts.length > priorReceiptCount && rows[start]?.phase !== 'confirmed') throw invalid();
     const confirmed = versions.filter(version => version.row.phase === 'confirmed').at(-1) || adopted;
     const tail = versions.at(-1);
-    return { versions, adopted, confirmed, tail, pendingCount };
+    return { versions, adopted, confirmed, tail, pendingCount, priorReceiptCount };
   }
 
   async function sendCurrent(current) {
@@ -573,6 +679,8 @@ export function createDurableCloudOutbox(options) {
       ...current.state.entries.map(item => item.envelope.versionId),
       ...current.state.entries.map(item => item.attemptId).filter(Boolean),
       ...current.state.entries.map(item => item.anchorId).filter(Boolean),
+      ...current.state.entries.flatMap(item => item.lineage?.map(pin => pin.versionId) || []),
+      ...current.state.entries.map(item => item.previousBase?.anchorId).filter(Boolean),
       ...current.state.confirmedReceipts.flatMap(item => [item.versionId, item.attemptId])
     ]);
     const entries = current.state.entries.slice();
@@ -779,7 +887,8 @@ export function createDurableCloudOutbox(options) {
       });
     },
     /**
-     * Записывает принятую облачную основу в пустую восстановленную очередь.
+     * Записывает принятую облачную основу. Существующие подтверждённые локальные
+     * версии должны входить в проверенную линию; неподтверждённые не удаляются.
      * Это НЕ квитанция отправки. Capability выдаёт только проверенное сравнение;
      * привязку к сохранённому state и снятие маркера подтверждает отдельный caller.
      * При потере ответа повтор возможен лишь после перечитывания того же основания.
@@ -816,32 +925,75 @@ export function createDurableCloudOutbox(options) {
         if (!sameVersionPin(pin, proof.pin)) return response('changed');
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        if (current.state.confirmedReceipts.length) return response('queue_not_empty');
-        if (current.state.entries.length) {
-          const existing = current.state.entries[0];
-          if (
-            current.state.entries.length !== 1 ||
-            existing.phase !== 'adopted' ||
-            JSON.stringify(existing.envelope) !== JSON.stringify(copy)
-          )
-            return response('queue_not_empty');
-          return Object.freeze({ status: 'already_adopted', anchorId: existing.anchorId, pin: Object.freeze(pin) });
+        const lineage = proof.lineage.map(versionPin);
+        if (!lineage.length || !sameVersionPin(lineage[0], root) || !sameVersionPin(lineage.at(-1), pin))
+          return response('changed');
+        const ancestors = new Map(lineage.map(value => [value.versionId, value.sha256]));
+        let previousBase = null;
+        let receipts = current.state.confirmedReceipts.slice();
+        if (current.state.entries.length || receipts.length) {
+          const view = await linearView(current, root, request.expectedKeyPin);
+          if (!view || !view.confirmed || view.pendingCount) return response('queue_not_empty');
+          const known = [
+            ...(view.adopted
+              ? current.state.version === REBASED_VERSION
+                ? view.adopted.row.lineage
+                : [view.adopted.pin]
+              : []),
+            ...receipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })),
+            ...view.versions.filter(version => version.row.phase === 'confirmed').map(version => version.pin)
+          ];
+          if (known.some(value => ancestors.get(value.versionId) !== value.sha256))
+            return response('local_lineage_not_ancestor');
+          previousBase = view.adopted ? { pin: { ...view.adopted.pin }, anchorId: view.adopted.row.anchorId } : null;
+          if (sameVersionPin(view.tail.pin, pin)) {
+            if (view.adopted && sameVersionPin(view.adopted.pin, pin)) {
+              return Object.freeze({
+                status: 'already_adopted',
+                anchorId: view.adopted.row.anchorId,
+                pin: Object.freeze(pin),
+                previousBase: current.state.version === REBASED_VERSION ? view.adopted.row.previousBase : null
+              });
+            }
+            return Object.freeze({ status: 'already_head', pin: Object.freeze(pin), adoptedBase: previousBase });
+          }
+          for (const version of view.versions.filter(value => value.row.phase === 'confirmed')) {
+            receipts.push({ ...version.pin, fileId: version.row.fileId, attemptId: version.row.attemptId });
+          }
+          if (receipts.length > MAX_HISTORY_VERSIONS) return response('history_limit');
         }
         const anchorId = distinctId(crypto, [
           binding.datasetId,
           binding.deviceId,
           binding.slotId,
           current.receipt.revisionId,
-          pin.versionId
+          ...lineage.map(value => value.versionId),
+          ...receipts.flatMap(value => [value.versionId, value.attemptId]),
+          ...current.state.entries.map(value => value.previousBase?.anchorId).filter(Boolean),
+          ...(previousBase ? [previousBase.anchorId] : [])
         ]);
+        const isRebase = current.state.entries.length > 0 || current.state.confirmedReceipts.length > 0;
+        const entry = isRebase
+          ? {
+              envelope: copy,
+              phase: 'adopted',
+              fileId: null,
+              attemptId: null,
+              anchorId,
+              lineage,
+              priorReceiptCount: receipts.length,
+              previousBase
+            }
+          : { envelope: copy, phase: 'adopted', fileId: null, attemptId: null, anchorId };
         const next = {
           ...current.state,
-          version: ADOPTED_VERSION,
-          entries: [{ envelope: copy, phase: 'adopted', fileId: null, attemptId: null, anchorId }]
+          version: isRebase ? REBASED_VERSION : ADOPTED_VERSION,
+          entries: [entry],
+          confirmedReceipts: receipts
         };
         const saved = await write(current, next);
         return saved.status === 'ready'
-          ? Object.freeze({ status: 'adopted', anchorId, pin: Object.freeze(pin) })
+          ? Object.freeze({ status: 'adopted', anchorId, pin: Object.freeze(pin), previousBase })
           : response(saved.status);
       });
     },
@@ -866,17 +1018,29 @@ export function createDurableCloudOutbox(options) {
         const view = await linearView(current, root, request.expectedKeyPin);
         if (!view) return response('no_local_lineage');
         const firstPending = view.versions.find(version => !finalEntry(version.row)) || null;
-        const pins = view.adopted ? [{ ...view.adopted.pin }] : [];
+        const pins = view.adopted
+          ? current.state.version === REBASED_VERSION
+            ? [...view.adopted.row.lineage]
+            : [{ ...view.adopted.pin }]
+          : [];
         pins.push(...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })));
         pins.push(...view.versions.filter(version => version.row.phase === 'confirmed').map(version => version.pin));
+        const knownPins = uniquePins(pins);
         return Object.freeze({
           status: 'ready',
           revisionId: current.receipt.revisionId,
           confirmedPin: view.confirmed ? Object.freeze({ ...view.confirmed.pin }) : null,
-          confirmedPins: Object.freeze(pins.map(pin => Object.freeze({ ...pin }))),
+          confirmedPins: Object.freeze(knownPins.map(pin => Object.freeze({ ...pin }))),
           adoptedBase: view.adopted
             ? Object.freeze({ pin: Object.freeze({ ...view.adopted.pin }), anchorId: view.adopted.row.anchorId })
             : null,
+          previousBase:
+            view.adopted && current.state.version === REBASED_VERSION && view.adopted.row.previousBase
+              ? Object.freeze({
+                  pin: Object.freeze({ ...view.adopted.row.previousBase.pin }),
+                  anchorId: view.adopted.row.previousBase.anchorId
+                })
+              : null,
           tailPin: Object.freeze({ ...view.tail.pin }),
           tailPhase: view.tail.row.phase,
           tailMatches: local === null ? null : local === JSON.stringify(view.tail.contents.publicSnapshot),
@@ -946,6 +1110,8 @@ export function createDurableCloudOutbox(options) {
           ...current.state.entries.map(row => row.envelope.versionId),
           ...current.state.entries.map(row => row.attemptId).filter(Boolean),
           ...current.state.entries.map(row => row.anchorId).filter(Boolean),
+          ...current.state.entries.flatMap(row => row.lineage?.map(pin => pin.versionId) || []),
+          ...current.state.entries.map(row => row.previousBase?.anchorId).filter(Boolean),
           ...current.state.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
         ]);
         const sealed = await sealHistoryVersion({
@@ -1095,7 +1261,12 @@ export function createDurableCloudOutbox(options) {
       return run(async () => {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        const confirmed = current.state.entries.filter(row => row.phase === 'confirmed');
+        const allConfirmed = current.state.entries.filter(row => row.phase === 'confirmed');
+        // Для принятой основы последняя собственная подтверждённая версия нужна
+        // как проверяемый родитель. Общая compaction не должна убирать её.
+        const confirmed = [ADOPTED_VERSION, REBASED_VERSION].includes(current.state.version)
+          ? allConfirmed.slice(0, -1)
+          : allConfirmed;
         if (!confirmed.length) return response('idle');
         if (current.state.confirmedReceipts.length + confirmed.length > MAX_HISTORY_VERSIONS)
           return response('receipt_limit');
@@ -1110,7 +1281,7 @@ export function createDurableCloudOutbox(options) {
         }
         const next = {
           ...current.state,
-          entries: current.state.entries.filter(row => row.phase !== 'confirmed'),
+          entries: current.state.entries.filter(row => !confirmed.includes(row)),
           confirmedReceipts: [...current.state.confirmedReceipts, ...receipts]
         };
         const saved = await write(current, next);
@@ -1126,17 +1297,18 @@ export function createDurableCloudOutbox(options) {
         if (current.status !== 'ready') return unavailable(current);
         const adopted = current.state.entries.find(row => row.phase === 'adopted');
         const pins = [];
-        if (adopted)
-          pins.push(
-            await historyEnvelopePin({
-              envelope: adopted.envelope,
-              expectedDatasetId: binding.datasetId,
-              cryptoSource: crypto
-            })
-          );
+        if (adopted) {
+          if (current.state.version === REBASED_VERSION) pins.push(...adopted.lineage);
+          else
+            pins.push(
+              await historyEnvelopePin({
+                envelope: adopted.envelope,
+                expectedDatasetId: binding.datasetId,
+                cryptoSource: crypto
+              })
+            );
+        }
         pins.push(...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })));
-        if (pins.length + current.state.entries.filter(row => row.phase === 'confirmed').length > MAX_HISTORY_VERSIONS)
-          return response('receipt_limit');
         for (const row of current.state.entries) {
           if (row.phase === 'confirmed')
             pins.push(
@@ -1147,7 +1319,8 @@ export function createDurableCloudOutbox(options) {
               })
             );
         }
-        return Object.freeze({ status: 'ready', pins: Object.freeze(pins.map(pin => Object.freeze(pin))) });
+        if (new Set(pins.map(pin => pin.versionId)).size > MAX_HISTORY_VERSIONS) return response('receipt_limit');
+        return Object.freeze({ status: 'ready', pins: Object.freeze(uniquePins(pins).map(pin => Object.freeze(pin))) });
       });
     },
     async status() {
@@ -1155,7 +1328,7 @@ export function createDurableCloudOutbox(options) {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
         const counts = { queued: 0, prepared: 0, attempting: 0, confirmed: 0 };
-        if (current.state.version === ADOPTED_VERSION) counts['adopted'] = 0;
+        if ([ADOPTED_VERSION, REBASED_VERSION].includes(current.state.version)) counts['adopted'] = 0;
         for (const row of current.state.entries) counts[row.phase]++;
         return Object.freeze({ status: 'ready', counts: Object.freeze(counts) });
       });

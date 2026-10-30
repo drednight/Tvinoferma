@@ -1,5 +1,5 @@
 // @ts-check
-// Узкое согласование восстановленного ПК: только полное совпадение с единственной
+// Узкое согласование любого подключённого ПК: только полное совпадение с единственной
 // наблюдаемой головой и проверенная линия всех частично принятых источников. Это
 // не слияние конфликтующих записей и не доказательство полноты списка провайдера.
 // В очереди сначала закрепляется шифротекст и случайный anchorId; только затем
@@ -14,7 +14,7 @@ import {
   stageGuardedCloudStateWrite
 } from './guardedStateWrite.js';
 import { pendingSelectiveApplyEvents, removePendingSelectiveApply } from './pendingSelectiveApply.js';
-import { requireMatchingCloudBase, withAcceptedCloudBase } from './acceptedCloudBase.js';
+import { requireMatchingCloudBase, replaceAcceptedCloudBase } from './acceptedCloudBase.js';
 import { prepareCloudReview } from './cloudReview.js';
 import { openConnectedPublicationContext } from './connectedPublication.js';
 import { openPinnedNativeCloudSession } from './providers/pinnedNativeCloudSession.js';
@@ -36,6 +36,23 @@ function result(status, extra = {}) {
 }
 function samePin(a, b, key) {
   return a?.[key] === b?.[key] && a?.sha256 === b?.sha256;
+}
+function sameBase(a, b) {
+  return a === null && b === null
+    ? true
+    : !!a && !!b && a.anchorId === b.anchorId && samePin(a.pin, b.pin, 'versionId');
+}
+function matchesState(settings, context, adoptedBase) {
+  try {
+    requireMatchingCloudBase(settings, {
+      provider: context.provider,
+      datasetId: context.binding.datasetId,
+      adoptedBase
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function stillSaved(snapshot) {
   let loaded = null;
@@ -138,44 +155,70 @@ export async function reconcileExactCloudBase(options) {
     if (input.signal?.aborted) return result('cancelled');
     if (!(await stillSaved(original))) return result('state_changed_or_unsaved');
     const queue = context.queue(NO_NETWORK);
+    const before = await queue.inspectLinearHead(context.pins);
+    if (before.status === 'ready') {
+      const canResume =
+        before.adoptedBase &&
+        !before.nextPin &&
+        samePin(before.adoptedBase.pin, proof.pin, 'versionId') &&
+        samePin(before.tailPin, proof.pin, 'versionId') &&
+        matchesState(original.settings, context, before.previousBase);
+      if (!matchesState(original.settings, context, before.adoptedBase) && !canResume)
+        return result('accepted_base_mismatch');
+    } else if (before.status !== 'no_local_lineage') return result(before.status);
+    else if (!matchesState(original.settings, context, null)) return result('accepted_base_mismatch');
     const adopted = await queue.adoptReviewedBase({ ...context.pins, proof });
     uncertain = adopted.status === 'journal_uncertain';
-    if (!['adopted', 'already_adopted'].includes(adopted.status)) return result(adopted.status);
+    if (!['adopted', 'already_adopted', 'already_head'].includes(adopted.status)) return result(adopted.status);
+    const targetBase =
+      adopted.status === 'already_head' ? adopted.adoptedBase : { pin: adopted.pin, anchorId: adopted.anchorId };
+    const previousBase = adopted.status === 'already_head' ? targetBase : adopted.previousBase;
+    if (
+      !matchesState(original.settings, context, targetBase) &&
+      !matchesState(original.settings, context, previousBase)
+    )
+      return result('accepted_base_mismatch');
+    const fixed = await queue.inspectLinearHead(context.pins);
+    if (
+      fixed.status !== 'ready' ||
+      fixed.nextPin ||
+      !samePin(fixed.tailPin, adopted.pin, 'versionId') ||
+      !samePin(fixed.confirmedPin, adopted.pin, 'versionId') ||
+      !sameBase(fixed.adoptedBase, targetBase)
+    )
+      return result('queue_changed');
     if (input.signal?.aborted) return result('cancelled');
     // Повторно читаем список и выбранную голову ПОСЛЕ фиксации очереди: между
     // этими действиями другие ПК всё равно могут изменить облако.
-    const known = [context.binding.rootPin];
-    if (context.binding.rootPin.versionId !== adopted.pin.versionId) known.push(adopted.pin);
-    const again = await review(known);
+    const again = await review(proof.lineage);
     if (again.status !== 'ready_for_review') return result('cloud_changed_after_queue');
     const repeated = again.prepareExactAdoption(input.pin, original.settings);
     if (repeated.status !== 'ready_for_adoption' || !samePin(repeated.pin, adopted.pin, 'versionId'))
       return result('cloud_changed_after_queue');
     if (input.signal?.aborted) return result('cancelled');
     if (!(await stillSaved(original))) return result('state_changed_after_queue');
-    const accepted = {
-      version: 1,
-      provider: context.provider,
-      datasetId: context.binding.datasetId,
-      pin: adopted.pin,
-      anchorId: adopted.anchorId
-    };
-    if (!events.length) {
-      try {
-        requireMatchingCloudBase(original.settings, {
-          provider: context.provider,
-          datasetId: context.binding.datasetId,
-          adoptedBase: { pin: adopted.pin, anchorId: adopted.anchorId }
-        });
-        return result('already_reconciled');
-      } catch {
-        // Первая установка или продолжение после записи одной только очереди.
-      }
-    }
+    const currentQueue = await queue.inspectLinearHead(context.pins);
+    if (currentQueue.status !== 'ready' || currentQueue.revisionId !== fixed.revisionId) return result('queue_changed');
+    const currentMatches = matchesState(original.settings, context, targetBase);
+    if (!events.length && currentMatches) return result('already_reconciled');
     let candidate;
     try {
       candidate = structuredClone(original);
-      candidate.settings = withAcceptedCloudBase(removePendingSelectiveApply(candidate.settings), accepted);
+      candidate.settings = removePendingSelectiveApply(candidate.settings);
+      if (!currentMatches) {
+        if (!targetBase) return result('accepted_base_mismatch');
+        candidate.settings = replaceAcceptedCloudBase(
+          candidate.settings,
+          {
+            version: 1,
+            provider: context.provider,
+            datasetId: context.binding.datasetId,
+            pin: targetBase.pin,
+            anchorId: targetBase.anchorId
+          },
+          previousBase
+        );
+      }
     } catch {
       return result('accepted_base_mismatch');
     }

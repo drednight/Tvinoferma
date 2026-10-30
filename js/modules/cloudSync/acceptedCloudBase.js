@@ -33,14 +33,17 @@ function checked(value) {
   };
 }
 
-/** Создаёт локальную метку только после принятия полностью совпадающего снимка. */
-export function withAcceptedCloudBase(settings, value) {
-  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw invalid();
+/**
+ * Заменяет отметку только после проверки предыдущей части очереди. Очередь и
+ * state не атомарны; после неполной записи публикация должна остаться закрытой.
+ */
+export function replaceAcceptedCloudBase(settings, value, previousBase) {
   const next = checked(value);
-  if (Object.hasOwn(settings, KEY)) {
-    const previous = checked(settings[KEY]);
-    if (JSON.stringify(previous) !== JSON.stringify(next)) throw invalid();
-  }
+  requireMatchingCloudBase(settings, {
+    provider: next.provider,
+    datasetId: next.datasetId,
+    adoptedBase: previousBase
+  });
   return { ...settings, [KEY]: next };
 }
 
