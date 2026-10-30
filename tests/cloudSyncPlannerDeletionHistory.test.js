@@ -9,11 +9,12 @@ import { encryptSnapshot, generateRecoveryKey, generateSyncId } from '../js/modu
 import {
   sealHistoryVersion,
   sealHistoryVersionWithPlannerDeletions,
+  sealHistoryChildWithPlannerTombstones,
   verifyHistory
 } from '../js/modules/cloudSync/history.js';
 
 const id = () => generateSyncId(webcrypto);
-let datasetId, recoveryKey, initial, taskId, secondId, root;
+let datasetId, recoveryKey, initial, initialState, taskId, secondId, root;
 const seal = (snapshot, parent = null) =>
   sealHistoryVersion({
     publicSnapshot: snapshot,
@@ -96,11 +97,168 @@ beforeEach(async () => {
   const planned = planSyncIdentities({ snapshot, cryptoSource: webcrypto }).snapshot;
   taskId = planned.plannerEntries[0].syncId;
   secondId = planned.plannerEntries[1].syncId;
+  initialState = planned;
   initial = buildPublicSnapshot(planned);
   root = await seal(initial);
 });
 
 describe('явное удаление в проверяемой экспериментальной истории', () => {
+  it('применяет только явно выбранную v3-метку, а отсутствие, legacy и ветви не разрешают удаление', async () => {
+    const child = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: without(initial, taskId),
+      parent: root.pin,
+      parentSnapshot: initial,
+      previousTombstones: [],
+      deletedIds: [taskId],
+      confirmedDeletion: true,
+      datasetId,
+      versionId: id(),
+      recoveryKey,
+      cryptoSource: webcrypto
+    });
+    const checked = await review([root, child], initial);
+    const choices = {
+      localState: initialState,
+      selectedRecords: [],
+      selectedPlannerDeletions: [taskId],
+      cryptoSource: webcrypto
+    };
+    expect(checked.compare(child.pin).differences.entries).toContainEqual(
+      expect.objectContaining({ id: taskId, deletionSelectable: true })
+    );
+    const plan = checked.prepareApply(child.pin, choices);
+    expect(plan.candidateState().plannerEntries.map(entry => entry.syncId)).toEqual([secondId]);
+    expect(plan.selectedCount).toBe(1);
+    expect(initialState.plannerEntries).toHaveLength(2);
+    expect(() => checked.prepareApply(child.pin, { ...choices, selectedPlannerDeletions: [secondId] })).toThrow();
+    const absent = await seal(without(initial, taskId), root.pin);
+    const absentReview = await review([root, absent], initial);
+    expect(() => absentReview.prepareApply(absent.pin, choices)).toThrow();
+    const legacy = await sealHistoryVersionWithPlannerDeletions(deletionOptions(await verify([root])));
+    const legacyReview = await review([root, legacy], initial);
+    expect(() => legacyReview.prepareApply(legacy.pin, choices)).toThrow();
+    const branched = await review([root, child, absent], initial);
+    expect(() => branched.prepareApply(child.pin, choices)).toThrow();
+    expect(branched.compare(child.pin).differences.entries).toContainEqual(
+      expect.objectContaining({ id: taskId, deletionSelectable: false })
+    );
+  });
+
+  it('сохраняет накопленные отметки удаления во всех последующих версиях', async () => {
+    const child = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: without(initial, taskId),
+      parent: root.pin,
+      parentSnapshot: initial,
+      previousTombstones: [],
+      deletedIds: [taskId],
+      confirmedDeletion: true,
+      datasetId,
+      versionId: id(),
+      recoveryKey,
+      cryptoSource: webcrypto
+    });
+    const descendant = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: without(initial, taskId),
+      parent: child.pin,
+      parentSnapshot: without(initial, taskId),
+      previousTombstones: [taskId],
+      deletedIds: [],
+      confirmedDeletion: false,
+      datasetId,
+      versionId: id(),
+      recoveryKey,
+      cryptoSource: webcrypto
+    });
+    const second = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: without(initial, taskId, secondId),
+      parent: descendant.pin,
+      parentSnapshot: without(initial, taskId),
+      previousTombstones: [taskId],
+      deletedIds: [secondId],
+      confirmedDeletion: true,
+      datasetId,
+      versionId: id(),
+      recoveryKey,
+      cryptoSource: webcrypto
+    });
+    const verified = await verify([second, root, descendant, child]);
+    expect(verified.plannerDeletions(child.pin)).toEqual([taskId]);
+    expect(verified.plannerDeletions(descendant.pin)).toEqual([]);
+    expect(verified.plannerTombstones(descendant.pin)).toEqual([taskId]);
+    expect(verified.plannerTombstones(second.pin)).toEqual([taskId, secondId].sort());
+    expect(JSON.stringify(second.envelope)).not.toContain(taskId);
+    expect(JSON.stringify(second.envelope)).not.toContain('Личное событие');
+    const checked = await review([root, child, descendant, second], initial);
+    expect(
+      checked.compare(second.pin).differences.entries.filter(entry => entry.kind === 'marked_cloud_deletion')
+    ).toHaveLength(2);
+  });
+
+  it('не создаёт потомка с потерянной отметкой, неподтверждённым удалением или восстановленным ID', async () => {
+    const args = {
+      publicSnapshot: without(initial, taskId),
+      parent: root.pin,
+      parentSnapshot: initial,
+      previousTombstones: [],
+      deletedIds: [taskId],
+      confirmedDeletion: true,
+      datasetId,
+      recoveryKey,
+      cryptoSource: webcrypto
+    };
+    for (const changes of [
+      { confirmedDeletion: false },
+      { deletedIds: [] },
+      { deletedIds: [secondId] },
+      { previousTombstones: [taskId] },
+      { publicSnapshot: without(initial, taskId, secondId) },
+      {
+        parentSnapshot: without(initial, taskId),
+        publicSnapshot: initial,
+        previousTombstones: [taskId],
+        deletedIds: []
+      }
+    ])
+      await expect(sealHistoryChildWithPlannerTombstones({ ...args, ...changes, versionId: id() })).rejects.toThrow();
+  });
+
+  it('не доверяет подмене накопленных меток, пропущенному удалению или старому формату потомка', async () => {
+    const child = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: without(initial, taskId),
+      parent: root.pin,
+      parentSnapshot: initial,
+      previousTombstones: [],
+      deletedIds: [taskId],
+      confirmedDeletion: true,
+      datasetId,
+      versionId: id(),
+      recoveryKey,
+      cryptoSource: webcrypto
+    });
+    const current = without(initial, taskId);
+    const payload = {
+      format: 'tvinoferma-public-history',
+      version: 3,
+      parent: child.pin,
+      publicSnapshot: current,
+      plannerDeletedIds: [],
+      plannerTombstones: [taskId]
+    };
+    for (const changes of [
+      { plannerTombstones: [] },
+      { plannerTombstones: [secondId] },
+      { plannerTombstones: [taskId, secondId].sort() },
+      { publicSnapshot: initial },
+      { publicSnapshot: without(initial, taskId, secondId) },
+      { plannerDeletedIds: [secondId] }
+    ]) {
+      const forged = await forge({ ...payload, ...changes });
+      await expect(verify([root, child, forged])).rejects.toThrow();
+    }
+    const old = await seal(current, child.pin);
+    await expect(verify([root, child, old])).rejects.toThrow();
+  });
+
   it('хранит ID внутри шифрования и связывает удаление с непосредственным родителем', async () => {
     const history = await verify([root]);
     const deletion = await sealHistoryVersionWithPlannerDeletions(deletionOptions(history));

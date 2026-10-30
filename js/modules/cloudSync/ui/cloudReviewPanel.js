@@ -57,7 +57,8 @@ const MESSAGES = Object.freeze({
     'Данные не совпадают полностью с выбранной версией. Сначала разрешите все различия; отправка не разрешена.',
   not_unique_head: 'Наблюдается другая версия или несколько ветвей. Согласование остановлено.',
   unresolved_sources: 'Ранее применялись данные из другой ветви или набора. Требуется отдельное согласование.',
-  deletions_unsupported: 'История содержит удаления или исчезнувшие записи. Их согласование ещё не реализовано.',
+  deletions_unsupported:
+    'История содержит удаления или исчезнувшие записи, которые это согласование не поддерживает. Для ручного календаря используйте отдельный выбор подтверждённых v3-меток и согласование полного совпадения.',
   queue_not_empty:
     'Исходящая очередь содержит начатую или несколько неподтверждённых попыток. Они не удалены; сначала проверьте результат отправки.',
   queue_snapshot_mismatch:
@@ -154,7 +155,7 @@ function description(entry) {
   if (entry.kind === 'only_cloud') return `${section}${label} — только на диске`;
   if (entry.kind === 'only_local') return `${section}${label} — только на этом ПК, не удаляется`;
   if (entry.kind === 'marked_cloud_deletion')
-    return `${section}${label} — в проверенной истории диска есть отметка удаления; на этом ПК запись сохранена, применение удаления пока недоступно`;
+    return `${section}${label} — в проверенной истории диска есть отметка удаления; ${entry.deletionSelectable ? 'при выборе запись будет удалена с этого ПК, включая местные правки' : 'на этом ПК запись сохранена, применение удаления пока недоступно'}`;
   if (entry.kind === 'changed') return `${section}${label} — отличается; при выборе облачные поля заменят местные`;
   if (entry.kind === 'identity_review') return `${section}${label} — требуется сопоставить записи`;
   if (entry.kind === 'order_changed')
@@ -412,6 +413,8 @@ export function bindCloudReviewPanel(options) {
         let choice = null;
         if (['changed', 'only_cloud'].includes(entry.kind))
           choice = { kind: 'record', section: entry.section, id: entry.id };
+        else if (entry.kind === 'marked_cloud_deletion' && entry.deletionSelectable)
+          choice = { kind: 'deletion', section: 'planner', id: entry.id };
         else if (entry.kind === 'settings_changed')
           choice = entry.section === 'finance' ? { kind: 'finance' } : { kind: 'settings', group: entry.group };
         let detail = detailFor(entry, comparison);
@@ -549,7 +552,10 @@ export function bindCloudReviewPanel(options) {
           .filter(item => item.kind === 'record')
           .map(item => ({ section: item.section, id: item.id })),
         selectedSettings: chosen.filter(item => item.kind === 'settings').map(item => item.group),
-        includeFinanceSettings: chosen.some(item => item.kind === 'finance')
+        includeFinanceSettings: chosen.some(item => item.kind === 'finance'),
+        ...(chosen.some(item => item.kind === 'deletion')
+          ? { selectedPlannerDeletions: chosen.filter(item => item.kind === 'deletion').map(item => item.id) }
+          : {})
       });
     } catch {
       note(
@@ -564,7 +570,7 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Это действие не объединяет изменения и не разрешает конфликты; для объединения есть отдельная кнопка. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
+        `Применить выбранные записи и настройки (${chosen.length})? ${chosen.some(item => item.kind === 'deletion') ? `ВНИМАНИЕ: выбранные удаления календаря (${chosen.filter(item => item.kind === 'deletion').length}) удалят записи с этого ПК вместе с местными правками. Чтобы сохранить местную запись, снимите с её удаления галочку. ` : ''}Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Это действие не объединяет изменения и не разрешает конфликты; для объединения есть отдельная кнопка. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
       );
     } catch {
       approved = false;

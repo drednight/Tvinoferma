@@ -29,7 +29,8 @@ beforeAll(async () => {
   });
   const { ui, ...state } = normalizeState({
     schemaVersion: 10,
-    characters: [{ id: 'hero', nick: 'ЛИЧНЫЙ ПЕРСОНАЖ', notes: 'ЛИЧНАЯ ЗАМЕТКА' }]
+    characters: [{ id: 'hero', nick: 'ЛИЧНЫЙ ПЕРСОНАЖ', notes: 'ЛИЧНАЯ ЗАМЕТКА' }],
+    plannerEntries: [{ id: 'task', title: 'ЛИЧНАЯ ЗАДАЧА', date: '2026-11-01', kind: 'task' }]
   });
   base = buildPublicSnapshot(planSyncIdentities({ snapshot: state, cryptoSource }).snapshot);
   root = await sealHistoryVersion({
@@ -201,6 +202,111 @@ function setup(provider) {
 }
 
 describe.each(['google', 'yandex'])('%s: последующая локальная линейная очередь', provider => {
+  it('подтверждает точные удаления календаря, удерживает отметки после перезапуска и следующих отправок', async () => {
+    const a = setup(provider);
+    let box = await a.confirmedRoot();
+    const next = structuredClone(base);
+    const taskId = next.sections.planner.records[0].id;
+    next.sections.planner.records = [];
+    next.sections.planner.order = [];
+    expect((await a.queue(box, next)).status).toBe('deletions_need_review');
+    const head = await a.inspect(box);
+    const preview = await box.inspectPlannerDeletions({
+      ...a.pins,
+      publicSnapshot: next,
+      expectedRevisionId: head.revisionId
+    });
+    expect(preview).toMatchObject({
+      status: 'deletion_review',
+      parentPin: root.pin,
+      records: [{ id: taskId, label: 'ЛИЧНАЯ ЗАДАЧА' }]
+    });
+    expect(
+      (
+        await box.queueLinearSnapshot({
+          ...a.pins,
+          keyBundle: keys.bundle,
+          publicSnapshot: next,
+          expectedRevisionId: preview.revisionId,
+          plannerDeletionApproval: { parentPin: preview.parentPin, ids: [taskId] }
+        })
+      ).status
+    ).toBe('queued');
+    box = a.open();
+    const edited = structuredClone(next);
+    edited.sections.characters.records[0].fields.notes = 'После подтверждения удаления';
+    expect((await a.queue(box, edited)).status).toBe('coalesced');
+    expect((await a.send(box, await a.inspect(box))).status).toBe('needs_verification');
+    expect((await box.verifyNext()).status).toBe('confirmed');
+    box = a.open();
+    const later = structuredClone(edited);
+    later.sections.characters.records[0].fields.notes = 'Следующая версия';
+    expect((await a.queue(box, later)).status).toBe('queued');
+    expect((await a.send(box, await a.inspect(box))).status).toBe('needs_verification');
+    expect((await box.verifyNext()).status).toBe('confirmed');
+    const { verifyHistory } = await import('../js/modules/cloudSync/history.js');
+    const history = await verifyHistory({
+      envelopes: [...a.received.values()],
+      expectedDatasetId: datasetId,
+      recoveryKey: keys.dataKey,
+      root: root.pin,
+      knownPins: [root.pin],
+      cryptoSource
+    });
+    expect(history.plannerTombstones((await a.inspect(box)).tailPin)).toEqual([taskId]);
+    expect(history.publicSnapshot((await a.inspect(box)).tailPin)).toEqual(later);
+    const resurrect = structuredClone(later);
+    resurrect.sections.planner = structuredClone(base.sections.planner);
+    expect((await a.queue(box, resurrect)).status).toBe('deleted_identity_resurrection');
+    expect(a.session.upload).toHaveBeenCalledTimes(3);
+  });
+
+  it('не принимает устаревшее или не то подтверждение удаления и не удаляет персонажа', async () => {
+    const a = setup(provider);
+    const box = await a.confirmedRoot();
+    const next = structuredClone(base);
+    next.sections.planner.records = [];
+    next.sections.planner.order = [];
+    const head = await a.inspect(box);
+    const preview = await box.inspectPlannerDeletions({
+      ...a.pins,
+      publicSnapshot: next,
+      expectedRevisionId: head.revisionId
+    });
+    const before = a.store.raw();
+    const args = { ...a.pins, keyBundle: keys.bundle, publicSnapshot: next, expectedRevisionId: preview.revisionId };
+    expect(
+      (
+        await box.queueLinearSnapshot({
+          ...args,
+          plannerDeletionApproval: { parentPin: preview.parentPin, ids: [id()] }
+        })
+      ).status
+    ).toBe('deletion_review_changed');
+    expect(a.store.raw()).toEqual(before);
+    expect((await a.queue(box, snapshot('Локальная правка'))).status).toBe('queued');
+    expect(
+      (
+        await box.queueLinearSnapshot({
+          ...args,
+          plannerDeletionApproval: { parentPin: preview.parentPin, ids: preview.records.map(row => row.id) }
+        })
+      ).status
+    ).toBe('changed');
+    const updated = await a.inspect(box);
+    const missingBoth = removeCharacter(next);
+    expect(
+      (
+        await box.inspectPlannerDeletions({
+          ...a.pins,
+          publicSnapshot: missingBoth,
+          expectedRevisionId: updated.revisionId
+        })
+      ).status
+    ).toBe('other_deletions_need_review');
+    expect(a.session.upload).toHaveBeenCalledTimes(1);
+  });
+
   it('не принимает поддельное доказательство принятой облачной базы', async () => {
     const a = setup(provider);
     const box = a.open();

@@ -119,6 +119,46 @@ describe('экспериментальная панель последующих
     expect(byId('cloud-publication-status').textContent).not.toContain('<img');
   });
 
+  it('показывает список исходящих удалений и только после согласия готовит очередь, не отправляя', async () => {
+    const operation = {
+      status: 'deletion_review',
+      records: () => [{ id: 'fake', label: '<img src=x> задача' }],
+      commit: vi.fn(async () => ({ status: 'queued' })),
+      cancel: vi.fn()
+    };
+    const stageDeletions = vi.fn(async () => operation);
+    const f = setup({ stageDeletions, loadNative: async () => ({ invoke: vi.fn() }) });
+    byId('cloud-publication-review-deletions').click();
+    await vi.waitFor(() => expect(operation.commit).toHaveBeenCalledWith({ confirmed: true }));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('<img src=x> задача'));
+    expect(document.querySelector('#cloud-publication-status img')).toBeNull();
+    expect(f.controller.runManual).not.toHaveBeenCalled();
+    expect(byId('cloud-publication-status').textContent).toContain('сохранены в зашифрованной очереди');
+    expect(JSON.stringify(cloudActivity())).not.toContain('задача');
+  });
+
+  it('не подтверждает исходящие удаления после отмены или смены диска во время подтверждения', async () => {
+    const answer = deferred();
+    const operation = {
+      status: 'deletion_review',
+      records: () => [{ id: 'fake', label: 'Задача' }],
+      commit: vi.fn(),
+      cancel: vi.fn()
+    };
+    const f = setup({
+      confirm: vi.fn(() => answer.promise),
+      stageDeletions: async () => operation,
+      loadNative: async () => ({ invoke: vi.fn() })
+    });
+    byId('cloud-publication-review-deletions').click();
+    await vi.waitFor(() => expect(f.confirm).toHaveBeenCalled());
+    changeProvider('google');
+    answer.resolve(true);
+    await vi.waitFor(() => expect(operation.cancel).toHaveBeenCalled());
+    expect(operation.commit).not.toHaveBeenCalled();
+    expect(f.controller.runManual).not.toHaveBeenCalled();
+  });
+
   it('не выдаёт неподтверждённую запись разрешения за успешную настройку', async () => {
     const f = setup();
     f.controller.enable.mockReturnValue(false);

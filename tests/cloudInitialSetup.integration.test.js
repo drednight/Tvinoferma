@@ -3003,3 +3003,193 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect(f.cloud.session.upload).not.toHaveBeenCalled();
   }, 30_000);
 });
+
+// Outgoing planner tombstones: still fake native CAS and fake providers.
+async function plannerDeletionFixture(provider) {
+  const f = await publicationFixture(provider, {
+    prepare: async f => {
+      f.state.plannerEntries[0].title = 'ПОДТВЕРЖДАЕМАЯ ЗАДАЧА';
+      await f.storage.saveNow();
+    }
+  });
+  const removed = f.state.plannerEntries.pop();
+  await f.storage.saveNow();
+  const { stagePlannerDeletionPublication } = await import('../js/modules/cloudSync/plannerDeletionPublication.js');
+  return {
+    ...f,
+    removed,
+    stageDeletion: () => stagePlannerDeletionPublication({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto })
+  };
+}
+
+describe.each(['google', 'yandex'])('%s: подтверждённые исходящие удаления календаря', provider => {
+  it('после явного подтверждения отправляет отметку и сохраняет её в следующих версиях', async () => {
+    const f = await plannerDeletionFixture(provider);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    expect((await f.queue()).status).toBe('deletions_need_review');
+    const staged = await f.stageDeletion();
+    expect(staged.status).toBe('deletion_review');
+    expect(staged.records()).toEqual([{ id: f.removed.syncId, label: 'ПОДТВЕРЖДАЕМАЯ ЗАДАЧА' }]);
+    const previous = structuredClone(f.fake.queue(provider));
+    expect(await staged.commit({ confirmed: false })).toEqual({ status: 'confirmation_required' });
+    expect(f.fake.queue(provider)).toEqual(previous);
+    expect((await staged.commit({ confirmed: true })).status).toBe('queued');
+    expect(await staged.commit({ confirmed: true })).toEqual({ status: 'closed' });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect(JSON.stringify(f.fake.queue(provider))).not.toContain(f.removed.syncId);
+    expect((await f.queue()).status).toBe('unchanged');
+    expect((await f.send()).status).toBe('sent_verified');
+    f.state.characters[0].notes = 'После удаления';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const { verifyHistory } = await import('../js/modules/cloudSync/history.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const rootPin = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const history = await verifyHistory({
+      envelopes: [...f.cloud.versions.values()],
+      expectedDatasetId: key.datasetId,
+      recoveryKey: key.dataKey,
+      root: rootPin,
+      knownPins: [rootPin],
+      cryptoSource: webcrypto
+    });
+    const head = history.observedHeads()[0];
+    expect(history.plannerTombstones(head)).toEqual([f.removed.syncId]);
+    expect(history.publicSnapshot(head).sections.characters.records[0].fields.notes).toBe('После удаления');
+  }, 30_000);
+
+  it('после отмены и местной правки не подтверждает устаревший список', async () => {
+    const f = await plannerDeletionFixture(provider);
+    const cancelled = await f.stageDeletion();
+    cancelled.cancel();
+    expect(await cancelled.commit({ confirmed: true })).toEqual({ status: 'closed' });
+    const stage = await f.stageDeletion();
+    const previous = structuredClone(f.fake.queue(provider));
+    f.state.characters[0].notes = 'Изменилось после просмотра';
+    await f.storage.saveNow();
+    expect(await stage.commit({ confirmed: true })).toEqual({ status: 'state_changed_or_unsaved' });
+    expect(f.fake.queue(provider)).toEqual(previous);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('не отправляет удаление поверх правки с другого ПК', async () => {
+    const f = await plannerDeletionFixture(provider);
+    const staged = await f.stageDeletion();
+    expect((await staged.commit({ confirmed: true })).status).toBe('queued');
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const rootPin = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    await mergeIncoming(f, provider, rootPin, snapshot => {
+      snapshot.sections.planner.records[0].fields.title = 'Правка другого ПК';
+    });
+    expect((await f.send()).status).toBe('remote_changes_require_review');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('при потере ответа CAS не повторяет подтверждение неизвестного результата', async () => {
+    const f = await plannerDeletionFixture(provider);
+    const staged = await f.stageDeletion();
+    f.fake.loseNextCompare();
+    expect((await staged.commit({ confirmed: true })).status).toBe('journal_uncertain');
+    const after = structuredClone(f.fake.queue(provider));
+    expect(await staged.commit({ confirmed: true })).toEqual({ status: 'closed' });
+    expect(f.fake.queue(provider)).toEqual(after);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+});
+
+describe.each(['google', 'yandex'])('%s: приём подтверждённого удаления на втором fake ПК', provider => {
+  it('после просмотра сохраняет backup местной правки, применяет выбранную метку и продолжает линию', async () => {
+    const f = await recoveredFixture(provider);
+    expect((await f.reconcile()).status).toBe('reconciled');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const payload = await decryptSnapshot({
+      envelope: f.cloud.versions.get(f.pin.versionId),
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    const parent = payload.publicSnapshot;
+    const next = structuredClone(parent);
+    const taskId = next.sections.planner.records[0].id;
+    next.sections.planner.records = [];
+    next.sections.planner.order = [];
+    const removed = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: next,
+      parent: f.pin,
+      parentSnapshot: parent,
+      previousTombstones: [],
+      deletedIds: [taskId],
+      confirmedDeletion: true,
+      recoveryKey: key.dataKey,
+      datasetId: key.datasetId,
+      versionId: generateSyncId(webcrypto),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource: webcrypto
+    });
+    f.cloud.versions.set(removed.pin.versionId, removed.envelope);
+    f.state.plannerEntries[0].title = 'МЕСТНАЯ НЕОТПРАВЛЕННАЯ ПРАВКА';
+    await f.storage.saveNow();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const { currentCloudStateSnapshot } = await import('../js/modules/cloudSync/guardedStateWrite.js');
+    const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+    const { prepareCloudReview } = await import('../js/modules/cloudSync/cloudReview.js');
+    const review = await prepareCloudReview({
+      provider,
+      session: f.cloud.session,
+      datasetId: key.datasetId,
+      dataKey: key.dataKey,
+      rootPin: f.pin,
+      knownPins: [f.pin],
+      localSnapshot: buildPublicSnapshot(currentCloudStateSnapshot()),
+      localSavedAt: null,
+      cryptoSource: webcrypto
+    });
+    expect(review.compare(removed.pin).differences.entries).toContainEqual(
+      expect.objectContaining({ id: taskId, kind: 'marked_cloud_deletion', deletionSelectable: true })
+    );
+    expect(review.compare(removed.pin).localRecord('planner', taskId).fields.title).toBe(
+      'МЕСТНАЯ НЕОТПРАВЛЕННАЯ ПРАВКА'
+    );
+    const { stageReviewedCloudApply } = await import('../js/modules/cloudSync/commitReviewedCloud.js');
+    const stage = stageReviewedCloudApply({
+      review,
+      pin: removed.pin,
+      selectedRecords: [],
+      selectedPlannerDeletions: [taskId],
+      cryptoSource: webcrypto
+    });
+    expect((await stage.commit({ confirmed: false })).status).toBe('confirmation_required');
+    expect(f.state.plannerEntries).toHaveLength(1);
+    const applied = await stage.commit({ confirmed: true });
+    expect(applied.status).toBe('applied');
+    expect(localStorage.getItem(applied.backup)).toBe(raw);
+    expect(f.state.plannerEntries).toHaveLength(0);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect((await f.queue()).status).toBe('provenance_review_required');
+    const { reconcileExactCloudBase } = await import('../js/modules/cloudSync/reconcileExactCloudBase.js');
+    expect(
+      (
+        await reconcileExactCloudBase({
+          ...f.options,
+          pin: removed.pin,
+          confirmed: true,
+          openSession: f.cloud.openSession
+        })
+      ).status
+    ).toBe('reconciled');
+    expect(f.state.settings.cloudSyncPendingApply).toBeUndefined();
+    f.state.characters[0].notes = 'ПРОДОЛЖЕНИЕ НА ВТОРОМ ПК';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect(f.state.characters[0].contacts.password).not.toBeUndefined();
+  }, 30_000);
+});

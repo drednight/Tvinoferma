@@ -1,6 +1,6 @@
 // @ts-check
 // Зашифрованный журнал отправки и одноразовых попыток. Его хранилище и сессия
-// передаются отдельно; модуль ещё не подключён к настройкам или настоящим данным.
+// передаются отдельно; live caller проверяет сохранённый state, ключи и привязку.
 // Протокол требует атомарного CAS и независимой устойчивой проверки записи после
 // каждого изменения. Одного localStorage, чтения после setItem или фиктивного CAS
 // недостаточно. После неизвестного исхода НЕЛЬЗЯ автоматически повторять отправку.
@@ -11,7 +11,12 @@ import { object } from './exportSchema.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { isVerifiedCloudAdoption, isVerifiedConservativeAdoption } from './cloudReview.js';
 import { isVerifiedConservativeAuthorization } from './conservativeMergeAuthorization.js';
-import { historyEnvelopePin, sealHistoryVersion, MAX_HISTORY_VERSIONS } from './history.js';
+import {
+  historyEnvelopePin,
+  sealHistoryVersion,
+  sealHistoryChildWithPlannerTombstones,
+  MAX_HISTORY_VERSIONS
+} from './history.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './providers/oauthCommon.js';
 
@@ -165,23 +170,65 @@ async function validateVersion(envelope, dataKey, binding, crypto) {
     expectedDatasetId: binding.datasetId,
     cryptoSource: crypto
   });
-  const history = object(payload, ['format', 'version', 'parent', 'publicSnapshot'], ['plannerDeletedIds']);
+  const history = object(
+    payload,
+    ['format', 'version', 'parent', 'publicSnapshot'],
+    ['plannerDeletedIds', 'plannerTombstones']
+  );
+  const isDeletion = history.version === 2;
+  const isTombstone = history.version === 3;
+  const validIds = (values, allowEmpty) =>
+    Array.isArray(values) &&
+    (allowEmpty || values.length > 0) &&
+    values.length <= 10_000 &&
+    new Set(values).size === values.length &&
+    values.every(id => isSyncId(id));
+  const sorted = values => values.every((id, index) => index === 0 || values[index - 1] < id);
   if (
     history.format !== 'tvinoferma-public-history' ||
-    ![1, 2].includes(history.version) ||
+    ![1, 2, 3].includes(history.version) ||
     !validParent(history.parent, envelope.versionId) ||
-    (history.version === 1 && Object.hasOwn(history, 'plannerDeletedIds')) ||
-    (history.version === 2 &&
-      (!Array.isArray(history.plannerDeletedIds) ||
-        history.plannerDeletedIds.length === 0 ||
-        history.plannerDeletedIds.length > 10_000 ||
-        new Set(history.plannerDeletedIds).size !== history.plannerDeletedIds.length ||
-        history.plannerDeletedIds.some(id => !isSyncId(id)) ||
-        history.parent === null))
+    (isDeletion || isTombstone) !== Object.hasOwn(history, 'plannerDeletedIds') ||
+    isTombstone !== Object.hasOwn(history, 'plannerTombstones') ||
+    ((isDeletion || isTombstone) && (history.parent === null || !validIds(history.plannerDeletedIds, isTombstone))) ||
+    (isTombstone &&
+      (!validIds(history.plannerTombstones, false) ||
+        !sorted(history.plannerTombstones) ||
+        !sorted(history.plannerDeletedIds)))
   )
     throw invalid();
-  publicSnapshotIdentityTypes(history.publicSnapshot);
-  return { parent: history.parent, publicSnapshot: history.publicSnapshot, historyVersion: history.version };
+  const ids = publicSnapshotIdentityTypes(history.publicSnapshot);
+  if (isTombstone) {
+    const tombstones = new Set(history.plannerTombstones);
+    if (history.plannerDeletedIds.some(id => !tombstones.has(id)) || history.plannerTombstones.some(id => ids.has(id)))
+      throw invalid();
+  }
+  return {
+    parent: history.parent,
+    publicSnapshot: history.publicSnapshot,
+    historyVersion: history.version,
+    deletedIds: isDeletion || isTombstone ? [...history.plannerDeletedIds] : [],
+    tombstones: isTombstone ? [...history.plannerTombstones] : []
+  };
+}
+
+function checkAdjacentTombstones(before, after) {
+  if (before.historyVersion === 3 && after.historyVersion !== 3) throw invalid();
+  if (after.historyVersion !== 3) return;
+  const expected = [...before.tombstones, ...after.deletedIds].sort();
+  if (new Set(expected).size !== expected.length || JSON.stringify(expected) !== JSON.stringify(after.tombstones))
+    throw invalid();
+  const oldIds = publicSnapshotIdentityTypes(before.publicSnapshot);
+  const newIds = publicSnapshotIdentityTypes(after.publicSnapshot);
+  const removed = new Set(after.deletedIds);
+  for (const [id, type] of oldIds) {
+    if (!newIds.has(id) && (type !== 'planner:plannerEntry' || !removed.has(id))) throw invalid();
+    if (newIds.has(id) && newIds.get(id) !== type) throw invalid();
+  }
+  for (const id of removed) {
+    const old = before.publicSnapshot.sections.planner.records.find(row => row.id === id);
+    if (!old || old.fields.source.kind !== 'manual' || newIds.has(id)) throw invalid();
+  }
 }
 
 function baseFor(value) {
@@ -643,7 +690,9 @@ export function createDurableCloudOutbox(options) {
         cryptoSource: crypto
       });
       const contents = await validateVersion(row.envelope, dataKey, binding, crypto);
-      if (contents.historyVersion !== 1) throw invalid();
+      // v2 is an isolated legacy deletion format without a persistent cumulative
+      // marker; only v1 or the fully retained v3 format is safe for a live queue.
+      if (![1, 3].includes(contents.historyVersion)) throw invalid();
       const pin = await historyEnvelopePin({
         envelope: row.envelope,
         expectedDatasetId: binding.datasetId,
@@ -689,6 +738,9 @@ export function createDurableCloudOutbox(options) {
       if (parent === null) {
         if (version.contents.parent !== null || !sameVersionPin(version.pin, rootPin)) throw invalid();
       } else if (!sameVersionPin(version.contents.parent, parent)) throw invalid();
+      const previous = versions.at(-1);
+      if (previous && sameVersionPin(version.contents.parent, previous.pin))
+        checkAdjacentTombstones(previous.contents, version.contents);
       if (row.phase === 'confirmed') {
         if (foundPending) throw invalid();
       } else {
@@ -998,7 +1050,7 @@ export function createDurableCloudOutbox(options) {
           cryptoSource: crypto
         });
         const contents = await validateVersion(copy, dataKey, binding, crypto);
-        if (contents.historyVersion !== 1) return response('unsupported_version');
+        if (![1, 3].includes(contents.historyVersion)) return response('unsupported_version');
         const pin = await historyEnvelopePin({
           envelope: copy,
           expectedDatasetId: binding.datasetId,
@@ -1189,21 +1241,85 @@ export function createDurableCloudOutbox(options) {
         });
       });
     },
+    /** Read-only preview; approval is valid only for this parent and queue revision. */
+    async inspectPlannerDeletions(value) {
+      const request = object(value, ['expectedRootPin', 'expectedKeyPin', 'publicSnapshot', 'expectedRevisionId']);
+      const root = versionPin(request.expectedRootPin);
+      if (!request.expectedKeyPin || !isSyncId(request.expectedRevisionId)) throw invalid();
+      const currentIds = publicSnapshotIdentityTypes(request.publicSnapshot);
+      const snapshot = structuredClone(request.publicSnapshot);
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (current.receipt.revisionId !== request.expectedRevisionId) return response('changed');
+        const view = await linearView(current, root, request.expectedKeyPin);
+        if (!view || !view.confirmed) return response('root_unconfirmed');
+        if (view.retained.length) return response('retained_intent_pending');
+        const replace = view.tail.row.phase === 'queued';
+        const base = replace ? view.versions[view.versions.length - 2] : view.tail;
+        if (!base || (replace && !sameVersionPin(view.tail.contents.parent, base.pin))) throw invalid();
+        if (base.row.phase === 'attempting' || view.tail.row.phase === 'attempting')
+          return response('verification_pending');
+        if (
+          JSON.stringify(snapshot.sections.preferences.selections) !==
+          JSON.stringify(base.contents.publicSnapshot.sections.preferences.selections)
+        )
+          return response('selection_changed');
+        if (base.contents.tombstones.some(id => currentIds.has(id))) return response('deleted_identity_resurrection');
+        const missing = [];
+        for (const [id, type] of publicSnapshotIdentityTypes(base.contents.publicSnapshot)) {
+          if (!currentIds.has(id)) {
+            if (type !== 'planner:plannerEntry') return response('other_deletions_need_review');
+            missing.push(id);
+          } else if (currentIds.get(id) !== type) return response('identity_conflict');
+        }
+        if (!missing.length) return response('no_deletions');
+        if (missing.length > 10_000) return response('other_deletions_need_review');
+        const byId = new Map(base.contents.publicSnapshot.sections.planner.records.map(record => [record.id, record]));
+        const records = [];
+        for (const id of missing.sort()) {
+          const record = byId.get(id);
+          if (!record || record.fields.source.kind !== 'manual') return response('other_deletions_need_review');
+          records.push(Object.freeze({ id, label: String(record.fields.title || 'Запись календаря') }));
+        }
+        return Object.freeze({
+          status: 'deletion_review',
+          revisionId: current.receipt.revisionId,
+          parentPin: Object.freeze({ ...base.pin }),
+          records: Object.freeze(records)
+        });
+      });
+    },
     /**
      * Готовит потомка последней локальной версии и сохраняет только шифротекст.
      * Вызывающий код обязан подтвердить точное сохранение state и отсутствие
      * неразрешённого выборочного применения. Этот метод не выполняет сеть.
      * Незагруженную последнюю версию можно заменить; начатую попытку — никогда.
-     * Исчезновение ранее опубликованной сущности блокируется до протокола удаления.
-     * @param {{expectedRootPin:any,expectedKeyPin:any,keyBundle:any,publicSnapshot:any,expectedRevisionId?:string}} value
+     * Исчезновение сущности блокируется, кроме отдельно подтверждённых ручных
+     * записей календаря. Их v3-метки сохраняются во всех следующих потомках.
+     * @param {{expectedRootPin:any,expectedKeyPin:any,keyBundle:any,publicSnapshot:any,expectedRevisionId?:string,plannerDeletionApproval?:{parentPin:any,ids:string[]}}} value
      */
     async queueLinearSnapshot(value) {
       const request = object(
         value,
         ['expectedRootPin', 'expectedKeyPin', 'keyBundle', 'publicSnapshot'],
-        ['expectedRevisionId']
+        ['expectedRevisionId', 'plannerDeletionApproval']
       );
       const root = versionPin(request.expectedRootPin);
+      let approval = null;
+      if (request.plannerDeletionApproval !== undefined) {
+        const value = object(request.plannerDeletionApproval, ['parentPin', 'ids']);
+        const ids = value.ids;
+        if (
+          !request.expectedRevisionId ||
+          !Array.isArray(ids) ||
+          !ids.length ||
+          ids.length > 10_000 ||
+          ids.some((id, index) => !isSyncId(id) || (index > 0 && ids[index - 1] >= id))
+        )
+          throw invalid();
+        approval = { parentPin: versionPin(value.parentPin), ids: [...ids] };
+      }
       if (
         !request.expectedKeyPin ||
         !request.keyBundle ||
@@ -1237,10 +1353,36 @@ export function createDurableCloudOutbox(options) {
           return response(saved.status === 'ready' ? 'discarded_unpublished' : saved.status);
         }
         const oldIds = publicSnapshotIdentityTypes(base.contents.publicSnapshot);
+        const removed = [];
         for (const [id, type] of oldIds) {
-          if (!currentIds.has(id)) return response('deletions_need_review');
-          if (currentIds.get(id) !== type) return response('identity_conflict');
+          if (!currentIds.has(id)) {
+            if (type !== 'planner:plannerEntry') return response('deletions_need_review');
+            removed.push(id);
+          } else if (currentIds.get(id) !== type) return response('identity_conflict');
         }
+        removed.sort();
+        if (removed.length && view.retained.length) return response('retained_intent_pending');
+        if (base.contents.tombstones.some(id => currentIds.has(id))) return response('deleted_identity_resurrection');
+        if (
+          removed.some(id => {
+            const record = base.contents.publicSnapshot.sections.planner.records.find(row => row.id === id);
+            return !record || record.fields.source.kind !== 'manual';
+          })
+        )
+          return response('deletions_need_review');
+        const priorApproval =
+          replace &&
+          view.tail.contents.historyVersion === 3 &&
+          JSON.stringify(view.tail.contents.deletedIds) === JSON.stringify(removed) &&
+          JSON.stringify(view.tail.contents.tombstones) ===
+            JSON.stringify([...base.contents.tombstones, ...removed].sort());
+        if (
+          approval &&
+          (!sameVersionPin(approval.parentPin, base.pin) || JSON.stringify(approval.ids) !== JSON.stringify(removed))
+        )
+          return response('deletion_review_changed');
+        if (removed.length && !approval && !priorApproval) return response('deletions_need_review');
+        if (approval && !removed.length) return response('deletion_review_changed');
         // В v4 принятые облачные предки не обязательно имеют локальные квитанции.
         // Считаем уникальные известные версии вместе с ожидающими, иначе после
         // длинной принятой линии можно поставить в очередь заведомо 129-ю версию.
@@ -1264,7 +1406,7 @@ export function createDurableCloudOutbox(options) {
           ...current.state.entries.map(row => row.previousBase?.anchorId).filter(Boolean),
           ...current.state.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
         ]);
-        const sealed = await sealHistoryVersion({
+        const commonSeal = {
           publicSnapshot: snapshot,
           parent: base.pin,
           recoveryKey: dataKey,
@@ -1273,7 +1415,17 @@ export function createDurableCloudOutbox(options) {
           keyBundle: request.keyBundle,
           keyPin: request.expectedKeyPin,
           cryptoSource: crypto
-        });
+        };
+        const sealed =
+          base.contents.tombstones.length || removed.length
+            ? await sealHistoryChildWithPlannerTombstones({
+                ...commonSeal,
+                parentSnapshot: base.contents.publicSnapshot,
+                previousTombstones: base.contents.tombstones,
+                deletedIds: removed,
+                confirmedDeletion: !!approval || priorApproval
+              })
+            : await sealHistoryVersion(commonSeal);
         const entries = current.state.entries.slice();
         if (replace) entries.pop();
         const receipts = current.state.confirmedReceipts.slice();

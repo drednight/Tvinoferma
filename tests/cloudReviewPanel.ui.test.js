@@ -126,6 +126,42 @@ describe('интерфейс проверенного сравнения', () =>
     click('cloud-review-apply');
     expect(f.stage).not.toHaveBeenCalled();
   });
+  it('предлагает подтверждённое удаление отдельно с предупреждением о потере местных правок', async () => {
+    const value = review();
+    const baseCompare = value.compare;
+    value.compare = () => ({
+      ...baseCompare(),
+      localRecord: () => ({ fields: { title: 'Местная задача' } }),
+      differences: {
+        entries: [
+          {
+            section: 'planner',
+            id: ids.changed,
+            kind: 'marked_cloud_deletion',
+            deletionSelectable: true,
+            label: 'Задача',
+            changes: []
+          }
+        ],
+        uncomparedSettings: []
+      }
+    });
+    const f = setup({ check: vi.fn(async () => value) });
+    await openComparison();
+    const box = el('cloud-review-list').querySelector('input[type=checkbox]');
+    expect(box.checked).toBe(false);
+    expect(el('cloud-review-list').textContent).toContain('включая местные правки');
+    click('cloud-review-select-all');
+    click('cloud-review-apply');
+    await vi.waitFor(() => expect(f.commit).toHaveBeenCalled());
+    expect(f.stage).toHaveBeenCalledWith(
+      expect.objectContaining({ selectedRecords: [], selectedPlannerDeletions: [ids.changed] })
+    );
+    expect(f.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('удалят записи с этого ПК вместе с местными правками')
+    );
+  });
+
   it('раздельно показывает даты, часовой пояс и явный выбор версии, текст данных не становится HTML', async () => {
     const hostile = '<img src=x onerror=alert(1)>';
     const f = setup({ check: vi.fn(async () => review('yandex', hostile)) });

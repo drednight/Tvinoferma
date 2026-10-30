@@ -92,7 +92,9 @@ describe('настоящие настройки: диагностика и эк�
     expect(byId('panel').open).toBe(false);
     expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
     expect(byId('panel').textContent).toContain('ограниченное объединение с выбором при конфликтах');
-    expect(byId('panel').textContent).toContain('Расходящиеся облачные ветви и удаления не обрабатываются');
+    expect(byId('panel').textContent).toContain(
+      'Расходящиеся облачные ветви пока блокируются; подтверждённые удаления поддерживаются только для ручных записей календаря'
+    );
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');

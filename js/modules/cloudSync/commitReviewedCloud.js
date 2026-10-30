@@ -20,19 +20,21 @@ function invalid() {
  * на текущем ПК. Ничего не записывается до отдельного подтверждения commit.
  * Частичное применение не является слиянием или принятием всей облачной ветки.
  * @param {{review:any, pin:{versionId:string,sha256:string}, selectedRecords:{section:string,id:string}[],
- * selectedSettings?:string[],includeFinanceSettings?:boolean,cryptoSource?:Crypto}} options
+ * selectedSettings?:string[],includeFinanceSettings?:boolean,selectedPlannerDeletions?:string[],cryptoSource?:Crypto}} options
  */
 export function stageReviewedCloudApply(options) {
   const input = object(
     options,
     ['review', 'pin', 'selectedRecords'],
-    ['selectedSettings', 'includeFinanceSettings', 'cryptoSource']
+    ['selectedSettings', 'includeFinanceSettings', 'selectedPlannerDeletions', 'cryptoSource']
   );
   if (!isVerifiedCloudReview(input.review)) throw invalid();
   const selected = array(input.selectedRecords, item => object(item, ['section', 'id']));
   const settings = array(input.selectedSettings || [], value => value);
+  const deletions = array(input.selectedPlannerDeletions || [], value => value);
   if (input.includeFinanceSettings !== undefined && typeof input.includeFinanceSettings !== 'boolean') throw invalid();
-  if (!selected.length && !settings.length && input.includeFinanceSettings !== true) throw invalid();
+  if (!selected.length && !settings.length && !deletions.length && input.includeFinanceSettings !== true)
+    throw invalid();
   assertStateWriteAvailable();
   const original = currentCloudStateSnapshot();
   requireNoPendingConservativeMerge(original.settings);
@@ -41,6 +43,7 @@ export function stageReviewedCloudApply(options) {
     selectedRecords: selected,
     selectedSettings: settings,
     includeFinanceSettings: input.includeFinanceSettings === true,
+    selectedPlannerDeletions: deletions,
     ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
   });
   const candidate = prepared.candidateState();
@@ -52,7 +55,7 @@ export function stageReviewedCloudApply(options) {
     provider: input.review.provider,
     datasetId: input.review.datasetId,
     pin: version.pin,
-    records: selected,
+    records: [...selected, ...deletions.map(id => ({ section: 'planner', id }))],
     settings,
     financeSettings: input.includeFinanceSettings === true
   });

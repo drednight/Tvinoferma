@@ -13,6 +13,9 @@ const PAYLOAD_VERSION = 1;
 // Версия 2 дополнительно несёт явные метки удаления записей календаря.
 // Пока это только изолированный формат, не подключённый к приложению или облаку.
 const PLANNER_DELETION_VERSION = 2;
+// v3 carries cumulative tombstones in every descendant. Live publication is
+// limited to explicitly confirmed removals of manual planner entries.
+const PLANNER_TOMBSTONE_VERSION = 3;
 const MAX_PLANNER_DELETIONS = 10_000;
 const HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v1';
 const PORTABLE_HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v2';
@@ -163,12 +166,17 @@ function validateList(value, max, convert) {
   return array(value, convert);
 }
 
-function plannerDeletedIds(value) {
+function plannerDeletedIds(value, allowEmpty = false) {
   const ids = validateList(value, MAX_PLANNER_DELETIONS, id => {
     if (!isSyncId(id)) throw historyError();
     return id;
   });
-  if (!ids.length || new Set(ids).size !== ids.length) throw historyError();
+  if ((!allowEmpty && !ids.length) || new Set(ids).size !== ids.length) throw historyError();
+  return ids;
+}
+function sortedPlannerIds(value, allowEmpty = false) {
+  const ids = plannerDeletedIds(value, allowEmpty);
+  if (ids.some((id, index) => index > 0 && ids[index - 1] >= id)) throw historyError();
   return ids;
 }
 
@@ -243,6 +251,92 @@ export async function sealHistoryVersionWithPlannerDeletions(options) {
 }
 
 /**
+ * Internal building block for the explicitly confirmed planner-deletion
+ * protocol. The caller MUST authenticate the parent snapshot and cumulative
+ * tombstones against its trusted queue or verified history. No I/O is performed.
+ * @param {{publicSnapshot:any,parent:any,parentSnapshot:any,previousTombstones:string[],deletedIds:string[],
+ * confirmedDeletion:boolean,recoveryKey:string,datasetId:string,versionId:string,
+ * keyBundle?:any,keyPin?:any,cryptoSource?:Crypto}} options
+ */
+export async function sealHistoryChildWithPlannerTombstones(options) {
+  const input = object(
+    options,
+    [
+      'publicSnapshot',
+      'parent',
+      'parentSnapshot',
+      'previousTombstones',
+      'deletedIds',
+      'confirmedDeletion',
+      'recoveryKey',
+      'datasetId',
+      'versionId'
+    ],
+    ['cryptoSource', 'keyBundle', 'keyPin']
+  );
+  if (!isSyncId(input.datasetId) || !isSyncId(input.versionId) || typeof input.confirmedDeletion !== 'boolean')
+    throw historyError();
+  const parent = copyPin(input.parent);
+  if (parent.versionId === input.versionId) throw historyError();
+  const previous = sortedPlannerIds(input.previousTombstones, true);
+  const removed = sortedPlannerIds(input.deletedIds, true);
+  if ((!previous.length && !removed.length) || (removed.length && input.confirmedDeletion !== true))
+    throw historyError();
+  const all = [...previous, ...removed].sort();
+  if (new Set(all).size !== all.length || all.length > MAX_PLANNER_DELETIONS) throw historyError();
+  if (Object.hasOwn(input, 'keyBundle') !== Object.hasOwn(input, 'keyPin')) throw historyError();
+  let snapshot, prior;
+  try {
+    validatePublic(input.publicSnapshot);
+    validatePublic(input.parentSnapshot);
+    snapshot = structuredClone(input.publicSnapshot);
+    prior = structuredClone(input.parentSnapshot);
+  } catch {
+    throw historyError();
+  }
+  const before = validatePublic(prior);
+  const after = validatePublic(snapshot);
+  checkPlannerDeletionTransition(plannerIds(prior), plannerIds(snapshot), removed);
+  const removedSet = new Set(removed);
+  for (const [id, type] of before) {
+    if (!after.has(id) && (type !== 'planner:plannerEntry' || !removedSet.has(id))) throw historyError();
+    if (after.has(id) && after.get(id) !== type) throw historyError();
+  }
+  for (const id of all) if (after.has(id)) throw historyError();
+  // Клановые события имеют внешнюю идентичность и требуют отдельного протокола.
+  for (const id of removed) {
+    const record = prior.sections.planner.records.find(value => value.id === id);
+    if (!record || record.fields.source.kind !== 'manual') throw historyError();
+  }
+  const capsule = Object.hasOwn(input, 'keyBundle')
+    ? await makePortableKeyCapsule({
+        bundle: input.keyBundle,
+        pin: input.keyPin,
+        dataKey: input.recoveryKey,
+        datasetId: input.datasetId,
+        cryptoSource: input.cryptoSource
+      })
+    : undefined;
+  const payload = {
+    format: PAYLOAD_FORMAT,
+    version: PLANNER_TOMBSTONE_VERSION,
+    parent,
+    publicSnapshot: snapshot,
+    plannerDeletedIds: removed,
+    plannerTombstones: all
+  };
+  const envelope = await encryptSnapshot({
+    snapshot: payload,
+    recoveryKey: input.recoveryKey,
+    datasetId: input.datasetId,
+    versionId: input.versionId,
+    ...(capsule === undefined ? {} : { keyCapsule: capsule }),
+    cryptoSource: input.cryptoSource
+  });
+  return { envelope, pin: await envelopePin(envelope, cryptoApi(input.cryptoSource)) };
+}
+
+/**
  * Расшифровывает переданный набор и проверяет дерево ссылок, отпечаток доверенного корня
  * и все ранее известные отпечатки. Это НЕ подтверждение полноты облачного списка: сервис
  * может скрывать неизвестные ветки или откатить его. Известные версии можно передать в
@@ -275,7 +369,7 @@ export async function verifyHistory(options) {
     ids.add(envelope.versionId);
   }
   const crypto = cryptoApi(input.cryptoSource);
-  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, plannerIds: Set<string>, deletedIds: string[], version: number}>} */
+  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number}>} */
   const nodes = new Map();
   const identities = new Map();
   // Все входные значения скопированы до первого await; чужие изменения не подменят проверку.
@@ -293,14 +387,32 @@ export async function verifyHistory(options) {
         expectedDatasetId: input.expectedDatasetId,
         cryptoSource: crypto
       });
-      const wrapper = object(payload, ['format', 'version', 'parent', 'publicSnapshot'], ['plannerDeletedIds']);
-      if (wrapper.format !== PAYLOAD_FORMAT || ![PAYLOAD_VERSION, PLANNER_DELETION_VERSION].includes(wrapper.version))
+      const wrapper = object(
+        payload,
+        ['format', 'version', 'parent', 'publicSnapshot'],
+        ['plannerDeletedIds', 'plannerTombstones']
+      );
+      if (
+        wrapper.format !== PAYLOAD_FORMAT ||
+        ![PAYLOAD_VERSION, PLANNER_DELETION_VERSION, PLANNER_TOMBSTONE_VERSION].includes(wrapper.version)
+      )
         throw historyError();
       const isDeletionVersion = wrapper.version === PLANNER_DELETION_VERSION;
-      if (isDeletionVersion !== Object.hasOwn(wrapper, 'plannerDeletedIds')) throw historyError();
-      const deletedIds = isDeletionVersion ? plannerDeletedIds(wrapper.plannerDeletedIds) : [];
+      const isTombstoneVersion = wrapper.version === PLANNER_TOMBSTONE_VERSION;
+      if (
+        (isDeletionVersion || isTombstoneVersion) !== Object.hasOwn(wrapper, 'plannerDeletedIds') ||
+        isTombstoneVersion !== Object.hasOwn(wrapper, 'plannerTombstones')
+      )
+        throw historyError();
+      const deletedIds = isTombstoneVersion
+        ? sortedPlannerIds(wrapper.plannerDeletedIds, true)
+        : isDeletionVersion
+          ? plannerDeletedIds(wrapper.plannerDeletedIds)
+          : [];
+      const tombstones = isTombstoneVersion ? sortedPlannerIds(wrapper.plannerTombstones) : null;
       const parent = wrapper.parent === null ? null : copyPin(wrapper.parent);
-      if (parent?.versionId === pin.versionId || (isDeletionVersion && parent === null)) throw historyError();
+      if (parent?.versionId === pin.versionId || ((isDeletionVersion || isTombstoneVersion) && parent === null))
+        throw historyError();
       const currentIds = validatePublic(wrapper.publicSnapshot);
       for (const [id, type] of currentIds) {
         if (identities.has(id) && identities.get(id) !== type) throw historyError();
@@ -312,6 +424,7 @@ export async function verifyHistory(options) {
         publicSnapshot: wrapper.publicSnapshot,
         plannerIds: plannerIds(wrapper.publicSnapshot),
         deletedIds,
+        tombstones,
         version: wrapper.version
       });
     } catch {
@@ -349,11 +462,26 @@ export async function verifyHistory(options) {
     if (node.parent && !samePin(node.parent, nodes.get(node.parent.versionId).pin)) {
       throw new Error('Родительская версия не совпадает с её отпечатком');
     }
-    if (node.version === PLANNER_DELETION_VERSION) {
+    if ([PLANNER_DELETION_VERSION, PLANNER_TOMBSTONE_VERSION].includes(node.version)) {
       const parent = node.parent && nodes.get(node.parent.versionId);
       if (!parent) throw historyError();
       checkPlannerDeletionTransition(parent.plannerIds, node.plannerIds, node.deletedIds);
+      if (node.version === PLANNER_TOMBSTONE_VERSION) {
+        const previousIds = validatePublic(parent.publicSnapshot);
+        const currentIds = validatePublic(node.publicSnapshot);
+        const removed = new Set(node.deletedIds);
+        for (const [id, type] of previousIds) {
+          if (!currentIds.has(id) && (type !== 'planner:plannerEntry' || !removed.has(id))) throw historyError();
+        }
+        for (const id of node.deletedIds) {
+          const record = parent.publicSnapshot.sections.planner.records.find(row => row.id === id);
+          if (!record || record.fields.source.kind !== 'manual') throw historyError();
+        }
+      }
     }
+    const parentNode = node.parent && nodes.get(node.parent.versionId);
+    if (parentNode?.version === PLANNER_TOMBSTONE_VERSION && node.version !== PLANNER_TOMBSTONE_VERSION)
+      throw historyError();
   }
 
   // После метки этот ID не может вновь появиться в её потомке без отдельного
@@ -364,6 +492,15 @@ export async function verifyHistory(options) {
     const before = node.parent ? collectDeletions(nodes.get(node.parent.versionId)) : new Set();
     for (const id of node.plannerIds) if (before.has(id)) throw historyError();
     const after = node.deletedIds.length ? new Set([...before, ...node.deletedIds]) : before;
+    if (node.version === PLANNER_TOMBSTONE_VERSION) {
+      const expected = [...after].sort();
+      if (
+        !node.tombstones ||
+        expected.length !== node.tombstones.length ||
+        expected.some((id, index) => id !== node.tombstones[index])
+      )
+        throw historyError();
+    }
     inheritedDeletions.set(node.pin.versionId, after);
     return after;
   };
@@ -435,6 +572,17 @@ export async function verifyHistory(options) {
     /** Только явные метки в этой версии. Пустой список не доказывает отсутствия старых удалений. */
     plannerDeletions(pinValue) {
       return [...get(pinValue).deletedIds];
+    },
+    /** This version carries the cumulative v3 protocol; legacy v2 is read-only. */
+    usesPlannerTombstones(pinValue) {
+      return get(pinValue).version === PLANNER_TOMBSTONE_VERSION;
+    },
+    /** Все проверенные метки на линии выбранной версии; не доказательство полноты облака. */
+    plannerTombstones(pinValue) {
+      const node = get(pinValue);
+      const known = inheritedDeletions.get(node.pin.versionId);
+      if (!known) throw historyError();
+      return [...known].sort();
     },
     /** Независимая копия данных только для предварительного сравнения, не для импорта. */
     publicSnapshot(pinValue) {

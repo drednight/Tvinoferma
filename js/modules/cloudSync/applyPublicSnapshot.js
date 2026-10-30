@@ -528,13 +528,15 @@ function materialize(localState, local, target, selected, selectedGroups, financ
  * запись; связанные сущности нужно выбрать вместе. Результат содержит локальные
  * секреты и может устареть: до записи обязательны повторная сверка и backup.
  * @param {{localState:any, cloudSnapshot:any, selectedRecords:{section:string,id:string}[],
- * selectedSettings?:string[], includeFinanceSettings?:boolean, cryptoSource?:Crypto}} options
+ * selectedSettings?:string[], includeFinanceSettings?:boolean, selectedPlannerDeletions?:string[], cryptoSource?:Crypto}} options
+ * Selected deletions MUST separately be authenticated against cumulative history
+ * tombstones by the caller; absence in cloudSnapshot is not that proof.
  */
 export function preparePublicSnapshotApply(options) {
   const input = object(
     options,
     ['localState', 'cloudSnapshot', 'selectedRecords'],
-    ['selectedSettings', 'includeFinanceSettings', 'cryptoSource']
+    ['selectedSettings', 'includeFinanceSettings', 'selectedPlannerDeletions', 'cryptoSource']
   );
   validateJsonSnapshot(input.localState);
   publicSnapshotIdentityTypes(input.cloudSnapshot);
@@ -546,7 +548,26 @@ export function preparePublicSnapshotApply(options) {
   const local = buildPublicSnapshot(localState, { settingsSelections: cloud.sections.preferences.selections });
   // Проверяет совпадение типов ID на обеих сторонах.
   comparePublicSnapshots({ local, cloud });
+  const deletions = array(input.selectedPlannerDeletions || [], id => {
+    if (!isSyncId(id)) throw invalid();
+    return id;
+  });
+  const removed = new Set(deletions);
+  if (deletions.length > 10_000 || removed.size !== deletions.length) throw invalid();
+  for (const id of deletions) {
+    const prior = local.sections.planner.records.find(record => record.id === id);
+    if (
+      !prior ||
+      prior.fields.source.kind !== 'manual' ||
+      cloud.sections.planner.records.some(record => record.id === id) ||
+      selected.some(record => record.id === id)
+    )
+      throw invalid();
+  }
   const target = projection(local, cloud, selected, settingsGroups, input.includeFinanceSettings === true);
+  target.sections.planner.records = target.sections.planner.records.filter(record => !removed.has(record.id));
+  target.sections.planner.order = target.sections.planner.order.filter(id => !removed.has(id));
+  if (reviewSnapshotDependencies(target).issues.length) throw invalid();
   const candidate = materialize(
     localState,
     local,
@@ -556,6 +577,7 @@ export function preparePublicSnapshotApply(options) {
     input.includeFinanceSettings === true,
     input.cryptoSource
   );
+  candidate.plannerEntries = candidate.plannerEntries.filter(record => !removed.has(record.syncId));
   const candidatePublic = buildPublicSnapshot(candidate, { settingsSelections: cloud.sections.preferences.selections });
   if (!samePublic(candidatePublic, target)) throw invalid();
   // После перезапуска нормализатор не должен терять или менять выбранные данные.
@@ -566,7 +588,7 @@ export function preparePublicSnapshotApply(options) {
   if (!samePublic(normalizedPublic, target)) throw new Error('Выбранные данные не проходят проверку после перезапуска');
   return Object.freeze({
     status: 'prepared',
-    selectedCount: selected.length,
+    selectedCount: selected.length + deletions.length,
     candidateState: () => clone(candidate),
     candidatePublicSnapshot: () => clone(target)
   });

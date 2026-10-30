@@ -4,6 +4,7 @@
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
 import { createPublicationController } from '../publicationController.js';
+import { stagePlannerDeletionPublication } from '../plannerDeletionPublication.js';
 
 const MESSAGES = Object.freeze({
   queued: 'Сохранённые изменения подготовлены в зашифрованной локальной очереди.',
@@ -22,7 +23,15 @@ const MESSAGES = Object.freeze({
   accepted_base_mismatch:
     'Принятая облачная основа не совпадает с локальной отметкой. Отправка остановлена; проверьте очередь и данные.',
   deletions_need_review:
-    'Обнаружено исчезновение ранее опубликованной записи. Подтверждение удалений ещё не реализовано; отправка остановлена.',
+    'Обнаружено исчезновение ранее опубликованной записи. Для ручных записей календаря доступна отдельная проверка удалений; остальные удаления пока блокируют отправку.',
+  other_deletions_need_review:
+    'Кроме ручных записей календаря исчезли другие данные. Такое удаление пока не поддерживается.',
+  deletion_review_changed: 'Данные или очередь изменились после просмотра. Проверьте удаления заново.',
+  no_deletions: 'Новых удалений ручных записей календаря относительно родительской версии нет.',
+  retained_intent_pending:
+    'Сначала нужно завершить публикацию сохранённых намерений объединения. Подтверждение удалений остановлено.',
+  deleted_identity_resurrection:
+    'Восстановлен ранее удалённый идентификатор. Автоматическое воскрешение записей запрещено.',
   identity_conflict: 'Идентификатор записи изменил тип. Отправка остановлена; требуется проверка данных.',
   selection_changed: 'Состав переносимых настроек изменился. Нужна отдельная проверка перед отправкой.',
   remote_changes_require_review:
@@ -73,7 +82,8 @@ function outcome(status) {
 
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
- * confirm?:(message:string)=>boolean|Promise<boolean>,controllerFactory?:typeof createPublicationController}} options
+ * confirm?:(message:string)=>boolean|Promise<boolean>,controllerFactory?:typeof createPublicationController,
+ * stageDeletions?:typeof stagePlannerDeletionPublication}} options
  */
 export function bindCloudPublicationPanel(options) {
   const doc = options.doc || document;
@@ -81,6 +91,9 @@ export function bindCloudPublicationPanel(options) {
   const provider = /** @type {HTMLSelectElement|null} */ (doc.getElementById('cloud-registration-provider'));
   const enabled = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-publication-auto'));
   const manual = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-publication-send'));
+  const deletionButton = /** @type {HTMLButtonElement|null} */ (
+    doc.getElementById('cloud-publication-review-deletions')
+  );
   const status = doc.getElementById('cloud-publication-status');
   const mode = doc.getElementById('cloud-publication-mode');
   const win = doc.defaultView;
@@ -124,6 +137,7 @@ export function bindCloudPublicationPanel(options) {
     enabled.checked = active === selected();
     enabled.disabled = !options.desktop || busy;
     manual.disabled = !options.desktop || busy;
+    if (deletionButton) deletionButton.disabled = !options.desktop || busy;
     mode.textContent = !options.desktop
       ? 'Отправка и автоматизация доступны только в настольной сборке.'
       : active
@@ -140,7 +154,7 @@ export function bindCloudPublicationPanel(options) {
     try {
       if (wantsEnabled) {
         const approved = await askConfirmation(
-          `Включить на этом ПК экспериментальную автоотправку сохранений на ${providerName(disk)}? Новые ID будут подготовлены с резервной копией. Перед отправкой данные шифруются; при чужой ветви, удалении или выборочном применении отправка остановится. Настоящий диск и настольная сборка ещё не проверены.`
+          `Включить на этом ПК экспериментальную автоотправку сохранений на ${providerName(disk)}? Новые ID будут подготовлены с резервной копией. Перед отправкой данные шифруются; при чужой ветви, неподтверждённом удалении или выборочном применении отправка остановится. Настоящий диск и настольная сборка ещё не проверены.`
         );
         if (!approved || version !== generation || selected() !== disk) {
           note('Включение автоматической отправки отменено.');
@@ -174,7 +188,7 @@ export function bindCloudPublicationPanel(options) {
     render();
     try {
       const approved = await askConfirmation(
-        `Подготовить и отправить сохранённые изменения на ${providerName(disk)}? Для новых записей будут созданы ID с резервной копией. Данные шифруются до отправки, пароли и контакты исключены. При конфликте, удалении или выборочном применении отправка остановится.`
+        `Подготовить и отправить сохранённые изменения на ${providerName(disk)}? Для новых записей будут созданы ID с резервной копией. Данные шифруются до отправки, пароли и контакты исключены. При конфликте, неподтверждённом удалении или выборочном применении отправка остановится.`
       );
       if (!approved || version !== generation || selected() !== disk) {
         note('Ручная отправка отменена.');
@@ -186,6 +200,56 @@ export function bindCloudPublicationPanel(options) {
     } catch {
       note('Результат отправки не подтверждён. Проверьте состояние и журнал.');
     } finally {
+      busy = false;
+      render();
+    }
+  });
+  deletionButton?.addEventListener('click', async () => {
+    if (!options.desktop || busy) return;
+    const disk = selected();
+    const version = generation;
+    let staged = null;
+    busy = true;
+    render();
+    note('Проверяем уже сохранённые удаления календаря и локальную очередь…');
+    try {
+      const native = await (
+        options.loadNative || (async () => ({ invoke: (await import('@tauri-apps/api/core')).invoke }))
+      )();
+      staged = /** @type {any} */ (
+        await (options.stageDeletions || stagePlannerDeletionPublication)({ provider: disk, invoke: native.invoke })
+      );
+      if (version !== generation || selected() !== disk) {
+        note('Проверка отменена: выбранный диск изменился.');
+        return;
+      }
+      if (staged.status !== 'deletion_review') {
+        report(disk, 'queue', staged.status);
+        return;
+      }
+      const rows = staged.records();
+      const names = rows.map(row => `• ${row.label}`).join('\n');
+      if (!rows.length || rows.length > 100 || names.length > 12_000) {
+        note('Слишком много данных для полного просмотра удалений. Подтверждение заблокировано.');
+        return;
+      }
+      const approved = await askConfirmation(
+        `Подтвердить удаление ручных записей календаря (${rows.length}) для ${providerName(disk)}?\n\n${names}\n\nБудет создана зашифрованная версия в локальной очереди с явными отметками удаления. Облако сейчас не изменяется. Последующая отправка ещё раз проверит облачную основу; правка с другого ПК остановит её. На другом ПК они появятся для отдельного выбора и применения с резервной копией; автоматического удаления там нет. Сначала обновите приложение на всех ПК; старые версии не понимают этот формат.`
+      );
+      if (!approved || version !== generation || selected() !== disk) {
+        note('Подтверждение удалений отменено. Очередь не изменена.');
+        return;
+      }
+      const outcome = await staged.commit({ confirmed: true });
+      report(disk, 'queue', outcome.status);
+      if (['queued', 'coalesced'].includes(outcome.status))
+        note(
+          'Подтверждённые удаления сохранены в зашифрованной очереди. Нажмите «Отправить сохранённые изменения»; если включена автоотправка, она обработает очередь после проверки диска.'
+        );
+    } catch {
+      note('Результат подготовки удалений не подтверждён. Проверьте очередь перед повтором.');
+    } finally {
+      staged?.cancel?.();
       busy = false;
       render();
     }

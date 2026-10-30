@@ -208,11 +208,18 @@ export async function prepareCloudReview(options) {
           )
         )
           return result('unresolved_sources');
-        if (lineage.some(value => history.plannerDeletions(value).length)) return result('deletions_unsupported');
         let previousIds = new Map();
         for (const node of lineage) {
+          const declared = new Set(history.plannerDeletions(node));
+          if (declared.size && !history.usesPlannerTombstones(node)) return result('deletions_unsupported');
           const ids = publicSnapshotIdentityTypes(history.publicSnapshot(node));
-          if ([...previousIds].some(([id, type]) => ids.get(id) !== type)) return result('deletions_unsupported');
+          if (
+            [...previousIds].some(
+              ([id, type]) =>
+                ids.get(id) !== type && !(type === 'planner:plannerEntry' && !ids.has(id) && declared.has(id))
+            )
+          )
+            return result('deletions_unsupported');
           previousIds = ids;
         }
         const found = envelopes.find(envelope => envelope.versionId === current.versionId);
@@ -329,11 +336,18 @@ export async function prepareCloudReview(options) {
         );
         // Метка в проверенной линии — не вывод из отсутствия записи и не разрешение
         // удалять её с ПК. Маркеры других ветвей или будущих версий не учитываются.
-        const deletedPlannerIds = new Set(history.lineage(current).flatMap(value => history.plannerDeletions(value)));
+        const deletedPlannerIds = new Set(history.plannerTombstones(current));
+        const canApplyDeletions =
+          history.usesPlannerTombstones(current) && heads.size === 1 && heads.has(current.versionId);
         const differences = comparePublicSnapshots({ local, cloud });
         differences.entries = differences.entries.map(entry =>
           entry.section === 'planner' && entry.kind === 'only_local' && deletedPlannerIds.has(entry.id)
-            ? { ...entry, kind: 'marked_cloud_deletion' }
+            ? {
+                ...entry,
+                kind: 'marked_cloud_deletion',
+                deletionSelectable:
+                  canApplyDeletions && localRecords.get('planner').get(entry.id)?.fields.source.kind === 'manual'
+              }
             : entry
         );
         for (const entry of [...differences.entries]) {
@@ -373,12 +387,25 @@ export async function prepareCloudReview(options) {
        * не запись: кандидат содержит локальные секреты и может сразу устареть.
        * Частичное применение не означает слияния или принятия всей облачной ветки.
        * @param {{versionId:string,sha256:string}} selectedPin
-       * @param {{localState:any,selectedRecords:{section:string,id:string}[],selectedSettings?:string[],includeFinanceSettings?:boolean,cryptoSource?:Crypto}} choices
+       * @param {{localState:any,selectedRecords:{section:string,id:string}[],selectedSettings?:string[],includeFinanceSettings?:boolean,selectedPlannerDeletions?:string[],cryptoSource?:Crypto}} choices
        */
       prepareApply(selectedPin, choices) {
         const selected = pin(selectedPin);
         const current = pins.get(selected.versionId);
         if (!current || current.sha256 !== selected.sha256) throw failed();
+        const deletions = array(choices.selectedPlannerDeletions || [], value => {
+          if (!isSyncId(value)) throw failed();
+          return value;
+        });
+        if (deletions.length) {
+          const heads = history.observedHeads();
+          if (heads.length !== 1 || heads[0].versionId !== current.versionId || heads[0].sha256 !== current.sha256)
+            throw failed();
+          const declared = new Set(history.plannerTombstones(current));
+          if (deletions.some(id => !declared.has(id))) throw failed();
+          // Legacy v2 had no durable cumulative protocol and remains read-only.
+          if (!history.usesPlannerTombstones(current)) throw failed();
+        }
         const currentLocal = buildPublicSnapshot(choices.localState, {
           settingsSelections: local.sections.preferences.selections
         });
