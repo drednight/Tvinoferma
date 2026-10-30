@@ -86,15 +86,22 @@ describe('демо показывает состояние реализации 
   });
 });
 
-describe('настоящие настройки: диагностика и экспериментальный доступ, не синхронизация', () => {
+describe('настоящие настройки: диагностика, доступ и экспериментальный обмен файлами', () => {
   it('свёрнута по умолчанию, содержит предупреждения и отдельную экспериментальную отправку', () => {
     const s = bind();
     expect(byId('panel').open).toBe(false);
-    expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
-    expect(byId('panel').textContent).toContain('ограниченное объединение с выбором при конфликтах');
+    expect(byId('panel').textContent).toContain('Обмен файлами — экспериментальный режим');
     expect(byId('panel').textContent).toContain(
-      'Расходящиеся облачные ветви пока блокируются; подтверждённые удаления поддерживаются только для ручных записей календаря'
+      'Отсутствующие записи удаляются только при явно подтверждённой полной замене'
     );
+    expect(byId('panel').textContent).toContain('Прежние облачные версии сохраняются');
+    expect(byId('panel').textContent).toContain(
+      'Несколько одновременных облачных версий автоматически не объединяются'
+    );
+    expect(byId('panel').textContent).toContain('Настоящие диски и два Windows-ПК ещё требуют приёмки');
+    expect(document.getElementById('cloud-file-check')).toBeTruthy();
+    expect(document.getElementById('cloud-file-upload')).toBeTruthy();
+    expect(document.getElementById('cloud-legacy-exchange').open).toBe(false);
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');
