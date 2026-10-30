@@ -396,7 +396,13 @@ describe('переносимая капсула внутри облачной в
     expect(history.publicSnapshot(child.pin)).toEqual(snapshot);
     await expect(
       verifyHistory({
-        envelopes: [legacy.envelope, { ...child.envelope, keyCapsule: root.envelope.keyCapsule.slice(0, -1) + 'A' }],
+        envelopes: [
+          legacy.envelope,
+          {
+            ...child.envelope,
+            keyCapsule: root.envelope.keyCapsule.slice(0, -1) + (root.envelope.keyCapsule.endsWith('A') ? 'B' : 'A')
+          }
+        ],
         expectedDatasetId: datasetId,
         recoveryKey: keys.dataKey,
         root: legacy.pin,
@@ -607,7 +613,10 @@ describe('сравнение проверенной истории без при
     expect(await prepareCloudReview(options(fakeSession([{ envelope: child.envelope, modifiedAt: null }])))).toEqual({
       status: 'history_unverified'
     });
-    const changed = { ...child.envelope, ciphertext: 'A' + child.envelope.ciphertext.slice(1) };
+    const changed = {
+      ...child.envelope,
+      ciphertext: (child.envelope.ciphertext[0] === 'A' ? 'B' : 'A') + child.envelope.ciphertext.slice(1)
+    };
     const corrupt = fakeSession([
       { envelope: root.envelope, modifiedAt: null },
       { envelope: changed, modifiedAt: null }

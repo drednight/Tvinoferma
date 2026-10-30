@@ -13,6 +13,8 @@ import { createKeyRecoverer } from '../js/modules/cloudSync/keyRecovery.js';
 import { findPortableKeyVersions } from '../js/modules/cloudSync/portableKeyDiscovery.js';
 import { createPairingCode, parsePairingCode } from '../js/modules/cloudSync/pairingCode.js';
 import { createNativeKeyStateStore } from '../js/modules/cloudSync/providers/nativeKeyStateStore.js';
+import { createNativeDatasetBindingStore } from '../js/modules/cloudSync/providers/nativeDatasetBindingStore.js';
+import { openPinnedNativeCloudSession } from '../js/modules/cloudSync/providers/pinnedNativeCloudSession.js';
 import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
 import {
   openNativeCloudSession,
@@ -556,7 +558,16 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
   it('создаёт ключ после проверки backup, шифрует версию и не повторяет потерянную отправку', async () => {
     const fake = fakeCredentialsAndJournal(provider);
     let localKey = null;
+    let localPin = null;
     const invoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_dataset_binding_read')
+        return localPin ? { status: 'ready', record: localPin } : { status: 'empty' };
+      if (command === 'cloud_dataset_binding_install') {
+        if (localPin) return { status: 'occupied' };
+        expect(args.confirmed).toBe(true);
+        localPin = args.record;
+        return { status: 'installed' };
+      }
       if (command === 'cloud_key_state_read') return localKey ? { status: 'ready', ...localKey } : { status: 'empty' };
       if (command === 'cloud_key_state_install') {
         if (localKey) return { status: 'occupied' };
@@ -594,15 +605,23 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       keyPin: state.pin,
       cryptoSource: webcrypto
     });
+    const pinStore = createNativeDatasetBindingStore({ provider, invoke });
+    expect(
+      await pinStore.install(
+        {
+          provider,
+          accountSlotId: fake.binding.slotId,
+          keySlotId: state.slotId,
+          datasetId: newDataset,
+          keyPin: state.pin,
+          rootPin: version.pin,
+          ...(provider === 'google' ? { folderId } : {})
+        },
+        true
+      )
+    ).toEqual({ status: 'installed' });
     const openSession = () =>
-      openStoredNativeCloudSession({
-        provider,
-        datasetId: newDataset,
-        invoke,
-        now: () => 100_000,
-        cryptoSource: webcrypto,
-        ...(provider === 'google' ? { folderId } : {})
-      });
+      openPinnedNativeCloudSession({ provider, invoke, now: () => 100_000, cryptoSource: webcrypto });
     const deviceId = generateSyncId(webcrypto);
     const slotId = generateSyncId(webcrypto);
     const openQueue = session =>
@@ -652,7 +671,16 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     const secondMachine = fakeCredentialsAndJournal(provider);
     expect(secondMachine.binding.slotId).not.toBe(fake.binding.slotId);
     let secondKey = null;
+    let secondPin = null;
     const secondInvoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_dataset_binding_read')
+        return secondPin ? { status: 'ready', record: secondPin } : { status: 'empty' };
+      if (command === 'cloud_dataset_binding_install') {
+        if (secondPin) return { status: 'occupied' };
+        expect(args.confirmed).toBe(true);
+        secondPin = args.record;
+        return { status: 'installed' };
+      }
       if (command === 'cloud_key_state_read')
         return secondKey ? { status: 'ready', ...secondKey } : { status: 'empty' };
       if (command === 'cloud_key_state_install') {
@@ -706,6 +734,29 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     });
     const recoveredState = (await secondStore.read()).state;
     expect(recoveredState.dataKey).toBe(dataKey);
+    other.session.dispose();
+    const secondPinStore = createNativeDatasetBindingStore({ provider, invoke: secondInvoke });
+    expect(
+      await secondPinStore.install(
+        {
+          provider,
+          accountSlotId: secondMachine.binding.slotId,
+          keySlotId: recoveredState.slotId,
+          datasetId: pairing.datasetId,
+          keyPin: pairing.keyPin,
+          rootPin: pairing.rootPin,
+          ...(provider === 'google' ? { folderId } : {})
+        },
+        true
+      )
+    ).toEqual({ status: 'installed' });
+    const pinnedOther = await openPinnedNativeCloudSession({
+      provider,
+      invoke: secondInvoke,
+      now: () => 100_000,
+      cryptoSource: webcrypto
+    });
+    expect(pinnedOther.status).toBe('opened');
     const history = await verifyHistory({
       envelopes: [received.envelope],
       expectedDatasetId: newDataset,
@@ -720,7 +771,7 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     localSnapshot.sections.characters.records[0].fields.nick = 'ДРУГАЯ ЛОКАЛЬНАЯ ВЕРСИЯ';
     const comparison = await prepareCloudReview({
       provider,
-      session: other.session,
+      session: pinnedOther.session,
       datasetId: pairing.datasetId,
       dataKey: recoveredState.dataKey,
       rootPin: pairing.rootPin,
@@ -737,6 +788,6 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     expect(changes.checkedAt).toBe('2026-10-30T10:30:00.000Z');
     expect(changes.localSavedAt).toBeNull();
     expect(changes.differences.entries.map(item => item.kind)).toEqual(['changed']);
-    other.session.dispose();
+    pinnedOther.session.dispose();
   }, 30_000);
 });
