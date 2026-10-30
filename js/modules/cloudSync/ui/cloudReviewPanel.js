@@ -9,6 +9,7 @@ import { reconcileExactCloudBase } from '../reconcileExactCloudBase.js';
 import { reconcileConservativeMerge, cancelPendingConservativeMerge } from '../reconcileConservativeMerge.js';
 import { readPendingConservativeMerge } from '../pendingConservativeMerge.js';
 import { state } from '../../../core/state.js';
+import { pendingSelectiveApplyEvents } from '../pendingSelectiveApply.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
 
@@ -53,6 +54,9 @@ const MESSAGES = Object.freeze({
     'Результат записи не подтверждён. Не повторяйте применение; проверьте данные и копию перед перезапуском.',
   state_changed_during_write_restart:
     'Данные изменились во время записи. Новые сохранения остановлены; проверьте данные и копию перед перезапуском.',
+  deletion_not_accepted:
+    'Удаление не выбрано: местная запись сохранена, согласование остановлено. Для продолжения нужно явно принять показанное удаление; старый ID не воскрешается.',
+  deleted_identity_resurrection: 'Ранее удалённый ID появился снова или изменил источник. Согласование остановлено.',
   not_exact:
     'Данные не совпадают полностью с выбранной версией. Сначала разрешите все различия; отправка не разрешена.',
   not_unique_head: 'Наблюдается другая версия или несколько ветвей. Согласование остановлено.',
@@ -457,7 +461,7 @@ export function bindCloudReviewPanel(options) {
         previewOnly ||
         heads.length !== 1 ||
         !review.versions[index].observedHead ||
-        comparison.differences.entries.length === 0 ||
+        (comparison.differences.entries.length === 0 && !pendingSelectiveApplyEvents(state.settings).length) ||
         comparison.differences.entries.length > MAX_SHOWN_ENTRIES ||
         comparison.differences.uncomparedSettings.length !== 0 ||
         detailTooLong;
@@ -477,7 +481,11 @@ export function bindCloudReviewPanel(options) {
     if (conflict.reason === 'concurrent-order') return false;
     if (conflict.section === 'preferences') return choice.kind === 'settings' && choice.group === conflict.id;
     if (conflict.section === 'finance' && !conflict.id) return choice.kind === 'finance';
-    return choice.kind === 'record' && choice.section === conflict.section && choice.id === conflict.id;
+    return (
+      (choice.kind === 'record' || (choice.kind === 'deletion' && conflict.reason === 'cloud-planner-deletion')) &&
+      choice.section === conflict.section &&
+      choice.id === conflict.id
+    );
   }
   function showConflictReview(outcome) {
     clearConflictReview();
@@ -512,7 +520,7 @@ export function bindCloudReviewPanel(options) {
       }
       const li = doc.createElement('li');
       const name = entry.label || (entry.group && GROUPS[entry.group]) || '';
-      li.textContent = `${LABELS[conflict.section] || 'Данные'}${name ? ` · ${name}` : ''}: ${conflict.path.join(' › ') || 'запись целиком'}`;
+      li.textContent = `${LABELS[conflict.section] || 'Данные'}${name ? ` · ${name}` : ''}: ${conflict.reason === 'cloud-planner-deletion' ? 'подтверждённое удаление против местной записи; отметьте её для удаления вместе с местными правками' : conflict.path.join(' › ') || 'запись целиком'}`;
       conflictList.append(li);
     }
     conflictBox.hidden = false;
@@ -525,7 +533,9 @@ export function bindCloudReviewPanel(options) {
     );
     return {
       reviewHash: reviewed.reviewHash,
-      cloudRecords: relevant.filter(choice => choice.kind === 'record').map(({ section, id }) => ({ section, id })),
+      cloudRecords: relevant
+        .filter(choice => choice.kind === 'record' || choice.kind === 'deletion')
+        .map(({ section, id }) => ({ section, id })),
       cloudSettings: settingBoxes
         .filter(box => relevant.some(choice => choice.kind === 'settings' && choice.group === box.value))
         .map(box => box.value),
@@ -636,8 +646,8 @@ export function bindCloudReviewPanel(options) {
         resume
           ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
           : resolveConflicts
-            ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
-            : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец (включая новые шаблоны) и выбранные настройки. Изменение прежних элементов шаблона или порядка, удаления и конфликты останавливают операцию. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
+            ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Для подтверждённых удалений календаря галочка означает удаление записи вместе с местными правками; без галочки местная запись сохраняется, но согласование останавливается. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
+            : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец (включая новые шаблоны) и выбранные настройки. Изменение прежних элементов шаблона или порядка, неподдерживаемые удаления и конфликты останавливают операцию. Для подтверждённых удалений ручного календаря сначала будет показан отдельный выбор; без него местная запись не удаляется. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
       );
     } catch {
       approved = false;

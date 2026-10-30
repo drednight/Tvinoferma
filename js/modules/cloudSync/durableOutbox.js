@@ -1084,7 +1084,7 @@ export function createDurableCloudOutbox(options) {
               !['queued', 'prepared'].includes(view.tail.row.phase) ||
               view.tail.row.phase !== marker.pendingPhase ||
               !sameVersionPin(view.tail.pin, marker.pendingPin) ||
-              JSON.stringify(view.tail.contents.publicSnapshot) !== JSON.stringify(proof.localSnapshot())
+              JSON.stringify(view.tail.contents.publicSnapshot) !== JSON.stringify(proof.retainedSnapshot())
             )
               return response('queue_not_empty');
             retainedPending.push(structuredClone(view.tail.row));
@@ -1239,6 +1239,28 @@ export function createDurableCloudOutbox(options) {
           retainedPendingPhase: view.retained[0]?.row.phase || null,
           settingsSelections: Object.freeze([...view.tail.contents.publicSnapshot.sections.preferences.selections])
         });
+      });
+    },
+    /** Authenticated PUBLIC intent for a narrowly validated post-apply repair.
+     * The snapshot can contain personal text: never serialize the result or log it.
+     */
+    async readConservativeIntent(value) {
+      const request = object(value, ['expectedRootPin', 'expectedKeyPin', 'expectedRevisionId', 'pin']);
+      const root = versionPin(request.expectedRootPin);
+      const expected = versionPin(request.pin);
+      if (!request.expectedKeyPin || !isSyncId(request.expectedRevisionId)) throw invalid();
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (current.receipt.revisionId !== request.expectedRevisionId) return response('changed');
+        const view = await linearView(current, root, request.expectedKeyPin);
+        if (!view) return response('no_local_lineage');
+        const candidates = [...view.versions, ...view.retained].filter(
+          item => sameVersionPin(item.pin, expected) && ['queued', 'prepared'].includes(item.row.phase)
+        );
+        if (candidates.length !== 1) return response('intent_unavailable');
+        const snapshot = structuredClone(candidates[0].contents.publicSnapshot);
+        return Object.freeze({ status: 'ready', snapshot: () => structuredClone(snapshot) });
       });
     },
     /** Read-only preview; approval is valid only for this parent and queue revision. */

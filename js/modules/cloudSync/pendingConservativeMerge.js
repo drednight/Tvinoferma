@@ -46,7 +46,8 @@ function marker(value) {
     'settingsSelections',
     'localHash',
     'mergedHash',
-    ...(version === 2 ? ['resolution'] : [])
+    ...([2, 3].includes(version) ? ['resolution'] : []),
+    ...(version === 3 ? ['appliedIntentHash'] : [])
   ]);
   const basePin = pin(item.basePin);
   const targetPin = pin(item.targetPin);
@@ -64,7 +65,7 @@ function marker(value) {
   )
     throw invalid();
   if (
-    ![1, 2].includes(item.version) ||
+    ![1, 2, 3].includes(item.version) ||
     !isSyncId(item.operationId) ||
     !['google', 'yandex'].includes(item.provider) ||
     !isSyncId(item.datasetId) ||
@@ -78,7 +79,9 @@ function marker(value) {
     typeof item.localHash !== 'string' ||
     !HEX.test(item.localHash) ||
     typeof item.mergedHash !== 'string' ||
-    !HEX.test(item.mergedHash)
+    !HEX.test(item.mergedHash) ||
+    (item.version === 3 &&
+      (typeof item.appliedIntentHash !== 'string' || !HEX.test(item.appliedIntentHash) || pendingPin === null))
   )
     throw invalid();
   return {
@@ -96,7 +99,13 @@ function marker(value) {
     settingsSelections: [...item.settingsSelections],
     localHash: item.localHash,
     mergedHash: item.mergedHash,
-    ...(item.version === 2 ? { resolution: parseConservativeMergeChoices(item.resolution) } : {})
+    ...([2, 3].includes(item.version)
+      ? {
+          resolution:
+            item.version === 3 && item.resolution === null ? null : parseConservativeMergeChoices(item.resolution)
+        }
+      : {}),
+    ...(item.version === 3 ? { appliedIntentHash: item.appliedIntentHash } : {})
   };
 }
 function settingsObject(settings) {

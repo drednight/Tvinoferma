@@ -97,6 +97,7 @@ async function openComparison() {
 
 beforeEach(() => {
   delete state.settings.cloudSyncPendingMerge;
+  delete state.settings.cloudSyncPendingApply;
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   document.body.innerHTML = parsed.getElementById('cloud-registration-panel').outerHTML;
 });
@@ -407,6 +408,73 @@ function mergeableReview() {
 }
 
 describe('интерфейс ограниченного объединения', () => {
+  it('показывает отдельный выбор удаления при объединении и предупреждает о местных правках', async () => {
+    const value = review();
+    const prior = value.compare;
+    value.compare = () => ({
+      ...prior(),
+      localRecord: () => ({ fields: { title: 'Местная задача' } }),
+      differences: {
+        entries: [
+          {
+            section: 'planner',
+            id: ids.changed,
+            kind: 'marked_cloud_deletion',
+            deletionSelectable: true,
+            label: 'Задача <img src=x>',
+            changes: []
+          }
+        ],
+        uncomparedSettings: []
+      }
+    });
+    const merge = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'conflicts',
+        reviewHash: 'c'.repeat(64),
+        conflicts: [{ section: 'planner', id: ids.changed, path: ['deletion'], reason: 'cloud-planner-deletion' }]
+      })
+      .mockResolvedValueOnce({ status: 'merged', backup: 'backup.json' });
+    const f = setup({ check: vi.fn(async () => value), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(el('cloud-review-conflicts').hidden).toBe(false));
+    expect(el('cloud-review-conflict-list').textContent).toContain('вместе с местными правками');
+    expect(el('cloud-review-conflict-list').querySelector('img')).toBeNull();
+    expect(el('cloud-review-list').querySelector('input').checked).toBe(false);
+    el('cloud-review-list').querySelector('input').checked = true;
+    click('cloud-review-resolve');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
+    expect(merge.mock.calls[1][0].resolution.cloudRecords).toEqual([{ section: 'planner', id: ids.changed }]);
+    expect(f.confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('без галочки местная запись сохраняется, но согласование останавливается')
+    );
+  });
+
+  it('оставляет объединение доступным после применения удаления даже при полном совпадении', async () => {
+    const value = review();
+    const prior = value.compare;
+    value.compare = () => ({ ...prior(), differences: { entries: [], uncomparedSettings: [] } });
+    state.settings.cloudSyncPendingApply = {
+      version: 1,
+      events: [
+        {
+          provider: 'yandex',
+          datasetId: value.datasetId,
+          pin,
+          records: [{ section: 'planner', id: ids.changed }],
+          settings: [],
+          financeSettings: false
+        }
+      ]
+    };
+    setup({ check: vi.fn(async () => value) });
+    await openComparison();
+    expect(el('cloud-review-merge').hidden).toBe(false);
+    expect(el('cloud-review-reconcile').hidden).toBe(false);
+  });
+
   it('ясно предупреждает, что объединение всех поддерживаемых изменений не зависит от галочек', async () => {
     const merge = vi.fn(async () => ({ status: 'merged', backup: 'backup.json', newerHeadObserved: false }));
     const f = setup({ check: vi.fn(async () => mergeableReview()), merge });

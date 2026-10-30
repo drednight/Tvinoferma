@@ -700,3 +700,79 @@ describe('консервативное трёхстороннее объедин
     expect(conservativeTransition(removed, f.base)).toBe(true); // добавление не исправляет предыдущее исчезновение
   });
 });
+
+describe('объединение подтверждённых v3-удалений ручного календаря', () => {
+  const resolution = id => ({
+    reviewHash: 'a'.repeat(64),
+    cloudRecords: id ? [{ section: 'planner', id }] : [],
+    cloudSettings: [],
+    cloudFinanceSettings: false
+  });
+  it('требует явный выбор удаления даже неизменённой местной записи и сохраняет независимые поля', () => {
+    const f = fixture();
+    const id = f.base.sections.planner.records[0].id;
+    f.cloud.sections.planner.records = [];
+    f.cloud.sections.planner.order = [];
+    f.local.sections.characters.records[0].fields.notes = 'МЕСТНАЯ ЗАМЕТКА';
+    const options = { base: f.base, local: f.local, cloud: f.cloud, cloudPlannerTombstones: [id] };
+    expect(planConservativePublicMerge(options)).toMatchObject({
+      status: 'conflicts',
+      conflicts: [{ reason: 'cloud-planner-deletion', id }]
+    });
+    expect(planConservativePublicMerge({ ...options, resolution: resolution(null) }).status).toBe(
+      'deletion_not_accepted'
+    );
+    const plan = planConservativePublicMerge({ ...options, resolution: resolution(id) });
+    expect(plan.status).toBe('prepared');
+    expect(plan.snapshot().sections.planner.records).toEqual([]);
+    expect(plan.snapshot().sections.characters.records[0].fields.notes).toBe('МЕСТНАЯ ЗАМЕТКА');
+    expect(plan.selectedPlannerDeletions()).toEqual([id]);
+    f.localState.characters[0].notes = 'МЕСТНАЯ ЗАМЕТКА';
+    const prepared = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      selectedPlannerDeletions: plan.selectedPlannerDeletions(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    });
+    expect(prepared.candidateState().plannerEntries).toEqual([]);
+    expect(prepared.candidateState().characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  });
+
+  it('не превращает немаркированное отсутствие, удаление других сущностей и перестановку в разрешение', () => {
+    const f = fixture();
+    const id = f.base.sections.planner.records[0].id;
+    f.cloud.sections.planner.records = [];
+    f.cloud.sections.planner.order = [];
+    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+    f.cloud.sections.characters.records = [];
+    f.cloud.sections.characters.order.active = [];
+    expect(
+      planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, cloudPlannerTombstones: [id] }).status
+    ).toBe('structure_or_deletion_unsupported');
+  });
+
+  it('не воскрешает ранее удалённый ID и не угадывает удаление кланового события', () => {
+    const f = fixture();
+    const id = f.base.sections.planner.records[0].id;
+    f.cloud.sections.planner.records = [];
+    f.cloud.sections.planner.order = [];
+    f.base.sections.planner.records = [];
+    f.base.sections.planner.order = [];
+    expect(
+      planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, cloudPlannerTombstones: [id] }).status
+    ).toBe('deleted_identity_resurrection');
+    const g = fixture();
+    const gid = g.base.sections.planner.records[0].id;
+    for (const value of [g.base, g.local])
+      value.sections.planner.records[0].fields.source = { kind: 'guild', eventId: 'event-1' };
+    g.cloud.sections.planner.records = [];
+    g.cloud.sections.planner.order = [];
+    expect(
+      planConservativePublicMerge({ base: g.base, local: g.local, cloud: g.cloud, cloudPlannerTombstones: [gid] })
+        .status
+    ).toBe('structure_or_deletion_unsupported');
+  });
+});

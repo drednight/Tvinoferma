@@ -13,7 +13,7 @@ import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { preparePublicSnapshotApply } from './applyPublicSnapshot.js';
 import { pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
-import { conservativeTransition, planConservativePublicMerge } from './conservativeMerge.js';
+import { conservativePlannerTransition, planConservativePublicMerge } from './conservativeMerge.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
 const HEX = /^[0-9a-f]{64}(?![\s\S])/;
@@ -74,6 +74,46 @@ function savedSnapshot(value) {
   publicSnapshotIdentityTypes(copy);
   if (new TextEncoder().encode(JSON.stringify(copy)).length > MAX_SNAPSHOT_BYTES) throw failed();
   return copy;
+}
+
+// Only a previously saved, deletion-only selective apply can bridge a changed
+// state to an older pending intent. No edits, settings, additions or other source
+// pins may be inferred from the absence of a record.
+function validatesAppliedPlannerDeletionIntent(intent, local, events, provider, datasetId, target, tombstones) {
+  if (!intent || !events.length) return false;
+  publicSnapshotIdentityTypes(intent);
+  const allowed = new Set(tombstones);
+  const original = new Set(
+    intent.sections.planner.records.filter(record => record.fields.source.kind === 'manual').map(record => record.id)
+  );
+  const selected = new Set();
+  for (const event of events) {
+    if (
+      event.provider !== provider ||
+      event.datasetId !== datasetId ||
+      event.pin.versionId !== target.versionId ||
+      event.pin.sha256 !== target.sha256 ||
+      event.settings.length ||
+      event.financeSettings ||
+      !event.records.length
+    )
+      return false;
+    for (const record of event.records) {
+      if (
+        record.section !== 'planner' ||
+        !allowed.has(record.id) ||
+        !original.has(record.id) ||
+        selected.has(record.id)
+      )
+        return false;
+      selected.add(record.id);
+    }
+  }
+  const expected = structuredClone(intent);
+  expected.sections.planner.records = expected.sections.planner.records.filter(record => !selected.has(record.id));
+  expected.sections.planner.order = expected.sections.planner.order.filter(id => !selected.has(id));
+  const difference = comparePublicSnapshots({ local: expected, cloud: local });
+  return difference.entries.length === 0 && difference.uncomparedSettings.length === 0;
 }
 
 /**
@@ -247,8 +287,16 @@ export async function prepareCloudReview(options) {
        * @param {any} settings
        * @param {boolean} [allowDescendantHead] only when resuming an already saved intent
        * @param {any} [resolution] explicit conflict choices, never inferred from dates
+       * @param {any} [appliedIntentSnapshot] authenticated queued public intent for deletion-only repair
        */
-      prepareConservativeAdoption(selectedPin, basePin, settings, allowDescendantHead = false, resolution) {
+      prepareConservativeAdoption(
+        selectedPin,
+        basePin,
+        settings,
+        allowDescendantHead = false,
+        resolution,
+        appliedIntentSnapshot
+      ) {
         const selectedResolution = resolution ? structuredClone(resolution) : null;
         const selected = pin(selectedPin);
         const base = pin(basePin);
@@ -271,17 +319,47 @@ export async function prepareCloudReview(options) {
         );
         if (baseIndex < 0) return result('base_not_ancestor');
         if (baseIndex === lineage.length - 1) return result('already_on_base');
-        if (pendingSelectiveApplyEvents(settings).length) return result('unresolved_sources');
-        if (lineage.some(value => history.plannerDeletions(value).length)) return result('deletions_unsupported');
+        const appliedEvents = pendingSelectiveApplyEvents(settings);
+        const tombstones = history.usesPlannerTombstones(current) ? history.plannerTombstones(current) : [];
+        let retained = null;
+        if (appliedEvents.length) {
+          if (
+            !history.usesPlannerTombstones(current) ||
+            !validatesAppliedPlannerDeletionIntent(
+              appliedIntentSnapshot,
+              local,
+              appliedEvents,
+              provider,
+              datasetId,
+              current,
+              tombstones
+            )
+          )
+            return result('unresolved_sources');
+          retained = savedSnapshot(appliedIntentSnapshot);
+        } else if (appliedIntentSnapshot) return result('unresolved_sources');
         let previousIds = new Map();
         for (const node of lineage) {
+          const declared = new Set(history.plannerDeletions(node));
+          if (declared.size && !history.usesPlannerTombstones(node)) return result('deletions_unsupported');
           const ids = publicSnapshotIdentityTypes(history.publicSnapshot(node));
-          if ([...previousIds].some(([id, type]) => ids.get(id) !== type)) return result('deletions_unsupported');
+          if (
+            [...previousIds].some(
+              ([id, type]) =>
+                ids.get(id) !== type && !(type === 'planner:plannerEntry' && !ids.has(id) && declared.has(id))
+            )
+          )
+            return result('deletions_unsupported');
           previousIds = ids;
         }
         for (let index = baseIndex + 1; index < lineage.length; index++) {
+          const next = lineage[index];
           if (
-            !conservativeTransition(history.publicSnapshot(lineage[index - 1]), history.publicSnapshot(lineage[index]))
+            !conservativePlannerTransition(
+              history.publicSnapshot(lineage[index - 1]),
+              history.publicSnapshot(next),
+              history.usesPlannerTombstones(next) ? history.plannerTombstones(next) : []
+            )
           )
             return result('transition_unsupported');
         }
@@ -289,6 +367,7 @@ export async function prepareCloudReview(options) {
           base: history.publicSnapshot(lineage[baseIndex]),
           local,
           cloud: history.publicSnapshot(current),
+          cloudPlannerTombstones: tombstones,
           ...(selectedResolution ? { resolution: selectedResolution } : {})
         });
         if (plan.status !== 'prepared') return plan;
@@ -304,6 +383,7 @@ export async function prepareCloudReview(options) {
           lineage: Object.freeze(lineage.map(value => Object.freeze({ ...value }))),
           envelope: Object.freeze({ ...found }),
           localSnapshot: () => structuredClone(local),
+          retainedSnapshot: () => structuredClone(retained || local),
           resolution: () => (selectedResolution ? structuredClone(selectedResolution) : null),
           plan: () => plan
         });

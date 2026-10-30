@@ -3193,3 +3193,216 @@ describe.each(['google', 'yandex'])('%s: приём подтверждённог
     expect(f.state.characters[0].contacts.password).not.toBeUndefined();
   }, 30_000);
 });
+
+async function incomingPlannerDeletionForMerge(f, provider, parentPin) {
+  const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+  const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+  const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+  const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+  const payload = await decryptSnapshot({
+    envelope: f.cloud.versions.get(parentPin.versionId),
+    recoveryKey: key.dataKey,
+    expectedDatasetId: key.datasetId,
+    cryptoSource: webcrypto
+  });
+  const next = structuredClone(payload.publicSnapshot);
+  const id = next.sections.planner.records[0].id;
+  next.sections.planner.records = next.sections.planner.records.filter(row => row.id !== id);
+  next.sections.planner.order = next.sections.planner.order.filter(value => value !== id);
+  const sealed = await sealHistoryChildWithPlannerTombstones({
+    publicSnapshot: next,
+    parent: parentPin,
+    parentSnapshot: payload.publicSnapshot,
+    previousTombstones: [],
+    deletedIds: [id],
+    confirmedDeletion: true,
+    recoveryKey: key.dataKey,
+    datasetId: key.datasetId,
+    versionId: generateSyncId(webcrypto),
+    keyBundle: key.bundle,
+    keyPin: key.pin,
+    cryptoSource: webcrypto
+  });
+  f.cloud.versions.set(sealed.pin.versionId, sealed.envelope);
+  return { pin: sealed.pin, id };
+}
+
+describe.each(['google', 'yandex'])('%s: v3-удаление против местного намерения очереди', provider => {
+  it('сохраняет намерение, требует выбор удаления, объединяет заметку и подтверждает потомка', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СОХРАНИТЬ НЕЗАВИСИМУЮ ЗАМЕТКУ';
+    f.state.plannerEntries[0].title = 'МЕСТНАЯ ПРАВКА УДАЛЯЕМОЙ ЗАДАЧИ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await incomingPlannerDeletionForMerge(f, provider, root);
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const queueBefore = structuredClone(f.fake.queue(provider));
+    const conflict = await mergePin(f, provider, remote.pin);
+    expect(conflict).toMatchObject({
+      status: 'conflicts',
+      conflicts: [{ id: remote.id, reason: 'cloud-planner-deletion' }]
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
+    expect(f.fake.queue(provider)).toEqual(queueBefore);
+    const choice = {
+      reviewHash: conflict.reviewHash,
+      cloudRecords: [],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    expect((await mergePin(f, provider, remote.pin, { resolution: choice })).status).toBe('deletion_not_accepted');
+    expect(f.state.plannerEntries).toHaveLength(1);
+    choice.cloudRecords = [{ section: 'planner', id: remote.id }];
+    expect((await mergePin(f, provider, remote.pin, { resolution: choice })).status).toBe('merged');
+    expect(f.state.plannerEntries).toHaveLength(0);
+    expect(f.state.characters[0].notes).toBe('СОХРАНИТЬ НЕЗАВИСИМУЮ ЗАМЕТКУ');
+    expect(
+      Object.keys(localStorage).some(key => key.startsWith('tvinoferma_backup_') && localStorage.getItem(key) === raw)
+    ).toBe(true);
+    const { openConnectedPublicationContext } = await import('../js/modules/cloudSync/connectedPublication.js');
+    const context = await openConnectedPublicationContext({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto });
+    const head = await context.queue(f.cloud.session).inspectLinearHead(context.pins);
+    expect(head.retainedIntents).toHaveLength(1);
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const after = await (
+      await openConnectedPublicationContext({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto })
+    )
+      .queue(f.cloud.session)
+      .inspectLinearHead(context.pins);
+    expect(after.retainedIntents).toHaveLength(0);
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  }, 30_000);
+});
+
+async function selectivelyAppliedQueuedDeletion(provider) {
+  const f = await publicationFixture(provider);
+  const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+  const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+  f.state.characters[0].notes = 'НЕЗАВИСИМОЕ СОХРАНЕНИЕ ДО ВЫБОРА';
+  f.state.plannerEntries[0].title = 'ПРЕЖНЯЯ МЕСТНАЯ ЗАДАЧА';
+  await f.storage.saveNow();
+  expect((await f.queue()).status).toBe('queued');
+  const remote = await incomingPlannerDeletionForMerge(f, provider, root);
+  const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+  const { prepareCloudReview } = await import('../js/modules/cloudSync/cloudReview.js');
+  const { currentCloudStateSnapshot } = await import('../js/modules/cloudSync/guardedStateWrite.js');
+  const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+  const { stageReviewedCloudApply } = await import('../js/modules/cloudSync/commitReviewedCloud.js');
+  const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+  const review = await prepareCloudReview({
+    provider,
+    session: f.cloud.session,
+    datasetId: key.datasetId,
+    dataKey: key.dataKey,
+    rootPin: root,
+    knownPins: [root],
+    localSnapshot: buildPublicSnapshot(currentCloudStateSnapshot()),
+    localSavedAt: null,
+    cryptoSource: webcrypto
+  });
+  expect(
+    (
+      await stageReviewedCloudApply({
+        review,
+        pin: remote.pin,
+        selectedRecords: [],
+        selectedPlannerDeletions: [remote.id],
+        cryptoSource: webcrypto
+      }).commit({ confirmed: true })
+    ).status
+  ).toBe('applied');
+  return { ...f, remote };
+}
+
+describe.each(['google', 'yandex'])('%s: согласование после выборочного удаления с прежней очередью', provider => {
+  it('проверяет точную проекцию удаления, сохраняет старое намерение и снимает обе отметки', async () => {
+    const f = await selectivelyAppliedQueuedDeletion(provider);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect((await mergePin(f, provider, f.remote.pin)).status).toBe('merged');
+    expect(f.state.settings.cloudSyncPendingApply).toBeUndefined();
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.state.plannerEntries).toHaveLength(0);
+    expect(f.state.characters[0].notes).toBe('НЕЗАВИСИМОЕ СОХРАНЕНИЕ ДО ВЫБОРА');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
+  it('не принимает дополнительную правку после удаления за прежний подтверждённый выбор', async () => {
+    const f = await selectivelyAppliedQueuedDeletion(provider);
+    f.state.characters[0].notes = 'ДРУГАЯ ПРАВКА ПОСЛЕ ВЫБОРА';
+    await f.storage.saveNow();
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, f.remote.pin)).status).toBe('unresolved_sources');
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+  }, 30_000);
+
+  it('после неизвестного CAS восстанавливает v3-намерение с тем же retained снимком', async () => {
+    const f = await selectivelyAppliedQueuedDeletion(provider);
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, f.remote.pin)).status).toBe('journal_uncertain');
+    expect(f.state.settings.cloudSyncPendingMerge.version).toBe(3);
+    const marker = structuredClone(f.state.settings.cloudSyncPendingMerge);
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const restarted = { ...f, state };
+    expect((await mergePin(restarted, provider, f.remote.pin)).status).toBe('merged');
+    expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(state.settings.cloudSyncPendingApply).toBeUndefined();
+    expect(state.settings.cloudSyncAcceptedBase.pin).toEqual(marker.targetPin);
+    const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+    const options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+    expect((await publication.queueConnectedSavedSnapshot(options)).status).toBe('queued');
+    expect(
+      (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+    ).toBe('sent_verified');
+    expect(state.characters[0].notes).toBe('НЕЗАВИСИМОЕ СОХРАНЕНИЕ ДО ВЫБОРА');
+  }, 30_000);
+});
+
+describe.each(['google', 'yandex'])('%s: защита восстановления v3-отметки после удаления', provider => {
+  it('не снимает источники и не меняет retained очередь при подмене хеша или состава применения', async () => {
+    const f = await selectivelyAppliedQueuedDeletion(provider);
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, f.remote.pin)).status).toBe('journal_uncertain');
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    const queue = structuredClone(f.fake.queue(provider));
+    const changes = [
+      snapshot => {
+        snapshot.settings.cloudSyncPendingMerge.appliedIntentHash = '0'.repeat(64);
+      },
+      snapshot => {
+        snapshot.settings.cloudSyncPendingApply.events[0].pin = snapshot.settings.cloudSyncPendingMerge.basePin;
+      },
+      snapshot => {
+        snapshot.settings.cloudSyncPendingApply.events[0].settings = ['appearance'];
+      },
+      snapshot => {
+        snapshot.settings.cloudSyncPendingApply.events[0].financeSettings = true;
+      },
+      snapshot => {
+        snapshot.settings.cloudSyncPendingApply.events[0].records[0].section = 'characters';
+      }
+    ];
+    for (const change of changes) {
+      const snapshot = structuredClone(saved);
+      change(snapshot);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      vi.resetModules();
+      const { state, normalizeState } = await import('../js/core/state.js');
+      Object.assign(state, normalizeState(snapshot));
+      const result = await mergePin({ ...f, state }, provider, f.remote.pin);
+      expect(['merge_intent_mismatch', 'unresolved_sources']).toContain(result.status);
+      expect(f.fake.queue(provider)).toEqual(queue);
+      expect(state.settings.cloudSyncPendingApply).toBeTruthy();
+      expect(state.settings.cloudSyncPendingMerge).toBeTruthy();
+      expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    }
+  }, 30_000);
+});

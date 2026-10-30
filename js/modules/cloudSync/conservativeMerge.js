@@ -3,7 +3,7 @@
 // повторно проверить облако и локальный файл и создать backup перед записью.
 // Отсутствие и удаление не угадываются. Снимки могут содержать личные примечания:
 // ни значения, ни исходные ошибки нельзя помещать в журнал.
-import { object } from './exportSchema.js';
+import { array, object } from './exportSchema.js';
 import { isSyncId } from './envelope.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { mergeRecord } from './mergeRecord.js';
@@ -287,7 +287,7 @@ function mergeNestedEntities(base, local, cloud, conflicts, section, parentId, c
  * с локальными вложенными ID пока не поддерживаются.
  * @param {{base:any,local:any,cloud:any,resolution?:any}} options
  */
-export function planConservativePublicMerge(options) {
+function planWithoutPlannerDeletions(options) {
   const input = object(options, ['base', 'local', 'cloud'], ['resolution']);
   const choices = input.resolution ? parseConservativeMergeChoices(input.resolution) : null;
   const base = structuredClone(input.base);
@@ -436,5 +436,98 @@ export function planConservativePublicMerge(options) {
     selectedRecords: () => structuredClone(chosen),
     selectedSettings: () => [...settings],
     includeFinanceSettings
+  });
+}
+
+function plannerTombstones(value) {
+  const ids = array(value, id => {
+    if (!isSyncId(id)) throw invalid();
+    return id;
+  });
+  if (ids.length > 10_000 || new Set(ids).size !== ids.length) throw invalid();
+  return new Set(ids);
+}
+function withoutPlannerRecords(snapshot, deleted) {
+  const result = structuredClone(snapshot);
+  result.sections.planner.records = result.sections.planner.records.filter(record => !deleted.has(record.id));
+  result.sections.planner.order = result.sections.planner.order.filter(id => !deleted.has(id));
+  return result;
+}
+
+/** Only the caller's authenticated cumulative v3 tombstones may relax a transition.
+ * Absence, legacy markers, non-planner removals and guild entries remain blocked.
+ * @param {any} previous @param {any} next @param {string[]} tombstones
+ */
+export function conservativePlannerTransition(previous, next, tombstones) {
+  comparePublicSnapshots({ local: previous, cloud: next });
+  const declared = plannerTombstones(tombstones);
+  const after = new Set(next.sections.planner.records.map(record => record.id));
+  if ([...declared].some(id => after.has(id))) return false;
+  const removed = new Set();
+  for (const record of previous.sections.planner.records) {
+    if (after.has(record.id)) continue;
+    if (!declared.has(record.id) || record.fields.source.kind !== 'manual') return false;
+    removed.add(record.id);
+  }
+  return conservativeTransition(withoutPlannerRecords(previous, removed), next);
+}
+
+/**
+ * A destructive cloud choice is required for EVERY marked record still present
+ * locally, even if its fields did not change. Unchecked means keep the local
+ * record and stop adoption, never resurrect its tombstoned identity in a child.
+ * The model itself does not authenticate cloudPlannerTombstones or do any I/O.
+ * @param {{base:any,local:any,cloud:any,resolution?:any,cloudPlannerTombstones?:string[]}} options
+ */
+export function planConservativePublicMerge(options) {
+  const input = object(options, ['base', 'local', 'cloud'], ['resolution', 'cloudPlannerTombstones']);
+  const declared = plannerTombstones(input.cloudPlannerTombstones || []);
+  if (!declared.size)
+    return planWithoutPlannerDeletions({
+      base: input.base,
+      local: input.local,
+      cloud: input.cloud,
+      ...(input.resolution ? { resolution: input.resolution } : {})
+    });
+  comparePublicSnapshots({ local: input.base, cloud: input.local });
+  comparePublicSnapshots({ local: input.base, cloud: input.cloud });
+  if (!conservativePlannerTransition(input.base, input.cloud, [...declared]))
+    return Object.freeze({ status: 'structure_or_deletion_unsupported' });
+  const baseRecords = records(input.base, 'planner');
+  const localRecords = records(input.local, 'planner');
+  const removals = [];
+  for (const id of declared) {
+    const local = localRecords.get(id);
+    if (!local) continue;
+    if (!baseRecords.has(id) || local.fields.source.kind !== 'manual')
+      return Object.freeze({ status: 'deleted_identity_resurrection' });
+    removals.push(id);
+  }
+  const choices = input.resolution ? parseConservativeMergeChoices(input.resolution) : null;
+  const plan = planWithoutPlannerDeletions({
+    base: withoutPlannerRecords(input.base, declared),
+    local: withoutPlannerRecords(input.local, declared),
+    cloud: input.cloud,
+    ...(choices ? { resolution: choices } : {})
+  });
+  if (!['prepared', 'conflicts'].includes(plan.status)) return plan;
+  const deletionConflicts = removals.map(id => ({
+    section: 'planner',
+    id,
+    path: ['deletion'],
+    reason: 'cloud-planner-deletion'
+  }));
+  if (!choices && deletionConflicts.length) {
+    const conflicts = [...(plan.status === 'conflicts' ? plan.conflicts : []), ...deletionConflicts];
+    if (conflicts.length > MAX_CONFLICTS) throw invalid();
+    return Object.freeze({ status: 'conflicts', conflicts: Object.freeze(conflicts) });
+  }
+  if (choices && removals.some(id => !choiceUsesCloud(choices, 'planner', id)))
+    return Object.freeze({ status: 'deletion_not_accepted' });
+  if (plan.status !== 'prepared') return plan;
+  return Object.freeze({
+    ...plan,
+    selectedCount: plan.selectedCount + removals.length,
+    selectedPlannerDeletions: () => [...removals]
   });
 }

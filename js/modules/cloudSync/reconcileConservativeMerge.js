@@ -1,6 +1,6 @@
 // @ts-check
-// Narrow, explicitly confirmed three-way merge of existing records (except marathon
-// templates) and selected settings. The state marker is saved with backup BEFORE the queue anchor changes;
+// Narrow, explicitly confirmed three-way merge, including supported template
+// additions, selected settings and authenticated manual-planner tombstones. The state marker is saved with backup BEFORE the queue anchor changes;
 // it blocks publishing and makes interruptions resumable. An unattempted matching
 // queue item is retained encrypted until a merged child is verified. This is not a
 // cross-process transaction or proof of a complete cloud.
@@ -16,7 +16,11 @@ import {
   cloudSnapshotMatchesDisk,
   stageGuardedCloudStateWrite
 } from './guardedStateWrite.js';
-import { requireResolvedSelectiveApply, pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
+import {
+  requireResolvedSelectiveApply,
+  pendingSelectiveApplyEvents,
+  removePendingSelectiveApply
+} from './pendingSelectiveApply.js';
 import {
   addPendingConservativeMerge,
   conservativeSnapshotHash,
@@ -103,6 +107,7 @@ function materialize(original, plan, cryptoSource) {
     cloudSnapshot: merged,
     selectedRecords: plan.selectedRecords(),
     selectedSettings: plan.selectedSettings(),
+    selectedPlannerDeletions: plan.selectedPlannerDeletions?.() || [],
     includeFinanceSettings: plan.includeFinanceSettings,
     ...(cryptoSource ? { cryptoSource } : {})
   });
@@ -146,6 +151,7 @@ export async function reconcileConservativeMerge(options) {
     if (!context) return result('binding_or_queue_blocked');
     let original = currentCloudStateSnapshot();
     let marker = readPendingConservativeMerge(original.settings);
+    const appliedEvents = pendingSelectiveApplyEvents(original.settings);
     if (marker) {
       if (
         marker.provider !== context.provider ||
@@ -153,8 +159,9 @@ export async function reconcileConservativeMerge(options) {
         !samePin(marker.targetPin, targetPin)
       )
         return result('other_merge_pending');
-      if (pendingSelectiveApplyEvents(original.settings).length) return result('unresolved_sources');
-    } else {
+      if (appliedEvents.length && marker.version !== 3) return result('unresolved_sources');
+      if (marker.version === 3 && !appliedEvents.length) return result('unresolved_sources');
+    } else if (!appliedEvents.length) {
       requireResolvedSelectiveApply(original.settings);
     }
     if (
@@ -178,7 +185,7 @@ export async function reconcileConservativeMerge(options) {
     if (head.retainedIntents.length >= 16 && head.pendingCount) return result('retained_intent_limit');
     if (head.pendingCount && (head.pendingCount !== 1 || !['queued', 'prepared'].includes(head.nextPhase)))
       return result('queue_not_empty');
-    if (head.pendingCount && !head.tailMatches) return result('queue_snapshot_mismatch');
+    if (head.pendingCount && !head.tailMatches && !appliedEvents.length) return result('queue_snapshot_mismatch');
     if (
       JSON.stringify(head.settingsSelections) !== JSON.stringify(requestedSettings) ||
       (marker && JSON.stringify(marker.settingsSelections) !== JSON.stringify(head.settingsSelections))
@@ -214,6 +221,21 @@ export async function reconcileConservativeMerge(options) {
       ) {
         return result('merge_base_mismatch');
       }
+    }
+    let appliedIntentSnapshot = null;
+    if (appliedEvents.length) {
+      const sourcePin = marker?.pendingPin || head.nextPin;
+      if (!sourcePin) return result('unresolved_sources');
+      const intent = /** @type {any} */ (
+        await queue.readConservativeIntent({ ...context.pins, expectedRevisionId: head.revisionId, pin: sourcePin })
+      );
+      if (intent.status !== 'ready') return result(intent.status);
+      appliedIntentSnapshot = intent.snapshot();
+      if (
+        marker?.version === 3 &&
+        (await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)) !== marker.appliedIntentHash
+      )
+        return result('merge_intent_mismatch');
     }
     if (input.signal?.aborted) return result('cancelled');
     uncertain = context.provider === 'google';
@@ -251,7 +273,14 @@ export async function reconcileConservativeMerge(options) {
       );
     const first = await review(head.confirmedPins);
     if (first.status !== 'ready_for_review') return result(first.status);
-    const unchecked = first.prepareConservativeAdoption(targetPin, basePin, original.settings, !!marker);
+    const unchecked = first.prepareConservativeAdoption(
+      targetPin,
+      basePin,
+      original.settings,
+      !!marker,
+      undefined,
+      appliedIntentSnapshot
+    );
     let proof = unchecked;
     if (unchecked.status === 'conflicts') {
       const localHash = await conservativeSnapshotHash(local, input.cryptoSource);
@@ -281,7 +310,14 @@ export async function reconcileConservativeMerge(options) {
       }
       if (resolution.reviewHash !== reviewHash || !resolutionFitsConflicts(resolution, unchecked.conflicts))
         return result('conflicts_changed');
-      proof = first.prepareConservativeAdoption(targetPin, basePin, original.settings, !!marker, resolution);
+      proof = first.prepareConservativeAdoption(
+        targetPin,
+        basePin,
+        original.settings,
+        !!marker,
+        resolution,
+        appliedIntentSnapshot
+      );
     } else if (resolution) {
       return result(unchecked.status === 'ready_for_adoption' ? 'conflicts_changed' : unchecked.status);
     }
@@ -297,7 +333,7 @@ export async function reconcileConservativeMerge(options) {
     if (before.status !== 'ready' || before.revisionId !== head.revisionId) return result('queue_changed');
     if (!marker) {
       marker = {
-        version: resolution ? 2 : 1,
+        version: appliedIntentSnapshot ? 3 : resolution ? 2 : 1,
         operationId: generateSyncId(input.cryptoSource),
         provider: context.provider,
         datasetId: context.binding.datasetId,
@@ -311,7 +347,14 @@ export async function reconcileConservativeMerge(options) {
         settingsSelections: [...head.settingsSelections],
         localHash: await conservativeSnapshotHash(local, input.cryptoSource),
         mergedHash: await conservativeSnapshotHash(proof.plan().snapshot(), input.cryptoSource),
-        ...(resolution ? { resolution } : {})
+        ...(appliedIntentSnapshot
+          ? {
+              resolution: resolution || null,
+              appliedIntentHash: await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+            }
+          : resolution
+            ? { resolution }
+            : {})
       };
       const checkpoint = structuredClone(original);
       checkpoint.settings = addPendingConservativeMerge(checkpoint.settings, marker);
@@ -353,7 +396,8 @@ export async function reconcileConservativeMerge(options) {
       marker.basePin,
       original.settings,
       true,
-      marker.resolution
+      marker.resolution,
+      appliedIntentSnapshot
     );
     if (
       repeated.status !== 'ready_for_adoption' ||
@@ -367,6 +411,7 @@ export async function reconcileConservativeMerge(options) {
     try {
       candidate = materialize(original, repeated.plan(), input.cryptoSource);
       candidate.settings = removePendingConservativeMerge(candidate.settings, marker.operationId);
+      if (marker.version === 3) candidate.settings = removePendingSelectiveApply(candidate.settings);
       candidate.settings = replaceAcceptedCloudBase(
         candidate.settings,
         {
@@ -385,7 +430,7 @@ export async function reconcileConservativeMerge(options) {
       original,
       candidate,
       backupLabel: 'pre-cloud-merge',
-      selectedCount: repeated.plan().selectedRecords().length
+      selectedCount: repeated.plan().selectedCount
     });
     const committed = /** @type {any} */ (await staged.commit({ confirmed: true }));
     if (committed.status !== 'applied') return result(committed.status);

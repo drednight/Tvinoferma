@@ -60,6 +60,11 @@ export async function authorizeSavedConservativeMerge({ proof, cryptoSource }) {
     JSON.stringify(marker.resolution || null) !== JSON.stringify(proof.resolution())
   )
     return null;
+  if (
+    marker.version === 3 &&
+    (await conservativeSnapshotHash(proof.retainedSnapshot(), cryptoSource)) !== marker.appliedIntentHash
+  )
+    return null;
   const selections = proof.localSnapshot().sections.preferences.selections;
   if (JSON.stringify(selections) !== JSON.stringify(marker.settingsSelections)) return null;
   const local = buildPublicSnapshot(original, { settingsSelections: selections });
