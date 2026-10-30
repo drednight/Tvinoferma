@@ -83,7 +83,7 @@ function outcome(status) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * confirm?:(message:string)=>boolean|Promise<boolean>,controllerFactory?:typeof createPublicationController,
- * stageDeletions?:typeof stagePlannerDeletionPublication}} options
+ * stageDeletions?:typeof stagePlannerDeletionPublication,disableAutomatic?:boolean}} options
  */
 export function bindCloudPublicationPanel(options) {
   const doc = options.doc || document;
@@ -129,20 +129,24 @@ export function bindCloudPublicationPanel(options) {
   const controller = makeController({
     win,
     desktop: options.desktop,
+    allowAutomatic: options.disableAutomatic !== true,
     ...(options.loadNative ? { loadNative: options.loadNative } : {}),
     report
   });
   function render() {
     const active = controller.configuredProvider();
     enabled.checked = active === selected();
-    enabled.disabled = !options.desktop || busy;
+    enabled.disabled = options.disableAutomatic === true || !options.desktop || busy;
     manual.disabled = !options.desktop || busy;
     if (deletionButton) deletionButton.disabled = !options.desktop || busy;
-    mode.textContent = !options.desktop
-      ? 'Отправка и автоматизация доступны только в настольной сборке.'
-      : active
-        ? `Автоотправка включена на этом ПК для ${providerName(active)}${active !== selected() ? '; сейчас выбран другой диск' : ''}.`
-        : 'Автоотправка на этом ПК выключена.';
+    mode.textContent =
+      options.disableAutomatic === true
+        ? 'В режиме обмена файлами используется ручная отправка. Старая автоотправка не запускается.'
+        : !options.desktop
+          ? 'Отправка и автоматизация доступны только в настольной сборке.'
+          : active
+            ? `Автоотправка включена на этом ПК для ${providerName(active)}${active !== selected() ? '; сейчас выбран другой диск' : ''}.`
+            : 'Автоотправка на этом ПК выключена.';
   }
   enabled.addEventListener('change', async () => {
     if (!options.desktop || busy) return;

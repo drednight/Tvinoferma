@@ -45,7 +45,7 @@ function providerName(value) {
  * Это не защищённая отметка, не межпроцессный lock и не доказательство доставки.
  * @param {{win:Window,desktop:boolean,storage?:Storage,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * queue?:typeof queueConnectedSavedSnapshot,send?:typeof sendConnectedQueuedSnapshot,
- * report?:(provider:string,stage:string,status:string)=>void,isOnline?:()=>boolean}} options
+ * report?:(provider:string,stage:string,status:string)=>void,isOnline?:()=>boolean,allowAutomatic?:boolean}} options
  */
 export function createPublicationController(options) {
   const win = options.win;
@@ -66,6 +66,7 @@ export function createPublicationController(options) {
   } catch {
     configured = null;
   }
+  if (options.allowAutomatic === false) configured = null;
   let ready = false;
   let disposed = false;
   let active = false;
@@ -207,7 +208,8 @@ export function createPublicationController(options) {
     },
     /** Сохраняет разрешение только после явного согласия UI и проверяет чтение. */
     enable(provider) {
-      if (!options.desktop || !providerName(provider) || disposed || !storage) return false;
+      if (options.allowAutomatic === false || !options.desktop || !providerName(provider) || disposed || !storage)
+        return false;
       const value = JSON.stringify({ version: 1, provider });
       try {
         storage.setItem(KEY, value);

@@ -40,6 +40,8 @@ import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 import { bindCloudRegistrationCheck } from '../modules/cloudSync/ui/registrationCheckPanel.js';
+import { hasSnapshotFileMode } from '../modules/cloudSync/snapshotFileState.js';
+import { bindSnapshotFilePanel } from '../modules/cloudSync/ui/snapshotFilePanel.js';
 import { bindCloudReviewPanel } from '../modules/cloudSync/ui/cloudReviewPanel.js';
 import { bindInitialCloudPanel } from '../modules/cloudSync/ui/initialCloudPanel.js';
 import { bindCloudActivityPanel } from '../modules/cloudSync/ui/cloudActivityPanel.js';
@@ -571,10 +573,26 @@ function bindSettingInputs() {
 
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
-  const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri() });
+  bindSnapshotFilePanel({ desktop: isTauri() });
+  // The old merge/auto-publication controls remain available only for legacy recovery.
+  const fileMode = !!document.getElementById('cloud-file-panel');
+  const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });
   bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
-  bindCloudPublicationPanel({ desktop: isTauri() });
+  bindCloudPublicationPanel({ desktop: isTauri(), disableAutomatic: fileMode });
   bindPrivateTransferPanel({ desktop: isTauri() });
+  const legacyControls = /** @type {HTMLFieldSetElement|null} */ (document.getElementById('cloud-legacy-controls'));
+  if (legacyControls) {
+    const refreshLegacy = () => {
+      legacyControls.disabled = hasSnapshotFileMode(
+        state.settings,
+        /** @type {HTMLSelectElement} */ (document.getElementById('cloud-registration-provider'))?.value
+      );
+    };
+    refreshLegacy();
+    window.addEventListener('tf-persisted', refreshLegacy);
+    window.addEventListener('tf-cloud-applied', refreshLegacy);
+    document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
+  }
   bindCloudActivityPanel();
   bindGuides();
   bindFeedback();

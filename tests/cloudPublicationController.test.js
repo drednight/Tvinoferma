@@ -229,3 +229,20 @@ describe('экспериментальный планировщик отправ
     expect(demo.queue).not.toHaveBeenCalled();
   });
 });
+
+it('новый файловый интерфейс не запускает старую автоотправку, но сохраняет ручное завершение очереди', async () => {
+  localStorage.setItem(key, JSON.stringify({ version: 1, provider: 'google' }));
+  const f = setup({ allowAutomatic: false });
+  expect(f.controller.configuredProvider()).toBeNull();
+  expect(f.controller.enable('google')).toBe(false);
+  window.dispatchEvent(new Event('tf-cloud-startup-check'));
+  window.dispatchEvent(new Event('tf-persisted'));
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(f.queue).not.toHaveBeenCalled();
+  expect(f.send).not.toHaveBeenCalled();
+  expect(localStorage.getItem(key)).not.toBeNull();
+  await f.controller.runManual('google');
+  expect(f.queue).toHaveBeenCalled();
+  expect(f.send).toHaveBeenCalled();
+  expect(f.controller.configuredProvider()).toBeNull();
+});
