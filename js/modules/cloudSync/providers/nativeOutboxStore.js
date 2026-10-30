@@ -1,6 +1,6 @@
 // @ts-check
-// Экспериментальный IPC-адаптер зашифрованного журнала. Не подключён к UI или
-// настоящим аккаунтам. Ошибка/потеря ответа записи блокирует этот экземпляр;
+// Экспериментальный IPC-адаптер зашифрованного журнала. Ошибка или потеря
+// ответа записи блокирует этот экземпляр;
 // отмена или timeout в JS не останавливают уже начатую native-операцию.
 import { object } from '../exportSchema.js';
 import { copyCloudEnvelope } from './common.js';
@@ -132,14 +132,15 @@ export function createNativeOutboxStore(options) {
     read() {
       return call('cloud_outbox_read', { provider }, ['empty', 'ready', 'pending', 'blocked']);
     },
+    // Не создаём очередь в обход проверки обеих привязок и хранилищ.
+    // Оставляем интерфейс для общего outbox-контракта, но native-вариант закрыт.
     install(value) {
-      let args;
       try {
-        args = writeArgs(value, false);
+        writeArgs(value, false);
       } catch {
         throw failed();
       }
-      return call('cloud_outbox_install', { provider, args }, ['installed', 'occupied', 'blocked']);
+      return Promise.resolve(Object.freeze({ status: 'blocked' }));
     },
     installInitial(value) {
       if (!input.initialGuard) throw failed();

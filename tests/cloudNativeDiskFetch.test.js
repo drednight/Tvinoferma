@@ -44,6 +44,13 @@ const accessToken = 'PRIVATE_FAKE_TOKEN';
 const accountKey = 'PRIVATE_FAKE_ACCOUNT';
 const clientIds = { google: 'fake-client.apps.googleusercontent.com', yandex: '0123456789abcdef' };
 const modified = '2026-10-29T12:00:00Z';
+// Fake IPC не воспроизводит native-проверку связей; она проверяется отдельно.
+const initialGuard = {
+  accountSlotId: generateSyncId(webcrypto),
+  keySlotId: generateSyncId(webcrypto),
+  bundleId: generateSyncId(webcrypto),
+  fingerprint: 'a'.repeat(64)
+};
 let recoveryKey, sealed;
 
 function reply(data, status = 200, contentType = 'application/json') {
@@ -352,9 +359,9 @@ function fakeNativeWithJournal(provider, loseUploadReply = false) {
     }
     if (wrapper.provider !== provider) throw new Error('wrong fake provider');
     if (command === 'cloud_outbox_read') return structuredClone(journal);
-    if (command === 'cloud_outbox_install' || command === 'cloud_outbox_compare_exchange') {
+    if (command === 'cloud_outbox_install_initial' || command === 'cloud_outbox_compare_exchange') {
       const next = wrapper.args;
-      if (command === 'cloud_outbox_install' && journal.status !== 'empty') return { status: 'occupied' };
+      if (command === 'cloud_outbox_install_initial' && journal.status !== 'empty') return { status: 'occupied' };
       if (command === 'cloud_outbox_compare_exchange') {
         if (journal.status !== 'ready') return { status: 'blocked' };
         if (next.expectedRevisionId !== journal.revisionId || next.expectedSha256 !== journal.sha256)
@@ -370,7 +377,7 @@ function fakeNativeWithJournal(provider, loseUploadReply = false) {
         record,
         sha256: createHash('sha256').update(record).digest('hex')
       };
-      return { status: command === 'cloud_outbox_install' ? 'installed' : 'swapped' };
+      return { status: command === 'cloud_outbox_install_initial' ? 'installed' : 'swapped' };
     }
     throw new Error('unexpected fake IPC');
   });
@@ -416,13 +423,13 @@ describe.each(['google', 'yandex'])('%s: журнал + авторизованн
         deviceId,
         slotId,
         dataKey: recoveryKey,
-        store: createNativeOutboxStore({ provider, invoke: fake.invoke }),
+        store: createNativeOutboxStore({ provider, invoke: fake.invoke, initialGuard }),
         session,
         cryptoSource: webcrypto,
         ...(provider === 'google' ? { folderId } : {})
       });
     const first = open();
-    expect(await first.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await first.initializeRecovered(true)).toEqual({ status: 'initialized' });
     expect(await first.enqueue(version.envelope)).toEqual({ status: 'queued' });
     expect(await first.sendNext()).toEqual({ status: 'needs_verification' });
     expect(fake.disk.files.size).toBe(1);
@@ -525,7 +532,7 @@ describe.each(['google', 'yandex'])('%s: сквозная отправка с с
         deviceId,
         slotId,
         dataKey: recoveryKey,
-        store: createNativeOutboxStore({ provider, invoke: fake.invoke }),
+        store: createNativeOutboxStore({ provider, invoke: fake.invoke, initialGuard }),
         session,
         cryptoSource: webcrypto,
         ...(provider === 'google' ? { folderId } : {})
@@ -533,7 +540,7 @@ describe.each(['google', 'yandex'])('%s: сквозная отправка с с
     const first = await openSession();
     expect(first.status).toBe('opened');
     const queue = openQueue(first.session);
-    expect(await queue.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await queue.initializeRecovered(true)).toEqual({ status: 'initialized' });
     expect(await queue.enqueue(version.envelope)).toEqual({ status: 'queued' });
     expect(await queue.sendNext()).toEqual({ status: 'needs_verification' });
     first.session.dispose();
@@ -636,7 +643,7 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
         deviceId,
         slotId,
         dataKey,
-        store: createNativeOutboxStore({ provider, invoke }),
+        store: createNativeOutboxStore({ provider, invoke, initialGuard }),
         session,
         cryptoSource: webcrypto,
         ...(provider === 'google' ? { folderId } : {})
@@ -644,7 +651,7 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     const first = await openSession();
     expect(first.status).toBe('opened');
     const queue = openQueue(first.session);
-    expect(await queue.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await queue.initializeRecovered(true)).toEqual({ status: 'initialized' });
     expect(await queue.enqueue(version.envelope)).toEqual({ status: 'queued' });
     expect(await queue.sendNext()).toEqual({ status: 'needs_verification' });
     first.session.dispose();
@@ -787,12 +794,12 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       deviceId: generateSyncId(webcrypto),
       slotId: generateSyncId(webcrypto),
       dataKey: recoveredState.dataKey,
-      store: createNativeOutboxStore({ provider, invoke: secondInvoke }),
+      store: createNativeOutboxStore({ provider, invoke: secondInvoke, initialGuard }),
       session: pinnedOther.session,
       cryptoSource: webcrypto,
       ...(provider === 'google' ? { folderId } : {})
     });
-    expect(await otherQueue.initialize(true)).toEqual({ status: 'initialized' });
+    expect(await otherQueue.initializeRecovered(true)).toEqual({ status: 'initialized' });
     pinnedOther.session.dispose();
     const comparison = await checkConnectedCloud({
       provider,

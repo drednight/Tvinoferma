@@ -64,7 +64,6 @@ pub struct OutboxReply {
 #[cfg_attr(not(windows), allow(dead_code))]
 enum Action {
     Read,
-    Install(OutboxWrite),
     InstallInitial {
         args: OutboxWrite,
         guard: OutboxInitialGuard,
@@ -88,19 +87,6 @@ pub async fn cloud_outbox_read(
         return Err(ERROR.into());
     }
     perform(app, provider, Action::Read).await
-}
-
-#[tauri::command]
-pub async fn cloud_outbox_install(
-    window: tauri::WebviewWindow,
-    app: AppHandle,
-    provider: String,
-    args: OutboxWrite,
-) -> Result<OutboxReply, String> {
-    if window.label() != "main" {
-        return Err(ERROR.into());
-    }
-    perform(app, provider, Action::Install(args)).await
 }
 
 /// Первое намерение для нового набора: обе очереди и привязки проверяются
@@ -373,18 +359,6 @@ mod windows_backend {
                 Ok(Inspection::Ready(value)) => Ok(ready(value)),
                 Err(_) => Err(ERROR.to_owned()),
             },
-            Action::Install(args) => {
-                let next = NewRecord {
-                    slot_id: &args.slot_id,
-                    dataset_id: &args.dataset_id,
-                    device_id: &args.device_id,
-                    revision_id: &args.revision_id,
-                    record: &args.record,
-                };
-                cloud_outbox_store::install(&mut vault, &mut file, target, &next)
-                    .map(outcome)
-                    .map_err(|_| ERROR.to_owned())
-            }
             Action::InstallInitial { args, guard } => {
                 let next = NewRecord {
                     slot_id: &args.slot_id,

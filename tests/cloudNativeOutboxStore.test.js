@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash, webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { generateRecoveryKey, generateSyncId, encryptSnapshot } from '../js/modules/cloudSync/envelope.js';
 import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
 
@@ -15,7 +16,7 @@ function ipc() {
   let state = { status: 'empty' };
   const invoke = vi.fn(async (command, input) => {
     if (command === 'cloud_outbox_read') return structuredClone(state);
-    if (command === 'cloud_outbox_install' || command === 'cloud_outbox_install_initial') {
+    if (command === 'cloud_outbox_install_initial') {
       if (state.status !== 'empty') return { status: 'occupied' };
       const { slotId, datasetId, deviceId, revisionId, record } = input.args;
       state = { status: 'ready', slotId, datasetId, deviceId, revisionId, record, sha256: digest(record) };
@@ -52,12 +53,22 @@ beforeEach(async () => {
   );
 });
 
+it('старый native IPC создания без проверки привязок не зарегистрирован', () => {
+  const registration = readFileSync('src-tauri/src/lib.rs', 'utf8');
+  const commands = readFileSync('src-tauri/src/commands/cloud_outbox.rs', 'utf8');
+  expect(registration).not.toMatch(/commands::cloud_outbox::cloud_outbox_install\s*,/);
+  expect(commands).not.toMatch(/pub\s+async\s+fn\s+cloud_outbox_install\s*\(/);
+  expect(registration).toContain('commands::cloud_outbox::cloud_outbox_install_initial');
+});
+
 describe.each(['google', 'yandex'])('%s native IPC: адаптер журнала', provider => {
   it('вызывает только фиксированные команды и передаёт только зашифрованное тело', async () => {
     const fake = ipc();
-    const store = createNativeOutboxStore({ provider, invoke: fake.invoke });
+    const guard = { accountSlotId: id(), keySlotId: id(), bundleId: id(), fingerprint: 'a'.repeat(64) };
+    const store = createNativeOutboxStore({ provider, invoke: fake.invoke, initialGuard: guard });
     expect(await store.read()).toEqual({ status: 'empty' });
-    expect(await store.install(args())).toEqual({ status: 'installed' });
+    expect(await store.install(args())).toEqual({ status: 'blocked' });
+    expect(await store.installInitial(args())).toEqual({ status: 'installed' });
     const current = await store.read();
     expect(current).toEqual({ status: 'ready', ...args(), sha256: digest(record) });
     const nextId = id();
@@ -78,7 +89,7 @@ describe.each(['google', 'yandex'])('%s native IPC: адаптер журнал�
     expect((await store.read()).record).toBe(nextRecord);
     expect(fake.invoke.mock.calls.map(call => call[0])).toEqual([
       'cloud_outbox_read',
-      'cloud_outbox_install',
+      'cloud_outbox_install_initial',
       'cloud_outbox_read',
       'cloud_outbox_compare_exchange',
       'cloud_outbox_read'
@@ -130,16 +141,18 @@ describe.each(['google', 'yandex'])('%s native IPC: адаптер журнал�
     const invoke = vi.fn(async () => {
       throw new Error('PRIVATE путь и содержимое');
     });
-    const store = createNativeOutboxStore({ provider, invoke });
-    await expect(store.install(args())).rejects.not.toThrow('PRIVATE');
+    const guard = { accountSlotId: id(), keySlotId: id(), bundleId: id(), fingerprint: 'a'.repeat(64) };
+    const store = createNativeOutboxStore({ provider, invoke, initialGuard: guard });
+    await expect(store.installInitial(args())).rejects.not.toThrow('PRIVATE');
     await expect(store.read()).rejects.toThrow();
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it('таймаут не объявляет native-запись отменённой и запрещает работу экземпляра', async () => {
     const invoke = vi.fn(() => new Promise(() => {}));
-    const store = createNativeOutboxStore({ provider, invoke, timeoutMs: 20 });
-    await expect(store.install(args())).rejects.toThrow();
+    const guard = { accountSlotId: id(), keySlotId: id(), bundleId: id(), fingerprint: 'a'.repeat(64) };
+    const store = createNativeOutboxStore({ provider, invoke, timeoutMs: 20, initialGuard: guard });
+    await expect(store.installInitial(args())).rejects.toThrow();
     await expect(store.read()).rejects.toThrow();
     expect(invoke).toHaveBeenCalledTimes(1);
   });

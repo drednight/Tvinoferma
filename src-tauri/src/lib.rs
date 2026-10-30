@@ -222,7 +222,6 @@ pub fn run() {
             commands::cloud_key_state::cloud_key_state_forget,
             // Экспериментальная очередь первого снимка; автосинхронизация ещё не готова.
             commands::cloud_outbox::cloud_outbox_read,
-            commands::cloud_outbox::cloud_outbox_install,
             commands::cloud_outbox::cloud_outbox_install_initial,
             commands::cloud_outbox::cloud_outbox_compare_exchange,
             // Диагностика и первый вход OAuth; синхронизация пока не включена.
