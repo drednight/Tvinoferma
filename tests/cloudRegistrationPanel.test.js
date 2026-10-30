@@ -91,8 +91,8 @@ describe('настоящие настройки: диагностика и эк�
     const s = bind();
     expect(byId('panel').open).toBe(false);
     expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
-    expect(byId('panel').textContent).toContain('ограниченная отправка последующих сохранений');
-    expect(byId('panel').textContent).toContain('только после отдельного подтверждения полного совпадения');
+    expect(byId('panel').textContent).toContain('ограниченное объединение с выбором при конфликтах');
+    expect(byId('panel').textContent).toContain('Расходящиеся облачные ветви и удаления не обрабатываются');
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');
@@ -262,7 +262,7 @@ describe('экспериментальный локальный доступ в 
       confirmAccount: s.confirmAccount
     });
     await vi.waitFor(() => expect(connection('progress').textContent).toContain('Доступ сохранён'));
-    expect(connection('progress').textContent).toContain('синхронизация ещё не работает');
+    expect(connection('progress').textContent).toContain('набор данных ещё нужно подключить');
     expect(connection('approve').checked).toBe(false);
     expect(storage).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain(PRIVATE);
