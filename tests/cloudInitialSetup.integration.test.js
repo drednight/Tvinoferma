@@ -1391,6 +1391,110 @@ describe.each(['google', 'yandex'])('%s: поочерёдные версии п�
     expect(f.cloud.session.upload).not.toHaveBeenCalled();
   }, 30_000);
 
+  it.each(['cloud', 'state'])(
+    'не заменяет прежнюю отметку при изменении %s после переноса подтверждённой очереди',
+    async changed => {
+      const f = await publicationFixture(provider);
+      const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+      const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+      const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+      const { historyEnvelopePin, sealHistoryVersion } = await import('../js/modules/cloudSync/history.js');
+      const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+      const first = await incomingVersion(f, provider, root, 'ПЕРВОЕ ВХОДЯЩЕЕ');
+      expect((await reconcilePin(f, provider, first)).status).toBe('reconciled');
+      const previousBase = structuredClone(f.state.settings.cloudSyncAcceptedBase);
+      f.state.characters[0].notes = 'ПОДТВЕРЖДЁННЫЙ ЛОКАЛЬНЫЙ ОТВЕТ';
+      await f.storage.saveNow();
+      expect(await f.queue()).toEqual({ status: 'queued' });
+      expect(await f.send()).toEqual({ status: 'sent_verified' });
+      const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+      const own = await historyEnvelopePin({
+        envelope: [...f.cloud.versions.values()].at(-1),
+        expectedDatasetId: key.datasetId,
+        cryptoSource: webcrypto
+      });
+      const second = await incomingVersion(f, provider, own, 'ВТОРОЕ ВХОДЯЩЕЕ');
+      const payload = await decryptSnapshot({
+        envelope: f.cloud.versions.get(second.versionId),
+        recoveryKey: key.dataKey,
+        expectedDatasetId: key.datasetId,
+        cryptoSource: webcrypto
+      });
+      const later = await sealHistoryVersion({
+        publicSnapshot: payload.publicSnapshot,
+        parent: second,
+        recoveryKey: key.dataKey,
+        datasetId: key.datasetId,
+        versionId: generateSyncId(webcrypto),
+        keyBundle: key.bundle,
+        keyPin: key.pin,
+        cryptoSource: webcrypto
+      });
+      const originalList = f.cloud.session.listWithDates.getMockImplementation();
+      let reads = 0;
+      f.cloud.session.listWithDates.mockImplementation(async () => {
+        if (++reads === 2) {
+          if (changed === 'cloud') f.cloud.versions.set(later.pin.versionId, later.envelope);
+          else {
+            f.state.characters[0].notes = 'ИЗМЕНЕНИЕ ПОСЛЕ ЗАПИСИ ОЧЕРЕДИ';
+            await f.storage.saveNow();
+          }
+        }
+        return originalList();
+      });
+      const before = structuredClone(f.fake.queue(provider));
+      expect(await reconcilePin(f, provider, second)).toEqual({ status: `${changed}_changed_after_queue` });
+      expect(f.fake.queue(provider)).not.toEqual(before);
+      expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+      expect(f.state.settings.cloudSyncAcceptedBase).toEqual(previousBase);
+      expect(await f.queue()).toEqual({ status: 'provenance_review_required' });
+      // Даже ошибочное ручное удаление marker не связывает старую отметку с новой очередью.
+      delete f.state.settings.cloudSyncPendingApply;
+      await f.storage.saveNow();
+      expect(await f.queue()).toEqual({ status: 'accepted_base_mismatch' });
+      expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    },
+    30_000
+  );
+
+  it.each([
+    ['prepared', 'not_sent', 'deferred'],
+    ['attempting', 'unknown', 'verification_pending']
+  ])(
+    'сохраняет очередь %s при попытке принятия потомка',
+    async (phase, uploadStatus, firstOutcome) => {
+      const f = await publicationFixture(provider);
+      const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+      const { openConnectedPublicationContext } = await import('../js/modules/cloudSync/connectedPublication.js');
+      const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+      f.state.characters[0].notes = 'НЕОТПРАВЛЕННАЯ ПРАВКА';
+      await f.storage.saveNow();
+      expect(await f.queue()).toEqual({ status: 'queued' });
+      // prepared означает точно не начатую запись, attempting — неизвестный исход.
+      // В обоих случаях повторное принятие другой основы не должно терять запись.
+      f.cloud.session.upload.mockResolvedValueOnce({ status: uploadStatus });
+      expect(await f.send()).toEqual({ status: firstOutcome });
+      const context = await openConnectedPublicationContext({
+        provider,
+        invoke: f.fake.invoke,
+        cryptoSource: webcrypto
+      });
+      const head = await context.queue(f.cloud.session).inspectLinearHead(context.pins);
+      expect(head.nextPhase).toBe(phase);
+      const stored = structuredClone(f.fake.queue(provider));
+      const remote = await incomingVersion(f, provider, root, 'ЧУЖАЯ ПРАВКА');
+      expect(await reconcilePin(f, provider, remote)).toEqual({ status: 'queue_not_empty' });
+      expect(f.fake.queue(provider)).toEqual(stored);
+      expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+      expect(await f.send()).toEqual({
+        status: phase === 'attempting' ? 'verification_pending' : 'provenance_review_required'
+      });
+      expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+      expect(f.fake.queue(provider)).toEqual(stored);
+    },
+    30_000
+  );
+
   it('не уничтожает неотправленную локальную версию при попытке принятия потомка', async () => {
     const f = await publicationFixture(provider);
     const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');

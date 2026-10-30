@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createHash, webcrypto } from 'node:crypto';
 import { normalizeState } from '../js/core/state.js';
-import { decryptSnapshot, generateSyncId } from '../js/modules/cloudSync/envelope.js';
+import { decryptSnapshot, encryptSnapshot, generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { createKeyBundle } from '../js/modules/cloudSync/keyBundle.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
-import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
+import { MAX_HISTORY_VERSIONS, sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
 
@@ -67,6 +67,44 @@ function fakeStore() {
     }),
     loseNextResponse() {
       loseNext = true;
+    },
+    // Намеренно пересоздаём допустимый шифротекст с повреждённой внутренней
+    // моделью, чтобы проверить валидатор, а не только защиту GCM.
+    async corruptPlaintext(change) {
+      const material = await cryptoSource.subtle.importKey(
+        'raw',
+        Buffer.from(keys.dataKey.slice(4), 'base64url'),
+        'HKDF',
+        false,
+        ['deriveBits']
+      );
+      const bits = await cryptoSource.subtle.deriveBits(
+        {
+          name: 'HKDF',
+          hash: 'SHA-256',
+          salt: new TextEncoder().encode('tvinoferma-durable-outbox-key-v1'),
+          info: new TextEncoder().encode(JSON.stringify([saved.datasetId, saved.deviceId, saved.slotId]))
+        },
+        material,
+        256
+      );
+      const recoveryKey = `TF1-${Buffer.from(bits).toString('base64url')}`;
+      const plain = await decryptSnapshot({
+        envelope: JSON.parse(saved.record),
+        recoveryKey,
+        expectedDatasetId: saved.datasetId,
+        cryptoSource
+      });
+      change(plain);
+      const next = await encryptSnapshot({
+        snapshot: plain,
+        recoveryKey,
+        datasetId: saved.datasetId,
+        versionId: saved.revisionId,
+        cryptoSource
+      });
+      const record = JSON.stringify(next);
+      saved = { ...saved, record, sha256: digest(record) };
     },
     raw: () => structuredClone(saved)
   };
@@ -359,6 +397,124 @@ describe.each(['google', 'yandex'])('%s: последующая локальна
     expect((await a.queue(restarted, snapshot('после перезапуска'))).status).toBe('coalesced');
     expect(a.session.upload).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['потеря корня', value => value.entries[0].lineage.shift()],
+    ['повторный предок', value => (value.entries[0].lineage[1] = { ...value.entries[0].lineage[0] })],
+    ['подмена отпечатка родителя', value => (value.entries[0].lineage[1].sha256 = 'f'.repeat(64))],
+    ['повреждённая квитанция', value => (value.confirmedReceipts[0].sha256 = 'f'.repeat(64))],
+    ['неверное количество квитанций', value => (value.entries[0].priorReceiptCount = 999)]
+  ])('блокирует повреждённую принятую линию: %s', async (_name, corrupt) => {
+    const a = setup(provider);
+    const box = await a.confirmedRoot();
+    const first = await sealHistoryVersion({
+      publicSnapshot: snapshot('ОБЛАЧНОЕ ИЗМЕНЕНИЕ'),
+      parent: root.pin,
+      recoveryKey: keys.dataKey,
+      datasetId,
+      versionId: id(),
+      keyBundle: keys.bundle,
+      keyPin: keys.pin,
+      cryptoSource
+    });
+    const second = await sealHistoryVersion({
+      publicSnapshot: snapshot('ОБЛАЧНОЕ ИЗМЕНЕНИЕ'),
+      parent: first.pin,
+      recoveryKey: keys.dataKey,
+      datasetId,
+      versionId: id(),
+      keyBundle: keys.bundle,
+      keyPin: keys.pin,
+      cryptoSource
+    });
+    const line = [root, first, second];
+    const review = await prepareCloudReview({
+      provider,
+      datasetId,
+      dataKey: keys.dataKey,
+      rootPin: root.pin,
+      knownPins: [root.pin],
+      localSnapshot: snapshot('ОБЛАЧНОЕ ИЗМЕНЕНИЕ'),
+      localSavedAt: null,
+      cryptoSource,
+      session: {
+        listWithDates: async () => ({
+          status: 'listed',
+          versions: line.map(value => ({ versionId: value.pin.versionId, modifiedAt: null }))
+        }),
+        read: async versionId => ({
+          status: 'found',
+          envelope: line.find(value => value.pin.versionId === versionId)?.envelope
+        })
+      }
+    });
+    const proof = review.prepareExactAdoption(second.pin, {});
+    expect((await box.adoptReviewedBase({ ...a.pins, proof })).status).toBe('adopted');
+    expect((await a.inspect(a.open())).confirmedPin).toEqual(second.pin);
+    await a.store.corruptPlaintext(corrupt);
+    const stored = a.store.raw();
+    expect(await a.inspect(a.open())).toEqual({ status: 'journal_blocked' });
+    expect(await a.queue(a.open(), snapshot('НЕ ДОЛЖНА СОХРАНИТЬСЯ'))).toEqual({ status: 'journal_blocked' });
+    expect(a.store.raw()).toEqual(stored);
+    expect(a.session.upload).toHaveBeenCalledTimes(1); // только корень
+  });
+
+  it('учитывает всю принятую линию при пределе истории, а не только локальные квитанции', async () => {
+    const versions = [root];
+    for (let i = 1; i < MAX_HISTORY_VERSIONS; i++) {
+      versions.push(
+        await sealHistoryVersion({
+          publicSnapshot: snapshot('ОБЛАЧНАЯ ЛИНИЯ'),
+          parent: versions.at(-1).pin,
+          recoveryKey: keys.dataKey,
+          datasetId,
+          versionId: id(),
+          keyBundle: keys.bundle,
+          keyPin: keys.pin,
+          cryptoSource
+        })
+      );
+    }
+    async function adoptionFor(line) {
+      const byId = new Map(line.map(version => [version.pin.versionId, version.envelope]));
+      const review = await prepareCloudReview({
+        provider,
+        datasetId,
+        dataKey: keys.dataKey,
+        rootPin: root.pin,
+        knownPins: [root.pin],
+        localSnapshot: snapshot('ОБЛАЧНАЯ ЛИНИЯ'),
+        localSavedAt: null,
+        cryptoSource,
+        session: {
+          listWithDates: async () => ({
+            status: 'listed',
+            versions: line.map(version => ({ versionId: version.pin.versionId, modifiedAt: null }))
+          }),
+          read: async versionId => ({ status: 'found', envelope: byId.get(versionId) })
+        }
+      });
+      expect(review.status).toBe('ready_for_review');
+      return review.prepareExactAdoption(line.at(-1).pin, {});
+    }
+    // 127 подтверждённых версий: ещё одну можно поставить и заменить до отправки.
+    const atBoundary = setup(provider);
+    const before = await atBoundary.confirmedRoot();
+    const proof127 = await adoptionFor(versions.slice(0, MAX_HISTORY_VERSIONS - 1));
+    expect((await before.adoptReviewedBase({ ...atBoundary.pins, proof: proof127 })).status).toBe('adopted');
+    expect((await atBoundary.queue(before, snapshot('ПОСЛЕДНЯЯ ДОПУСТИМАЯ'))).status).toBe('queued');
+    expect((await atBoundary.queue(before, snapshot('ЗАМЕНА ЕЩЁ НЕ ОТПРАВЛЕННОЙ'))).status).toBe('coalesced');
+
+    // 128 подтверждённых версий: новый потомок не должен занимать очередь.
+    const full = setup(provider);
+    const after = await full.confirmedRoot();
+    const proof128 = await adoptionFor(versions);
+    expect((await after.adoptReviewedBase({ ...full.pins, proof: proof128 })).status).toBe('adopted');
+    const stored = full.store.raw();
+    expect(await full.queue(after, snapshot('СВЕРХ ПРЕДЕЛА'))).toEqual({ status: 'history_limit' });
+    expect(full.store.raw()).toEqual(stored);
+    expect(full.session.upload).toHaveBeenCalledTimes(1); // только корень
+  }, 30_000);
 
   it('сжимает подтверждённые версии, сохраняя последний конверт и все отпечатки', async () => {
     const a = setup(provider);

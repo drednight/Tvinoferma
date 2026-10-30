@@ -1100,7 +1100,15 @@ export function createDurableCloudOutbox(options) {
           if (!currentIds.has(id)) return response('deletions_need_review');
           if (currentIds.get(id) !== type) return response('identity_conflict');
         }
-        const total = current.state.confirmedReceipts.length + current.state.entries.length + (replace ? 0 : 1);
+        // В v4 принятые облачные предки не обязательно имеют локальные квитанции.
+        // Считаем уникальные известные версии вместе с ожидающими, иначе после
+        // длинной принятой линии можно поставить в очередь заведомо 129-ю версию.
+        const confirmedPins = uniquePins([
+          ...(current.state.version === REBASED_VERSION ? view.adopted.row.lineage : []),
+          ...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })),
+          ...view.versions.filter(version => finalEntry(version.row)).map(version => version.pin)
+        ]);
+        const total = confirmedPins.length + view.pendingCount + (replace ? 0 : 1);
         if (total > MAX_HISTORY_VERSIONS) return response('history_limit');
         const versionId = distinctId(crypto, [
           binding.datasetId,

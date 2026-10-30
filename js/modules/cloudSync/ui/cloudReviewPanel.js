@@ -118,7 +118,7 @@ function description(entry) {
   const label = entry.label ? ` · ${entry.label}` : '';
   if (entry.kind === 'only_cloud') return `${section}${label} — только на диске`;
   if (entry.kind === 'only_local') return `${section}${label} — только на этом ПК, не удаляется`;
-  if (entry.kind === 'changed') return `${section}${label} — отличается`;
+  if (entry.kind === 'changed') return `${section}${label} — отличается; при выборе облачные поля заменят местные`;
   if (entry.kind === 'identity_review') return `${section}${label} — требуется сопоставить записи`;
   if (entry.kind === 'order_changed') return `${section} — отличается порядок; перенос порядка пока недоступен`;
   if (entry.kind === 'settings_changed')
@@ -400,7 +400,7 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        `Применить выбранные записи и настройки (${chosen.length})? Будет создана копия локального файла. Записи выбираются целиком; контакты и пароли не переносятся. Отправка блокируется до согласования. При полном совпадении с одной облачной версией его можно подтвердить отдельно.`
+        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Автоматического объединения и разрешения конфликтов пока нет. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
       );
     } catch {
       approved = false;

@@ -111,6 +111,7 @@ describe('интерфейс проверенного сравнения', () =>
     expect(el('cloud-review-list').textContent).toContain(hostile);
     expect(el('cloud-review-list').querySelector('img')).toBeNull();
     expect(el('cloud-review-list').textContent).toContain('только на этом ПК, не удаляется');
+    expect(el('cloud-review-list').textContent).toContain('облачные поля заменят местные');
     expect(el('cloud-review-list').textContent).toContain('требуется сопоставить');
     const boxes = [...el('cloud-review-list').querySelectorAll('input[type=checkbox]')];
     expect(boxes).toHaveLength(3);
@@ -169,6 +170,8 @@ describe('интерфейс проверенного сравнения', () =>
     boxes[2].checked = true;
     click('cloud-review-apply');
     await vi.waitFor(() => expect(f.cancel).toHaveBeenCalledOnce());
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('неотправленные локальные правки'));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('разрешения конфликтов пока нет'));
     expect(f.commit).not.toHaveBeenCalled();
     expect(el('cloud-review-status').textContent).toContain('отменено');
     const event = vi.fn();
