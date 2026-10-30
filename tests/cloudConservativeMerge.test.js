@@ -414,10 +414,16 @@ describe('консервативное трёхстороннее объедин
     expect(plan.status).toBe('prepared');
     expect(plan.snapshot().sections.marathons.records[0].fields.tasks[0].title).toBe('Изменённое');
     const g = fixture();
-    const id = g.cloud.sections.characters.order.active[0];
-    g.cloud.sections.characters.records[0].archived = true;
-    g.cloud.sections.characters.order.active = [];
-    g.cloud.sections.characters.order.archived = [id];
+    g.localState.characters.push({
+      ...structuredClone(g.localState.characters[0]),
+      id: 'second',
+      nick: 'Второй',
+      syncId: generateSyncId(webcrypto)
+    });
+    g.base = buildPublicSnapshot(g.localState, { settingsSelections: ['appearance'] });
+    g.local = structuredClone(g.base);
+    g.cloud = structuredClone(g.base);
+    g.cloud.sections.characters.order.active.reverse();
     expect(merge(g).status).toBe('structure_or_deletion_unsupported');
   });
 

@@ -146,6 +146,31 @@ function appendedOrders(base, next) {
     Object.keys(base).every(key => Object.hasOwn(next, key) && appendedOrders(base[key], next[key]))
   );
 }
+// A character moving between active/archive keeps the SAME identity. Only the
+// residents' relative order is retained; transfers and new characters must be
+// appended, exactly like archiveCharacters/restoreCharacter. No ID may vanish.
+function characterOrderTransition(previous, next) {
+  const after = records(next, 'characters');
+  return ['active', 'archived'].every(bucket => {
+    const archived = bucket === 'archived';
+    const staying = previous.sections.characters.order[bucket].filter(id => after.get(id)?.archived === archived);
+    return appendedOrders(staying, next.sections.characters.order[bucket]);
+  });
+}
+function mergeCharacterOrder(base, local, cloud, merged, conflicts) {
+  const targets = records(merged, 'characters');
+  const result = {};
+  for (const bucket of ['active', 'archived']) {
+    const archived = bucket === 'archived';
+    const filter = snapshot =>
+      snapshot.sections.characters.order[bucket].filter(id => targets.get(id)?.archived === archived);
+    // Membership comes from the merged record, never from a missing order ID.
+    const order = mergeAppendedOrder(filter(base), filter(local), filter(cloud), conflicts, 'characters', [bucket]);
+    if (!order) return null;
+    result[bucket] = order;
+  }
+  return result;
+}
 // Both inputs have already passed appendedOrders: preserve the existing order
 // and each side's new relative order. A shared prefix is unambiguous; further
 // overlapping additions may impose contradictory ordering and must be reviewed.
@@ -191,7 +216,8 @@ function noRemovedValues(before, after) {
 }
 
 /**
- * Строгая проверка одного перехода: прежние sync-ID и порядок сохраняются,
+ * Строгая проверка одного перехода: прежние sync-ID сохраняются. Персонаж может
+ * перейти между активными и архивными без перестановки оставшихся; переносы и
  * новые записи допустимы только в конце. Копируемые значения могут заменяться;
  * нет разрешения на удаление sync-сущностей или запись state.
  * @param {any} previous
@@ -204,7 +230,11 @@ export function conservativeTransition(previous, next) {
   if (!retainsIds(beforeIds, afterIds)) return false;
   if (
     !equal(previous.sections.preferences.selections, next.sections.preferences.selections) ||
-    SECTIONS.some(section => !appendedOrders(previous.sections[section].order, next.sections[section].order))
+    SECTIONS.some(section =>
+      section === 'characters'
+        ? !characterOrderTransition(previous, next)
+        : !appendedOrders(previous.sections[section].order, next.sections[section].order)
+    )
   )
     return false;
   return noRemovedValues(previous, next);
@@ -335,13 +365,16 @@ function planWithoutPlannerDeletions(options) {
     const baseRecords = records(base, section);
     const localRecords = records(local, section);
     const cloudRecords = records(cloud, section);
-    const order = mergeAppendedOrder(
-      base.sections[section].order,
-      local.sections[section].order,
-      cloud.sections[section].order,
-      conflicts,
-      section
-    );
+    const order =
+      section === 'characters'
+        ? null
+        : mergeAppendedOrder(
+            base.sections[section].order,
+            local.sections[section].order,
+            cloud.sections[section].order,
+            conflicts,
+            section
+          );
     if (order) merged.sections[section].order = order;
     for (const target of merged.sections[section].records) {
       const original = baseRecords.get(target.id);
@@ -419,6 +452,10 @@ function planWithoutPlannerDeletions(options) {
       // отдельно при материализации. Вложенные значения не получают sync-ID.
       merged.sections[section].records.push(structuredClone(incoming));
       chosen.push({ section, id });
+    }
+    if (section === 'characters') {
+      const characterOrder = mergeCharacterOrder(base, local, cloud, merged, conflicts);
+      if (characterOrder) merged.sections.characters.order = characterOrder;
     }
   }
   const finance = mergeFields(
