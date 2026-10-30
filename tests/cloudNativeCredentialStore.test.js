@@ -3,6 +3,7 @@ import {
   createNativeCredentialInstaller,
   createNativeGoogleCredentialStore,
   forgetNativeCredential,
+  forgetUnboundNativeCredential,
   inspectNativeCredential,
   readNativeCredentialBinding
 } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
@@ -324,5 +325,61 @@ describe('явное локальное забывание', () => {
     expect(await forgetNativeCredential({ provider: 'yandex', invoke: n.invoke, confirmed: true })).toBe(true);
     expect(n.invoke).toHaveBeenCalledOnce();
     expect(n.invoke).toHaveBeenCalledWith('cloud_credential_forget', { provider: 'yandex', confirmed: true });
+  });
+});
+
+describe('проверяемое локальное отключение без pin набора', () => {
+  it.each(['google', 'yandex'])(
+    '%s: отправляет только подтверждение и проверенный slot, не токены и не ключ',
+    async provider => {
+      for (const status of ['forgotten', 'blocked', 'mismatch']) {
+        const invoke = vi.fn(async () => ({ status }));
+        expect(await forgetUnboundNativeCredential({ provider, slotId: SLOT, invoke, confirmed: true })).toBe(status);
+        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(invoke).toHaveBeenCalledWith('cloud_credential_forget_if_unbound', {
+          provider,
+          expectedSlot: SLOT,
+          confirmed: true
+        });
+        assertNoPrivate(invoke.mock.calls);
+      }
+    }
+  );
+
+  it('без явного подтверждения и при неверных аргументах не вызывает IPC', async () => {
+    const invoke = vi.fn();
+    const args = { provider: 'google', slotId: SLOT, invoke, confirmed: true };
+    for (const input of [
+      { ...args, confirmed: false },
+      { ...args, provider: 'other' },
+      { ...args, slotId: `${SLOT}\n` },
+      { ...args, slotId: 'not-a-uuid' },
+      { ...args, timeoutMs: 1 }
+    ]) {
+      await expect(forgetUnboundNativeCredential(input)).rejects.toThrow();
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('ошибка, таймаут и неожиданный ответ не раскрывают секреты и не вызывают повтор', async () => {
+    const args = { provider: 'google', slotId: SLOT, confirmed: true, timeoutMs: 20 };
+    for (const invoke of [
+      vi.fn(async () => ({ status: 'forgotten', record: REFRESH })),
+      vi.fn(async () => ({ status: 'empty' })),
+      vi.fn(async () => {
+        throw new Error(`PRIVATE_ERROR ${REFRESH}`);
+      }),
+      vi.fn(() => new Promise(() => {}))
+    ]) {
+      let error;
+      try {
+        await forgetUnboundNativeCredential({ ...args, invoke });
+      } catch (value) {
+        error = value;
+      }
+      expect(error).toBeInstanceOf(Error);
+      assertNoPrivate(String(error));
+      expect(invoke).toHaveBeenCalledOnce();
+    }
   });
 });

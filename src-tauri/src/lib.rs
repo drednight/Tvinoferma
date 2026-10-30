@@ -35,6 +35,7 @@ mod cloud_credential_records;
 mod cloud_credential_service;
 #[cfg(windows)]
 mod cloud_credential_store;
+#[cfg(windows)]
 mod cloud_dataset_binding;
 mod cloud_disk_transport;
 #[cfg(windows)]
@@ -202,12 +203,13 @@ pub fn run() {
             commands::secrets::secrets_get_many,
             commands::secrets::secrets_set_many,
             commands::secrets::secrets_delete_many,
-            // Экспериментальное локальное хранилище; UI синхронизации к нему не подключён.
+            // Экспериментальная локальная авторизация; обмен файлами ещё не подключён.
             commands::cloud_credentials::cloud_credential_read,
             commands::cloud_credentials::cloud_credential_binding_read,
             commands::cloud_credentials::cloud_credential_install,
             commands::cloud_credentials::cloud_credential_compare_exchange,
             commands::cloud_credentials::cloud_credential_forget,
+            commands::cloud_credentials::cloud_credential_forget_if_unbound,
             // Экспериментальный ключ данных; настройка в UI ещё не реализована.
             commands::cloud_dataset_binding::cloud_dataset_binding_read,
             commands::cloud_dataset_binding::cloud_dataset_binding_install,
@@ -220,7 +222,7 @@ pub fn run() {
             commands::cloud_outbox::cloud_outbox_read,
             commands::cloud_outbox::cloud_outbox_install,
             commands::cloud_outbox::cloud_outbox_compare_exchange,
-            // Разовая диагностика OAuth; синхронизация пока не включена.
+            // Диагностика и первый вход OAuth; синхронизация пока не включена.
             commands::cloud_oauth::cloud_oauth_callback_begin,
             commands::cloud_oauth::cloud_oauth_callback_poll,
             commands::cloud_oauth::cloud_oauth_callback_cancel,

@@ -1,7 +1,7 @@
 // @ts-check
-// Экспериментальный мост к локальному Windows Credential Manager. Не подключён
-// к UI или реальным токенам: сначала нужны настоящие сборки, испытания ОС,
-// восстановление и проверка провайдеров. Никакого localStorage/fallback.
+// Экспериментальный мост к локальному Windows Credential Manager. Сценарий
+// первого доступа вызывается из UI, но настоящие сборки, провайдеры и безопасное
+// восстановление после сбоев не проверены. Никакого localStorage/fallback.
 // Записи, аргументы IPC и исходные ошибки содержат секреты: не журналировать.
 import { object } from '../exportSchema.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
@@ -318,6 +318,40 @@ export function createNativeGoogleCredentialStore(options) {
       }
     }
   });
+}
+
+/**
+ * Удаляет только проверенную локальную запись доступа, если в тот же момент
+ * нет pin набора. Native выполняет проверку pin и slot под общим lock. Не
+ * удаляет ключи/файлы и не отзывает разрешение у провайдера. `empty` pin не
+ * доказывает отсутствие старого облака. Ошибка или таймаут после вызова могут
+ * означать частичный/неизвестный результат: автоматически повторять нельзя.
+ * @param {{provider:'google'|'yandex',slotId:string,invoke:(command:string,args:any)=>Promise<any>,confirmed:boolean,timeoutMs?:number}} options
+ * @returns {Promise<'forgotten'|'blocked'|'mismatch'>}
+ */
+export async function forgetUnboundNativeCredential(options) {
+  try {
+    const input = object(options, ['provider', 'slotId', 'invoke', 'confirmed'], ['timeoutMs']);
+    if (
+      !validProvider(input.provider) ||
+      !validCredentialId(input.slotId) ||
+      typeof input.invoke !== 'function' ||
+      input.confirmed !== true
+    )
+      throw failed();
+    const reply = response(
+      await callWithin(
+        input.invoke,
+        'cloud_credential_forget_if_unbound',
+        { provider: input.provider, expectedSlot: input.slotId, confirmed: true },
+        timeoutOf(input.timeoutMs)
+      ),
+      ['forgotten', 'blocked', 'mismatch']
+    );
+    return reply.status;
+  } catch {
+    throw failed();
+  }
 }
 
 /**

@@ -1,6 +1,6 @@
-//! Экспериментальный IPC локального журнала OAuth. Пока не подключён к UI или
-//! реальным OAuth-токенам. Только главное окно и только Windows; остальные ОС
-//! не получают небезопасный fallback. Никаких исходных ошибок или данных в логах.
+//! Экспериментальный IPC локального журнала OAuth подключён к первому входу в UI,
+//! но настоящие OAuth-токены и сборка Tauri/Windows ещё не испытаны. Только главное
+//! окно и Windows; остальные ОС не получают небезопасный fallback. Данные не логировать.
 
 use serde::Serialize;
 use tauri::AppHandle;
@@ -44,6 +44,9 @@ enum Action {
         next: String,
     },
     Forget,
+    ForgetIfUnbound {
+        expected_slot: String,
+    },
 }
 
 async fn perform(
@@ -134,6 +137,23 @@ pub async fn cloud_credential_forget(
         return Err(ERROR.into());
     }
     perform(app, provider, Action::Forget).await
+}
+
+/// Безопасное локальное отключение для пользовательского интерфейса. Оно
+/// запрещено, если закреплён или повреждён pin набора, и сверяет исходный slot.
+/// Отзыв разрешения у провайдера и удаление файлов в облаке не выполняются.
+#[tauri::command]
+pub async fn cloud_credential_forget_if_unbound(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    provider: String,
+    expected_slot: String,
+    confirmed: bool,
+) -> Result<CloudCredentialReply, String> {
+    if window.label() != "main" || !confirmed {
+        return Err(ERROR.into());
+    }
+    perform(app, provider, Action::ForgetIfUnbound { expected_slot }).await
 }
 
 #[cfg(not(windows))]
@@ -277,9 +297,11 @@ mod windows_backend {
                 Err(_) => Err(ERROR.to_owned()),
             },
             Action::Install { slot_id, record } => {
-                cloud_credential_binding::install(&mut vault, provider, &slot_id, &record)
-                    .map(outcome)
-                    .map_err(|_| ERROR.to_owned())
+                crate::cloud_dataset_binding::install_credential_if_unbound(
+                    &mut vault, provider, &slot_id, &record,
+                )
+                .map(outcome)
+                .map_err(|_| ERROR.to_owned())
             }
             Action::CompareExchange {
                 slot_id,
@@ -293,6 +315,15 @@ mod windows_backend {
             Action::Forget => cloud_credential_binding::forget(&mut vault, provider)
                 .map(outcome)
                 .map_err(|_| ERROR.to_owned()),
+            Action::ForgetIfUnbound { expected_slot } => {
+                crate::cloud_dataset_binding::forget_credential_if_unbound(
+                    &mut vault,
+                    provider,
+                    &expected_slot,
+                )
+                .map(outcome)
+                .map_err(|_| ERROR.to_owned())
+            }
         };
         // Даже ошибка после записи не означает, что старое содержимое осталось.
         lock.verify().map_err(|_| ERROR.to_owned())?;
@@ -480,8 +511,21 @@ mod windows_backend {
                 Ok(Pair::Empty)
             ));
             assert_eq!(
-                cloud_credential_binding::install(&mut first, Provider::Google, SLOT, &before),
+                crate::cloud_dataset_binding::install_credential_if_unbound(
+                    &mut first,
+                    Provider::Google,
+                    SLOT,
+                    &before
+                ),
                 Ok(Outcome::Installed)
+            );
+            assert_eq!(
+                crate::cloud_dataset_binding::forget_credential_if_unbound(
+                    &mut first,
+                    Provider::Google,
+                    REV1
+                ),
+                Ok(Outcome::Mismatch)
             );
             assert!(
                 matches!(cloud_credential_binding::read(&mut second, Provider::Google),
@@ -504,6 +548,23 @@ mod windows_backend {
             );
             assert!(
                 matches!(crate::cloud_dataset_binding::read(&mut second, Provider::Google), Ok(crate::cloud_dataset_binding::DatasetInspection::Ready(value)) if value == dataset_pin)
+            );
+            assert_eq!(
+                crate::cloud_dataset_binding::install_credential_if_unbound(
+                    &mut second,
+                    Provider::Google,
+                    SLOT,
+                    &before
+                ),
+                Ok(Outcome::Blocked)
+            );
+            assert_eq!(
+                crate::cloud_dataset_binding::forget_credential_if_unbound(
+                    &mut second,
+                    Provider::Google,
+                    SLOT
+                ),
+                Ok(Outcome::Blocked)
             );
             let pin = second
                 .read("cloud-account-binding-v1:google:pin")
@@ -548,6 +609,28 @@ mod windows_backend {
             );
             assert!(matches!(
                 cloud_credential_binding::read(&mut first, Provider::Google),
+                Ok(Pair::Empty)
+            ));
+            let yandex = format!("{{\"format\":\"tvinoferma-yandex-oauth-access\",\"version\":1,\"slotId\":\"{SLOT}\",\"clientId\":\"0123456789abcdef\",\"accountKey\":\"synthetic-account\",\"revision\":\"{REV1}\",\"accessToken\":\"synthetic-token\",\"expiresAt\":1800000000000}}");
+            assert_eq!(
+                crate::cloud_dataset_binding::install_credential_if_unbound(
+                    &mut first,
+                    Provider::Yandex,
+                    SLOT,
+                    &yandex
+                ),
+                Ok(Outcome::Installed)
+            );
+            assert_eq!(
+                crate::cloud_dataset_binding::forget_credential_if_unbound(
+                    &mut second,
+                    Provider::Yandex,
+                    SLOT
+                ),
+                Ok(Outcome::Forgotten)
+            );
+            assert!(matches!(
+                cloud_credential_binding::read(&mut first, Provider::Yandex),
                 Ok(Pair::Empty)
             ));
         }

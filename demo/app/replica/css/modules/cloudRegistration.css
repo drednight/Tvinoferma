@@ -84,6 +84,36 @@
 .cloud-registration-account small {
   line-height: 1.45;
 }
+.cloud-connection {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(150, 150, 150, 0.35);
+  border-radius: 10px;
+}
+.cloud-connection h4,
+.cloud-connection h5,
+.cloud-connection p {
+  margin: 0;
+  line-height: 1.5;
+}
+.cloud-connection-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  line-height: 1.45;
+}
+.cloud-connection-ack input {
+  flex: 0 0 auto;
+  margin-top: 0.3em;
+}
+.cloud-connection-disconnect {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(150, 150, 150, 0.35);
+}
 .cloud-registration-future {
   padding-top: 4px;
 }

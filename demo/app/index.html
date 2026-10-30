@@ -485,11 +485,11 @@
           <div id="demo-cloud-sync" aria-label="Демонстрация синхронизации между компьютерами"></div>
           <details class="panel fold cloud-registration" id="demo-registration-preview">
             <summary>
-              <h3>Проверка регистрации · текущий этап</h3>
-              <p class="muted">Внешний вид экспериментальной проверки в настоящем приложении</p>
+              <h3>Проверка регистрации и доступа · текущий этап</h3>
+              <p class="muted">Внешний вид экспериментальных настроек в настоящем приложении</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Здесь только пример.</strong> В настоящем приложении проверка регистрации ещё экспериментальная: она не подключает диск, не сохраняет токены и не передаёт данные синхронизации. Реальные сервисы и настольная сборка ещё не испытаны.</p>
+              <p class="cloud-registration-warning"><strong>Здесь только пример.</strong> Разовая проверка не сохраняет токены. В настоящем приложении отдельно добавляется экспериментальное сохранение доступа, но синхронизация файлов ещё не работает. Реальные сервисы и настольная сборка ещё не испытаны.</p>
               <p>В настоящей проверке сервис может сохранить выданное разрешение даже после отмены. Отзыв доступа может отключить и другие устройства этой регистрации. В демо браузер авторизации не открывается, разрешение не запрашивается.</p>
               <div class="cloud-registration-fields">
                 <label for="demo-registration-provider">Облачный диск<select class="input" id="demo-registration-provider" disabled><option>Яндекс Диск</option><option>Google Диск</option></select></label>
@@ -499,6 +499,21 @@
               <p class="cloud-registration-config">Яндекс: Redirect URI <code dir="ltr">http://127.0.0.1:37181/oauth/cloud/callback</code> и разрешение <code dir="ltr">cloud_api:disk.app_folder</code>. При несовпадении сервис может использовать другой зарегистрированный адрес.</p>
               <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Проверить регистрацию</button></div>
               <p class="cloud-registration-status">Демо: проверка недоступна, диск не подключён.</p>
+              <section class="cloud-connection" aria-labelledby="demo-connection-title">
+                <h4 id="demo-connection-title">Сохранить доступ на этом ПК · экспериментально</h4>
+                <p>В настоящем приложении после входа и сверки аккаунта запись доступа сохраняется в диспетчере учётных данных Windows. Файлы не проверяются и не изменяются; синхронизация не включается. В демо ничего не сохраняется.</p>
+                <p class="cloud-registration-status">Демо: локальная запись не проверяется.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" disabled>Проверить локальную запись</button></div>
+                <label class="cloud-connection-ack"><input type="checkbox" disabled /> <span>Я понимаю, что доступ будет сохранён только на этом ПК, а старое облако не проверяется и синхронизация ещё не работает.</span></label>
+                <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Сохранить доступ</button></div>
+                <p class="cloud-registration-status">Демо: вход недоступен.</p>
+                <div class="cloud-connection-disconnect">
+                  <h5>Забыть доступ на этом ПК</h5>
+                  <p>В настоящем приложении действие не удаляет облачные файлы, ключи или разрешение у сервиса и блокируется при существующей привязке набора.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" disabled /> <span>Я хочу удалить сохранённый доступ на этом ПК и понимаю, что разрешение у сервиса останется.</span></label>
+                  <button type="button" class="btn ghost" disabled>Забыть локальный доступ</button>
+                </div>
+              </section>
               <div class="cloud-registration-future" aria-label="Функции синхронизации пока недоступны"><button type="button" class="btn" disabled>Отправить на диск</button><button type="button" class="btn ghost" disabled>Проверить обновления</button></div>
             </div>
           </details>

@@ -296,3 +296,45 @@ describe('полный сброс и очередь реального storage.j
     expect(mocks.invoke.mock.calls.filter(([command]) => command === 'factory_reset')).toHaveLength(1);
   });
 });
+
+describe('сброс и пользовательские операции облачного доступа в одном JS-контексте', () => {
+  it('не начинает сброс, пока вход/забывание могут записать локальный доступ', async () => {
+    const { beginCloudCredentialOperation } = await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const operation = beginCloudCredentialOperation();
+    expect(await reset.performFactoryReset(mocks.state, reset.prepareFactoryReset(mocks.state))).toBe(false);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(started).toBe(0);
+    expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('операции с облачным доступом'), 'error', 60000);
+    operation.finish(false);
+    expect(await reset.performFactoryReset(mocks.state, reset.prepareFactoryReset(mocks.state))).toBe(true);
+    expect(mocks.invoke).toHaveBeenCalledWith('factory_reset', expect.any(Object));
+    // После отправки сброса новые операции запрещены вплоть до перезапуска.
+    expect(() => beginCloudCredentialOperation()).toThrow();
+  });
+
+  it('блокирует новый вход до первого await сброса и снимает барьер при отказе до IPC', async () => {
+    const { beginCloudCredentialOperation } = await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const gate = deferred();
+    mocks.invoke.mockImplementation(command =>
+      command === 'load_state_raw' ? gate.promise : Promise.resolve(success())
+    );
+    const resetting = reset.performFactoryReset(mocks.state, reset.prepareFactoryReset(mocks.state));
+    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('load_state_raw'));
+    expect(() => beginCloudCredentialOperation()).toThrow();
+    mocks.state.characters[0].nick = 'изменено во время подтверждения';
+    gate.resolve('{"fictional":true}');
+    expect(await resetting).toBe(false);
+    expect(mocks.invoke.mock.calls.some(([command]) => command === 'factory_reset')).toBe(false);
+    const operation = beginCloudCredentialOperation();
+    operation.finish(false);
+  });
+
+  it('не начинает сброс после неизвестного исхода подключения даже если операция уже вернула управление', async () => {
+    const { beginCloudCredentialOperation } = await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const operation = beginCloudCredentialOperation();
+    operation.finish(true);
+    expect(await reset.performFactoryReset(mocks.state, reset.prepareFactoryReset(mocks.state))).toBe(false);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(started).toBe(0);
+  });
+});

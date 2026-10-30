@@ -185,6 +185,50 @@ pub(crate) fn install(
     }
 }
 
+/// Установка первого OAuth-доступа не должна создавать новый slot поверх
+/// сохранившейся или незавершённой привязки набора. Проверка и установка должны
+/// выполняться под тем же межпроцессным lock. Отсутствие pin не означает, что
+/// отсутствуют старые данные в облаке.
+pub(crate) fn install_credential_if_unbound(
+    vault: &mut impl CredentialVault,
+    provider: Provider,
+    slot_id: &str,
+    record: &str,
+) -> Result<Outcome, StoreError> {
+    match read(vault, provider)? {
+        DatasetInspection::Empty => {
+            cloud_credential_binding::install(vault, provider, slot_id, record)
+        }
+        DatasetInspection::Blocked | DatasetInspection::Ready(_) => Ok(Outcome::Blocked),
+    }
+}
+
+/// Забрать OAuth-доступ только когда pin набора действительно отсутствует и
+/// сохранённый slot всё ещё совпадает с тем, который пользователь проверял.
+/// Вызывающий удерживает тот же межпроцессный lock для всех этих проверок и
+/// удаления. Отсутствие pin не доказывает, что в облаке нет старых данных.
+/// Никакие ключи, облачные файлы или разрешения у провайдера здесь не удаляются.
+/// При ошибке во время удаления результат может быть частичным или неизвестным.
+pub(crate) fn forget_credential_if_unbound(
+    vault: &mut impl CredentialVault,
+    provider: Provider,
+    expected_slot: &str,
+) -> Result<Outcome, StoreError> {
+    if !valid_uuid(expected_slot) {
+        return Err(StoreError::Invalid);
+    }
+    match read(vault, provider)? {
+        DatasetInspection::Empty => {}
+        DatasetInspection::Blocked | DatasetInspection::Ready(_) => return Ok(Outcome::Blocked),
+    }
+    match cloud_credential_binding::read(vault, provider)? {
+        Pair::Ready { binding, .. } if !binding.pending && binding.slot_id == expected_slot => {}
+        Pair::Empty | Pair::Ready { .. } => return Ok(Outcome::Mismatch),
+        Pair::Blocked => return Ok(Outcome::Blocked),
+    }
+    cloud_credential_binding::forget(vault, provider)
+}
+
 /// Удаляет только локальный pin, в том числе повреждённый. Облако не затрагивается.
 pub(crate) fn forget(
     vault: &mut impl CredentialVault,

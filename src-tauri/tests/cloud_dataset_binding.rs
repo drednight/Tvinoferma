@@ -230,3 +230,174 @@ fn interrupted_forget_blocks_and_can_be_explicitly_completed() {
         Ok(DatasetInspection::Empty)
     ));
 }
+
+#[test]
+fn disconnect_requires_the_same_ready_account_and_preserves_key_state() {
+    for provider in [Provider::Google, Provider::Yandex] {
+        let mut vault = setup(provider);
+        let before = vault.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, "bad-slot"),
+            Err(StoreError::Invalid)
+        );
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, ROOT),
+            Ok(Outcome::Mismatch)
+        );
+        assert_eq!(vault.values, before);
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, ACCOUNT),
+            Ok(Outcome::Forgotten)
+        );
+        assert!(matches!(
+            cloud_credential_binding::read(&mut vault, provider),
+            Ok(cloud_credential_binding::Pair::Empty)
+        ));
+        // No dataset/key deletion, including the key shared with the other disk.
+        for (name, value) in before
+            .iter()
+            .filter(|(name, _)| name.contains(":key-state:"))
+        {
+            assert_eq!(vault.values.get(name), Some(value));
+        }
+        assert!(matches!(
+            cloud_dataset_binding::read(&mut vault, provider),
+            Ok(DatasetInspection::Empty)
+        ));
+        // A second request must not manufacture a fresh pending marker.
+        let after = vault.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, ACCOUNT),
+            Ok(Outcome::Mismatch)
+        );
+        assert_eq!(vault.values, after);
+    }
+}
+
+#[test]
+fn disconnect_blocks_present_or_incomplete_dataset_pins_without_touching_anything() {
+    for provider in [Provider::Google, Provider::Yandex] {
+        let mut vault = setup(provider);
+        let raw = pin(provider);
+        assert_eq!(
+            cloud_dataset_binding::install(&mut vault, provider, &raw),
+            Ok(Outcome::Installed)
+        );
+        let before = vault.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, ACCOUNT),
+            Ok(Outcome::Blocked)
+        );
+        assert_eq!(vault.values, before);
+        let pin_name = match provider {
+            Provider::Google => "cloud-dataset-binding-v1:google:pin",
+            Provider::Yandex => "cloud-dataset-binding-v1:yandex:pin",
+            Provider::KeyState => unreachable!(),
+        };
+        vault
+            .values
+            .insert(pin_name.to_string(), "incomplete".to_string());
+        let before = vault.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::forget_credential_if_unbound(&mut vault, provider, ACCOUNT),
+            Ok(Outcome::Blocked)
+        );
+        assert_eq!(vault.values, before);
+    }
+}
+
+#[test]
+fn disconnect_does_not_repair_a_damaged_or_incomplete_credential() {
+    let mut vault = setup(Provider::Google);
+    vault.values.insert(
+        "cloud-account-binding-v1:google:pin".into(),
+        "incomplete".into(),
+    );
+    let before = vault.values.clone();
+    assert_eq!(
+        cloud_dataset_binding::forget_credential_if_unbound(&mut vault, Provider::Google, ACCOUNT),
+        Ok(Outcome::Blocked)
+    );
+    assert_eq!(vault.values, before);
+}
+
+#[test]
+fn disconnect_failure_can_be_partial_and_must_not_be_retried_automatically() {
+    let mut vault = setup(Provider::Google);
+    vault.fail_at = Some(vault.writes + 2);
+    assert_eq!(
+        cloud_dataset_binding::forget_credential_if_unbound(&mut vault, Provider::Google, ACCOUNT),
+        Err(StoreError::Unavailable)
+    );
+    vault.fail_at = None;
+    assert!(matches!(
+        cloud_credential_binding::read(&mut vault, Provider::Google),
+        Ok(cloud_credential_binding::Pair::Blocked)
+    ));
+    let before = vault.values.clone();
+    assert_eq!(
+        cloud_dataset_binding::forget_credential_if_unbound(&mut vault, Provider::Google, ACCOUNT),
+        Ok(Outcome::Blocked)
+    );
+    assert_eq!(vault.values, before);
+}
+
+#[test]
+fn first_connection_requires_no_existing_or_incomplete_dataset_pin() {
+    for provider in [Provider::Google, Provider::Yandex] {
+        let mut vault = Vault::default();
+        assert_eq!(
+            cloud_dataset_binding::install_credential_if_unbound(
+                &mut vault,
+                provider,
+                ACCOUNT,
+                &credentials(provider)
+            ),
+            Ok(Outcome::Installed)
+        );
+        assert_eq!(
+            cloud_dataset_binding::install_credential_if_unbound(
+                &mut vault,
+                provider,
+                ACCOUNT,
+                &credentials(provider)
+            ),
+            Ok(Outcome::Occupied)
+        );
+        let mut bound = setup(provider);
+        assert_eq!(
+            cloud_dataset_binding::install(&mut bound, provider, &pin(provider)),
+            Ok(Outcome::Installed)
+        );
+        let before = bound.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::install_credential_if_unbound(
+                &mut bound,
+                provider,
+                ACCOUNT,
+                &credentials(provider)
+            ),
+            Ok(Outcome::Blocked)
+        );
+        assert_eq!(bound.values, before);
+        let pin_name = match provider {
+            Provider::Google => "cloud-dataset-binding-v1:google:pin",
+            Provider::Yandex => "cloud-dataset-binding-v1:yandex:pin",
+            Provider::KeyState => unreachable!(),
+        };
+        // A leftover or damaged pin must block creation even if credentials are absent.
+        let mut orphan = Vault::default();
+        orphan.values.insert(pin_name.into(), "incomplete".into());
+        let before = orphan.values.clone();
+        assert_eq!(
+            cloud_dataset_binding::install_credential_if_unbound(
+                &mut orphan,
+                provider,
+                ACCOUNT,
+                &credentials(provider)
+            ),
+            Ok(Outcome::Blocked)
+        );
+        assert_eq!(orphan.values, before);
+    }
+}

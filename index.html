@@ -464,11 +464,11 @@
           <details class="panel fold cloud-registration" id="cloud-registration-panel">
             <summary>
               <h3>☁️ Синхронизация между ПК</h3>
-              <p class="muted">В разработке · проверка регистрации облачного приложения</p>
+              <p class="muted">В разработке · проверка регистрации и сохранения доступа</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Синхронизация пока не работает.</strong> Проверка ниже не подключает диск, не сохраняет токены и не отправляет данные. Отправка, получение и применение обновлений ещё недоступны.</p>
-              <p>Можно попробовать проверить регистрацию через системный браузер. Сервис может сохранить выданное разрешение даже после отмены проверки; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа проверки с реальными сервисами ещё не подтверждена.</p>
+              <p class="cloud-registration-warning"><strong>Синхронизация пока не работает.</strong> Отправка, получение и применение обновлений ещё недоступны. Разовая проверка не сохраняет токены; отдельное экспериментальное сохранение доступа описано ниже.</p>
+              <p>Авторизация открывается в системном браузере. Сервис может сохранить выданное разрешение даже после отмены; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа с реальными сервисами и настольной сборкой ещё не подтверждена.</p>
               <form id="cloud-registration-form" autocomplete="off" novalidate>
                 <div class="cloud-registration-fields">
                   <label for="cloud-registration-provider">Облачный диск
@@ -478,7 +478,7 @@
                     <input class="input" id="cloud-registration-client" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="cloud-registration-client-hint" />
                   </label>
                 </div>
-                <p class="muted" id="cloud-registration-client-hint">Введите только открытый Client ID, не пароль, не Client Secret и не код авторизации. ID не сохраняется.</p>
+                <p class="muted" id="cloud-registration-client-hint">Введите только открытый Client ID, не пароль, не Client Secret и не код авторизации. Разовая проверка его не сохраняет; при отдельном сохранении доступа ID остаётся на этом ПК вместе с привязкой.</p>
                 <p class="cloud-registration-config" id="cloud-registration-yandex-hint">Яндекс: сверьте точный Redirect URI <code dir="ltr">http://127.0.0.1:37181/oauth/cloud/callback</code> и разрешение <code dir="ltr">cloud_api:disk.app_folder</code>. Если адрес не совпадает, сервис может использовать другой зарегистрированный адрес.</p>
                 <p class="cloud-registration-config" id="cloud-registration-google-hint" hidden>Google: OAuth-клиент типа Desktop app и разрешение <code dir="ltr">https://www.googleapis.com/auth/drive.file</code>; локальный порт выбирается автоматически.</p>
                 <div class="cloud-registration-actions">
@@ -491,6 +491,26 @@
                 <span id="cloud-registration-account-label"></span><bdi dir="ltr" id="cloud-registration-account-value"></bdi>
                 <small>Сверьте с выбранным аккаунтом в браузере. Это только проверка, привязка не сохранена.</small>
               </div>
+              <section class="cloud-connection" aria-labelledby="cloud-connection-title">
+                <h4 id="cloud-connection-title">Сохранить доступ на этом ПК · экспериментально</h4>
+                <p>После входа и сверки аккаунта запись доступа и Client ID сохраняются в диспетчере учётных данных Windows. Файлы не ищутся и не изменяются; это ещё не включит синхронизацию. Существующие облачные данные могут быть даже тогда, когда локальной записи нет. Настоящие сервисы и сборка ещё не испытаны.</p>
+                <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn ghost" id="cloud-connection-inspect">Проверить локальную запись</button>
+                </div>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-connection-approve" /> <span>Я понимаю, что доступ будет сохранён только на этом ПК, а старое облако не проверяется и синхронизация ещё не работает.</span></label>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn" id="cloud-connection-start">Сохранить доступ</button>
+                  <button type="button" class="btn ghost" id="cloud-connection-cancel" hidden>Отменить вход</button>
+                </div>
+                <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite">Ожидание действия.</p>
+                <div class="cloud-connection-disconnect">
+                  <h5>Забыть доступ на этом ПК</h5>
+                  <p>Это удаляет только локальную запись доступа, но не облачные файлы, ключи или разрешение у сервиса. При наличии привязки набора или незавершённой операции удаление заблокировано; не стирайте такие записи вручную.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-connection-forget-approve" /> <span>Я хочу удалить сохранённый доступ на этом ПК и понимаю, что разрешение у сервиса останется.</span></label>
+                  <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
+                </div>
+              </section>
               <div class="cloud-registration-future" aria-label="Функции синхронизации пока недоступны">
                 <button type="button" class="btn" disabled>Отправить на диск</button>
                 <button type="button" class="btn ghost" disabled>Проверить обновления</button>

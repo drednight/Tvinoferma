@@ -7,6 +7,7 @@ import { localStorageAdapter } from './storageAdapters/localStorageAdapter.js';
 import { prepareForDisk } from './secrets.js';
 import { isUncertainStateWrite, uncertainStateWriteError } from './stateWriteOutcome.js';
 import { isVaultWriteGuardError, vaultWriteGuardError, wasVaultUpdated } from './vaultWriteGuard.js';
+import { beginCloudCredentialReset } from '../modules/cloudSync/credentialResetCoordination.js';
 
 export const isTauri = () => {
   const w = /** @type {any} */ (window);
@@ -413,6 +414,10 @@ export async function runGuardedFactoryReset(isUnchanged, inspect, perform) {
   if (outcomeUncertain || restoring || resetting || loading || protectedState || migration || backupsInProgress) {
     throw blockedWriteError();
   }
+  // Если в этом окне ещё идёт вход/забывание OAuth, сброс не должен удалить
+  // запись раньше, чем поздний IPC сможет её снова создать. Другие процессы и
+  // прямые IPC эта координация не охватывает.
+  const releaseCloudBarrier = beginCloudCredentialReset();
   resetting = true;
   let dispatched = false;
   try {
@@ -463,6 +468,9 @@ export async function runGuardedFactoryReset(isUnchanged, inspect, perform) {
     }
   } finally {
     // После начала операции память устарела даже при сообщённом успехе.
-    if (!dispatched) resetting = false;
+    if (!dispatched) {
+      resetting = false;
+      releaseCloudBarrier();
+    }
   }
 }

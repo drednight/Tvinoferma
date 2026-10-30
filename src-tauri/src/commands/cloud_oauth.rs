@@ -1,5 +1,5 @@
-//! IPC-обёртка локального callback для разовой диагностики регистрации OAuth.
-//! Сам callback не подключает диск и не обменивает и не хранит токены.
+//! IPC-обёртка локального callback для диагностики и первого входа OAuth.
+//! Сам callback не обменивает и не хранит токены и не передаёт файлы.
 
 use crate::cloud_oauth_callback::{CallbackRegistry, CallbackStatus};
 use serde::Serialize;
