@@ -4,6 +4,7 @@
 // после отдельного принятия полностью совпавшей основы; расхождения и удаления
 // блокируются. Межпроцессной блокировки state и доказательства полноты списка нет.
 // Не выводить значения снимков, ключи, ответы IPC и исходные ошибки.
+import { hasSnapshotFileMode } from './snapshotFileState.js';
 import { forgetLoadedState, loadData } from '../../core/storage.js';
 import { object } from './exportSchema.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
@@ -127,6 +128,7 @@ function stillSame(snapshot) {
  */
 export async function queueConnectedSavedSnapshot(options) {
   const input = validOptions(options, ['prepareIdentities']);
+  if (hasSnapshotFileMode(currentCloudStateSnapshot().settings, input.provider)) return result('snapshot_file_mode');
   if (input.prepareIdentities !== undefined && typeof input.prepareIdentities !== 'boolean')
     throw new Error('Не удалось безопасно подготовить отправку');
   let operation;
@@ -205,6 +207,7 @@ export async function queueConnectedSavedSnapshot(options) {
  */
 export async function sendConnectedQueuedSnapshot(options) {
   const input = validOptions(options, ['now', 'openSession', 'signal']);
+  if (hasSnapshotFileMode(currentCloudStateSnapshot().settings, input.provider)) return result('snapshot_file_mode');
   if (
     (input.now !== undefined && typeof input.now !== 'function') ||
     (input.openSession !== undefined && typeof input.openSession !== 'function') ||

@@ -5,7 +5,10 @@ import { createMarathon, createSeries, createTask } from '../js/modules/marathon
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { comparePublicSnapshots } from '../js/modules/cloudSync/compareSnapshots.js';
-import { preparePublicSnapshotApply } from '../js/modules/cloudSync/applyPublicSnapshot.js';
+import {
+  preparePublicSnapshotApply,
+  prepareFullPublicSnapshotReplace
+} from '../js/modules/cloudSync/applyPublicSnapshot.js';
 import { generateRecoveryKey, generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
@@ -406,5 +409,70 @@ describe('объединение существующих разделов бе�
       cryptoSource: webcrypto
     });
     expect(prepared.candidateState().finance).toEqual(originalFinance);
+  });
+});
+
+describe('полная замена публичным файлом — не частичный merge', () => {
+  it('удаляет все отсутствующие записи, включая полностью пустой банк', () => {
+    const local = remoteState(),
+      cloud = buildPublicSnapshot(ready({}), { settingsSelections: groupNames });
+    const candidate = prepareFullPublicSnapshotReplace({
+      localState: local,
+      cloudSnapshot: cloud,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(candidate.characters).toEqual([]);
+    expect(candidate.parties).toEqual([]);
+    expect(candidate.marathons).toEqual([]);
+    expect(candidate.marathonTemplates).toEqual([]);
+    expect(candidate.plannerEntries).toEqual([]);
+    expect(candidate.finance.operations).toEqual([]);
+    expect(candidate.finance.shopItems).toEqual([]);
+    expect(candidate.finance.loans).toEqual([]);
+    expect(
+      comparePublicSnapshots({ local: buildPublicSnapshot(candidate, { settingsSelections: groupNames }), cloud })
+        .entries
+    ).toEqual([]);
+  });
+  it('заменяет поля целиком, но не импортирует контакты и пути другого ПК', () => {
+    const local = remoteState(),
+      incoming = structuredClone(local);
+    incoming.characters[0].notes = 'ЗАМЕНА';
+    incoming.characters[0].contacts.password = 'ЧУЖОЙ ПАРОЛЬ';
+    incoming.characters[0].launch.gcPath = '/other/path';
+    const cloud = buildPublicSnapshot(incoming, { settingsSelections: groupNames });
+    const candidate = prepareFullPublicSnapshotReplace({
+      localState: local,
+      cloudSnapshot: cloud,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(candidate.characters[0]).toMatchObject({
+      notes: 'ЗАМЕНА',
+      contacts: local.characters[0].contacts,
+      launch: local.characters[0].launch
+    });
+    expect(local.characters[0].notes).not.toBe('ЗАМЕНА');
+  });
+  it('сохраняет точный порядок и архив вместо местного порядка', () => {
+    const local = remoteState(),
+      incoming = structuredClone(local);
+    incoming.archivedCharacters.push(incoming.characters.shift());
+    const cloud = buildPublicSnapshot(incoming);
+    const candidate = prepareFullPublicSnapshotReplace({
+      localState: local,
+      cloudSnapshot: cloud,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(candidate.characters).toEqual([]);
+    expect(candidate.archivedCharacters[0].syncId).toBe(local.characters[0].syncId);
+  });
+  it('отклоняет файл с оборванными ссылками до записи', () => {
+    const local = remoteState(),
+      cloud = buildPublicSnapshot(local);
+    cloud.sections.parties.records = [];
+    cloud.sections.parties.order = { active: [], archived: [] };
+    expect(() =>
+      prepareFullPublicSnapshotReplace({ localState: local, cloudSnapshot: cloud, cryptoSource: webcrypto })
+    ).toThrow();
   });
 });

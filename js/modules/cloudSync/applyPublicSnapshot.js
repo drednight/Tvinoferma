@@ -238,7 +238,16 @@ function applySettings(settings, target, selectedGroups) {
   }
 }
 
-function materialize(localState, local, target, selected, selectedGroups, financeSettings, cryptoSource) {
+function materialize(
+  localState,
+  local,
+  target,
+  selected,
+  selectedGroups,
+  financeSettings,
+  cryptoSource,
+  fullReplacement = false
+) {
   const state = clone(localState);
   const choose = new Set(selected.map(item => `${item.section}:${item.id}`));
   const chosen = (section, id) => choose.has(`${section}:${id}`);
@@ -505,7 +514,7 @@ function materialize(localState, local, target, selected, selectedGroups, financ
       payments: listFor(payments, paymentIds)
     });
   }
-  if (selected.some(item => item.section === 'finance')) {
+  if (fullReplacement || selected.some(item => item.section === 'finance')) {
     state.finance = {
       operations: listFor(operations, target.sections.finance.order.operations),
       shopItems: listFor(items, target.sections.finance.order.shopItems),
@@ -589,4 +598,40 @@ export function preparePublicSnapshotApply(options) {
     candidateState: () => clone(candidate),
     candidatePublicSnapshot: () => clone(target)
   });
+}
+
+/** Explicit WHOLE public file replacement. Absence removes records; no merge or tombstones.
+ * Contacts/launch/login fields of retained local characters remain local. Caller must
+ * authenticate the file, recheck it, ask for replacement consent and commit with backup.
+ * @param {{localState:any,cloudSnapshot:any,cryptoSource?:Crypto}} options
+ */
+export function prepareFullPublicSnapshotReplace(options) {
+  const input = object(options, ['localState', 'cloudSnapshot'], ['cryptoSource']);
+  validateJsonSnapshot(input.localState);
+  publicSnapshotIdentityTypes(input.cloudSnapshot);
+  const target = clone(input.cloudSnapshot);
+  if (reviewSnapshotDependencies(target).issues.length) throw invalid();
+  const local = buildPublicSnapshot(input.localState, { settingsSelections: target.sections.preferences.selections });
+  comparePublicSnapshots({ local, cloud: target });
+  const selected = SECTIONS.flatMap(section => rows(target, section).map(record => ({ section, id: record.id })));
+  const candidate = materialize(
+    input.localState,
+    local,
+    target,
+    selected,
+    target.sections.preferences.selections,
+    true,
+    input.cryptoSource,
+    true
+  );
+  const { ui, ...normalized } = normalizeState(candidate);
+  if (
+    !samePublic(
+      buildPublicSnapshot(candidate, { settingsSelections: target.sections.preferences.selections }),
+      target
+    ) ||
+    !samePublic(buildPublicSnapshot(normalized, { settingsSelections: target.sections.preferences.selections }), target)
+  )
+    throw invalid();
+  return Object.freeze({ candidateState: () => clone(candidate) });
 }

@@ -22,7 +22,11 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
-      - run: npm test
+      # Full regression once before merge (and weekly), not again for the same main push.
+      - if: github.event_name != 'push'
+        run: npm test
+      - if: github.event_name == 'push'
+        run: npx vitest run tests/cloudSnapshotFile.test.js tests/cloudSnapshotFilePanel.ui.test.js
       - run: npm run build
       # Информационный шаг: показывает уязвимости, но не блокирует PR
       - run: npm audit --omit=dev --audit-level=high

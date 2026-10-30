@@ -18,6 +18,8 @@ const PLANNER_DELETION_VERSION = 2;
 // limited to explicitly confirmed removals of manual planner entries.
 const PLANNER_TOMBSTONE_VERSION = 3;
 const PRIVATE_TRANSFER_VERSION = 4;
+// Explicit whole-file replacement, not a conservative merge or deletion inference.
+const FILE_SNAPSHOT_VERSION = 5;
 const cumulativeVersion = version => [PLANNER_TOMBSTONE_VERSION, PRIVATE_TRANSFER_VERSION].includes(version);
 const MAX_PLANNER_DELETIONS = 10_000;
 const HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v1';
@@ -401,14 +403,21 @@ export async function verifyHistory(options) {
       );
       if (
         wrapper.format !== PAYLOAD_FORMAT ||
-        ![PAYLOAD_VERSION, PLANNER_DELETION_VERSION, PLANNER_TOMBSTONE_VERSION, PRIVATE_TRANSFER_VERSION].includes(
-          wrapper.version
-        )
+        ![
+          PAYLOAD_VERSION,
+          PLANNER_DELETION_VERSION,
+          PLANNER_TOMBSTONE_VERSION,
+          PRIVATE_TRANSFER_VERSION,
+          FILE_SNAPSHOT_VERSION
+        ].includes(wrapper.version)
       )
         throw historyError();
       const isDeletionVersion = wrapper.version === PLANNER_DELETION_VERSION;
       const isTombstoneVersion = cumulativeVersion(wrapper.version);
-      if ((wrapper.version === PRIVATE_TRANSFER_VERSION) !== Object.hasOwn(wrapper, 'privateSnapshot'))
+      if (
+        wrapper.version !== FILE_SNAPSHOT_VERSION &&
+        (wrapper.version === PRIVATE_TRANSFER_VERSION) !== Object.hasOwn(wrapper, 'privateSnapshot')
+      )
         throw historyError();
       if (
         (isDeletionVersion || isTombstoneVersion) !== Object.hasOwn(wrapper, 'plannerDeletedIds') ||
@@ -424,7 +433,10 @@ export async function verifyHistory(options) {
         ? sortedPlannerIds(wrapper.plannerTombstones, wrapper.version === PRIVATE_TRANSFER_VERSION)
         : null;
       const parent = wrapper.parent === null ? null : copyPin(wrapper.parent);
-      if (parent?.versionId === pin.versionId || ((isDeletionVersion || isTombstoneVersion) && parent === null))
+      if (
+        parent?.versionId === pin.versionId ||
+        ((isDeletionVersion || isTombstoneVersion || wrapper.version === FILE_SNAPSHOT_VERSION) && parent === null)
+      )
         throw historyError();
       const currentIds = validatePublic(wrapper.publicSnapshot);
       for (const [id, type] of currentIds) {
@@ -435,10 +447,9 @@ export async function verifyHistory(options) {
         pin,
         parent,
         publicSnapshot: wrapper.publicSnapshot,
-        privateSnapshot:
-          wrapper.version === PRIVATE_TRANSFER_VERSION
-            ? parsePrivateSnapshot(wrapper.privateSnapshot, wrapper.publicSnapshot)
-            : null,
+        privateSnapshot: Object.hasOwn(wrapper, 'privateSnapshot')
+          ? parsePrivateSnapshot(wrapper.privateSnapshot, wrapper.publicSnapshot)
+          : null,
         plannerIds: plannerIds(wrapper.publicSnapshot),
         deletedIds,
         tombstones,
@@ -499,8 +510,12 @@ export async function verifyHistory(options) {
     const parentNode = node.parent && nodes.get(node.parent.versionId);
     if (parentNode && !retainsPrivateFields(parentNode.privateSnapshot, node.privateSnapshot)) throw historyError();
     if (
-      (cumulativeVersion(parentNode?.version) && !cumulativeVersion(node.version)) ||
-      (parentNode?.version === PRIVATE_TRANSFER_VERSION && node.version !== PRIVATE_TRANSFER_VERSION)
+      (cumulativeVersion(parentNode?.version) &&
+        !cumulativeVersion(node.version) &&
+        node.version !== FILE_SNAPSHOT_VERSION) ||
+      (parentNode?.version === PRIVATE_TRANSFER_VERSION &&
+        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION].includes(node.version)) ||
+      (parentNode?.version === FILE_SNAPSHOT_VERSION && node.version !== FILE_SNAPSHOT_VERSION)
     )
       throw historyError();
   }
@@ -510,7 +525,10 @@ export async function verifyHistory(options) {
   const inheritedDeletions = new Map();
   const collectDeletions = node => {
     if (inheritedDeletions.has(node.pin.versionId)) return inheritedDeletions.get(node.pin.versionId);
-    const before = node.parent ? collectDeletions(nodes.get(node.parent.versionId)) : new Set();
+    const before =
+      node.version !== FILE_SNAPSHOT_VERSION && node.parent
+        ? collectDeletions(nodes.get(node.parent.versionId))
+        : new Set();
     for (const id of node.plannerIds) if (before.has(id)) throw historyError();
     const after = node.deletedIds.length ? new Set([...before, ...node.deletedIds]) : before;
     if (cumulativeVersion(node.version)) {
@@ -538,6 +556,9 @@ export async function verifyHistory(options) {
     /** Проверенные идентификаторы; доверие к ним и защита от отката остаются у вызывающего кода. */
     identity() {
       return { datasetId: input.expectedDatasetId, rootPin: { ...root } };
+    },
+    isFileSnapshot(pinValue) {
+      return get(pinValue).version === FILE_SNAPSHOT_VERSION;
     },
     /** Требует точного присутствия ранее известного отпечатка без копирования снимка. */
     requirePin(pinValue) {
@@ -615,4 +636,47 @@ export async function verifyHistory(options) {
   });
   verifiedHistories.add(view);
   return view;
+}
+
+/** A full public file, including absences and order. Caller obtains explicit replacement consent.
+ * The encrypted prior versions stay on disk as backups. Not used by the old outbox.
+ * @param {{publicSnapshot:any,parent:any,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,privateSnapshot?:any,cryptoSource?:Crypto}} options
+ */
+export async function sealFileSnapshot(options) {
+  const input = object(
+    options,
+    ['publicSnapshot', 'parent', 'recoveryKey', 'datasetId', 'versionId', 'keyBundle', 'keyPin'],
+    ['privateSnapshot', 'cryptoSource']
+  );
+  const parent = copyPin(input.parent);
+  if (!isSyncId(input.datasetId) || !isSyncId(input.versionId) || parent.versionId === input.versionId)
+    throw historyError();
+  validatePublic(input.publicSnapshot);
+  const publicSnapshot = structuredClone(input.publicSnapshot);
+  const privateSnapshot = input.privateSnapshot ? parsePrivateSnapshot(input.privateSnapshot, publicSnapshot) : null;
+  const keyCapsule = await makePortableKeyCapsule({
+    bundle: input.keyBundle,
+    pin: input.keyPin,
+    dataKey: input.recoveryKey,
+    datasetId: input.datasetId,
+    cryptoSource: input.cryptoSource
+  });
+  const envelope = await encryptSnapshot({
+    snapshot: {
+      format: PAYLOAD_FORMAT,
+      version: FILE_SNAPSHOT_VERSION,
+      parent,
+      publicSnapshot,
+      ...(privateSnapshot ? { privateSnapshot } : {})
+    },
+    recoveryKey: input.recoveryKey,
+    datasetId: input.datasetId,
+    versionId: input.versionId,
+    keyCapsule,
+    cryptoSource: input.cryptoSource
+  });
+  return {
+    envelope,
+    pin: await historyEnvelopePin({ envelope, expectedDatasetId: input.datasetId, cryptoSource: input.cryptoSource })
+  };
 }

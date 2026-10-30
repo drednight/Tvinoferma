@@ -179,7 +179,7 @@ function description(entry) {
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * check?:typeof checkConnectedCloud,stage?:typeof stageReviewedCloudApply,prepareIdentities?:typeof stageSyncIdentities,
  * reconcile?:typeof reconcileExactCloudBase,merge?:typeof reconcileConservativeMerge,
- * cancelMerge?:typeof cancelPendingConservativeMerge,cryptoSource?:Crypto,confirm?:(message:string)=>boolean|Promise<boolean>}} options
+ * cancelMerge?:typeof cancelPendingConservativeMerge,startup?:boolean,cryptoSource?:Crypto,confirm?:(message:string)=>boolean|Promise<boolean>}} options
  */
 export function bindCloudReviewPanel(options) {
   const doc = options.doc || document;
@@ -1026,7 +1026,7 @@ export function bindCloudReviewPanel(options) {
     });
   let startupStarted = false;
   doc.defaultView?.addEventListener('tf-cloud-startup-check', () => {
-    if (!options.desktop || !panel.isConnected || startupStarted || active) return;
+    if (options.startup === false || !options.desktop || !panel.isConnected || startupStarted || active) return;
     startupStarted = true;
     const first = provider.value;
     const other = first === 'google' ? 'yandex' : 'google';

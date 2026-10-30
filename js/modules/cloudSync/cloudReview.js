@@ -395,6 +395,7 @@ export async function prepareCloudReview(options) {
         }
         for (let index = baseIndex + 1; index < lineage.length; index++) {
           const next = lineage[index];
+          if (history.isFileSnapshot(next)) return result('transition_unsupported');
           if (
             !conservativePlannerTransition(
               history.publicSnapshot(lineage[index - 1]),
