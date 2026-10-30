@@ -8,6 +8,8 @@ import { conservativeTransition, planConservativePublicMerge } from '../js/modul
 import { generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { parseConservativeMergeChoices } from '../js/modules/cloudSync/conservativeMergeChoices.js';
 import { createMarathon } from '../js/modules/marathons/model.js';
+import { applyCoinBalance } from '../js/core/coins.js';
+import { rememberStatsBefore } from '../js/modules/characters/statsHistory.js';
 
 function fixture() {
   const { ui, ...state } = normalizeState({
@@ -94,6 +96,9 @@ describe('консервативное трёхстороннее объедин
     expect(applied.characters[0].notes).toBe('МЕСТНАЯ НЕЗАВИСИМАЯ ЗАМЕТКА');
     expect(applied.characters[0].marathonData.quests[0].completed).toBe(1);
     expect(applied.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    // Одинаковое название само по себе не доказывает идентичность нового задания.
+    f.cloud.sections.characters.records[0].fields.marathonData.quests[0].description = 'Другое задание';
+    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
   });
 
   it('объединяет независимые поля разных заданий и наград марафона по их sync-ID', () => {
@@ -180,17 +185,92 @@ describe('консервативное трёхстороннее объедин
     expect(tasks[1]).toMatchObject({ targetChecks: 2, description: 'НЕЗАВИСИМО ИЗ ОБЛАКА' });
   });
 
+  it('принимает добавленные сверху записи монет и характеристик без потери старой истории', () => {
+    const f = fixture();
+    const char = f.localState.characters[0];
+    applyCoinBalance(char, 100, { now: '2026-10-01T00:00:00.000Z' });
+    let previous = structuredClone(char.stats);
+    char.stats.strength = 1;
+    rememberStatsBefore(char, previous, '2026-10-01T00:00:00.000Z');
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const cloudState = structuredClone(f.localState);
+    const cloudChar = cloudState.characters[0];
+    applyCoinBalance(cloudChar, 200, { now: '2026-10-02T00:00:00.000Z' });
+    previous = structuredClone(cloudChar.stats);
+    cloudChar.stats.strength = 2;
+    rememberStatsBefore(cloudChar, previous, '2026-10-02T00:00:00.000Z');
+    f.cloud = buildPublicSnapshot(cloudState, { settingsSelections: ['appearance'] });
+    char.notes = 'МЕСТНАЯ ЗАМЕТКА';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const candidate = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(candidate.characters[0].coinHistory).toHaveLength(2);
+    expect(candidate.characters[0].statsHistory).toHaveLength(2);
+    expect(candidate.characters[0]).toMatchObject({
+      ancientCoins: 200,
+      notes: 'МЕСТНАЯ ЗАМЕТКА',
+      stats: { strength: 2 }
+    });
+  });
+
+  it('блокирует обрезание самой старой записи истории характеристик при лимите приложения', () => {
+    const f = fixture();
+    const fields = f.base.sections.characters.records[0].fields;
+    fields.statsHistory = Array.from({ length: 10 }, (_, index) => ({
+      at: `2026-10-${String(30 - index).padStart(2, '0')}T00:00:00.000Z`,
+      stats: { ...fields.stats, strength: index }
+    }));
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    const history = f.cloud.sections.characters.records[0].fields.statsHistory;
+    history.unshift({ at: '2026-10-31T00:00:00.000Z', stats: { ...fields.stats, strength: 42 } });
+    history.pop();
+    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+  });
+
+  it('не принимает замену элементов истории без уникального якоря за обычную правку', () => {
+    for (const history of [
+      [{ delta: 1 }, { delta: 2 }],
+      [
+        { id: 'same', delta: 1 },
+        { id: 'same', delta: 2 }
+      ]
+    ]) {
+      const f = fixture();
+      f.base.sections.characters.records[0].fields.coinHistory = structuredClone(history);
+      f.local = structuredClone(f.base);
+      f.cloud = structuredClone(f.base);
+      f.cloud.sections.characters.records[0].fields.coinHistory = [
+        structuredClone(history[1]),
+        { ...history[1], delta: 3 }
+      ];
+      expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+      expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+      f.cloud.sections.characters.records[0].fields.coinHistory = [...structuredClone(history), { delta: 4 }];
+      expect(conservativeTransition(f.base, f.cloud)).toBe(true);
+    }
+  });
+
   it('не подменяет или удаляет элементы истории, а одновременные изменения массива считает конфликтом', () => {
     const f = fixture();
     const field = f.base.sections.characters.records[0].fields;
     field.coinHistory = [{ id: 'entry1', date: '2026-10-29', delta: 2 }];
     f.local = structuredClone(f.base);
     f.cloud = structuredClone(f.base);
-    f.cloud.sections.characters.records[0].fields.coinHistory[0].delta = 3;
+    f.cloud.sections.characters.records[0].fields.coinHistory.unshift({ id: 'cloud', date: '2026-10-30', delta: 3 });
     expect(conservativeTransition(f.base, f.cloud)).toBe(true);
-    f.local.sections.characters.records[0].fields.coinHistory[0].delta = 4;
+    f.local.sections.characters.records[0].fields.coinHistory.unshift({ id: 'local', date: '2026-10-30', delta: 4 });
     expect(merge(f).status).toBe('conflicts');
-    f.cloud.sections.characters.records[0].fields.coinHistory[0].id = 'different';
+    f.cloud.sections.characters.records[0].fields.coinHistory[1].delta = 3;
     expect(conservativeTransition(f.base, f.cloud)).toBe(false);
     f.cloud.sections.characters.records[0].fields.coinHistory = [];
     expect(conservativeTransition(f.base, f.cloud)).toBe(false);

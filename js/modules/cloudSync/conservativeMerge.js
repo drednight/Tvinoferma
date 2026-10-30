@@ -4,6 +4,7 @@
 // Отсутствие и удаление не угадываются. Снимки могут содержать личные примечания:
 // ни значения, ни исходные ошибки нельзя помещать в журнал.
 import { object } from './exportSchema.js';
+import { isSyncId } from './envelope.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { mergeRecord } from './mergeRecord.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
@@ -37,24 +38,63 @@ function equal(left, right) {
 }
 
 // Без отдельного протокола удаления не считаем исчезновение ключей или элементов
-// массива обычной правкой. Прежние объекты можно изменять, но не удалять или
-// незаметно заменять другую запись с явной идентичностью; сам массив при слиянии
-// остаётся единым полем и одновременные разные правки вызывают конфликт.
-function retains(base, next) {
+// массива обычной правкой. Нельзя незаметно заменить или удалить старый элемент;
+// анонимные объекты должны совпадать. Для заданий марафона отдельное объединение
+// ниже использует sync-ID, прочие массивы остаются единым конфликтующим полем.
+function retains(base, next, path = [], recordType = null) {
   if (Array.isArray(base)) {
     if (!Array.isArray(next) || base.length > next.length) return false;
+    if (recordType === 'character' && path.length === 1 && ['coinHistory', 'statsHistory'].includes(path[0])) {
+      // Истории в приложении добавляют новые записи сверху. Старые записи
+      // должны остаться точной подпоследовательностью, включая повторы.
+      let index = 0;
+      for (const entry of next) if (index < base.length && equal(entry, base[index])) index++;
+      return index === base.length;
+    }
+    // Форма и повторяющийся якорь не доказывают идентичность. Разрешаем только
+    // явно известные поля связи из схемы; неизвестные объекты сравниваем целиком.
+    const marathonItems =
+      recordType === 'marathon' &&
+      ((path.length === 1 && ['tasks', 'bonuses'].includes(path[0])) ||
+        (path.length === 3 && path[0] === 'tasks' && path[2] === 'rewards'));
+    const partyLinks = recordType === 'party' && path.length === 1 && path[0] === 'memberLinks';
+    const siteQuests =
+      recordType === 'character' && path.length === 2 && path[0] === 'marathonData' && path[1] === 'quests';
+    const anchorOf = item => {
+      if (!plain(item)) return null;
+      const key = marathonItems ? 'id' : partyLinks ? 'characterId' : siteQuests ? 'title' : null;
+      if (!key || !Object.hasOwn(item, key)) return null;
+      if (siteQuests ? typeof item[key] !== 'string' || !item[key].trim() : !isSyncId(item[key])) return null;
+      return { key, fingerprint: JSON.stringify([key, item[key]]) };
+    };
+    const counts = new Map();
+    for (const item of base) {
+      const anchor = anchorOf(item);
+      if (anchor) counts.set(anchor.fingerprint, (counts.get(anchor.fingerprint) || 0) + 1);
+    }
     return base.every((item, index) => {
       const following = next[index];
       if (!plain(item) || !plain(following)) return equal(item, following);
-      // Stable nested IDs cover tasks/rewards/bonuses. For anonymous history and
-      // site progress, a known identity/date/title must not change position.
-      const anchor = ['id', 'at', 'date', 'title'].find(key => Object.hasOwn(item, key));
-      if (anchor && (!Object.hasOwn(following, anchor) || !equal(item[anchor], following[anchor]))) return false;
-      return retains(item, following);
+      const anchor = anchorOf(item);
+      if (!anchor || counts.get(anchor.fingerprint) !== 1) return equal(item, following);
+      // Название задания сайта — только ограниченное сопоставление прогресса,
+      // а не разрешение подменять его описание или цель.
+      if (siteQuests && (!equal(item.description, following.description) || !equal(item.total, following.total)))
+        return false;
+      return (
+        Object.hasOwn(following, anchor.key) &&
+        equal(item[anchor.key], following[anchor.key]) &&
+        retains(item, following, [...path, index], recordType)
+      );
     });
   }
   if (plain(base)) {
-    return plain(next) && Object.keys(base).every(key => Object.hasOwn(next, key) && retains(base[key], next[key]));
+    return (
+      plain(next) &&
+      Object.keys(base).every(
+        key => Object.hasOwn(next, key) && retains(base[key], next[key], [...path, key], recordType)
+      )
+    );
   }
   return true;
 }
@@ -105,7 +145,8 @@ function noRemovedValues(before, after) {
   for (const section of SECTIONS) {
     const a = records(before, section);
     const b = records(after, section);
-    if ([...a].some(([id, record]) => !b.has(id) || !retains(record.fields, b.get(id).fields))) return false;
+    if ([...a].some(([id, record]) => !b.has(id) || !retains(record.fields, b.get(id).fields, [], record.type)))
+      return false;
   }
   return (
     retains(before.sections.finance.settings, after.sections.finance.settings) &&

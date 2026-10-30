@@ -1732,6 +1732,50 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect(JSON.stringify([...f.cloud.versions.values()])).not.toContain('PRIVATE_PASSWORD');
   }, 30_000);
 
+  it('передаёт новые записи истории монет и характеристик, добавленные сверху', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        const { applyCoinBalance } = await import('../js/core/coins.js');
+        const { rememberStatsBefore } = await import('../js/modules/characters/statsHistory.js');
+        const character = f.state.characters[0];
+        applyCoinBalance(character, 100, { now: '2026-10-01T00:00:00.000Z' });
+        const previous = structuredClone(character.stats);
+        character.stats.strength = 1;
+        rememberStatsBefore(character, previous, '2026-10-01T00:00:00.000Z');
+        await f.storage.saveNow();
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'НЕЗАВИСИМАЯ МЕСТНАЯ ЗАМЕТКА';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const fields = s.sections.characters.records[0].fields;
+      fields.coinHistory.unshift({
+        id: 'cloud-entry',
+        date: '2026-10-02T00:00:00.000Z',
+        delta: 100,
+        balanceAfter: 200,
+        note: 'Изменение'
+      });
+      fields.ancientCoins = 200;
+      fields.lastCoinUpdate = '2026-10-02T00:00:00.000Z';
+      fields.statsHistory.unshift({ at: '2026-10-02T00:00:00.000Z', stats: structuredClone(fields.stats) });
+      fields.stats.strength = 2;
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect(f.state.characters[0]).toMatchObject({
+      notes: 'НЕЗАВИСИМАЯ МЕСТНАЯ ЗАМЕТКА',
+      ancientCoins: 200,
+      stats: { strength: 2 }
+    });
+    expect(f.state.characters[0].coinHistory).toHaveLength(2);
+    expect(f.state.characters[0].statsHistory).toHaveLength(2);
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
   it('сквозным сценарием сохраняет независимые правки разных заданий и наград марафона', async () => {
     const f = await publicationFixture(provider, {
       prepare: async f => {

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, arena/ae13374c-tvinoferma]
   pull_request:
   schedule:
     # раз в неделю — чтобы новые уязвимости в зависимостях не оставались незамеченными
