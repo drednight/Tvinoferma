@@ -10,9 +10,17 @@ import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSn
 import { MAX_HISTORY_VERSIONS, verifyHistory } from './history.js';
 import { copyCloudEnvelope } from './providers/common.js';
 import { parseCloudModifiedTime } from './providers/modifiedTime.js';
+import { buildPublicSnapshot } from './publicSnapshot.js';
+import { preparePublicSnapshotApply } from './applyPublicSnapshot.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
 const HEX = /^[0-9a-f]{64}(?![\s\S])/;
+const verifiedReviews = new WeakSet();
+
+/** Маркер объекта текущего процесса, не доказательство независимости pin или полноты диска. */
+export function isVerifiedCloudReview(value) {
+  return !!value && typeof value === 'object' && verifiedReviews.has(value);
+}
 function failed() {
   return new Error('Не удалось безопасно подготовить сравнение облачных версий');
 }
@@ -151,9 +159,10 @@ export async function prepareCloudReview(options) {
       })
     );
     const checkedAt = checkTime(now);
-    return Object.freeze({
+    const ready = Object.freeze({
       status: 'ready_for_review',
       provider,
+      datasetId,
       checkedAt,
       localSavedAt: savedAt,
       versions: observations,
@@ -167,16 +176,51 @@ export async function prepareCloudReview(options) {
         const current = pins.get(selected.versionId);
         if (!current || current.sha256 !== selected.sha256) throw failed();
         const file = observations.find(item => item.pin.versionId === selected.versionId);
+        const cloud = history.publicSnapshot(current);
+        const records = new Map(
+          ['characters', 'parties', 'marathons', 'planner', 'finance'].map(section => [
+            section,
+            new Map(cloud.sections[section].records.map(record => [record.id, record]))
+          ])
+        );
         return Object.freeze({
           provider,
           checkedAt,
           localSavedAt: savedAt,
           cloudModifiedAt: file.modifiedAt,
           pin: current,
-          differences: comparePublicSnapshots({ local, cloud: history.publicSnapshot(current) })
+          differences: comparePublicSnapshots({ local, cloud }),
+          /** Публичная запись без контактов и локальных путей; её текст всё равно может быть личным. */
+          cloudRecord(section, id) {
+            if (!records.has(section) || !isSyncId(id)) throw failed();
+            const record = records.get(section).get(id);
+            return record ? structuredClone(record) : null;
+          }
         });
+      },
+      /**
+       * Подготовить только выбранные записи конкретной проверенной версии. Это ещё
+       * не запись: кандидат содержит локальные секреты и может сразу устареть.
+       * Частичное применение не означает слияния или принятия всей облачной ветки.
+       * @param {{versionId:string,sha256:string}} selectedPin
+       * @param {{localState:any,selectedRecords:{section:string,id:string}[],selectedSettings?:string[],includeFinanceSettings?:boolean,cryptoSource?:Crypto}} choices
+       */
+      prepareApply(selectedPin, choices) {
+        const selected = pin(selectedPin);
+        const current = pins.get(selected.versionId);
+        if (!current || current.sha256 !== selected.sha256) throw failed();
+        const currentLocal = buildPublicSnapshot(choices.localState, {
+          settingsSelections: local.sections.preferences.selections
+        });
+        const difference = comparePublicSnapshots({ local, cloud: currentLocal });
+        if (difference.entries.length || difference.uncomparedSettings.length) {
+          throw new Error('Локальные данные изменились после проверки; требуется новое сравнение');
+        }
+        return preparePublicSnapshotApply({ ...choices, cloudSnapshot: history.publicSnapshot(current) });
       }
     });
+    verifiedReviews.add(ready);
+    return ready;
   } catch {
     if (signal?.aborted) return result('cancelled');
     // Ошибка транспорта может содержать OAuth, временную ссылку или данные пользователя.

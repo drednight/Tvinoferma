@@ -122,3 +122,57 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cloud-review,
+.cloud-review-result,
+.cloud-review-list,
+.cloud-review-entry {
+  display: grid;
+  gap: 10px;
+}
+.cloud-review {
+  padding: 14px;
+  border: 1px solid rgba(150, 150, 150, 0.35);
+  border-radius: 10px;
+}
+.cloud-review h4,
+.cloud-review h5,
+.cloud-review p {
+  margin: 0;
+  line-height: 1.5;
+}
+.cloud-review-settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(150, 150, 150, 0.3);
+  border-radius: 8px;
+}
+.cloud-review-settings legend {
+  padding: 0 5px;
+}
+.cloud-review-result[hidden],
+.cloud-review #cloud-review-differences[hidden] {
+  display: none;
+}
+.cloud-review-result .input {
+  width: 100%;
+}
+.cloud-review-entry {
+  padding: 10px 12px;
+  border: 1px solid rgba(150, 150, 150, 0.3);
+  border-radius: 8px;
+}
+.cloud-review-entry label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.cloud-review-entry pre {
+  max-height: 16rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

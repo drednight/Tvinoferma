@@ -90,7 +90,8 @@ describe('настоящие настройки: диагностика и эк�
   it('свёрнута по умолчанию, содержит предупреждения и отдельные отключённые будущие действия', () => {
     const s = bind();
     expect(byId('panel').open).toBe(false);
-    expect(byId('panel').textContent).toContain('Синхронизация пока не работает');
+    expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
+    expect(byId('panel').textContent).toContain('только для уже настроенного набора');
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');
@@ -99,8 +100,9 @@ describe('настоящие настройки: диагностика и эк�
     expect(byId('yandex-hint').textContent).toContain('cloud_api:disk.app_folder');
     expect(byId('google-hint').hidden).toBe(true);
     const future = document.querySelectorAll('.cloud-registration-future button');
-    expect([...future].map(button => button.textContent)).toEqual(['Отправить на диск', 'Проверить обновления']);
+    expect([...future].map(button => button.textContent)).toEqual(['Отправить на диск']);
     expect([...future].every(button => button.disabled)).toBe(true);
+    expect(document.getElementById('cloud-review-check')).toBeTruthy();
     expect(byId('cancel').hidden).toBe(true);
     expect(s.loadNative).not.toHaveBeenCalled();
   });

@@ -78,6 +78,14 @@ window.addEventListener('tf-factory-reset-started', () => {
   showStorageReadOnlyWarning('Выполняется сброс локальных данных. Новые изменения не сохраняются до перезапуска.');
 });
 
+// После подтверждённого выборочного применения обновляем видимый раздел и меню.
+window.addEventListener('tf-cloud-applied', () => {
+  applySections(document, state.settings);
+  const active = document.querySelector('.page.active')?.dataset.section;
+  if (active) renderActiveTab(active);
+  else refreshNavBadges();
+});
+
 window.addEventListener('tf-storage-uncertain', event => {
   const vault = event.detail?.source === 'vault';
   const reset = event.detail?.source === 'reset';
@@ -432,6 +440,9 @@ export async function boot() {
     renderActiveTab('today');
 
     console.log('[BOOT] Application ready.');
+
+    // Только ранее закреплённые облачные наборы: отсутствие привязки не создаёт новый.
+    if (isTauri() && !startupReadOnly) window.dispatchEvent(new CustomEvent('tf-cloud-startup-check'));
 
     // 9. Фоновые проверки при запуске (не блокируют интерфейс). Порядок: сначала «Статус серверов»
     // (публичная страница, аккаунты не нужны), затем проверка сохранённых авторизаций персонажей.

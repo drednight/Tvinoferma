@@ -467,8 +467,8 @@
               <p class="muted">В разработке · проверка регистрации и сохранения доступа</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Синхронизация пока не работает.</strong> Отправка, получение и применение обновлений ещё недоступны. Разовая проверка не сохраняет токены; отдельное экспериментальное сохранение доступа описано ниже.</p>
-              <p>Авторизация открывается в системном браузере. Сервис может сохранить выданное разрешение даже после отмены; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа с реальными сервисами и настольной сборкой ещё не подтверждена.</p>
+              <p class="cloud-registration-warning"><strong>Полная синхронизация ещё не готова.</strong> Первичная настройка и отправка пока недоступны. Проверка и выборочное применение ниже экспериментальны, работают только для уже настроенного набора и ещё не проверены с настоящими дисками.</p>
+              <p>Разовая проверка регистрации не сохраняет токены. Авторизация открывается в системном браузере. Сервис может сохранить выданное разрешение даже после отмены; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа с реальными сервисами и настольной сборкой ещё не подтверждена.</p>
               <form id="cloud-registration-form" autocomplete="off" novalidate>
                 <div class="cloud-registration-fields">
                   <label for="cloud-registration-provider">Облачный диск
@@ -511,9 +511,39 @@
                   <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
                 </div>
               </section>
-              <div class="cloud-registration-future" aria-label="Функции синхронизации пока недоступны">
+              <section class="cloud-review" aria-labelledby="cloud-review-title">
+                <h4 id="cloud-review-title">Проверить обновления · экспериментально</h4>
+                <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. При выборе целой записи применятся все её переносимые поля; контакты, пароли, входы и пути остаются на этом ПК.</p>
+                <fieldset class="cloud-review-settings">
+                  <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
+                  <label><input type="checkbox" value="appearance" data-cloud-review-setting /> Тема</label>
+                  <label><input type="checkbox" value="navigation" data-cloud-review-setting /> Меню разделов</label>
+                  <label><input type="checkbox" value="planner" data-cloud-review-setting /> Вид календаря</label>
+                  <label><input type="checkbox" value="eventReminders" data-cloud-review-setting /> Напоминания о событиях</label>
+                </fieldset>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn ghost" id="cloud-review-identities">Подготовить данные на этом ПК</button>
+                  <button type="button" class="btn ghost" id="cloud-review-check">Проверить обновления</button>
+                </div>
+                <p class="cloud-registration-status" id="cloud-review-status" role="status" aria-live="polite">Проверка ещё не выполнялась.</p>
+                <div id="cloud-review-result" class="cloud-review-result" hidden>
+                  <p id="cloud-review-times"></p>
+                  <label for="cloud-review-version">Облачная версия для сравнения</label>
+                  <select class="input" id="cloud-review-version"></select>
+                  <div id="cloud-review-differences" hidden>
+                    <h5>Что отличается на диске?</h5>
+                    <p id="cloud-review-summary"></p>
+                    <div class="cloud-registration-actions">
+                      <button type="button" class="btn ghost small" id="cloud-review-select-all">Выбрать все</button>
+                      <button type="button" class="btn ghost small" id="cloud-review-select-none">Снять все</button>
+                    </div>
+                    <div id="cloud-review-list" class="cloud-review-list"></div>
+                    <button type="button" class="btn" id="cloud-review-apply">Применить выбранное с резервной копией</button>
+                  </div>
+                </div>
+              </section>
+              <div class="cloud-registration-future" aria-label="Отправка пока недоступна">
                 <button type="button" class="btn" disabled>Отправить на диск</button>
-                <button type="button" class="btn ghost" disabled>Проверить обновления</button>
               </div>
             </div>
           </details>

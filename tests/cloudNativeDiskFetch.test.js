@@ -7,7 +7,6 @@ import {
   generateSyncId
 } from '../js/modules/cloudSync/envelope.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
-import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
 import { createKeyProvisioner } from '../js/modules/cloudSync/keyProvisioning.js';
 import { createKeyRecoverer } from '../js/modules/cloudSync/keyRecovery.js';
 import { findPortableKeyVersions } from '../js/modules/cloudSync/portableKeyDiscovery.js';
@@ -23,7 +22,10 @@ import {
 import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { prepareYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
-import { normalizeState } from '../js/core/state.js';
+import { normalizeState, state as appState } from '../js/core/state.js';
+import { saveNow } from '../js/core/storage.js';
+import { stageReviewedCloudApply } from '../js/modules/cloudSync/commitReviewedCloud.js';
+import { checkConnectedCloud } from '../js/modules/cloudSync/checkConnectedCloud.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { sealHistoryVersion, verifyHistory } from '../js/modules/cloudSync/history.js';
@@ -594,7 +596,8 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       schemaVersion: 10,
       characters: [{ id: 'hero', nick: 'СИНТЕТИЧЕСКИЙ ГЕРОЙ' }]
     });
-    const snapshot = buildPublicSnapshot(planSyncIdentities({ snapshot: original, cryptoSource: webcrypto }).snapshot);
+    const sourceState = planSyncIdentities({ snapshot: original, cryptoSource: webcrypto }).snapshot;
+    const snapshot = buildPublicSnapshot(sourceState);
     const version = await sealHistoryVersion({
       publicSnapshot: snapshot,
       parent: null,
@@ -766,28 +769,57 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       cryptoSource: webcrypto
     });
     expect(history.publicSnapshot(pairing.rootPin)).toEqual(snapshot);
-    // Локальная правка не применяется и не переименовывается в удаление/«самую новую».
-    const localSnapshot = structuredClone(snapshot);
-    localSnapshot.sections.characters.records[0].fields.nick = 'ДРУГАЯ ЛОКАЛЬНАЯ ВЕРСИЯ';
-    const comparison = await prepareCloudReview({
+    // Второй условный ПК: собственные контакты и путь остаются локальными, а
+    // сохранённая правка показывается для явного выбора, не как «самая новая».
+    localStorage.clear();
+    Object.assign(appState, normalizeState(sourceState));
+    appState.characters[0].nick = 'ДРУГАЯ ЛОКАЛЬНАЯ ВЕРСИЯ';
+    appState.characters[0].contacts.password = 'ЛОКАЛЬНЫЙ ПАРОЛЬ';
+    appState.characters[0].launch.gcPath = '/local/PRIVATE';
+    appState.settings.security.useVault = false;
+    await saveNow();
+    const beforeApply = localStorage.getItem('tvinoferma_state_v1');
+    const otherQueue = createDurableCloudOutbox({
       provider,
-      session: pinnedOther.session,
+      clientId: secondMachine.binding.clientId,
+      accountKey,
       datasetId: pairing.datasetId,
+      deviceId: generateSyncId(webcrypto),
+      slotId: generateSyncId(webcrypto),
       dataKey: recoveredState.dataKey,
-      rootPin: pairing.rootPin,
-      knownPins: confirmed.pins,
-      localSnapshot,
-      localSavedAt: null,
-      now: () => Date.parse('2026-10-30T10:30:00.000Z'),
+      store: createNativeOutboxStore({ provider, invoke: secondInvoke }),
+      session: pinnedOther.session,
+      cryptoSource: webcrypto,
+      ...(provider === 'google' ? { folderId } : {})
+    });
+    expect(await otherQueue.initialize(true)).toEqual({ status: 'initialized' });
+    pinnedOther.session.dispose();
+    const comparison = await checkConnectedCloud({
+      provider,
+      invoke: secondInvoke,
+      now: () => 100_000,
       cryptoSource: webcrypto
     });
     expect(comparison.status).toBe('ready_for_review');
     expect(comparison.versions).toHaveLength(1);
     const changes = comparison.compare(comparison.versions[0].pin);
     expect(changes.cloudModifiedAt).toBe('2026-10-29T12:00:00.000Z');
-    expect(changes.checkedAt).toBe('2026-10-30T10:30:00.000Z');
-    expect(changes.localSavedAt).toBeNull();
+    expect(changes.checkedAt).toBe('1970-01-01T00:01:40.000Z');
+    expect(changes.localSavedAt).toBe(JSON.parse(beforeApply).savedAt);
     expect(changes.differences.entries.map(item => item.kind)).toEqual(['changed']);
+    const operation = stageReviewedCloudApply({
+      review: comparison,
+      pin: changes.pin,
+      selectedRecords: [{ section: 'characters', id: appState.characters[0].syncId }],
+      cryptoSource: webcrypto
+    });
+    const applied = await operation.commit({ confirmed: true });
+    expect(applied.status).toBe('applied');
+    expect(localStorage.getItem(applied.backup)).toBe(beforeApply);
+    expect(appState.characters[0].nick).toBe('СИНТЕТИЧЕСКИЙ ГЕРОЙ');
+    expect(appState.characters[0].contacts.password).toBe('ЛОКАЛЬНЫЙ ПАРОЛЬ');
+    expect(appState.characters[0].launch.gcPath).toBe('/local/PRIVATE');
+    expect(JSON.parse(localStorage.getItem('tvinoferma_state_v1')).characters[0].nick).toBe('СИНТЕТИЧЕСКИЙ ГЕРОЙ');
     pinnedOther.session.dispose();
   }, 30_000);
 });

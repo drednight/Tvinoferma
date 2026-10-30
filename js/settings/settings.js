@@ -40,6 +40,7 @@ import { rescheduleUpdates } from '../desktop/updater.js';
 import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 import { bindCloudRegistrationCheck } from '../modules/cloudSync/ui/registrationCheckPanel.js';
+import { bindCloudReviewPanel } from '../modules/cloudSync/ui/cloudReviewPanel.js';
 import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
@@ -566,6 +567,7 @@ function bindSettingInputs() {
 
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
+  bindCloudReviewPanel({ desktop: isTauri() });
   bindGuides();
   bindFeedback();
   balanceSettingsColumns();
