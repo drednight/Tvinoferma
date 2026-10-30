@@ -17,7 +17,10 @@ const ACTIONS = Object.freeze({
   apply: 'Выборочное применение',
   reconcile: 'Согласование полного совпадения',
   merge: 'Объединение изменений',
-  identities: 'Подготовка локальных идентификаторов'
+  identities: 'Подготовка локальных идентификаторов',
+  private_prepare: 'Подготовка защищённой партии контактов',
+  private_check: 'Проверка выбранных контактов',
+  private_apply: 'Применение выбранных контактов'
 });
 const OUTCOMES = Object.freeze({
   success: 'подтверждено',

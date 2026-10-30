@@ -589,9 +589,30 @@
                 <div class="cloud-registration-actions"><button type="button" class="btn" disabled>Отправить сохранённые изменения</button><button type="button" class="btn ghost" disabled>Проверить удаления календаря</button></div>
                 <p class="cloud-registration-status">Демо: отправка и автоматизация отключены.</p>
               </section>
+              <section class="cloud-publication" id="cloud-private-panel" aria-labelledby="cloud-private-title">
+                <h4 id="cloud-private-title">Контакты и пароли · отдельная ручная передача</h4>
+                <p class="muted">По умолчанию не передаются. Разрешение действует только на одну подготовленную партию и не сохраняется. Обычные сохранения не выгружают новые местные контакты автоматически. Ранее явно переданная секретная часть остаётся зашифрованной в следующих версиях; снятие галочек не удаляет её с диска и не отменяет уже подготовленную очередь. Значения в сравнении не показываются.</p>
+                <fieldset><legend>Разрешённые категории этой операции</legend>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="email" /> <span>Email</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="recoveryEmail" /> <span>Запасная почта</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="phone" /> <span>Телефон</span></label>
+                  <label class="cloud-connection-ack"><input disabled type="checkbox" data-private-field="password" /> <span>Пароль персонажа</span></label>
+                </fieldset>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-source" /> <span>Местные контакты загружены полностью; понимаю, что явно выбранное пустое поле очищает значение.</span></label>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-risk" /> <span>Для паролей: понимаю риск раскрытия всем, у кого есть ключ набора. Ключ и запасной ключ нужно хранить отдельно.</span></label>
+                <label class="cloud-connection-ack"><input disabled type="checkbox" id="cloud-private-backup" /> <span>Перед применением сохранил отдельную защищённую копию прежних контактов. Копия state.json при OS-хранилище может содержать только ссылки, не прежние значения vault.</span></label>
+                <div class="cloud-registration-actions"><button disabled type="button" class="btn" id="cloud-private-prepare">Подготовить передачу выбранных контактов</button><button disabled type="button" class="btn ghost" id="cloud-private-check">Проверить контакты на диске</button></div>
+                <div id="cloud-private-incoming" hidden>
+                  <p class="muted" id="cloud-private-times"></p>
+                  <label for="cloud-private-version">Проверенная версия контактов</label><select disabled class="input" id="cloud-private-version"></select>
+                  <div id="cloud-private-list"></div>
+                  <button disabled type="button" class="btn danger" id="cloud-private-apply">Применить только отмеченные поля</button>
+                </div>
+                <p id="cloud-private-status" role="status" aria-live="polite">Категории не выбраны. Передача секретов не разрешена. На сайте и в демо нативная передача недоступна.</p>
+              </section>
               <section class="cloud-review" aria-labelledby="demo-review-title">
                 <h4 id="demo-review-title">Проверить обновления · экспериментально</h4>
-                <p>Проверяется выбранный диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельное объединение пока работает для существующих записей, некоторых добавлений в конец (включая новые шаблоны) и настроек; задания и бонусы существующих шаблонов, теги и списки навигации согласуются целыми списками, при конфликте выбирается сторона; изменение шаблона не меняет уже созданные марафоны. Снятие отметки повтора и штатный лимит истории характеристик поддерживаются отдельно; перестановка sync-сущностей и неподдерживаемые удаления останавливают объединение. Подтверждённые удаления ручного календаря можно согласовать отдельно с явным выбором удаления местных правок и сохранением неотправленного намерения до проверки потомка; для конфликтов поддерживаемых полей можно отдельно выбрать местную или облачную сторону записи. Контакты, пароли, входы и пути остаются на этом ПК. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию.</p>
+                <p>Проверяется выбранный диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельное объединение пока работает для существующих записей, некоторых добавлений в конец (включая новые шаблоны) и настроек; задания и бонусы существующих шаблонов, теги и списки навигации согласуются целыми списками, при конфликте выбирается сторона; изменение шаблона не меняет уже созданные марафоны. Снятие отметки повтора и штатный лимит истории характеристик поддерживаются отдельно; перестановка sync-сущностей и неподдерживаемые удаления останавливают объединение. Подтверждённые удаления ручного календаря можно согласовать отдельно с явным выбором удаления местных правок и сохранением неотправленного намерения до проверки потомка; для конфликтов поддерживаемых полей можно отдельно выбрать местную или облачную сторону записи. Входы и пути остаются на этом ПК; контакты и пароли передаются только через отдельный ручной блок с разрешением по категориям. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию.</p>
                 <fieldset class="cloud-review-settings" disabled>
                   <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
                   <label><input type="checkbox" disabled /> Тема</label>

@@ -3681,3 +3681,337 @@ describe.each(['google', 'yandex'])('%s: сквозной штатный лим�
     expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
   }, 30_000);
 });
+
+async function stageFixturePrivate(f, provider, fields = ['password'], extra = {}) {
+  const { stagePrivatePublication } = await import('../js/modules/cloudSync/privateTransfer.js');
+  return stagePrivatePublication({
+    provider,
+    invoke: f.fake.invoke,
+    cryptoSource: webcrypto,
+    fields,
+    contactsSourceConfirmed: true,
+    acknowledgePasswordRisk: true,
+    ...extra
+  });
+}
+async function fixturePrivateReview(f, provider) {
+  const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+  const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+  const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+  const { currentCloudStateSnapshot } = await import('../js/modules/cloudSync/guardedStateWrite.js');
+  const { prepareCloudReview } = await import('../js/modules/cloudSync/cloudReview.js');
+  const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+  const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+  return prepareCloudReview({
+    provider,
+    session: f.cloud.session,
+    datasetId: key.datasetId,
+    dataKey: key.dataKey,
+    rootPin: root,
+    knownPins: [root],
+    localSnapshot: buildPublicSnapshot(currentCloudStateSnapshot()),
+    localSavedAt: null,
+    cryptoSource: webcrypto
+  });
+}
+async function fixturePrivatePayload(f) {
+  const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+  const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+  const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+  return decryptSnapshot({
+    envelope: [...f.cloud.versions.values()].at(-1),
+    recoveryKey: key.dataKey,
+    expectedDatasetId: key.datasetId,
+    cryptoSource: webcrypto
+  });
+}
+describe.each(['google', 'yandex'])('%s: отдельная ручная зашифрованная передача контактов', provider => {
+  it('требует раздельного согласия, отправляет только выбранную категорию и не выгружает последующие местные секреты', async () => {
+    const f = await publicationFixture(provider);
+    const original = structuredClone(f.fake.queue(provider));
+    expect((await stageFixturePrivate(f, provider, ['password'], { acknowledgePasswordRisk: false })).status).toBe(
+      'private_consent_required'
+    );
+    expect((await stageFixturePrivate(f, provider, ['email'], { contactsSourceConfirmed: false })).status).toBe(
+      'private_consent_required'
+    );
+    expect(f.fake.queue(provider)).toEqual(original);
+    const stage = await stageFixturePrivate(f, provider);
+    expect(stage.status).toBe('private_publication_review');
+    expect(JSON.stringify(stage)).not.toContain('PRIVATE_PASSWORD');
+    expect(stage.fields).toEqual(['password']);
+    expect(stage.characterCount).toBe(1);
+    expect((await stage.commit({ confirmed: false })).status).toBe('confirmation_required');
+    expect(f.fake.queue(provider)).toEqual(original);
+    expect((await stage.commit({ confirmed: true })).status).toBe('queued');
+    expect(JSON.stringify(f.fake.queue(provider))).not.toContain('PRIVATE_PASSWORD');
+    expect((await f.send()).status).toBe('sent_verified');
+    const decoded = await fixturePrivatePayload(f);
+    expect(decoded.version).toBe(4);
+    expect(decoded.privateSnapshot.records).toEqual([
+      { characterId: f.state.characters[0].syncId, fields: { password: 'PRIVATE_PASSWORD' } }
+    ]);
+    expect(JSON.stringify(decoded.publicSnapshot)).not.toContain('PRIVATE_PASSWORD');
+    f.state.characters[0].contacts.password = 'NEW_PRIVATE_NOT_CONSENTED';
+    f.state.characters[0].contacts.email = 'NEVER_OPTED_IN@example.test';
+    f.state.characters[0].notes = 'Новая публичная заметка';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const child = await fixturePrivatePayload(f);
+    expect(child.version).toBe(4);
+    expect(child.privateSnapshot).toEqual(decoded.privateSnapshot);
+    expect(JSON.stringify(child)).not.toContain('NEW_PRIVATE_NOT_CONSENTED');
+    expect(JSON.stringify(child)).not.toContain('NEVER_OPTED_IN');
+    const review = await fixturePrivateReview(f, provider);
+    expect(review.status).toBe('ready_for_review');
+    expect(JSON.stringify(review)).not.toContain('PRIVATE_PASSWORD');
+  }, 30_000);
+
+  it('сохраняет явно подготовленный секрет при обычном coalescing публичной очереди и перезапуске', async () => {
+    const f = await publicationFixture(provider);
+    const stage = await stageFixturePrivate(f, provider);
+    expect((await stage.commit({ confirmed: true })).status).toBe('queued');
+    f.state.characters[0].contacts.password = 'НЕ РАЗРЕШАЛ ПЕРЕДАВАТЬ ЭТОТ';
+    f.state.characters[0].notes = 'Публичная правка после подготовки';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('coalesced');
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+    expect(
+      (
+        await publication.sendConnectedQueuedSnapshot({
+          provider,
+          invoke: f.fake.invoke,
+          cryptoSource: webcrypto,
+          openSession: f.cloud.openSession
+        })
+      ).status
+    ).toBe('sent_verified');
+    const child = await fixturePrivatePayload(f);
+    expect(child.privateSnapshot.records[0].fields.password).toBe('PRIVATE_PASSWORD');
+    expect(child.publicSnapshot.sections.characters.records[0].fields.notes).toBe('Публичная правка после подготовки');
+    expect(JSON.stringify(child)).not.toContain('НЕ РАЗРЕШАЛ');
+  }, 30_000);
+
+  it('добавляет другую категорию, не очищая и не обновляя ранее переданную невыбранную', async () => {
+    const f = await publicationFixture(provider);
+    const password = await stageFixturePrivate(f, provider);
+    expect((await password.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    f.state.characters[0].contacts.password = 'НЕ ВЫБРАН ДЛЯ ОБНОВЛЕНИЯ';
+    f.state.characters[0].contacts.phone = 'PRIVATE_PHONE_123';
+    await f.storage.saveNow();
+    const phone = await stageFixturePrivate(f, provider, ['phone'], { acknowledgePasswordRisk: false });
+    expect((await phone.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect((await fixturePrivatePayload(f)).privateSnapshot.records[0].fields).toEqual({
+      password: 'PRIVATE_PASSWORD',
+      phone: 'PRIVATE_PHONE_123'
+    });
+  }, 30_000);
+
+  it('показывает только закрытые различия и применяет выбранное поле с точной копией старого state', async () => {
+    const f = await publicationFixture(provider);
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    f.state.characters[0].contacts.password = 'OLD_LOCAL_PRIVATE_PASSWORD';
+    f.state.characters[0].contacts.email = 'LOCAL_EMAIL_NOT_SELECTED';
+    await f.storage.saveNow();
+    const before = localStorage.getItem(STORAGE_KEY);
+    const review = await fixturePrivateReview(f, provider);
+    const pin = review.versions.find(row => row.observedHead).pin;
+    const { currentCloudStateSnapshot } = await import('../js/modules/cloudSync/guardedStateWrite.js');
+    const masked = review.comparePrivate(pin, currentCloudStateSnapshot(), ['password']);
+    expect(masked).toMatchObject([
+      { field: 'password', localPresent: true, cloudPresent: true, clears: false, selectable: true }
+    ]);
+    for (const raw of ['PRIVATE_PASSWORD', 'OLD_LOCAL_PRIVATE_PASSWORD', 'LOCAL_EMAIL_NOT_SELECTED'])
+      expect(JSON.stringify(masked)).not.toContain(raw);
+    const { stagePrivateCloudApply } = await import('../js/modules/cloudSync/privateTransfer.js');
+    const options = {
+      review,
+      pin,
+      selections: [{ characterId: f.state.characters[0].syncId, field: 'password' }],
+      contactsSourceConfirmed: true,
+      acknowledgePasswordRisk: true,
+      independentBackupConfirmed: true
+    };
+    expect(() => stagePrivateCloudApply({ ...options, independentBackupConfirmed: false })).toThrow();
+    expect(() => stagePrivateCloudApply({ ...options, acknowledgePasswordRisk: false })).toThrow();
+    const stage = stagePrivateCloudApply(options);
+    expect((await stage.commit({ confirmed: false })).status).toBe('confirmation_required');
+    const applied = await stage.commit({ confirmed: true });
+    expect(applied.status).toBe('applied');
+    expect(localStorage.getItem(applied.backup)).toBe(before);
+    expect(f.state.characters[0].contacts).toMatchObject({
+      password: 'PRIVATE_PASSWORD',
+      email: 'LOCAL_EMAIL_NOT_SELECTED'
+    });
+    expect(f.state.settings.cloudSyncPendingApply).toBeUndefined();
+  }, 30_000);
+
+  it('не передаёт секрет при изменении сохранения после просмотра или недоступном vault', async () => {
+    const f = await publicationFixture(provider);
+    const stage = await stageFixturePrivate(f, provider);
+    f.state.characters[0].contacts.password = 'УЖЕ ДРУГОЙ СЕКРЕТ';
+    await f.storage.saveNow();
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await stage.commit({ confirmed: true })).status).toBe('state_changed_or_unsaved');
+    expect(f.fake.queue(provider)).toEqual(before);
+    f.state.settings.security.useVault = true;
+    expect((await stageFixturePrivate(f, provider)).status).toBe('private_source_unavailable');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+});
+
+describe.each(['google', 'yandex'])('%s: защита разных приватных намерений и vault', provider => {
+  it('не переносит публичную основу поверх ещё не отправленной партии контактов', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 42;
+    });
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote)).status).toBe('private_transfer_pending');
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  }, 30_000);
+  it('объединяет независимые публичные поля при неизменной секретной части, не подменяя её местными секретами', async () => {
+    const f = await publicationFixture(provider);
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const old = await fixturePrivatePayload(f);
+    const head = await inspectMergeQueue(f, provider);
+    const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const publicSnapshot = structuredClone(old.publicSnapshot);
+    publicSnapshot.sections.characters.records[0].fields.level = 42;
+    const remote = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot,
+      parent: head.confirmedPin,
+      parentSnapshot: old.publicSnapshot,
+      privateSnapshot: old.privateSnapshot,
+      previousTombstones: [],
+      deletedIds: [],
+      confirmedDeletion: false,
+      recoveryKey: key.dataKey,
+      datasetId: key.datasetId,
+      versionId: generateSyncId(webcrypto),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource: webcrypto
+    });
+    f.cloud.versions.set(remote.pin.versionId, remote.envelope);
+    f.state.characters[0].notes = 'Независимая местная заметка';
+    f.state.characters[0].contacts.password = 'НЕ РАЗРЕШАЛ НОВЫЙ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await mergePin(f, provider, remote.pin)).status).toBe('merged');
+    expect(f.state.characters[0]).toMatchObject({ notes: 'Независимая местная заметка', level: 42 });
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect((await fixturePrivatePayload(f)).privateSnapshot).toEqual(old.privateSnapshot);
+    expect(f.state.characters[0].contacts.password).toBe('НЕ РАЗРЕШАЛ НОВЫЙ');
+  }, 30_000);
+  it('не объединяет молча разные секретные версии и оставляет очередь без отметки операции', async () => {
+    const f = await publicationFixture(provider);
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const old = await fixturePrivatePayload(f);
+    const head = await inspectMergeQueue(f, provider);
+    const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    old.privateSnapshot.records[0].fields.password = 'ДРУГОЙ ОБЛАЧНЫЙ СЕКРЕТ';
+    const remote = await sealHistoryChildWithPlannerTombstones({
+      publicSnapshot: old.publicSnapshot,
+      parent: head.confirmedPin,
+      parentSnapshot: old.publicSnapshot,
+      privateSnapshot: old.privateSnapshot,
+      previousTombstones: [],
+      deletedIds: [],
+      confirmedDeletion: false,
+      recoveryKey: key.dataKey,
+      datasetId: key.datasetId,
+      versionId: generateSyncId(webcrypto),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource: webcrypto
+    });
+    f.cloud.versions.set(remote.pin.versionId, remote.envelope);
+    f.state.characters[0].notes = 'Местная правка';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote.pin)).status).toBe('private_transfer_review_required');
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  }, 30_000);
+  it('применяет в синтетический OS-vault, не кладёт контакты в state и требует независимую копию', async () => {
+    const f = await publicationFixture(provider);
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const { __setInvoke, hydrateSecrets, contactsJson } = await import('../js/core/secrets.js');
+    f.state.characters[0].contacts.password = 'VAULT_OLD_PASSWORD';
+    f.state.settings.security.useVault = true;
+    const records = new Map([[f.state.characters[0].id, contactsJson(f.state.characters[0].contacts)]]);
+    __setInvoke(async (command, args) => {
+      if (command === 'secrets_available') return true;
+      if (command === 'secrets_get_many')
+        return Object.fromEntries(args.keys.filter(key => records.has(key)).map(key => [key, records.get(key)]));
+      if (command === 'secrets_set_many') {
+        for (const [key, value] of Object.entries(args.items)) {
+          if (value) records.set(key, value);
+          else records.delete(key);
+        }
+        return null;
+      }
+      if (command === 'secrets_delete_many') {
+        args.keys.forEach(key => records.delete(key));
+        return null;
+      }
+      throw Error('unexpected command');
+    });
+    expect((await hydrateSecrets(f.state.characters, { tauri: true, requiresVault: true })).blocked).not.toBe(true);
+    await f.storage.saveNow();
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain('VAULT_OLD_PASSWORD');
+    const review = await fixturePrivateReview(f, provider);
+    const pin = review.versions.find(row => row.observedHead).pin;
+    const { stagePrivateCloudApply } = await import('../js/modules/cloudSync/privateTransfer.js');
+    const options = {
+      review,
+      pin,
+      selections: [{ characterId: f.state.characters[0].syncId, field: 'password' }],
+      contactsSourceConfirmed: true,
+      acknowledgePasswordRisk: true,
+      independentBackupConfirmed: true
+    };
+    expect(() => stagePrivateCloudApply({ ...options, independentBackupConfirmed: false })).toThrow();
+    const operation = stagePrivateCloudApply(options);
+    const result = await operation.commit({ confirmed: true });
+    expect(result.status).toBe('applied');
+    expect(JSON.parse(records.get(f.state.characters[0].id)).password).toBe('PRIVATE_PASSWORD');
+    const disk = localStorage.getItem(STORAGE_KEY);
+    expect(disk).not.toContain('PRIVATE_PASSWORD');
+    expect(disk).not.toContain('VAULT_OLD_PASSWORD');
+    expect(JSON.parse(disk).characters[0].contacts).toBeNull();
+    // Crucial limitation is explicit: the state backup contains references, not the old vault values.
+    expect(localStorage.getItem(result.backup)).not.toContain('VAULT_OLD_PASSWORD');
+  }, 30_000);
+});

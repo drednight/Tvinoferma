@@ -13,6 +13,7 @@ import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { preparePublicSnapshotApply } from './applyPublicSnapshot.js';
 import { pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
+import { privateDifferences, applyPrivateSelection } from './privateSnapshot.js';
 import { conservativePlannerTransition, planConservativePublicMerge } from './conservativeMerge.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
@@ -220,6 +221,37 @@ export async function prepareCloudReview(options) {
       checkedAt,
       localSavedAt: savedAt,
       versions: observations,
+      comparePrivate(selectedPin, localState, fields) {
+        const selected = pin(selectedPin);
+        const current = pins.get(selected.versionId);
+        if (!current || current.sha256 !== selected.sha256) throw failed();
+        return privateDifferences(
+          history.privateSnapshot(current),
+          history.publicSnapshot(current),
+          localState,
+          fields
+        );
+      },
+      preparePrivateApply(selectedPin, localState, selections) {
+        const selected = pin(selectedPin);
+        const current = pins.get(selected.versionId);
+        const heads = history.observedHeads();
+        if (
+          !current ||
+          current.sha256 !== selected.sha256 ||
+          heads.length !== 1 ||
+          heads[0].versionId !== selected.versionId ||
+          heads[0].sha256 !== selected.sha256
+        )
+          throw failed();
+        return applyPrivateSelection(
+          history.privateSnapshot(current),
+          history.publicSnapshot(current),
+          localState,
+          selections
+        );
+      },
+
       /**
        * Узкое согласование: локальный публичный снимок должен полностью и точно
        * совпасть с единственной наблюдаемой головой. Все отметки частичных
@@ -319,6 +351,10 @@ export async function prepareCloudReview(options) {
         );
         if (baseIndex < 0) return result('base_not_ancestor');
         if (baseIndex === lineage.length - 1) return result('already_on_base');
+        const privateBase = JSON.stringify(history.privateSnapshot(lineage[baseIndex]));
+        if (lineage.slice(baseIndex + 1).some(node => JSON.stringify(history.privateSnapshot(node)) !== privateBase))
+          return result('private_transfer_review_required');
+
         const appliedEvents = pendingSelectiveApplyEvents(settings);
         const tombstones = history.usesPlannerTombstones(current) ? history.plannerTombstones(current) : [];
         let retained = null;

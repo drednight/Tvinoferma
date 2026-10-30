@@ -19,6 +19,13 @@ if (!window.__DEMO_GUARD_READY__) {
   const demoCloudLog = createDemoCloudLogSource();
 
   await boot();
+  // Native manual secrets transfer is never simulated with real contact values.
+  document
+    .querySelectorAll('#cloud-private-panel input, #cloud-private-panel button, #cloud-private-panel select')
+    .forEach(control => {
+      control.disabled = true;
+    });
+
   const { mountCloudSyncDemo } = await import('../cloud-sync/view.js');
   mountCloudSyncDemo(document.getElementById('demo-cloud-sync'), {
     onLog: demoCloudLog.add,

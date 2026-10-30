@@ -44,6 +44,7 @@ import { bindCloudReviewPanel } from '../modules/cloudSync/ui/cloudReviewPanel.j
 import { bindInitialCloudPanel } from '../modules/cloudSync/ui/initialCloudPanel.js';
 import { bindCloudActivityPanel } from '../modules/cloudSync/ui/cloudActivityPanel.js';
 import { bindCloudPublicationPanel } from '../modules/cloudSync/ui/cloudPublicationPanel.js';
+import { bindPrivateTransferPanel } from '../modules/cloudSync/ui/privateTransferPanel.js';
 import '../modules/automation/promoLogView.js'; // виды логов «Промокоды», «Передачи» и «Подарки»
 import '../modules/automation/transferLogView.js';
 import '../modules/automation/shopLogView.js'; // вид логов «Подарки» (покупка за Древние монеты)
@@ -573,6 +574,7 @@ export function bindSettings() {
   const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri() });
   bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
   bindCloudPublicationPanel({ desktop: isTauri() });
+  bindPrivateTransferPanel({ desktop: isTauri() });
   bindCloudActivityPanel();
   bindGuides();
   bindFeedback();

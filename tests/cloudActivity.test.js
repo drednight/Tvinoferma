@@ -38,6 +38,16 @@ describe('местный журнал синхронизации', () => {
     expect(() => recordCloudActivity('google', 'send', 'token')).toThrow();
     expect(localStorage.getItem(KEY)).not.toContain('token');
   });
+  it('различает ручные операции контактов, сохраняя только разрешённые коды', () => {
+    for (const action of ['private_prepare', 'private_check', 'private_apply'])
+      expect(recordCloudActivity('yandex', action, 'success')).toBe(true);
+    const entries = cloudActivity();
+    expect(entries).toHaveLength(3);
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort()).toEqual(['action', 'at', 'outcome', 'provider']);
+      expect(describeCloudActivity(entry)).toContain('контактов');
+    }
+  });
   it('не выводит чужие поля и HTML из повреждённого хранилища', () => {
     localStorage.setItem(
       KEY,

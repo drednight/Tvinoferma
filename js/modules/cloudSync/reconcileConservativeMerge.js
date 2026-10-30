@@ -181,6 +181,7 @@ export async function reconcileConservativeMerge(options) {
     const queue = context.queue(NO_NETWORK);
     const head = await queue.inspectLinearHead({ ...context.pins, publicSnapshot: local });
     if (head.status !== 'ready') return result(head.status);
+    if (head.privateIntentPending) return result('private_transfer_pending');
     if (!head.confirmedPin) return result('no_local_lineage');
     if (head.retainedIntents.length >= 16 && head.pendingCount) return result('retained_intent_limit');
     if (head.pendingCount && (head.pendingCount !== 1 || !['queued', 'prepared'].includes(head.nextPhase)))
@@ -475,6 +476,7 @@ export async function cancelPendingConservativeMerge(options) {
     const queue = context.queue(NO_NETWORK);
     const head = await queue.inspectLinearHead(context.pins);
     if (head.status !== 'ready') return result(head.status);
+    if (head.privateIntentPending) return result('private_transfer_pending');
     if (
       head.revisionId !== marker.queueRevisionId ||
       !sameIntents(head.retainedIntents, marker.retainedIntents) ||
