@@ -9,6 +9,7 @@ import { preparePublicSnapshotApply } from '../js/modules/cloudSync/applyPublicS
 import { generateRecoveryKey, generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
+import { planConservativePublicMerge } from '../js/modules/cloudSync/conservativeMerge.js';
 
 const groupNames = ['appearance', 'navigation', 'planner', 'eventReminders'];
 function ready(raw) {
@@ -329,5 +330,81 @@ describe('выборочный кандидат облачного снимка'
     const bad = structuredClone(cloud);
     bad.sections.characters.records[0].fields.ancientCoins = 'not-a-number';
     expect(() => prepare(local, bad, [choice])).toThrow();
+  });
+});
+
+describe('объединение существующих разделов без потери местных данных', () => {
+  it('сохраняет независимые изменения персонажа, пати, марафона, календаря и финансов', () => {
+    const source = remoteState();
+    const base = publicView(source);
+    const localState = structuredClone(source);
+    const single = localState.marathons.find(m => m.kind === 'single');
+    const beforeLastSync = structuredClone(single.lastSync);
+    const taskId = single.tasks[0].id;
+    const rewardId = single.tasks[0].rewards[0].id;
+    const paymentId = localState.finance.loans[0].payments[0].id;
+    localState.characters[0].notes = 'ЛОКАЛЬНОЕ ПРИМЕЧАНИЕ';
+    localState.parties[0].color = '#abcdef';
+    single.description = 'ЛОКАЛЬНОЕ ОПИСАНИЕ МАРАФОНА';
+    localState.plannerEntries.find(entry => entry.id === 'remote-task-day').priority = 'high';
+    localState.finance.settings.opening.gold = 123;
+    const local = publicView(localState);
+    const cloud = structuredClone(base);
+    cloud.sections.characters.records[0].fields.level = 30;
+    cloud.sections.parties.records[0].fields.name = 'Новое имя пати';
+    const marathon = cloud.sections.marathons.records.find(record => record.type === 'marathon');
+    const charSyncId = cloud.sections.characters.records[0].id;
+    const taskSyncId = marathon.fields.tasks[0].id;
+    marathon.fields.progress[charSyncId][taskSyncId].site = 2;
+    cloud.sections.planner.records.find(record => record.fields.source.kind === 'manual').fields.status = 'done';
+    cloud.sections.finance.records.find(record => record.type === 'financeOperation').fields.note =
+      'ОБЛАЧНОЕ ПРИМЕЧАНИЕ';
+    const plan = planConservativePublicMerge({ base, local, cloud });
+    expect(plan.status).toBe('prepared');
+    expect(new Set(plan.selectedRecords().map(item => item.section))).toEqual(
+      new Set(['characters', 'parties', 'marathons', 'planner', 'finance'])
+    );
+    const applied = preparePublicSnapshotApply({
+      localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    });
+    const candidate = applied.candidateState();
+    expect(comparePublicSnapshots({ local: plan.snapshot(), cloud: publicView(candidate) }).entries).toEqual([]);
+    expect(candidate.characters[0]).toMatchObject({ notes: 'ЛОКАЛЬНОЕ ПРИМЕЧАНИЕ', level: 30 });
+    expect(candidate.characters[0].contacts.password).toBe('REMOTE_SECRET');
+    expect(candidate.characters[0].launch.gcPath).toBe('/remote/private');
+    expect(candidate.parties[0]).toMatchObject({ name: 'Новое имя пати', color: '#abcdef' });
+    const afterSingle = candidate.marathons.find(m => m.kind === 'single');
+    expect(afterSingle.description).toBe('ЛОКАЛЬНОЕ ОПИСАНИЕ МАРАФОНА');
+    expect(afterSingle.lastSync).toEqual(beforeLastSync);
+    expect(afterSingle.tasks[0].id).toBe(taskId);
+    expect(afterSingle.tasks[0].rewards[0].id).toBe(rewardId);
+    expect(afterSingle.progress['remote-hero'][taskId].site).toBe(2);
+    expect(candidate.plannerEntries.find(entry => entry.id === 'remote-task-day')).toMatchObject({
+      priority: 'high',
+      status: 'done'
+    });
+    expect(candidate.finance.settings.opening.gold).toBe(123);
+    expect(candidate.finance.operations[0].note).toBe('ОБЛАЧНОЕ ПРИМЕЧАНИЕ');
+    expect(candidate.finance.loans[0].payments[0].id).toBe(paymentId);
+    expect(candidate.finance.loans[0].opId).toBe(candidate.finance.operations[0].id);
+  });
+
+  it('без выбора финансов сохраняет их локальный реестр и идентификаторы без реконструкции', () => {
+    const local = remoteState();
+    const originalFinance = structuredClone(local.finance);
+    const cloud = publicView(local);
+    cloud.sections.characters.records[0].fields.level = 45;
+    const prepared = preparePublicSnapshotApply({
+      localState: local,
+      cloudSnapshot: cloud,
+      selectedRecords: [{ section: 'characters', id: cloud.sections.characters.records[0].id }],
+      cryptoSource: webcrypto
+    });
+    expect(prepared.candidateState().finance).toEqual(originalFinance);
   });
 });

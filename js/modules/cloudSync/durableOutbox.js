@@ -9,7 +9,8 @@ import { decryptSnapshot, encryptSnapshot, generateSyncId, isSyncId } from './en
 import { verifyPortableEnvelopeBinding } from './portableKeyCapsule.js';
 import { object } from './exportSchema.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
-import { isVerifiedCloudAdoption } from './cloudReview.js';
+import { isVerifiedCloudAdoption, isVerifiedConservativeAdoption } from './cloudReview.js';
+import { isVerifiedConservativeAuthorization } from './conservativeMergeAuthorization.js';
 import { historyEnvelopePin, sealHistoryVersion, MAX_HISTORY_VERSIONS } from './history.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './providers/oauthCommon.js';
@@ -19,6 +20,9 @@ const VERSION = 2;
 const ADOPTED_VERSION = 3;
 // Принятая голова с сохранением известных предков и прежних квитанций.
 const REBASED_VERSION = 4;
+// v5 keeps the old encrypted, not-yet-attempted intent through a merge.
+const RETAINED_VERSION = 5;
+const MAX_RETAINED_INTENTS = 16;
 const LEGACY_VERSION = 1;
 const KEY_CONTEXT = 'tvinoferma-durable-outbox-key-v1';
 const MAX_ENTRIES = 16;
@@ -187,25 +191,53 @@ function baseFor(value) {
   if (!isSyncId(base.anchorId) || base.anchorId === pin.versionId) throw invalid();
   return { pin, anchorId: base.anchorId };
 }
+function sameBase(left, right) {
+  return left === null || right === null
+    ? left === null && right === null
+    : left.anchorId === right.anchorId && sameVersionPin(left.pin, right.pin);
+}
+function isRebased(version) {
+  return version === REBASED_VERSION || version === RETAINED_VERSION;
+}
+function sameRetainedIntents(actual, expected) {
+  return (
+    actual.length === expected.length &&
+    actual.every(
+      (item, index) => sameVersionPin(item.pin, expected[index].pin) && item.row.phase === expected[index].phase
+    )
+  );
+}
+function priorConfirmedBeforeAdoption(current, view) {
+  if (!view.adopted || !isRebased(current.state.version)) return null;
+  const lineage = view.adopted.row.lineage;
+  const receipt = current.state.confirmedReceipts.slice(0, view.adopted.row.priorReceiptCount).at(-1);
+  const candidates = [view.adopted.row.previousBase?.pin, receipt].filter(Boolean);
+  candidates.sort(
+    (left, right) =>
+      lineage.findIndex(value => sameVersionPin(value, left)) - lineage.findIndex(value => sameVersionPin(value, right))
+  );
+  return candidates.at(-1) || null;
+}
 function entryFor(value, binding, version) {
   const row = object(
     value,
     ['envelope', 'phase', 'fileId', 'attemptId'],
-    ['anchorId', 'lineage', 'priorReceiptCount', 'previousBase']
+    ['anchorId', 'lineage', 'priorReceiptCount', 'previousBase', 'retainedPending']
   );
   const envelope = copyCloudEnvelope(row.envelope, binding.datasetId);
   if (binding.provider === 'google' && JSON.stringify(envelope).length > MAX_GOOGLE_ENVELOPE) throw invalid();
   if (!['queued', 'prepared', 'attempting', 'confirmed', 'adopted'].includes(row.phase)) throw invalid();
   if (row.phase === 'adopted') {
     if (
-      ![ADOPTED_VERSION, REBASED_VERSION].includes(version) ||
+      ![ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(version) ||
       row.fileId !== null ||
       row.attemptId !== null ||
       !isSyncId(row.anchorId)
     )
       throw invalid();
     if (version === ADOPTED_VERSION) {
-      if (['lineage', 'priorReceiptCount', 'previousBase'].some(key => Object.hasOwn(row, key))) throw invalid();
+      if (['lineage', 'priorReceiptCount', 'previousBase', 'retainedPending'].some(key => Object.hasOwn(row, key)))
+        throw invalid();
       return { envelope, phase: row.phase, fileId: null, attemptId: null, anchorId: row.anchorId };
     }
     if (
@@ -224,6 +256,18 @@ function entryFor(value, binding, version) {
       lineage.some(pin => pin.versionId === row.anchorId)
     )
       throw invalid();
+    if ((version === RETAINED_VERSION) !== Object.hasOwn(row, 'retainedPending')) throw invalid();
+    let retainedPending = null;
+    if (version === RETAINED_VERSION) {
+      if (
+        !Array.isArray(row.retainedPending) ||
+        !row.retainedPending.length ||
+        row.retainedPending.length > MAX_RETAINED_INTENTS
+      )
+        throw invalid();
+      retainedPending = row.retainedPending.map(value => entryFor(value, binding, VERSION));
+      if (retainedPending.some(value => !['queued', 'prepared'].includes(value.phase))) throw invalid();
+    }
     const previousBase = baseFor(row.previousBase);
     if (
       previousBase &&
@@ -239,10 +283,13 @@ function entryFor(value, binding, version) {
       anchorId: row.anchorId,
       lineage,
       priorReceiptCount: row.priorReceiptCount,
-      previousBase
+      previousBase,
+      ...(retainedPending ? { retainedPending } : {})
     };
   }
-  if (['anchorId', 'lineage', 'priorReceiptCount', 'previousBase'].some(key => Object.hasOwn(row, key)))
+  if (
+    ['anchorId', 'lineage', 'priorReceiptCount', 'previousBase', 'retainedPending'].some(key => Object.hasOwn(row, key))
+  )
     throw invalid();
   if (row.phase === 'queued') {
     if (row.fileId !== null || row.attemptId !== null) throw invalid();
@@ -286,7 +333,7 @@ function checkState(value, binding) {
   );
   if (
     state.format !== FORMAT ||
-    ![LEGACY_VERSION, VERSION, ADOPTED_VERSION, REBASED_VERSION].includes(state.version) ||
+    ![LEGACY_VERSION, VERSION, ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(state.version) ||
     (state.version === LEGACY_VERSION && Object.hasOwn(state, 'confirmedReceipts')) ||
     (state.version !== LEGACY_VERSION && !Object.hasOwn(state, 'confirmedReceipts')) ||
     state.provider !== binding.provider ||
@@ -305,9 +352,9 @@ function checkState(value, binding) {
   const entries = state.entries.map(row => entryFor(row, binding, state.version));
   const adopted = entries.filter(row => row.phase === 'adopted');
   if (
-    ([ADOPTED_VERSION, REBASED_VERSION].includes(state.version) &&
+    ([ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(state.version) &&
       (adopted.length !== 1 || entries[0].phase !== 'adopted')) ||
-    (![ADOPTED_VERSION, REBASED_VERSION].includes(state.version) && adopted.length)
+    (![ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(state.version) && adopted.length)
   )
     throw invalid();
   const confirmedReceipts =
@@ -337,10 +384,26 @@ function checkState(value, binding) {
     }
   }
   if (adopted.length && (versions.has(adopted[0].anchorId) || attempts.has(adopted[0].anchorId))) throw invalid();
-  if (state.version === REBASED_VERSION) {
+  if (isRebased(state.version)) {
     const base = adopted[0];
     if (base.priorReceiptCount > confirmedReceipts.length) throw invalid();
     const ancestors = new Map(base.lineage.map((pin, index) => [pin.versionId, { pin, index }]));
+    if (state.version === RETAINED_VERSION) {
+      for (const retained of base.retainedPending) {
+        const id = retained.envelope.versionId;
+        if (
+          versions.has(id) ||
+          attempts.has(id) ||
+          ancestors.has(id) ||
+          id === base.anchorId ||
+          (base.previousBase && id === base.previousBase.anchorId) ||
+          (retained.fileId !== null && fileIds.has(retained.fileId))
+        )
+          throw invalid();
+        versions.add(id);
+        if (retained.fileId !== null) fileIds.add(retained.fileId);
+      }
+    }
     let previousIndex = -1;
     for (const receipt of confirmedReceipts.slice(0, base.priorReceiptCount)) {
       const found = ancestors.get(receipt.versionId);
@@ -364,7 +427,7 @@ function checkState(value, binding) {
   }
   const clean = {
     ...bindingState(binding),
-    version: [ADOPTED_VERSION, REBASED_VERSION].includes(state.version) ? state.version : VERSION,
+    version: [ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(state.version) ? state.version : VERSION,
     entries,
     confirmedReceipts
   };
@@ -489,6 +552,7 @@ export function createDurableCloudOutbox(options) {
       binding.slotId,
       ...(previous ? [previous.receipt.revisionId] : []),
       ...clean.entries.map(row => row.envelope.versionId),
+      ...clean.entries.flatMap(row => row.retainedPending?.map(item => item.envelope.versionId) || []),
       ...clean.entries.map(row => row.attemptId).filter(Boolean),
       ...clean.entries.map(row => row.anchorId).filter(Boolean),
       ...clean.entries.flatMap(row => row.lineage?.map(pin => pin.versionId) || []),
@@ -595,7 +659,7 @@ export function createDurableCloudOutbox(options) {
       adopted = await verified(rows[0]);
       if (sameVersionPin(adopted.pin, rootPin) ? adopted.contents.parent !== null : adopted.contents.parent === null)
         throw invalid();
-      if (current.state.version === REBASED_VERSION) {
+      if (isRebased(current.state.version)) {
         const lineage = adopted.row.lineage;
         if (
           !sameVersionPin(lineage[0], rootPin) ||
@@ -642,7 +706,17 @@ export function createDurableCloudOutbox(options) {
     if (receipts.length > priorReceiptCount && rows[start]?.phase !== 'confirmed') throw invalid();
     const confirmed = versions.filter(version => version.row.phase === 'confirmed').at(-1) || adopted;
     const tail = versions.at(-1);
-    return { versions, adopted, confirmed, tail, pendingCount, priorReceiptCount };
+    const retained = [];
+    if (current.state.version === RETAINED_VERSION) {
+      const lineage = new Map(adopted.row.lineage.map(pin => [pin.versionId, pin.sha256]));
+      for (const row of adopted.row.retainedPending) {
+        const item = await verified(row);
+        const parent = item.contents.parent;
+        if (!parent || lineage.get(parent.versionId) !== parent.sha256) throw invalid();
+        retained.push(item);
+      }
+    }
+    return { versions, adopted, confirmed, tail, pendingCount, priorReceiptCount, retained };
   }
 
   async function sendCurrent(current) {
@@ -677,6 +751,7 @@ export function createDurableCloudOutbox(options) {
       binding.slotId,
       current.receipt.revisionId,
       ...current.state.entries.map(item => item.envelope.versionId),
+      ...current.state.entries.flatMap(item => item.retainedPending?.map(row => row.envelope.versionId) || []),
       ...current.state.entries.map(item => item.attemptId).filter(Boolean),
       ...current.state.entries.map(item => item.anchorId).filter(Boolean),
       ...current.state.entries.flatMap(item => item.lineage?.map(pin => pin.versionId) || []),
@@ -892,14 +967,21 @@ export function createDurableCloudOutbox(options) {
      * Это НЕ квитанция отправки. Capability выдаёт только проверенное сравнение;
      * привязку к сохранённому state и снятие маркера подтверждает отдельный caller.
      * При потере ответа повтор возможен лишь после перечитывания того же основания.
-     * @param {{proof:any,expectedRootPin:any,expectedKeyPin:any}} value
+     * A non-exact merge additionally requires a saved-state capability. Only
+     * matching, not-yet-attempted intents may be retained encrypted in v5;
+     * an attempted or unverified upload is never discarded or retried here.
+     * @param {{proof:any,expectedRootPin:any,expectedKeyPin:any,authorization?:any}} value
      */
     async adoptReviewedBase(value) {
-      const request = object(value, ['proof', 'expectedRootPin', 'expectedKeyPin']);
+      const request = object(value, ['proof', 'expectedRootPin', 'expectedKeyPin'], ['authorization']);
       const root = versionPin(request.expectedRootPin);
       const proof = request.proof;
+      const conservative = isVerifiedConservativeAdoption(proof);
       if (
-        !isVerifiedCloudAdoption(proof) ||
+        !(
+          isVerifiedCloudAdoption(proof) ||
+          (conservative && isVerifiedConservativeAuthorization(request.authorization, proof))
+        ) ||
         proof.status !== 'ready_for_adoption' ||
         proof.provider !== binding.provider ||
         proof.datasetId !== binding.datasetId ||
@@ -930,16 +1012,56 @@ export function createDurableCloudOutbox(options) {
           return response('changed');
         const ancestors = new Map(lineage.map(value => [value.versionId, value.sha256]));
         let previousBase = null;
+        let retainedPending = [];
         let receipts = current.state.confirmedReceipts.slice();
         if (current.state.entries.length || receipts.length) {
           const view = await linearView(current, root, request.expectedKeyPin);
-          if (!view || !view.confirmed || view.pendingCount) return response('queue_not_empty');
+          if (!view || !view.confirmed) return response('queue_not_empty');
+          const marker = conservative ? request.authorization.marker : null;
+          const alreadyAdopted =
+            conservative && view.adopted && sameVersionPin(view.adopted.pin, pin) && sameVersionPin(view.tail.pin, pin);
+          if (!conservative && view.retained.length) return response('queue_not_empty');
+          if (conservative && !alreadyAdopted && !sameRetainedIntents(view.retained, marker.retainedIntents))
+            return response('merge_base_mismatch');
+          if (!alreadyAdopted) retainedPending = view.retained.map(item => structuredClone(item.row));
+          if (view.pendingCount) {
+            if (
+              !conservative ||
+              !marker.pendingPin ||
+              view.pendingCount !== 1 ||
+              !['queued', 'prepared'].includes(view.tail.row.phase) ||
+              view.tail.row.phase !== marker.pendingPhase ||
+              !sameVersionPin(view.tail.pin, marker.pendingPin) ||
+              JSON.stringify(view.tail.contents.publicSnapshot) !== JSON.stringify(proof.localSnapshot())
+            )
+              return response('queue_not_empty');
+            retainedPending.push(structuredClone(view.tail.row));
+            if (retainedPending.length > MAX_RETAINED_INTENTS) return response('retained_intent_limit');
+          } else if (conservative && !alreadyAdopted && marker.pendingPin) return response('merge_base_mismatch');
+          if (conservative) {
+            const prior = view.adopted && isRebased(current.state.version) ? view.adopted.row.previousBase : null;
+            if (alreadyAdopted) {
+              const expectedRetained = [...marker.retainedIntents];
+              if (marker.pendingPin) expectedRetained.push({ pin: marker.pendingPin, phase: marker.pendingPhase });
+              const retainedMatches = sameRetainedIntents(view.retained, expectedRetained);
+              if (
+                !retainedMatches ||
+                !sameVersionPin(priorConfirmedBeforeAdoption(current, view), marker.basePin) ||
+                !sameBase(prior, marker.previousBase)
+              )
+                return response('merge_base_mismatch');
+            } else {
+              const currentBase = view.adopted ? { pin: view.adopted.pin, anchorId: view.adopted.row.anchorId } : null;
+              if (
+                current.receipt.revisionId !== marker.queueRevisionId ||
+                !sameVersionPin(view.confirmed.pin, marker.basePin) ||
+                !sameBase(currentBase, marker.previousBase)
+              )
+                return response('merge_base_mismatch');
+            }
+          }
           const known = [
-            ...(view.adopted
-              ? current.state.version === REBASED_VERSION
-                ? view.adopted.row.lineage
-                : [view.adopted.pin]
-              : []),
+            ...(view.adopted ? (isRebased(current.state.version) ? view.adopted.row.lineage : [view.adopted.pin]) : []),
             ...receipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })),
             ...view.versions.filter(version => version.row.phase === 'confirmed').map(version => version.pin)
           ];
@@ -952,7 +1074,7 @@ export function createDurableCloudOutbox(options) {
                 status: 'already_adopted',
                 anchorId: view.adopted.row.anchorId,
                 pin: Object.freeze(pin),
-                previousBase: current.state.version === REBASED_VERSION ? view.adopted.row.previousBase : null
+                previousBase: isRebased(current.state.version) ? view.adopted.row.previousBase : null
               });
             }
             return Object.freeze({ status: 'already_head', pin: Object.freeze(pin), adoptedBase: previousBase });
@@ -961,6 +1083,8 @@ export function createDurableCloudOutbox(options) {
             receipts.push({ ...version.pin, fileId: version.row.fileId, attemptId: version.row.attemptId });
           }
           if (receipts.length > MAX_HISTORY_VERSIONS) return response('history_limit');
+        } else if (conservative) {
+          return response('no_local_lineage');
         }
         const anchorId = distinctId(crypto, [
           binding.datasetId,
@@ -968,6 +1092,7 @@ export function createDurableCloudOutbox(options) {
           binding.slotId,
           current.receipt.revisionId,
           ...lineage.map(value => value.versionId),
+          ...retainedPending.map(item => item.envelope.versionId),
           ...receipts.flatMap(value => [value.versionId, value.attemptId]),
           ...current.state.entries.map(value => value.previousBase?.anchorId).filter(Boolean),
           ...(previousBase ? [previousBase.anchorId] : [])
@@ -983,11 +1108,12 @@ export function createDurableCloudOutbox(options) {
           anchorId,
           lineage,
           priorReceiptCount: receipts.length,
-          previousBase
+          previousBase,
+          ...(retainedPending.length ? { retainedPending } : {})
         };
         const next = {
           ...current.state,
-          version: REBASED_VERSION,
+          version: retainedPending.length ? RETAINED_VERSION : REBASED_VERSION,
           entries: [entry],
           confirmedReceipts: receipts
         };
@@ -1019,15 +1145,22 @@ export function createDurableCloudOutbox(options) {
         if (!view) return response('no_local_lineage');
         const firstPending = view.versions.find(version => !finalEntry(version.row)) || null;
         const pins = view.adopted
-          ? current.state.version === REBASED_VERSION
+          ? isRebased(current.state.version)
             ? [...view.adopted.row.lineage]
             : [{ ...view.adopted.pin }]
           : [];
         pins.push(...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })));
         pins.push(...view.versions.filter(version => version.row.phase === 'confirmed').map(version => version.pin));
         const knownPins = uniquePins(pins);
+        // v4 сохраняет прежнюю принятую основу и квитанции до переноса.
+        // Это позволяет после прерывания проверить, какая подтверждённая локальная
+        // версия была непосредственной основой до принятия новой головы.
+        const priorConfirmedPin = priorConfirmedBeforeAdoption(current, view);
         return Object.freeze({
           status: 'ready',
+          priorConfirmedPin: priorConfirmedPin
+            ? Object.freeze({ versionId: priorConfirmedPin.versionId, sha256: priorConfirmedPin.sha256 })
+            : null,
           revisionId: current.receipt.revisionId,
           confirmedPin: view.confirmed ? Object.freeze({ ...view.confirmed.pin }) : null,
           confirmedPins: Object.freeze(knownPins.map(pin => Object.freeze({ ...pin }))),
@@ -1035,7 +1168,7 @@ export function createDurableCloudOutbox(options) {
             ? Object.freeze({ pin: Object.freeze({ ...view.adopted.pin }), anchorId: view.adopted.row.anchorId })
             : null,
           previousBase:
-            view.adopted && current.state.version === REBASED_VERSION && view.adopted.row.previousBase
+            view.adopted && isRebased(current.state.version) && view.adopted.row.previousBase
               ? Object.freeze({
                   pin: Object.freeze({ ...view.adopted.row.previousBase.pin }),
                   anchorId: view.adopted.row.previousBase.anchorId
@@ -1047,6 +1180,11 @@ export function createDurableCloudOutbox(options) {
           nextPin: firstPending ? Object.freeze({ ...firstPending.pin }) : null,
           nextPhase: firstPending?.row.phase || null,
           pendingCount: view.pendingCount,
+          retainedIntents: Object.freeze(
+            view.retained.map(item => Object.freeze({ pin: Object.freeze({ ...item.pin }), phase: item.row.phase }))
+          ),
+          retainedPendingPin: view.retained.length ? Object.freeze({ ...view.retained[0].pin }) : null,
+          retainedPendingPhase: view.retained[0]?.row.phase || null,
           settingsSelections: Object.freeze([...view.tail.contents.publicSnapshot.sections.preferences.selections])
         });
       });
@@ -1085,7 +1223,10 @@ export function createDurableCloudOutbox(options) {
         const oldSelections = view.tail.contents.publicSnapshot.sections.preferences.selections;
         if (JSON.stringify(snapshot.sections.preferences.selections) !== JSON.stringify(oldSelections))
           return response('selection_changed');
-        if (JSON.stringify(snapshot) === JSON.stringify(view.tail.contents.publicSnapshot))
+        if (
+          JSON.stringify(snapshot) === JSON.stringify(view.tail.contents.publicSnapshot) &&
+          !(view.retained.length && view.pendingCount === 0)
+        )
           return response('unchanged');
         const replace = view.tail.row.phase === 'queued';
         if (!replace && view.pendingCount >= 2) return response('queue_full');
@@ -1104,7 +1245,7 @@ export function createDurableCloudOutbox(options) {
         // Считаем уникальные известные версии вместе с ожидающими, иначе после
         // длинной принятой линии можно поставить в очередь заведомо 129-ю версию.
         const confirmedPins = uniquePins([
-          ...(current.state.version === REBASED_VERSION ? view.adopted.row.lineage : []),
+          ...(isRebased(current.state.version) ? view.adopted.row.lineage : []),
           ...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })),
           ...view.versions.filter(version => finalEntry(version.row)).map(version => version.pin)
         ]);
@@ -1116,6 +1257,7 @@ export function createDurableCloudOutbox(options) {
           binding.slotId,
           current.receipt.revisionId,
           ...current.state.entries.map(row => row.envelope.versionId),
+          ...current.state.entries.flatMap(row => row.retainedPending?.map(item => item.envelope.versionId) || []),
           ...current.state.entries.map(row => row.attemptId).filter(Boolean),
           ...current.state.entries.map(row => row.anchorId).filter(Boolean),
           ...current.state.entries.flatMap(row => row.lineage?.map(pin => pin.versionId) || []),
@@ -1255,7 +1397,15 @@ export function createDurableCloudOutbox(options) {
         if (result.status !== 'verified') return response('unavailable');
         const entries = current.state.entries.slice();
         entries[index] = { ...row, phase: 'confirmed' };
-        const saved = await write(current, { ...current.state, entries });
+        let version = current.state.version;
+        if (version === RETAINED_VERSION) {
+          // Only after the new merged child is verified can the previous encrypted
+          // queued/prepared intent be released in the SAME CAS as confirmation.
+          const { retainedPending: _retainedPending, ...adopted } = entries[0];
+          entries[0] = adopted;
+          version = REBASED_VERSION;
+        }
+        const saved = await write(current, { ...current.state, version, entries });
         // Совпадение в облаке не является доказательством дальнейшей сохранности.
         return response(saved.status === 'ready' ? 'confirmed' : saved.status);
       });
@@ -1272,7 +1422,7 @@ export function createDurableCloudOutbox(options) {
         const allConfirmed = current.state.entries.filter(row => row.phase === 'confirmed');
         // Для принятой основы последняя собственная подтверждённая версия нужна
         // как проверяемый родитель. Общая compaction не должна убирать её.
-        const confirmed = [ADOPTED_VERSION, REBASED_VERSION].includes(current.state.version)
+        const confirmed = [ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(current.state.version)
           ? allConfirmed.slice(0, -1)
           : allConfirmed;
         if (!confirmed.length) return response('idle');
@@ -1306,7 +1456,7 @@ export function createDurableCloudOutbox(options) {
         const adopted = current.state.entries.find(row => row.phase === 'adopted');
         const pins = [];
         if (adopted) {
-          if (current.state.version === REBASED_VERSION) pins.push(...adopted.lineage);
+          if (isRebased(current.state.version)) pins.push(...adopted.lineage);
           else
             pins.push(
               await historyEnvelopePin({
@@ -1336,7 +1486,7 @@ export function createDurableCloudOutbox(options) {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
         const counts = { queued: 0, prepared: 0, attempting: 0, confirmed: 0 };
-        if ([ADOPTED_VERSION, REBASED_VERSION].includes(current.state.version)) counts['adopted'] = 0;
+        if ([ADOPTED_VERSION, REBASED_VERSION, RETAINED_VERSION].includes(current.state.version)) counts['adopted'] = 0;
         for (const row of current.state.entries) counts[row.phase]++;
         return Object.freeze({ status: 'ready', counts: Object.freeze(counts) });
       });

@@ -1,11 +1,14 @@
 // @ts-check
-// Экспериментальный просмотр только УЖЕ закреплённого набора. Не создаёт набор,
-// ключи или очередь, не отправляет и не считает выборочное применение слиянием.
+// Экспериментальный просмотр только УЖЕ закреплённого набора. Не создаёт набор
+// или ключи; выборочное применение и ограниченное объединение — разные действия.
 // Значения сравнения могут быть личными: выводить только текстом, не журналировать.
 import { checkConnectedCloud } from '../checkConnectedCloud.js';
 import { stageReviewedCloudApply } from '../commitReviewedCloud.js';
 import { stageSyncIdentities } from '../commitSyncIdentities.js';
 import { reconcileExactCloudBase } from '../reconcileExactCloudBase.js';
+import { reconcileConservativeMerge, cancelPendingConservativeMerge } from '../reconcileConservativeMerge.js';
+import { readPendingConservativeMerge } from '../pendingConservativeMerge.js';
+import { state } from '../../../core/state.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
 
@@ -56,7 +59,11 @@ const MESSAGES = Object.freeze({
   unresolved_sources: 'Ранее применялись данные из другой ветви или набора. Требуется отдельное согласование.',
   deletions_unsupported: 'История содержит удаления или исчезнувшие записи. Их согласование ещё не реализовано.',
   queue_not_empty:
-    'Существующую исходящую очередь не удалось согласовать. Неотправленные версии не удалены; требуется проверка.',
+    'Исходящая очередь содержит начатую или несколько неподтверждённых попыток. Они не удалены; сначала проверьте результат отправки.',
+  queue_snapshot_mismatch:
+    'Неотправленная очередь содержит более старое сохранение. Сначала обновите очередь текущими данными; старое намерение не удалено.',
+  retained_intent_limit:
+    'Достигнут предел сохранённых неотправленных намерений. Подтвердите отправку объединённой версии или сохраните резервную копию и проверьте очередь.',
   local_lineage_not_ancestor:
     'Ранее подтверждённые версии этого ПК не входят в выбранную облачную ветвь. Согласование остановлено.',
   queue_changed: 'Очередь изменилась во время согласования. Отметка state не снята; повторите проверку.',
@@ -65,6 +72,29 @@ const MESSAGES = Object.freeze({
   state_changed_after_queue: 'Локальные данные изменились во время согласования. Отметка state не снята.',
   accepted_base_mismatch: 'Принятая основа не совпадает с локальной отметкой. Отправка остановлена.',
   journal_uncertain: 'Запись локальной очереди не подтверждена. Проверьте данные и очередь после перезапуска.',
+  conflicts: 'Есть конфликтующие правки одного поля. Автоматически объединить их нельзя; данные не перезаписаны.',
+  incoming_section_unsupported:
+    'Изменились шаблоны марафонов, которые это объединение пока не поддерживает. Данные не перезаписаны.',
+  structure_or_deletion_unsupported:
+    'Неподдерживаемое изменение состава или порядка либо исчезновение данных. Объединение остановлено.',
+  transition_unsupported:
+    'В истории есть неподдерживаемое изменение состава или порядка либо исчезновение данных. Объединение остановлено.',
+  dependencies_unresolved: 'Не удалось безопасно согласовать ссылки между записями.',
+  settings_mismatch: 'Выберите те же группы настроек, что закреплены в очереди этого ПК.',
+  base_not_ancestor: 'Подтверждённая основа этого ПК не является предком выбранной версии.',
+  already_on_base: 'Выбранная версия уже является местной основой. Новых облачных изменений для объединения нет.',
+  no_local_lineage: 'На этом ПК пока нет подтверждённой общей основы для объединения.',
+  candidate_unrepresentable: 'Результат не прошёл проверку сохранения и перезапуска. Данные не перезаписаны.',
+  merge_intent_mismatch: 'Сохранённые данные или план отличаются от незавершённого объединения. Отправка остановлена.',
+  merge_base_mismatch: 'Очередь или прежняя основа не совпадает с незавершённым объединением. Отправка остановлена.',
+  other_merge_pending: 'На этом ПК уже начато объединение другого диска или версии. Сначала завершите его.',
+  merge_pending: 'Сначала завершите или безопасно отмените незавершённое объединение.',
+  already_anchored: 'Очередь уже изменилась: отмена небезопасна. Продолжите начатое объединение.',
+  cloud_changed_after_checkpoint:
+    'Облако изменилось после сохранения отметки. Отправка остановлена; продолжите объединение после проверки.',
+  state_changed_after_checkpoint:
+    'Локальные данные изменились во время объединения. Отметка сохранена, отправка остановлена.',
+  cancelled_with_merge_pending: 'Объединение прервано после сохранения отметки. Продолжите или безопасно отмените его.',
   unavailable_or_busy: 'Другая операция выполняется или проверка недоступна. Основа не подтверждена.'
 });
 const MAX_DETAIL_CHARS = 25_000;
@@ -120,7 +150,8 @@ function description(entry) {
   if (entry.kind === 'only_local') return `${section}${label} — только на этом ПК, не удаляется`;
   if (entry.kind === 'changed') return `${section}${label} — отличается; при выборе облачные поля заменят местные`;
   if (entry.kind === 'identity_review') return `${section}${label} — требуется сопоставить записи`;
-  if (entry.kind === 'order_changed') return `${section} — отличается порядок; перенос порядка пока недоступен`;
+  if (entry.kind === 'order_changed')
+    return `${section} — отличается порядок; отдельный перенос порядка пока недоступен`;
   if (entry.kind === 'settings_changed')
     return entry.section === 'finance'
       ? 'Финансы — отличаются настройки и остатки'
@@ -131,7 +162,8 @@ function description(entry) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * check?:typeof checkConnectedCloud,stage?:typeof stageReviewedCloudApply,prepareIdentities?:typeof stageSyncIdentities,
- * reconcile?:typeof reconcileExactCloudBase,confirm?:(message:string)=>boolean|Promise<boolean>}} options
+ * reconcile?:typeof reconcileExactCloudBase,merge?:typeof reconcileConservativeMerge,
+ * cancelMerge?:typeof cancelPendingConservativeMerge,confirm?:(message:string)=>boolean|Promise<boolean>}} options
  */
 export function bindCloudReviewPanel(options) {
   const doc = options.doc || document;
@@ -150,6 +182,11 @@ export function bindCloudReviewPanel(options) {
   const none = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-select-none'));
   const apply = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-apply'));
   const accept = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-reconcile'));
+  const mergeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge'));
+  const pendingBox = /** @type {HTMLElement|null} */ (doc.getElementById('cloud-review-merge-pending'));
+  const pendingMessage = doc.getElementById('cloud-review-merge-pending-message');
+  const resumeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge-resume'));
+  const cancelMergeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge-cancel'));
   if (
     !panel ||
     !provider ||
@@ -165,7 +202,12 @@ export function bindCloudReviewPanel(options) {
     !all ||
     !none ||
     !apply ||
-    !accept
+    !accept ||
+    !mergeButton ||
+    !pendingBox ||
+    !pendingMessage ||
+    !resumeButton ||
+    !cancelMergeButton
   )
     return;
   if (panel.getAttribute('data-cloud-review-bound') === 'true') return;
@@ -174,6 +216,8 @@ export function bindCloudReviewPanel(options) {
   const stage = options.stage || stageReviewedCloudApply;
   const prepareIdentities = options.prepareIdentities || stageSyncIdentities;
   const reconcile = options.reconcile || reconcileExactCloudBase;
+  const merge = options.merge || reconcileConservativeMerge;
+  const cancelMerge = options.cancelMerge || cancelPendingConservativeMerge;
   const loadNative = options.loadNative || (async () => ({ invoke: (await import('@tauri-apps/api/core')).invoke }));
   const askConfirmation =
     options.confirm ||
@@ -188,6 +232,27 @@ export function bindCloudReviewPanel(options) {
   let previewOnly = false;
   let selected = null;
   let choices = [];
+  let pendingMerge = null;
+  let malformedMerge = false;
+  function refreshPending() {
+    try {
+      pendingMerge = readPendingConservativeMerge(state.settings);
+      malformedMerge = false;
+    } catch {
+      pendingMerge = null;
+      malformedMerge = true;
+    }
+    pendingBox.hidden = !pendingMerge && !malformedMerge;
+    if (malformedMerge) {
+      pendingMessage.textContent =
+        'Отметка незавершённого объединения повреждена. Отправка остановлена; проверьте данные и резервные копии.';
+    } else if (pendingMerge) {
+      pendingMessage.textContent = `Незавершённое объединение · ${providerName(pendingMerge.provider)}. Отправка заблокирована до безопасного завершения. ${provider.value === pendingMerge.provider ? 'Продолжите его с той же версией или отмените, пока очередь не менялась.' : 'Выберите этот диск, чтобы продолжить.'}`;
+    }
+    resumeButton.disabled = !options.desktop || active || !pendingMerge || pendingMerge.provider !== provider.value;
+    cancelMergeButton.disabled =
+      !options.desktop || active || !pendingMerge || pendingMerge.provider !== provider.value;
+  }
   function choiceBoxes() {
     return [...list.querySelectorAll('input[data-selection-index]')].map(box => /** @type {HTMLInputElement} */ (box));
   }
@@ -198,8 +263,11 @@ export function bindCloudReviewPanel(options) {
     versions.disabled = value;
     all.disabled = value;
     none.disabled = value;
-    apply.disabled = value || previewOnly;
-    accept.disabled = value || previewOnly;
+    apply.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
+    accept.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
+    mergeButton.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
+    resumeButton.disabled = !options.desktop || value || !pendingMerge || pendingMerge.provider !== provider.value;
+    cancelMergeButton.disabled = !options.desktop || value || !pendingMerge || pendingMerge.provider !== provider.value;
     for (const box of settingBoxes) box.disabled = value;
     for (const box of choiceBoxes()) box.disabled = value || box.dataset.locked === 'true';
   }
@@ -211,6 +279,7 @@ export function bindCloudReviewPanel(options) {
     result.hidden = true;
     differences.hidden = true;
     accept.hidden = true;
+    mergeButton.hidden = true;
     versions.replaceChildren();
     list.replaceChildren();
     times.textContent = '';
@@ -313,6 +382,7 @@ export function bindCloudReviewPanel(options) {
           : '');
       all.textContent =
         comparison.differences.entries.length > MAX_SHOWN_ENTRIES ? 'Выбрать все показанные' : 'Выбрать все';
+      let detailTooLong = false;
       for (const entry of comparison.differences.entries.slice(0, MAX_SHOWN_ENTRIES)) {
         const row = doc.createElement('div');
         row.className = 'cloud-review-entry';
@@ -324,6 +394,7 @@ export function bindCloudReviewPanel(options) {
           choice = entry.section === 'finance' ? { kind: 'finance' } : { kind: 'settings', group: entry.group };
         let detail = detailFor(entry, comparison);
         const tooLong = detail.length > MAX_DETAIL_CHARS;
+        detailTooLong ||= tooLong;
         if (choice) {
           const box = doc.createElement('input');
           box.type = 'checkbox';
@@ -353,6 +424,14 @@ export function bindCloudReviewPanel(options) {
         }
         list.append(row);
       }
+      mergeButton.hidden =
+        previewOnly ||
+        heads.length !== 1 ||
+        !review.versions[index].observedHead ||
+        comparison.differences.entries.length === 0 ||
+        comparison.differences.entries.length > MAX_SHOWN_ENTRIES ||
+        comparison.differences.uncomparedSettings.length !== 0 ||
+        detailTooLong;
       differences.hidden = false;
     } catch {
       differences.hidden = true;
@@ -370,7 +449,7 @@ export function bindCloudReviewPanel(options) {
       note('Это предварительный просмотр. Сначала подтвердите подключение восстановленного набора.');
       return;
     }
-    if (active || !review || !selected) return;
+    if (active || pendingMerge || malformedMerge || !review || !selected) return;
     const chosen = checkedChoices();
     if (!chosen.length) {
       note('Выберите хотя бы одно доступное изменение.');
@@ -400,7 +479,7 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Автоматического объединения и разрешения конфликтов пока нет. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
+        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Это действие не объединяет изменения; разрешения конфликтов пока нет. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
       );
     } catch {
       approved = false;
@@ -438,8 +517,167 @@ export function bindCloudReviewPanel(options) {
       setBusy(false);
     }
   }
+  async function runMerge(resume) {
+    refreshPending();
+    if (!options.desktop || active || malformedMerge) return;
+    if (
+      resume
+        ? !pendingMerge || pendingMerge.provider !== provider.value
+        : previewOnly || !!pendingMerge || mergeButton.hidden || !review || !selected
+    )
+      return;
+    const originalReview = review;
+    const originalSelection = selected;
+    const originalProvider = provider.value;
+    const intent = resume ? pendingMerge : null;
+    const pin = resume ? intent.targetPin : originalSelection.pin;
+    const settingsSelections = resume
+      ? [...intent.settingsSelections]
+      : settingBoxes.filter(box => box.checked).map(box => box.value);
+    setBusy(true);
+    let approved;
+    try {
+      approved = await askConfirmation(
+        resume
+          ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
+          : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец и выбранные настройки, кроме шаблонов марафонов. Изменение прежнего порядка, удаления и конфликты останавливают операцию. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
+      );
+    } catch {
+      approved = false;
+    }
+    refreshPending();
+    if (
+      !approved ||
+      provider.value !== originalProvider ||
+      (resume
+        ? !pendingMerge || pendingMerge.operationId !== intent.operationId
+        : review !== originalReview || selected !== originalSelection || !!pendingMerge || malformedMerge)
+    ) {
+      note('Объединение отменено или данные сравнения изменились.');
+      setBusy(false);
+      return;
+    }
+    const current = new AbortController();
+    controller = current;
+    note('Проверяем общую основу, изменения и резервные копии…');
+    try {
+      const native = await loadNative();
+      if (current.signal.aborted) return;
+      const outcome = /** @type {any} */ (
+        await merge({
+          provider: /** @type {'google'|'yandex'} */ (originalProvider),
+          invoke: native.invoke,
+          pin,
+          confirmed: true,
+          settingsSelections,
+          signal: current.signal
+        })
+      );
+      record(
+        originalProvider,
+        'merge',
+        outcome.status === 'merged'
+          ? 'success'
+          : ['journal_uncertain', 'write_unconfirmed_restart'].includes(outcome.status)
+            ? 'uncertain'
+            : 'blocked'
+      );
+      if (outcome.status === 'merged') {
+        clearView();
+        refreshPending();
+        if (!current.signal.aborted && provider.value === originalProvider) {
+          note(
+            `Поддерживаемые изменения объединены. Копия: ${outcome.backup}. Само объединение не отправляло снимок; включённая автоотправка может начаться после сохранения.${outcome.newerHeadObserved ? ' Обнаружена более поздняя версия: проверьте её перед отправкой.' : ' Можно подготовить отправку.'}`
+          );
+        }
+        doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-applied'));
+        doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-reconciled'));
+      } else if (!current.signal.aborted && provider.value === originalProvider) {
+        const conflictCount =
+          outcome.status === 'conflicts' && Number.isSafeInteger(outcome.conflictCount)
+            ? ` Конфликтов: ${outcome.conflictCount}.`
+            : '';
+        note(
+          (MESSAGES[outcome.status] || 'Объединение не подтверждено. Проверьте данные и резервные копии.') +
+            conflictCount
+        );
+      }
+    } catch {
+      record(originalProvider, 'merge', 'uncertain');
+      if (!current.signal.aborted) note('Объединение не подтверждено. Проверьте данные и копии перед повтором.');
+    } finally {
+      if (controller === current) controller = null;
+      refreshPending();
+      setBusy(false);
+    }
+  }
+  mergeButton.addEventListener('click', () => {
+    void runMerge(false);
+  });
+  resumeButton.addEventListener('click', () => {
+    void runMerge(true);
+  });
+  cancelMergeButton.addEventListener('click', async () => {
+    refreshPending();
+    if (!options.desktop || active || !pendingMerge || pendingMerge.provider !== provider.value) return;
+    const originalProvider = provider.value;
+    const operationId = pendingMerge.operationId;
+    setBusy(true);
+    let approved;
+    try {
+      approved = await askConfirmation(
+        'Отменить незавершённое объединение? Это возможно только если исходящая очередь и прежняя основа не менялись. Локальные данные сохранятся; перед снятием отметки создаётся резервная копия.'
+      );
+    } catch {
+      approved = false;
+    }
+    refreshPending();
+    if (!approved || provider.value !== originalProvider || pendingMerge?.operationId !== operationId) {
+      note('Отмена объединения не выполнена.');
+      setBusy(false);
+      return;
+    }
+    try {
+      const native = await loadNative();
+      const outcome = /** @type {any} */ (
+        await cancelMerge({
+          provider: /** @type {'google'|'yandex'} */ (originalProvider),
+          invoke: native.invoke,
+          confirmed: true
+        })
+      );
+      record(
+        originalProvider,
+        'merge',
+        outcome.status === 'merge_cancelled'
+          ? 'cancelled'
+          : outcome.status.endsWith('_restart')
+            ? 'uncertain'
+            : 'blocked'
+      );
+      if (outcome.status === 'merge_cancelled') {
+        clearView();
+        note(`Незавершённое объединение отменено. Данные и очередь сохранены; копия: ${outcome.backup}.`);
+      } else note(MESSAGES[outcome.status] || 'Отмена не подтверждена. Проверьте данные и копии.');
+    } catch {
+      note('Отмена не подтверждена. Проверьте данные и копии перед повтором.');
+    } finally {
+      refreshPending();
+      setBusy(false);
+    }
+  });
   accept.addEventListener('click', async () => {
-    if (!options.desktop || active || previewOnly || accept.hidden || !review || !selected) return;
+    if (
+      !options.desktop ||
+      active ||
+      previewOnly ||
+      pendingMerge ||
+      malformedMerge ||
+      accept.hidden ||
+      !review ||
+      !selected
+    )
+      return;
     const originalReview = review;
     const originalSelection = selected;
     const originalProvider = provider.value;
@@ -569,6 +807,7 @@ export function bindCloudReviewPanel(options) {
   provider.addEventListener('change', () => {
     controller?.abort();
     clearView();
+    refreshPending();
     setBusy(active);
     note('Выбран другой диск. Проверьте его обновления отдельно.');
   });
@@ -627,6 +866,7 @@ export function bindCloudReviewPanel(options) {
       }
     })();
   });
+  refreshPending();
   setBusy(false);
   if (!options.desktop)
     note('Проверка доступна только в настольном приложении; в браузерном примере диск не подключается.');

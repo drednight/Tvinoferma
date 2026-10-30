@@ -279,6 +279,7 @@ export async function sendConnectedQueuedSnapshot(options) {
     if (head.nextPhase === 'attempting') {
       const verified = await outbox.verifyNext();
       uncertain = verified.status === 'journal_uncertain';
+      if (uncertain) return result('journal_uncertain');
       if (verified.status === 'confirmed') return result('verified_previous_attempt');
       if (verified.status === 'needs_review') return result('cloud_content_mismatch');
       return result('verification_pending');
@@ -322,6 +323,7 @@ export async function sendConnectedQueuedSnapshot(options) {
     if (sent.status !== 'needs_verification') return result(sent.status);
     const verified = await outbox.verifyNext();
     uncertain = verified.status === 'journal_uncertain';
+    if (uncertain) return result('journal_uncertain');
     if (verified.status === 'confirmed') return result('sent_verified');
     if (verified.status === 'needs_review') return result('cloud_content_mismatch');
     return result('verification_pending');

@@ -469,12 +469,17 @@ function materialize(localState, target, selected, selectedGroups, financeSettin
       payments: listFor(payments, paymentIds)
     });
   }
-  state.finance = {
-    operations: listFor(operations, target.sections.finance.order.operations),
-    shopItems: listFor(items, target.sections.finance.order.shopItems),
-    loans: listFor(loans, target.sections.finance.order.loans),
-    settings: financeSettings ? clone(target.sections.finance.settings) : state.finance.settings
-  };
+  if (selected.some(item => item.section === 'finance')) {
+    state.finance = {
+      operations: listFor(operations, target.sections.finance.order.operations),
+      shopItems: listFor(items, target.sections.finance.order.shopItems),
+      loans: listFor(loans, target.sections.finance.order.loans),
+      settings: financeSettings ? clone(target.sections.finance.settings) : state.finance.settings
+    };
+  } else if (financeSettings) {
+    // Настройка без выбранных движений не должна перестраивать местный реестр.
+    state.finance.settings = clone(target.sections.finance.settings);
+  }
   applySettings(state.settings, target, selectedGroups);
   return state;
 }

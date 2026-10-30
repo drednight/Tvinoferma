@@ -8,6 +8,7 @@ import { array, object } from './exportSchema.js';
 import { isVerifiedCloudReview } from './cloudReview.js';
 import { currentCloudStateSnapshot, stageGuardedCloudStateWrite } from './guardedStateWrite.js';
 import { appendPendingSelectiveApply } from './pendingSelectiveApply.js';
+import { requireNoPendingConservativeMerge } from './pendingConservativeMerge.js';
 import { beginCloudDataOperation } from './credentialResetCoordination.js';
 
 function invalid() {
@@ -34,6 +35,7 @@ export function stageReviewedCloudApply(options) {
   if (!selected.length && !settings.length && input.includeFinanceSettings !== true) throw invalid();
   assertStateWriteAvailable();
   const original = currentCloudStateSnapshot();
+  requireNoPendingConservativeMerge(original.settings);
   const prepared = input.review.prepareApply(input.pin, {
     localState: original,
     selectedRecords: selected,

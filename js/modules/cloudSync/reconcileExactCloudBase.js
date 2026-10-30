@@ -14,6 +14,7 @@ import {
   stageGuardedCloudStateWrite
 } from './guardedStateWrite.js';
 import { pendingSelectiveApplyEvents, removePendingSelectiveApply } from './pendingSelectiveApply.js';
+import { readPendingConservativeMerge } from './pendingConservativeMerge.js';
 import { requireMatchingCloudBase, replaceAcceptedCloudBase } from './acceptedCloudBase.js';
 import { prepareCloudReview } from './cloudReview.js';
 import { openConnectedPublicationContext } from './connectedPublication.js';
@@ -104,6 +105,8 @@ export async function reconcileExactCloudBase(options) {
     const context = await openConnectedPublicationContext(input);
     if (!context) return result('binding_or_queue_blocked');
     const original = currentCloudStateSnapshot();
+    // Нельзя заменить основу, пока не завершён отдельный протокол объединения.
+    if (readPendingConservativeMerge(original.settings)) return result('merge_pending');
     // Повреждённый marker не может быть удалён как пустой.
     const events = pendingSelectiveApplyEvents(original.settings);
     if (!(await stillSaved(original))) return result('state_changed_or_unsaved');

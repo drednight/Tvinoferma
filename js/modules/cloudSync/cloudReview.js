@@ -1,7 +1,7 @@
 // @ts-check
 // Экспериментальное ТОЛЬКО ЧТЕНИЕ: сверка известных отпечатков истории и сравнение
-// с зафиксированной копией локального публичного снимка. Нет резервного копирования,
-// записи state, выбора пользователя за него, авторазрешения конфликтов или UI.
+// с зафиксированной копией локального публичного снимка. Есть узкий план объединения,
+// но здесь нет backup, записи state, выбора за пользователя или разрешения конфликтов.
 // Неполнота/откат всего облачного списка, локальной записи и часов не обнаруживаются.
 // Результат содержит пользовательские поля: не логировать и рендерить только как текст.
 import { isSyncId, MAX_SNAPSHOT_BYTES } from './envelope.js';
@@ -13,15 +13,22 @@ import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { preparePublicSnapshotApply } from './applyPublicSnapshot.js';
 import { pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
+import { conservativeTransition, planConservativePublicMerge } from './conservativeMerge.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
 const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedReviews = new WeakSet();
 const verifiedAdoptions = new WeakSet();
+const verifiedConservativeAdoptions = new WeakSet();
 
 /** Локальная capability для уже проверенного точного совпадения; это не гарантия полноты облака. */
 export function isVerifiedCloudAdoption(value) {
   return !!value && typeof value === 'object' && verifiedAdoptions.has(value);
+}
+
+/** A merge proof is separate: it additionally requires a durable state marker. */
+export function isVerifiedConservativeAdoption(value) {
+  return !!value && typeof value === 'object' && verifiedConservativeAdoptions.has(value);
 }
 
 /** Маркер объекта текущего процесса, не доказательство независимости pin или полноты диска. */
@@ -222,6 +229,74 @@ export async function prepareCloudReview(options) {
           envelope: Object.freeze({ ...found })
         });
         verifiedAdoptions.add(proof);
+        return proof;
+      },
+      /**
+       * Узкое трёхстороннее объединение от отдельно подтверждённой локальной
+       * основы к единственной наблюдаемой облачной голове. Это read-only план;
+       * полнота облака и отсутствие отката всё равно не доказаны.
+       * @param {{versionId:string,sha256:string}} selectedPin
+       * @param {{versionId:string,sha256:string}} basePin
+       * @param {any} settings
+       * @param {boolean} [allowDescendantHead] only when resuming an already saved intent
+       */
+      prepareConservativeAdoption(selectedPin, basePin, settings, allowDescendantHead = false) {
+        const selected = pin(selectedPin);
+        const base = pin(basePin);
+        const head = history.observedHeads();
+        if (head.length !== 1) return result('not_unique_head');
+        const current = pins.get(selected.versionId);
+        if (!current || current.sha256 !== selected.sha256) return result('changed');
+        if (head[0].versionId !== selected.versionId || head[0].sha256 !== selected.sha256) {
+          if (
+            !allowDescendantHead ||
+            !history
+              .lineage(head[0])
+              .some(value => value.versionId === selected.versionId && value.sha256 === selected.sha256)
+          )
+            return result('not_unique_head');
+        }
+        const lineage = history.lineage(current);
+        const baseIndex = lineage.findIndex(
+          value => value.versionId === base.versionId && value.sha256 === base.sha256
+        );
+        if (baseIndex < 0) return result('base_not_ancestor');
+        if (baseIndex === lineage.length - 1) return result('already_on_base');
+        if (pendingSelectiveApplyEvents(settings).length) return result('unresolved_sources');
+        if (lineage.some(value => history.plannerDeletions(value).length)) return result('deletions_unsupported');
+        let previousIds = new Map();
+        for (const node of lineage) {
+          const ids = publicSnapshotIdentityTypes(history.publicSnapshot(node));
+          if ([...previousIds].some(([id, type]) => ids.get(id) !== type)) return result('deletions_unsupported');
+          previousIds = ids;
+        }
+        for (let index = baseIndex + 1; index < lineage.length; index++) {
+          if (
+            !conservativeTransition(history.publicSnapshot(lineage[index - 1]), history.publicSnapshot(lineage[index]))
+          )
+            return result('transition_unsupported');
+        }
+        const plan = planConservativePublicMerge({
+          base: history.publicSnapshot(lineage[baseIndex]),
+          local,
+          cloud: history.publicSnapshot(current)
+        });
+        if (plan.status !== 'prepared') return plan;
+        const found = envelopes.find(envelope => envelope.versionId === current.versionId);
+        if (!found || found.version !== 2) return result('unsupported_version');
+        const proof = Object.freeze({
+          status: 'ready_for_adoption',
+          provider,
+          datasetId,
+          rootPin: Object.freeze({ ...root }),
+          basePin: Object.freeze({ ...base }),
+          pin: Object.freeze({ ...current }),
+          lineage: Object.freeze(lineage.map(value => Object.freeze({ ...value }))),
+          envelope: Object.freeze({ ...found }),
+          localSnapshot: () => structuredClone(local),
+          plan: () => plan
+        });
+        verifiedConservativeAdoptions.add(proof);
         return proof;
       },
       /**

@@ -16,6 +16,7 @@ const ACTIONS = Object.freeze({
   check: 'Проверка обновлений',
   apply: 'Выборочное применение',
   reconcile: 'Согласование полного совпадения',
+  merge: 'Объединение изменений',
   identities: 'Подготовка локальных идентификаторов'
 });
 const OUTCOMES = Object.freeze({

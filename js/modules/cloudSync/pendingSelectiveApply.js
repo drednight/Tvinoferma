@@ -5,6 +5,7 @@
 // state.json. Пока не обработана, автоматическая публикация должна быть закрыта.
 import { isSyncId } from './envelope.js';
 import { array, boolean, object } from './exportSchema.js';
+import { requireNoPendingConservativeMerge } from './pendingConservativeMerge.js';
 
 const KEY = 'cloudSyncPendingApply';
 const SECTIONS = ['characters', 'parties', 'marathons', 'planner', 'finance'];
@@ -85,6 +86,7 @@ export function removePendingSelectiveApply(settings) {
 /** Повреждённая/неизвестная отметка тоже блокирует отправку, а не считается пустой. */
 export function requireResolvedSelectiveApply(settings) {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw invalid();
+  requireNoPendingConservativeMerge(settings);
   if (Object.hasOwn(settings, KEY)) {
     checked(settings[KEY]);
     throw new Error('После выборочного применения требуется согласовать происхождение изменений перед отправкой');

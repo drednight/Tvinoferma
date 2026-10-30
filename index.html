@@ -580,7 +580,7 @@
               </section>
               <section class="cloud-publication" aria-labelledby="cloud-publication-title">
                 <h4 id="cloud-publication-title">Отправить последующие изменения · экспериментально</h4>
-                <p>Работает после подтверждения первого снимка. На восстановленном ПК и после получения изменений другого устройства требуется отдельно подтвердить полное совпадение с одной облачной версией. Данные сначала шифруются и сохраняются в очереди. Без сети очередь остаётся на этом ПК. При расходящихся изменениях, удалениях или неразрешённом выборочном применении отправка останавливается. Пароли и контакты не переносятся.</p>
+                <p>Работает после подтверждения первого снимка. На восстановленном ПК нужно подтвердить полное совпадение; изменения другого устройства можно согласовать ограниченным объединением или подтвердить полное совпадение. Данные сначала шифруются и сохраняются в очереди. Без сети очередь остаётся на этом ПК. При расходящихся изменениях, удалениях или неразрешённом выборочном применении отправка останавливается. Пароли и контакты не переносятся.</p>
                 <label class="cloud-connection-ack"><input type="checkbox" id="cloud-publication-auto" /> <span>Автоматически готовить и отправлять сохранения на выбранный диск</span></label>
                 <p class="muted" id="cloud-publication-mode">Автоотправка на этом ПК выключена.</p>
                 <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-publication-send">Отправить сохранённые изменения</button></div>
@@ -588,7 +588,7 @@
               </section>
               <section class="cloud-review" aria-labelledby="cloud-review-title">
                 <h4 id="cloud-review-title">Проверить обновления · экспериментально</h4>
-                <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. При выборе целой записи применятся все её переносимые поля; контакты, пароли, входы и пути остаются на этом ПК. Старые сборки не читают новый формат принятой очереди: перед экспериментом обновите приложение на всех ПК и сохраните независимую копию. После полного совпадения с единственной версией можно отдельно подтвердить основу для отправки; выберите для сравнения те же группы настроек, что есть в облаке.</p>
+                <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельная кнопка объединения пока работает для существующих записей, некоторых добавлений в конец и настроек, кроме шаблонов марафонов; изменение прежнего порядка, удаления и конфликты останавливают операцию. Контакты, пароли, входы и пути остаются на этом ПК. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию: старые версии не распознают незавершённое объединение. Выберите те же группы настроек, что есть в облачном наборе.</p>
                 <fieldset class="cloud-review-settings">
                   <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
                   <label><input type="checkbox" value="appearance" data-cloud-review-setting /> Тема</label>
@@ -601,6 +601,13 @@
                   <button type="button" class="btn ghost" id="cloud-review-check">Проверить обновления</button>
                 </div>
                 <p class="cloud-registration-status" id="cloud-review-status" role="status" aria-live="polite">Проверка ещё не выполнялась.</p>
+                <div class="cloud-review-pending" id="cloud-review-merge-pending" hidden>
+                  <p id="cloud-review-merge-pending-message"></p>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn" id="cloud-review-merge-resume">Продолжить объединение</button>
+                    <button type="button" class="btn ghost" id="cloud-review-merge-cancel">Отменить, если очередь не менялась</button>
+                  </div>
+                </div>
                 <div id="cloud-review-result" class="cloud-review-result" hidden>
                   <p id="cloud-review-times"></p>
                   <label for="cloud-review-version">Облачная версия для сравнения</label>
@@ -614,6 +621,7 @@
                     </div>
                     <div id="cloud-review-list" class="cloud-review-list"></div>
                     <button type="button" class="btn" id="cloud-review-apply">Применить выбранное с резервной копией</button>
+                    <button type="button" class="btn ghost" id="cloud-review-merge" hidden>Объединить все поддерживаемые изменения</button>
                     <button type="button" class="btn ghost" id="cloud-review-reconcile" hidden>Подтвердить полное совпадение и разрешить отправку</button>
                   </div>
                 </div>
