@@ -507,6 +507,26 @@ describe.each(['google', 'yandex'])('%s: зашифрованный журнал
     expect(session.upload).toHaveBeenCalledTimes(1);
   });
 
+  it.runIf(provider === 'google')('повторно выделенный Google file ID не вызывает второй POST', async () => {
+    const store = makeStore();
+    const session = makeSession({
+      generateFileId: vi.fn(async () => ({ status: 'generated', fileId: 'same_TEST_ID' }))
+    });
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const first = await sealedVersion();
+    const second = await sealedVersion();
+    await outbox.enqueue(first.envelope);
+    await outbox.sendNext();
+    await outbox.verifyNext();
+    await outbox.compactConfirmed();
+    await outbox.enqueue(second.envelope);
+    expect(await outbox.sendNext()).toEqual({ status: 'journal_blocked' });
+    expect(session.upload).toHaveBeenCalledTimes(1);
+    expect(await create(provider, store, session).sendNext()).toEqual({ status: 'journal_blocked' });
+    expect(session.upload).toHaveBeenCalledTimes(1);
+  });
+
   it('не пропускает первую неподтверждённую запись ради более новой', async () => {
     const store = makeStore();
     const session = makeSession({ verify: vi.fn(async () => ({ status: 'mismatch' })) });

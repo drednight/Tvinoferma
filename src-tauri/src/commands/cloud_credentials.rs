@@ -369,6 +369,126 @@ mod windows_backend {
         }
     }
 
+    // Только opt-in Windows CI. Имена уникальны, данные синтетические;
+    // cleanup best-effort. Это не тест Tauri IPC, сбоя питания или OAuth.
+    #[cfg(test)]
+    mod native_tests {
+        use super::*;
+        use std::collections::BTreeSet;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        struct ScopedVault {
+            prefix: String,
+            written: BTreeSet<String>,
+        }
+        impl ScopedVault {
+            fn new(prefix: &str) -> Self {
+                Self {
+                    prefix: prefix.into(),
+                    written: BTreeSet::new(),
+                }
+            }
+            fn name(&self, name: &str) -> String {
+                format!("{}:{name}", self.prefix)
+            }
+        }
+        impl CredentialVault for ScopedVault {
+            fn read(&mut self, name: &str) -> Result<Option<String>, ()> {
+                NativeVault.read(&self.name(name))
+            }
+            fn write(&mut self, name: &str, value: &str) -> Result<(), ()> {
+                let name = self.name(name);
+                self.written.insert(name.clone());
+                NativeVault.write(&name, value)
+            }
+            fn remove(&mut self, name: &str) -> Result<(), ()> {
+                NativeVault.remove(&self.name(name))
+            }
+        }
+        impl Drop for ScopedVault {
+            fn drop(&mut self) {
+                for name in &self.written {
+                    let _ = NativeVault.remove(name);
+                }
+            }
+        }
+
+        #[test]
+        fn credential_manager_binding_and_one_time_claim_with_synthetic_values() {
+            if std::env::var_os("TF_RUN_CREDENTIAL_MANAGER_TESTS").as_deref()
+                != Some(std::ffi::OsStr::new("1"))
+            {
+                return;
+            }
+            const SLOT: &str = "01234567-89ab-4cde-8f01-23456789abcd";
+            const REV1: &str = "11234567-89ab-4cde-8f01-23456789abcd";
+            const REV2: &str = "21234567-89ab-4cde-8f01-23456789abcd";
+            const ATTEMPT: &str = "31234567-89ab-4cde-8f01-23456789abcd";
+            let stamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let prefix = format!("tf-binding-ci-{}-{stamp}", std::process::id());
+            let mut first = ScopedVault::new(&prefix);
+            let mut second = ScopedVault::new(&prefix);
+            let client = format!("{}.apps.googleusercontent.com", "a".repeat(200));
+            let account = "b".repeat(256);
+            let token = "fake".repeat(1500);
+            let record = |revision: &str, phase: &str, attempt: &str, refresh: &str| {
+                format!(
+                "{{\"format\":\"tvinoferma-google-oauth-credential\",\"version\":1,\"slotId\":\"{SLOT}\",\"clientId\":\"{client}\",\"accountKey\":\"{account}\",\"revision\":\"{revision}\",\"phase\":\"{phase}\",\"attemptId\":{attempt},\"refreshToken\":{refresh},\"refreshExpiresAt\":null}}"
+            )
+            };
+            let before = record(REV1, "ready", "null", &format!("\"{token}\""));
+            let pending = record(REV2, "pending", &format!("\"{ATTEMPT}\""), "null");
+            assert!(matches!(
+                cloud_credential_binding::read(&mut first, Provider::Google),
+                Ok(Pair::Empty)
+            ));
+            assert_eq!(
+                cloud_credential_binding::install(&mut first, Provider::Google, SLOT, &before),
+                Ok(Outcome::Installed)
+            );
+            assert!(
+                matches!(cloud_credential_binding::read(&mut second, Provider::Google),
+                Ok(Pair::Ready { binding, record }) if binding.slot_id == SLOT && binding.client_id == client && binding.account_key == account && record == before)
+            );
+            let pin = second
+                .read("cloud-account-binding-v1:google:pin")
+                .unwrap()
+                .unwrap();
+            assert!(!pin.contains(&token));
+            assert_eq!(
+                cloud_credential_binding::claim_google_refresh(
+                    &mut second,
+                    SLOT,
+                    &before,
+                    &pending,
+                    &client,
+                    &token
+                ),
+                Ok(true)
+            );
+            assert_eq!(
+                cloud_credential_binding::claim_google_refresh(
+                    &mut first, SLOT, &before, &pending, &client, &token
+                ),
+                Ok(false)
+            );
+            assert!(
+                matches!(cloud_credential_binding::read(&mut first, Provider::Google), Ok(Pair::Ready { binding, record }) if binding.pending && record == pending)
+            );
+            assert_eq!(
+                cloud_credential_binding::forget(&mut second, Provider::Google),
+                Ok(Outcome::Forgotten)
+            );
+            assert!(matches!(
+                cloud_credential_binding::read(&mut first, Provider::Google),
+                Ok(Pair::Empty)
+            ));
+        }
+    }
+
     /// Вызывается только из factory_reset под уже удерживаемым state mutex.
     /// Пытаемся очистить обе известные записи, даже если одна недоступна.
     pub(super) fn cleanup_for_reset(app_dir: &Path) -> Result<(), String> {

@@ -7,6 +7,9 @@ mod cloud_credential_records;
 mod cloud_credential_service;
 #[path = "../src/cloud_credential_store.rs"]
 mod cloud_credential_store;
+#[allow(dead_code)]
+#[path = "../src/cloud_oauth_transport.rs"]
+mod cloud_oauth_transport;
 
 use cloud_credential_binding::Pair;
 use cloud_credential_store::{CredentialVault, Outcome, Provider, StoreError};
@@ -294,4 +297,49 @@ fn protected_rotation_preserves_pin_and_rejects_unrelated_or_changed_records() {
         cloud_credential_binding::read(&mut vault, Provider::KeyState),
         Err(StoreError::Invalid)
     ));
+}
+
+#[test]
+fn encoded_form_is_bound_before_one_fake_network_attempt() {
+    let token = "a+b/c\\d\"e&f%=";
+    let raw = google(REV1, "ready", "null", "\"a+b/c\\\\d\\\"e&f%=\"");
+    let p = pending();
+    let mut vault = Vault::default();
+    assert_eq!(
+        cloud_credential_binding::install(&mut vault, Provider::Google, SLOT, &raw),
+        Ok(Outcome::Installed)
+    );
+    let form = format!(
+        "grant_type=refresh_token&client_id={CLIENT}&refresh_token=a%2Bb%2Fc%5Cd%22e%26f%25%3D"
+    );
+    let mut posts = 0;
+    let mut guarded = |form: &str| {
+        let Some(parsed) = cloud_oauth_transport::parse_google_refresh_form(form) else {
+            return false;
+        };
+        match cloud_credential_binding::claim_google_refresh(
+            &mut vault,
+            SLOT,
+            &raw,
+            &p,
+            &parsed.client_id,
+            &parsed.refresh_token,
+        ) {
+            Ok(true) => {
+                posts += 1;
+                true
+            }
+            _ => false,
+        }
+    };
+    let parsed = cloud_oauth_transport::parse_google_refresh_form(&form).unwrap();
+    assert_eq!(parsed.refresh_token, token);
+    assert!(!guarded(&(form.clone() + "&refresh_token=other")));
+    assert!(!guarded(&form.replace("%5C", "%2F")));
+    assert!(!guarded(
+        &form.replace(CLIENT, "other.apps.googleusercontent.com")
+    ));
+    assert!(guarded(&form));
+    assert!(!guarded(&form));
+    assert_eq!(posts, 1);
 }
