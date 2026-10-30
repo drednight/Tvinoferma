@@ -99,3 +99,31 @@ describe('архив пати', () => {
     expect(state.archivedCharacters[0]).toMatchObject({ partyIds: ['p1'], mainPartyId: 'p1' });
   });
 });
+
+describe('порядок пати в архиве совпадает с нормализацией при перезапуске', () => {
+  it('сохраняет пати по order до записи, включая восстановление в начало', async () => {
+    state.parties = [
+      { id: 'p', name: 'Первая', order: 1 },
+      { id: 'q', name: 'Вторая', order: 2 }
+    ];
+    state.archivedParties = [{ id: 'r', name: 'Третья', order: 3, memberLinks: [] }];
+    const { archiveParty, restoreParty } = await import('../js/modules/archive/archive.js');
+    await archiveParty('p');
+    expect(state.archivedParties.map(row => row.id)).toEqual(['p', 'r']);
+    await restoreParty('p');
+    expect(state.parties.map(row => row.id)).toEqual(['p', 'q']);
+  });
+  it('при отказе сохранения возвращает исходные массивы и состав', async () => {
+    state.parties = [{ id: 'p', name: 'Первая', order: 1 }];
+    state.archivedParties = [{ id: 'r', name: 'Третья', order: 3, memberLinks: [] }];
+    state.characters = [character('a', ['p'], 'p')];
+    state.characters[0].partyOrder = { p: 7 };
+    const before = { parties: state.parties, archive: state.archivedParties, characters: state.characters };
+    mocks.persist.mockRejectedValueOnce(new Error('disk failure'));
+    const { archiveParty } = await import('../js/modules/archive/archive.js');
+    await expect(archiveParty('p')).rejects.toThrow();
+    expect(state.parties).toBe(before.parties);
+    expect(state.archivedParties).toBe(before.archive);
+    expect(state.characters).toBe(before.characters);
+  });
+});
