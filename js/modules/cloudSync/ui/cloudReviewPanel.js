@@ -5,6 +5,7 @@
 import { checkConnectedCloud } from '../checkConnectedCloud.js';
 import { stageReviewedCloudApply } from '../commitReviewedCloud.js';
 import { stageSyncIdentities } from '../commitSyncIdentities.js';
+import { reconcileExactCloudBase } from '../reconcileExactCloudBase.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
 
@@ -39,6 +40,7 @@ const MESSAGES = Object.freeze({
   cancelled: 'Проверка отменена. Уже начатый запрос мог завершиться.',
   storage_blocked: 'Сохранение остановлено. Проверьте данные и резервные копии перед перезапуском.',
   state_changed: 'Локальные данные изменились после просмотра. Выполните проверку заново.',
+  state_changed_or_unsaved: 'Локальные данные изменились или ещё не сохранены. Выполните проверку заново.',
   disk_changed_or_unsaved: 'Состояние на диске и в памяти не совпадает. Сначала сохраните данные и проверьте заново.',
   backup_unconfirmed_restart:
     'Копия не подтверждена. Применение и сохранение остановлены; проверьте данные и копии перед перезапуском.',
@@ -47,7 +49,18 @@ const MESSAGES = Object.freeze({
   write_unconfirmed_restart:
     'Результат записи не подтверждён. Не повторяйте применение; проверьте данные и копию перед перезапуском.',
   state_changed_during_write_restart:
-    'Данные изменились во время записи. Новые сохранения остановлены; проверьте данные и копию перед перезапуском.'
+    'Данные изменились во время записи. Новые сохранения остановлены; проверьте данные и копию перед перезапуском.',
+  not_exact:
+    'Данные не совпадают полностью с выбранной версией. Сначала разрешите все различия; отправка не разрешена.',
+  not_unique_head: 'Наблюдается другая версия или несколько ветвей. Согласование остановлено.',
+  unresolved_sources: 'Ранее применялись данные из другой ветви или набора. Требуется отдельное согласование.',
+  deletions_unsupported: 'История содержит удаления или исчезнувшие записи. Их согласование ещё не реализовано.',
+  queue_not_empty: 'На этом ПК уже есть исходящие версии. Их объединение с выбранной ветвью ещё не реализовано.',
+  cloud_changed_after_queue: 'Облако изменилось во время согласования. Отметка state не снята; повтор не гарантирован.',
+  state_changed_after_queue: 'Локальные данные изменились во время согласования. Отметка state не снята.',
+  accepted_base_mismatch: 'Принятая основа не совпадает с локальной отметкой. Отправка остановлена.',
+  journal_uncertain: 'Запись локальной очереди не подтверждена. Проверьте данные и очередь после перезапуска.',
+  unavailable_or_busy: 'Другая операция выполняется или проверка недоступна. Основа не подтверждена.'
 });
 const MAX_DETAIL_CHARS = 25_000;
 const MAX_SHOWN_ENTRIES = 1_000;
@@ -113,7 +126,7 @@ function description(entry) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * check?:typeof checkConnectedCloud,stage?:typeof stageReviewedCloudApply,prepareIdentities?:typeof stageSyncIdentities,
- * confirm?:(message:string)=>boolean|Promise<boolean>}} options
+ * reconcile?:typeof reconcileExactCloudBase,confirm?:(message:string)=>boolean|Promise<boolean>}} options
  */
 export function bindCloudReviewPanel(options) {
   const doc = options.doc || document;
@@ -131,6 +144,7 @@ export function bindCloudReviewPanel(options) {
   const all = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-select-all'));
   const none = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-select-none'));
   const apply = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-apply'));
+  const accept = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-reconcile'));
   if (
     !panel ||
     !provider ||
@@ -145,7 +159,8 @@ export function bindCloudReviewPanel(options) {
     !list ||
     !all ||
     !none ||
-    !apply
+    !apply ||
+    !accept
   )
     return;
   if (panel.getAttribute('data-cloud-review-bound') === 'true') return;
@@ -153,6 +168,7 @@ export function bindCloudReviewPanel(options) {
   const check = options.check || checkConnectedCloud;
   const stage = options.stage || stageReviewedCloudApply;
   const prepareIdentities = options.prepareIdentities || stageSyncIdentities;
+  const reconcile = options.reconcile || reconcileExactCloudBase;
   const loadNative = options.loadNative || (async () => ({ invoke: (await import('@tauri-apps/api/core')).invoke }));
   const askConfirmation =
     options.confirm ||
@@ -178,6 +194,7 @@ export function bindCloudReviewPanel(options) {
     all.disabled = value;
     none.disabled = value;
     apply.disabled = value || previewOnly;
+    accept.disabled = value || previewOnly;
     for (const box of settingBoxes) box.disabled = value;
     for (const box of choiceBoxes()) box.disabled = value || box.dataset.locked === 'true';
   }
@@ -188,6 +205,7 @@ export function bindCloudReviewPanel(options) {
     choices = [];
     result.hidden = true;
     differences.hidden = true;
+    accept.hidden = true;
     versions.replaceChildren();
     list.replaceChildren();
     times.textContent = '';
@@ -273,6 +291,13 @@ export function bindCloudReviewPanel(options) {
     try {
       const comparison = review.compare(review.versions[index].pin);
       selected = comparison;
+      const heads = review.versions.filter(version => version.observedHead);
+      accept.hidden =
+        previewOnly ||
+        heads.length !== 1 ||
+        !review.versions[index].observedHead ||
+        comparison.differences.entries.length !== 0 ||
+        comparison.differences.uncomparedSettings.length !== 0;
       summary.textContent =
         `Дата файла на диске: ${dateText(comparison.cloudModifiedAt)}. Различий: ${comparison.differences.entries.length}.` +
         (comparison.differences.uncomparedSettings.length
@@ -370,7 +395,7 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        `Применить выбранные записи и настройки (${chosen.length})? Будет создана копия локального файла. Записи выбираются целиком; контакты и пароли не переносятся. Отправка пока недоступна; для неё потребуется согласовать происхождение изменений.`
+        `Применить выбранные записи и настройки (${chosen.length})? Будет создана копия локального файла. Записи выбираются целиком; контакты и пароли не переносятся. Отправка блокируется до согласования. При полном совпадении с одной облачной версией его можно подтвердить отдельно.`
       );
     } catch {
       approved = false;
@@ -408,6 +433,72 @@ export function bindCloudReviewPanel(options) {
       setBusy(false);
     }
   }
+  accept.addEventListener('click', async () => {
+    if (!options.desktop || active || previewOnly || accept.hidden || !review || !selected) return;
+    const originalReview = review;
+    const originalSelection = selected;
+    const originalProvider = provider.value;
+    setBusy(true);
+    let approved;
+    try {
+      approved = await askConfirmation(
+        'Подтвердить полное совпадение с выбранной единственной облачной версией? История и сохранённые данные будут проверены повторно, затем создастся резервная копия. Различающиеся или удалённые данные этот шаг не объединяет.'
+      );
+    } catch {
+      approved = false;
+    }
+    if (
+      !approved ||
+      review !== originalReview ||
+      selected !== originalSelection ||
+      provider.value !== originalProvider
+    ) {
+      note('Согласование отменено или сравнение изменилось.');
+      setBusy(false);
+      return;
+    }
+    const current = new AbortController();
+    controller = current;
+    note('Повторно проверяем историю, сохранённые данные и резервную копию…');
+    try {
+      const native = await loadNative();
+      if (current.signal.aborted) return;
+      const outcome = /** @type {any} */ (
+        await reconcile({
+          provider: /** @type {'google'|'yandex'} */ (originalProvider),
+          invoke: native.invoke,
+          pin: originalSelection.pin,
+          confirmed: true,
+          settingsSelections: settingBoxes.filter(box => box.checked).map(box => box.value),
+          signal: current.signal
+        })
+      );
+      if (current.signal.aborted || provider.value !== originalProvider) return;
+      record(
+        originalProvider,
+        'reconcile',
+        ['reconciled', 'already_reconciled'].includes(outcome.status)
+          ? 'success'
+          : ['journal_uncertain', 'write_unconfirmed_restart'].includes(outcome.status)
+            ? 'uncertain'
+            : 'blocked'
+      );
+      if (outcome.status === 'reconciled' || outcome.status === 'already_reconciled') {
+        clearView();
+        note(
+          outcome.status === 'reconciled'
+            ? `Полное совпадение подтверждено. Создана копия: ${outcome.backup}. Последующие изменения можно подготовить к отправке.`
+            : 'Полное совпадение уже подтверждено. Последующие изменения можно подготовить к отправке.'
+        );
+        doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-reconciled'));
+      } else note(MESSAGES[outcome.status] || 'Согласование не подтверждено. Проверьте состояние и копии.');
+    } catch {
+      if (!current.signal.aborted) note('Согласование не подтверждено. Проверьте состояние и копии.');
+    } finally {
+      if (controller === current) controller = null;
+      setBusy(false);
+    }
+  });
   identitiesButton.addEventListener('click', async () => {
     if (active || !options.desktop) return;
     let prepared;

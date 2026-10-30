@@ -35,25 +35,27 @@ function samePin(left, right, id) {
 }
 
 /**
- * Стартует только после явного действия. Если в очереди ещё не начатый корень,
- * он должен ТОЧНО совпадать с сохранённым текущим снимком; иначе не отправляем
- * устаревшие данные. Проверка уже начатой попытки возможна и при изменении state,
+ * Стартует только после явного действия. Если подготовленный корень отличается
+ * от текущего снимка, его можно отправить только после отдельного подтверждения
+ * как историческую основу: позднейшие изменения не считаются при этом отправленными.
+ * Проверка уже начатой попытки возможна и при изменении state,
  * поскольку она ничего не записывает в облако. Только локальный JS-контекст и
  * кооперативные IPC; rollback, старое облако и настоящий провайдер не доказаны.
  * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,
- * confirmed:boolean,settingsSelections?:string[],cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number,
+ * confirmed:boolean,allowEarlierSnapshot?:boolean,settingsSelections?:string[],cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number,
  * openSession?:typeof openPinnedNativeCloudSession}} options
  */
 export async function sendInitialCloudRoot(options) {
   const input = object(
     options,
     ['provider', 'invoke', 'confirmed'],
-    ['settingsSelections', 'cryptoSource', 'now', 'timeoutMs', 'openSession']
+    ['settingsSelections', 'allowEarlierSnapshot', 'cryptoSource', 'now', 'timeoutMs', 'openSession']
   );
   if (
     !['google', 'yandex'].includes(input.provider) ||
     typeof input.invoke !== 'function' ||
     input.confirmed !== true ||
+    (input.allowEarlierSnapshot !== undefined && typeof input.allowEarlierSnapshot !== 'boolean') ||
     (input.settingsSelections !== undefined && !Array.isArray(input.settingsSelections)) ||
     (input.openSession !== undefined && typeof input.openSession !== 'function')
   )
@@ -65,6 +67,7 @@ export async function sendInitialCloudRoot(options) {
   let session = null;
   let loaded = null;
   let snapshotForSend = null;
+  let earlierSnapshot = false;
   let uncertainRefresh = false;
   try {
     operation = beginCloudDataOperation();
@@ -133,7 +136,9 @@ export async function sendInitialCloudRoot(options) {
         publicSnapshot
       });
       if (compared.status !== 'ready' || compared.phase !== initial.phase) return result('queue_changed');
-      if (compared.snapshotMatches !== true) return result('prepared_snapshot_outdated');
+      if (compared.snapshotMatches !== true && input.allowEarlierSnapshot !== true)
+        return result('prepared_snapshot_outdated');
+      earlierSnapshot = compared.snapshotMatches !== true;
       if (JSON.stringify(currentCloudStateSnapshot()) !== JSON.stringify(snapshot))
         return result('state_changed_or_unsaved');
       snapshotForSend = snapshot;
@@ -178,7 +183,7 @@ export async function sendInitialCloudRoot(options) {
       if (sent.status !== 'needs_verification') return result(sent.status);
     }
     const verified = await outbox.verifyNext();
-    if (verified.status === 'confirmed') return result('sent_verified');
+    if (verified.status === 'confirmed') return result(earlierSnapshot ? 'sent_earlier_verified' : 'sent_verified');
     if (verified.status === 'needs_review') return result('cloud_content_mismatch');
     return result('verification_pending');
   } catch {

@@ -23,6 +23,7 @@ function fakeNative(generateSyncId, fault = null) {
   const pins = { google: null, yandex: null };
   const queues = { google: null, yandex: null };
   let failed = false;
+  let loseNextCompare = false;
   const invoke = vi.fn(async (command, input) => {
     if (command === 'cloud_credential_binding_read') {
       return { status: 'ready', ...accounts[input.provider] };
@@ -63,6 +64,10 @@ function fakeNative(generateSyncId, fault = null) {
         return { status: 'mismatch' };
       const { slotId, datasetId, deviceId, revisionId, record } = next;
       queues[input.provider] = { slotId, datasetId, deviceId, revisionId, record, sha256: digest(record) };
+      if (loseNextCompare) {
+        loseNextCompare = false;
+        throw new Error('PRIVATE lost queue compare response');
+      }
       return { status: 'swapped' };
     }
     if (command === 'cloud_outbox_install_initial') {
@@ -90,7 +95,14 @@ function fakeNative(generateSyncId, fault = null) {
     }
     throw new Error('Unexpected fake IPC');
   });
-  return { invoke, accounts, key: () => key, pin: provider => pins[provider], queue: provider => queues[provider] };
+  return {
+    invoke,
+    accounts,
+    key: () => key,
+    pin: provider => pins[provider],
+    queue: provider => queues[provider],
+    loseNextCompare: () => (loseNextCompare = true)
+  };
 }
 
 async function fixture(fault = null) {
@@ -384,6 +396,19 @@ describe.each(['google', 'yandex'])('%s: первичная локальная �
     expect(await f.sendInitialCloudRoot(opts)).toEqual({ status: 'prepared_snapshot_outdated' });
     expect(network.openSession).not.toHaveBeenCalled();
     expect(network.session.upload).not.toHaveBeenCalled();
+    expect(await f.sendInitialCloudRoot({ ...opts, allowEarlierSnapshot: true })).toEqual({
+      status: 'sent_earlier_verified'
+    });
+    expect(network.session.upload).toHaveBeenCalledTimes(1);
+    const { queueConnectedSavedSnapshot } = await import('../js/modules/cloudSync/connectedPublication.js');
+    expect(
+      await queueConnectedSavedSnapshot({
+        provider,
+        invoke: f.fake.invoke,
+        cryptoSource: webcrypto,
+        prepareIdentities: true
+      })
+    ).toEqual({ status: 'queued' });
   }, 30_000);
 
   it('сверяет потерянный ответ без повторной отправки, даже если данные позже изменились', async () => {
@@ -547,5 +572,518 @@ describe.each(['google', 'yandex'])('%s: восстановление и сра�
     expect(
       target.fake.invoke.mock.calls.filter(([command]) => command === 'cloud_outbox_install_initial')
     ).toHaveLength(1);
+  }, 30_000);
+});
+
+// Второй synthetic transport хранит все версии по отдельности и умеет
+// моделировать расхождение ветвей и потерю ответа. Это не настоящий Drive API.
+function fakeHistorySession(f, provider, initialEnvelope) {
+  const parts = f.fake.pin(provider).split('|');
+  const versions = new Map([[initialEnvelope.versionId, structuredClone(initialEnvelope)]]);
+  let file = 0;
+  let verified = true;
+  let afterList = null;
+  let lose = false;
+  const session = {
+    generateFileId: vi.fn(async () => ({ status: 'generated', fileId: `SYNTHETIC_FILE_${++file}` })),
+    upload: vi.fn(async ({ envelope }) => {
+      versions.set(envelope.versionId, structuredClone(envelope));
+      if (lose) {
+        lose = false;
+        throw new Error('PRIVATE lost network response');
+      }
+      return { status: 'accepted' };
+    }),
+    verify: vi.fn(async ({ envelope }) => ({
+      status:
+        verified && JSON.stringify(versions.get(envelope.versionId)) === JSON.stringify(envelope)
+          ? 'verified'
+          : 'unavailable'
+    })),
+    listWithDates: vi.fn(async () => {
+      if (afterList) {
+        const fn = afterList;
+        afterList = null;
+        await fn();
+      }
+      return {
+        status: 'listed',
+        versions: [...versions.keys()].map(versionId => ({ versionId, modifiedAt: '2026-10-29T12:00:00Z' }))
+      };
+    }),
+    read: vi.fn(async versionId =>
+      versions.has(versionId)
+        ? { status: 'found', envelope: structuredClone(versions.get(versionId)) }
+        : { status: 'not_found' }
+    ),
+    dispose: vi.fn()
+  };
+  return {
+    versions,
+    session,
+    openSession: vi.fn(async () => ({
+      status: 'opened',
+      datasetId: parts[5],
+      keyPin: { bundleId: parts[6], sha256: parts[7] },
+      rootPin: { versionId: parts[8], sha256: parts[9] },
+      session
+    })),
+    setVerify: value => (verified = value),
+    loseNextUpload: () => (lose = true),
+    onList: fn => (afterList = fn)
+  };
+}
+
+async function publicationFixture(provider) {
+  const f = await fixture();
+  const pending = await begin(f.setup(provider));
+  await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true });
+  const initial = fakeSendSession(f, provider);
+  expect(
+    await f.sendInitialCloudRoot({
+      provider,
+      invoke: f.fake.invoke,
+      confirmed: true,
+      cryptoSource: webcrypto,
+      openSession: initial.openSession
+    })
+  ).toEqual({ status: 'sent_verified' });
+  const cloud = fakeHistorySession(f, provider, initial.stored().envelope);
+  const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+  const local = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+  return {
+    ...f,
+    cloud,
+    initialEnvelope: initial.stored().envelope,
+    queue: () => publication.queueConnectedSavedSnapshot({ ...local, prepareIdentities: true }),
+    send: () => publication.sendConnectedQueuedSnapshot({ ...local, openSession: cloud.openSession })
+  };
+}
+
+describe.each(['google', 'yandex'])('%s: последующие версии через fake IPC и диск', provider => {
+  it('ставит сохранение офлайн, после перезапуска отправляет и проверяет шифрованный снимок', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'НОВАЯ ЛИЧНАЯ ЗАМЕТКА';
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'queued' });
+    expect(f.cloud.openSession).not.toHaveBeenCalled();
+    const storedQueue = JSON.stringify(f.fake.queue(provider));
+    for (const secret of ['НОВАЯ ЛИЧНАЯ ЗАМЕТКА', 'PRIVATE_PASSWORD', 'FAKE_PRIVATE_ACCOUNT'])
+      expect(storedQueue).not.toContain(secret);
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+    const options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+    expect(await publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true })).toEqual({
+      status: 'unchanged'
+    });
+    expect(await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).toEqual({
+      status: 'sent_verified'
+    });
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    const newest = [...f.cloud.versions.values()].find(value => value.versionId !== f.initialEnvelope.versionId);
+    expect(JSON.stringify(newest)).not.toContain('НОВАЯ ЛИЧНАЯ ЗАМЕТКА');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = await parseKeyStateRecord(f.fake.key().record, webcrypto);
+    const payload = await decryptSnapshot({
+      envelope: newest,
+      recoveryKey: key.state.dataKey,
+      expectedDatasetId: key.state.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.notes).toBe('НОВАЯ ЛИЧНАЯ ЗАМЕТКА');
+    expect(JSON.stringify(payload)).not.toContain('PRIVATE_PASSWORD');
+    expect(await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).toEqual({
+      status: 'idle'
+    });
+  }, 30_000);
+
+  it('назначает новым записям sync-ID только после backup сохранённого файла', async () => {
+    const f = await publicationFixture(provider);
+    const newCharacter = structuredClone(f.state.characters[0]);
+    newCharacter.id = 'another';
+    newCharacter.nick = 'НОВЫЙ ПЕРСОНАЖ';
+    delete newCharacter.syncId;
+    f.state.characters.push(newCharacter);
+    await f.storage.saveNow();
+    const before = localStorage.getItem(STORAGE_KEY);
+    expect(await f.queue()).toEqual({ status: 'queued' });
+    expect(f.state.characters[1].syncId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(
+      Object.keys(localStorage).some(
+        key => key.startsWith('tvinoferma_backup_') && localStorage.getItem(key) === before
+      )
+    ).toBe(true);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('останавливает несохранённые правки, удаление записи и отметку частичного применения', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'не сохранено';
+    expect(await f.queue()).toEqual({ status: 'state_changed_or_unsaved' });
+    f.state.characters[0].notes = 'ЛИЧНАЯ ЗАМЕТКА';
+    f.state.characters = [];
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'deletions_need_review' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    f.state.settings.cloudSyncPendingApply = { version: 999, events: [] };
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'provenance_review_required' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('не публикует поверх чужой головы и не выбирает победителя при разошедшихся ветвях', async () => {
+    const f = await publicationFixture(provider);
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const { sealHistoryVersion, historyEnvelopePin } = await import('../js/modules/cloudSync/history.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const rootPin = await historyEnvelopePin({
+      envelope: f.initialEnvelope,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    const payload = await decryptSnapshot({
+      envelope: f.initialEnvelope,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    async function foreign() {
+      return sealHistoryVersion({
+        publicSnapshot: payload.publicSnapshot,
+        parent: rootPin,
+        recoveryKey: key.dataKey,
+        datasetId: key.datasetId,
+        versionId: generateSyncId(webcrypto),
+        keyBundle: key.bundle,
+        keyPin: key.pin,
+        cryptoSource: webcrypto
+      });
+    }
+    f.state.characters[0].notes = 'локальная ветвь';
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'queued' });
+    const first = await foreign();
+    f.cloud.versions.set(first.pin.versionId, first.envelope);
+    expect(await f.send()).toEqual({ status: 'remote_changes_require_review' });
+    const second = await foreign();
+    f.cloud.versions.set(second.pin.versionId, second.envelope);
+    expect(await f.send()).toEqual({ status: 'remote_branches_require_review' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('при потерянном ответе только сверяет прошлую попытку и не повторяет её после сохранения', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'первая правка';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    f.cloud.loseNextUpload();
+    f.cloud.setVerify(false);
+    expect(await f.send()).toEqual({ status: 'verification_pending' });
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    f.state.characters[0].notes = 'вторая правка';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    f.cloud.setVerify(true);
+    expect(await f.send()).toEqual({ status: 'verified_previous_attempt' });
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    expect(await f.send()).toEqual({ status: 'sent_verified' });
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(2);
+  }, 30_000);
+
+  it('может сверить неизвестную попытку после локального удаления, не отправляя это удаление', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'версия перед удалением';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    f.cloud.loseNextUpload();
+    f.cloud.setVerify(false);
+    expect((await f.send()).status).toBe('verification_pending');
+    f.state.characters = [];
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('deletions_need_review');
+    f.cloud.setVerify(true);
+    expect((await f.send()).status).toBe('verified_previous_attempt');
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    expect((await f.queue()).status).toBe('deletions_need_review');
+  }, 30_000);
+
+  it('отмена при чтении облака не начинает запись подготовленной версии', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'очередь перед отменой';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const controller = new AbortController();
+    f.cloud.onList(() => controller.abort());
+    const { sendConnectedQueuedSnapshot } = await import('../js/modules/cloudSync/connectedPublication.js');
+    const result = await sendConnectedQueuedSnapshot({
+      provider,
+      invoke: f.fake.invoke,
+      cryptoSource: webcrypto,
+      openSession: f.cloud.openSession,
+      signal: controller.signal
+    });
+    expect(result).toEqual({ status: 'cancelled' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
+  it('не отправляет очередь, если локальные данные изменились во время проверки диска', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'сохранено до проверки';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    f.cloud.onList(async () => {
+      f.state.characters[0].notes = 'изменено во время проверки';
+      await f.storage.saveNow();
+    });
+    expect(await f.send()).toEqual({ status: 'state_changed_or_unsaved' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect((await f.queue()).status).toBe('coalesced');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+});
+
+async function recoveredFixture(provider, applyAll = true) {
+  const source = await syntheticSource(provider);
+  const target = await fixture();
+  target.state.characters = [];
+  target.state.plannerEntries = [];
+  await target.storage.saveNow();
+  const recoveryCloud = fakeRecoverySession(source.envelope);
+  const recovery = target.createCloudRecovery({
+    provider,
+    invoke: target.fake.invoke,
+    cryptoSource: webcrypto,
+    openSession: recoveryCloud.openSession
+  });
+  const pending = await recovery.begin({
+    pairingCode: source.code,
+    independentPinConfirmed: true,
+    role: 'backup',
+    secret: source.secret
+  });
+  expect(pending.status).toBe('ready_for_confirmation');
+  const connected = await pending.connect({ confirmed: true });
+  expect(connected.status).toBe('connected');
+  const pin = connected.review.versions[0].pin;
+  const differences = connected.review.compare(pin).differences.entries;
+  const records = differences
+    .filter(entry => entry.kind === 'only_cloud' || entry.kind === 'changed')
+    .map(entry => ({ section: entry.section, id: entry.id }));
+  expect(records.length).toBeGreaterThan(1);
+  const { stageReviewedCloudApply } = await import('../js/modules/cloudSync/commitReviewedCloud.js');
+  const selected = applyAll ? records : records.slice(0, 1);
+  expect(
+    (
+      await stageReviewedCloudApply({ review: connected.review, pin, selectedRecords: selected }).commit({
+        confirmed: true
+      })
+    ).status
+  ).toBe('applied');
+  const cloud = fakeHistorySession(target, provider, source.envelope);
+  const options = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto };
+  const reconciliation = await import('../js/modules/cloudSync/reconcileExactCloudBase.js');
+  const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+  return {
+    ...target,
+    cloud,
+    pin,
+    options,
+    reconcile: () =>
+      reconciliation.reconcileExactCloudBase({ ...options, pin, confirmed: true, openSession: cloud.openSession }),
+    queue: () => publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true }),
+    send: () => publication.sendConnectedQueuedSnapshot({ ...options, openSession: cloud.openSession })
+  };
+}
+
+describe.each(['google', 'yandex'])('%s: принятие полностью совпавшей базы на втором fake ПК', provider => {
+  it('после полного применения, повторной проверки и backup разрешает новую зашифрованную версию', async () => {
+    const f = await recoveredFixture(provider);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect((await f.queue()).status).toBe('no_local_lineage');
+    const before = localStorage.getItem(STORAGE_KEY);
+    const reconciled = await f.reconcile();
+    expect(reconciled.status).toBe('reconciled');
+    expect(localStorage.getItem(reconciled.backup)).toBe(before);
+    expect(f.state.settings.cloudSyncPendingApply).toBeUndefined();
+    expect(f.state.settings.cloudSyncAcceptedBase).toMatchObject({ provider, pin: f.pin });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    f.state.characters[0].notes = 'ИЗМЕНЕНО НА ВТОРОМ ПК';
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'queued' });
+    expect(await f.send()).toEqual({ status: 'sent_verified' });
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    const newest = [...f.cloud.versions.values()].find(envelope => envelope.versionId !== f.pin.versionId);
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const payload = await decryptSnapshot({
+      envelope: newest,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.parent).toEqual(f.pin);
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.notes).toBe('ИЗМЕНЕНО НА ВТОРОМ ПК');
+    expect(JSON.stringify(newest)).not.toContain('ИЗМЕНЕНО НА ВТОРОМ ПК');
+    expect(JSON.stringify(payload)).not.toContain('PRIVATE_PASSWORD');
+    // Несколько последующих подтверждений сжимают квитанции, но не теряют принятую базу.
+    for (let i = 1; i <= 3; i++) {
+      f.state.characters[0].notes = `ДОПОЛНИТЕЛЬНАЯ ПРАВКА ${i}`;
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      expect((await f.send()).status).toBe('sent_verified');
+    }
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(4);
+  }, 30_000);
+
+  it('не снимает marker при неполном выборе и не отправляет на диск', async () => {
+    const f = await recoveredFixture(provider, false);
+    const before = localStorage.getItem(STORAGE_KEY);
+    expect(await f.reconcile()).toEqual({ status: 'not_exact' });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect(f.state.settings.cloudSyncAcceptedBase).toBeUndefined();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect((await f.queue()).status).toBe('no_local_lineage');
+  }, 30_000);
+
+  it('не принимает источник из другой ветви даже при совпадении текущего набора', async () => {
+    const f = await recoveredFixture(provider);
+    const { appendPendingSelectiveApply } = await import('../js/modules/cloudSync/pendingSelectiveApply.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const datasetId = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state.datasetId;
+    f.state.settings = appendPendingSelectiveApply(f.state.settings, {
+      provider,
+      datasetId,
+      pin: { versionId: generateSyncId(webcrypto), sha256: 'a'.repeat(64) },
+      records: [],
+      settings: [],
+      financeSettings: false
+    });
+    await f.storage.saveNow();
+    const before = localStorage.getItem(STORAGE_KEY);
+    expect(await f.reconcile()).toEqual({ status: 'unresolved_sources' });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(f.state.settings.cloudSyncPendingApply.events).toHaveLength(2);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('потеря ответа очереди не снимает marker; после перезапуска используется тот же anchor', async () => {
+    const f = await recoveredFixture(provider);
+    const before = localStorage.getItem(STORAGE_KEY);
+    f.fake.loseNextCompare();
+    expect(await f.reconcile()).toEqual({ status: 'journal_uncertain' });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    const queueAfter = structuredClone(f.fake.queue(provider));
+    const saved = JSON.parse(before);
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const { queueConnectedSavedSnapshot } = await import('../js/modules/cloudSync/connectedPublication.js');
+    expect(await queueConnectedSavedSnapshot({ ...f.options, prepareIdentities: true })).toEqual({
+      status: 'provenance_review_required'
+    });
+    const { reconcileExactCloudBase } = await import('../js/modules/cloudSync/reconcileExactCloudBase.js');
+    const again = await reconcileExactCloudBase({
+      ...f.options,
+      pin: f.pin,
+      confirmed: true,
+      openSession: f.cloud.openSession
+    });
+    expect(again.status).toBe('reconciled');
+    expect(f.fake.queue(provider)).toEqual(queueAfter); // существующий anchor не пересоздаётся
+    expect(state.settings.cloudSyncPendingApply).toBeUndefined();
+    expect(state.settings.cloudSyncAcceptedBase).toBeTruthy();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('после неполной записи очереди не отправляет даже при ручном удалении marker', async () => {
+    const f = await recoveredFixture(provider);
+    f.fake.loseNextCompare();
+    expect(await f.reconcile()).toEqual({ status: 'journal_uncertain' });
+    delete f.state.settings.cloudSyncPendingApply;
+    await f.storage.saveNow();
+    expect(f.state.settings.cloudSyncAcceptedBase).toBeUndefined();
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const { queueConnectedSavedSnapshot } = await import('../js/modules/cloudSync/connectedPublication.js');
+    expect(await queueConnectedSavedSnapshot({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto })).toEqual({
+      status: 'accepted_base_mismatch'
+    });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('если другая версия появилась во время согласования, не снимает marker', async () => {
+    const f = await recoveredFixture(provider);
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const { sealHistoryVersion } = await import('../js/modules/cloudSync/history.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const rootEnvelope = f.cloud.versions.get(f.pin.versionId);
+    const payload = await decryptSnapshot({
+      envelope: rootEnvelope,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    const foreign = await sealHistoryVersion({
+      publicSnapshot: payload.publicSnapshot,
+      parent: f.pin,
+      recoveryKey: key.dataKey,
+      datasetId: key.datasetId,
+      versionId: generateSyncId(webcrypto),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource: webcrypto
+    });
+    const originalList = f.cloud.session.listWithDates.getMockImplementation();
+    let calls = 0;
+    f.cloud.session.listWithDates.mockImplementation(async () => {
+      if (++calls === 2) f.cloud.versions.set(foreign.pin.versionId, foreign.envelope);
+      return originalList();
+    });
+    expect(await f.reconcile()).toEqual({ status: 'cloud_changed_after_queue' });
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect(f.state.settings.cloudSyncAcceptedBase).toBeUndefined();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('если state меняется после установки основы в очередь, сохраняет marker и не публикует', async () => {
+    const f = await recoveredFixture(provider);
+    const originalList = f.cloud.session.listWithDates.getMockImplementation();
+    let calls = 0;
+    f.cloud.session.listWithDates.mockImplementation(async () => {
+      calls++;
+      if (calls === 2) {
+        f.state.characters[0].notes = 'новая правка во время согласования';
+        await f.storage.saveNow();
+      }
+      return originalList();
+    });
+    expect(await f.reconcile()).toEqual({ status: 'state_changed_after_queue' });
+    expect(f.state.settings.cloudSyncPendingApply).toBeTruthy();
+    expect(f.state.settings.cloudSyncAcceptedBase).toBeUndefined();
+    expect((await f.queue()).status).toBe('provenance_review_required');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('не публикует, если локальная отметка принятой основы потеряна или подменена', async () => {
+    const f = await recoveredFixture(provider);
+    expect((await f.reconcile()).status).toBe('reconciled');
+    delete f.state.settings.cloudSyncAcceptedBase;
+    f.state.characters[0].notes = 'локальная правка';
+    await f.storage.saveNow();
+    expect(await f.queue()).toEqual({ status: 'accepted_base_mismatch' });
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
   }, 30_000);
 });

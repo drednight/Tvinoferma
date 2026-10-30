@@ -68,6 +68,20 @@ export function appendPendingSelectiveApply(settings, value) {
   return { ...settings, [KEY]: next };
 }
 
+/** Проверенные источники частичных применений без значений; отсутствие означает пустой список. */
+export function pendingSelectiveApplyEvents(settings) {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw invalid();
+  return Object.hasOwn(settings, KEY) ? checked(settings[KEY]).events : [];
+}
+
+/** Только после отдельной проверки полного совпадения и сохранения принятой основы. */
+export function removePendingSelectiveApply(settings) {
+  pendingSelectiveApplyEvents(settings);
+  const copy = { ...settings };
+  delete copy[KEY];
+  return copy;
+}
+
 /** Повреждённая/неизвестная отметка тоже блокирует отправку, а не считается пустой. */
 export function requireResolvedSelectiveApply(settings) {
   if (!settings || typeof settings !== 'object' || Array.isArray(settings)) throw invalid();

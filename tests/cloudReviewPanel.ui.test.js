@@ -79,6 +79,7 @@ function setup(options = {}) {
     stage,
     ...(options.useDefaultConfirmation ? {} : { confirm }),
     ...(options.prepareIdentities ? { prepareIdentities: options.prepareIdentities } : {}),
+    ...(options.reconcile ? { reconcile: options.reconcile } : {}),
     loadNative: async () => ({ invoke: vi.fn() })
   });
   return { check, stage, confirm, commit, cancel };
@@ -118,6 +119,31 @@ describe('интерфейс проверенного сравнения', () =>
     expect(boxes.every(box => box.checked)).toBe(true);
     click('cloud-review-select-none');
     expect(boxes.every(box => !box.checked)).toBe(true);
+  });
+
+  it('только для полного совпадения предлагает отдельное подтверждение принятой основы', async () => {
+    const value = review();
+    const originalCompare = value.compare;
+    value.compare = () => ({ ...originalCompare(), differences: { entries: [], uncomparedSettings: [] } });
+    const reconcile = vi.fn(async () => ({ status: 'reconciled', backup: 'state.backup-accept.json' }));
+    const f = setup({ check: vi.fn(async () => value), reconcile });
+    const event = vi.fn();
+    window.addEventListener('tf-cloud-reconciled', event, { once: true });
+    await openComparison();
+    expect(el('cloud-review-reconcile').hidden).toBe(false);
+    click('cloud-review-reconcile');
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('полное совпадение'));
+    expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ provider: 'yandex', pin, confirmed: true }));
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('Полное совпадение подтверждено'));
+    expect(event).toHaveBeenCalledOnce();
+  });
+
+  it('не предлагает согласование при различиях или нескольких наблюдаемых ветвях', async () => {
+    const value = review();
+    setup({ check: vi.fn(async () => value) });
+    await openComparison();
+    expect(el('cloud-review-reconcile').hidden).toBe(true);
   });
 
   it('отмена ничего не записывает, подтверждение применяет лишь выбранное и обновляет приложение', async () => {

@@ -12,10 +12,17 @@ import { copyCloudEnvelope } from './providers/common.js';
 import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { preparePublicSnapshotApply } from './applyPublicSnapshot.js';
+import { pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
 const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedReviews = new WeakSet();
+const verifiedAdoptions = new WeakSet();
+
+/** Локальная capability для уже проверенного точного совпадения; это не гарантия полноты облака. */
+export function isVerifiedCloudAdoption(value) {
+  return !!value && typeof value === 'object' && verifiedAdoptions.has(value);
+}
 
 /** Маркер объекта текущего процесса, не доказательство независимости pin или полноты диска. */
 export function isVerifiedCloudReview(value) {
@@ -166,6 +173,54 @@ export async function prepareCloudReview(options) {
       checkedAt,
       localSavedAt: savedAt,
       versions: observations,
+      /**
+       * Узкое согласование: локальный публичный снимок должен полностью и точно
+       * совпасть с единственной наблюдаемой головой. Все отметки частичных
+       * применений должны относиться к её проверенной линии. Это не разрешение
+       * конфликта или доказательство полноты списка облака.
+       * @param {{versionId:string,sha256:string}} selectedPin
+       * @param {any} settings
+       */
+      prepareExactAdoption(selectedPin, settings) {
+        const selected = pin(selectedPin);
+        const head = history.observedHeads();
+        if (head.length !== 1 || head[0].versionId !== selected.versionId || head[0].sha256 !== selected.sha256)
+          return result('not_unique_head');
+        const current = pins.get(selected.versionId);
+        if (!current || current.sha256 !== selected.sha256) return result('changed');
+        if (JSON.stringify(local) !== JSON.stringify(history.publicSnapshot(current))) return result('not_exact');
+        const lineage = history.lineage(current);
+        const ancestors = new Map(lineage.map(value => [value.versionId, value.sha256]));
+        const events = pendingSelectiveApplyEvents(settings);
+        if (
+          events.some(
+            event =>
+              event.provider !== provider ||
+              event.datasetId !== datasetId ||
+              ancestors.get(event.pin.versionId) !== event.pin.sha256
+          )
+        )
+          return result('unresolved_sources');
+        if (lineage.some(value => history.plannerDeletions(value).length)) return result('deletions_unsupported');
+        let previousIds = new Map();
+        for (const node of lineage) {
+          const ids = publicSnapshotIdentityTypes(history.publicSnapshot(node));
+          if ([...previousIds].some(([id, type]) => ids.get(id) !== type)) return result('deletions_unsupported');
+          previousIds = ids;
+        }
+        const found = envelopes.find(envelope => envelope.versionId === current.versionId);
+        if (!found || found.version !== 2) return result('unsupported_version');
+        const proof = Object.freeze({
+          status: 'ready_for_adoption',
+          provider,
+          datasetId,
+          rootPin: Object.freeze({ ...root }),
+          pin: Object.freeze({ ...current }),
+          envelope: Object.freeze({ ...found })
+        });
+        verifiedAdoptions.add(proof);
+        return proof;
+      },
       /**
        * Явный выбор точного отпечатка. Отсутствие записи в одной стороне не объявляется
        * удалением; результат read-only, содержит значения и может устареть.

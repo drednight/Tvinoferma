@@ -9,12 +9,14 @@ import { decryptSnapshot, encryptSnapshot, generateSyncId, isSyncId } from './en
 import { verifyPortableEnvelopeBinding } from './portableKeyCapsule.js';
 import { object } from './exportSchema.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
-import { historyEnvelopePin, MAX_HISTORY_VERSIONS } from './history.js';
+import { isVerifiedCloudAdoption } from './cloudReview.js';
+import { historyEnvelopePin, sealHistoryVersion, MAX_HISTORY_VERSIONS } from './history.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './providers/oauthCommon.js';
 
 const FORMAT = 'tvinoferma-durable-outbox';
 const VERSION = 2;
+const ADOPTED_VERSION = 3;
 const LEGACY_VERSION = 1;
 const KEY_CONTEXT = 'tvinoferma-durable-outbox-key-v1';
 const MAX_ENTRIES = 16;
@@ -30,6 +32,14 @@ function invalid() {
 }
 function response(status) {
   return Object.freeze({ status });
+}
+function versionPin(value) {
+  const pin = object(value, ['versionId', 'sha256']);
+  if (!isSyncId(pin.versionId) || typeof pin.sha256 !== 'string' || !HEX.test(pin.sha256)) throw invalid();
+  return { versionId: pin.versionId, sha256: pin.sha256 };
+}
+function sameVersionPin(left, right) {
+  return left?.versionId === right?.versionId && left?.sha256 === right?.sha256;
 }
 function bytesToBase64Url(bytes) {
   let binary = '';
@@ -154,14 +164,20 @@ async function validateVersion(envelope, dataKey, binding, crypto) {
   )
     throw invalid();
   publicSnapshotIdentityTypes(history.publicSnapshot);
-  return { parent: history.parent, publicSnapshot: history.publicSnapshot };
+  return { parent: history.parent, publicSnapshot: history.publicSnapshot, historyVersion: history.version };
 }
 
-function entryFor(value, binding) {
-  const row = object(value, ['envelope', 'phase', 'fileId', 'attemptId']);
+function entryFor(value, binding, version) {
+  const row = object(value, ['envelope', 'phase', 'fileId', 'attemptId'], ['anchorId']);
   const envelope = copyCloudEnvelope(row.envelope, binding.datasetId);
   if (binding.provider === 'google' && JSON.stringify(envelope).length > MAX_GOOGLE_ENVELOPE) throw invalid();
-  if (!['queued', 'prepared', 'attempting', 'confirmed'].includes(row.phase)) throw invalid();
+  if (!['queued', 'prepared', 'attempting', 'confirmed', 'adopted'].includes(row.phase)) throw invalid();
+  if (row.phase === 'adopted') {
+    if (version !== ADOPTED_VERSION || row.fileId !== null || row.attemptId !== null || !isSyncId(row.anchorId))
+      throw invalid();
+    return { envelope, phase: row.phase, fileId: null, attemptId: null, anchorId: row.anchorId };
+  }
+  if (Object.hasOwn(row, 'anchorId')) throw invalid();
   if (row.phase === 'queued') {
     if (row.fileId !== null || row.attemptId !== null) throw invalid();
   } else {
@@ -169,6 +185,9 @@ function entryFor(value, binding) {
     if (row.phase === 'prepared' ? row.attemptId !== null : !isSyncId(row.attemptId)) throw invalid();
   }
   return { envelope, phase: row.phase, fileId: row.fileId, attemptId: row.attemptId };
+}
+function finalEntry(row) {
+  return row.phase === 'confirmed' || row.phase === 'adopted';
 }
 function receiptFor(value, binding) {
   const row = object(value, ['versionId', 'sha256', 'fileId', 'attemptId']);
@@ -201,9 +220,9 @@ function checkState(value, binding) {
   );
   if (
     state.format !== FORMAT ||
-    ![LEGACY_VERSION, VERSION].includes(state.version) ||
+    ![LEGACY_VERSION, VERSION, ADOPTED_VERSION].includes(state.version) ||
     (state.version === LEGACY_VERSION && Object.hasOwn(state, 'confirmedReceipts')) ||
-    (state.version === VERSION && !Object.hasOwn(state, 'confirmedReceipts')) ||
+    (state.version !== LEGACY_VERSION && !Object.hasOwn(state, 'confirmedReceipts')) ||
     state.provider !== binding.provider ||
     state.datasetId !== binding.datasetId ||
     state.deviceId !== binding.deviceId ||
@@ -213,11 +232,17 @@ function checkState(value, binding) {
     state.folderId !== (binding.provider === 'google' ? binding.folderId : null) ||
     !Array.isArray(state.entries) ||
     state.entries.length > MAX_ENTRIES ||
-    (state.version === VERSION &&
+    (state.version !== LEGACY_VERSION &&
       (!Array.isArray(state.confirmedReceipts) || state.confirmedReceipts.length > MAX_HISTORY_VERSIONS))
   )
     throw invalid();
-  const entries = state.entries.map(row => entryFor(row, binding));
+  const entries = state.entries.map(row => entryFor(row, binding, state.version));
+  const adopted = entries.filter(row => row.phase === 'adopted');
+  if (
+    (state.version === ADOPTED_VERSION && (adopted.length !== 1 || entries[0].phase !== 'adopted')) ||
+    (state.version !== ADOPTED_VERSION && adopted.length)
+  )
+    throw invalid();
   const confirmedReceipts =
     state.version === LEGACY_VERSION ? [] : state.confirmedReceipts.map(row => receiptFor(row, binding));
   const versions = new Set();
@@ -244,7 +269,13 @@ function checkState(value, binding) {
       fileIds.add(row.fileId);
     }
   }
-  const clean = { ...bindingState(binding), entries, confirmedReceipts };
+  if (adopted.length && (versions.has(adopted[0].anchorId) || attempts.has(adopted[0].anchorId))) throw invalid();
+  const clean = {
+    ...bindingState(binding),
+    version: state.version === ADOPTED_VERSION ? ADOPTED_VERSION : VERSION,
+    entries,
+    confirmedReceipts
+  };
   if (new TextEncoder().encode(JSON.stringify(clean)).length > MAX_STATE_BYTES) throw invalid();
   return clean;
 }
@@ -367,6 +398,7 @@ export function createDurableCloudOutbox(options) {
       ...(previous ? [previous.receipt.revisionId] : []),
       ...clean.entries.map(row => row.envelope.versionId),
       ...clean.entries.map(row => row.attemptId).filter(Boolean),
+      ...clean.entries.map(row => row.anchorId).filter(Boolean),
       ...clean.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
     ]);
     const encrypted = await encryptSnapshot({
@@ -435,6 +467,153 @@ export function createDurableCloudOutbox(options) {
     if (value.status === 'empty') return response('not_initialized');
     if (value.status === 'pending' || value.status === 'blocked') return response('journal_blocked');
     return response(value.status);
+  }
+
+  // Пустая очередь восстановленного ПК сама по себе не является доказательством
+  // принятия полей. Версия v3 содержит только отдельно согласованную точную базу.
+  async function linearView(current, rootPin, keyPin) {
+    const receipts = current.state.confirmedReceipts;
+    const rows = current.state.entries;
+    if (!rows.length) return null;
+    const versions = [];
+    async function verified(row) {
+      if (row.envelope.version !== 2) throw invalid();
+      await verifyPortableEnvelopeBinding({
+        envelope: row.envelope,
+        dataKey,
+        expectedPin: keyPin,
+        cryptoSource: crypto
+      });
+      const contents = await validateVersion(row.envelope, dataKey, binding, crypto);
+      if (contents.historyVersion !== 1) throw invalid();
+      const pin = await historyEnvelopePin({
+        envelope: row.envelope,
+        expectedDatasetId: binding.datasetId,
+        cryptoSource: crypto
+      });
+      return { row, pin, contents };
+    }
+    let adopted = null;
+    let start = 0;
+    let parent;
+    if (rows[0].phase === 'adopted') {
+      adopted = await verified(rows[0]);
+      if (sameVersionPin(adopted.pin, rootPin) ? adopted.contents.parent !== null : adopted.contents.parent === null)
+        throw invalid();
+      versions.push(adopted);
+      start = 1;
+      parent = receipts.length
+        ? { versionId: receipts[receipts.length - 1].versionId, sha256: receipts[receipts.length - 1].sha256 }
+        : adopted.pin;
+    } else {
+      if (receipts.length && !sameVersionPin(receipts[0], rootPin)) throw invalid();
+      parent = receipts.length
+        ? { versionId: receipts[receipts.length - 1].versionId, sha256: receipts[receipts.length - 1].sha256 }
+        : null;
+    }
+    let foundPending = false;
+    let firstPendingPhase = null;
+    let pendingCount = 0;
+    for (const row of rows.slice(start)) {
+      const version = await verified(row);
+      if (parent === null) {
+        if (version.contents.parent !== null || !sameVersionPin(version.pin, rootPin)) throw invalid();
+      } else if (!sameVersionPin(version.contents.parent, parent)) throw invalid();
+      if (row.phase === 'confirmed') {
+        if (foundPending) throw invalid();
+      } else {
+        if (row.phase === 'adopted') throw invalid();
+        foundPending = true;
+        pendingCount++;
+        if (pendingCount === 1) firstPendingPhase = row.phase;
+        // Одновременно могут быть только начатая и одна ещё не начатая версия.
+        if (pendingCount > 2 || (pendingCount === 2 && (row.phase !== 'queued' || firstPendingPhase === 'queued')))
+          throw invalid();
+      }
+      versions.push(version);
+      parent = version.pin;
+    }
+    if (receipts.length && rows[start]?.phase !== 'confirmed') throw invalid();
+    const confirmed = versions.filter(version => version.row.phase === 'confirmed').at(-1) || adopted;
+    const tail = versions.at(-1);
+    return { versions, adopted, confirmed, tail, pendingCount };
+  }
+
+  async function sendCurrent(current) {
+    if (current.status !== 'ready') return unavailable(current);
+    let index = current.state.entries.findIndex(row => !finalEntry(row));
+    if (index < 0) return response('idle');
+    let row = current.state.entries[index];
+    if (row.phase === 'attempting') return response('needs_verification');
+    if (row.phase === 'queued') {
+      let fileId = null;
+      if (binding.provider === 'google') {
+        let generated;
+        try {
+          generated = object(await session.generateFileId(), ['status'], ['fileId']);
+        } catch {
+          return response('unavailable');
+        }
+        if (generated.status !== 'generated' || !validGoogleId(generated.fileId)) return response('unavailable');
+        fileId = generated.fileId;
+      }
+      const entries = current.state.entries.slice();
+      entries[index] = { ...row, phase: 'prepared', fileId };
+      current = await write(current, { ...current.state, entries });
+      if (current.status !== 'ready') return response(current.status);
+      index = current.state.entries.findIndex(item => !finalEntry(item));
+      row = current.state.entries[index];
+      if (!row || row.phase !== 'prepared') throw invalid();
+    }
+    const attemptId = distinctId(crypto, [
+      binding.datasetId,
+      binding.deviceId,
+      binding.slotId,
+      current.receipt.revisionId,
+      ...current.state.entries.map(item => item.envelope.versionId),
+      ...current.state.entries.map(item => item.attemptId).filter(Boolean),
+      ...current.state.entries.map(item => item.anchorId).filter(Boolean),
+      ...current.state.confirmedReceipts.flatMap(item => [item.versionId, item.attemptId])
+    ]);
+    const entries = current.state.entries.slice();
+    entries[index] = { ...row, phase: 'attempting', attemptId };
+    current = await write(current, { ...current.state, entries });
+    if (current.status !== 'ready') return response(current.status);
+    // Первый и единственный вызов записи разрешён только ПОСЛЕ подтверждённой
+    // устойчивой записи phase=attempting. Никаких повторов при потере ответа.
+    let uploadStatus = 'unknown';
+    try {
+      const result = object(
+        await session.upload({
+          envelope: row.envelope,
+          ...(binding.provider === 'google' ? { fileId: row.fileId } : {})
+        }),
+        ['status']
+      );
+      uploadStatus = result.status;
+    } catch {
+      // Запрос мог дойти до диска.
+    }
+    if (['not_sent', 'account_unavailable', 'account_mismatch'].includes(uploadStatus)) {
+      // Только доверенный транспорт может удостоверить, что операция записи
+      // вообще не начиналась. Если другой участник изменил журнал после нас,
+      // не отменяем его состояние и не делаем предположений об отправке.
+      const latest = await read();
+      if (
+        latest.status !== 'ready' ||
+        latest.receipt.revisionId !== current.receipt.revisionId ||
+        latest.receipt.sha256 !== current.receipt.sha256 ||
+        latest.state.entries[index]?.phase !== 'attempting' ||
+        latest.state.entries[index]?.attemptId !== attemptId
+      )
+        return response('changed');
+      const deferred = latest.state.entries.slice();
+      deferred[index] = { ...latest.state.entries[index], phase: 'prepared', attemptId: null };
+      const saved = await write(latest, { ...latest.state, entries: deferred });
+      if (saved.status !== 'ready') return response(saved.status);
+      return response(uploadStatus === 'account_mismatch' ? 'account_mismatch' : 'deferred');
+    }
+    return response('needs_verification');
   }
 
   return Object.freeze({
@@ -599,6 +778,212 @@ export function createDurableCloudOutbox(options) {
         }
       });
     },
+    /**
+     * Записывает принятую облачную основу в пустую восстановленную очередь.
+     * Это НЕ квитанция отправки. Capability выдаёт только проверенное сравнение;
+     * привязку к сохранённому state и снятие маркера подтверждает отдельный caller.
+     * При потере ответа повтор возможен лишь после перечитывания того же основания.
+     * @param {{proof:any,expectedRootPin:any,expectedKeyPin:any}} value
+     */
+    async adoptReviewedBase(value) {
+      const request = object(value, ['proof', 'expectedRootPin', 'expectedKeyPin']);
+      const root = versionPin(request.expectedRootPin);
+      const proof = request.proof;
+      if (
+        !isVerifiedCloudAdoption(proof) ||
+        proof.status !== 'ready_for_adoption' ||
+        proof.provider !== binding.provider ||
+        proof.datasetId !== binding.datasetId ||
+        !sameVersionPin(proof.rootPin, root) ||
+        !request.expectedKeyPin
+      )
+        throw invalid();
+      const copy = copyCloudEnvelope(proof.envelope, binding.datasetId);
+      return run(async () => {
+        await verifyPortableEnvelopeBinding({
+          envelope: copy,
+          dataKey,
+          expectedPin: request.expectedKeyPin,
+          cryptoSource: crypto
+        });
+        const contents = await validateVersion(copy, dataKey, binding, crypto);
+        if (contents.historyVersion !== 1) return response('unsupported_version');
+        const pin = await historyEnvelopePin({
+          envelope: copy,
+          expectedDatasetId: binding.datasetId,
+          cryptoSource: crypto
+        });
+        if (!sameVersionPin(pin, proof.pin)) return response('changed');
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (current.state.confirmedReceipts.length) return response('queue_not_empty');
+        if (current.state.entries.length) {
+          const existing = current.state.entries[0];
+          if (
+            current.state.entries.length !== 1 ||
+            existing.phase !== 'adopted' ||
+            JSON.stringify(existing.envelope) !== JSON.stringify(copy)
+          )
+            return response('queue_not_empty');
+          return Object.freeze({ status: 'already_adopted', anchorId: existing.anchorId, pin: Object.freeze(pin) });
+        }
+        const anchorId = distinctId(crypto, [
+          binding.datasetId,
+          binding.deviceId,
+          binding.slotId,
+          current.receipt.revisionId,
+          pin.versionId
+        ]);
+        const next = {
+          ...current.state,
+          version: ADOPTED_VERSION,
+          entries: [{ envelope: copy, phase: 'adopted', fileId: null, attemptId: null, anchorId }]
+        };
+        const saved = await write(current, next);
+        return saved.status === 'ready'
+          ? Object.freeze({ status: 'adopted', anchorId, pin: Object.freeze(pin) })
+          : response(saved.status);
+      });
+    },
+    /**
+     * Локальная линейная ветка от закреплённого корня. Пины и revisionId служат
+     * для повторной сверки перед записью, а не подтверждают полноту списка диска.
+     * Восстановленный ПК с пустой очередью намеренно не получает родителя.
+     * @param {{expectedRootPin:any,expectedKeyPin:any,publicSnapshot?:any}} value
+     */
+    async inspectLinearHead(value) {
+      const request = object(value, ['expectedRootPin', 'expectedKeyPin'], ['publicSnapshot']);
+      const root = versionPin(request.expectedRootPin);
+      if (!request.expectedKeyPin) throw invalid();
+      let local = null;
+      if (Object.hasOwn(request, 'publicSnapshot')) {
+        publicSnapshotIdentityTypes(request.publicSnapshot);
+        local = JSON.stringify(structuredClone(request.publicSnapshot));
+      }
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        const view = await linearView(current, root, request.expectedKeyPin);
+        if (!view) return response('no_local_lineage');
+        const firstPending = view.versions.find(version => !finalEntry(version.row)) || null;
+        const pins = view.adopted ? [{ ...view.adopted.pin }] : [];
+        pins.push(...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })));
+        pins.push(...view.versions.filter(version => version.row.phase === 'confirmed').map(version => version.pin));
+        return Object.freeze({
+          status: 'ready',
+          revisionId: current.receipt.revisionId,
+          confirmedPin: view.confirmed ? Object.freeze({ ...view.confirmed.pin }) : null,
+          confirmedPins: Object.freeze(pins.map(pin => Object.freeze({ ...pin }))),
+          adoptedBase: view.adopted
+            ? Object.freeze({ pin: Object.freeze({ ...view.adopted.pin }), anchorId: view.adopted.row.anchorId })
+            : null,
+          tailPin: Object.freeze({ ...view.tail.pin }),
+          tailPhase: view.tail.row.phase,
+          tailMatches: local === null ? null : local === JSON.stringify(view.tail.contents.publicSnapshot),
+          nextPin: firstPending ? Object.freeze({ ...firstPending.pin }) : null,
+          nextPhase: firstPending?.row.phase || null,
+          pendingCount: view.pendingCount,
+          settingsSelections: Object.freeze([...view.tail.contents.publicSnapshot.sections.preferences.selections])
+        });
+      });
+    },
+    /**
+     * Готовит потомка последней локальной версии и сохраняет только шифротекст.
+     * Вызывающий код обязан подтвердить точное сохранение state и отсутствие
+     * неразрешённого выборочного применения. Этот метод не выполняет сеть.
+     * Незагруженную последнюю версию можно заменить; начатую попытку — никогда.
+     * Исчезновение ранее опубликованной сущности блокируется до протокола удаления.
+     * @param {{expectedRootPin:any,expectedKeyPin:any,keyBundle:any,publicSnapshot:any,expectedRevisionId?:string}} value
+     */
+    async queueLinearSnapshot(value) {
+      const request = object(
+        value,
+        ['expectedRootPin', 'expectedKeyPin', 'keyBundle', 'publicSnapshot'],
+        ['expectedRevisionId']
+      );
+      const root = versionPin(request.expectedRootPin);
+      if (
+        !request.expectedKeyPin ||
+        !request.keyBundle ||
+        (request.expectedRevisionId !== undefined && !isSyncId(request.expectedRevisionId))
+      )
+        throw invalid();
+      const currentIds = publicSnapshotIdentityTypes(request.publicSnapshot);
+      const snapshot = structuredClone(request.publicSnapshot);
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        if (request.expectedRevisionId && current.receipt.revisionId !== request.expectedRevisionId)
+          return response('changed');
+        const view = await linearView(current, root, request.expectedKeyPin);
+        if (!view) return response('no_local_lineage');
+        if (!view.confirmed) return response('root_unconfirmed');
+        const oldSelections = view.tail.contents.publicSnapshot.sections.preferences.selections;
+        if (JSON.stringify(snapshot.sections.preferences.selections) !== JSON.stringify(oldSelections))
+          return response('selection_changed');
+        if (JSON.stringify(snapshot) === JSON.stringify(view.tail.contents.publicSnapshot))
+          return response('unchanged');
+        const replace = view.tail.row.phase === 'queued';
+        if (!replace && view.pendingCount >= 2) return response('queue_full');
+        const base = replace ? view.versions[view.versions.length - 2] : view.tail;
+        if (!base || (replace && !sameVersionPin(view.tail.contents.parent, base.pin))) throw invalid();
+        if (replace && JSON.stringify(snapshot) === JSON.stringify(base.contents.publicSnapshot)) {
+          const saved = await write(current, { ...current.state, entries: current.state.entries.slice(0, -1) });
+          return response(saved.status === 'ready' ? 'discarded_unpublished' : saved.status);
+        }
+        const oldIds = publicSnapshotIdentityTypes(base.contents.publicSnapshot);
+        for (const [id, type] of oldIds) {
+          if (!currentIds.has(id)) return response('deletions_need_review');
+          if (currentIds.get(id) !== type) return response('identity_conflict');
+        }
+        const total = current.state.confirmedReceipts.length + current.state.entries.length + (replace ? 0 : 1);
+        if (total > MAX_HISTORY_VERSIONS) return response('history_limit');
+        const versionId = distinctId(crypto, [
+          binding.datasetId,
+          binding.deviceId,
+          binding.slotId,
+          current.receipt.revisionId,
+          ...current.state.entries.map(row => row.envelope.versionId),
+          ...current.state.entries.map(row => row.attemptId).filter(Boolean),
+          ...current.state.entries.map(row => row.anchorId).filter(Boolean),
+          ...current.state.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
+        ]);
+        const sealed = await sealHistoryVersion({
+          publicSnapshot: snapshot,
+          parent: base.pin,
+          recoveryKey: dataKey,
+          datasetId: binding.datasetId,
+          versionId,
+          keyBundle: request.keyBundle,
+          keyPin: request.expectedKeyPin,
+          cryptoSource: crypto
+        });
+        const entries = current.state.entries.slice();
+        if (replace) entries.pop();
+        const receipts = current.state.confirmedReceipts.slice();
+        // Оставляем последний подтверждённый конверт как локальную точку
+        // продолжения; остальные превращаем в подтверждённые отпечатки.
+        const confirmedCount = entries.filter(row => row.phase === 'confirmed').length;
+        if (confirmedCount > 1) {
+          for (const version of view.versions.filter(value => value.row.phase === 'confirmed').slice(0, -1)) {
+            receipts.push({ ...version.pin, fileId: version.row.fileId, attemptId: version.row.attemptId });
+          }
+          entries.splice(view.adopted ? 1 : 0, confirmedCount - 1);
+        }
+        if (entries.length >= MAX_ENTRIES) return response('queue_full');
+        entries.push({ envelope: sealed.envelope, phase: 'queued', fileId: null, attemptId: null });
+        const next = { ...current.state, entries, confirmedReceipts: receipts };
+        try {
+          checkState(next, binding);
+        } catch {
+          return response('queue_full');
+        }
+        const saved = await write(current, next);
+        return saved.status === 'ready'
+          ? Object.freeze({ status: replace ? 'coalesced' : 'queued', pin: Object.freeze({ ...sealed.pin }) })
+          : response(saved.status);
+      });
+    },
     /** Подтверждённый сохранённый локальный снимок должен подготовить вызывающий код. */
     async enqueue(envelope) {
       let copy;
@@ -639,81 +1024,36 @@ export function createDurableCloudOutbox(options) {
     },
     /** Первая неподтверждённая версия не пропускается ради более новых. */
     async sendNext() {
+      return run(async () => sendCurrent(await read()));
+    },
+    /**
+     * Отправляет ровно ту версию и из той revision журнала, для которых caller
+     * непосредственно перед этим проверил наблюдаемые головы облака. Даже эта
+     * сверка не исключает параллельную запись на другом ПК после чтения списка.
+     * @param {{expectedRootPin:any,expectedKeyPin:any,expectedConfirmedPin:any,expectedNextPin:any,expectedRevisionId:string}} value
+     */
+    async sendLinearNext(value) {
+      const request = object(value, [
+        'expectedRootPin',
+        'expectedKeyPin',
+        'expectedConfirmedPin',
+        'expectedNextPin',
+        'expectedRevisionId'
+      ]);
+      const root = versionPin(request.expectedRootPin);
+      const expectedConfirmed = versionPin(request.expectedConfirmedPin);
+      const expectedNext = versionPin(request.expectedNextPin);
+      if (!request.expectedKeyPin || !isSyncId(request.expectedRevisionId)) throw invalid();
       return run(async () => {
-        let current = await read();
+        const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        let index = current.state.entries.findIndex(row => row.phase !== 'confirmed');
-        if (index < 0) return response('idle');
-        let row = current.state.entries[index];
-        if (row.phase === 'attempting') return response('needs_verification');
-        if (row.phase === 'queued') {
-          let fileId = null;
-          if (binding.provider === 'google') {
-            let generated;
-            try {
-              generated = object(await session.generateFileId(), ['status'], ['fileId']);
-            } catch {
-              return response('unavailable');
-            }
-            if (generated.status !== 'generated' || !validGoogleId(generated.fileId)) return response('unavailable');
-            fileId = generated.fileId;
-          }
-          const entries = current.state.entries.slice();
-          entries[index] = { ...row, phase: 'prepared', fileId };
-          current = await write(current, { ...current.state, entries });
-          if (current.status !== 'ready') return response(current.status);
-          index = current.state.entries.findIndex(item => item.phase !== 'confirmed');
-          row = current.state.entries[index];
-          if (!row || row.phase !== 'prepared') throw invalid();
-        }
-        const attemptId = distinctId(crypto, [
-          binding.datasetId,
-          binding.deviceId,
-          binding.slotId,
-          current.receipt.revisionId,
-          ...current.state.entries.map(item => item.envelope.versionId),
-          ...current.state.entries.map(item => item.attemptId).filter(Boolean),
-          ...current.state.confirmedReceipts.flatMap(item => [item.versionId, item.attemptId])
-        ]);
-        const entries = current.state.entries.slice();
-        entries[index] = { ...row, phase: 'attempting', attemptId };
-        current = await write(current, { ...current.state, entries });
-        if (current.status !== 'ready') return response(current.status);
-        // Первый и единственный вызов записи разрешён только ПОСЛЕ подтверждённой
-        // устойчивой записи phase=attempting. Никаких повторов при потере ответа.
-        let uploadStatus = 'unknown';
-        try {
-          const result = object(
-            await session.upload({
-              envelope: row.envelope,
-              ...(binding.provider === 'google' ? { fileId: row.fileId } : {})
-            }),
-            ['status']
-          );
-          uploadStatus = result.status;
-        } catch {
-          // Запрос мог дойти до диска.
-        }
-        if (['not_sent', 'account_unavailable', 'account_mismatch'].includes(uploadStatus)) {
-          // Только доверенный транспорт может удостоверить, что операция записи
-          // вообще не начиналась. Если другой участник изменил журнал после нас,
-          // не отменяем его состояние и не делаем предположений об отправке.
-          const latest = await read();
-          if (
-            latest.status !== 'ready' ||
-            latest.receipt.revisionId !== current.receipt.revisionId ||
-            latest.receipt.sha256 !== current.receipt.sha256 ||
-            latest.state.entries[index]?.phase !== 'attempting' ||
-            latest.state.entries[index]?.attemptId !== attemptId
-          )
-            return response('changed');
-          const deferred = latest.state.entries.slice();
-          deferred[index] = { ...latest.state.entries[index], phase: 'prepared', attemptId: null };
-          const saved = await write(latest, { ...latest.state, entries: deferred });
-          if (saved.status !== 'ready') return response(saved.status);
-          return response(uploadStatus === 'account_mismatch' ? 'account_mismatch' : 'deferred');
-        }
-        return response('needs_verification');
+        if (current.receipt.revisionId !== request.expectedRevisionId) return response('changed');
+        const view = await linearView(current, root, request.expectedKeyPin);
+        const pending = view?.versions.find(version => !finalEntry(version.row));
+        if (!view?.confirmed || !pending) return response('changed');
+        if (!sameVersionPin(view.confirmed.pin, expectedConfirmed) || !sameVersionPin(pending.pin, expectedNext))
+          return response('changed');
+        return sendCurrent(current);
       });
     },
     /** Только чтение и точная сверка; отсутствие не разрешает повторную отправку. */
@@ -721,7 +1061,7 @@ export function createDurableCloudOutbox(options) {
       return run(async () => {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        const index = current.state.entries.findIndex(row => row.phase !== 'confirmed');
+        const index = current.state.entries.findIndex(row => !finalEntry(row));
         if (index < 0) return response('idle');
         const row = current.state.entries[index];
         if (row.phase !== 'attempting') return response('not_attempted');
@@ -784,7 +1124,17 @@ export function createDurableCloudOutbox(options) {
       return run(async () => {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        const pins = current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 }));
+        const adopted = current.state.entries.find(row => row.phase === 'adopted');
+        const pins = [];
+        if (adopted)
+          pins.push(
+            await historyEnvelopePin({
+              envelope: adopted.envelope,
+              expectedDatasetId: binding.datasetId,
+              cryptoSource: crypto
+            })
+          );
+        pins.push(...current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 })));
         if (pins.length + current.state.entries.filter(row => row.phase === 'confirmed').length > MAX_HISTORY_VERSIONS)
           return response('receipt_limit');
         for (const row of current.state.entries) {
@@ -805,6 +1155,7 @@ export function createDurableCloudOutbox(options) {
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
         const counts = { queued: 0, prepared: 0, attempting: 0, confirmed: 0 };
+        if (current.state.version === ADOPTED_VERSION) counts['adopted'] = 0;
         for (const row of current.state.entries) counts[row.phase]++;
         return Object.freeze({ status: 'ready', counts: Object.freeze(counts) });
       });

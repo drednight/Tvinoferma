@@ -4,6 +4,7 @@ import { webcrypto } from 'node:crypto';
 import { normalizeState } from '../js/core/state.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
+import { prepareCloudReview } from '../js/modules/cloudSync/cloudReview.js';
 import { encryptSnapshot, generateRecoveryKey, generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import {
   sealHistoryVersion,
@@ -36,6 +37,26 @@ const without = (snapshot, ...ids) => {
   result.sections.planner.records = result.sections.planner.records.filter(item => !ids.includes(item.id));
   result.sections.planner.order = result.sections.planner.order.filter(item => !ids.includes(item));
   return result;
+};
+const review = async (versions, localSnapshot) => {
+  const files = new Map(versions.map(item => [item.envelope.versionId, item.envelope]));
+  return prepareCloudReview({
+    provider: 'yandex',
+    datasetId,
+    dataKey: recoveryKey,
+    rootPin: root.pin,
+    knownPins: [root.pin],
+    localSnapshot,
+    localSavedAt: null,
+    cryptoSource: webcrypto,
+    session: {
+      listWithDates: async () => ({
+        status: 'listed',
+        versions: [...files.keys()].map(versionId => ({ versionId, modifiedAt: null }))
+      }),
+      read: async versionId => ({ status: 'found', envelope: files.get(versionId) })
+    }
+  });
 };
 const deletionOptions = (history, changes = {}) => ({
   history,
@@ -108,6 +129,28 @@ describe('явное удаление в проверяемой эксперим
     const verified = await verify([root, disappeared]);
     expect(verified.plannerRecord(disappeared.pin, taskId)).toBeNull();
     expect(verified.plannerDeletions(disappeared.pin)).toEqual([]);
+  });
+
+  it('не принимает основу даже при точном совпадении, если в истории исчез ID или есть метка удаления', async () => {
+    const local = without(initial, taskId);
+    const disappeared = await seal(local, root.pin);
+    const missingReview = await review([root, disappeared], local);
+    expect(missingReview.status).toBe('ready_for_review');
+    expect(missingReview.prepareExactAdoption(disappeared.pin, {})).toEqual({ status: 'deletions_unsupported' });
+
+    const history = await verify([root]);
+    const deletion = await sealHistoryVersionWithPlannerDeletions(deletionOptions(history));
+    const deletionReview = await review([root, deletion], local);
+    expect(deletionReview.prepareExactAdoption(deletion.pin, {})).toEqual({ status: 'deletions_unsupported' });
+  });
+
+  it('не выбирает победителя, если видны две ветви с одинаковым содержимым', async () => {
+    const first = await seal(initial, root.pin);
+    const second = await seal(initial, root.pin);
+    const value = await review([root, first, second], initial);
+    expect(value.status).toBe('ready_for_review');
+    expect(value.prepareExactAdoption(first.pin, {})).toEqual({ status: 'not_unique_head' });
+    expect(value.prepareExactAdoption(second.pin, {})).toEqual({ status: 'not_unique_head' });
   });
 
   it('требует явного выбора и точного набора отсутствующих записей', async () => {

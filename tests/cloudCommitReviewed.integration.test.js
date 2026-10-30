@@ -192,6 +192,17 @@ describe('применение проверенного снимка с реал
     expect(save).toHaveBeenCalledTimes(1);
   });
 
+  it('не применяет частично облачную ветку одновременно с публикацией в этом JS-контексте', async () => {
+    const f = await fixture();
+    const { beginCloudDataOperation } = await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const sending = beginCloudDataOperation();
+    const operation = f.stage();
+    expect(await operation.commit({ confirmed: true })).toEqual({ status: 'busy' });
+    expect(localStorage.getItem(KEY)).toBe(f.oldRaw);
+    sending.finish(false);
+    expect((await operation.commit({ confirmed: true })).status).toBe('applied');
+  });
+
   it('не принимает поддельный обзор, пустой выбор или неверный pin', async () => {
     const f = await fixture();
     expect(() =>

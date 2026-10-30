@@ -322,6 +322,28 @@ describe('экспериментальный первый снимок и вос
     expect(f.send).toHaveBeenCalledTimes(1);
   });
 
+  it('отдельно спрашивает о более раннем снимке и не выдаёт текущие изменения за отправленные', async () => {
+    const f = setup();
+    f.send.mockResolvedValueOnce({ status: 'prepared_snapshot_outdated' }).mockResolvedValueOnce({
+      status: 'sent_earlier_verified'
+    });
+    click('cloud-setup-send-root');
+    await vi.waitFor(() => expect(f.send).toHaveBeenCalledTimes(2));
+    expect(f.confirm).toHaveBeenCalledTimes(2);
+    expect(f.confirm.mock.calls[1][0]).toContain('Текущие изменения при этом не будут отправлены');
+    expect(f.send.mock.calls[1][0]).toMatchObject({ allowEarlierSnapshot: true, provider: 'yandex' });
+    expect(byId('cloud-setup-status').textContent).toContain('Текущие изменения ещё не отправлены');
+  });
+
+  it('отказ от более раннего снимка не выполняет второй запрос', async () => {
+    const f = setup();
+    f.confirm.mockReturnValueOnce(true).mockReturnValueOnce(false);
+    f.send.mockResolvedValueOnce({ status: 'prepared_snapshot_outdated' });
+    click('cloud-setup-send-root');
+    await vi.waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
+    expect(f.send).toHaveBeenCalledTimes(1);
+  });
+
   it('может показать ранее созданный код и продолжить настройку без отправки', async () => {
     const f = setup();
     click('cloud-setup-show-code');

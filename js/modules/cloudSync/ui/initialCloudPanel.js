@@ -49,14 +49,16 @@ const MESSAGES = Object.freeze({
   history_unverified: 'История не прошла проверку корня и известных версий. Данные не изменены.',
   cloud_changed: 'Облачный список изменился после просмотра или стал недоступен. Повторите сравнение.',
   prepared_snapshot_outdated:
-    'Первый подготовленный снимок уже устарел. Отправка остановлена; обновление подготовленного корня пока не реализовано.',
+    'Подготовленный первый снимок отличается от текущих данных. Его можно отправить только отдельно подтвердив, что это историческая основа.',
   provenance_review_required: 'После выборочного применения требуется согласование происхождения перед отправкой.',
   queue_changed: 'Очередь изменилась во время проверки. Отправка остановлена.',
   verification_pending:
     'Отправка могла выполниться, но чтение и сверка ещё не подтвердились. Повторный запрос создания не выполняется.',
   cloud_content_mismatch: 'Облачный файл не совпал с подготовленным. Не повторяйте отправку; требуется проверка.',
-  already_confirmed: 'Первый снимок уже подтверждён. Последующие изменения пока не отправляются.',
-  sent_verified: 'Первый зашифрованный снимок отправлен и сверен чтением. Последующие изменения пока не отправляются.',
+  already_confirmed: 'Первый снимок уже подтверждён. Последующие сохранения отправляются отдельным действием.',
+  sent_verified: 'Первый зашифрованный снимок отправлен и сверен чтением. Новые сохранения отправляются отдельно.',
+  sent_earlier_verified:
+    'Более ранний первый снимок сверен чтением. Текущие изменения ещё не отправлены; подготовьте и отправьте их отдельно.',
   unavailable:
     'Операция не завершена. Ничего не считайте отправленным или применённым; проверьте состояние и повторите проверку.'
 });
@@ -64,7 +66,9 @@ function name(provider) {
   return provider === 'google' ? 'Google Диск' : 'Яндекс Диск';
 }
 function record(provider, action, status) {
-  const outcome = ['prepared', 'connected', 'sent_verified', 'already_confirmed'].includes(status)
+  const outcome = ['prepared', 'connected', 'sent_verified', 'sent_earlier_verified', 'already_confirmed'].includes(
+    status
+  )
     ? 'success'
     : ['setup_uncertain', 'verification_pending', 'key_installed_state_changed'].includes(status)
       ? 'uncertain'
@@ -406,7 +410,7 @@ export function bindInitialCloudPanel(options) {
         const thisGeneration = generation;
         if (
           !(await askConfirmation(
-            `Отправить первый зашифрованный снимок на ${name(chosen)}? Это экспериментальная однократная отправка: последующие сохранения пока не синхронизируются. Старое облако не проверяется и не удаляется.`
+            `Отправить первый зашифрованный снимок на ${name(chosen)}? Это экспериментальная функция: последующие изменения отправляются отдельно, а после выборочного применения и при конфликтах отправка блокируется. Старое облако не удаляется.`
           ))
         )
           return;
@@ -414,14 +418,31 @@ export function bindInitialCloudPanel(options) {
         note('Отправляем подготовленный снимок и проверяем его чтением…');
         try {
           const native = await loadNative();
-          const outcome = await send({
+          let outcome = await send({
             provider: chosen,
             invoke: native.invoke,
             confirmed: true,
             settingsSelections: selections()
           });
+          if (outcome.status === 'prepared_snapshot_outdated') {
+            note(status(outcome.status));
+            if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+            const approved = await askConfirmation(
+              'Первый подготовленный снимок отличается от текущих сохранённых данных. Отправить его как более раннюю основу? Текущие изменения при этом не будут отправлены. Их потребуется отправить отдельно; при удалениях или конфликтах отправка остановится.'
+            );
+            if (!approved || generation !== thisGeneration || selectedProvider() !== chosen) return;
+            outcome = await send({
+              provider: chosen,
+              invoke: native.invoke,
+              confirmed: true,
+              allowEarlierSnapshot: true,
+              settingsSelections: selections()
+            });
+          }
           record(chosen, 'send', outcome.status);
           note(status(outcome.status));
+          if (['sent_verified', 'sent_earlier_verified', 'already_confirmed'].includes(outcome.status))
+            doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-root-confirmed'));
         } catch {
           record(chosen, 'send', 'verification_pending');
           note(status('verification_pending'));

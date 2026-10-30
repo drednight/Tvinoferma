@@ -8,6 +8,7 @@ import { array, object } from './exportSchema.js';
 import { isVerifiedCloudReview } from './cloudReview.js';
 import { currentCloudStateSnapshot, stageGuardedCloudStateWrite } from './guardedStateWrite.js';
 import { appendPendingSelectiveApply } from './pendingSelectiveApply.js';
+import { beginCloudDataOperation } from './credentialResetCoordination.js';
 
 function invalid() {
   return new Error('Не удалось подготовить применение облачных данных');
@@ -53,10 +54,29 @@ export function stageReviewedCloudApply(options) {
     settings,
     financeSettings: input.includeFinanceSettings === true
   });
-  return stageGuardedCloudStateWrite({
+  const staged = stageGuardedCloudStateWrite({
     original,
     candidate,
     backupLabel: 'pre-cloud-apply',
     selectedCount: prepared.selectedCount
+  });
+  // В этом окне запись частично принятой версии не должна идти параллельно
+  // с публикацией снимка. Это не блокировка других процессов или прямого IPC.
+  return Object.freeze({
+    selectedCount: staged.selectedCount,
+    cancel: () => staged.cancel(),
+    async commit(answer) {
+      let operation;
+      try {
+        operation = beginCloudDataOperation();
+      } catch {
+        return Object.freeze({ status: 'busy' });
+      }
+      try {
+        return await staged.commit(answer);
+      } finally {
+        operation.finish(false);
+      }
+    }
   });
 }

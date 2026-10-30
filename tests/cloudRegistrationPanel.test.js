@@ -87,11 +87,12 @@ describe('демо показывает состояние реализации 
 });
 
 describe('настоящие настройки: диагностика и экспериментальный доступ, не синхронизация', () => {
-  it('свёрнута по умолчанию, содержит предупреждения и отдельные отключённые будущие действия', () => {
+  it('свёрнута по умолчанию, содержит предупреждения и отдельную экспериментальную отправку', () => {
     const s = bind();
     expect(byId('panel').open).toBe(false);
     expect(byId('panel').textContent).toContain('Полная синхронизация ещё не готова');
-    expect(byId('panel').textContent).toContain('Последующие изменения пока не отправляются автоматически');
+    expect(byId('panel').textContent).toContain('ограниченная отправка последующих сохранений');
+    expect(byId('panel').textContent).toContain('только после отдельного подтверждения полного совпадения');
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');
@@ -99,9 +100,8 @@ describe('настоящие настройки: диагностика и эк�
     expect(byId('yandex-hint').textContent).toContain('http://127.0.0.1:37181/oauth/cloud/callback');
     expect(byId('yandex-hint').textContent).toContain('cloud_api:disk.app_folder');
     expect(byId('google-hint').hidden).toBe(true);
-    const future = document.querySelectorAll('.cloud-registration-future button');
-    expect([...future].map(button => button.textContent)).toEqual(['Отправить на диск']);
-    expect([...future].every(button => button.disabled)).toBe(true);
+    expect(document.getElementById('cloud-publication-send')).toBeTruthy();
+    expect(document.getElementById('cloud-publication-auto').checked).toBe(false);
     expect(document.getElementById('cloud-review-check')).toBeTruthy();
     expect(byId('cancel').hidden).toBe(true);
     expect(s.loadNative).not.toHaveBeenCalled();
