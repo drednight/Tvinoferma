@@ -488,7 +488,9 @@ describe('интерфейс ограниченного объединения',
     click('cloud-review-merge');
     await vi.waitFor(() => expect(merge).toHaveBeenCalledOnce());
     expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('независимо от галочек'));
-    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('конфликты останавливают'));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('а не по названиям или позициям'));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('теги и списки навигации'));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('Конфликтующие списки требуют выбора стороны'));
     expect(merge).toHaveBeenCalledWith(
       expect.objectContaining({ provider: 'yandex', pin, confirmed: true, settingsSelections: [] })
     );
@@ -531,6 +533,12 @@ describe('интерфейс ограниченного объединения',
     click('cloud-review-resolve');
     await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
     expect(f.confirm).toHaveBeenLastCalledWith(expect.stringContaining('в неотмеченных остаются местные'));
+    expect(f.confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('изменения внутри них с другой стороны могут быть потеряны')
+    );
+    expect(f.confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('Изменение шаблона не меняет уже созданные марафоны')
+    );
     expect(merge.mock.calls[1][0].resolution).toEqual({
       reviewHash: 'b'.repeat(64),
       cloudRecords: cloud ? [{ section: 'planner', id: ids.changed }] : [],

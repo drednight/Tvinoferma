@@ -3406,3 +3406,278 @@ describe.each(['google', 'yandex'])('%s: защита восстановлени
     }
   }, 30_000);
 });
+
+async function valuePublicationFixture(provider, extraPrepare) {
+  return publicationFixture(provider, {
+    settingsSelections: ['navigation'],
+    prepare: async f => {
+      const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+      const { createMarathon, createTask } = await import('../js/modules/marathons/model.js');
+      f.state.characters[0].tags = ['Старый тег'];
+      f.state.plannerEntries.push({
+        id: 'repeat-task',
+        title: 'Повтор',
+        date: '2026-10-30',
+        recurrence: 'daily',
+        statusByDate: { '2026-10-29': 'done', '2026-10-30': 'done' }
+      });
+      f.state.marathonTemplates.push({
+        id: 'value-template',
+        name: 'Шаблон',
+        tasks: [
+          {
+            id: 'template-task-0',
+            title: 'Первое',
+            rewards: [{ id: 'template-reward-0', threshold: 1, rewardText: 'Первая награда' }]
+          },
+          {
+            id: 'template-task-1',
+            title: 'Второе',
+            rewards: [{ id: 'template-reward-1', threshold: 1, rewardText: 'Вторая награда' }]
+          }
+        ],
+        bonuses: [{ id: 'template-bonus', needTasks: 1, text: 'Бонус' }]
+      });
+      f.state.marathons.push(
+        createMarathon({
+          id: 'instance',
+          title: 'Уже созданный марафон',
+          source: { type: 'template', templateId: 'value-template' },
+          startDate: '2026-10-01',
+          endDate: '2026-10-31',
+          tasks: [createTask({ id: 'instance-task', title: 'Неизменное задание' })]
+        })
+      );
+      if (extraPrepare) await extraPrepare(f);
+      const { ui, ...raw } = f.state;
+      const { normalizeState } = await import('../js/core/state.js');
+      const { ui: ignored, ...normalized } = normalizeState(raw);
+      Object.assign(f.state, planSyncIdentities({ snapshot: normalized, cryptoSource: webcrypto }).snapshot);
+      await f.storage.saveNow();
+    }
+  });
+}
+
+describe.each(['google', 'yandex'])('%s: сквозное согласование копируемых значений', provider => {
+  it('передаёт изменения прежних значений шаблона, очистку тегов, отметку повтора и навигацию, удерживая очередь', async () => {
+    const f = await valuePublicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const instance = structuredClone(f.state.marathons[0]);
+    f.state.characters[0].notes = 'НЕОТПРАВЛЕННАЯ НЕЗАВИСИМАЯ ЗАМЕТКА';
+    f.state.marathonTemplates[0].name = 'Местное имя';
+    f.state.plannerEntries[0].title = 'Местное название';
+    f.state.plannerEntries[0].statusByDate['2026-10-30'] = 'doing';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const pending = await inspectMergeQueue(f, provider);
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const fields = s.sections.marathons.records.find(row => row.type === 'marathonTemplate').fields;
+      fields.tasks[1].rewards[0].rewardText = 'ИЗМЕНЁННАЯ ПРЕЖНЯЯ НАГРАДА';
+      fields.bonuses = [];
+      s.sections.characters.records[0].fields.tags = [];
+      delete s.sections.planner.records[0].fields.statusByDate['2026-10-29'];
+      const nav = s.sections.preferences.values.navigation;
+      [nav.order[1], nav.order[2]] = [nav.order[2], nav.order[1]];
+      nav.hidden = ['finance'];
+    });
+    expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'] })).status).toBe('merged');
+    expect(f.state.marathonTemplates[0]).toMatchObject({ name: 'Местное имя', bonuses: [] });
+    expect(f.state.marathonTemplates[0].tasks[0].id).toBe('template-task-0');
+    expect(f.state.marathonTemplates[0].tasks[1].id).not.toBe('template-task-1');
+    expect(f.state.marathonTemplates[0].tasks[1].rewards[0].rewardText).toBe('ИЗМЕНЁННАЯ ПРЕЖНЯЯ НАГРАДА');
+    expect(f.state.characters[0]).toMatchObject({ tags: [], notes: 'НЕОТПРАВЛЕННАЯ НЕЗАВИСИМАЯ ЗАМЕТКА' });
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    expect(f.state.plannerEntries[0].statusByDate).toEqual({ '2026-10-30': 'doing' });
+    expect(f.state.settings.ui.sections.hidden).toEqual(['finance']);
+    expect(f.state.marathons[0]).toEqual(instance);
+    expect((await inspectMergeQueue(f, provider)).retainedPendingPin).toEqual(pending.nextPin);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const sent = [...f.cloud.versions.values()].at(-1);
+    const decoded = await decryptSnapshot({
+      envelope: sent,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(decoded.parent).toEqual(remote);
+    expect(
+      decoded.publicSnapshot.sections.marathons.records.find(row => row.type === 'marathonTemplate').fields.bonuses
+    ).toEqual([]);
+    expect(JSON.stringify(decoded)).not.toContain('PRIVATE_PASSWORD');
+    for (const text of ['ИЗМЕНЁННАЯ ПРЕЖНЯЯ НАГРАДА', 'НЕОТПРАВЛЕННАЯ НЕЗАВИСИМАЯ ЗАМЕТКА', 'PRIVATE_PASSWORD']) {
+      expect(JSON.stringify(sent)).not.toContain(text);
+      expect(JSON.stringify(f.fake.queue(provider))).not.toContain(text);
+    }
+  }, 30_000);
+
+  it.each([true, false])(
+    'после потери CAS и перезапуска сохраняет выбор целого списка и prepared намерение: облако=%s',
+    async useCloud => {
+      const f = await valuePublicationFixture(provider);
+      const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+      const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+      f.state.marathonTemplates[0].tasks[0].title = 'МЕСТНОЕ ЗАДАНИЕ';
+      f.state.characters[0].tags.push('Местный тег');
+      f.state.characters[0].notes = 'Независимая заметка';
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+      expect((await f.send()).status).toBe('deferred');
+      expect((await inspectMergeQueue(f, provider)).nextPhase).toBe('prepared');
+      const remote = await mergeIncoming(f, provider, root, s => {
+        const t = s.sections.marathons.records.find(row => row.type === 'marathonTemplate');
+        t.fields.tasks[1].title = 'ОБЛАЧНОЕ ЗАДАНИЕ';
+        t.fields.bonuses = [];
+        s.sections.characters.records[0].fields.tags = [];
+        s.sections.characters.records[0].fields.level = 42;
+      });
+      const before = structuredClone(f.fake.queue(provider));
+      const preview = await mergePin(f, provider, remote, { settingsSelections: ['navigation'] });
+      expect(preview.status).toBe('conflicts');
+      expect(preview.conflictCount).toBe(2);
+      expect(f.fake.queue(provider)).toEqual(before);
+      expect(f.state.marathonTemplates[0].tasks[0].title).toBe('МЕСТНОЕ ЗАДАНИЕ');
+      const resolution = {
+        reviewHash: preview.reviewHash,
+        cloudRecords: useCloud
+          ? [
+              { section: 'marathons', id: f.state.marathonTemplates[0].syncId },
+              { section: 'characters', id: f.state.characters[0].syncId }
+            ]
+          : [],
+        cloudSettings: [],
+        cloudFinanceSettings: false
+      };
+      f.fake.loseNextCompare();
+      expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'], resolution })).status).toBe(
+        'journal_uncertain'
+      );
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      vi.resetModules();
+      const { state, normalizeState } = await import('../js/core/state.js');
+      Object.assign(state, normalizeState(saved));
+      expect((await mergePin({ ...f, state }, provider, remote, { settingsSelections: ['navigation'] })).status).toBe(
+        'merged'
+      );
+      expect(state.marathonTemplates[0].tasks.map(row => row.title)).toEqual(
+        useCloud ? ['Первое', 'ОБЛАЧНОЕ ЗАДАНИЕ'] : ['МЕСТНОЕ ЗАДАНИЕ', 'Второе']
+      );
+      if (!useCloud) expect(state.marathonTemplates[0].tasks[0].id).toBe('template-task-0');
+      expect(state.marathonTemplates[0].bonuses).toEqual([]);
+      expect(state.characters[0]).toMatchObject({
+        level: 42,
+        tags: useCloud ? [] : ['Старый тег', 'Местный тег'],
+        notes: 'Независимая заметка'
+      });
+      expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
+      expect((await inspectMergeQueue(f, provider)).retainedPendingPhase).toBe('prepared');
+      const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+      const options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+      expect((await publication.queueConnectedSavedSnapshot(options)).status).toBe('queued');
+      expect(
+        (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+      ).toBe('sent_verified');
+      expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+    },
+    30_000
+  );
+
+  it('не использует прежний выбор списка после дополнительной местной правки', async () => {
+    const f = await valuePublicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.marathonTemplates[0].tasks[0].title = 'Местное изменение';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.marathons.records.find(row => row.type === 'marathonTemplate').fields.tasks = [];
+    });
+    const preview = await mergePin(f, provider, remote, { settingsSelections: ['navigation'] });
+    expect(preview.status).toBe('conflicts');
+    const resolution = {
+      reviewHash: preview.reviewHash,
+      cloudRecords: [{ section: 'marathons', id: f.state.marathonTemplates[0].syncId }],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    f.state.marathonTemplates[0].tasks[0].title = 'УЖЕ ДРУГОЕ МЕСТНОЕ ИЗМЕНЕНИЕ';
+    await f.storage.saveNow();
+    const queue = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'], resolution })).status).toBe(
+      'queue_snapshot_mismatch'
+    );
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect((await f.queue()).status).toBe('coalesced');
+    const refreshedQueue = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'], resolution })).status).toBe(
+      'conflicts_changed'
+    );
+    expect(f.fake.queue(provider)).toEqual(refreshedQueue);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.state.marathonTemplates[0].tasks[0].title).toBe('УЖЕ ДРУГОЕ МЕСТНОЕ ИЗМЕНЕНИЕ');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('не сохраняет отметку и не переносит очередь при неверных значениях награды', async () => {
+    const f = await valuePublicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.marathons.records.find(row => row.type === 'marathonTemplate').fields.tasks[0].rewards[0].threshold =
+        0;
+    });
+    const queue = structuredClone(f.fake.queue(provider));
+    const template = structuredClone(f.state.marathonTemplates[0]);
+    expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'] })).status).toBe(
+      'candidate_unrepresentable'
+    );
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect(f.state.marathonTemplates[0]).toEqual(template);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+});
+
+describe.each(['google', 'yandex'])('%s: сквозной штатный лимит истории характеристик', provider => {
+  it('согласует одиннадцатый снимок и отправляет потомка без выбора по времени', async () => {
+    const f = await valuePublicationFixture(provider, async f => {
+      const { rememberStatsBefore } = await import('../js/modules/characters/statsHistory.js');
+      const char = f.state.characters[0];
+      for (let i = 1; i <= 11; i++) {
+        const previous = structuredClone(char.stats);
+        char.stats.strength = i;
+        rememberStatsBefore(char, previous, `2026-10-${String(i).padStart(2, '0')}T00:00:00.000Z`);
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'Независимая заметка';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const fields = s.sections.characters.records[0].fields;
+      fields.statsHistory = [
+        { at: '2000-01-01T00:00:00.000Z', stats: structuredClone(fields.stats) },
+        ...fields.statsHistory.slice(0, 9)
+      ];
+      fields.stats.strength = 12;
+    });
+    expect((await mergePin(f, provider, remote, { settingsSelections: ['navigation'] })).status).toBe('merged');
+    expect(f.state.characters[0]).toMatchObject({ notes: 'Независимая заметка', stats: { strength: 12 } });
+    expect(f.state.characters[0].statsHistory).toHaveLength(10);
+    expect(f.state.characters[0].statsHistory[0]).toMatchObject({
+      at: '2000-01-01T00:00:00.000Z',
+      stats: { strength: 11 }
+    });
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+  }, 30_000);
+});

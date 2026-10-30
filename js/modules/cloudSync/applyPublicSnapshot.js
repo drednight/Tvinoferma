@@ -28,13 +28,10 @@ function samePublic(a, b) {
   const comparison = comparePublicSnapshots({ local: a, cloud: b });
   return comparison.entries.length === 0 && comparison.uncomparedSettings.length === 0;
 }
-function hasPrefix(prefix, values) {
-  return (
-    Array.isArray(prefix) &&
-    Array.isArray(values) &&
-    prefix.length <= values.length &&
-    prefix.every((value, index) => sameValue(value, values[index]))
-  );
+function commonValuePrefix(before, after) {
+  let count = 0;
+  while (count < before.length && count < after.length && sameValue(before[count], after[count])) count++;
+  return count;
 }
 function sameValue(a, b) {
   if (a === b) return true;
@@ -355,23 +352,23 @@ function materialize(localState, local, target, selected, selectedGroups, financ
     }
     const f = clone(record.fields);
     const prior = localTemplates.get(record.id);
-    // У неизменённого префикса сохраняем местные ID; добавлениям в конец
-    // назначаем новые. Эти ID не являются sync-ID, связь по индексу не угадываем.
-    const keepTasks = before && prior && hasPrefix(prior.fields.tasks, f.tasks);
-    const keepBonuses = before && prior && hasPrefix(prior.fields.bonuses, f.bonuses);
+    // Only an exactly unchanged prefix keeps its local IDs. After the first
+    // replacement/removal/reorder allocate fresh IDs for the entire suffix;
+    // names, positions and repeated values cannot identify copied children.
+    // Existing instantiated marathons are independent and never rewritten here.
+    const taskPrefix = before && prior ? commonValuePrefix(prior.fields.tasks, f.tasks) : 0;
+    const bonusPrefix = before && prior ? commonValuePrefix(prior.fields.bonuses, f.bonuses) : 0;
     const tasks = [
-      ...(keepTasks ? clone(before.tasks) : []),
-      ...f.tasks.slice(keepTasks ? prior.fields.tasks.length : 0).map(task => ({
+      ...(before ? clone(before.tasks.slice(0, taskPrefix)) : []),
+      ...f.tasks.slice(taskPrefix).map(task => ({
         ...task,
         id: allocate('task'),
         rewards: task.rewards.map(reward => ({ ...reward, id: allocate('reward') }))
       }))
     ];
     const bonuses = [
-      ...(keepBonuses ? clone(before.bonuses || []) : []),
-      ...f.bonuses
-        .slice(keepBonuses ? prior.fields.bonuses.length : 0)
-        .map(bonus => ({ ...bonus, id: allocate('bonus') }))
+      ...(before ? clone((before.bonuses || []).slice(0, bonusPrefix)) : []),
+      ...f.bonuses.slice(bonusPrefix).map(bonus => ({ ...bonus, id: allocate('bonus') }))
     ];
     templates.set(record.id, {
       id: localIds.get(record.id),

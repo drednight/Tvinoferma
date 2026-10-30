@@ -7,7 +7,7 @@ import { preparePublicSnapshotApply } from '../js/modules/cloudSync/applyPublicS
 import { conservativeTransition, planConservativePublicMerge } from '../js/modules/cloudSync/conservativeMerge.js';
 import { generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { parseConservativeMergeChoices } from '../js/modules/cloudSync/conservativeMergeChoices.js';
-import { createMarathon } from '../js/modules/marathons/model.js';
+import { createMarathon, createTask } from '../js/modules/marathons/model.js';
 import { applyCoinBalance } from '../js/core/coins.js';
 import { rememberStatsBefore } from '../js/modules/characters/statsHistory.js';
 
@@ -221,7 +221,7 @@ describe('консервативное трёхстороннее объедин
     });
   });
 
-  it('блокирует обрезание самой старой записи истории характеристик при лимите приложения', () => {
+  it('принимает штатное добавление сверху с обрезанием хвоста истории характеристик при лимите приложения', () => {
     const f = fixture();
     const fields = f.base.sections.characters.records[0].fields;
     fields.statsHistory = Array.from({ length: 10 }, (_, index) => ({
@@ -233,8 +233,8 @@ describe('консервативное трёхстороннее объедин
     const history = f.cloud.sections.characters.records[0].fields.statsHistory;
     history.unshift({ at: '2026-10-31T00:00:00.000Z', stats: { ...fields.stats, strength: 42 } });
     history.pop();
-    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
-    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+    expect(conservativeTransition(f.base, f.cloud)).toBe(true);
+    expect(merge(f).status).toBe('prepared');
   });
 
   it('не принимает замену элементов истории без уникального якоря за обычную правку', () => {
@@ -382,14 +382,13 @@ describe('консервативное трёхстороннее объедин
     expect(result.snapshot().sections.finance.settings).toMatchObject({ opening: { coins: 13 }, commissionPct: 3 });
   });
 
-  it('не выводит удаление из отсутствия ID, поля или элемента массива', () => {
+  it('не выводит удаление из отсутствия sync-ID или неизвестного поля', () => {
     for (const mutate of [
       value => {
         value.sections.characters.records = [];
         value.sections.characters.order.active = [];
       },
-      value => delete value.sections.characters.records[0].fields.partyOrder.extra,
-      value => (value.sections.characters.records[0].fields.tags = [])
+      value => delete value.sections.characters.records[0].fields.partyOrder.extra
     ]) {
       const f = fixture();
       if (mutate.toString().includes('partyOrder')) {
@@ -403,7 +402,7 @@ describe('консервативное трёхстороннее объедин
     }
   });
 
-  it('не принимает изменение вложенных данных шаблона и не считает порядок неважным', () => {
+  it('принимает изменение копируемых значений шаблона, но не перестановку sync-сущностей', () => {
     const f = fixture();
     f.localState.marathonTemplates[0].tasks = [{ id: 'local', title: 'Исходное' }];
     f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
@@ -411,7 +410,9 @@ describe('консервативное трёхстороннее объедин
     f.cloud = structuredClone(f.base);
     f.cloud.sections.marathons.records.find(record => record.type === 'marathonTemplate').fields.tasks[0].title =
       'Изменённое';
-    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    expect(plan.snapshot().sections.marathons.records[0].fields.tasks[0].title).toBe('Изменённое');
     const g = fixture();
     const id = g.cloud.sections.characters.order.active[0];
     g.cloud.sections.characters.records[0].archived = true;
@@ -659,9 +660,17 @@ describe('консервативное трёхстороннее объедин
       cloudSettings: [],
       cloudFinanceSettings: false
     };
-    expect(planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, resolution }).status).toBe(
-      'incoming_section_unsupported'
-    );
+    const plan = planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, resolution });
+    expect(plan.status).toBe('prepared');
+    expect(plan.snapshot().sections.marathons.records[0].fields.tasks.map(task => task.title)).toEqual(['Облачное']);
+    const kept = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: { ...resolution, cloudRecords: [] }
+    });
+    expect(kept.status).toBe('prepared');
+    expect(kept.snapshot().sections.marathons.records[0].fields.tasks.map(task => task.title)).toEqual(['Местное']);
   });
 
   it('обновляет название шаблона без замены локальных ID его заданий и наград', () => {
@@ -774,5 +783,425 @@ describe('объединение подтверждённых v3-удалени�
       planConservativePublicMerge({ base: g.base, local: g.local, cloud: g.cloud, cloudPlannerTombstones: [gid] })
         .status
     ).toBe('structure_or_deletion_unsupported');
+  });
+});
+
+function valueTemplateFixture() {
+  const f = fixture();
+  f.localState.marathonTemplates[0].tasks = ['Первое', 'Второе', 'Третье'].map((title, i) => ({
+    id: `local-task-${i}`,
+    title,
+    rewards: [{ id: `local-reward-${i}`, threshold: 1, rewardText: `Награда ${i}` }]
+  }));
+  f.localState.marathonTemplates[0].bonuses = [
+    { id: 'local-bonus-0', needTasks: 1, text: 'Первый бонус' },
+    { id: 'local-bonus-1', needTasks: 2, text: 'Второй бонус' }
+  ];
+  f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+  f.local = structuredClone(f.base);
+  f.cloud = structuredClone(f.base);
+  return f;
+}
+function applyPlan(f, plan) {
+  return preparePublicSnapshotApply({
+    localState: f.localState,
+    cloudSnapshot: plan.snapshot(),
+    selectedRecords: plan.selectedRecords(),
+    selectedSettings: plan.selectedSettings(),
+    includeFinanceSettings: plan.includeFinanceSettings,
+    cryptoSource: webcrypto
+  }).candidateState();
+}
+const valueResolution = (section, id, cloud) => ({
+  reviewHash: 'a'.repeat(64),
+  cloudRecords: cloud ? [{ section, id }] : [],
+  cloudSettings: [],
+  cloudFinanceSettings: false
+});
+
+describe('копируемые значения шаблона без общей идентичности вложенных элементов', () => {
+  it.each([
+    [
+      'правка награды',
+      f => {
+        f.tasks[1].rewards[0].rewardText = 'Новая награда';
+      },
+      1
+    ],
+    [
+      'удаление задания',
+      f => {
+        f.tasks.splice(1, 1);
+      },
+      1
+    ],
+    [
+      'перестановка заданий',
+      f => {
+        f.tasks.reverse();
+      },
+      0
+    ],
+    [
+      'очистка заданий',
+      f => {
+        f.tasks = [];
+      },
+      0
+    ],
+    [
+      'дублирующиеся названия',
+      f => {
+        f.tasks[1].title = f.tasks[0].title;
+      },
+      1
+    ]
+  ])('%s: заменяет значения, сохраняя ID только точного прежнего префикса', (_label, change, prefix) => {
+    const f = valueTemplateFixture();
+    f.localState.characters[0].notes = 'Независимая местная заметка';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const fields = f.cloud.sections.marathons.records[0].fields;
+    change(fields);
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan);
+    const template = applied.marathonTemplates[0];
+    expect(
+      buildPublicSnapshot(applied, { settingsSelections: ['appearance'] }).sections.marathons.records[0].fields
+    ).toEqual(fields);
+    template.tasks.forEach((task, index) => {
+      if (index < prefix) {
+        expect(task.id).toBe(`local-task-${index}`);
+        expect(task.rewards[0].id).toBe(`local-reward-${index}`);
+      } else {
+        expect(f.localState.marathonTemplates[0].tasks.map(row => row.id)).not.toContain(task.id);
+        expect(f.localState.marathonTemplates[0].tasks.flatMap(row => row.rewards.map(r => r.id))).not.toContain(
+          task.rewards[0].id
+        );
+      }
+    });
+    expect(template.bonuses).toEqual(f.localState.marathonTemplates[0].bonuses);
+    expect(applied.characters[0].notes).toBe('Независимая местная заметка');
+    expect(applied.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  });
+
+  it.each([true, false])('разные изменения в одном списке требуют целой стороны, облако=%s', useCloud => {
+    const f = valueTemplateFixture();
+    f.localState.marathonTemplates[0].tasks[0].title = 'Местное задание';
+    f.localState.marathonTemplates[0].name = 'Местное название';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const remote = f.cloud.sections.marathons.records[0];
+    remote.fields.tasks[1].title = 'Облачное задание';
+    remote.fields.bonuses[1].text = 'Облачный бонус';
+    const unresolved = merge(f);
+    expect(unresolved.status).toBe('conflicts');
+    expect(unresolved.conflicts).toMatchObject([{ section: 'marathons', id: remote.id, path: ['fields', 'tasks'] }]);
+    expect(JSON.stringify(unresolved)).not.toContain('Облачное задание');
+    const plan = planConservativePublicMerge({
+      ...{ base: f.base, local: f.local, cloud: f.cloud },
+      resolution: valueResolution('marathons', remote.id, useCloud)
+    });
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan).marathonTemplates[0];
+    expect(applied.name).toBe('Местное название');
+    expect(applied.tasks.map(row => row.title)).toEqual(
+      useCloud ? ['Первое', 'Облачное задание', 'Третье'] : ['Местное задание', 'Второе', 'Третье']
+    );
+    expect(applied.bonuses[1].text).toBe('Облачный бонус');
+    expect(applied.bonuses[0].id).toBe('local-bonus-0');
+    expect(applied.bonuses[1].id).not.toBe('local-bonus-1');
+    if (!useCloud) expect(applied.tasks).toEqual(f.localState.marathonTemplates[0].tasks);
+  });
+
+  it('передаёт обрезание списка бонусов без смены ID оставшегося точного префикса', () => {
+    const f = valueTemplateFixture();
+    f.cloud.sections.marathons.records[0].fields.bonuses.pop();
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan).marathonTemplates[0];
+    expect(applied.bonuses).toEqual([f.localState.marathonTemplates[0].bonuses[0]]);
+    expect(applied.tasks).toEqual(f.localState.marathonTemplates[0].tasks);
+  });
+
+  it('не изменяет уже созданный по шаблону марафон, его задания, связи и прогресс', () => {
+    const f = valueTemplateFixture();
+    const instance = createMarathon({
+      id: 'instance',
+      title: 'Созданный марафон',
+      source: { type: 'template', templateId: 'template' },
+      startDate: '2026-10-01',
+      endDate: '2026-10-31',
+      participantIds: ['hero'],
+      tasks: [createTask({ id: 'instance-task', title: 'Скопированное задание' })],
+      assignments: { hero: ['instance-task'] },
+      progress: { hero: { 'instance-task': { site: 1, marks: ['2026-10-02'], history: { '2026-10-02': 1 } } } }
+    });
+    f.localState.marathons.push(instance);
+    f.localState = planSyncIdentities({ snapshot: f.localState, cryptoSource: webcrypto }).snapshot;
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.marathons.records.find(row => row.type === 'marathonTemplate').fields.tasks = [];
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan);
+    expect(applied.marathonTemplates[0].tasks).toEqual([]);
+    expect(applied.marathons).toEqual(f.localState.marathons);
+  });
+
+  it.each([
+    f => {
+      f.cloud.sections.marathons.records[0].fields.tasks[0].rewards[0].threshold = 0;
+    },
+    f => {
+      f.cloud.sections.marathons.records[0].fields.tasks[0].schedule.dates = ['bad-date'];
+    }
+  ])('не материализует недопустимое вложенное значение из облака', change => {
+    const f = valueTemplateFixture();
+    change(f);
+    const original = structuredClone(f.localState);
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    expect(() => applyPlan(f, plan)).toThrow();
+    expect(f.localState).toEqual(original);
+  });
+});
+
+describe('изменения значений без удаления sync-сущности', () => {
+  it('согласует удаление тега с независимой местной заметкой', () => {
+    const f = fixture();
+    f.localState.characters[0].notes = 'Местная заметка';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud.sections.characters.records[0].fields.tags = [];
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    expect(applyPlan(f, plan).characters[0]).toMatchObject({ tags: [], notes: 'Местная заметка' });
+    expect(plan.selectedRecords()).toEqual([{ section: 'characters', id: f.cloud.sections.characters.records[0].id }]);
+  });
+
+  it.each([true, false])(
+    'разрешает конфликт очистки тегов против добавления только явной стороной, облако=%s',
+    useCloud => {
+      const f = fixture();
+      f.localState.characters[0].tags.push('Местный');
+      f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+      f.cloud.sections.characters.records[0].fields.tags = [];
+      const id = f.cloud.sections.characters.records[0].id;
+      expect(merge(f).status).toBe('conflicts');
+      const plan = planConservativePublicMerge({
+        base: f.base,
+        local: f.local,
+        cloud: f.cloud,
+        resolution: valueResolution('characters', id, useCloud)
+      });
+      expect(plan.status).toBe('prepared');
+      expect(applyPlan(f, plan).characters[0].tags).toEqual(useCloud ? [] : ['старый', 'Местный']);
+    }
+  );
+
+  it('согласует снятие отметки повтора отдельно от правки другой даты и названия', () => {
+    const f = fixture();
+    f.localState.plannerEntries[0].statusByDate = { '2026-10-29': 'done', '2026-10-30': 'done' };
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.localState.plannerEntries[0].statusByDate['2026-10-30'] = 'doing';
+    f.localState.plannerEntries[0].title = 'Местное название';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud = structuredClone(f.base);
+    delete f.cloud.sections.planner.records[0].fields.statusByDate['2026-10-29'];
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    expect(applyPlan(f, plan).plannerEntries[0]).toMatchObject({
+      title: 'Местное название',
+      statusByDate: { '2026-10-30': 'doing' }
+    });
+    expect(Object.keys(applyPlan(f, plan).plannerEntries[0].statusByDate)).toEqual(['2026-10-30']);
+  });
+
+  it.each([true, false])('снятие отметки против местного изменения той же даты требует выбора, облако=%s', useCloud => {
+    const f = fixture();
+    f.localState.plannerEntries[0].statusByDate = { '2026-10-30': 'done' };
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.localState.plannerEntries[0].statusByDate['2026-10-30'] = 'doing';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.planner.records[0].fields.statusByDate = {};
+    expect(merge(f)).toMatchObject({
+      status: 'conflicts',
+      conflicts: [{ reason: 'delete-versus-edit', path: ['fields', 'statusByDate', '2026-10-30'] }]
+    });
+    const plan = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: valueResolution('planner', f.cloud.sections.planner.records[0].id, useCloud)
+    });
+    expect(plan.status).toBe('prepared');
+    expect(applyPlan(f, plan).plannerEntries[0].statusByDate).toEqual(useCloud ? {} : { '2026-10-30': 'doing' });
+  });
+
+  it('согласует порядок и показ разделов в отдельно выбранной группе навигации', () => {
+    const f = fixture();
+    const selections = ['appearance', 'navigation'];
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: selections });
+    f.localState.characters[0].notes = 'Местная заметка';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: selections });
+    f.cloud = structuredClone(f.base);
+    const order = f.cloud.sections.preferences.values.navigation.order;
+    order.splice(1, order.length - 2, ...order.slice(1, -1).reverse());
+    f.cloud.sections.preferences.values.navigation.hidden = ['finance'];
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    expect(plan.selectedSettings()).toEqual(['navigation']);
+    const applied = applyPlan(f, plan);
+    expect(applied.settings.ui.sections).toEqual(f.cloud.sections.preferences.values.navigation);
+    expect(applied.characters[0].notes).toBe('Местная заметка');
+  });
+});
+
+describe('конфликты и проверка навигации без ослабления сущностей', () => {
+  it.each([true, false])('одновременная перестановка разделов требует выбора, облако=%s', useCloud => {
+    const f = fixture();
+    const settingsSelections = ['navigation'];
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections });
+    const localOrder = f.localState.settings.ui.sections.order;
+    [localOrder[1], localOrder[2]] = [localOrder[2], localOrder[1]];
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections });
+    f.cloud = structuredClone(f.base);
+    const remoteOrder = f.cloud.sections.preferences.values.navigation.order;
+    [remoteOrder[2], remoteOrder[3]] = [remoteOrder[3], remoteOrder[2]];
+    f.cloud.sections.preferences.values.navigation.hidden = ['finance'];
+    expect(merge(f)).toMatchObject({
+      status: 'conflicts',
+      conflicts: [{ section: 'preferences', id: 'navigation', path: ['order'] }]
+    });
+    const plan = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: {
+        ...valueResolution('preferences', 'navigation', false),
+        cloudSettings: useCloud ? ['navigation'] : []
+      }
+    });
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan);
+    expect(applied.settings.ui.sections.order).toEqual(useCloud ? remoteOrder : localOrder);
+    expect(applied.settings.ui.sections.hidden).toEqual(['finance']);
+  });
+  it('не разрешает спрятать обязательные настройки или сдвинуть закреплённые разделы', () => {
+    for (const mutate of [nav => nav.order.reverse(), nav => nav.hidden.push('settings')]) {
+      const f = fixture();
+      f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['navigation'] });
+      f.local = structuredClone(f.base);
+      f.cloud = structuredClone(f.base);
+      mutate(f.cloud.sections.preferences.values.navigation);
+      const plan = merge(f);
+      expect(plan.status).toBe('prepared');
+      expect(() => applyPlan(f, plan)).toThrow();
+    }
+  });
+  it('не выводит удаление sync-задания марафона из исчезновения массива', () => {
+    const f = valueTemplateFixture();
+    f.localState.marathons.push(
+      createMarathon({
+        id: 'instance',
+        title: 'Марафон',
+        startDate: '2026-10-01',
+        endDate: '2026-10-31',
+        tasks: [createTask({ id: 'existing-task', title: 'Не копируемое значение' })]
+      })
+    );
+    f.localState = planSyncIdentities({ snapshot: f.localState, cryptoSource: webcrypto }).snapshot;
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.marathons.records.find(row => row.type === 'marathon').fields.tasks = [];
+    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+  });
+});
+
+function cappedHistoryFixture() {
+  const f = fixture();
+  const char = f.localState.characters[0];
+  for (let i = 1; i <= 11; i++) {
+    const previous = structuredClone(char.stats);
+    char.stats.strength = i;
+    rememberStatsBefore(char, previous, `2026-10-${String(i).padStart(2, '0')}T00:00:00.000Z`);
+  }
+  f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+  f.local = structuredClone(f.base);
+  f.cloud = structuredClone(f.base);
+  return f;
+}
+describe('штатный лимит истории характеристик без угадывания по датам', () => {
+  it('материализует настоящий одиннадцатый сдвиг с местной заметкой без потери остальных полей', () => {
+    const f = cappedHistoryFixture();
+    const remote = structuredClone(f.localState);
+    const char = remote.characters[0];
+    const previous = structuredClone(char.stats);
+    char.stats.strength = 12;
+    rememberStatsBefore(char, previous, '2000-01-01T00:00:00.000Z'); // дата не выбирает победителя
+    f.cloud = buildPublicSnapshot(remote, { settingsSelections: ['appearance'] });
+    f.localState.characters[0].notes = 'Независимая заметка';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan).characters[0];
+    expect(applied.statsHistory).toEqual(char.statsHistory);
+    expect(applied.statsHistory).toHaveLength(10);
+    expect(applied).toMatchObject({ stats: { strength: 12 }, notes: 'Независимая заметка' });
+  });
+  it.each(['clear', 'middle', 'edit', 'shorten', 'replace-all', 'ambiguous', 'reused-head'])(
+    'не принимает произвольное изменение %s за штатное обрезание хвоста',
+    kind => {
+      const f = cappedHistoryFixture();
+      const original = f.base.sections.characters.records[0].fields.statsHistory;
+      let next = structuredClone(original);
+      if (kind === 'clear') next = [];
+      if (kind === 'middle') next.splice(4, 1);
+      if (kind === 'edit') next[5].stats.strength = 900;
+      if (kind === 'shorten') next.pop();
+      if (kind === 'replace-all') next = next.map(row => ({ ...row, stats: { ...row.stats, strength: 900 } }));
+      if (kind === 'ambiguous') {
+        original[1] = structuredClone(original[0]);
+        f.local = structuredClone(f.base);
+        f.cloud = structuredClone(f.base);
+        next = [
+          { at: '2026-11-01', stats: { ...original[0].stats, strength: 200 } },
+          ...structuredClone(original.slice(0, 9))
+        ];
+      }
+      if (kind === 'reused-head') next = [structuredClone(original[9]), ...structuredClone(original.slice(0, 9))];
+      f.cloud.sections.characters.records[0].fields.statsHistory = next;
+      expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+      expect(merge(f).status).toBe('structure_or_deletion_unsupported');
+    }
+  );
+  it.each([true, false])('разные штатные обрезания на двух ПК остаются конфликтом, облако=%s', useCloud => {
+    const f = cappedHistoryFixture();
+    const remote = structuredClone(f.localState);
+    const local = f.localState.characters[0];
+    const cloud = remote.characters[0];
+    const before = structuredClone(local.stats);
+    local.stats.strength = 12;
+    cloud.stats.strength = 13;
+    rememberStatsBefore(local, before, '2026-11-01T00:00:00.000Z');
+    rememberStatsBefore(cloud, before, '2026-11-02T00:00:00.000Z');
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud = buildPublicSnapshot(remote, { settingsSelections: ['appearance'] });
+    const preview = merge(f);
+    expect(preview.status).toBe('conflicts');
+    expect(preview.conflicts.some(row => row.path.at(-1) === 'statsHistory')).toBe(true);
+    const plan = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: valueResolution('characters', local.syncId, useCloud)
+    });
+    expect(plan.status).toBe('prepared');
+    const applied = applyPlan(f, plan).characters[0];
+    expect(applied.statsHistory).toEqual(useCloud ? cloud.statsHistory : local.statsHistory);
+    expect(applied.stats.strength).toBe(useCloud ? 13 : 12);
   });
 });

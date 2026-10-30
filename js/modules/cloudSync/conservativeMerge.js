@@ -9,6 +9,7 @@ import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSn
 import { mergeRecord } from './mergeRecord.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
 import { parseConservativeMergeChoices } from './conservativeMergeChoices.js';
+import { STATS_HISTORY_LIMIT } from '../characters/statsHistory.js';
 
 const SECTIONS = ['characters', 'parties', 'marathons', 'planner', 'finance'];
 const MAX_CONFLICTS = 1000;
@@ -18,14 +19,6 @@ function invalid() {
 }
 function plain(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-function hasPrefix(prefix, values) {
-  return (
-    Array.isArray(prefix) &&
-    Array.isArray(values) &&
-    prefix.length <= values.length &&
-    prefix.every((value, index) => equal(value, values[index]))
-  );
 }
 function equal(left, right) {
   if (left === right) return true;
@@ -45,19 +38,54 @@ function equal(left, right) {
   );
 }
 
+// Recognize only the application's bounded newest-first history advance, not
+// arbitrary erasure or timestamp-based matching. Some exact, unambiguous old
+// prefix must survive; the new head must not masquerade as an old entry.
+function cappedStatsAdvance(base, next) {
+  if (!base.length || base.length > STATS_HISTORY_LIMIT || next.length !== STATS_HISTORY_LIMIT) return false;
+  let matches = 0;
+  for (let added = 1; added < next.length; added++) {
+    const kept = next.length - added;
+    if (kept >= base.length) continue;
+    const prefix = base.slice(0, kept);
+    if (
+      prefix.every((entry, index) => equal(entry, next[added + index])) &&
+      prefix.every(entry => base.filter(old => equal(entry, old)).length === 1) &&
+      next.slice(0, added).every(entry => !base.some(old => equal(entry, old)))
+    )
+      matches++;
+  }
+  return matches === 1;
+}
+
 // Без отдельного протокола удаления не считаем исчезновение ключей или элементов
-// массива обычной правкой. Нельзя незаметно заменить или удалить старый элемент;
+// массива обычной правкой, кроме явно перечисленных копируемых значений ниже.
+// Нельзя незаметно заменить или удалить старую sync-сущность;
 // анонимные объекты должны совпадать. Для заданий марафона отдельное объединение
 // ниже использует sync-ID, прочие массивы остаются единым конфликтующим полем.
 function retains(base, next, path = [], recordType = null) {
+  // These are copied values, NOT sync entities or an entity's identity/order.
+  // A full authenticated snapshot may replace them, including clearing a list
+  // or a per-date status. mergeRecord still detects delete-versus-edit and
+  // conflicting arrays; final materialization validates the business schema.
+  const valueField =
+    (recordType === 'marathonTemplate' && path.length === 1 && ['tasks', 'bonuses'].includes(path[0])) ||
+    (recordType === 'character' && path.length === 1 && path[0] === 'tags') ||
+    (recordType === 'plannerEntry' && path.length === 1 && path[0] === 'statusByDate') ||
+    (recordType === 'preferences' &&
+      path.length === 2 &&
+      path[0] === 'navigation' &&
+      ['hidden', 'order'].includes(path[1]));
+  if (valueField) return Array.isArray(base) ? Array.isArray(next) : plain(base) && plain(next);
   if (Array.isArray(base)) {
     if (!Array.isArray(next) || base.length > next.length) return false;
     if (recordType === 'character' && path.length === 1 && ['coinHistory', 'statsHistory'].includes(path[0])) {
       // Истории в приложении добавляют новые записи сверху. Старые записи
-      // должны остаться точной подпоследовательностью, включая повторы.
+      // должны остаться точной подпоследовательностью, включая повторы; только
+      // у характеристик допустим проверяемый сдвиг при штатном лимите 10.
       let index = 0;
       for (const entry of next) if (index < base.length && equal(entry, base[index])) index++;
-      return index === base.length;
+      return index === base.length || (path[0] === 'statsHistory' && cappedStatsAdvance(base, next));
     }
     // Форма и повторяющийся якорь не доказывают идентичность. Разрешаем только
     // явно известные поля связи из схемы; неизвестные объекты сравниваем целиком.
@@ -158,13 +186,14 @@ function noRemovedValues(before, after) {
   }
   return (
     retains(before.sections.finance.settings, after.sections.finance.settings) &&
-    retains(before.sections.preferences.values, after.sections.preferences.values)
+    retains(before.sections.preferences.values, after.sections.preferences.values, [], 'preferences')
   );
 }
 
 /**
  * Строгая проверка одного перехода: прежние sync-ID и порядок сохраняются,
- * новые записи допустимы только в конце. Нет разрешения на удаление или запись.
+ * новые записи допустимы только в конце. Копируемые значения могут заменяться;
+ * нет разрешения на удаление sync-сущностей или запись state.
  * @param {any} previous
  * @param {any} next
  */
@@ -283,8 +312,8 @@ function mergeNestedEntities(base, local, cloud, conflicts, section, parentId, c
 
 /**
  * Объединяет существующие записи и ограниченные добавления в конец порядка,
- * без исчезновений и одновременных несовместимых правок. Шаблоны марафонов
- * с локальными вложенными ID пока не поддерживаются.
+ * без исчезновений sync-сущностей. Копируемые значения шаблона и известные
+ * списки без ID заменяются целиком; несовместимые правки требуют выбора.
  * @param {{base:any,local:any,cloud:any,resolution?:any}} options
  */
 function planWithoutPlannerDeletions(options) {
@@ -302,7 +331,6 @@ function planWithoutPlannerDeletions(options) {
   const chosen = [];
   const settings = [];
   const conflicts = [];
-  let unsupported = false;
   for (const section of SECTIONS) {
     const baseRecords = records(base, section);
     const localRecords = records(local, section);
@@ -325,7 +353,6 @@ function planWithoutPlannerDeletions(options) {
         if (there && !equal(here, there)) {
           if (choices) {
             if (choiceUsesCloud(choices, section, target.id)) {
-              if (section === 'marathons' && target.type === 'marathonTemplate') unsupported = true;
               Object.assign(target, structuredClone(there));
               chosen.push({ section, id: target.id });
             }
@@ -382,11 +409,6 @@ function planWithoutPlannerDeletions(options) {
       target.fields = result.fields;
       if (Object.hasOwn(target, 'archived')) target.archived = result.archived;
       if (!equal(target, here)) {
-        if (
-          target.type === 'marathonTemplate' &&
-          (!hasPrefix(here.fields.tasks, target.fields.tasks) || !hasPrefix(here.fields.bonuses, target.fields.bonuses))
-        )
-          unsupported = true;
         chosen.push({ section, id: target.id });
       }
     }
@@ -394,7 +416,7 @@ function planWithoutPlannerDeletions(options) {
       if (localRecords.has(id)) continue;
       if (baseRecords.has(id)) throw invalid();
       // Новый шаблон не заменяет локальные вложенные задания: их ID создаются
-      // отдельно при материализации. Изменения существующих шаблонов блокируются.
+      // отдельно при материализации. Вложенные значения не получают sync-ID.
       merged.sections[section].records.push(structuredClone(incoming));
       chosen.push({ section, id });
     }
@@ -425,7 +447,6 @@ function planWithoutPlannerDeletions(options) {
     if (!equal(result, local.sections.preferences.values[group])) settings.push(group);
   }
   if (conflicts.length) return Object.freeze({ status: 'conflicts', conflicts: Object.freeze(conflicts) });
-  if (unsupported) return Object.freeze({ status: 'incoming_section_unsupported' });
   publicSnapshotIdentityTypes(merged);
   if (reviewSnapshotDependencies(merged).issues.length) return Object.freeze({ status: 'dependencies_unresolved' });
   // Вызывающий получает независимые копии; модель не удостоверяет историю и не пишет state.
