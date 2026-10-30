@@ -15,7 +15,11 @@ function invalid() {
 /** @param {any} value */
 export function parseConservativeMergeChoices(value) {
   validateJsonSnapshot(value);
-  const input = object(value, ['reviewHash', 'cloudRecords', 'cloudSettings', 'cloudFinanceSettings']);
+  const input = object(
+    value,
+    ['reviewHash', 'cloudRecords', 'cloudSettings', 'cloudFinanceSettings'],
+    ['plannerCopies']
+  );
   if (typeof input.reviewHash !== 'string' || !HEX.test(input.reviewHash)) throw invalid();
   const records = array(input.cloudRecords, item => {
     const row = object(item, ['section', 'id']);
@@ -24,6 +28,22 @@ export function parseConservativeMergeChoices(value) {
   });
   if (records.length > MAX_CHOICES || new Set(records.map(row => `${row.section}:${row.id}`)).size !== records.length)
     throw invalid();
+  const copies = Object.hasOwn(input, 'plannerCopies')
+    ? array(input.plannerCopies, value => {
+        const row = object(value, ['id', 'newId']);
+        if (!isSyncId(row.id) || !isSyncId(row.newId) || row.id === row.newId) throw invalid();
+        return { id: row.id, newId: row.newId };
+      })
+    : null;
+  if (
+    copies &&
+    (!copies.length ||
+      copies.length > MAX_CHOICES ||
+      new Set(copies.map(row => row.id)).size !== copies.length ||
+      new Set(copies.map(row => row.newId)).size !== copies.length ||
+      copies.some(row => records.some(record => record.section === 'planner' && record.id === row.id)))
+  )
+    throw invalid();
   const settings = array(input.cloudSettings, value => value);
   if (JSON.stringify(settings) !== JSON.stringify(PORTABLE_SETTING_GROUPS.filter(group => settings.includes(group))))
     throw invalid();
@@ -31,7 +51,8 @@ export function parseConservativeMergeChoices(value) {
     reviewHash: input.reviewHash,
     cloudRecords: records,
     cloudSettings: [...settings],
-    cloudFinanceSettings: boolean(input.cloudFinanceSettings)
+    cloudFinanceSettings: boolean(input.cloudFinanceSettings),
+    ...(copies ? { plannerCopies: copies } : {})
   };
 }
 
