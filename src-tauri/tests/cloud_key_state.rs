@@ -85,6 +85,13 @@ fn install_read_replace_and_forget_use_a_separate_namespace() {
     assert!(
         matches!(cloud_key_state::read(&mut vault), Ok(Inspection::Ready { slot_id, record }) if slot_id == SLOT && record == old())
     );
+    let public = cloud_key_state::public_binding(&mut vault)
+        .unwrap()
+        .unwrap();
+    assert_eq!(public.slot_id, SLOT);
+    assert_eq!(public.dataset_id, DATASET);
+    assert_eq!(public.bundle_id, BUNDLE1);
+    assert_eq!(public.fingerprint, "a".repeat(64));
     assert!(matches!(
         cloud_credential_store::inspect(&mut vault, Provider::Google),
         Ok(Inspection::Empty)
