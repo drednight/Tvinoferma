@@ -6,6 +6,8 @@
 // Секреты, записи, параметры IPC, аккаунты и исходные ошибки не журналируются.
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
+import { historyEnvelopePin } from '../history.js';
+import { parsePairingCode } from '../pairingCode.js';
 import { validGoogleId } from './common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
 import { validCredentialId, parseGoogleCredentialRecord } from './oauthCredentialRecord.js';
@@ -16,6 +18,7 @@ import { createGoogleCredentialRotation } from './oauthCredentialRotation.js';
 import { createGoogleAccountIdentityReader } from './oauthAccountIdentity.js';
 import { createNativeDiskFetch } from './nativeDiskFetch.js';
 import { createAuthenticatedCloudSession } from './authenticatedSession.js';
+import { createGoogleFolderManager } from './googleFolderManager.js';
 
 const ERROR = 'Не удалось безопасно подготовить облачную сессию';
 const EXPIRY_MARGIN_MS = 5000;
@@ -66,20 +69,30 @@ function clock(now) {
  * cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number}} options
  */
 export async function openNativeCloudSession(options) {
+  return openSession(options, false);
+}
+
+// Общее получение доступа и проверка записи. Режим поиска намеренно не принимает
+// datasetId/folderId и не возвращает никаких методов записи или генерации ID.
+async function openSession(options, folderDiscoveryOnly) {
   let input;
   try {
     input = object(
       options,
-      ['provider', 'slotId', 'clientId', 'accountKey', 'datasetId', 'invoke'],
-      ['folderId', 'cryptoSource', 'now', 'timeoutMs']
+      folderDiscoveryOnly
+        ? ['provider', 'slotId', 'clientId', 'accountKey', 'invoke']
+        : ['provider', 'slotId', 'clientId', 'accountKey', 'datasetId', 'invoke'],
+      folderDiscoveryOnly ? ['cryptoSource', 'now', 'timeoutMs'] : ['folderId', 'cryptoSource', 'now', 'timeoutMs']
     );
     if (
       !['google', 'yandex'].includes(input.provider) ||
+      (folderDiscoveryOnly && input.provider !== 'google') ||
       !validCredentialId(input.slotId) ||
       !validOAuthClientId(input.provider, input.clientId) ||
       !validOAuthAccountKey(input.accountKey) ||
-      !isSyncId(input.datasetId) ||
-      (input.provider === 'google' ? !validGoogleId(input.folderId) : input.folderId !== undefined) ||
+      (!folderDiscoveryOnly &&
+        (!isSyncId(input.datasetId) ||
+          (input.provider === 'google' ? !validGoogleId(input.folderId) : input.folderId !== undefined))) ||
       typeof input.invoke !== 'function' ||
       (input.now !== undefined && typeof input.now !== 'function') ||
       (input.timeoutMs !== undefined &&
@@ -147,17 +160,6 @@ export async function openNativeCloudSession(options) {
       expiresAt = parsed.expiresAt;
     }
     if (now() + EXPIRY_MARGIN_MS >= expiresAt) return status('login_required');
-    const base = createAuthenticatedCloudSession({
-      provider,
-      clientId,
-      accountKey,
-      datasetId,
-      accessToken: token,
-      fetchImpl: diskFetch,
-      timeoutMs,
-      ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
-      ...(provider === 'google' ? { folderId: input.folderId } : {})
-    });
     let active = false;
     let disposed = false;
     async function guard(work, write = false) {
@@ -186,6 +188,87 @@ export async function openNativeCloudSession(options) {
         active = false;
       }
     }
+    if (folderDiscoveryOnly) {
+      const manager = createGoogleFolderManager({
+        clientId,
+        accountKey,
+        accessToken: token,
+        fetchImpl: diskFetch,
+        timeoutMs
+      });
+      let candidates = new Set();
+      const session = Object.freeze({
+        async discover() {
+          candidates = new Set();
+          const found = await guard(() => manager.discover());
+          if (!disposed && ['candidate', 'ambiguous'].includes(found.status) && Array.isArray(found.folders))
+            candidates = new Set(found.folders.map(folder => folder.folderId));
+          return found;
+        },
+        /**
+         * Сверяет точный root-отпечаток только в наблюдавшейся папке. Код должен
+         * поступить независимо; булево подтверждение — не доказательство канала.
+         * Совпадение не проверяет GCM, полноту/актуальность облака и не закрепляет
+         * выбор. Несколько папок могут содержать одну и ту же корневую версию.
+         * @param {{folderId:string,pairingCode:string,independentPinConfirmed:boolean}} args
+         */
+        async probeRoot(args) {
+          let checked, pairing;
+          try {
+            checked = object(args, ['folderId', 'pairingCode', 'independentPinConfirmed']);
+            if (!validGoogleId(checked.folderId) || checked.independentPinConfirmed !== true) throw failed();
+            pairing = parsePairingCode(checked.pairingCode);
+          } catch {
+            throw failed();
+          }
+          if (!candidates.has(checked.folderId)) return status('candidate_unavailable');
+          return guard(async () => {
+            const reader = createAuthenticatedCloudSession({
+              provider: 'google',
+              clientId,
+              accountKey,
+              datasetId: pairing.datasetId,
+              folderId: checked.folderId,
+              accessToken: token,
+              fetchImpl: diskFetch,
+              timeoutMs,
+              ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
+            });
+            const found = await reader.read(pairing.rootPin.versionId);
+            if (found.status === 'account_mismatch' || found.status === 'account_unavailable')
+              return status(found.status);
+            if (found.status === 'not_found') return status('root_not_found');
+            if (found.status !== 'found') return status('unavailable');
+            const pin = await historyEnvelopePin({
+              envelope: found.envelope,
+              expectedDatasetId: pairing.datasetId,
+              ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
+            });
+            if (disposed || (await read()) !== raw || now() + EXPIRY_MARGIN_MS >= expiresAt)
+              return status('account_unavailable');
+            if (pin.versionId !== pairing.rootPin.versionId || pin.sha256 !== pairing.rootPin.sha256)
+              return status('root_mismatch');
+            return Object.freeze({ status: 'matched_root', folderId: checked.folderId });
+          });
+        },
+        dispose() {
+          disposed = true;
+          candidates.clear();
+        }
+      });
+      return Object.freeze({ status: 'opened', session });
+    }
+    const base = createAuthenticatedCloudSession({
+      provider,
+      clientId,
+      accountKey,
+      datasetId,
+      accessToken: token,
+      fetchImpl: diskFetch,
+      timeoutMs,
+      ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
+      ...(provider === 'google' ? { folderId: input.folderId } : {})
+    });
     const session = Object.freeze({
       generateFileId() {
         return guard(() => base.generateFileId());
@@ -249,6 +332,44 @@ export async function openStoredNativeCloudSession(options) {
       ...input,
       ...local.binding
     });
+  } catch {
+    return status('credential_unavailable');
+  }
+}
+
+/**
+ * Только чтение кандидатов папки для ранее закреплённого Google-аккаунта.
+ * Перед открытием обновляет доступ с guarded claim, перед каждым поиском повторно
+ * сверяет credential и аккаунт, дважды обходит список. Ни один кандидат не
+ * становится доверенным: его ещё нужно проверить по независимому dataset/root pin.
+ * Отсутствие папки, совпадение обходов и имя не доказывают первое подключение.
+ * probeRoot может сверить корень с кодом, полученным независимо, но ничего не
+ * закрепляет. Создавать/выбирать папку этот API не умеет. В UI не подключено.
+ * @param {{invoke:(command:string,args:any)=>Promise<any>,cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number}} options
+ */
+export async function openStoredNativeGoogleFolderDiscovery(options) {
+  let input;
+  try {
+    input = object(options, ['invoke'], ['cryptoSource', 'now', 'timeoutMs']);
+    if (
+      typeof input.invoke !== 'function' ||
+      (input.now !== undefined && typeof input.now !== 'function') ||
+      (input.timeoutMs !== undefined &&
+        (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 20 || input.timeoutMs > 120_000))
+    )
+      throw failed();
+  } catch {
+    throw failed();
+  }
+  try {
+    const local = await readNativeCredentialBinding({
+      provider: 'google',
+      invoke: input.invoke,
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs })
+    });
+    if (local.status === 'empty') return status('credential_missing');
+    if (local.status !== 'ready' || !local.binding) return status('credential_blocked');
+    return await openSession({ ...input, provider: 'google', ...local.binding }, true);
   } catch {
     return status('credential_unavailable');
   }

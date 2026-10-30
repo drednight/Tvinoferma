@@ -369,6 +369,37 @@ mod windows_backend {
         }
     }
 
+    /// Вызывается только из factory_reset под уже удерживаемым state mutex.
+    /// Пытаемся очистить обе известные записи, даже если одна недоступна.
+    pub(super) fn cleanup_for_reset(app_dir: &Path) -> Result<(), String> {
+        let lock = CredentialLock::try_acquire(app_dir).map_err(|_| ERROR.to_owned())?;
+        let mut vault = NativeVault;
+        let mut failed = false;
+        for provider in [Provider::Google, Provider::Yandex] {
+            match cloud_credential_binding::read(&mut vault, provider) {
+                Ok(Pair::Empty) => {}
+                Ok(Pair::Ready { .. } | Pair::Blocked) => {
+                    if cloud_credential_binding::forget(&mut vault, provider).is_err() {
+                        failed = true;
+                    }
+                }
+                Err(_) => failed = true,
+            }
+        }
+        match cloud_credential_store::inspect(&mut vault, Provider::KeyState) {
+            Ok(Inspection::Empty) => {}
+            Ok(Inspection::Ready { .. } | Inspection::Blocked) => {
+                if cloud_credential_service::forget(&mut vault, Provider::KeyState).is_err() {
+                    failed = true;
+                }
+            }
+            Err(_) => failed = true,
+        }
+        if lock.verify().is_err() || failed {
+            return Err(ERROR.into());
+        }
+        Ok(())
+    }
     // Только opt-in Windows CI. Имена уникальны, данные синтетические;
     // cleanup best-effort. Это не тест Tauri IPC, сбоя питания или OAuth.
     #[cfg(test)]
@@ -487,38 +518,6 @@ mod windows_backend {
                 Ok(Pair::Empty)
             ));
         }
-    }
-
-    /// Вызывается только из factory_reset под уже удерживаемым state mutex.
-    /// Пытаемся очистить обе известные записи, даже если одна недоступна.
-    pub(super) fn cleanup_for_reset(app_dir: &Path) -> Result<(), String> {
-        let lock = CredentialLock::try_acquire(app_dir).map_err(|_| ERROR.to_owned())?;
-        let mut vault = NativeVault;
-        let mut failed = false;
-        for provider in [Provider::Google, Provider::Yandex] {
-            match cloud_credential_binding::read(&mut vault, provider) {
-                Ok(Pair::Empty) => {}
-                Ok(Pair::Ready { .. } | Pair::Blocked) => {
-                    if cloud_credential_binding::forget(&mut vault, provider).is_err() {
-                        failed = true;
-                    }
-                }
-                Err(_) => failed = true,
-            }
-        }
-        match cloud_credential_store::inspect(&mut vault, Provider::KeyState) {
-            Ok(Inspection::Empty) => {}
-            Ok(Inspection::Ready { .. } | Inspection::Blocked) => {
-                if cloud_credential_service::forget(&mut vault, Provider::KeyState).is_err() {
-                    failed = true;
-                }
-            }
-            Err(_) => failed = true,
-        }
-        if lock.verify().is_err() || failed {
-            return Err(ERROR.into());
-        }
-        Ok(())
     }
 }
 
