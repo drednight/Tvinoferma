@@ -16,6 +16,7 @@ pub(crate) struct Binding {
     revision: String,
     phase: Phase,
     attempt_id: Option<String>,
+    refresh_token: Option<String>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -181,7 +182,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
     {
         return None;
     }
-    let (phase, attempt_id) = match provider {
+    let (phase, attempt_id, refresh_token) = match provider {
         Provider::Google => {
             c.literal(",\"phase\":")?;
             let phase = c.string()?;
@@ -201,7 +202,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
                     {
                         return None;
                     }
-                    (Phase::Ready, None)
+                    (Phase::Ready, None, Some(token))
                 }
                 "pending" => {
                     let id = attempt?;
@@ -213,7 +214,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
                     {
                         return None;
                     }
-                    (Phase::Pending, Some(id))
+                    (Phase::Pending, Some(id), None)
                 }
                 _ => return None,
             }
@@ -226,7 +227,7 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
             if !valid_yandex_token(&access) {
                 return None;
             }
-            (Phase::Yandex, None)
+            (Phase::Yandex, None, None)
         }
         Provider::KeyState => return None,
     };
@@ -239,6 +240,26 @@ pub(crate) fn parse(provider: Provider, raw: &str) -> Option<Binding> {
         revision,
         phase,
         attempt_id,
+        refresh_token,
+    })
+}
+
+// Без токена. Значения относятся к конкретной канонической записи, но ещё не
+// подтверждают человека, выдачу прав, отсутствие отката или надёжность ОС.
+pub(crate) struct PublicBinding {
+    pub(crate) slot_id: String,
+    pub(crate) client_id: String,
+    pub(crate) account_key: String,
+    pub(crate) pending: bool,
+}
+
+pub(crate) fn public_binding(provider: Provider, raw: &str) -> Option<PublicBinding> {
+    let parsed = parse(provider, raw)?;
+    Some(PublicBinding {
+        slot_id: parsed.slot_id,
+        client_id: parsed.client_id,
+        account_key: parsed.account_key,
+        pending: parsed.phase == Phase::Pending,
     })
 }
 
@@ -277,4 +298,24 @@ pub(crate) fn valid_transition(provider: Provider, slot_id: &str, old: &str, nex
         }
         _ => false,
     }
+}
+
+/// Связывает конкретную форму refresh с канонической ready-записью и её
+/// допустимым переходом в pending. Не подтверждает аккаунт или устойчивость ОС.
+/// Ни аргументы, ни временные строки с токеном нельзя журналировать.
+pub(crate) fn valid_google_refresh_claim(
+    slot_id: &str,
+    expected: &str,
+    pending: &str,
+    client_id: &str,
+    refresh_token: &str,
+) -> bool {
+    if !valid_transition(Provider::Google, slot_id, expected, pending) {
+        return false;
+    }
+    parse(Provider::Google, expected).is_some_and(|before| {
+        before.phase == Phase::Ready
+            && before.client_id == client_id
+            && before.refresh_token.as_deref() == Some(refresh_token)
+    })
 }

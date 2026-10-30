@@ -26,6 +26,8 @@ mod automation;
 mod autostart;
 mod balance;
 #[cfg(windows)]
+mod cloud_credential_binding;
+#[cfg(windows)]
 mod cloud_credential_lock;
 #[cfg(windows)]
 mod cloud_credential_records;
@@ -201,6 +203,7 @@ pub fn run() {
             commands::secrets::secrets_delete_many,
             // Экспериментальное локальное хранилище; UI синхронизации к нему не подключён.
             commands::cloud_credentials::cloud_credential_read,
+            commands::cloud_credentials::cloud_credential_binding_read,
             commands::cloud_credentials::cloud_credential_install,
             commands::cloud_credentials::cloud_credential_compare_exchange,
             commands::cloud_credentials::cloud_credential_forget,

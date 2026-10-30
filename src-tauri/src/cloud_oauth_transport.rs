@@ -168,43 +168,53 @@ pub fn valid_code_form(provider: Provider, body: &str) -> bool {
         }
 }
 
-/// Только refresh Google без client_secret. Вызывающий обязан до сетевой
-/// попытки надёжно зафиксировать pending и не повторять неизвестный результат.
-/// Сама проверка формы не доказывает соблюдение этого требования.
-pub fn valid_google_refresh_form(body: &str) -> bool {
+// Содержит секретный refresh token. Не реализуем Debug и не журналируем.
+pub(crate) struct GoogleRefreshForm {
+    pub(crate) client_id: String,
+    pub(crate) refresh_token: String,
+}
+
+/// Разбирает строго ограниченную форму без client_secret. Само по себе это не
+/// подтверждает claim, владельца аккаунта или безопасный сетевой повтор.
+pub(crate) fn parse_google_refresh_form(body: &str) -> Option<GoogleRefreshForm> {
     if !visible_ascii(body, MAX_FORM_BYTES) {
-        return false;
+        return None;
     }
     let mut grant = None;
     let mut client = None;
     let mut refresh = None;
     for part in body.split('&') {
-        let Some((name, value)) = part.split_once('=') else {
-            return false;
-        };
-        let Some(name) = decode_form_part(name) else {
-            return false;
-        };
-        let Some(value) = decode_form_part(value) else {
-            return false;
-        };
+        let (name, value) = part.split_once('=')?;
+        let name = decode_form_part(name)?;
+        let value = decode_form_part(value)?;
         let field = match name.as_str() {
             "grant_type" => &mut grant,
             "client_id" => &mut client,
             "refresh_token" => &mut refresh,
-            _ => return false,
+            _ => return None,
         };
         if field.replace(value).is_some() {
-            return false;
+            return None;
         }
     }
-    grant.as_deref() == Some("refresh_token")
-        && client
-            .as_deref()
-            .is_some_and(|value| valid_client_id(Provider::Google, value))
-        && refresh
-            .as_deref()
-            .is_some_and(|value| visible_ascii(value, MAX_TOKEN_BYTES))
+    let (Some(client_id), Some(refresh_token)) = (client, refresh) else {
+        return None;
+    };
+    if grant.as_deref() != Some("refresh_token")
+        || !valid_client_id(Provider::Google, &client_id)
+        || !visible_ascii(&refresh_token, MAX_TOKEN_BYTES)
+    {
+        return None;
+    }
+    Some(GoogleRefreshForm {
+        client_id,
+        refresh_token,
+    })
+}
+
+#[cfg(test)]
+pub fn valid_google_refresh_form(body: &str) -> bool {
+    parse_google_refresh_form(body).is_some()
 }
 
 /// Токен допустим исключительно в Authorization header, без пробелов и CR/LF.
@@ -266,6 +276,9 @@ mod tests {
     fn google_refresh_accepts_only_the_exact_three_fields() {
         let body = "grant_type=refresh_token&client_id=123-example.apps.googleusercontent.com&refresh_token=tok%2Ben%2Fvalue";
         assert!(valid_google_refresh_form(body));
+        let parsed = parse_google_refresh_form(body).unwrap();
+        assert_eq!(parsed.client_id, "123-example.apps.googleusercontent.com");
+        assert_eq!(parsed.refresh_token, "tok+en/value");
         assert!(!valid_google_refresh_form(""));
         assert!(!valid_google_refresh_form(
             &(body.to_owned() + "&client_secret=private")

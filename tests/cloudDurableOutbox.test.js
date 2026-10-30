@@ -3,7 +3,12 @@ import { createHash, webcrypto } from 'node:crypto';
 import { normalizeState } from '../js/core/state.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
-import { encryptSnapshot, generateRecoveryKey, generateSyncId } from '../js/modules/cloudSync/envelope.js';
+import {
+  encryptSnapshot,
+  decryptSnapshot,
+  generateRecoveryKey,
+  generateSyncId
+} from '../js/modules/cloudSync/envelope.js';
 import { sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { createDurableCloudOutbox } from '../js/modules/cloudSync/durableOutbox.js';
 
@@ -71,8 +76,12 @@ function makeStore() {
   };
 }
 function makeSession(overrides = {}) {
+  let allocated = 0;
   return {
-    generateFileId: vi.fn(async () => ({ status: 'generated', fileId: 'allocated_TEST_ID' })),
+    generateFileId: vi.fn(async () => ({
+      status: 'generated',
+      fileId: allocated++ === 0 ? 'allocated_TEST_ID' : `allocated_TEST_ID_${allocated}`
+    })),
     upload: vi.fn(async () => ({ status: 'accepted' })),
     verify: vi.fn(async () => ({ status: 'verified' })),
     ...overrides
@@ -103,6 +112,40 @@ async function sealedVersion() {
     versionId: id(),
     cryptoSource
   });
+}
+
+// Меняет только синтетический journal, чтобы испытать миграцию и повреждения.
+async function alterSyntheticJournal(store, change) {
+  const current = await store.raw();
+  const master = Buffer.from(dataKey.slice(4), 'base64url');
+  const baseKey = await cryptoSource.subtle.importKey('raw', master, 'HKDF', false, ['deriveBits']);
+  const bits = await cryptoSource.subtle.deriveBits(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new TextEncoder().encode('tvinoferma-durable-outbox-key-v1'),
+      info: new TextEncoder().encode(JSON.stringify([datasetId, deviceId, slotId]))
+    },
+    baseKey,
+    256
+  );
+  const journalKey = `TF1-${Buffer.from(bits).toString('base64url')}`;
+  const state = await decryptSnapshot({
+    envelope: JSON.parse(current.record),
+    recoveryKey: journalKey,
+    expectedDatasetId: datasetId,
+    cryptoSource
+  });
+  change(state);
+  const envelope = await encryptSnapshot({
+    snapshot: state,
+    recoveryKey: journalKey,
+    datasetId,
+    versionId: current.revisionId,
+    cryptoSource
+  });
+  const record = JSON.stringify(envelope);
+  store.mutate(previous => ({ ...previous, record, sha256: digest(record) }));
 }
 
 beforeEach(() => {
@@ -306,6 +349,161 @@ describe.each(['google', 'yandex'])('%s: зашифрованный журнал
       results.find(result => result.status !== 'needs_verification')?.status ?? 'needs_verification'
     );
     expect(await create(provider, store, session).sendNext()).toEqual({ status: 'needs_verification' });
+    expect(session.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('сворачивает подтверждённые версии, сохраняя пины и защиту от повторного enqueue после рестарта', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const versions = [];
+    for (let i = 0; i < 16; i++) {
+      const version = await sealedVersion();
+      versions.push(version);
+      expect(await outbox.enqueue(version.envelope)).toEqual({ status: 'queued' });
+      expect(await outbox.sendNext()).toEqual({ status: 'needs_verification' });
+      expect(await outbox.verifyNext()).toEqual({ status: 'confirmed' });
+    }
+    const later = await sealedVersion();
+    expect(await outbox.enqueue(later.envelope)).toEqual({ status: 'full' });
+    expect(await outbox.confirmedPins()).toEqual({ status: 'ready', pins: versions.map(value => value.pin) });
+    expect(await outbox.compactConfirmed()).toEqual({ status: 'compacted', count: 16 });
+    const reopened = create(provider, store, session);
+    expect(await reopened.status()).toEqual({
+      status: 'ready',
+      counts: { queued: 0, prepared: 0, attempting: 0, confirmed: 0 }
+    });
+    expect(await reopened.confirmedPins()).toEqual({ status: 'ready', pins: versions.map(value => value.pin) });
+    expect(await reopened.enqueue(versions[0].envelope)).toEqual({ status: 'duplicate' });
+    expect(await reopened.enqueue(later.envelope)).toEqual({ status: 'queued' });
+    expect(await reopened.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(session.upload).toHaveBeenCalledTimes(17);
+    const raw = JSON.stringify(await store.raw());
+    expect(raw).not.toContain(versions[0].pin.sha256);
+    expect(raw).not.toContain('FAKE_PRIVATE_ACCOUNT_KEY');
+  });
+
+  it('не сворачивает неподтверждённую попытку и не даёт повторить её после ошибки сверки', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const first = await sealedVersion();
+    const second = await sealedVersion();
+    await outbox.enqueue(first.envelope);
+    await outbox.sendNext();
+    await outbox.verifyNext();
+    await outbox.enqueue(second.envelope);
+    await outbox.sendNext();
+    expect(await outbox.compactConfirmed()).toEqual({ status: 'compacted', count: 1 });
+    const reopened = create(provider, store, session);
+    expect(await reopened.confirmedPins()).toEqual({ status: 'ready', pins: [first.pin] });
+    expect(await reopened.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(session.upload).toHaveBeenCalledTimes(2);
+    expect((await reopened.status()).counts).toEqual({ queued: 0, prepared: 0, attempting: 1, confirmed: 0 });
+  });
+
+  it('не теряет пин при потерянном ответе на сворачивание и не повторяет передачу', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const version = await sealedVersion();
+    await outbox.enqueue(version.envelope);
+    await outbox.sendNext();
+    await outbox.verifyNext();
+    store.loseSwapReply(store.getSwaps() + 1);
+    expect(await outbox.compactConfirmed()).toEqual({ status: 'journal_uncertain' });
+    expect(await outbox.compactConfirmed()).toEqual({ status: 'journal_uncertain' });
+    const reopened = create(provider, store, session);
+    expect(await reopened.confirmedPins()).toEqual({ status: 'ready', pins: [version.pin] });
+    expect(await reopened.compactConfirmed()).toEqual({ status: 'idle' });
+    expect(await reopened.enqueue(version.envelope)).toEqual({ status: 'duplicate' });
+    expect(session.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('конкурирующие сворачивания не теряют подтверждение и не вызывают сеть', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const a = create(provider, store, session);
+    const b = create(provider, store, session);
+    await a.initialize(true);
+    const version = await sealedVersion();
+    await a.enqueue(version.envelope);
+    await a.sendNext();
+    await a.verifyNext();
+    const outcomes = await Promise.all([a.compactConfirmed(), b.compactConfirmed()]);
+    expect(outcomes.some(value => value.status === 'compacted')).toBe(true);
+    expect(outcomes.every(value => ['compacted', 'changed', 'idle'].includes(value.status))).toBe(true);
+    expect(await create(provider, store, session).confirmedPins()).toEqual({ status: 'ready', pins: [version.pin] });
+    expect(session.upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('читает старый v1 журнал и переводит его в v2 при следующей записи', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const version = await sealedVersion();
+    await outbox.enqueue(version.envelope);
+    await alterSyntheticJournal(store, state => {
+      state.version = 1;
+      delete state.confirmedReceipts;
+    });
+    const reopened = create(provider, store, session);
+    expect((await reopened.status()).counts.queued).toBe(1);
+    expect(await reopened.sendNext()).toEqual({ status: 'needs_verification' });
+    expect(await reopened.verifyNext()).toEqual({ status: 'confirmed' });
+    expect(await reopened.compactConfirmed()).toEqual({ status: 'compacted', count: 1 });
+    expect(await reopened.confirmedPins()).toEqual({ status: 'ready', pins: [version.pin] });
+    await alterSyntheticJournal(store, state => {
+      expect(state.version).toBe(2);
+      expect(state.confirmedReceipts).toHaveLength(1);
+    });
+  });
+
+  it('дубликат ID в квитанции блокирует чтение до сети', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const version = await sealedVersion();
+    await outbox.enqueue(version.envelope);
+    await alterSyntheticJournal(store, state =>
+      state.confirmedReceipts.push({
+        ...version.pin,
+        fileId: provider === 'google' ? 'FAKE_FILE' : null,
+        attemptId: id()
+      })
+    );
+    const reopened = create(provider, store, session);
+    expect(await reopened.sendNext()).toEqual({ status: 'journal_blocked' });
+    expect(session.upload).not.toHaveBeenCalled();
+  });
+
+  it('останавливается на пределе квитанций, не удаляя даже подтверждённый элемент', async () => {
+    const store = makeStore();
+    const session = makeSession();
+    const outbox = create(provider, store, session);
+    await outbox.initialize(true);
+    const version = await sealedVersion();
+    await outbox.enqueue(version.envelope);
+    await outbox.sendNext();
+    await outbox.verifyNext();
+    await alterSyntheticJournal(store, state => {
+      state.confirmedReceipts = Array.from({ length: 128 }, (_, i) => ({
+        versionId: id(),
+        sha256: 'a'.repeat(64),
+        fileId: provider === 'google' ? `FAKE_FILE_${i}` : null,
+        attemptId: id()
+      }));
+    });
+    const reopened = create(provider, store, session);
+    expect(await reopened.compactConfirmed()).toEqual({ status: 'receipt_limit' });
+    expect(await reopened.confirmedPins()).toEqual({ status: 'receipt_limit' });
+    expect((await reopened.status()).counts.confirmed).toBe(1);
+    expect(await reopened.enqueue(version.envelope)).toEqual({ status: 'duplicate' });
     expect(session.upload).toHaveBeenCalledTimes(1);
   });
 

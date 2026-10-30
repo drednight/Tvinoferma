@@ -133,7 +133,13 @@ describe('одноразовая диагностика регистрации: 
       expect(form.get('client_id')).toBe(CLIENTS[provider]);
       expect(form.get('client_secret')).toBeNull();
       expect(form.get('refresh_token')).toBeNull();
-      expect(requests[1].args).toEqual({ provider, operation: 'identity', form: null, accessToken: ACCESS });
+      expect(requests[1].args).toEqual({
+        provider,
+        operation: 'identity',
+        form: null,
+        accessToken: ACCESS,
+        refreshClaim: null
+      });
       expect(
         s.calls.map(item => item.command).every(command => !/secrets|save|store|upload|download/.test(command))
       ).toBe(true);
@@ -224,7 +230,8 @@ describe('мост диагностики разрешает только зак
         provider,
         operation: 'identity',
         form: null,
-        accessToken: ACCESS
+        accessToken: ACCESS,
+        refreshClaim: null
       });
       expect(await response.body.getReader().read()).toMatchObject({ done: false });
       await expect(

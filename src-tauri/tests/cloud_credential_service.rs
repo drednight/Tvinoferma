@@ -51,6 +51,11 @@ fn yandex() -> String {
 fn install_read_rotate_and_forget_are_composed_without_secret_leaks_in_head() {
     let mut vault = Vault::default();
     let a = ready(REV1);
+    let binding = cloud_credential_records::public_binding(Provider::Google, &a).unwrap();
+    assert_eq!(binding.slot_id, SLOT);
+    assert_eq!(binding.client_id, "fake-client.apps.googleusercontent.com");
+    assert_eq!(binding.account_key, "fake-account");
+    assert!(!binding.pending);
     let p = pending();
     let b = ready(REV3);
     assert_eq!(
@@ -203,4 +208,128 @@ fn oauth_service_never_accepts_the_key_state_namespace() {
         cloud_credential_service::read(&mut vault, Provider::KeyState),
         Ok(Inspection::Empty)
     ));
+}
+
+#[test]
+fn google_refresh_claim_matches_form_before_one_time_transition() {
+    let mut vault = Vault::default();
+    let a = ready(REV1);
+    let p = pending();
+    let client = "fake-client.apps.googleusercontent.com";
+    let token = "fake-refresh-token";
+    assert_eq!(
+        cloud_credential_service::install(&mut vault, Provider::Google, SLOT, &a),
+        Ok(Outcome::Installed)
+    );
+    let original = vault.0.clone();
+    for (slot, expected, next, form_client, form_token) in [
+        (REV3, a.clone(), p.clone(), client, token),
+        (
+            SLOT,
+            a.clone(),
+            p.clone(),
+            "other.apps.googleusercontent.com",
+            token,
+        ),
+        (SLOT, a.clone(), p.clone(), client, "other-token"),
+        (
+            SLOT,
+            a.clone(),
+            p.replace("fake-account", "other-account"),
+            client,
+            token,
+        ),
+        (SLOT, a.clone(), ready(REV3), client, token),
+        (SLOT, p.clone(), a.clone(), client, token),
+    ] {
+        assert_eq!(
+            cloud_credential_service::claim_google_refresh(
+                &mut vault,
+                slot,
+                &expected,
+                &next,
+                form_client,
+                form_token,
+            ),
+            Err(StoreError::Invalid)
+        );
+        assert_eq!(vault.0, original);
+    }
+    assert_eq!(
+        cloud_credential_service::claim_google_refresh(&mut vault, SLOT, &a, &p, client, token),
+        Ok(true)
+    );
+    assert!(matches!(
+        cloud_credential_service::read(&mut vault, Provider::Google),
+        Ok(Inspection::Ready { record, .. }) if record == p
+    ));
+    assert!(vault.0.values().all(|value| !value.contains(token)));
+    // Повтор с теми же аргументами, в том числе после другого экземпляра
+    // вызывающего кода, должен завершиться до любого сетевого запроса.
+    assert_eq!(
+        cloud_credential_service::claim_google_refresh(&mut vault, SLOT, &a, &p, client, token),
+        Ok(false)
+    );
+}
+
+#[test]
+fn refresh_claim_failure_after_write_does_not_authorize_network() {
+    struct UncertainVault {
+        inner: Vault,
+        fail_write: bool,
+    }
+    impl CredentialVault for UncertainVault {
+        fn read(&mut self, name: &str) -> Result<Option<String>, ()> {
+            self.inner.read(name)
+        }
+        fn write(&mut self, name: &str, value: &str) -> Result<(), ()> {
+            self.inner.write(name, value)?;
+            if self.fail_write {
+                Err(())
+            } else {
+                Ok(())
+            }
+        }
+        fn remove(&mut self, name: &str) -> Result<(), ()> {
+            self.inner.remove(name)
+        }
+    }
+    let mut vault = UncertainVault {
+        inner: Vault::default(),
+        fail_write: false,
+    };
+    let a = ready(REV1);
+    let p = pending();
+    assert_eq!(
+        cloud_credential_service::install(&mut vault, Provider::Google, SLOT, &a),
+        Ok(Outcome::Installed)
+    );
+    vault.fail_write = true;
+    assert_eq!(
+        cloud_credential_service::claim_google_refresh(
+            &mut vault,
+            SLOT,
+            &a,
+            &p,
+            "fake-client.apps.googleusercontent.com",
+            "fake-refresh-token"
+        ),
+        Err(StoreError::Unavailable)
+    );
+    vault.fail_write = false;
+    assert!(matches!(
+        cloud_credential_service::read(&mut vault, Provider::Google),
+        Ok(Inspection::Blocked)
+    ));
+    assert_eq!(
+        cloud_credential_service::claim_google_refresh(
+            &mut vault,
+            SLOT,
+            &a,
+            &p,
+            "fake-client.apps.googleusercontent.com",
+            "fake-refresh-token"
+        ),
+        Ok(false)
+    );
 }

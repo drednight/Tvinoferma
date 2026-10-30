@@ -3,7 +3,8 @@ import {
   createNativeCredentialInstaller,
   createNativeGoogleCredentialStore,
   forgetNativeCredential,
-  inspectNativeCredential
+  inspectNativeCredential,
+  readNativeCredentialBinding
 } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
 import {
   parseGoogleCredentialRecord,
@@ -84,6 +85,47 @@ function assertNoPrivate(value) {
   const text = typeof value === 'string' ? value : JSON.stringify(value);
   for (const secret of [ACCOUNT, REFRESH, ACCESS, 'FAKE_PRIVATE_NATIVE_ERROR']) expect(text).not.toContain(secret);
 }
+
+describe('локальный pin привязки через fake IPC', () => {
+  it.each(['google', 'yandex'])('%s: возвращает только ожидаемые проверенные метаданные', async provider => {
+    const value = fixture(provider);
+    const invoke = vi.fn(async () => ({
+      status: 'ready',
+      slotId: SLOT,
+      clientId: value.clientId,
+      accountKey: ACCOUNT
+    }));
+    const result = await readNativeCredentialBinding({ provider, invoke });
+    expect(result).toEqual({
+      status: 'ready',
+      binding: { slotId: SLOT, clientId: value.clientId, accountKey: ACCOUNT }
+    });
+    expect(JSON.stringify(result)).not.toContain(REFRESH);
+    expect(JSON.stringify(result)).not.toContain(ACCESS);
+    expect(invoke).toHaveBeenCalledWith('cloud_credential_binding_read', { provider });
+  });
+
+  it('отвергает лишние поля, повреждённые ID и скрывает ошибки IPC', async () => {
+    const args = { provider: 'google', invoke: vi.fn() };
+    for (const reply of [
+      { status: 'empty', slotId: SLOT },
+      { status: 'pending', accountKey: ACCOUNT },
+      { status: 'blocked', record: REFRESH },
+      { status: 'ready', slotId: 'wrong', clientId: CLIENTS.google, accountKey: ACCOUNT },
+      { status: 'ready', slotId: SLOT, clientId: CLIENTS.yandex, accountKey: ACCOUNT },
+      { status: 'ready', slotId: SLOT, clientId: CLIENTS.google, accountKey: 'contains space' },
+      { status: 'ready', slotId: SLOT, clientId: CLIENTS.google, accountKey: ACCOUNT, record: REFRESH },
+      { status: 'ready', slotId: SLOT, clientId: CLIENTS.google },
+      { status: 'future' }
+    ]) {
+      args.invoke.mockResolvedValue(reply);
+      await expect(readNativeCredentialBinding(args)).rejects.not.toThrow(REFRESH);
+    }
+    args.invoke.mockRejectedValue(new Error(`FAKE_PRIVATE_NATIVE_ERROR ${REFRESH}`));
+    await expect(readNativeCredentialBinding(args)).rejects.not.toThrow(REFRESH);
+    await expect(readNativeCredentialBinding({ ...args, provider: 'other' })).rejects.toThrow();
+  });
+});
 
 describe('экспериментальный мост локальной установки — только поддельный IPC', () => {
   it.each(['google', 'yandex'])(

@@ -6,7 +6,9 @@ mod cloud_credential_records;
 #[path = "../src/cloud_credential_store.rs"]
 mod cloud_credential_store;
 
-use cloud_credential_records::{parse, valid_initial, valid_transition};
+use cloud_credential_records::{
+    parse, public_binding, valid_google_refresh_claim, valid_initial, valid_transition,
+};
 use cloud_credential_store::Provider::{Google, Yandex};
 
 const SLOT: &str = "01234567-89ab-4cde-8f01-23456789abcd";
@@ -43,6 +45,11 @@ fn yandex() -> String {
 #[test]
 fn canonical_google_and_yandex_are_accepted_for_their_own_slot() {
     assert!(valid_initial(Google, SLOT, &ready(REV1)));
+    let binding = public_binding(Google, &ready(REV1)).unwrap();
+    assert_eq!(binding.slot_id, SLOT);
+    assert_eq!(binding.client_id, CLIENT);
+    assert_eq!(binding.account_key, ACCOUNT);
+    assert!(!binding.pending);
     assert!(valid_initial(Yandex, SLOT, &yandex()));
     assert!(!valid_initial(Google, REV3, &ready(REV1)));
     assert!(!valid_initial(Yandex, REV3, &yandex()));
@@ -57,6 +64,27 @@ fn google_refresh_rotation_requires_matching_binding_and_two_distinct_phases() {
     let r3 = ready(REV3);
     assert!(!valid_initial(Google, SLOT, &p));
     assert!(valid_transition(Google, SLOT, &r1, &p));
+    assert!(valid_google_refresh_claim(
+        SLOT,
+        &r1,
+        &p,
+        CLIENT,
+        "fake-REFRESH"
+    ));
+    assert!(!valid_google_refresh_claim(
+        SLOT,
+        &r1,
+        &p,
+        CLIENT,
+        "other-token"
+    ));
+    assert!(!valid_google_refresh_claim(
+        SLOT,
+        &r1,
+        &p,
+        "other.apps.googleusercontent.com",
+        "fake-REFRESH"
+    ));
     assert!(valid_transition(Google, SLOT, &p, &r3));
     assert!(!valid_transition(Google, SLOT, &r1, &r3));
     assert!(!valid_transition(Google, SLOT, &p, &p));

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { enrollNativeCloudAccount } from '../js/modules/cloudSync/providers/nativeOAuthEnrollment.js';
+import { readNativeCredentialBinding } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
 import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
 import { parseGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { parseYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
@@ -38,6 +39,17 @@ function setup(provider, extra = {}) {
     ...extra.token
   };
   const invoke = vi.fn(async (command, args) => {
+    if (command === 'cloud_credential_binding_read') {
+      const stored = slots.get(args.provider);
+      if (!stored) return { status: 'empty' };
+      if (stored.status !== 'ready') return { status: 'blocked' };
+      const parsed =
+        args.provider === 'google'
+          ? parseGoogleCredentialRecord(stored.record)
+          : parseYandexCredentialRecord(stored.record);
+      if (parsed.phase === 'pending') return { status: 'pending' };
+      return { status: 'ready', slotId: parsed.slotId, clientId: parsed.clientId, accountKey: parsed.accountKey };
+    }
     if (command === 'cloud_credential_read')
       return extra.read ? extra.read() : slots.get(args.provider) || { status: 'empty' };
     if (command === 'cloud_credential_install') {
@@ -106,6 +118,13 @@ describe('полный экспериментальный PKCE → подтве�
     const parsed =
       provider === 'google' ? parseGoogleCredentialRecord(stored.record) : parseYandexCredentialRecord(stored.record);
     expect(parsed).toMatchObject({ clientId: CLIENTS[provider], accountKey: ACCOUNT });
+    const binding = await readNativeCredentialBinding({ provider, invoke: s.invoke });
+    expect(binding).toEqual({
+      status: 'ready',
+      binding: { slotId: stored.slotId, clientId: CLIENTS[provider], accountKey: ACCOUNT }
+    });
+    expect(JSON.stringify(binding)).not.toContain(ACCESS);
+    expect(JSON.stringify(binding)).not.toContain(REFRESH);
     expect(stored.record).not.toContain(LABELS[provider]);
     if (provider === 'google') {
       expect(parsed.refreshToken).toBe(REFRESH);

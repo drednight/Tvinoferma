@@ -143,6 +143,20 @@ function snapshotEnvelope(value) {
   return Object.fromEntries(fields.map(key => [key, data[key]]));
 }
 
+/**
+ * Только отпечаток точного конверта истории для локального журнала. Не читает
+ * содержимое, не проверяет GCM и не доказывает, что версия была на диске.
+ * @param {{envelope:any,expectedDatasetId:string,cryptoSource?:Crypto}} options
+ */
+export async function historyEnvelopePin(options) {
+  const input = object(options, ['envelope', 'expectedDatasetId'], ['cryptoSource']);
+  if (!isSyncId(input.expectedDatasetId)) throw historyError();
+  const envelope = snapshotEnvelope(input.envelope);
+  validateEnvelope(envelope);
+  if (envelope.datasetId !== input.expectedDatasetId) throw historyError();
+  return envelopePin(envelope, cryptoApi(input.cryptoSource));
+}
+
 function validateList(value, max, convert) {
   if (!Array.isArray(value) || value.length > max) throw historyError();
   return array(value, convert);

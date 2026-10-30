@@ -102,6 +102,52 @@ export async function inspectNativeCredential(options) {
 }
 
 /**
+ * Читает только локальный pin, сверенный native с записью OAuth; токен не
+ * возвращается. Сам pin не доказывает отсутствия совместного отката или живого
+ * доступа к провайдеру. accountKey — личный идентификатор, не журналировать.
+ * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number}} options
+ * @returns {Promise<{status:string,binding?:{slotId:string,clientId:string,accountKey:string}}>}
+ */
+export async function readNativeCredentialBinding(options) {
+  try {
+    const input = object(options, ['provider', 'invoke'], ['timeoutMs']);
+    if (!validProvider(input.provider) || typeof input.invoke !== 'function') throw failed();
+    const reply = object(
+      await callWithin(
+        input.invoke,
+        'cloud_credential_binding_read',
+        { provider: input.provider },
+        timeoutOf(input.timeoutMs)
+      ),
+      ['status'],
+      ['slotId', 'clientId', 'accountKey']
+    );
+    if (['empty', 'blocked', 'pending'].includes(reply.status)) {
+      if (Object.keys(reply).length !== 1) throw failed();
+      return Object.freeze({ status: reply.status });
+    }
+    if (
+      reply.status !== 'ready' ||
+      Object.keys(reply).length !== 4 ||
+      !validCredentialId(reply.slotId) ||
+      !validOAuthClientId(input.provider, reply.clientId) ||
+      !validOAuthAccountKey(reply.accountKey)
+    )
+      throw failed();
+    return Object.freeze({
+      status: 'ready',
+      binding: Object.freeze({
+        slotId: reply.slotId,
+        clientId: reply.clientId,
+        accountKey: reply.accountKey
+      })
+    });
+  } catch {
+    throw failed();
+  }
+}
+
+/**
  * Адаптер ПЕРВОЙ установки для oauthCredentialEnrollment. Создаётся на одну
  * попытку и вызывается только после явного подтверждения аккаунта. Отсутствие
  * всех записей не доказывает, что это первый вход. `blocked`, ошибка IPC или

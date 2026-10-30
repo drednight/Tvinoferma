@@ -121,7 +121,7 @@ async function verifyWithinDeadline(verifyAccount, accessToken, clientId, timeou
  *
  * @param {{slotId:string, clientId:string, accountKey:string,
  * store:{read:()=>Promise<string|null>, compareExchange:(expected:string,next:string)=>Promise<'swapped'|'mismatch'>},
- * fetchImpl:typeof fetch, verifyAccount:(arg:{accessToken:string,clientId:string,signal:AbortSignal})=>Promise<{accountKey:string}>,
+ * fetchImpl?:typeof fetch, makeGuardedFetch?:(claim:{slotId:string,expected:string,pending:string})=>typeof fetch, verifyAccount:(arg:{accessToken:string,clientId:string,signal:AbortSignal})=>Promise<{accountKey:string}>,
  * cryptoSource?:Crypto, now?:()=>number, timeoutMs?:number, identityTimeoutMs?:number}} options
  */
 export function createGoogleCredentialRotation(options) {
@@ -130,8 +130,8 @@ export function createGoogleCredentialRotation(options) {
   try {
     input = object(
       options,
-      ['slotId', 'clientId', 'accountKey', 'store', 'fetchImpl', 'verifyAccount'],
-      ['cryptoSource', 'now', 'timeoutMs', 'identityTimeoutMs']
+      ['slotId', 'clientId', 'accountKey', 'store', 'verifyAccount'],
+      ['fetchImpl', 'makeGuardedFetch', 'cryptoSource', 'now', 'timeoutMs', 'identityTimeoutMs']
     );
     store = object(input.store, ['read', 'compareExchange']);
   } catch {
@@ -147,7 +147,9 @@ export function createGoogleCredentialRotation(options) {
     !validOAuthAccountKey(input.accountKey) ||
     typeof store.read !== 'function' ||
     typeof store.compareExchange !== 'function' ||
-    typeof input.fetchImpl !== 'function' ||
+    (typeof input.fetchImpl === 'function') === (typeof input.makeGuardedFetch === 'function') ||
+    (input.fetchImpl !== undefined && typeof input.fetchImpl !== 'function') ||
+    (input.makeGuardedFetch !== undefined && typeof input.makeGuardedFetch !== 'function') ||
     typeof input.verifyAccount !== 'function' ||
     typeof clock !== 'function' ||
     !crypto?.subtle ||
@@ -172,7 +174,7 @@ export function createGoogleCredentialRotation(options) {
   // Фиксируем методы и привязку до асинхронной работы; сам store всё равно доверенный.
   const read = store.read;
   const compareExchange = store.compareExchange;
-  const { slotId, clientId, accountKey, fetchImpl, verifyAccount } = input;
+  const { slotId, clientId, accountKey, fetchImpl, makeGuardedFetch, verifyAccount } = input;
   let running = false;
   let blocked = false;
 
@@ -238,6 +240,7 @@ export function createGoogleCredentialRotation(options) {
         let attemptId;
         let nextRevision;
         let request;
+        let pendingRaw;
         let transport;
         try {
           before = nowValue(now);
@@ -247,32 +250,40 @@ export function createGoogleCredentialRotation(options) {
           nextRevision = generateSyncId(crypto);
           if (new Set([slotId, record.revision, pendingRevision, attemptId, nextRevision]).size !== 5) throw invalid();
           request = createGoogleRefreshRequest({ clientId, refreshToken: record.refreshToken });
+          pendingRaw = serializeRecord({
+            ...record,
+            revision: pendingRevision,
+            phase: 'pending',
+            attemptId,
+            refreshToken: null,
+            refreshExpiresAt: null
+          });
+          const refreshFetch = makeGuardedFetch
+            ? makeGuardedFetch(Object.freeze({ slotId, expected: raw, pending: pendingRaw }))
+            : fetchImpl;
           transport = createCloudOAuthTokenTransport({
             provider: 'google',
             clientId,
             operation: 'refresh',
-            fetchImpl,
+            fetchImpl: refreshFetch,
             timeoutMs,
             now
           });
         } catch {
           return UNAVAILABLE;
         }
-        const pendingRaw = serializeRecord({
-          ...record,
-          revision: pendingRevision,
-          phase: 'pending',
-          attemptId,
-          refreshToken: null,
-          refreshExpiresAt: null
-        });
-        try {
-          const written = await compareExchange(raw, pendingRaw);
-          if (written === 'mismatch') return CHANGED;
-          if (written !== 'swapped' || (await read()) !== pendingRaw) throw invalid();
-        } catch {
-          blocked = true;
-          return BEGIN_UNCERTAIN;
+        // Нативный мост фиксирует pending под межпроцессным lock в том же IPC,
+        // непосредственно до POST. Обычный fetchImpl — только тестовая модель,
+        // не защищающая прямой вызов нативной команды.
+        if (!makeGuardedFetch) {
+          try {
+            const written = await compareExchange(raw, pendingRaw);
+            if (written === 'mismatch') return CHANGED;
+            if (written !== 'swapped' || (await read()) !== pendingRaw) throw invalid();
+          } catch {
+            blocked = true;
+            return BEGIN_UNCERTAIN;
+          }
         }
         // До POST удалённый из записи старый refresh живёт лишь в памяти этой
         // попытки. После перезапуска pending нельзя автоматически повторить.
@@ -292,6 +303,17 @@ export function createGoogleCredentialRotation(options) {
         } catch {
           blocked = true;
           return EXCHANGE_UNCERTAIN;
+        }
+        // Даже корректный ответ моста не доказывает записи pending: сверяем
+        // её точные байты до проверки аккаунта и выдачи доступа.
+        if (makeGuardedFetch) {
+          try {
+            if ((await read()) !== pendingRaw) throw invalid();
+          } catch {
+            response.discard();
+            blocked = true;
+            return EXCHANGE_UNCERTAIN;
+          }
         }
         if (response.summary.scope !== 'reported') {
           response.discard();

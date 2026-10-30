@@ -5,7 +5,8 @@ import { createGoogleRefreshRequest } from '../js/modules/cloudSync/providers/oa
 import { createNativeGoogleCredentialStore } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
 import {
   prepareGoogleCredentialRecord,
-  parseGoogleCredentialRecord
+  parseGoogleCredentialRecord,
+  serializeGoogleCredentialRecord
 } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { createGoogleCredentialRotation } from '../js/modules/cloudSync/providers/oauthCredentialRotation.js';
 import { createGoogleAccountIdentityReader } from '../js/modules/cloudSync/providers/oauthAccountIdentity.js';
@@ -28,6 +29,19 @@ function initialRecord() {
     refreshToken: oldRefresh,
     refreshExpiresAt: null
   });
+}
+function validClaim() {
+  const expected = initialRecord();
+  const before = parseGoogleCredentialRecord(expected);
+  const pending = serializeGoogleCredentialRecord({
+    ...before,
+    revision: '21234567-89ab-4cde-8f01-23456789abcd',
+    phase: 'pending',
+    attemptId: '31234567-89ab-4cde-8f01-23456789abcd',
+    refreshToken: null,
+    refreshExpiresAt: null
+  });
+  return { slotId, expected, pending };
 }
 function init(body, signal = new AbortController().signal) {
   return {
@@ -62,6 +76,9 @@ function fakeNative({ lost = false, identity = accountKey } = {}) {
       expect(args.operation).toBe('refresh');
       expect(args.accessToken).toBeNull();
       expect(new URLSearchParams(args.form).get('refresh_token')).toBe(oldRefresh);
+      expect(args.refreshClaim.slotId).toBe(slotId);
+      if (args.refreshClaim.expected !== record) throw new Error('PRIVATE stale claim');
+      record = args.refreshClaim.pending;
       expect(parseGoogleCredentialRecord(record)).toMatchObject({ phase: 'pending', refreshToken: null });
       if (lost) throw new Error('PRIVATE результат refresh мог быть потерян');
       return {
@@ -90,7 +107,6 @@ function fakeNative({ lost = false, identity = accountKey } = {}) {
 }
 function coordinator(native) {
   const store = createNativeGoogleCredentialStore({ slotId, clientId, accountKey, invoke: native.invoke });
-  const fetchImpl = createNativeGoogleRefreshFetch({ invoke: native.invoke });
   const verifyAccount = createGoogleAccountIdentityReader({
     fetchImpl: createNativeDiskFetch({ provider: 'google', invoke: native.invoke })
   });
@@ -99,7 +115,7 @@ function coordinator(native) {
     clientId,
     accountKey,
     store,
-    fetchImpl,
+    makeGuardedFetch: claim => createNativeGoogleRefreshFetch({ invoke: native.invoke, claim }),
     verifyAccount,
     cryptoSource: webcrypto,
     now: () => 100000,
@@ -143,9 +159,58 @@ describe('экспериментальный refresh Google через fake IPC'
     expect(parseGoogleCredentialRecord(native.record())).toMatchObject({ phase: 'pending', refreshToken: null });
   });
 
+  it('не даёт создать refresh без готового claim и связывает форму с токеном и клиентом', async () => {
+    const invoke = vi.fn(async () => ({ body: '{}', contentType: 'application/json' }));
+    expect(() => createNativeGoogleRefreshFetch({ invoke })).toThrow();
+    const valid = validClaim();
+    for (const claim of [
+      { ...valid, slotId: revision },
+      { ...valid, pending: valid.expected },
+      { ...valid, pending: valid.pending.replace(accountKey, 'OTHER_ACCOUNT') },
+      { ...valid, pending: valid.pending.replace(clientId, 'other.apps.googleusercontent.com') }
+    ])
+      expect(() => createNativeGoogleRefreshFetch({ invoke, claim })).toThrow();
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: valid });
+    const otherToken = createGoogleRefreshRequest({ clientId, refreshToken: 'FAKE_OTHER_TOKEN' });
+    const otherClient = createGoogleRefreshRequest({
+      clientId: 'other.apps.googleusercontent.com',
+      refreshToken: oldRefresh
+    });
+    await expect(fetch(otherToken.url, init(otherToken.body))).rejects.toThrow();
+    await expect(fetch(otherClient.url, init(otherClient.body))).rejects.toThrow();
+    expect(invoke).not.toHaveBeenCalled();
+    const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
+    await expect(fetch(request.url, init(request.body))).resolves.toMatchObject({ status: 200 });
+    expect(invoke.mock.calls[0][1].refreshClaim).toEqual(valid);
+    await expect(fetch(request.url, init(request.body))).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
+  it('не выдаёт access, если bridge ответил, но точный pending не записал', async () => {
+    const native = fakeNative();
+    const invoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_oauth_network')
+        return {
+          contentType: 'application/json',
+          body: JSON.stringify({
+            access_token: accessToken,
+            token_type: 'Bearer',
+            expires_in: 3600,
+            scope: OAUTH_PROVIDERS.google.scope
+          })
+        };
+      return native.invoke(command, args);
+    });
+    const rotation = coordinator({ invoke });
+    expect(await rotation.refresh({ expectedRevision: revision })).toEqual({ status: 'exchange_uncertain' });
+    expect(await rotation.inspect()).toEqual({ status: 'blocked_in_session' });
+    expect(parseGoogleCredentialRecord(native.record()).phase).toBe('ready');
+    expect(invoke.mock.calls.some(([command]) => command === 'cloud_disk_network')).toBe(false);
+  });
+
   it('отклоняет неизвестные адреса, поля, типы, повторные ключи и Яндекс до IPC', async () => {
     const invoke = vi.fn();
-    const fetch = createNativeGoogleRefreshFetch({ invoke });
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
     const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
     const good = init(request.body);
     for (const [url, candidate] of [
@@ -169,7 +234,7 @@ describe('экспериментальный refresh Google через fake IPC'
   it('отмена не освобождает слот до завершения native POST', async () => {
     const gate = deferred();
     const invoke = vi.fn(() => gate.promise);
-    const fetch = createNativeGoogleRefreshFetch({ invoke });
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
     const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
     const controller = new AbortController();
     const first = fetch(request.url, init(request.body, controller.signal));
@@ -182,14 +247,14 @@ describe('экспериментальный refresh Google через fake IPC'
     await gate.promise;
     await new Promise(resolve => setTimeout(resolve, 0));
     const later = fetch(request.url, init(request.body));
-    await expect(later).resolves.toMatchObject({ status: 200 });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    await expect(later).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it('не раскрывает исключения нестандартного signal и не оставляет слот занятым до IPC', async () => {
     const request = createGoogleRefreshRequest({ clientId, refreshToken: oldRefresh });
     const invoke = vi.fn(async () => ({ body: '{}', contentType: 'application/json' }));
-    const fetch = createNativeGoogleRefreshFetch({ invoke });
+    const fetch = createNativeGoogleRefreshFetch({ invoke, claim: validClaim() });
     const signal = {
       aborted: false,
       addEventListener() {
@@ -215,8 +280,8 @@ describe('экспериментальный refresh Google через fake IPC'
     expect(invoke).not.toHaveBeenCalled();
     const cleanupThrows = { ...signal, addEventListener() {} };
     await expect(fetch(request.url, init(request.body, cleanupThrows))).resolves.toMatchObject({ status: 200 });
-    await expect(fetch(request.url, init(request.body))).resolves.toMatchObject({ status: 200 });
-    expect(invoke).toHaveBeenCalledTimes(2);
+    await expect(fetch(request.url, init(request.body))).rejects.toThrow();
+    expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it('скрывает ошибки и не принимает некорректные ответы IPC', async () => {
@@ -227,13 +292,14 @@ describe('экспериментальный refresh Google через fake IPC'
       { body: 'x'.repeat(65537), contentType: 'application/json' },
       { body: '{}', contentType: 'application/json', extra: 'PRIVATE' }
     ]) {
-      const fetch = createNativeGoogleRefreshFetch({ invoke: vi.fn(async () => value) });
+      const fetch = createNativeGoogleRefreshFetch({ invoke: vi.fn(async () => value), claim: validClaim() });
       await expect(fetch(request.url, init(request.body))).rejects.not.toThrow('PRIVATE');
     }
     const fetch = createNativeGoogleRefreshFetch({
       invoke: vi.fn(async () => {
         throw new Error('PRIVATE REFRESH');
-      })
+      }),
+      claim: validClaim()
     });
     await expect(fetch(request.url, init(request.body))).rejects.not.toThrow('PRIVATE');
   });

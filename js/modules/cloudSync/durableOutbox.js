@@ -9,11 +9,13 @@ import { decryptSnapshot, encryptSnapshot, generateSyncId, isSyncId } from './en
 import { verifyPortableEnvelopeBinding } from './portableKeyCapsule.js';
 import { object } from './exportSchema.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
+import { historyEnvelopePin, MAX_HISTORY_VERSIONS } from './history.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './providers/oauthCommon.js';
 
 const FORMAT = 'tvinoferma-durable-outbox';
-const VERSION = 1;
+const VERSION = 2;
+const LEGACY_VERSION = 1;
 const KEY_CONTEXT = 'tvinoferma-durable-outbox-key-v1';
 const MAX_ENTRIES = 16;
 const MAX_STATE_BYTES = 16 * 1024 * 1024;
@@ -113,7 +115,8 @@ function bindingState(binding) {
     clientId: binding.clientId,
     accountKey: binding.accountKey,
     folderId: binding.provider === 'google' ? binding.folderId : null,
-    entries: []
+    entries: [],
+    confirmedReceipts: []
   };
 }
 function validParent(value, versionId) {
@@ -166,22 +169,40 @@ function entryFor(value, binding) {
   }
   return { envelope, phase: row.phase, fileId: row.fileId, attemptId: row.attemptId };
 }
+function receiptFor(value, binding) {
+  const row = object(value, ['versionId', 'sha256', 'fileId', 'attemptId']);
+  if (
+    !isSyncId(row.versionId) ||
+    typeof row.sha256 !== 'string' ||
+    !HEX.test(row.sha256) ||
+    (binding.provider === 'google' ? !validGoogleId(row.fileId) : row.fileId !== null) ||
+    !isSyncId(row.attemptId)
+  )
+    throw invalid();
+  return { versionId: row.versionId, sha256: row.sha256, fileId: row.fileId, attemptId: row.attemptId };
+}
 function checkState(value, binding) {
-  const state = object(value, [
-    'format',
-    'version',
-    'provider',
-    'datasetId',
-    'deviceId',
-    'slotId',
-    'clientId',
-    'accountKey',
-    'folderId',
-    'entries'
-  ]);
+  const state = object(
+    value,
+    [
+      'format',
+      'version',
+      'provider',
+      'datasetId',
+      'deviceId',
+      'slotId',
+      'clientId',
+      'accountKey',
+      'folderId',
+      'entries'
+    ],
+    ['confirmedReceipts']
+  );
   if (
     state.format !== FORMAT ||
-    state.version !== VERSION ||
+    ![LEGACY_VERSION, VERSION].includes(state.version) ||
+    (state.version === LEGACY_VERSION && Object.hasOwn(state, 'confirmedReceipts')) ||
+    (state.version === VERSION && !Object.hasOwn(state, 'confirmedReceipts')) ||
     state.provider !== binding.provider ||
     state.datasetId !== binding.datasetId ||
     state.deviceId !== binding.deviceId ||
@@ -190,21 +211,39 @@ function checkState(value, binding) {
     state.accountKey !== binding.accountKey ||
     state.folderId !== (binding.provider === 'google' ? binding.folderId : null) ||
     !Array.isArray(state.entries) ||
-    state.entries.length > MAX_ENTRIES
+    state.entries.length > MAX_ENTRIES ||
+    (state.version === VERSION &&
+      (!Array.isArray(state.confirmedReceipts) || state.confirmedReceipts.length > MAX_HISTORY_VERSIONS))
   )
     throw invalid();
   const entries = state.entries.map(row => entryFor(row, binding));
+  const confirmedReceipts =
+    state.version === LEGACY_VERSION ? [] : state.confirmedReceipts.map(row => receiptFor(row, binding));
   const versions = new Set();
   const attempts = new Set();
+  const fileIds = new Set();
   for (const row of entries) {
     if (versions.has(row.envelope.versionId)) throw invalid();
     versions.add(row.envelope.versionId);
+    if (row.fileId !== null) {
+      if (fileIds.has(row.fileId)) throw invalid();
+      fileIds.add(row.fileId);
+    }
     if (row.attemptId !== null) {
       if (attempts.has(row.attemptId)) throw invalid();
       attempts.add(row.attemptId);
     }
   }
-  const clean = { ...bindingState(binding), entries };
+  for (const row of confirmedReceipts) {
+    if (versions.has(row.versionId) || attempts.has(row.attemptId)) throw invalid();
+    versions.add(row.versionId);
+    attempts.add(row.attemptId);
+    if (row.fileId !== null) {
+      if (fileIds.has(row.fileId)) throw invalid();
+      fileIds.add(row.fileId);
+    }
+  }
+  const clean = { ...bindingState(binding), entries, confirmedReceipts };
   if (new TextEncoder().encode(JSON.stringify(clean)).length > MAX_STATE_BYTES) throw invalid();
   return clean;
 }
@@ -326,7 +365,8 @@ export function createDurableCloudOutbox(options) {
       binding.slotId,
       ...(previous ? [previous.receipt.revisionId] : []),
       ...clean.entries.map(row => row.envelope.versionId),
-      ...clean.entries.map(row => row.attemptId).filter(Boolean)
+      ...clean.entries.map(row => row.attemptId).filter(Boolean),
+      ...clean.confirmedReceipts.flatMap(row => [row.versionId, row.attemptId])
     ]);
     const encrypted = await encryptSnapshot({
       snapshot: clean,
@@ -425,7 +465,11 @@ export function createDurableCloudOutbox(options) {
         }
         const current = await read();
         if (current.status !== 'ready') return unavailable(current);
-        if (current.state.entries.some(row => row.envelope.versionId === copy.versionId)) return response('duplicate');
+        if (
+          current.state.entries.some(row => row.envelope.versionId === copy.versionId) ||
+          current.state.confirmedReceipts.some(row => row.versionId === copy.versionId)
+        )
+          return response('duplicate');
         if (current.state.entries.length >= MAX_ENTRIES) return response('full');
         const next = {
           ...current.state,
@@ -475,7 +519,8 @@ export function createDurableCloudOutbox(options) {
           binding.slotId,
           current.receipt.revisionId,
           ...current.state.entries.map(item => item.envelope.versionId),
-          ...current.state.entries.map(item => item.attemptId).filter(Boolean)
+          ...current.state.entries.map(item => item.attemptId).filter(Boolean),
+          ...current.state.confirmedReceipts.flatMap(item => [item.versionId, item.attemptId])
         ]);
         const entries = current.state.entries.slice();
         entries[index] = { ...row, phase: 'attempting', attemptId };
@@ -546,6 +591,60 @@ export function createDurableCloudOutbox(options) {
         const saved = await write(current, { ...current.state, entries });
         // Совпадение в облаке не является доказательством дальнейшей сохранности.
         return response(saved.status === 'ready' ? 'confirmed' : saved.status);
+      });
+    },
+    /**
+     * Сокращает только подтверждённые точной сверкой записи, сохраняя их ID,
+     * отпечаток истории и адрес для обнаружения повтора. Облако не изменяется.
+     * Внешний доверенный pin и политика общей истории по-прежнему обязательны.
+     */
+    async compactConfirmed() {
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        const confirmed = current.state.entries.filter(row => row.phase === 'confirmed');
+        if (!confirmed.length) return response('idle');
+        if (current.state.confirmedReceipts.length + confirmed.length > MAX_HISTORY_VERSIONS)
+          return response('receipt_limit');
+        const receipts = [];
+        for (const row of confirmed) {
+          const pin = await historyEnvelopePin({
+            envelope: row.envelope,
+            expectedDatasetId: binding.datasetId,
+            cryptoSource: crypto
+          });
+          receipts.push({ ...pin, fileId: row.fileId, attemptId: row.attemptId });
+        }
+        const next = {
+          ...current.state,
+          entries: current.state.entries.filter(row => row.phase !== 'confirmed'),
+          confirmedReceipts: [...current.state.confirmedReceipts, ...receipts]
+        };
+        const saved = await write(current, next);
+        return saved.status === 'ready'
+          ? Object.freeze({ status: 'compacted', count: confirmed.length })
+          : response(saved.status);
+      });
+    },
+    /** Пины локальных подтверждений; они не доказывают полноту или свежесть облака. */
+    async confirmedPins() {
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        const pins = current.state.confirmedReceipts.map(row => ({ versionId: row.versionId, sha256: row.sha256 }));
+        if (pins.length + current.state.entries.filter(row => row.phase === 'confirmed').length > MAX_HISTORY_VERSIONS)
+          return response('receipt_limit');
+        for (const row of current.state.entries) {
+          if (row.phase === 'confirmed')
+            pins.push(
+              await historyEnvelopePin({
+                envelope: row.envelope,
+                expectedDatasetId: binding.datasetId,
+                cryptoSource: crypto
+              })
+            );
+        }
+        return Object.freeze({ status: 'ready', pins: Object.freeze(pins.map(pin => Object.freeze(pin))) });
       });
     },
     async status() {

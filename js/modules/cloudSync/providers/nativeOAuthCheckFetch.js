@@ -127,7 +127,7 @@ export function createNativeOAuthCheckFetch(options) {
           Promise.resolve()
             .then(() => {
               if (finished || outerSignal.aborted || localSignal.aborted) throw failed();
-              return invoke('cloud_oauth_network', { provider, operation, form, accessToken });
+              return invoke('cloud_oauth_network', { provider, operation, form, accessToken, refreshClaim: null });
             })
             .then(reply => {
               if (finished || outerSignal.aborted || localSignal.aborted) return rejectOnce();

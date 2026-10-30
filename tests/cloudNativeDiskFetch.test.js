@@ -14,7 +14,10 @@ import { findPortableKeyVersions } from '../js/modules/cloudSync/portableKeyDisc
 import { createPairingCode, parsePairingCode } from '../js/modules/cloudSync/pairingCode.js';
 import { createNativeKeyStateStore } from '../js/modules/cloudSync/providers/nativeKeyStateStore.js';
 import { createNativeOutboxStore } from '../js/modules/cloudSync/providers/nativeOutboxStore.js';
-import { openNativeCloudSession } from '../js/modules/cloudSync/providers/nativeCloudSession.js';
+import {
+  openNativeCloudSession,
+  openStoredNativeCloudSession
+} from '../js/modules/cloudSync/providers/nativeCloudSession.js';
 import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { prepareYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
@@ -456,6 +459,7 @@ function fakeCredentialsAndJournal(provider) {
           expiresAt: 4_000_000
         });
   const invoke = vi.fn(async (command, args) => {
+    if (command === 'cloud_credential_binding_read') return { status: 'ready', ...binding };
     if (command === 'cloud_credential_read') return { status: 'ready', slotId: credentialSlot, record };
     if (command === 'cloud_credential_compare_exchange') {
       if (record !== args.expected) return { status: 'mismatch' };
@@ -463,6 +467,9 @@ function fakeCredentialsAndJournal(provider) {
       return { status: 'swapped' };
     }
     if (command === 'cloud_oauth_network' && args.operation === 'refresh') {
+      if (args.refreshClaim.expected !== record) throw new Error('PRIVATE stale claim');
+      expect(args.refreshClaim.slotId).toBe(credentialSlot);
+      record = args.refreshClaim.pending;
       expect(JSON.parse(record)).toMatchObject({ phase: 'pending', refreshToken: null });
       return {
         contentType: 'application/json',
@@ -588,9 +595,8 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       cryptoSource: webcrypto
     });
     const openSession = () =>
-      openNativeCloudSession({
+      openStoredNativeCloudSession({
         provider,
-        ...fake.binding,
         datasetId: newDataset,
         invoke,
         now: () => 100_000,
@@ -625,6 +631,10 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     const resumed = openQueue(second.session);
     expect(await resumed.sendNext()).toEqual({ status: 'needs_verification' });
     expect(await resumed.verifyNext()).toEqual({ status: 'confirmed' });
+    expect(await resumed.compactConfirmed()).toEqual({ status: 'compacted', count: 1 });
+    const confirmed = await openQueue(second.session).confirmedPins();
+    expect(confirmed).toEqual({ status: 'ready', pins: [version.pin] });
+    expect(await resumed.enqueue(version.envelope)).toEqual({ status: 'duplicate' });
     expect(await resumed.sendNext()).toEqual({ status: 'idle' });
     expect(
       fake.backend.disk.calls.filter(call => call.operation === (provider === 'google' ? 'create' : 'upload_content'))
@@ -636,13 +646,39 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     expect(file).not.toContain(attempt.generatedBackupSecret);
     expect(file).not.toContain('Синтетический основной пароль');
     expect(JSON.parse(file).version).toBe(2);
+    // У второго условного ПК собственный pin учётной записи и собственный vault;
+    // общими являются только fake диск и отдельно переданный код сопряжения.
+    second.session.dispose();
+    const secondMachine = fakeCredentialsAndJournal(provider);
+    expect(secondMachine.binding.slotId).not.toBe(fake.binding.slotId);
+    let secondKey = null;
+    const secondInvoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_key_state_read')
+        return secondKey ? { status: 'ready', ...secondKey } : { status: 'empty' };
+      if (command === 'cloud_key_state_install') {
+        if (secondKey) return { status: 'occupied' };
+        secondKey = { slotId: args.slotId, record: args.record };
+        return { status: 'installed' };
+      }
+      if (command === 'cloud_disk_network') return fake.backend.disk.invoke(command, args);
+      return secondMachine.invoke(command, args);
+    });
+    const other = await openStoredNativeCloudSession({
+      provider,
+      datasetId: newDataset,
+      invoke: secondInvoke,
+      now: () => 100_000,
+      cryptoSource: webcrypto,
+      ...(provider === 'google' ? { folderId } : {})
+    });
+    expect(other.status).toBe('opened');
     // Второй ПК получает файл с диска, код по отдельному доверенному каналу и backup.
     const code = createPairingCode({ datasetId: attempt.datasetId, keyPin: attempt.pin, rootPin: version.pin });
     expect(code).not.toContain(dataKey);
     expect(code).not.toContain(attempt.generatedBackupSecret);
     const pairing = parsePairingCode(code);
     const listing = await findPortableKeyVersions({
-      session: second.session,
+      session: other.session,
       datasetId: pairing.datasetId,
       cryptoSource: webcrypto,
       now: () => Date.parse('2026-10-30T10:30:00.000Z')
@@ -653,20 +689,9 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
       candidates: [{ versionId: version.envelope.versionId, modifiedAt: '2026-10-29T12:00:00.000Z', pin: attempt.pin }],
       legacy: []
     });
-    const received = await second.session.read(listing.candidates[0].versionId);
+    const received = await other.session.read(listing.candidates[0].versionId);
     expect(received.status).toBe('found');
     expect(received.envelope).toEqual(JSON.parse(file));
-    let secondKey = null;
-    const secondInvoke = vi.fn(async (command, args) => {
-      if (command === 'cloud_key_state_read')
-        return secondKey ? { status: 'ready', ...secondKey } : { status: 'empty' };
-      if (command === 'cloud_key_state_install') {
-        if (secondKey) return { status: 'occupied' };
-        secondKey = { slotId: args.slotId, record: args.record };
-        return { status: 'installed' };
-      }
-      throw new Error('unexpected second-PC fake IPC');
-    });
     const secondStore = createNativeKeyStateStore({ invoke: secondInvoke, cryptoSource: webcrypto });
     const recoverer = createKeyRecoverer({ store: secondStore, cryptoSource: webcrypto });
     const recovery = await recoverer.begin({
@@ -695,11 +720,11 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     localSnapshot.sections.characters.records[0].fields.nick = 'ДРУГАЯ ЛОКАЛЬНАЯ ВЕРСИЯ';
     const comparison = await prepareCloudReview({
       provider,
-      session: second.session,
+      session: other.session,
       datasetId: pairing.datasetId,
       dataKey: recoveredState.dataKey,
       rootPin: pairing.rootPin,
-      knownPins: [],
+      knownPins: confirmed.pins,
       localSnapshot,
       localSavedAt: null,
       now: () => Date.parse('2026-10-30T10:30:00.000Z'),
@@ -712,6 +737,6 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     expect(changes.checkedAt).toBe('2026-10-30T10:30:00.000Z');
     expect(changes.localSavedAt).toBeNull();
     expect(changes.differences.entries.map(item => item.kind)).toEqual(['changed']);
-    second.session.dispose();
+    other.session.dispose();
   }, 30_000);
 });

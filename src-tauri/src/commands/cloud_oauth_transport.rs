@@ -1,12 +1,13 @@
 //! Узкий сетевой канал для разовой диагностики и экспериментального refresh Google.
-//! Команда не читает/записывает файлы диска и не сохраняет учётные данные.
+//! Команда не читает/записывает файлы диска. Refresh расходует ожидаемую
+//! запись OAuth в Windows vault до сети; диагностика ничего не сохраняет.
 //! Адреса зафиксированы в Rust; входные секреты и исходные ошибки не журналируются.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::cloud_oauth_transport::{
-    valid_access_token, valid_code_form, valid_google_refresh_form, Provider,
+    parse_google_refresh_form, valid_access_token, valid_code_form, Provider,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const ERROR: &str = "Не удалось безопасно выполнить запрос авторизации";
 
@@ -17,38 +18,53 @@ pub struct CloudOAuthNetworkReply {
     content_type: String,
 }
 
+// Содержит секретную исходную ready-запись. Не реализуем Debug.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudRefreshClaim {
+    slot_id: String,
+    expected: String,
+    pending: String,
+}
+
 /// Возвращает только JSON успешного ответа. Секреты внутри ответа предназначены
 /// исключительно доверенному главному окну и не должны попадать в журналы.
 #[tauri::command]
 pub async fn cloud_oauth_network(
     window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
     provider: String,
     operation: String,
     form: Option<String>,
     access_token: Option<String>,
+    refresh_claim: Option<CloudRefreshClaim>,
 ) -> Result<CloudOAuthNetworkReply, String> {
     if window.label() != "main" {
         return Err(ERROR.into());
     }
-    execute(provider, operation, form, access_token).await
+    execute(app, provider, operation, form, access_token, refresh_claim).await
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 async fn execute(
+    _app: tauri::AppHandle,
     _provider: String,
     _operation: String,
     _form: Option<String>,
     _access_token: Option<String>,
+    _refresh_claim: Option<CloudRefreshClaim>,
 ) -> Result<CloudOAuthNetworkReply, String> {
     Err(ERROR.into())
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn execute(
+    app: tauri::AppHandle,
     provider: String,
     operation: String,
     form: Option<String>,
     access_token: Option<String>,
+    refresh_claim: Option<CloudRefreshClaim>,
 ) -> Result<CloudOAuthNetworkReply, String> {
     use reqwest::header::{
         ACCEPT, ACCEPT_ENCODING, AUTHORIZATION, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_TYPE,
@@ -69,23 +85,28 @@ async fn execute(
     let fail = || ERROR.to_owned();
     let provider = Provider::parse(&provider).ok_or_else(fail)?;
     let request = match operation.as_str() {
-        "exchange" if access_token.is_none() => {
+        "exchange" if access_token.is_none() && refresh_claim.is_none() => {
             let body = form
                 .filter(|value| valid_code_form(provider, value))
                 .ok_or_else(fail)?;
-            (provider.token_url(), Some(body), None)
+            (provider.token_url(), Some(body), None, None)
         }
         "refresh" if provider == Provider::Google && access_token.is_none() => {
-            let body = form
-                .filter(|value| valid_google_refresh_form(value))
-                .ok_or_else(fail)?;
-            (provider.token_url(), Some(body), None)
+            let body = form.ok_or_else(fail)?;
+            let parsed = parse_google_refresh_form(&body).ok_or_else(fail)?;
+            let claim = refresh_claim.ok_or_else(fail)?;
+            (
+                provider.token_url(),
+                Some(body),
+                None,
+                Some((claim, parsed)),
+            )
         }
-        "identity" if form.is_none() => {
+        "identity" if form.is_none() && refresh_claim.is_none() => {
             let token = access_token
                 .filter(|value| valid_access_token(value))
                 .ok_or_else(fail)?;
-            (provider.identity_url(), None, Some(token))
+            (provider.identity_url(), None, Some(token), None)
         }
         _ => return Err(fail()),
     };
@@ -114,6 +135,22 @@ async fn execute(
         .timeout(Duration::from_secs(25))
         .build()
         .map_err(|_| fail())?;
+    // Не посылаем refresh без одноразового перехода именно этой записи:
+    // CAS + readback выполняются под общим межпроцессным lock. Потерянный
+    // ответ или ошибка блокируют автоматический повтор; откат vault извне не
+    // обнаруживается. Никакие входные значения не попадают в журнал.
+    if let Some((claim, parsed)) = request.3 {
+        super::cloud_credentials::claim_google_refresh(
+            app,
+            claim.slot_id,
+            claim.expected,
+            claim.pending,
+            parsed.client_id,
+            parsed.refresh_token,
+        )
+        .await
+        .map_err(|_| fail())?;
+    }
     let mut builder = match (request.1, request.2) {
         (Some(body), None) => client
             .post(request.0)

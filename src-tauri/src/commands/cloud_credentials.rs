@@ -18,6 +18,19 @@ pub struct CloudCredentialReply {
     record: Option<String>,
 }
 
+/// Только ранее закреплённая локальная привязка; токен наружу не возвращается.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudBindingReply {
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_key: Option<String>,
+}
+
 #[cfg_attr(not(windows), allow(dead_code))]
 enum Action {
     Read,
@@ -53,6 +66,21 @@ pub async fn cloud_credential_read(
         return Err(ERROR.into());
     }
     perform(app, provider, Action::Read).await
+}
+
+/// Pin + запись должны совпадать; старый неподтверждённый формат блокируется.
+#[tauri::command]
+pub async fn cloud_credential_binding_read(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    provider: String,
+) -> Result<CloudBindingReply, String> {
+    if window.label() != "main" {
+        return Err(ERROR.into());
+    }
+    tauri::async_runtime::spawn_blocking(move || execute_binding(&app, &provider))
+        .await
+        .map_err(|_| ERROR.to_owned())?
 }
 
 #[tauri::command]
@@ -117,9 +145,51 @@ fn execute(
     Err(ERROR.into())
 }
 
+/// Только сетевой исполнитель refresh: одна попытка начинает работу после
+/// контрольного чтения pending под тем же lock, что обычные операции с vault.
+pub(super) async fn claim_google_refresh(
+    app: AppHandle,
+    slot_id: String,
+    expected: String,
+    pending: String,
+    client_id: String,
+    refresh_token: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        execute_google_refresh_claim(
+            &app,
+            &slot_id,
+            &expected,
+            &pending,
+            &client_id,
+            &refresh_token,
+        )
+    })
+    .await
+    .map_err(|_| ERROR.to_owned())?
+}
+
+#[cfg(not(windows))]
+fn execute_binding(_app: &AppHandle, _provider: &str) -> Result<CloudBindingReply, String> {
+    Err(ERROR.into())
+}
+
+#[cfg(not(windows))]
+fn execute_google_refresh_claim(
+    _app: &AppHandle,
+    _slot_id: &str,
+    _expected: &str,
+    _pending: &str,
+    _client_id: &str,
+    _refresh_token: &str,
+) -> Result<(), String> {
+    Err(ERROR.into())
+}
+
 #[cfg(windows)]
 mod windows_backend {
-    use super::{Action, AppHandle, CloudCredentialReply, ERROR};
+    use super::{Action, AppHandle, CloudBindingReply, CloudCredentialReply, ERROR};
+    use crate::cloud_credential_binding::{self, Pair};
     use crate::cloud_credential_lock::CredentialLock;
     use crate::cloud_credential_service;
     use crate::cloud_credential_store::{self, CredentialVault, Inspection, Outcome, Provider};
@@ -196,18 +266,18 @@ mod windows_backend {
         let lock = CredentialLock::try_acquire(&app_dir).map_err(|_| ERROR.to_owned())?;
         let mut vault = NativeVault;
         let result = match action {
-            Action::Read => match cloud_credential_service::read(&mut vault, provider) {
-                Ok(Inspection::Empty) => Ok(reply("empty")),
-                Ok(Inspection::Blocked) => Ok(reply("blocked")),
-                Ok(Inspection::Ready { slot_id, record }) => Ok(CloudCredentialReply {
+            Action::Read => match cloud_credential_binding::read(&mut vault, provider) {
+                Ok(Pair::Empty) => Ok(reply("empty")),
+                Ok(Pair::Blocked) => Ok(reply("blocked")),
+                Ok(Pair::Ready { binding, record }) => Ok(CloudCredentialReply {
                     status: "ready",
-                    slot_id: Some(slot_id),
+                    slot_id: Some(binding.slot_id),
                     record: Some(record),
                 }),
                 Err(_) => Err(ERROR.to_owned()),
             },
             Action::Install { slot_id, record } => {
-                cloud_credential_service::install(&mut vault, provider, &slot_id, &record)
+                cloud_credential_binding::install(&mut vault, provider, &slot_id, &record)
                     .map(outcome)
                     .map_err(|_| ERROR.to_owned())
             }
@@ -215,12 +285,12 @@ mod windows_backend {
                 slot_id,
                 expected,
                 next,
-            } => cloud_credential_service::compare_exchange(
+            } => cloud_credential_binding::compare_exchange(
                 &mut vault, provider, &slot_id, &expected, &next,
             )
             .map(outcome)
             .map_err(|_| ERROR.to_owned()),
-            Action::Forget => cloud_credential_service::forget(&mut vault, provider)
+            Action::Forget => cloud_credential_binding::forget(&mut vault, provider)
                 .map(outcome)
                 .map_err(|_| ERROR.to_owned()),
         };
@@ -229,22 +299,101 @@ mod windows_backend {
         result
     }
 
+    pub(super) fn execute_binding(
+        app: &AppHandle,
+        provider_name: &str,
+    ) -> Result<CloudBindingReply, String> {
+        let provider = provider(provider_name)?;
+        let _state_guard = super::super::state::lock_state_io().map_err(|_| ERROR.to_owned())?;
+        let app_dir = app.path().app_data_dir().map_err(|_| ERROR.to_owned())?;
+        let lock = CredentialLock::try_acquire(&app_dir).map_err(|_| ERROR.to_owned())?;
+        let mut vault = NativeVault;
+        let result = match cloud_credential_binding::read(&mut vault, provider)
+            .map_err(|_| ERROR.to_owned())?
+        {
+            Pair::Empty => CloudBindingReply {
+                status: "empty",
+                slot_id: None,
+                client_id: None,
+                account_key: None,
+            },
+            Pair::Blocked => CloudBindingReply {
+                status: "blocked",
+                slot_id: None,
+                client_id: None,
+                account_key: None,
+            },
+            Pair::Ready { binding, .. } if binding.pending => CloudBindingReply {
+                status: "pending",
+                slot_id: None,
+                client_id: None,
+                account_key: None,
+            },
+            Pair::Ready { binding, .. } => CloudBindingReply {
+                status: "ready",
+                slot_id: Some(binding.slot_id),
+                client_id: Some(binding.client_id),
+                account_key: Some(binding.account_key),
+            },
+        };
+        lock.verify().map_err(|_| ERROR.to_owned())?;
+        Ok(result)
+    }
+
+    pub(super) fn execute_google_refresh_claim(
+        app: &AppHandle,
+        slot_id: &str,
+        expected: &str,
+        pending: &str,
+        client_id: &str,
+        refresh_token: &str,
+    ) -> Result<(), String> {
+        let _state_guard = super::super::state::lock_state_io().map_err(|_| ERROR.to_owned())?;
+        let app_dir = app.path().app_data_dir().map_err(|_| ERROR.to_owned())?;
+        let lock = CredentialLock::try_acquire(&app_dir).map_err(|_| ERROR.to_owned())?;
+        let mut vault = NativeVault;
+        let claimed = cloud_credential_binding::claim_google_refresh(
+            &mut vault,
+            slot_id,
+            expected,
+            pending,
+            client_id,
+            refresh_token,
+        )
+        .map_err(|_| ERROR.to_owned())?;
+        lock.verify().map_err(|_| ERROR.to_owned())?;
+        if claimed {
+            Ok(())
+        } else {
+            Err(ERROR.into())
+        }
+    }
+
     /// Вызывается только из factory_reset под уже удерживаемым state mutex.
     /// Пытаемся очистить обе известные записи, даже если одна недоступна.
     pub(super) fn cleanup_for_reset(app_dir: &Path) -> Result<(), String> {
         let lock = CredentialLock::try_acquire(app_dir).map_err(|_| ERROR.to_owned())?;
         let mut vault = NativeVault;
         let mut failed = false;
-        for provider in [Provider::Google, Provider::Yandex, Provider::KeyState] {
-            match cloud_credential_store::inspect(&mut vault, provider) {
-                Ok(Inspection::Empty) => {}
-                Ok(Inspection::Ready { .. } | Inspection::Blocked) => {
-                    if cloud_credential_service::forget(&mut vault, provider).is_err() {
+        for provider in [Provider::Google, Provider::Yandex] {
+            match cloud_credential_binding::read(&mut vault, provider) {
+                Ok(Pair::Empty) => {}
+                Ok(Pair::Ready { .. } | Pair::Blocked) => {
+                    if cloud_credential_binding::forget(&mut vault, provider).is_err() {
                         failed = true;
                     }
                 }
                 Err(_) => failed = true,
             }
+        }
+        match cloud_credential_store::inspect(&mut vault, Provider::KeyState) {
+            Ok(Inspection::Empty) => {}
+            Ok(Inspection::Ready { .. } | Inspection::Blocked) => {
+                if cloud_credential_service::forget(&mut vault, Provider::KeyState).is_err() {
+                    failed = true;
+                }
+            }
+            Err(_) => failed = true,
         }
         if lock.verify().is_err() || failed {
             return Err(ERROR.into());
@@ -254,7 +403,7 @@ mod windows_backend {
 }
 
 #[cfg(windows)]
-use windows_backend::execute;
+use windows_backend::{execute, execute_binding, execute_google_refresh_claim};
 
 /// После полного локального сброса облако и выданное OAuth-разрешение остаются.
 #[cfg(windows)]

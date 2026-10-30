@@ -10,7 +10,7 @@ import { validGoogleId } from './common.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
 import { validCredentialId, parseGoogleCredentialRecord } from './oauthCredentialRecord.js';
 import { parseYandexCredentialRecord } from './oauthYandexCredentialRecord.js';
-import { createNativeGoogleCredentialStore } from './nativeCredentialStore.js';
+import { createNativeGoogleCredentialStore, readNativeCredentialBinding } from './nativeCredentialStore.js';
 import { createNativeGoogleRefreshFetch } from './nativeGoogleRefreshFetch.js';
 import { createGoogleCredentialRotation } from './oauthCredentialRotation.js';
 import { createGoogleAccountIdentityReader } from './oauthAccountIdentity.js';
@@ -106,7 +106,7 @@ export async function openNativeCloudSession(options) {
       const rotation = createGoogleCredentialRotation({
         ...binding,
         store,
-        fetchImpl: createNativeGoogleRefreshFetch({ invoke }),
+        makeGuardedFetch: claim => createNativeGoogleRefreshFetch({ invoke, claim }),
         verifyAccount: createGoogleAccountIdentityReader({ fetchImpl: diskFetch, timeoutMs }),
         now,
         timeoutMs,
@@ -207,6 +207,48 @@ export async function openNativeCloudSession(options) {
       }
     });
     return Object.freeze({ status: 'opened', session });
+  } catch {
+    return status('credential_unavailable');
+  }
+}
+
+/**
+ * Открывает сессию из ранее сохранённого и сверенного native pin без ручного
+ * ввода accountKey/slotId. Набор и Google folder ID должны быть отдельно доверены;
+ * этот метод не создаёт ключи, не ищет папку и не подключён к настройкам.
+ * Отсутствие привязки не означает, что можно автоматически создать новую.
+ * @param {{provider:'google'|'yandex',datasetId:string,folderId?:string,
+ * invoke:(command:string,args:any)=>Promise<any>,cryptoSource?:Crypto,now?:()=>number,timeoutMs?:number}} options
+ */
+export async function openStoredNativeCloudSession(options) {
+  let input;
+  try {
+    input = object(options, ['provider', 'datasetId', 'invoke'], ['folderId', 'cryptoSource', 'now', 'timeoutMs']);
+    if (
+      !['google', 'yandex'].includes(input.provider) ||
+      !isSyncId(input.datasetId) ||
+      (input.provider === 'google' ? !validGoogleId(input.folderId) : input.folderId !== undefined) ||
+      typeof input.invoke !== 'function' ||
+      (input.now !== undefined && typeof input.now !== 'function') ||
+      (input.timeoutMs !== undefined &&
+        (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 20 || input.timeoutMs > 120_000))
+    )
+      throw failed();
+  } catch {
+    throw failed();
+  }
+  try {
+    const local = await readNativeCredentialBinding({
+      provider: input.provider,
+      invoke: input.invoke,
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs })
+    });
+    if (local.status === 'empty') return status('credential_missing');
+    if (local.status !== 'ready' || !local.binding) return status('credential_blocked');
+    return await openNativeCloudSession({
+      ...input,
+      ...local.binding
+    });
   } catch {
     return status('credential_unavailable');
   }

@@ -68,3 +68,37 @@ pub(crate) fn forget(
 ) -> Result<Outcome, StoreError> {
     cloud_credential_store::forget(vault, provider)
 }
+
+/// Одноразовый claim конкретной формы. Вызывающий обязан удерживать общий
+/// межпроцессный lock до конца CAS и контрольного чтения. `false` запрещает сеть;
+/// ошибка тоже запрещает сеть, но запись могла успеть измениться. Возвращаемое
+/// значение не доказывает защиту от отката или устойчивость при потере питания.
+pub(crate) fn claim_google_refresh(
+    vault: &mut impl CredentialVault,
+    slot_id: &str,
+    expected: &str,
+    pending: &str,
+    client_id: &str,
+    refresh_token: &str,
+) -> Result<bool, StoreError> {
+    if !cloud_credential_records::valid_google_refresh_claim(
+        slot_id,
+        expected,
+        pending,
+        client_id,
+        refresh_token,
+    ) {
+        return Err(StoreError::Invalid);
+    }
+    match compare_exchange(vault, Provider::Google, slot_id, expected, pending)? {
+        Outcome::Mismatch | Outcome::Blocked => Ok(false),
+        Outcome::Swapped => match read(vault, Provider::Google)? {
+            Inspection::Ready {
+                slot_id: actual,
+                record,
+            } if actual == slot_id && record == pending => Ok(true),
+            _ => Err(StoreError::Unavailable),
+        },
+        _ => Err(StoreError::Unavailable),
+    }
+}
