@@ -10,6 +10,12 @@ import { mergeRecord } from './mergeRecord.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
 import { parseConservativeMergeChoices } from './conservativeMergeChoices.js';
 import { STATS_HISTORY_LIMIT } from '../characters/statsHistory.js';
+import {
+  checkedPartyArchiveTransition,
+  partyArchiveOrderTransition,
+  preparePartyArchiveGroups,
+  mergedPartyArchiveOrder
+} from './partyArchiveMerge.js';
 
 const SECTIONS = ['characters', 'parties', 'marathons', 'planner', 'finance'];
 const MAX_CONFLICTS = 1000;
@@ -217,7 +223,8 @@ function noRemovedValues(before, after) {
 
 /**
  * Строгая проверка одного перехода: прежние sync-ID сохраняются. Персонаж может
- * перейти между активными и архивными без перестановки оставшихся; переносы и
+ * перейти между активными и архивными без перестановки оставшихся. Для пати
+ * проверяются точные связанные изменения состава, роли и порядка; переносы и
  * новые записи допустимы только в конце. Копируемые значения могут заменяться;
  * нет разрешения на удаление sync-сущностей или запись state.
  * @param {any} previous
@@ -228,16 +235,20 @@ export function conservativeTransition(previous, next) {
   const afterIds = publicSnapshotIdentityTypes(next);
   comparePublicSnapshots({ local: previous, cloud: next });
   if (!retainsIds(beforeIds, afterIds)) return false;
+  const partyTransition = checkedPartyArchiveTransition(previous, next);
+  if (!partyTransition) return false;
   if (
     !equal(previous.sections.preferences.selections, next.sections.preferences.selections) ||
     SECTIONS.some(section =>
       section === 'characters'
         ? !characterOrderTransition(previous, next)
-        : !appendedOrders(previous.sections[section].order, next.sections[section].order)
+        : section === 'parties' && partyTransition.moved.length
+          ? !partyArchiveOrderTransition(previous, next)
+          : !appendedOrders(previous.sections[section].order, next.sections[section].order)
     )
   )
     return false;
-  return noRemovedValues(previous, next);
+  return noRemovedValues(previous, partyTransition.snapshot);
 }
 
 function setConflictValue(root, path, side) {
@@ -357,16 +368,19 @@ function planWithoutPlannerDeletions(options) {
   comparePublicSnapshots({ local: base, cloud });
   if (!conservativeTransition(base, local) || !conservativeTransition(base, cloud))
     return Object.freeze({ status: 'structure_or_deletion_unsupported' });
+  const partyGroups = preparePartyArchiveGroups(base, local, cloud, choices);
+  if (!partyGroups) return Object.freeze({ status: 'structure_or_deletion_unsupported' });
+  if (partyGroups.conflicts.length > MAX_CONFLICTS) throw invalid();
   const merged = structuredClone(local);
   const chosen = [];
   const settings = [];
-  const conflicts = [];
+  const conflicts = [...partyGroups.conflicts];
   for (const section of SECTIONS) {
     const baseRecords = records(base, section);
     const localRecords = records(local, section);
     const cloudRecords = records(cloud, section);
     const order =
-      section === 'characters'
+      section === 'characters' || (section === 'parties' && partyGroups.changed)
         ? null
         : mergeAppendedOrder(
             base.sections[section].order,
@@ -456,6 +470,16 @@ function planWithoutPlannerDeletions(options) {
     if (section === 'characters') {
       const characterOrder = mergeCharacterOrder(base, local, cloud, merged, conflicts);
       if (characterOrder) merged.sections.characters.order = characterOrder;
+    }
+  }
+  if (partyGroups.changed) {
+    partyGroups.apply(merged);
+    merged.sections.parties.order = mergedPartyArchiveOrder(input.local, input.cloud, merged);
+    chosen.length = 0;
+    for (const section of SECTIONS) {
+      const original = records(input.local, section);
+      for (const record of merged.sections[section].records)
+        if (!equal(original.get(record.id), record)) chosen.push({ section, id: record.id });
     }
   }
   const finance = mergeFields(

@@ -84,7 +84,8 @@ export async function archiveParty(id) {
   state.characters = state.characters.map(detach);
   state.archivedCharacters = state.archivedCharacters.map(detach);
   state.parties = state.parties.filter(item => item.id !== id);
-  state.archivedParties = [...state.archivedParties, { ...party, memberLinks }];
+  // Match restart normalization before saving a cloud merge witness.
+  state.archivedParties = [...state.archivedParties, { ...party, memberLinks }].sort((a, b) => a.order - b.order);
   try {
     await persist();
   } catch (error) {
@@ -119,7 +120,7 @@ export async function restoreParty(id) {
   state.archivedCharacters = state.archivedCharacters.map(restoreMembership);
   const { memberLinks, ...activeParty } = party;
   state.archivedParties = state.archivedParties.filter(item => item.id !== id);
-  state.parties = [...state.parties, activeParty];
+  state.parties = [...state.parties, activeParty].sort((a, b) => a.order - b.order);
   try {
     await persist();
   } catch (error) {

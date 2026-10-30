@@ -4628,3 +4628,211 @@ describe.each(['google', 'yandex'])('%s: новая копия после ран
     expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
   }, 30000);
 });
+
+// Mirrors the native archive action using the same pure membership helpers.
+async function fixturePartyMove(state, restoring = false) {
+  const { setMembership, setMainParty } = await import('../js/modules/parties/membership.js');
+  const all = [...state.characters, ...state.archivedCharacters];
+  if (!restoring) {
+    const party = state.parties.find(row => row.id === 'party'),
+      memberLinks = [];
+    for (const char of all)
+      if (char.partyIds.includes('party')) {
+        memberLinks.push({
+          characterId: char.id,
+          isMain: char.mainPartyId === 'party',
+          order: Number.isFinite(Number(char.partyOrder.party)) ? Number(char.partyOrder.party) : null
+        });
+        setMembership(char, 'party', false);
+        delete char.partyOrder.party;
+      }
+    state.parties = state.parties.filter(row => row.id !== 'party');
+    state.archivedParties = [...state.archivedParties, { ...party, memberLinks }].sort((a, b) => a.order - b.order);
+  } else {
+    const party = state.archivedParties.find(row => row.id === 'party');
+    for (const link of party.memberLinks) {
+      const char = all.find(row => row.id === link.characterId);
+      setMembership(char, 'party', true);
+      if (link.isMain) setMainParty(char, 'party');
+      if (link.order !== null) char.partyOrder.party = link.order;
+    }
+    const { memberLinks, ...active } = party;
+    state.archivedParties = state.archivedParties.filter(row => row.id !== 'party');
+    state.parties = [...state.parties, active].sort((a, b) => a.order - b.order);
+  }
+}
+async function partyArchiveFixture(provider, restoring = false) {
+  return publicationFixture(provider, {
+    prepare: async f => {
+      const { normalizeState } = await import('../js/core/state.js');
+      const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+      const { ui, ...raw } = structuredClone({ ...f.state, ui: null });
+      raw.parties = [
+        { id: 'party', name: 'Пати', order: 1 },
+        { id: 'other', name: 'Другая', order: 2 }
+      ];
+      raw.archivedParties = [{ id: 'old-archive', name: 'Старый архив', order: 3, memberLinks: [] }];
+      Object.assign(raw.characters[0], {
+        partyIds: ['party', 'other'],
+        mainPartyId: 'party',
+        partyOrder: { party: 7, other: 11 }
+      });
+      const archived = {
+        ...structuredClone(raw.characters[0]),
+        id: 'archived',
+        nick: 'Архивный',
+        partyIds: ['party'],
+        mainPartyId: 'party',
+        partyOrder: { party: 9 }
+      };
+      delete archived.syncId;
+      raw.archivedCharacters = [archived];
+      const { ui: ignored, ...normalized } = normalizeState(raw);
+      Object.assign(f.state, planSyncIdentities({ snapshot: normalized, cryptoSource: webcrypto }).snapshot);
+      if (restoring) await fixturePartyMove(f.state);
+      await f.storage.saveNow();
+    }
+  });
+}
+
+describe.each(['google', 'yandex'])('%s: архив и восстановление пати через очередь и backup', provider => {
+  for (const restoring of [false, true])
+    for (const side of ['local', 'cloud'])
+      for (const privateCarry of [false, true])
+        for (const interrupted of [false, true]) {
+          it(`${restoring ? 'восстановление' : 'архив'} на ${side}; carry=${privateCarry}; прерывание=${interrupted}`, async () => {
+            const f = await partyArchiveFixture(provider, restoring);
+            const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+            const { currentCloudStateSnapshot } = await import('../js/modules/cloudSync/guardedStateWrite.js');
+            const remoteRaw = currentCloudStateSnapshot();
+            if (side === 'local') await fixturePartyMove(f.state, restoring);
+            else await fixturePartyMove(remoteRaw, restoring);
+            f.state.characters[0].notes = 'НЕЗАВИСИМАЯ МЕСТНАЯ ЗАМЕТКА';
+            remoteRaw.characters[0].level = 42;
+            [...remoteRaw.parties, ...remoteRaw.archivedParties].find(row => row.id === 'party').name =
+              'Облачное имя пати';
+            await f.storage.saveNow();
+            expect((await f.queue()).status).toBe('queued');
+            if (interrupted) {
+              f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+              expect((await f.send()).status).toBe('deferred');
+            }
+            const remotePublic = buildPublicSnapshot(remoteRaw),
+              root = (await inspectMergeQueue(f, provider)).confirmedPin;
+            const remote = privateCarry
+              ? await incomingPrivateCarry(f, provider, s => Object.assign(s, remotePublic))
+              : { pin: await mergeIncoming(f, provider, root, s => Object.assign(s, remotePublic)) };
+            const before = localStorage.getItem(STORAGE_KEY);
+            let current = f.state;
+            const extra = privateCarry ? { privateCarryConfirmed: true } : {};
+            if (interrupted) {
+              f.fake.loseNextCompare();
+              expect((await mergePin(f, provider, remote.pin, extra)).status).toBe('journal_uncertain');
+              const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+              vi.resetModules();
+              const { state, normalizeState } = await import('../js/core/state.js');
+              Object.assign(state, normalizeState(saved));
+              current = state;
+              const publication = await import('../js/modules/cloudSync/connectedPublication.js');
+              expect(
+                (
+                  await publication.queueConnectedSavedSnapshot({
+                    provider,
+                    invoke: f.fake.invoke,
+                    cryptoSource: webcrypto
+                  })
+                ).status
+              ).toBe('provenance_review_required');
+            }
+            expect((await mergePin(f, provider, remote.pin, interrupted ? {} : extra)).status).toBe('merged');
+            expect((restoring ? current.parties : current.archivedParties).find(row => row.id === 'party').name).toBe(
+              'Облачное имя пати'
+            );
+            expect(current.characters[0]).toMatchObject({
+              notes: 'НЕЗАВИСИМАЯ МЕСТНАЯ ЗАМЕТКА',
+              level: 42,
+              mainPartyId: restoring ? 'party' : 'other',
+              partyOrder: restoring ? { party: 7, other: 11 } : { other: 11 },
+              contacts: { password: 'PRIVATE_PASSWORD' },
+              launch: { gcPath: '/private/path' }
+            });
+            expect(current.archivedCharacters[0]).toMatchObject({
+              mainPartyId: restoring ? 'party' : null,
+              partyIds: restoring ? ['party'] : []
+            });
+            expect(current.settings.cloudSyncPendingMerge).toBeUndefined();
+            expect(
+              Object.keys(localStorage).some(
+                key => key.startsWith('tvinoferma_backup_') && localStorage.getItem(key) === before
+              )
+            ).toBe(true);
+            const publication = await import('../js/modules/cloudSync/connectedPublication.js'),
+              options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+            expect(
+              (await publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true })).status
+            ).toBe('queued');
+            expect(
+              (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+            ).toBe('sent_verified');
+            expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+            const payload = await fixturePrivatePayload(f);
+            expect(
+              payload.publicSnapshot.sections.parties.records.find(row => row.fields.name === 'Облачное имя пати')
+                .archived
+            ).toBe(!restoring);
+            if (privateCarry) expect(payload.privateSnapshot.records[0].fields.password).toBe('REMOTE_CARRY_SECRET');
+            expect(JSON.stringify(payload.publicSnapshot)).not.toContain('PRIVATE_PASSWORD');
+          }, 30000);
+        }
+  for (const field of ['main', 'order'])
+    for (const useCloud of [false, true]) {
+      it(`конфликт ${field}, выбор группы cloud=${useCloud} восстанавливается после CAS`, async () => {
+        const f = await partyArchiveFixture(provider),
+          root = (await inspectMergeQueue(f, provider)).confirmedPin;
+        const partyId = f.state.parties[0].syncId,
+          charId = f.state.characters[0].syncId;
+        await fixturePartyMove(f.state);
+        f.state.characters[0].notes = 'НЕ ТЕРЯТЬ ЗАМЕТКУ';
+        await f.storage.saveNow();
+        await f.queue();
+        const remote = await mergeIncoming(f, provider, root, s => {
+          const char = s.sections.characters.records.find(row => row.id === charId);
+          char.fields.level = 42;
+          if (field === 'main')
+            char.fields.mainPartyId = s.sections.parties.records.find(row => row.fields.name === 'Другая').id;
+          else char.fields.partyOrder[partyId] = 99;
+        });
+        const conflict = await mergePin(f, provider, remote);
+        expect(conflict).toMatchObject({
+          status: 'conflicts',
+          conflicts: [{ reason: 'party-archive-membership', id: partyId }]
+        });
+        const resolution = {
+          reviewHash: conflict.reviewHash,
+          cloudRecords: useCloud ? [{ section: 'parties', id: partyId }] : [],
+          cloudSettings: [],
+          cloudFinanceSettings: false
+        };
+        f.fake.loseNextCompare();
+        expect((await mergePin(f, provider, remote, { resolution })).status).toBe('journal_uncertain');
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        vi.resetModules();
+        const { state, normalizeState } = await import('../js/core/state.js');
+        Object.assign(state, normalizeState(saved));
+        expect((await mergePin(f, provider, remote)).status).toBe('merged');
+        expect(state.characters[0]).toMatchObject({ notes: 'НЕ ТЕРЯТЬ ЗАМЕТКУ', level: 42 });
+        expect(state.archivedParties.some(row => row.id === 'party')).toBe(!useCloud);
+        expect(state.characters[0].mainPartyId).toBe(useCloud && field === 'order' ? 'party' : 'other');
+        expect(state.characters[0].partyOrder.party).toBe(useCloud ? (field === 'order' ? 99 : 7) : undefined);
+        const publication = await import('../js/modules/cloudSync/connectedPublication.js'),
+          options = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto };
+        expect((await publication.queueConnectedSavedSnapshot({ ...options, prepareIdentities: true })).status).toBe(
+          'queued'
+        );
+        expect(
+          (await publication.sendConnectedQueuedSnapshot({ ...options, openSession: f.cloud.openSession })).status
+        ).toBe('sent_verified');
+        expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
+      }, 30000);
+    }
+});

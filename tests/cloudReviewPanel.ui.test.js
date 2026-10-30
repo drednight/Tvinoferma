@@ -811,3 +811,52 @@ describe('явный выбор новой копии вместо потери 
     expect(merge).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('выбор связанного состава при конфликте архива пати', () => {
+  it.each([false, true])('предупреждает о роли выбора пати и передаёт выбор облака=%s', async useCloud => {
+    const value = review();
+    const prior = value.compare;
+    value.compare = () => ({
+      ...prior(),
+      differences: {
+        entries: [
+          {
+            section: 'parties',
+            id: ids.changed,
+            kind: 'changed',
+            label: 'Моя пати',
+            changes: [
+              { path: ['archived'], local: { present: true, value: true }, cloud: { present: true, value: false } }
+            ]
+          }
+        ],
+        uncomparedSettings: []
+      }
+    });
+    const merge = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'conflicts',
+        reviewHash: 'd'.repeat(64),
+        conflictCount: 1,
+        conflicts: [
+          { section: 'parties', id: ids.changed, path: ['fields', 'memberLinks'], reason: 'party-archive-membership' }
+        ]
+      })
+      .mockResolvedValueOnce({ status: 'merged', backup: 'backup.json' });
+    const f = setup({ check: vi.fn(async () => value), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(el('cloud-review-conflicts').hidden).toBe(false));
+    expect(el('cloud-review-conflict-list').textContent).toContain('всей связанной группе');
+    el('cloud-review-list').querySelector('input').checked = useCloud;
+    click('cloud-review-resolve');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
+    expect(f.confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('статус архива, сохранённый состав, основную пати и порядок участников')
+    );
+    expect(merge.mock.calls[1][0].resolution.cloudRecords).toEqual(
+      useCloud ? [{ section: 'parties', id: ids.changed }] : []
+    );
+  });
+});
