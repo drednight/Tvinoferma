@@ -39,5 +39,5 @@ export function envelopeBody(envelope, datasetId) {
 }
 
 export function validGoogleId(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,256}$/.test(value);
+  return typeof value === 'string' && value.length >= 1 && value.length <= 256 && !/[^A-Za-z0-9_-]/.test(value);
 }

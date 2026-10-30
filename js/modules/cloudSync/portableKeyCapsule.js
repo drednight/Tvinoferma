@@ -10,7 +10,7 @@ import { copyKeyBundle, fingerprintKeyBundle, openKeyBundle, verifyKeyBundleData
 import { copyCloudEnvelope } from './providers/common.js';
 
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 
 function failed() {
   return new Error('Не удалось проверить переносимый набор ключей');

@@ -20,7 +20,7 @@ export const OAUTH_PROVIDERS = Object.freeze({
 
 /** @param {unknown} provider @param {unknown} clientId */
 export function validOAuthClientId(provider, clientId) {
-  if (typeof clientId !== 'string') return false;
+  if (typeof clientId !== 'string' || /[^\x21-\x7e]/.test(clientId)) return false;
   if (provider === 'google') return /^[A-Za-z0-9_-]{3,200}\.apps\.googleusercontent\.com$/.test(clientId);
   if (provider === 'yandex') return /^[A-Za-z0-9_-]{16,128}$/.test(clientId);
   return false;
@@ -32,12 +32,12 @@ export function validOAuthClientId(provider, clientId) {
  * @param {unknown} value
  */
 export function validOAuthAccountKey(value) {
-  return typeof value === 'string' && /^[A-Za-z0-9._~-]{1,256}$/.test(value);
+  return typeof value === 'string' && !/[^\x21-\x7e]/.test(value) && /^[A-Za-z0-9._~-]{1,256}$/.test(value);
 }
 
 /** Консервативная проверка единственного локального redirect; не доказывает его регистрацию. */
 export function validOAuthRedirect(value) {
-  if (typeof value !== 'string') return false;
+  if (typeof value !== 'string' || /[^\x21-\x7e]/.test(value)) return false;
   const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/oauth\/cloud\/callback$/.exec(value);
   if (!match) return false;
   const port = Number(match[1]);

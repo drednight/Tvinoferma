@@ -12,7 +12,7 @@ import { copyCloudEnvelope } from './providers/common.js';
 import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 function failed() {
   return new Error('Не удалось безопасно подготовить сравнение облачных версий');
 }

@@ -33,7 +33,7 @@ const MAX_LOCAL_JSON_DEPTH = 64;
 const MAX_LOCAL_JSON_NODES = 500_000;
 const MAX_INTENT_BYTES = 256 * 1024;
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
-const HEX256 = /^[0-9a-f]{64}$/;
+const HEX256 = /^[0-9a-f]{64}(?![\s\S])/;
 const encoder = new TextEncoder();
 // Приватные данные не являются перечислимыми свойствами результата и не сериализуются
 // случайным JSON.stringify. Маркер также не позволяет опубликовать произвольный объект.

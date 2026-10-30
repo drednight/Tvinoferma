@@ -7,7 +7,7 @@ import { copyCloudEnvelope } from './common.js';
 
 const ERROR = 'Не удалось безопасно обработать локальную очередь облака';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const MAX_RECORD_CHARS = 24 * 1024 * 1024;
 
 function failed() {

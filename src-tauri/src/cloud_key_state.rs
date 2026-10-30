@@ -110,6 +110,34 @@ pub(crate) fn read(vault: &mut impl CredentialVault) -> Result<Inspection, Store
     }
 }
 
+/// Несекретные поля для связывания другой локальной записи под тем же lock.
+/// Это синтаксическая проверка, а не проверка HMAC или защиты от отката.
+pub(crate) struct PublicBinding {
+    pub(crate) slot_id: String,
+    pub(crate) dataset_id: String,
+    pub(crate) bundle_id: String,
+    pub(crate) fingerprint: String,
+}
+
+pub(crate) fn public_binding(
+    vault: &mut impl CredentialVault,
+) -> Result<Option<PublicBinding>, StoreError> {
+    match read(vault)? {
+        Inspection::Ready { record, .. } => {
+            let Some(binding) = parse(&record) else {
+                return Ok(None);
+            };
+            Ok(Some(PublicBinding {
+                slot_id: binding.slot_id.to_owned(),
+                dataset_id: binding.dataset_id.to_owned(),
+                bundle_id: binding.bundle_id.to_owned(),
+                fingerprint: binding.fingerprint.to_owned(),
+            }))
+        }
+        Inspection::Empty | Inspection::Blocked => Ok(None),
+    }
+}
+
 pub(crate) fn install(
     vault: &mut impl CredentialVault,
     slot_id: &str,

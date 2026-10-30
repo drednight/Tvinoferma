@@ -8,6 +8,9 @@ import {
 import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { prepareYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
+import { createNativeDatasetBindingStore } from '../js/modules/cloudSync/providers/nativeDatasetBindingStore.js';
+import { openPinnedNativeCloudSession } from '../js/modules/cloudSync/providers/pinnedNativeCloudSession.js';
+import { parseDatasetBindingRecord } from '../js/modules/cloudSync/datasetBindingRecord.js';
 import { encryptSnapshot } from '../js/modules/cloudSync/envelope.js';
 import { historyEnvelopePin, sealHistoryVersion } from '../js/modules/cloudSync/history.js';
 import { createPairingCode, parsePairingCode } from '../js/modules/cloudSync/pairingCode.js';
@@ -469,9 +472,49 @@ describe('поиск кандидатов Google через сохранённы
     });
     const restored = await parseKeyStateRecord(localRaw, webcrypto);
     expect(restored.state.dataKey).toBe(keys.dataKey);
+    opened.session.dispose();
+    let datasetRaw = null;
+    const invoke2 = vi.fn(async (command, args) => {
+      if (command === 'cloud_dataset_binding_read')
+        return datasetRaw === null ? { status: 'empty' } : { status: 'ready', record: datasetRaw };
+      if (command === 'cloud_dataset_binding_install') {
+        if (datasetRaw !== null) return { status: 'occupied' };
+        expect(args.confirmed).toBe(true);
+        expect(parseDatasetBindingRecord(args.record).binding.keySlotId).toBe(restored.state.slotId);
+        datasetRaw = args.record;
+        return { status: 'installed' };
+      }
+      if (command === 'cloud_key_state_read')
+        return { status: 'ready', slotId: restored.state.slotId, record: localRaw };
+      return pc2.invoke(command, args);
+    });
+    const pinStore = createNativeDatasetBindingStore({ provider: 'google', invoke: invoke2 });
+    expect(
+      await pinStore.install(
+        {
+          provider: 'google',
+          accountSlotId: slotId,
+          keySlotId: restored.state.slotId,
+          datasetId,
+          keyPin: pairing.keyPin,
+          rootPin: pairing.rootPin,
+          folderId: 'FOLDER_CANDIDATE'
+        },
+        true
+      )
+    ).toEqual({ status: 'installed' });
+    const pinned = await openPinnedNativeCloudSession({
+      provider: 'google',
+      invoke: invoke2,
+      now: () => 100_000,
+      cryptoSource: webcrypto
+    });
+    expect(pinned.status).toBe('opened');
+    expect(pinned.rootPin).toEqual(pairing.rootPin);
+    noSecret(pinned);
     const review = await prepareCloudReview({
       provider: 'google',
-      session: opened.session,
+      session: pinned.session,
       datasetId,
       dataKey: restored.state.dataKey,
       rootPin: pairing.rootPin,
@@ -494,7 +537,7 @@ describe('поиск кандидатов Google через сохранённы
       .map(([, args]) => args.args.operation);
     expect(ops).not.toContain('folder_create');
     expect(ops).not.toContain('create');
-    opened.session.dispose();
+    pinned.session.dispose();
   }, 30_000);
   it('одинаковый корень в нескольких папках остаётся неоднозначным', async () => {
     const rootVersion = '41234567-89ab-4cde-8f01-23456789abcd';

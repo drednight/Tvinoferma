@@ -76,7 +76,7 @@ function keyBytes(recoveryKey) {
 
 /** Идентификатор набора/версии/устройства в локальном формате. */
 export function isSyncId(value) {
-  return typeof value === 'string' && ID_PATTERN.test(value);
+  return typeof value === 'string' && value.length === 36 && ID_PATTERN.test(value);
 }
 
 function plainObject(value) {

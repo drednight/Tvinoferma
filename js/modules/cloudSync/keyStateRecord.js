@@ -9,7 +9,7 @@ import { copyKeyBundle, verifyKeyBundleDataKey } from './keyBundle.js';
 const FORMAT = 'tvinoferma-cloud-key-state';
 const MAX_RECORD = 16 * 1024;
 const MAX_BUNDLE = 12_000;
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 
 function failed() {
   return new Error('Не удалось проверить локальную запись ключа синхронизации');

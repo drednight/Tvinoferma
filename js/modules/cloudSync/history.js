@@ -19,7 +19,7 @@ const PORTABLE_HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v2';
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
 export const MAX_HISTORY_VERSIONS = 128;
 const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
-const SHA256 = /^[0-9a-f]{64}$/;
+const SHA256 = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedHistories = new WeakSet();
 
 /** Маркер созданного этим модулем объекта, не доказательство доверия к переданному корню. */

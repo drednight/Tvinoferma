@@ -376,6 +376,9 @@ mod windows_backend {
         let mut vault = NativeVault;
         let mut failed = false;
         for provider in [Provider::Google, Provider::Yandex] {
+            if crate::cloud_dataset_binding::forget(&mut vault, provider).is_err() {
+                failed = true;
+            }
             match cloud_credential_binding::read(&mut vault, provider) {
                 Ok(Pair::Empty) => {}
                 Ok(Pair::Ready { .. } | Pair::Blocked) => {
@@ -484,6 +487,24 @@ mod windows_backend {
                 matches!(cloud_credential_binding::read(&mut second, Provider::Google),
                 Ok(Pair::Ready { binding, record }) if binding.slot_id == SLOT && binding.client_id == client && binding.account_key == account && record == before)
             );
+            const KEY_SLOT: &str = "41234567-89ab-4cde-8f01-23456789abcd";
+            const KEY_REV: &str = "51234567-89ab-4cde-8f01-23456789abcd";
+            const DATASET: &str = "61234567-89ab-4cde-8f01-23456789abcd";
+            const BUNDLE: &str = "71234567-89ab-4cde-8f01-23456789abcd";
+            const ROOT: &str = "81234567-89ab-4cde-8f01-23456789abcd";
+            let key = format!("{{\"format\":\"tvinoferma-cloud-key-state\",\"version\":1,\"slotId\":\"{KEY_SLOT}\",\"revision\":\"{KEY_REV}\",\"datasetId\":\"{DATASET}\",\"bundleId\":\"{BUNDLE}\",\"fingerprint\":\"{}\",\"dataKey\":\"TF1-{}\",\"bundle\":\"e30\"}}", "a".repeat(64), "A".repeat(43));
+            assert_eq!(
+                crate::cloud_key_state::install(&mut first, KEY_SLOT, &key),
+                Ok(Outcome::Installed)
+            );
+            let dataset_pin = format!("tf-dataset-binding-v1|google|ready|{SLOT}|{KEY_SLOT}|{DATASET}|{BUNDLE}|{}|{ROOT}|{}|{}", "a".repeat(64), "b".repeat(64), "F".repeat(256));
+            assert_eq!(
+                crate::cloud_dataset_binding::install(&mut first, Provider::Google, &dataset_pin),
+                Ok(Outcome::Installed)
+            );
+            assert!(
+                matches!(crate::cloud_dataset_binding::read(&mut second, Provider::Google), Ok(crate::cloud_dataset_binding::DatasetInspection::Ready(value)) if value == dataset_pin)
+            );
             let pin = second
                 .read("cloud-account-binding-v1:google:pin")
                 .unwrap()
@@ -508,6 +529,18 @@ mod windows_backend {
             );
             assert!(
                 matches!(cloud_credential_binding::read(&mut first, Provider::Google), Ok(Pair::Ready { binding, record }) if binding.pending && record == pending)
+            );
+            assert!(matches!(
+                crate::cloud_dataset_binding::read(&mut first, Provider::Google),
+                Ok(crate::cloud_dataset_binding::DatasetInspection::Blocked)
+            ));
+            assert_eq!(
+                crate::cloud_dataset_binding::forget(&mut second, Provider::Google),
+                Ok(Outcome::Forgotten)
+            );
+            assert_eq!(
+                crate::cloud_key_state::forget(&mut second),
+                Ok(Outcome::Forgotten)
             );
             assert_eq!(
                 cloud_credential_binding::forget(&mut second, Provider::Google),

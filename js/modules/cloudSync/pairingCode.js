@@ -8,7 +8,7 @@ import { object } from './exportSchema.js';
 
 const FORMAT = 'tvinoferma-pairing-code';
 const PREFIX = 'TFP1-';
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const MAX_RAW = 2048;
 function failed() {
   return new Error('Некорректный код сверки синхронизации');

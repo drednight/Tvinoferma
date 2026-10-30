@@ -19,7 +19,7 @@ import { createSelectiveRecordReview } from './selectiveRecordReview.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
 
 const SECTIONS = ['characters', 'parties', 'marathons', 'planner', 'finance'];
-const SHA256 = /^[0-9a-f]{64}$/;
+const SHA256 = /^[0-9a-f]{64}(?![\s\S])/;
 const MAX_ORIGIN_EVENTS = 10_000;
 const MISSING = Symbol('missing');
 // Метаданные выдаются только для настоящих объектов модели, а не для произвольного JSON.

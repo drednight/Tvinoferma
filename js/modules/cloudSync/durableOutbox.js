@@ -22,7 +22,7 @@ const MAX_STATE_BYTES = 16 * 1024 * 1024;
 const MAX_RECORD_CHARS = 24 * 1024 * 1024;
 // Запас для MIME-метаданных и границы в Google multipart с ограничением 5 MB.
 const MAX_GOOGLE_ENVELOPE = 4_990_000;
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
 
 function invalid() {

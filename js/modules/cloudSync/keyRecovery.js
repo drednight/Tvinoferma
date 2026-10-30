@@ -8,7 +8,7 @@ import { object } from './exportSchema.js';
 import { createKeyStateRecord } from './keyStateRecord.js';
 import { inspectPortableEnvelope, openPortableEnvelope } from './portableKeyCapsule.js';
 
-const HEX = /^[0-9a-f]{64}$/;
+const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 function failed() {
   return new Error('Не удалось безопасно восстановить ключ синхронизации');
 }

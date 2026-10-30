@@ -29,7 +29,7 @@ function invalid() {
 
 /** @param {unknown} value */
 export function validCredentialId(value) {
-  return typeof value === 'string' && ID.test(value);
+  return typeof value === 'string' && value.length === 36 && ID.test(value);
 }
 
 function canonical(record) {
@@ -76,7 +76,7 @@ export function parseGoogleCredentialRecord(raw) {
         typeof record.refreshToken !== 'string' ||
         record.refreshToken.length === 0 ||
         record.refreshToken.length > 8192 ||
-        !/^[\x21-\x7e]+$/.test(record.refreshToken)
+        /[^\x21-\x7e]/.test(record.refreshToken)
       )
         throw invalid();
     } else if (record.phase === 'pending') {

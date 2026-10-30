@@ -28,7 +28,7 @@ const MAX_SECRET_LENGTH = 1024;
 const HKDF_SALT = 'tvinoferma-key-bundle-hkdf-v1';
 const PROOF_INFO = 'tvinoferma-key-bundle-proof-v1';
 const FINGERPRINT_CONTEXT = 'tvinoferma-key-bundle-sha256-v1';
-const HEX256 = /^[0-9a-f]{64}$/;
+const HEX256 = /^[0-9a-f]{64}(?![\s\S])/;
 const encoder = new TextEncoder();
 let busy = false;
 
