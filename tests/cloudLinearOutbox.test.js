@@ -253,6 +253,43 @@ describe.each(['google', 'yandex'])('%s: последующая локальна
     expect((await box.adoptReviewedBase({ ...a.pins, proof })).status).toBe('adopted');
   });
 
+  it('продолжает читать ранее сохранённую принятую очередь v3', async () => {
+    const a = setup(provider);
+    const box = a.open();
+    await box.initializeRecovered(true);
+    const review = await prepareCloudReview({
+      provider,
+      datasetId,
+      dataKey: keys.dataKey,
+      rootPin: root.pin,
+      knownPins: [root.pin],
+      localSnapshot: base,
+      localSavedAt: null,
+      cryptoSource,
+      session: {
+        listWithDates: async () => ({
+          status: 'listed',
+          versions: [{ versionId: root.pin.versionId, modifiedAt: null }]
+        }),
+        read: async () => ({ status: 'found', envelope: root.envelope })
+      }
+    });
+    const proof = review.prepareExactAdoption(root.pin, {});
+    expect((await box.adoptReviewedBase({ ...a.pins, proof })).status).toBe('adopted');
+    await a.store.corruptPlaintext(value => {
+      value.version = 3;
+      delete value.entries[0].lineage;
+      delete value.entries[0].priorReceiptCount;
+      delete value.entries[0].previousBase;
+    });
+    const reopened = a.open();
+    expect((await a.inspect(reopened)).confirmedPin).toEqual(root.pin);
+    expect((await a.queue(reopened, snapshot('ПОСЛЕ ОБНОВЛЕНИЯ'))).status).toBe('queued');
+    expect(await a.send(reopened, await a.inspect(reopened))).toEqual({ status: 'needs_verification' });
+    expect(await reopened.verifyNext()).toEqual({ status: 'confirmed' });
+    expect((await a.inspect(a.open())).pendingCount).toBe(0);
+  });
+
   it('не выбирает родителя из пустой восстановленной очереди и ждёт подтверждения корня', async () => {
     const a = setup(provider);
     const empty = a.open();
@@ -514,6 +551,18 @@ describe.each(['google', 'yandex'])('%s: последующая локальна
     expect(await full.queue(after, snapshot('СВЕРХ ПРЕДЕЛА'))).toEqual({ status: 'history_limit' });
     expect(full.store.raw()).toEqual(stored);
     expect(full.session.upload).toHaveBeenCalledTimes(1); // только корень
+
+    // То же ограничение действует при первом принятии на восстановленном ПК:
+    // его очередь была пуста, но известные облачные предки не должны исчезнуть.
+    const recovered = setup(provider);
+    const empty = recovered.open();
+    expect(await empty.initializeRecovered(true)).toEqual({ status: 'initialized' });
+    expect((await empty.adoptReviewedBase({ ...recovered.pins, proof: proof128 })).status).toBe('adopted');
+    expect((await empty.confirmedPins()).pins).toHaveLength(MAX_HISTORY_VERSIONS);
+    const saved = recovered.store.raw();
+    expect(await recovered.queue(empty, snapshot('СВЕРХ ПРЕДЕЛА'))).toEqual({ status: 'history_limit' });
+    expect(recovered.store.raw()).toEqual(saved);
+    expect(recovered.session.upload).not.toHaveBeenCalled();
   }, 30_000);
 
   it('сжимает подтверждённые версии, сохраняя последний конверт и все отпечатки', async () => {

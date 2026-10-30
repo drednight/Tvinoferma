@@ -459,15 +459,37 @@ mod windows_backend {
         }
         impl CredentialVault for ScopedVault {
             fn read(&mut self, name: &str) -> Result<Option<String>, ()> {
-                NativeVault.read(&self.name(name))
+                let result = NativeVault.read(&self.name(name));
+                if result.is_err() {
+                    eprintln!("Synthetic Credential Manager test: read failed");
+                }
+                result
             }
             fn write(&mut self, name: &str, value: &str) -> Result<(), ()> {
                 let name = self.name(name);
                 self.written.insert(name.clone());
-                NativeVault.write(&name, value)
+                // Только тестовые значения. Печатаем номер ошибки Windows, но не
+                // имя, содержимое или исходное сообщение ОС/хранилища.
+                match crate::vault::set_local_password(SERVICE, &name, value) {
+                    Ok(()) => Ok(()),
+                    Err(error) => {
+                        let code = error
+                            .split("Windows вернула код ")
+                            .nth(1)
+                            .and_then(|part| part.split(|c: char| !c.is_ascii_digit()).next())
+                            .filter(|part| !part.is_empty())
+                            .unwrap_or("unclassified");
+                        eprintln!("Synthetic Credential Manager test: write failed, code={code}");
+                        Err(())
+                    }
+                }
             }
             fn remove(&mut self, name: &str) -> Result<(), ()> {
-                NativeVault.remove(&self.name(name))
+                let result = NativeVault.remove(&self.name(name));
+                if result.is_err() {
+                    eprintln!("Synthetic Credential Manager test: remove failed");
+                }
+                result
             }
         }
         impl Drop for ScopedVault {

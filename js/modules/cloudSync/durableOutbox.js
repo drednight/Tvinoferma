@@ -972,22 +972,22 @@ export function createDurableCloudOutbox(options) {
           ...current.state.entries.map(value => value.previousBase?.anchorId).filter(Boolean),
           ...(previousBase ? [previousBase.anchorId] : [])
         ]);
-        const isRebase = current.state.entries.length > 0 || current.state.confirmedReceipts.length > 0;
-        const entry = isRebase
-          ? {
-              envelope: copy,
-              phase: 'adopted',
-              fileId: null,
-              attemptId: null,
-              anchorId,
-              lineage,
-              priorReceiptCount: receipts.length,
-              previousBase
-            }
-          : { envelope: copy, phase: 'adopted', fileId: null, attemptId: null, anchorId };
+        // Даже пустая восстановленная очередь должна сохранить всю принятую
+        // линию: иначе офлайн-предел и ранее известные предки будут потеряны.
+        // Старые очереди v3 по-прежнему читаются, но новые основы пишутся в v4.
+        const entry = {
+          envelope: copy,
+          phase: 'adopted',
+          fileId: null,
+          attemptId: null,
+          anchorId,
+          lineage,
+          priorReceiptCount: receipts.length,
+          previousBase
+        };
         const next = {
           ...current.state,
-          version: isRebase ? REBASED_VERSION : ADOPTED_VERSION,
+          version: REBASED_VERSION,
           entries: [entry],
           confirmedReceipts: receipts
         };
