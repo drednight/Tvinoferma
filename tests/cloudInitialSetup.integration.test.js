@@ -1732,6 +1732,51 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect(JSON.stringify([...f.cloud.versions.values()])).not.toContain('PRIVATE_PASSWORD');
   }, 30_000);
 
+  it('объединяет данные прогресса сайта с местными правками и публикует их в зашифрованном потомке', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        f.state.characters[0].marathonData = {
+          lastSyncDate: '2026-10-29',
+          quests: [{ title: 'Задание сайта', description: 'Проверка', completed: 0, total: 2, percentage: 0 }],
+          summary: { completed: 0, total: 2, percentage: 0 }
+        };
+        await f.storage.saveNow();
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'ДРУГАЯ МЕСТНАЯ ПРАВКА';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const progress = s.sections.characters.records[0].fields.marathonData;
+      progress.lastSyncDate = '2026-10-30';
+      progress.quests[0].completed = 1;
+      progress.quests[0].percentage = 50;
+      progress.summary.completed = 1;
+      progress.summary.percentage = 50;
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect(f.state.characters[0].notes).toBe('ДРУГАЯ МЕСТНАЯ ПРАВКА');
+    expect(f.state.characters[0].marathonData.quests[0].completed).toBe(1);
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const sent = [...f.cloud.versions.values()].at(-1);
+    const payload = await decryptSnapshot({
+      envelope: sent,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.marathonData.summary.percentage).toBe(50);
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.notes).toBe('ДРУГАЯ МЕСТНАЯ ПРАВКА');
+    expect(JSON.stringify(sent)).not.toContain('ДРУГАЯ МЕСТНАЯ ПРАВКА');
+  }, 30_000);
+
   it('конфликт одного поля не меняет state, очередь и не создаёт marker', async () => {
     const f = await publicationFixture(provider);
     const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
@@ -1743,11 +1788,232 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     });
     const before = localStorage.getItem(STORAGE_KEY);
     const queue = structuredClone(f.fake.queue(provider));
-    expect(await mergePin(f, provider, remote)).toEqual({ status: 'conflicts', conflictCount: 1 });
+    expect(await mergePin(f, provider, remote)).toMatchObject({ status: 'conflicts', conflictCount: 1 });
     expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
     expect(f.fake.queue(provider)).toEqual(queue);
     expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
     expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it.each(['cloud', 'local'])(
+    'разрешает конфликт по явному выбору %s и сохраняет независимые правки',
+    async side => {
+      const f = await publicationFixture(provider);
+      const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+      const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+      f.state.characters[0].notes = 'КОНФЛИКТ ЛОКАЛЬНЫЙ';
+      f.state.characters[0].level = 32;
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      const remote = await mergeIncoming(f, provider, root, s => {
+        s.sections.characters.records[0].fields.notes = 'КОНФЛИКТ ОБЛАЧНЫЙ';
+        s.sections.characters.records[0].fields.favorite = true;
+      });
+      const pending = await mergePin(f, provider, remote);
+      expect(pending).toMatchObject({
+        status: 'conflicts',
+        conflictCount: 1,
+        reviewHash: expect.stringMatching(/^[0-9a-f]{64}$/)
+      });
+      expect(JSON.stringify(pending)).not.toContain('КОНФЛИКТ ЛОКАЛЬНЫЙ');
+      expect(JSON.stringify(pending)).not.toContain('КОНФЛИКТ ОБЛАЧНЫЙ');
+      const resolution = {
+        reviewHash: pending.reviewHash,
+        cloudRecords: side === 'cloud' ? [{ section: 'characters', id: f.state.characters[0].syncId }] : [],
+        cloudSettings: [],
+        cloudFinanceSettings: false
+      };
+      const outcome = await mergePin(f, provider, remote, { resolution });
+      expect(outcome.status).toBe('merged');
+      expect(f.state.characters[0]).toMatchObject({
+        notes: side === 'cloud' ? 'КОНФЛИКТ ОБЛАЧНЫЙ' : 'КОНФЛИКТ ЛОКАЛЬНЫЙ',
+        level: 32,
+        favorite: true
+      });
+      expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+      expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+      expect((await inspectMergeQueue(f, provider)).retainedIntents).toHaveLength(1);
+      expect((await f.queue()).status).toBe('queued');
+      expect((await f.send()).status).toBe('sent_verified');
+    },
+    30_000
+  );
+
+  it('выбирает источник отдельно для двух конфликтующих персонажей и финансовых настроек', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+        const second = structuredClone(f.state.characters[0]);
+        second.id = 'second';
+        second.nick = 'Второй персонаж';
+        delete second.syncId;
+        f.state.characters.push(second);
+        const { ui, ...snapshot } = f.state;
+        Object.assign(f.state, planSyncIdentities({ snapshot, cryptoSource: webcrypto }).snapshot);
+        await f.storage.saveNow();
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'ПЕРВОЕ МЕСТНОЕ';
+    f.state.characters[1].notes = 'ВТОРОЕ МЕСТНОЕ';
+    f.state.characters[1].level = 23;
+    f.state.finance.settings.goldRate = 2;
+    await f.storage.saveNow();
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.notes = 'ПЕРВОЕ ОБЛАЧНОЕ';
+      s.sections.characters.records[1].fields.notes = 'ВТОРОЕ ОБЛАЧНОЕ';
+      s.sections.characters.records[0].fields.favorite = true;
+      s.sections.finance.settings.goldRate = 3;
+    });
+    const pending = await mergePin(f, provider, remote);
+    expect(pending).toMatchObject({ status: 'conflicts', conflictCount: 3 });
+    const resolution = {
+      reviewHash: pending.reviewHash,
+      cloudRecords: [{ section: 'characters', id: f.state.characters[0].syncId }],
+      cloudSettings: [],
+      cloudFinanceSettings: true
+    };
+    expect((await mergePin(f, provider, remote, { resolution })).status).toBe('merged');
+    expect(f.state.characters[0]).toMatchObject({ notes: 'ПЕРВОЕ ОБЛАЧНОЕ', favorite: true });
+    expect(f.state.characters[1]).toMatchObject({ notes: 'ВТОРОЕ МЕСТНОЕ', level: 23 });
+    expect(f.state.finance.settings.goldRate).toBe(3);
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
+  it('не применяет выбор конфликтов после изменения локального состояния или очереди', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СНАЧАЛА ЛОКАЛЬНАЯ';
+    await f.storage.saveNow();
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.notes = 'ОБЛАЧНАЯ';
+    });
+    const pending = await mergePin(f, provider, remote);
+    expect(pending.status).toBe('conflicts');
+    const resolution = {
+      reviewHash: pending.reviewHash,
+      cloudRecords: [{ section: 'characters', id: f.state.characters[0].syncId }],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    f.state.characters[0].notes = 'УЖЕ ДРУГАЯ ЛОКАЛЬНАЯ';
+    await f.storage.saveNow();
+    const queueBefore = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote, { resolution })).status).toBe('conflicts_changed');
+    expect(f.state.characters[0].notes).toBe('УЖЕ ДРУГАЯ ЛОКАЛЬНАЯ');
+    expect(f.fake.queue(provider)).toEqual(queueBefore);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    const refreshed = await mergePin(f, provider, remote);
+    expect(refreshed.status).toBe('conflicts');
+    expect((await f.queue()).status).toBe('queued');
+    expect(
+      (await mergePin(f, provider, remote, { resolution: { ...resolution, reviewHash: refreshed.reviewHash } })).status
+    ).toBe('conflicts_changed');
+  }, 30_000);
+
+  it('не разрешает старый конфликт при новой облачной голове или при чужом выборе записи', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'МЕСТНАЯ';
+    await f.storage.saveNow();
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.notes = 'ОБЛАЧНАЯ';
+    });
+    const pending = await mergePin(f, provider, remote);
+    const resolution = {
+      reviewHash: pending.reviewHash,
+      cloudRecords: [{ section: 'characters', id: generateSyncId(webcrypto) }],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote, { resolution })).status).toBe('conflicts_changed');
+    expect(f.fake.queue(provider)).toEqual(before);
+    const child = await mergeIncoming(f, provider, remote, s => {
+      s.sections.characters.records[0].fields.favorite = true;
+    });
+    expect((await mergePin(f, provider, remote, { resolution: { ...resolution, cloudRecords: [] } })).status).toBe(
+      'not_unique_head'
+    );
+    expect(child.versionId).not.toBe(remote.versionId);
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+  }, 30_000);
+
+  it('подмена сохранённого выбора конфликта после потери ответа не позволяет продолжить', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'МЕСТНАЯ';
+    await f.storage.saveNow();
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.notes = 'ОБЛАЧНАЯ';
+    });
+    const pending = await mergePin(f, provider, remote);
+    const resolution = {
+      reviewHash: pending.reviewHash,
+      cloudRecords: [],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, remote, { resolution })).status).toBe('journal_uncertain');
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    state.settings.cloudSyncPendingMerge.resolution.cloudRecords = [
+      { section: 'characters', id: state.characters[0].syncId }
+    ];
+    const { saveNow } = await import('../js/core/storage.js');
+    await saveNow();
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote)).status).toBe('merge_intent_mismatch');
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(state.characters[0].notes).toBe('МЕСТНАЯ');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30_000);
+
+  it('после потери ответа продолжает решение конфликта с прежним выбором, а не меняет его', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СОХРАНИТЬ В МЕСТНОМ ВАРИАНТЕ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.notes = 'НЕ ВЫБИРАТЬ ОБЛАЧНОЕ';
+    });
+    const pending = await mergePin(f, provider, remote);
+    const resolution = {
+      reviewHash: pending.reviewHash,
+      cloudRecords: [],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, remote, { resolution })).status).toBe('journal_uncertain');
+    expect(f.state.settings.cloudSyncPendingMerge).toMatchObject({ version: 2, resolution });
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    expect(
+      (
+        await mergePin(f, provider, remote, {
+          resolution: { ...resolution, cloudRecords: [{ section: 'characters', id: state.characters[0].syncId }] }
+        })
+      ).status
+    ).toBe('merge_intent_mismatch');
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect(state.characters[0].notes).toBe('СОХРАНИТЬ В МЕСТНОМ ВАРИАНТЕ');
+    expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
   }, 30_000);
 
   it('сохраняет старое зашифрованное намерение очереди до подтверждения нового потомка', async () => {
@@ -1810,6 +2076,157 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect((await inspectMergeQueue(f, provider)).retainedIntents).toEqual([]);
     expect((await decodeFakeQueue(f, provider)).version).toBe(4);
   }, 30_000);
+
+  it('не меняет очередь и состояние, если не удалось создать копию перед объединением', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СОХРАНИТЬ ЛОКАЛЬНО';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 29;
+    });
+    const beforeState = localStorage.getItem(STORAGE_KEY);
+    const beforeQueue = structuredClone(f.fake.queue(provider));
+    const set = Storage.prototype.setItem;
+    const failBackup = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (String(key).startsWith('tvinoferma_backup_')) throw new Error('PRIVATE backup failure');
+      return set.call(this, key, value);
+    });
+    try {
+      const result = await mergePin(f, provider, remote);
+      expect(result.status).toBe('backup_unconfirmed_restart');
+      expect(localStorage.getItem(STORAGE_KEY)).toBe(beforeState);
+      expect(f.fake.queue(provider)).toEqual(beforeQueue);
+      expect(f.state.characters[0].notes).toBe('СОХРАНИТЬ ЛОКАЛЬНО');
+      expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+      expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    } finally {
+      failBackup.mockRestore();
+    }
+  }, 30_000);
+
+  it('после объединения сохраняет последующие локальные правки и исходное намерение до подтверждения', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СТАРАЯ ЛОКАЛЬНАЯ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const original = (await decodeFakeQueue(f, provider)).entries.at(-1);
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 41;
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    f.state.characters[0].notes = 'НОВАЯ ЛОКАЛЬНАЯ ПОСЛЕ ОБЪЕДИНЕНИЯ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    expect((await decodeFakeQueue(f, provider)).entries[0].retainedPending).toEqual([original]);
+    expect((await f.send()).status).toBe('sent_verified');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const sent = [...f.cloud.versions.values()].at(-1);
+    const payload = await decryptSnapshot({
+      envelope: sent,
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.parent).toEqual(remote);
+    expect(payload.publicSnapshot.sections.characters.records[0].fields).toMatchObject({
+      notes: 'НОВАЯ ЛОКАЛЬНАЯ ПОСЛЕ ОБЪЕДИНЕНИЯ',
+      level: 41
+    });
+    expect((await decodeFakeQueue(f, provider)).version).toBe(4);
+  }, 30_000);
+
+  it('после перезапуска читает очередь v5 и отправляет объединённые данные, не теряя прежнюю запись', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'СОХРАНИТЬ ПОСЛЕ ПЕРЕЗАПУСКА';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const original = (await decodeFakeQueue(f, provider)).entries.at(-1);
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 44;
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect((await decodeFakeQueue(f, provider)).entries[0].retainedPending).toEqual([original]);
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const { queueConnectedSavedSnapshot, sendConnectedQueuedSnapshot } =
+      await import('../js/modules/cloudSync/connectedPublication.js');
+    expect(
+      (
+        await queueConnectedSavedSnapshot({
+          provider,
+          invoke: f.fake.invoke,
+          prepareIdentities: true,
+          cryptoSource: webcrypto
+        })
+      ).status
+    ).toBe('queued');
+    expect(
+      (
+        await sendConnectedQueuedSnapshot({
+          provider,
+          invoke: f.fake.invoke,
+          openSession: f.cloud.openSession,
+          cryptoSource: webcrypto
+        })
+      ).status
+    ).toBe('sent_verified');
+    expect(state.characters[0]).toMatchObject({ notes: 'СОХРАНИТЬ ПОСЛЕ ПЕРЕЗАПУСКА', level: 44 });
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const payload = await decryptSnapshot({
+      envelope: [...f.cloud.versions.values()].at(-1),
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.parent).toEqual(remote);
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.notes).toBe('СОХРАНИТЬ ПОСЛЕ ПЕРЕЗАПУСКА');
+    expect((await decodeFakeQueue(f, provider)).version).toBe(4);
+  }, 30_000);
+
+  it('останавливается на 16 сохранённых намерениях, не уничтожая ни одно и не меняя state', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    let parent = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    for (let index = 0; index < 16; index++) {
+      f.state.characters[0].notes = `ЛОКАЛЬНАЯ ${index}`;
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      const next = await mergeIncoming(f, provider, parent, s => {
+        s.sections.characters.records[0].fields.level = 20 + index;
+      });
+      expect((await mergePin(f, provider, next)).status).toBe('merged');
+      parent = next;
+    }
+    const retained = (await decodeFakeQueue(f, provider)).entries[0].retainedPending;
+    expect(retained).toHaveLength(16);
+    f.state.characters[0].notes = 'СЕМНАДЦАТАЯ ЛОКАЛЬНАЯ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const next = await mergeIncoming(f, provider, parent, s => {
+      s.sections.characters.records[0].fields.level = 50;
+    });
+    const queue = structuredClone(f.fake.queue(provider));
+    const before = localStorage.getItem(STORAGE_KEY);
+    expect((await mergePin(f, provider, next)).status).toBe('retained_intent_limit');
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect((await decodeFakeQueue(f, provider)).entries[0].retainedPending).toEqual(retained);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 120_000);
 
   it('подтверждает прежнее намерение новым зашифрованным потомком даже при полном совпадении результата', async () => {
     const f = await publicationFixture(provider);
@@ -2087,6 +2504,54 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
       'Новый персонаж'
     ]);
     expect(payload.publicSnapshot.sections.characters.records[0].fields.notes).toBe('МЕСТНЫЙ ТЕКСТ');
+  }, 30_000);
+
+  it('после автономного добавления персонажей на обоих ПК сохраняет обе записи и отправляет результат', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const local = structuredClone(f.state.characters[0]);
+    local.id = 'LOCAL_NEW_CHARACTER';
+    local.nick = 'Добавлен на этом ПК';
+    delete local.syncId;
+    f.state.characters.push(local);
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const localId = f.state.characters[1].syncId;
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const added = structuredClone(s.sections.characters.records[0]);
+      added.id = generateSyncId(webcrypto);
+      added.fields.nick = 'Добавлен на другом ПК';
+      s.sections.characters.records.push(added);
+      s.sections.characters.order.active.push(added.id);
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect(f.state.characters.map(row => row.nick)).toEqual([
+      'ЛИЧНЫЙ ПЕРСОНАЖ',
+      'Добавлен на этом ПК',
+      'Добавлен на другом ПК'
+    ]);
+    expect(f.state.characters[1].syncId).toBe(localId);
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    expect(f.state.characters[2].contacts.password).not.toBe('PRIVATE_PASSWORD');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+    const { decryptSnapshot } = await import('../js/modules/cloudSync/envelope.js');
+    const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+    const payload = await decryptSnapshot({
+      envelope: [...f.cloud.versions.values()].at(-1),
+      recoveryKey: key.dataKey,
+      expectedDatasetId: key.datasetId,
+      cryptoSource: webcrypto
+    });
+    expect(payload.publicSnapshot.sections.characters.records.map(row => row.fields.nick)).toEqual([
+      'ЛИЧНЫЙ ПЕРСОНАЖ',
+      'Добавлен на этом ПК',
+      'Добавлен на другом ПК'
+    ]);
+    expect(payload.parent).toEqual(remote);
   }, 30_000);
 
   it('блокирует исчезновение и возвращение добавленной записи в промежуточной истории', async () => {

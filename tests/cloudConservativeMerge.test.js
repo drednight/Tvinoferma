@@ -6,6 +6,7 @@ import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { preparePublicSnapshotApply } from '../js/modules/cloudSync/applyPublicSnapshot.js';
 import { conservativeTransition, planConservativePublicMerge } from '../js/modules/cloudSync/conservativeMerge.js';
 import { generateSyncId } from '../js/modules/cloudSync/envelope.js';
+import { parseConservativeMergeChoices } from '../js/modules/cloudSync/conservativeMergeChoices.js';
 
 function fixture() {
   const { ui, ...state } = normalizeState({
@@ -62,6 +63,54 @@ describe('консервативное трёхстороннее объедин
     expect(candidate.characters[0].launch.gcPath).toBe('/local/private/path');
   });
 
+  it('объединяет прогресс сайта внутри существующего списка заданий с местной заметкой', () => {
+    const f = fixture();
+    f.localState.characters[0].marathonData = {
+      lastSyncDate: '2026-10-30',
+      quests: [{ title: 'Задание сайта', description: 'Пройти', completed: 0, total: 2, percentage: 0 }],
+      summary: { completed: 0, total: 2, percentage: 0 }
+    };
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.localState.characters[0].notes = 'МЕСТНАЯ НЕЗАВИСИМАЯ ЗАМЕТКА';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud = structuredClone(f.base);
+    const data = f.cloud.sections.characters.records[0].fields.marathonData;
+    data.quests[0].completed = 1;
+    data.quests[0].percentage = 50;
+    data.summary.completed = 1;
+    data.summary.percentage = 50;
+    expect(conservativeTransition(f.base, f.cloud)).toBe(true);
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(applied.characters[0].notes).toBe('МЕСТНАЯ НЕЗАВИСИМАЯ ЗАМЕТКА');
+    expect(applied.characters[0].marathonData.quests[0].completed).toBe(1);
+    expect(applied.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  });
+
+  it('не подменяет или удаляет элементы истории, а одновременные изменения массива считает конфликтом', () => {
+    const f = fixture();
+    const field = f.base.sections.characters.records[0].fields;
+    field.coinHistory = [{ id: 'entry1', date: '2026-10-29', delta: 2 }];
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.characters.records[0].fields.coinHistory[0].delta = 3;
+    expect(conservativeTransition(f.base, f.cloud)).toBe(true);
+    f.local.sections.characters.records[0].fields.coinHistory[0].delta = 4;
+    expect(merge(f).status).toBe('conflicts');
+    f.cloud.sections.characters.records[0].fields.coinHistory[0].id = 'different';
+    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+    f.cloud.sections.characters.records[0].fields.coinHistory = [];
+    expect(conservativeTransition(f.base, f.cloud)).toBe(false);
+  });
+
   it('сообщает конфликт при разных правках одного поля; значения в описании не выдаёт', () => {
     const f = fixture();
     f.local.sections.characters.records[0].fields.notes = 'ЛИЧНЫЙ ЛОКАЛЬНЫЙ ТЕКСТ';
@@ -72,6 +121,70 @@ describe('консервативное трёхстороннее объедин
     expect(JSON.stringify(result)).not.toContain('ЛИЧНЫЙ ЛОКАЛЬНЫЙ ТЕКСТ');
     expect(JSON.stringify(result)).not.toContain('ЛИЧНЫЙ ОБЛАЧНЫЙ ТЕКСТ');
     expect(result.snapshot).toBeUndefined();
+  });
+
+  it('по явному выбору решает конфликтующие поля, сохраняя независимые изменения обеих сторон', () => {
+    const f = fixture();
+    const id = f.base.sections.characters.records[0].id;
+    f.local.sections.characters.records[0].fields.notes = 'МЕСТНАЯ';
+    f.local.sections.characters.records[0].fields.level = 33;
+    f.cloud.sections.characters.records[0].fields.notes = 'ОБЛАЧНАЯ';
+    f.cloud.sections.characters.records[0].fields.ancientCoins = 42;
+    const choices = { reviewHash: 'a'.repeat(64), cloudRecords: [], cloudSettings: [], cloudFinanceSettings: false };
+    expect(merge(f).status).toBe('conflicts');
+    const localWins = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: choices
+    });
+    expect(localWins.status).toBe('prepared');
+    expect(localWins.snapshot().sections.characters.records[0].fields).toMatchObject({
+      notes: 'МЕСТНАЯ',
+      level: 33,
+      ancientCoins: 42
+    });
+    const cloudWins = planConservativePublicMerge({
+      base: f.base,
+      local: f.local,
+      cloud: f.cloud,
+      resolution: { ...choices, cloudRecords: [{ section: 'characters', id }] }
+    });
+    expect(cloudWins.status).toBe('prepared');
+    expect(cloudWins.snapshot().sections.characters.records[0].fields).toMatchObject({
+      notes: 'ОБЛАЧНАЯ',
+      level: 33,
+      ancientCoins: 42
+    });
+    expect(cloudWins.selectedRecords()).toEqual([{ section: 'characters', id }]);
+  });
+
+  it('конфликты финансовых настроек разрешает отдельно, некорректный выбор отклоняет', () => {
+    const f = fixture();
+    f.local.sections.finance.settings.goldRate = 2;
+    f.cloud.sections.finance.settings.goldRate = 3;
+    const choices = { reviewHash: 'b'.repeat(64), cloudRecords: [], cloudSettings: [], cloudFinanceSettings: true };
+    expect(merge(f).status).toBe('conflicts');
+    const plan = planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, resolution: choices });
+    expect(plan.status).toBe('prepared');
+    expect(plan.snapshot().sections.finance.settings.goldRate).toBe(3);
+    expect(plan.includeFinanceSettings).toBe(true);
+    expect(() =>
+      planConservativePublicMerge({
+        base: f.base,
+        local: f.local,
+        cloud: f.cloud,
+        resolution: { ...choices, reviewHash: 'bad' }
+      })
+    ).toThrow();
+    expect(() =>
+      planConservativePublicMerge({
+        base: f.base,
+        local: f.local,
+        cloud: f.cloud,
+        resolution: { ...choices, cloudSettings: ['unknown'] }
+      })
+    ).toThrow();
   });
 
   it('не принимает решение по updatedAt при разных изменениях обеих сторон', () => {
@@ -197,22 +310,45 @@ describe('консервативное трёхстороннее объедин
     expect(result.snapshot().sections.characters.records[0].fields.level).toBe(24);
   });
 
-  it('не угадывает порядок одновременных разных добавлений и не принимает вставку в середину', () => {
+  it('сохраняет оба независимых добавления в конец и их относительный порядок', () => {
     const f = fixture();
+    const ids = [];
     for (const snapshot of [f.local, f.cloud]) {
       const added = structuredClone(snapshot.sections.characters.records[0]);
       added.id = generateSyncId(webcrypto);
+      ids.push(added.id);
       snapshot.sections.characters.records.push(added);
       snapshot.sections.characters.order.active.push(added.id);
     }
     const result = merge(f);
+    expect(result.status).toBe('prepared');
+    expect(result.snapshot().sections.characters.order.active).toEqual([
+      ...f.base.sections.characters.order.active,
+      ...ids
+    ]);
+    expect(result.selectedRecords()).toEqual([{ section: 'characters', id: ids[1] }]);
+  });
+
+  it('не угадывает противоречивый порядок общих добавлений и не принимает вставку в середину', () => {
+    const f = fixture();
+    const added = [0, 1].map(() => {
+      const record = structuredClone(f.base.sections.characters.records[0]);
+      record.id = generateSyncId(webcrypto);
+      return record;
+    });
+    for (const snapshot of [f.local, f.cloud]) {
+      snapshot.sections.characters.records.push(...structuredClone(added));
+    }
+    f.local.sections.characters.order.active.push(...added.map(record => record.id));
+    f.cloud.sections.characters.order.active.push(...added.map(record => record.id).reverse());
+    const result = merge(f);
     expect(result.status).toBe('conflicts');
-    expect(result.conflicts.some(item => item.section === 'characters')).toBe(true);
+    expect(result.conflicts.some(item => item.reason === 'concurrent-order')).toBe(true);
     const g = fixture();
     const newId = generateSyncId(webcrypto);
-    const added = structuredClone(g.cloud.sections.characters.records[0]);
-    added.id = newId;
-    g.cloud.sections.characters.records.unshift(added);
+    const inserted = structuredClone(g.cloud.sections.characters.records[0]);
+    inserted.id = newId;
+    g.cloud.sections.characters.records.unshift(inserted);
     g.cloud.sections.characters.order.active.unshift(newId);
     expect(merge(g).status).toBe('structure_or_deletion_unsupported');
   });
@@ -230,6 +366,25 @@ describe('консервативное трёхстороннее объедин
     const conflicted = merge(f);
     expect(conflicted.status).toBe('conflicts');
     expect(conflicted.conflicts.some(item => item.reason === 'concurrent-create')).toBe(true);
+  });
+
+  it('отклоняет опасные ключи и повторный выбор конфликтующей записи', () => {
+    const id = generateSyncId(webcrypto);
+    const polluted = JSON.parse(
+      `{"reviewHash":"${'a'.repeat(64)}","cloudRecords":[{"section":"characters","id":"${id}","__proto__":{"polluted":true}}],"cloudSettings":[],"cloudFinanceSettings":false}`
+    );
+    expect(() => parseConservativeMergeChoices(polluted)).toThrow();
+    expect({}.polluted).toBeUndefined();
+    const repeated = {
+      reviewHash: 'a'.repeat(64),
+      cloudRecords: [
+        { section: 'characters', id },
+        { section: 'characters', id }
+      ],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    expect(() => parseConservativeMergeChoices(repeated)).toThrow();
   });
 
   it('новый облачный шаблон марафона не применяется автоматически', () => {

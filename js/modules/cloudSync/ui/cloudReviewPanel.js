@@ -72,7 +72,8 @@ const MESSAGES = Object.freeze({
   state_changed_after_queue: 'Локальные данные изменились во время согласования. Отметка state не снята.',
   accepted_base_mismatch: 'Принятая основа не совпадает с локальной отметкой. Отправка остановлена.',
   journal_uncertain: 'Запись локальной очереди не подтверждена. Проверьте данные и очередь после перезапуска.',
-  conflicts: 'Есть конфликтующие правки одного поля. Автоматически объединить их нельзя; данные не перезаписаны.',
+  conflicts: 'Есть конфликтующие правки одного поля. Выберите вариант для каждой записи; данные пока не изменены.',
+  conflicts_changed: 'Локальные данные, очередь или конфликт изменились после просмотра. Проверьте и выберите заново.',
   incoming_section_unsupported:
     'Изменились шаблоны марафонов, которые это объединение пока не поддерживает. Данные не перезаписаны.',
   structure_or_deletion_unsupported:
@@ -183,6 +184,9 @@ export function bindCloudReviewPanel(options) {
   const apply = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-apply'));
   const accept = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-reconcile'));
   const mergeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge'));
+  const conflictBox = /** @type {HTMLElement|null} */ (doc.getElementById('cloud-review-conflicts'));
+  const conflictList = doc.getElementById('cloud-review-conflict-list');
+  const resolveButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-resolve'));
   const pendingBox = /** @type {HTMLElement|null} */ (doc.getElementById('cloud-review-merge-pending'));
   const pendingMessage = doc.getElementById('cloud-review-merge-pending-message');
   const resumeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge-resume'));
@@ -204,6 +208,9 @@ export function bindCloudReviewPanel(options) {
     !apply ||
     !accept ||
     !mergeButton ||
+    !conflictBox ||
+    !conflictList ||
+    !resolveButton ||
     !pendingBox ||
     !pendingMessage ||
     !resumeButton ||
@@ -232,6 +239,7 @@ export function bindCloudReviewPanel(options) {
   let previewOnly = false;
   let selected = null;
   let choices = [];
+  let conflictReview = null;
   let pendingMerge = null;
   let malformedMerge = false;
   function refreshPending() {
@@ -266,12 +274,19 @@ export function bindCloudReviewPanel(options) {
     apply.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
     accept.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
     mergeButton.disabled = value || previewOnly || !!pendingMerge || malformedMerge;
+    resolveButton.disabled = value || previewOnly || !!pendingMerge || malformedMerge || !conflictReview;
     resumeButton.disabled = !options.desktop || value || !pendingMerge || pendingMerge.provider !== provider.value;
     cancelMergeButton.disabled = !options.desktop || value || !pendingMerge || pendingMerge.provider !== provider.value;
     for (const box of settingBoxes) box.disabled = value;
     for (const box of choiceBoxes()) box.disabled = value || box.dataset.locked === 'true';
   }
+  function clearConflictReview() {
+    conflictReview = null;
+    conflictBox.hidden = true;
+    conflictList.replaceChildren();
+  }
   function clearView() {
+    clearConflictReview();
     review = null;
     previewOnly = false;
     selected = null;
@@ -354,6 +369,7 @@ export function bindCloudReviewPanel(options) {
     }
   }
   function showComparison() {
+    clearConflictReview();
     list.replaceChildren();
     choices = [];
     selected = null;
@@ -440,9 +456,68 @@ export function bindCloudReviewPanel(options) {
   }
   function checkedChoices() {
     return choiceBoxes()
-      .filter(box => box.checked && !box.disabled)
+      .filter(box => box.checked && box.dataset.locked !== 'true')
       .map(box => choices[Number(box.dataset.selectionIndex)])
       .filter(Boolean);
+  }
+  function choiceMatchesConflict(choice, conflict) {
+    if (conflict.reason === 'concurrent-order') return false;
+    if (conflict.section === 'preferences') return choice.kind === 'settings' && choice.group === conflict.id;
+    if (conflict.section === 'finance' && !conflict.id) return choice.kind === 'finance';
+    return choice.kind === 'record' && choice.section === conflict.section && choice.id === conflict.id;
+  }
+  function showConflictReview(outcome) {
+    clearConflictReview();
+    if (
+      !selected ||
+      typeof outcome.reviewHash !== 'string' ||
+      !/^[0-9a-f]{64}(?![\s\S])/.test(outcome.reviewHash) ||
+      !Array.isArray(outcome.conflicts) ||
+      !outcome.conflicts.length ||
+      outcome.conflicts.length > MAX_SHOWN_ENTRIES ||
+      outcome.conflicts.some(
+        row =>
+          !row ||
+          !Array.isArray(row.path) ||
+          row.path.some(part => typeof part !== 'string') ||
+          !choices.some(choice => choiceMatchesConflict(choice, row))
+      )
+    )
+      return false;
+    conflictReview = { reviewHash: outcome.reviewHash, conflicts: structuredClone(outcome.conflicts) };
+    for (const conflict of conflictReview.conflicts) {
+      const entry = selected.differences.entries.find(row =>
+        conflict.section === 'preferences'
+          ? row.section === 'preferences' && row.group === conflict.id
+          : conflict.section === 'finance' && !conflict.id
+            ? row.section === 'finance' && row.kind === 'settings_changed'
+            : row.section === conflict.section && row.id === conflict.id
+      );
+      if (!entry) {
+        clearConflictReview();
+        return false;
+      }
+      const li = doc.createElement('li');
+      const name = entry.label || (entry.group && GROUPS[entry.group]) || '';
+      li.textContent = `${LABELS[conflict.section] || 'Данные'}${name ? ` · ${name}` : ''}: ${conflict.path.join(' › ') || 'запись целиком'}`;
+      conflictList.append(li);
+    }
+    conflictBox.hidden = false;
+    return true;
+  }
+  function conflictResolution(reviewed) {
+    const selectedChoices = checkedChoices();
+    const relevant = selectedChoices.filter(choice =>
+      reviewed.conflicts.some(row => choiceMatchesConflict(choice, row))
+    );
+    return {
+      reviewHash: reviewed.reviewHash,
+      cloudRecords: relevant.filter(choice => choice.kind === 'record').map(({ section, id }) => ({ section, id })),
+      cloudSettings: settingBoxes
+        .filter(box => relevant.some(choice => choice.kind === 'settings' && choice.group === box.value))
+        .map(box => box.value),
+      cloudFinanceSettings: relevant.some(choice => choice.kind === 'finance')
+    };
   }
   async function applySelection() {
     if (previewOnly) {
@@ -479,7 +554,7 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Это действие не объединяет изменения; разрешения конфликтов пока нет. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
+        `Применить выбранные записи и настройки (${chosen.length})? Их облачные поля заменят местные значения целиком, в том числе неотправленные локальные правки. Это действие не объединяет изменения и не разрешает конфликты; для объединения есть отдельная кнопка. Будет создана копия локального файла. Контакты и пароли не переносятся. Отправка блокируется до согласования; полное совпадение с одной облачной версией можно подтвердить отдельно.`
       );
     } catch {
       approved = false;
@@ -517,7 +592,7 @@ export function bindCloudReviewPanel(options) {
       setBusy(false);
     }
   }
-  async function runMerge(resume) {
+  async function runMerge(resume, resolveConflicts = false) {
     refreshPending();
     if (!options.desktop || active || malformedMerge) return;
     if (
@@ -528,19 +603,25 @@ export function bindCloudReviewPanel(options) {
       return;
     const originalReview = review;
     const originalSelection = selected;
+    const conflictSnapshot = resolveConflicts ? conflictReview : null;
+    if (resolveConflicts && !conflictSnapshot) return;
+    const resolution = conflictSnapshot ? conflictResolution(conflictSnapshot) : null;
     const originalProvider = provider.value;
     const intent = resume ? pendingMerge : null;
     const pin = resume ? intent.targetPin : originalSelection.pin;
     const settingsSelections = resume
       ? [...intent.settingsSelections]
       : settingBoxes.filter(box => box.checked).map(box => box.value);
+    if (!resume && !resolveConflicts) clearConflictReview();
     setBusy(true);
     let approved;
     try {
       approved = await askConfirmation(
         resume
           ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
-          : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец и выбранные настройки, кроме шаблонов марафонов. Изменение прежнего порядка, удаления и конфликты останавливают операцию. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
+          : resolveConflicts
+            ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
+            : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец и выбранные настройки, кроме шаблонов марафонов. Изменение прежнего порядка, удаления и конфликты останавливают операцию. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
       );
     } catch {
       approved = false;
@@ -549,6 +630,9 @@ export function bindCloudReviewPanel(options) {
     if (
       !approved ||
       provider.value !== originalProvider ||
+      (resolveConflicts &&
+        (conflictReview !== conflictSnapshot ||
+          JSON.stringify(conflictResolution(conflictSnapshot)) !== JSON.stringify(resolution))) ||
       (resume
         ? !pendingMerge || pendingMerge.operationId !== intent.operationId
         : review !== originalReview || selected !== originalSelection || !!pendingMerge || malformedMerge)
@@ -570,6 +654,7 @@ export function bindCloudReviewPanel(options) {
           pin,
           confirmed: true,
           settingsSelections,
+          ...(resolution ? { resolution } : {}),
           signal: current.signal
         })
       );
@@ -597,10 +682,17 @@ export function bindCloudReviewPanel(options) {
           outcome.status === 'conflicts' && Number.isSafeInteger(outcome.conflictCount)
             ? ` Конфликтов: ${outcome.conflictCount}.`
             : '';
-        note(
-          (MESSAGES[outcome.status] || 'Объединение не подтверждено. Проверьте данные и резервные копии.') +
-            conflictCount
-        );
+        if (outcome.status === 'conflicts') {
+          if (!showConflictReview(outcome))
+            note('Конфликт нельзя безопасно разрешить этим выбором. Данные не изменены.' + conflictCount);
+          else note(MESSAGES.conflicts + conflictCount);
+        } else {
+          if (outcome.status === 'conflicts_changed') clearConflictReview();
+          note(
+            (MESSAGES[outcome.status] || 'Объединение не подтверждено. Проверьте данные и резервные копии.') +
+              conflictCount
+          );
+        }
       }
     } catch {
       record(originalProvider, 'merge', 'uncertain');
@@ -613,6 +705,9 @@ export function bindCloudReviewPanel(options) {
   }
   mergeButton.addEventListener('click', () => {
     void runMerge(false);
+  });
+  resolveButton.addEventListener('click', () => {
+    void runMerge(false, true);
   });
   resumeButton.addEventListener('click', () => {
     void runMerge(true);

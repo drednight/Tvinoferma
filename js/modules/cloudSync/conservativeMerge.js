@@ -7,6 +7,7 @@ import { object } from './exportSchema.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { mergeRecord } from './mergeRecord.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
+import { parseConservativeMergeChoices } from './conservativeMergeChoices.js';
 
 const SECTIONS = ['characters', 'parties', 'marathons', 'planner', 'finance'];
 const MAX_CONFLICTS = 1000;
@@ -35,12 +36,22 @@ function equal(left, right) {
   );
 }
 
-// Без явного протокола удаления не считаем исчезновение ключей или элементов
-// массива обычной правкой. Массив допускает только добавление в конец; изменения
-// его прежних элементов остаются для отдельного согласования.
+// Без отдельного протокола удаления не считаем исчезновение ключей или элементов
+// массива обычной правкой. Прежние объекты можно изменять, но не удалять или
+// незаметно заменять другую запись с явной идентичностью; сам массив при слиянии
+// остаётся единым полем и одновременные разные правки вызывают конфликт.
 function retains(base, next) {
   if (Array.isArray(base)) {
-    return Array.isArray(next) && base.length <= next.length && base.every((item, index) => equal(item, next[index]));
+    if (!Array.isArray(next) || base.length > next.length) return false;
+    return base.every((item, index) => {
+      const following = next[index];
+      if (!plain(item) || !plain(following)) return equal(item, following);
+      // Stable nested IDs cover tasks/rewards/bonuses. For anonymous history and
+      // site progress, a known identity/date/title must not change position.
+      const anchor = ['id', 'at', 'date', 'title'].find(key => Object.hasOwn(item, key));
+      if (anchor && (!Object.hasOwn(following, anchor) || !equal(item[anchor], following[anchor]))) return false;
+      return retains(item, following);
+    });
   }
   if (plain(base)) {
     return plain(next) && Object.keys(base).every(key => Object.hasOwn(next, key) && retains(base[key], next[key]));
@@ -58,6 +69,34 @@ function appendedOrders(base, next) {
     plain(next) &&
     Object.keys(base).every(key => Object.hasOwn(next, key) && appendedOrders(base[key], next[key]))
   );
+}
+// Both inputs have already passed appendedOrders: preserve the existing order
+// and each side's new relative order. A shared prefix is unambiguous; further
+// overlapping additions may impose contradictory ordering and must be reviewed.
+function mergeAppendedOrder(base, local, cloud, conflicts, section, path = []) {
+  if (Array.isArray(base)) {
+    if (equal(local, cloud)) return structuredClone(local);
+    if (equal(base, local)) return structuredClone(cloud);
+    if (equal(base, cloud)) return structuredClone(local);
+    const left = local.slice(base.length);
+    const right = cloud.slice(base.length);
+    let common = 0;
+    while (common < left.length && common < right.length && left[common] === right[common]) common++;
+    const rest = new Set(left.slice(common));
+    if (right.slice(common).some(id => rest.has(id))) {
+      if (conflicts.length >= MAX_CONFLICTS) throw invalid();
+      conflicts.push({ section, path, reason: 'concurrent-order' });
+      return null;
+    }
+    return [...base, ...left, ...right.slice(common)];
+  }
+  const result = {};
+  for (const key of Object.keys(base)) {
+    const merged = mergeAppendedOrder(base[key], local[key], cloud[key], conflicts, section, [...path, key]);
+    if (!merged) return null;
+    result[key] = merged;
+  }
+  return result;
 }
 function records(snapshot, section) {
   return new Map(snapshot.sections[section].records.map(record => [record.id, record]));
@@ -93,12 +132,38 @@ export function conservativeTransition(previous, next) {
   return noRemovedValues(previous, next);
 }
 
-function mergeFields(base, local, cloud, conflicts, section, id = null) {
-  const answer = mergeRecord({
-    base: { deleted: false, fields: base },
-    local: { deleted: false, fields: local },
-    remote: { deleted: false, fields: cloud }
-  });
+function setConflictValue(root, path, side) {
+  if (!path.length) throw invalid();
+  let target = root;
+  for (const key of path.slice(0, -1)) {
+    if (!plain(target) || !Object.hasOwn(target, key)) throw invalid();
+    target = target[key];
+  }
+  if (!plain(target)) throw invalid();
+  const key = path.at(-1);
+  if (side.present) target[key] = structuredClone(side.value);
+  else delete target[key];
+}
+function choiceUsesCloud(choices, section, id) {
+  if (section === 'preferences') return choices.cloudSettings.includes(id);
+  if (section === 'finance' && !id) return choices.cloudFinanceSettings;
+  return choices.cloudRecords.some(row => row.section === section && row.id === id);
+}
+function mergeFields(base, local, cloud, conflicts, section, id = null, choices = null) {
+  const wrap = fields => ({ deleted: false, fields });
+  const answer = mergeRecord({ base: wrap(base), local: wrap(local), remote: wrap(cloud) });
+  if (answer.conflicts.length && choices) {
+    const left = structuredClone(local);
+    const right = structuredClone(cloud);
+    const useCloud = choiceUsesCloud(choices, section, id);
+    for (const conflict of answer.conflicts)
+      setConflictValue(useCloud ? left : right, conflict.path, useCloud ? conflict.remote : conflict.local);
+    // Re-run the same three-way merger; independent changes must survive and
+    // an unexpected residual ambiguity must still stop the operation.
+    const resolved = mergeRecord({ base: wrap(base), local: wrap(left), remote: wrap(right) });
+    if (resolved.conflicts.length || !resolved.record) throw invalid();
+    return resolved.record.fields;
+  }
   for (const conflict of answer.conflicts) {
     if (conflicts.length >= MAX_CONFLICTS) throw invalid();
     // Только описания, без значений. Даже ID/пути не следует журналировать.
@@ -111,10 +176,11 @@ function mergeFields(base, local, cloud, conflicts, section, id = null) {
  * Объединяет существующие записи и ограниченные добавления в конец порядка,
  * без исчезновений и одновременных несовместимых правок. Шаблоны марафонов
  * с локальными вложенными ID пока не поддерживаются.
- * @param {{base:any,local:any,cloud:any}} options
+ * @param {{base:any,local:any,cloud:any,resolution?:any}} options
  */
 export function planConservativePublicMerge(options) {
-  const input = object(options, ['base', 'local', 'cloud']);
+  const input = object(options, ['base', 'local', 'cloud'], ['resolution']);
+  const choices = input.resolution ? parseConservativeMergeChoices(input.resolution) : null;
   const base = structuredClone(input.base);
   const local = structuredClone(input.local);
   const cloud = structuredClone(input.cloud);
@@ -132,14 +198,14 @@ export function planConservativePublicMerge(options) {
     const baseRecords = records(base, section);
     const localRecords = records(local, section);
     const cloudRecords = records(cloud, section);
-    const order = mergeFields(
-      { value: base.sections[section].order },
-      { value: local.sections[section].order },
-      { value: cloud.sections[section].order },
+    const order = mergeAppendedOrder(
+      base.sections[section].order,
+      local.sections[section].order,
+      cloud.sections[section].order,
       conflicts,
       section
     );
-    if (order) merged.sections[section].order = order.value;
+    if (order) merged.sections[section].order = order;
     for (const target of merged.sections[section].records) {
       const original = baseRecords.get(target.id);
       const here = localRecords.get(target.id);
@@ -148,8 +214,16 @@ export function planConservativePublicMerge(options) {
         // The same new sync-ID may only be accepted automatically if its entire
         // record is identical. Otherwise neither creation wins by timestamp.
         if (there && !equal(here, there)) {
-          if (conflicts.length >= MAX_CONFLICTS) throw invalid();
-          conflicts.push({ section, id: target.id, path: [], reason: 'concurrent-create' });
+          if (choices) {
+            if (choiceUsesCloud(choices, section, target.id)) {
+              if (section === 'marathons' && target.type === 'marathonTemplate') unsupported = true;
+              Object.assign(target, structuredClone(there));
+              chosen.push({ section, id: target.id });
+            }
+          } else {
+            if (conflicts.length >= MAX_CONFLICTS) throw invalid();
+            conflicts.push({ section, id: target.id, path: [], reason: 'concurrent-create' });
+          }
         }
         continue;
       }
@@ -163,7 +237,7 @@ export function planConservativePublicMerge(options) {
         fields: there.fields,
         ...(Object.hasOwn(there, 'archived') ? { archived: there.archived } : {})
       };
-      const result = mergeFields(before, current, incoming, conflicts, section, target.id);
+      const result = mergeFields(before, current, incoming, conflicts, section, target.id, choices);
       if (!result) continue;
       target.fields = result.fields;
       if (Object.hasOwn(target, 'archived')) target.archived = result.archived;
@@ -185,7 +259,9 @@ export function planConservativePublicMerge(options) {
     local.sections.finance.settings,
     cloud.sections.finance.settings,
     conflicts,
-    'finance'
+    'finance',
+    null,
+    choices
   );
   if (finance) merged.sections.finance.settings = finance;
   const includeFinanceSettings = !!finance && !equal(finance, local.sections.finance.settings);
@@ -196,7 +272,8 @@ export function planConservativePublicMerge(options) {
       cloud.sections.preferences.values[group],
       conflicts,
       'preferences',
-      group
+      group,
+      choices
     );
     if (!result) continue;
     merged.sections.preferences.values[group] = result;

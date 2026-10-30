@@ -176,7 +176,7 @@ describe('интерфейс проверенного сравнения', () =>
     click('cloud-review-apply');
     await vi.waitFor(() => expect(f.cancel).toHaveBeenCalledOnce());
     expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('неотправленные локальные правки'));
-    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('разрешения конфликтов пока нет'));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('не разрешает конфликты'));
     expect(f.commit).not.toHaveBeenCalled();
     expect(el('cloud-review-status').textContent).toContain('отменено');
     const event = vi.fn();
@@ -380,6 +380,79 @@ describe('интерфейс ограниченного объединения',
     click('cloud-review-merge');
     await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('Конфликтов: 2'));
     expect(el('cloud-review-result').hidden).toBe(false);
+  });
+
+  it.each([true, false])('после показа конфликта явно использует выбранную сторону записи: облако=%s', async cloud => {
+    const conflict = { section: 'planner', id: ids.changed, path: ['fields', 'title'], reason: 'field' };
+    const merge = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'conflicts',
+        conflictCount: 1,
+        reviewHash: 'b'.repeat(64),
+        conflicts: [conflict]
+      })
+      .mockResolvedValueOnce({ status: 'merged', backup: 'backup.json', newerHeadObserved: false });
+    const f = setup({ check: vi.fn(async () => mergeableReview()), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(el('cloud-review-conflicts').hidden).toBe(false));
+    expect(el('cloud-review-conflict-list').textContent).toContain('Задача');
+    expect(el('cloud-review-conflict-list').textContent).toContain('title');
+    el('cloud-review-list').querySelector('input').checked = cloud;
+    click('cloud-review-resolve');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledTimes(2));
+    expect(f.confirm).toHaveBeenLastCalledWith(expect.stringContaining('в неотмеченных остаются местные'));
+    expect(merge.mock.calls[1][0].resolution).toEqual({
+      reviewHash: 'b'.repeat(64),
+      cloudRecords: cloud ? [{ section: 'planner', id: ids.changed }] : [],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    });
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('объединены'));
+    expect(el('cloud-review-conflicts').hidden).toBe(true);
+  });
+
+  it('не разрешает неподдерживаемый конфликт порядка и устаревший показ очищает', async () => {
+    const merge = vi.fn().mockResolvedValueOnce({
+      status: 'conflicts',
+      conflictCount: 1,
+      reviewHash: 'c'.repeat(64),
+      conflicts: [{ section: 'planner', path: ['order'], reason: 'concurrent-order' }]
+    });
+    setup({ check: vi.fn(async () => mergeableReview()), merge });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('нельзя безопасно разрешить'));
+    expect(el('cloud-review-conflicts').hidden).toBe(true);
+    click('cloud-review-resolve');
+    expect(merge).toHaveBeenCalledTimes(1);
+  });
+
+  it('не отправляет изменённый выбор, пока открыто подтверждение разрешения конфликтов', async () => {
+    const conflict = { section: 'planner', id: ids.changed, path: ['fields', 'title'], reason: 'field' };
+    const merge = vi.fn(async () => ({
+      status: 'conflicts',
+      conflictCount: 1,
+      reviewHash: 'd'.repeat(64),
+      conflicts: [conflict]
+    }));
+    let release;
+    const wait = new Promise(resolve => {
+      release = resolve;
+    });
+    const confirm = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(wait);
+    setup({ check: vi.fn(async () => mergeableReview()), merge, confirm });
+    await openComparison();
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(el('cloud-review-conflicts').hidden).toBe(false));
+    const box = el('cloud-review-list').querySelector('input');
+    box.checked = true;
+    click('cloud-review-resolve');
+    box.checked = false; // Даже внешний скрипт во время окна не должен подменить выбор.
+    release(true);
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('отменено'));
+    expect(merge).toHaveBeenCalledTimes(1);
   });
 
   it('после перезапуска показывает намерение и продолжает с сохранёнными настройками, а не с текущими галочками', async () => {

@@ -239,8 +239,10 @@ export async function prepareCloudReview(options) {
        * @param {{versionId:string,sha256:string}} basePin
        * @param {any} settings
        * @param {boolean} [allowDescendantHead] only when resuming an already saved intent
+       * @param {any} [resolution] explicit conflict choices, never inferred from dates
        */
-      prepareConservativeAdoption(selectedPin, basePin, settings, allowDescendantHead = false) {
+      prepareConservativeAdoption(selectedPin, basePin, settings, allowDescendantHead = false, resolution) {
+        const selectedResolution = resolution ? structuredClone(resolution) : null;
         const selected = pin(selectedPin);
         const base = pin(basePin);
         const head = history.observedHeads();
@@ -279,7 +281,8 @@ export async function prepareCloudReview(options) {
         const plan = planConservativePublicMerge({
           base: history.publicSnapshot(lineage[baseIndex]),
           local,
-          cloud: history.publicSnapshot(current)
+          cloud: history.publicSnapshot(current),
+          ...(selectedResolution ? { resolution: selectedResolution } : {})
         });
         if (plan.status !== 'prepared') return plan;
         const found = envelopes.find(envelope => envelope.versionId === current.versionId);
@@ -294,6 +297,7 @@ export async function prepareCloudReview(options) {
           lineage: Object.freeze(lineage.map(value => Object.freeze({ ...value }))),
           envelope: Object.freeze({ ...found }),
           localSnapshot: () => structuredClone(local),
+          resolution: () => (selectedResolution ? structuredClone(selectedResolution) : null),
           plan: () => plan
         });
         verifiedConservativeAdoptions.add(proof);

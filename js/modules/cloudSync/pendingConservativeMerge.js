@@ -4,6 +4,7 @@
 import { isSyncId } from './envelope.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { PORTABLE_SETTING_GROUPS } from './settingsExport.js';
+import { parseConservativeMergeChoices } from './conservativeMergeChoices.js';
 
 const KEY = 'cloudSyncPendingMerge';
 const HEX = /^[0-9a-f]{64}$/;
@@ -29,6 +30,7 @@ function base(value) {
   return clean;
 }
 function marker(value) {
+  const version = value?.version;
   const item = object(value, [
     'version',
     'operationId',
@@ -43,7 +45,8 @@ function marker(value) {
     'retainedIntents',
     'settingsSelections',
     'localHash',
-    'mergedHash'
+    'mergedHash',
+    ...(version === 2 ? ['resolution'] : [])
   ]);
   const basePin = pin(item.basePin);
   const targetPin = pin(item.targetPin);
@@ -61,7 +64,7 @@ function marker(value) {
   )
     throw invalid();
   if (
-    item.version !== 1 ||
+    ![1, 2].includes(item.version) ||
     !isSyncId(item.operationId) ||
     !['google', 'yandex'].includes(item.provider) ||
     !isSyncId(item.datasetId) ||
@@ -79,7 +82,7 @@ function marker(value) {
   )
     throw invalid();
   return {
-    version: 1,
+    version: item.version,
     operationId: item.operationId,
     provider: item.provider,
     datasetId: item.datasetId,
@@ -92,7 +95,8 @@ function marker(value) {
     retainedIntents,
     settingsSelections: [...item.settingsSelections],
     localHash: item.localHash,
-    mergedHash: item.mergedHash
+    mergedHash: item.mergedHash,
+    ...(item.version === 2 ? { resolution: parseConservativeMergeChoices(item.resolution) } : {})
   };
 }
 function settingsObject(settings) {

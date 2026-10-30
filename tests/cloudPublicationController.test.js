@@ -98,6 +98,25 @@ describe('экспериментальный планировщик отправ
     expect(f.send).toHaveBeenCalledTimes(1);
   });
 
+  it('после объединения запускает сохранённую очередь только при включённой автоотправке', async () => {
+    const f = setup();
+    event('tf-cloud-startup-check');
+    event('tf-cloud-reconciled');
+    await advance(1500);
+    expect(f.queue).not.toHaveBeenCalled();
+    f.controller.enable('yandex');
+    await advance(1500);
+    expect(f.queue).toHaveBeenCalledTimes(1);
+    event('tf-cloud-reconciled');
+    await advance(0);
+    expect(f.queue).toHaveBeenCalledTimes(2);
+    expect(f.send).toHaveBeenCalledTimes(2);
+    f.controller.disable();
+    event('tf-cloud-reconciled');
+    await advance(180_000);
+    expect(f.queue).toHaveBeenCalledTimes(2);
+  });
+
   it('выключение во время подготовки не запускает сеть и снимает локальное разрешение', async () => {
     let release;
     const pending = new Promise(resolve => (release = resolve));

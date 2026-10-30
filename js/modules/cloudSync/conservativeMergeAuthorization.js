@@ -14,6 +14,15 @@ function samePin(left, right) {
 function freezeMarker(marker) {
   return Object.freeze({
     ...marker,
+    ...(marker.resolution
+      ? {
+          resolution: Object.freeze({
+            ...marker.resolution,
+            cloudRecords: Object.freeze(marker.resolution.cloudRecords.map(row => Object.freeze({ ...row }))),
+            cloudSettings: Object.freeze([...marker.resolution.cloudSettings])
+          })
+        }
+      : {}),
     basePin: Object.freeze({ ...marker.basePin }),
     targetPin: Object.freeze({ ...marker.targetPin }),
     pendingPin: marker.pendingPin ? Object.freeze({ ...marker.pendingPin }) : null,
@@ -47,7 +56,8 @@ export async function authorizeSavedConservativeMerge({ proof, cryptoSource }) {
     marker.provider !== proof.provider ||
     marker.datasetId !== proof.datasetId ||
     !samePin(marker.basePin, proof.basePin) ||
-    !samePin(marker.targetPin, proof.pin)
+    !samePin(marker.targetPin, proof.pin) ||
+    JSON.stringify(marker.resolution || null) !== JSON.stringify(proof.resolution())
   )
     return null;
   const selections = proof.localSnapshot().sections.preferences.selections;
