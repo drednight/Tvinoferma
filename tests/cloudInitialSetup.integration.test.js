@@ -4266,3 +4266,136 @@ describe.each(['google', 'yandex'])('%s: восстановление ciphertext
     });
   }, 30000);
 });
+
+// Archive moves keep identity and all links; these are synthetic transports,
+// NOT a report of two real Windows installations or either provider's live API.
+describe.each(['google', 'yandex'])('%s: архив персонажей через очередь и защищённое объединение', provider => {
+  for (const restoring of [false, true])
+    for (const side of ['local', 'cloud'])
+      for (const privateCarry of [false, true]) {
+        it(`${restoring ? 'восстановление' : 'архивирование'} на ${side}; приватный перенос ${privateCarry}`, async () => {
+          const f = await publicationFixture(provider, {
+            prepare: async f => {
+              const { normalizeState } = await import('../js/core/state.js');
+              const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+              const { createMarathon } = await import('../js/modules/marathons/model.js');
+              const { ui, ...raw } = structuredClone({ ...f.state, ui: null });
+              raw.parties = [{ id: 'party', name: 'Пати', order: 1 }];
+              raw.characters[0].partyIds = ['party'];
+              raw.characters[0].mainPartyId = 'party';
+              raw.marathons = [
+                createMarathon({
+                  id: 'marathon',
+                  title: 'Связанный марафон',
+                  startDate: '2026-10-01',
+                  endDate: '2026-10-31',
+                  participantIds: ['hero']
+                })
+              ];
+              if (restoring) {
+                raw.archivedCharacters = raw.characters;
+                raw.characters = [];
+              }
+              const { ui: ignored, ...normalized } = normalizeState(raw);
+              Object.assign(f.state, planSyncIdentities({ snapshot: normalized, cryptoSource: webcrypto }).snapshot);
+              await f.storage.saveNow();
+            }
+          });
+          if (privateCarry) {
+            const consent = await stageFixturePrivate(f, provider);
+            expect((await consent.commit({ confirmed: true })).status).toBe('queued');
+            expect(await f.send()).toEqual({ status: 'sent_verified' });
+          }
+          const parent = (await inspectMergeQueue(f, provider)).confirmedPin;
+          if (side === 'local') {
+            if (restoring) {
+              f.state.characters = f.state.archivedCharacters;
+              f.state.archivedCharacters = [];
+            } else {
+              f.state.archivedCharacters = f.state.characters;
+              f.state.characters = [];
+            }
+          }
+          const hero = [...f.state.characters, ...f.state.archivedCharacters][0];
+          const id = hero.syncId;
+          hero.notes = 'МЕСТНАЯ ПРАВКА ПРИ ПЕРЕМЕЩЕНИИ';
+          hero.contacts.password = 'NEW_LOCAL_PASSWORD_NOT_CONSENTED';
+          await f.storage.saveNow();
+          expect(await f.queue()).toEqual({ status: 'queued' });
+          const mutate = snapshot => {
+            snapshot.sections.characters.records[0].fields.level = 42;
+            if (side === 'cloud') {
+              const group = snapshot.sections.characters;
+              group.records[0].archived = !restoring;
+              group.order = { active: restoring ? [id] : [], archived: restoring ? [] : [id] };
+            }
+          };
+          let remote;
+          if (privateCarry) {
+            const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+            const { decryptSnapshot, generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+            const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+            const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+            const previous = await decryptSnapshot({
+              envelope: f.cloud.versions.get(parent.versionId),
+              recoveryKey: key.dataKey,
+              expectedDatasetId: key.datasetId,
+              cryptoSource: webcrypto
+            });
+            const snapshot = structuredClone(previous.publicSnapshot);
+            mutate(snapshot);
+            const child = await sealHistoryChildWithPlannerTombstones({
+              parentSnapshot: previous.publicSnapshot,
+              publicSnapshot: snapshot,
+              parent,
+              previousTombstones: previous.plannerTombstones || [],
+              deletedIds: [],
+              confirmedDeletion: false,
+              privateSnapshot: previous.privateSnapshot,
+              recoveryKey: key.dataKey,
+              datasetId: key.datasetId,
+              versionId: generateSyncId(webcrypto),
+              keyBundle: key.bundle,
+              keyPin: key.pin,
+              cryptoSource: webcrypto
+            });
+            f.cloud.versions.set(child.pin.versionId, child.envelope);
+            remote = child.pin;
+          } else remote = await mergeIncoming(f, provider, parent, mutate);
+          const before = localStorage.getItem(STORAGE_KEY);
+          const result = await mergePin(f, provider, remote);
+          expect(result.status).toBe('merged');
+          const current = restoring ? f.state.characters : f.state.archivedCharacters;
+          expect(current).toHaveLength(1);
+          expect(current[0]).toMatchObject({
+            id: 'hero',
+            syncId: id,
+            level: 42,
+            notes: 'МЕСТНАЯ ПРАВКА ПРИ ПЕРЕМЕЩЕНИИ',
+            contacts: { password: 'NEW_LOCAL_PASSWORD_NOT_CONSENTED' },
+            launch: { gcPath: '/private/path' },
+            partyIds: ['party'],
+            mainPartyId: 'party'
+          });
+          expect(f.state.marathons[0].participantIds).toEqual(['hero']);
+          expect(
+            Object.keys(localStorage).some(
+              name => name.startsWith('tvinoferma_backup_') && localStorage.getItem(name) === before
+            )
+          ).toBe(true);
+          expect(f.cloud.session.upload).toHaveBeenCalledTimes(privateCarry ? 1 : 0);
+          expect(await f.queue()).toEqual({ status: 'queued' });
+          expect(await f.send()).toEqual({ status: 'sent_verified' });
+          const payload = await fixturePrivatePayload(f);
+          expect(payload.publicSnapshot.sections.characters.records[0]).toMatchObject({
+            id,
+            archived: !restoring,
+            fields: { level: 42 }
+          });
+          expect(JSON.stringify(payload)).not.toContain('NEW_LOCAL_PASSWORD_NOT_CONSENTED');
+          if (privateCarry) expect(payload.privateSnapshot.records[0].fields.password).toBe('PRIVATE_PASSWORD');
+          else expect(payload.privateSnapshot).toBeUndefined();
+          expect((await inspectMergeQueue(f, provider)).pendingCount).toBe(0);
+        }, 30000);
+      }
+});
