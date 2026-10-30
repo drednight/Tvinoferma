@@ -4015,3 +4015,254 @@ describe.each(['google', 'yandex'])('%s: защита разных приват�
     expect(localStorage.getItem(result.backup)).not.toContain('VAULT_OLD_PASSWORD');
   }, 30_000);
 });
+
+// Incoming private values already authorized on another PC are retained as
+// ciphertext only. This must NEVER become permission to read local contacts.
+async function incomingPrivateCarry(f, provider, mutate = () => {}) {
+  const { sealHistoryChildWithPlannerTombstones } = await import('../js/modules/cloudSync/history.js');
+  const { parseKeyStateRecord } = await import('../js/modules/cloudSync/keyStateRecord.js');
+  const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+  const old = await fixturePrivatePayload(f);
+  const head = await inspectMergeQueue(f, provider);
+  const key = (await parseKeyStateRecord(f.fake.key().record, webcrypto)).state;
+  const publicSnapshot = structuredClone(old.publicSnapshot);
+  mutate(publicSnapshot);
+  const privateSnapshot = {
+    schemaVersion: 1,
+    records: [
+      {
+        characterId: f.state.characters[0].syncId,
+        fields: { password: 'REMOTE_CARRY_SECRET', email: 'remote-carry@example.test' }
+      }
+    ]
+  };
+  const deletedIds = old.publicSnapshot.sections.planner.records
+    .filter(row => !publicSnapshot.sections.planner.records.some(next => next.id === row.id))
+    .map(row => row.id)
+    .sort();
+  const remote = await sealHistoryChildWithPlannerTombstones({
+    publicSnapshot,
+    parent: head.confirmedPin,
+    parentSnapshot: old.publicSnapshot,
+    privateSnapshot,
+    previousTombstones: old.plannerTombstones || [],
+    deletedIds,
+    confirmedDeletion: deletedIds.length > 0,
+    recoveryKey: key.dataKey,
+    datasetId: key.datasetId,
+    versionId: generateSyncId(webcrypto),
+    keyBundle: key.bundle,
+    keyPin: key.pin,
+    cryptoSource: webcrypto
+  });
+  f.cloud.versions.set(remote.pin.versionId, remote.envelope);
+  return { ...remote, privateSnapshot };
+}
+describe.each(['google', 'yandex'])(
+  '%s: явное сохранение входящей зашифрованной партии без применения контактов',
+  provider => {
+    it.each([false, true])(
+      'сохраняет входящую партию при публичном объединении (раньше была приватная часть: %s)',
+      async priorPrivate => {
+        const f = await publicationFixture(provider);
+        if (priorPrivate) {
+          const transfer = await stageFixturePrivate(f, provider);
+          expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+          expect((await f.send()).status).toBe('sent_verified');
+        }
+        const remote = await incomingPrivateCarry(f, provider, s => {
+          s.sections.characters.records[0].fields.level = 42;
+        });
+        f.state.characters[0].notes = 'НЕЗАВИСИМАЯ ПРАВКА';
+        f.state.characters[0].contacts.password = 'LOCAL_UNAUTHORIZED_SECRET';
+        await f.storage.saveNow();
+        expect((await f.queue()).status).toBe('queued');
+        const contacts = structuredClone(f.state.characters[0].contacts);
+        const before = structuredClone(f.fake.queue(provider));
+        expect((await mergePin(f, provider, remote.pin)).status).toBe('private_transfer_review_required');
+        expect(f.fake.queue(provider)).toEqual(before);
+        expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+        expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe('merged');
+        expect(f.state.characters[0]).toMatchObject({ level: 42, notes: 'НЕЗАВИСИМАЯ ПРАВКА', contacts });
+        expect((await inspectMergeQueue(f, provider)).retainedIntents).toHaveLength(1);
+        expect((await f.queue()).status).toBe('queued');
+        expect((await f.send()).status).toBe('sent_verified');
+        const payload = await fixturePrivatePayload(f);
+        expect(payload.privateSnapshot).toEqual(remote.privateSnapshot);
+        expect(JSON.stringify(payload)).not.toContain('LOCAL_UNAUTHORIZED_SECRET');
+      },
+      30000
+    );
+    it('возобновляет сохранённое подтверждение после потери ответа, не позволяя заменить его', async () => {
+      const f = await publicationFixture(provider);
+      const remote = await incomingPrivateCarry(f, provider, s => {
+        s.sections.characters.records[0].fields.level = 42;
+      });
+      f.state.characters[0].notes = 'МЕСТНАЯ ПРАВКА';
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      f.fake.loseNextCompare();
+      expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe(
+        'journal_uncertain'
+      );
+      expect(f.state.settings.cloudSyncPendingMerge).toMatchObject({
+        version: 4,
+        privateCarryConfirmed: true,
+        resolution: null,
+        appliedIntentHash: null,
+        targetPin: remote.pin
+      });
+      expect(JSON.stringify(f.state.settings.cloudSyncPendingMerge)).not.toContain('REMOTE_CARRY_SECRET');
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      vi.resetModules();
+      const { state, normalizeState } = await import('../js/core/state.js');
+      Object.assign(state, normalizeState(saved));
+      const before = structuredClone(f.fake.queue(provider));
+      expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: false })).status).toBe(
+        'merge_intent_mismatch'
+      );
+      expect(f.fake.queue(provider)).toEqual(before);
+      expect((await mergePin(f, provider, remote.pin)).status).toBe('merged');
+      expect(state.characters[0]).toMatchObject({
+        level: 42,
+        notes: 'МЕСТНАЯ ПРАВКА',
+        contacts: { password: 'PRIVATE_PASSWORD' }
+      });
+      expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
+    }, 30000);
+    it('не заменяет отдельную неотправленную местную секретную партию даже с разрешением carry', async () => {
+      const f = await publicationFixture(provider);
+      const remote = await incomingPrivateCarry(f, provider);
+      const transfer = await stageFixturePrivate(f, provider);
+      expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+      const before = structuredClone(f.fake.queue(provider));
+      expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe(
+        'private_transfer_pending'
+      );
+      expect(f.fake.queue(provider)).toEqual(before);
+      expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+    }, 30000);
+    it('требует отдельного выбора публичного конфликта и сохраняет оба согласованных решения', async () => {
+      const f = await publicationFixture(provider);
+      const remote = await incomingPrivateCarry(f, provider, s => {
+        s.sections.characters.records[0].fields.notes = 'ОБЛАЧНАЯ ПРАВКА';
+      });
+      f.state.characters[0].notes = 'МЕСТНАЯ ПРАВКА';
+      await f.storage.saveNow();
+      expect((await f.queue()).status).toBe('queued');
+      const found = await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true });
+      expect(found.status).toBe('conflicts');
+      expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+      const resolution = {
+        reviewHash: found.reviewHash,
+        cloudRecords: [{ section: 'characters', id: f.state.characters[0].syncId }],
+        cloudSettings: [],
+        cloudFinanceSettings: false
+      };
+      expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true, resolution })).status).toBe(
+        'merged'
+      );
+      expect(f.state.characters[0]).toMatchObject({
+        notes: 'ОБЛАЧНАЯ ПРАВКА',
+        contacts: { password: 'PRIVATE_PASSWORD' }
+      });
+      expect((await f.queue()).status).toBe('queued');
+      expect((await f.send()).status).toBe('sent_verified');
+      expect((await fixturePrivatePayload(f)).privateSnapshot).toEqual(remote.privateSnapshot);
+    }, 30000);
+  }
+);
+describe.each(['google', 'yandex'])('%s: восстановление ciphertext-only и составной очереди', provider => {
+  it('сохраняет prepared публичное намерение и его старый file ID до проверки потомка', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'ПУБЛИЧНОЕ НАМЕРЕНИЕ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+    expect((await f.send()).status).toBe('deferred');
+    expect((await inspectMergeQueue(f, provider)).nextPhase).toBe('prepared');
+    const remote = await incomingPrivateCarry(f, provider, s => {
+      s.sections.characters.records[0].fields.level = 42;
+    });
+    expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe('merged');
+    expect((await inspectMergeQueue(f, provider)).retainedPendingPhase).toBe('prepared');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+    expect((await inspectMergeQueue(f, provider)).retainedIntents).toHaveLength(0);
+    expect((await fixturePrivatePayload(f)).privateSnapshot).toEqual(remote.privateSnapshot);
+  }, 30000);
+  it('находит более раннее секретное намерение перед публичным хвостом и ничего не перезаписывает', async () => {
+    const f = await publicationFixture(provider);
+    const transfer = await stageFixturePrivate(f, provider);
+    expect((await transfer.commit({ confirmed: true })).status).toBe('queued');
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+    expect((await f.send()).status).toBe('deferred');
+    f.state.characters[0].notes = 'ХВОСТ ПОСЛЕ СЕКРЕТОВ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const head = await inspectMergeQueue(f, provider);
+    expect(head).toMatchObject({ pendingCount: 2, privateIntentPending: true });
+    const remote = await incomingPrivateCarry(f, provider);
+    const before = structuredClone(f.fake.queue(provider));
+    expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe(
+      'private_transfer_pending'
+    );
+    expect(f.fake.queue(provider)).toEqual(before);
+    expect(f.state.settings.cloudSyncPendingMerge).toBeUndefined();
+  }, 30000);
+  it('совмещает подтверждение carry с ранее выбранным удалением и восстанавливает оба после CAS', async () => {
+    const f = await publicationFixture(provider);
+    f.state.characters[0].notes = 'НЕЗАВИСИМОЕ НАМЕРЕНИЕ';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await incomingPrivateCarry(f, provider, s => {
+      s.sections.planner.records = [];
+      s.sections.planner.order = [];
+    });
+    const { stageReviewedCloudApply } = await import('../js/modules/cloudSync/commitReviewedCloud.js');
+    const review = await fixturePrivateReview(f, provider);
+    const deletionId = f.state.plannerEntries[0].syncId;
+    expect(
+      (
+        await stageReviewedCloudApply({
+          review,
+          pin: remote.pin,
+          selectedRecords: [],
+          selectedPlannerDeletions: [deletionId],
+          cryptoSource: webcrypto
+        }).commit({ confirmed: true })
+      ).status
+    ).toBe('applied');
+    f.fake.loseNextCompare();
+    expect((await mergePin(f, provider, remote.pin, { privateCarryConfirmed: true })).status).toBe('journal_uncertain');
+    expect(f.state.settings.cloudSyncPendingMerge).toMatchObject({
+      version: 4,
+      privateCarryConfirmed: true,
+      appliedIntentHash: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(saved));
+    const { cancelPendingConservativeMerge } = await import('../js/modules/cloudSync/reconcileConservativeMerge.js');
+    expect(
+      (
+        await cancelPendingConservativeMerge({
+          provider,
+          invoke: f.fake.invoke,
+          confirmed: true,
+          cryptoSource: webcrypto
+        })
+      ).status
+    ).toBe('already_anchored');
+    expect(state.settings.cloudSyncPendingMerge).toBeTruthy();
+    expect((await mergePin({ ...f, state }, provider, remote.pin)).status).toBe('merged');
+    expect(state.settings.cloudSyncPendingMerge).toBeUndefined();
+    expect(state.settings.cloudSyncPendingApply).toBeUndefined();
+    expect(state.plannerEntries).toHaveLength(0);
+    expect(state.characters[0]).toMatchObject({
+      notes: 'НЕЗАВИСИМОЕ НАМЕРЕНИЕ',
+      contacts: { password: 'PRIVATE_PASSWORD' }
+    });
+  }, 30000);
+});

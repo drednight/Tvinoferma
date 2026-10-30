@@ -23,6 +23,7 @@ import {
 } from './pendingSelectiveApply.js';
 import {
   addPendingConservativeMerge,
+  mergeRetainsAppliedIntent,
   conservativeSnapshotHash,
   readPendingConservativeMerge,
   removePendingConservativeMerge
@@ -120,19 +121,29 @@ function materialize(original, plan, cryptoSource) {
  * Repeats all checks against the exact pin, even if the UI already displayed it.
  * With a saved marker the same request resumes; no new choice is inferred by time.
  * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,pin:any,confirmed:boolean,
- * settingsSelections?:string[],resolution?:any,cryptoSource?:Crypto,timeoutMs?:number,now?:()=>number,signal?:AbortSignal,openSession?:Function}} options
+ * settingsSelections?:string[],resolution?:any,privateCarryConfirmed?:boolean,cryptoSource?:Crypto,timeoutMs?:number,now?:()=>number,signal?:AbortSignal,openSession?:Function}} options
  */
 export async function reconcileConservativeMerge(options) {
   const input = object(
     options,
     ['provider', 'invoke', 'pin', 'confirmed'],
-    ['settingsSelections', 'resolution', 'cryptoSource', 'timeoutMs', 'now', 'signal', 'openSession']
+    [
+      'settingsSelections',
+      'resolution',
+      'privateCarryConfirmed',
+      'cryptoSource',
+      'timeoutMs',
+      'now',
+      'signal',
+      'openSession'
+    ]
   );
   if (
     !['google', 'yandex'].includes(input.provider) ||
     typeof input.invoke !== 'function' ||
     input.confirmed !== true ||
     (input.settingsSelections !== undefined && !Array.isArray(input.settingsSelections)) ||
+    (input.privateCarryConfirmed !== undefined && typeof input.privateCarryConfirmed !== 'boolean') ||
     (input.openSession !== undefined && typeof input.openSession !== 'function') ||
     (input.now !== undefined && typeof input.now !== 'function') ||
     (input.signal !== undefined && (!input.signal || typeof input.signal.aborted !== 'boolean'))
@@ -159,8 +170,8 @@ export async function reconcileConservativeMerge(options) {
         !samePin(marker.targetPin, targetPin)
       )
         return result('other_merge_pending');
-      if (appliedEvents.length && marker.version !== 3) return result('unresolved_sources');
-      if (marker.version === 3 && !appliedEvents.length) return result('unresolved_sources');
+      if (appliedEvents.length && !mergeRetainsAppliedIntent(marker)) return result('unresolved_sources');
+      if (mergeRetainsAppliedIntent(marker) && !appliedEvents.length) return result('unresolved_sources');
     } else if (!appliedEvents.length) {
       requireResolvedSelectiveApply(original.settings);
     }
@@ -170,6 +181,13 @@ export async function reconcileConservativeMerge(options) {
       JSON.stringify(suppliedResolution) !== JSON.stringify(marker.resolution || null)
     )
       return result('merge_intent_mismatch');
+    if (
+      marker &&
+      input.privateCarryConfirmed !== undefined &&
+      input.privateCarryConfirmed !== (marker.privateCarryConfirmed === true)
+    )
+      return result('merge_intent_mismatch');
+    const privateCarryConfirmed = marker ? marker.privateCarryConfirmed === true : input.privateCarryConfirmed === true;
     const resolution = marker?.resolution || suppliedResolution;
     if (!(await stillSaved(original))) return result('state_changed_or_unsaved');
     let local;
@@ -233,7 +251,7 @@ export async function reconcileConservativeMerge(options) {
       if (intent.status !== 'ready') return result(intent.status);
       appliedIntentSnapshot = intent.snapshot();
       if (
-        marker?.version === 3 &&
+        mergeRetainsAppliedIntent(marker) &&
         (await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)) !== marker.appliedIntentHash
       )
         return result('merge_intent_mismatch');
@@ -280,7 +298,8 @@ export async function reconcileConservativeMerge(options) {
       original.settings,
       !!marker,
       undefined,
-      appliedIntentSnapshot
+      appliedIntentSnapshot,
+      privateCarryConfirmed
     );
     let proof = unchecked;
     if (unchecked.status === 'conflicts') {
@@ -317,7 +336,8 @@ export async function reconcileConservativeMerge(options) {
         original.settings,
         !!marker,
         resolution,
-        appliedIntentSnapshot
+        appliedIntentSnapshot,
+        privateCarryConfirmed
       );
     } else if (resolution) {
       return result(unchecked.status === 'ready_for_adoption' ? 'conflicts_changed' : unchecked.status);
@@ -334,7 +354,7 @@ export async function reconcileConservativeMerge(options) {
     if (before.status !== 'ready' || before.revisionId !== head.revisionId) return result('queue_changed');
     if (!marker) {
       marker = {
-        version: appliedIntentSnapshot ? 3 : resolution ? 2 : 1,
+        version: proof.privateCarryConfirmed ? 4 : appliedIntentSnapshot ? 3 : resolution ? 2 : 1,
         operationId: generateSyncId(input.cryptoSource),
         provider: context.provider,
         datasetId: context.binding.datasetId,
@@ -348,14 +368,22 @@ export async function reconcileConservativeMerge(options) {
         settingsSelections: [...head.settingsSelections],
         localHash: await conservativeSnapshotHash(local, input.cryptoSource),
         mergedHash: await conservativeSnapshotHash(proof.plan().snapshot(), input.cryptoSource),
-        ...(appliedIntentSnapshot
+        ...(proof.privateCarryConfirmed
           ? {
+              privateCarryConfirmed: true,
               resolution: resolution || null,
-              appliedIntentHash: await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+              appliedIntentHash: appliedIntentSnapshot
+                ? await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+                : null
             }
-          : resolution
-            ? { resolution }
-            : {})
+          : appliedIntentSnapshot
+            ? {
+                resolution: resolution || null,
+                appliedIntentHash: await conservativeSnapshotHash(appliedIntentSnapshot, input.cryptoSource)
+              }
+            : resolution
+              ? { resolution }
+              : {})
       };
       const checkpoint = structuredClone(original);
       checkpoint.settings = addPendingConservativeMerge(checkpoint.settings, marker);
@@ -398,7 +426,8 @@ export async function reconcileConservativeMerge(options) {
       original.settings,
       true,
       marker.resolution,
-      appliedIntentSnapshot
+      appliedIntentSnapshot,
+      privateCarryConfirmed
     );
     if (
       repeated.status !== 'ready_for_adoption' ||
@@ -412,7 +441,7 @@ export async function reconcileConservativeMerge(options) {
     try {
       candidate = materialize(original, repeated.plan(), input.cryptoSource);
       candidate.settings = removePendingConservativeMerge(candidate.settings, marker.operationId);
-      if (marker.version === 3) candidate.settings = removePendingSelectiveApply(candidate.settings);
+      if (mergeRetainsAppliedIntent(marker)) candidate.settings = removePendingSelectiveApply(candidate.settings);
       candidate.settings = replaceAcceptedCloudBase(
         candidate.settings,
         {

@@ -358,6 +358,16 @@ function entryFor(value, binding, version) {
 function finalEntry(row) {
   return row.phase === 'confirmed' || row.phase === 'adopted';
 }
+// Never infer a pending private intent solely from the last row: there can be
+// an earlier prepared/attempting row followed by a public-only queued descendant.
+function hasPendingPrivateIntent(view) {
+  return view.versions.some(
+    (item, index) =>
+      !finalEntry(item.row) &&
+      JSON.stringify(item.contents.privateSnapshot) !==
+        JSON.stringify(view.versions[index - 1]?.contents.privateSnapshot || null)
+  );
+}
 function receiptFor(value, binding) {
   const row = object(value, ['versionId', 'sha256', 'fileId', 'attemptId']);
   if (
@@ -1080,7 +1090,8 @@ export function createDurableCloudOutbox(options) {
           if (!view || !view.confirmed) return response('queue_not_empty');
           if (
             view.pendingCount &&
-            JSON.stringify(view.tail.contents.privateSnapshot) !== JSON.stringify(contents.privateSnapshot)
+            JSON.stringify(view.tail.contents.privateSnapshot) !== JSON.stringify(contents.privateSnapshot) &&
+            !(conservative && proof.privateCarryConfirmed === true && !hasPendingPrivateIntent(view))
           )
             return response('private_transfer_pending');
           const marker = conservative ? request.authorization.marker : null;
@@ -1251,11 +1262,7 @@ export function createDurableCloudOutbox(options) {
           ),
           retainedPendingPin: view.retained.length ? Object.freeze({ ...view.retained[0].pin }) : null,
           retainedPendingPhase: view.retained[0]?.row.phase || null,
-          privateIntentPending:
-            !!view.tail.contents.privateSnapshot &&
-            view.pendingCount > 0 &&
-            JSON.stringify(view.tail.contents.privateSnapshot) !==
-              JSON.stringify(view.versions.at(-2)?.contents.privateSnapshot || null),
+          privateIntentPending: hasPendingPrivateIntent(view),
           settingsSelections: Object.freeze([...view.tail.contents.publicSnapshot.sections.preferences.selections])
         });
       });

@@ -5,7 +5,11 @@ import { forgetLoadedState, loadData } from '../../core/storage.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { isVerifiedConservativeAdoption } from './cloudReview.js';
 import { cloudSnapshotMatchesDisk, currentCloudStateSnapshot } from './guardedStateWrite.js';
-import { conservativeSnapshotHash, readPendingConservativeMerge } from './pendingConservativeMerge.js';
+import {
+  conservativeSnapshotHash,
+  mergeRetainsAppliedIntent,
+  readPendingConservativeMerge
+} from './pendingConservativeMerge.js';
 
 const authorizations = new WeakSet();
 function samePin(left, right) {
@@ -57,11 +61,12 @@ export async function authorizeSavedConservativeMerge({ proof, cryptoSource }) {
     marker.datasetId !== proof.datasetId ||
     !samePin(marker.basePin, proof.basePin) ||
     !samePin(marker.targetPin, proof.pin) ||
+    (marker.privateCarryConfirmed === true) !== (proof.privateCarryConfirmed === true) ||
     JSON.stringify(marker.resolution || null) !== JSON.stringify(proof.resolution())
   )
     return null;
   if (
-    marker.version === 3 &&
+    mergeRetainsAppliedIntent(marker) &&
     (await conservativeSnapshotHash(proof.retainedSnapshot(), cryptoSource)) !== marker.appliedIntentHash
   )
     return null;

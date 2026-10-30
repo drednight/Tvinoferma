@@ -67,7 +67,7 @@ const MESSAGES = Object.freeze({
   private_transfer_pending:
     'В очереди есть отдельная ручная передача контактов. Она не удалена. Сначала завершите её отправку; смешанное объединение разных секретных намерений пока недоступно.',
   private_transfer_review_required:
-    'Секретная часть облачной версии изменилась. Объединение с независимыми местными правками пока остановлено. Контакты можно отдельно сравнить без раскрытия значений; не удаляйте очередь и отметки.',
+    'Секретная часть облачной версии изменилась. Для объединения обычных данных отдельно разрешите сохранение зашифрованной партии контактов в будущих версиях. Местные контакты не заменяются; их сравнение и применение — в отдельном блоке. Не удаляйте очередь и отметки.',
   queue_not_empty:
     'Исходящая очередь содержит начатую или несколько неподтверждённых попыток. Они не удалены; сначала проверьте результат отправки.',
   queue_snapshot_mismatch:
@@ -197,6 +197,12 @@ export function bindCloudReviewPanel(options) {
   const none = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-select-none'));
   const apply = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-apply'));
   const accept = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-reconcile'));
+  const privateCarry = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-review-private-carry'));
+  let privateCarryGeneration = 0;
+  function resetPrivateCarry() {
+    if (privateCarry) privateCarry.checked = false;
+    privateCarryGeneration++;
+  }
   const mergeButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-review-merge'));
   const conflictBox = /** @type {HTMLElement|null} */ (doc.getElementById('cloud-review-conflicts'));
   const conflictList = doc.getElementById('cloud-review-conflict-list');
@@ -233,6 +239,14 @@ export function bindCloudReviewPanel(options) {
     return;
   if (panel.getAttribute('data-cloud-review-bound') === 'true') return;
   panel.setAttribute('data-cloud-review-bound', 'true');
+  if (privateCarry) {
+    privateCarry.checked = false;
+    privateCarry.disabled = !options.desktop;
+    privateCarry.addEventListener('change', () => {
+      privateCarryGeneration++;
+    });
+  }
+
   const check = options.check || checkConnectedCloud;
   const stage = options.stage || stageReviewedCloudApply;
   const prepareIdentities = options.prepareIdentities || stageSyncIdentities;
@@ -280,6 +294,8 @@ export function bindCloudReviewPanel(options) {
   }
   function setBusy(value) {
     active = value;
+    if (privateCarry)
+      privateCarry.disabled = !options.desktop || value || previewOnly || !!pendingMerge || malformedMerge;
     checkButton.disabled = !options.desktop || value;
     identitiesButton.disabled = !options.desktop || value;
     versions.disabled = value;
@@ -300,6 +316,7 @@ export function bindCloudReviewPanel(options) {
     conflictList.replaceChildren();
   }
   function clearView() {
+    resetPrivateCarry();
     clearConflictReview();
     review = null;
     previewOnly = false;
@@ -317,6 +334,7 @@ export function bindCloudReviewPanel(options) {
     status.textContent = text;
   }
   function putReview(value, readOnly = false) {
+    resetPrivateCarry();
     review = value;
     previewOnly = readOnly;
     selected = null;
@@ -383,6 +401,7 @@ export function bindCloudReviewPanel(options) {
     }
   }
   function showComparison() {
+    resetPrivateCarry();
     clearConflictReview();
     list.replaceChildren();
     choices = [];
@@ -630,6 +649,8 @@ export function bindCloudReviewPanel(options) {
         : previewOnly || !!pendingMerge || mergeButton.hidden || !review || !selected
     )
       return;
+    const carryConfirmed = !resume && privateCarry?.checked === true;
+    const carryGeneration = privateCarryGeneration;
     const originalReview = review;
     const originalSelection = selected;
     const conflictSnapshot = resolveConflicts ? conflictReview : null;
@@ -646,11 +667,14 @@ export function bindCloudReviewPanel(options) {
     let approved;
     try {
       approved = await askConfirmation(
-        resume
-          ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
-          : resolveConflicts
-            ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Для подтверждённых удалений календаря галочка означает удаление записи вместе с местными правками; без галочки местная запись сохраняется, но согласование останавливается. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID (включая задания и бонусы шаблонов, теги и навигацию) заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Изменение шаблона не меняет уже созданные марафоны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
-            : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец (включая новые шаблоны) и выбранные настройки. Задания и бонусы шаблонов, теги и списки навигации без общих ID согласуются целыми списками, а не по названиям или позициям. Конфликтующие списки требуют выбора стороны. Изменение порядка sync-сущностей и неподдерживаемые удаления останавливают операцию. Для подтверждённых удалений ручного календаря сначала будет показан отдельный выбор; без него местная запись не удаляется. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.'
+        (carryConfirmed || (resume && intent.privateCarryConfirmed === true)
+          ? 'Отдельно разрешено сохранить зашифрованную партию контактов выбранного диска в будущих версиях. Местные контакты НЕ заменяются и НЕ выгружаются. Разные неотправленные секретные намерения остаются блокирующими. Подтверждение сохранится до завершения или отмены именно этой операции; старые сборки её не понимают. '
+          : '') +
+          (resume
+            ? 'Продолжить ранее подтверждённое объединение той же облачной версии? История, исходные данные и очередь будут проверены повторно; перед записью создаётся резервная копия.'
+            : resolveConflicts
+              ? 'Разрешить показанные конфликты по текущим галочкам? В отмеченных записях конфликтующие поля берутся с диска, в неотмеченных остаются местные. Для подтверждённых удалений календаря галочка означает удаление записи вместе с местными правками; без галочки местная запись сохраняется, но согласование останавливается. Остальные поддерживаемые изменения объединяются независимо от галочек. Для всех конфликтов внутри одной записи действует один выбор; конфликтующие списки без ID (включая задания и бонусы шаблонов, теги и навигацию) заменяются целиком, изменения внутри них с другой стороны могут быть потеряны. Изменение шаблона не меняет уже созданные марафоны. Будут созданы резервные копии; автоотправка может начаться после сохранения.'
+              : 'Объединить все поддерживаемые изменения выбранной версии, независимо от галочек ниже? Поддерживаются существующие записи, некоторые добавления в конец (включая новые шаблоны) и выбранные настройки. Задания и бонусы шаблонов, теги и списки навигации без общих ID согласуются целыми списками, а не по названиям или позициям. Конфликтующие списки требуют выбора стороны. Изменение порядка sync-сущностей и неподдерживаемые удаления останавливают операцию. Для подтверждённых удалений ручного календаря сначала будет показан отдельный выбор; без него местная запись не удаляется. Независимые местные правки сохраняются. Будут созданы резервные копии. Само объединение не отправляет снимок, но включённая автоотправка может начаться после сохранения. Обновите приложение на всех ПК.')
       );
     } catch {
       approved = false;
@@ -659,6 +683,8 @@ export function bindCloudReviewPanel(options) {
     if (
       !approved ||
       provider.value !== originalProvider ||
+      (!resume &&
+        (privateCarryGeneration !== carryGeneration || (privateCarry?.checked === true) !== carryConfirmed)) ||
       (resolveConflicts &&
         (conflictReview !== conflictSnapshot ||
           JSON.stringify(conflictResolution(conflictSnapshot)) !== JSON.stringify(resolution))) ||
@@ -667,6 +693,7 @@ export function bindCloudReviewPanel(options) {
         : review !== originalReview || selected !== originalSelection || !!pendingMerge || malformedMerge)
     ) {
       note('Объединение отменено или данные сравнения изменились.');
+      resetPrivateCarry();
       setBusy(false);
       return;
     }
@@ -684,6 +711,7 @@ export function bindCloudReviewPanel(options) {
           confirmed: true,
           settingsSelections,
           ...(resolution ? { resolution } : {}),
+          ...(carryConfirmed ? { privateCarryConfirmed: true } : {}),
           signal: current.signal
         })
       );
@@ -727,6 +755,7 @@ export function bindCloudReviewPanel(options) {
       record(originalProvider, 'merge', 'uncertain');
       if (!current.signal.aborted) note('Объединение не подтверждено. Проверьте данные и копии перед повтором.');
     } finally {
+      resetPrivateCarry();
       if (controller === current) controller = null;
       refreshPending();
       setBusy(false);

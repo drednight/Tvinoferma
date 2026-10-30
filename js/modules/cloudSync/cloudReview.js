@@ -320,6 +320,7 @@ export async function prepareCloudReview(options) {
        * @param {boolean} [allowDescendantHead] only when resuming an already saved intent
        * @param {any} [resolution] explicit conflict choices, never inferred from dates
        * @param {any} [appliedIntentSnapshot] authenticated queued public intent for deletion-only repair
+       * @param {boolean} [privateCarryConfirmed] keep incoming encrypted private payload, never apply it to local contacts
        */
       prepareConservativeAdoption(
         selectedPin,
@@ -327,7 +328,8 @@ export async function prepareCloudReview(options) {
         settings,
         allowDescendantHead = false,
         resolution,
-        appliedIntentSnapshot
+        appliedIntentSnapshot,
+        privateCarryConfirmed = false
       ) {
         const selectedResolution = resolution ? structuredClone(resolution) : null;
         const selected = pin(selectedPin);
@@ -351,9 +353,12 @@ export async function prepareCloudReview(options) {
         );
         if (baseIndex < 0) return result('base_not_ancestor');
         if (baseIndex === lineage.length - 1) return result('already_on_base');
+        if (typeof privateCarryConfirmed !== 'boolean') throw failed();
         const privateBase = JSON.stringify(history.privateSnapshot(lineage[baseIndex]));
-        if (lineage.slice(baseIndex + 1).some(node => JSON.stringify(history.privateSnapshot(node)) !== privateBase))
-          return result('private_transfer_review_required');
+        const privateChanged = lineage
+          .slice(baseIndex + 1)
+          .some(node => JSON.stringify(history.privateSnapshot(node)) !== privateBase);
+        if (privateChanged && !privateCarryConfirmed) return result('private_transfer_review_required');
 
         const appliedEvents = pendingSelectiveApplyEvents(settings);
         const tombstones = history.usesPlannerTombstones(current) ? history.plannerTombstones(current) : [];
@@ -411,6 +416,7 @@ export async function prepareCloudReview(options) {
         if (!found || found.version !== 2) return result('unsupported_version');
         const proof = Object.freeze({
           status: 'ready_for_adoption',
+          privateCarryConfirmed: privateChanged && privateCarryConfirmed,
           provider,
           datasetId,
           rootPin: Object.freeze({ ...root }),

@@ -632,4 +632,56 @@ describe('интерфейс ограниченного объединения',
     expect(el('cloud-review-merge-resume').disabled).toBe(true);
     expect(el('cloud-review-merge-cancel').disabled).toBe(true);
   });
+  it('не добавляет разрешение переноса секретной части автоматически', async () => {
+    const merge = vi.fn(async () => ({ status: 'private_transfer_review_required' }));
+    setup({ check: vi.fn(async () => mergeableReview()), merge });
+    await openComparison();
+    expect(el('cloud-review-private-carry').checked).toBe(false);
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledOnce());
+    expect(merge.mock.calls[0][0]).not.toHaveProperty('privateCarryConfirmed');
+  });
+  it('явное подтверждение касается только сохранения входящего ciphertext и сбрасывается после операции', async () => {
+    const merge = vi.fn(async () => ({ status: 'merged', backup: 'test.json' }));
+    const f = setup({ check: vi.fn(async () => mergeableReview()), merge });
+    await openComparison();
+    el('cloud-review-private-carry').checked = true;
+    bindCloudReviewPanel({ desktop: true });
+    expect(el('cloud-review-private-carry').checked).toBe(true);
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(merge).toHaveBeenCalledOnce());
+    expect(merge.mock.calls[0][0].privateCarryConfirmed).toBe(true);
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('Местные контакты НЕ заменяются и НЕ выгружаются'));
+    await vi.waitFor(() => expect(el('cloud-review-private-carry').checked).toBe(false));
+  });
+  it('смена версии или диска сбрасывает отдельное разрешение', async () => {
+    setup({ check: vi.fn(async () => mergeableReview()) });
+    await openComparison();
+    el('cloud-review-private-carry').checked = true;
+    el('cloud-review-version').dispatchEvent(new Event('change'));
+    expect(el('cloud-review-private-carry').checked).toBe(false);
+    el('cloud-review-private-carry').checked = true;
+    el('cloud-registration-provider').value = 'google';
+    el('cloud-registration-provider').dispatchEvent(new Event('change'));
+    expect(el('cloud-review-private-carry').checked).toBe(false);
+  });
+  it('отменяет разрешение при смене галочки во время подтверждения, даже если её вернули', async () => {
+    let release;
+    const confirm = vi.fn(() => new Promise(resolve => (release = resolve)));
+    const merge = vi.fn();
+    setup({ check: vi.fn(async () => mergeableReview()), merge, confirm });
+    await openComparison();
+    const ack = el('cloud-review-private-carry');
+    ack.checked = true;
+    click('cloud-review-merge');
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalled());
+    ack.checked = false;
+    ack.dispatchEvent(new Event('change'));
+    ack.checked = true;
+    ack.dispatchEvent(new Event('change'));
+    release(true);
+    await vi.waitFor(() => expect(el('cloud-review-status').textContent).toContain('отменено'));
+    expect(merge).not.toHaveBeenCalled();
+    expect(ack.checked).toBe(false);
+  });
 });
