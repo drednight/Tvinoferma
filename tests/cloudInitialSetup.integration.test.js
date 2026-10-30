@@ -1732,6 +1732,48 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect(JSON.stringify([...f.cloud.versions.values()])).not.toContain('PRIVATE_PASSWORD');
   }, 30_000);
 
+  it('сквозным сценарием сохраняет независимые правки разных заданий и наград марафона', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        const { createMarathon } = await import('../js/modules/marathons/model.js');
+        const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+        f.state.marathons = [
+          createMarathon({
+            id: 'marathon',
+            title: 'Марафон',
+            startDate: '2026-10-01',
+            endDate: '2026-10-31',
+            tasks: [
+              { id: 'a', title: 'Первое', rewards: [{ id: 'ra', threshold: 1, rewardText: 'Старое' }] },
+              { id: 'b', title: 'Второе', rewards: [{ id: 'rb', threshold: 1, rewardText: 'Сундук' }] }
+            ]
+          })
+        ];
+        const { ui, ...snapshot } = f.state;
+        Object.assign(f.state, planSyncIdentities({ snapshot, cryptoSource: webcrypto }).snapshot);
+        await f.storage.saveNow();
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.marathons[0].tasks[0].targetChecks = 3;
+    f.state.marathons[0].tasks[0].rewards[0].rewardCoins = 10;
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const tasks = s.sections.marathons.records.find(row => row.type === 'marathon').fields.tasks;
+      tasks[1].title = 'Новое облачное название';
+      tasks[1].rewards[0].rewardText = 'Новая облачная награда';
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    expect(f.state.marathons[0].tasks[0].targetChecks).toBe(3);
+    expect(f.state.marathons[0].tasks[0].rewards[0].rewardCoins).toBe(10);
+    expect(f.state.marathons[0].tasks[1].title).toBe('Новое облачное название');
+    expect(f.state.marathons[0].tasks[1].rewards[0].rewardText).toBe('Новая облачная награда');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
   it('объединяет данные прогресса сайта с местными правками и публикует их в зашифрованном потомке', async () => {
     const f = await publicationFixture(provider, {
       prepare: async f => {

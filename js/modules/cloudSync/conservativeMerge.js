@@ -149,7 +149,7 @@ function choiceUsesCloud(choices, section, id) {
   if (section === 'finance' && !id) return choices.cloudFinanceSettings;
   return choices.cloudRecords.some(row => row.section === section && row.id === id);
 }
-function mergeFields(base, local, cloud, conflicts, section, id = null, choices = null) {
+function mergeFields(base, local, cloud, conflicts, section, id = null, choices = null, prefix = []) {
   const wrap = fields => ({ deleted: false, fields });
   const answer = mergeRecord({ base: wrap(base), local: wrap(local), remote: wrap(cloud) });
   if (answer.conflicts.length && choices) {
@@ -167,9 +167,69 @@ function mergeFields(base, local, cloud, conflicts, section, id = null, choices 
   for (const conflict of answer.conflicts) {
     if (conflicts.length >= MAX_CONFLICTS) throw invalid();
     // Только описания, без значений. Даже ID/пути не следует журналировать.
-    conflicts.push({ section, ...(id ? { id } : {}), path: [...conflict.path], reason: conflict.reason });
+    conflicts.push({ section, ...(id ? { id } : {}), path: [...prefix, ...conflict.path], reason: conflict.reason });
   }
   return answer.record?.fields || null;
+}
+
+// Marathon tasks, rewards and bonuses have their own stable sync IDs. Merge
+// their fields by identity so an edit to one task never replaces a different
+// task's independent edit. Other arrays remain atomic and are not zipped.
+function mergeNestedEntities(base, local, cloud, conflicts, section, parentId, choices, path, withRewards = false) {
+  const byId = rows => new Map(rows.map(row => [row.id, row]));
+  const before = byId(base);
+  const here = byId(local);
+  const there = byId(cloud);
+  const ids = mergeAppendedOrder(
+    base.map(row => row.id),
+    local.map(row => row.id),
+    cloud.map(row => row.id),
+    conflicts,
+    section,
+    [...path, 'order']
+  );
+  if (!ids) return null;
+  const result = [];
+  let blocked = false;
+  for (const id of ids) {
+    const original = before.get(id);
+    const current = here.get(id);
+    const incoming = there.get(id);
+    if (!original) {
+      if (current && incoming && !equal(current, incoming)) {
+        if (!choices) {
+          if (conflicts.length >= MAX_CONFLICTS) throw invalid();
+          conflicts.push({ section, id: parentId, path: [...path, id], reason: 'concurrent-create' });
+          blocked = true;
+          continue;
+        }
+        result.push(structuredClone(choiceUsesCloud(choices, section, parentId) ? incoming : current));
+      } else result.push(structuredClone(current || incoming));
+      continue;
+    }
+    if (!current || !incoming) throw invalid();
+    const a = structuredClone(original);
+    const b = structuredClone(current);
+    const c = structuredClone(incoming);
+    if (withRewards) {
+      const rewards = mergeNestedEntities(a.rewards, b.rewards, c.rewards, conflicts, section, parentId, choices, [
+        ...path,
+        id,
+        'rewards'
+      ]);
+      if (!rewards) {
+        blocked = true;
+        continue;
+      }
+      a.rewards = structuredClone(rewards);
+      b.rewards = structuredClone(rewards);
+      c.rewards = structuredClone(rewards);
+    }
+    const merged = mergeFields(a, b, c, conflicts, section, parentId, choices, [...path, id]);
+    if (merged) result.push(merged);
+    else blocked = true;
+  }
+  return blocked ? null : result;
 }
 
 /**
@@ -229,14 +289,45 @@ export function planConservativePublicMerge(options) {
       }
       if (!here || !there || original.type !== here.type || original.type !== there.type) throw invalid();
       const before = {
-        fields: original.fields,
+        fields: structuredClone(original.fields),
         ...(Object.hasOwn(original, 'archived') ? { archived: original.archived } : {})
       };
-      const current = { fields: here.fields, ...(Object.hasOwn(here, 'archived') ? { archived: here.archived } : {}) };
+      const current = {
+        fields: structuredClone(here.fields),
+        ...(Object.hasOwn(here, 'archived') ? { archived: here.archived } : {})
+      };
       const incoming = {
-        fields: there.fields,
+        fields: structuredClone(there.fields),
         ...(Object.hasOwn(there, 'archived') ? { archived: there.archived } : {})
       };
+      if (target.type === 'marathon') {
+        const tasks = mergeNestedEntities(
+          before.fields.tasks,
+          current.fields.tasks,
+          incoming.fields.tasks,
+          conflicts,
+          section,
+          target.id,
+          choices,
+          ['fields', 'tasks'],
+          true
+        );
+        const bonuses = mergeNestedEntities(
+          before.fields.bonuses,
+          current.fields.bonuses,
+          incoming.fields.bonuses,
+          conflicts,
+          section,
+          target.id,
+          choices,
+          ['fields', 'bonuses']
+        );
+        if (!tasks || !bonuses) continue;
+        for (const item of [before, current, incoming]) {
+          item.fields.tasks = structuredClone(tasks);
+          item.fields.bonuses = structuredClone(bonuses);
+        }
+      }
       const result = mergeFields(before, current, incoming, conflicts, section, target.id, choices);
       if (!result) continue;
       target.fields = result.fields;

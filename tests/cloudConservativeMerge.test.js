@@ -7,6 +7,7 @@ import { preparePublicSnapshotApply } from '../js/modules/cloudSync/applyPublicS
 import { conservativeTransition, planConservativePublicMerge } from '../js/modules/cloudSync/conservativeMerge.js';
 import { generateSyncId } from '../js/modules/cloudSync/envelope.js';
 import { parseConservativeMergeChoices } from '../js/modules/cloudSync/conservativeMergeChoices.js';
+import { createMarathon } from '../js/modules/marathons/model.js';
 
 function fixture() {
   const { ui, ...state } = normalizeState({
@@ -93,6 +94,90 @@ describe('консервативное трёхстороннее объедин
     expect(applied.characters[0].notes).toBe('МЕСТНАЯ НЕЗАВИСИМАЯ ЗАМЕТКА');
     expect(applied.characters[0].marathonData.quests[0].completed).toBe(1);
     expect(applied.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  });
+
+  it('объединяет независимые поля разных заданий и наград марафона по их sync-ID', () => {
+    const f = fixture();
+    f.localState.marathons = [
+      createMarathon({
+        id: 'marathon',
+        title: 'Марафон',
+        startDate: '2026-10-01',
+        endDate: '2026-10-31',
+        tasks: [
+          { id: 'task-1', title: 'Первое', rewards: [{ id: 'reward-1', threshold: 1, rewardText: 'Монеты' }] },
+          { id: 'task-2', title: 'Второе', rewards: [{ id: 'reward-2', threshold: 1, rewardText: 'Сундук' }] }
+        ]
+      })
+    ];
+    f.localState = planSyncIdentities({ snapshot: f.localState, cryptoSource: webcrypto }).snapshot;
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.localState.marathons[0].tasks[0].targetChecks = 3;
+    f.localState.marathons[0].tasks[0].rewards[0].rewardCoins = 15;
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.cloud = structuredClone(f.base);
+    const remote = f.cloud.sections.marathons.records.find(row => row.type === 'marathon');
+    remote.fields.tasks[1].title = 'Второе изменено';
+    remote.fields.tasks[1].rewards[0].rewardText = 'Облачный сундук';
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(applied.marathons[0].tasks[0]).toMatchObject({ title: 'Первое', targetChecks: 3 });
+    expect(applied.marathons[0].tasks[0].rewards[0].rewardCoins).toBe(15);
+    expect(applied.marathons[0].tasks[1].title).toBe('Второе изменено');
+    expect(applied.marathons[0].tasks[1].rewards[0].rewardText).toBe('Облачный сундук');
+  });
+
+  it('конфликт одного задания не скрывает независимые изменения других заданий', () => {
+    const f = fixture();
+    f.localState.marathons = [
+      createMarathon({
+        id: 'marathon',
+        title: 'М',
+        startDate: '2026-10-01',
+        endDate: '2026-10-31',
+        tasks: [
+          { id: 'a', title: 'A' },
+          { id: 'b', title: 'B' }
+        ]
+      })
+    ];
+    f.localState = planSyncIdentities({ snapshot: f.localState, cryptoSource: webcrypto }).snapshot;
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    const local = f.local.sections.marathons.records.find(row => row.type === 'marathon');
+    const remote = f.cloud.sections.marathons.records.find(row => row.type === 'marathon');
+    local.fields.tasks[0].title = 'ЛОКАЛЬНО';
+    local.fields.tasks[1].targetChecks = 2;
+    remote.fields.tasks[0].title = 'ОБЛАКО';
+    remote.fields.tasks[1].description = 'НЕЗАВИСИМО ИЗ ОБЛАКА';
+    remote.fields.tasks[1].descriptionSource = 'manual';
+    const conflict = merge(f);
+    expect(conflict.status).toBe('conflicts');
+    expect(conflict.conflicts[0]).toMatchObject({
+      section: 'marathons',
+      id: local.id,
+      path: ['fields', 'tasks', local.fields.tasks[0].id, 'title']
+    });
+    const resolution = {
+      reviewHash: 'a'.repeat(64),
+      cloudRecords: [{ section: 'marathons', id: local.id }],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    const plan = planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, resolution });
+    expect(plan.status).toBe('prepared');
+    const tasks = plan.snapshot().sections.marathons.records.find(row => row.type === 'marathon').fields.tasks;
+    expect(tasks[0].title).toBe('ОБЛАКО');
+    expect(tasks[1]).toMatchObject({ targetChecks: 2, description: 'НЕЗАВИСИМО ИЗ ОБЛАКА' });
   });
 
   it('не подменяет или удаляет элементы истории, а одновременные изменения массива считает конфликтом', () => {
