@@ -102,6 +102,30 @@ beforeEach(() => {
 });
 
 describe('интерфейс проверенного сравнения', () => {
+  it('показывает проверенную отметку удаления без кнопки выбора или автоматического удаления', async () => {
+    const value = review();
+    const baseCompare = value.compare;
+    value.compare = () => ({
+      ...baseCompare(),
+      localRecord: () => ({ fields: { title: 'Местное <img src=x>' } }),
+      differences: {
+        entries: [
+          { section: 'planner', id: ids.changed, kind: 'marked_cloud_deletion', label: 'Событие', changes: [] }
+        ],
+        uncomparedSettings: []
+      }
+    });
+    const f = setup({ check: vi.fn(async () => value) });
+    await openComparison();
+    expect(el('cloud-review-list').textContent).toContain('в проверенной истории диска есть отметка удаления');
+    expect(el('cloud-review-list').textContent).toContain('применение удаления пока недоступно');
+    expect(el('cloud-review-list').textContent).toContain('Местное <img src=x>');
+    expect(el('cloud-review-list').querySelector('img')).toBeNull();
+    expect(el('cloud-review-list').querySelector('input[type=checkbox]')).toBeNull();
+    click('cloud-review-select-all');
+    click('cloud-review-apply');
+    expect(f.stage).not.toHaveBeenCalled();
+  });
   it('раздельно показывает даты, часовой пояс и явный выбор версии, текст данных не становится HTML', async () => {
     const hostile = '<img src=x onerror=alert(1)>';
     const f = setup({ check: vi.fn(async () => review('yandex', hostile)) });

@@ -124,6 +124,37 @@ describe('явное удаление в проверяемой эксперим
     expect(verified.pins()).not.toContainEqual(pins[0]);
   });
 
+  it('показывает отметку удаления только в выбранной проверенной линии и не применяет её', async () => {
+    const history = await verify([root]);
+    const deletion = await sealHistoryVersionWithPlannerDeletions(deletionOptions(history));
+    const descendant = await seal(without(initial, taskId), deletion.pin);
+    // Другая ветвь может не содержать запись без подтверждённой отметки.
+    const sibling = await seal(without(initial, taskId), root.pin);
+    const checked = await review([root, deletion, descendant, sibling], initial);
+    expect(checked.status).toBe('ready_for_review');
+    expect(checked.compare(root.pin).differences.entries).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'marked_cloud_deletion' })])
+    );
+    for (const pin of [deletion.pin, descendant.pin]) {
+      const comparison = checked.compare(pin);
+      expect(comparison.differences.entries).toContainEqual(
+        expect.objectContaining({
+          section: 'planner',
+          id: taskId,
+          kind: 'marked_cloud_deletion',
+          label: 'Личное событие'
+        })
+      );
+      expect(comparison.localRecord('planner', taskId).fields.title).toBe('Личное событие');
+      expect(comparison.cloudRecord('planner', taskId)).toBeNull();
+    }
+    expect(checked.compare(sibling.pin).differences.entries).toContainEqual(
+      expect.objectContaining({ id: taskId, kind: 'only_local' })
+    );
+    expect(initial.sections.planner.records.some(row => row.id === taskId)).toBe(true);
+    expect(checked.prepareConservativeAdoption(deletion.pin, root.pin, {}).status).toBe('not_unique_head');
+  });
+
   it('обычное отсутствие в версии 1 не превращает в метку удаления', async () => {
     const disappeared = await seal(without(initial, taskId), root.pin);
     const verified = await verify([root, disappeared]);

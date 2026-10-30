@@ -314,20 +314,53 @@ export async function prepareCloudReview(options) {
         if (!current || current.sha256 !== selected.sha256) throw failed();
         const file = observations.find(item => item.pin.versionId === selected.versionId);
         const cloud = history.publicSnapshot(current);
+        const sections = ['characters', 'parties', 'marathons', 'planner', 'finance'];
         const records = new Map(
-          ['characters', 'parties', 'marathons', 'planner', 'finance'].map(section => [
+          sections.map(section => [
             section,
             new Map(cloud.sections[section].records.map(record => [record.id, record]))
           ])
         );
+        const localRecords = new Map(
+          sections.map(section => [
+            section,
+            new Map(local.sections[section].records.map(record => [record.id, record]))
+          ])
+        );
+        // Метка в проверенной линии — не вывод из отсутствия записи и не разрешение
+        // удалять её с ПК. Маркеры других ветвей или будущих версий не учитываются.
+        const deletedPlannerIds = new Set(history.lineage(current).flatMap(value => history.plannerDeletions(value)));
+        const differences = comparePublicSnapshots({ local, cloud });
+        differences.entries = differences.entries.map(entry =>
+          entry.section === 'planner' && entry.kind === 'only_local' && deletedPlannerIds.has(entry.id)
+            ? { ...entry, kind: 'marked_cloud_deletion' }
+            : entry
+        );
+        for (const entry of [...differences.entries]) {
+          if (entry.section === 'planner' && entry.kind === 'identity_review' && deletedPlannerIds.has(entry.localId)) {
+            differences.entries.push({
+              section: 'planner',
+              id: entry.localId,
+              type: 'plannerEntry',
+              label: entry.label,
+              kind: 'marked_cloud_deletion',
+              changes: []
+            });
+          }
+        }
         return Object.freeze({
           provider,
           checkedAt,
           localSavedAt: savedAt,
           cloudModifiedAt: file.modifiedAt,
           pin: current,
-          differences: comparePublicSnapshots({ local, cloud }),
+          differences,
           /** Публичная запись без контактов и локальных путей; её текст всё равно может быть личным. */
+          localRecord(section, id) {
+            if (!localRecords.has(section) || !isSyncId(id)) throw failed();
+            const record = localRecords.get(section).get(id);
+            return record ? structuredClone(record) : null;
+          },
           cloudRecord(section, id) {
             if (!records.has(section) || !isSyncId(id)) throw failed();
             const record = records.get(section).get(id);

@@ -1732,6 +1732,99 @@ describe.each(['google', 'yandex'])('%s: безопасное объединен
     expect(JSON.stringify([...f.cloud.versions.values()])).not.toContain('PRIVATE_PASSWORD');
   }, 30_000);
 
+  it('обновляет шаблон и добавляет вложенные элементы, сохраняя местные ID', async () => {
+    const f = await publicationFixture(provider, {
+      prepare: async f => {
+        const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+        f.state.marathonTemplates.push({
+          id: 'template',
+          name: 'Старое имя',
+          tasks: [
+            {
+              id: 'local-task',
+              title: 'Исходное',
+              rewards: [{ id: 'local-reward', threshold: 1, rewardText: 'Награда' }]
+            }
+          ],
+          bonuses: [{ id: 'local-bonus', needTasks: 1, text: 'Бонус' }]
+        });
+        const { ui, ...snapshot } = f.state;
+        Object.assign(f.state, planSyncIdentities({ snapshot, cryptoSource: webcrypto }).snapshot);
+        await f.storage.saveNow();
+      }
+    });
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    f.state.characters[0].notes = 'НЕЗАВИСИМО ЛОКАЛЬНО';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      const template = s.sections.marathons.records.find(row => row.type === 'marathonTemplate');
+      template.fields.name = 'Новое имя';
+      const newTask = structuredClone(template.fields.tasks[0]);
+      newTask.title = 'Новое задание';
+      template.fields.tasks.push(newTask);
+      template.fields.bonuses.push({ needTasks: 2, text: 'Новый бонус' });
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    const result = f.state.marathonTemplates[0];
+    expect(result.name).toBe('Новое имя');
+    expect(result.tasks[0].id).toBe('local-task');
+    expect(result.tasks[0].rewards[0].id).toBe('local-reward');
+    expect(result.bonuses[0].id).toBe('local-bonus');
+    expect(result.tasks[1].title).toBe('Новое задание');
+    expect(result.tasks[1].id).not.toBe('local-task');
+    expect(result.bonuses[1].text).toBe('Новый бонус');
+    expect(f.state.characters[0].notes).toBe('НЕЗАВИСИМО ЛОКАЛЬНО');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
+  it('передаёт новый шаблон и связанный с ним марафон с местными идентификаторами', async () => {
+    const f = await publicationFixture(provider);
+    const { parseDatasetBindingRecord } = await import('../js/modules/cloudSync/datasetBindingRecord.js');
+    const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+    const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+    const { createMarathon } = await import('../js/modules/marathons/model.js');
+    const root = parseDatasetBindingRecord(f.fake.pin(provider)).binding.rootPin;
+    const { ui, ...baseState } = f.state;
+    const remoteState = structuredClone(baseState);
+    remoteState.marathonTemplates.push({
+      id: 'remote-template',
+      name: 'Шаблон с облака',
+      tasks: [{ id: 'rt', title: 'Задание', rewards: [{ id: 'rr', threshold: 1, rewardText: 'Награда' }] }],
+      bonuses: []
+    });
+    remoteState.marathons.push(
+      createMarathon({
+        id: 'remote-marathon',
+        title: 'Марафон из шаблона',
+        source: { type: 'template', templateId: 'remote-template' },
+        startDate: '2026-10-01',
+        endDate: '2026-10-31'
+      })
+    );
+    const planned = planSyncIdentities({ snapshot: remoteState, cryptoSource: webcrypto }).snapshot;
+    const remoteSnapshot = buildPublicSnapshot(planned, { settingsSelections: [] });
+    const template = remoteSnapshot.sections.marathons.records.find(row => row.type === 'marathonTemplate');
+    const marathon = remoteSnapshot.sections.marathons.records.find(row => row.type === 'marathon');
+    f.state.characters[0].notes = 'ЛОКАЛЬНАЯ ЗАМЕТКА';
+    await f.storage.saveNow();
+    expect((await f.queue()).status).toBe('queued');
+    const remote = await mergeIncoming(f, provider, root, s => {
+      s.sections.marathons.records.push(structuredClone(template), structuredClone(marathon));
+      s.sections.marathons.order.templates.push(template.id);
+      s.sections.marathons.order.marathons.push(marathon.id);
+    });
+    expect((await mergePin(f, provider, remote)).status).toBe('merged');
+    const applied = f.state.marathonTemplates.find(row => row.name === 'Шаблон с облака');
+    expect(applied.tasks[0].rewards[0].rewardText).toBe('Награда');
+    expect(f.state.marathons[0].source.templateId).toBe(applied.id);
+    expect(f.state.characters[0].notes).toBe('ЛОКАЛЬНАЯ ЗАМЕТКА');
+    expect((await f.queue()).status).toBe('queued');
+    expect((await f.send()).status).toBe('sent_verified');
+  }, 30_000);
+
   it('передаёт новые записи истории монет и характеристик, добавленные сверху', async () => {
     const f = await publicationFixture(provider, {
       prepare: async f => {

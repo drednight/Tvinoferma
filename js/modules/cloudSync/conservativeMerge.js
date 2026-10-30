@@ -19,6 +19,14 @@ function invalid() {
 function plain(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
+function hasPrefix(prefix, values) {
+  return (
+    Array.isArray(prefix) &&
+    Array.isArray(values) &&
+    prefix.length <= values.length &&
+    prefix.every((value, index) => equal(value, values[index]))
+  );
+}
 function equal(left, right) {
   if (left === right) return true;
   if (Array.isArray(left) || Array.isArray(right)) {
@@ -374,14 +382,19 @@ export function planConservativePublicMerge(options) {
       target.fields = result.fields;
       if (Object.hasOwn(target, 'archived')) target.archived = result.archived;
       if (!equal(target, here)) {
-        if (section === 'marathons' && target.type === 'marathonTemplate') unsupported = true;
+        if (
+          target.type === 'marathonTemplate' &&
+          (!hasPrefix(here.fields.tasks, target.fields.tasks) || !hasPrefix(here.fields.bonuses, target.fields.bonuses))
+        )
+          unsupported = true;
         chosen.push({ section, id: target.id });
       }
     }
     for (const [id, incoming] of cloudRecords) {
       if (localRecords.has(id)) continue;
       if (baseRecords.has(id)) throw invalid();
-      if (section === 'marathons' && incoming.type === 'marathonTemplate') unsupported = true;
+      // Новый шаблон не заменяет локальные вложенные задания: их ID создаются
+      // отдельно при материализации. Изменения существующих шаблонов блокируются.
       merged.sections[section].records.push(structuredClone(incoming));
       chosen.push({ section, id });
     }

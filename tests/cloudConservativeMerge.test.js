@@ -403,11 +403,15 @@ describe('консервативное трёхстороннее объедин
     }
   });
 
-  it('не применяет входящие записи неподдержанного раздела и не считает порядок неважным', () => {
+  it('не принимает изменение вложенных данных шаблона и не считает порядок неважным', () => {
     const f = fixture();
-    f.cloud.sections.marathons.records.find(record => record.type === 'marathonTemplate').fields.name =
-      'ОБЛАЧНЫЙ ШАБЛОН';
-    expect(merge(f).status).toBe('incoming_section_unsupported');
+    f.localState.marathonTemplates[0].tasks = [{ id: 'local', title: 'Исходное' }];
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.marathons.records.find(record => record.type === 'marathonTemplate').fields.tasks[0].title =
+      'Изменённое';
+    expect(merge(f).status).toBe('structure_or_deletion_unsupported');
     const g = fixture();
     const id = g.cloud.sections.characters.order.active[0];
     g.cloud.sections.characters.records[0].archived = true;
@@ -552,13 +556,139 @@ describe('консервативное трёхстороннее объедин
     expect(() => parseConservativeMergeChoices(repeated)).toThrow();
   });
 
-  it('новый облачный шаблон марафона не применяется автоматически', () => {
+  it('добавляет новый облачный шаблон и марафон с корректной локальной ссылкой', () => {
     const f = fixture();
-    const added = structuredClone(f.cloud.sections.marathons.records[0]);
-    added.id = generateSyncId(webcrypto);
-    f.cloud.sections.marathons.records.push(added);
-    f.cloud.sections.marathons.order.templates.push(added.id);
-    expect(merge(f).status).toBe('incoming_section_unsupported');
+    const remoteState = structuredClone(f.localState);
+    remoteState.marathonTemplates.push({
+      id: 'remote-template',
+      name: 'Новый шаблон',
+      tasks: [
+        { id: 'remote-task', title: 'Задание', rewards: [{ id: 'remote-reward', rewardText: 'Награда', threshold: 1 }] }
+      ],
+      bonuses: [{ id: 'remote-bonus', needTasks: 1, text: 'Бонус' }]
+    });
+    remoteState.marathons.push(
+      createMarathon({
+        id: 'remote-marathon',
+        title: 'Новый марафон',
+        source: { type: 'template', templateId: 'remote-template' },
+        startDate: '2026-10-01',
+        endDate: '2026-10-31'
+      })
+    );
+    const planned = planSyncIdentities({ snapshot: remoteState, cryptoSource: webcrypto }).snapshot;
+    f.cloud = buildPublicSnapshot(planned, { settingsSelections: ['appearance'] });
+    f.localState.characters[0].notes = 'МЕСТНАЯ ЗАМЕТКА';
+    f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    const template = applied.marathonTemplates.find(item => item.name === 'Новый шаблон');
+    const marathon = applied.marathons.find(item => item.title === 'Новый марафон');
+    expect(template.tasks[0].rewards[0].rewardText).toBe('Награда');
+    expect(template.bonuses[0].text).toBe('Бонус');
+    expect(template.tasks[0].id).not.toBe('remote-task');
+    expect(marathon.source.templateId).toBe(template.id);
+    expect(applied.characters[0].notes).toBe('МЕСТНАЯ ЗАМЕТКА');
+  });
+
+  it('добавляет задания и бонусы в конец шаблона, не меняя прежние местные ID', () => {
+    const f = fixture();
+    f.localState.marathonTemplates[0].tasks = [
+      {
+        id: 'local-task',
+        title: 'Исходное',
+        rewards: [{ id: 'local-reward', threshold: 1, rewardText: 'Старая награда' }]
+      }
+    ];
+    f.localState.marathonTemplates[0].bonuses = [{ id: 'local-bonus', needTasks: 1, text: 'Старый бонус' }];
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    const template = f.cloud.sections.marathons.records[0];
+    const added = structuredClone(template.fields.tasks[0]);
+    added.title = 'Новое задание';
+    template.fields.tasks.push(added);
+    template.fields.bonuses.push({ needTasks: 2, text: 'Новый бонус' });
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    const result = applied.marathonTemplates[0];
+    expect(result.tasks[0].id).toBe('local-task');
+    expect(result.tasks[0].rewards[0].id).toBe('local-reward');
+    expect(result.bonuses[0].id).toBe('local-bonus');
+    expect(result.tasks[1].title).toBe('Новое задание');
+    expect(result.tasks[1].id).not.toBe('local-task');
+    expect(result.bonuses[1].text).toBe('Новый бонус');
+    expect(result.bonuses[1].id).not.toBe('local-bonus');
+  });
+
+  it('не теряет местное добавление шаблона при конфликтующем облачном добавлении', () => {
+    const f = fixture();
+    const local = f.local.sections.marathons.records[0];
+    const remote = f.cloud.sections.marathons.records[0];
+    const task = title => ({
+      title,
+      siteTitle: null,
+      description: '',
+      descriptionSource: '',
+      targetChecks: 1,
+      schedule: { mode: 'everyDay', dates: [], weekStartDay: 1 },
+      rewards: []
+    });
+    local.fields.tasks.push(task('Местное'));
+    remote.fields.tasks.push(task('Облачное'));
+    expect(merge(f).status).toBe('conflicts');
+    const resolution = {
+      reviewHash: 'a'.repeat(64),
+      cloudRecords: [{ section: 'marathons', id: local.id }],
+      cloudSettings: [],
+      cloudFinanceSettings: false
+    };
+    expect(planConservativePublicMerge({ base: f.base, local: f.local, cloud: f.cloud, resolution }).status).toBe(
+      'incoming_section_unsupported'
+    );
+  });
+
+  it('обновляет название шаблона без замены локальных ID его заданий и наград', () => {
+    const f = fixture();
+    f.localState.marathonTemplates[0].tasks = [
+      { id: 'local-task', title: 'Задание', rewards: [{ id: 'local-reward', threshold: 1, rewardText: 'Награда' }] }
+    ];
+    f.localState.marathonTemplates[0].bonuses = [{ id: 'local-bonus', needTasks: 1, text: 'Бонус' }];
+    f.base = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+    f.local = structuredClone(f.base);
+    f.cloud = structuredClone(f.base);
+    f.cloud.sections.marathons.records[0].fields.name = 'Изменённый шаблон';
+    const plan = merge(f);
+    expect(plan.status).toBe('prepared');
+    const applied = preparePublicSnapshotApply({
+      localState: f.localState,
+      cloudSnapshot: plan.snapshot(),
+      selectedRecords: plan.selectedRecords(),
+      selectedSettings: plan.selectedSettings(),
+      includeFinanceSettings: plan.includeFinanceSettings,
+      cryptoSource: webcrypto
+    }).candidateState();
+    expect(applied.marathonTemplates[0]).toMatchObject({
+      name: 'Изменённый шаблон',
+      tasks: [{ id: 'local-task', rewards: [{ id: 'local-reward' }] }],
+      bonuses: [{ id: 'local-bonus' }]
+    });
   });
 
   it('запрещает изменение состава в промежуточной версии, даже если затем он восстановлен', () => {

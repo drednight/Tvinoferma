@@ -28,6 +28,27 @@ function samePublic(a, b) {
   const comparison = comparePublicSnapshots({ local: a, cloud: b });
   return comparison.entries.length === 0 && comparison.uncomparedSettings.length === 0;
 }
+function hasPrefix(prefix, values) {
+  return (
+    Array.isArray(prefix) &&
+    Array.isArray(values) &&
+    prefix.length <= values.length &&
+    prefix.every((value, index) => sameValue(value, values[index]))
+  );
+}
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b))
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((value, index) => sameValue(value, b[index]))
+    );
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameValue(a[key], b[key]));
+}
 function orderedIds(records, local, cloud, accepts) {
   const available = new Set(records.filter(accepts).map(record => record.id));
   const result = [];
@@ -220,7 +241,7 @@ function applySettings(settings, target, selectedGroups) {
   }
 }
 
-function materialize(localState, target, selected, selectedGroups, financeSettings, cryptoSource) {
+function materialize(localState, local, target, selected, selectedGroups, financeSettings, cryptoSource) {
   const state = clone(localState);
   const choose = new Set(selected.map(item => `${item.section}:${item.id}`));
   const chosen = (section, id) => choose.has(`${section}:${id}`);
@@ -230,6 +251,11 @@ function materialize(localState, target, selected, selectedGroups, financeSettin
   const partiesBefore = existingMap([...state.parties, ...state.archivedParties]);
   const marathonsBefore = existingMap(state.marathons);
   const templatesBefore = existingMap(state.marathonTemplates);
+  const localTemplates = new Map(
+    rows(local, 'marathons')
+      .filter(record => record.type === 'marathonTemplate')
+      .map(record => [record.id, record])
+  );
   const plannerBefore = existingMap(state.plannerEntries);
   const operationsBefore = existingMap(state.finance.operations);
   const itemsBefore = existingMap(state.finance.shopItems);
@@ -328,12 +354,25 @@ function materialize(localState, target, selected, selectedGroups, financeSettin
       continue;
     }
     const f = clone(record.fields);
-    const tasks = f.tasks.map(task => ({
-      ...task,
-      id: allocate('task'),
-      rewards: task.rewards.map(reward => ({ ...reward, id: allocate('reward') }))
-    }));
-    const bonuses = f.bonuses.map(bonus => ({ ...bonus, id: allocate('bonus') }));
+    const prior = localTemplates.get(record.id);
+    // У неизменённого префикса сохраняем местные ID; добавлениям в конец
+    // назначаем новые. Эти ID не являются sync-ID, связь по индексу не угадываем.
+    const keepTasks = before && prior && hasPrefix(prior.fields.tasks, f.tasks);
+    const keepBonuses = before && prior && hasPrefix(prior.fields.bonuses, f.bonuses);
+    const tasks = [
+      ...(keepTasks ? clone(before.tasks) : []),
+      ...f.tasks.slice(keepTasks ? prior.fields.tasks.length : 0).map(task => ({
+        ...task,
+        id: allocate('task'),
+        rewards: task.rewards.map(reward => ({ ...reward, id: allocate('reward') }))
+      }))
+    ];
+    const bonuses = [
+      ...(keepBonuses ? clone(before.bonuses || []) : []),
+      ...f.bonuses
+        .slice(keepBonuses ? prior.fields.bonuses.length : 0)
+        .map(bonus => ({ ...bonus, id: allocate('bonus') }))
+    ];
     templates.set(record.id, {
       id: localIds.get(record.id),
       syncId: record.id,
@@ -510,6 +549,7 @@ export function preparePublicSnapshotApply(options) {
   const target = projection(local, cloud, selected, settingsGroups, input.includeFinanceSettings === true);
   const candidate = materialize(
     localState,
+    local,
     target,
     selected,
     settingsGroups,
