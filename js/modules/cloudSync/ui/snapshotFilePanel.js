@@ -37,6 +37,8 @@ const STATUS = {
   sent_verified: 'Полный снимок отправлен и сверен чтением с диска.',
   applied: 'Данные из файла применены. Предыдущее местное состояние сохранено в резервной копии.',
   confirmation_required: 'Нужно подтверждение операции.',
+  private_pruning_confirmation_required:
+    'В новом полном файле отсутствуют персонажи с облачными контактами. Пропуск их приватных записей требует отдельного согласия.',
   private_confirmation_required: 'Сохранение ранее переданной секретной части требует отдельного согласия.',
   overwrite_confirmation_required: 'На диске есть непринятая версия. Её замена требует отдельного согласия.',
   upload_deferred: 'Загрузка не начиналась. Подготовленный зашифрованный файл сохранён; можно продолжить отправку.',
@@ -382,10 +384,17 @@ export function bindSnapshotFilePanel(options) {
           view !== current)
       )
         return;
+      let privatePruningConfirmed = false;
+      if (action === 'upload' && current.privateOrphans) {
+        privatePruningConfirmed = await ask(
+          `В местном полном файле отсутствуют персонажи с ранее переданными контактами: ${current.privateOrphans}. Не включать их приватные записи в новую актуальную версию? Прежние резервные файлы всё ещё содержат эти секреты; это не безвозвратное удаление с диска.`
+        );
+        if (!privatePruningConfirmed || token !== generation || view !== current) return;
+      }
       let privateCarryConfirmed = false;
       if (action !== 'apply' && current.privateCarry) {
         privateCarryConfirmed = await ask(
-          'В облачном файле есть ранее переданная секретная часть. Разрешить сохранить её в следующем зашифрованном файле? Местные контакты не заменятся, новые местные значения не выгрузятся.'
+          'В облачном файле есть ранее переданная секретная часть. Разрешить сохранить совместимые записи оставшихся персонажей в следующем зашифрованном файле? Местные контакты не заменятся, новые местные значения не выгрузятся.'
         );
         if (!privateCarryConfirmed || token !== generation || view !== current) return;
       }
@@ -398,6 +407,7 @@ export function bindSnapshotFilePanel(options) {
               confirmed: true,
               overwriteConfirmed: current.remoteChanged,
               privateCarryConfirmed,
+              privatePruningConfirmed,
               resolutionConfirmed: current.requiresResolution === true,
               ...(action === 'resolve' ? { useCloudFile: true } : {})
             });

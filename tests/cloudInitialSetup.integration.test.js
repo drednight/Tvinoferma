@@ -5354,3 +5354,421 @@ describe.each(['google', 'yandex'])('%s: обмен полным файлом в
     expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
   }, 30000);
 });
+
+describe.each(['google', 'yandex'])('%s: файловый ручной перенос контактов', provider => {
+  async function api(f) {
+    return {
+      opts: { provider, invoke: f.fake.invoke, cryptoSource: webcrypto, openSession: f.cloud.openSession },
+      ...(await import('../js/modules/cloudSync/snapshotFileExchange.js'))
+    };
+  }
+  async function exportPassword(f, x, fields = ['password']) {
+    const review = await x.checkSnapshotFile(x.opts),
+      prepared = await x.prepareSnapshotFilePrivateExport({
+        ...x.opts,
+        review,
+        fields,
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    expect(prepared.status).toBe('private_export_review');
+    const privateSelections = prepared.rows.map(({ characterId, field }) => ({ characterId, field }));
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          overwriteConfirmed: review.remoteChanged,
+          privateCarryConfirmed: review.privateCarry,
+          privateExport: prepared,
+          privateSelections
+        })
+      ).status
+    ).toBe('sent_verified');
+    return { review, prepared, privateSelections };
+  }
+  it('передаёт только выбранные пары и не выгружает последующие местные изменения автоматически', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.state.characters[0].contacts.email = 'NEVER_SELECTED_EMAIL';
+    await f.storage.saveNow();
+    const review = await x.checkSnapshotFile(x.opts),
+      prepared = await x.prepareSnapshotFilePrivateExport({
+        ...x.opts,
+        review,
+        fields: ['password', 'email'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    expect(JSON.stringify(prepared)).not.toContain('PRIVATE_PASSWORD');
+    expect(JSON.stringify(prepared)).not.toContain('NEVER_SELECTED_EMAIL');
+    const privateSelections = prepared.rows
+      .filter(row => row.field === 'password')
+      .map(({ characterId, field }) => ({ characterId, field }));
+    expect(
+      (await x.uploadSnapshotFile({ ...x.opts, review, confirmed: true, privateExport: prepared, privateSelections }))
+        .status
+    ).toBe('sent_verified');
+    expect((await fixturePrivatePayload(f)).privateSnapshot.records[0].fields).toEqual({
+      password: 'PRIVATE_PASSWORD'
+    });
+    expect(JSON.stringify(f.cloud.session.upload.mock.calls)).not.toContain('PRIVATE_PASSWORD');
+    f.state.characters[0].contacts.password = 'NEW_PASSWORD_NEVER_AUTO';
+    f.state.characters[0].notes = 'PUBLIC_CHANGE';
+    await f.storage.saveNow();
+    const normal = await x.checkSnapshotFile(x.opts);
+    expect(
+      (await x.uploadSnapshotFile({ ...x.opts, review: normal, confirmed: true, privateCarryConfirmed: true })).status
+    ).toBe('sent_verified');
+    expect((await fixturePrivatePayload(f)).privateSnapshot.records[0].fields.password).toBe('PRIVATE_PASSWORD');
+  }, 30000);
+  it('не готовит пароли без отдельного риска и не использует отменённую capability', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      review = await x.checkSnapshotFile(x.opts);
+    expect(
+      (
+        await x.prepareSnapshotFilePrivateExport({
+          ...x.opts,
+          review,
+          fields: ['password'],
+          contactsSourceConfirmed: true
+        })
+      ).status
+    ).toBe('private_consent_required');
+    const prepared = await x.prepareSnapshotFilePrivateExport({
+      ...x.opts,
+      review,
+      fields: ['password'],
+      contactsSourceConfirmed: true,
+      acknowledgePasswordRisk: true
+    });
+    prepared.cancel();
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          privateExport: prepared,
+          privateSelections: [{ characterId: f.state.characters[0].syncId, field: 'password' }]
+        })
+      ).status
+    ).toBe('private_review_changed');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+  it('останавливает устаревшую подготовку и недоступный источник вместо выгрузки пустых полей', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      review = await x.checkSnapshotFile(x.opts),
+      prepared = await x.prepareSnapshotFilePrivateExport({
+        ...x.opts,
+        review,
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    f.state.characters[0].contacts.password = 'CHANGED_AFTER_REVIEW';
+    await f.storage.saveNow();
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          privateExport: prepared,
+          privateSelections: [{ characterId: f.state.characters[0].syncId, field: 'password' }]
+        })
+      ).status
+    ).toBe('state_changed_or_unsaved');
+    f.state.settings.security.useVault = true;
+    await f.storage.saveNow();
+    const current = await x.checkSnapshotFile(x.opts);
+    expect(
+      (
+        await x.prepareSnapshotFilePrivateExport({
+          ...x.opts,
+          review: current,
+          fields: ['password'],
+          contactsSourceConfirmed: true,
+          acknowledgePasswordRisk: true
+        })
+      ).status
+    ).toBe('private_source_unavailable');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+  it('передаёт выбранную пустую строку как явную очистку, сохраняя не выбранные категории', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.state.characters[0].contacts.email = 'KEEP_CLOUD_EMAIL';
+    await f.storage.saveNow();
+    await exportPassword(f, x, ['password', 'email']);
+    f.state.characters[0].contacts.password = '';
+    f.state.characters[0].contacts.email = 'NOT_EXPORTED_NEW_EMAIL';
+    await f.storage.saveNow();
+    const { prepared } = await exportPassword(f, x);
+    expect(prepared.rows[0].clears).toBe(true);
+    expect((await fixturePrivatePayload(f)).privateSnapshot.records[0].fields).toEqual({
+      password: '',
+      email: 'KEEP_CLOUD_EMAIL'
+    });
+  }, 30000);
+  it('удаляет публичного персонажа с приватной частью только после отдельного согласия v7', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    await exportPassword(f, x);
+    const charId = f.state.characters[0].syncId;
+    f.state.characters = [];
+    await f.storage.saveNow();
+    const review = await x.checkSnapshotFile(x.opts);
+    expect(review.privateOrphans).toBe(1);
+    expect(
+      (await x.uploadSnapshotFile({ ...x.opts, review, confirmed: true, privateCarryConfirmed: true })).status
+    ).toBe('private_pruning_confirmation_required');
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          privateCarryConfirmed: true,
+          privatePruningConfirmed: true
+        })
+      ).status
+    ).toBe('sent_verified');
+    const payload = await fixturePrivatePayload(f);
+    expect(payload.version).toBe(7);
+    expect(payload.privatePrunedIds).toEqual([charId]);
+    expect(payload.privateSnapshot).toBeUndefined();
+    expect(payload.publicSnapshot.sections.characters.records).toEqual([]);
+  }, 30000);
+  it('после неизвестной приватной загрузки сохраняет партию в шифртексте и только сверяет её после перезапуска', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      review = await x.checkSnapshotFile(x.opts),
+      prepared = await x.prepareSnapshotFilePrivateExport({
+        ...x.opts,
+        review,
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    f.cloud.loseNextUpload();
+    f.cloud.setVerify(false);
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          privateExport: prepared,
+          privateSelections: [{ characterId: f.state.characters[0].syncId, field: 'password' }]
+        })
+      ).status
+    ).toBe('verification_pending');
+    const pending = f.state.settings.cloudSnapshotFiles[provider].pending;
+    expect(JSON.stringify(pending)).not.toContain('PRIVATE_PASSWORD');
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const { state, normalizeState } = await import('../js/core/state.js');
+    Object.assign(state, normalizeState(raw));
+    const storage = await import('../js/core/storage.js');
+    state.characters[0].contacts.password = 'NEW_LOCAL_AFTER_RESTART';
+    await storage.saveNow();
+    const next = await import('../js/modules/cloudSync/snapshotFileExchange.js');
+    f.cloud.setVerify(true);
+    expect((await next.resumeSnapshotFileUpload({ ...x.opts, confirmed: true })).status).toBe('sent_verified');
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
+    expect(state.characters[0].contacts.password).toBe('NEW_LOCAL_AFTER_RESTART');
+  }, 30000);
+  it('на втором чистом профиле применяет только выбранный пароль с отдельным backup, не принимая публичную базу этим действием', async () => {
+    const source = await publicationFixture(provider),
+      sx = await api(source);
+    source.state.characters[0].contacts.email = 'SOURCE_EMAIL_NOT_IMPORTED';
+    await source.storage.saveNow();
+    const { pairingCode } = await source.readLocalCloudPairingCode({
+      provider,
+      invoke: source.fake.invoke,
+      cryptoSource: webcrypto
+    });
+    await exportPassword(source, sx, ['password', 'email']);
+    const target = await fixture(),
+      recovery = target.createCloudRecovery({
+        provider,
+        invoke: target.fake.invoke,
+        cryptoSource: webcrypto,
+        openSession: source.cloud.openSession
+      });
+    const attempt = await recovery.begin({
+      pairingCode,
+      independentPinConfirmed: true,
+      role: 'main',
+      secret: mainSecret
+    });
+    expect((await attempt.connect({ confirmed: true })).status).toBe('connected');
+    const exchange = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
+      opts = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto, openSession: source.cloud.openSession };
+    const full = await exchange.checkSnapshotFile(opts);
+    expect((await exchange.replaceFromSnapshotFile({ ...opts, review: full, confirmed: true })).status).toBe('applied');
+    target.state.characters[0].contacts.email = 'TARGET_EMAIL';
+    await target.storage.saveNow();
+    const publicView = await exchange.checkSnapshotFile(opts),
+      review = await exchange.checkSnapshotFilePrivate({
+        ...opts,
+        review: publicView,
+        fields: ['password', 'email'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    expect(review.status).toBe('private_ready');
+    expect(JSON.stringify(review)).not.toContain('PRIVATE_PASSWORD');
+    expect(JSON.stringify(review)).not.toContain('SOURCE_EMAIL_NOT_IMPORTED');
+    const selections = review.rows
+        .filter(row => row.field === 'password')
+        .map(({ characterId, field }) => ({ characterId, field })),
+      baseline = structuredClone(target.state.settings.cloudSnapshotFiles),
+      before = localStorage.getItem(STORAGE_KEY);
+    const consent = {
+      ...opts,
+      review,
+      selections,
+      confirmed: true,
+      contactsSourceConfirmed: true,
+      acknowledgePasswordRisk: true,
+      independentBackupConfirmed: false
+    };
+    expect((await exchange.applySnapshotFilePrivate(consent)).status).toBe('private_backup_required');
+    const applied = await exchange.applySnapshotFilePrivate({ ...consent, independentBackupConfirmed: true });
+    expect(applied.status).toBe('applied');
+    expect(localStorage.getItem(applied.backup)).toBe(before);
+    expect(target.state.characters[0].contacts).toMatchObject({ password: 'PRIVATE_PASSWORD', email: 'TARGET_EMAIL' });
+    expect(target.state.settings.cloudSnapshotFiles).toEqual(baseline);
+  }, 30000);
+  it('не применяет контакты после изменения файла в облаке', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    await exportPassword(f, x);
+    f.state.characters[0].contacts.password = 'OTHER_LOCAL';
+    await f.storage.saveNow();
+    const publicView = await x.checkSnapshotFile(x.opts),
+      review = await x.checkSnapshotFilePrivate({
+        ...x.opts,
+        review: publicView,
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    const root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 20;
+    });
+    const selections = review.rows.map(({ characterId, field }) => ({ characterId, field }));
+    expect(
+      (
+        await x.applySnapshotFilePrivate({
+          ...x.opts,
+          review,
+          selections,
+          confirmed: true,
+          contactsSourceConfirmed: true,
+          acknowledgePasswordRisk: true,
+          independentBackupConfirmed: true
+        })
+      ).status
+    ).toBe('remote_changed');
+    expect(f.state.characters[0].contacts.password).toBe('OTHER_LOCAL');
+  }, 30000);
+  it('частичное применение контактов не принимает непринятые публичные правки на другом профиле', async () => {
+    const source = await publicationFixture(provider),
+      sx = await api(source),
+      sourceId = source.state.characters[0].syncId;
+    source.state.characters[0].notes = 'UNACCEPTED_PUBLIC_UPDATE';
+    await source.storage.saveNow();
+    const { pairingCode } = await source.readLocalCloudPairingCode({
+      provider,
+      invoke: source.fake.invoke,
+      cryptoSource: webcrypto
+    });
+    await exportPassword(source, sx);
+    const target = await fixture();
+    target.state.characters[0].syncId = sourceId;
+    target.state.characters[0].contacts.password = 'LOCAL_OLD';
+    target.state.characters[0].notes = 'MY_LOCAL_NOTE';
+    await target.storage.saveNow();
+    const recovery = target.createCloudRecovery({
+        provider,
+        invoke: target.fake.invoke,
+        cryptoSource: webcrypto,
+        openSession: source.cloud.openSession
+      }),
+      attempt = await recovery.begin({ pairingCode, independentPinConfirmed: true, role: 'main', secret: mainSecret });
+    await attempt.connect({ confirmed: true });
+    const exchange = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
+      opts = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto, openSession: source.cloud.openSession };
+    const publicView = await exchange.checkSnapshotFile(opts),
+      review = await exchange.checkSnapshotFilePrivate({
+        ...opts,
+        review: publicView,
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      }),
+      selections = review.rows.map(({ characterId, field }) => ({ characterId, field }));
+    expect(
+      (
+        await exchange.applySnapshotFilePrivate({
+          ...opts,
+          review,
+          selections,
+          confirmed: true,
+          contactsSourceConfirmed: true,
+          acknowledgePasswordRisk: true,
+          independentBackupConfirmed: true
+        })
+      ).status
+    ).toBe('applied');
+    expect(target.state.characters[0].notes).toBe('MY_LOCAL_NOTE');
+    expect(target.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    expect(target.state.settings.cloudSnapshotFiles[provider]).toMatchObject({ acceptedPin: null, acceptedHash: null });
+  }, 30000);
+  it('не позволяет прежнему приватному отправителю создавать очередь после перехода', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    await exportPassword(f, x);
+    const before = structuredClone(f.fake.queue(provider));
+    const { stagePrivatePublication } = await import('../js/modules/cloudSync/privateTransfer.js');
+    expect(
+      (
+        await stagePrivatePublication({
+          provider,
+          invoke: f.fake.invoke,
+          cryptoSource: webcrypto,
+          fields: ['password'],
+          contactsSourceConfirmed: true,
+          acknowledgePasswordRisk: true
+        })
+      ).status
+    ).toBe('snapshot_file_mode');
+    expect(f.fake.queue(provider)).toEqual(before);
+  }, 30000);
+  it('фиксирует категории до await: нельзя подменить email паролем без риска', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      review = await x.checkSnapshotFile(x.opts),
+      fields = ['email'];
+    const pending = x.prepareSnapshotFilePrivateExport({
+      ...x.opts,
+      review,
+      fields,
+      contactsSourceConfirmed: true,
+      acknowledgePasswordRisk: false
+    });
+    fields[0] = 'password';
+    const prepared = await pending;
+    expect(prepared.status).toBe('private_export_review');
+    expect(prepared.fields).toEqual(['email']);
+    expect(prepared.rows.every(row => row.field === 'email')).toBe(true);
+    prepared.cancel();
+  }, 30000);
+});

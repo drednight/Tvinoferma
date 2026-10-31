@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { hydrateSecrets, prepareForDisk, __setInvoke, vaultStatus, contactsJson } from '../js/core/secrets.js';
+import {
+  hydrateSecrets,
+  prepareForDisk,
+  __setInvoke,
+  vaultStatus,
+  contactsJson,
+  verifyContactsSource
+} from '../js/core/secrets.js';
 import { state } from '../js/core/state.js';
 
 function fakeVault(initial = {}, { available = true } = {}) {
@@ -104,5 +111,31 @@ describe('secrets', () => {
     await prepareForDisk({ characters: chars });
     expect(v.store['uuid-1']).toBeUndefined();
     expect(JSON.parse(v.store.Bob)).toMatchObject({ email: 'old@x.ru', password: 'pw' });
+  });
+  it('перед ручной передачей проверяет свежесть vault без записи значений', async () => {
+    const v = fakeVault({ a: contactsJson(contacts('a', 'old')) });
+    __setInvoke(v.invoke);
+    const characters = [{ id: 'a', contacts: contacts('') }];
+    await hydrateSecrets(characters);
+    const snapshot = { characters, archivedCharacters: [], settings: { security: { useVault: true } } };
+    v.calls.length = 0;
+    expect(await verifyContactsSource(snapshot)).toBe(true);
+    expect(v.calls).toEqual(['secrets_get_many']);
+    v.store.a = contactsJson(contacts('a', 'external-change'));
+    expect(await verifyContactsSource(snapshot)).toBe(false);
+    expect(vaultStatus().blocked).toBe(true);
+  });
+  it('не объявляет несохранённую местную правку конфликтом vault', async () => {
+    const v = fakeVault({ a: contactsJson(contacts('a', 'old')) });
+    __setInvoke(v.invoke);
+    const characters = [{ id: 'a', contacts: contacts('') }];
+    await hydrateSecrets(characters);
+    characters[0].contacts.password = 'local-new';
+    expect(
+      await verifyContactsSource({ characters, archivedCharacters: [], settings: { security: { useVault: true } } })
+    ).toBe(false);
+    expect(vaultStatus().blocked).toBe(false);
+    await prepareForDisk({ characters, archivedCharacters: [] });
+    expect(JSON.parse(v.store.a).password).toBe('local-new');
   });
 });

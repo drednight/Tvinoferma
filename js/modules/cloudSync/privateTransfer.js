@@ -1,6 +1,7 @@
 // @ts-check
 // Manual, per-batch consent. Ordinary saves NEVER read/export local contacts.
 // A staged private batch survives ordinary queue coalescing encrypted. Do not log.
+import { hasSnapshotFileMode } from './snapshotFileState.js';
 import { vaultStatus } from '../../core/secrets.js';
 import { loadData, forgetLoadedState } from '../../core/storage.js';
 import { object, array } from './exportSchema.js';
@@ -70,6 +71,7 @@ export async function stagePrivatePublication(options) {
     const context = await openConnectedPublicationContext(input);
     if (!context) return result('binding_or_queue_blocked');
     let original = currentCloudStateSnapshot();
+    if (hasSnapshotFileMode(original.settings, input.provider)) return result('snapshot_file_mode');
     requireResolvedSelectiveApply(original.settings);
     if (!sourceAvailable(original)) return result('private_source_unavailable');
     if (!(await stillSaved(original))) return result('state_changed_or_unsaved');

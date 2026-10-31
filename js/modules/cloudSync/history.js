@@ -22,10 +22,13 @@ const PRIVATE_TRANSFER_VERSION = 4;
 const FILE_SNAPSHOT_VERSION = 5;
 // Whole-file choice, not an entity merge. The other authenticated heads stay as backups.
 const FILE_CHOICE_VERSION = 6;
-const fileVersion = version => [FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION].includes(version);
-function replacedFileHeads(value) {
+const FILE_PRIVATE_PRUNE_VERSION = 7;
+const fileVersion = version =>
+  [FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(version);
+function replacedFileHeads(value, allowEmpty = false) {
   const pins = validateList(value, MAX_HISTORY_VERSIONS - 1, copyPin);
-  if (!pins.length || new Set(pins.map(pin => pin.versionId)).size !== pins.length) throw historyError();
+  if ((!allowEmpty && !pins.length) || new Set(pins.map(pin => pin.versionId)).size !== pins.length)
+    throw historyError();
   return pins.sort((a, b) => a.versionId.localeCompare(b.versionId));
 }
 const cumulativeVersion = version => [PLANNER_TOMBSTONE_VERSION, PRIVATE_TRANSFER_VERSION].includes(version);
@@ -386,7 +389,7 @@ export async function verifyHistory(options) {
     ids.add(envelope.versionId);
   }
   const crypto = cryptoApi(input.cryptoSource);
-  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number, replacedHeads: any[]}>} */
+  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number, replacedHeads: any[], privatePrunedIds: string[]}>} */
   const nodes = new Map();
   const identities = new Map();
   // Все входные значения скопированы до первого await; чужие изменения не подменят проверку.
@@ -407,7 +410,7 @@ export async function verifyHistory(options) {
       const wrapper = object(
         payload,
         ['format', 'version', 'parent', 'publicSnapshot'],
-        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot', 'replacedHeads']
+        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot', 'replacedHeads', 'privatePrunedIds']
       );
       if (
         wrapper.format !== PAYLOAD_FORMAT ||
@@ -417,12 +420,23 @@ export async function verifyHistory(options) {
           PLANNER_TOMBSTONE_VERSION,
           PRIVATE_TRANSFER_VERSION,
           FILE_SNAPSHOT_VERSION,
-          FILE_CHOICE_VERSION
+          FILE_CHOICE_VERSION,
+          FILE_PRIVATE_PRUNE_VERSION
         ].includes(wrapper.version)
       )
         throw historyError();
-      if ((wrapper.version === FILE_CHOICE_VERSION) !== Object.hasOwn(wrapper, 'replacedHeads')) throw historyError();
-      const replacedHeads = wrapper.version === FILE_CHOICE_VERSION ? replacedFileHeads(wrapper.replacedHeads) : [];
+      if (
+        [FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(wrapper.version) !==
+          Object.hasOwn(wrapper, 'replacedHeads') ||
+        (wrapper.version === FILE_PRIVATE_PRUNE_VERSION) !== Object.hasOwn(wrapper, 'privatePrunedIds')
+      )
+        throw historyError();
+      const replacedHeads = [FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(wrapper.version)
+        ? replacedFileHeads(wrapper.replacedHeads, wrapper.version === FILE_PRIVATE_PRUNE_VERSION)
+        : [];
+      const privatePrunedIds =
+        wrapper.version === FILE_PRIVATE_PRUNE_VERSION ? plannerDeletedIds(wrapper.privatePrunedIds) : [];
+      if (wrapper.version === FILE_PRIVATE_PRUNE_VERSION && !privatePrunedIds.length) throw historyError();
       const isDeletionVersion = wrapper.version === PLANNER_DELETION_VERSION;
       const isTombstoneVersion = cumulativeVersion(wrapper.version);
       if (
@@ -458,6 +472,7 @@ export async function verifyHistory(options) {
         pin,
         parent,
         replacedHeads,
+        privatePrunedIds,
         publicSnapshot: wrapper.publicSnapshot,
         privateSnapshot: Object.hasOwn(wrapper, 'privateSnapshot')
           ? parsePrivateSnapshot(wrapper.privateSnapshot, wrapper.publicSnapshot)
@@ -520,11 +535,32 @@ export async function verifyHistory(options) {
       }
     }
     const parentNode = node.parent && nodes.get(node.parent.versionId);
-    if (parentNode && !retainsPrivateFields(parentNode.privateSnapshot, node.privateSnapshot)) throw historyError();
+    if (parentNode) {
+      const removed = new Set(node.privatePrunedIds);
+      const currentIds = validatePublic(node.publicSnapshot);
+      const expected = (parentNode.privateSnapshot?.records || [])
+        .filter(row => !currentIds.has(row.characterId))
+        .map(row => row.characterId)
+        .sort();
+      if (
+        node.version === FILE_PRIVATE_PRUNE_VERSION &&
+        JSON.stringify(expected) !== JSON.stringify([...removed].sort())
+      )
+        throw historyError();
+      const prior = parentNode.privateSnapshot
+        ? {
+            ...parentNode.privateSnapshot,
+            records: parentNode.privateSnapshot.records.filter(row => !removed.has(row.characterId))
+          }
+        : null;
+      if (!retainsPrivateFields(prior?.records.length ? prior : null, node.privateSnapshot)) throw historyError();
+    }
     if (
       (cumulativeVersion(parentNode?.version) && !cumulativeVersion(node.version) && !fileVersion(node.version)) ||
       (parentNode?.version === PRIVATE_TRANSFER_VERSION &&
-        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION].includes(node.version)) ||
+        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(
+          node.version
+        )) ||
       (fileVersion(parentNode?.version) && !fileVersion(node.version))
     )
       throw historyError();
@@ -596,6 +632,9 @@ export async function verifyHistory(options) {
     },
     isFileSnapshot(pinValue) {
       return fileVersion(get(pinValue).version);
+    },
+    privatePrunedIds(pinValue) {
+      return [...get(pinValue).privatePrunedIds];
     },
     replacedHeads(pinValue) {
       return get(pinValue).replacedHeads.map(pin => ({ ...pin }));
@@ -685,15 +724,17 @@ export async function verifyHistory(options) {
 
 /** A full public file, including absences and order. Caller obtains explicit replacement consent.
  * The encrypted prior versions stay on disk as backups. Not used by the old outbox.
- * @param {{publicSnapshot:any,parent:any,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,privateSnapshot?:any,replacedHeads?:any[],cryptoSource?:Crypto}} options
+ * @param {{publicSnapshot:any,parent:any,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,privateSnapshot?:any,replacedHeads?:any[],privatePrunedIds?:string[],cryptoSource?:Crypto}} options
  */
 export async function sealFileSnapshot(options) {
   const input = object(
     options,
     ['publicSnapshot', 'parent', 'recoveryKey', 'datasetId', 'versionId', 'keyBundle', 'keyPin'],
-    ['privateSnapshot', 'cryptoSource', 'replacedHeads']
+    ['privateSnapshot', 'cryptoSource', 'replacedHeads', 'privatePrunedIds']
   );
   const parent = copyPin(input.parent);
+  const privatePrunedIds = input.privatePrunedIds === undefined ? [] : plannerDeletedIds(input.privatePrunedIds);
+  if (input.privatePrunedIds !== undefined && !privatePrunedIds.length) throw historyError();
   const replacedHeads = input.replacedHeads === undefined ? [] : replacedFileHeads(input.replacedHeads);
   if (replacedHeads.some(pin => pin.versionId === parent.versionId || pin.versionId === input.versionId))
     throw historyError();
@@ -712,8 +753,16 @@ export async function sealFileSnapshot(options) {
   const envelope = await encryptSnapshot({
     snapshot: {
       format: PAYLOAD_FORMAT,
-      version: replacedHeads.length ? FILE_CHOICE_VERSION : FILE_SNAPSHOT_VERSION,
-      ...(replacedHeads.length ? { replacedHeads } : {}),
+      version: privatePrunedIds.length
+        ? FILE_PRIVATE_PRUNE_VERSION
+        : replacedHeads.length
+          ? FILE_CHOICE_VERSION
+          : FILE_SNAPSHOT_VERSION,
+      ...(privatePrunedIds.length
+        ? { privatePrunedIds, replacedHeads }
+        : replacedHeads.length
+          ? { replacedHeads }
+          : {}),
       parent,
       publicSnapshot,
       ...(privateSnapshot ? { privateSnapshot } : {})

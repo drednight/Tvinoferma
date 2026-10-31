@@ -361,3 +361,29 @@ export async function prepareForDisk(snapshot) {
   }
   return prepared;
 }
+
+/** Read-only freshness check before an explicitly requested private export/import.
+ * A state backup is not a vault backup. No values or raw failures are returned.
+ */
+export async function verifyContactsSource(snapshot) {
+  if (vault.blocked) return false;
+  if (snapshot.settings?.security?.useVault === false) return true;
+  if (!vault.checked || !vault.ready) return false;
+  try {
+    const characters = [...snapshot.characters, ...snapshot.archivedCharacters];
+    const keys = new Set(characters.map(char => char.id));
+    if (keys.size !== characters.length) return false;
+    const records = readRecords(await invoke('secrets_get_many', { keys: [...keys] }), keys);
+    for (const char of characters) {
+      if ((records.get(char.id) ?? null) !== (vault.known.get(char.id)?.raw ?? null)) {
+        blockVault(CONFLICT);
+        return false;
+      }
+      // A legitimate unsaved edit is not a vault conflict; let normal saving persist it.
+      if (contactsJson(char.contacts) !== (vault.known.get(char.id)?.normalized || '')) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
