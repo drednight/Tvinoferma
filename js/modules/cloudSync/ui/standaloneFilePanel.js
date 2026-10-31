@@ -173,7 +173,11 @@ export function bindStandaloneFilePanel(options) {
     for (const result of results) {
       const li = doc.createElement('li');
       const diagnostic = cloudAccessDiagnostic(result);
-      li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}`;
+      const reconnectHint =
+        result.provider === 'google' && ['credential_blocked', 'login_required'].includes(result.status)
+          ? '. Выберите Google в способе входа выше и нажмите «Повторить вход Google»; войдите в тот же аккаунт'
+          : '';
+      li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
       if (result.status === 'folder_ambiguous' && result.folders?.length) {
         const select = doc.createElement('select');
         select.className = 'input';

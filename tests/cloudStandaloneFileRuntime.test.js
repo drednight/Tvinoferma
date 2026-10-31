@@ -51,6 +51,7 @@ async function fixture() {
       if (command === 'cloud_simple_key_read') return null;
       if (command !== 'cloud_disk_network') throw new Error('Unknown synthetic command');
       const args = wrapped.args;
+      if (typeof failures[args.operation] === 'string') throw failures[args.operation];
       if (failures[args.operation]) return { status: failures[args.operation], contentType: null, body: '' };
       if (args.operation === 'identity') return reply({ client_id: binding.clientId, psuid: binding.accountKey });
       if (args.operation === 'list') {
@@ -254,3 +255,29 @@ it('reports download denial without another blind retry or clearing the pending 
   const checked = await f.runtime.check();
   expect(f.diagnostic(checked.results.find(row => row.provider === 'yandex'))).toBe('disk_service_unavailable');
 });
+
+it.each(['connect', 'timeout', 'busy', 'redirect', 'encoding', 'size', 'body', 'policy', 'client', 'transport'])(
+  'native %s failure survives pending-file verification without a second upload',
+  async reason => {
+    const f = await fixture();
+    f.failures.download_content = `cloud_disk_${reason}`;
+    const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+    const saved = await f.runtime.save(prepared, { confirmed: true });
+    const code = `download_content_${reason === 'timeout' ? 'timeout' : reason === 'transport' ? 'transport_unavailable' : 'native_' + reason}`;
+    expect(saved.results[0].status).toBe('verification_pending');
+    expect(f.diagnostic(saved.results[0])).toBe(code);
+    const pending = structuredClone(f.state.settings.cloudStandaloneFiles.yandex.pending);
+    expect(f.puts).toBe(1);
+    const continued = await f.runtime.continuePending('yandex');
+    expect(f.diagnostic(continued)).toBe(code);
+    expect(f.puts).toBe(1);
+    expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toEqual(pending);
+    const serialized = JSON.stringify({ saved, continued });
+    expect(serialized).not.toMatch(/FAKE_ACCESS|downloader|https:|cloud_disk_/);
+    // Once the service recovers, read and confirm EXACTLY the existing bytes.
+    delete f.failures.download_content;
+    expect((await f.runtime.continuePending('yandex')).status).toBe('sent_verified');
+    expect(f.puts).toBe(1);
+    expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toBeNull();
+  }
+);

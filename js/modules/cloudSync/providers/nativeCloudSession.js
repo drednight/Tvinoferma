@@ -283,7 +283,8 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
         folderId: input.folderId
       }),
       fetchImpl: diskFetch,
-      timeoutMs,
+      // Native HTTP is bounded to 60s. Let its safe failure code arrive first.
+      timeoutMs: input.timeoutMs ?? 70_000,
       ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
       ...(provider === 'google' ? { folderId: input.folderId } : {})
     });

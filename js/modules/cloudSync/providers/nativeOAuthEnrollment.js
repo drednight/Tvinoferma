@@ -4,6 +4,8 @@
 // Windows/Tauri, восстановление после сбоев и оба провайдера ещё не испытаны.
 // Здесь нет передачи файлов, пароля шифрования, очереди или применения данных.
 // Токены, ответы, подписи, accountKey и исходные ошибки никогда не журналируются.
+import { createNativeGoogleReconnectInstaller } from './nativeGoogleReconnection.js';
+import { parseGoogleCredentialRecord } from './oauthCredentialRecord.js';
 import { object } from '../exportSchema.js';
 import { createOAuthDiagnostics } from './oauthDiagnostics.js';
 import { validOAuthClientId } from './oauthCommon.js';
@@ -52,7 +54,7 @@ function wait(signal, milliseconds) {
  * @param {{provider:'google'|'yandex',clientId:string,invoke:(command:string,args:any)=>Promise<any>,
  * openBrowser:(url:string)=>Promise<any>,signal:AbortSignal,firstConnectionConfirmed:boolean,
  * confirmAccount:(args:any)=>Promise<boolean>,onProgress?:(stage:string)=>void,
- * cryptoSource?:Crypto,pollIntervalMs?:number,storeTimeoutMs?:number}} options
+ * cryptoSource?:Crypto,reconnect?:boolean,pollIntervalMs?:number,storeTimeoutMs?:number}} options
  */
 export async function enrollNativeCloudAccount(options) {
   let input;
@@ -60,9 +62,11 @@ export async function enrollNativeCloudAccount(options) {
     input = object(
       options,
       ['provider', 'clientId', 'invoke', 'openBrowser', 'signal', 'firstConnectionConfirmed', 'confirmAccount'],
-      ['onProgress', 'cryptoSource', 'pollIntervalMs', 'storeTimeoutMs']
+      ['onProgress', 'cryptoSource', 'pollIntervalMs', 'storeTimeoutMs', 'reconnect']
     );
     if (
+      (input.reconnect !== undefined && typeof input.reconnect !== 'boolean') ||
+      (input.reconnect === true && input.provider !== 'google') ||
       !['google', 'yandex'].includes(input.provider) ||
       !validOAuthClientId(input.provider, input.clientId) ||
       typeof input.invoke !== 'function' ||
@@ -112,8 +116,40 @@ export async function enrollNativeCloudAccount(options) {
     };
     const local = await inspectNativeCredential(storageOptions);
     if (signal.aborted) return result('cancelled');
-    if (local.status === 'configured') return result('already_configured');
-    if (local.status !== 'empty') return result('local_blocked');
+    let reconnectRecord = null;
+    let reconnectInstaller = null;
+    if (input.reconnect === true && ['configured', 'pending'].includes(local.status)) {
+      let timer;
+      let existing;
+      try {
+        existing = object(
+          await Promise.race([
+            Promise.resolve().then(() => input.invoke('cloud_credential_read', { provider: 'google' })),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(failed()), input.storeTimeoutMs ?? 25000);
+            })
+          ]),
+          ['status', 'slotId', 'record']
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+      if (signal.aborted) return result('cancelled');
+      if (existing.status !== 'ready') return result('local_blocked');
+      reconnectRecord = parseGoogleCredentialRecord(existing.record);
+      if (reconnectRecord.slotId !== existing.slotId || reconnectRecord.clientId !== input.clientId)
+        return result('account_changed');
+      reconnectInstaller = createNativeGoogleReconnectInstaller({
+        invoke: input.invoke,
+        expected: existing.record,
+        ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
+        ...(input.storeTimeoutMs === undefined ? {} : { timeoutMs: input.storeTimeoutMs })
+      });
+    } else {
+      if (input.reconnect === true) return result('local_blocked');
+      if (local.status === 'configured') return result('already_configured');
+      if (local.status !== 'empty') return result('local_blocked');
+    }
     const fetchImpl = createNativeOAuthCheckFetch({
       provider,
       invoke: input.invoke,
@@ -157,7 +193,7 @@ export async function enrollNativeCloudAccount(options) {
       provider === 'google'
         ? createGoogleAccountPreviewReader({ fetchImpl })
         : createYandexAccountPreviewReader({ fetchImpl });
-    const nativeInstaller = createNativeCredentialInstaller(storageOptions);
+    const nativeInstaller = reconnectInstaller || createNativeCredentialInstaller(storageOptions);
     const installer = Object.freeze({
       installIfAbsent(args) {
         installationStarted = true;
@@ -168,13 +204,19 @@ export async function enrollNativeCloudAccount(options) {
         return nativeInstaller.verifyInstallation(args);
       }
     });
+    let accountChanged = false;
     const create = provider === 'google' ? createGoogleEnrollmentAttempt : createYandexEnrollmentAttempt;
     attempt = create({
       clientId: input.clientId,
       tokenResponse: lease,
-      previewAccount(args) {
+      async previewAccount(args) {
         progress('identity');
-        return previewAccount(args);
+        const identity = await previewAccount(args);
+        if (reconnectRecord && identity.accountKey !== reconnectRecord.accountKey) {
+          accountChanged = true;
+          throw failed();
+        }
+        return identity;
       },
       confirmAccount(args) {
         progress('confirming');
@@ -189,6 +231,7 @@ export async function enrollNativeCloudAccount(options) {
     }
     // Не подменяем фактический ответ на `cancelled` после начала установки.
     const completed = await attempt.complete();
+    if (accountChanged) return result('account_changed');
     return completed.status === 'failed' ? diagnostics.failure() : completed;
   } catch {
     if (installationStarted) return result('installation_uncertain');

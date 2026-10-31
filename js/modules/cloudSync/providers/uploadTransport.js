@@ -246,8 +246,8 @@ export function createCloudUploadTransport(options) {
           referrerPolicy: 'no-referrer',
           signal: controller.signal
         });
-      } catch {
-        throw withCloudAccessDiagnostic(failed(), `${stage}_transport_unavailable`);
+      } catch (error) {
+        throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(error) || `${stage}_transport_unavailable`);
       }
       try {
         requireLive();
