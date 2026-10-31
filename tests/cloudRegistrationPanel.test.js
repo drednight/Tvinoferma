@@ -271,7 +271,8 @@ describe('экспериментальный локальный доступ в 
       confirmAccount: s.confirmAccount
     });
     await vi.waitFor(() => expect(connection('progress').textContent).toContain('Доступ сохранён'));
-    expect(connection('progress').textContent).toContain('набор данных ещё нужно подключить');
+    expect(connection('progress').textContent).toContain('сохранить полный файл или проверить файлы другого ПК');
+    expect(connection('progress').textContent).not.toContain('набор данных ещё нужно подключить');
     expect(connection('approve').checked).toBe(false);
     expect(storage).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain(PRIVATE);
