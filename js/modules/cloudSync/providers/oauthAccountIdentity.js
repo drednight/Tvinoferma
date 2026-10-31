@@ -290,12 +290,12 @@ function createIdentityReader(provider, options, includeLabel) {
     // Нестандартный signal может вызвать abort прямо при подписке и бросить.
     // У промиса уже есть обработчик даже до подключения Promise.race.
     void cancelled.catch(() => {});
-    const abort = () => {
+    const abort = reason => {
       if (abandoned) return;
       abandoned = true;
       controller.abort();
       cancelReader(activeReader);
-      rejectAbort(failed(pastDeadline() ? 'identity_timeout' : 'identity_aborted'));
+      rejectAbort(failed(reason === 'identity_timeout' ? 'identity_timeout' : 'identity_aborted'));
     };
     try {
       request.signal.addEventListener('abort', abort, { once: true });
@@ -360,7 +360,7 @@ function createIdentityReader(provider, options, includeLabel) {
     };
     let readingScheduled = false;
     try {
-      timer = setTimeout(abort, timeoutMs);
+      timer = setTimeout(() => abort('identity_timeout'), timeoutMs);
       const reading = Promise.resolve()
         .then(work)
         .finally(() => {

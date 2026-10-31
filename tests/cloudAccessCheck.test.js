@@ -172,12 +172,17 @@ it('после начала PUT неизвестный исход не поме�
   expect(fetchImpl).toHaveBeenCalledTimes(2);
 });
 it('различает таймаут identity без раскрытия исключений и повторов', async () => {
+  // Timer delivery can precede the exact performance-clock deadline. Its cause
+  // is still timeout, never an external abort; reproduce that deterministically.
+  const clock = vi.spyOn(globalThis.performance, 'now').mockReturnValue(10);
   const verify = createYandexAccountIdentityReader({ fetchImpl: () => new Promise(() => {}), timeoutMs: 20 });
   let error;
   try {
     await verify({ clientId: clients.yandex, accessToken: 'FAKE_TOKEN', signal: new AbortController().signal });
   } catch (e) {
     error = e;
+  } finally {
+    clock.mockRestore();
   }
   expect(cloudAccessDiagnostic(error)).toBe('identity_timeout');
 });
