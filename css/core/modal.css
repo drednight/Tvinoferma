@@ -388,3 +388,10 @@
 .cloud-key-dialog [hidden] {
   display: none !important;
 }
+.cloud-legacy-dialog {
+  padding: 24px;
+  color: var(--text);
+}
+.cloud-legacy-dialog [hidden] {
+  display: none !important;
+}

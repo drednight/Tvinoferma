@@ -27,7 +27,8 @@ impl Client {
         if raw.len() > 64 * 1024 {
             return Err(ERROR.into());
         }
-        let parsed: Configuration = serde_json::from_str(raw).map_err(|_| ERROR.to_owned())?;
+        let parsed: Configuration = serde_json::from_str(raw.trim_start_matches('\u{feff}'))
+            .map_err(|_| ERROR.to_owned())?;
         let client = parsed.installed;
         if !crate::cloud_oauth_transport::valid_client_id(ProviderOAuth::Google, &client.client_id)
             || client.client_secret.is_empty()
@@ -114,17 +115,30 @@ pub(crate) fn read(vault: &mut impl CredentialVault) -> Result<Option<Client>, S
 }
 pub(crate) fn install(vault: &mut impl CredentialVault, json: &str) -> Result<String, String> {
     let client = Client::parse(json)?;
+    // Idempotent reimport of the SAME configuration must not be blocked by a
+    // pending refresh or trigger another vault write. No account is replaced.
+    let raw = client.canonical()?;
+    if vault
+        .read(KEY)
+        .map_err(|_| "oauth_client_config_unavailable".to_owned())?
+        .as_deref()
+        == Some(raw.as_str())
+    {
+        return Ok(client.id);
+    }
     // Importing settings is never permission to change an existing account binding.
     match cloud_credential_binding::read(vault, Provider::Google)
         .map_err(|_| "oauth_client_config_unavailable".to_owned())?
     {
         Pair::Blocked => return Err("oauth_client_config_blocked".into()),
-        Pair::Ready { binding, .. } if binding.pending || binding.client_id != client.id => {
+        Pair::Ready { binding, .. } if binding.client_id != client.id => {
+            return Err("oauth_client_config_client_changed".into())
+        }
+        Pair::Ready { binding, .. } if binding.pending => {
             return Err("oauth_client_config_blocked".into())
         }
         _ => {}
     }
-    let raw = client.canonical()?;
     vault
         .write(KEY, &raw)
         .map_err(|_| "oauth_client_config_unavailable".to_owned())?;
@@ -148,6 +162,7 @@ mod tests {
         let raw = format!(
             r#"{{"installed":{{"client_id":"{ID}","client_secret":"FAKE_SECRET&+","token_uri":"https://evil.invalid","redirect_uris":["https://evil.invalid"]}}}}"#
         );
+        assert!(Client::parse(&format!("\u{feff}{raw}")).is_ok());
         let client = Client::parse(&raw).unwrap();
         assert_eq!(client.id, ID);
         assert!(Client::parse(&raw.replace("installed", "web")).is_err());
@@ -275,6 +290,11 @@ mod tests {
             .unwrap(),
             crate::cloud_credential_store::Outcome::Swapped
         );
+        let before = vault.data.clone();
+        vault.fail_write = true;
+        assert!(install(&mut vault, &config(ID, "rotated")).is_ok());
+        assert_eq!(vault.data, before);
+        vault.fail_write = false;
         assert!(install(&mut vault, &config(ID, "blocked")).is_err());
         assert_eq!(read(&mut vault).unwrap().unwrap().secret, "rotated");
     }

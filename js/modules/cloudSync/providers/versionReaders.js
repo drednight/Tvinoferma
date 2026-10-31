@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 // Изолированные протоколы ЧТЕНИЯ Google и Яндекс Диска. Они получают зашифрованные
 // конверты, не расшифровывают их и не применяют к приложению; записи/удаления нет.
 // Два последовательных полных обхода обнаруживают некоторые гонки, но облако может скрыть
@@ -35,9 +36,9 @@ async function sendSafe(send, request, maxText = MAX_METADATA_TEXT) {
   let raw;
   try {
     raw = await send(request);
-  } catch {
+  } catch (error) {
     // Ошибка транспорта может содержать подписанную ссылку или заголовки.
-    throw failed();
+    throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(error));
   }
   const data = object(raw, ['status', 'body']);
   if (
@@ -48,7 +49,7 @@ async function sendSafe(send, request, maxText = MAX_METADATA_TEXT) {
     data.body.length > maxText
   )
     throw malformed();
-  return { status: data.status, body: data.body };
+  return withCloudAccessDiagnostic({ status: data.status, body: data.body }, cloudAccessDiagnostic(raw));
 }
 function json(text) {
   try {
@@ -58,7 +59,7 @@ function json(text) {
   }
 }
 function positiveResponse(response) {
-  if (response.status !== 200) throw failed();
+  if (response.status !== 200) throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(response));
   return json(response.body);
 }
 function envelope(text, datasetId, versionId) {
@@ -304,8 +305,14 @@ export function createYandexVersionReader(options) {
     if (linkResponse.status === 404) return { status: 'not_found' };
     const link = positiveResponse(linkResponse);
     // Не используем путь или хост из ответа без повторной проверки строителем запроса.
-    const content = await sendSafe(send, yandexDownloadContentRequest(link), MAX_VERSION_TEXT);
-    if (content.status !== 200) throw failed();
+    let request;
+    try {
+      request = yandexDownloadContentRequest(link);
+    } catch {
+      throw withCloudAccessDiagnostic(failed(), 'download_link_invalid_response');
+    }
+    const content = await sendSafe(send, request, MAX_VERSION_TEXT);
+    if (content.status !== 200) throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(content));
     let parsed;
     try {
       parsed = envelope(content.body, datasetId, versionId);

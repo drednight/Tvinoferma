@@ -1,3 +1,4 @@
+import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
 
 import { bindStandaloneFilePanel } from '../modules/cloudSync/ui/standaloneFilePanel.js';
@@ -578,7 +579,6 @@ function bindSettingInputs() {
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
   bindStandaloneFilePanel({ desktop: isTauri() });
-  const legacyFold = document.getElementById('cloud-standalone-legacy');
   let legacyBound = false;
   const bindLegacy = () => {
     if (legacyBound) return;
@@ -606,11 +606,10 @@ export function bindSettings() {
       document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
     }
   };
-  if (legacyFold)
-    legacyFold.addEventListener('toggle', () => {
-      if (/** @type {HTMLDetailsElement} */ (legacyFold).open) bindLegacy();
-    });
-  else bindLegacy();
+  document.getElementById('cloud-legacy-open')?.addEventListener('click', () => {
+    openLegacyCloudRecovery(document);
+    bindLegacy();
+  });
   bindCloudActivityPanel();
   bindGuides();
   bindFeedback();

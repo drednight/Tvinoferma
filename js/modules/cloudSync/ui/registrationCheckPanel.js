@@ -1,4 +1,5 @@
 // @ts-check
+import { googleClientImportProblem, GOOGLE_IMPORT_MESSAGES } from '../providers/googleClientImport.js';
 // Разовая диагностика и экспериментальное сохранение OAuth-доступа, без передачи
 // файлов и без работающей синхронизации. В форму вводится только публичный Client ID.
 // Токены, исходные ошибки, метки и идентификаторы аккаунта не журналируются.
@@ -61,7 +62,7 @@ export function bindCloudRegistrationCheck(options) {
   const doc = options.doc || document;
   const panel = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-registration-panel'));
   const form = /** @type {HTMLFormElement|null} */ (doc.getElementById('cloud-registration-form'));
-  const provider = /** @type {HTMLSelectElement|null} */ (doc.getElementById('cloud-registration-provider'));
+  const provider = /** @type {HTMLSelectElement|null} */ (doc.getElementById('cloud-login-provider'));
   const client = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-registration-client'));
   const start = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-start'));
   const cancelButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-cancel'));
@@ -71,8 +72,6 @@ export function bindCloudRegistrationCheck(options) {
   const configFile = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-google-import'));
   const configStatus = doc.getElementById('cloud-google-config-status');
   const advanced = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-registration-advanced'));
-  const setupPanel = doc.getElementById('cloud-setup-title')?.closest('section');
-  const filePanel = doc.getElementById('cloud-file-panel');
   const account = doc.getElementById('cloud-registration-account');
   const accountLabel = doc.getElementById('cloud-registration-account-label');
   const accountValue = doc.getElementById('cloud-registration-account-value');
@@ -158,13 +157,6 @@ export function bindCloudRegistrationCheck(options) {
       simpleCancel.disabled = !active || active.controller.signal.aborted;
     }
     if (configFile) configFile.disabled = busy || !options.desktop;
-    // Unknown or interrupted access is not permission to create a new dataset.
-    if (setupPanel) setupPanel.hidden = !['ready', 'ready_bound'].includes(known?.status || '') || stopped;
-    if (filePanel) filePanel.hidden = known?.status !== 'ready_bound' || stopped;
-    for (const id of ['cloud-setup-new', 'cloud-setup-existing']) {
-      const fold = doc.getElementById(id);
-      if (fold) fold.hidden = known?.status === 'ready_bound';
-    }
     provider.disabled = busy;
     client.disabled = busy;
     start.disabled = busy || !options.desktop;
@@ -557,14 +549,22 @@ export function bindCloudRegistrationCheck(options) {
       const native = await loadNative();
       if (resetStarted) return;
       // File text exists only for this IPC call: never stored in app state or logs.
-      const reply = await native.invoke('cloud_google_client_import', { json: await file.text() });
+      const json = (await file.text()).replace(/^\uFEFF/, '');
+      const problem = googleClientImportProblem(json);
+      if (problem) {
+        if (configStatus) configStatus.textContent = GOOGLE_IMPORT_MESSAGES[problem];
+        return;
+      }
+      const reply = await native.invoke('cloud_google_client_import', { json });
       if (resetStarted) return;
       if (reply?.status !== 'ready' || !validOAuthClientId('google', reply.clientId)) throw new Error();
       client.value = reply.clientId;
-      if (configStatus) configStatus.textContent = 'Google настроен. Теперь нажмите «Войти и сохранить доступ».';
-    } catch {
+      if (configStatus) configStatus.textContent = 'Google настроен. Теперь нажмите «Войти».';
+    } catch (error) {
+      const code = typeof error === 'string' ? error : error?.message;
       if (configStatus)
         configStatus.textContent =
+          GOOGLE_IMPORT_MESSAGES[code] ||
           'Импорт не подтверждён. Нужен JSON клиента Desktop, не Web. При сохранённой привязке нельзя менять Client ID; старые данные не удаляйте. Повторно проверьте настройки перед входом.';
     } finally {
       operation.finish(false);

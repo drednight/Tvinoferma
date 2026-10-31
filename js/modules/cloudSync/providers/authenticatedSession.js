@@ -111,9 +111,9 @@ export function createAuthenticatedCloudSession(options) {
       if (found.accountKey !== accountKey) return { status: 'account_mismatch' };
       try {
         return await work();
-      } catch {
+      } catch (error) {
         // Не делаем предположений об исходе записи при неожиданном исключении.
-        return { status: write ? 'unknown' : 'unavailable' };
+        return withCloudAccessDiagnostic({ status: write ? 'unknown' : 'unavailable' }, cloudAccessDiagnostic(error));
       }
     } finally {
       active = false;

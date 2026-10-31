@@ -1,8 +1,9 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { bindPrivateTransferPanel } from '../js/modules/cloudSync/ui/privateTransferPanel.js';
 import { state } from '../js/core/state.js';
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const id = '22222222-2222-4222-8222-222222222222';
 const pin = { versionId: '11111111-1111-4111-8111-111111111111', sha256: 'a'.repeat(64) };
 const el = id => document.getElementById(id);

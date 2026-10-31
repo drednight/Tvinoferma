@@ -1,10 +1,11 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCloudPublicationPanel } from '../js/modules/cloudSync/ui/cloudPublicationPanel.js';
 import { clearCloudActivity, cloudActivity } from '../js/modules/cloudSync/cloudEventLog.js';
 
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const byId = id => document.getElementById(id);
 function changeProvider(value) {
   byId('cloud-registration-provider').value = value;
