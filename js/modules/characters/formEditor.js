@@ -350,7 +350,10 @@ export function openCharacterForm(char = null) {
         }
         const partyIdsNext = mainPartyNext ? [mainPartyNext, ...extras] : [];
 
-        const newStats = {};
+        // Редактор меняет только видимые поля. Старые/неизвестные показатели
+        // сохраняем локально, а не стираем при обычном редактировании карточки.
+        // Облачный exporter отдельно проверяет свой явный allowlist.
+        const newStats = { ...(currentChar.stats || {}) };
         Object.keys(DEFAULT_STATS).forEach(key => {
           const val = formData.get(`stat-${key}`);
           newStats[key] = val !== null && val !== undefined ? parseInt(val, 10) || 0 : 0;

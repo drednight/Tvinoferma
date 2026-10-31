@@ -30,6 +30,10 @@ const SHARED = [
 ];
 const LOCAL = ['id', 'contacts', 'launch', 'isLoggedIn', 'lastLoginCheck', 'lastLoginReason'];
 const STATS = Object.keys(DEFAULT_STATS);
+// Реальные поля старых DEFAULT_STATS (bb141ee…8f7c318). Удалены из
+// редактора в 54058f8/69c8245, но normalizeStats сохраняет их в базе/истории.
+// Только явный список числовых полей: не открываем произвольный словарь.
+const LEGACY_STATS = ['hpMax', 'mpMax', 'power', 'stealth', 'detection'];
 const LIMIT = 100_000;
 
 function invalid(reason = 'invalid') {
@@ -93,8 +97,9 @@ function boolean(value) {
   return value;
 }
 function stats(value) {
-  const data = shape(value, STATS);
-  return Object.fromEntries(STATS.map(key => [key, number(data[key])]));
+  const data = shape(value, STATS, LEGACY_STATS);
+  const keys = [...STATS, ...LEGACY_STATS.filter(key => Object.hasOwn(data, key))];
+  return Object.fromEntries(keys.map(key => [key, number(data[key])]));
 }
 function statsHistory(value) {
   return array(value, item => {
