@@ -189,6 +189,12 @@ export function createStandaloneFileExchange(ports) {
     return result;
   }
   function heads(entries) {
+    // A copy superseded on Google is still the CURRENT Yandex copy until a new
+    // full file is actually verified there. Never hide a failed/untouched target
+    // merely because the other provider contains its successor.
+    return PROVIDERS.flatMap(provider => providerHeads(entries.filter(entry => entry.provider === provider)));
+  }
+  function providerHeads(entries) {
     const byPin = new Map(entries.map(entry => [JSON.stringify(pinOf(entry)), entry.sha256]));
     const nodes = new Map(entries.map(entry => [entry.sha256, new Set()]));
     const incoming = new Map([...nodes.keys()].map(hash => [hash, 0]));

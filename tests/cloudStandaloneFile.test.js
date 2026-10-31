@@ -526,6 +526,24 @@ describe('standalone exchange: two providers and two PCs', () => {
     const opened = await openStandaloneFile({ envelope: f.calls.google[0].envelope, password, cryptoSource });
     expect(opened.unlocked.bundle.bundleId).toBe(first.unlocked.bundle.bundleId);
   });
+  it('keeps a different current copy on the untouched/failed provider visible, even if the other disk superseded its identical old backup', async () => {
+    const f = fixture();
+    f.put('google', first);
+    f.put('yandex', first);
+    f.put('google', second);
+    const checked = await f.engine.check({ manual: true });
+    expect(checked.files).toHaveLength(2);
+    expect(
+      checked.files.find(file => file.versionId === first.envelope.versionId).locations.map(row => row.provider)
+    ).toEqual(['yandex']);
+    expect(
+      checked.files.find(file => file.versionId === second.envelope.versionId).locations.map(row => row.provider)
+    ).toEqual(['google']);
+    f.put('yandex', second);
+    const both = await f.engine.check({ manual: true });
+    expect(both.files).toHaveLength(1);
+    expect(both.files[0].locations).toHaveLength(2);
+  });
   it('does not require old history payloads even when opening a standalone file with missing ancestors', async () => {
     const orphan = await encryptSnapshot({
       snapshot: second.contents,
