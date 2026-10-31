@@ -1,0 +1,71 @@
+name: Windows sync acceptance build
+
+# Temporary branch-only build; the workflow is removed after dispatch.
+on:
+  push:
+    branches: ['arena/b2192ebb-tvinoferma']
+    paths: ['.github/workflows/windows-sync-acceptance-once.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      TESTED_COMMIT: 5bce8de979ee1f27ded8a96364dcbb5328ed181e
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Require the exact tested production tree
+        shell: pwsh
+        run: |
+          git diff --exit-code $env:TESTED_COMMIT HEAD -- . ':(exclude).github/workflows/windows-sync-acceptance-once.yml'
+          if ($LASTEXITCODE -ne 0) { throw 'Production source differs from the tested merge.' }
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Build Windows executable without installer, signing or release publication
+        run: npm run tauri -- build --no-bundle
+      - name: Prepare acceptance artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory acceptance | Out-Null
+          Copy-Item src-tauri/target/release/tvinoferma.exe acceptance/Tvinoferma.exe
+          @'
+          ТЕСТОВАЯ СБОРКА СИНХРОНИЗАЦИИ — НЕ СТАБИЛЬНОЕ ОБНОВЛЕНИЕ
+
+          Исходный код: 5bce8de979ee1f27ded8a96364dcbb5328ed181e (PR 142).
+          Версия в приложении ещё 2.2.0; имя артефакта отличает эту тестовую сборку.
+          Это обычный Windows exe, не установщик и не пакет автообновления.
+          Нужен установленный Microsoft Edge WebView2 Runtime.
+
+          Запускайте только в ОТДЕЛЬНЫХ ТЕСТОВЫХ УЧЁТНЫХ ЗАПИСЯХ WINDOWS без прежних
+          данных Твинофермы. Профиль приложения и vault НЕ изолированы специальным
+          идентификатором этой сборки. Не запускайте её поверх рабочего профиля.
+          Не запускайте старый клиент на тестовом наборе после сокращения истории.
+          OAuth и ключи вводите только в приложении, не в журнале, issue или чате.
+
+          Проверка Google/Яндекс и двух ПК этой сборкой ещё НЕ выполнялась.
+          План: docs/CLOUD-SYNC-ACCEPTANCE.md, раздел файлового режима, пункты 1–27.
+          https://github.com/drednight/Tvinoferma/blob/5bce8de979ee1f27ded8a96364dcbb5328ed181e/docs/CLOUD-SYNC-ACCEPTANCE.md
+
+          Файл не подписан для автообновления. Стабильный релиз не публиковался.
+          '@ | Set-Content -Encoding utf8 acceptance/ПРОЧИТАТЬ.txt
+          $hash = (Get-FileHash acceptance/Tvinoferma.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Tvinoferma.exe" | Set-Content -Encoding ascii acceptance/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Tvinoferma-Windows-sync-acceptance-5bce8de
+          path: acceptance/
+          if-no-files-found: error
+          retention-days: 14
