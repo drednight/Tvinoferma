@@ -18,6 +18,12 @@ import { openPinnedNativeCloudSession } from './providers/pinnedNativeCloudSessi
 import { beginCloudDataOperation } from './credentialResetCoordination.js';
 import { generateSyncId } from './envelope.js';
 import { historyEnvelopePin, verifyHistory, sealFileSnapshot, MAX_HISTORY_VERSIONS } from './history.js';
+import { createPairingCode } from './pairingCode.js';
+import {
+  historyCapacity,
+  createEncryptedHistoryArchive,
+  verifyEncryptedHistoryArchive
+} from './snapshotHistoryArchive.js';
 import { object, array } from './exportSchema.js';
 import {
   buildPrivateDelta,
@@ -45,6 +51,7 @@ const choices = new WeakMap();
 const releases = new WeakMap();
 const privateExports = new WeakMap();
 const privateImports = new WeakMap();
+const historyArchives = new WeakMap();
 const sameHeads = (a, b) => a.length === b.length && a.every(pin => b.some(other => sameFilePin(pin, other)));
 const savedTimes = new WeakMap();
 const NO_NETWORK = Object.freeze({
@@ -244,7 +251,12 @@ export async function checkSnapshotFile(value) {
         });
         return choice;
       });
-      return Object.freeze({ status: 'multiple_files', provider: input.provider, choices: Object.freeze(variants) });
+      return Object.freeze({
+        status: 'multiple_files',
+        provider: input.provider,
+        choices: Object.freeze(variants),
+        capacity: historyCapacity(cloud.envelopes)
+      });
     }
     const snapshot = buildPublicSnapshot(original, {
       settingsSelections: cloud.snapshot.sections.preferences.selections
@@ -258,6 +270,7 @@ export async function checkSnapshotFile(value) {
       (basePin ? await snapshotFileHash(cloud.history.publicSnapshot(basePin), input.cryptoSource) : null);
     const view = Object.freeze({
       status: 'ready',
+      capacity: historyCapacity(cloud.envelopes),
       provider: input.provider,
       pin: Object.freeze({ ...cloud.pin }),
       checkedAt: new Date().toISOString(),
@@ -821,6 +834,103 @@ export async function applySnapshotFilePrivate(value) {
     return result;
   } catch {
     return outcome('unavailable_or_changed');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+
+/** Read-only archive of the verified inventory. No state/outbox/cloud file writes; OAuth may refresh. */
+export async function prepareSnapshotHistoryArchive(value) {
+  const input = options(value);
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original) return outcome('state_changed_or_unsaved');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (opened.local?.pending) return outcome('pending_upload');
+    if (opened.local?.unsettled?.length) return outcome('unsettled_uploads');
+    const cloud = await remote(opened, input);
+    const archive = await createEncryptedHistoryArchive({
+      provider: input.provider,
+      history: cloud.history,
+      envelopes: cloud.envelopes,
+      keyPin: opened.context.binding.keyPin,
+      cryptoSource: input.cryptoSource
+    });
+    if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+    const view = Object.freeze({
+      status: 'archive_ready',
+      provider: input.provider,
+      capacity: historyCapacity(cloud.envelopes),
+      bytes: archive.bytes,
+      fileName: archive.fileName,
+      heads: cloud.heads.length,
+      cancel() {
+        historyArchives.delete(view);
+      }
+    });
+    historyArchives.set(view, {
+      original,
+      binding: JSON.stringify(opened.context.binding),
+      pins: cloud.history.pins(),
+      archive
+    });
+    return view;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+/** An explicit download action exposes only encrypted file bytes, never a secret/dataKey. */
+export function downloadSnapshotHistoryArchive(value) {
+  const input = object(value, ['review'], ['confirmed']);
+  if (input.confirmed !== true) return outcome('confirmation_required');
+  const held = historyArchives.get(input.review);
+  if (!held || !unchanged(held.original)) return outcome('archive_changed');
+  return Object.freeze({ status: 'archive_download', ...held.archive });
+}
+/** Re-read the user's saved file and cloud inventory. A download click is not proof of saving. */
+export async function verifySnapshotHistoryArchive(value) {
+  const input = options(value, ['review', 'text']);
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    const held = historyArchives.get(input.review);
+    if (!held || input.review.provider !== input.provider) return outcome('archive_changed');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || JSON.stringify(original) !== JSON.stringify(held.original))
+      return outcome('state_changed_or_unsaved');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (JSON.stringify(opened.context.binding) !== held.binding) return outcome('binding_blocked');
+    if (opened.local?.pending || opened.local?.unsettled?.length) return outcome('pending_upload');
+    const binding = opened.context.binding;
+    const checked = await verifyEncryptedHistoryArchive({
+      text: input.text,
+      provider: input.provider,
+      expectedPairingCode: createPairingCode({
+        datasetId: binding.datasetId,
+        rootPin: binding.rootPin,
+        keyPin: binding.keyPin
+      }),
+      recoveryKey: opened.context.key.dataKey,
+      knownPins: held.pins,
+      cryptoSource: input.cryptoSource
+    });
+    if (checked.sha256 !== held.archive.sha256) return outcome('archive_changed');
+    const cloud = await remote(opened, input);
+    if (JSON.stringify(cloud.history.pins()) !== JSON.stringify(held.pins)) return outcome('remote_changed');
+    if (!unchanged(held.original)) return outcome('state_changed_or_unsaved');
+    return Object.freeze({ status: 'archive_verified', versions: checked.capacity.versions });
+  } catch {
+    return outcome('archive_invalid');
   } finally {
     opened?.session?.dispose();
     operation?.finish(risk.refresh);

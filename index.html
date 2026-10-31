@@ -597,6 +597,7 @@
                 <p id="cloud-file-status" role="status" aria-live="polite">Файл ещё не проверялся. Проверка сама не заменяет данные.</p>
                 <p class="muted" id="cloud-file-other"></p>
                 <div id="cloud-file-choices" hidden aria-label="Выбор облачного файла"></div>
+                <p id="cloud-file-capacity" class="muted" hidden></p>
                 <div id="cloud-file-result" hidden>
                   <p class="muted" id="cloud-file-times"></p>
                   <p id="cloud-file-summary"></p>
@@ -625,6 +626,15 @@
                   <button type="button" class="btn danger" id="cloud-file-private-send" hidden>Отправить полный файл с выбранными контактами</button>
                   <button type="button" class="btn danger" id="cloud-file-private-apply" hidden>Применить только выбранные контакты</button>
                 </div>
+              </details>
+              <details class="cloud-review" id="cloud-history-archive">
+                <summary>Архив облачной истории · перед ротацией</summary>
+                <p>Текущие версии связаны отпечатками: удаление старого файла разорвёт проверку на другом ПК. Здесь можно сохранить и сверить <strong>всю зашифрованную историю</strong>, но не удалить её. Сам архив не освобождает лимит 128 версий / 64 MiB. Для ротации нужна новая контрольная версия; автоматическая очистка пока не включена.</p>
+                <p class="muted">Архив содержит только уже отправленные зашифрованные снимки и код сверки. В старых версиях могут оставаться ранее переданные пароли. Ключа и OAuth-токенов в нём нет: сохраните основной пароль или запасной ключ отдельно. Это не копия местных данных или Windows vault. Несколько облачных голов сохраняются без выбора победителя. Незавершённые и неизвестные попытки сначала нужно согласовать.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-prepare">Подготовить зашифрованный архив</button><button type="button" class="btn ghost" id="cloud-history-download" disabled>Сохранить архив</button></div>
+                <label class="cloud-connection-ack">Выберите сохранённый архив для проверки чтением <input type="file" id="cloud-history-file" accept=".json,.tf-history.json,application/json" disabled /></label>
+                <button type="button" class="btn ghost" id="cloud-history-verify" disabled>Сверить сохранённый файл</button>
+                <p id="cloud-history-status" role="status" aria-live="polite">Архив не подготовлен. Облачные файлы не изменялись.</p>
               </details>
               <details class="cloud-activity" id="cloud-legacy-exchange">
                 <summary>Прежний режим · завершить старые операции</summary>
