@@ -64,6 +64,7 @@ pub struct PreparedRequest {
     pub max_response: usize,
     pub read_body: bool,
     pub retirement: Option<RetirementGuard>,
+    pub download_redirect: bool,
 }
 
 /// Scoped preflight; checksum is for the exact canonical encrypted file bytes.
@@ -282,6 +283,49 @@ fn signed_link(value: &str, upload: bool) -> bool {
         && !lower.contains("%2e")
 }
 
+/// One CDN hop ONLY for an already validated Yandex content GET. Never receives
+/// or returns OAuth, cookies, referrer, method/body or arbitrary request headers.
+/// The signed Location stays native-only and is never logged.
+pub fn download_redirect(allowed: bool, status: u16, location: &str) -> Option<String> {
+    if !allowed
+        || !matches!(status, 301 | 302 | 303 | 307 | 308)
+        || location.is_empty()
+        || location.len() > MAX_LINK_BYTES
+        || !location
+            .bytes()
+            .all(|b| (0x21..=0x7e).contains(&b) && !matches!(b, b'#' | b'\\'))
+        || !valid_percent_encoding(location)
+    {
+        return None;
+    }
+    let (authority, rest) = location.strip_prefix("https://")?.split_once('/')?;
+    let host = authority.strip_suffix(":443").unwrap_or(authority);
+    let server = host
+        .strip_suffix(".storage.yandex.net")?
+        .strip_prefix('s')?;
+    if server.is_empty()
+        || server.len() > 62
+        || !server.as_bytes()[0].is_ascii_digit()
+        || !server
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+    {
+        return None;
+    }
+    let path = rest.split('?').next()?;
+    let lower = path.to_ascii_lowercase();
+    if !path.starts_with("rdisk/")
+        || path.len() <= 6
+        || path.split('/').any(|s| matches!(s, "." | ".."))
+        || lower.contains("%2f")
+        || lower.contains("%5c")
+        || lower.contains("%2e")
+    {
+        return None;
+    }
+    Some(location.to_owned())
+}
+
 fn version_path(dataset: &str, version: &str) -> String {
     format!("app:/tf-v1-{dataset}-{version}.tfsc")
 }
@@ -332,6 +376,7 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
         max_response: MAX_SMALL_REPLY_BYTES,
         read_body: true,
         retirement: None,
+        download_redirect: false,
     };
     match (provider, operation.as_str()) {
         (Provider::Google | Provider::Yandex, "retire") => {
@@ -511,6 +556,7 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
             let link = args.link.take().filter(|value| signed_link(value, false))?;
             request.url = link;
             request.max_response = MAX_VERSION_BYTES;
+            request.download_redirect = true;
         }
         (Provider::Yandex, "upload_content") => {
             let link = args.link.take().filter(|value| signed_link(value, true))?;
@@ -866,5 +912,57 @@ mod tests {
             missing.checkpoint_version_id = None;
             assert!(prepare(missing).is_none());
         }
+    }
+}
+
+#[cfg(test)]
+mod redirect_tests {
+    use super::*;
+    #[test]
+    fn cdn_download_hop_is_narrow_and_never_enabled_for_api_or_writes() {
+        let target = "https://s123klg.storage.yandex.net/rdisk/FAKE_SIGNATURE/file?uid=FAKE&disposition=attachment";
+        for code in [301, 302, 303, 307, 308] {
+            assert_eq!(
+                download_redirect(true, code, target).as_deref(),
+                Some(target)
+            );
+            assert!(download_redirect(false, code, target).is_none());
+        }
+        assert!(download_redirect(true, 304, target).is_none());
+        for invalid in [
+            "http://s123klg.storage.yandex.net/rdisk/file",
+            "https://s123klg.storage.yandex.net.evil.test/rdisk/file",
+            "https://evil.test/rdisk/file",
+            "https://s123klg.storage.yandex.net@evil.test/rdisk/file",
+            "https://user:password@s123klg.storage.yandex.net/rdisk/file",
+            "https://s123klg.storage.yandex.net:444/rdisk/file",
+            "https://127.0.0.1/rdisk/file",
+            "https://s123klg.storage.yandex.net/other/file",
+            "https://s123klg.storage.yandex.net/rdisk/../file",
+            "https://s123klg.storage.yandex.net/rdisk/%2e%2e/file",
+            "https://s123klg.storage.yandex.net/rdisk/a%2ffile",
+            "https://s123klg.storage.yandex.net/rdisk/file#fragment",
+            "https://s123klg.storage.yandex.net/rdisk/file?bad=%xx",
+            "/rdisk/file",
+        ] {
+            assert!(download_redirect(true, 302, invalid).is_none());
+        }
+        let get = prepare(CloudDiskArgs {
+            provider: "yandex".into(),
+            operation: "download_content".into(),
+            access_token: Some("FAKE_TOKEN".into()),
+            link: Some("https://downloader.disk.yandex.ru/disk/FAKE".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(get.download_redirect);
+        let api = prepare(CloudDiskArgs {
+            provider: "yandex".into(),
+            operation: "identity".into(),
+            access_token: Some("FAKE_TOKEN".into()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert!(!api.download_redirect);
     }
 }

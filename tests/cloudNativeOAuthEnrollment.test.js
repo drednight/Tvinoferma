@@ -3,7 +3,11 @@ import { webcrypto } from 'node:crypto';
 import { enrollNativeCloudAccount } from '../js/modules/cloudSync/providers/nativeOAuthEnrollment.js';
 import { readNativeCredentialBinding } from '../js/modules/cloudSync/providers/nativeCredentialStore.js';
 import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.js';
-import { parseGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
+import { generateSyncId } from '../js/modules/cloudSync/envelope.js';
+import {
+  parseGoogleCredentialRecord,
+  serializeGoogleCredentialRecord
+} from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { parseYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 
 const CLIENTS = {
@@ -52,6 +56,13 @@ function setup(provider, extra = {}) {
     }
     if (command === 'cloud_credential_read')
       return extra.read ? extra.read() : slots.get(args.provider) || { status: 'empty' };
+    if (command === 'cloud_credential_compare_exchange') {
+      if (extra.cas) return extra.cas(args, slots);
+      const stored = slots.get(args.provider);
+      if (stored?.record !== args.expected || stored?.slotId !== args.slotId) return { status: 'mismatch' };
+      slots.set(args.provider, { status: 'ready', slotId: args.slotId, record: args.next });
+      return { status: 'swapped' };
+    }
     if (command === 'cloud_credential_install') {
       if (slots.has(args.provider)) return { status: 'occupied' };
       slots.set(args.provider, { status: 'ready', slotId: args.slotId, record: args.record });
@@ -275,4 +286,178 @@ it('сохранение доступа показывает безопасну�
   const result = await enrollNativeCloudAccount(s.options);
   expect(result).toEqual({ status: 'failed', diagnostic: { stage: 'token', code: 'client_secret_required' } });
   expect(s.invoke.mock.calls.some(([command]) => command === 'cloud_credential_install')).toBe(false);
+});
+
+describe('fresh Google reconnection preserves the existing protected slot', () => {
+  function makeOld(s, phase = 'ready', extra = {}) {
+    const stored = s.slots.get('google'),
+      old = parseGoogleCredentialRecord(stored.record);
+    stored.record = serializeGoogleCredentialRecord({
+      ...old,
+      ...extra,
+      phase,
+      ...(phase === 'pending'
+        ? {
+            revision: generateSyncId(webcrypto),
+            attemptId: generateSyncId(webcrypto),
+            refreshToken: null,
+            refreshExpiresAt: null
+          }
+        : { refreshToken: 'FAKE_OLD_UNCERTAIN_REFRESH' })
+    });
+    return { ...stored };
+  }
+  it.each(['ready', 'pending'])('%s → fresh browser OAuth → same slot/client/account', async phase => {
+    const s = setup('google');
+    expect(await enrollNativeCloudAccount(s.options)).toEqual({ status: 'installed' });
+    const old = makeOld(s, phase);
+    s.invoke.mockClear();
+    s.confirmAccount.mockClear();
+    const result = await enrollNativeCloudAccount({ ...s.options, reconnect: true });
+    expect(result).toEqual({ status: 'installed' });
+    assertNoPrivate(result);
+    expect(s.confirmAccount).toHaveBeenCalledOnce();
+    const fresh = parseGoogleCredentialRecord(s.slots.get('google').record);
+    expect(fresh).toMatchObject({
+      slotId: old.slotId,
+      phase: 'ready',
+      refreshToken: REFRESH,
+      accountKey: ACCOUNT,
+      clientId: CLIENTS.google
+    });
+    const calls = s.invoke.mock.calls;
+    expect(calls.filter(([c]) => c === 'cloud_credential_compare_exchange')).toHaveLength(phase === 'ready' ? 2 : 1);
+    expect(calls.filter(([c, a]) => c === 'cloud_oauth_network' && a.operation === 'identity')).toHaveLength(2);
+    expect(calls.filter(([c]) => c === 'cloud_credential_install')).toHaveLength(0);
+    expect(
+      calls.some(
+        ([c, a]) => c.includes('dataset') || c.includes('outbox') || c.includes('forget') || a?.operation === 'refresh'
+      )
+    ).toBe(false);
+    expect(JSON.stringify(calls.filter(([c]) => c === 'cloud_oauth_network'))).not.toContain(
+      'FAKE_OLD_UNCERTAIN_REFRESH'
+    );
+  });
+  it.each(['client', 'account'])('rejects a different %s without replacing credentials', async kind => {
+    const s = setup('google');
+    await enrollNativeCloudAccount(s.options);
+    const old = makeOld(
+      s,
+      'pending',
+      kind === 'client' ? { clientId: 'different.apps.googleusercontent.com' } : { accountKey: 'different_account' }
+    );
+    s.openBrowser.mockClear();
+    s.invoke.mockClear();
+    s.confirmAccount.mockClear();
+    expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'account_changed' });
+    expect(s.slots.get('google')).toEqual(old);
+    expect(s.confirmAccount).not.toHaveBeenCalled();
+    if (kind === 'client') expect(s.openBrowser).not.toHaveBeenCalled();
+    expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_compare_exchange')).toBe(false);
+  });
+  it('concurrent change is not overwritten', async () => {
+    let conflict = false;
+    const s = setup('google', {
+      confirm: async () => {
+        if (conflict) {
+          const stored = s.slots.get('google');
+          const parsed = parseGoogleCredentialRecord(stored.record);
+          stored.record = serializeGoogleCredentialRecord({ ...parsed, revision: generateSyncId(webcrypto) });
+        }
+        return true;
+      }
+    });
+    await enrollNativeCloudAccount(s.options);
+    makeOld(s, 'pending');
+    conflict = true;
+    s.invoke.mockClear();
+    expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'already_configured' });
+    expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_compare_exchange')).toBe(false);
+  });
+  it('lost CAS reply remains uncertain and does not repeat', async () => {
+    const s = setup('google', {
+      cas: async (args, slots) => {
+        slots.set('google', { status: 'ready', slotId: args.slotId, record: args.next });
+        throw new Error('FAKE_PRIVATE_ERROR');
+      }
+    });
+    await enrollNativeCloudAccount(s.options);
+    makeOld(s, 'pending');
+    s.invoke.mockClear();
+    const result = await enrollNativeCloudAccount({ ...s.options, reconnect: true });
+    expect(result).toEqual({ status: 'installation_uncertain' });
+    assertNoPrivate(result);
+    expect(s.invoke.mock.calls.filter(([c]) => c === 'cloud_credential_compare_exchange')).toHaveLength(1);
+  });
+  it('reconnect never falls back to first installation on an empty store', async () => {
+    const s = setup('google');
+    expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'local_blocked' });
+    expect(s.openBrowser).not.toHaveBeenCalled();
+    expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_install')).toBe(false);
+  });
+});
+
+it.each(['ready', 'pending'])('reconnection stops on native CAS mismatch (%s)', async phase => {
+  const s = setup('google', { cas: async () => ({ status: 'mismatch' }) });
+  await enrollNativeCloudAccount(s.options);
+  const old = s.slots.get('google');
+  if (phase === 'pending')
+    old.record = serializeGoogleCredentialRecord({
+      ...parseGoogleCredentialRecord(old.record),
+      phase: 'pending',
+      revision: generateSyncId(webcrypto),
+      attemptId: generateSyncId(webcrypto),
+      refreshToken: null,
+      refreshExpiresAt: null
+    });
+  const saved = { ...old };
+  s.invoke.mockClear();
+  expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'already_configured' });
+  expect(s.slots.get('google')).toEqual(saved);
+  expect(s.invoke.mock.calls.filter(([c]) => c === 'cloud_credential_compare_exchange')).toHaveLength(1);
+});
+
+it('reconnection checks the pinned account again AFTER user confirmation', async () => {
+  const s = setup('google', {
+    identity: async count =>
+      json({ user: { permissionId: count === 4 ? 'DIFFERENT_ACCOUNT' : ACCOUNT, emailAddress: LABELS.google } })
+  });
+  await enrollNativeCloudAccount(s.options);
+  const old = { ...s.slots.get('google') };
+  s.invoke.mockClear();
+  s.confirmAccount.mockClear();
+  expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'account_changed' });
+  expect(s.confirmAccount).toHaveBeenCalledOnce();
+  expect(s.slots.get('google')).toEqual(old);
+  expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_compare_exchange')).toBe(false);
+});
+
+it.each([1, 2])('ready reconnection does not continue after lost CAS reply at step %s', async lostStep => {
+  let count = 0;
+  const s = setup('google', {
+    cas: async (args, slots) => {
+      slots.set('google', { status: 'ready', slotId: args.slotId, record: args.next });
+      if (++count === lostStep) throw new Error('FAKE_PRIVATE_ERROR');
+      return { status: 'swapped' };
+    }
+  });
+  await enrollNativeCloudAccount(s.options);
+  s.invoke.mockClear();
+  expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({
+    status: 'installation_uncertain'
+  });
+  expect(s.invoke.mock.calls.filter(([c]) => c === 'cloud_credential_compare_exchange')).toHaveLength(lostStep);
+  expect(parseGoogleCredentialRecord(s.slots.get('google').record).phase).toBe(lostStep === 1 ? 'pending' : 'ready');
+});
+
+it('declining fresh Google account confirmation keeps the old access unchanged', async () => {
+  let decline = false;
+  const s = setup('google', { confirm: async () => !decline });
+  await enrollNativeCloudAccount(s.options);
+  decline = true;
+  const old = { ...s.slots.get('google') };
+  s.invoke.mockClear();
+  expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'declined' });
+  expect(s.slots.get('google')).toEqual(old);
+  expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_compare_exchange')).toBe(false);
 });

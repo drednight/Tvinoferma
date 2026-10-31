@@ -1,8 +1,9 @@
+import { legacyAccessHtml } from './helpers/legacyAccessHtml.js';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const html = readFileSync('index.html', 'utf8');
+const html = legacyAccessHtml(readFileSync('index.html', 'utf8'));
 const panel = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const SLOT = '01234567-89ab-4cde-8f01-23456789abcd';
 const CLIENT = '0123456789abcdef0123456789abcdef';

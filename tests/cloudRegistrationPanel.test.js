@@ -1,9 +1,10 @@
+import { legacyAccessHtml } from './helpers/legacyAccessHtml.js';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindCloudRegistrationCheck } from '../js/modules/cloudSync/ui/registrationCheckPanel.js';
 
-const html = readFileSync('index.html', 'utf8');
+const html = legacyAccessHtml(readFileSync('index.html', 'utf8'));
 const source = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const clientId = '0123456789abcdef0123456789abcdef';
 function byId(id) {
@@ -622,5 +623,50 @@ describe('Google JSON import failures are actionable and never expose file conte
     );
     expect(document.body.textContent).not.toContain('FAKE_ONLY_SECRET');
     if (!rejection) expect(invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('production login without legacy access controls', () => {
+  it.each([
+    ['empty', 'empty'],
+    ['ready', 'empty'],
+    ['ready', 'ready'],
+    ['pending', 'ready']
+  ])('%s with dataset %s: login works without check/save/delete controls', async (status, dataset) => {
+    const parsed = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+    document.body.innerHTML = parsed.getElementById('cloud-registration-panel').outerHTML;
+    expect(document.getElementById('cloud-connection-inspect')).toBeNull();
+    expect(document.getElementById('cloud-connection-start')).toBeNull();
+    expect(document.getElementById('cloud-connection-forget')).toBeNull();
+    byId('provider').value = 'google';
+    byId('client').value = '12345-fake.apps.googleusercontent.com';
+    const binding = {
+      slotId: '01234567-89ab-4cde-8f01-23456789abcd',
+      clientId: byId('client').value,
+      accountKey: 'fake-account'
+    };
+    const s = bind({
+      readBinding: vi.fn(async () => ({ status, ...(status === 'ready' ? { binding } : {}) })),
+      readDataset: vi.fn(async () => dataset),
+      loadNative: async () => ({
+        invoke: vi.fn(async () => ({ status: 'ready', clientId: binding.clientId })),
+        openBrowser: vi.fn()
+      })
+    });
+    const choices = [...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked);
+    if (status === 'empty') connection('simple').click();
+    else {
+      byId('provider').value = 'yandex';
+      document.getElementById('cloud-registration-panel').dispatchEvent(new Event('tf-cloud-reconnect-google'));
+    }
+    await vi.waitFor(() => expect(s.enroll).toHaveBeenCalledOnce());
+    expect(byId('provider').value).toBe('google');
+    expect([...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked)).toEqual(
+      choices
+    );
+    expect(s.enroll.mock.calls[0][0]).toMatchObject({
+      provider: 'google',
+      ...(status === 'empty' ? {} : { reconnect: true })
+    });
   });
 });

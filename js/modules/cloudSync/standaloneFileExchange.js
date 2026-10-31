@@ -117,6 +117,8 @@ function providerFailure(error) {
   return [
     'credential_missing',
     'credential_blocked',
+    'credential_refresh_pending',
+    'credential_binding_blocked',
     'credential_unavailable',
     'login_required',
     'account_changed',

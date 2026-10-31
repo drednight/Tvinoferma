@@ -1,6 +1,7 @@
 // @ts-check
+import { nativeCloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 // Экспериментальный мост существующих изолированных протоколов к native IPC.
-// В UI не используется. Сеть и ограничения повторно проверяются в Rust; тесты с
+// Сеть и ограничения повторно проверяются в Rust; тесты с
 // fake invoke не доказывают работу Tauri, настоящего диска, сохранность очереди,
 // шифрование перед передачей или безопасность ключей. Не журналировать параметры,
 // токен, подписанные ссылки, конверт или исходные ошибки.
@@ -329,11 +330,12 @@ export function createNativeDiskFetch(options) {
           headers
         });
         // Response, собранный из IPC, сам по себе имеет пустой url. Указываем
-        // только адрес проверенного запроса; переходы запрещены на native-уровне.
+        // только исходный проверенный адрес; единственный разрешённый CDN-шаг
+        // Яндекса проверяется в Rust и не раскрывает подписанный Location в JS.
         Object.defineProperty(response, 'url', { value: address });
         return response;
-      } catch {
-        throw failed();
+      } catch (error) {
+        throw withCloudAccessDiagnostic(failed(), nativeCloudAccessDiagnostic(error, request.args.operation));
       } finally {
         active = false;
       }

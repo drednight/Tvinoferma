@@ -17,6 +17,10 @@ on:
       - 'src-tauri/src/cloud_*.rs'
       - 'src-tauri/src/commands/cloud_*.rs'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -24,6 +28,10 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 45
+    # Job-level so rust-cache also keys the test-only profile correctly.
+    env:
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -36,6 +44,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          shared-key: windows-acceptance-no-lto-v1
       - run: npm ci
       - name: Build executable without installer or updater signature
         env:
@@ -56,6 +65,7 @@ jobs:
           Исходный код: $source
           Встроенная версия: $version (она не отличает эту тестовую сборку от стабильной).
           Это обычный Windows exe, не установщик и не пакет автообновления.
+          Тестовая сборка без LTO; размер и производительность могут отличаться от релиза.
           Нужен установленный Microsoft Edge WebView2 Runtime.
 
           Запускайте только в ОТДЕЛЬНЫХ ТЕСТОВЫХ УЧЁТНЫХ ЗАПИСЯХ WINDOWS без прежних
@@ -64,7 +74,7 @@ jobs:
           одновременно с этой сборкой.
 
           Для диагностики OAuth: Настройки → Синхронизация → Синхронизация между ПК.
-          Нажмите «Войти и сохранить доступ», затем сверьте аккаунт.
+          Нажмите «Войти» или «Повторить вход Google» рядом с ошибкой, затем сверьте аккаунт.
           Если приложение ещё не настроено владельцем: Google — импорт Desktop JSON
           в разовой настройке; Яндекс — публичный Client ID в той же настройке.
           При ошибке сообщите только код вроде token/invalid_client или token/timeout.

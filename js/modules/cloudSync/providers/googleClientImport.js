@@ -26,7 +26,7 @@ export const GOOGLE_IMPORT_MESSAGES = Object.freeze({
   oauth_client_config_invalid:
     'Native-проверка отклонила структуру JSON. Скачайте исходный файл Desktop заново; не меняйте поля вручную.',
   oauth_client_config_blocked:
-    'Импорт остановлен: существующий вход заблокирован или обновление доступа не подтверждено. Ключи и файлы не удаляйте.',
+    'Импорт остановлен: защищённая запись входа не совпадает с привязкой или недоступна. Ключи и файлы не удаляйте.',
   oauth_client_config_client_changed:
     'Этот JSON относится к другому OAuth-приложению. Существующий вход не заменён. Выберите JSON прежнего Desktop-клиента.',
   oauth_client_config_unavailable:

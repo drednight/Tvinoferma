@@ -510,28 +510,6 @@
                 <span id="cloud-registration-account-label"></span><bdi dir="ltr" id="cloud-registration-account-value"></bdi>
                 <small>Сверьте с выбранным аккаунтом в браузере. Это только проверка, привязка не сохранена.</small>
               </div>
-              <section class="cloud-connection" aria-labelledby="cloud-connection-title">
-                <h4 id="cloud-connection-title">Состояние подключения</h4>
-
-                <details><summary>Проверка и ручное управление доступом</summary>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn ghost" id="cloud-connection-inspect">Проверить локальную запись</button>
-                </div>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-connection-approve" /> <span>Я понимаю, что доступ будет сохранён только на этом ПК. Само сохранение доступа не проверяет старое облако и не подключает набор данных.</span></label>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn" id="cloud-connection-start">Сохранить доступ</button>
-                  <button type="button" class="btn ghost" id="cloud-connection-cancel" hidden>Отменить вход</button>
-                </div>
-                </details>
-
-                <details class="cloud-connection-disconnect"><summary>Удаление локального доступа</summary>
-                  <h5>Забыть доступ на этом ПК</h5>
-                  <p>Это удаляет только локальную запись доступа, но не облачные файлы, ключи или разрешение у сервиса. При наличии привязки набора или незавершённой операции удаление заблокировано; не стирайте такие записи вручную.</p>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-connection-forget-approve" /> <span>Я хочу удалить сохранённый доступ на этом ПК и понимаю, что разрешение у сервиса останется.</span></label>
-                  <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
-                </details>
-              </section>
-
 </details>
 
               <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">

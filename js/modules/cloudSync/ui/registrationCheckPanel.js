@@ -30,9 +30,9 @@ const ENROLL_MESSAGES = Object.freeze({
   installed:
     'Доступ сохранён на этом ПК после сверки аккаунта. Облачные файлы не изменялись. Теперь можно сохранить полный файл или проверить файлы другого ПК.',
   installed_access_expired:
-    'Доступ сохранён, но срок токена уже истёк. Синхронизация не работает; для нового входа потребуется удалить локальную запись, если она не связана с набором.',
+    'Доступ сохранён, но срок токена уже истёк. Синхронизация не работает; требуется восстановить авторизацию. Ключи и облачные файлы не удаляйте.',
   installed_refresh_expired:
-    'Доступ сохранён, но срок refresh-токена уже истёк. Синхронизация не работает; для нового входа потребуется удалить локальную запись, если она не связана с набором.',
+    'Доступ сохранён, но срок refresh-токена уже истёк. Синхронизация не работает; требуется восстановить авторизацию. Ключи и облачные файлы не удаляйте.',
   already_configured:
     'На этом ПК уже есть запись доступа. Она не заменялась; действительность и облачные файлы не проверялись.',
   local_blocked: 'Локальная запись недоступна или неполная. Ничего не заменялось; требуется восстановление.',
@@ -45,7 +45,7 @@ const ENROLL_MESSAGES = Object.freeze({
   token_unavailable: 'Не удалось безопасно использовать ответ сервиса. Доступ в приложении не сохранён.',
   identity_unverified: 'Не удалось проверить аккаунт у сервиса. Доступ в приложении не сохранён.',
   account_label_unavailable: 'Сервис не сообщил метку аккаунта для сверки. Доступ в приложении не сохранён.',
-  account_changed: 'Аккаунт изменился во время сверки. Доступ в приложении не сохранён.',
+  account_changed: 'Аккаунт не совпадает с сохранённым или изменился во время сверки. Доступ не заменён.',
   confirmation_unverified: 'Подтверждение аккаунта не получено. Доступ в приложении не сохранён.',
   failed: 'Не удалось выполнить вход. Проверьте регистрацию, разрешения и Redirect URI; файлы не изменялись.'
 });
@@ -99,13 +99,7 @@ export function bindCloudRegistrationCheck(options) {
     !accountLabel ||
     !accountValue ||
     !localStatus ||
-    !progress ||
-    !inspectButton ||
-    !approve ||
-    !enrollButton ||
-    !enrollCancel ||
-    !forgetApprove ||
-    !forgetButton
+    !progress
   )
     return;
   if (form.dataset.cloudCheckBound === 'true') return;
@@ -150,7 +144,11 @@ export function bindCloudRegistrationCheck(options) {
     const stopped = uncertain.has(selected);
     if (simple) {
       simple.disabled = busy || !options.desktop || stopped;
-      simple.hidden = ['ready', 'ready_bound'].includes(known?.status || '');
+      const canReconnect =
+        selected === 'google' &&
+        ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(known?.status || '');
+      simple.hidden = !canReconnect && ['ready', 'ready_bound'].includes(known?.status || '');
+      simple.textContent = canReconnect ? 'Повторить вход Google' : 'Войти';
     }
     if (simpleCancel) {
       simpleCancel.hidden = !['enroll', 'inspect'].includes(active?.mode || '');
@@ -162,13 +160,16 @@ export function bindCloudRegistrationCheck(options) {
     start.disabled = busy || !options.desktop;
     cancelButton.hidden = active?.mode !== 'check';
     cancelButton.disabled = active?.mode !== 'check' || active.controller.signal.aborted;
-    inspectButton.disabled = busy || !options.desktop;
-    approve.disabled = busy || !options.desktop || stopped || known?.status !== 'empty';
-    enrollButton.disabled = busy || !options.desktop || stopped || known?.status !== 'empty' || !approve.checked;
-    enrollCancel.hidden = active?.mode !== 'enroll';
-    enrollCancel.disabled = active?.mode !== 'enroll' || active.controller.signal.aborted;
-    forgetApprove.disabled = busy || !options.desktop || stopped || known?.status !== 'ready';
-    forgetButton.disabled = busy || !options.desktop || stopped || known?.status !== 'ready' || !forgetApprove.checked;
+    if (inspectButton) inspectButton.disabled = busy || !options.desktop;
+    if (approve) approve.disabled = busy || !options.desktop || stopped || known?.status !== 'empty';
+    if (enrollButton)
+      enrollButton.disabled = busy || !options.desktop || stopped || known?.status !== 'empty' || !approve?.checked;
+    if (enrollCancel) enrollCancel.hidden = active?.mode !== 'enroll';
+    if (enrollCancel) enrollCancel.disabled = active?.mode !== 'enroll' || active.controller.signal.aborted;
+    if (forgetApprove) forgetApprove.disabled = busy || !options.desktop || stopped || known?.status !== 'ready';
+    if (forgetButton)
+      forgetButton.disabled =
+        busy || !options.desktop || stopped || known?.status !== 'ready' || !forgetApprove?.checked;
   }
   function stop() {
     if (!active || active.controller.signal.aborted) return;
@@ -205,8 +206,8 @@ export function bindCloudRegistrationCheck(options) {
   function uncertainOutcome(selected) {
     uncertain.add(selected);
     observed = null;
-    approve.checked = false;
-    forgetApprove.checked = false;
+    if (approve) approve.checked = false;
+    if (forgetApprove) forgetApprove.checked = false;
     localStatus.textContent =
       'Результат операции с локальной записью неизвестен. Не повторяйте вход или удаление; сначала проверьте состояние и завершение операции.';
     progress.textContent =
@@ -223,8 +224,8 @@ export function bindCloudRegistrationCheck(options) {
     };
     active = session;
     observed = null;
-    approve.checked = false;
-    forgetApprove.checked = false;
+    if (approve) approve.checked = false;
+    if (forgetApprove) forgetApprove.checked = false;
     localStatus.textContent = 'Проверяем только локальную запись…';
     setBusy();
     try {
@@ -234,7 +235,7 @@ export function bindCloudRegistrationCheck(options) {
       if (session.controller.signal.aborted) return;
       if (!['empty', 'ready', 'pending', 'blocked'].includes(reply.status)) throw new Error();
       if (reply.status === 'ready' && reply.binding?.clientId) client.value = reply.binding.clientId;
-      if (reply.status === 'empty') {
+      if (reply.status === 'empty' || (selected === 'google' && ['pending', 'ready'].includes(reply.status))) {
         if (selected === 'google') {
           try {
             const config = await native.invoke('cloud_google_client_read', {});
@@ -282,7 +283,10 @@ export function bindCloudRegistrationCheck(options) {
         doc.defaultView?.dispatchEvent(
           new CustomEvent('tf-cloud-credential-ready', { detail: { provider: selected } })
         );
-      localStatus.textContent = LOCAL_MESSAGES[displayStatus];
+      localStatus.textContent =
+        selected === 'google' && displayStatus === 'pending'
+          ? 'Обновление доступа Google не подтверждено. Нажмите «Повторить вход Google» и войдите в прежний аккаунт. Ключи и ожидающий файл сохраняются.'
+          : LOCAL_MESSAGES[displayStatus];
       if (uncertain.has(selected))
         localStatus.textContent += ' Исход предыдущей операции всё ещё неизвестен; повтор в этом окне заблокирован.';
     } catch {
@@ -328,8 +332,8 @@ export function bindCloudRegistrationCheck(options) {
     updateProviderHint();
     status.textContent = initialStatus();
     observed = null;
-    approve.checked = false;
-    forgetApprove.checked = false;
+    if (approve) approve.checked = false;
+    if (forgetApprove) forgetApprove.checked = false;
     localStatus.textContent = options.desktop ? 'Локальная запись не проверена.' : 'Доступно только в Windows.';
     progress.textContent = options.desktop ? 'Ожидание действия.' : 'В браузерном примере подключение не выполняется.';
     setBusy();
@@ -352,10 +356,10 @@ export function bindCloudRegistrationCheck(options) {
     setBusy();
   });
   cancelButton.addEventListener('click', stop);
-  enrollCancel.addEventListener('click', stop);
-  inspectButton.addEventListener('click', () => void inspect());
-  approve.addEventListener('change', setBusy);
-  forgetApprove.addEventListener('change', setBusy);
+  enrollCancel?.addEventListener('click', stop);
+  inspectButton?.addEventListener('click', () => void inspect());
+  approve?.addEventListener('change', setBusy);
+  forgetApprove?.addEventListener('change', setBusy);
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -425,11 +429,16 @@ export function bindCloudRegistrationCheck(options) {
     }
   });
 
-  async function startEnrollment(quick = false) {
+  async function startEnrollment(quick = false, reconnect = false) {
     if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
-    if (!quick && enrollButton.disabled) return;
+    if (!quick && enrollButton?.disabled) return;
     const input = clientForAction(progress);
-    if (!input || observed?.provider !== input.selected || observed.status !== 'empty' || (!quick && !approve.checked))
+    if (
+      !input ||
+      observed?.provider !== input.selected ||
+      (!reconnect && observed.status !== 'empty') ||
+      (!quick && !approve?.checked)
+    )
       return;
     const { selected, clientId } = input;
     let operation;
@@ -446,7 +455,7 @@ export function bindCloudRegistrationCheck(options) {
       installing: false
     };
     active = session;
-    approve.checked = false;
+    if (approve) approve.checked = false;
     clearAccount();
     setBusy();
     progress.textContent = 'Подготавливаем вход и проверяем локальную запись…';
@@ -461,11 +470,15 @@ export function bindCloudRegistrationCheck(options) {
         openBrowser: native.openBrowser,
         signal: session.controller.signal,
         firstConnectionConfirmed: true,
+        ...(reconnect ? { reconnect: true } : {}),
         confirmAccount,
         onProgress(stage) {
           if (stage === 'installing') session.installing = true;
           if (session.controller.signal.aborted) return;
-          if (stage === 'checking_local') progress.textContent = 'Проверяем, что локальная запись не занята…';
+          if (stage === 'checking_local')
+            progress.textContent = reconnect
+              ? 'Проверяем сохранённую привязку аккаунта…'
+              : 'Проверяем, что локальная запись не занята…';
           else if (stage === 'browser') progress.textContent = 'Войдите в выбранный аккаунт в системном браузере.';
           else if (stage === 'token') progress.textContent = 'Проверяем ответ авторизации…';
           else if (stage === 'identity') progress.textContent = 'Проверяем аккаунт у сервиса…';
@@ -515,13 +528,25 @@ export function bindCloudRegistrationCheck(options) {
       }
     }
   }
-  enrollButton.addEventListener('click', () => void startEnrollment());
+  enrollButton?.addEventListener('click', () => void startEnrollment());
   simpleCancel?.addEventListener('click', stop);
-  simple?.addEventListener('click', async () => {
+  async function signIn() {
     if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
     await inspect();
-    if (observed?.provider !== selectedProvider() || observed.status !== 'empty') return;
-    await startEnrollment(true);
+    if (observed?.provider !== selectedProvider()) return;
+    const reconnect =
+      selectedProvider() === 'google' &&
+      ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(observed.status);
+    if (!reconnect && observed.status !== 'empty') return;
+    await startEnrollment(true, reconnect);
+  }
+  simple?.addEventListener('click', signIn);
+  panel.addEventListener('tf-cloud-reconnect-google', () => {
+    if (!options.desktop || active || resetStarted || uncertain.has('google')) return;
+    provider.value = 'google';
+    clearAccount();
+    updateProviderHint();
+    void signIn();
   });
   configFile?.addEventListener('change', async () => {
     const file = configFile.files?.[0];
@@ -577,8 +602,8 @@ export function bindCloudRegistrationCheck(options) {
       if (panel.open) void inspect();
     });
 
-  forgetButton.addEventListener('click', async () => {
-    if (!options.desktop || active || forgetButton.disabled || !forgetApprove.checked) return;
+  forgetButton?.addEventListener('click', async () => {
+    if (!options.desktop || active || forgetButton.disabled || !forgetApprove?.checked) return;
     const selected = selectedProvider();
     const slotId = observed?.provider === selected && observed.status === 'ready' ? observed.slotId : null;
     if (!slotId) return;
@@ -596,7 +621,7 @@ export function bindCloudRegistrationCheck(options) {
       installing: false
     };
     active = session;
-    forgetApprove.checked = false;
+    if (forgetApprove) forgetApprove.checked = false;
     setBusy();
     progress.textContent = 'Проверяем привязку и удаляем локальный доступ…';
     let forgetStarted = false;
