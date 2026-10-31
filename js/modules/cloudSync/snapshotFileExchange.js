@@ -2,6 +2,7 @@
 // Full-file exchange. No three-way merge, no inference of per-record tombstones.
 // Existing immutable encrypted files are kept as backups. A parent only identifies
 // the file the user replaced. Concurrent writes are retained, not silently lost.
+import { verifyContactsSource } from '../../core/secrets.js';
 import { loadData, forgetLoadedState } from '../../core/storage.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { comparePublicSnapshots } from './compareSnapshots.js';
@@ -17,7 +18,20 @@ import { openPinnedNativeCloudSession } from './providers/pinnedNativeCloudSessi
 import { beginCloudDataOperation } from './credentialResetCoordination.js';
 import { generateSyncId } from './envelope.js';
 import { historyEnvelopePin, verifyHistory, sealFileSnapshot, MAX_HISTORY_VERSIONS } from './history.js';
-import { object } from './exportSchema.js';
+import { object, array } from './exportSchema.js';
+import {
+  buildPrivateDelta,
+  privateDifferences,
+  applyPrivateSelection,
+  mergePrivateSnapshots
+} from './privateSnapshot.js';
+import {
+  privateSourceAvailable,
+  privateConsent,
+  privatePairs,
+  selectPrivateDelta,
+  prunePrivateSnapshot
+} from './snapshotFilePrivate.js';
 import {
   readSnapshotFileState,
   withSnapshotFileState,
@@ -29,6 +43,8 @@ import {
 const reviews = new WeakMap();
 const choices = new WeakMap();
 const releases = new WeakMap();
+const privateExports = new WeakMap();
+const privateImports = new WeakMap();
 const sameHeads = (a, b) => a.length === b.length && a.every(pin => b.some(other => sameFilePin(pin, other)));
 const savedTimes = new WeakMap();
 const NO_NETWORK = Object.freeze({
@@ -253,6 +269,7 @@ export async function checkSnapshotFile(value) {
       pending: opened.local?.pending?.phase || null,
       unsettled: opened.local?.unsettled?.length || 0,
       requiresResolution: cloud.heads.length > 1,
+      privateOrphans: prunePrivateSnapshot(cloud.history.privateSnapshot(cloud.pin), snapshot).ids.length,
       privateCarry: cloud.history.privateSnapshot(cloud.pin) !== null,
       differences: comparePublicSnapshots({ local: snapshot, cloud: cloud.snapshot })
     });
@@ -393,13 +410,25 @@ export async function uploadSnapshotFile(value) {
     'overwriteConfirmed',
     'privateCarryConfirmed',
     'resolutionConfirmed',
-    'useCloudFile'
+    'useCloudFile',
+    'privateExport',
+    'privateSelections',
+    'privatePruningConfirmed'
   ]);
   if (input.confirmed !== true) return outcome('confirmation_required');
   let operation, opened;
   const risk = { refresh: false };
   try {
     const review = checkedReview(input);
+    const secretExport = input.privateExport === undefined ? null : privateExports.get(input.privateExport);
+    if (
+      input.privateExport !== undefined &&
+      (!secretExport || secretExport.review !== input.review || input.useCloudFile === true)
+    )
+      return outcome('private_review_changed');
+    if (input.privateSelections !== undefined && !secretExport) return outcome('private_review_changed');
+    if (secretExport && !privateSourceAvailable(review.original)) return outcome('private_source_unavailable');
+    const selectedSecrets = secretExport ? privatePairs(input.privateSelections, secretExport.rows) : null;
     if (input.useCloudFile !== undefined && input.useCloudFile !== true) throw new Error('Некорректный выбор файла');
     if (input.useCloudFile === true && !input.review.requiresResolution) return outcome('selection_required');
     if (input.review.requiresResolution && input.resolutionConfirmed !== true)
@@ -425,6 +454,23 @@ export async function uploadSnapshotFile(value) {
     const snapshot = input.useCloudFile === true ? review.cloudSnapshot : review.snapshot;
     const contentHash = input.useCloudFile === true ? review.remoteHash : review.hash;
     const replacedHeads = cloud.heads.filter(pin => !sameFilePin(pin, cloud.pin));
+    const prior = cloud.history.privateSnapshot(cloud.pin);
+    const pruned = prunePrivateSnapshot(prior, snapshot);
+    if (pruned.ids.length && input.privatePruningConfirmed !== true)
+      return outcome('private_pruning_confirmation_required');
+    if (
+      secretExport &&
+      (!privateSourceAvailable(currentCloudStateSnapshot()) || !(await verifyContactsSource(review.original)))
+    )
+      return outcome('private_source_unavailable');
+    const privateSnapshot = secretExport
+      ? mergePrivateSnapshots(
+          pruned.snapshot,
+          selectPrivateDelta(secretExport.delta, snapshot, selectedSecrets),
+          snapshot
+        )
+      : pruned.snapshot;
+
     // Self-roundtrip prevents sending a state that this application cannot restore.
     prepareFullPublicSnapshotReplace({
       localState: review.original,
@@ -440,7 +486,8 @@ export async function uploadSnapshotFile(value) {
       versionId: generateSyncId(input.cryptoSource),
       keyBundle: context.key.bundle,
       keyPin: context.binding.keyPin,
-      privateSnapshot: cloud.history.privateSnapshot(cloud.pin),
+      privateSnapshot,
+      ...(pruned.ids.length ? { privatePrunedIds: pruned.ids } : {}),
       cryptoSource: input.cryptoSource
     });
     let fileId = null;
@@ -465,6 +512,7 @@ export async function uploadSnapshotFile(value) {
     const stored = await journal(review.original, input.provider, row);
     if (stored.result.status !== 'applied') return stored.result;
     reviews.delete(input.review);
+    if (input.privateExport) privateExports.delete(input.privateExport);
     return await transmit(opened, input, row);
   } catch {
     return outcome('unavailable_or_changed');
@@ -623,5 +671,158 @@ export async function releaseSnapshotFileUpload(value) {
     return outcome('unavailable_or_changed');
   } finally {
     operation?.finish(false);
+  }
+}
+
+/** Explicit, one-batch local export capability. Values never leave this module unencrypted. */
+export async function prepareSnapshotFilePrivateExport(value) {
+  const input = options(value, ['review', 'fields', 'contactsSourceConfirmed', 'acknowledgePasswordRisk']);
+  // Capture category consent before any await; a caller cannot add password later.
+  if (!Array.isArray(input.fields)) return outcome('private_consent_required');
+  input.fields = array(input.fields, field => field);
+  if (!privateConsent(input, input.fields)) return outcome('private_consent_required');
+  let operation;
+  try {
+    const review = checkedReview(input);
+    if (input.review.requiresResolution) return outcome('multiple_files');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || JSON.stringify(original) !== JSON.stringify(review.original))
+      return outcome('state_changed_or_unsaved');
+    if (!privateSourceAvailable(original) || !(await verifyContactsSource(original)))
+      return outcome('private_source_unavailable');
+    const delta = buildPrivateDelta(original, review.snapshot, input.fields);
+    const chars = new Map([...original.characters, ...original.archivedCharacters].map(row => [row.syncId, row]));
+    const rows = delta.records.flatMap(row =>
+      Object.entries(row.fields).map(([field, value]) =>
+        Object.freeze({
+          characterId: row.characterId,
+          field,
+          label: chars.get(row.characterId).nick,
+          clears: value === '',
+          localPresent: value !== '',
+          selectable: true
+        })
+      )
+    );
+    const view = Object.freeze({
+      status: 'private_export_review',
+      fields: Object.freeze([...input.fields]),
+      rows: Object.freeze(rows),
+      cancel() {
+        privateExports.delete(view);
+      }
+    });
+    privateExports.set(view, { review: input.review, delta, rows });
+    return view;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    operation?.finish(false);
+  }
+}
+/** Authenticated private comparison. Only presence/clearing facts, never values, are returned. */
+export async function checkSnapshotFilePrivate(value) {
+  const input = options(value, ['review', 'fields', 'contactsSourceConfirmed', 'acknowledgePasswordRisk']);
+  // Capture category consent before any await; a caller cannot add password later.
+  if (!Array.isArray(input.fields)) return outcome('private_consent_required');
+  input.fields = array(input.fields, field => field);
+  if (!privateConsent(input, input.fields)) return outcome('private_consent_required');
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    const review = checkedReview(input);
+    if (input.review.requiresResolution) return outcome('multiple_files');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || JSON.stringify(original) !== JSON.stringify(review.original))
+      return outcome('state_changed_or_unsaved');
+    if (!privateSourceAvailable(original) || !(await verifyContactsSource(original)))
+      return outcome('private_source_unavailable');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (JSON.stringify(opened.context.binding) !== review.binding) return outcome('binding_blocked');
+    const cloud = await reviewedCloud(opened, input, review);
+    if (cloud.status !== 'ready') return outcome(cloud.status);
+    const snapshot = cloud.history.privateSnapshot(cloud.pin);
+    const rows = privateDifferences(snapshot, cloud.snapshot, original, input.fields).map(row =>
+      Object.freeze({ ...row })
+    );
+    if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+    const view = Object.freeze({
+      status: 'private_ready',
+      pin: Object.freeze({ ...cloud.pin }),
+      fields: Object.freeze([...input.fields]),
+      rows: Object.freeze(rows),
+      cancel() {
+        privateImports.delete(view);
+      }
+    });
+    privateImports.set(view, { original, review, snapshot, rows });
+    return view;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+/** Manual-only fields: does NOT accept the public file or advance its baseline. */
+export async function applySnapshotFilePrivate(value) {
+  const input = options(value, [
+    'review',
+    'selections',
+    'confirmed',
+    'contactsSourceConfirmed',
+    'independentBackupConfirmed',
+    'acknowledgePasswordRisk'
+  ]);
+  if (input.confirmed !== true) return outcome('confirmation_required');
+  if (input.independentBackupConfirmed !== true) return outcome('private_backup_required');
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    const held = privateImports.get(input.review);
+    if (!held) return outcome('private_review_changed');
+    const selected = privatePairs(input.selections, held.rows);
+    if (!privateConsent(input, [...new Set(selected.map(row => row.field))]))
+      return outcome('private_consent_required');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || JSON.stringify(original) !== JSON.stringify(held.original))
+      return outcome('state_changed_or_unsaved');
+    if (!privateSourceAvailable(original) || !(await verifyContactsSource(original)))
+      return outcome('private_source_unavailable');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (opened.local?.pending) return outcome('pending_upload');
+    if (JSON.stringify(opened.context.binding) !== held.review.binding) return outcome('binding_blocked');
+    const cloud = await reviewedCloud(opened, input, held.review);
+    if (cloud.status !== 'ready') return outcome(cloud.status);
+    const candidate = applyPrivateSelection(
+      cloud.history.privateSnapshot(cloud.pin),
+      cloud.snapshot,
+      original,
+      selected
+    );
+    candidate.settings = withSnapshotFileState(
+      candidate.settings,
+      input.provider,
+      opened.local || initialRow(opened.context.binding.datasetId)
+    );
+    if (!privateSourceAvailable(currentCloudStateSnapshot())) return outcome('private_source_unavailable');
+    const result = await stageGuardedCloudStateWrite({
+      original,
+      candidate,
+      backupLabel: 'pre-cloud-file-private-apply',
+      selectedCount: selected.length
+    }).commit({ confirmed: true });
+    if (result.status === 'applied') privateImports.delete(input.review);
+    return result;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
   }
 }

@@ -206,4 +206,46 @@ describe('полный зашифрованный файл', () => {
         readSnapshotFileState({ cloudSnapshotFiles: { google: { ...row, ...patch } } }, 'google', datasetId)
       ).toThrow();
   });
+  it('полный файл может исключить контакты только явно удалённых персонажей через v7', async () => {
+    const characterId = original.sections.characters.records[0].id;
+    const parent = await seal(original, root.pin, {
+      privateSnapshot: { schemaVersion: 1, records: [{ characterId, fields: { password: 'SYNTHETIC_PRIVATE' } }] }
+    });
+    const target = structuredClone(original);
+    target.sections.characters.records = target.sections.characters.records.filter(row => row.id !== characterId);
+    target.sections.characters.order.active = target.sections.characters.order.active.filter(id => id !== characterId);
+    const missingConsent = await seal(target, parent.pin);
+    await expect(verify([root, parent, missingConsent])).rejects.toThrow();
+    const pruned = await seal(target, parent.pin, { privatePrunedIds: [characterId] });
+    const history = await verify([root, parent, pruned]);
+    expect(history.privateSnapshot(pruned.pin)).toBeNull();
+    expect(history.privatePrunedIds(pruned.pin)).toEqual([characterId]);
+    expect(history.isFileSnapshot(pruned.pin)).toBe(true);
+    const next = await seal(target, pruned.pin);
+    expect((await verify([root, parent, pruned, next])).observedHeads()).toEqual([next.pin]);
+  });
+  it('не позволяет v7 удалять секреты оставшегося персонажа или указывать чужой ID', async () => {
+    const characterId = original.sections.characters.records[0].id,
+      parent = await seal(original, root.pin, {
+        privateSnapshot: { schemaVersion: 1, records: [{ characterId, fields: { password: 'PRIVATE' } }] }
+      });
+    for (const privatePrunedIds of [[characterId], [id()]]) {
+      const child = await seal(original, parent.pin, { privatePrunedIds });
+      await expect(verify([root, parent, child])).rejects.toThrow();
+    }
+  });
+  it('v7 сохраняет явный выбор нескольких файлов при удалении персонажа', async () => {
+    const characterId = original.sections.characters.records[0].id;
+    const parent = await seal(original, root.pin, {
+        privateSnapshot: { schemaVersion: 1, records: [{ characterId, fields: { password: 'PRIVATE' } }] }
+      }),
+      other = await seal(original);
+    const target = structuredClone(original);
+    target.sections.characters.records = target.sections.characters.records.filter(row => row.id !== characterId);
+    target.sections.characters.order.active = target.sections.characters.order.active.filter(id => id !== characterId);
+    const chosen = await seal(target, parent.pin, { replacedHeads: [other.pin], privatePrunedIds: [characterId] });
+    const history = await verify([root, parent, other, chosen]);
+    expect(history.observedHeads()).toEqual([chosen.pin]);
+    expect(history.covers(chosen.pin, other.pin)).toBe(true);
+  });
 });

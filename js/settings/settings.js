@@ -41,6 +41,7 @@ import { refreshUpdateSchedule } from '../desktop/updateUi.js';
 import { resolveUpdateMode } from '../desktop/updateSchedule.js';
 import { bindCloudRegistrationCheck } from '../modules/cloudSync/ui/registrationCheckPanel.js';
 import { hasSnapshotFileMode } from '../modules/cloudSync/snapshotFileState.js';
+import { bindSnapshotFilePrivatePanel } from '../modules/cloudSync/ui/snapshotFilePrivatePanel.js';
 import { bindSnapshotFilePanel } from '../modules/cloudSync/ui/snapshotFilePanel.js';
 import { bindCloudReviewPanel } from '../modules/cloudSync/ui/cloudReviewPanel.js';
 import { bindInitialCloudPanel } from '../modules/cloudSync/ui/initialCloudPanel.js';
@@ -574,6 +575,7 @@ function bindSettingInputs() {
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
   bindSnapshotFilePanel({ desktop: isTauri() });
+  bindSnapshotFilePrivatePanel({ desktop: isTauri() });
   // The old merge/auto-publication controls remain available only for legacy recovery.
   const fileMode = !!document.getElementById('cloud-file-panel');
   const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });

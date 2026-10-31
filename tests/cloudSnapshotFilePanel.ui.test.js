@@ -225,4 +225,15 @@ describe('обмен полным файлом — интерфейс', () => {
     await vi.waitFor(() => expect(el('resolve').disabled).toBe(false));
     expect(f.upload).not.toHaveBeenCalled();
   });
+  it('отдельно спрашивает о пропуске контактов удалённых персонажей и не отправляет при отказе', async () => {
+    const f = setup({
+      check: vi.fn(async () => view({ privateCarry: true, privateOrphans: 1 })),
+      confirm: vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    });
+    el('upload').click();
+    await vi.waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(el('upload').disabled).toBe(false));
+    expect(f.confirm.mock.calls[1][0]).toContain('не безвозвратное удаление');
+    expect(f.upload).not.toHaveBeenCalled();
+  });
 });

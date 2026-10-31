@@ -581,7 +581,7 @@
               <section class="cloud-review" id="cloud-file-panel" aria-labelledby="cloud-file-title">
                 <h4 id="cloud-file-title">Обмен полным файлом</h4>
                 <p>Проверьте файл на выбранном диске, посмотрите различия и подтвердите замену. «Отправить на диск» сохраняет полный снимок местных данных, включая удаления и порядок, без автоматического объединения. Прежние зашифрованные версии остаются резервными копиями.</p>
-                <p class="muted">Сначала подключите или восстановите набор выше. Проверка ничего не записывает. При отправке местные данные сохраняются, недостающие ID подготавливаются с резервной копией; отдельная подготовка ID нужна, только если проверка остановлена. Переносятся публичные записи и настройки, выбранные при создании набора; местные входы, cookies и пути не переносятся. Новые контакты и пароли автоматически не выгружаются. Уже переданная приватная часть сохраняется в шифрованном виде, если совместима с новым снимком. Перед переходом обновите все ПК.</p>
+                <p class="muted">Сначала подключите или восстановите набор выше. Проверка ничего не записывает. При отправке местные данные сохраняются, недостающие ID подготавливаются с резервной копией; отдельная подготовка ID нужна, только если проверка остановлена. Переносятся публичные записи и настройки, выбранные при создании набора; местные входы, cookies и пути не переносятся. Новые контакты и пароли автоматически не выгружаются; ручной выбор — в отдельном свёрнутом блоке ниже. Уже переданная приватная часть сохраняется в шифрованном виде, если совместима с новым снимком. Перед переходом обновите все ПК.</p>
                 <div class="cloud-registration-actions">
                   <button type="button" class="btn" id="cloud-file-check">Проверить / скачать файл</button>
                   <button type="button" class="btn" id="cloud-file-upload">Отправить на диск</button>
@@ -605,9 +605,30 @@
                   <button type="button" class="btn" id="cloud-file-resolve" hidden>Сделать выбранный файл актуальным на диске</button>
                 </div>
               </section>
+              <details class="cloud-review" id="cloud-file-private">
+                <summary>Пароли и контакты · отдельный ручной перенос</summary>
+                <p><strong>Риск раскрытия:</strong> все, у кого есть ключ набора, смогут расшифровать переданные контакты. По умолчанию ничего не выбрано. Разрешения действуют только на одну подготовленную партию; обычная отправка новых местных контактов не добавляет. В списке показываются только факты различий, не значения.</p>
+                <fieldset><legend>Категории для этой операции</legend>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="email" /> Email</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="recoveryEmail" /> Запасная почта</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="phone" /> Телефон</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="password" /> Пароль</label>
+                </fieldset>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-source" /> Подтверждаю полноту местных контактов и доступность их хранилища. Пустое выбранное поле означает явную очистку.</label>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-risk" /> Отдельно принимаю риск передачи или замены пароля.</label>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-file-private-prepare">Подготовить контакты к отправке</button><button type="button" class="btn ghost" id="cloud-file-private-check">Сравнить контакты с диском</button></div>
+                <p id="cloud-file-private-status" role="status" aria-live="polite">Контакты не выбраны и не передавались.</p>
+                <div id="cloud-file-private-result" hidden>
+                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-file-private-all">Выбрать все</button><button type="button" class="btn ghost small" id="cloud-file-private-none">Снять все</button></div>
+                  <div id="cloud-file-private-list" class="cloud-review-list"></div>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-backup" /> Создал отдельную копию прежних контактов. Копия state.json не является копией Windows vault.</label>
+                  <button type="button" class="btn danger" id="cloud-file-private-send" hidden>Отправить полный файл с выбранными контактами</button>
+                  <button type="button" class="btn danger" id="cloud-file-private-apply" hidden>Применить только выбранные контакты</button>
+                </div>
+              </details>
               <details class="cloud-activity" id="cloud-legacy-exchange">
                 <summary>Прежний режим · завершить старые операции</summary>
-                <p class="muted">Если осталась очередь прежнего режима, сначала завершите её здесь. Старая автоотправка отключена. После начала перехода на файловый режим эти действия блокируются для выбранного диска, чтобы два режима не изменяли данные одновременно. Передача новых приватных партий в новом режиме пока не подключена.</p>
+                <p class="muted">Если осталась очередь прежнего режима, сначала завершите её здесь. Старая автоотправка отключена. После начала перехода на файловый режим эти действия блокируются для выбранного диска, чтобы два режима не изменяли данные одновременно. Для новых ручных партий используйте отдельный блок паролей и контактов выше.</p>
               <fieldset id="cloud-legacy-controls"><legend>Операции до перехода на полный файл</legend>
               <section class="cloud-publication" aria-labelledby="cloud-publication-title">
                 <h4 id="cloud-publication-title">Отправить последующие изменения · экспериментально</h4>
