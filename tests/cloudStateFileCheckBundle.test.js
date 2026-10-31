@@ -46,11 +46,29 @@ it('сгенерированный один HTML запускается без �
       ]
     });
     Object.defineProperty(input, 'files', {
+      configurable: true,
       value: [{ size: text.length, name: 'FAKE_PRIVATE_FILENAME', text: async () => text }]
     });
     input.dispatchEvent(new Event('change'));
     await vi.waitFor(() => expect(output.value).toBe('setup/identities/public.marathons.source.url/url_scheme'));
     expect(document.body.textContent + output.value).not.toContain('FAKE_PRIVATE');
+    for (const [fragment, expected] of [
+      ['#TF_READY_complete', 'file/structure_ok'],
+      ['#TF_DETAIL_V4_FAKE_PRIVATE_REPORT', 'file/structure_ok'],
+      ['#FAKE_PRIVATE_ANCHOR', 'setup/identities/public.marathons.source.url/url_fragment']
+    ]) {
+      const updated = text.replace(
+        'http://pwonline.ru/supermarathon.php',
+        'https://pwonline.ru/supermarathon.php' + fragment
+      );
+      Object.defineProperty(input, 'files', {
+        configurable: true,
+        value: [{ size: updated.length, name: 'FAKE_PRIVATE_FILENAME', text: async () => updated }]
+      });
+      input.dispatchEvent(new Event('change'));
+      await vi.waitFor(() => expect(output.value).toBe(expected));
+      expect(document.body.textContent + output.value).not.toContain('FAKE_PRIVATE');
+    }
   } finally {
     dom?.window.close();
     rmSync(dir, { recursive: true, force: true });

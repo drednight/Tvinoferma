@@ -30,7 +30,7 @@
             report(null, 'no_title_found');
             return;
         }
-        report({ name: marathonName, url: window.location.href }, null);
+        report({ name: marathonName, url: window.location.href.split('#')[0] }, null);
     } catch (e) {
         report(null, 'exception_' + e.message.substring(0, 20));
     }

@@ -106,7 +106,14 @@ export function safeSiteUrl(value) {
   if (!['pwonline.ru', 'www.pwonline.ru'].includes(url.hostname)) throw invalidExport('url_host');
   if (url.username || url.password) throw invalidExport('url_auth');
   if (url.port) throw invalidExport('url_port');
-  if (url.hash) throw invalidExport('url_fragment');
+  // navigate_clean пишет READY в адрес перед запуском парсера; старые версии
+  // titles/detail сохраняли весь href. Результаты парсеров тоже передаются в hash.
+  // Это локальный транспорт, НЕ переносимые данные: не декодировать и не экспортировать.
+  // Неизвестные фрагменты по-прежнему останавливают экспорт, как и опасная основа URL.
+  const parserFragment =
+    /^#TF_READY_(loading|interactive|complete)$/.test(url.hash) ||
+    /^#TF_(TITLE_V4_|DETAIL_V4_|MARATHON_DATA_|NEWS_V1_)/.test(url.hash);
+  if (url.hash && !parserFragment) throw invalidExport('url_fragment');
   const seen = new Set();
   for (const [key, item] of url.searchParams) {
     if (seen.has(key)) throw invalidExport('url_query_duplicate');
@@ -117,7 +124,7 @@ export function safeSiteUrl(value) {
       (key === 'type' && item === 'event');
     if (!ok) throw invalidExport('url_query');
   }
-  return raw;
+  return parserFragment ? raw.split('#')[0] : raw;
 }
 
 function source(value, templateIds) {

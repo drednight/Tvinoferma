@@ -8,6 +8,7 @@ import { normalizeState, normalizeCharacter } from '../../core/state.js';
 import { CLAN_ENTRY_PREFIX } from '../guild/core.js';
 import { generateSyncId, isSyncId, validateJsonSnapshot } from './envelope.js';
 import { object, array } from './exportSchema.js';
+import { safeSiteUrl } from './marathonExport.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { reviewSnapshotDependencies } from './reviewDependencies.js';
@@ -17,6 +18,18 @@ const GROUPS = ['appearance', 'navigation', 'planner', 'eventReminders'];
 
 function invalid() {
   return new Error('Не удалось подготовить выбранные изменения: проверьте данные и связанные записи');
+}
+// Служебный hash не переносится. При той же публичной основе оставляем исходный
+// локальный адрес; при смене адреса не приклеиваем к нему метаданные старой страницы.
+function preserveLocalSiteUrl(incoming, before) {
+  if (typeof before === 'string') {
+    try {
+      if (safeSiteUrl(before) === incoming) return before;
+    } catch {
+      // Не переносить неподдерживаемый локальный URL в новый кандидат.
+    }
+  }
+  return incoming;
 }
 function clone(value) {
   return structuredClone(value);
@@ -383,7 +396,7 @@ function materialize(
       id: localIds.get(record.id),
       syncId: record.id,
       name: f.name,
-      sourceUrl: f.sourceUrl,
+      sourceUrl: preserveLocalSiteUrl(f.sourceUrl, before?.sourceUrl),
       tasks,
       bonuses,
       createdAt: f.createdAt
@@ -400,6 +413,8 @@ function materialize(
     }
     const f = clone(record.fields);
     f.source.templateId = resolve(localIds, f.source.templateId, true);
+    f.source.url = preserveLocalSiteUrl(f.source.url, before?.source?.url);
+    f.source.newsUrl = preserveLocalSiteUrl(f.source.newsUrl, before?.source?.newsUrl);
     const common = {
       id: localIds.get(record.id),
       syncId: record.id,

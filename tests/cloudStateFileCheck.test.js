@@ -33,6 +33,22 @@ afterEach(() => {
 });
 
 describe('локальная проверка state.json без новых exe и отправки файла', () => {
+  it.each(['#TF_READY_complete', '#TF_DETAIL_V4_FAKE_PRIVATE_REPORT'])(
+    'проверяет старые служебные %s без изменения файла и вывода payload',
+    fragment => {
+      const snapshot = data();
+      snapshot.marathons[0].source.url = 'https://pwonline.ru/supermarathon.php' + fragment;
+      snapshot.marathons[0].source.newsUrl = 'https://pwonline.ru/news.php?article=42' + fragment;
+      snapshot.marathonTemplates = [
+        { id: 'template', name: 'Шаблон', tasks: [], sourceUrl: 'https://pwonline.ru/supermarathon.php' + fragment }
+      ];
+      const text = JSON.stringify(snapshot);
+      const original = structuredClone(snapshot);
+      expect(inspectStateFile(text).codes).toEqual(['file/structure_ok']);
+      expect(snapshot).toEqual(original);
+      expect(JSON.stringify(snapshot)).toBe(text);
+    }
+  );
   it.each([
     [
       'http URL',

@@ -16,7 +16,7 @@ export function buildScript(script, editConfig) {
   return `${common}\n${readFileSync(`${SCRIPTS}/${script}`, 'utf8')}`;
 }
 
-export function runPageScript(script, html, prefix, editConfig) {
+export function runPageScript(script, html, prefix, editConfig, initialHash = '') {
   if (!('innerText' in HTMLElement.prototype)) {
     Object.defineProperty(HTMLElement.prototype, 'innerText', {
       get() {
@@ -28,7 +28,7 @@ export function runPageScript(script, html, prefix, editConfig) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   document.title = doc.title;
   document.body.innerHTML = doc.body.innerHTML;
-  window.location.hash = '';
+  window.location.hash = initialHash;
   new Function(buildScript(script, editConfig))();
   return JSON.parse(decodeURIComponent(window.location.hash.replace(`#${prefix}`, '')));
 }
