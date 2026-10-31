@@ -3,6 +3,8 @@
 // Ключ генерируется случайно; не используйте пароль пользователя как ключ AES.
 // До работы с реальными данными требуется интеграция, проверка безопасности и восстановление ключа.
 
+import { preparationError } from './preparationDiagnostics.js';
+
 const FORMAT = 'tvinoferma-cloud-sync';
 const VERSION = 1;
 const PORTABLE_VERSION = 2;
@@ -91,30 +93,36 @@ function validSnapshot(snapshot) {
   let nodes = 0;
   const ancestors = new WeakSet();
   function visit(value, depth) {
-    if (++nodes > MAX_NODES || depth > MAX_DEPTH) throw new Error('Снимок слишком сложный');
+    if (++nodes > MAX_NODES || depth > MAX_DEPTH)
+      throw preparationError(new Error('Снимок слишком сложный'), 'runtime_depth');
     if (value === null || typeof value === 'boolean') return;
     if (typeof value === 'string') {
-      if (value.length > MAX_SNAPSHOT_BYTES) throw new Error('Снимок слишком большой');
+      if (value.length > MAX_SNAPSHOT_BYTES)
+        throw preparationError(new Error('Снимок слишком большой'), 'runtime_size');
       return;
     }
     if (typeof value === 'number' && Number.isFinite(value) && !Object.is(value, -0)) return;
-    if (typeof value !== 'object') throw new Error('Снимок содержит неподдерживаемое значение');
+    if (typeof value !== 'object')
+      throw preparationError(new Error('Снимок содержит неподдерживаемое значение'), 'runtime_value');
     const array = Array.isArray(value);
-    if (!array && !plainObject(value)) throw new Error('Снимок содержит неподдерживаемый объект');
-    if (ancestors.has(value)) throw new Error('Снимок содержит циклическую ссылку');
+    if (!array && !plainObject(value))
+      throw preparationError(new Error('Снимок содержит неподдерживаемый объект'), 'runtime_object');
+    if (ancestors.has(value)) throw preparationError(new Error('Снимок содержит циклическую ссылку'), 'runtime_cycle');
     ancestors.add(value);
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const keys = Reflect.ownKeys(value);
-    if (array && keys.length !== value.length + 1) throw new Error('Снимок содержит неполный массив');
+    if (array && keys.length !== value.length + 1)
+      throw preparationError(new Error('Снимок содержит неполный массив'), 'runtime_array');
     for (const key of keys) {
-      if (typeof key !== 'string') throw new Error('Снимок содержит неподдерживаемое поле');
+      if (typeof key !== 'string')
+        throw preparationError(new Error('Снимок содержит неподдерживаемое поле'), 'runtime_field');
       if (array && key === 'length') continue;
       const descriptor = descriptors[key];
       if (!descriptor || !('value' in descriptor) || !descriptor.enumerable || unsafeKeys.has(key)) {
-        throw new Error('Снимок содержит неподдерживаемое поле');
+        throw preparationError(new Error('Снимок содержит неподдерживаемое поле'), 'runtime_field');
       }
       if (array && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length)) {
-        throw new Error('Снимок содержит неподдерживаемый массив');
+        throw preparationError(new Error('Снимок содержит неподдерживаемый массив'), 'runtime_array');
       }
       visit(descriptor.value, depth + 1);
     }
@@ -218,7 +226,7 @@ export async function encryptSnapshot({ snapshot, recoveryKey, datasetId, versio
   const plaintext = new TextEncoder().encode(JSON.stringify(snapshot));
   if (plaintext.byteLength > MAX_SNAPSHOT_BYTES) {
     plaintext.fill(0);
-    throw new Error('Снимок слишком большой');
+    throw preparationError(new Error('Снимок слишком большой'), 'runtime_size');
   }
   try {
     const crypto = webCrypto(cryptoSource);

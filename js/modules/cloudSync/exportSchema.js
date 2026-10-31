@@ -1,10 +1,12 @@
 // @ts-check
 // Проверка отдельных подготовительных схем экспорта. Ошибки не содержат пользовательских значений.
+import { preparationError } from './preparationDiagnostics.js';
+
 const MAX_ITEMS = 100_000;
 const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
-export function invalidExport() {
-  return new Error('Неподдерживаемая структура данных; экспорт остановлен');
+export function invalidExport(reason = 'invalid') {
+  return preparationError(new Error('Неподдерживаемая структура данных; экспорт остановлен'), reason);
 }
 
 function descriptorsOf(value) {
@@ -19,8 +21,9 @@ export function object(value, required, optional = []) {
   const descriptors = descriptorsOf(value);
   const keys = Reflect.ownKeys(value);
   const allowed = new Set([...required, ...optional]);
-  if (keys.length > MAX_ITEMS || keys.some(key => typeof key !== 'string' || !allowed.has(key))) throw invalidExport();
-  for (const key of required) if (!Object.hasOwn(descriptors, key)) throw invalidExport();
+  if (keys.length > MAX_ITEMS || keys.some(key => typeof key !== 'string' || !allowed.has(key)))
+    throw invalidExport('unknown_field');
+  for (const key of required) if (!Object.hasOwn(descriptors, key)) throw invalidExport('missing_field');
   const result = Object.create(null);
   for (const key of keys) {
     if (typeof key !== 'string' || UNSAFE_KEYS.has(key)) throw invalidExport();
@@ -77,19 +80,19 @@ export function array(value, convert) {
 }
 
 export function text(value) {
-  if (typeof value !== 'string') throw invalidExport();
+  if (typeof value !== 'string') throw invalidExport('text');
   return value;
 }
 export function number(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || Object.is(value, -0)) throw invalidExport();
+  if (typeof value !== 'number' || !Number.isFinite(value) || Object.is(value, -0)) throw invalidExport('number');
   return value;
 }
 export function boolean(value) {
-  if (typeof value !== 'boolean') throw invalidExport();
+  if (typeof value !== 'boolean') throw invalidExport('boolean');
   return value;
 }
 export function oneOf(value, choices) {
-  if (typeof value !== 'string' || !choices.includes(value)) throw invalidExport();
+  if (typeof value !== 'string' || !choices.includes(value)) throw invalidExport('choice');
   return value;
 }
 export const nullableText = value => (value === null ? null : text(value));

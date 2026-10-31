@@ -1,6 +1,7 @@
 // @ts-check
 // Подготовленный набор без контактов и паролей. Не читает облако и ничего не сохраняет.
 // Перед экспортом все идентификаторы должны быть назначены И сохранены с резервной копией.
+import { preparationCheck } from './preparationDiagnostics.js';
 import { SCHEMA_VERSION } from '../../core/migrations.js';
 import { isSyncId, validateJsonSnapshot } from './envelope.js';
 import { array, invalidExport, object } from './exportSchema.js';
@@ -55,16 +56,16 @@ function mapping(entries, fold = false) {
 export function buildPublicSnapshot(snapshot, options = {}) {
   // Проверка до чтения значений предотвращает вызов getter'ов даже во вложенных разделах.
   validateJsonSnapshot(snapshot);
-  const root = object(snapshot, ROOT_FIELDS);
+  const root = preparationCheck('root', () => object(snapshot, ROOT_FIELDS));
   if (root.schemaVersion !== SCHEMA_VERSION) throw invalidExport();
   const opts = object(options, [], ['settingsSelections']);
-  const characters = rows(root.characters);
-  const archivedCharacters = rows(root.archivedCharacters);
-  const parties = rows(root.parties);
-  const archivedParties = rows(root.archivedParties);
-  const marathons = rows(root.marathons);
-  const templates = rows(root.marathonTemplates);
-  const plannerEntries = rows(root.plannerEntries);
+  const characters = preparationCheck('characters', () => rows(root.characters));
+  const archivedCharacters = preparationCheck('archivedCharacters', () => rows(root.archivedCharacters));
+  const parties = preparationCheck('parties', () => rows(root.parties));
+  const archivedParties = preparationCheck('archivedParties', () => rows(root.archivedParties));
+  const marathons = preparationCheck('marathons', () => rows(root.marathons));
+  const templates = preparationCheck('marathonTemplates', () => rows(root.marathonTemplates));
+  const plannerEntries = preparationCheck('plannerEntries', () => rows(root.plannerEntries));
   const characterSyncIds = mapping([...characters, ...archivedCharacters], true);
   const partySyncIds = mapping([...parties, ...archivedParties]);
   const marathonSyncIds = mapping(marathons);
@@ -72,21 +73,39 @@ export function buildPublicSnapshot(snapshot, options = {}) {
   mapping(plannerEntries);
 
   const characterRecords = [
-    ...characters.map(row => exportCharacter(row, { syncId: row.syncId, partySyncIds })),
-    ...archivedCharacters.map(row => exportCharacter(row, { syncId: row.syncId, partySyncIds, archived: true }))
+    ...characters.map(row =>
+      preparationCheck('characters', () => exportCharacter(row, { syncId: row.syncId, partySyncIds }))
+    ),
+    ...archivedCharacters.map(row =>
+      preparationCheck('archivedCharacters', () =>
+        exportCharacter(row, { syncId: row.syncId, partySyncIds, archived: true })
+      )
+    )
   ];
   const partyRecords = [
-    ...parties.map(row => exportParty(row, { syncId: row.syncId, characterSyncIds })),
-    ...archivedParties.map(row => exportParty(row, { syncId: row.syncId, characterSyncIds, archived: true }))
+    ...parties.map(row =>
+      preparationCheck('parties', () => exportParty(row, { syncId: row.syncId, characterSyncIds }))
+    ),
+    ...archivedParties.map(row =>
+      preparationCheck('archivedParties', () =>
+        exportParty(row, { syncId: row.syncId, characterSyncIds, archived: true })
+      )
+    )
   ];
   const marathonRecords = [
     ...marathons.map(row =>
-      exportMarathon(row, { syncId: row.syncId, characterSyncIds, marathonSyncIds, templateSyncIds })
+      preparationCheck('marathons', () =>
+        exportMarathon(row, { syncId: row.syncId, characterSyncIds, marathonSyncIds, templateSyncIds })
+      )
     ),
-    ...templates.map(row => exportMarathonTemplate(row, { syncId: row.syncId }))
+    ...templates.map(row =>
+      preparationCheck('marathonTemplates', () => exportMarathonTemplate(row, { syncId: row.syncId }))
+    )
   ];
-  const plannerRecords = plannerEntries.map(row => exportPlannerEntry(row, { syncId: row.syncId }));
-  const finance = exportFinance(root.finance);
+  const plannerRecords = plannerEntries.map(row =>
+    preparationCheck('plannerEntries', () => exportPlannerEntry(row, { syncId: row.syncId }))
+  );
+  const finance = preparationCheck('finance', () => exportFinance(root.finance));
   const preferences = exportPortableSettings(root.settings, {
     selections: Object.hasOwn(opts, 'settingsSelections') ? opts.settingsSelections : []
   });

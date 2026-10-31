@@ -2,6 +2,7 @@
 // Подготовка и подтверждённое сохранение новых sync-ID после точного backup.
 // Вызывается вручную экспериментальной панелью, но не автосинхронизацией. Старые ID не заменяются.
 // Guard ограничен одним JS-контекстом и не является межпроцессным CAS.
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { normalizeState } from '../../core/state.js';
 import { assertStateWriteAvailable } from '../../core/storage.js';
 import { object } from './exportSchema.js';
@@ -18,26 +19,36 @@ import { currentCloudStateSnapshot, stageGuardedCloudStateWrite } from './guarde
  */
 export function stageSyncIdentities(options = {}) {
   const input = object(options, [], ['cryptoSource']);
-  assertStateWriteAvailable();
+  preparationCheck('storage', () => assertStateWriteAvailable());
   const original = currentCloudStateSnapshot();
-  const plan = planSyncIdentities({
-    snapshot: original,
-    ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
-  });
-  if (!plan.changed) return Object.freeze({ status: 'already_assigned' });
-  const publicSnapshot = buildPublicSnapshot(plan.snapshot);
-  const { ui: _ui, ...normalized } = normalizeState(plan.snapshot);
-  const normalizedPublic = buildPublicSnapshot(normalized);
-  const comparison = comparePublicSnapshots({ local: publicSnapshot, cloud: normalizedPublic });
+  const plan = preparationCheck('ids', () =>
+    planSyncIdentities({
+      snapshot: original,
+      ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
+    })
+  );
+  const publicSnapshot = preparationCheck('public', () => buildPublicSnapshot(plan.snapshot));
+  const { ui: _ui, ...normalized } = preparationCheck('reload', () => normalizeState(plan.snapshot));
+  const normalizedPublic = preparationCheck('reload', () => buildPublicSnapshot(normalized));
+  const comparison = preparationCheck('roundtrip', () =>
+    comparePublicSnapshots({ local: publicSnapshot, cloud: normalizedPublic })
+  );
   if (comparison.entries.length || comparison.uncomparedSettings.length)
-    throw new Error('Идентификаторы не проходят проверку после перезапуска');
+    preparationCheck('roundtrip', () =>
+      preparationCheck(comparison.entries[0]?.section || 'preferences', () => {
+        throw preparationError(new Error('Идентификаторы не проходят проверку после перезапуска'), 'reload_changes');
+      })
+    );
+  if (!plan.changed) return Object.freeze({ status: 'already_assigned' });
   const count = Object.values(plan.assigned).reduce((sum, value) => sum + value, 0);
-  const operation = stageGuardedCloudStateWrite({
-    original,
-    candidate: plan.snapshot,
-    backupLabel: 'pre-cloud-identities',
-    selectedCount: count,
-    identityOnly: true
-  });
+  const operation = preparationCheck('guard', () =>
+    stageGuardedCloudStateWrite({
+      original,
+      candidate: plan.snapshot,
+      backupLabel: 'pre-cloud-identities',
+      selectedCount: count,
+      identityOnly: true
+    })
+  );
   return Object.freeze({ status: 'prepared', assigned: Object.freeze({ ...plan.assigned }), operation });
 }

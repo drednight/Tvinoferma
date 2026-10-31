@@ -44,6 +44,12 @@ function entry() {
 }
 
 describe('экспорт пати', () => {
+  it('null-порядок допустим только в архиве, без придумывания номера', () => {
+    const archived = normalizeArchivedParty({ ...party(), order: null });
+    expect(exportParty(archived, { ...opts, archived: true }).fields.order).toBe(null);
+    expect(() => exportParty({ ...party(), order: null }, opts)).toThrow();
+    expect(() => exportParty({ ...archived, order: 'FAKE_PRIVATE_VALUE' }, { ...opts, archived: true })).toThrow();
+  });
   it('сохраняет разрешённые поля, но не отправляет локальный id', () => {
     const source = party();
     const before = JSON.stringify(source);

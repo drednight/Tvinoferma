@@ -2,6 +2,7 @@
 // Guarded запись одного локального кандидата. Не является межпроцессной блокировкой,
 // атомарной транзакцией с vault или защитой от согласованного отката. Снимки и
 // свидетельства могут содержать секреты: не показывать и не журналировать.
+import { preparationCheck } from './preparationDiagnostics.js';
 import { state } from '../../core/state.js';
 import { vaultStatus } from '../../core/secrets.js';
 import {
@@ -25,7 +26,29 @@ function result(status, extra = {}) {
 }
 export function currentCloudStateSnapshot() {
   const { ui: _ui, ...persisted } = state;
-  validateJsonSnapshot(persisted);
+  preparationCheck('snapshot', () => {
+    try {
+      validateJsonSnapshot(persisted);
+    } catch (error) {
+      // Повторная проверка только известных разделов, без чтения getter/динамических ключей.
+      for (const section of [
+        'characters',
+        'archivedCharacters',
+        'parties',
+        'archivedParties',
+        'marathons',
+        'marathonTemplates',
+        'plannerEntries',
+        'finance',
+        'settings'
+      ]) {
+        const descriptor = Object.getOwnPropertyDescriptor(persisted, section);
+        if (descriptor && 'value' in descriptor)
+          preparationCheck(section, () => validateJsonSnapshot({ value: descriptor.value }));
+      }
+      throw error;
+    }
+  });
   return JSON.parse(JSON.stringify(persisted));
 }
 function currentWitness() {
