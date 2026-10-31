@@ -208,7 +208,7 @@ describe('Google: только чтение зашифрованных верс�
       throw new Error(secret);
     });
     await expect(broken.list()).rejects.not.toThrow(secret);
-    const many = Array.from({ length: 129 }, () => googleFile(generateSyncId(webcrypto)));
+    const many = Array.from({ length: 130 }, () => googleFile(generateSyncId(webcrypto)));
     let call = 0;
     const long = google(async () =>
       page({
@@ -261,7 +261,7 @@ describe('Яндекс: только чтение зашифрованных в�
       }
     ];
     for (const send of cases) await expect(yandex(send).list()).rejects.toThrow();
-    const many = Array.from({ length: 129 }, () => yandexFile(generateSyncId(webcrypto)));
+    const many = Array.from({ length: 130 }, () => yandexFile(generateSyncId(webcrypto)));
     const tooMany = yandex(async request => {
       const offset = Number(new URL(request.url).searchParams.get('offset'));
       return page(yandexList(many.slice(offset, offset + 100), offset, many.length));

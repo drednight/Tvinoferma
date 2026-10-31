@@ -2,14 +2,15 @@
 // Только поиск в УЖЕ открытой и привязанной к dataset/аккаунту сессии. Он не выдаёт
 // облачный pin за доверенный, не выбирает «самую новую» версию и не меняет данные.
 // Неполный/устаревший список на стороне провайдера этим обнаружить нельзя.
+import { MAX_HISTORY_INPUT_VERSIONS, MAX_HISTORY_INPUT_CHARS } from './history.js';
 import { isSyncId } from './envelope.js';
 import { array, object } from './exportSchema.js';
 import { inspectPortableEnvelope } from './portableKeyCapsule.js';
 import { copyCloudEnvelope } from './providers/common.js';
 import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 
-const MAX_VERSIONS = 128;
-const MAX_TOTAL_CHARS = 64 * 1024 * 1024;
+const MAX_VERSIONS = MAX_HISTORY_INPUT_VERSIONS;
+const MAX_TOTAL_CHARS = MAX_HISTORY_INPUT_CHARS;
 function failed() {
   return new Error('Не удалось безопасно найти версии для восстановления ключа');
 }

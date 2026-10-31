@@ -7,7 +7,7 @@
 import { isSyncId, MAX_SNAPSHOT_BYTES } from './envelope.js';
 import { array, object } from './exportSchema.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
-import { MAX_HISTORY_VERSIONS, verifyHistory } from './history.js';
+import { MAX_HISTORY_INPUT_VERSIONS, MAX_HISTORY_INPUT_CHARS, verifyHistory } from './history.js';
 import { copyCloudEnvelope } from './providers/common.js';
 import { parseCloudModifiedTime } from './providers/modifiedTime.js';
 import { buildPublicSnapshot } from './publicSnapshot.js';
@@ -16,7 +16,7 @@ import { pendingSelectiveApplyEvents } from './pendingSelectiveApply.js';
 import { privateDifferences, applyPrivateSelection } from './privateSnapshot.js';
 import { conservativePlannerTransition, planConservativePublicMerge } from './conservativeMerge.js';
 
-const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
+const MAX_HISTORY_CHARS = MAX_HISTORY_INPUT_CHARS;
 const HEX = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedReviews = new WeakSet();
 const verifiedAdoptions = new WeakSet();
@@ -149,7 +149,7 @@ export async function prepareCloudReview(options) {
       throw failed();
     root = pin(input.rootPin);
     known = array(input.knownPins, pin);
-    if (known.length > MAX_HISTORY_VERSIONS || new Set(known.map(item => item.versionId)).size !== known.length)
+    if (known.length > MAX_HISTORY_INPUT_VERSIONS || new Set(known.map(item => item.versionId)).size !== known.length)
       throw failed();
     local = savedSnapshot(input.localSnapshot);
     savedAt = timestamp(input.localSavedAt);
@@ -168,7 +168,7 @@ export async function prepareCloudReview(options) {
     if (listing.status !== 'listed') return result('unavailable');
     const versions = array(listing.versions, metadata);
     if (
-      versions.length > MAX_HISTORY_VERSIONS ||
+      versions.length > MAX_HISTORY_INPUT_VERSIONS ||
       new Set(versions.map(item => item.versionId)).size !== versions.length
     )
       throw failed();

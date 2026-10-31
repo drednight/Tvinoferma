@@ -5,6 +5,7 @@ import {
   downloadSnapshotHistoryArchive,
   verifySnapshotHistoryArchive
 } from '../snapshotFileExchange.js';
+import { bindSnapshotHistoryMaintenancePanel } from './snapshotHistoryMaintenancePanel.js';
 import { MAX_HISTORY_ARCHIVE_BYTES } from '../snapshotHistoryArchive.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
@@ -81,11 +82,12 @@ export function bindSnapshotHistoryArchivePanel(options) {
     }
   }
   async function run(action) {
-    if (busy || !options.desktop) return;
+    if (busy || root.dataset.busy === 'true' || !options.desktop) return;
     const token = generation,
       disk = provider.value === 'google' ? 'google' : 'yandex',
       selected = file.files?.[0];
     busy = true;
+    root.dataset.busy = 'true';
     controls();
     try {
       if (action === 'download') {
@@ -133,7 +135,7 @@ export function bindSnapshotHistoryArchivePanel(options) {
         view = value;
         file.value = '';
         note(
-          `Подготовлено версий: ${value.capacity.versions} из ${value.capacity.maxVersions}; голов: ${value.heads}. Размер архива: ${(value.bytes / 1024 / 1024).toFixed(2)} MiB. Все ${value.capacity.protectedVersions} версии пока нужны для проверки истории; безопасно удаляемых: 0.${value.capacity.nearLimit ? ' История близка к пределу. Архив сохранит копию, но не освободит лимит.' : ''}`
+          `Подготовлено версий: ${value.capacity.storedVersions ?? value.capacity.versions} из ${value.capacity.maxVersions}; голов: ${value.heads}. Размер архива: ${(value.bytes / 1024 / 1024).toFixed(2)} MiB. Защищено версий: ${value.capacity.protectedVersions}; безопасно удаляемых: ${value.capacity.deletableVersions}. Для очистки нужна отдельная проверка архива и подтверждение ниже.${value.capacity.nearLimit ? ' История близка к пределу. Архив сохранит копию, но не освободит лимит.' : ''}`
         );
       } else {
         const text = await selected.text();
@@ -144,6 +146,9 @@ export function bindSnapshotHistoryArchivePanel(options) {
           report(disk, value);
           return;
         }
+        root.dispatchEvent(
+          new CustomEvent('tf-history-archive-verified', { detail: { review: view, provider: disk } })
+        );
         note(
           `Сохранённый архив сверен чтением: ${value.versions} версий; состав облака совпал с подготовкой. Пароль или запасной ключ храните отдельно. Облачные файлы не удалялись: без новой контрольной версии их удалять нельзя. Это не проверка аварийного питания или сохранности носителя.`
         );
@@ -157,6 +162,7 @@ export function bindSnapshotHistoryArchivePanel(options) {
       note('Операция не подтверждена. Значения и исходные ошибки не выводились; облачные файлы не изменялись.');
     } finally {
       busy = false;
+      root.dataset.busy = 'false';
       controls();
     }
   }
@@ -180,6 +186,7 @@ export function bindSnapshotHistoryArchivePanel(options) {
       clear();
       note('Местное состояние изменилось. Подготовка архива сброшена.');
     });
+  bindSnapshotHistoryMaintenancePanel(options);
   if (!options.desktop) note('');
   controls();
 }

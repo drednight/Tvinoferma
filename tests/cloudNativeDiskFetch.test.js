@@ -72,6 +72,12 @@ function fakeNative(provider) {
       return reply(
         provider === 'google' ? { user: { permissionId: account } } : { client_id: clientIds.yandex, psuid: account }
       );
+    if (args.operation === 'retire') {
+      const target = provider === 'google' ? args.fileId : `app:/${versionFileName(args.datasetId, args.versionId)}`;
+      if (!files.has(target) || files.get(target).body !== args.body) return empty(412);
+      files.delete(target);
+      return empty(204);
+    }
     if (provider === 'google') {
       if (args.operation === 'generate_id') return reply({ ids: [fileId], kind: 'drive#generatedIds', space: 'drive' });
       if (args.operation === 'create') {
@@ -222,6 +228,39 @@ describe.each(['google', 'yandex'])('%s: изолированная послед
     const before = native.calls.length;
     expect(await client.upload(args)).toEqual({ status: 'account_mismatch' });
     expect(native.calls.slice(before).map(call => call.operation)).toEqual(['identity']);
+  });
+});
+
+describe.each(['google', 'yandex'])('%s: scoped retirement через настоящие session wrappers и fake IPC', provider => {
+  it('проверяет аккаунт/содержимое и передаёт guarded retire в native, не произвольный fetch', async () => {
+    const fake = fakeCredentialsAndJournal(provider, false),
+      opened = await openNativeCloudSession({
+        provider,
+        ...fake.binding,
+        datasetId,
+        invoke: fake.invoke,
+        now: () => 100000,
+        cryptoSource: webcrypto,
+        ...(provider === 'google' ? { folderId } : {})
+      });
+    expect(opened.status).toBe('opened');
+    const uploaded = { envelope: sealed, ...(provider === 'google' ? { fileId } : {}) };
+    expect((await opened.session.upload(uploaded)).status).toBe('accepted');
+    const input = {
+      envelope: sealed,
+      rootVersionId: generateSyncId(webcrypto),
+      checkpointVersionId: generateSyncId(webcrypto)
+    };
+    expect(await opened.session.trashVersion(input)).toEqual({ status: 'accepted' });
+    expect(fake.backend.disk.files.size).toBe(0);
+    const calls = fake.backend.disk.calls.filter(x => x.operation === 'retire');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      rootVersionId: input.rootVersionId,
+      checkpointVersionId: input.checkpointVersionId
+    });
+    expect(await opened.session.trashVersion(input)).toEqual({ status: 'not_sent' });
+    expect(fake.backend.disk.calls.filter(x => x.operation === 'retire')).toHaveLength(1);
   });
 });
 
@@ -451,8 +490,8 @@ describe.each(['google', 'yandex'])('%s: журнал + авторизованн
   });
 });
 
-function fakeCredentialsAndJournal(provider) {
-  const backend = fakeNativeWithJournal(provider, true);
+function fakeCredentialsAndJournal(provider, loseResponse = true) {
+  const backend = fakeNativeWithJournal(provider, loseResponse);
   const credentialSlot = generateSyncId(webcrypto);
   const binding = { slotId: credentialSlot, clientId: clientIds[provider], accountKey };
   let record =

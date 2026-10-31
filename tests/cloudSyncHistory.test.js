@@ -330,7 +330,12 @@ describe('изолированная история зашифрованных �
     const root = await seal();
     await expect(verify(Array(129).fill(root), root)).rejects.toThrow('история синхронизации');
     const huge = { ...root.envelope, ciphertext: 'A'.repeat(33 * 1024 * 1024) };
-    await expect(verify([{ envelope: huge }, { envelope: huge }], root)).rejects.toThrow('слишком большая');
+    await expect(
+      verify(
+        [huge, huge, huge].map(envelope => ({ envelope: { ...envelope, versionId: id() } })),
+        root
+      )
+    ).rejects.toThrow('слишком большая');
   });
 
   it('находит ближайшего общего предка во множестве разветвлений без порядка и часов', async () => {

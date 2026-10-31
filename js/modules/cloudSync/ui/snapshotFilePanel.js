@@ -21,6 +21,9 @@ const LABELS = {
   preferences: 'Настройки'
 };
 const STATUS = {
+  checkpoint_cleanup_required:
+    'Сначала завершите очистку прежнего контрольного файла в блоке архива. Последнее свободное место зарезервировано для безопасного сокращения истории.',
+  retirement_pending: 'Есть ожидание очистки истории. Проверьте его в блоке архива; отправка не возобновляется.',
   ready: 'Файл скачан и проверен. Местные данные не заменялись.',
   prepared_cancelled:
     'Подготовка отменена с резервной копией. Облако не изменялось. Теперь можно отправить текущие данные.',
@@ -201,7 +204,7 @@ export function bindSnapshotFilePanel(options) {
       capacity.hidden = !value.capacity;
       if (value.capacity) {
         const c = value.capacity;
-        capacity.textContent = `История: ${c.versions} из ${c.maxVersions} версий; запас по лимиту версий: ${c.remainingVersions}. Проверяемый шифртекст: ${(c.ciphertextChars / 1024 / 1024).toFixed(2)} из ${(c.maxCiphertextChars / 1024 / 1024).toFixed(0)} MiB.${c.nearLimit ? ' Предел близко: сохраните зашифрованный архив ниже. Старые файлы нельзя удалять вручную — они нужны для проверки цепочки.' : ''}`;
+        capacity.textContent = `История: ${c.versions} из ${c.maxVersions} активных версий; файлов на диске: ${c.storedVersions ?? c.versions}; выведено из активной истории: ${c.retiredVersions ?? c.deletableVersions ?? 0}. Запас по лимиту версий: ${c.remainingVersions}. Проверяемый шифртекст: ${(c.ciphertextChars / 1024 / 1024).toFixed(2)} из ${(c.maxCiphertextChars / 1024 / 1024).toFixed(0)} MiB.${c.nearLimit ? ' Предел близко: сохраните зашифрованный архив ниже. Старые файлы нельзя удалять вручную — они нужны для проверки цепочки.' : ''}`;
       }
     }
     if (!view) return;

@@ -4,6 +4,7 @@
 // привязка должна поступать из ранее проверенной защищённой конфигурации; сама
 // запись ОС, текущий ответ провайдера и этот код не доказывают согласие/свежесть.
 // Секреты, записи, параметры IPC, аккаунты и исходные ошибки не журналируются.
+import { createNativeVersionRetirement } from './nativeVersionRetirement.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { historyEnvelopePin } from '../history.js';
@@ -264,6 +265,13 @@ async function openSession(options, folderDiscoveryOnly) {
       accountKey,
       datasetId,
       accessToken: token,
+      retireNative: createNativeVersionRetirement({
+        provider,
+        invoke: input.invoke,
+        accessToken: token,
+        datasetId,
+        folderId: input.folderId
+      }),
       fetchImpl: diskFetch,
       timeoutMs,
       ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
@@ -284,6 +292,9 @@ async function openSession(options, folderDiscoveryOnly) {
       },
       read(versionId) {
         return guard(() => base.read(versionId));
+      },
+      trashVersion(args) {
+        return guard(() => base.trashVersion(args), true);
       },
       dispose() {
         disposed = true;

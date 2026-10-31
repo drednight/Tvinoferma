@@ -4,8 +4,13 @@ import { normalizeState } from '../js/core/state.js';
 import { planSyncIdentities } from '../js/modules/cloudSync/identityMigration.js';
 import { buildPublicSnapshot } from '../js/modules/cloudSync/publicSnapshot.js';
 import { createKeyBundle } from '../js/modules/cloudSync/keyBundle.js';
-import { generateSyncId, encryptSnapshot } from '../js/modules/cloudSync/envelope.js';
-import { sealHistoryVersion, sealFileSnapshot, verifyHistory } from '../js/modules/cloudSync/history.js';
+import { generateSyncId, encryptSnapshot, decryptSnapshot } from '../js/modules/cloudSync/envelope.js';
+import {
+  sealHistoryVersion,
+  sealFileSnapshot,
+  sealHistoryCheckpoint,
+  verifyHistory
+} from '../js/modules/cloudSync/history.js';
 import {
   snapshotFileHash,
   hasSnapshotFileMode,
@@ -247,5 +252,165 @@ describe('полный зашифрованный файл', () => {
     const history = await verify([root, parent, other, chosen]);
     expect(history.observedHeads()).toEqual([chosen.pin]);
     expect(history.covers(chosen.pin, other.pin)).toBe(true);
+  });
+  it('контрольный полный файл читается с root без старых ciphertext и помнит точные старые pin', async () => {
+    const first = await seal(original),
+      before = await verify([root, first]),
+      cp = await sealHistoryCheckpoint({
+        history: before,
+        source: first.pin,
+        archiveSha256: 'a'.repeat(64),
+        datasetId,
+        recoveryKey: key.dataKey,
+        versionId: id(),
+        keyBundle: key.bundle,
+        keyPin: key.pin,
+        cryptoSource
+      });
+    const history = await verifyHistory({
+      envelopes: [root.envelope, cp.envelope],
+      expectedDatasetId: datasetId,
+      root: root.pin,
+      knownPins: [first.pin],
+      recoveryKey: key.dataKey,
+      cryptoSource
+    });
+    expect(history.observedHeads()).toEqual([cp.pin]);
+    expect(history.publicSnapshot(cp.pin)).toEqual(original);
+    expect(history.covers(cp.pin, first.pin)).toBe(true);
+    expect(history.hasSnapshot(first.pin)).toBe(false);
+    expect(() => history.publicSnapshot(first.pin)).toThrow();
+    const next = await seal(original, cp.pin);
+    expect((await verify([root, cp, next])).observedHeads()).toEqual([next.pin]);
+  });
+  it('контрольная версия сохраняет приватные значения, а не добавляет местные секреты', async () => {
+    const secret = {
+        schemaVersion: 1,
+        records: [{ characterId: original.sections.characters.records[0].id, fields: { password: 'CLOUD_ONLY' } }]
+      },
+      first = await seal(original, root.pin, { privateSnapshot: secret }),
+      before = await verify([root, first]);
+    const cp = await sealHistoryCheckpoint({
+      history: before,
+      source: first.pin,
+      archiveSha256: 'a'.repeat(64),
+      datasetId,
+      recoveryKey: key.dataKey,
+      versionId: id(),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource
+    });
+    expect((await verify([root, cp])).privateSnapshot(cp.pin)).toEqual(secret);
+    expect((await verify([root, first, cp])).observedHeads()).toEqual([cp.pin]);
+  });
+  const checkpoint = (history, source) =>
+    sealHistoryCheckpoint({
+      history,
+      source,
+      archiveSha256: 'a'.repeat(64),
+      datasetId,
+      recoveryKey: key.dataKey,
+      versionId: id(),
+      keyBundle: key.bundle,
+      keyPin: key.pin,
+      cryptoSource
+    });
+  it('помнит тип исчезнувшего UUID даже после удаления всех файлов, где он встречался', async () => {
+    const introduced = structuredClone(original),
+      newId = id(),
+      record = structuredClone(introduced.sections.characters.records[0]);
+    record.id = newId;
+    introduced.sections.characters.records.push(record);
+    introduced.sections.characters.order.active.push(newId);
+    const a = await seal(introduced),
+      b = await seal(original, a.pin),
+      cp = await checkpoint(await verify([root, a, b]), b.pin),
+      reuse = structuredClone(original),
+      task = structuredClone(reuse.sections.planner.records[0]);
+    task.id = newId;
+    reuse.sections.planner.records.push(task);
+    reuse.sections.planner.order.push(newId);
+    const next = await seal(reuse, cp.pin);
+    await expect(verify([root, cp, next])).rejects.toThrow();
+  });
+  it('повторное сокращение сохраняет накопленные pin/типы и не требует предыдущего checkpoint', async () => {
+    const a = await seal(original),
+      cp = await checkpoint(await verify([root, a]), a.pin),
+      b = await seal(original, cp.pin),
+      next = await checkpoint(await verify([root, cp, b]), b.pin);
+    const compacted = await verifyHistory({
+      envelopes: [root.envelope, next.envelope],
+      expectedDatasetId: datasetId,
+      root: root.pin,
+      knownPins: [a.pin, cp.pin, b.pin],
+      recoveryKey: key.dataKey,
+      cryptoSource
+    });
+    expect(compacted.observedHeads()).toEqual([next.pin]);
+    expect(compacted.retiredPins()).toHaveLength(3);
+  });
+  it('не скрывает позднюю неизвестную голову; отсутствующий старый родитель требует восстановления архива', async () => {
+    const a = await seal(original),
+      cp = await checkpoint(await verify([root, a]), a.pin),
+      late = await seal(original, a.pin),
+      parallel = await seal(original);
+    await expect(verify([root, cp, late])).rejects.toThrow();
+    const fork = await verify([root, cp, parallel]);
+    expect(fork.observedHeads()).toHaveLength(2);
+    await expect(checkpoint(fork, cp.pin)).rejects.toThrow();
+  });
+  it.each(['root', 'self', 'wrongKnown', 'differentSource', 'duplicate', 'incompleteTypes', 'newlineHash'])(
+    'отклоняет повреждённое authenticated retirement: %s',
+    async kind => {
+      const a = await seal(original),
+        cp = await checkpoint(await verify([root, a]), a.pin);
+      if (kind === 'wrongKnown') {
+        await expect(
+          verifyHistory({
+            envelopes: [root.envelope, cp.envelope],
+            expectedDatasetId: datasetId,
+            root: root.pin,
+            knownPins: [{ ...a.pin, sha256: '0'.repeat(64) }],
+            recoveryKey: key.dataKey,
+            cryptoSource
+          })
+        ).rejects.toThrow();
+        return;
+      }
+      const payload = await decryptSnapshot({
+        envelope: cp.envelope,
+        expectedDatasetId: datasetId,
+        recoveryKey: key.dataKey,
+        cryptoSource
+      });
+      if (kind === 'root') payload.checkpoint.retiredPins.push(root.pin);
+      if (kind === 'self') payload.checkpoint.retiredPins.push(cp.pin);
+      if (kind === 'differentSource') payload.publicSnapshot.sections.characters.records[0].fields.notes = 'OTHER';
+      if (kind === 'duplicate') payload.checkpoint.retiredPins.push(a.pin);
+      if (kind === 'incompleteTypes') payload.checkpoint.identities = [];
+      if (kind === 'newlineHash') payload.checkpoint.archiveSha256 += '\n';
+      const changed = {
+        envelope: await encryptSnapshot({
+          snapshot: payload,
+          datasetId,
+          versionId: cp.pin.versionId,
+          recoveryKey: key.dataKey,
+          keyCapsule: cp.envelope.keyCapsule,
+          cryptoSource
+        })
+      };
+      await expect(verify([root, a, changed])).rejects.toThrow();
+    }
+  );
+  it('разрешает 129-й физический файл только как authenticated overlap; 129 обычных файлов отвергаются', async () => {
+    const chain = [root];
+    for (let n = 1; n < 129; n++) chain.push(await seal(original, chain.at(-1).pin));
+    await expect(verify(chain)).rejects.toThrow();
+    chain.pop();
+    const cp = await checkpoint(await verify(chain), chain.at(-1).pin);
+    const history = await verify([...chain, cp]);
+    expect(history.pins()).toHaveLength(129);
+    expect(history.observedHeads()).toEqual([cp.pin]);
   });
 });

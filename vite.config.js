@@ -5,6 +5,7 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true,
+    allowedHosts: ['.e2b.app'],
     // ВАЖНОЕ ИЗМЕНЕНИЕ НИЖЕ:
     watch: {
       // Игнорируем папку src-tauri/target, чтобы OneDrive/Vite не конфликтовали с Cargo

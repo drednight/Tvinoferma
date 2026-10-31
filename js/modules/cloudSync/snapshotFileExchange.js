@@ -17,12 +17,21 @@ import { openConnectedPublicationContext } from './connectedPublication.js';
 import { openPinnedNativeCloudSession } from './providers/pinnedNativeCloudSession.js';
 import { beginCloudDataOperation } from './credentialResetCoordination.js';
 import { generateSyncId } from './envelope.js';
-import { historyEnvelopePin, verifyHistory, sealFileSnapshot, MAX_HISTORY_VERSIONS } from './history.js';
+import {
+  historyEnvelopePin,
+  verifyHistory,
+  sealFileSnapshot,
+  sealHistoryCheckpoint,
+  MAX_HISTORY_INPUT_VERSIONS,
+  MAX_HISTORY_INPUT_CHARS,
+  MAX_HISTORY_VERSIONS
+} from './history.js';
 import { createPairingCode } from './pairingCode.js';
 import {
   historyCapacity,
   createEncryptedHistoryArchive,
-  verifyEncryptedHistoryArchive
+  verifyEncryptedHistoryArchive,
+  readEncryptedHistoryArchive
 } from './snapshotHistoryArchive.js';
 import { object, array } from './exportSchema.js';
 import {
@@ -126,15 +135,15 @@ async function open(input, risk) {
 async function remote(opened, input) {
   const { session, context, local, legacy } = opened;
   const listed = await session.listWithDates();
-  if (listed.status !== 'listed' || !listed.versions.length || listed.versions.length > MAX_HISTORY_VERSIONS)
+  if (listed.status !== 'listed' || !listed.versions.length || listed.versions.length > MAX_HISTORY_INPUT_VERSIONS)
     throw new Error('Файл недоступен');
   const envelopes = [];
   let total = 0;
   for (const row of listed.versions) {
     const found = await session.read(row.versionId);
     if (found.status !== 'found' || found.envelope.versionId !== row.versionId) throw new Error('Файл изменился');
-    total += found.envelope.ciphertext.length + (found.envelope.keyCapsule?.length || 0);
-    if (total > 64 * 1024 * 1024) throw new Error('Слишком большой набор файлов');
+    total += found.envelope.ciphertext.length + found.envelope.iv.length + (found.envelope.keyCapsule?.length || 0);
+    if (total > MAX_HISTORY_INPUT_CHARS) throw new Error('Слишком большой набор файлов');
     envelopes.push(found.envelope);
   }
   const again = await session.listWithDates();
@@ -255,7 +264,7 @@ export async function checkSnapshotFile(value) {
         status: 'multiple_files',
         provider: input.provider,
         choices: Object.freeze(variants),
-        capacity: historyCapacity(cloud.envelopes)
+        capacity: historyCapacity(cloud.envelopes, cloud.history)
       });
     }
     const snapshot = buildPublicSnapshot(original, {
@@ -267,10 +276,12 @@ export async function checkSnapshotFile(value) {
     const basePin = opened.local?.acceptedPin || opened.legacy.confirmedPin || null;
     const baseHash =
       opened.local?.acceptedHash ||
-      (basePin ? await snapshotFileHash(cloud.history.publicSnapshot(basePin), input.cryptoSource) : null);
+      (basePin && cloud.history.hasSnapshot(basePin)
+        ? await snapshotFileHash(cloud.history.publicSnapshot(basePin), input.cryptoSource)
+        : null);
     const view = Object.freeze({
       status: 'ready',
-      capacity: historyCapacity(cloud.envelopes),
+      capacity: historyCapacity(cloud.envelopes, cloud.history),
       provider: input.provider,
       pin: Object.freeze({ ...cloud.pin }),
       checkedAt: new Date().toISOString(),
@@ -367,6 +378,7 @@ export async function replaceFromSnapshotFile(value) {
 }
 
 async function verifyPending(opened, input, row) {
+  if (row.pending?.retireCheckpoint) return outcome('retirement_pending');
   const p = row.pending;
   const pin = await historyEnvelopePin({
     envelope: p.envelope,
@@ -379,6 +391,11 @@ async function verifyPending(opened, input, row) {
     return outcome(result.status === 'mismatch' ? 'content_mismatch' : 'verification_pending');
   const cloud = await remote(opened, input);
   const lineage = cloud.history.lineage(p.pin);
+  if (
+    !sameFilePin(cloud.history.checkpoint(p.pin)?.source || null, p.checkpointSource || null) &&
+    (p.checkpointSource || cloud.history.checkpoint(p.pin))
+  )
+    return outcome('pending_invalid');
   if (
     !cloud.history.isFileSnapshot(p.pin) ||
     !sameFilePin(lineage.at(-2), p.parent) ||
@@ -462,7 +479,10 @@ export async function uploadSnapshotFile(value) {
     if (cloud.status !== 'ready') return outcome(cloud.status);
     if (cloud.history.privateSnapshot(cloud.pin) !== null && input.privateCarryConfirmed !== true)
       return outcome('private_confirmation_required');
-    if (cloud.envelopes.length >= MAX_HISTORY_VERSIONS) return outcome('history_limit');
+    if (historyCapacity(cloud.envelopes, cloud.history).versions >= MAX_HISTORY_VERSIONS)
+      return outcome('history_limit');
+    // Reserve the one physical overlap slot for CHECKPOINT, never spend it on an ordinary child.
+    if (cloud.envelopes.length >= MAX_HISTORY_VERSIONS) return outcome('checkpoint_cleanup_required');
     const context = opened.context;
     const snapshot = input.useCloudFile === true ? review.cloudSnapshot : review.snapshot;
     const contentHash = input.useCloudFile === true ? review.remoteHash : review.hash;
@@ -535,17 +555,21 @@ export async function uploadSnapshotFile(value) {
   }
 }
 async function transmit(opened, input, row) {
+  if (row.pending?.retireCheckpoint) return outcome('retirement_pending');
   if (row.pending.phase === 'attempting') return verifyPending(opened, input, row);
   // Recheck the latest file before sending, but do not claim cross-PC atomic CAS.
   const cloud = await remote({ ...opened, local: row }, input);
-  if (!sameHeads(cloud.heads, [row.pending.parent, ...(row.pending.replacedHeads || [])]))
+  if (
+    !sameHeads(cloud.heads, [row.pending.checkpointSource || row.pending.parent, ...(row.pending.replacedHeads || [])])
+  )
     return outcome('remote_changed_pending');
   const original = await saved();
   if (!original) return outcome('state_changed_or_unsaved');
   if (JSON.stringify(readSnapshotFileState(original.settings, input.provider, row.datasetId)) !== JSON.stringify(row))
     return outcome('pending_changed');
   const pendingSnapshot = buildPublicSnapshot(original, {
-    settingsSelections: cloud.history.publicSnapshot(row.pending.parent).sections.preferences.selections
+    settingsSelections: cloud.history.publicSnapshot(row.pending.checkpointSource || row.pending.parent).sections
+      .preferences.selections
   });
   if (
     (await snapshotFileHash(pendingSnapshot, input.cryptoSource)) !== (row.pending.localHash ?? row.pending.contentHash)
@@ -656,6 +680,7 @@ export async function releaseSnapshotFileUpload(value) {
   let operation;
   try {
     const review = releases.get(input.review);
+    if (review?.row.pending?.retireCheckpoint) return outcome('retirement_pending');
     if (!review || input.review.provider !== input.provider) return outcome('pending_changed');
     if (review.row.pending.phase === 'attempting' && input.unknownOutcomeAcknowledged !== true)
       return outcome('unknown_acknowledgement_required');
@@ -865,7 +890,7 @@ export async function prepareSnapshotHistoryArchive(value) {
     const view = Object.freeze({
       status: 'archive_ready',
       provider: input.provider,
-      capacity: historyCapacity(cloud.envelopes),
+      capacity: historyCapacity(cloud.envelopes, cloud.history),
       bytes: archive.bytes,
       fileName: archive.fileName,
       heads: cloud.heads.length,
@@ -928,11 +953,492 @@ export async function verifySnapshotHistoryArchive(value) {
     const cloud = await remote(opened, input);
     if (JSON.stringify(cloud.history.pins()) !== JSON.stringify(held.pins)) return outcome('remote_changed');
     if (!unchanged(held.original)) return outcome('state_changed_or_unsaved');
-    return Object.freeze({ status: 'archive_verified', versions: checked.capacity.versions });
+    held.verified = true;
+    return Object.freeze({ status: 'archive_verified', versions: checked.capacity.storedVersions });
   } catch {
     return outcome('archive_invalid');
   } finally {
     opened?.session?.dispose();
     operation?.finish(risk.refresh);
+  }
+}
+
+/** Explicit verified checkpoint of the accepted CLOUD file, never unsent local edits. */
+export async function publishSnapshotHistoryCheckpoint(value) {
+  const input = options(value, [
+    'archiveReview',
+    'confirmed',
+    'allDevicesPausedConfirmed',
+    'independentKeyBackupConfirmed',
+    'privateCarryConfirmed'
+  ]);
+  if (
+    input.confirmed !== true ||
+    input.allDevicesPausedConfirmed !== true ||
+    input.independentKeyBackupConfirmed !== true
+  )
+    return outcome('checkpoint_consent_required');
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    const held = historyArchives.get(input.archiveReview);
+    if (!held?.verified || input.archiveReview.provider !== input.provider) return outcome('verified_archive_required');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || !unchanged(held.original)) return outcome('state_changed_or_unsaved');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (JSON.stringify(opened.context.binding) !== held.binding) return outcome('binding_blocked');
+    if (opened.local?.pending || opened.local?.unsettled?.length) return outcome('pending_upload');
+    const cloud = await remote(opened, input);
+    if (JSON.stringify(cloud.history.pins()) !== JSON.stringify(held.pins)) return outcome('remote_changed');
+    if (cloud.heads.length !== 1) return outcome('multiple_files');
+    if (!sameFilePin(opened.local?.acceptedPin, cloud.pin)) return outcome('accepted_file_required');
+    if (!cloud.history.isFileSnapshot(cloud.pin)) return outcome('full_file_required');
+    if (cloud.history.privateSnapshot(cloud.pin) && input.privateCarryConfirmed !== true)
+      return outcome('private_confirmation_required');
+    if (cloud.envelopes.length >= MAX_HISTORY_INPUT_VERSIONS) return outcome('history_limit');
+    const ctx = opened.context,
+      sealed = await sealHistoryCheckpoint({
+        history: cloud.history,
+        source: cloud.pin,
+        archiveSha256: held.archive.sha256,
+        recoveryKey: ctx.key.dataKey,
+        datasetId: ctx.binding.datasetId,
+        versionId: generateSyncId(input.cryptoSource),
+        keyBundle: ctx.key.bundle,
+        keyPin: ctx.binding.keyPin,
+        cryptoSource: input.cryptoSource
+      });
+    let fileId = null;
+    if (input.provider === 'google') {
+      const allocated = await opened.session.generateFileId();
+      if (allocated.status !== 'generated') return outcome('unavailable_or_changed');
+      fileId = allocated.fileId;
+    }
+    const contentHash = await snapshotFileHash(cloud.snapshot, input.cryptoSource),
+      localHash = await snapshotFileHash(
+        buildPublicSnapshot(original, { settingsSelections: cloud.snapshot.sections.preferences.selections }),
+        input.cryptoSource
+      );
+    // Validate transient budget and authenticated retirement BEFORE durable preparation/network.
+    await verifyHistory({
+      envelopes: [...cloud.envelopes, sealed.envelope],
+      expectedDatasetId: ctx.binding.datasetId,
+      root: ctx.binding.rootPin,
+      knownPins: held.pins,
+      recoveryKey: ctx.key.dataKey,
+      cryptoSource: input.cryptoSource
+    });
+    const row = {
+      ...opened.local,
+      pending: {
+        phase: 'prepared',
+        envelope: sealed.envelope,
+        pin: sealed.pin,
+        parent: ctx.binding.rootPin,
+        checkpointSource: cloud.pin,
+        fileId,
+        contentHash,
+        localHash
+      }
+    };
+    const stored = await journal(original, input.provider, row, 'pre-cloud-history-checkpoint');
+    if (stored.result.status !== 'applied') return stored.result;
+    historyArchives.delete(input.archiveReview);
+    return await transmit(opened, input, row);
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+
+const retirementReviews = new WeakMap();
+/** Verified saved pre-checkpoint archive is mandatory again, including after restart. */
+export async function prepareSnapshotHistoryRetirement(value) {
+  const input = options(value, ['text']);
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original) return outcome('state_changed_or_unsaved');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if ((opened.local?.pending && !opened.local.pending.retireCheckpoint) || opened.local?.unsettled?.length)
+      return outcome('pending_upload');
+    const cloud = await remote(opened, input);
+    if (cloud.heads.length !== 1) return outcome('multiple_files');
+    const cp = cloud.history.checkpoint(cloud.pin);
+    if (!cp) return outcome('checkpoint_required');
+    if (!sameFilePin(opened.local?.acceptedPin, cloud.pin)) return outcome('accepted_file_required');
+    if (opened.local?.pending && !sameFilePin(opened.local.pending.retireCheckpoint, cloud.pin))
+      return outcome('retirement_pending');
+    const retired = new Map(cloud.history.retiredPins().map(p => [p.versionId, p]));
+    const candidates = cloud.history
+      .pins()
+      .filter(
+        p =>
+          retired.has(p.versionId) &&
+          ![cloud.pin.versionId, opened.context.binding.rootPin.versionId].includes(p.versionId)
+      );
+    const binding = opened.context.binding;
+    const checked = await verifyEncryptedHistoryArchive({
+      text: input.text,
+      provider: input.provider,
+      expectedPairingCode: createPairingCode({
+        datasetId: binding.datasetId,
+        rootPin: binding.rootPin,
+        keyPin: binding.keyPin
+      }),
+      recoveryKey: opened.context.key.dataKey,
+      knownPins: [
+        ...new Map(
+          [binding.rootPin, ...candidates, ...(opened.local?.pending ? [opened.local.pending.pin] : [])].map(pin => [
+            pin.versionId,
+            pin
+          ])
+        ).values()
+      ],
+      cryptoSource: input.cryptoSource
+    });
+    if (checked.sha256 !== cp.archiveSha256) return outcome('archive_changed');
+    if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+    const envelopes = new Map(cloud.envelopes.map(e => [e.versionId, e]));
+    const view = Object.freeze({
+      status: 'retirement_ready',
+      provider: input.provider,
+      count: candidates.length,
+      pending: opened.local?.pending?.phase || null,
+      cancel() {
+        retirementReviews.delete(view);
+      }
+    });
+    retirementReviews.set(view, {
+      original,
+      binding: JSON.stringify(binding),
+      checkpoint: cloud.pin,
+      root: binding.rootPin,
+      candidates,
+      envelopes,
+      dates: cloud.dates
+    });
+    return view;
+  } catch {
+    return outcome('archive_invalid');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+/** ONE scoped trash request. Attempting is durable before the call; unknown results are verify-only. */
+export async function retireNextSnapshotHistoryFile(value) {
+  const input = options(value, ['review', 'confirmed', 'allDevicesPausedConfirmed', 'independentKeyBackupConfirmed']);
+  if (
+    input.confirmed !== true ||
+    input.allDevicesPausedConfirmed !== true ||
+    input.independentKeyBackupConfirmed !== true
+  )
+    return outcome('checkpoint_consent_required');
+  let operation, opened;
+  const risk = { refresh: false };
+  try {
+    const held = retirementReviews.get(input.review);
+    if (!held || input.review.provider !== input.provider) return outcome('archive_changed');
+    operation = beginCloudDataOperation();
+    let original = await saved();
+    if (!original || !unchanged(held.original)) return outcome('state_changed_or_unsaved');
+    opened = await open(input, risk);
+    if (opened.status !== 'opened') return outcome(opened.status);
+    if (JSON.stringify(opened.context.binding) !== held.binding) return outcome('binding_blocked');
+    let row = opened.local;
+    if (!row || row.unsettled?.length || !sameFilePin(row.acceptedPin, held.checkpoint))
+      return outcome('pending_upload');
+    if (row.pending && (!row.pending.retireCheckpoint || !sameFilePin(row.pending.retireCheckpoint, held.checkpoint)))
+      return outcome('pending_upload');
+    const listed = await opened.session.listWithDates();
+    if (listed.status !== 'listed' || JSON.stringify(listed.versions) !== JSON.stringify(held.dates))
+      return outcome('remote_changed');
+    let pending = row.pending;
+    if (!pending) {
+      const pin = held.candidates[0];
+      if (!pin) return outcome('retirement_complete');
+      if ([held.root.versionId, held.checkpoint.versionId].includes(pin.versionId)) return outcome('pending_invalid');
+      const envelope = held.envelopes.get(pin.versionId);
+      if (!envelope) return outcome('pending_invalid');
+      const hash = await snapshotFileHash(
+        buildPublicSnapshot(original, { settingsSelections: [] }),
+        input.cryptoSource
+      );
+      pending = {
+        phase: 'prepared',
+        pin,
+        parent: held.root,
+        envelope,
+        fileId: null,
+        contentHash: hash,
+        retireCheckpoint: held.checkpoint
+      };
+      row = { ...row, pending };
+      const stored = await journal(original, input.provider, row, 'pre-cloud-history-retire');
+      if (stored.result.status !== 'applied') return stored.result;
+      original = stored.candidate;
+      held.original = original;
+    }
+    const actual = await historyEnvelopePin({
+      envelope: pending.envelope,
+      expectedDatasetId: row.datasetId,
+      cryptoSource: input.cryptoSource
+    });
+    if (
+      !sameFilePin(actual, pending.pin) ||
+      [held.root.versionId, held.checkpoint.versionId].includes(actual.versionId)
+    )
+      return outcome('pending_invalid');
+    const present = listed.versions.some(v => v.versionId === pending.pin.versionId);
+    if (pending.phase === 'attempting' && present) return outcome('retirement_unknown');
+    if (pending.phase === 'prepared' && present) {
+      const current = await saved();
+      if (!current || !unchanged(original)) return outcome('state_changed_or_unsaved');
+      row = { ...row, pending: { ...pending, phase: 'attempting' } };
+      const stored = await journal(current, input.provider, row, 'pre-cloud-history-retire-attempt');
+      if (stored.result.status !== 'applied') return stored.result;
+      original = stored.candidate;
+      held.original = original;
+      const result =
+        typeof opened.session.trashVersion === 'function'
+          ? await opened.session.trashVersion({
+              envelope: pending.envelope,
+              rootVersionId: held.root.versionId,
+              checkpointVersionId: held.checkpoint.versionId
+            })
+          : { status: 'not_sent' };
+      if (result.status === 'not_sent') {
+        const now = await saved();
+        if (!now || !unchanged(original)) return outcome('retirement_unknown');
+        const stored = await journal(now, input.provider, { ...row, pending }, 'pre-cloud-history-retire-not-sent');
+        if (stored.result.status === 'applied') held.original = stored.candidate;
+        return outcome('retirement_not_sent');
+      }
+    }
+    const after = await opened.session.listWithDates(),
+      expected = held.dates.filter(v => v.versionId !== pending.pin.versionId);
+    if (after.status !== 'listed' || after.versions.some(v => v.versionId === pending.pin.versionId))
+      return outcome('retirement_unknown');
+    if (JSON.stringify(after.versions) !== JSON.stringify(expected)) return outcome('remote_changed');
+    // Verify BOTH live anchors after removal. Never declare a successful shortened history from HTTP status alone.
+    for (const pin of [held.root, held.checkpoint]) {
+      const found = await opened.session.read(pin.versionId);
+      if (
+        found.status !== 'found' ||
+        !sameFilePin(
+          await historyEnvelopePin({
+            envelope: found.envelope,
+            expectedDatasetId: row.datasetId,
+            cryptoSource: input.cryptoSource
+          }),
+          pin
+        )
+      )
+        return outcome('retirement_unknown');
+    }
+    const now = await saved();
+    if (!now || !unchanged(original)) return outcome('state_changed_or_unsaved');
+    const stored = await journal(now, input.provider, { ...row, pending: null }, 'pre-cloud-history-retire-verified');
+    if (stored.result.status !== 'applied') return stored.result;
+    held.original = stored.candidate;
+    held.dates = expected;
+    held.candidates = held.candidates.filter(p => p.versionId !== pending.pin.versionId);
+    return Object.freeze({ status: 'retired_verified', remaining: held.candidates.length });
+  } catch {
+    return outcome('retirement_unknown');
+  } finally {
+    opened?.session?.dispose();
+    operation?.finish(risk.refresh);
+  }
+}
+/** Explicit release only; cannot cancel an already sent trash request. No upload/unsettled intent is created. */
+export async function releaseSnapshotHistoryRetirement(value) {
+  const input = options(value, ['confirmed', 'unknownOutcomeAcknowledged']);
+  if (input.confirmed !== true || input.unknownOutcomeAcknowledged !== true)
+    return outcome('unknown_acknowledgement_required');
+  let operation;
+  try {
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original) return outcome('state_changed_or_unsaved');
+    const ctx = await openConnectedPublicationContext(input);
+    if (!ctx) return outcome('binding_blocked');
+    const row = readSnapshotFileState(original.settings, input.provider, ctx.binding.datasetId);
+    if (!row?.pending?.retireCheckpoint) return outcome('pending_changed');
+    const stored = await journal(
+      original,
+      input.provider,
+      { ...row, pending: null },
+      'pre-cloud-history-retire-release'
+    );
+    return stored.result.status === 'applied' ? outcome('retirement_released_uncertain') : stored.result;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    operation?.finish(false);
+  }
+}
+
+const archiveRestores = new WeakMap(),
+  archiveChoices = new WeakMap();
+/** Local historical restore, not acceptance of the current disk file. No network needed. */
+export async function inspectSnapshotHistoryArchive(value) {
+  const input = options(value, ['text']);
+  let operation;
+  try {
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original) return outcome('state_changed_or_unsaved');
+    const ctx = await openConnectedPublicationContext(input);
+    if (!ctx) return outcome('binding_blocked');
+    const row = readSnapshotFileState(original.settings, input.provider, ctx.binding.datasetId);
+    if (row?.pending || row?.unsettled?.length) return outcome('pending_upload');
+    const code = createPairingCode({
+      datasetId: ctx.binding.datasetId,
+      rootPin: ctx.binding.rootPin,
+      keyPin: ctx.binding.keyPin
+    });
+    const archive = await readEncryptedHistoryArchive({
+      text: input.text,
+      provider: input.provider,
+      expectedPairingCode: code,
+      recoveryKey: ctx.key.dataKey,
+      knownPins: [ctx.binding.rootPin],
+      cryptoSource: input.cryptoSource
+    });
+    if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+    const views = [];
+    for (const pin of archive.history.pins()) {
+      try {
+        archive.history.publicSnapshot(pin);
+      } catch {
+        continue;
+      }
+      const choice = Object.freeze({
+        versionId: pin.versionId,
+        head: archive.heads.some(p => sameFilePin(pin, p)),
+        privateAvailable: archive.history.privateSnapshot(pin) !== null
+      });
+      archiveChoices.set(choice, {
+        original,
+        binding: JSON.stringify(ctx.binding),
+        history: archive.history,
+        pin,
+        provider: input.provider
+      });
+      views.push(choice);
+    }
+    return Object.freeze({
+      status: 'archive_restore_choices',
+      provider: input.provider,
+      choices: Object.freeze(views),
+      cancel() {
+        for (const choice of views) archiveChoices.delete(choice);
+      }
+    });
+  } catch {
+    return outcome('archive_invalid');
+  } finally {
+    operation?.finish(false);
+  }
+}
+export async function prepareSnapshotHistoryRestore(value) {
+  const input = options(value, ['choice', 'fields', 'contactsSourceConfirmed', 'acknowledgePasswordRisk']);
+  if (!Array.isArray(input.fields)) return outcome('private_consent_required');
+  input.fields = array(input.fields, f => f);
+  if (input.fields.length && !privateConsent(input, input.fields)) return outcome('private_consent_required');
+  let operation;
+  try {
+    const held = archiveChoices.get(input.choice);
+    if (!held || held.provider !== input.provider) return outcome('archive_changed');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || !unchanged(held.original)) return outcome('state_changed_or_unsaved');
+    const ctx = await openConnectedPublicationContext(input);
+    if (!ctx || JSON.stringify(ctx.binding) !== held.binding) return outcome('binding_blocked');
+    const snapshot = held.history.publicSnapshot(held.pin),
+      local = buildPublicSnapshot(original, { settingsSelections: snapshot.sections.preferences.selections });
+    const prepared = prepareFullPublicSnapshotReplace({
+        localState: original,
+        cloudSnapshot: snapshot,
+        cryptoSource: input.cryptoSource
+      }),
+      candidate = prepared.candidateState();
+    const rows = input.fields.length
+      ? privateDifferences(held.history.privateSnapshot(held.pin), snapshot, candidate, input.fields).map(r =>
+          Object.freeze({ ...r })
+        )
+      : [];
+    const view = Object.freeze({
+      status: 'archive_restore_review',
+      provider: input.provider,
+      versionId: held.pin.versionId,
+      differences: comparePublicSnapshots({ local, cloud: snapshot }),
+      rows: Object.freeze(rows),
+      fields: Object.freeze([...input.fields]),
+      cancel() {
+        archiveRestores.delete(view);
+      }
+    });
+    archiveRestores.set(view, { ...held, candidate, snapshot, rows });
+    return view;
+  } catch {
+    return outcome('archive_invalid');
+  } finally {
+    operation?.finish(false);
+  }
+}
+export async function applySnapshotHistoryRestore(value) {
+  const input = options(value, [
+    'review',
+    'confirmed',
+    'selections',
+    'contactsSourceConfirmed',
+    'acknowledgePasswordRisk',
+    'independentBackupConfirmed'
+  ]);
+  if (input.confirmed !== true) return outcome('confirmation_required');
+  let operation;
+  try {
+    const held = archiveRestores.get(input.review);
+    if (!held || held.provider !== input.provider) return outcome('archive_changed');
+    const selections = array(input.selections, r => object(r, ['characterId', 'field']));
+    if (selections.length) {
+      privatePairs(selections, held.rows);
+      if (!privateConsent(input, [...new Set(selections.map(r => r.field))]))
+        return outcome('private_consent_required');
+      if (input.independentBackupConfirmed !== true) return outcome('private_backup_required');
+    }
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || !unchanged(held.original)) return outcome('state_changed_or_unsaved');
+    const ctx = await openConnectedPublicationContext(input);
+    if (!ctx || JSON.stringify(ctx.binding) !== held.binding) return outcome('binding_blocked');
+    if (!privateSourceAvailable(original) || !(await verifyContactsSource(original)))
+      return outcome('private_source_unavailable');
+    const candidate = selections.length
+      ? applyPrivateSelection(held.history.privateSnapshot(held.pin), held.snapshot, held.candidate, selections)
+      : held.candidate;
+    // Historical restore is a local edit. Preserve the accepted disk base and pending receipts exactly.
+    const result = await stageGuardedCloudStateWrite({
+      original,
+      candidate,
+      backupLabel: 'pre-cloud-history-restore',
+      selectedCount: 1 + selections.length
+    }).commit({ confirmed: true });
+    if (result.status === 'applied') archiveRestores.delete(input.review);
+    return result;
+  } catch {
+    return outcome('archive_invalid');
+  } finally {
+    operation?.finish(false);
   }
 }

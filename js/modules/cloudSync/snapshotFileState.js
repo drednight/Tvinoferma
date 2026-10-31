@@ -61,20 +61,36 @@ export function readSnapshotFileState(settings, provider, datasetId) {
     const p = object(
       row.pending,
       ['phase', 'envelope', 'pin', 'parent', 'fileId', 'contentHash'],
-      ['localHash', 'replacedHeads']
+      ['localHash', 'replacedHeads', 'checkpointSource', 'retireCheckpoint']
     );
     if (
       !['prepared', 'attempting'].includes(p.phase) ||
       (Object.hasOwn(p, 'localHash') && (typeof p.localHash !== 'string' || !HASH.test(p.localHash)))
     )
       throw new Error('Некорректная ожидающая отправка');
-    const checked = receipt({ pin: p.pin, parent: p.parent, fileId: p.fileId, contentHash: p.contentHash }, provider);
+    const checked = receipt(
+      { pin: p.pin, parent: p.parent, fileId: p.fileId, contentHash: p.contentHash },
+      Object.hasOwn(p, 'retireCheckpoint') ? 'yandex' : provider
+    );
     const envelope = copyCloudEnvelope(p.envelope, datasetId);
     if (checked.pin.versionId !== envelope.versionId) throw new Error('Некорректная ожидающая версия');
     const extra = Object.hasOwn(p, 'replacedHeads') ? { replacedHeads: pinList(p.replacedHeads) } : {};
     if (extra.replacedHeads?.some(pin => [checked.pin.versionId, checked.parent.versionId].includes(pin.versionId)))
       throw new Error('Некорректный выбор файла');
-    pending = { ...p, ...checked, envelope, ...extra };
+    const checkpointSource = Object.hasOwn(p, 'checkpointSource')
+      ? { checkpointSource: filePin(p.checkpointSource) }
+      : {};
+    const retireCheckpoint = Object.hasOwn(p, 'retireCheckpoint')
+      ? { retireCheckpoint: filePin(p.retireCheckpoint) }
+      : {};
+    if (checkpointSource.checkpointSource && retireCheckpoint.retireCheckpoint)
+      throw new Error('Некорректная операция');
+    for (const marker of [checkpointSource.checkpointSource, retireCheckpoint.retireCheckpoint])
+      if (marker && [checked.pin.versionId, checked.parent.versionId].includes(marker.versionId))
+        throw new Error('Некорректная операция');
+    if ((checkpointSource.checkpointSource || retireCheckpoint.retireCheckpoint) && Object.hasOwn(p, 'replacedHeads'))
+      throw new Error('Некорректная операция');
+    pending = { ...p, ...checked, envelope, ...extra, ...checkpointSource, ...retireCheckpoint };
   }
   const unsettled = row.version === 2 ? row.unsettled : [];
   if (!Array.isArray(unsettled) || unsettled.length > MAX_UNSETTLED_UPLOADS)
