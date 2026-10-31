@@ -23,7 +23,7 @@ async function digest(text) {
 /** @param {{invoke:(command:string,args?:any)=>Promise<any>}} native */
 export function createStandaloneFileRuntime(native) {
   let refreshUncertain = false;
-  async function replace(original, candidate, label = 'pre-standalone-file-replace') {
+  async function replace(original, candidate, label = 'pre-cloud-standalone-file-replace') {
     return stageGuardedCloudStateWrite({
       original,
       candidate,
@@ -39,7 +39,7 @@ export function createStandaloneFileRuntime(native) {
     const candidate = structuredClone(original);
     candidate.settings.cloudStandaloneFiles = cfg;
     readStandaloneState(candidate.settings);
-    const result = await replace(original, candidate, 'pre-standalone-file-receipt');
+    const result = await replace(original, candidate, 'pre-cloud-standalone-file-receipt');
     if (result.status !== 'applied') throw error(result.status);
   }
   async function open(provider, { createFolder }) {
