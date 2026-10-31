@@ -742,14 +742,14 @@ export async function verifyHistory(options) {
       const node = get(descendant),
         pin = copyPin(ancestor),
         before = nodes.get(pin.versionId)?.pin || retired.get(pin.versionId);
-      if (!before || !samePin(pin, before)) throw historyError();
+      if (!before || !samePin(pin, before)) throw new Error('Версия не найдена или её отпечаток изменился');
       return samePin(node.pin, pin) || !!reachable.get(node.pin.versionId)?.has(pin.versionId);
     },
     /** Требует точного присутствия ранее известного отпечатка без копирования снимка. */
     requirePin(pinValue) {
       const pin = copyPin(pinValue),
         found = nodes.get(pin.versionId)?.pin || retired.get(pin.versionId);
-      if (!found || !samePin(pin, found)) throw historyError();
+      if (!found || !samePin(pin, found)) throw new Error('Версия не найдена или её отпечаток изменился');
       return true;
     },
     /** Все проверенные версии только переданного набора, без обещания полноты облака. */

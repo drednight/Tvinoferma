@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { bindSnapshotHistoryMaintenancePanel } from '../js/modules/cloudSync/ui/snapshotHistoryMaintenancePanel.js';
+import { cloudActivity, clearCloudActivity } from '../js/modules/cloudSync/cloudEventLog.js';
 const html = readFileSync('index.html', 'utf8'),
   el = id => document.getElementById('cloud-history-' + id);
 function setup(extra = {}) {
@@ -44,6 +45,7 @@ function verified() {
   );
 }
 beforeEach(() => {
+  clearCloudActivity();
   document.body.innerHTML = new DOMParser()
     .parseFromString(html, 'text/html')
     .getElementById('cloud-registration-panel').outerHTML;
@@ -105,6 +107,7 @@ describe('контрольный файл, корзина и restore — UI', ()
     el('cleanup').click();
     await vi.waitFor(() => expect(f.api.retireNextSnapshotHistoryFile).toHaveBeenCalledTimes(1));
     expect(el('maintenance-status').textContent).toContain('Корзина не очищалась');
+    expect(cloudActivity()[0]).toMatchObject({ provider: 'google', action: 'history_retirement', outcome: 'success' });
   });
   it('unknown trash stops loop instead of retrying', async () => {
     const f = setup();
@@ -118,6 +121,24 @@ describe('контрольный файл, корзина и restore — UI', ()
     await vi.waitFor(() => expect(el('maintenance-status').textContent).toContain('Автоматического повтора нет'));
     expect(f.api.retireNextSnapshotHistoryFile).toHaveBeenCalledTimes(1);
   });
+  it.each(['retirement_unknown', 'retirement_released_uncertain', 'verification_pending'])(
+    'logs %s as uncertain, not a failed guard or success',
+    async outcome => {
+      const f = setup();
+      if (outcome === 'verification_pending') {
+        f.api.publishSnapshotHistoryCheckpoint.mockResolvedValue({ status: outcome });
+        verified();
+        check('paused');
+        check('key-backup');
+        el('checkpoint').click();
+      } else {
+        f.api.releaseSnapshotHistoryRetirement.mockResolvedValue({ status: outcome });
+        el('cleanup-release').click();
+      }
+      await vi.waitFor(() => expect(cloudActivity()[0]?.outcome).toBe('uncertain'));
+      expect(JSON.stringify(cloudActivity())).not.toContain('ENCRYPTED_ARCHIVE_ONLY');
+    }
+  );
   it('restores chosen version with deletions; no contact selected automatically and exact selection only', async () => {
     const f = setup();
     chooseFile();

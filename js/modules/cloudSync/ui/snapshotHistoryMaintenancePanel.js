@@ -189,6 +189,11 @@ export function bindSnapshotHistoryMaintenancePanel(options) {
             status(
               'Очистка подтверждена чтением: старые файлы отсутствуют в активной папке; корневой и контрольный файлы сверены. Архив и ключ сохраните. Корзина не очищалась.'
             );
+            try {
+              recordCloudActivity(disk, 'history_retirement', 'success');
+            } catch {
+              /* logging must not change the verified result */
+            }
             return;
           }
           if (result.status !== 'retired_verified') break;
@@ -313,7 +318,7 @@ export function bindSnapshotHistoryMaintenancePanel(options) {
                 : 'history_retirement',
             ['sent_verified', 'applied'].includes(result.status)
               ? 'success'
-              : result.status === 'retirement_unknown'
+              : ['retirement_unknown', 'retirement_released_uncertain', 'verification_pending'].includes(result.status)
                 ? 'uncertain'
                 : 'blocked'
           );
