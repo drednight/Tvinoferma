@@ -180,7 +180,7 @@ export function bindStandaloneFilePanel(options) {
       const reconnectHint =
         result.provider === 'google' &&
         ['credential_blocked', 'credential_refresh_pending', 'login_required'].includes(result.status)
-          ? '. Выберите Google в способе входа выше и нажмите «Повторить вход Google»; войдите в тот же аккаунт'
+          ? '. Повторный вход — только в прежний аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
       if (reconnectHint) {

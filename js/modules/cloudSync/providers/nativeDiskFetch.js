@@ -330,7 +330,8 @@ export function createNativeDiskFetch(options) {
           headers
         });
         // Response, собранный из IPC, сам по себе имеет пустой url. Указываем
-        // только адрес проверенного запроса; переходы запрещены на native-уровне.
+        // только исходный проверенный адрес; единственный разрешённый CDN-шаг
+        // Яндекса проверяется в Rust и не раскрывает подписанный Location в JS.
         Object.defineProperty(response, 'url', { value: address });
         return response;
       } catch (error) {
