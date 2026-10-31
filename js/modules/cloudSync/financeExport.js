@@ -2,6 +2,7 @@
 // Строгий экспорт нормализованного «Банка»; без чтения state и без записи/сети.
 // Удалённые объекты, на которые ссылается реестр, пока не имеют устойчивого реестра tombstones.
 // Поэтому неразрешённые ссылки блокируют экспорт, а не заменяются null или локальными ID.
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { isSyncId } from './envelope.js';
 import { array, dictionary, invalidExport, nullableText, number, object, oneOf, text } from './exportSchema.js';
 
@@ -63,7 +64,8 @@ function nonnegative(value) {
 
 function reference(value, mapping) {
   if (value === null) return null;
-  if (!text(value) || !mapping.has(value)) throw new Error('Не найдена финансовая ссылка; экспорт остановлен');
+  if (!text(value) || !mapping.has(value))
+    throw preparationError(new Error('Не найдена финансовая ссылка; экспорт остановлен'), 'reference');
   return mapping.get(value);
 }
 
@@ -105,7 +107,7 @@ export function exportFinance(finance) {
     if (loan.opId !== null) {
       const opening = operationsById.get(loan.opId);
       if (!opening || opening.source !== 'debt' || opening.ref !== loan.id) {
-        throw new Error('Не найдена финансовая ссылка; экспорт остановлен');
+        throw preparationError(new Error('Не найдена финансовая ссылка; экспорт остановлен'), 'reference');
       }
     }
     const loanPayments = array(loan.payments, value => {
@@ -138,28 +140,31 @@ export function exportFinance(finance) {
       }
     };
   });
-  const operationRecords = operations.rows.map(row => {
-    const source = oneOf(row.source, ['manual', 'shop', 'gold', 'debt']);
-    let ref = null;
-    if (source === 'shop') ref = reference(row.ref, items.localToSync);
-    else if (source === 'debt') ref = reference(row.ref, loans.localToSync);
-    else if (row.ref !== null) throw new Error('Не найдена финансовая ссылка; экспорт остановлен');
-    return {
-      id: row.syncId,
-      type: 'financeOperation',
-      fields: {
-        date: text(row.date),
-        currency: oneOf(row.currency, CURRENCIES),
-        kind: oneOf(row.kind, ['in', 'out']),
-        amount: positive(row.amount),
-        counterparty: text(row.counterparty),
-        note: text(row.note),
-        status: text(row.status),
-        source,
-        ref
-      }
-    };
-  });
+  const operationRecords = operations.rows.map(row =>
+    preparationCheck('operations', () => {
+      const source = oneOf(row.source, ['manual', 'shop', 'gold', 'debt']);
+      let ref = null;
+      if (source === 'shop') ref = reference(row.ref, items.localToSync);
+      else if (source === 'debt') ref = reference(row.ref, loans.localToSync);
+      else if (row.ref !== null)
+        throw preparationError(new Error('Не найдена финансовая ссылка; экспорт остановлен'), 'reference');
+      return {
+        id: row.syncId,
+        type: 'financeOperation',
+        fields: {
+          date: text(row.date),
+          currency: oneOf(row.currency, CURRENCIES),
+          kind: oneOf(row.kind, ['in', 'out']),
+          amount: positive(row.amount),
+          counterparty: text(row.counterparty),
+          note: text(row.note),
+          status: text(row.status),
+          source,
+          ref
+        }
+      };
+    })
+  );
   const itemRecords = items.rows.map(row => ({
     id: row.syncId,
     type: 'financeShopItem',

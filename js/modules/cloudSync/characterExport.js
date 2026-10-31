@@ -2,6 +2,7 @@
 // Первый раздел будущего allowlist. Не подключён к облаку или state.json.
 // Экспортируется только явно перечисленная схема персонажа; входы и пути остаются локальными.
 // Новые/неизвестные поля останавливают экспорт до проверки, а не теряются молча.
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { DEFAULT_STATS } from '../characters/stateManager.js';
 import { isSyncId } from './envelope.js';
 
@@ -29,10 +30,14 @@ const SHARED = [
 ];
 const LOCAL = ['id', 'contacts', 'launch', 'isLoggedIn', 'lastLoginCheck', 'lastLoginReason'];
 const STATS = Object.keys(DEFAULT_STATS);
+// Реальные поля старых DEFAULT_STATS (bb141ee…8f7c318). Удалены из
+// редактора в 54058f8/69c8245, но normalizeStats сохраняет их в базе/истории.
+// Только явный список числовых полей: не открываем произвольный словарь.
+const LEGACY_STATS = ['hpMax', 'mpMax', 'power', 'stealth', 'detection'];
 const LIMIT = 100_000;
 
-function invalid() {
-  return new Error('Неподдерживаемая структура данных персонажа; экспорт остановлен');
+function invalid(reason = 'invalid') {
+  return preparationError(new Error('Неподдерживаемая структура данных персонажа; экспорт остановлен'), reason);
 }
 
 function shape(value, required, optional = []) {
@@ -42,8 +47,8 @@ function shape(value, required, optional = []) {
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const allowed = new Set([...required, ...optional]);
   const keys = Reflect.ownKeys(value);
-  if (keys.some(key => typeof key !== 'string' || !allowed.has(key))) throw invalid();
-  for (const key of required) if (!Object.hasOwn(descriptors, key)) throw invalid();
+  if (keys.some(key => typeof key !== 'string' || !allowed.has(key))) throw invalid('unknown_field');
+  for (const key of required) if (!Object.hasOwn(descriptors, key)) throw invalid('missing_field');
   const result = {};
   for (const key of keys) {
     if (typeof key !== 'string') throw invalid();
@@ -92,8 +97,9 @@ function boolean(value) {
   return value;
 }
 function stats(value) {
-  const data = shape(value, STATS);
-  return Object.fromEntries(STATS.map(key => [key, number(data[key])]));
+  const data = shape(value, STATS, LEGACY_STATS);
+  const keys = [...STATS, ...LEGACY_STATS.filter(key => Object.hasOwn(data, key))];
+  return Object.fromEntries(keys.map(key => [key, number(data[key])]));
 }
 function statsHistory(value) {
   return array(value, item => {
@@ -189,14 +195,14 @@ export function exportCharacter(character, options) {
       level: number(data.level),
       sky: { name: nullableText(sky.name), level: nullableNumber(sky.level) },
       dungeonPasses: { weapon: number(passes.weapon), armor: number(passes.armor), relic: number(passes.relic) },
-      stats: stats(data.stats),
-      statsHistory: statsHistory(data.statsHistory),
+      stats: preparationCheck('stats', () => stats(data.stats)),
+      statsHistory: preparationCheck('statsHistory', () => statsHistory(data.statsHistory)),
       tags: array(data.tags, text),
       ancientCoins: number(data.ancientCoins),
       lastCoinUpdate: nullableText(data.lastCoinUpdate),
       coinsParserV: number(data.coinsParserV),
-      marathonData: marathonData(data.marathonData),
-      coinHistory: coinHistory(data.coinHistory),
+      marathonData: preparationCheck('marathonData', () => marathonData(data.marathonData)),
+      coinHistory: preparationCheck('coinHistory', () => coinHistory(data.coinHistory)),
       createdAt: text(data.createdAt),
       updatedAt: text(data.updatedAt)
     }

@@ -31,7 +31,9 @@ export function exportParty(party, options = {}) {
     archived,
     fields: {
       name: text(data.name),
-      order: number(data.order),
+      // У старой архивной пати порядок может законно отсутствовать: normalizer
+      // сохраняет null. Не выдумываем номер и не меняем активные пати.
+      order: archived ? nullableNumber(data.order) : number(data.order),
       color,
       createdAt: text(data.createdAt),
       updatedAt: text(data.updatedAt),

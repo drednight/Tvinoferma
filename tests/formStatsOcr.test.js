@@ -54,6 +54,37 @@ beforeEach(async () => {
 const ocrButton = () => document.getElementById('btn-stats-ocr');
 
 describe('кнопка «Заполнить со скриншота»', () => {
+  it.each(['characters', 'archivedCharacters'])(
+    'сохраняет невидимые старые статы при редактировании %s',
+    async collection => {
+      const { normalizeCharacter } = await import('../js/core/state/character.js');
+      const { CLASSES } = await import('../js/core/constants.js');
+      const preserved = { hpMax: 42000, mpMax: 7000, power: 123, stealth: 40, detection: 50, unknownLocalStat: 7 };
+      const char = normalizeCharacter({
+        id: 'hero',
+        nick: 'Герой',
+        class: CLASSES[0],
+        stats: { hp: 100, ...preserved }
+      });
+      state[collection] = [char];
+      const ui = await import('../js/core/ui.js');
+      ui.showModal.mockImplementation(options => {
+        mocks.submit = options.onSubmit;
+      });
+      openCharacterForm(char);
+      const values = new Map([
+        ['nick', char.nick],
+        ['class', char.class],
+        ['stat-hp', '200'],
+        ['coins', '0']
+      ]);
+      const setError = vi.fn();
+      expect(await mocks.submit({ get: key => values.get(key) ?? null, getAll: () => [] }, { setError })).toBe(true);
+      expect(setError).not.toHaveBeenCalled();
+      expect(state[collection][0].stats).toMatchObject({ hp: 200, ...preserved });
+      expect(state[collection][0].statsHistory[0].stats).toMatchObject({ hp: 100, ...preserved });
+    }
+  );
   it('кнопка находится в футере, а не среди полей формы', async () => {
     await mountForm();
     expect(ocrButton()).not.toBeNull();

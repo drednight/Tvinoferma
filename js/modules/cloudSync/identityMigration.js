@@ -4,14 +4,16 @@
 // вызывающая сторона обязана создать резервную копию и атомарно сохранить именно этот план;
 // до подтверждённого сохранения использовать назначенные идентификаторы нельзя.
 
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { generateSyncId, isSyncId, validateJsonSnapshot } from './envelope.js';
 
 const MAX_GENERATION_ATTEMPTS = 16;
 
-function invalid() {
+function invalid(reason = 'invalid') {
   // Имена, локальные id и содержимое пользовательских записей не попадают в сообщение.
-  return new Error(
-    'Не удалось подготовить идентификаторы синхронизации: данные неполны или идентификаторы повторяются'
+  return preparationError(
+    new Error('Не удалось подготовить идентификаторы синхронизации: данные неполны или идентификаторы повторяются'),
+    reason
   );
 }
 
@@ -22,7 +24,7 @@ function array(value) {
 
 function record(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw invalid();
-  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 512) throw invalid();
+  if (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 512) throw invalid('local_id');
   return value;
 }
 
@@ -88,29 +90,32 @@ export function planSyncIdentities({ snapshot, cryptoSource } = {}) {
   for (const group of groups) {
     const localIds = new Set();
     assigned[group.name] = 0;
-    for (const value of group.entries) {
-      const entity = record(value);
-      if (seenEntities.has(entity)) throw invalid();
-      seenEntities.add(entity);
-      const localId = group.foldLocalId ? entity.id.toLowerCase() : entity.id;
-      if (localIds.has(localId)) throw invalid();
-      localIds.add(localId);
-      allLocalIds.add(entity.id.toLowerCase());
-      if (Object.hasOwn(entity, 'syncId')) {
-        if (!isSyncId(entity.syncId) || used.has(entity.syncId)) throw invalid();
-        used.add(entity.syncId);
-      } else {
-        pending.push({ entity, group: group.name });
+    preparationCheck(group.name, () => {
+      for (const value of group.entries) {
+        const entity = record(value);
+        if (seenEntities.has(entity)) throw invalid();
+        seenEntities.add(entity);
+        const localId = group.foldLocalId ? entity.id.toLowerCase() : entity.id;
+        if (localIds.has(localId)) throw invalid('duplicate_local_id');
+        localIds.add(localId);
+        allLocalIds.add(entity.id.toLowerCase());
+        if (Object.hasOwn(entity, 'syncId')) {
+          if (!isSyncId(entity.syncId)) throw invalid('sync_id');
+          if (used.has(entity.syncId)) throw invalid('duplicate_sync_id');
+          used.add(entity.syncId);
+        } else {
+          pending.push({ entity, group: group.name });
+        }
       }
-    }
+    });
   }
   // sync-ID не должен совпадать с локальным ID любой сущности: пространства имён
   // независимы, в том числе если старый локальный ID тоже выглядит как UUID.
-  if ([...used].some(id => allLocalIds.has(id.toLowerCase()))) throw invalid();
+  if ([...used].some(id => allLocalIds.has(id.toLowerCase()))) throw invalid('id_collision');
   for (const { entity, group } of pending) {
     let id = null;
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt++) {
-      const candidate = generateSyncId(cryptoSource);
+      const candidate = preparationCheck('crypto', () => generateSyncId(cryptoSource));
       // Не используем локальный ID ни одной сущности, даже другой категории.
       if (!used.has(candidate) && !allLocalIds.has(candidate.toLowerCase())) {
         id = candidate;
