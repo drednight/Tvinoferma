@@ -32,7 +32,8 @@ export const DEFAULT_STATS = {
 };
 
 /**
- * Создает новый объект персонажа с дефолтами
+ * Полная runtime-схема, совпадающая с normalizeCharacter: экспорт и подготовка
+ * облака должны работать до первого перезапуска, без undefined в сохранении.
  */
 export function createEmptyCharacter() {
   return {
@@ -42,14 +43,23 @@ export function createEmptyCharacter() {
     class: '',
     partyIds: [],
     mainPartyId: null,
+    partyOrder: {},
     notes: '',
     level: 1,
     sky: { name: null, level: null },
     contacts: { email: '', password: '', recoveryEmail: '', phone: '' },
+    launch: { gcPath: '', gcNick: '', gcAccount: false, gcIds: [], gcAccounts: {} },
     dungeonPasses: { weapon: 0, armor: 0, relic: 0 },
     ancientCoins: 0,
+    lastCoinUpdate: null,
+    coinsParserV: 0,
     coinHistory: [],
     stats: { ...DEFAULT_STATS },
+    statsHistory: [],
+    isLoggedIn: false,
+    lastLoginCheck: null,
+    lastLoginReason: null,
+    marathonData: null,
     tags: [],
     createdAt: nowISO(),
     updatedAt: nowISO()

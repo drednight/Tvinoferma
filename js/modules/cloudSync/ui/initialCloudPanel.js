@@ -290,11 +290,14 @@ export function bindInitialCloudPanel(options) {
         el['main-repeat'].value = '';
         el.custom.value = '';
         note('Создаём локальную копию и готовим ключи. Это может занять несколько секунд…');
+        let preparationStage = 'data';
         try {
           const preparedData = await (
             options.prepareData ||
             (async () => {
+              preparationStage = 'local_save';
               await saveNow();
+              preparationStage = 'identities';
               const staged = stageSyncIdentities();
               if (staged.status === 'already_assigned') return true;
               return (
@@ -307,8 +310,10 @@ export function bindInitialCloudPanel(options) {
             note('Не удалось подтвердить сохранение данных и ID. Облако не изменялось; проверьте локальное состояние.');
             return;
           }
+          preparationStage = 'native';
           const native = await loadNative();
           const setup = makeSetup({ provider: chosen, invoke: native.invoke, settingsSelections: selections() });
+          preparationStage = 'keys';
           const prepared = await setup.begin({ primary, backup, newDatasetConfirmed: true });
           if (generation !== thisGeneration || selectedProvider() !== chosen) {
             prepared.cancel?.();
@@ -336,7 +341,18 @@ export function bindInitialCloudPanel(options) {
             'Ключи подготовлены в памяти. Сохраните и повторно введите запасной ключ; на диск ничего не отправлено.'
           );
         } catch {
-          note('Не удалось подготовить набор. Проверьте длину и различие секретов, локальные данные и копии.');
+          // Только фиксированный этап. Исключения могут содержать пути и личные данные.
+          const failure = {
+            data: 'Не удалось подготовить местные данные. Облачная отправка не запускалась. Код: setup/data.',
+            local_save:
+              'Сохранение местных данных не подтверждено. Не удаляйте данные и не повторяйте операцию до проверки резервных копий. Код: setup/local_save.',
+            identities:
+              'Местные данные не прошли подготовку идентификаторов. Это не ошибка пароля или настроек Google. Не удаляйте записи; сообщите этот код. Код: setup/identities.',
+            native:
+              'Не удалось открыть локальный механизм настройки. Проверьте, что запущена новая Windows-сборка. Код: setup/native.',
+            keys: 'Подготовка ключей не завершилась. Проверьте локальное состояние; данные не считайте отправленными. Код: setup/keys.'
+          };
+          note(failure[preparationStage]);
         }
       })
   );
