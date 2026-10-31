@@ -2,6 +2,7 @@
 // Экспериментальный IPC-адаптер зашифрованного журнала. Ошибка или потеря
 // ответа записи блокирует этот экземпляр;
 // отмена или timeout в JS не останавливают уже начатую native-операцию.
+import { parseDatasetBindingRecord } from '../datasetBindingRecord.js';
 import { object } from '../exportSchema.js';
 import { copyCloudEnvelope } from './common.js';
 
@@ -89,7 +90,7 @@ async function callWithin(invoke, command, args, timeoutMs) {
  * не является доказательством fsync или защиты от согласованного отката обоих хранилищ.
  * Любая ошибка IPC не содержит исходного исключения и переводит объект в карантин.
  * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number,
- * initialGuard?:{accountSlotId:string,keySlotId:string,bundleId:string,fingerprint:string}}} options
+ * initialGuard?:{accountSlotId:string,keySlotId:string,bundleId:string,fingerprint:string,linkSource?:{binding:string,revisionId:string,sha256:string}}}} options
  */
 export function createNativeOutboxStore(options) {
   let input;
@@ -98,7 +99,11 @@ export function createNativeOutboxStore(options) {
     input = object(options, ['provider', 'invoke'], ['timeoutMs', 'initialGuard']);
     if (!['google', 'yandex'].includes(input.provider) || typeof input.invoke !== 'function') throw failed();
     if (input.initialGuard !== undefined) {
-      const guard = object(input.initialGuard, ['accountSlotId', 'keySlotId', 'bundleId', 'fingerprint']);
+      const guard = object(
+        input.initialGuard,
+        ['accountSlotId', 'keySlotId', 'bundleId', 'fingerprint'],
+        ['linkSource']
+      );
       if (
         !id(guard.accountSlotId) ||
         !id(guard.keySlotId) ||
@@ -107,6 +112,18 @@ export function createNativeOutboxStore(options) {
         !HEX.test(guard.fingerprint)
       )
         throw failed();
+      if (guard.linkSource !== undefined) {
+        const source = object(guard.linkSource, ['binding', 'revisionId', 'sha256']);
+        const parsed = parseDatasetBindingRecord(source.binding);
+        if (
+          parsed.binding.provider === input.provider ||
+          !id(source.revisionId) ||
+          typeof source.sha256 !== 'string' ||
+          !HEX.test(source.sha256)
+        )
+          throw failed();
+        guard.linkSource = Object.freeze({ ...source });
+      }
       input.initialGuard = Object.freeze({ ...guard });
     }
     timeoutMs = timeout(input.timeoutMs);

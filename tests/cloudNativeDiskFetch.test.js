@@ -107,9 +107,10 @@ function fakeNative(provider) {
       if (args.operation === 'upload_link') {
         if (files.has(path)) return empty(409);
         return reply({
-          href: `https://uploader1.dst.yandex.net/upload-target/fake?path=${encodeURIComponent(path)}`,
+          href: `https://uploader9x.disk.yandex.net:443/upload-target/fake?path=${encodeURIComponent(path)}`,
           method: 'PUT',
-          templated: false
+          templated: false,
+          operation_id: 'FAKE_OPERATION_NOT_PERSISTED'
         });
       }
       if (args.operation === 'upload_content') {
@@ -122,7 +123,7 @@ function fakeNative(provider) {
       if (args.operation === 'download_link') {
         if (!files.has(path)) return empty(404);
         return reply({
-          href: `https://downloader.dst.yandex.ru/disk/fake?path=${encodeURIComponent(path)}`,
+          href: `https://downloader.disk.yandex.ru/disk/fake?path=${encodeURIComponent(path)}`,
           method: 'GET',
           templated: false
         });

@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Зашифрованный журнал отправки и одноразовых попыток. Его хранилище и сессия
 // передаются отдельно; live caller проверяет сохранённый state, ключи и привязку.
 // Протокол требует атомарного CAS и независимой устойчивой проверки записи после
@@ -799,13 +800,15 @@ export function createDurableCloudOutbox(options) {
     if (row.phase === 'queued') {
       let fileId = null;
       if (binding.provider === 'google') {
-        let generated;
+        let generated, generatedReply;
         try {
-          generated = object(await session.generateFileId(), ['status'], ['fileId']);
+          generatedReply = await session.generateFileId();
+          generated = object(generatedReply, ['status'], ['fileId']);
         } catch {
           return response('unavailable');
         }
-        if (generated.status !== 'generated' || !validGoogleId(generated.fileId)) return response('unavailable');
+        if (generated.status !== 'generated' || !validGoogleId(generated.fileId))
+          return withCloudAccessDiagnostic(response('unavailable'), cloudAccessDiagnostic(generatedReply));
         fileId = generated.fileId;
       }
       const entries = current.state.entries.slice();
@@ -836,14 +839,14 @@ export function createDurableCloudOutbox(options) {
     // Первый и единственный вызов записи разрешён только ПОСЛЕ подтверждённой
     // устойчивой записи phase=attempting. Никаких повторов при потере ответа.
     let uploadStatus = 'unknown';
+    let diagnostic;
     try {
-      const result = object(
-        await session.upload({
-          envelope: row.envelope,
-          ...(binding.provider === 'google' ? { fileId: row.fileId } : {})
-        }),
-        ['status']
-      );
+      const uploadReply = await session.upload({
+        envelope: row.envelope,
+        ...(binding.provider === 'google' ? { fileId: row.fileId } : {})
+      });
+      diagnostic = cloudAccessDiagnostic(uploadReply);
+      const result = object(uploadReply, ['status']);
       uploadStatus = result.status;
     } catch {
       // Запрос мог дойти до диска.
@@ -865,7 +868,10 @@ export function createDurableCloudOutbox(options) {
       deferred[index] = { ...latest.state.entries[index], phase: 'prepared', attemptId: null };
       const saved = await write(latest, { ...latest.state, entries: deferred });
       if (saved.status !== 'ready') return response(saved.status);
-      return response(uploadStatus === 'account_mismatch' ? 'account_mismatch' : 'deferred');
+      return withCloudAccessDiagnostic(
+        response(uploadStatus === 'account_mismatch' ? 'account_mismatch' : 'deferred'),
+        diagnostic
+      );
     }
     return response('needs_verification');
   }
@@ -972,6 +978,32 @@ export function createDurableCloudOutbox(options) {
             cryptoSource: crypto
           })
         });
+      });
+    },
+    /** Encrypted shared root only. Does not mutate or export a decoded snapshot. */
+    async sharedRoot(expectedRootPin, expectedKeyPin) {
+      const expected = versionPin(expectedRootPin);
+      return run(async () => {
+        const current = await read();
+        if (current.status !== 'ready') return unavailable(current);
+        for (const row of current.state.entries) {
+          if (row.envelope.versionId !== expected.versionId) continue;
+          await verifyPortableEnvelopeBinding({
+            envelope: row.envelope,
+            dataKey,
+            expectedPin: expectedKeyPin,
+            cryptoSource: crypto
+          });
+          const contents = await validateVersion(row.envelope, dataKey, binding, crypto);
+          const pin = await historyEnvelopePin({
+            envelope: row.envelope,
+            expectedDatasetId: binding.datasetId,
+            cryptoSource: crypto
+          });
+          if (contents.parent !== null || !sameVersionPin(pin, expected)) return response('invalid_root');
+          return Object.freeze({ status: 'ready', envelope: structuredClone(row.envelope) });
+        }
+        return response('source_root_unavailable');
       });
     },
     /** Пустая очередь без квитанций подходит для продолжения восстановления. */

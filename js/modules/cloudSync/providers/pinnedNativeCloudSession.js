@@ -115,6 +115,9 @@ export async function openPinnedNativeCloudSession(options) {
       }
     }
     const session = Object.freeze({
+      checkAccount() {
+        return guard(() => base.checkAccount());
+      },
       generateFileId() {
         return guard(() => base.generateFileId());
       },

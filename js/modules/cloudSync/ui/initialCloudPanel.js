@@ -6,16 +6,50 @@ import { stageSyncIdentities } from '../commitSyncIdentities.js';
 // автоматическую синхронизацию и не выдаёт неподтверждённый результат за успех.
 // Секреты не записываются в журнал и не выводятся в текст статуса.
 import { createInitialCloudSetup, readLocalCloudPairingCode } from '../initialCloudSetup.js';
+import { connectAdditionalCloud } from '../connectAdditionalCloud.js';
+import { checkCloudAccess } from '../checkCloudAccess.js';
 import { inspectInitialCloudSend } from '../inspectInitialCloudSend.js';
 import { sendInitialCloudRoot } from '../sendInitialCloudRoot.js';
 import { createCloudRecovery } from '../recoverCloudConnection.js';
 import { confirmModal } from '../../../core/ui.js';
 import { recordCloudActivity } from '../cloudEventLog.js';
 
+const ACCESS_MESSAGES = Object.fromEntries(
+  Object.entries({
+    identity: 'Проверка аккаунта',
+    disk: 'Чтение API диска',
+    upload_link: 'Получение ссылки для загрузки',
+    file_id: 'Получение ID файла Google'
+  }).flatMap(([stage, title]) =>
+    Object.entries({
+      unauthorized: 'API отклонил токен (401). Нужен повторный вход без удаления набора.',
+      forbidden: 'API отказал в доступе (403). Проверьте разрешения приложения и доступ к API.',
+      rate_limited: 'API ограничил частоту запросов (429). Повторите проверку позднее.',
+      service_unavailable: 'API временно недоступен (5xx). Повторите проверку позднее.',
+      http_error: 'API вернул отказ. В этой операции запись файла не запускалась.',
+      invalid_response: 'Ответ или ссылка не прошли строгую проверку. Защита не отключена.',
+      transport_unavailable: 'Сетевой/native-запрос не завершён. Проверьте соединение и повторите проверку доступа.',
+      timeout: 'Истекло время проверки. В этой операции запись файла не запускалась.',
+      aborted: 'Проверка прервана. В этой операции запись файла не запускалась.'
+    }).map(([reason, message]) => [
+      `${stage}_${reason}`,
+      `${title}: ${message} Подготовленный снимок сохранён. Код: setup/${stage}_${reason}.`
+    ])
+  )
+);
 const MESSAGES = Object.freeze({
+  ...ACCESS_MESSAGES,
+  additional_connected:
+    'Этот же зашифрованный набор подключён ко второму диску. Первый диск и ключи сохранены. Отправляйте и проверяйте каждый диск отдельно.',
+  source_binding_unavailable:
+    'На другом диске нет проверенной местной привязки. Сначала создайте или восстановите набор на одном диске; затем подключите этот же набор ко второму.',
+  source_root_unavailable:
+    'Начальный зашифрованный файл отсутствует в местной очереди и не прочитан с первого диска. Сначала проверьте доступ и наличие первого файла; ключи и первый диск сохранены.',
+  access_verified:
+    'Аккаунт и чтение API диска подтверждены. Файлы не отправлялись и не удалялись. Право записи и содержимое подтверждаются только отправкой и чтением файла. Код: setup/access_verified.',
   credential_missing_or_blocked: 'Сначала сохраните и проверьте доступ к выбранному диску.',
   binding_missing_or_blocked:
-    'Для выбранного диска нет подтверждённой местной привязки набора либо она заблокирована. Привязка другого диска не переносится переключателем. Не удаляйте её и не создавайте новый набор поверх неё. Код: setup/binding_missing_or_blocked.',
+    'Для выбранного диска нет подтверждённой местной привязки набора либо она заблокирована. Если набор уже есть на другом диске, нажмите «Подключить этот же набор ко второму диску». Не удаляйте существующую привязку и ключи. Код: setup/binding_missing_or_blocked.',
   binding_missing:
     'Для выбранного диска местная привязка набора не найдена. Переключение с другого диска её не переносит. Код: setup/binding_missing.',
   binding_blocked:
@@ -33,7 +67,7 @@ const MESSAGES = Object.freeze({
   account_unavailable:
     'Аккаунт, доступ или привязка изменились во время операции. Результат отправки не подтверждён; не повторяйте её. Код: setup/account_unavailable.',
   dataset_binding_present:
-    'На этом ПК уже есть привязка набора, возможно к другому диску. Переключение диска не переносит её. Новый набор не создан; не удаляйте существующую привязку и ключи.',
+    'Набор уже существует. Для второго диска используйте «Подключить этот же набор ко второму диску»: пароль и запасной ключ останутся прежними. Новый независимый набор не создан; введённые секреты не заменили существующие.',
   key_present:
     'Внутренний ключ уже существует. Не создаём новый; проверьте восстановление или продолжите прерванную настройку.',
   key_missing: 'Внутренний ключ на этом ПК не найден. Используйте основной пароль или запасной ключ.',
@@ -109,9 +143,15 @@ function name(provider) {
   return provider === 'google' ? 'Google Диск' : 'Яндекс Диск';
 }
 function record(provider, action, status) {
-  const outcome = ['prepared', 'connected', 'sent_verified', 'sent_earlier_verified', 'already_confirmed'].includes(
-    status
-  )
+  const outcome = [
+    'prepared',
+    'connected',
+    'additional_connected',
+    'access_verified',
+    'sent_verified',
+    'sent_earlier_verified',
+    'already_confirmed'
+  ].includes(status)
     ? 'success'
     : ['setup_uncertain', 'verification_pending', 'key_installed_state_changed'].includes(status)
       ? 'uncertain'
@@ -128,7 +168,7 @@ function record(provider, action, status) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * prepareData?:()=>Promise<boolean>,makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
- * readCode?:typeof readLocalCloudPairingCode,inspectSend?:typeof inspectInitialCloudSend,confirm?:(message:string)=>boolean|Promise<boolean>,
+ * readCode?:typeof readLocalCloudPairingCode,inspectSend?:typeof inspectInitialCloudSend,connectAdditional?:typeof connectAdditionalCloud,checkAccess?:typeof checkCloudAccess,confirm?:(message:string)=>boolean|Promise<boolean>,
  * reviewPanel?:{showExternalReview:(value:any,readOnly?:boolean)=>boolean,hasPreviewSelection:()=>boolean,clearExternalReview?:()=>void}}} options
  */
 export function bindInitialCloudPanel(options) {
@@ -156,6 +196,8 @@ export function bindInitialCloudPanel(options) {
     'show-code',
     'send-root',
     'inspect-send',
+    'check-access',
+    'connect-additional',
     'code-label',
     'code',
     'status'
@@ -217,7 +259,16 @@ export function bindInitialCloudPanel(options) {
     for (const control of controls) control.disabled = !options.desktop || busy;
     if (!options.desktop || busy) return;
     const pending = !!attempt;
-    for (const id of ['create', 'resume', 'show-code', 'send-root', 'inspect-send']) el[id].disabled = pending;
+    for (const id of [
+      'create',
+      'resume',
+      'show-code',
+      'send-root',
+      'inspect-send',
+      'check-access',
+      'connect-additional'
+    ])
+      el[id].disabled = pending;
     rec.check.disabled = pending;
     const dataCheck = doc.getElementById('cloud-setup-check-data');
     if (dataCheck) /** @type {HTMLButtonElement} */ (dataCheck).disabled = pending;
@@ -227,6 +278,15 @@ export function bindInitialCloudPanel(options) {
     rec.cancel.disabled = mode !== 'recovery';
     el['custom-label'].hidden = el['backup-kind'].value !== 'custom';
     rec['secret-label'].hidden = rec.role.value === 'existing';
+  }
+  async function prepareLocalData(stage = _value => {}) {
+    if (options.prepareData) return options.prepareData();
+    stage('local_save');
+    await saveNow();
+    stage('identities');
+    const staged = stageSyncIdentities();
+    if (staged.status === 'already_assigned') return true;
+    return staged.status === 'prepared' && (await staged.operation.commit({ confirmed: true })).status === 'applied';
   }
   function forgetSecrets() {
     for (const input of [el.main, el['main-repeat'], el.custom, el.generated, el['backup-confirm'], rec.secret])
@@ -357,20 +417,9 @@ export function bindInitialCloudPanel(options) {
         note('Создаём локальную копию и готовим ключи. Это может занять несколько секунд…');
         let preparationStage = 'data';
         try {
-          const preparedData = await (
-            options.prepareData ||
-            (async () => {
-              preparationStage = 'local_save';
-              await saveNow();
-              preparationStage = 'identities';
-              const staged = stageSyncIdentities();
-              if (staged.status === 'already_assigned') return true;
-              return (
-                staged.status === 'prepared' &&
-                (await staged.operation.commit({ confirmed: true })).status === 'applied'
-              );
-            })
-          )();
+          const preparedData = await prepareLocalData(stage => {
+            preparationStage = stage;
+          });
           if (!preparedData || generation !== thisGeneration || selectedProvider() !== chosen) {
             note('Не удалось подтвердить сохранение данных и ID. Облако не изменялось; проверьте локальное состояние.');
             return;
@@ -513,6 +562,66 @@ export function bindInitialCloudPanel(options) {
         } catch {
           if (generation !== thisGeneration || selectedProvider() !== chosen) return;
           note(`${name(chosen)}: ${status('unavailable')}`);
+        }
+      })
+  );
+  el['connect-additional'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider(),
+          thisGeneration = generation;
+        if (
+          !(await askConfirmation(
+            `Подключить существующий набор с другого диска к ${name(chosen)}? Сохраним местные данные и резервную копию, используем прежний пароль, запасной ключ и тот же зашифрованный корень. Первый диск не отключается. Файлы сейчас не отправляются; оба диска проверяются и отправляются отдельно, разные версии автоматически не объединяются.`
+          ))
+        )
+          return;
+        if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+        note('Проверяем существующий ключ и подключаем тот же набор ко второму диску…');
+        try {
+          if (!(await prepareLocalData()) || generation !== thisGeneration || selectedProvider() !== chosen) {
+            note(status('state_changed_or_unsaved'));
+            return;
+          }
+          const native = await loadNative();
+          const outcome = /** @type {any} */ (
+            await (options.connectAdditional || connectAdditionalCloud)({
+              provider: chosen,
+              invoke: native.invoke,
+              confirmed: true,
+              settingsSelections: selections()
+            })
+          );
+          record(chosen, 'additional', outcome.status);
+          if (outcome.status === 'additional_connected')
+            doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-binding-changed'));
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          if (outcome.pairingCode) showCode(outcome.pairingCode);
+          note(`${name(chosen)}: ${status(outcome.status)}${outcome.backup ? ` Копия: ${outcome.backup}.` : ''}`);
+        } catch {
+          record(chosen, 'additional', 'setup_uncertain');
+          if (generation === thisGeneration && selectedProvider() === chosen) note(status('setup_uncertain'));
+        }
+      })
+  );
+  el['check-access'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider(),
+          thisGeneration = generation;
+        note(`${name(chosen)}: проверяем аккаунт и чтение API, без отправки файлов…`);
+        try {
+          const native = await loadNative();
+          const outcome = await (options.checkAccess || checkCloudAccess)({ provider: chosen, invoke: native.invoke });
+          record(chosen, 'access', outcome.status);
+          if (generation === thisGeneration && selectedProvider() === chosen)
+            note(`${name(chosen)}: ${status(outcome.status)}`);
+        } catch {
+          if (generation === thisGeneration && selectedProvider() === chosen) note(status('unavailable'));
         }
       })
   );

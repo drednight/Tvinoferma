@@ -23,11 +23,21 @@ pub struct OutboxWrite {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(not(windows), allow(dead_code))]
+pub struct OutboxLinkSource {
+    binding: String,
+    revision_id: String,
+    sha256: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub struct OutboxInitialGuard {
     account_slot_id: String,
     key_slot_id: String,
     bundle_id: String,
     fingerprint: String,
+    link_source: Option<OutboxLinkSource>,
 }
 
 #[derive(Deserialize)]
@@ -372,6 +382,13 @@ mod windows_backend {
                     key_slot: &guard.key_slot_id,
                     bundle_id: &guard.bundle_id,
                     fingerprint: &guard.fingerprint,
+                    link_source: guard.link_source.as_ref().map(|source| {
+                        cloud_initial_outbox::LinkSource {
+                            binding: &source.binding,
+                            revision_id: &source.revision_id,
+                            sha256: &source.sha256,
+                        }
+                    }),
                 };
                 let other_name = match target {
                     Target::Google => "cloud-outbox-v1-yandex.tfqo",

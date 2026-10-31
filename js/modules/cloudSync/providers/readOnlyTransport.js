@@ -4,6 +4,7 @@
 // разрешённого запроса; безопасное хранение и стирание из памяти не гарантируются. Не логировать
 // запросы, заголовки, временные ссылки или ошибки fetch. Разрешения, CORS, Tauri и поставщики
 // требуют проверки до использования с пользовательским аккаунтом.
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 import { object, oneOf } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { versionFileName } from './common.js';
@@ -175,7 +176,7 @@ export function createReadOnlyCloudTransport(options) {
         const timeout = new Promise((_, reject) => {
           timer = setTimeout(() => {
             controller.abort();
-            reject(networkError());
+            reject(withCloudAccessDiagnostic(networkError(), 'disk_timeout'));
           }, timeoutMs);
         });
         const read = async () => {
@@ -222,11 +223,11 @@ export function createReadOnlyCloudTransport(options) {
           active--;
         });
         return await Promise.race([reading, timeout]);
-      } catch {
+      } catch (error) {
         // Оборвать также слишком большое или ошибочное тело, если заголовки уже получены.
         controller.abort();
         // fetch может включить токен или подписанный URL в текст своей ошибки.
-        throw networkError();
+        throw withCloudAccessDiagnostic(networkError(), cloudAccessDiagnostic(error));
       } finally {
         clearTimeout(timer);
       }

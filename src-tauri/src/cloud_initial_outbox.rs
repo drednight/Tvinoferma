@@ -12,11 +12,18 @@ use crate::cloud_outbox_store::{
     self, Inspection, NewRecord, OutboxFile, Outcome, StoreError, Target,
 };
 
+pub(crate) struct LinkSource<'a> {
+    pub(crate) binding: &'a str,
+    pub(crate) revision_id: &'a str,
+    pub(crate) sha256: &'a str,
+}
+
 pub(crate) struct Guard<'a> {
     pub(crate) account_slot: &'a str,
     pub(crate) key_slot: &'a str,
     pub(crate) bundle_id: &'a str,
     pub(crate) fingerprint: &'a str,
+    pub(crate) link_source: Option<LinkSource<'a>>,
 }
 
 /// Caller удерживает тот же межпроцессный lock для обеих проверок и установки.
@@ -59,19 +66,43 @@ pub(crate) fn install(
     if !account_matches || !key_matches {
         return Ok(Outcome::Blocked);
     }
-    for value in [provider, other_provider] {
-        if !matches!(
-            cloud_dataset_binding::read(vault, value).map_err(|_| StoreError::Unavailable)?,
-            DatasetInspection::Empty
-        ) {
-            return Ok(Outcome::Blocked);
-        }
-    }
     if !matches!(
-        cloud_outbox_store::inspect(vault, other_file, other_target)?,
-        Inspection::Empty
+        cloud_dataset_binding::read(vault, provider).map_err(|_| StoreError::Unavailable)?,
+        DatasetInspection::Empty
     ) {
         return Ok(Outcome::Blocked);
+    }
+    let source_pin =
+        cloud_dataset_binding::read(vault, other_provider).map_err(|_| StoreError::Unavailable)?;
+    let source_queue = cloud_outbox_store::inspect(vault, other_file, other_target)?;
+    match &guard.link_source {
+        None => {
+            if !matches!(source_pin, DatasetInspection::Empty)
+                || !matches!(source_queue, Inspection::Empty)
+            {
+                return Ok(Outcome::Blocked);
+            }
+        }
+        Some(source) => {
+            // Explicitly link the SAME dataset, never start an independent root.
+            // JS must also authenticate the source queue/root and key proof.
+            if source.binding.len() > 1024
+                || !source.binding.is_ascii()
+                || !valid_uuid(source.revision_id)
+                || source.sha256.len() != 64
+                || !source
+                    .sha256
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                || !matches!(source_pin, DatasetInspection::Ready(ref raw) if raw == source.binding)
+                || !matches!(source_queue, Inspection::Ready(ref receipt)
+                    if receipt.dataset_id == next.dataset_id
+                        && receipt.revision_id == source.revision_id
+                        && receipt.sha256 == source.sha256)
+            {
+                return Ok(Outcome::Blocked);
+            }
+        }
     }
     cloud_outbox_store::install(vault, file, target, next)
 }

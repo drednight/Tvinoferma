@@ -4,6 +4,11 @@
 // проверка ответа не отменяет утечку, уже вызванную недоверенным fetch. Не логировать
 // токен, тело, ID файла, подписанную ссылку или исходные ошибки. Структура envelope
 // не доказывает, что вызывающий действительно зашифровал полезную нагрузку.
+import {
+  cloudAccessDiagnostic,
+  cloudAccessHttpDiagnostic,
+  withCloudAccessDiagnostic
+} from './cloudAccessDiagnostics.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { copyCloudEnvelope, validGoogleId, versionFileName } from './common.js';
@@ -210,6 +215,7 @@ export function createCloudUploadTransport(options) {
     }
     active = true;
     const controller = new AbortController();
+    const stage = kind === 'generate' ? 'file_id' : 'upload_link';
     let submitted = false;
     let timer;
     let lastTime = startedAt;
@@ -220,28 +226,34 @@ export function createCloudUploadTransport(options) {
       } catch {
         throw failed();
       }
-      if (controller.signal.aborted || !Number.isFinite(now) || now < lastTime || now - startedAt >= timeoutMs)
-        throw failed();
+      if (controller.signal.aborted || now - startedAt >= timeoutMs)
+        throw withCloudAccessDiagnostic(failed(), `${stage}_timeout`);
+      if (!Number.isFinite(now) || now < lastTime) throw failed();
       lastTime = now;
     };
     const invoke = async (request, headers, body, isWrite) => {
       requireLive();
       if (isWrite) submitted = true;
-      const response = await fetchImpl(request.url, {
-        method: request.method,
-        headers,
-        ...(body === undefined ? {} : { body }),
-        redirect: 'error',
-        credentials: 'omit',
-        cache: 'no-store',
-        referrerPolicy: 'no-referrer',
-        signal: controller.signal
-      });
+      let response;
+      try {
+        response = await fetchImpl(request.url, {
+          method: request.method,
+          headers,
+          ...(body === undefined ? {} : { body }),
+          redirect: 'error',
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          signal: controller.signal
+        });
+      } catch {
+        throw withCloudAccessDiagnostic(failed(), `${stage}_transport_unavailable`);
+      }
       try {
         requireLive();
-      } catch {
+      } catch (error) {
         cancelBody(response?.body);
-        throw failed();
+        throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(error));
       }
       checkResponse(response, request.url);
       return response;
@@ -249,15 +261,23 @@ export function createCloudUploadTransport(options) {
     const timeout = new Promise(resolve => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve({ status: kind === 'generate' ? 'unavailable' : submitted ? 'unknown' : 'not_sent' });
+        resolve(
+          withCloudAccessDiagnostic(
+            { status: kind === 'generate' ? 'unavailable' : submitted ? 'unknown' : 'not_sent' },
+            submitted ? undefined : `${stage}_timeout`
+          )
+        );
       }, timeoutMs);
     });
     const operation = (async () => {
       try {
         return await work(invoke, requireLive);
-      } catch {
+      } catch (error) {
         controller.abort();
-        return { status: kind === 'generate' ? 'unavailable' : submitted ? 'unknown' : 'not_sent' };
+        return withCloudAccessDiagnostic(
+          { status: kind === 'generate' ? 'unavailable' : submitted ? 'unknown' : 'not_sent' },
+          submitted ? undefined : cloudAccessDiagnostic(error) || `${stage}_invalid_response`
+        );
       } finally {
         active = false;
       }
@@ -282,7 +302,10 @@ export function createCloudUploadTransport(options) {
         const response = await invoke(request, { Authorization: `Bearer ${accessToken}` }, undefined, false);
         if (response.status !== 200) {
           cancelBody(response.body);
-          return { status: 'unavailable' };
+          return withCloudAccessDiagnostic(
+            { status: 'unavailable' },
+            cloudAccessHttpDiagnostic('file_id', response.status)
+          );
         }
         const result = object(parseReply(await boundedText(response)), ['ids'], ['kind', 'space']);
         requireLive();
@@ -355,9 +378,24 @@ export function createCloudUploadTransport(options) {
           cancelBody(response.body);
           // При 409 цель уже занята: PUT в этой попытке не выполнялся, но файл
           // нужно сверить, а не автоматически повторять запрос ссылки.
-          return { status: response.status === 409 ? 'conflict' : 'not_sent' };
+          return withCloudAccessDiagnostic(
+            { status: response.status === 409 ? 'conflict' : 'not_sent' },
+            response.status === 409 ? undefined : cloudAccessHttpDiagnostic('upload_link', response.status)
+          );
         }
-        const link = object(parseReply(await boundedText(response)), ['href', 'method', 'templated']);
+        // ResourceUploadLink may include operation_id. It is NOT a destination,
+        // status proof or retry instruction; validate and discard it before PUT.
+        const supplied = object(
+          parseReply(await boundedText(response)),
+          ['href', 'method', 'templated'],
+          ['operation_id']
+        );
+        if (
+          Object.hasOwn(supplied, 'operation_id') &&
+          (typeof supplied.operation_id !== 'string' || !/^[\x21-\x7e]{1,1024}$/.test(supplied.operation_id))
+        )
+          throw failed();
+        const link = { href: supplied.href, method: supplied.method, templated: supplied.templated };
         requireLive();
         // Строитель вновь проверяет HTTPS, хост, путь и метод временной ссылки.
         const upload = yandexUploadContentRequest({ link, datasetId, versionId: envelope.versionId, envelope });

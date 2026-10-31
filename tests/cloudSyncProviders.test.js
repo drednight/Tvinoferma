@@ -232,3 +232,31 @@ describe('подготовка Яндекс Диска без сети и ток
     }
   });
 });
+
+it.each(['dst', 'disk'])('разрешает только точные семейства transfer-хостов Яндекса: %s', domain => {
+  const href = `https://uploader9x.${domain}.yandex.net:443/upload-target/FAKE?signature=FAKE`;
+  expect(yandexUploadContentRequest({ link: { ...uploadLink, href }, datasetId, versionId, envelope }).url).toBe(
+    new URL(href).toString()
+  );
+  expect(
+    yandexDownloadContentRequest({ ...downloadLink, href: `https://downloader.${domain}.yandex.ru/disk/FAKE` })
+      .credential
+  ).toBe('yandex-download');
+});
+it.each([
+  'https://uploader9x.disk.yandex.net.evil.test/upload-target/x',
+  'https://uploader9x.disk.yandex.net:444/upload-target/x',
+  'https://uploader9x.disk.yandex.net/upload-target/%2e%2e%2fx',
+  'https://other.disk.yandex.net/upload-target/x'
+])('новое семейство upload не разрешает подмену хоста/пути: %s', href => {
+  expect(() => yandexUploadContentRequest({ link: { ...uploadLink, href }, datasetId, versionId, envelope })).toThrow();
+});
+it.each([
+  'https://downloader.disk.yandex.ru.evil.test/disk/x',
+  'https://downloader.disk.yandex.ru@evil.test/disk/x',
+  'https://downloader.disk.yandex.ru:444/disk/x',
+  'https://downloader.disk.yandex.ru/disk/%2e%2e%2fx',
+  'https://uploader9x.disk.yandex.net/disk/x'
+])('новое семейство download не отправляет OAuth по чужому адресу: %s', href => {
+  expect(() => yandexDownloadContentRequest({ ...downloadLink, href })).toThrow();
+});

@@ -535,3 +535,54 @@ describe('проверка готовности не является отпра
     expect(byId('cloud-setup-status').textContent).not.toContain('login_required');
   });
 });
+
+describe('два диска и отдельная сетевая проверка', () => {
+  it('подключает выбранный второй диск явно, не использует новые пароли и не отправляет файл', async () => {
+    const connectAdditional = vi.fn(async () => ({
+      status: 'additional_connected',
+      pairingCode: 'SAME-CODE',
+      backup: 'state.backup-link.json'
+    }));
+    const prepareData = vi.fn(async () => true);
+    const f = setup({ connectAdditional, prepareData });
+    change('cloud-registration-provider', 'google');
+    set('cloud-setup-main', 'NEW_SECRET_NOT_USED_FOR_ATTACH');
+    click('cloud-setup-connect-additional');
+    await vi.waitFor(() => expect(connectAdditional).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(byId('cloud-setup-status').textContent).toContain('Первый диск и ключи сохранены'));
+    expect(connectAdditional).toHaveBeenCalledWith({
+      provider: 'google',
+      invoke: f.invoke,
+      confirmed: true,
+      settingsSelections: []
+    });
+    expect(prepareData).toHaveBeenCalledOnce();
+    expect(f.begin).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(byId('cloud-setup-code').value).toBe('SAME-CODE');
+    expect(JSON.stringify(connectAdditional.mock.calls)).not.toContain('NEW_SECRET');
+  });
+  it('отмена подтверждения не сохраняет данные и не вызывает native', async () => {
+    const connectAdditional = vi.fn(),
+      prepareData = vi.fn(),
+      loadNative = vi.fn();
+    setup({ connectAdditional, prepareData, loadNative, confirm: () => false });
+    click('cloud-setup-connect-additional');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(connectAdditional).not.toHaveBeenCalled();
+    expect(prepareData).not.toHaveBeenCalled();
+    expect(loadNative).not.toHaveBeenCalled();
+  });
+  it.each(['identity_forbidden', 'disk_unauthorized', 'upload_link_invalid_response'])(
+    'показывает только фиксированный этап API: %s',
+    async status => {
+      const checkAccess = vi.fn(async () => ({ status, body: 'PRIVATE_TOKEN' }));
+      const f = setup({ checkAccess });
+      click('cloud-setup-check-access');
+      await vi.waitFor(() => expect(byId('cloud-setup-status').textContent).toContain(`setup/${status}`));
+      expect(byId('cloud-setup-status').textContent).not.toContain('PRIVATE_TOKEN');
+      expect(f.send).not.toHaveBeenCalled();
+      expect(f.begin).not.toHaveBeenCalled();
+    }
+  );
+});
