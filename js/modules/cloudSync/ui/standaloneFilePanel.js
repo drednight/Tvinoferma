@@ -18,6 +18,15 @@ const SECTIONS = {
   preferences: 'Настройки'
 };
 const STATUS = {
+  credential_missing: 'диск не подключён на этом ПК — выберите его выше и нажмите «Войти»',
+  credential_blocked: 'доступ заблокирован или обновление не подтверждено. Не удаляйте ключи и записи доступа',
+  credential_unavailable: 'не удалось прочитать доступ в Windows. Проверьте подключение, не удаляя ключи',
+  login_required: 'срок доступа истёк. Требуется восстановить вход; облачные файлы и ключи сохранены',
+  account_unavailable: 'не удалось сверить аккаунт — проверьте сеть и права доступа',
+  folder_unavailable: 'не удалось проверить папку приложения — проверьте сеть и права доступа',
+  folder_changed: 'прежняя папка не найдена. Проверьте аккаунт и папку, не создавая новый ключ',
+  folder_verification_pending: 'создание папки пока не подтверждено. Повторите проверку, не удаляя доступ',
+  destinations_unavailable: 'Отправка не началась: выбранные диски недоступны. Причина указана ниже.',
   encryption_password_incorrect:
     'Не удалось разблокировать прежний ключ. Проверьте пароль шифрования. Новый ключ не создавался, облачные файлы не менялись.',
   folder_ambiguous: 'найдено несколько папок приложения — выберите нужную, дата не определяет папку',
@@ -55,17 +64,17 @@ export function askStandalonePassword({ doc = document, repeat = false } = {}) {
     dialog.className = 'modal cloud-key-dialog';
     dialog.setAttribute('aria-labelledby', 'standalone-password-title');
     dialog.innerHTML = `<form novalidate autocomplete="off">
-      <h3 id="standalone-password-title">${repeat ? 'Пароль шифрования полного файла' : 'Пароль шифрования'}</h3>
-      <p>${repeat ? 'Не менее 8 символов. Используйте не менее 6 различных символов и не очевидную последовательность. Без пароля или запомненного ключа файл не восстановить.' : 'Введите пароль, которым зашифрованы ваши файлы. Сам ввод пароля не заменяет местные данные.'}</p>
-      <label>Пароль<input class="input" name="password" type="password" maxlength="1024" autocomplete="${repeat ? 'new-password' : 'current-password'}" /></label>
-      ${repeat ? '<label>Повторите пароль<input class="input" name="repeat" type="password" maxlength="1024" autocomplete="new-password" /></label>' : ''}
-      <p class="modal-error" role="alert" id="standalone-password-error"></p>
+      <h3 id="standalone-password-title">${repeat ? 'Защитите файл паролем' : 'Пароль шифрования'}</h3>
+      <p>${repeat ? 'Не менее 8 символов, из них 6 различных. Не используйте простую последовательность. Этот пароль понадобится на другом ПК.' : 'Введите пароль, которым зашифрованы ваши файлы. Сам ввод пароля не заменяет местные данные.'}</p>
+      <label>Пароль<input class="input" name="password" type="password" maxlength="1024" aria-describedby="standalone-password-error" autocomplete="${repeat ? 'new-password' : 'current-password'}" /></label>
+      ${repeat ? '<label>Повторите пароль<input class="input" name="repeat" type="password" maxlength="1024" aria-describedby="standalone-password-error" autocomplete="new-password" /></label>' : ''}
+      <p class="modal-error" role="alert" id="standalone-password-error" hidden></p>
       <div class="cloud-registration-actions"><button class="btn" type="submit">${repeat ? 'Продолжить' : 'Открыть'}</button><button class="btn ghost" type="button" data-cancel>Отмена</button></div>
     </form>`;
     const form = dialog.querySelector('form');
     const password = /** @type {HTMLInputElement} */ (form.elements.namedItem('password'));
     const confirmation = /** @type {HTMLInputElement|null} */ (form.elements.namedItem('repeat'));
-    const message = dialog.querySelector('[role="alert"]');
+    const message = /** @type {HTMLElement} */ (dialog.querySelector('[role="alert"]'));
     const close = value => {
       password.value = '';
       if (confirmation) confirmation.value = '';
@@ -77,6 +86,10 @@ export function askStandalonePassword({ doc = document, repeat = false } = {}) {
       close(null);
     });
     dialog.querySelector('[data-cancel]').addEventListener('click', () => close(null));
+    form.addEventListener('input', () => {
+      message.textContent = '';
+      message.hidden = true;
+    });
     form.addEventListener('submit', event => {
       event.preventDefault();
       try {
@@ -88,7 +101,8 @@ export function askStandalonePassword({ doc = document, repeat = false } = {}) {
         close(password.value);
       } catch (error) {
         message.textContent = error.message;
-        password.focus();
+        message.hidden = false;
+        (confirmation && error.message === 'Пароли не совпадают' ? confirmation : password).focus();
       }
     });
     doc.body.append(dialog);
@@ -116,10 +130,21 @@ export function bindStandaloneFilePanel(options) {
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
+  let destinationTouched = false,
+    destinationSuggested = false;
   let busy = false,
     stopped = false,
     review = null,
     reviewFields = [];
+  for (const input of checkboxes('[data-standalone-destination]'))
+    input.addEventListener('change', () => {
+      destinationTouched = true;
+    });
+  function suggestDestination(provider) {
+    if (destinationTouched || destinationSuggested || !NAMES[provider]) return;
+    for (const input of checkboxes('[data-standalone-destination]')) input.checked = input.value === provider;
+    destinationSuggested = true;
+  }
   const getRuntime = async () => {
     if (!runtime) {
       const native = options.loadNative ? await options.loadNative() : await import('@tauri-apps/api/core');
@@ -141,6 +166,10 @@ export function bindStandaloneFilePanel(options) {
     try {
       await fn(await getRuntime());
     } catch (error) {
+      if (Array.isArray(error.results)) {
+        showResults(error.results);
+        for (const row of error.results) log(row.provider, 'standalone_save', 'unavailable');
+      }
       status.textContent =
         STATUS[error.message] ||
         'Не удалось безопасно завершить действие. Проверьте подключение и повторите проверку. Ничего не считайте подтверждённым; ключи и аккаунт удалять не нужно.';
@@ -302,11 +331,15 @@ export function bindStandaloneFilePanel(options) {
   async function check(manual) {
     await action(async engine => {
       const result = await engine.check({ manual, includeBackups: manual && el('show-backups').checked });
+      const available = result.results.find(row => ['checked', 'empty'].includes(row.status));
+      if (available) suggestDestination(available.provider);
       showFiles(result.files);
       showResults([...result.results, ...result.pending]);
-      status.textContent = result.files.length
-        ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
-        : 'Проверка завершена: новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
+      status.textContent = !available
+        ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
+        : result.files.length
+          ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
+          : 'Проверка завершена: новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
       for (const resultRow of result.results)
         log(
           resultRow.provider,
@@ -356,9 +389,14 @@ export function bindStandaloneFilePanel(options) {
         const { ui: _ui, ...normalized } = normalizeState(raw);
         source = planSyncIdentities({ snapshot: normalized }).snapshot;
       }
+      status.textContent = 'Подготовка файла…';
+      el('provider-results').replaceChildren();
       const canSeal = await engine.canSeal();
       const password = canSeal ? undefined : await passwordDialog({ repeat: !engine.hasEncryptionKey?.() });
-      if (password === null) return;
+      if (password === null) {
+        status.textContent = 'Отправка отменена. Облачные файлы не менялись.';
+        return;
+      }
       const prepared = await engine.prepareSave({
         targets: targets(),
         source,
@@ -368,16 +406,23 @@ export function bindStandaloneFilePanel(options) {
         contactsSourceConfirmed: el('contacts-confirm').checked,
         settingsSelections: choices('[data-standalone-setting]')
       });
-      const agreed = await confirmAction({
-        title: 'Сохранить полный файл?',
-        text: `Сохранить выбранные данные на ${targets()
-          .map(provider => NAMES[provider])
-          .join(
-            ' и '
-          )}? Обнаружено прежних полных копий: ${prepared.remoteCopies}. Они останутся резервными, но новая копия станет предлагаемым полным содержимым вместо всех обнаруженных копий. Непринятые облачные изменения не объединяются с местными. ${prepared.hasPrivate ? 'ВКЛЮЧЕНЫ выбранные контакты/пароли. ' : 'Контакты и пароли исключены. '}Результат каждого диска проверяется отдельно.`,
-        okText: 'Сохранить'
-      });
-      if (!agreed) return;
+      const needsConfirmation = prepared.hasUnacceptedCopies || prepared.hasPrivate || !!source;
+      const agreed =
+        !needsConfirmation ||
+        (await confirmAction({
+          title: 'Сохранить полный файл?',
+          text: `Сохранить выбранные данные на ${targets()
+            .map(provider => NAMES[provider])
+            .join(
+              ' и '
+            )}? Обнаружено прежних полных копий: ${prepared.remoteCopies}. Они останутся резервными, но новая копия станет предлагаемым полным содержимым вместо всех обнаруженных копий. Непринятые облачные изменения не объединяются с местными. ${prepared.hasPrivate ? 'ВКЛЮЧЕНЫ выбранные контакты/пароли. ' : 'Контакты и пароли исключены. '}Результат каждого диска проверяется отдельно.`,
+          okText: 'Сохранить'
+        }));
+      if (!agreed) {
+        status.textContent = 'Отправка отменена. Облачные файлы не менялись.';
+        return;
+      }
+      status.textContent = 'Отправка и проверка файла на диске…';
       const result = await engine.save(prepared, { confirmed: true, remember: el('remember').checked });
       showResults(result.results);
       status.textContent =
@@ -462,7 +507,8 @@ export function bindStandaloneFilePanel(options) {
   setBusy(false);
   const startup = options.startup !== false && options.desktop;
   let timer = null;
-  const connected = () => {
+  const connected = event => {
+    suggestDestination(event?.detail?.provider);
     if (!busy && !stopped) void check(false);
   };
   const reset = () => {

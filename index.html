@@ -469,18 +469,20 @@
             <div class="cloud-registration-body">
 
               <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
-              <h4>1. Подключите диск</h4>
-              <p>Войдите в браузере и подтвердите аккаунт. Доступ сохранится только на этом ПК; файлы пока не отправляются.</p>
+              <h4>Подключение диска</h4>
+              <p>Войдите в нужные аккаунты. Можно подключить оба диска.</p>
                   <label for="cloud-registration-provider">Облачный диск
                     <select class="input" id="cloud-registration-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select>
                   </label>
               <div class="cloud-registration-actions">
-                <button type="button" class="btn" id="cloud-connection-simple">Войти и сохранить доступ</button>
+                <button type="button" class="btn" id="cloud-connection-simple">Войти</button>
                 <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
               </div>
               <p id="cloud-google-config-status" class="muted" role="status"></p>
+              <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
+              <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
               <details id="cloud-registration-advanced">
-                <summary>Разовая настройка приложения и диагностика</summary>
+                <summary>Подключение и восстановление</summary>
               <p class="cloud-registration-warning"><strong>Обмен файлами — экспериментальный режим.</strong> Доступны проверка полного снимка, просмотр различий, подтверждённая замена местных данных и ручная отправка. Отсутствующие записи удаляются только при явно подтверждённой полной замене. Прежние облачные версии сохраняются. Несколько одновременных облачных версий автоматически не объединяются. Итоговый полный файл выбирается явно. Настоящие диски и два Windows-ПК ещё требуют приёмки.</p>
                 <p>Разовая проверка не сохраняет токены. Сервис может сохранить выданное разрешение даже после отмены. Отзыв разрешения в аккаунте может отключить другие устройства.</p>
                 <p>Обычным пользователям не нужна регистрация своего приложения, если сборка уже настроена владельцем. Если нет — владелец один раз регистрирует OAuth-приложение. Для Google скачайте JSON клиента типа Desktop и выберите его здесь; пароль или секрет в Client ID не вставляйте.</p>
@@ -507,10 +509,9 @@
                 <span id="cloud-registration-account-label"></span><bdi dir="ltr" id="cloud-registration-account-value"></bdi>
                 <small>Сверьте с выбранным аккаунтом в браузере. Это только проверка, привязка не сохранена.</small>
               </div>
-              </details>
               <section class="cloud-connection" aria-labelledby="cloud-connection-title">
                 <h4 id="cloud-connection-title">Состояние подключения</h4>
-                <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
+
                 <details><summary>Проверка и ручное управление доступом</summary>
                 <div class="cloud-registration-actions">
                   <button type="button" class="btn ghost" id="cloud-connection-inspect">Проверить локальную запись</button>
@@ -521,7 +522,7 @@
                   <button type="button" class="btn ghost" id="cloud-connection-cancel" hidden>Отменить вход</button>
                 </div>
                 </details>
-                <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite">Ожидание действия.</p>
+
                 <details class="cloud-connection-disconnect"><summary>Удаление локального доступа</summary>
                   <h5>Забыть доступ на этом ПК</h5>
                   <p>Это удаляет только локальную запись доступа, но не облачные файлы, ключи или разрешение у сервиса. При наличии привязки набора или незавершённой операции удаление заблокировано; не стирайте такие записи вручную.</p>
@@ -529,60 +530,7 @@
                   <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
                 </details>
               </section>
-              <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
-                <h4 id="cloud-standalone-title">2. Полный файл — сохранить или сравнить</h4>
-                <p>Войдите в Google, Яндекс или оба аккаунта выше. Первый и последующие снимки сохраняются одной кнопкой. На другом ПК войдите в те же аккаунты, скачайте файл, посмотрите различия и примите полную копию либо оставьте свои данные. Автоматической отправки и объединения нет.</p>
-                <fieldset id="cloud-standalone-destinations"><legend>Куда сохранить</legend>
-                  <label><input type="checkbox" value="google" data-standalone-destination checked /> Google Диск</label>
-                  <label><input type="checkbox" value="yandex" data-standalone-destination /> Яндекс Диск</label>
-                </fieldset>
-                <label>Что сохранить
-                  <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
-                </label>
-                <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
-                  <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
-                </label>
-                <details><summary>Контакты, пароли и переносимые настройки — только по выбору</summary>
-                  <p class="cloud-registration-warning">По умолчанию контакты и пароли не передаются. Поля ниже разрешают их отправку только в этот снимок или применение только при следующем принятии. Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, в том числе ранее переданные секреты.</p>
-                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
-                  <fieldset><legend>Приватные поля</legend>
-                    <label><input type="checkbox" value="email" data-standalone-private /> Email</label>
-                    <label><input type="checkbox" value="recoveryEmail" data-standalone-private /> Запасной email</label>
-                    <label><input type="checkbox" value="phone" data-standalone-private /> Телефон</label>
-                    <label><input type="checkbox" value="password" data-standalone-private /> Пароли</label>
-                  </fieldset>
-                  <label><input type="checkbox" id="cloud-standalone-contacts-confirm" /> Проверил полноту выбранных контактов. Перед их заменой сохранил отдельную копию: backup state.json не копирует Windows vault.</label>
-                  <label><input type="checkbox" id="cloud-standalone-password-risk" /> Разрешаю передачу или замену выбранных паролей и понимаю риск их раскрытия при утрате пароля шифрования.</label>
-                  <fieldset><legend>Настройки для сохранения</legend>
-                    <label><input type="checkbox" value="appearance" data-standalone-setting /> Тема</label>
-                    <label><input type="checkbox" value="navigation" data-standalone-setting /> Меню разделов</label>
-                    <label><input type="checkbox" value="planner" data-standalone-setting /> Вид календаря</label>
-                    <label><input type="checkbox" value="eventReminders" data-standalone-setting /> Напоминания</label>
-                  </fieldset>
-                </details>
-                <label><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ на этом ПК в защищённом хранилище ОС (не пароль и не открытые данные)</label>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn" id="cloud-standalone-save">Сохранить полный файл</button>
-                  <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить облачные файлы</button>
-                  <button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
-                </div>
-                <label><input type="checkbox" id="cloud-standalone-show-backups" /> При ручной проверке показать и резервные полные копии</label>
-                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">При запуске, после входа и каждые 5 минут проверяем оба подключённых диска. Проверка ничего не отправляет.</p>
-                <ul id="cloud-standalone-provider-results"></ul>
-                <div id="cloud-standalone-files"></div>
-                <section id="cloud-standalone-review" hidden>
-                  <h5>Различия перед полной заменой</h5>
-                  <p id="cloud-standalone-review-status"></p>
-                  <ul id="cloud-standalone-differences"></ul>
-                  <label id="cloud-standalone-backup-ack-label" hidden><input type="checkbox" id="cloud-standalone-backup-ack" /> Сохранил отдельную копию местных контактов удаляемых персонажей. Backup state.json не копирует Windows vault.</label>
-                  <div class="cloud-registration-actions">
-                    <button type="button" class="btn" id="cloud-standalone-accept">Принять полную облачную копию с резервной копией</button>
-                    <button type="button" class="btn ghost" id="cloud-standalone-decline">Оставить свои данные</button>
-                  </div>
-                </section>
-                <p class="muted">Каждый файл открывается самостоятельно, без исходного ПК и прежних версий. Прежние копии остаются резервными, дата не выбирает победителя. Сбой одного диска не отменяет успешное сохранение на другом. Если ответ потерялся, сначала проверяем результат, а не создаём новую версию. Реальные аккаунты и два Windows-ПК ещё требуют приёмки.</p>
-              </section>
-              <details id="cloud-standalone-legacy"><summary>Прежний режим: старые наборы, ключи и восстановление</summary>
+<details id="cloud-standalone-legacy"><summary>Прежний режим: старые наборы, ключи и восстановление</summary>
                 <p class="cloud-registration-warning">Существующие привязки, ключи, очереди и облачные файлы сохранены без миграции. Этот блок нужен только для прежних наборов. Для переноса откройте старый набор, примените нужные данные и затем сохраните новый самостоятельный файл кнопкой выше. Автоматическая отправка прежнего режима отключена.</p>
               <section class="cloud-setup" aria-labelledby="cloud-setup-title">
                 <h4 id="cloud-setup-title">2. Выберите, что подключить</h4>
@@ -826,6 +774,67 @@
               </fieldset>
               </details>
               </details>
+</details>
+
+              <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
+                <h4 id="cloud-standalone-title">Облачная копия</h4>
+                <p>Сохраните данные здесь. На другом ПК войдите в тот же аккаунт и нажмите «Проверить». Без вашего решения местные данные не заменяются.</p>
+                <fieldset id="cloud-standalone-destinations"><legend>Куда сохранить</legend>
+                  <label><input type="checkbox" value="google" data-standalone-destination /> Google Диск</label>
+                  <label><input type="checkbox" value="yandex" data-standalone-destination /> Яндекс Диск</label>
+                </fieldset>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn" id="cloud-standalone-save">Сохранить на диск</button>
+                  <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
+
+                </div>
+
+                <details id="cloud-standalone-options"><summary>Параметры файла</summary>
+                <label>Что сохранить
+                  <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
+                </label>
+                <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
+                  <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
+                </label>
+                <h5>Контакты и настройки — только по выбору</h5>
+                  <p class="cloud-registration-warning">По умолчанию контакты и пароли не передаются. Поля ниже разрешают их отправку только в этот снимок или применение только при следующем принятии. Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, в том числе ранее переданные секреты.</p>
+                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
+                  <fieldset><legend>Приватные поля</legend>
+                    <label><input type="checkbox" value="email" data-standalone-private /> Email</label>
+                    <label><input type="checkbox" value="recoveryEmail" data-standalone-private /> Запасной email</label>
+                    <label><input type="checkbox" value="phone" data-standalone-private /> Телефон</label>
+                    <label><input type="checkbox" value="password" data-standalone-private /> Пароли</label>
+                  </fieldset>
+                  <label><input type="checkbox" id="cloud-standalone-contacts-confirm" /> Проверил полноту выбранных контактов. Перед их заменой сохранил отдельную копию: backup state.json не копирует Windows vault.</label>
+                  <label><input type="checkbox" id="cloud-standalone-password-risk" /> Разрешаю передачу или замену выбранных паролей и понимаю риск их раскрытия при утрате пароля шифрования.</label>
+                  <fieldset><legend>Настройки для сохранения</legend>
+                    <label><input type="checkbox" value="appearance" data-standalone-setting /> Тема</label>
+                    <label><input type="checkbox" value="navigation" data-standalone-setting /> Меню разделов</label>
+                    <label><input type="checkbox" value="planner" data-standalone-setting /> Вид календаря</label>
+                    <label><input type="checkbox" value="eventReminders" data-standalone-setting /> Напоминания</label>
+                  </fieldset>
+
+                <label><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ на этом ПК в защищённом хранилище ОС (не пароль и не открытые данные)</label>
+<label><input type="checkbox" id="cloud-standalone-show-backups" /> При ручной проверке показать и резервные полные копии</label>
+<button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
+<p class="muted">Каждый файл открывается самостоятельно, без исходного ПК и прежних версий. Прежние копии остаются резервными, дата не выбирает победителя. Сбой одного диска не отменяет успешное сохранение на другом. Если ответ потерялся, сначала проверяем результат, а не создаём новую версию. Реальные аккаунты и два Windows-ПК ещё требуют приёмки.</p>
+                </details>
+                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
+                <ul id="cloud-standalone-provider-results"></ul>
+                <div id="cloud-standalone-files"></div>
+                <section id="cloud-standalone-review" hidden>
+                  <h5>Различия перед полной заменой</h5>
+                  <p id="cloud-standalone-review-status"></p>
+                  <ul id="cloud-standalone-differences"></ul>
+                  <label id="cloud-standalone-backup-ack-label" hidden><input type="checkbox" id="cloud-standalone-backup-ack" /> Сохранил отдельную копию местных контактов удаляемых персонажей. Backup state.json не копирует Windows vault.</label>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn" id="cloud-standalone-accept">Принять полную облачную копию с резервной копией</button>
+                    <button type="button" class="btn ghost" id="cloud-standalone-decline">Оставить свои данные</button>
+                  </div>
+                </section>
+
+              </section>
+
               <details class="cloud-activity" id="cloud-activity-panel">
                 <summary>Журнал синхронизации на этом ПК</summary>
                 <p>Только события и результаты без содержимого записей, паролей и кода сверки. Журнал хранится локально и пока не переносится между ПК; он не доказывает полноту облака.</p>

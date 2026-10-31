@@ -44,7 +44,8 @@ export function createStandaloneFileRuntime(native) {
   }
   async function open(provider, { createFolder }) {
     const local = await readNativeCredentialBinding({ provider, invoke: native.invoke });
-    if (local.status !== 'ready' || !local.binding) throw error('credential_missing');
+    if (local.status === 'empty') throw error('credential_missing');
+    if (local.status !== 'ready' || !local.binding) throw error('credential_blocked');
     const account = await digest(JSON.stringify([provider, local.binding.clientId, local.binding.accountKey]));
     let row = readStandaloneState(currentCloudStateSnapshot().settings)[provider];
     if (row.account !== null && row.account !== account) throw error('account_changed');
