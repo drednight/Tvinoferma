@@ -181,3 +181,18 @@ it('различает таймаут identity без раскрытия иск�
   }
   expect(cloudAccessDiagnostic(error)).toBe('identity_timeout');
 });
+
+it('ошибка повторной identity перед upload сохраняет старый account_unavailable и точный безопасный этап', async () => {
+  const f = fixture('yandex', { identityStatus: 403 });
+  const envelope = await encryptSnapshot({
+    snapshot: {},
+    recoveryKey: generateRecoveryKey(webcrypto),
+    datasetId,
+    versionId,
+    cryptoSource: webcrypto
+  });
+  const result = await f.session.upload({ envelope });
+  expect(result).toEqual({ status: 'account_unavailable' });
+  expect(cloudAccessDiagnostic(result)).toBe('identity_forbidden');
+  expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+});

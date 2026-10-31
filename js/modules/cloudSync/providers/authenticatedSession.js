@@ -4,7 +4,11 @@
 // не является очередью или межпроцессной блокировкой и не вызывается приложением.
 // Связка не доказывает стабильность ID провайдера, права на все файлы или то,
 // что доверенный fetch соблюдает TLS, CORS, запрет cookies и перенаправлений.
-import { cloudAccessDiagnostic, cloudAccessHttpDiagnostic } from './cloudAccessDiagnostics.js';
+import {
+  cloudAccessDiagnostic,
+  cloudAccessHttpDiagnostic,
+  withCloudAccessDiagnostic
+} from './cloudAccessDiagnostics.js';
 import { googleListRequest } from './googleDrive.js';
 import { yandexListRequest } from './yandexDisk.js';
 import { object } from '../exportSchema.js';
@@ -95,9 +99,14 @@ export function createAuthenticatedCloudSession(options) {
         const controller = new AbortController();
         found = await identity({ accessToken, clientId, signal: controller.signal });
       } catch (error) {
-        return {
-          status: diagnostic ? cloudAccessDiagnostic(error) || 'identity_transport_unavailable' : 'account_unavailable'
-        };
+        return withCloudAccessDiagnostic(
+          {
+            status: diagnostic
+              ? cloudAccessDiagnostic(error) || 'identity_transport_unavailable'
+              : 'account_unavailable'
+          },
+          cloudAccessDiagnostic(error)
+        );
       }
       if (found.accountKey !== accountKey) return { status: 'account_mismatch' };
       try {

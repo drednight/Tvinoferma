@@ -615,11 +615,19 @@ describe.each(['google', 'yandex'])('%s: первичная локальная �
         before
       );
       const queuedRoot = structuredClone(f.fake.queue(other));
-      expect((await connectAdditionalCloud(opts)).status).toBe('additional_connected');
+      // Unknown IPC outcome quarantines this JS context until restart.
+      expect((await connectAdditionalCloud(opts)).status).not.toBe('additional_connected');
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      vi.resetModules();
+      const { state, normalizeState } = await import('../js/core/state.js');
+      Object.assign(state, normalizeState(saved));
+      const resumed = await import('../js/modules/cloudSync/connectAdditionalCloud.js');
+      expect((await resumed.connectAdditionalCloud(opts)).status).toBe('additional_connected');
       expect(f.fake.queue(other)).toEqual(queuedRoot);
-      expect(
-        (await f.readLocalCloudPairingCode({ provider: other, invoke, cryptoSource: webcrypto })).pairingCode
-      ).toBe(first.pairingCode);
+      const { readLocalCloudPairingCode } = await import('../js/modules/cloudSync/initialCloudSetup.js');
+      expect((await readLocalCloudPairingCode({ provider: other, invoke, cryptoSource: webcrypto })).pairingCode).toBe(
+        first.pairingCode
+      );
       expect(JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) })).toBe(
         before
       );

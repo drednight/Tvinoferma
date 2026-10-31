@@ -38,6 +38,7 @@ export async function connectAdditionalCloud(options) {
   const keyOptions = { ...common, ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}) };
   let operation, baseline, session;
   let uncertainRefresh = false;
+  let uncertainWrite = false;
   try {
     operation = beginCloudDataOperation();
     const key = /** @type {any} */ (await createNativeKeyStateStore(keyOptions).read());
@@ -130,7 +131,9 @@ export async function connectAdditionalCloud(options) {
     else if (head.datasetId !== key.state.datasetId) return result('queue_blocked');
     const destination = queue(provider, head, store, account.binding, 'root');
     if (!(await baseline.stillCurrentAndSaved())) return result('state_changed_or_unsaved');
+    uncertainWrite = true;
     const initialized = await destination.initializeWithRoot(envelope, true);
+    uncertainWrite = initialized.status === 'journal_uncertain';
     if (initialized.status === 'already_initialized') {
       const pending = /** @type {any} */ (await destination.pendingInitializationRoot(key.state.pin));
       if (pending.status !== 'ready' || !same(pending.rootPin, rootPin)) return result('queue_blocked');
@@ -149,10 +152,18 @@ export async function connectAdditionalCloud(options) {
       rootPin,
       ...(provider === 'google' ? { folderId: 'root' } : {})
     });
+    uncertainWrite = true;
     const installed = await pins.install(binding.binding, true);
-    if (!['installed', 'occupied'].includes(installed.status)) return result('binding_not_installed');
+    if (!['installed', 'occupied'].includes(installed.status)) {
+      uncertainWrite = false;
+      return result('binding_not_installed');
+    }
     const saved = /** @type {any} */ (await pins.read());
-    if (saved.status !== 'ready' || saved.raw !== binding.raw) return result('setup_uncertain');
+    if (saved.status !== 'ready' || saved.raw !== binding.raw) {
+      uncertainWrite = true;
+      return result('setup_uncertain');
+    }
+    uncertainWrite = false;
     return result('additional_connected', {
       backup: baseline.backup,
       pairingCode: createPairingCode({ datasetId: key.state.datasetId, keyPin: key.state.pin, rootPin })
@@ -162,6 +173,6 @@ export async function connectAdditionalCloud(options) {
   } finally {
     session?.dispose?.();
     baseline?.close?.();
-    operation?.finish(uncertainRefresh);
+    operation?.finish(uncertainRefresh || uncertainWrite);
   }
 }

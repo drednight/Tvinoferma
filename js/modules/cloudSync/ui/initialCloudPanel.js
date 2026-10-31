@@ -602,7 +602,7 @@ export function bindInitialCloudPanel(options) {
           note(`${name(chosen)}: ${status(outcome.status)}${outcome.backup ? ` Копия: ${outcome.backup}.` : ''}`);
         } catch {
           record(chosen, 'additional', 'setup_uncertain');
-          note(status('setup_uncertain'));
+          if (generation === thisGeneration && selectedProvider() === chosen) note(status('setup_uncertain'));
         }
       })
   );
