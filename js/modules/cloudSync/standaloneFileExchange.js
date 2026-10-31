@@ -527,8 +527,17 @@ export function createStandaloneFileExchange(ports) {
             if (sourceWitness(ports.snapshot()) !== prepared.sourceWitness) throw fail('local_changed');
             if (config()[provider].pending) {
               opened = await connect(provider);
-              results.push(await confirmPending(provider, opened));
-              continue; // Do not implicitly replace the old attempt with a new one.
+              const previous = await confirmPending(provider, opened);
+              if (previous.status !== 'sent_verified') {
+                results.push(previous);
+                continue;
+              }
+              // The user explicitly confirmed saving the prepared CURRENT source.
+              // Settling an earlier receipt alone must not report that source sent.
+              // Only after exact settlement may this same manual action proceed;
+              // normal source/remote rechecks below still apply.
+              opened.session.dispose();
+              opened = null;
             }
             if (token.results.find(row => row.provider === provider)?.status === 'unavailable')
               throw fail('unavailable');

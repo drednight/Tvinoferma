@@ -493,6 +493,25 @@ describe('standalone exchange: two providers and two PCs', () => {
     f.engine.dispose();
     await expect(f.engine.check()).rejects.toThrow('closed');
   });
+  it('does not misreport settlement of an OLD upload as saving the newly confirmed current data', async () => {
+    const f = fixture();
+    f.failures.google = { verify: 'unavailable' };
+    const old = await f.engine.prepareSave({ targets: ['google'] });
+    await f.engine.save(old, { confirmed: true });
+    const oldVersion = f.calls.google[0].envelope.versionId;
+    f.local.characters[0].nick = 'Current data, not the previous attempt';
+    delete f.failures.google;
+    const current = await f.engine.prepareSave({ targets: ['google'] });
+    expect((await f.engine.save(current, { confirmed: true })).results[0].status).toBe('sent_verified');
+    expect(f.calls.google).toHaveLength(2);
+    expect(f.calls.google[1].envelope.versionId).not.toBe(oldVersion);
+    const opened = await openStandaloneFile({
+      envelope: f.calls.google[1].envelope,
+      unlocked: first.unlocked,
+      cryptoSource
+    });
+    expect(JSON.stringify(opened.contents.publicSnapshot)).toContain('Current data, not the previous attempt');
+  });
   it('does not require old history payloads even when opening a standalone file with missing ancestors', async () => {
     const orphan = await encryptSnapshot({
       snapshot: second.contents,
