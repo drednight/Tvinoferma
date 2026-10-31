@@ -404,7 +404,10 @@ export function createCloudUploadTransport(options) {
         cancelBody(sent.body);
         if (sent.status === 201) return { status: 'accepted' };
         if (sent.status === 202) return { status: 'pending' };
-        return { status: 'unknown' };
+        return withCloudAccessDiagnostic(
+          { status: 'unknown' },
+          cloudAccessHttpDiagnostic('upload_content', sent.status)
+        );
       }, 'upload');
     }
   });

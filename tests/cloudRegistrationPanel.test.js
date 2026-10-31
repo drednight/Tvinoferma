@@ -7,7 +7,7 @@ const html = readFileSync('index.html', 'utf8');
 const source = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const clientId = '0123456789abcdef0123456789abcdef';
 function byId(id) {
-  return document.getElementById(`cloud-registration-${id}`);
+  return document.getElementById(id === 'provider' ? 'cloud-login-provider' : `cloud-registration-${id}`);
 }
 function submit() {
   byId('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -99,9 +99,9 @@ describe('настоящие настройки: диагностика, дос�
       'Несколько одновременных облачных версий автоматически не объединяются'
     );
     expect(byId('panel').textContent).toContain('Настоящие диски и два Windows-ПК ещё требуют приёмки');
-    expect(document.getElementById('cloud-file-check')).toBeTruthy();
-    expect(document.getElementById('cloud-file-upload')).toBeTruthy();
-    expect(document.getElementById('cloud-legacy-exchange').open).toBe(false);
+    expect(document.getElementById('cloud-standalone-check')).toBeTruthy();
+    expect(document.getElementById('cloud-standalone-save')).toBeTruthy();
+    expect(document.getElementById('cloud-legacy-exchange')).toBeNull();
     expect(byId('panel').textContent).toContain('не сохраняет токены');
     expect(byId('panel').textContent).toContain('сохранить выданное разрешение');
     expect(byId('client-hint').textContent).toContain('не Client Secret');
@@ -109,9 +109,9 @@ describe('настоящие настройки: диагностика, дос�
     expect(byId('yandex-hint').textContent).toContain('http://127.0.0.1:37181/oauth/cloud/callback');
     expect(byId('yandex-hint').textContent).toContain('cloud_api:disk.app_folder');
     expect(byId('google-hint').hidden).toBe(true);
-    expect(document.getElementById('cloud-publication-send')).toBeTruthy();
-    expect(document.getElementById('cloud-publication-auto').checked).toBe(false);
-    expect(document.getElementById('cloud-review-check')).toBeTruthy();
+    expect(document.getElementById('cloud-publication-send')).toBeNull();
+    expect(document.getElementById('cloud-publication-auto')).toBeNull();
+    expect(document.getElementById('cloud-review-check')).toBeNull();
     expect(byId('cancel').hidden).toBe(true);
     expect(s.loadNative).not.toHaveBeenCalled();
   });
@@ -521,8 +521,8 @@ describe('обычный вход без диагностического кве
     await vi.waitFor(() => expect(s.readBinding).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(connection('simple').disabled).toBe(false));
     expect(s.enroll).not.toHaveBeenCalled();
-    expect(document.getElementById('cloud-setup-title').closest('section').hidden).toBe(true);
-    expect(document.getElementById('cloud-file-panel').hidden).toBe(true);
+    expect(document.getElementById('cloud-setup-title')).toBeNull();
+    expect(document.getElementById('cloud-file-panel')).toBeNull();
   });
   it('без Client ID открывает разовую настройку Яндекса, не браузер', async () => {
     const s = bind();
@@ -574,13 +574,53 @@ describe('обычный вход без диагностического кве
     expect(storage).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain('FAKE_DESKTOP_CONFIG_SECRET');
   });
-  it('показывает файловый обмен только после локальной привязки набора, не после разовой проверки', async () => {
+  it('не открывает прежний файловый обмен при входе в ранее привязанный аккаунт', async () => {
     const s = bind({ readBinding: vi.fn(async () => ready()), readDataset: vi.fn(async () => 'ready') });
     connection('simple').click();
-    await vi.waitFor(() => expect(document.getElementById('cloud-file-panel').hidden).toBe(false));
+    await vi.waitFor(() => expect(connection('simple').hidden).toBe(true));
+    expect(document.getElementById('cloud-file-panel')).toBeNull();
     expect(connection('simple').hidden).toBe(true);
     expect(s.enroll).not.toHaveBeenCalled();
-    expect(document.getElementById('cloud-setup-new').hidden).toBe(true);
+    expect(document.getElementById('cloud-setup-new')).toBeNull();
     expect(byId('client').value).toBe(clientId);
+  });
+});
+
+describe('Google JSON import failures are actionable and never expose file contents', () => {
+  it.each([
+    [JSON.stringify({ web: { client_secret: 'FAKE_ONLY_SECRET' } }), null, 'Это OAuth-клиент Web'],
+    [
+      JSON.stringify({
+        installed: { client_id: '123-example.apps.googleusercontent.com', client_secret: 'FAKE_ONLY_SECRET' }
+      }),
+      'oauth_client_config_client_changed',
+      'другому OAuth-приложению'
+    ],
+    [
+      JSON.stringify({
+        installed: { client_id: '123-example.apps.googleusercontent.com', client_secret: 'FAKE_ONLY_SECRET' }
+      }),
+      'PRIVATE_SIGNED_URL_FAKE_ONLY_SECRET',
+      'Импорт не подтверждён'
+    ]
+  ])('reports a safe reason without echoing input/IPC error', async (json, rejection, expected) => {
+    const invoke = vi.fn(async () => {
+      throw rejection;
+    });
+    bind({ loadNative: async () => ({ invoke, openBrowser: vi.fn() }) });
+    byId('provider').value = 'google';
+    byId('provider').dispatchEvent(new Event('change'));
+    const input = document.getElementById('cloud-google-import');
+    expect(input.closest('details').id).toBe('cloud-registration-panel');
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [{ size: json.length, text: async () => json }]
+    });
+    input.dispatchEvent(new Event('change'));
+    await vi.waitFor(() =>
+      expect(document.getElementById('cloud-google-config-status').textContent).toContain(expected)
+    );
+    expect(document.body.textContent).not.toContain('FAKE_ONLY_SECRET');
+    if (!rejection) expect(invoke).not.toHaveBeenCalled();
   });
 });

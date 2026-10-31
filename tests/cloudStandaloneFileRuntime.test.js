@@ -31,6 +31,9 @@ async function fixture() {
     accessToken: 'FAKE_ACCESS',
     expiresAt: Date.now() + 3600000
   });
+  const { cloudAccessDiagnostic: diagnostic } =
+    await import('../js/modules/cloudSync/providers/cloudAccessDiagnostics.js');
+  const failures = {};
   const disk = new Map();
   let puts = 0;
   const reply = (body, status = 200) => ({
@@ -48,6 +51,7 @@ async function fixture() {
       if (command === 'cloud_simple_key_read') return null;
       if (command !== 'cloud_disk_network') throw new Error('Unknown synthetic command');
       const args = wrapped.args;
+      if (failures[args.operation]) return { status: failures[args.operation], contentType: null, body: '' };
       if (args.operation === 'identity') return reply({ client_id: binding.clientId, psuid: binding.accountKey });
       if (args.operation === 'list') {
         const items = [...disk.keys()].map(name => ({ name, type: 'file', modified: '2026-10-31T10:00:00Z' }));
@@ -98,6 +102,8 @@ async function fixture() {
   await saveNow();
   return {
     state,
+    failures,
+    diagnostic,
     normalizeState,
     saveNow,
     native,
@@ -181,7 +187,8 @@ describe('standalone UI through real runtime and guarded storage', () => {
     try {
       const save = document.getElementById('cloud-standalone-save');
       await vi.waitFor(() => expect(save.disabled).toBe(false));
-      expect(document.querySelector('[data-standalone-destination]:checked').value).toBe('yandex');
+      expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
+      document.querySelector('[data-standalone-destination][value=yandex]').checked = true;
       save.click();
       await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
       const dialog = document.querySelector('dialog');
@@ -208,4 +215,42 @@ describe('standalone UI through real runtime and guarded storage', () => {
       controller.dispose();
     }
   });
+});
+
+it('keeps the encrypted intent after Yandex upload-link denial and reports the precise stage on continuation', async () => {
+  const f = await fixture();
+  f.failures.upload_link = 403;
+  const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+  const saved = await f.runtime.save(prepared, { confirmed: true });
+  expect(saved.results[0].status).toBe('verification_pending');
+  expect(f.diagnostic(saved.results[0])).toBe('upload_link_forbidden');
+  const pending = structuredClone(f.state.settings.cloudStandaloneFiles.yandex.pending);
+  const continued = await f.runtime.continuePending('yandex');
+  expect(f.diagnostic(continued)).toBe('upload_link_forbidden');
+  expect(f.puts).toBe(0);
+  expect(f.state.settings.cloudStandaloneFiles.yandex.pending.envelope).toEqual(pending.envelope);
+  expect(JSON.stringify(continued)).not.toContain('FAKE_ACCESS');
+});
+it('reports download denial without another blind retry or clearing the pending intent; read-only list errors retain their stage', async () => {
+  const f = await fixture();
+  f.failures.download_link = 403;
+  const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+  const saved = await f.runtime.save(prepared, { confirmed: true });
+  expect(saved.results[0].status).toBe('verification_pending');
+  expect(f.diagnostic(saved.results[0])).toBe('download_link_forbidden');
+  expect(f.puts).toBe(1);
+  const before = f.native.invoke.mock.calls.filter(
+    ([c, a]) => c === 'cloud_disk_network' && a.args.operation === 'download_link'
+  ).length;
+  const continued = await f.runtime.continuePending('yandex');
+  const after = f.native.invoke.mock.calls.filter(
+    ([c, a]) => c === 'cloud_disk_network' && a.args.operation === 'download_link'
+  ).length;
+  expect(after - before).toBe(1);
+  expect(f.diagnostic(continued)).toBe('download_link_forbidden');
+  expect(f.puts).toBe(1);
+  expect(f.state.settings.cloudStandaloneFiles.yandex.pending).not.toBeNull();
+  f.failures.list = 503;
+  const checked = await f.runtime.check();
+  expect(f.diagnostic(checked.results.find(row => row.provider === 'yandex'))).toBe('disk_service_unavailable');
 });

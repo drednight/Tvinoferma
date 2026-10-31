@@ -1,3 +1,4 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
@@ -77,7 +78,7 @@ async function mountPreparation({ damagedId = false, saveFails = false } = {}) {
   localStorage.clear();
   vi.stubGlobal('crypto', webcrypto);
   const { readFileSync } = await import('node:fs');
-  const parsed = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+  const parsed = new DOMParser().parseFromString(legacyCloudHtml(readFileSync('index.html', 'utf8')), 'text/html');
   document.body.innerHTML = parsed.getElementById('cloud-registration-panel').outerHTML;
   document.getElementById('cloud-registration-provider').value = 'google';
   const { state, normalizeState } = await import('../js/core/state.js');

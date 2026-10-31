@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Simple immutable full-file exchange. No connectedPublication, legacy outbox,
 // root, history materialisation, pairing, merge or automatic publication.
 // Previous copies are optional backups; authenticated supersedes pins only hide
@@ -173,7 +174,8 @@ export function createStandaloneFileExchange(ports) {
   }
   async function readCopies(provider, opened, fresh = false) {
     const listed = await opened.session.listWithDates();
-    if (listed.status !== 'listed' || !Array.isArray(listed.versions)) throw fail('list_unavailable');
+    if (listed.status !== 'listed' || !Array.isArray(listed.versions))
+      throw withCloudAccessDiagnostic(fail('list_unavailable'), cloudAccessDiagnostic(listed));
     const result = [];
     for (const item of listed.versions) {
       const cacheKey = `${provider}:${opened.account}:${item.versionId}`;
@@ -292,11 +294,16 @@ export function createStandaloneFileExchange(ports) {
         entries.push(...copies);
         results.push({ provider, status: 'checked', count: copies.length });
       } catch (error) {
-        results.push({
-          provider,
-          status: providerFailure(error),
-          ...(error.message === 'folder_ambiguous' ? { folders: error.folders } : {})
-        });
+        results.push(
+          withCloudAccessDiagnostic(
+            {
+              provider,
+              status: providerFailure(error),
+              ...(error.message === 'folder_ambiguous' ? { folders: error.folders } : {})
+            },
+            cloudAccessDiagnostic(error)
+          )
+        );
       } finally {
         opened?.session?.dispose();
       }
@@ -310,7 +317,15 @@ export function createStandaloneFileExchange(ports) {
     const args = { envelope: pending.envelope, ...(pending.fileId ? { fileId: pending.fileId } : {}) };
     const verified = await opened.session.verify(args);
     if (verified.status !== 'verified')
-      return { provider, status: verified.status === 'mismatch' ? 'content_mismatch' : 'verification_pending' };
+      return withCloudAccessDiagnostic(
+        { provider, status: verified.status === 'mismatch' ? 'content_mismatch' : 'verification_pending' },
+        cloudAccessDiagnostic(verified) ||
+          (verified.status === 'not_found'
+            ? 'verification_not_found'
+            : verified.status === 'mismatch'
+              ? 'verification_mismatch'
+              : 'verification_transport_unavailable')
+      );
     await patch(cfg => {
       const row = cfg[provider];
       if (JSON.stringify(row.pending) !== JSON.stringify(pending)) throw fail('pending_changed');
@@ -628,12 +643,20 @@ export function createStandaloneFileExchange(ports) {
             if (sourceWitness(ports.snapshot()) !== prepared.sourceWitness) throw fail('local_changed');
             // The durable intent exists before the ONLY upload call. Regardless of
             // HTTP success/failure/timeout, only exact readback may report success.
+            let uploadDiagnostic;
             try {
-              await opened.session.upload({ envelope: pending.envelope, ...(fileId ? { fileId } : {}) });
+              uploadDiagnostic = cloudAccessDiagnostic(
+                await opened.session.upload({ envelope: pending.envelope, ...(fileId ? { fileId } : {}) })
+              );
             } catch {
               /* Verify uncertain outcomes; never create another version. */
             }
-            results.push(await confirmPending(provider, opened));
+            const verified = await confirmPending(provider, opened);
+            results.push(
+              verified.status === 'sent_verified'
+                ? verified
+                : withCloudAccessDiagnostic(verified, uploadDiagnostic || cloudAccessDiagnostic(verified))
+            );
           } catch (error) {
             const code = ['local_changed', 'remote_changed', 'account_changed'].includes(error.message)
               ? error.message
@@ -667,23 +690,25 @@ export function createStandaloneFileExchange(ports) {
           const checked = await confirmPending(provider, opened);
           if (checked.status !== 'verification_pending') return checked;
           const pending = config()[provider].pending;
-          const current = await opened.session.verify({
-            envelope: pending.envelope,
-            ...(pending.fileId ? { fileId: pending.fileId } : {})
-          });
-          if (current.status !== 'not_found') return checked;
+          if (cloudAccessDiagnostic(checked) !== 'verification_not_found') return checked;
           await patch(cfg => {
             cfg[provider].pending.phase = 'attempting';
           });
+          let uploadDiagnostic;
           try {
-            await opened.session.upload({
-              envelope: pending.envelope,
-              ...(pending.fileId ? { fileId: pending.fileId } : {})
-            });
+            uploadDiagnostic = cloudAccessDiagnostic(
+              await opened.session.upload({
+                envelope: pending.envelope,
+                ...(pending.fileId ? { fileId: pending.fileId } : {})
+              })
+            );
           } catch {
             /* Exact readback remains the only success signal. */
           }
-          return await confirmPending(provider, opened);
+          const verified = await confirmPending(provider, opened);
+          return verified.status === 'sent_verified'
+            ? verified
+            : withCloudAccessDiagnostic(verified, uploadDiagnostic || cloudAccessDiagnostic(verified));
         } finally {
           opened?.session?.dispose();
         }

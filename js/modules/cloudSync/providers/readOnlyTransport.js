@@ -4,7 +4,11 @@
 // разрешённого запроса; безопасное хранение и стирание из памяти не гарантируются. Не логировать
 // запросы, заголовки, временные ссылки или ошибки fetch. Разрешения, CORS, Tauri и поставщики
 // требуют проверки до использования с пользовательским аккаунтом.
-import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
+import {
+  cloudAccessDiagnostic,
+  cloudAccessHttpDiagnostic,
+  withCloudAccessDiagnostic
+} from './cloudAccessDiagnostics.js';
 import { object, oneOf } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { versionFileName } from './common.js';
@@ -168,6 +172,12 @@ export function createReadOnlyCloudTransport(options) {
     async send(request) {
       // Фиксируем проверенные URL/заголовки до первого await; тело запроса не допускается.
       const checked = checkedRequest(request, provider);
+      const stage =
+        request.credential === 'yandex-download'
+          ? 'download_content'
+          : new URL(checked.url).pathname.endsWith('/download')
+            ? 'download_link'
+            : 'disk';
       if (active >= MAX_IN_FLIGHT) throw new Error('Слишком много одновременных запросов к диску');
       active++;
       const controller = new AbortController();
@@ -176,7 +186,7 @@ export function createReadOnlyCloudTransport(options) {
         const timeout = new Promise((_, reject) => {
           timer = setTimeout(() => {
             controller.abort();
-            reject(withCloudAccessDiagnostic(networkError(), 'disk_timeout'));
+            reject(withCloudAccessDiagnostic(networkError(), `${stage}_timeout`));
           }, timeoutMs);
         });
         const read = async () => {
@@ -209,7 +219,10 @@ export function createReadOnlyCloudTransport(options) {
             } catch {
               /* ответ ошибки не читаем и не раскрываем */
             }
-            return { status: response.status, body: '' };
+            return withCloudAccessDiagnostic(
+              { status: response.status, body: '' },
+              cloudAccessHttpDiagnostic(stage, response.status)
+            );
           }
           return {
             status: 200,
@@ -227,7 +240,10 @@ export function createReadOnlyCloudTransport(options) {
         // Оборвать также слишком большое или ошибочное тело, если заголовки уже получены.
         controller.abort();
         // fetch может включить токен или подписанный URL в текст своей ошибки.
-        throw withCloudAccessDiagnostic(networkError(), cloudAccessDiagnostic(error));
+        throw withCloudAccessDiagnostic(
+          networkError(),
+          cloudAccessDiagnostic(error) || `${stage}_transport_unavailable`
+        );
       } finally {
         clearTimeout(timer);
       }

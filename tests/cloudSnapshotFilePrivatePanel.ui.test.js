@@ -1,7 +1,8 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindSnapshotFilePrivatePanel } from '../js/modules/cloudSync/ui/snapshotFilePrivatePanel.js';
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const el = id => document.getElementById(`cloud-file-private-${id}`);
 const rows = [
   {

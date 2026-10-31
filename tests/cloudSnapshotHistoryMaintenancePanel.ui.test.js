@@ -1,8 +1,9 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { bindSnapshotHistoryMaintenancePanel } from '../js/modules/cloudSync/ui/snapshotHistoryMaintenancePanel.js';
 import { cloudActivity, clearCloudActivity } from '../js/modules/cloudSync/cloudEventLog.js';
-const html = readFileSync('index.html', 'utf8'),
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8')),
   el = id => document.getElementById('cloud-history-' + id);
 function setup(extra = {}) {
   const api = {

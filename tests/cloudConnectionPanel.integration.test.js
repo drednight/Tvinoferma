@@ -1,3 +1,4 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 // Вся цепочка панели до поддельного IPC/провайдера. Настоящих токенов, Tauri и облаков здесь нет.
 import { readFileSync } from 'node:fs';
@@ -9,7 +10,7 @@ import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.j
 import { parseGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { parseYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const panel = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const CLIENT = {
   google: '123456789-test_client.apps.googleusercontent.com',
@@ -20,7 +21,7 @@ const ACCOUNT = 'FAKE_ONLY_PRIVATE_ACCOUNT';
 const LABEL = { google: 'fake-user@example.test', yandex: 'fake-user' };
 const CODE = 'FAKE_ONLY_CODE';
 const json = body => ({ body: JSON.stringify(body), contentType: 'application/json; charset=utf-8' });
-const reg = id => document.getElementById(`cloud-registration-${id}`);
+const reg = id => document.getElementById(id === 'provider' ? 'cloud-login-provider' : `cloud-registration-${id}`);
 const conn = id => document.getElementById(`cloud-connection-${id}`);
 const parse = (provider, record) =>
   provider === 'google' ? parseGoogleCredentialRecord(record) : parseYandexCredentialRecord(record);

@@ -1,7 +1,8 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindSnapshotFilePanel } from '../js/modules/cloudSync/ui/snapshotFilePanel.js';
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const el = id => document.getElementById(`cloud-file-${id}`);
 const view = extra => ({
   status: 'ready',

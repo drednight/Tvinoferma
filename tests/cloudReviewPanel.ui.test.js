@@ -1,3 +1,4 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,7 +6,7 @@ import { bindCloudReviewPanel } from '../js/modules/cloudSync/ui/cloudReviewPane
 import { state } from '../js/core/state.js';
 import { addPendingConservativeMerge } from '../js/modules/cloudSync/pendingConservativeMerge.js';
 
-const html = readFileSync('index.html', 'utf8');
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const pin = { versionId: '11111111-1111-4111-8111-111111111111', sha256: 'a'.repeat(64) };
 const ids = {
   incoming: '22222222-2222-4222-8222-222222222222',

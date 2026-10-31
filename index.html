@@ -471,13 +471,16 @@
               <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
               <h4>Подключение диска</h4>
               <p>Войдите в нужные аккаунты. Можно подключить оба диска.</p>
-                  <label for="cloud-registration-provider">Облачный диск
-                    <select class="input" id="cloud-registration-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select>
+                  <label for="cloud-login-provider">Войти через
+                    <select class="input" id="cloud-login-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select>
                   </label>
               <div class="cloud-registration-actions">
                 <button type="button" class="btn" id="cloud-connection-simple">Войти</button>
                 <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
               </div>
+<label id="cloud-google-import-label">Настройка входа Google: JSON клиента Desktop
+                  <input id="cloud-google-import" type="file" accept=".json,application/json" />
+                </label>
               <p id="cloud-google-config-status" class="muted" role="status"></p>
               <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
               <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
@@ -486,9 +489,7 @@
               <p class="cloud-registration-warning"><strong>Обмен файлами — экспериментальный режим.</strong> Доступны проверка полного снимка, просмотр различий, подтверждённая замена местных данных и ручная отправка. Отсутствующие записи удаляются только при явно подтверждённой полной замене. Прежние облачные версии сохраняются. Несколько одновременных облачных версий автоматически не объединяются. Итоговый полный файл выбирается явно. Настоящие диски и два Windows-ПК ещё требуют приёмки.</p>
                 <p>Разовая проверка не сохраняет токены. Сервис может сохранить выданное разрешение даже после отмены. Отзыв разрешения в аккаунте может отключить другие устройства.</p>
                 <p>Обычным пользователям не нужна регистрация своего приложения, если сборка уже настроена владельцем. Если нет — владелец один раз регистрирует OAuth-приложение. Для Google скачайте JSON клиента типа Desktop и выберите его здесь; пароль или секрет в Client ID не вставляйте.</p>
-                <label id="cloud-google-import-label">Google: импортировать Desktop JSON
-                  <input id="cloud-google-import" type="file" accept=".json,application/json" />
-                </label>
+
               <form id="cloud-registration-form" autocomplete="off" novalidate>
                 <div class="cloud-registration-fields">
 
@@ -530,250 +531,7 @@
                   <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
                 </details>
               </section>
-<details id="cloud-standalone-legacy"><summary>Прежний режим: старые наборы, ключи и восстановление</summary>
-                <p class="cloud-registration-warning">Существующие привязки, ключи, очереди и облачные файлы сохранены без миграции. Этот блок нужен только для прежних наборов. Для переноса откройте старый набор, примените нужные данные и затем сохраните новый самостоятельный файл кнопкой выше. Автоматическая отправка прежнего режима отключена.</p>
-              <section class="cloud-setup" aria-labelledby="cloud-setup-title">
-                <h4 id="cloud-setup-title">2. Выберите, что подключить</h4>
-                <p>Сначала войдите в аккаунт выше. Если на другом ПК уже настроен этот набор — подключите существующий, не создавайте новый. При подготовке нового набора данные сохраняются и ID подготавливаются автоматически с резервной копией. Облако не удаляется.</p>
-                <p class="cloud-registration-warning">Здесь отправляется первый снимок. Последующие сохранения отправляются в отдельном блоке ниже; объединение расходящихся облачных ветвей пока не работает. Google использует корень «Моего диска», Яндекс — папку приложения. Настоящие аккаунты ещё не проверены. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
-                <p class="muted">Можно пользоваться Google Диском, Яндекс Диском или обоими. Выберите нужный диск выше. Если набор уже настроен на другом диске этого ПК — подключите этот же набор кнопкой ниже, без нового пароля и без отключения первого диска. Отправка и проверка выполняются отдельно для выбранного диска.</p>
-                <details class="cloud-setup-fold" id="cloud-setup-new">
-                  <summary>Новый набор — это мой первый ПК</summary>
-                  <div class="cloud-setup-fields">
-                    <label>Основной секрет
-                      <select class="input" id="cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
-                    </label>
-                    <label>Пароль или основной ключ
-                      <input class="input" id="cloud-setup-main" type="password" maxlength="1024" autocomplete="new-password" />
-                    </label>
-                    <label>Повторите основной секрет
-                      <input class="input" id="cloud-setup-main-repeat" type="password" maxlength="1024" autocomplete="new-password" />
-                    </label>
-                    <label>Запасной ключ
-                      <select class="input" id="cloud-setup-backup-kind"><option value="generated">Создать случайный</option><option value="custom">Задать свой</option></select>
-                    </label>
-                    <label id="cloud-setup-custom-label" hidden>Мой запасной ключ
-                      <input class="input" id="cloud-setup-custom" type="password" maxlength="1024" autocomplete="new-password" />
-                    </label>
-                  </div>
-                  <p>Новые секреты: не менее 8 символов, разные для основного и запасного. Слабый пароль можно подбирать по облачному файлу. Сохраните запасной ключ отдельно: без ключей и других копий восстановление невозможно.</p>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-new-approve" /> <span>Я создаю именно новый независимый набор. Старое облако может существовать; оно не проверяется и не будет удалено.</span></label>
-                  <div class="cloud-registration-actions">
-                    <button type="button" class="btn" id="cloud-setup-create">Подготовить новый набор</button>
-                    <button type="button" class="btn" id="cloud-setup-check-data">Проверить данные без изменений</button>
-                    <button type="button" class="btn ghost" id="cloud-setup-resume">Продолжить после прерванной настройки</button>
-                  </div>
-                  <div class="cloud-setup-confirm" id="cloud-setup-confirm" hidden>
-                    <p>Сохраните запасной ключ отдельно от этого компьютера. Повторите его вручную: до подтверждения ключ и очередь на ПК не устанавливаются.</p>
-                    <label id="cloud-setup-generated-label" hidden>Созданный запасной ключ
-                      <input class="input" id="cloud-setup-generated" type="password" readonly autocomplete="off" />
-                    </label>
-                    <button type="button" class="btn ghost small" id="cloud-setup-reveal" hidden>Показать запасной ключ</button>
-                    <label>Введите сохранённый запасной ключ
-                      <input class="input" id="cloud-setup-backup-confirm" type="password" maxlength="1024" autocomplete="off" />
-                    </label>
-                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-saved" /> <span>Я отдельно сохранил запасной ключ и смогу найти его без этого ПК.</span></label>
-                    <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button type="button" class="btn ghost" id="cloud-setup-cancel">Отменить</button></div>
-                  </div>
-                </details>
-                <details class="cloud-setup-fold" id="cloud-setup-existing">
-                  <summary>Существующий набор — у меня уже есть другой ПК</summary>
-                  <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
-                  <label>Код сверки
-                    <textarea class="input" id="cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>
-                  </label>
-                  <label>Способ восстановления
-                    <select class="input" id="cloud-recovery-role"><option value="main">Пароль или основной ключ</option><option value="backup">Запасной ключ</option><option value="existing">Уже сохранённый внутренний ключ на этом ПК</option></select>
-                  </label>
-                  <label id="cloud-recovery-secret-label">Пароль или ключ
-                    <input class="input" id="cloud-recovery-secret" type="password" maxlength="1024" autocomplete="off" />
-                  </label>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-recovery-approve" /> <span>Я получил код от доверенного ПК отдельно от облачного файла и проверил выбранный аккаунт.</span></label>
-                  <label class="cloud-connection-ack" id="cloud-recovery-reviewed-label" hidden><input type="checkbox" id="cloud-recovery-reviewed" /> <span>Я выбрал версию и изучил предварительное сравнение ниже.</span></label>
-                  <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-recovery-check">Сравнить перед подключением</button><button type="button" class="btn ghost" id="cloud-recovery-connect" hidden>Подтвердить подключение</button><button type="button" class="btn ghost" id="cloud-recovery-cancel" hidden>Отменить</button></div>
-                </details>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn ghost" id="cloud-setup-show-code">Показать код сверки этого ПК</button>
-                  <button type="button" class="btn ghost" id="cloud-setup-connect-additional">Подключить этот же набор ко второму диску</button>
-                  <button type="button" class="btn ghost" id="cloud-setup-inspect-send">Проверить местную готовность</button>
-                  <button type="button" class="btn ghost" id="cloud-setup-check-access">Проверить доступ через API</button>
-                  <button type="button" class="btn" id="cloud-setup-send-root">Отправить первый снимок</button>
-                </div>
-                <label id="cloud-setup-code-label" hidden>Код сверки — передавайте отдельно от облака
-                  <textarea class="input" id="cloud-setup-code" rows="3" readonly spellcheck="false"></textarea>
-                </label>
-                <p class="cloud-registration-status" id="cloud-setup-status" role="status" aria-live="polite">Ожидание действия. Данные не отправлены.</p>
-              </section>
-              <section class="cloud-review" id="cloud-file-panel" aria-labelledby="cloud-file-title">
-                <h4 id="cloud-file-title">Обмен полным файлом</h4>
-                <p>Проверьте файл на выбранном диске, посмотрите различия и подтвердите замену. «Отправить на диск» сохраняет полный снимок местных данных, включая удаления и порядок, без автоматического объединения. Прежние зашифрованные версии остаются резервными копиями.</p>
-                <p class="muted">Сначала подключите или восстановите набор выше. Проверка ничего не записывает. При отправке местные данные сохраняются, недостающие ID подготавливаются с резервной копией; отдельная подготовка ID нужна, только если проверка остановлена. Переносятся публичные записи и настройки, выбранные при создании набора; местные входы, cookies и пути не переносятся. Новые контакты и пароли автоматически не выгружаются; ручной выбор — в отдельном свёрнутом блоке ниже. Уже переданная приватная часть сохраняется в шифрованном виде, если совместима с новым снимком. Перед переходом обновите все ПК.</p>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn" id="cloud-file-check">Проверить / скачать файл</button>
-                  <button type="button" class="btn" id="cloud-file-upload">Отправить на диск</button>
-                </div>
-                <details><summary>Подготовка данных и восстановление отправки</summary>
-                  <div class="cloud-registration-actions">
-                    <button type="button" class="btn ghost" id="cloud-file-prepare">Подготовить ID</button>
-                    <button type="button" class="btn ghost" id="cloud-file-resume">Проверить незавершённую отправку</button>
-                    <button type="button" class="btn ghost" id="cloud-file-release">Отменить подготовку / снять ожидание</button>
-                  </div>
-                </details>
-                <p class="muted">Если подготовленный файл устарел, отмените подготовку и отправьте текущие данные заново. Для начатой загрузки сначала проверьте результат. Снятие неизвестного ожидания не отменяет запрос на диске: прежний файл ещё может появиться; резервная копия и его отпечаток сохраняются.</p>
-                <p id="cloud-file-status" role="status" aria-live="polite">Файл ещё не проверялся. Проверка сама не заменяет данные.</p>
-                <p class="muted" id="cloud-file-other"></p>
-                <div id="cloud-file-choices" hidden aria-label="Выбор облачного файла"></div>
-                <p id="cloud-file-capacity" class="muted" hidden></p>
-                <div id="cloud-file-result" hidden>
-                  <p class="muted" id="cloud-file-times"></p>
-                  <p id="cloud-file-summary"></p>
-                  <ul class="cloud-review-list" id="cloud-file-list"></ul>
-                  <button type="button" class="btn danger" id="cloud-file-apply">Заменить данные файлом с диска</button>
-                  <button type="button" class="btn" id="cloud-file-resolve" hidden>Сделать выбранный файл актуальным на диске</button>
-                </div>
-              </section>
-              <details class="cloud-review" id="cloud-file-private">
-                <summary>Пароли и контакты · отдельный ручной перенос</summary>
-                <p><strong>Риск раскрытия:</strong> все, у кого есть ключ набора, смогут расшифровать переданные контакты. По умолчанию ничего не выбрано. Разрешения действуют только на одну подготовленную партию; обычная отправка новых местных контактов не добавляет. В списке показываются только факты различий, не значения.</p>
-                <fieldset><legend>Категории для этой операции</legend>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="email" /> Email</label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="recoveryEmail" /> Запасная почта</label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="phone" /> Телефон</label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="password" /> Пароль</label>
-                </fieldset>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-source" /> Подтверждаю полноту местных контактов и доступность их хранилища. Пустое выбранное поле означает явную очистку.</label>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-risk" /> Отдельно принимаю риск передачи или замены пароля.</label>
-                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-file-private-prepare">Подготовить контакты к отправке</button><button type="button" class="btn ghost" id="cloud-file-private-check">Сравнить контакты с диском</button></div>
-                <p id="cloud-file-private-status" role="status" aria-live="polite">Контакты не выбраны и не передавались.</p>
-                <div id="cloud-file-private-result" hidden>
-                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-file-private-all">Выбрать все</button><button type="button" class="btn ghost small" id="cloud-file-private-none">Снять все</button></div>
-                  <div id="cloud-file-private-list" class="cloud-review-list"></div>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-backup" /> Создал отдельную копию прежних контактов. Копия state.json не является копией Windows vault.</label>
-                  <button type="button" class="btn danger" id="cloud-file-private-send" hidden>Отправить полный файл с выбранными контактами</button>
-                  <button type="button" class="btn danger" id="cloud-file-private-apply" hidden>Применить только выбранные контакты</button>
-                </div>
-              </details>
-              <details class="cloud-review" id="cloud-history-archive">
-                <summary>Архив, сокращение истории и восстановление</summary>
-                <p>Сначала сохраните и сверьте <strong>всю зашифрованную историю</strong>. Затем можно создать контрольный полный файл принятой облачной версии и отдельно перенести старые версии в корзину. Корневой и новый контрольный файлы остаются. Лимит активной истории — 128 версий / 64 MiB. Старые клиенты нужно обновить до очистки.</p>
-                <p class="muted">Архив содержит только уже отправленные зашифрованные снимки и код сверки. В старых версиях могут оставаться ранее переданные пароли. Ключа и OAuth-токенов в нём нет: сохраните основной пароль или запасной ключ отдельно. Это не копия местных данных или Windows vault. Несколько облачных голов сохраняются без выбора победителя. Незавершённые и неизвестные попытки сначала нужно согласовать.</p>
-                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-prepare">Подготовить зашифрованный архив</button><button type="button" class="btn ghost" id="cloud-history-download" disabled>Сохранить архив</button></div>
-                <label class="cloud-connection-ack">Выберите сохранённый архив для проверки чтением <input type="file" id="cloud-history-file" accept=".json,.tf-history.json,application/json" disabled /></label>
-                <button type="button" class="btn ghost" id="cloud-history-verify" disabled>Сверить сохранённый файл</button>
-                <p id="cloud-history-status" role="status" aria-live="polite">Архив не подготовлен. Облачные файлы не изменялись.</p>
-                <fieldset id="cloud-history-maintenance">
-                  <legend>Явное сокращение истории</legend>
-                  <p class="muted">Это не отправка местных правок: контрольный файл точно копирует принятую облачную версию. Сначала примите нужный файл в основном блоке. Остальные ПК должны быть остановлены и обновлены: Google проверяется с ETag, у Яндекса нет атомарной блокировки между проверкой и удалением. Не меняйте облачную папку вручную во время очистки.</p>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-paused" /> Все остальные ПК остановлены; старые клиенты обновлю перед следующим запуском</label>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-key-backup" /> Пароль или запасной ключ сохранён отдельно от архива</label>
-                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-carry" /> Сохранить уже отправленные зашифрованные контакты в контрольном файле; новые местные контакты не брать</label>
-                  <button type="button" class="btn ghost" id="cloud-history-checkpoint" disabled>Создать контрольный полный файл</button>
-                  <label class="cloud-connection-ack">Сохранённый архив для очистки или восстановления <input type="file" id="cloud-history-maintenance-file" accept=".json,.tf-history.json,application/json" /></label>
-                  <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-cleanup-review" disabled>Проверить возможность очистки</button><button type="button" class="btn danger" id="cloud-history-cleanup" disabled>Переместить старые файлы в корзину</button><button type="button" class="btn ghost" id="cloud-history-cleanup-release">Снять неизвестное ожидание очистки…</button></div>
-                  <p class="muted">Неизвестный запрос не повторяется автоматически. После перезапуска снова выберите архив и проверьте очистку. Снятие ожидания не отменяет запрос: старый файл ещё может попасть в корзину.</p>
-                  <details id="cloud-history-restore">
-                    <summary>Восстановить местные данные из архива</summary>
-                    <p>Архив проверяется по ключу и корневому отпечатку этой привязки. Выберите версию и просмотрите изменения. Полная замена включает удаления; перед ней создаётся местная копия. Принятая облачная база не меняется, файл на диске не перезаписывается. Контакты не выбираются автоматически.</p>
-                    <button type="button" class="btn ghost" id="cloud-history-inspect" disabled>Прочитать версии архива</button>
-                    <label>Версия <select id="cloud-history-version" disabled><option value="">Сначала прочитайте архив</option></select></label>
-                    <div id="cloud-history-private-fields">
-                      <label><input type="checkbox" value="email" /> Email</label><label><input type="checkbox" value="recoveryEmail" /> Запасной email</label><label><input type="checkbox" value="phone" /> Телефон</label><label><input type="checkbox" value="password" /> Пароль</label>
-                    </div>
-                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-consent" /> Явно разрешаю сравнение выбранных контактов архива</label>
-                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-password-risk" /> Понимаю опасность восстановления старых паролей и хранения их в архиве</label>
-                    <button type="button" class="btn ghost" id="cloud-history-restore-review" disabled>Показать изменения выбранной версии</button>
-                    <ul id="cloud-history-restore-differences"></ul>
-                    <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-restore-all" disabled>Выбрать все контакты</button><button type="button" class="btn ghost" id="cloud-history-restore-none" disabled>Снять все контакты</button></div>
-                    <div id="cloud-history-restore-contacts"></div>
-                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-backup" /> Отдельная копия местных контактов и Windows vault сохранена: обычный backup приложения может не содержать их</label>
-                    <button type="button" class="btn danger" id="cloud-history-restore-apply" disabled>Заменить местные данные выбранной версией…</button>
-                  </details>
-                  <p id="cloud-history-maintenance-status" role="status" aria-live="polite">Контрольный файл и очистка не запускались.</p>
-                </fieldset>
-              </details>
-              <details class="cloud-activity" id="cloud-legacy-exchange">
-                <summary>Прежний режим · завершить старые операции</summary>
-                <p class="muted">Если осталась очередь прежнего режима, сначала завершите её здесь. Старая автоотправка отключена. После начала перехода на файловый режим эти действия блокируются для выбранного диска, чтобы два режима не изменяли данные одновременно. Для новых ручных партий используйте отдельный блок паролей и контактов выше.</p>
-              <fieldset id="cloud-legacy-controls"><legend>Операции до перехода на полный файл</legend>
-              <section class="cloud-publication" aria-labelledby="cloud-publication-title">
-                <h4 id="cloud-publication-title">Отправить последующие изменения · экспериментально</h4>
-                <p>Работает после подтверждения первого снимка. На восстановленном ПК нужно подтвердить полное совпадение; изменения другого устройства можно согласовать ограниченным объединением или подтвердить полное совпадение. Данные сначала шифруются и сохраняются в очереди. Без сети очередь остаётся на этом ПК. При расходящихся изменениях, неподтверждённых удалениях или неразрешённом выборочном применении отправка останавливается. Удаления ручных записей календаря нужно проверить отдельной кнопкой; другие удаления пока не поддерживаются. Пароли и контакты не переносятся.</p>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-publication-auto" /> <span>Автоматически готовить и отправлять сохранения на выбранный диск</span></label>
-                <p class="muted" id="cloud-publication-mode">Автоотправка на этом ПК выключена.</p>
-                <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-publication-send">Отправить сохранённые изменения</button><button type="button" class="btn ghost" id="cloud-publication-review-deletions">Проверить удаления календаря</button></div>
-                <p class="cloud-registration-status" id="cloud-publication-status" role="status" aria-live="polite">Отправка последующих изменений ещё не выполнялась.</p>
-              </section>
-              <section class="cloud-publication" id="cloud-private-panel" aria-labelledby="cloud-private-title">
-                <h4 id="cloud-private-title">Контакты и пароли · отдельная ручная передача</h4>
-                <p class="muted">По умолчанию не передаются. Разрешение действует только на одну подготовленную партию и не сохраняется. Обычные сохранения не выгружают новые местные контакты автоматически. Ранее явно переданная секретная часть остаётся зашифрованной в следующих версиях; снятие галочек не удаляет её с диска и не отменяет уже подготовленную очередь. Значения в сравнении не показываются.</p>
-                <fieldset><legend>Разрешённые категории этой операции</legend>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="email" /> <span>Email</span></label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="recoveryEmail" /> <span>Запасная почта</span></label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="phone" /> <span>Телефон</span></label>
-                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="password" /> <span>Пароль персонажа</span></label>
-                </fieldset>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-source" /> <span>Местные контакты загружены полностью; понимаю, что явно выбранное пустое поле очищает значение.</span></label>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-risk" /> <span>Для паролей: понимаю риск раскрытия всем, у кого есть ключ набора. Ключ и запасной ключ нужно хранить отдельно.</span></label>
-                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-backup" /> <span>Перед применением сохранил отдельную защищённую копию прежних контактов. Копия state.json при OS-хранилище может содержать только ссылки, не прежние значения vault.</span></label>
-                <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-private-prepare">Подготовить передачу выбранных контактов</button><button type="button" class="btn ghost" id="cloud-private-check">Проверить контакты на диске</button></div>
-                <div id="cloud-private-incoming" hidden>
-                  <p class="muted" id="cloud-private-times"></p>
-                  <label for="cloud-private-version">Проверенная версия контактов</label><select class="input" id="cloud-private-version"></select>
-                  <div id="cloud-private-list"></div>
-                  <button type="button" class="btn danger" id="cloud-private-apply">Применить только отмеченные поля</button>
-                </div>
-                <p id="cloud-private-status" role="status" aria-live="polite">Категории не выбраны. Передача секретов не разрешена. На сайте и в демо нативная передача недоступна.</p>
-              </section>
-              <section class="cloud-review" aria-labelledby="cloud-review-title">
-                <h4 id="cloud-review-title">Проверить обновления · экспериментально</h4>
-                <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельная кнопка объединения пока работает для существующих записей, некоторых добавлений в конец (включая новые шаблоны) и настроек; задания и бонусы существующих шаблонов, теги и списки навигации согласуются целыми списками, при конфликте выбирается сторона; изменение шаблона не меняет уже созданные марафоны. Снятие отметки повтора и штатный лимит истории характеристик поддерживаются отдельно; перестановка sync-сущностей и неподдерживаемые удаления останавливают объединение. Подтверждённые удаления ручного календаря можно согласовать отдельно с явным выбором удаления местных правок и сохранением неотправленного намерения до проверки потомка; для конфликтов поддерживаемых полей можно отдельно выбрать местную или облачную сторону записи. Входы и пути остаются на этом ПК; контакты и пароли передаются только через отдельный ручной блок с разрешением по категориям. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию: старые версии не распознают незавершённое объединение. Выберите те же группы настроек, что есть в облачном наборе.</p>
-                <fieldset class="cloud-review-settings">
-                  <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
-                  <label><input type="checkbox" value="appearance" data-cloud-review-setting /> Тема</label>
-                  <label><input type="checkbox" value="navigation" data-cloud-review-setting /> Меню разделов</label>
-                  <label><input type="checkbox" value="planner" data-cloud-review-setting /> Вид календаря</label>
-                  <label><input type="checkbox" value="eventReminders" data-cloud-review-setting /> Напоминания о событиях</label>
-                </fieldset>
-                <div class="cloud-registration-actions">
-                  <button type="button" class="btn ghost" id="cloud-review-identities">Подготовить данные на этом ПК</button>
-                  <button type="button" class="btn ghost" id="cloud-review-check">Проверить обновления</button>
-                </div>
-                <p class="cloud-registration-status" id="cloud-review-status" role="status" aria-live="polite">Проверка ещё не выполнялась.</p>
-                <div class="cloud-review-pending" id="cloud-review-merge-pending" hidden>
-                  <p id="cloud-review-merge-pending-message"></p>
-                  <div class="cloud-registration-actions">
-                    <button type="button" class="btn" id="cloud-review-merge-resume">Продолжить объединение</button>
-                    <button type="button" class="btn ghost" id="cloud-review-merge-cancel">Отменить, если очередь не менялась</button>
-                  </div>
-                </div>
-                <div id="cloud-review-result" class="cloud-review-result" hidden>
-                  <p id="cloud-review-times"></p>
-                  <label for="cloud-review-version">Облачная версия для сравнения</label>
-                  <select class="input" id="cloud-review-version"></select>
-                  <div id="cloud-review-differences" hidden>
-                    <h5>Что отличается на диске?</h5>
-                    <p id="cloud-review-summary"></p>
-                    <div class="cloud-registration-actions">
-                      <button type="button" class="btn ghost small" id="cloud-review-select-all">Выбрать все</button>
-                      <button type="button" class="btn ghost small" id="cloud-review-select-none">Снять все</button>
-                    </div>
-                    <div id="cloud-review-list" class="cloud-review-list"></div>
-                    <div class="cloud-review-pending" id="cloud-review-conflicts" hidden>
-                      <h5>Конфликтующие изменения</h5>
-                      <p>Раскройте различия выше. В отмеченных записях при конфликте будет выбрано значение с диска, в неотмеченных — значение этого ПК. Конфликтующие списки без отдельных ID выбираются целиком: изменения другой стороны внутри них могут быть потеряны. Для подтверждённого удаления задачи выберите удаление или отдельно сохраните местную версию новой задачей; без решения объединение остановится. Старый удалённый ID не воскрешается. Остальные поддерживаемые изменения объединятся независимо от галочек. Перед записью будет создана резервная копия.</p>
-                      <ul id="cloud-review-conflict-list"></ul>
-                      <button type="button" class="btn" id="cloud-review-resolve">Объединить с выбранным разрешением конфликтов</button>
-                    </div>
-                    <button type="button" class="btn" id="cloud-review-apply">Применить выбранное с резервной копией</button>
-                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-review-private-carry" /> При объединении разрешаю сохранить уже имеющуюся на диске зашифрованную партию контактов в будущих версиях. Местные контакты не заменятся и не выгрузятся; их применение — только в отдельном блоке. Это не разрешение объединять разные неотправленные секретные партии. Обновлю все ПК.</label>
-                    <button type="button" class="btn ghost" id="cloud-review-merge" hidden>Объединить все поддерживаемые изменения</button>
-                    <button type="button" class="btn ghost" id="cloud-review-reconcile" hidden>Подтвердить полное совпадение и разрешить отправку</button>
-                  </div>
-                </div>
-              </section>
-              </fieldset>
-              </details>
-              </details>
+
 </details>
 
               <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
@@ -1029,6 +787,8 @@
         </section>
         <section class="settings-group" id="settings-data" aria-labelledby="settings-data-title">
           <header class="settings-group-head"><h3 id="settings-data-title">Данные и безопасность</h3><p class="muted">Резервные копии, перенос и хранение учётных данных.</p></header>
+<button class="btn ghost small" type="button" id="cloud-legacy-open">Восстановить старый облачный набор…</button>
+
           <div class="settings-cols">
             <div class="settings-col">
 <details class="panel fold" id="settings-backups">
@@ -1195,5 +955,250 @@
 
   <!-- Главный скрипт -->
   <script type="module" src="/js/main.js"></script>
+<template id="cloud-legacy-template"><details id="cloud-standalone-legacy"><summary>Восстановление прежнего облачного формата</summary>
+<label>Диск старого набора<select class="input" id="cloud-registration-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select></label>
+                <p class="cloud-registration-warning">Существующие привязки, ключи, очереди и облачные файлы сохранены без миграции. Этот блок нужен только для прежних наборов. Для переноса откройте старый набор, примените нужные данные и затем сохраните новый самостоятельный файл кнопкой выше. Автоматическая отправка прежнего режима отключена.</p>
+              <section class="cloud-setup" aria-labelledby="cloud-setup-title">
+                <h4 id="cloud-setup-title">2. Выберите, что подключить</h4>
+                <p>Сначала войдите в аккаунт выше. Если на другом ПК уже настроен этот набор — подключите существующий, не создавайте новый. При подготовке нового набора данные сохраняются и ID подготавливаются автоматически с резервной копией. Облако не удаляется.</p>
+                <p class="cloud-registration-warning">Здесь отправляется первый снимок. Последующие сохранения отправляются в отдельном блоке ниже; объединение расходящихся облачных ветвей пока не работает. Google использует корень «Моего диска», Яндекс — папку приложения. Настоящие аккаунты ещё не проверены. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
+                <p class="muted">Можно пользоваться Google Диском, Яндекс Диском или обоими. Выберите нужный диск выше. Если набор уже настроен на другом диске этого ПК — подключите этот же набор кнопкой ниже, без нового пароля и без отключения первого диска. Отправка и проверка выполняются отдельно для выбранного диска.</p>
+                <details class="cloud-setup-fold" id="cloud-setup-new">
+                  <summary>Новый набор — это мой первый ПК</summary>
+                  <div class="cloud-setup-fields">
+                    <label>Основной секрет
+                      <select class="input" id="cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
+                    </label>
+                    <label>Пароль или основной ключ
+                      <input class="input" id="cloud-setup-main" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Повторите основной секрет
+                      <input class="input" id="cloud-setup-main-repeat" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                    <label>Запасной ключ
+                      <select class="input" id="cloud-setup-backup-kind"><option value="generated">Создать случайный</option><option value="custom">Задать свой</option></select>
+                    </label>
+                    <label id="cloud-setup-custom-label" hidden>Мой запасной ключ
+                      <input class="input" id="cloud-setup-custom" type="password" maxlength="1024" autocomplete="new-password" />
+                    </label>
+                  </div>
+                  <p>Новые секреты: не менее 8 символов, разные для основного и запасного. Слабый пароль можно подбирать по облачному файлу. Сохраните запасной ключ отдельно: без ключей и других копий восстановление невозможно.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-new-approve" /> <span>Я создаю именно новый независимый набор. Старое облако может существовать; оно не проверяется и не будет удалено.</span></label>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn" id="cloud-setup-create">Подготовить новый набор</button>
+                    <button type="button" class="btn" id="cloud-setup-check-data">Проверить данные без изменений</button>
+                    <button type="button" class="btn ghost" id="cloud-setup-resume">Продолжить после прерванной настройки</button>
+                  </div>
+                  <div class="cloud-setup-confirm" id="cloud-setup-confirm" hidden>
+                    <p>Сохраните запасной ключ отдельно от этого компьютера. Повторите его вручную: до подтверждения ключ и очередь на ПК не устанавливаются.</p>
+                    <label id="cloud-setup-generated-label" hidden>Созданный запасной ключ
+                      <input class="input" id="cloud-setup-generated" type="password" readonly autocomplete="off" />
+                    </label>
+                    <button type="button" class="btn ghost small" id="cloud-setup-reveal" hidden>Показать запасной ключ</button>
+                    <label>Введите сохранённый запасной ключ
+                      <input class="input" id="cloud-setup-backup-confirm" type="password" maxlength="1024" autocomplete="off" />
+                    </label>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-setup-saved" /> <span>Я отдельно сохранил запасной ключ и смогу найти его без этого ПК.</span></label>
+                    <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button type="button" class="btn ghost" id="cloud-setup-cancel">Отменить</button></div>
+                  </div>
+                </details>
+                <details class="cloud-setup-fold" id="cloud-setup-existing">
+                  <summary>Существующий набор — у меня уже есть другой ПК</summary>
+                  <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
+                  <label>Код сверки
+                    <textarea class="input" id="cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>
+                  </label>
+                  <label>Способ восстановления
+                    <select class="input" id="cloud-recovery-role"><option value="main">Пароль или основной ключ</option><option value="backup">Запасной ключ</option><option value="existing">Уже сохранённый внутренний ключ на этом ПК</option></select>
+                  </label>
+                  <label id="cloud-recovery-secret-label">Пароль или ключ
+                    <input class="input" id="cloud-recovery-secret" type="password" maxlength="1024" autocomplete="off" />
+                  </label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-recovery-approve" /> <span>Я получил код от доверенного ПК отдельно от облачного файла и проверил выбранный аккаунт.</span></label>
+                  <label class="cloud-connection-ack" id="cloud-recovery-reviewed-label" hidden><input type="checkbox" id="cloud-recovery-reviewed" /> <span>Я выбрал версию и изучил предварительное сравнение ниже.</span></label>
+                  <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-recovery-check">Сравнить перед подключением</button><button type="button" class="btn ghost" id="cloud-recovery-connect" hidden>Подтвердить подключение</button><button type="button" class="btn ghost" id="cloud-recovery-cancel" hidden>Отменить</button></div>
+                </details>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn ghost" id="cloud-setup-show-code">Показать код сверки этого ПК</button>
+                  <button type="button" class="btn ghost" id="cloud-setup-connect-additional">Подключить этот же набор ко второму диску</button>
+                  <button type="button" class="btn ghost" id="cloud-setup-inspect-send">Проверить местную готовность</button>
+                  <button type="button" class="btn ghost" id="cloud-setup-check-access">Проверить доступ через API</button>
+                  <button type="button" class="btn" id="cloud-setup-send-root">Отправить первый снимок</button>
+                </div>
+                <label id="cloud-setup-code-label" hidden>Код сверки — передавайте отдельно от облака
+                  <textarea class="input" id="cloud-setup-code" rows="3" readonly spellcheck="false"></textarea>
+                </label>
+                <p class="cloud-registration-status" id="cloud-setup-status" role="status" aria-live="polite">Ожидание действия. Данные не отправлены.</p>
+              </section>
+              <section class="cloud-review" id="cloud-file-panel" aria-labelledby="cloud-file-title">
+                <h4 id="cloud-file-title">Обмен полным файлом</h4>
+                <p>Проверьте файл на выбранном диске, посмотрите различия и подтвердите замену. «Отправить на диск» сохраняет полный снимок местных данных, включая удаления и порядок, без автоматического объединения. Прежние зашифрованные версии остаются резервными копиями.</p>
+                <p class="muted">Сначала подключите или восстановите набор выше. Проверка ничего не записывает. При отправке местные данные сохраняются, недостающие ID подготавливаются с резервной копией; отдельная подготовка ID нужна, только если проверка остановлена. Переносятся публичные записи и настройки, выбранные при создании набора; местные входы, cookies и пути не переносятся. Новые контакты и пароли автоматически не выгружаются; ручной выбор — в отдельном свёрнутом блоке ниже. Уже переданная приватная часть сохраняется в шифрованном виде, если совместима с новым снимком. Перед переходом обновите все ПК.</p>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn" id="cloud-file-check">Проверить / скачать файл</button>
+                  <button type="button" class="btn" id="cloud-file-upload">Отправить на диск</button>
+                </div>
+                <details><summary>Подготовка данных и восстановление отправки</summary>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn ghost" id="cloud-file-prepare">Подготовить ID</button>
+                    <button type="button" class="btn ghost" id="cloud-file-resume">Проверить незавершённую отправку</button>
+                    <button type="button" class="btn ghost" id="cloud-file-release">Отменить подготовку / снять ожидание</button>
+                  </div>
+                </details>
+                <p class="muted">Если подготовленный файл устарел, отмените подготовку и отправьте текущие данные заново. Для начатой загрузки сначала проверьте результат. Снятие неизвестного ожидания не отменяет запрос на диске: прежний файл ещё может появиться; резервная копия и его отпечаток сохраняются.</p>
+                <p id="cloud-file-status" role="status" aria-live="polite">Файл ещё не проверялся. Проверка сама не заменяет данные.</p>
+                <p class="muted" id="cloud-file-other"></p>
+                <div id="cloud-file-choices" hidden aria-label="Выбор облачного файла"></div>
+                <p id="cloud-file-capacity" class="muted" hidden></p>
+                <div id="cloud-file-result" hidden>
+                  <p class="muted" id="cloud-file-times"></p>
+                  <p id="cloud-file-summary"></p>
+                  <ul class="cloud-review-list" id="cloud-file-list"></ul>
+                  <button type="button" class="btn danger" id="cloud-file-apply">Заменить данные файлом с диска</button>
+                  <button type="button" class="btn" id="cloud-file-resolve" hidden>Сделать выбранный файл актуальным на диске</button>
+                </div>
+              </section>
+              <details class="cloud-review" id="cloud-file-private">
+                <summary>Пароли и контакты · отдельный ручной перенос</summary>
+                <p><strong>Риск раскрытия:</strong> все, у кого есть ключ набора, смогут расшифровать переданные контакты. По умолчанию ничего не выбрано. Разрешения действуют только на одну подготовленную партию; обычная отправка новых местных контактов не добавляет. В списке показываются только факты различий, не значения.</p>
+                <fieldset><legend>Категории для этой операции</legend>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="email" /> Email</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="recoveryEmail" /> Запасная почта</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="phone" /> Телефон</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-file-private-field="password" /> Пароль</label>
+                </fieldset>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-source" /> Подтверждаю полноту местных контактов и доступность их хранилища. Пустое выбранное поле означает явную очистку.</label>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-risk" /> Отдельно принимаю риск передачи или замены пароля.</label>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-file-private-prepare">Подготовить контакты к отправке</button><button type="button" class="btn ghost" id="cloud-file-private-check">Сравнить контакты с диском</button></div>
+                <p id="cloud-file-private-status" role="status" aria-live="polite">Контакты не выбраны и не передавались.</p>
+                <div id="cloud-file-private-result" hidden>
+                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-file-private-all">Выбрать все</button><button type="button" class="btn ghost small" id="cloud-file-private-none">Снять все</button></div>
+                  <div id="cloud-file-private-list" class="cloud-review-list"></div>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-file-private-backup" /> Создал отдельную копию прежних контактов. Копия state.json не является копией Windows vault.</label>
+                  <button type="button" class="btn danger" id="cloud-file-private-send" hidden>Отправить полный файл с выбранными контактами</button>
+                  <button type="button" class="btn danger" id="cloud-file-private-apply" hidden>Применить только выбранные контакты</button>
+                </div>
+              </details>
+              <details class="cloud-review" id="cloud-history-archive">
+                <summary>Архив, сокращение истории и восстановление</summary>
+                <p>Сначала сохраните и сверьте <strong>всю зашифрованную историю</strong>. Затем можно создать контрольный полный файл принятой облачной версии и отдельно перенести старые версии в корзину. Корневой и новый контрольный файлы остаются. Лимит активной истории — 128 версий / 64 MiB. Старые клиенты нужно обновить до очистки.</p>
+                <p class="muted">Архив содержит только уже отправленные зашифрованные снимки и код сверки. В старых версиях могут оставаться ранее переданные пароли. Ключа и OAuth-токенов в нём нет: сохраните основной пароль или запасной ключ отдельно. Это не копия местных данных или Windows vault. Несколько облачных голов сохраняются без выбора победителя. Незавершённые и неизвестные попытки сначала нужно согласовать.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-prepare">Подготовить зашифрованный архив</button><button type="button" class="btn ghost" id="cloud-history-download" disabled>Сохранить архив</button></div>
+                <label class="cloud-connection-ack">Выберите сохранённый архив для проверки чтением <input type="file" id="cloud-history-file" accept=".json,.tf-history.json,application/json" disabled /></label>
+                <button type="button" class="btn ghost" id="cloud-history-verify" disabled>Сверить сохранённый файл</button>
+                <p id="cloud-history-status" role="status" aria-live="polite">Архив не подготовлен. Облачные файлы не изменялись.</p>
+                <fieldset id="cloud-history-maintenance">
+                  <legend>Явное сокращение истории</legend>
+                  <p class="muted">Это не отправка местных правок: контрольный файл точно копирует принятую облачную версию. Сначала примите нужный файл в основном блоке. Остальные ПК должны быть остановлены и обновлены: Google проверяется с ETag, у Яндекса нет атомарной блокировки между проверкой и удалением. Не меняйте облачную папку вручную во время очистки.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-paused" /> Все остальные ПК остановлены; старые клиенты обновлю перед следующим запуском</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-key-backup" /> Пароль или запасной ключ сохранён отдельно от архива</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-carry" /> Сохранить уже отправленные зашифрованные контакты в контрольном файле; новые местные контакты не брать</label>
+                  <button type="button" class="btn ghost" id="cloud-history-checkpoint" disabled>Создать контрольный полный файл</button>
+                  <label class="cloud-connection-ack">Сохранённый архив для очистки или восстановления <input type="file" id="cloud-history-maintenance-file" accept=".json,.tf-history.json,application/json" /></label>
+                  <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-cleanup-review" disabled>Проверить возможность очистки</button><button type="button" class="btn danger" id="cloud-history-cleanup" disabled>Переместить старые файлы в корзину</button><button type="button" class="btn ghost" id="cloud-history-cleanup-release">Снять неизвестное ожидание очистки…</button></div>
+                  <p class="muted">Неизвестный запрос не повторяется автоматически. После перезапуска снова выберите архив и проверьте очистку. Снятие ожидания не отменяет запрос: старый файл ещё может попасть в корзину.</p>
+                  <details id="cloud-history-restore">
+                    <summary>Восстановить местные данные из архива</summary>
+                    <p>Архив проверяется по ключу и корневому отпечатку этой привязки. Выберите версию и просмотрите изменения. Полная замена включает удаления; перед ней создаётся местная копия. Принятая облачная база не меняется, файл на диске не перезаписывается. Контакты не выбираются автоматически.</p>
+                    <button type="button" class="btn ghost" id="cloud-history-inspect" disabled>Прочитать версии архива</button>
+                    <label>Версия <select id="cloud-history-version" disabled><option value="">Сначала прочитайте архив</option></select></label>
+                    <div id="cloud-history-private-fields">
+                      <label><input type="checkbox" value="email" /> Email</label><label><input type="checkbox" value="recoveryEmail" /> Запасной email</label><label><input type="checkbox" value="phone" /> Телефон</label><label><input type="checkbox" value="password" /> Пароль</label>
+                    </div>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-consent" /> Явно разрешаю сравнение выбранных контактов архива</label>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-password-risk" /> Понимаю опасность восстановления старых паролей и хранения их в архиве</label>
+                    <button type="button" class="btn ghost" id="cloud-history-restore-review" disabled>Показать изменения выбранной версии</button>
+                    <ul id="cloud-history-restore-differences"></ul>
+                    <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-restore-all" disabled>Выбрать все контакты</button><button type="button" class="btn ghost" id="cloud-history-restore-none" disabled>Снять все контакты</button></div>
+                    <div id="cloud-history-restore-contacts"></div>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-backup" /> Отдельная копия местных контактов и Windows vault сохранена: обычный backup приложения может не содержать их</label>
+                    <button type="button" class="btn danger" id="cloud-history-restore-apply" disabled>Заменить местные данные выбранной версией…</button>
+                  </details>
+                  <p id="cloud-history-maintenance-status" role="status" aria-live="polite">Контрольный файл и очистка не запускались.</p>
+                </fieldset>
+              </details>
+              <details class="cloud-activity" id="cloud-legacy-exchange">
+                <summary>Прежний режим · завершить старые операции</summary>
+                <p class="muted">Если осталась очередь прежнего режима, сначала завершите её здесь. Старая автоотправка отключена. После начала перехода на файловый режим эти действия блокируются для выбранного диска, чтобы два режима не изменяли данные одновременно. Для новых ручных партий используйте отдельный блок паролей и контактов выше.</p>
+              <fieldset id="cloud-legacy-controls"><legend>Операции до перехода на полный файл</legend>
+              <section class="cloud-publication" aria-labelledby="cloud-publication-title">
+                <h4 id="cloud-publication-title">Отправить последующие изменения · экспериментально</h4>
+                <p>Работает после подтверждения первого снимка. На восстановленном ПК нужно подтвердить полное совпадение; изменения другого устройства можно согласовать ограниченным объединением или подтвердить полное совпадение. Данные сначала шифруются и сохраняются в очереди. Без сети очередь остаётся на этом ПК. При расходящихся изменениях, неподтверждённых удалениях или неразрешённом выборочном применении отправка останавливается. Удаления ручных записей календаря нужно проверить отдельной кнопкой; другие удаления пока не поддерживаются. Пароли и контакты не переносятся.</p>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-publication-auto" /> <span>Автоматически готовить и отправлять сохранения на выбранный диск</span></label>
+                <p class="muted" id="cloud-publication-mode">Автоотправка на этом ПК выключена.</p>
+                <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-publication-send">Отправить сохранённые изменения</button><button type="button" class="btn ghost" id="cloud-publication-review-deletions">Проверить удаления календаря</button></div>
+                <p class="cloud-registration-status" id="cloud-publication-status" role="status" aria-live="polite">Отправка последующих изменений ещё не выполнялась.</p>
+              </section>
+              <section class="cloud-publication" id="cloud-private-panel" aria-labelledby="cloud-private-title">
+                <h4 id="cloud-private-title">Контакты и пароли · отдельная ручная передача</h4>
+                <p class="muted">По умолчанию не передаются. Разрешение действует только на одну подготовленную партию и не сохраняется. Обычные сохранения не выгружают новые местные контакты автоматически. Ранее явно переданная секретная часть остаётся зашифрованной в следующих версиях; снятие галочек не удаляет её с диска и не отменяет уже подготовленную очередь. Значения в сравнении не показываются.</p>
+                <fieldset><legend>Разрешённые категории этой операции</legend>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="email" /> <span>Email</span></label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="recoveryEmail" /> <span>Запасная почта</span></label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="phone" /> <span>Телефон</span></label>
+                  <label class="cloud-connection-ack"><input type="checkbox" data-private-field="password" /> <span>Пароль персонажа</span></label>
+                </fieldset>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-source" /> <span>Местные контакты загружены полностью; понимаю, что явно выбранное пустое поле очищает значение.</span></label>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-risk" /> <span>Для паролей: понимаю риск раскрытия всем, у кого есть ключ набора. Ключ и запасной ключ нужно хранить отдельно.</span></label>
+                <label class="cloud-connection-ack"><input type="checkbox" id="cloud-private-backup" /> <span>Перед применением сохранил отдельную защищённую копию прежних контактов. Копия state.json при OS-хранилище может содержать только ссылки, не прежние значения vault.</span></label>
+                <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-private-prepare">Подготовить передачу выбранных контактов</button><button type="button" class="btn ghost" id="cloud-private-check">Проверить контакты на диске</button></div>
+                <div id="cloud-private-incoming" hidden>
+                  <p class="muted" id="cloud-private-times"></p>
+                  <label for="cloud-private-version">Проверенная версия контактов</label><select class="input" id="cloud-private-version"></select>
+                  <div id="cloud-private-list"></div>
+                  <button type="button" class="btn danger" id="cloud-private-apply">Применить только отмеченные поля</button>
+                </div>
+                <p id="cloud-private-status" role="status" aria-live="polite">Категории не выбраны. Передача секретов не разрешена. На сайте и в демо нативная передача недоступна.</p>
+              </section>
+              <section class="cloud-review" aria-labelledby="cloud-review-title">
+                <h4 id="cloud-review-title">Проверить обновления · экспериментально</h4>
+                <p>Проверяется выбранный выше диск и только уже закреплённый набор. Даты не выбирают победителя. Отсутствие записи не считается удалением. Выборочное применение заменяет поля выбранных записей; отдельная кнопка объединения пока работает для существующих записей, некоторых добавлений в конец (включая новые шаблоны) и настроек; задания и бонусы существующих шаблонов, теги и списки навигации согласуются целыми списками, при конфликте выбирается сторона; изменение шаблона не меняет уже созданные марафоны. Снятие отметки повтора и штатный лимит истории характеристик поддерживаются отдельно; перестановка sync-сущностей и неподдерживаемые удаления останавливают объединение. Подтверждённые удаления ручного календаря можно согласовать отдельно с явным выбором удаления местных правок и сохранением неотправленного намерения до проверки потомка; для конфликтов поддерживаемых полей можно отдельно выбрать местную или облачную сторону записи. Входы и пути остаются на этом ПК; контакты и пароли передаются только через отдельный ручной блок с разрешением по категориям. Перед экспериментом обновите приложение на всех ПК и сохраните независимую копию: старые версии не распознают незавершённое объединение. Выберите те же группы настроек, что есть в облачном наборе.</p>
+                <fieldset class="cloud-review-settings">
+                  <legend>Также сравнивать настройки (только если они есть в облачном наборе)</legend>
+                  <label><input type="checkbox" value="appearance" data-cloud-review-setting /> Тема</label>
+                  <label><input type="checkbox" value="navigation" data-cloud-review-setting /> Меню разделов</label>
+                  <label><input type="checkbox" value="planner" data-cloud-review-setting /> Вид календаря</label>
+                  <label><input type="checkbox" value="eventReminders" data-cloud-review-setting /> Напоминания о событиях</label>
+                </fieldset>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn ghost" id="cloud-review-identities">Подготовить данные на этом ПК</button>
+                  <button type="button" class="btn ghost" id="cloud-review-check">Проверить обновления</button>
+                </div>
+                <p class="cloud-registration-status" id="cloud-review-status" role="status" aria-live="polite">Проверка ещё не выполнялась.</p>
+                <div class="cloud-review-pending" id="cloud-review-merge-pending" hidden>
+                  <p id="cloud-review-merge-pending-message"></p>
+                  <div class="cloud-registration-actions">
+                    <button type="button" class="btn" id="cloud-review-merge-resume">Продолжить объединение</button>
+                    <button type="button" class="btn ghost" id="cloud-review-merge-cancel">Отменить, если очередь не менялась</button>
+                  </div>
+                </div>
+                <div id="cloud-review-result" class="cloud-review-result" hidden>
+                  <p id="cloud-review-times"></p>
+                  <label for="cloud-review-version">Облачная версия для сравнения</label>
+                  <select class="input" id="cloud-review-version"></select>
+                  <div id="cloud-review-differences" hidden>
+                    <h5>Что отличается на диске?</h5>
+                    <p id="cloud-review-summary"></p>
+                    <div class="cloud-registration-actions">
+                      <button type="button" class="btn ghost small" id="cloud-review-select-all">Выбрать все</button>
+                      <button type="button" class="btn ghost small" id="cloud-review-select-none">Снять все</button>
+                    </div>
+                    <div id="cloud-review-list" class="cloud-review-list"></div>
+                    <div class="cloud-review-pending" id="cloud-review-conflicts" hidden>
+                      <h5>Конфликтующие изменения</h5>
+                      <p>Раскройте различия выше. В отмеченных записях при конфликте будет выбрано значение с диска, в неотмеченных — значение этого ПК. Конфликтующие списки без отдельных ID выбираются целиком: изменения другой стороны внутри них могут быть потеряны. Для подтверждённого удаления задачи выберите удаление или отдельно сохраните местную версию новой задачей; без решения объединение остановится. Старый удалённый ID не воскрешается. Остальные поддерживаемые изменения объединятся независимо от галочек. Перед записью будет создана резервная копия.</p>
+                      <ul id="cloud-review-conflict-list"></ul>
+                      <button type="button" class="btn" id="cloud-review-resolve">Объединить с выбранным разрешением конфликтов</button>
+                    </div>
+                    <button type="button" class="btn" id="cloud-review-apply">Применить выбранное с резервной копией</button>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-review-private-carry" /> При объединении разрешаю сохранить уже имеющуюся на диске зашифрованную партию контактов в будущих версиях. Местные контакты не заменятся и не выгрузятся; их применение — только в отдельном блоке. Это не разрешение объединять разные неотправленные секретные партии. Обновлю все ПК.</label>
+                    <button type="button" class="btn ghost" id="cloud-review-merge" hidden>Объединить все поддерживаемые изменения</button>
+                    <button type="button" class="btn ghost" id="cloud-review-reconcile" hidden>Подтвердить полное совпадение и разрешить отправку</button>
+                  </div>
+                </div>
+              </section>
+              </fieldset>
+              </details>
+              </details></template>
 </body>
 </html>

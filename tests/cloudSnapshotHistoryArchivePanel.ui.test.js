@@ -1,8 +1,9 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindSnapshotHistoryArchivePanel } from '../js/modules/cloudSync/ui/snapshotHistoryArchivePanel.js';
 import { MAX_HISTORY_ARCHIVE_BYTES } from '../js/modules/cloudSync/snapshotHistoryArchive.js';
-const html = readFileSync('index.html', 'utf8'),
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8')),
   el = id => document.getElementById(`cloud-history-${id}`);
 function setup(overrides = {}) {
   const view = {

@@ -1,4 +1,5 @@
 // @ts-check
+import { CLOUD_ACCESS_MESSAGES } from './providers/cloudAccessDiagnostics.js';
 // Локальный, неавторитетный журнал пользовательских действий. Он не является
 // очередью или доказательством успешной синхронизации и пока не переносится на ПК.
 // Принимает только заранее заданные коды: никаких имён, путей, ошибок, ответов API,
@@ -37,6 +38,7 @@ const ACTIONS = Object.freeze({
   private_apply: 'Применение выбранных контактов'
 });
 const OUTCOMES = Object.freeze({
+  ...CLOUD_ACCESS_MESSAGES,
   success: 'подтверждено',
   empty: 'подтверждённых версий не найдено',
   cancelled: 'отменено',

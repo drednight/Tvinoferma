@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } from '../providers/cloudAccessDiagnostics.js';
 import { createStandaloneFileRuntime } from '../standaloneFileRuntime.js';
 import { inspectStateFile } from '../inspectStateFile.js';
 import { normalizeState } from '../../../core/state.js';
@@ -130,21 +131,10 @@ export function bindStandaloneFilePanel(options) {
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
-  let destinationTouched = false,
-    destinationSuggested = false;
   let busy = false,
     stopped = false,
     review = null,
     reviewFields = [];
-  for (const input of checkboxes('[data-standalone-destination]'))
-    input.addEventListener('change', () => {
-      destinationTouched = true;
-    });
-  function suggestDestination(provider) {
-    if (destinationTouched || destinationSuggested || !NAMES[provider]) return;
-    for (const input of checkboxes('[data-standalone-destination]')) input.checked = input.value === provider;
-    destinationSuggested = true;
-  }
   const getRuntime = async () => {
     if (!runtime) {
       const native = options.loadNative ? await options.loadNative() : await import('@tauri-apps/api/core');
@@ -168,7 +158,8 @@ export function bindStandaloneFilePanel(options) {
     } catch (error) {
       if (Array.isArray(error.results)) {
         showResults(error.results);
-        for (const row of error.results) log(row.provider, 'standalone_save', 'unavailable');
+        for (const row of error.results)
+          log(row.provider, 'standalone_save', cloudAccessDiagnostic(row) || 'unavailable');
       }
       status.textContent =
         STATUS[error.message] ||
@@ -181,7 +172,8 @@ export function bindStandaloneFilePanel(options) {
     el('provider-results').replaceChildren();
     for (const result of results) {
       const li = doc.createElement('li');
-      li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}`;
+      const diagnostic = cloudAccessDiagnostic(result);
+      li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}`;
       if (result.status === 'folder_ambiguous' && result.folders?.length) {
         const select = doc.createElement('select');
         select.className = 'input';
@@ -218,7 +210,11 @@ export function bindStandaloneFilePanel(options) {
             if (!agreed) return;
             const continued = await engine.continuePending(result.provider);
             showResults([continued]);
-            log(result.provider, 'standalone_continue', continued.status === 'sent_verified' ? 'success' : 'uncertain');
+            log(
+              result.provider,
+              'standalone_continue',
+              continued.status === 'sent_verified' ? 'success' : cloudAccessDiagnostic(continued) || 'uncertain'
+            );
           })
         );
         li.append(' ', retry);
@@ -332,20 +328,28 @@ export function bindStandaloneFilePanel(options) {
     await action(async engine => {
       const result = await engine.check({ manual, includeBackups: manual && el('show-backups').checked });
       const available = result.results.find(row => ['checked', 'empty'].includes(row.status));
-      if (available) suggestDestination(available.provider);
       showFiles(result.files);
-      showResults([...result.results, ...result.pending]);
-      status.textContent = !available
-        ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
-        : result.files.length
-          ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
-          : 'Проверка завершена: новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
-      for (const resultRow of result.results)
+      showResults([...result.results.filter(row => manual || row.status !== 'credential_missing'), ...result.pending]);
+      status.textContent =
+        result.results.length && result.results.every(row => row.status === 'credential_missing')
+          ? 'Подключите диск выше. Направление сохранения выбирается отдельно.'
+          : !available
+            ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
+            : result.files.length
+              ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
+              : 'Проверка завершена: новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
+      for (const resultRow of result.results) {
+        if (resultRow.status === 'credential_missing') continue;
         log(
           resultRow.provider,
           'check',
-          resultRow.status === 'checked' ? 'success' : resultRow.status === 'empty' ? 'empty' : 'unavailable'
+          resultRow.status === 'checked'
+            ? 'success'
+            : resultRow.status === 'empty'
+              ? 'empty'
+              : cloudAccessDiagnostic(resultRow) || 'unavailable'
         );
+      }
     });
   }
   el('source').addEventListener('change', () => {
@@ -435,9 +439,7 @@ export function bindStandaloneFilePanel(options) {
           'standalone_save',
           row.status === 'sent_verified'
             ? 'success'
-            : row.status === 'verification_pending'
-              ? 'uncertain'
-              : 'unavailable'
+            : cloudAccessDiagnostic(row) || (row.status === 'verification_pending' ? 'uncertain' : 'unavailable')
         );
       resetPrivate();
     })
@@ -507,8 +509,7 @@ export function bindStandaloneFilePanel(options) {
   setBusy(false);
   const startup = options.startup !== false && options.desktop;
   let timer = null;
-  const connected = event => {
-    suggestDestination(event?.detail?.provider);
+  const connected = () => {
     if (!busy && !stopped) void check(false);
   };
   const reset = () => {

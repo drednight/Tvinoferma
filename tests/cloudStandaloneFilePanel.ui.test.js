@@ -1,3 +1,4 @@
+import { withCloudAccessDiagnostic } from '../js/modules/cloudSync/providers/cloudAccessDiagnostics.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { askStandalonePassword, bindStandaloneFilePanel } from '../js/modules/cloudSync/ui/standaloneFilePanel.js';
@@ -89,10 +90,8 @@ afterEach(() => {
 describe('standalone full file UX', () => {
   it('starts collapsed and puts the old multi-step flow only under a separate recovery fold', () => {
     expect(document.getElementById('cloud-registration-panel').open).toBe(false);
-    expect(document.getElementById('cloud-standalone-legacy').open).toBe(false);
-    expect(
-      document.getElementById('cloud-standalone-legacy').contains(document.getElementById('cloud-file-panel'))
-    ).toBe(true);
+    expect(document.getElementById('cloud-standalone-legacy')).toBeNull();
+    expect(document.getElementById('cloud-file-panel')).toBeNull();
     expect(el('panel').contains(document.getElementById('cloud-setup-main'))).toBe(false);
   });
   it('shows grouped destinations, dates, additions, changes and full-replacement deletions with safe text', async () => {
@@ -209,11 +208,11 @@ describe('standalone full file UX', () => {
     expect(el('options').open).toBe(false);
     for (const id of ['source', 'remember', 'forget', 'show-backups', 'contacts-confirm'])
       expect(el('options').contains(el(id))).toBe(true);
-    expect(document.getElementById('cloud-registration-advanced').contains(el('legacy'))).toBe(true);
+    expect(el('legacy')).toBeNull();
     expect(el('save').closest('details').id).toBe('cloud-registration-panel');
     expect(el('check').closest('details').id).toBe('cloud-registration-panel');
   });
-  it('suggests the connected Yandex account instead of a disconnected Google default, without sending', async () => {
+  it('does not choose a save destination from login or polling; requires an independent explicit choice', async () => {
     expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
     const f = setup({
       chooseDestination: false,
@@ -230,7 +229,13 @@ describe('standalone full file UX', () => {
       }
     });
     await vi.waitFor(() => expect(el('save').disabled).toBe(false));
-    expect(document.querySelector('[data-standalone-destination]:checked').value).toBe('yandex');
+    expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
+    document.defaultView.dispatchEvent(
+      new CustomEvent('tf-cloud-credential-ready', { detail: { provider: 'google' } })
+    );
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
+    expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
+    document.querySelector('[data-standalone-destination][value=yandex]').checked = true;
     await click('save');
     expect(f.runtime.prepareSave).toHaveBeenCalledWith(expect.objectContaining({ targets: ['yandex'] }));
     expect(f.runtime.save).toHaveBeenCalledOnce();
@@ -276,6 +281,23 @@ describe('standalone full file UX', () => {
     await click('save');
     expect(f.confirm).toHaveBeenCalledOnce();
     expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('shows and logs the exact safe failure stage instead of another generic pending result', async () => {
+    const record = vi.fn();
+    setup({
+      record,
+      runtime: {
+        save: vi.fn(async () => ({
+          results: [
+            withCloudAccessDiagnostic({ provider: 'google', status: 'verification_pending' }, 'download_link_forbidden')
+          ]
+        }))
+      }
+    });
+    await click('save');
+    expect(el('provider-results').textContent).toContain('Получение ссылки скачивания');
+    expect(el('provider-results').textContent).toContain('HTTP 403');
+    expect(record).toHaveBeenCalledWith('google', 'standalone_save', 'download_link_forbidden');
   });
   it('never makes native calls in the browser preview', async () => {
     const f = setup({ desktop: false });

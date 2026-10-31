@@ -1,3 +1,4 @@
+import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
@@ -200,7 +201,7 @@ describe('безопасная диагностика всей подготов�
     const f = await fixture();
     if (damaged) f.state.characters[0].syncId = 'FAKE_PRIVATE_BAD_ID';
     const before = JSON.stringify(f.state);
-    const parsed = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+    const parsed = new DOMParser().parseFromString(legacyCloudHtml(readFileSync('index.html', 'utf8')), 'text/html');
     document.body.innerHTML = parsed.getElementById('cloud-registration-panel').outerHTML;
     const { bindInitialCloudPanel } = await import('../js/modules/cloudSync/ui/initialCloudPanel.js');
     const save = vi.spyOn(f.storage, 'saveNow');

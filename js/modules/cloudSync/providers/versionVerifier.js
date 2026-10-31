@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 // Изолированная сверка после отправки, не подключена к очереди или приложению.
 // Передаётся доверенный GET-транспорт одного и того же подтверждённого аккаунта;
 // ни этот модуль, ни совпадение ответа не доказывают подлинность аккаунта, полную
@@ -65,9 +66,9 @@ export function createCloudVersionVerifier(options) {
           return { status: 'mismatch' };
         if (result.status !== 'found' || typeof result.serialized !== 'string') return { status: 'unavailable' };
         return { status: result.serialized === expectedBytes ? 'verified' : 'mismatch' };
-      } catch {
+      } catch (error) {
         // Даже временные URL могут содержаться в исключениях транспорта.
-        return { status: 'unavailable' };
+        return withCloudAccessDiagnostic({ status: 'unavailable' }, cloudAccessDiagnostic(error));
       }
     }
   });
