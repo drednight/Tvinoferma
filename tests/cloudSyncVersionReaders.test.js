@@ -1,3 +1,4 @@
+import { STANDALONE_DATASET_ID } from '../js/modules/cloudSync/standaloneFileConstants.js';
 import { describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import {
@@ -353,5 +354,37 @@ describe.each(['google', 'yandex'])('%s: канонические байты д�
     await expect(reader.read(v1)).rejects.toThrow();
     const exact = provider === 'google' ? await reader.readExact(v1, file.id) : await reader.readExact(v1);
     expect(exact).toEqual({ status: 'content_mismatch' });
+  });
+});
+
+describe('standalone backup collection has no legacy 128-file history boundary', () => {
+  const versions = Array.from({ length: 140 }, (_, i) => `11111111-1111-4111-8111-${String(i).padStart(12, '0')}`);
+  it('Google lists independent backups past the old history boundary while preserving strict pagination', async () => {
+    const send = vi.fn(async request => {
+      const url = new URL(request.url);
+      const offset = url.searchParams.get('pageToken') === 'next' ? 100 : 0;
+      const files = versions.slice(offset, offset + 100).map(versionId => ({
+        id: `f${versionId}`,
+        name: versionFileName(STANDALONE_DATASET_ID, versionId),
+        mimeType: 'application/octet-stream',
+        appProperties: { tfFormat: '1', tfDataset: STANDALONE_DATASET_ID, tfVersion: versionId }
+      }));
+      return page({ files, incompleteSearch: false, ...(offset === 0 ? { nextPageToken: 'next' } : {}) });
+    });
+    const reader = createGoogleVersionReader({ datasetId: STANDALONE_DATASET_ID, folderId: 'standalone-folder', send });
+    expect(await reader.list()).toHaveLength(140);
+    expect(send).toHaveBeenCalledTimes(4);
+  });
+  it('Yandex lists independent backups past the old history boundary without deleting older files', async () => {
+    const send = vi.fn(async request => {
+      const offset = Number(new URL(request.url).searchParams.get('offset') || 0);
+      const items = versions
+        .slice(offset, offset + 100)
+        .map(versionId => ({ type: 'file', name: versionFileName(STANDALONE_DATASET_ID, versionId) }));
+      return page(yandexList(items, offset, 140));
+    });
+    const reader = createYandexVersionReader({ datasetId: STANDALONE_DATASET_ID, send });
+    expect(await reader.list()).toHaveLength(140);
+    expect(send).toHaveBeenCalledTimes(4);
   });
 });

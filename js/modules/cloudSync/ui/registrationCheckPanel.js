@@ -27,7 +27,7 @@ const LOCAL_MESSAGES = Object.freeze({
 });
 const ENROLL_MESSAGES = Object.freeze({
   installed:
-    'Доступ сохранён на этом ПК после сверки аккаунта. Облачные файлы не проверялись и не изменялись; набор данных ещё нужно подключить.',
+    'Доступ сохранён на этом ПК после сверки аккаунта. Облачные файлы не изменялись. Теперь можно сохранить полный файл или проверить файлы другого ПК.',
   installed_access_expired:
     'Доступ сохранён, но срок токена уже истёк. Синхронизация не работает; для нового входа потребуется удалить локальную запись, если она не связана с набором.',
   installed_refresh_expired:
@@ -286,6 +286,10 @@ export function bindCloudRegistrationCheck(options) {
         ...(displayStatus === 'ready' && reply.binding ? { slotId: reply.binding.slotId } : {})
       };
       if (displayStatus === 'ready' && !observed.slotId) throw new Error();
+      if (['ready', 'ready_bound'].includes(displayStatus))
+        doc.defaultView?.dispatchEvent(
+          new CustomEvent('tf-cloud-credential-ready', { detail: { provider: selected } })
+        );
       localStatus.textContent = LOCAL_MESSAGES[displayStatus];
       if (uncertain.has(selected))
         localStatus.textContent += ' Исход предыдущей операции всё ещё неизвестен; повтор в этом окне заблокирован.';

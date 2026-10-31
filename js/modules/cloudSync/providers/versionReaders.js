@@ -11,6 +11,8 @@ import { googleDownloadRequest, googleListRequest } from './googleDrive.js';
 import { yandexDownloadContentRequest, yandexDownloadLinkRequest, yandexListRequest } from './yandexDisk.js';
 import { parseCloudModifiedTime } from './modifiedTime.js';
 
+import { STANDALONE_DATASET_ID, MAX_STANDALONE_COPIES } from '../standaloneFileConstants.js';
+
 const MAX_PAGES = 128;
 // One temporary checkpoint file; logical limits remain enforced by verifyHistory.
 const MAX_VERSIONS = 129;
@@ -132,7 +134,8 @@ export function createGoogleVersionReader(options) {
         fileIds.add(file.id);
         versionIds.add(props.tfVersion);
         files.push({ id: file.id, versionId: props.tfVersion, ...timestampForDisplay(file.modifiedTime) });
-        if (files.length > MAX_VERSIONS) throw malformed();
+        if (files.length > (datasetId === STANDALONE_DATASET_ID ? MAX_STANDALONE_COPIES : MAX_VERSIONS))
+          throw malformed();
       }
       if (Object.hasOwn(page, 'nextPageToken')) {
         if (
@@ -279,7 +282,8 @@ export function createYandexVersionReader(options) {
         if (candidate.datasetId === datasetId) {
           const modified = Object.hasOwn(value, 'modified') ? own(value, 'modified') : undefined;
           versions.push({ versionId: candidate.versionId, ...timestampForDisplay(modified) });
-          if (versions.length > MAX_VERSIONS) throw malformed();
+          if (versions.length > (datasetId === STANDALONE_DATASET_ID ? MAX_STANDALONE_COPIES : MAX_VERSIONS))
+            throw malformed();
         }
       }
       offset += rows.length;

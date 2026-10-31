@@ -9,6 +9,7 @@ pub mod cloud_key_state;
 pub mod cloud_oauth;
 pub mod cloud_oauth_transport;
 pub mod cloud_outbox;
+pub mod cloud_simple_key;
 pub mod factory_reset;
 pub mod layout;
 pub mod secrets;

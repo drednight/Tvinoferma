@@ -86,6 +86,8 @@ function secret(value, newSecret) {
     const code = char.codePointAt(0);
     return code < 32 || (code >= 127 && code <= 159);
   });
+  if (newSecret && [...normalized].length < 8)
+    throw new Error('Пароль шифрования должен содержать не менее 8 символов');
   if (!normalized || normalized.length > MAX_SECRET_LENGTH || controls) throw invalidSecret();
   if (newSecret) {
     const characters = [...normalized];
@@ -100,8 +102,8 @@ function secret(value, newSecret) {
     const obvious =
       sequences.some(sequence => sequence.repeat(128).includes(compact)) ||
       ['passwordpassword', 'парольпарольпароль', 'qwertyqwertyqwerty'].includes(compact);
-    if (characters.length < 16 || new Set(characters.map(char => char.toLowerCase())).size < 6 || obvious)
-      throw invalidSecret();
+    if (new Set(characters.map(char => char.toLowerCase())).size < 6 || obvious)
+      throw new Error('Используйте не менее 6 различных символов, а не очевидную последовательность');
   }
   return normalized;
 }
@@ -537,4 +539,9 @@ export async function prepareKeyLossRestart(options) {
       master.fill(0);
     }
   });
+}
+
+/** Same validation in the password dialog and crypto API, before any scrypt work. */
+export function validateEncryptionPassword(value) {
+  return secret(value, true);
 }

@@ -3,7 +3,8 @@ import { webcrypto } from 'node:crypto';
 import {
   openNativeCloudSession,
   openStoredNativeCloudSession,
-  openStoredNativeGoogleFolderDiscovery
+  openStoredNativeGoogleFolderDiscovery,
+  openStoredStandaloneGoogleFolder
 } from '../js/modules/cloudSync/providers/nativeCloudSession.js';
 import { prepareGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { prepareYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
@@ -645,5 +646,52 @@ describe('поиск кандидатов Google через сохранённы
     ).rejects.toThrow();
     await expect(openStoredNativeGoogleFolderDiscovery({ invoke: f.invoke, datasetId })).rejects.toThrow();
     expect(f.invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('standalone Google folder capability (not legacy discovery)', () => {
+  const folder = id => ({
+    id,
+    name: 'Твиноферма',
+    mimeType: 'application/vnd.google-apps.folder',
+    appProperties: { tfFolder: '1' }
+  });
+  it('allocates a durable folder ID and creates it without any root/pairing/data binding', async () => {
+    const folders = [];
+    const f = fixture('google', { folders });
+    const writes = [];
+    const invoke = vi.fn(async (command, args) => {
+      if (command === 'cloud_disk_network' && args.args.operation === 'generate_id')
+        return { status: 200, contentType: 'application/json', body: JSON.stringify({ ids: ['standalone-folder'] }) };
+      if (command === 'cloud_disk_network' && args.args.operation === 'folder_create') {
+        writes.push(args.args.fileId);
+        folders.push(folder(args.args.fileId));
+        return { status: 201, contentType: 'application/json', body: JSON.stringify(folder(args.args.fileId)) };
+      }
+      return f.invoke(command, args);
+    });
+    const opened = await openStoredStandaloneGoogleFolder({ invoke, now: () => 100_000, cryptoSource: webcrypto });
+    expect(opened.status).toBe('opened');
+    expect((await opened.session.discover()).status).toBe('empty');
+    expect(await opened.session.generateFileId()).toEqual({ status: 'generated', fileId: 'standalone-folder' });
+    expect(await opened.session.createOnce({ fileId: 'standalone-folder' })).toEqual({ status: 'accepted' });
+    expect((await opened.session.discover()).folders).toEqual([{ folderId: 'standalone-folder', name: 'Твиноферма' }]);
+    expect(writes).toEqual(['standalone-folder']);
+    expect((await opened.session.createOnce({ fileId: 'another-id' })).status).toBe('blocked_in_session');
+    opened.session.dispose();
+    expect(await opened.session.generateFileId()).toEqual({ status: 'account_unavailable' });
+    noSecret(opened);
+    expect(invoke.mock.calls.some(([command]) => /dataset|outbox|key_state/.test(command))).toBe(false);
+  });
+  it('leaves the original folder discovery capability strictly read-only', async () => {
+    const f = fixture('google');
+    const opened = await openStoredNativeGoogleFolderDiscovery({
+      invoke: f.invoke,
+      now: () => 100_000,
+      cryptoSource: webcrypto
+    });
+    expect(opened.session.generateFileId).toBeUndefined();
+    expect(opened.session.createOnce).toBeUndefined();
+    opened.session.dispose();
   });
 });

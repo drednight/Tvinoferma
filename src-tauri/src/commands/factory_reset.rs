@@ -235,6 +235,9 @@ pub async fn factory_reset(
                 "локальный доступ к облаку: не удалось проверить или удалить все записи".into(),
             );
         }
+        if super::cloud_simple_key::forget().is_err() {
+            problems.push("ключ самостоятельных облачных файлов: удаление не подтверждено".into());
+        }
         if super::cloud_outbox::cleanup_for_reset(&app_dir).is_err() {
             problems
                 .push("локальная очередь облака: не удалось удалить все известные части".into());
