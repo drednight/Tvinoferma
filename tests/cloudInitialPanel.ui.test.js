@@ -88,6 +88,7 @@ function setup(extra = {}) {
   const makeRecovery = vi.fn(() => ({ begin: recoveryBegin }));
   const send = vi.fn(async () => ({ status: 'sent_verified' }));
   const readCode = vi.fn(async () => ({ status: 'ready', pairingCode: 'TEST-PAIRING-CODE' }));
+  const inspectSend = vi.fn(async () => ({ status: 'local_send_ready' }));
   const confirm = vi.fn(() => true);
   const invoke = vi.fn();
   bindInitialCloudPanel({
@@ -98,6 +99,7 @@ function setup(extra = {}) {
     makeRecovery,
     send,
     readCode,
+    inspectSend,
     confirm,
     reviewPanel,
     ...extra
@@ -116,6 +118,7 @@ function setup(extra = {}) {
     connect,
     send,
     readCode,
+    inspectSend,
     confirm,
     invoke,
     reviewPanel
@@ -496,3 +499,39 @@ it.each(['prepared_snapshot_outdated', 'throw'])(
     expect(document.body.textContent).not.toContain('FAKE_PRIVATE');
   }
 );
+
+describe('проверка готовности не является отправкой', () => {
+  it.each([
+    'local_send_ready',
+    'login_required',
+    'probe_credential_read_unavailable',
+    'probe_credential_record_invalid',
+    'deferred',
+    'journal_uncertain'
+  ])('показывает точный %s без отправки, ключей, подтверждений и журнала отправок', async value => {
+    const f = setup();
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    f.inspectSend.mockResolvedValueOnce({ status: value });
+    click('cloud-setup-inspect-send');
+    await vi.waitFor(() => expect(f.inspectSend).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(byId('cloud-setup-inspect-send').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Яндекс Диск');
+    expect(byId('cloud-setup-status').textContent).toContain('Код: setup/' + value);
+    expect(f.confirm).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.begin).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+  it('поздняя диагностика Яндекса не подменяет Google', async () => {
+    const f = setup();
+    const wait = deferred();
+    f.inspectSend.mockReturnValueOnce(wait.promise);
+    click('cloud-setup-inspect-send');
+    await vi.waitFor(() => expect(f.inspectSend).toHaveBeenCalledOnce());
+    change('cloud-registration-provider', 'google');
+    wait.resolve({ status: 'login_required' });
+    await vi.waitFor(() => expect(byId('cloud-setup-inspect-send').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+    expect(byId('cloud-setup-status').textContent).not.toContain('login_required');
+  });
+});

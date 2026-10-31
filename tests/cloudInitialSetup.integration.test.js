@@ -251,6 +251,48 @@ function fakeRecoverySession(envelope) {
 beforeEach(() => vi.restoreAllMocks());
 
 describe.each(['google', 'yandex'])('%s: первичная локальная настройка через fake IPC', provider => {
+  it('местная готовность читает реальную привязку/очередь без refresh, сети и записей', async () => {
+    const f = await fixture();
+    const pending = await begin(f.setup(provider));
+    expect((await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true })).status).toBe(
+      'prepared'
+    );
+    const { inspectInitialCloudSend } = await import('../js/modules/cloudSync/inspectInitialCloudSend.js');
+    const { prepareYandexCredentialRecord } =
+      await import('../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js');
+    const { prepareGoogleCredentialRecord } =
+      await import('../js/modules/cloudSync/providers/oauthCredentialRecord.js');
+    const { generateSyncId } = await import('../js/modules/cloudSync/envelope.js');
+    const fields = { ...f.fake.accounts[provider], revision: generateSyncId(webcrypto) };
+    const raw =
+      provider === 'yandex'
+        ? prepareYandexCredentialRecord({ ...fields, accessToken: 'FAKE_PRIVATE_TOKEN', expiresAt: 100000 })
+        : prepareGoogleCredentialRecord({ ...fields, refreshToken: 'FAKE_PRIVATE_TOKEN', refreshExpiresAt: null });
+    const invoke = vi.fn((command, args) =>
+      command === 'cloud_credential_read'
+        ? Promise.resolve({ status: 'ready', slotId: fields.slotId, record: raw })
+        : f.fake.invoke(command, args)
+    );
+    const before = JSON.stringify({
+      key: f.fake.key(),
+      queue: f.fake.queue(provider),
+      pin: f.fake.pin(provider),
+      state: localStorage.getItem(STORAGE_KEY)
+    });
+    expect(await inspectInitialCloudSend({ provider, invoke, now: () => 10000 })).toEqual({
+      status: 'local_send_ready'
+    });
+    expect(invoke.mock.calls.every(([cmd]) => cmd.endsWith('_read'))).toBe(true);
+    expect(
+      JSON.stringify({
+        key: f.fake.key(),
+        queue: f.fake.queue(provider),
+        pin: f.fake.pin(provider),
+        state: localStorage.getItem(STORAGE_KEY)
+      })
+    ).toBe(before);
+  });
+
   it('смена диска не переносит привязку, не создаёт второй набор и не начинает отправку', async () => {
     const f = await fixture();
     const pending = await begin(f.setup(provider));

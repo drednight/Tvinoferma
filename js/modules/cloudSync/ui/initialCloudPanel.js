@@ -6,6 +6,7 @@ import { stageSyncIdentities } from '../commitSyncIdentities.js';
 // автоматическую синхронизацию и не выдаёт неподтверждённый результат за успех.
 // Секреты не записываются в журнал и не выводятся в текст статуса.
 import { createInitialCloudSetup, readLocalCloudPairingCode } from '../initialCloudSetup.js';
+import { inspectInitialCloudSend } from '../inspectInitialCloudSend.js';
 import { sendInitialCloudRoot } from '../sendInitialCloudRoot.js';
 import { createCloudRecovery } from '../recoverCloudConnection.js';
 import { confirmModal } from '../../../core/ui.js';
@@ -80,6 +81,27 @@ const MESSAGES = Object.freeze({
   sent_verified: 'Первый зашифрованный снимок отправлен и сверен чтением. Новые сохранения отправляются отдельно.',
   sent_earlier_verified:
     'Более ранний первый снимок сверен чтением. Текущие изменения ещё не отправлены; подготовьте и отправьте их отдельно.',
+  local_send_ready:
+    'Местная привязка, очередь и сохранённый срок доступа проверены. API диска и права не проверялись; ничего не отправлено. Код: setup/local_send_ready.',
+  probe_binding_unavailable:
+    'Локальная проверка привязки не завершена. Ключи не изменены; ничего не отправлялось. Код: setup/probe_binding_unavailable.',
+  probe_credential_read_unavailable:
+    'Не удалось прочитать защищённую запись доступа. Ничего не отправлялось. Код: setup/probe_credential_read_unavailable.',
+  probe_credential_record_invalid:
+    'Защищённая запись доступа не прошла проверку формата. Не удаляйте её или привязку. Ничего не отправлялось. Код: setup/probe_credential_record_invalid.',
+  probe_clock_unavailable:
+    'Не удалось проверить срок доступа по системному времени. Ничего не отправлялось. Код: setup/probe_clock_unavailable.',
+  deferred:
+    'Транспорт не начал запись файла. Подготовленный снимок сохранён; перед повтором нужна проверка доступа. Код: setup/deferred.',
+  account_mismatch:
+    'Аккаунт диска не совпал с сохранённым. Не меняйте привязку и не повторяйте отправку. Код: setup/account_mismatch.',
+  journal_blocked: 'Местная очередь не прошла проверку. Не удаляйте её. Код: setup/journal_blocked.',
+  journal_uncertain: 'Запись местной очереди не подтверждена. Не повторяйте отправку. Код: setup/journal_uncertain.',
+  busy: 'Другая операция с очередью ещё выполняется. Код: setup/busy.',
+  changed: 'Очередь изменилась во время операции. Не повторяйте отправку. Код: setup/changed.',
+  not_initialized:
+    'Очередь выбранного диска не подготовлена. Не создавайте новую поверх прежней. Код: setup/not_initialized.',
+  idle: 'В очереди нет ожидающего первого снимка. Это не подтверждает наличие файла на диске. Код: setup/idle.',
   unavailable:
     'Операция не завершена. Ничего не считайте отправленным или применённым; проверьте состояние и повторите проверку.'
 });
@@ -106,7 +128,7 @@ function record(provider, action, status) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * prepareData?:()=>Promise<boolean>,makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
- * readCode?:typeof readLocalCloudPairingCode,confirm?:(message:string)=>boolean|Promise<boolean>,
+ * readCode?:typeof readLocalCloudPairingCode,inspectSend?:typeof inspectInitialCloudSend,confirm?:(message:string)=>boolean|Promise<boolean>,
  * reviewPanel?:{showExternalReview:(value:any,readOnly?:boolean)=>boolean,hasPreviewSelection:()=>boolean,clearExternalReview?:()=>void}}} options
  */
 export function bindInitialCloudPanel(options) {
@@ -133,6 +155,7 @@ export function bindInitialCloudPanel(options) {
     'cancel',
     'show-code',
     'send-root',
+    'inspect-send',
     'code-label',
     'code',
     'status'
@@ -194,7 +217,7 @@ export function bindInitialCloudPanel(options) {
     for (const control of controls) control.disabled = !options.desktop || busy;
     if (!options.desktop || busy) return;
     const pending = !!attempt;
-    for (const id of ['create', 'resume', 'show-code', 'send-root']) el[id].disabled = pending;
+    for (const id of ['create', 'resume', 'show-code', 'send-root', 'inspect-send']) el[id].disabled = pending;
     rec.check.disabled = pending;
     const dataCheck = doc.getElementById('cloud-setup-check-data');
     if (dataCheck) /** @type {HTMLButtonElement} */ (dataCheck).disabled = pending;
@@ -490,6 +513,28 @@ export function bindInitialCloudPanel(options) {
         } catch {
           if (generation !== thisGeneration || selectedProvider() !== chosen) return;
           note(`${name(chosen)}: ${status('unavailable')}`);
+        }
+      })
+  );
+  el['inspect-send'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        note(`${name(chosen)}: проверяем только местную готовность, без сети и отправки…`);
+        try {
+          const native = await loadNative();
+          const outcome = await (options.inspectSend || inspectInitialCloudSend)({
+            provider: chosen,
+            invoke: native.invoke
+          });
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status(outcome.status)}`);
+        } catch {
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status('probe_binding_unavailable')}`);
         }
       })
   );
