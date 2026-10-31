@@ -292,3 +292,18 @@
 .cloud-registration-body .cloud-review {
   grid-template-columns: minmax(0, 1fr);
 }
+
+/* Progressive onboarding: component grid/flex rules must not override hidden. */
+#cloud-registration-panel [hidden] {
+  display: none !important;
+}
+#cloud-registration-advanced > :not(summary) {
+  margin-top: 12px;
+}
+#cloud-registration-advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+#cloud-registration-form .cloud-registration-fields {
+  grid-template-columns: minmax(0, 1fr);
+}

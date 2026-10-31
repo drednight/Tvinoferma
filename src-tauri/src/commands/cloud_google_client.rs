@@ -40,6 +40,7 @@ pub async fn cloud_google_client_import(
 mod storage {
     use super::*;
     use crate::cloud_credential_store::CredentialVault;
+    use tauri::Manager;
     const SERVICE: &str = "com.tvinoferma.desktop";
     struct Vault;
     impl CredentialVault for Vault {
@@ -70,7 +71,12 @@ mod storage {
         app: &AppHandle,
         operation: impl FnOnce(&mut Vault) -> Result<T, String>,
     ) -> Result<T, String> {
-        let path = super::super::data_dir(app)
+        let _state_guard = super::super::state::lock_state_io()
+            .map_err(|_| "oauth_client_config_unavailable".to_owned())?;
+        // Same directory as cloud_credentials/reset, NOT state.json's nested data_dir.
+        let path = app
+            .path()
+            .app_data_dir()
             .map_err(|_| "oauth_client_config_unavailable".to_owned())?;
         let lock = crate::cloud_credential_lock::CredentialLock::try_acquire(&path)
             .map_err(|_| "oauth_client_config_unavailable".to_owned())?;
