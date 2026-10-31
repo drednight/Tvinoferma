@@ -5,6 +5,7 @@
 // не журналируются.
 import { object } from '../exportSchema.js';
 import { OAUTH_PROVIDERS } from './oauthCommon.js';
+import { nativeOAuthDiagnostic } from './oauthDiagnostics.js';
 
 const GOOGLE_IDENTITY = 'https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%2CemailAddress%29';
 const YANDEX_IDENTITY = 'https://login.yandex.ru/info?format=json';
@@ -20,16 +21,17 @@ function failed() {
  * и предпросмотра аккаунта. Он не выполняет refresh или файловые операции.
  * Отмена прекращает ожидание в JS, но не обещает
  * отменить уже отправленный нативный запрос: провайдер мог выдать разрешение.
- * @param {{provider:'google'|'yandex',invoke:(command:string,args:object)=>Promise<unknown>,signal:AbortSignal}} options
+ * @param {{provider:'google'|'yandex',invoke:(command:string,args:object)=>Promise<unknown>,signal:AbortSignal,onDiagnostic?:(code:string)=>void}} options
  * @returns {typeof fetch}
  */
 export function createNativeOAuthCheckFetch(options) {
   let input;
   try {
-    input = object(options, ['provider', 'invoke', 'signal']);
+    input = object(options, ['provider', 'invoke', 'signal'], ['onDiagnostic']);
     if (
       !['google', 'yandex'].includes(input.provider) ||
       typeof input.invoke !== 'function' ||
+      (input.onDiagnostic !== undefined && typeof input.onDiagnostic !== 'function') ||
       !input.signal ||
       typeof input.signal.aborted !== 'boolean' ||
       typeof input.signal.addEventListener !== 'function' ||
@@ -113,10 +115,15 @@ export function createNativeOAuthCheckFetch(options) {
           outerSignal.removeEventListener('abort', onAbort);
           localSignal.removeEventListener('abort', onAbort);
         };
-        const rejectOnce = () => {
+        const rejectOnce = (error = undefined) => {
           if (finished) return;
           finished = true;
           cleanup();
+          try {
+            input.onDiagnostic?.(nativeOAuthDiagnostic(error));
+          } catch {
+            /* diagnostic only */
+          }
           reject(failed());
         };
         const onAbort = () => rejectOnce();

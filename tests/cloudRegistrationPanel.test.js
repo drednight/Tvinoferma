@@ -480,3 +480,20 @@ describe('экспериментальный локальный доступ в 
     expect(s.forget).not.toHaveBeenCalled();
   });
 });
+
+describe('безопасная причина OAuth в интерфейсе', () => {
+  it.each(['token', 'identity'])('показывает этап %s и фиксированный код без исходного ответа', async stage => {
+    bind({ check: vi.fn(async () => ({ status: 'failed', diagnostic: { stage, code: 'invalid_client' } })) });
+    byId('client').value = clientId;
+    submit();
+    await vi.waitFor(() => expect(byId('status').textContent).toContain(stage + '/invalid_client'));
+    expect(byId('status').textContent).not.toContain('Проверьте Client ID, разрешения приложения');
+  });
+  it('не показывает произвольный текст вместо кода', async () => {
+    bind({ check: vi.fn(async () => ({ status: 'failed', diagnostic: { stage: 'token', code: 'PRIVATE_TOKEN' } })) });
+    byId('client').value = clientId;
+    submit();
+    await vi.waitFor(() => expect(byId('status').textContent).toContain('Не удалось проверить регистрацию'));
+    expect(document.body.textContent).not.toContain('PRIVATE_TOKEN');
+  });
+});

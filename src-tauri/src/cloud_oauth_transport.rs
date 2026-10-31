@@ -11,6 +11,73 @@ const YANDEX_IDENTITY: &str = "https://login.yandex.ru/info?format=json";
 const MAX_FORM_BYTES: usize = 32 * 1024;
 const MAX_TOKEN_BYTES: usize = 8192;
 
+/// Fixed diagnostic codes only: never return provider text, identifiers or tokens.
+/// This classification cannot authorize a request or relax token validation.
+pub fn oauth_http_failure(provider: Provider, status: u16, body: &str) -> &'static str {
+    let fallback = match status {
+        400 => "oauth_http_400",
+        401 => "oauth_http_401",
+        403 => "oauth_http_403",
+        429 => "oauth_rate_limited",
+        500..=599 => "oauth_server_error",
+        _ => "oauth_http_rejected",
+    };
+    // A server error must not be recast as a definite rejection of the code.
+    if !(400..=403).contains(&status) || body.len() > 64 * 1024 {
+        return fallback;
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+        return fallback;
+    };
+    let error = value.get("error");
+    if let Some(code) = error.and_then(|v| v.as_str()) {
+        if provider == Provider::Google
+            && matches!(code, "invalid_client" | "invalid_request")
+            && matches!(
+                value.get("error_description").and_then(|v| v.as_str()),
+                Some("client_secret is missing." | "Missing required parameter: client_secret")
+            )
+        {
+            return "oauth_client_secret_required";
+        }
+        return match code {
+            "invalid_client" => "oauth_invalid_client",
+            "invalid_grant" => "oauth_invalid_grant",
+            "invalid_request" => "oauth_invalid_request",
+            "unauthorized_client" => "oauth_unauthorized_client",
+            "invalid_scope" => "oauth_invalid_scope",
+            "access_denied" => "oauth_access_denied",
+            _ => fallback,
+        };
+    }
+    if provider == Provider::Google && status == 403 {
+        if let Some(errors) = error
+            .and_then(|v| v.get("errors"))
+            .and_then(|v| v.as_array())
+        {
+            for item in errors {
+                match item.get("reason").and_then(|v| v.as_str()) {
+                    Some("accessNotConfigured") => return "oauth_api_disabled",
+                    Some("insufficientPermissions") => return "oauth_insufficient_scope",
+                    _ => {}
+                }
+            }
+        }
+        if let Some(details) = error
+            .and_then(|v| v.get("details"))
+            .and_then(|v| v.as_array())
+        {
+            if details
+                .iter()
+                .any(|v| v.get("reason").and_then(|v| v.as_str()) == Some("SERVICE_DISABLED"))
+            {
+                return "oauth_api_disabled";
+            }
+        }
+    }
+    fallback
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Provider {
     Google,
@@ -404,5 +471,82 @@ mod tests {
         ] {
             assert!(!valid_access_token(value));
         }
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn oauth_diagnostics_return_only_fixed_codes() {
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                400,
+                r#"{"error":"invalid_client","error_description":"client_secret is missing."}"#
+            ),
+            "oauth_client_secret_required"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Yandex,
+                400,
+                r#"{"error":"invalid_client","error_description":"client_secret is missing."}"#
+            ),
+            "oauth_invalid_client"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                400,
+                r#"{"error":"invalid_grant","error_description":"PRIVATE_CODE PRIVATE_TOKEN"}"#
+            ),
+            "oauth_invalid_grant"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                400,
+                r#"{"error":"PRIVATE_TOKEN","error_description":"PRIVATE_CODE"}"#
+            ),
+            "oauth_http_400"
+        );
+        assert_eq!(
+            oauth_http_failure(Provider::Google, 503, r#"{"error":"invalid_grant"}"#),
+            "oauth_server_error"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                403,
+                r#"{"error":{"errors":[{"reason":"accessNotConfigured","message":"PRIVATE"}]}}"#
+            ),
+            "oauth_api_disabled"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                403,
+                r#"{"error":{"details":[{"reason":"SERVICE_DISABLED"}]}}"#
+            ),
+            "oauth_api_disabled"
+        );
+        assert_eq!(
+            oauth_http_failure(
+                Provider::Google,
+                403,
+                r#"{"error":{"errors":[{"reason":"insufficientPermissions"}]}}"#
+            ),
+            "oauth_insufficient_scope"
+        );
+        assert_eq!(
+            oauth_http_failure(Provider::Google, 429, "PRIVATE_RESPONSE"),
+            "oauth_rate_limited"
+        );
+        assert_eq!(
+            oauth_http_failure(Provider::Google, 400, &"x".repeat(65537)),
+            "oauth_http_400"
+        );
     }
 }

@@ -2,6 +2,7 @@
 // Разовая диагностика и экспериментальное сохранение OAuth-доступа, без передачи
 // файлов и без работающей синхронизации. В форму вводится только публичный Client ID.
 // Токены, исходные ошибки, метки и идентификаторы аккаунта не журналируются.
+import { describeOAuthFailure } from '../providers/oauthDiagnostics.js';
 import { validOAuthClientId } from '../providers/oauthCommon.js';
 import { checkCloudOAuthRegistration } from '../providers/oauthRegistrationCheck.js';
 import { enrollNativeCloudAccount } from '../providers/nativeOAuthEnrollment.js';
@@ -348,6 +349,7 @@ export function bindCloudRegistrationCheck(options) {
         status.textContent = 'Проверка отменена. Сервис мог сохранить разрешение; эта проверка не сохраняет доступ.';
       } else {
         status.textContent =
+          describeOAuthFailure(result.diagnostic) ||
           'Не удалось проверить регистрацию. Проверьте Client ID, разрешения приложения и Redirect URI; также возможно, что сервис требует дополнительные параметры.';
       }
     } catch {
@@ -419,9 +421,9 @@ export function bindCloudRegistrationCheck(options) {
       }
       // После начала записи показываем настоящий результат даже при отмене.
       if (session.controller.signal.aborted && !session.installing) return;
-      progress.textContent = Object.hasOwn(ENROLL_MESSAGES, result.status)
-        ? ENROLL_MESSAGES[result.status]
-        : ENROLL_MESSAGES.failed;
+      progress.textContent =
+        (result.status === 'failed' && describeOAuthFailure(result.diagnostic)) ||
+        (Object.hasOwn(ENROLL_MESSAGES, result.status) ? ENROLL_MESSAGES[result.status] : ENROLL_MESSAGES.failed);
       if (
         [
           'installed',

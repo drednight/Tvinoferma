@@ -161,7 +161,7 @@ describe('одноразовая диагностика регистрации: 
     ]) {
       const s = setup('yandex', extra);
       const result = await checkCloudOAuthRegistration(s.options);
-      expect(result).toEqual({ status: 'failed' });
+      expect(result).toMatchObject({ status: 'failed' });
       noSecrets(result);
       expect(
         s.invoke.mock.calls.filter(
@@ -174,7 +174,7 @@ describe('одноразовая диагностика регистрации: 
   it.each(['denied', 'expired', 'error'])('завершает %s без запроса токена', async status => {
     const s = setup('yandex', { poll: () => ({ status }) });
     const result = await checkCloudOAuthRegistration(s.options);
-    expect(result).toEqual({ status: status === 'error' ? 'failed' : status });
+    expect(result).toMatchObject({ status: status === 'error' ? 'failed' : status });
     expect(s.calls.some(item => item.command === 'cloud_oauth_network')).toBe(false);
   });
 
@@ -209,7 +209,7 @@ describe('одноразовая диагностика регистрации: 
       }
     });
     const result = await checkCloudOAuthRegistration(s.options);
-    expect(result).toEqual({ status: 'failed' });
+    expect(result).toMatchObject({ status: 'failed' });
     noSecrets(result);
     expect(s.calls.filter(item => item.command === 'cloud_oauth_network')).toHaveLength(1);
   });
@@ -266,5 +266,75 @@ describe('мост диагностики разрешает только зак
         fetchImpl(OAUTH_PROVIDERS.yandex.token, requestOptions('yandex', controller.signal))
       ).rejects.toThrow('Не удалось безопасно выполнить запрос авторизации');
     }
+  });
+});
+
+describe('безопасная диагностика настоящего OAuth-ответа', () => {
+  it.each(['invalid_client', 'client_secret_required', 'invalid_grant', 'timeout', 'connection_failed', 'http_400'])(
+    'передаёт только фиксированный код %s через native, token transport и PKCE',
+    async code => {
+      const s = setup('google', {
+        exchange: () => {
+          throw 'oauth_' + code;
+        }
+      });
+      const result = await checkCloudOAuthRegistration(s.options);
+      expect(result).toEqual({ status: 'failed', diagnostic: { stage: 'token', code } });
+      expect(s.events).toEqual(['browser', 'token']);
+      expect(s.calls.filter(item => item.command === 'cloud_oauth_network')).toHaveLength(1);
+      noSecrets(result);
+    }
+  );
+  it('не выдаёт текст ошибки или неизвестный код за разрешённую диагностику', async () => {
+    for (const error of [
+      'oauth_invalid_client PRIVATE_TOKEN',
+      { message: 'oauth_invalid_client' },
+      'PRIVATE_RESPONSE'
+    ]) {
+      const s = setup('google', {
+        exchange: () => {
+          throw error;
+        }
+      });
+      expect(await checkCloudOAuthRegistration(s.options)).toEqual({
+        status: 'failed',
+        diagnostic: { stage: 'token', code: 'transport_failed' }
+      });
+    }
+  });
+  it('отличает отказ API проверки аккаунта от обмена кода', async () => {
+    const s = setup('google', {
+      identity: () => {
+        throw 'oauth_api_disabled';
+      }
+    });
+    expect(await checkCloudOAuthRegistration(s.options)).toEqual({
+      status: 'failed',
+      diagnostic: { stage: 'identity', code: 'api_disabled' }
+    });
+    expect(s.events).toEqual(['browser', 'token', 'identity']);
+  });
+  it('ошибка разбора успешного ответа остаётся отдельной и закрытой', async () => {
+    const s = setup('google', { exchange: () => ({ body: 'PRIVATE_RESPONSE', contentType: 'application/json' }) });
+    expect(await checkCloudOAuthRegistration(s.options)).toEqual({
+      status: 'failed',
+      diagnostic: { stage: 'token', code: 'response_invalid' }
+    });
+  });
+  it('исключение наблюдателя диагностики не меняет отказ и не повторяет запрос', async () => {
+    const signal = new AbortController().signal;
+    const fetch = createNativeOAuthCheckFetch({
+      provider: 'google',
+      signal,
+      invoke: vi.fn(async () => {
+        throw 'oauth_invalid_client';
+      }),
+      onDiagnostic: () => {
+        throw new Error('PRIVATE_OBSERVER_ERROR');
+      }
+    });
+    await expect(fetch(OAUTH_PROVIDERS.google.token, requestOptions('google', signal))).rejects.toThrow(
+      'Не удалось безопасно'
+    );
   });
 });

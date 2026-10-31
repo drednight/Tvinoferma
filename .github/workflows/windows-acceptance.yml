@@ -1,0 +1,75 @@
+name: Windows acceptance build
+
+# Unsigned test executable only. Never creates a release or updates latest.json.
+# Full regression belongs to CI, not a second test run in the packaging job.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-acceptance.yml'
+      - 'js/modules/cloudSync/providers/**'
+      - 'js/modules/cloudSync/ui/registrationCheckPanel.js'
+      - 'src-tauri/src/cloud_oauth*.rs'
+      - 'src-tauri/src/commands/cloud_oauth*.rs'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Build executable without installer or updater signature
+        run: npm run tauri -- build --no-bundle
+      - name: Prepare test executable, source identity and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory acceptance | Out-Null
+          Copy-Item src-tauri/target/release/tvinoferma.exe acceptance/Tvinoferma.exe
+          $source = git rev-parse HEAD
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          @"
+          ТЕСТОВАЯ СБОРКА — НЕ СТАБИЛЬНОЕ ОБНОВЛЕНИЕ
+
+          Исходный код: $source
+          Встроенная версия: $version (она не отличает эту тестовую сборку от стабильной).
+          Это обычный Windows exe, не установщик и не пакет автообновления.
+          Нужен установленный Microsoft Edge WebView2 Runtime.
+
+          Запускайте только в ОТДЕЛЬНЫХ ТЕСТОВЫХ УЧЁТНЫХ ЗАПИСЯХ WINDOWS без прежних
+          данных Твинофермы. Профиль и vault НЕ изолированы специальным identifier.
+          Не запускайте поверх рабочего профиля и не запускайте старую версию
+          одновременно с этой сборкой.
+
+          Для диагностики OAuth: Настройки → Синхронизация → Синхронизация между ПК.
+          Введите публичный Client ID и нажмите «Проверить регистрацию».
+          При ошибке сообщите только код вроде token/invalid_client или token/timeout.
+          Код причины диагностический: успешный браузерный callback не доказывает вход.
+          Не передавайте токены, Client Secret, URL callback или код авторизации в чат.
+          Эта сборка НЕ добавляет передачу client_secret и НЕ доказывает успешный вход.
+
+          Тесты с имитацией провайдеров не заменяют реальную приёмку Google/Яндекс.
+          Контрольный план: docs/CLOUD-SYNC-ACCEPTANCE.md в указанном исходном коде.
+          Стабильный релиз не публиковался; подписи автообновления нет.
+          "@ | Set-Content -Encoding utf8 acceptance/ПРОЧИТАТЬ.txt
+          $hash = (Get-FileHash acceptance/Tvinoferma.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Tvinoferma.exe" | Set-Content -Encoding ascii acceptance/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Tvinoferma-Windows-acceptance-${{ github.run_id }}
+          path: acceptance/
+          if-no-files-found: error
+          retention-days: 14

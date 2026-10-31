@@ -255,7 +255,7 @@ describe('полный экспериментальный PKCE → подтве�
   it('ошибка нативной диагностики не раскрывает токен и не повторяет обмен', async () => {
     const s = setup('yandex', { exchange: () => Promise.reject(new Error(`FAKE_PRIVATE_ERROR ${ACCESS}`)) });
     const result = await enrollNativeCloudAccount(s.options);
-    expect(result).toEqual({ status: 'failed' });
+    expect(result).toMatchObject({ status: 'failed' });
     assertNoPrivate(result);
     expect(
       s.invoke.mock.calls.filter(
@@ -264,4 +264,15 @@ describe('полный экспериментальный PKCE → подтве�
     ).toHaveLength(1);
     expect(s.slots.size).toBe(0);
   });
+});
+
+it('сохранение доступа показывает безопасную причину обмена и не трогает vault', async () => {
+  const s = setup('google', {
+    exchange: () => {
+      throw 'oauth_client_secret_required';
+    }
+  });
+  const result = await enrollNativeCloudAccount(s.options);
+  expect(result).toEqual({ status: 'failed', diagnostic: { stage: 'token', code: 'client_secret_required' } });
+  expect(s.invoke.mock.calls.some(([command]) => command === 'cloud_credential_install')).toBe(false);
 });
