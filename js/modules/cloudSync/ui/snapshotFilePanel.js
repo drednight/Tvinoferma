@@ -196,6 +196,14 @@ export function bindSnapshotFilePanel(options) {
       variants.hidden = true;
     }
     controls();
+    const capacity = el('capacity');
+    if (capacity) {
+      capacity.hidden = !value.capacity;
+      if (value.capacity) {
+        const c = value.capacity;
+        capacity.textContent = `История: ${c.versions} из ${c.maxVersions} версий; запас по лимиту версий: ${c.remainingVersions}. Проверяемый шифртекст: ${(c.ciphertextChars / 1024 / 1024).toFixed(2)} из ${(c.maxCiphertextChars / 1024 / 1024).toFixed(0)} MiB.${c.nearLimit ? ' Предел близко: сохраните зашифрованный архив ниже. Старые файлы нельзя удалять вручную — они нужны для проверки цепочки.' : ''}`;
+      }
+    }
     if (!view) return;
     dates.textContent = `Файл на диске: ${time(view.modifiedAt)} · Проверено: ${time(view.checkedAt)} · Местное сохранение: ${time(view.localSavedAt)} · Часовой пояс: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`;
     el('summary').textContent = view.matches

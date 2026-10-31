@@ -5772,3 +5772,148 @@ describe.each(['google', 'yandex'])('%s: файловый ручной пере�
     prepared.cancel();
   }, 30000);
 });
+
+describe.each(['google', 'yandex'])('%s: зашифрованный архив истории перед ротацией', provider => {
+  async function api(f) {
+    return {
+      opts: { provider, invoke: f.fake.invoke, cryptoSource: webcrypto, openSession: f.cloud.openSession },
+      ...(await import('../js/modules/cloudSync/snapshotFileExchange.js'))
+    };
+  }
+  it('сохраняет и сверяет точные зашифрованные версии, не меняя state, основу, очередь и диск', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.state.characters[0].notes = 'ARCHIVE_PRIVATE_NOTE';
+    await f.storage.saveNow();
+    const review = await x.checkSnapshotFile(x.opts);
+    await x.uploadSnapshotFile({ ...x.opts, review, confirmed: true });
+    const before = localStorage.getItem(STORAGE_KEY),
+      queue = structuredClone(f.fake.queue(provider)),
+      versions = structuredClone([...f.cloud.versions]),
+      calls = f.cloud.session.upload.mock.calls.length;
+    const prepared = await x.prepareSnapshotHistoryArchive(x.opts);
+    expect(prepared.status).toBe('archive_ready');
+    expect(prepared.capacity).toMatchObject({ versions: 2, deletableVersions: 0, protectedVersions: 2 });
+    expect(JSON.stringify(prepared)).not.toContain('ARCHIVE_PRIVATE_NOTE');
+    expect(x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: false }).status).toBe(
+      'confirmation_required'
+    );
+    const file = x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true });
+    expect(file.status).toBe('archive_download');
+    expect(file.text).not.toContain('ARCHIVE_PRIVATE_NOTE');
+    expect(file.text).not.toContain('PRIVATE_PASSWORD');
+    expect(file.text).not.toContain('FAKE_PRIVATE_ACCOUNT');
+    expect(await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: file.text })).toEqual({
+      status: 'archive_verified',
+      versions: 2
+    });
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect([...f.cloud.versions]).toEqual(versions);
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(calls);
+  }, 30000);
+  it('сохраняет конкурирующие головы без назначения победителя и без изменения принятой базы', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 16;
+    });
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 17;
+    });
+    const before = localStorage.getItem(STORAGE_KEY),
+      prepared = await x.prepareSnapshotHistoryArchive(x.opts);
+    expect(prepared.status).toBe('archive_ready');
+    expect(prepared.heads).toBe(2);
+    expect(prepared.capacity.versions).toBe(3);
+    const file = x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true });
+    expect((await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: file.text })).status).toBe(
+      'archive_verified'
+    );
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+  it('не считает прежний архив актуальным после появления новой версии во время сохранения', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      prepared = await x.prepareSnapshotHistoryArchive(x.opts),
+      file = x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true });
+    const root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 18;
+    });
+    expect((await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: file.text })).status).toBe(
+      'remote_changed'
+    );
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+  it('не выдаёт незавершённую или неизвестную отправку за полную архивную историю', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      review = await x.checkSnapshotFile(x.opts);
+    f.cloud.session.upload.mockImplementationOnce(async () => ({ status: 'unavailable' }));
+    expect((await x.uploadSnapshotFile({ ...x.opts, review, confirmed: true })).status).toBe('verification_pending');
+    expect((await x.prepareSnapshotHistoryArchive(x.opts)).status).toBe('pending_upload');
+    const row = f.state.settings.cloudSnapshotFiles[provider];
+    row.pending.phase = 'attempting';
+    await f.storage.saveNow();
+    const release = await x.inspectSnapshotFileUpload(x.opts);
+    await x.releaseSnapshotFileUpload({
+      ...x.opts,
+      review: release,
+      confirmed: true,
+      unknownOutcomeAcknowledged: true
+    });
+    expect((await x.prepareSnapshotHistoryArchive(x.opts)).status).toBe('unsettled_uploads');
+  }, 30000);
+  it('отменённый просмотр, подмена файла и изменение state не допускают успешной сверки', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    let prepared = await x.prepareSnapshotHistoryArchive(x.opts);
+    const file = x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true });
+    expect((await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: '{}' })).status).toBe(
+      'archive_invalid'
+    );
+    prepared.cancel();
+    expect(x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true }).status).toBe('archive_changed');
+    prepared = await x.prepareSnapshotHistoryArchive(x.opts);
+    f.state.characters[0].notes = 'LOCAL_CHANGE';
+    await f.storage.saveNow();
+    expect((await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: file.text })).status).toBe(
+      'state_changed_or_unsaved'
+    );
+  }, 30000);
+  it('останавливается при изменении инвентаря во время чтения или недостающем родителе', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.cloud.session.listWithDates
+      .mockResolvedValueOnce({
+        status: 'listed',
+        versions: [{ versionId: f.initialEnvelope.versionId, modifiedAt: '2026-10-29T12:00:00Z' }]
+      })
+      .mockResolvedValueOnce({ status: 'listed', versions: [] });
+    expect((await x.prepareSnapshotHistoryArchive(x.opts)).status).toBe('unavailable_or_changed');
+    const root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 19;
+    });
+    f.cloud.versions.delete(root.versionId);
+    expect((await x.prepareSnapshotHistoryArchive(x.opts)).status).toBe('unavailable_or_changed');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+  it('не подтверждает свежесть подготовки при внешнем изменении файла state без смены памяти', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      prepared = await x.prepareSnapshotHistoryArchive(x.opts),
+      file = x.downloadSnapshotHistoryArchive({ review: prepared, confirmed: true });
+    const disk = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    disk.characters[0].notes = 'EXTERNAL_DISK_ONLY';
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(disk));
+    expect((await x.verifySnapshotHistoryArchive({ ...x.opts, review: prepared, text: file.text })).status).toBe(
+      'state_changed_or_unsaved'
+    );
+    expect(f.state.characters[0].notes).not.toBe('EXTERNAL_DISK_ONLY');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+  }, 30000);
+});

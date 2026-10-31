@@ -236,4 +236,26 @@ describe('обмен полным файлом — интерфейс', () => {
     expect(f.confirm.mock.calls[1][0]).toContain('не безвозвратное удаление');
     expect(f.upload).not.toHaveBeenCalled();
   });
+  it('показывает запас до лимита и сбрасывает его при смене диска', async () => {
+    setup({
+      check: vi.fn(async () =>
+        view({
+          capacity: {
+            versions: 96,
+            maxVersions: 128,
+            remainingVersions: 32,
+            ciphertextChars: 1024,
+            maxCiphertextChars: 64 * 1024 * 1024,
+            nearLimit: true
+          }
+        })
+      )
+    });
+    await compare();
+    expect(el('capacity').hidden).toBe(false);
+    expect(el('capacity').textContent).toContain('96 из 128');
+    expect(el('capacity').textContent).toContain('нельзя удалять вручную');
+    document.getElementById('cloud-registration-provider').dispatchEvent(new Event('change'));
+    expect(el('capacity').hidden).toBe(true);
+  });
 });

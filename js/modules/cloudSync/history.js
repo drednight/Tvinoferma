@@ -37,7 +37,7 @@ const HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v1';
 const PORTABLE_HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v2';
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
 export const MAX_HISTORY_VERSIONS = 128;
-const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
+export const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
 // В JS `$` допускает позицию перед завершающим переводом строки; нужен именно конец.
 const SHA256 = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedHistories = new WeakSet();
