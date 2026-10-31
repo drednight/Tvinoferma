@@ -88,6 +88,7 @@ function setup(extra = {}) {
   const makeRecovery = vi.fn(() => ({ begin: recoveryBegin }));
   const send = vi.fn(async () => ({ status: 'sent_verified' }));
   const readCode = vi.fn(async () => ({ status: 'ready', pairingCode: 'TEST-PAIRING-CODE' }));
+  const inspectSend = vi.fn(async () => ({ status: 'local_send_ready' }));
   const confirm = vi.fn(() => true);
   const invoke = vi.fn();
   bindInitialCloudPanel({
@@ -98,6 +99,7 @@ function setup(extra = {}) {
     makeRecovery,
     send,
     readCode,
+    inspectSend,
     confirm,
     reviewPanel,
     ...extra
@@ -116,6 +118,7 @@ function setup(extra = {}) {
     connect,
     send,
     readCode,
+    inspectSend,
     confirm,
     invoke,
     reviewPanel
@@ -379,5 +382,156 @@ describe('автоматическая подготовка местных да�
     expect(f.begin).not.toHaveBeenCalled();
     expect(f.send).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain('PRIVATE_DISK_ERROR');
+  });
+});
+
+describe('привязки разных дисков не выдаются друг за друга', () => {
+  it.each([
+    'binding_missing_or_blocked',
+    'binding_missing',
+    'binding_blocked',
+    'binding_unavailable',
+    'credential_missing',
+    'credential_blocked',
+    'credential_unavailable',
+    'login_required',
+    'account_unavailable'
+  ])('показывает фиксированный %s для выбранного Google, а не общую ошибку', async value => {
+    const f = setup();
+    change('cloud-registration-provider', 'google');
+    f.readCode.mockResolvedValueOnce({ status: value });
+    click('cloud-setup-show-code');
+    await vi.waitFor(() => expect(byId('cloud-setup-show-code').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Google Диск');
+    expect(byId('cloud-setup-status').textContent).toContain('Код: setup/' + value);
+    expect(byId('cloud-setup-code-label').hidden).toBe(true);
+    f.send.mockResolvedValueOnce({ status: value });
+    click('cloud-setup-send-root');
+    await vi.waitFor(() => expect(f.send).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(byId('cloud-setup-send-root').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Код: setup/' + value);
+    expect(f.send).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google' }));
+    expect(f.begin).not.toHaveBeenCalled();
+    expect(f.recoveryBegin).not.toHaveBeenCalled();
+  });
+
+  it('при переключении Яндекс → Google скрывает код и старое успешное сообщение без native/сети', async () => {
+    const f = setup();
+    click('cloud-setup-show-code');
+    await vi.waitFor(() => expect(byId('cloud-setup-code-label').hidden).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Яндекс Диск');
+    change('cloud-registration-provider', 'google');
+    expect(byId('cloud-setup-code-label').hidden).toBe(true);
+    expect(byId('cloud-setup-code').value).toBe('');
+    expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+    expect(byId('cloud-setup-status').textContent).not.toContain('Код сверки показан');
+    expect(f.readCode).toHaveBeenCalledOnce();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.begin).not.toHaveBeenCalled();
+  });
+
+  it.each(['ready', 'binding_missing_or_blocked'])(
+    'поздний код/отказ %s прежнего диска не превращается в ошибку нового диска',
+    async value => {
+      const wait = deferred();
+      const readCode = vi.fn(() => wait.promise);
+      setup({ readCode });
+      click('cloud-setup-show-code');
+      await vi.waitFor(() => expect(readCode).toHaveBeenCalledOnce());
+      change('cloud-registration-provider', 'google');
+      wait.resolve({ status: value, pairingCode: 'FAKE_PRIVATE_OLD_CODE' });
+      await vi.waitFor(() => expect(byId('cloud-setup-show-code').disabled).toBe(false));
+      expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+      expect(byId('cloud-setup-status').textContent).not.toContain('Операция не завершена');
+      expect(byId('cloud-setup-code').value).toBe('');
+    }
+  );
+
+  it('поздний результат отправки Яндекса не сообщает об успехе/ошибке Google, но журнал сохраняет Яндекс', async () => {
+    const wait = deferred();
+    const send = vi.fn(() => wait.promise);
+    setup({ send });
+    click('cloud-setup-send-root');
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    change('cloud-registration-provider', 'google');
+    wait.resolve({ status: 'sent_verified' });
+    await vi.waitFor(() => expect(byId('cloud-setup-send-root').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+    const logs = JSON.parse(localStorage.getItem('tf_cloud_activity_v1'));
+    expect(logs[0]).toMatchObject({ provider: 'yandex', action: 'send', outcome: 'success' });
+    expect(send).toHaveBeenCalledOnce();
+  });
+
+  it.each(['FAKE_PRIVATE_STATUS', 'toString', '__proto__'])(
+    'не выводит неизвестный код %s или унаследованные свойства',
+    async value => {
+      const f = setup();
+      f.readCode.mockResolvedValueOnce({ status: value });
+      click('cloud-setup-show-code');
+      await vi.waitFor(() => expect(byId('cloud-setup-show-code').disabled).toBe(false));
+      expect(byId('cloud-setup-status').textContent).toContain('Операция не завершена');
+      expect(byId('cloud-setup-status').textContent).not.toContain(value);
+      expect(byId('cloud-setup-status').textContent).not.toContain('native code');
+    }
+  );
+});
+
+it.each(['prepared_snapshot_outdated', 'throw'])(
+  'поздний %s при отправке прежнего диска не открывает подтверждение и не меняет статус нового',
+  async value => {
+    let finish;
+    const send = vi.fn(
+      () =>
+        new Promise((resolve, reject) => {
+          finish =
+            value === 'throw' ? () => reject(new Error('FAKE_PRIVATE_FAILURE')) : () => resolve({ status: value });
+        })
+    );
+    const f = setup({ send });
+    click('cloud-setup-send-root');
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    change('cloud-registration-provider', 'google');
+    finish();
+    await vi.waitFor(() => expect(byId('cloud-setup-send-root').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+    expect(f.confirm).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledOnce();
+    expect(document.body.textContent).not.toContain('FAKE_PRIVATE');
+  }
+);
+
+describe('проверка готовности не является отправкой', () => {
+  it.each([
+    'local_send_ready',
+    'login_required',
+    'probe_credential_read_unavailable',
+    'probe_credential_record_invalid',
+    'deferred',
+    'journal_uncertain'
+  ])('показывает точный %s без отправки, ключей, подтверждений и журнала отправок', async value => {
+    const f = setup();
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    f.inspectSend.mockResolvedValueOnce({ status: value });
+    click('cloud-setup-inspect-send');
+    await vi.waitFor(() => expect(f.inspectSend).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(byId('cloud-setup-inspect-send').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Яндекс Диск');
+    expect(byId('cloud-setup-status').textContent).toContain('Код: setup/' + value);
+    expect(f.confirm).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(f.begin).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+  it('поздняя диагностика Яндекса не подменяет Google', async () => {
+    const f = setup();
+    const wait = deferred();
+    f.inspectSend.mockReturnValueOnce(wait.promise);
+    click('cloud-setup-inspect-send');
+    await vi.waitFor(() => expect(f.inspectSend).toHaveBeenCalledOnce());
+    change('cloud-registration-provider', 'google');
+    wait.resolve({ status: 'login_required' });
+    await vi.waitFor(() => expect(byId('cloud-setup-inspect-send').disabled).toBe(false));
+    expect(byId('cloud-setup-status').textContent).toContain('Выбран Google Диск');
+    expect(byId('cloud-setup-status').textContent).not.toContain('login_required');
   });
 });

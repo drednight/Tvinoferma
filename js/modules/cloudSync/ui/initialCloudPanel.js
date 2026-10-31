@@ -6,6 +6,7 @@ import { stageSyncIdentities } from '../commitSyncIdentities.js';
 // автоматическую синхронизацию и не выдаёт неподтверждённый результат за успех.
 // Секреты не записываются в журнал и не выводятся в текст статуса.
 import { createInitialCloudSetup, readLocalCloudPairingCode } from '../initialCloudSetup.js';
+import { inspectInitialCloudSend } from '../inspectInitialCloudSend.js';
 import { sendInitialCloudRoot } from '../sendInitialCloudRoot.js';
 import { createCloudRecovery } from '../recoverCloudConnection.js';
 import { confirmModal } from '../../../core/ui.js';
@@ -13,8 +14,26 @@ import { recordCloudActivity } from '../cloudEventLog.js';
 
 const MESSAGES = Object.freeze({
   credential_missing_or_blocked: 'Сначала сохраните и проверьте доступ к выбранному диску.',
+  binding_missing_or_blocked:
+    'Для выбранного диска нет подтверждённой местной привязки набора либо она заблокирована. Привязка другого диска не переносится переключателем. Не удаляйте её и не создавайте новый набор поверх неё. Код: setup/binding_missing_or_blocked.',
+  binding_missing:
+    'Для выбранного диска местная привязка набора не найдена. Переключение с другого диска её не переносит. Код: setup/binding_missing.',
+  binding_blocked:
+    'Местная привязка выбранного диска не прошла проверку ключа или аккаунта. Не удаляйте привязку и ключи. Код: setup/binding_blocked.',
+  binding_unavailable:
+    'Не удалось повторно проверить местную привязку выбранного диска. Не удаляйте её и не повторяйте отправку. Код: setup/binding_unavailable.',
+  credential_missing:
+    'Сохранённый доступ к выбранному диску не найден. Доступ к другому диску его не заменяет. Код: setup/credential_missing.',
+  credential_blocked:
+    'Сохранённый доступ к выбранному диску не прошёл проверку. Не удаляйте связанный набор или ключи. Код: setup/credential_blocked.',
+  credential_unavailable:
+    'Не удалось прочитать сохранённый доступ к выбранному диску. Это не подтверждает его отсутствие; не удаляйте запись. Код: setup/credential_unavailable.',
+  login_required:
+    'Срок доступа к выбранному диску истёк. Нужен повторный вход с сохранением существующего набора; не удаляйте привязку. Код: setup/login_required.',
+  account_unavailable:
+    'Аккаунт, доступ или привязка изменились во время операции. Результат отправки не подтверждён; не повторяйте её. Код: setup/account_unavailable.',
   dataset_binding_present:
-    'На этом ПК уже есть привязка набора. Ничего не изменено; воспользуйтесь существующим кодом или восстановлением.',
+    'На этом ПК уже есть привязка набора, возможно к другому диску. Переключение диска не переносит её. Новый набор не создан; не удаляйте существующую привязку и ключи.',
   key_present:
     'Внутренний ключ уже существует. Не создаём новый; проверьте восстановление или продолжите прерванную настройку.',
   key_missing: 'Внутренний ключ на этом ПК не найден. Используйте основной пароль или запасной ключ.',
@@ -62,6 +81,27 @@ const MESSAGES = Object.freeze({
   sent_verified: 'Первый зашифрованный снимок отправлен и сверен чтением. Новые сохранения отправляются отдельно.',
   sent_earlier_verified:
     'Более ранний первый снимок сверен чтением. Текущие изменения ещё не отправлены; подготовьте и отправьте их отдельно.',
+  local_send_ready:
+    'Местная привязка, очередь и сохранённый срок доступа проверены. API диска и права не проверялись; ничего не отправлено. Код: setup/local_send_ready.',
+  probe_binding_unavailable:
+    'Локальная проверка привязки не завершена. Ключи не изменены; ничего не отправлялось. Код: setup/probe_binding_unavailable.',
+  probe_credential_read_unavailable:
+    'Не удалось прочитать защищённую запись доступа. Ничего не отправлялось. Код: setup/probe_credential_read_unavailable.',
+  probe_credential_record_invalid:
+    'Защищённая запись доступа не прошла проверку формата. Не удаляйте её или привязку. Ничего не отправлялось. Код: setup/probe_credential_record_invalid.',
+  probe_clock_unavailable:
+    'Не удалось проверить срок доступа по системному времени. Ничего не отправлялось. Код: setup/probe_clock_unavailable.',
+  deferred:
+    'Транспорт не начал запись файла. Подготовленный снимок сохранён; перед повтором нужна проверка доступа. Код: setup/deferred.',
+  account_mismatch:
+    'Аккаунт диска не совпал с сохранённым. Не меняйте привязку и не повторяйте отправку. Код: setup/account_mismatch.',
+  journal_blocked: 'Местная очередь не прошла проверку. Не удаляйте её. Код: setup/journal_blocked.',
+  journal_uncertain: 'Запись местной очереди не подтверждена. Не повторяйте отправку. Код: setup/journal_uncertain.',
+  busy: 'Другая операция с очередью ещё выполняется. Код: setup/busy.',
+  changed: 'Очередь изменилась во время операции. Не повторяйте отправку. Код: setup/changed.',
+  not_initialized:
+    'Очередь выбранного диска не подготовлена. Не создавайте новую поверх прежней. Код: setup/not_initialized.',
+  idle: 'В очереди нет ожидающего первого снимка. Это не подтверждает наличие файла на диске. Код: setup/idle.',
   unavailable:
     'Операция не завершена. Ничего не считайте отправленным или применённым; проверьте состояние и повторите проверку.'
 });
@@ -88,7 +128,7 @@ function record(provider, action, status) {
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
  * prepareData?:()=>Promise<boolean>,makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
- * readCode?:typeof readLocalCloudPairingCode,confirm?:(message:string)=>boolean|Promise<boolean>,
+ * readCode?:typeof readLocalCloudPairingCode,inspectSend?:typeof inspectInitialCloudSend,confirm?:(message:string)=>boolean|Promise<boolean>,
  * reviewPanel?:{showExternalReview:(value:any,readOnly?:boolean)=>boolean,hasPreviewSelection:()=>boolean,clearExternalReview?:()=>void}}} options
  */
 export function bindInitialCloudPanel(options) {
@@ -115,6 +155,7 @@ export function bindInitialCloudPanel(options) {
     'cancel',
     'show-code',
     'send-root',
+    'inspect-send',
     'code-label',
     'code',
     'status'
@@ -170,13 +211,13 @@ export function bindInitialCloudPanel(options) {
     el.status.textContent = value;
   };
   function status(value) {
-    return MESSAGES[value] || MESSAGES.unavailable;
+    return typeof value === 'string' && Object.hasOwn(MESSAGES, value) ? MESSAGES[value] : MESSAGES.unavailable;
   }
   function update() {
     for (const control of controls) control.disabled = !options.desktop || busy;
     if (!options.desktop || busy) return;
     const pending = !!attempt;
-    for (const id of ['create', 'resume', 'show-code', 'send-root']) el[id].disabled = pending;
+    for (const id of ['create', 'resume', 'show-code', 'send-root', 'inspect-send']) el[id].disabled = pending;
     rec.check.disabled = pending;
     const dataCheck = doc.getElementById('cloud-setup-check-data');
     if (dataCheck) /** @type {HTMLButtonElement} */ (dataCheck).disabled = pending;
@@ -229,7 +270,7 @@ export function bindInitialCloudPanel(options) {
       update();
     }
   }
-  function invalidate() {
+  function invalidate(event) {
     generation++;
     if (!busy && attempt) {
       clearAttempt(true);
@@ -238,6 +279,10 @@ export function bindInitialCloudPanel(options) {
     }
     el.code.value = '';
     el['code-label'].hidden = true;
+    if (event.currentTarget === provider)
+      note(
+        `Выбран ${name(selectedProvider())}. У каждого диска своя привязка; переключение не подключает набор и не переносит его. Если действие уже началось на прежнем диске, его результат нужно проверить отдельно.`
+      );
     update();
   }
   provider.addEventListener('change', invalidate);
@@ -455,15 +500,41 @@ export function bindInitialCloudPanel(options) {
         if (attempt) return;
         const chosen = selectedProvider();
         const thisGeneration = generation;
+        el.code.value = '';
+        el['code-label'].hidden = true;
         try {
           const native = await loadNative();
           const outcome = /** @type {any} */ (await readCode({ provider: chosen, invoke: native.invoke }));
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
           if (outcome.status === 'ready' && generation === thisGeneration && selectedProvider() === chosen) {
             showCode(outcome.pairingCode);
-            note('Код сверки показан. Передавайте его независимо от облачного файла.');
-          } else note(status(outcome.status));
+            note(`Код сверки показан для ${name(chosen)}. Передавайте его независимо от облачного файла.`);
+          } else note(`${name(chosen)}: ${status(outcome.status)}`);
         } catch {
-          note(status('unavailable'));
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status('unavailable')}`);
+        }
+      })
+  );
+  el['inspect-send'].addEventListener(
+    'click',
+    () =>
+      void withBusy(async () => {
+        if (attempt) return;
+        const chosen = selectedProvider();
+        const thisGeneration = generation;
+        note(`${name(chosen)}: проверяем только местную готовность, без сети и отправки…`);
+        try {
+          const native = await loadNative();
+          const outcome = await (options.inspectSend || inspectInitialCloudSend)({
+            provider: chosen,
+            invoke: native.invoke
+          });
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status(outcome.status)}`);
+        } catch {
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status('probe_binding_unavailable')}`);
         }
       })
   );
@@ -491,8 +562,8 @@ export function bindInitialCloudPanel(options) {
             settingsSelections: selections()
           });
           if (outcome.status === 'prepared_snapshot_outdated') {
-            note(status(outcome.status));
             if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+            note(status(outcome.status));
             const approved = await askConfirmation(
               'Первый подготовленный снимок отличается от текущих сохранённых данных. Отправить его как более раннюю основу? Текущие изменения при этом не будут отправлены. Их потребуется отправить отдельно; при удалениях или конфликтах отправка остановится.'
             );
@@ -506,12 +577,14 @@ export function bindInitialCloudPanel(options) {
             });
           }
           record(chosen, 'send', outcome.status);
-          note(status(outcome.status));
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status(outcome.status)}`);
           if (['sent_verified', 'sent_earlier_verified', 'already_confirmed'].includes(outcome.status))
             doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-root-confirmed'));
         } catch {
           record(chosen, 'send', 'verification_pending');
-          note(status('verification_pending'));
+          if (generation !== thisGeneration || selectedProvider() !== chosen) return;
+          note(`${name(chosen)}: ${status('verification_pending')}`);
         }
       })
   );
