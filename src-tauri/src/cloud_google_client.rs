@@ -60,7 +60,7 @@ impl Client {
     pub(crate) fn with_form(&self, form: &str) -> Result<String, String> {
         // The webview may not send client_secret or extra fields.
         if !crate::cloud_oauth_transport::valid_code_form(ProviderOAuth::Google, form)
-            && !crate::cloud_oauth_transport::valid_google_refresh_form(form)
+            && crate::cloud_oauth_transport::parse_google_refresh_form(form).is_none()
         {
             return Err(ERROR.into());
         }
