@@ -113,7 +113,7 @@ export function bindStandaloneFilePanel(options) {
       .map(item => item.value);
   const targets = () => choices('[data-standalone-destination]');
   const fields = () => choices('[data-standalone-private]');
-  const confirm = options.confirm || confirmModal;
+  const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
   let busy = false,
@@ -181,7 +181,7 @@ export function bindStandaloneFilePanel(options) {
         retry.textContent = 'Проверить и продолжить прежний файл';
         retry.addEventListener('click', () =>
           action(async engine => {
-            const agreed = await confirm({
+            const agreed = await confirmAction({
               title: 'Продолжить прежнюю отправку?',
               text: 'Сначала проверим результат. Если файл не найден, повторим только тот же зашифрованный файл с тем же ID, а не текущие данные приложения.',
               okText: 'Проверить и продолжить'
@@ -368,7 +368,7 @@ export function bindStandaloneFilePanel(options) {
         contactsSourceConfirmed: el('contacts-confirm').checked,
         settingsSelections: choices('[data-standalone-setting]')
       });
-      const agreed = await confirm({
+      const agreed = await confirmAction({
         title: 'Сохранить полный файл?',
         text: `Сохранить выбранные данные на ${targets()
           .map(provider => NAMES[provider])
@@ -406,7 +406,7 @@ export function bindStandaloneFilePanel(options) {
         status.textContent = 'Изменён выбор приватных полей. Скачайте и сравните файл заново.';
         return;
       }
-      const agreed = await confirm({
+      const agreed = await confirmAction({
         title: 'Заменить местные данные полной копией?',
         text: 'Будут добавлены, изменены и удалены записи по показанному сравнению. Сначала создаётся резервная копия местных данных. Невыбранные контакты, сессии и настройки этого ПК не переносятся из облака. Второй диск не перезаписывается. Продолжить?',
         okText: 'Принять полную копию',
@@ -448,7 +448,7 @@ export function bindStandaloneFilePanel(options) {
   el('forget').addEventListener('click', () =>
     action(async engine => {
       if (
-        !(await confirm({
+        !(await confirmAction({
           title: 'Забыть запомненный ключ?',
           text: 'Облачные файлы, старые ключи и аккаунты сохранятся. Для следующего открытия понадобится пароль шифрования.',
           okText: 'Забыть ключ'
