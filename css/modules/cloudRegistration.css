@@ -268,3 +268,27 @@
   margin: 6px 0;
   line-height: 1.4;
 }
+
+/* File pickers and fieldset intrinsic widths must not widen the settings pane. */
+#cloud-history-archive,
+#cloud-history-maintenance {
+  min-inline-size: 0;
+}
+#cloud-history-archive .cloud-connection-ack:has(input[type='file']) {
+  display: grid;
+}
+#cloud-history-archive input[type='file'],
+#cloud-history-archive select {
+  min-width: 0;
+  max-width: 100%;
+}
+.cloud-registration-body fieldset {
+  min-inline-size: 0;
+}
+.cloud-registration-body .btn {
+  max-width: 100%;
+  white-space: normal;
+}
+.cloud-registration-body .cloud-review {
+  grid-template-columns: minmax(0, 1fr);
+}
