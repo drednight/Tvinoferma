@@ -251,6 +251,50 @@ function fakeRecoverySession(envelope) {
 beforeEach(() => vi.restoreAllMocks());
 
 describe.each(['google', 'yandex'])('%s: первичная локальная настройка через fake IPC', provider => {
+  it('смена диска не переносит привязку, не создаёт второй набор и не начинает отправку', async () => {
+    const f = await fixture();
+    const pending = await begin(f.setup(provider));
+    const done = await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true });
+    expect(done.status).toBe('prepared');
+    const other = provider === 'google' ? 'yandex' : 'google';
+    const before = JSON.stringify({
+      key: f.fake.key(),
+      pin: f.fake.pin(provider),
+      queue: f.fake.queue(provider),
+      state: localStorage.getItem(STORAGE_KEY)
+    });
+    f.fake.invoke.mockClear();
+    const openSession = vi.fn();
+    expect(
+      await f.readLocalCloudPairingCode({ provider: other, invoke: f.fake.invoke, cryptoSource: webcrypto })
+    ).toEqual({ status: 'binding_missing_or_blocked' });
+    expect(
+      await f.sendInitialCloudRoot({
+        provider: other,
+        invoke: f.fake.invoke,
+        confirmed: true,
+        cryptoSource: webcrypto,
+        openSession
+      })
+    ).toEqual({ status: 'binding_missing_or_blocked' });
+    expect((await begin(f.setup(other))).status).toBe('dataset_binding_present');
+    expect(openSession).not.toHaveBeenCalled();
+    expect(f.fake.invoke.mock.calls.every(([command]) => command.endsWith('_read'))).toBe(true);
+    expect(
+      JSON.stringify({
+        key: f.fake.key(),
+        pin: f.fake.pin(provider),
+        queue: f.fake.queue(provider),
+        state: localStorage.getItem(STORAGE_KEY)
+      })
+    ).toBe(before);
+    expect(f.fake.pin(other)).toBeNull();
+    expect(f.fake.queue(other)).toBeNull();
+    expect(
+      (await f.readLocalCloudPairingCode({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto })).pairingCode
+    ).toBe(done.pairingCode);
+  });
+
   it('требует точную копию и повторный ввод запасного ключа, готовит корень и код без сети', async () => {
     const f = await fixture();
     const setup = f.setup(provider);
