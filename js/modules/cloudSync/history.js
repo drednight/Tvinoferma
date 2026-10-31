@@ -20,6 +20,14 @@ const PLANNER_TOMBSTONE_VERSION = 3;
 const PRIVATE_TRANSFER_VERSION = 4;
 // Explicit whole-file replacement, not a conservative merge or deletion inference.
 const FILE_SNAPSHOT_VERSION = 5;
+// Whole-file choice, not an entity merge. The other authenticated heads stay as backups.
+const FILE_CHOICE_VERSION = 6;
+const fileVersion = version => [FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION].includes(version);
+function replacedFileHeads(value) {
+  const pins = validateList(value, MAX_HISTORY_VERSIONS - 1, copyPin);
+  if (!pins.length || new Set(pins.map(pin => pin.versionId)).size !== pins.length) throw historyError();
+  return pins.sort((a, b) => a.versionId.localeCompare(b.versionId));
+}
 const cumulativeVersion = version => [PLANNER_TOMBSTONE_VERSION, PRIVATE_TRANSFER_VERSION].includes(version);
 const MAX_PLANNER_DELETIONS = 10_000;
 const HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v1';
@@ -378,7 +386,7 @@ export async function verifyHistory(options) {
     ids.add(envelope.versionId);
   }
   const crypto = cryptoApi(input.cryptoSource);
-  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number}>} */
+  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number, replacedHeads: any[]}>} */
   const nodes = new Map();
   const identities = new Map();
   // Все входные значения скопированы до первого await; чужие изменения не подменят проверку.
@@ -399,7 +407,7 @@ export async function verifyHistory(options) {
       const wrapper = object(
         payload,
         ['format', 'version', 'parent', 'publicSnapshot'],
-        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot']
+        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot', 'replacedHeads']
       );
       if (
         wrapper.format !== PAYLOAD_FORMAT ||
@@ -408,14 +416,17 @@ export async function verifyHistory(options) {
           PLANNER_DELETION_VERSION,
           PLANNER_TOMBSTONE_VERSION,
           PRIVATE_TRANSFER_VERSION,
-          FILE_SNAPSHOT_VERSION
+          FILE_SNAPSHOT_VERSION,
+          FILE_CHOICE_VERSION
         ].includes(wrapper.version)
       )
         throw historyError();
+      if ((wrapper.version === FILE_CHOICE_VERSION) !== Object.hasOwn(wrapper, 'replacedHeads')) throw historyError();
+      const replacedHeads = wrapper.version === FILE_CHOICE_VERSION ? replacedFileHeads(wrapper.replacedHeads) : [];
       const isDeletionVersion = wrapper.version === PLANNER_DELETION_VERSION;
       const isTombstoneVersion = cumulativeVersion(wrapper.version);
       if (
-        wrapper.version !== FILE_SNAPSHOT_VERSION &&
+        !fileVersion(wrapper.version) &&
         (wrapper.version === PRIVATE_TRANSFER_VERSION) !== Object.hasOwn(wrapper, 'privateSnapshot')
       )
         throw historyError();
@@ -435,7 +446,7 @@ export async function verifyHistory(options) {
       const parent = wrapper.parent === null ? null : copyPin(wrapper.parent);
       if (
         parent?.versionId === pin.versionId ||
-        ((isDeletionVersion || isTombstoneVersion || wrapper.version === FILE_SNAPSHOT_VERSION) && parent === null)
+        ((isDeletionVersion || isTombstoneVersion || fileVersion(wrapper.version)) && parent === null)
       )
         throw historyError();
       const currentIds = validatePublic(wrapper.publicSnapshot);
@@ -446,6 +457,7 @@ export async function verifyHistory(options) {
       nodes.set(pin.versionId, {
         pin,
         parent,
+        replacedHeads,
         publicSnapshot: wrapper.publicSnapshot,
         privateSnapshot: Object.hasOwn(wrapper, 'privateSnapshot')
           ? parsePrivateSnapshot(wrapper.privateSnapshot, wrapper.publicSnapshot)
@@ -510,14 +522,41 @@ export async function verifyHistory(options) {
     const parentNode = node.parent && nodes.get(node.parent.versionId);
     if (parentNode && !retainsPrivateFields(parentNode.privateSnapshot, node.privateSnapshot)) throw historyError();
     if (
-      (cumulativeVersion(parentNode?.version) &&
-        !cumulativeVersion(node.version) &&
-        node.version !== FILE_SNAPSHOT_VERSION) ||
+      (cumulativeVersion(parentNode?.version) && !cumulativeVersion(node.version) && !fileVersion(node.version)) ||
       (parentNode?.version === PRIVATE_TRANSFER_VERSION &&
-        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION].includes(node.version)) ||
-      (parentNode?.version === FILE_SNAPSHOT_VERSION && node.version !== FILE_SNAPSHOT_VERSION)
+        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION].includes(node.version)) ||
+      (fileVersion(parentNode?.version) && !fileVersion(node.version))
     )
       throw historyError();
+  }
+
+  const dependencies = node => [...(node.parent ? [node.parent] : []), ...node.replacedHeads];
+  const reachable = new Map();
+  const visiting = new Set();
+  const ancestors = node => {
+    const id = node.pin.versionId;
+    if (reachable.has(id)) return reachable.get(id);
+    if (visiting.has(id)) throw historyError();
+    visiting.add(id);
+    const before = new Set();
+    for (const ref of dependencies(node)) {
+      const target = nodes.get(ref.versionId);
+      if (!target || !samePin(target.pin, ref)) throw historyError();
+      before.add(ref.versionId);
+      for (const earlier of ancestors(target)) before.add(earlier);
+    }
+    visiting.delete(id);
+    reachable.set(id, before);
+    return before;
+  };
+  for (const node of nodes.values()) ancestors(node);
+  for (const node of nodes.values()) {
+    const refs = dependencies(node);
+    // A choice must acknowledge independent heads, not self, duplicate or ancestor pins.
+    if (new Set(refs.map(pin => pin.versionId)).size !== refs.length) throw historyError();
+    for (const ref of refs)
+      for (const other of refs)
+        if (ref !== other && reachable.get(ref.versionId).has(other.versionId)) throw historyError();
   }
 
   // После метки этот ID не может вновь появиться в её потомке без отдельного
@@ -526,9 +565,7 @@ export async function verifyHistory(options) {
   const collectDeletions = node => {
     if (inheritedDeletions.has(node.pin.versionId)) return inheritedDeletions.get(node.pin.versionId);
     const before =
-      node.version !== FILE_SNAPSHOT_VERSION && node.parent
-        ? collectDeletions(nodes.get(node.parent.versionId))
-        : new Set();
+      !fileVersion(node.version) && node.parent ? collectDeletions(nodes.get(node.parent.versionId)) : new Set();
     for (const id of node.plannerIds) if (before.has(id)) throw historyError();
     const after = node.deletedIds.length ? new Set([...before, ...node.deletedIds]) : before;
     if (cumulativeVersion(node.version)) {
@@ -551,14 +588,22 @@ export async function verifyHistory(options) {
     if (!node || !samePin(node.pin, pin)) throw new Error('Версия не найдена или её отпечаток изменился');
     return node;
   };
-  const parentIds = new Set([...nodes.values()].filter(node => node.parent).map(node => node.parent.versionId));
+  const parentIds = new Set([...nodes.values()].flatMap(node => dependencies(node).map(pin => pin.versionId)));
   const view = Object.freeze({
     /** Проверенные идентификаторы; доверие к ним и защита от отката остаются у вызывающего кода. */
     identity() {
       return { datasetId: input.expectedDatasetId, rootPin: { ...root } };
     },
     isFileSnapshot(pinValue) {
-      return get(pinValue).version === FILE_SNAPSHOT_VERSION;
+      return fileVersion(get(pinValue).version);
+    },
+    replacedHeads(pinValue) {
+      return get(pinValue).replacedHeads.map(pin => ({ ...pin }));
+    },
+    covers(descendant, ancestor) {
+      const node = get(descendant),
+        before = get(ancestor);
+      return samePin(node.pin, before.pin) || reachable.get(node.pin.versionId).has(before.pin.versionId);
     },
     /** Требует точного присутствия ранее известного отпечатка без копирования снимка. */
     requirePin(pinValue) {
@@ -640,15 +685,18 @@ export async function verifyHistory(options) {
 
 /** A full public file, including absences and order. Caller obtains explicit replacement consent.
  * The encrypted prior versions stay on disk as backups. Not used by the old outbox.
- * @param {{publicSnapshot:any,parent:any,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,privateSnapshot?:any,cryptoSource?:Crypto}} options
+ * @param {{publicSnapshot:any,parent:any,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,privateSnapshot?:any,replacedHeads?:any[],cryptoSource?:Crypto}} options
  */
 export async function sealFileSnapshot(options) {
   const input = object(
     options,
     ['publicSnapshot', 'parent', 'recoveryKey', 'datasetId', 'versionId', 'keyBundle', 'keyPin'],
-    ['privateSnapshot', 'cryptoSource']
+    ['privateSnapshot', 'cryptoSource', 'replacedHeads']
   );
   const parent = copyPin(input.parent);
+  const replacedHeads = input.replacedHeads === undefined ? [] : replacedFileHeads(input.replacedHeads);
+  if (replacedHeads.some(pin => pin.versionId === parent.versionId || pin.versionId === input.versionId))
+    throw historyError();
   if (!isSyncId(input.datasetId) || !isSyncId(input.versionId) || parent.versionId === input.versionId)
     throw historyError();
   validatePublic(input.publicSnapshot);
@@ -664,7 +712,8 @@ export async function sealFileSnapshot(options) {
   const envelope = await encryptSnapshot({
     snapshot: {
       format: PAYLOAD_FORMAT,
-      version: FILE_SNAPSHOT_VERSION,
+      version: replacedHeads.length ? FILE_CHOICE_VERSION : FILE_SNAPSHOT_VERSION,
+      ...(replacedHeads.length ? { replacedHeads } : {}),
       parent,
       publicSnapshot,
       ...(privateSnapshot ? { privateSnapshot } : {})

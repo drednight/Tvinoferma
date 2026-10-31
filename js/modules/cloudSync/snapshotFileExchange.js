@@ -18,9 +18,18 @@ import { beginCloudDataOperation } from './credentialResetCoordination.js';
 import { generateSyncId } from './envelope.js';
 import { historyEnvelopePin, verifyHistory, sealFileSnapshot, MAX_HISTORY_VERSIONS } from './history.js';
 import { object } from './exportSchema.js';
-import { readSnapshotFileState, withSnapshotFileState, sameFilePin, snapshotFileHash } from './snapshotFileState.js';
+import {
+  readSnapshotFileState,
+  withSnapshotFileState,
+  sameFilePin,
+  snapshotFileHash,
+  MAX_UNSETTLED_UPLOADS
+} from './snapshotFileState.js';
 
 const reviews = new WeakMap();
+const choices = new WeakMap();
+const releases = new WeakMap();
+const sameHeads = (a, b) => a.length === b.length && a.every(pin => b.some(other => sameFilePin(pin, other)));
 const savedTimes = new WeakMap();
 const NO_NETWORK = Object.freeze({
   generateFileId: async () => {
@@ -108,8 +117,16 @@ async function remote(opened, input) {
   const again = await session.listWithDates();
   if (again.status !== 'listed' || JSON.stringify(again.versions) !== JSON.stringify(listed.versions))
     throw new Error('Список файлов изменился');
-  const pins = new Map((legacy.confirmedPins || []).map(pin => [pin.versionId, pin]));
-  if (local?.acceptedPin) pins.set(local.acceptedPin.versionId, local.acceptedPin);
+  const pins = new Map();
+  const remember = pin => {
+    if (pins.has(pin.versionId) && !sameFilePin(pins.get(pin.versionId), pin))
+      throw new Error('Изменилась известная версия');
+    pins.set(pin.versionId, pin);
+  };
+  for (const pin of legacy.confirmedPins || []) remember(pin);
+  if (local?.acceptedPin) remember(local.acceptedPin);
+  for (const receipt of local?.unsettled || [])
+    if (envelopes.some(e => e.versionId === receipt.pin.versionId)) remember(receipt.pin);
   const history = await verifyHistory({
     envelopes,
     expectedDatasetId: context.binding.datasetId,
@@ -119,15 +136,42 @@ async function remote(opened, input) {
     cryptoSource: input.cryptoSource
   });
   const heads = history.observedHeads();
-  if (heads.length !== 1) return { status: 'multiple_files' };
   const pin = heads[0];
   return {
-    status: 'ready',
+    status: heads.length === 1 ? 'ready' : 'multiple_files',
+    heads,
+    dates: listed.versions,
     history,
     pin,
     envelopes,
     snapshot: history.publicSnapshot(pin),
     modifiedAt: listed.versions.find(row => row.versionId === pin.versionId)?.modifiedAt ?? null
+  };
+}
+function selectedCloud(cloud, pin) {
+  return {
+    ...cloud,
+    status: 'ready',
+    pin,
+    snapshot: cloud.history.publicSnapshot(pin),
+    modifiedAt: cloud.dates.find(row => row.versionId === pin.versionId)?.modifiedAt ?? null
+  };
+}
+async function reviewedCloud(opened, input, review) {
+  const cloud = await remote(opened, input);
+  if (!sameHeads(cloud.heads, review.heads) || !cloud.heads.some(pin => sameFilePin(pin, review.pin)))
+    return { status: 'remote_changed' };
+  return selectedCloud(cloud, review.pin);
+}
+function settled(row, cloud, acceptedPin) {
+  if (row.version !== 2) return row;
+  return {
+    ...row,
+    unsettled: row.unsettled.filter(
+      receipt =>
+        !cloud.envelopes.some(e => e.versionId === receipt.pin.versionId) ||
+        !cloud.history.covers(acceptedPin, receipt.pin)
+    )
   };
 }
 async function journal(original, provider, row, label = 'pre-cloud-file-journal') {
@@ -147,7 +191,7 @@ function initialRow(datasetId) {
 
 /** Read-only: no ID assignment, baseline update, upload, or application. */
 export async function checkSnapshotFile(value) {
-  const input = options(value);
+  const input = options(value, ['choice']);
   let operation, opened;
   const risk = { refresh: false };
   try {
@@ -156,8 +200,36 @@ export async function checkSnapshotFile(value) {
     if (!original) return outcome('state_changed_or_unsaved');
     opened = await open(input, risk);
     if (opened.status !== 'opened') return outcome(opened.status);
-    const cloud = await remote(opened, input);
-    if (cloud.status !== 'ready') return outcome(cloud.status);
+    let cloud = await remote(opened, input);
+    if (input.choice !== undefined) {
+      const choice = choices.get(input.choice);
+      if (
+        !choice ||
+        choice.provider !== input.provider ||
+        choice.datasetId !== opened.context.binding.datasetId ||
+        choice.binding !== JSON.stringify(opened.context.binding) ||
+        !sameHeads(choice.heads, cloud.heads)
+      )
+        return outcome('remote_changed');
+      cloud = selectedCloud(cloud, choice.pin);
+    } else if (cloud.heads.length !== 1) {
+      if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+      const variants = cloud.heads.map(pin => {
+        const choice = Object.freeze({
+          pin: Object.freeze({ ...pin }),
+          modifiedAt: cloud.dates.find(row => row.versionId === pin.versionId)?.modifiedAt ?? null
+        });
+        choices.set(choice, {
+          provider: input.provider,
+          datasetId: opened.context.binding.datasetId,
+          binding: JSON.stringify(opened.context.binding),
+          pin,
+          heads: cloud.heads
+        });
+        return choice;
+      });
+      return Object.freeze({ status: 'multiple_files', provider: input.provider, choices: Object.freeze(variants) });
+    }
     const snapshot = buildPublicSnapshot(original, {
       settingsSelections: cloud.snapshot.sections.preferences.selections
     });
@@ -179,6 +251,8 @@ export async function checkSnapshotFile(value) {
       remoteChanged: !sameFilePin(basePin, cloud.pin),
       matches: hash === remoteHash,
       pending: opened.local?.pending?.phase || null,
+      unsettled: opened.local?.unsettled?.length || 0,
+      requiresResolution: cloud.heads.length > 1,
       privateCarry: cloud.history.privateSnapshot(cloud.pin) !== null,
       differences: comparePublicSnapshots({ local: snapshot, cloud: cloud.snapshot })
     });
@@ -188,6 +262,9 @@ export async function checkSnapshotFile(value) {
       hash,
       remoteHash,
       pin: cloud.pin,
+      heads: cloud.heads,
+      cloudSnapshot: cloud.snapshot,
+      binding: JSON.stringify(opened.context.binding),
       datasetId: opened.context.binding.datasetId
     });
     return view;
@@ -216,22 +293,33 @@ export async function replaceFromSnapshotFile(value) {
     if (!unchanged(review.original)) return outcome('state_changed_or_unsaved');
     opened = await open(input, risk);
     if (opened.status !== 'opened') return outcome(opened.status);
-    if (opened.context.binding.datasetId !== review.datasetId) return outcome('binding_blocked');
+    if (
+      opened.context.binding.datasetId !== review.datasetId ||
+      JSON.stringify(opened.context.binding) !== review.binding
+    )
+      return outcome('binding_blocked');
     if (opened.local?.pending) return outcome('pending_upload');
-    const cloud = await remote(opened, input);
+    const cloud = await reviewedCloud(opened, input, review);
     if (cloud.status !== 'ready') return outcome(cloud.status);
-    if (!sameFilePin(cloud.pin, review.pin)) return outcome('remote_changed');
     const prepared = prepareFullPublicSnapshotReplace({
       localState: review.original,
       cloudSnapshot: cloud.snapshot,
       cryptoSource: input.cryptoSource
     });
     const candidate = prepared.candidateState();
-    candidate.settings = withSnapshotFileState(candidate.settings, input.provider, {
-      ...initialRow(review.datasetId),
-      acceptedPin: cloud.pin,
-      acceptedHash: review.remoteHash
-    });
+    candidate.settings = withSnapshotFileState(
+      candidate.settings,
+      input.provider,
+      settled(
+        {
+          ...(opened.local || initialRow(review.datasetId)),
+          acceptedPin: cloud.pin,
+          acceptedHash: review.remoteHash
+        },
+        cloud,
+        cloud.pin
+      )
+    );
     const result = await stageGuardedCloudStateWrite({
       original: review.original,
       candidate,
@@ -260,11 +348,11 @@ async function verifyPending(opened, input, row) {
   if (result.status !== 'verified')
     return outcome(result.status === 'mismatch' ? 'content_mismatch' : 'verification_pending');
   const cloud = await remote(opened, input);
-  if (cloud.status !== 'ready') return outcome(cloud.status);
   const lineage = cloud.history.lineage(p.pin);
   if (
     !cloud.history.isFileSnapshot(p.pin) ||
     !sameFilePin(lineage.at(-2), p.parent) ||
+    !sameHeads(cloud.history.replacedHeads(p.pin), p.replacedHeads || []) ||
     (await snapshotFileHash(cloud.history.publicSnapshot(p.pin), input.cryptoSource)) !== p.contentHash
   )
     return outcome('pending_invalid');
@@ -272,47 +360,81 @@ async function verifyPending(opened, input, row) {
   if (!original) return outcome('state_changed_or_unsaved');
   const current = readSnapshotFileState(original.settings, input.provider, row.datasetId);
   if (JSON.stringify(current) !== JSON.stringify(row)) return outcome('pending_changed');
-  const done = await journal(original, input.provider, {
-    ...row,
-    pending: null,
-    acceptedPin: p.pin,
-    acceptedHash: p.contentHash
-  });
-  return done.result.status === 'applied' ? outcome('sent_verified') : done.result;
+  const done = await journal(
+    original,
+    input.provider,
+    settled(
+      {
+        ...row,
+        pending: null,
+        acceptedPin: p.pin,
+        acceptedHash: p.contentHash
+      },
+      cloud,
+      p.pin
+    )
+  );
+  return done.result.status === 'applied'
+    ? outcome(
+        cloud.heads.length > 1
+          ? 'sent_with_conflicts'
+          : sameFilePin(cloud.heads[0], p.pin)
+            ? 'sent_verified'
+            : 'sent_remote_advanced'
+      )
+    : done.result;
 }
 
 /** Saves encrypted pending bytes BEFORE the single upload. Unknown uploads are verify-only. */
 export async function uploadSnapshotFile(value) {
-  const input = options(value, ['review', 'confirmed', 'overwriteConfirmed', 'privateCarryConfirmed']);
+  const input = options(value, [
+    'review',
+    'confirmed',
+    'overwriteConfirmed',
+    'privateCarryConfirmed',
+    'resolutionConfirmed',
+    'useCloudFile'
+  ]);
   if (input.confirmed !== true) return outcome('confirmation_required');
   let operation, opened;
   const risk = { refresh: false };
   try {
     const review = checkedReview(input);
+    if (input.useCloudFile !== undefined && input.useCloudFile !== true) throw new Error('Некорректный выбор файла');
+    if (input.useCloudFile === true && !input.review.requiresResolution) return outcome('selection_required');
+    if (input.review.requiresResolution && input.resolutionConfirmed !== true)
+      return outcome('resolution_confirmation_required');
     if (input.review.remoteChanged && input.overwriteConfirmed !== true)
       return outcome('overwrite_confirmation_required');
     operation = beginCloudDataOperation();
     if (!unchanged(review.original)) return outcome('state_changed_or_unsaved');
     opened = await open(input, risk);
     if (opened.status !== 'opened') return outcome(opened.status);
-    if (opened.context.binding.datasetId !== review.datasetId) return outcome('binding_blocked');
+    if (
+      opened.context.binding.datasetId !== review.datasetId ||
+      JSON.stringify(opened.context.binding) !== review.binding
+    )
+      return outcome('binding_blocked');
     if (opened.local?.pending) return outcome('pending_upload');
-    const cloud = await remote(opened, input);
+    const cloud = await reviewedCloud(opened, input, review);
     if (cloud.status !== 'ready') return outcome(cloud.status);
-    if (!sameFilePin(cloud.pin, review.pin)) return outcome('remote_changed');
     if (cloud.history.privateSnapshot(cloud.pin) !== null && input.privateCarryConfirmed !== true)
       return outcome('private_confirmation_required');
     if (cloud.envelopes.length >= MAX_HISTORY_VERSIONS) return outcome('history_limit');
     const context = opened.context;
+    const snapshot = input.useCloudFile === true ? review.cloudSnapshot : review.snapshot;
+    const contentHash = input.useCloudFile === true ? review.remoteHash : review.hash;
+    const replacedHeads = cloud.heads.filter(pin => !sameFilePin(pin, cloud.pin));
     // Self-roundtrip prevents sending a state that this application cannot restore.
     prepareFullPublicSnapshotReplace({
       localState: review.original,
-      cloudSnapshot: review.snapshot,
+      cloudSnapshot: snapshot,
       cryptoSource: input.cryptoSource
     });
     const sealed = await sealFileSnapshot({
-      publicSnapshot: review.snapshot,
+      publicSnapshot: snapshot,
       parent: cloud.pin,
+      ...(replacedHeads.length ? { replacedHeads } : {}),
       recoveryKey: context.key.dataKey,
       datasetId: context.binding.datasetId,
       versionId: generateSyncId(input.cryptoSource),
@@ -335,7 +457,9 @@ export async function uploadSnapshotFile(value) {
         pin: sealed.pin,
         parent: cloud.pin,
         fileId,
-        contentHash: review.hash
+        contentHash,
+        ...(input.useCloudFile === true ? { localHash: review.hash } : {}),
+        ...(replacedHeads.length ? { replacedHeads } : {})
       }
     };
     const stored = await journal(review.original, input.provider, row);
@@ -353,16 +477,18 @@ async function transmit(opened, input, row) {
   if (row.pending.phase === 'attempting') return verifyPending(opened, input, row);
   // Recheck the latest file before sending, but do not claim cross-PC atomic CAS.
   const cloud = await remote({ ...opened, local: row }, input);
-  if (cloud.status !== 'ready') return outcome(cloud.status);
-  if (!sameFilePin(cloud.pin, row.pending.parent)) return outcome('remote_changed_pending');
+  if (!sameHeads(cloud.heads, [row.pending.parent, ...(row.pending.replacedHeads || [])]))
+    return outcome('remote_changed_pending');
   const original = await saved();
   if (!original) return outcome('state_changed_or_unsaved');
   if (JSON.stringify(readSnapshotFileState(original.settings, input.provider, row.datasetId)) !== JSON.stringify(row))
     return outcome('pending_changed');
   const pendingSnapshot = buildPublicSnapshot(original, {
-    settingsSelections: cloud.snapshot.sections.preferences.selections
+    settingsSelections: cloud.history.publicSnapshot(row.pending.parent).sections.preferences.selections
   });
-  if ((await snapshotFileHash(pendingSnapshot, input.cryptoSource)) !== row.pending.contentHash)
+  if (
+    (await snapshotFileHash(pendingSnapshot, input.cryptoSource)) !== (row.pending.localHash ?? row.pending.contentHash)
+  )
     return outcome('prepared_local_changed');
   // Authenticate the pending envelope and its exact public hash, including after restart.
   const history = await verifyHistory({
@@ -375,6 +501,8 @@ async function transmit(opened, input, row) {
   });
   if (
     !history.isFileSnapshot(row.pending.pin) ||
+    !sameHeads(history.replacedHeads(row.pending.pin), row.pending.replacedHeads || []) ||
+    !sameHeads(history.observedHeads(), [row.pending.pin]) ||
     !sameFilePin(history.lineage(row.pending.pin).at(-2), row.pending.parent) ||
     (await snapshotFileHash(history.publicSnapshot(row.pending.pin), input.cryptoSource)) !== row.pending.contentHash
   )
@@ -418,5 +546,82 @@ export async function resumeSnapshotFileUpload(value) {
   } finally {
     opened?.session?.dispose();
     operation?.finish(risk.refresh);
+  }
+}
+
+/** Inspect local pending bytes without sending, cancelling or changing the cloud. */
+export async function inspectSnapshotFileUpload(value) {
+  const input = options(value);
+  let operation;
+  try {
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original) return outcome('state_changed_or_unsaved');
+    const context = await openConnectedPublicationContext(input);
+    if (!context) return outcome('binding_blocked');
+    const row = readSnapshotFileState(original.settings, input.provider, context.binding.datasetId);
+    if (!row?.pending) return outcome('idle');
+    const p = row.pending;
+    if (
+      !sameFilePin(
+        await historyEnvelopePin({
+          envelope: p.envelope,
+          expectedDatasetId: row.datasetId,
+          cryptoSource: input.cryptoSource
+        }),
+        p.pin
+      )
+    )
+      return outcome('pending_invalid');
+    if (!unchanged(original)) return outcome('state_changed_or_unsaved');
+    const view = Object.freeze({
+      status: 'pending',
+      provider: input.provider,
+      phase: p.phase,
+      pin: Object.freeze({ ...p.pin })
+    });
+    releases.set(view, { original, row, binding: JSON.stringify(context.binding) });
+    return view;
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    operation?.finish(false);
+  }
+}
+/** Cancels only local preparation. Unknown attempts are explicitly released, never called cancelled. */
+export async function releaseSnapshotFileUpload(value) {
+  const input = options(value, ['review', 'confirmed', 'unknownOutcomeAcknowledged']);
+  if (input.confirmed !== true) return outcome('confirmation_required');
+  let operation;
+  try {
+    const review = releases.get(input.review);
+    if (!review || input.review.provider !== input.provider) return outcome('pending_changed');
+    if (review.row.pending.phase === 'attempting' && input.unknownOutcomeAcknowledged !== true)
+      return outcome('unknown_acknowledgement_required');
+    operation = beginCloudDataOperation();
+    const original = await saved();
+    if (!original || !unchanged(review.original) || JSON.stringify(original) !== JSON.stringify(review.original))
+      return outcome('state_changed_or_unsaved');
+    const context = await openConnectedPublicationContext(input);
+    if (!context || JSON.stringify(context.binding) !== review.binding) return outcome('binding_blocked');
+    const row = readSnapshotFileState(original.settings, input.provider, context.binding.datasetId);
+    if (JSON.stringify(row) !== JSON.stringify(review.row)) return outcome('pending_changed');
+    let next = { ...row, pending: null };
+    const unknown = row.pending.phase === 'attempting';
+    if (unknown) {
+      const unsettled = [...(row.unsettled || [])];
+      if (unsettled.length >= MAX_UNSETTLED_UPLOADS) return outcome('unsettled_limit');
+      const { pin, parent, fileId, contentHash } = row.pending;
+      unsettled.push({ pin, parent, fileId, contentHash });
+      next = { ...next, version: 2, unsettled };
+    }
+    const stored = await journal(original, input.provider, next, 'pre-cloud-file-release');
+    if (stored.result.status !== 'applied') return stored.result;
+    releases.delete(input.review);
+    return outcome(unknown ? 'pending_released_uncertain' : 'prepared_cancelled');
+  } catch {
+    return outcome('unavailable_or_changed');
+  } finally {
+    operation?.finish(false);
   }
 }

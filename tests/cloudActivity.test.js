@@ -48,6 +48,14 @@ describe('местный журнал синхронизации', () => {
       expect(describeCloudActivity(entry)).toContain('контактов');
     }
   });
+  it('не называет снятие ожидания успешной отправкой', () => {
+    recordCloudActivity('google', 'file_release', 'uncertain');
+    recordCloudActivity('yandex', 'file_choice', 'success');
+    const rows = cloudActivity();
+    expect(describeCloudActivity(rows[0])).toContain('Выбор итогового полного файла');
+    expect(describeCloudActivity(rows[1])).toContain('Снятие местного ожидания');
+    expect(describeCloudActivity(rows[1])).not.toContain('Отправка');
+  });
   it('не выводит чужие поля и HTML из повреждённого хранилища', () => {
     localStorage.setItem(
       KEY,

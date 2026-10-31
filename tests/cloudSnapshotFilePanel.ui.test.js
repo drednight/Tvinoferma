@@ -25,6 +25,9 @@ function setup(overrides = {}) {
   const check = overrides.check || vi.fn(async () => view());
   const replace = vi.fn(async () => ({ status: 'applied' }));
   const upload = vi.fn(async () => ({ status: 'sent_verified' }));
+  const inspect =
+    overrides.inspect || vi.fn(async () => ({ status: 'pending', provider: 'google', phase: 'prepared' }));
+  const release = overrides.release || vi.fn(async () => ({ status: 'prepared_cancelled' }));
   const confirm = overrides.confirm || vi.fn(() => true);
   bindSnapshotFilePanel({
     desktop: true,
@@ -36,9 +39,11 @@ function setup(overrides = {}) {
     resume: vi.fn(),
     loadNative: async () => ({ invoke: vi.fn() }),
     confirm,
+    inspect,
+    release,
     ...overrides
   });
-  return { check, replace, upload, confirm };
+  return { check, replace, upload, confirm, inspect, release };
 }
 async function compare() {
   el('check').click();
@@ -146,6 +151,78 @@ describe('обмен полным файлом — интерфейс', () => {
     expect(el('result').hidden).toBe(true);
     expect(el('apply').disabled).toBe(true);
     expect(el('status').textContent).toContain('новое местное сохранение');
+    expect(f.upload).not.toHaveBeenCalled();
+  });
+  it('после фонового сохранения в вебе остаётся пояснение о настольном приложении', () => {
+    const f = setup({ desktop: false });
+    window.dispatchEvent(new Event('tf-persisted'));
+    expect(el('status').textContent).toContain('настольном');
+    expect(f.inspect).not.toHaveBeenCalled();
+    expect(el('release').disabled).toBe(true);
+  });
+  it('отменяет только подготовку с явным согласием, не начиная новой отправки', async () => {
+    const f = setup();
+    el('release').click();
+    await vi.waitFor(() => expect(f.release).toHaveBeenCalledTimes(1));
+    expect(f.confirm).toHaveBeenCalledWith(expect.stringContaining('не начатый файл'));
+    expect(f.release.mock.calls[0][0]).toMatchObject({ confirmed: true });
+    expect(f.upload).not.toHaveBeenCalled();
+    expect(f.check).not.toHaveBeenCalled();
+  });
+  it('для неизвестной попытки требует отдельное согласие и не называет её отменённой', async () => {
+    const f = setup({
+      inspect: vi.fn(async () => ({ status: 'pending', phase: 'attempting' })),
+      release: vi.fn(async () => ({ status: 'pending_released_uncertain' }))
+    });
+    el('release').click();
+    await vi.waitFor(() => expect(f.release).toHaveBeenCalledTimes(1));
+    expect(f.confirm).toHaveBeenCalledTimes(2);
+    expect(f.release.mock.calls[0][0].unknownOutcomeAcknowledged).toBe(true);
+    expect(el('status').textContent).toContain('результат прежней загрузки неизвестен');
+    expect(f.upload).not.toHaveBeenCalled();
+  });
+  it('отказ от признания неизвестного результата сохраняет pending', async () => {
+    const f = setup({
+      inspect: vi.fn(async () => ({ status: 'pending', phase: 'attempting' })),
+      confirm: vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    });
+    el('release').click();
+    await vi.waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(el('release').disabled).toBe(false));
+    expect(f.release).not.toHaveBeenCalled();
+  });
+  it('показывает конкурирующие файлы без автоматического выбора и отдельно подтверждает назначение выбранного', async () => {
+    const choice = { pin: { versionId: '<img src=x>', sha256: 'a'.repeat(64) }, modifiedAt: '2026-10-30T12:00:00Z' };
+    const check = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'multiple_files', choices: [choice] })
+      .mockResolvedValueOnce(view({ requiresResolution: true }));
+    const f = setup({ check });
+    el('check').click();
+    await vi.waitFor(() => expect(el('choices').hidden).toBe(false));
+    await vi.waitFor(() => expect(el('check').disabled).toBe(false));
+    expect(f.upload).not.toHaveBeenCalled();
+    expect(el('choices').querySelector('img')).toBeNull();
+    el('choices').querySelector('button').click();
+    await vi.waitFor(() => expect(el('result').hidden).toBe(false));
+    await vi.waitFor(() => expect(el('check').disabled).toBe(false));
+    expect(check.mock.calls[1][0].choice).toBe(choice);
+    expect(el('summary').textContent).toContain('актуальным он ещё не назначен');
+    el('resolve').click();
+    await vi.waitFor(() => expect(f.upload).toHaveBeenCalledTimes(1));
+    expect(f.upload.mock.calls[0][0]).toMatchObject({ useCloudFile: true, resolutionConfirmed: true, confirmed: true });
+    expect(f.replace).not.toHaveBeenCalled();
+    expect(f.confirm).toHaveBeenCalledTimes(2);
+  });
+  it('не назначает файл актуальным при отказе от отдельного подтверждения', async () => {
+    const f = setup({
+      check: vi.fn(async () => view({ requiresResolution: true })),
+      confirm: vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    });
+    await compare();
+    el('resolve').click();
+    await vi.waitFor(() => expect(f.confirm).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(el('resolve').disabled).toBe(false));
     expect(f.upload).not.toHaveBeenCalled();
   });
 });
