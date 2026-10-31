@@ -1,4 +1,3 @@
-import { legacyAccessHtml } from './helpers/legacyAccessHtml.js';
 import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 // Вся цепочка панели до поддельного IPC/провайдера. Настоящих токенов, Tauri и облаков здесь нет.
@@ -11,7 +10,7 @@ import { OAUTH_PROVIDERS } from '../js/modules/cloudSync/providers/oauthCommon.j
 import { parseGoogleCredentialRecord } from '../js/modules/cloudSync/providers/oauthCredentialRecord.js';
 import { parseYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 
-const html = legacyCloudHtml(legacyAccessHtml(readFileSync('index.html', 'utf8')));
+const html = legacyCloudHtml(readFileSync('index.html', 'utf8'));
 const panel = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const CLIENT = {
   google: '123456789-test_client.apps.googleusercontent.com',

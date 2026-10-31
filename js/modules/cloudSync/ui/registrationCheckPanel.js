@@ -530,7 +530,7 @@ export function bindCloudRegistrationCheck(options) {
   }
   enrollButton?.addEventListener('click', () => void startEnrollment());
   simpleCancel?.addEventListener('click', stop);
-  simple?.addEventListener('click', async () => {
+  async function signIn() {
     if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
     await inspect();
     if (observed?.provider !== selectedProvider()) return;
@@ -539,6 +539,14 @@ export function bindCloudRegistrationCheck(options) {
       ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(observed.status);
     if (!reconnect && observed.status !== 'empty') return;
     await startEnrollment(true, reconnect);
+  }
+  simple?.addEventListener('click', signIn);
+  panel.addEventListener('tf-cloud-reconnect-google', () => {
+    if (!options.desktop || active || resetStarted || uncertain.has('google')) return;
+    provider.value = 'google';
+    clearAccount();
+    updateProviderHint();
+    void signIn();
   });
   configFile?.addEventListener('change', async () => {
     const file = configFile.files?.[0];

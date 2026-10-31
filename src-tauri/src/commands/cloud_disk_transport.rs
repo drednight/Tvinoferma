@@ -5,7 +5,7 @@
 
 use crate::cloud_disk_transport::CloudDiskArgs;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::cloud_disk_transport::{prepare, Method};
+use crate::cloud_disk_transport::{download_redirect, prepare, Method};
 use serde::Serialize;
 
 const ERROR: &str = "Не удалось безопасно выполнить запрос облачного диска";
@@ -128,6 +128,7 @@ async fn execute(args: CloudDiskArgs) -> Result<CloudDiskReply, String> {
             return Err(fail());
         }
     }
+    let download_deadline = tokio::time::Instant::now() + Duration::from_secs(60);
     let mut builder = match request.method {
         Method::Get => client.get(&request.url),
         Method::Post => client.post(&request.url),
@@ -153,9 +154,34 @@ async fn execute(args: CloudDiskArgs) -> Result<CloudDiskReply, String> {
         builder = builder.body(body);
     }
     let mut response = builder.send().await.map_err(network_error)?;
-    let status = response.status().as_u16();
+    let mut status = response.status().as_u16();
     if (300..400).contains(&status) {
-        return Err("cloud_disk_redirect".into());
+        if !request.download_redirect {
+            return Err("cloud_disk_redirect".into());
+        }
+        let locations = response.headers().get_all(reqwest::header::LOCATION);
+        let mut locations = locations.iter();
+        let location = locations
+            .next()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|value| download_redirect(request.download_redirect, status, value))
+            .filter(|_| locations.next().is_none())
+            .ok_or_else(|| "cloud_disk_redirect_target".to_owned())?;
+        drop(response); // Do not read redirect bodies.
+        let remaining = download_deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return Err("cloud_disk_timeout".into());
+        }
+        // Fresh GET: NO Authorization, cookie jar, Referer, body or copied headers.
+        // Redirects/retries remain disabled on the client. Exactly one hop.
+        response = redirected_request(&client, location, remaining)
+            .send()
+            .await
+            .map_err(network_error)?;
+        status = response.status().as_u16();
+        if (300..400).contains(&status) {
+            return Err("cloud_disk_redirect_chain".into());
+        }
     }
     if !(200..=599).contains(&status) {
         return Err("cloud_disk_body".into());
@@ -217,6 +243,20 @@ async fn execute(args: CloudDiskArgs) -> Result<CloudDiskReply, String> {
     })
 }
 
+// Separate builder prevents copying any OAuth/body/header from the initial GET.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn redirected_request(
+    client: &reqwest::Client,
+    location: String,
+    remaining: std::time::Duration,
+) -> reqwest::RequestBuilder {
+    client
+        .get(location)
+        .header(reqwest::header::ACCEPT_ENCODING, "identity")
+        .header(reqwest::header::CACHE_CONTROL, "no-store")
+        .timeout(remaining)
+}
+
 // Do not format reqwest::Error: it can contain signed URLs and credentials.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn network_error(error: reqwest::Error) -> String {
@@ -232,6 +272,31 @@ fn network_error(error: reqwest::Error) -> String {
 
 #[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
 mod tests {
+    #[test]
+    fn cdn_get_has_no_oauth_cookies_referrer_or_body() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap();
+        let target = "https://s123klg.storage.yandex.net/rdisk/FAKE_SIGNATURE";
+        let request =
+            super::redirected_request(&client, target.into(), std::time::Duration::from_secs(5))
+                .build()
+                .unwrap();
+        assert_eq!(request.method(), reqwest::Method::GET);
+        assert_eq!(request.url().as_str(), target);
+        for name in [
+            reqwest::header::AUTHORIZATION,
+            reqwest::header::COOKIE,
+            reqwest::header::REFERER,
+        ] {
+            assert!(!request.headers().contains_key(name));
+        }
+        assert!(request.body().is_none());
+        assert_eq!(request.timeout(), Some(&std::time::Duration::from_secs(5)));
+    }
     #[test]
     fn network_failure_does_not_expose_original_error() {
         let _ = rustls::crypto::ring::default_provider().install_default();

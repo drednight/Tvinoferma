@@ -14,23 +14,33 @@ const request = yandexDownloadContentRequest({
   templated: false
 });
 describe('native transport fixed codes only', () => {
-  it.each(['connect', 'timeout', 'busy', 'redirect', 'encoding', 'size', 'body', 'policy', 'client', 'transport'])(
-    'retains safe %s diagnostic through the complete read transport',
-    async reason => {
-      const invoke = vi.fn(async () => {
-        throw `cloud_disk_${reason}`;
-      });
-      const fetchImpl = createNativeDiskFetch({ provider: 'yandex', invoke });
-      const transport = createReadOnlyCloudTransport({ provider: 'yandex', accessToken: 'PRIVATE_ACCESS', fetchImpl });
-      const error = await transport.send(request).catch(e => e);
-      const code = `download_content_${reason === 'timeout' ? 'timeout' : reason === 'transport' ? 'transport_unavailable' : 'native_' + reason}`;
-      expect(cloudAccessDiagnostic(error)).toBe(code);
-      expect(CLOUD_ACCESS_MESSAGES[code]).toContain('Скачивание для сверки —');
-      expect(error.message).not.toMatch(/PRIVATE|https:|cloud_disk/);
-      expect(JSON.stringify(error)).toBe('{}');
-      expect(invoke).toHaveBeenCalledOnce();
-    }
-  );
+  it.each([
+    'connect',
+    'timeout',
+    'busy',
+    'redirect',
+    'redirect_target',
+    'redirect_chain',
+    'encoding',
+    'size',
+    'body',
+    'policy',
+    'client',
+    'transport'
+  ])('retains safe %s diagnostic through the complete read transport', async reason => {
+    const invoke = vi.fn(async () => {
+      throw `cloud_disk_${reason}`;
+    });
+    const fetchImpl = createNativeDiskFetch({ provider: 'yandex', invoke });
+    const transport = createReadOnlyCloudTransport({ provider: 'yandex', accessToken: 'PRIVATE_ACCESS', fetchImpl });
+    const error = await transport.send(request).catch(e => e);
+    const code = `download_content_${reason === 'timeout' ? 'timeout' : reason === 'transport' ? 'transport_unavailable' : 'native_' + reason}`;
+    expect(cloudAccessDiagnostic(error)).toBe(code);
+    expect(CLOUD_ACCESS_MESSAGES[code]).toContain('Скачивание для сверки —');
+    expect(error.message).not.toMatch(/PRIVATE|https:|cloud_disk/);
+    expect(JSON.stringify(error)).toBe('{}');
+    expect(invoke).toHaveBeenCalledOnce();
+  });
   it.each([
     new Error('cloud_disk_connect PRIVATE_ACCESS'),
     { message: 'cloud_disk_connect' },

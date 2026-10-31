@@ -46,7 +46,9 @@ async function fixture() {
   const native = {
     invoke: vi.fn(async (command, wrapped) => {
       if (command === 'cloud_credential_binding_read')
-        return wrapped.provider === 'yandex' ? { status: 'ready', ...binding } : { status: 'empty' };
+        return wrapped.provider === 'yandex'
+          ? { status: 'ready', ...binding }
+          : { status: failures.googleBinding || 'empty' };
       if (command === 'cloud_credential_read') return { status: 'ready', slotId: binding.slotId, record };
       if (command === 'cloud_simple_key_read') return null;
       if (command !== 'cloud_disk_network') throw new Error('Unknown synthetic command');
@@ -256,28 +258,57 @@ it('reports download denial without another blind retry or clearing the pending 
   expect(f.diagnostic(checked.results.find(row => row.provider === 'yandex'))).toBe('disk_service_unavailable');
 });
 
-it.each(['connect', 'timeout', 'busy', 'redirect', 'encoding', 'size', 'body', 'policy', 'client', 'transport'])(
-  'native %s failure survives pending-file verification without a second upload',
-  async reason => {
-    const f = await fixture();
-    f.failures.download_content = `cloud_disk_${reason}`;
-    const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
-    const saved = await f.runtime.save(prepared, { confirmed: true });
-    const code = `download_content_${reason === 'timeout' ? 'timeout' : reason === 'transport' ? 'transport_unavailable' : 'native_' + reason}`;
-    expect(saved.results[0].status).toBe('verification_pending');
-    expect(f.diagnostic(saved.results[0])).toBe(code);
-    const pending = structuredClone(f.state.settings.cloudStandaloneFiles.yandex.pending);
-    expect(f.puts).toBe(1);
-    const continued = await f.runtime.continuePending('yandex');
-    expect(f.diagnostic(continued)).toBe(code);
-    expect(f.puts).toBe(1);
-    expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toEqual(pending);
-    const serialized = JSON.stringify({ saved, continued });
-    expect(serialized).not.toMatch(/FAKE_ACCESS|downloader|https:|cloud_disk_/);
-    // Once the service recovers, read and confirm EXACTLY the existing bytes.
-    delete f.failures.download_content;
-    expect((await f.runtime.continuePending('yandex')).status).toBe('sent_verified');
-    expect(f.puts).toBe(1);
-    expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toBeNull();
-  }
-);
+it.each([
+  'connect',
+  'timeout',
+  'busy',
+  'redirect',
+  'redirect_target',
+  'redirect_chain',
+  'encoding',
+  'size',
+  'body',
+  'policy',
+  'client',
+  'transport'
+])('native %s failure survives pending-file verification without a second upload', async reason => {
+  const f = await fixture();
+  f.failures.download_content = `cloud_disk_${reason}`;
+  const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+  const saved = await f.runtime.save(prepared, { confirmed: true });
+  const code = `download_content_${reason === 'timeout' ? 'timeout' : reason === 'transport' ? 'transport_unavailable' : 'native_' + reason}`;
+  expect(saved.results[0].status).toBe('verification_pending');
+  expect(f.diagnostic(saved.results[0])).toBe(code);
+  const pending = structuredClone(f.state.settings.cloudStandaloneFiles.yandex.pending);
+  expect(f.puts).toBe(1);
+  const continued = await f.runtime.continuePending('yandex');
+  expect(f.diagnostic(continued)).toBe(code);
+  expect(f.puts).toBe(1);
+  expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toEqual(pending);
+  const serialized = JSON.stringify({ saved, continued });
+  expect(serialized).not.toMatch(/FAKE_ACCESS|downloader|https:|cloud_disk_/);
+  // Once the service recovers, read and confirm EXACTLY the existing bytes.
+  delete f.failures.download_content;
+  expect((await f.runtime.continuePending('yandex')).status).toBe('sent_verified');
+  expect(f.puts).toBe(1);
+  expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toBeNull();
+});
+
+it.each([
+  ['pending', 'credential_refresh_pending'],
+  ['blocked', 'credential_binding_blocked']
+])('Google %s is reported precisely without sending an old refresh or touching data', async (local, status) => {
+  const f = await fixture();
+  f.failures.googleBinding = local;
+  const original = JSON.stringify(f.state.settings.cloudStandaloneFiles);
+  f.native.invoke.mockClear();
+  const result = await f.runtime.check({ targets: ['google'] });
+  expect(result.results).toEqual([{ provider: 'google', status }]);
+  expect(
+    f.native.invoke.mock.calls.some(
+      ([command]) => command === 'cloud_disk_network' || command === 'cloud_oauth_network'
+    )
+  ).toBe(false);
+  expect(JSON.stringify(f.state.settings.cloudStandaloneFiles)).toBe(original);
+  expect(f.puts).toBe(0);
+});

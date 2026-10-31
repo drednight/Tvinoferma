@@ -371,3 +371,41 @@ describe('encryption password dialog', () => {
     expect(input.value).toBe('');
   });
 });
+
+it.each(['credential_refresh_pending', 'credential_blocked', 'login_required'])(
+  'offers a direct Google reconnect action for %s without changing destinations',
+  async status => {
+    const f = setup({
+      runtime: { check: vi.fn(async () => ({ files: [], pending: [], results: [{ provider: 'google', status }] })) }
+    });
+    const panel = document.getElementById('cloud-registration-panel');
+    const reconnect = vi.fn();
+    panel.addEventListener('tf-cloud-reconnect-google', reconnect);
+    const destinations = [...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked);
+    await click('check');
+    const button = [...el('provider-results').querySelectorAll('button')].find(
+      button => button.textContent === 'Повторить вход Google'
+    );
+    expect(button).toBeTruthy();
+    button.click();
+    expect(reconnect).toHaveBeenCalledOnce();
+    expect([...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked)).toEqual(
+      destinations
+    );
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  }
+);
+it('does not suggest fresh OAuth over a damaged account binding', async () => {
+  setup({
+    runtime: {
+      check: vi.fn(async () => ({
+        files: [],
+        pending: [],
+        results: [{ provider: 'google', status: 'credential_binding_blocked' }]
+      }))
+    }
+  });
+  await click('check');
+  expect(el('provider-results').textContent).toContain('не совпадает с привязкой');
+  expect(el('provider-results').querySelector('button')).toBeNull();
+});

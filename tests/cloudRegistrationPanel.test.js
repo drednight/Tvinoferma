@@ -636,7 +636,7 @@ describe('production login without legacy access controls', () => {
     const parsed = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
     document.body.innerHTML = parsed.getElementById('cloud-registration-panel').outerHTML;
     expect(document.getElementById('cloud-connection-inspect')).toBeNull();
-    expect(document.getElementById('cloud-connection-enroll')).toBeNull();
+    expect(document.getElementById('cloud-connection-start')).toBeNull();
     expect(document.getElementById('cloud-connection-forget')).toBeNull();
     byId('provider').value = 'google';
     byId('client').value = '12345-fake.apps.googleusercontent.com';
@@ -653,8 +653,17 @@ describe('production login without legacy access controls', () => {
         openBrowser: vi.fn()
       })
     });
-    connection('simple').click();
+    const choices = [...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked);
+    if (status === 'empty') connection('simple').click();
+    else {
+      byId('provider').value = 'yandex';
+      document.getElementById('cloud-registration-panel').dispatchEvent(new Event('tf-cloud-reconnect-google'));
+    }
     await vi.waitFor(() => expect(s.enroll).toHaveBeenCalledOnce());
+    expect(byId('provider').value).toBe('google');
+    expect([...document.querySelectorAll('[data-standalone-destination]')].map(input => input.checked)).toEqual(
+      choices
+    );
     expect(s.enroll.mock.calls[0][0]).toMatchObject({
       provider: 'google',
       ...(status === 'empty' ? {} : { reconnect: true })

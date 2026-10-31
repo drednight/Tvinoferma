@@ -20,6 +20,10 @@ const SECTIONS = {
 };
 const STATUS = {
   credential_missing: 'диск не подключён на этом ПК — выберите его выше и нажмите «Войти»',
+  credential_refresh_pending:
+    'предыдущее обновление доступа не подтверждено. Нужен новый вход в тот же аккаунт; ключи и ожидающий файл сохранены',
+  credential_binding_blocked:
+    'защищённая запись доступа не совпадает с привязкой или повреждена. Нужна проверка восстановления; ключи и записи не удаляйте',
   credential_blocked: 'доступ заблокирован или обновление не подтверждено. Не удаляйте ключи и записи доступа',
   credential_unavailable: 'не удалось прочитать доступ в Windows. Проверьте подключение, не удаляя ключи',
   login_required: 'срок доступа истёк. Требуется восстановить вход; облачные файлы и ключи сохранены',
@@ -174,10 +178,21 @@ export function bindStandaloneFilePanel(options) {
       const li = doc.createElement('li');
       const diagnostic = cloudAccessDiagnostic(result);
       const reconnectHint =
-        result.provider === 'google' && ['credential_blocked', 'login_required'].includes(result.status)
+        result.provider === 'google' &&
+        ['credential_blocked', 'credential_refresh_pending', 'login_required'].includes(result.status)
           ? '. Выберите Google в способе входа выше и нажмите «Повторить вход Google»; войдите в тот же аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
+      if (reconnectHint) {
+        const reconnect = doc.createElement('button');
+        reconnect.type = 'button';
+        reconnect.className = 'btn ghost small';
+        reconnect.textContent = 'Повторить вход Google';
+        reconnect.addEventListener('click', () => {
+          doc.getElementById('cloud-registration-panel')?.dispatchEvent(new Event('tf-cloud-reconnect-google'));
+        });
+        li.append(' ', reconnect);
+      }
       if (result.status === 'folder_ambiguous' && result.folders?.length) {
         const select = doc.createElement('select');
         select.className = 'input';

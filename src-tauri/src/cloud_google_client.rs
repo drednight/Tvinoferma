@@ -127,15 +127,16 @@ pub(crate) fn install(vault: &mut impl CredentialVault, json: &str) -> Result<St
         return Ok(client.id);
     }
     // Importing settings is never permission to change an existing account binding.
+    // Same-client configuration repair is allowed even when refresh is pending:
+    // the in-flight refresh already captured its immutable request form under
+    // the shared lock. This never changes/settles that credential or retries it.
+    // Fresh explicit OAuth and exact credential CAS are still required.
     match cloud_credential_binding::read(vault, Provider::Google)
         .map_err(|_| "oauth_client_config_unavailable".to_owned())?
     {
         Pair::Blocked => return Err("oauth_client_config_blocked".into()),
         Pair::Ready { binding, .. } if binding.client_id != client.id => {
             return Err("oauth_client_config_client_changed".into())
-        }
-        Pair::Ready { binding, .. } if binding.pending => {
-            return Err("oauth_client_config_blocked".into())
         }
         _ => {}
     }
@@ -245,8 +246,14 @@ mod tests {
         assert!(install(&mut vault, &config(ID, "third")).is_err());
         assert!(Client::parse(&"x".repeat(65537)).is_err());
     }
+    fn client_record(id: &str, secret: &str) -> String {
+        Client::parse(&config(id, secret))
+            .unwrap()
+            .canonical()
+            .unwrap()
+    }
     #[test]
-    fn cannot_switch_bound_client_or_edit_pending_refresh() {
+    fn cannot_switch_bound_client_but_can_repair_same_client_configuration() {
         let mut vault = Memory::default();
         const SLOT: &str = "11111111-1111-4111-8111-111111111111";
         let record = format!(
@@ -295,7 +302,22 @@ mod tests {
         assert!(install(&mut vault, &config(ID, "rotated")).is_ok());
         assert_eq!(vault.data, before);
         vault.fail_write = false;
-        assert!(install(&mut vault, &config(ID, "blocked")).is_err());
-        assert_eq!(read(&mut vault).unwrap().unwrap().secret, "rotated");
+        assert!(install(&mut vault, &config(ID, "fresh_configuration")).is_ok());
+        let mut expected = before.clone();
+        expected.insert(KEY.into(), client_record(ID, "fresh_configuration"));
+        assert_eq!(vault.data, expected); // No token, pin, dataset or pending change.
+        assert!(
+            matches!(cloud_credential_binding::read(&mut vault,Provider::Google).unwrap(),Pair::Ready {record,..} if record == pending)
+        );
+        vault.data.remove(KEY);
+        assert!(install(&mut vault, &config(ID, "recovered_missing_configuration")).is_ok());
+        assert!(
+            matches!(cloud_credential_binding::read(&mut vault,Provider::Google).unwrap(),Pair::Ready {record,..} if record == pending)
+        );
+        assert!(install(
+            &mut vault,
+            &config("other.apps.googleusercontent.com", "bad")
+        )
+        .is_err());
     }
 }

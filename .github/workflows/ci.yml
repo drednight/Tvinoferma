@@ -8,8 +8,13 @@ on:
     # раз в неделю — чтобы новые уязвимости в зависимостях не оставались незамеченными
     - cron: '0 6 * * 1'
 
+# New pushes supersede obsolete PR checks, not checks of another PR/main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  frontend:
+  frontend-quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -22,15 +27,49 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
-      # Full regression once before merge (and weekly), not again for the same main push.
-      - if: github.event_name != 'push'
-        run: npm test
       - if: github.event_name == 'push'
         run: npx vitest run tests/cloudSnapshotFile.test.js tests/cloudSnapshotFilePanel.ui.test.js
       - run: npm run build
       # Информационный шаг: показывает уязвимости, но не блокирует PR
       - run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
+
+  frontend-tests:
+    if: github.event_name != 'push'
+    name: frontend-tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Every file runs exactly once, still isolated; no reduced test selection.
+      - run: npm test -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
+
+  # Preserve the existing required check name; it cannot pass before ALL shards.
+  frontend:
+    if: always()
+    needs: [frontend-quality, frontend-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require quality checks and the complete regression suite
+        env:
+          QUALITY: ${{ needs.frontend-quality.result }}
+          TESTS: ${{ needs.frontend-tests.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          test "$QUALITY" = success
+          if [ "$EVENT" = push ]; then
+            test "$TESTS" = skipped
+          else
+            test "$TESTS" = success
+          fi
 
   rust:
     runs-on: windows-latest
