@@ -1,5 +1,7 @@
 // js/settings/settings.js
 
+import { bindStandaloneFilePanel } from '../modules/cloudSync/ui/standaloneFilePanel.js';
+
 import {
   getAdapter,
   saveNow,
@@ -575,28 +577,40 @@ function bindSettingInputs() {
 
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
-  bindSnapshotFilePanel({ desktop: isTauri() });
-  bindSnapshotFilePrivatePanel({ desktop: isTauri() });
-  bindSnapshotHistoryArchivePanel({ desktop: isTauri() });
-  // The old merge/auto-publication controls remain available only for legacy recovery.
-  const fileMode = !!document.getElementById('cloud-file-panel');
-  const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });
-  bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
-  bindCloudPublicationPanel({ desktop: isTauri(), disableAutomatic: fileMode });
-  bindPrivateTransferPanel({ desktop: isTauri() });
-  const legacyControls = /** @type {HTMLFieldSetElement|null} */ (document.getElementById('cloud-legacy-controls'));
-  if (legacyControls) {
-    const refreshLegacy = () => {
-      legacyControls.disabled = hasSnapshotFileMode(
-        state.settings,
-        /** @type {HTMLSelectElement} */ (document.getElementById('cloud-registration-provider'))?.value
-      );
-    };
-    refreshLegacy();
-    window.addEventListener('tf-persisted', refreshLegacy);
-    window.addEventListener('tf-cloud-applied', refreshLegacy);
-    document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
-  }
+  bindStandaloneFilePanel({ desktop: isTauri() });
+  const legacyFold = document.getElementById('cloud-standalone-legacy');
+  let legacyBound = false;
+  const bindLegacy = () => {
+    if (legacyBound) return;
+    legacyBound = true;
+    bindSnapshotFilePanel({ desktop: isTauri() });
+    bindSnapshotFilePrivatePanel({ desktop: isTauri() });
+    bindSnapshotHistoryArchivePanel({ desktop: isTauri() });
+    // The old merge/auto-publication controls remain available only for legacy recovery.
+    const fileMode = !!document.getElementById('cloud-file-panel');
+    const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });
+    bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
+    bindCloudPublicationPanel({ desktop: isTauri(), disableAutomatic: fileMode });
+    bindPrivateTransferPanel({ desktop: isTauri() });
+    const legacyControls = /** @type {HTMLFieldSetElement|null} */ (document.getElementById('cloud-legacy-controls'));
+    if (legacyControls) {
+      const refreshLegacy = () => {
+        legacyControls.disabled = hasSnapshotFileMode(
+          state.settings,
+          /** @type {HTMLSelectElement} */ (document.getElementById('cloud-registration-provider'))?.value
+        );
+      };
+      refreshLegacy();
+      window.addEventListener('tf-persisted', refreshLegacy);
+      window.addEventListener('tf-cloud-applied', refreshLegacy);
+      document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
+    }
+  };
+  if (legacyFold)
+    legacyFold.addEventListener('toggle', () => {
+      if (/** @type {HTMLDetailsElement} */ (legacyFold).open) bindLegacy();
+    });
+  else bindLegacy();
   bindCloudActivityPanel();
   bindGuides();
   bindFeedback();

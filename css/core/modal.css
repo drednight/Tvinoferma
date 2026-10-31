@@ -359,3 +359,17 @@
     padding: 12px 14px 14px;
   }
 }
+
+/* Standalone file password: native dialog, one step, no key-backup wizard. */
+.cloud-key-dialog {
+  padding: 24px;
+  color: var(--text);
+  margin: auto;
+}
+.cloud-key-dialog::backdrop {
+  background: rgba(6, 8, 13, 0.68);
+  backdrop-filter: blur(3px);
+}
+.cloud-key-dialog form {
+  gap: 14px;
+}

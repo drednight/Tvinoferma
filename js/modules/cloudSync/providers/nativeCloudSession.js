@@ -75,7 +75,7 @@ export async function openNativeCloudSession(options) {
 
 // Общее получение доступа и проверка записи. Режим поиска намеренно не принимает
 // datasetId/folderId и не возвращает никаких методов записи или генерации ID.
-async function openSession(options, folderDiscoveryOnly) {
+async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite = false) {
   let input;
   try {
     input = object(
@@ -199,6 +199,16 @@ async function openSession(options, folderDiscoveryOnly) {
       });
       let candidates = new Set();
       const session = Object.freeze({
+        ...(standaloneFolderWrite
+          ? {
+              generateFileId() {
+                return guard(() => manager.generateFileId());
+              },
+              createOnce(args) {
+                return guard(() => manager.createOnce(args), true);
+              }
+            }
+          : {}),
         async discover() {
           candidates = new Set();
           const found = await guard(() => manager.discover());
@@ -387,4 +397,16 @@ export async function openStoredNativeGoogleFolderDiscovery(options) {
   } catch {
     return status('credential_unavailable');
   }
+}
+
+/** Dedicated capability for the standalone-file directory. Legacy discovery stays read-only.
+ * No root, history, pairing code or dataset binding is created.
+ * @param {{invoke:(command:string,args:any)=>Promise<any>,cryptoSource?:Crypto,timeoutMs?:number,now?:()=>number}} options
+ * @returns {Promise<{status:string,session?:any}>}
+ */
+export async function openStoredStandaloneGoogleFolder(options) {
+  const input = object(options, ['invoke'], ['cryptoSource', 'timeoutMs', 'now']);
+  const local = await readNativeCredentialBinding({ provider: 'google', invoke: input.invoke });
+  if (local.status !== 'ready' || !local.binding) return status('credential_missing');
+  return openSession({ ...input, provider: 'google', ...local.binding }, true, true);
 }
