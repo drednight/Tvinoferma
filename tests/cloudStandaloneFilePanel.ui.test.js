@@ -38,10 +38,13 @@ const token = () => ({
 });
 const disposers = [];
 function setup(extra = {}) {
+  // Explicit user choice; the production page no longer preselects Google.
+  if (extra.chooseDestination !== false)
+    document.querySelector('[data-standalone-destination][value=google]').checked = true;
   const runtime = {
     check: vi.fn(async () => ({ files: [file], results: [{ provider: 'google', status: 'checked' }], pending: [] })),
     canSeal: vi.fn(async () => false),
-    prepareSave: vi.fn(async () => ({ remoteCopies: 1, hasPrivate: false })),
+    prepareSave: vi.fn(async () => ({ remoteCopies: 0, hasPrivate: false, hasUnacceptedCopies: false })),
     save: vi.fn(async () => ({ results: [{ provider: 'google', status: 'sent_verified' }] })),
     review: vi.fn(async () => token()),
     accept: vi.fn(async () => ({ status: 'applied' })),
@@ -114,7 +117,7 @@ describe('standalone full file UX', () => {
       expect.objectContaining({ targets: ['google', 'yandex'], fields: [] })
     );
     expect(f.runtime.save).toHaveBeenCalledOnce();
-    expect(f.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Сохранить полный файл?' }));
+    expect(f.confirm).not.toHaveBeenCalled();
     expect(el('status').textContent).toContain('каждого диска');
   });
   it('asks only for the existing password, not a new-password repeat, after restart without remembered master', async () => {
@@ -143,7 +146,10 @@ describe('standalone full file UX', () => {
     expect(el('status').textContent).toContain('второй');
   });
   it('does not replace or upload when the final confirmation was cancelled', async () => {
-    const f = setup({ confirm: vi.fn(async () => false) });
+    const f = setup({
+      confirm: vi.fn(async () => false),
+      runtime: { prepareSave: vi.fn(async () => ({ remoteCopies: 1, hasUnacceptedCopies: true })) }
+    });
     await click('save');
     expect(f.runtime.save).not.toHaveBeenCalled();
     await compare();
@@ -198,6 +204,79 @@ describe('standalone full file UX', () => {
     el('provider-results').querySelector('button').click();
     await vi.waitFor(() => expect(f.runtime.continuePending).toHaveBeenCalledWith('google'));
   });
+  it('keeps advanced sources, privacy, backups and recovery folded away from primary actions', () => {
+    setup();
+    expect(el('options').open).toBe(false);
+    for (const id of ['source', 'remember', 'forget', 'show-backups', 'contacts-confirm'])
+      expect(el('options').contains(el(id))).toBe(true);
+    expect(document.getElementById('cloud-registration-advanced').contains(el('legacy'))).toBe(true);
+    expect(el('save').closest('details').id).toBe('cloud-registration-panel');
+    expect(el('check').closest('details').id).toBe('cloud-registration-panel');
+  });
+  it('suggests the connected Yandex account instead of a disconnected Google default, without sending', async () => {
+    expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
+    const f = setup({
+      chooseDestination: false,
+      startup: true,
+      runtime: {
+        check: vi.fn(async () => ({
+          files: [],
+          pending: [],
+          results: [
+            { provider: 'google', status: 'credential_missing' },
+            { provider: 'yandex', status: 'checked' }
+          ]
+        }))
+      }
+    });
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
+    expect(document.querySelector('[data-standalone-destination]:checked').value).toBe('yandex');
+    await click('save');
+    expect(f.runtime.prepareSave).toHaveBeenCalledWith(expect.objectContaining({ targets: ['yandex'] }));
+    expect(f.runtime.save).toHaveBeenCalledOnce();
+  });
+  it('does not change an explicit destination after another account is connected', async () => {
+    const f = setup({ startup: true });
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
+    const google = document.querySelector('[data-standalone-destination][value=google]');
+    google.checked = false;
+    google.dispatchEvent(new Event('change'));
+    document.querySelector('[data-standalone-destination][value=yandex]').checked = true;
+    document.defaultView.dispatchEvent(
+      new CustomEvent('tf-cloud-credential-ready', { detail: { provider: 'google' } })
+    );
+    await vi.waitFor(() => expect(f.runtime.check).toHaveBeenCalledTimes(2));
+    expect(google.checked).toBe(false);
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('reports a missing account without exposing raw errors or claiming the file was saved', async () => {
+    const f = setup({
+      runtime: {
+        prepareSave: vi.fn(async () => {
+          throw Object.assign(new Error('destinations_unavailable'), {
+            results: [{ provider: 'google', status: 'credential_missing' }]
+          });
+        })
+      }
+    });
+    await click('save');
+    expect(el('status').textContent).toContain('Отправка не началась');
+    expect(el('provider-results').textContent).toContain('диск не подключён');
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('still confirms an upload that includes private fields', async () => {
+    const f = setup({
+      confirm: vi.fn(async () => false),
+      runtime: {
+        prepareSave: vi.fn(async () => ({ remoteCopies: 0, hasPrivate: true, hasUnacceptedCopies: false }))
+      }
+    });
+    document.querySelector('[data-standalone-private][value=email]').checked = true;
+    el('contacts-confirm').checked = true;
+    await click('save');
+    expect(f.confirm).toHaveBeenCalledOnce();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
   it('never makes native calls in the browser preview', async () => {
     const f = setup({ desktop: false });
     expect(el('save').disabled).toBe(true);
@@ -234,14 +313,18 @@ describe('encryption password dialog', () => {
     const promise = askStandalonePassword({ repeat: true });
     const dialog = document.querySelector('dialog'),
       form = dialog.querySelector('form');
+    expect(dialog.querySelector('[role=alert]').hidden).toBe(true);
     const pass = form.elements.namedItem('password'),
       repeat = form.elements.namedItem('repeat');
     pass.value = 'Ab3!xyZ';
     repeat.value = pass.value;
     form.dispatchEvent(new Event('submit', { cancelable: true }));
     expect(dialog.isConnected).toBe(true);
+    expect(dialog.querySelector('[role=alert]').hidden).toBe(false);
     expect(dialog.querySelector('[role=alert]').textContent).toContain('не менее 8 символов');
     pass.value = 'Ab3!xyZ7';
+    pass.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(dialog.querySelector('[role=alert]').hidden).toBe(true);
     repeat.value = 'Different';
     form.dispatchEvent(new Event('submit', { cancelable: true }));
     expect(dialog.querySelector('[role=alert]').textContent).toContain('не совпадают');

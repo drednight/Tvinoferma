@@ -373,3 +373,18 @@
 .cloud-key-dialog form {
   gap: 14px;
 }
+.cloud-key-dialog {
+  width: min(440px, calc(100vw - 32px));
+  box-sizing: border-box;
+}
+.cloud-key-dialog label {
+  display: grid;
+  gap: 6px;
+}
+.cloud-key-dialog p {
+  margin: 0;
+  line-height: 1.5;
+}
+.cloud-key-dialog [hidden] {
+  display: none !important;
+}

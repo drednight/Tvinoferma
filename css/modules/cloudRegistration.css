@@ -307,3 +307,51 @@
 #cloud-registration-form .cloud-registration-fields {
   grid-template-columns: minmax(0, 1fr);
 }
+/* One workspace, not a stack of status cards. Technical controls stay folded. */
+#cloud-standalone-panel {
+  display: grid;
+  gap: 12px;
+}
+#cloud-standalone-panel > p,
+#cloud-standalone-panel > h4 {
+  margin: 0;
+}
+#cloud-standalone-destinations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+#cloud-standalone-destinations legend {
+  margin-bottom: 6px;
+}
+#cloud-standalone-options[open] {
+  display: grid;
+  gap: 12px;
+}
+#cloud-standalone-options > label {
+  display: block;
+}
+#cloud-connection-local,
+#cloud-connection-progress,
+#cloud-standalone-status {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+}
+#cloud-standalone-provider-results:empty {
+  display: none;
+}
+#cloud-standalone-provider-results {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+#cloud-connection-progress:empty {
+  display: none;
+}

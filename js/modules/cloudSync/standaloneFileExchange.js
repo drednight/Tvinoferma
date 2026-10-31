@@ -110,6 +110,26 @@ function sourceWitness(snapshot) {
 function addPin(list, pin) {
   return [...list.filter(item => item.versionId !== pin.versionId), pin].slice(-4096);
 }
+// Only fixed, non-secret diagnostic codes may cross into the UI. Never forward
+// transport errors (which can contain tokens, signed links or response bodies).
+function providerFailure(error) {
+  return [
+    'credential_missing',
+    'credential_blocked',
+    'credential_unavailable',
+    'login_required',
+    'account_changed',
+    'account_unavailable',
+    'folder_ambiguous',
+    'folder_unavailable',
+    'folder_changed',
+    'folder_verification_pending',
+    'local_changed',
+    'remote_changed'
+  ].includes(error?.message)
+    ? error.message
+    : 'unavailable';
+}
 /** Pure orchestration with injected durable storage and account-verified transports.
  * @param {any} ports */
 export function createStandaloneFileExchange(ports) {
@@ -274,7 +294,7 @@ export function createStandaloneFileExchange(ports) {
       } catch (error) {
         results.push({
           provider,
-          status: error.message === 'folder_ambiguous' ? 'folder_ambiguous' : 'unavailable',
+          status: providerFailure(error),
           ...(error.message === 'folder_ambiguous' ? { folders: error.folders } : {})
         });
       } finally {
@@ -489,6 +509,8 @@ export function createStandaloneFileExchange(ports) {
         const source = options.source || original;
         if (options.fields?.length && !options.source) ports.assertContacts?.(source);
         const scanned = await scanAll(targets, true);
+        if (!scanned.results.some(row => ['checked', 'empty'].includes(row.status)))
+          throw Object.assign(fail('destinations_unavailable'), { results: scanned.results });
         const supersedes = [...new Map(scanned.entries.map(entry => [entry.versionId, pinOf(entry)])).values()];
         if (!key) key = (await ports.recalledKey?.(config().key)) || null;
         const savedKey = config().key;
@@ -519,6 +541,10 @@ export function createStandaloneFileExchange(ports) {
           results: scanned.results,
           remoteCopies: heads(scanned.entries).length,
           hasPrivate: !!sealed.contents.privateSnapshot,
+          hasUnacceptedCopies: heads(scanned.entries).some(
+            entry =>
+              !PROVIDERS.some(provider => config()[provider].accepted.some(pin => sameFilePin(pin, pinOf(entry))))
+          ),
           versionId: sealed.envelope.versionId
         });
         uploads.set(token, {
@@ -565,8 +591,8 @@ export function createStandaloneFileExchange(ports) {
               opened.session.dispose();
               opened = null;
             }
-            if (token.results.find(row => row.provider === provider)?.status === 'unavailable')
-              throw fail('unavailable');
+            const scanned = token.results.find(row => row.provider === provider);
+            if (scanned && !['checked', 'empty'].includes(scanned.status)) throw fail(scanned.status);
             opened = await connect(provider, true);
             const current = await readCopies(provider, opened, true);
             const witnessed = current
@@ -613,7 +639,7 @@ export function createStandaloneFileExchange(ports) {
               ? error.message
               : config()[provider].pending
                 ? 'verification_pending'
-                : 'unavailable';
+                : providerFailure(error);
             results.push({ provider, status: code });
           } finally {
             opened?.session?.dispose();

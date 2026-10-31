@@ -410,9 +410,40 @@ describe('standalone exchange: two providers and two PCs', () => {
     f.local.settings.cloudStandaloneFiles.google.account = 'f'.repeat(64);
     const token = await f.engine.prepareSave({ targets: ['google', 'yandex'] });
     const result = await f.engine.save(token, { confirmed: true });
-    expect(result.results[0].status).toBe('unavailable');
+    expect(result.results[0].status).toBe('account_changed');
     expect(result.results[1].status).toBe('sent_verified');
     expect(f.calls.google).toHaveLength(0);
+  });
+  it('flags only unaccepted current copies for the extra publish confirmation', async () => {
+    const f = fixture();
+    expect((await f.engine.prepareSave({ targets: ['google'] })).hasUnacceptedCopies).toBe(false);
+    f.put('google', first);
+    expect((await f.engine.prepareSave({ targets: ['google'] })).hasUnacceptedCopies).toBe(true);
+    await f.engine.accept(await f.review(first), { confirmed: true });
+    expect((await f.engine.prepareSave({ targets: ['google'] })).hasUnacceptedCopies).toBe(false);
+    f.put('google', second);
+    expect((await f.engine.prepareSave({ targets: ['google'] })).hasUnacceptedCopies).toBe(true);
+  });
+  it('reports missing credentials with fixed codes and refuses preparation before encryption when no disk is usable', async () => {
+    const f = fixture();
+    f.ports.open = vi.fn(async () => {
+      throw new Error('credential_missing');
+    });
+    await expect(f.engine.prepareSave({ targets: ['google'] })).rejects.toMatchObject({
+      message: 'destinations_unavailable',
+      results: [{ provider: 'google', status: 'credential_missing' }]
+    });
+    expect(f.patch).not.toHaveBeenCalled();
+    expect(f.calls.google).toHaveLength(0);
+  });
+  it('never exposes arbitrary transport messages containing signed links or tokens', async () => {
+    const f = fixture();
+    f.ports.open = vi.fn(async () => {
+      throw new Error('SECRET-FAKE-TOKEN https://signed.invalid/?token=FAKE');
+    });
+    const checked = await f.engine.check();
+    expect(checked.results.every(row => row.status === 'unavailable')).toBe(true);
+    expect(JSON.stringify(checked)).not.toContain('FAKE');
   });
   it('remembers an OS-vault key only after explicit consent and verified success, not password or raw snapshot', async () => {
     const f = fixture();

@@ -158,3 +158,54 @@ describe('standalone desktop composition with real guarded JS storage', () => {
     expect(f.native.invoke.mock.calls.some(([command]) => /dataset|outbox|key_state/.test(command))).toBe(false);
   });
 });
+
+describe('standalone UI through real runtime and guarded storage', () => {
+  it('selects connected Yandex, submits the actual password form, uploads and verifies; next save needs no extra window', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { bindStandaloneFilePanel } = await import('../js/modules/cloudSync/ui/standaloneFilePanel.js');
+    const html = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+    document.body.innerHTML = html.getElementById('cloud-registration-panel').outerHTML;
+    if (!HTMLDialogElement.prototype.showModal)
+      Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() {} });
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () {
+      this.open = true;
+    });
+    const f = await fixture();
+    const confirmAction = vi.fn(async () => true);
+    const controller = bindStandaloneFilePanel({
+      desktop: true,
+      runtime: f.runtime,
+      confirm: confirmAction,
+      record: vi.fn()
+    });
+    try {
+      const save = document.getElementById('cloud-standalone-save');
+      await vi.waitFor(() => expect(save.disabled).toBe(false));
+      expect(document.querySelector('[data-standalone-destination]:checked').value).toBe('yandex');
+      save.click();
+      await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
+      const dialog = document.querySelector('dialog');
+      expect(dialog.querySelector('[role=alert]').hidden).toBe(true);
+      dialog.querySelector('[name=password]').value = 'Ab3!xyZ7';
+      dialog.querySelector('[name=repeat]').value = 'Ab3!xyZ7';
+      dialog.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+      await vi.waitFor(() => expect(save.disabled).toBe(false), { timeout: 10000 });
+      expect(f.puts).toBe(1);
+      expect(document.getElementById('cloud-standalone-provider-results').textContent).toContain(
+        'полный файл сохранён и сверен'
+      );
+      expect(confirmAction).not.toHaveBeenCalled();
+      expect(document.querySelector('dialog')).toBeNull();
+      f.state.characters[0].nick = 'После первой отправки';
+      await f.saveNow();
+      save.click();
+      await vi.waitFor(() => expect(save.disabled).toBe(false), { timeout: 10000 });
+      expect(f.puts).toBe(2);
+      expect(document.querySelector('dialog')).toBeNull();
+      expect(confirmAction).not.toHaveBeenCalled();
+      expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toBeNull();
+    } finally {
+      controller.dispose();
+    }
+  });
+});
