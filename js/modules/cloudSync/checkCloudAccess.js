@@ -24,13 +24,19 @@ export async function checkCloudAccess(options) {
         ...(input.now ? { now: input.now } : {})
       })
     );
-    if (opened.status !== 'opened') return Object.freeze({ status: opened.status });
+    if (opened.status !== 'opened') {
+      // These are definite early refusals (or a completed, known expiry), not
+      // an unknown refresh write. Checking an unbound Google disk must not
+      // quarantine an otherwise usable Yandex connection.
+      if (['binding_missing', 'binding_blocked', 'login_required'].includes(opened.status)) uncertainRefresh = false;
+      return Object.freeze({ status: opened.status });
+    }
     uncertainRefresh = false;
     session = opened.session;
     const checked = await session.checkAccount();
     return Object.freeze({ status: checked.status });
   } catch {
-    return Object.freeze({ status: 'unavailable' });
+    return Object.freeze({ status: operation ? 'unavailable' : 'busy_or_restart_required' });
   } finally {
     session?.dispose?.();
     operation?.finish(uncertainRefresh);

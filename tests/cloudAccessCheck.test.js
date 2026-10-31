@@ -196,3 +196,22 @@ it('ошибка повторной identity перед upload сохраняе�
   expect(cloudAccessDiagnostic(result)).toBe('identity_forbidden');
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
 });
+
+it.each(['binding_missing', 'binding_blocked', 'login_required'])(
+  'проверка неподключённого/закрытого Google (%s) не блокирует уже настроенный Яндекс',
+  async status => {
+    vi.resetModules();
+    const { checkCloudAccess: check } = await import('../js/modules/cloudSync/checkCloudAccess.js');
+    expect(await check({ provider: 'google', invoke: vi.fn(), openSession: async () => ({ status }) })).toEqual({
+      status
+    });
+    const f = fixture('yandex');
+    expect(
+      await check({
+        provider: 'yandex',
+        invoke: vi.fn(),
+        openSession: async () => ({ status: 'opened', session: { ...f.session, dispose: vi.fn() } })
+      })
+    ).toEqual({ status: 'access_verified' });
+  }
+);
