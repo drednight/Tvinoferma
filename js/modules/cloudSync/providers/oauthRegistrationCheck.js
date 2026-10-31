@@ -3,6 +3,7 @@
 // Токены после проверки отбрасываются; сервис может сохранить выданное разрешение.
 // Исходные ошибки, тело ответа, clientId, идентификатор и токены не журналируются.
 import { object } from '../exportSchema.js';
+import { createOAuthDiagnostics } from './oauthDiagnostics.js';
 import { validOAuthClientId } from './oauthCommon.js';
 import { startCloudOAuth } from './oauthPkce.js';
 import { createCloudOAuthTokenTransport } from './oauthTokenTransport.js';
@@ -44,7 +45,7 @@ function pause(signal, milliseconds) {
  * openBrowser:(url:string)=>Promise<any>,signal:AbortSignal,
  * onProgress?:(stage:'browser'|'token'|'identity')=>void, pollIntervalMs?:number, cryptoSource?:Crypto}} options
  * @returns {Promise<{status:'checked',scope:'reported'|'request_bound'|'unverified',label:{kind:string,value:string}|null}|
- * {status:'cancelled'|'denied'|'expired'|'failed'}>}
+ * {status:'cancelled'|'denied'|'expired'|'failed',diagnostic?:{stage:string,code:string}}>}
  */
 export async function checkCloudOAuthRegistration(options) {
   let input;
@@ -80,6 +81,11 @@ export async function checkCloudOAuthRegistration(options) {
   // Отдельный контейнер позволяет сбросить ссылку на токены в finally.
   // Это только best effort: другие копии строк могут оставаться в памяти.
   const sensitive = { secrets: null };
+  const diagnostics = createOAuthDiagnostics();
+  const progress = stage => {
+    diagnostics.progress(stage);
+    input.onProgress?.(stage);
+  };
   const cancel = () => {
     // При обмене flow.cancel() запрещён. Его ошибка не означает, что провайдер
     // отменил выдачу токена. createNativeOAuthCheckFetch отбрасывает поздний ответ.
@@ -87,8 +93,13 @@ export async function checkCloudOAuthRegistration(options) {
   };
   signal.addEventListener('abort', cancel, { once: true });
   try {
-    const fetchImpl = createNativeOAuthCheckFetch({ provider, invoke: input.invoke, signal });
-    input.onProgress?.('browser');
+    const fetchImpl = createNativeOAuthCheckFetch({
+      provider,
+      invoke: input.invoke,
+      signal,
+      onDiagnostic: diagnostics.native
+    });
+    progress('browser');
     flow = await startCloudOAuth({
       provider,
       clientId: input.clientId,
@@ -107,10 +118,10 @@ export async function checkCloudOAuthRegistration(options) {
       if (reply.status === 'code_ready') break;
       if (reply.status === 'denied') return { status: 'denied' };
       if (reply.status === 'expired') return { status: 'expired' };
-      if (reply.status !== 'pending') return { status: 'failed' };
+      if (reply.status !== 'pending') return diagnostics.failure();
       await pause(signal, interval);
     }
-    input.onProgress?.('token');
+    progress('token');
     if (signal.aborted) return { status: 'cancelled' };
     const tokenTransport = createCloudOAuthTokenTransport({
       provider,
@@ -121,10 +132,11 @@ export async function checkCloudOAuthRegistration(options) {
     lease = await flow.exchange(request => tokenTransport.send(request));
     if (signal.aborted) return { status: 'cancelled' };
     const summary = lease.summary;
-    if (!['reported', 'request_bound', 'unverified'].includes(summary.scope)) return { status: 'failed' };
+    if (!['reported', 'request_bound', 'unverified'].includes(summary.scope)) return diagnostics.failure();
     sensitive.secrets = lease.takeSecrets();
-    input.onProgress?.('identity');
-    if (signal.aborted || Date.now() >= summary.expiresAt) return { status: signal.aborted ? 'cancelled' : 'failed' };
+    progress('identity');
+    if (signal.aborted || Date.now() >= summary.expiresAt)
+      return signal.aborted ? { status: 'cancelled' } : diagnostics.failure();
     const readIdentity =
       provider === 'google'
         ? createGoogleAccountPreviewReader({ fetchImpl })
@@ -134,12 +146,13 @@ export async function checkCloudOAuthRegistration(options) {
       clientId: input.clientId,
       signal
     });
-    if (signal.aborted || Date.now() >= summary.expiresAt) return { status: signal.aborted ? 'cancelled' : 'failed' };
+    if (signal.aborted || Date.now() >= summary.expiresAt)
+      return signal.aborted ? { status: 'cancelled' } : diagnostics.failure();
     // accountKey не возвращаем и не сохраняем. Метка нужна только человеку,
     // показывается текстом и не является закреплением аккаунта.
     return { status: 'checked', scope: summary.scope, label: identity.label };
   } catch {
-    return { status: signal.aborted ? 'cancelled' : 'failed' };
+    return signal.aborted ? { status: 'cancelled' } : diagnostics.failure();
   } finally {
     signal.removeEventListener('abort', cancel);
     lease?.discard();

@@ -5,7 +5,7 @@
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::cloud_oauth_transport::{
-    parse_google_refresh_form, valid_access_token, valid_code_form, Provider,
+    oauth_http_failure, parse_google_refresh_form, valid_access_token, valid_code_form, Provider,
 };
 use serde::{Deserialize, Serialize};
 
@@ -114,7 +114,7 @@ async fn execute(
         .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
         .is_err()
     {
-        return Err(fail());
+        return Err("oauth_busy".into());
     }
     let _active = ActiveGuard;
 
@@ -166,11 +166,20 @@ async fn execute(
         .header(ACCEPT, "application/json")
         .header(ACCEPT_ENCODING, "identity")
         .header(CACHE_CONTROL, "no-store");
-    let mut response = builder.send().await.map_err(|_| fail())?;
-    if response.status().as_u16() != 200
-        || response
-            .content_length()
-            .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
+    let mut response = builder.send().await.map_err(|error| {
+        if error.is_timeout() {
+            "oauth_timeout"
+        } else if error.is_connect() {
+            "oauth_connection_failed"
+        } else {
+            "oauth_network_failed"
+        }
+        .to_owned()
+    })?;
+    let status = response.status().as_u16();
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_RESPONSE_BYTES as u64)
     {
         return Err(fail());
     }
@@ -204,5 +213,8 @@ async fn execute(
         bytes.extend_from_slice(&chunk);
     }
     let body = String::from_utf8(bytes).map_err(|_| fail())?;
+    if status != 200 {
+        return Err(oauth_http_failure(provider, status, &body).into());
+    }
     Ok(CloudOAuthNetworkReply { body, content_type })
 }

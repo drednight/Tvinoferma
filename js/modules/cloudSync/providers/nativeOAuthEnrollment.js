@@ -5,6 +5,7 @@
 // Здесь нет передачи файлов, пароля шифрования, очереди или применения данных.
 // Токены, ответы, подписи, accountKey и исходные ошибки никогда не журналируются.
 import { object } from '../exportSchema.js';
+import { createOAuthDiagnostics } from './oauthDiagnostics.js';
 import { validOAuthClientId } from './oauthCommon.js';
 import { startCloudOAuth } from './oauthPkce.js';
 import { createCloudOAuthTokenTransport } from './oauthTokenTransport.js';
@@ -97,8 +98,13 @@ export async function enrollNativeCloudAccount(options) {
     if (flow) void flow.cancel().catch(() => {});
   };
   signal.addEventListener('abort', cancel, { once: true });
+  const diagnostics = createOAuthDiagnostics();
+  const progress = stage => {
+    diagnostics.progress(stage);
+    input.onProgress?.(stage);
+  };
   try {
-    input.onProgress?.('checking_local');
+    progress('checking_local');
     const storageOptions = {
       provider,
       invoke: input.invoke,
@@ -108,8 +114,13 @@ export async function enrollNativeCloudAccount(options) {
     if (signal.aborted) return result('cancelled');
     if (local.status === 'configured') return result('already_configured');
     if (local.status !== 'empty') return result('local_blocked');
-    const fetchImpl = createNativeOAuthCheckFetch({ provider, invoke: input.invoke, signal });
-    input.onProgress?.('browser');
+    const fetchImpl = createNativeOAuthCheckFetch({
+      provider,
+      invoke: input.invoke,
+      signal,
+      onDiagnostic: diagnostics.native
+    });
+    progress('browser');
     flow = await startCloudOAuth({
       provider,
       clientId: input.clientId,
@@ -132,7 +143,7 @@ export async function enrollNativeCloudAccount(options) {
       if (reply.status !== 'pending') return result('failed');
       await wait(signal, interval);
     }
-    input.onProgress?.('token');
+    progress('token');
     if (signal.aborted) return result('cancelled');
     const tokenTransport = createCloudOAuthTokenTransport({
       provider,
@@ -150,7 +161,7 @@ export async function enrollNativeCloudAccount(options) {
     const installer = Object.freeze({
       installIfAbsent(args) {
         installationStarted = true;
-        input.onProgress?.('installing');
+        progress('installing');
         return nativeInstaller.installIfAbsent(args);
       },
       verifyInstallation(args) {
@@ -162,11 +173,11 @@ export async function enrollNativeCloudAccount(options) {
       clientId: input.clientId,
       tokenResponse: lease,
       previewAccount(args) {
-        input.onProgress?.('identity');
+        progress('identity');
         return previewAccount(args);
       },
       confirmAccount(args) {
-        input.onProgress?.('confirming');
+        progress('confirming');
         return input.confirmAccount(args);
       },
       installer,
@@ -177,9 +188,11 @@ export async function enrollNativeCloudAccount(options) {
       return result('cancelled');
     }
     // Не подменяем фактический ответ на `cancelled` после начала установки.
-    return await attempt.complete();
+    const completed = await attempt.complete();
+    return completed.status === 'failed' ? diagnostics.failure() : completed;
   } catch {
-    return result(installationStarted ? 'installation_uncertain' : signal.aborted ? 'cancelled' : 'failed');
+    if (installationStarted) return result('installation_uncertain');
+    return signal.aborted ? result('cancelled') : diagnostics.failure();
   } finally {
     signal.removeEventListener('abort', cancel);
     lease?.discard();
