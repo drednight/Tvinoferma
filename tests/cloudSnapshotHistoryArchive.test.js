@@ -168,6 +168,6 @@ describe('зашифрованный архив облачной истории'
     expect(historyCapacity(Array(128).fill(root.envelope)).remainingVersions).toBe(0);
     expect(() => historyCapacity(Array(129).fill(root.envelope))).toThrow();
     expect(() => historyCapacity([])).toThrow();
-    expect(MAX_HISTORY_ARCHIVE_BYTES).toBeLessThan(65 * 1024 * 1024);
+    expect(MAX_HISTORY_ARCHIVE_BYTES).toBeLessThan(97 * 1024 * 1024);
   });
 });

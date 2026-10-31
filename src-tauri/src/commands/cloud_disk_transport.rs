@@ -78,13 +78,68 @@ async fn execute(args: CloudDiskArgs) -> Result<CloudDiskReply, String> {
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|_| fail())?;
+    // No automatic retry. A failed/unknown preflight never starts a destructive request.
+    let mut retirement_etag = None;
+    if let Some(guard) = &request.retirement {
+        let mut probe = client
+            .get(&guard.metadata_url)
+            .header(ACCEPT_ENCODING, "identity")
+            .header(CACHE_CONTROL, "no-store");
+        if let Some(auth) = &request.authorization {
+            probe = probe.header(AUTHORIZATION, auth);
+        }
+        let mut reply = probe.send().await.map_err(|_| fail())?;
+        if reply.status().as_u16() != 200 || reply.content_length().is_some_and(|n| n > 65536) {
+            return Err(fail());
+        }
+        if reply
+            .headers()
+            .get(CONTENT_ENCODING)
+            .is_some_and(|v| v.as_bytes() != b"identity")
+        {
+            return Err(fail());
+        }
+        if guard.google {
+            let tag = reply
+                .headers()
+                .get(reqwest::header::ETAG)
+                .ok_or_else(fail)?
+                .to_str()
+                .map_err(|_| fail())?;
+            if tag.len() > 512
+                || tag.len() < 2
+                || !tag.starts_with('"')
+                || !tag.ends_with('"')
+                || !tag.bytes().all(|b| (0x20..=0x7e).contains(&b))
+            {
+                return Err(fail());
+            }
+            retirement_etag = Some(tag.to_owned());
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = reply.chunk().await.map_err(|_| fail())? {
+            if chunk.len() > 65536usize.saturating_sub(bytes.len()) {
+                return Err(fail());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let raw = String::from_utf8(bytes).map_err(|_| fail())?;
+        if !guard.accepts(&raw) {
+            return Err(fail());
+        }
+    }
     let mut builder = match request.method {
         Method::Get => client.get(&request.url),
         Method::Post => client.post(&request.url),
         Method::Put => client.put(&request.url),
+        Method::Patch => client.patch(&request.url),
+        Method::Delete => client.delete(&request.url),
     }
     .header(ACCEPT_ENCODING, "identity")
     .header(CACHE_CONTROL, "no-store");
+    if let Some(tag) = retirement_etag {
+        builder = builder.header(reqwest::header::IF_MATCH, tag);
+    }
     if request.accept_json {
         builder = builder.header(ACCEPT, "application/json");
     }

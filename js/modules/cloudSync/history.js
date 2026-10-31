@@ -3,6 +3,7 @@
 // Один родитель не моделирует частичное принятие ветки: НЕ использовать для публикации
 // результатов частичного слияния, пока не разработано происхождение записей/полей.
 // Корень и ранее известные отпечатки должны приходить из независимого доверенного хранилища.
+import { parseHistoryCheckpoint } from './historyCheckpointSchema.js';
 import { decryptSnapshot, encryptSnapshot, isSyncId, validateEnvelope } from './envelope.js';
 import { publicSnapshotIdentityTypes } from './compareSnapshots.js';
 import { array, object } from './exportSchema.js';
@@ -23,8 +24,9 @@ const FILE_SNAPSHOT_VERSION = 5;
 // Whole-file choice, not an entity merge. The other authenticated heads stay as backups.
 const FILE_CHOICE_VERSION = 6;
 const FILE_PRIVATE_PRUNE_VERSION = 7;
+const FILE_CHECKPOINT_VERSION = 8;
 const fileVersion = version =>
-  [FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(version);
+  [FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION, FILE_CHECKPOINT_VERSION].includes(version);
 function replacedFileHeads(value, allowEmpty = false) {
   const pins = validateList(value, MAX_HISTORY_VERSIONS - 1, copyPin);
   if ((!allowEmpty && !pins.length) || new Set(pins.map(pin => pin.versionId)).size !== pins.length)
@@ -38,6 +40,9 @@ const PORTABLE_HASH_DOMAIN = 'tvinoferma-encrypted-envelope-sha256-v2';
 const ENVELOPE_FIELDS = ['format', 'version', 'algorithm', 'datasetId', 'versionId', 'iv', 'ciphertext'];
 export const MAX_HISTORY_VERSIONS = 128;
 export const MAX_HISTORY_CHARS = 64 * 1024 * 1024;
+// One extra full file while a checkpoint is verified before any old file is retired.
+export const MAX_HISTORY_INPUT_VERSIONS = MAX_HISTORY_VERSIONS + 1;
+export const MAX_HISTORY_INPUT_CHARS = MAX_HISTORY_CHARS + 32 * 1024 * 1024 + 256 * 1024;
 // В JS `$` допускает позицию перед завершающим переводом строки; нужен именно конец.
 const SHA256 = /^[0-9a-f]{64}(?![\s\S])/;
 const verifiedHistories = new WeakSet();
@@ -374,22 +379,22 @@ export async function verifyHistory(options) {
   );
   if (!isSyncId(input.expectedDatasetId)) throw historyError();
   const root = copyPin(input.root);
-  const knownPins = validateList(input.knownPins, MAX_HISTORY_VERSIONS, copyPin);
+  const knownPins = validateList(input.knownPins, MAX_HISTORY_INPUT_VERSIONS, copyPin);
   if (new Set(knownPins.map(pin => pin.versionId)).size !== knownPins.length) throw historyError();
-  const envelopes = validateList(input.envelopes, MAX_HISTORY_VERSIONS, snapshotEnvelope);
+  const envelopes = validateList(input.envelopes, MAX_HISTORY_INPUT_VERSIONS, snapshotEnvelope);
   if (!envelopes.length) throw new Error('Не найдена доверенная корневая версия');
   // До декодирования base64 ограничиваем общий объём и отклоняем повторные ID.
   let total = 0;
   const ids = new Set();
   for (const envelope of envelopes) {
     total += envelope.ciphertext.length + envelope.iv.length + (envelope.keyCapsule?.length || 0);
-    if (total > MAX_HISTORY_CHARS) throw new Error('История синхронизации слишком большая');
+    if (total > MAX_HISTORY_INPUT_CHARS) throw new Error('История синхронизации слишком большая');
     validateEnvelope(envelope);
     if (envelope.datasetId !== input.expectedDatasetId || ids.has(envelope.versionId)) throw historyError();
     ids.add(envelope.versionId);
   }
   const crypto = cryptoApi(input.cryptoSource);
-  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number, replacedHeads: any[], privatePrunedIds: string[]}>} */
+  /** @type {Map<string, {pin: {versionId: string, sha256: string}, parent: {versionId: string, sha256: string} | null, publicSnapshot: any, privateSnapshot: any, plannerIds: Set<string>, deletedIds: string[], tombstones: string[]|null, version: number, replacedHeads: any[], privatePrunedIds: string[], checkpoint:any}>} */
   const nodes = new Map();
   const identities = new Map();
   // Все входные значения скопированы до первого await; чужие изменения не подменят проверку.
@@ -410,7 +415,7 @@ export async function verifyHistory(options) {
       const wrapper = object(
         payload,
         ['format', 'version', 'parent', 'publicSnapshot'],
-        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot', 'replacedHeads', 'privatePrunedIds']
+        ['plannerDeletedIds', 'plannerTombstones', 'privateSnapshot', 'replacedHeads', 'privatePrunedIds', 'checkpoint']
       );
       if (
         wrapper.format !== PAYLOAD_FORMAT ||
@@ -421,7 +426,8 @@ export async function verifyHistory(options) {
           PRIVATE_TRANSFER_VERSION,
           FILE_SNAPSHOT_VERSION,
           FILE_CHOICE_VERSION,
-          FILE_PRIVATE_PRUNE_VERSION
+          FILE_PRIVATE_PRUNE_VERSION,
+          FILE_CHECKPOINT_VERSION
         ].includes(wrapper.version)
       )
         throw historyError();
@@ -429,6 +435,15 @@ export async function verifyHistory(options) {
         [FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(wrapper.version) !==
           Object.hasOwn(wrapper, 'replacedHeads') ||
         (wrapper.version === FILE_PRIVATE_PRUNE_VERSION) !== Object.hasOwn(wrapper, 'privatePrunedIds')
+      )
+        throw historyError();
+      if ((wrapper.version === FILE_CHECKPOINT_VERSION) !== Object.hasOwn(wrapper, 'checkpoint')) throw historyError();
+      const checkpoint =
+        wrapper.version === FILE_CHECKPOINT_VERSION ? parseHistoryCheckpoint(wrapper.checkpoint) : null;
+      if (
+        checkpoint &&
+        (checkpoint.retiredPins.some(p => [root.versionId, pin.versionId].includes(p.versionId)) ||
+          !samePin(wrapper.parent, root))
       )
         throw historyError();
       const replacedHeads = [FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(wrapper.version)
@@ -473,6 +488,7 @@ export async function verifyHistory(options) {
         parent,
         replacedHeads,
         privatePrunedIds,
+        checkpoint,
         publicSnapshot: wrapper.publicSnapshot,
         privateSnapshot: Object.hasOwn(wrapper, 'privateSnapshot')
           ? parsePrivateSnapshot(wrapper.privateSnapshot, wrapper.publicSnapshot)
@@ -491,18 +507,83 @@ export async function verifyHistory(options) {
   if (!rootNode || !samePin(rootNode.pin, root) || rootNode.parent !== null) {
     throw new Error('Не найдена или изменилась доверенная корневая версия');
   }
+  // A v8 record is a dataKey-authenticated retirement statement. Missing old pins
+  // may be acknowledged by it, but their unavailable snapshots are never fabricated.
+  const retired = new Map();
+  for (const node of nodes.values())
+    if (node.checkpoint) {
+      for (const pin of node.checkpoint.retiredPins) {
+        const existing = nodes.get(pin.versionId),
+          prior = retired.get(pin.versionId);
+        if ((existing && !samePin(existing.pin, pin)) || (prior && !samePin(prior, pin))) throw historyError();
+        retired.set(pin.versionId, pin);
+      }
+      for (const row of node.checkpoint.identities) {
+        if (identities.has(row.id) && identities.get(row.id) !== row.type) throw historyError();
+        identities.set(row.id, row.type);
+      }
+      const registry = new Map(node.checkpoint.identities.map(row => [row.id, row.type])),
+        declared = new Map(node.checkpoint.retiredPins.map(p => [p.versionId, p]));
+      for (const target of [
+        rootNode,
+        node,
+        ...node.checkpoint.retiredPins.map(pin => nodes.get(pin.versionId)).filter(Boolean)
+      ]) {
+        for (const [id, type] of validatePublic(target.publicSnapshot))
+          if (registry.get(id) !== type) throw historyError();
+        for (const row of target.checkpoint?.identities || [])
+          if (registry.get(row.id) !== row.type) throw historyError();
+        for (const pin of target.checkpoint?.retiredPins || [])
+          if (!samePin(declared.get(pin.versionId), pin)) throw historyError();
+      }
+      const source = nodes.get(node.checkpoint.source.versionId);
+      if (
+        source &&
+        (JSON.stringify(source.publicSnapshot) !== JSON.stringify(node.publicSnapshot) ||
+          JSON.stringify(source.privateSnapshot) !== JSON.stringify(node.privateSnapshot))
+      )
+        throw historyError();
+    }
+  // Retirement cannot hide a conflicting checkpoint or a cyclic declaration.
+  const checking = new Set(),
+    checked = new Set();
+  const checkRetirement = node => {
+    if (checked.has(node.pin.versionId)) return;
+    if (checking.has(node.pin.versionId)) throw historyError();
+    checking.add(node.pin.versionId);
+    for (const pin of node.checkpoint?.retiredPins || []) {
+      const target = nodes.get(pin.versionId);
+      if (target?.checkpoint) checkRetirement(target);
+    }
+    checking.delete(node.pin.versionId);
+    checked.add(node.pin.versionId);
+  };
+  for (const node of nodes.values()) checkRetirement(node);
+  const active = [...nodes.values()].filter(node => !retired.has(node.pin.versionId));
+  const activeIds = new Set(active.map(node => node.pin.versionId));
+  const activeEnvelopes = envelopes.filter(e => activeIds.has(e.versionId));
+  if (
+    active.length > MAX_HISTORY_VERSIONS ||
+    activeEnvelopes.reduce((n, e) => n + e.ciphertext.length + e.iv.length + (e.keyCapsule?.length || 0), 0) >
+      MAX_HISTORY_CHARS
+  )
+    throw historyError();
+  if (!retired.size && (envelopes.length > MAX_HISTORY_VERSIONS || total > MAX_HISTORY_CHARS)) throw historyError();
   for (const known of knownPins) {
     const node = nodes.get(known.versionId);
-    if (!node || !samePin(node.pin, known)) throw new Error('Не найдена или изменилась ранее известная версия');
+    if (
+      !(node ? samePin(node.pin, known) : retired.has(known.versionId) && samePin(retired.get(known.versionId), known))
+    )
+      throw new Error('Не найдена или изменилась ранее известная версия');
   }
-  for (const node of nodes.values()) {
+  for (const node of active) {
     if (node.pin.versionId !== root.versionId && node.parent === null) throw historyError();
     if (node.parent && !nodes.has(node.parent.versionId)) throw new Error('В истории отсутствует родительская версия');
   }
 
   // Однородительское дерево не допускает циклы и отдельные корни.
   const connected = new Set([root.versionId]);
-  for (const node of nodes.values()) {
+  for (const node of active) {
     const visited = new Set();
     let current = node;
     while (!connected.has(current.pin.versionId)) {
@@ -510,10 +591,11 @@ export async function verifyHistory(options) {
       visited.add(current.pin.versionId);
       if (!current.parent) throw historyError();
       current = nodes.get(current.parent.versionId);
+      if (!current) throw historyError();
     }
     for (const id of visited) connected.add(id);
   }
-  for (const node of nodes.values()) {
+  for (const node of active) {
     if (node.parent && !samePin(node.parent, nodes.get(node.parent.versionId).pin)) {
       throw new Error('Родительская версия не совпадает с её отпечатком');
     }
@@ -535,7 +617,7 @@ export async function verifyHistory(options) {
       }
     }
     const parentNode = node.parent && nodes.get(node.parent.versionId);
-    if (parentNode) {
+    if (parentNode && node.version !== FILE_CHECKPOINT_VERSION) {
       const removed = new Set(node.privatePrunedIds);
       const currentIds = validatePublic(node.publicSnapshot);
       const expected = (parentNode.privateSnapshot?.records || [])
@@ -558,9 +640,13 @@ export async function verifyHistory(options) {
     if (
       (cumulativeVersion(parentNode?.version) && !cumulativeVersion(node.version) && !fileVersion(node.version)) ||
       (parentNode?.version === PRIVATE_TRANSFER_VERSION &&
-        ![PRIVATE_TRANSFER_VERSION, FILE_SNAPSHOT_VERSION, FILE_CHOICE_VERSION, FILE_PRIVATE_PRUNE_VERSION].includes(
-          node.version
-        )) ||
+        ![
+          PRIVATE_TRANSFER_VERSION,
+          FILE_SNAPSHOT_VERSION,
+          FILE_CHOICE_VERSION,
+          FILE_PRIVATE_PRUNE_VERSION,
+          FILE_CHECKPOINT_VERSION
+        ].includes(node.version)) ||
       (fileVersion(parentNode?.version) && !fileVersion(node.version))
     )
       throw historyError();
@@ -574,7 +660,7 @@ export async function verifyHistory(options) {
     if (reachable.has(id)) return reachable.get(id);
     if (visiting.has(id)) throw historyError();
     visiting.add(id);
-    const before = new Set();
+    const before = new Set((node.checkpoint?.retiredPins || []).map(p => p.versionId));
     for (const ref of dependencies(node)) {
       const target = nodes.get(ref.versionId);
       if (!target || !samePin(target.pin, ref)) throw historyError();
@@ -585,8 +671,8 @@ export async function verifyHistory(options) {
     reachable.set(id, before);
     return before;
   };
-  for (const node of nodes.values()) ancestors(node);
-  for (const node of nodes.values()) {
+  for (const node of active) ancestors(node);
+  for (const node of active) {
     const refs = dependencies(node);
     // A choice must acknowledge independent heads, not self, duplicate or ancestor pins.
     if (new Set(refs.map(pin => pin.versionId)).size !== refs.length) throw historyError();
@@ -616,7 +702,7 @@ export async function verifyHistory(options) {
     inheritedDeletions.set(node.pin.versionId, after);
     return after;
   };
-  for (const node of nodes.values()) collectDeletions(node);
+  for (const node of active) collectDeletions(node);
 
   const get = pinValue => {
     const pin = copyPin(pinValue);
@@ -624,11 +710,24 @@ export async function verifyHistory(options) {
     if (!node || !samePin(node.pin, pin)) throw new Error('Версия не найдена или её отпечаток изменился');
     return node;
   };
-  const parentIds = new Set([...nodes.values()].flatMap(node => dependencies(node).map(pin => pin.versionId)));
+  const parentIds = new Set(active.flatMap(node => dependencies(node).map(pin => pin.versionId)));
   const view = Object.freeze({
     /** Проверенные идентификаторы; доверие к ним и защита от отката остаются у вызывающего кода. */
     identity() {
       return { datasetId: input.expectedDatasetId, rootPin: { ...root } };
+    },
+    checkpoint(pinValue) {
+      return structuredClone(get(pinValue).checkpoint);
+    },
+    retiredPins() {
+      return [...retired.values()].map(p => ({ ...p }));
+    },
+    identityRegistry() {
+      return [...identities].map(([id, type]) => ({ id, type }));
+    },
+    hasSnapshot(pinValue) {
+      const p = copyPin(pinValue);
+      return nodes.has(p.versionId) && samePin(nodes.get(p.versionId).pin, p);
     },
     isFileSnapshot(pinValue) {
       return fileVersion(get(pinValue).version);
@@ -641,12 +740,16 @@ export async function verifyHistory(options) {
     },
     covers(descendant, ancestor) {
       const node = get(descendant),
-        before = get(ancestor);
-      return samePin(node.pin, before.pin) || reachable.get(node.pin.versionId).has(before.pin.versionId);
+        pin = copyPin(ancestor),
+        before = nodes.get(pin.versionId)?.pin || retired.get(pin.versionId);
+      if (!before || !samePin(pin, before)) throw historyError();
+      return samePin(node.pin, pin) || !!reachable.get(node.pin.versionId)?.has(pin.versionId);
     },
     /** Требует точного присутствия ранее известного отпечатка без копирования снимка. */
     requirePin(pinValue) {
-      get(pinValue);
+      const pin = copyPin(pinValue),
+        found = nodes.get(pin.versionId)?.pin || retired.get(pin.versionId);
+      if (!found || !samePin(pin, found)) throw historyError();
       return true;
     },
     /** Все проверенные версии только переданного набора, без обещания полноты облака. */
@@ -655,7 +758,7 @@ export async function verifyHistory(options) {
     },
     /** Только вершины переданного набора; они не обязательно являются актуальными на диске. */
     observedHeads() {
-      return [...nodes.values()]
+      return active
         .filter(node => !parentIds.has(node.pin.versionId))
         .map(node => ({ ...node.pin }))
         .sort((a, b) => a.versionId.localeCompare(b.versionId));
@@ -777,4 +880,59 @@ export async function sealFileSnapshot(options) {
     envelope,
     pin: await historyEnvelopePin({ envelope, expectedDatasetId: input.datasetId, cryptoSource: input.cryptoSource })
   };
+}
+
+/** Explicit compaction: authenticates retirement, NOT a cryptographic ancestry proof for removed ciphertext.
+ * @param {{history:any,source:any,archiveSha256:string,recoveryKey:string,datasetId:string,versionId:string,keyBundle:any,keyPin:any,cryptoSource?:Crypto}} options */
+export async function sealHistoryCheckpoint(options) {
+  const input = object(
+    options,
+    ['history', 'source', 'archiveSha256', 'recoveryKey', 'datasetId', 'versionId', 'keyBundle', 'keyPin'],
+    ['cryptoSource']
+  );
+  if (!isVerifiedHistory(input.history)) throw historyError();
+  const identity = input.history.identity(),
+    source = copyPin(input.source);
+  if (
+    identity.datasetId !== input.datasetId ||
+    !input.history.isFileSnapshot(source) ||
+    input.history.observedHeads().length !== 1 ||
+    !samePin(input.history.observedHeads()[0], source)
+  )
+    throw historyError();
+  const pins = new Map(
+    [...input.history.retiredPins(), ...input.history.pins()]
+      .filter(p => p.versionId !== identity.rootPin.versionId)
+      .map(p => [p.versionId, p])
+  );
+  const checkpoint = parseHistoryCheckpoint({
+    source,
+    retiredPins: [...pins.values()],
+    identities: input.history.identityRegistry(),
+    archiveSha256: input.archiveSha256
+  });
+  const privateSnapshot = input.history.privateSnapshot(source),
+    publicSnapshot = input.history.publicSnapshot(source);
+  const envelope = await encryptSnapshot({
+    snapshot: {
+      format: PAYLOAD_FORMAT,
+      version: FILE_CHECKPOINT_VERSION,
+      parent: identity.rootPin,
+      publicSnapshot,
+      checkpoint,
+      ...(privateSnapshot ? { privateSnapshot } : {})
+    },
+    recoveryKey: input.recoveryKey,
+    datasetId: input.datasetId,
+    versionId: input.versionId,
+    cryptoSource: input.cryptoSource,
+    keyCapsule: await makePortableKeyCapsule({
+      bundle: input.keyBundle,
+      pin: input.keyPin,
+      dataKey: input.recoveryKey,
+      datasetId: input.datasetId,
+      cryptoSource: input.cryptoSource
+    })
+  });
+  return Object.freeze({ envelope, pin: await envelopePin(envelope, cryptoApi(input.cryptoSource)) });
 }

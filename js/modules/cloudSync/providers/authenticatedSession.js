@@ -27,7 +27,7 @@ function invalid() {
  * Параллельные вызовы одного экземпляра отклоняются, другие экземпляры не блокируются.
  *
  * @param {{provider:'google'|'yandex',clientId:string,accountKey:string,datasetId:string,
- * accessToken:string,folderId?:string,fetchImpl?:typeof fetch,timeoutMs?:number,cryptoSource?:Crypto}} options
+ * accessToken:string,folderId?:string,fetchImpl?:typeof fetch,timeoutMs?:number,cryptoSource?:Crypto,retireNative?:(args:any)=>Promise<any>}} options
  */
 export function createAuthenticatedCloudSession(options) {
   let input;
@@ -35,7 +35,7 @@ export function createAuthenticatedCloudSession(options) {
     input = object(
       options,
       ['provider', 'clientId', 'accountKey', 'datasetId', 'accessToken'],
-      ['folderId', 'fetchImpl', 'timeoutMs', 'cryptoSource']
+      ['folderId', 'fetchImpl', 'timeoutMs', 'cryptoSource', 'retireNative']
     );
     if (
       !['google', 'yandex'].includes(input.provider) ||
@@ -116,6 +116,21 @@ export function createAuthenticatedCloudSession(options) {
     }
   }
   return Object.freeze({
+    async trashVersion(value) {
+      const args = object(value, ['envelope', 'rootVersionId', 'checkpointVersionId']),
+        expected = copyCloudEnvelope(args.envelope, datasetId);
+      if (typeof input.retireNative !== 'function') return { status: 'not_sent' };
+      return guarded(async () => {
+        const found = await reader.readForRetirement(expected.versionId);
+        if (found.status !== 'found' || JSON.stringify(found.envelope) !== JSON.stringify(expected))
+          return { status: 'not_sent' };
+        return input.retireNative({
+          ...args,
+          envelope: expected,
+          ...('fileId' in found ? { fileId: found.fileId } : {})
+        });
+      }, true);
+    },
     async generateFileId() {
       if (provider !== 'google') throw invalid();
       return guarded(() => upload.generateFileId());

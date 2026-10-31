@@ -628,13 +628,42 @@
                 </div>
               </details>
               <details class="cloud-review" id="cloud-history-archive">
-                <summary>Архив облачной истории · перед ротацией</summary>
-                <p>Текущие версии связаны отпечатками: удаление старого файла разорвёт проверку на другом ПК. Здесь можно сохранить и сверить <strong>всю зашифрованную историю</strong>, но не удалить её. Сам архив не освобождает лимит 128 версий / 64 MiB. Для ротации нужна новая контрольная версия; автоматическая очистка пока не включена.</p>
+                <summary>Архив, сокращение истории и восстановление</summary>
+                <p>Сначала сохраните и сверьте <strong>всю зашифрованную историю</strong>. Затем можно создать контрольный полный файл принятой облачной версии и отдельно перенести старые версии в корзину. Корневой и новый контрольный файлы остаются. Лимит активной истории — 128 версий / 64 MiB. Старые клиенты нужно обновить до очистки.</p>
                 <p class="muted">Архив содержит только уже отправленные зашифрованные снимки и код сверки. В старых версиях могут оставаться ранее переданные пароли. Ключа и OAuth-токенов в нём нет: сохраните основной пароль или запасной ключ отдельно. Это не копия местных данных или Windows vault. Несколько облачных голов сохраняются без выбора победителя. Незавершённые и неизвестные попытки сначала нужно согласовать.</p>
                 <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-prepare">Подготовить зашифрованный архив</button><button type="button" class="btn ghost" id="cloud-history-download" disabled>Сохранить архив</button></div>
                 <label class="cloud-connection-ack">Выберите сохранённый архив для проверки чтением <input type="file" id="cloud-history-file" accept=".json,.tf-history.json,application/json" disabled /></label>
                 <button type="button" class="btn ghost" id="cloud-history-verify" disabled>Сверить сохранённый файл</button>
                 <p id="cloud-history-status" role="status" aria-live="polite">Архив не подготовлен. Облачные файлы не изменялись.</p>
+                <fieldset id="cloud-history-maintenance">
+                  <legend>Явное сокращение истории</legend>
+                  <p class="muted">Это не отправка местных правок: контрольный файл точно копирует принятую облачную версию. Сначала примите нужный файл в основном блоке. Остальные ПК должны быть остановлены и обновлены: Google проверяется с ETag, у Яндекса нет атомарной блокировки между проверкой и удалением. Не меняйте облачную папку вручную во время очистки.</p>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-paused" /> Все остальные ПК остановлены; старые клиенты обновлю перед следующим запуском</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-key-backup" /> Пароль или запасной ключ сохранён отдельно от архива</label>
+                  <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-carry" /> Сохранить уже отправленные зашифрованные контакты в контрольном файле; новые местные контакты не брать</label>
+                  <button type="button" class="btn ghost" id="cloud-history-checkpoint" disabled>Создать контрольный полный файл</button>
+                  <label class="cloud-connection-ack">Сохранённый архив для очистки или восстановления <input type="file" id="cloud-history-maintenance-file" accept=".json,.tf-history.json,application/json" /></label>
+                  <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-cleanup-review" disabled>Проверить возможность очистки</button><button type="button" class="btn danger" id="cloud-history-cleanup" disabled>Переместить старые файлы в корзину</button><button type="button" class="btn ghost" id="cloud-history-cleanup-release">Снять неизвестное ожидание очистки…</button></div>
+                  <p class="muted">Неизвестный запрос не повторяется автоматически. После перезапуска снова выберите архив и проверьте очистку. Снятие ожидания не отменяет запрос: старый файл ещё может попасть в корзину.</p>
+                  <details id="cloud-history-restore">
+                    <summary>Восстановить местные данные из архива</summary>
+                    <p>Архив проверяется по ключу и корневому отпечатку этой привязки. Выберите версию и просмотрите изменения. Полная замена включает удаления; перед ней создаётся местная копия. Принятая облачная база не меняется, файл на диске не перезаписывается. Контакты не выбираются автоматически.</p>
+                    <button type="button" class="btn ghost" id="cloud-history-inspect" disabled>Прочитать версии архива</button>
+                    <label>Версия <select id="cloud-history-version" disabled><option value="">Сначала прочитайте архив</option></select></label>
+                    <div id="cloud-history-private-fields">
+                      <label><input type="checkbox" value="email" /> Email</label><label><input type="checkbox" value="recoveryEmail" /> Запасной email</label><label><input type="checkbox" value="phone" /> Телефон</label><label><input type="checkbox" value="password" /> Пароль</label>
+                    </div>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-consent" /> Явно разрешаю сравнение выбранных контактов архива</label>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-password-risk" /> Понимаю опасность восстановления старых паролей и хранения их в архиве</label>
+                    <button type="button" class="btn ghost" id="cloud-history-restore-review" disabled>Показать изменения выбранной версии</button>
+                    <ul id="cloud-history-restore-differences"></ul>
+                    <div class="cloud-registration-actions"><button type="button" class="btn ghost" id="cloud-history-restore-all" disabled>Выбрать все контакты</button><button type="button" class="btn ghost" id="cloud-history-restore-none" disabled>Снять все контакты</button></div>
+                    <div id="cloud-history-restore-contacts"></div>
+                    <label class="cloud-connection-ack"><input type="checkbox" id="cloud-history-contact-backup" /> Отдельная копия местных контактов и Windows vault сохранена: обычный backup приложения может не содержать их</label>
+                    <button type="button" class="btn danger" id="cloud-history-restore-apply" disabled>Заменить местные данные выбранной версией…</button>
+                  </details>
+                  <p id="cloud-history-maintenance-status" role="status" aria-live="polite">Контрольный файл и очистка не запускались.</p>
+                </fieldset>
               </details>
               <details class="cloud-activity" id="cloud-legacy-exchange">
                 <summary>Прежний режим · завершить старые операции</summary>

@@ -1,9 +1,10 @@
-//! Экспериментальная политика операций с облачными версиями. UI к ней не подключён.
+//! Ограниченная политика операций с облачными версиями и явного переноса в корзину.
 //! Адреса и заголовки собираются здесь, а не принимаются как произвольный HTTP-запрос.
 //! Формат конверта проверяется, но сам по себе не доказывает шифрование или доверие
 //! к вызывающему коду. Токены, временные ссылки и содержимое нельзя журналировать.
 
 use crate::cloud_oauth_transport::{valid_access_token, Provider};
+use sha2::{Digest, Sha256};
 
 const GOOGLE_FILES: &str = "https://www.googleapis.com/drive/v3/files";
 const GOOGLE_UPLOAD: &str = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id%2Cname%2CappProperties";
@@ -40,6 +41,8 @@ pub struct CloudDiskArgs {
     pub limit: Option<u64>,
     pub link: Option<String>,
     pub body: Option<String>,
+    pub root_version_id: Option<String>,
+    pub checkpoint_version_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,6 +50,8 @@ pub enum Method {
     Get,
     Post,
     Put,
+    Patch,
+    Delete,
 }
 
 pub struct PreparedRequest {
@@ -58,6 +63,44 @@ pub struct PreparedRequest {
     pub accept_json: bool,
     pub max_response: usize,
     pub read_body: bool,
+    pub retirement: Option<RetirementGuard>,
+}
+
+/// Scoped preflight; checksum is for the exact canonical encrypted file bytes.
+pub struct RetirementGuard {
+    pub metadata_url: String,
+    pub google: bool,
+    name: String,
+    dataset: String,
+    version: String,
+    folder: Option<String>,
+    sha256: String,
+}
+impl RetirementGuard {
+    pub fn accepts(&self, raw: &str) -> bool {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) else {
+            return false;
+        };
+        if v.get("name").and_then(|x| x.as_str()) != Some(self.name.as_str()) {
+            return false;
+        }
+        if self.google {
+            v.get("sha256Checksum").and_then(|x| x.as_str()) == Some(self.sha256.as_str())
+                && v.get("parents")
+                    .and_then(|x| x.as_array())
+                    .is_some_and(|p| p.len() == 1 && p[0].as_str() == self.folder.as_deref())
+                && v.get("appProperties").is_some_and(|p| {
+                    p.get("tfFormat").and_then(|x| x.as_str()) == Some("1")
+                        && p.get("tfDataset").and_then(|x| x.as_str())
+                            == Some(self.dataset.as_str())
+                        && p.get("tfVersion").and_then(|x| x.as_str())
+                            == Some(self.version.as_str())
+                })
+        } else {
+            v.get("type").and_then(|x| x.as_str()) == Some("file")
+                && v.get("sha256").and_then(|x| x.as_str()) == Some(self.sha256.as_str())
+        }
+    }
 }
 
 fn sync_id(value: &str) -> bool {
@@ -251,6 +294,8 @@ fn no_extra(args: &CloudDiskArgs) -> bool {
         && args.limit.is_none()
         && args.link.is_none()
         && args.body.is_none()
+        && args.root_version_id.is_none()
+        && args.checkpoint_version_id.is_none()
 }
 
 /// Не выполняет сеть. Некорректные комбинации параметров отклоняются до запроса.
@@ -279,8 +324,52 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
         accept_json: false,
         max_response: MAX_SMALL_REPLY_BYTES,
         read_body: true,
+        retirement: None,
     };
     match (provider, operation.as_str()) {
+        (Provider::Google | Provider::Yandex, "retire") => {
+            let dataset = take_id(&mut args.dataset_id, sync_id)?;
+            let version = take_id(&mut args.version_id, sync_id)?;
+            let root = take_id(&mut args.root_version_id, sync_id)?;
+            let checkpoint = take_id(&mut args.checkpoint_version_id, sync_id)?;
+            if version == root || version == checkpoint || root == checkpoint {
+                return None;
+            }
+            let envelope = args.body.take()?;
+            if !canonical_envelope(&envelope, &dataset, &version) {
+                return None;
+            }
+            let sha256 = format!("{:x}", Sha256::digest(envelope.as_bytes()));
+            let name = format!("tf-v1-{dataset}-{version}.tfsc");
+            let google = provider == Provider::Google;
+            let (metadata_url, folder) = if google {
+                let folder = take_id(&mut args.folder_id, google_id)?;
+                let file = take_id(&mut args.file_id, google_id)?;
+                request.url = format!("{GOOGLE_FILES}/{file}?fields=id%2Ctrashed");
+                request.method = Method::Patch;
+                request.content_type = Some("application/json".into());
+                request.body = Some("{\"trashed\":true}".into());
+                (format!("{GOOGLE_FILES}/{file}?fields=name%2Cparents%2CappProperties%2Csha256Checksum"),Some(folder))
+            } else {
+                let path = form_encode(&version_path(&dataset, &version));
+                request.url = format!("{YANDEX_RESOURCES}?path={path}&permanently=false");
+                request.method = Method::Delete;
+                (
+                    format!("{YANDEX_RESOURCES}?path={path}&fields=name%2Ctype%2Csha256"),
+                    None,
+                )
+            };
+            request.read_body = false;
+            request.retirement = Some(RetirementGuard {
+                metadata_url,
+                google,
+                name,
+                dataset,
+                version,
+                folder,
+                sha256,
+            });
+        }
         (Provider::Google, "identity") => {
             request.url = GOOGLE_IDENTITY.into();
             request.accept_json = true;
@@ -672,5 +761,72 @@ mod tests {
         invalid.offset = Some(0);
         invalid.limit = Some(1001);
         assert!(prepare(invalid).is_none());
+    }
+    #[test]
+    fn retirement_is_scoped_trash_with_canonical_checksum_and_protected_anchors() {
+        const ROOT: &str = "21234567-89ab-4cde-8f01-23456789abcd";
+        const CHECKPOINT: &str = "31234567-89ab-4cde-8f01-23456789abcd";
+        for provider in ["google", "yandex"] {
+            let make = || {
+                let mut a = args(provider, "retire");
+                a.dataset_id = Some(DATASET.into());
+                a.version_id = Some(VERSION.into());
+                a.root_version_id = Some(ROOT.into());
+                a.checkpoint_version_id = Some(CHECKPOINT.into());
+                a.body = Some(envelope());
+                if provider == "google" {
+                    a.folder_id = Some("owned_folder".into());
+                    a.file_id = Some("owned_version".into());
+                }
+                a
+            };
+            let request = prepare(make()).unwrap();
+            let guard = request.retirement.as_ref().unwrap();
+            assert!(!request.read_body);
+            assert!(!request.url.contains("permanently=true"));
+            assert_eq!(
+                request.method,
+                if provider == "google" {
+                    Method::Patch
+                } else {
+                    Method::Delete
+                }
+            );
+            let metadata = if provider == "google" {
+                serde_json::json!({"name":guard.name,"parents":["owned_folder"],"appProperties":{"tfFormat":"1","tfDataset":DATASET,"tfVersion":VERSION},"sha256Checksum":guard.sha256})
+            } else {
+                serde_json::json!({"name":guard.name,"type":"file","sha256":guard.sha256})
+            };
+            assert!(guard.accepts(&metadata.to_string()));
+            let mut changed = metadata.clone();
+            changed[if provider == "google" {
+                "sha256Checksum"
+            } else {
+                "sha256"
+            }] = serde_json::json!("0".repeat(64));
+            assert!(!guard.accepts(&changed.to_string()));
+            let mut foreign = metadata.clone();
+            foreign["name"] = serde_json::json!("other.tfsc");
+            assert!(!guard.accepts(&foreign.to_string()));
+            if provider == "google" {
+                let mut wrong_parent = metadata;
+                wrong_parent["parents"] = serde_json::json!(["foreign_folder"]);
+                assert!(!guard.accepts(&wrong_parent.to_string()));
+            }
+            for anchor in [ROOT, CHECKPOINT] {
+                let mut bad = make();
+                bad.version_id = Some(anchor.into());
+                assert!(prepare(bad).is_none());
+            }
+            let mut bad = make();
+            bad.body = Some("plaintext".into());
+            assert!(prepare(bad).is_none());
+            let mut extra = make();
+            extra.link = Some("https://example.invalid/".into());
+            assert!(prepare(extra).is_none());
+            let mut missing = make();
+            missing.checkpoint_version_id = None;
+            assert!(prepare(missing).is_none());
+        }
     }
 }

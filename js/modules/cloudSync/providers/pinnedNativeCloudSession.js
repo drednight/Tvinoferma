@@ -130,6 +130,9 @@ export async function openPinnedNativeCloudSession(options) {
       read(versionId) {
         return guard(() => base.read(versionId));
       },
+      trashVersion(args) {
+        return guard(() => base.trashVersion(args), true);
+      },
       dispose() {
         disposed = true;
         base.dispose();

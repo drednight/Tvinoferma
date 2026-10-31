@@ -5917,3 +5917,311 @@ describe.each(['google', 'yandex'])('%s: зашифрованный архив �
     expect(f.cloud.session.upload).not.toHaveBeenCalled();
   }, 30000);
 });
+
+describe.each(['google', 'yandex'])('%s: контрольный файл, корзина и восстановление архива', provider => {
+  async function ready(includePrivate = false) {
+    const f = await publicationFixture(provider),
+      api = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
+      opts = { provider, invoke: f.fake.invoke, cryptoSource: webcrypto, openSession: f.cloud.openSession };
+    f.state.characters[0].notes = 'ARCHIVED_CLOUD';
+    await f.storage.saveNow();
+    const firstReview = await api.checkSnapshotFile(opts);
+    let extra = {};
+    if (includePrivate) {
+      const prepared = await api.prepareSnapshotFilePrivateExport({
+        ...opts,
+        review: firstReview,
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+      expect(prepared.status).toBe('private_export_review');
+      extra = {
+        privateExport: prepared,
+        privateSelections: prepared.rows.map(({ characterId, field }) => ({ characterId, field }))
+      };
+    }
+    expect((await api.uploadSnapshotFile({ ...opts, review: firstReview, confirmed: true, ...extra })).status).toBe(
+      'sent_verified'
+    );
+    if (includePrivate) f.state.characters[0].contacts.password = 'NEW_LOCAL_PASSWORD_NOT_ARCHIVED';
+    f.state.characters[0].notes = 'UNSENT_LOCAL';
+    await f.storage.saveNow();
+    const review = await api.prepareSnapshotHistoryArchive(opts),
+      file = api.downloadSnapshotHistoryArchive({ review, confirmed: true });
+    expect((await api.verifySnapshotHistoryArchive({ ...opts, review, text: file.text })).status).toBe(
+      'archive_verified'
+    );
+    const consent = {
+      confirmed: true,
+      allDevicesPausedConfirmed: true,
+      independentKeyBackupConfirmed: true
+    };
+    f.cloud.session.trashVersion = vi.fn(async ({ envelope, rootVersionId, checkpointVersionId }) => {
+      expect([rootVersionId, checkpointVersionId]).not.toContain(envelope.versionId);
+      expect(f.state.settings.cloudSnapshotFiles[provider].pending.phase).toBe('attempting');
+      f.cloud.versions.delete(envelope.versionId);
+      return { status: 'accepted' };
+    });
+    return { f, api, opts, review, file, consent };
+  }
+  async function compact(x) {
+    const r = await x.api.publishSnapshotHistoryCheckpoint({
+      ...x.opts,
+      ...x.consent,
+      privateCarryConfirmed: true,
+      archiveReview: x.review
+    });
+    expect(r.status).toBe('sent_verified');
+  }
+  it('сокращает до root+checkpoint, сохраняет местные неотправленные правки и работает после перезапуска', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file, consent } = x;
+    expect(f.cloud.versions.size).toBe(3);
+    expect(f.state.characters[0].notes).toBe('UNSENT_LOCAL');
+    const plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    expect(plan).toMatchObject({ status: 'retirement_ready', count: 1 });
+    expect(await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).toEqual({
+      status: 'retired_verified',
+      remaining: 0
+    });
+    expect(f.cloud.versions.size).toBe(2);
+    expect(await api.checkSnapshotFile(opts)).toMatchObject({
+      status: 'ready',
+      localChanged: true,
+      remoteChanged: false,
+      capacity: { versions: 2, storedVersions: 2 }
+    });
+    await restarted(f.fake, provider);
+    expect(
+      await (await import('../js/modules/cloudSync/snapshotFileExchange.js')).checkSnapshotFile(opts)
+    ).toMatchObject({ status: 'ready', localChanged: true, remoteChanged: false });
+  }, 30000);
+  it('не создаёт checkpoint без сверенного архива/остановки других ПК и не принимает подменённый архив для корзины', async () => {
+    const x = await ready(),
+      { f, api, opts, review, file, consent } = x,
+      calls = f.cloud.session.upload.mock.calls.length;
+    expect(
+      (
+        await api.publishSnapshotHistoryCheckpoint({
+          ...opts,
+          ...consent,
+          archiveReview: review,
+          allDevicesPausedConfirmed: false
+        })
+      ).status
+    ).toBe('checkpoint_consent_required');
+    expect((await api.publishSnapshotHistoryCheckpoint({ ...opts, ...consent, archiveReview: {} })).status).toBe(
+      'verified_archive_required'
+    );
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(calls);
+    await compact(x);
+    expect((await api.prepareSnapshotHistoryRetirement({ ...opts, text: '{}' })).status).toBe('archive_invalid');
+    expect(f.cloud.session.trashVersion).not.toHaveBeenCalled();
+    const altered = JSON.parse(file.text);
+    altered.createdAt = '2026-10-31T12:00:00.000Z';
+    expect((await api.prepareSnapshotHistoryRetirement({ ...opts, text: JSON.stringify(altered) })).status).toBe(
+      'archive_invalid'
+    );
+  }, 30000);
+  it('не повторяет неизвестный trash; после потери ответа проверяет исчезновение без второго запроса', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file, consent } = x;
+    f.cloud.session.trashVersion.mockImplementationOnce(async () => ({ status: 'unknown' }));
+    let plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    expect((await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).status).toBe(
+      'retirement_unknown'
+    );
+    plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    expect((await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).status).toBe(
+      'retirement_unknown'
+    );
+    expect(f.cloud.session.trashVersion).toHaveBeenCalledTimes(1);
+    expect((await api.resumeSnapshotFileUpload({ ...opts, confirmed: true })).status).toBe('retirement_pending');
+    const pending = f.state.settings.cloudSnapshotFiles[provider].pending;
+    f.cloud.versions.delete(pending.pin.versionId);
+    await restarted(f.fake, provider);
+    const fresh = await import('../js/modules/cloudSync/snapshotFileExchange.js');
+    plan = await fresh.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    expect(plan.status).toBe('retirement_ready');
+    expect(await fresh.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).toEqual({
+      status: 'retired_verified',
+      remaining: 0
+    });
+    expect(f.cloud.session.trashVersion).toHaveBeenCalledTimes(1);
+  }, 30000);
+  it('новая версия после просмотра останавливает корзину до запроса', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file, consent } = x,
+      plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    const pub = await api.checkSnapshotFile(opts);
+    expect((await api.uploadSnapshotFile({ ...opts, review: pub, confirmed: true })).status).toBe('sent_verified');
+    expect((await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).status).toBe(
+      'state_changed_or_unsaved'
+    );
+    expect(f.cloud.session.trashVersion).not.toHaveBeenCalled();
+    expect((await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text })).status).toBe(
+      'checkpoint_required'
+    );
+  }, 30000);
+  it('восстанавливает выбранную историческую версию только местно с backup, не меняя принятую базу и облако', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file } = x,
+      base = structuredClone(f.state.settings.cloudSnapshotFiles[provider]),
+      versions = structuredClone([...f.cloud.versions]),
+      before = localStorage.getItem(STORAGE_KEY);
+    const choice = await api.inspectSnapshotHistoryArchive({ ...opts, text: file.text });
+    expect(choice.status).toBe('archive_restore_choices');
+    const view = await api.prepareSnapshotHistoryRestore({
+      ...opts,
+      choice: choice.choices.find(c => c.head),
+      fields: [],
+      contactsSourceConfirmed: false,
+      acknowledgePasswordRisk: false
+    });
+    expect(view.status).toBe('archive_restore_review');
+    expect(JSON.stringify(view)).not.toContain('PRIVATE_PASSWORD');
+    const result = await api.applySnapshotHistoryRestore({
+      ...opts,
+      review: view,
+      confirmed: true,
+      selections: [],
+      contactsSourceConfirmed: false,
+      acknowledgePasswordRisk: false,
+      independentBackupConfirmed: false
+    });
+    expect(result.status).toBe('applied');
+    expect(localStorage.getItem(result.backup)).toBe(before);
+    expect(f.state.characters[0]).toMatchObject({
+      notes: 'ARCHIVED_CLOUD',
+      contacts: { password: 'PRIVATE_PASSWORD' }
+    });
+    expect(f.state.settings.cloudSnapshotFiles[provider]).toEqual(base);
+    expect([...f.cloud.versions]).toEqual(versions);
+    expect(f.cloud.session.trashVersion).not.toHaveBeenCalled();
+  }, 30000);
+  it('сохраняет архивные контакты в checkpoint и восстанавливает только явно отмеченный пароль после отдельного риска и backup', async () => {
+    const x = await ready(true),
+      { f, api, opts, file, review, consent } = x;
+    expect(
+      (
+        await api.publishSnapshotHistoryCheckpoint({
+          ...opts,
+          ...consent,
+          archiveReview: review,
+          privateCarryConfirmed: false
+        })
+      ).status
+    ).toBe('private_confirmation_required');
+    await compact(x);
+    expect((await fixturePrivatePayload(f)).privateSnapshot.records[0].fields.password).toBe('PRIVATE_PASSWORD');
+    expect(f.state.characters[0].contacts.password).toBe('NEW_LOCAL_PASSWORD_NOT_ARCHIVED');
+    const choice = await api.inspectSnapshotHistoryArchive({ ...opts, text: file.text }),
+      view = await api.prepareSnapshotHistoryRestore({
+        ...opts,
+        choice: choice.choices.find(c => c.head),
+        fields: ['password'],
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: true
+      });
+    expect(view.status).toBe('archive_restore_review');
+    expect(JSON.stringify(view)).not.toContain('PRIVATE_PASSWORD');
+    const pairs = view.rows.filter(r => r.selectable).map(({ characterId, field }) => ({ characterId, field })),
+      args = {
+        ...opts,
+        review: view,
+        selections: pairs,
+        confirmed: true,
+        contactsSourceConfirmed: true,
+        acknowledgePasswordRisk: false,
+        independentBackupConfirmed: true
+      };
+    expect(pairs).toHaveLength(1);
+    const before = localStorage.getItem(STORAGE_KEY);
+    expect((await api.applySnapshotHistoryRestore(args)).status).toBe('private_consent_required');
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(before);
+    expect(
+      (
+        await api.applySnapshotHistoryRestore({
+          ...args,
+          acknowledgePasswordRisk: true,
+          independentBackupConfirmed: false
+        })
+      ).status
+    ).toBe('private_backup_required');
+    expect((await api.applySnapshotHistoryRestore({ ...args, acknowledgePasswordRisk: true })).status).toBe('applied');
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+  }, 30000);
+  it('потерянный ответ checkpoint восстанавливается по прежним байтам без второй отправки', async () => {
+    const x = await ready(),
+      { f, api, opts, review, consent } = x;
+    f.cloud.loseNextUpload();
+    f.cloud.setVerify(false);
+    expect((await api.publishSnapshotHistoryCheckpoint({ ...opts, ...consent, archiveReview: review })).status).toBe(
+      'verification_pending'
+    );
+    const calls = f.cloud.session.upload.mock.calls.length,
+      bytes = structuredClone(f.state.settings.cloudSnapshotFiles[provider].pending.envelope);
+    await restarted(f.fake, provider);
+    f.cloud.setVerify(true);
+    const fresh = await import('../js/modules/cloudSync/snapshotFileExchange.js');
+    expect((await fresh.resumeSnapshotFileUpload({ ...opts, confirmed: true })).status).toBe('sent_verified');
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(calls);
+    expect(f.cloud.versions.get(bytes.versionId)).toEqual(bytes);
+  }, 30000);
+  it('поздняя неизвестная версия без местных изменений останавливает trash до сети', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file, consent } = x,
+      plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text }),
+      head = f.state.settings.cloudSnapshotFiles[provider].acceptedPin;
+    await mergeIncoming(f, provider, head, s => {
+      s.sections.characters.records[0].fields.notes = 'LATE_REMOTE';
+    });
+    expect((await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).status).toBe(
+      'remote_changed'
+    );
+    expect(f.cloud.session.trashVersion).not.toHaveBeenCalled();
+  }, 30000);
+  it('после очистки второй чистый профиль восстанавливает ключ, читает root+checkpoint и явно принимает полный файл', async () => {
+    const x = await ready();
+    await compact(x);
+    const { f, api, opts, file, consent } = x,
+      plan = await api.prepareSnapshotHistoryRetirement({ ...opts, text: file.text });
+    expect((await api.retireNextSnapshotHistoryFile({ ...opts, ...consent, review: plan })).status).toBe(
+      'retired_verified'
+    );
+    const { pairingCode } = await f.readLocalCloudPairingCode({
+        provider,
+        invoke: f.fake.invoke,
+        cryptoSource: webcrypto
+      }),
+      target = await fixture();
+    target.state.characters = [];
+    target.state.plannerEntries = [];
+    await target.storage.saveNow();
+    const recovery = target.createCloudRecovery({
+        provider,
+        invoke: target.fake.invoke,
+        cryptoSource: webcrypto,
+        openSession: f.cloud.openSession
+      }),
+      attempt = await recovery.begin({ pairingCode, independentPinConfirmed: true, role: 'main', secret: mainSecret });
+    expect(attempt.status).toBe('ready_for_confirmation');
+    expect((await attempt.connect({ confirmed: true })).status).toBe('connected');
+    const fresh = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
+      targetOpts = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto, openSession: f.cloud.openSession },
+      incoming = await fresh.checkSnapshotFile(targetOpts);
+    expect(incoming).toMatchObject({ status: 'ready', remoteChanged: true });
+    expect(target.state.characters).toEqual([]);
+    expect((await fresh.replaceFromSnapshotFile({ ...targetOpts, review: incoming, confirmed: true })).status).toBe(
+      'applied'
+    );
+    expect(target.state.characters[0].notes).toBe('ARCHIVED_CLOUD');
+    expect((await fresh.checkSnapshotFile(targetOpts)).matches).toBe(true);
+  }, 30000);
+});

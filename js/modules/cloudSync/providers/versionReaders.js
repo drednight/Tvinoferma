@@ -12,7 +12,8 @@ import { yandexDownloadContentRequest, yandexDownloadLinkRequest, yandexListRequ
 import { parseCloudModifiedTime } from './modifiedTime.js';
 
 const MAX_PAGES = 128;
-const MAX_VERSIONS = 128;
+// One temporary checkpoint file; logical limits remain enforced by verifyHistory.
+const MAX_VERSIONS = 129;
 const MAX_YANDEX_ITEMS = 5000;
 const PAGE_SIZE = 100;
 const MAX_METADATA_TEXT = 2 * 1024 * 1024;
@@ -172,7 +173,11 @@ export function createGoogleVersionReader(options) {
       if (includeSerialized) return { status: 'content_mismatch' };
       throw malformed();
     }
-    return { status: 'found', envelope: parsed, ...(includeSerialized ? { serialized: response.body } : {}) };
+    return {
+      status: 'found',
+      envelope: parsed,
+      ...(includeSerialized ? { serialized: response.body, fileId: files[0].id } : {})
+    };
   }
   return Object.freeze({
     async list() {
@@ -190,6 +195,9 @@ export function createGoogleVersionReader(options) {
     /** Отсутствие здесь не подтверждает удаление ранее известной версии. */
     async read(versionId) {
       return readVersion(versionId, undefined, false);
+    },
+    async readForRetirement(versionId) {
+      return readVersion(versionId, undefined, true);
     },
     /** Для сверки после отправки: полные списки, ожидаемый ID и оригинальные байты JSON. */
     async readExact(versionId, fileId) {
@@ -304,6 +312,9 @@ export function createYandexVersionReader(options) {
     return { status: 'found', envelope: parsed, ...(includeSerialized ? { serialized: content.body } : {}) };
   }
   return Object.freeze({
+    async readForRetirement(versionId) {
+      return readVersion(versionId, true);
+    },
     async list() {
       const versions = await consistent();
       return versions.map(({ versionId }) => ({ versionId }));

@@ -10,10 +10,12 @@ import {
   historyEnvelopePin,
   verifyHistory,
   MAX_HISTORY_VERSIONS,
-  MAX_HISTORY_CHARS
+  MAX_HISTORY_CHARS,
+  MAX_HISTORY_INPUT_VERSIONS,
+  MAX_HISTORY_INPUT_CHARS
 } from './history.js';
 const FORMAT = 'tvinoferma-encrypted-history-archive';
-export const MAX_HISTORY_ARCHIVE_BYTES = MAX_HISTORY_CHARS + 256 * 1024;
+export const MAX_HISTORY_ARCHIVE_BYTES = MAX_HISTORY_INPUT_CHARS + 256 * 1024;
 const fail = () => new Error('Не удалось проверить зашифрованный архив истории');
 const cryptoApi = source => source || globalThis.crypto;
 async function digest(text, source) {
@@ -21,22 +23,39 @@ async function digest(text, source) {
     .map(x => x.toString(16).padStart(2, '0'))
     .join('');
 }
-export function historyCapacity(envelopes) {
-  if (!Array.isArray(envelopes) || !envelopes.length || envelopes.length > MAX_HISTORY_VERSIONS) throw fail();
-  const ciphertextChars = envelopes.reduce(
+export function historyCapacity(envelopes, history = null) {
+  if (!Array.isArray(envelopes) || !envelopes.length || envelopes.length > MAX_HISTORY_INPUT_VERSIONS) throw fail();
+  if (history && !isVerifiedHistory(history)) throw fail();
+  if (history) {
+    const ids = new Set(history.pins().map(p => p.versionId));
+    if (
+      ids.size !== envelopes.length ||
+      new Set(envelopes.map(e => e.versionId)).size !== ids.size ||
+      envelopes.some(e => !ids.has(e.versionId))
+    )
+      throw fail();
+  }
+  const retired = new Set(history ? history.retiredPins().map(p => p.versionId) : []),
+    active = envelopes.filter(e => !retired.has(e.versionId));
+  const ciphertextChars = active.reduce(
     (sum, e) => sum + e.ciphertext.length + e.iv.length + (e.keyCapsule?.length || 0),
     0
   );
-  if (!envelopes.length || envelopes.length > MAX_HISTORY_VERSIONS || ciphertextChars > MAX_HISTORY_CHARS) throw fail();
+  if (active.length > MAX_HISTORY_VERSIONS || ciphertextChars > MAX_HISTORY_CHARS) throw fail();
+  const heads = history?.observedHeads() || [],
+    canRetire = heads.length === 1 && history.checkpoint(heads[0]) !== null,
+    retiredVersions = envelopes.length - active.length;
   return Object.freeze({
-    versions: envelopes.length,
+    retiredVersions,
+    versions: active.length,
+    storedVersions: envelopes.length,
     maxVersions: MAX_HISTORY_VERSIONS,
     ciphertextChars,
     maxCiphertextChars: MAX_HISTORY_CHARS,
-    remainingVersions: MAX_HISTORY_VERSIONS - envelopes.length,
-    nearLimit: envelopes.length >= 96 || ciphertextChars >= MAX_HISTORY_CHARS * 0.75,
-    protectedVersions: envelopes.length,
-    deletableVersions: 0
+    remainingVersions: MAX_HISTORY_VERSIONS - active.length,
+    nearLimit: active.length >= 96 || ciphertextChars >= MAX_HISTORY_CHARS * 0.75,
+    protectedVersions: canRetire ? active.length : envelopes.length,
+    deletableVersions: canRetire ? retiredVersions : 0
   });
 }
 function body(value) {
@@ -50,9 +69,14 @@ function body(value) {
   )
     throw fail();
   const code = parsePairingCode(data.pairingCode);
-  if (!Array.isArray(data.envelopes) || data.envelopes.length > MAX_HISTORY_VERSIONS) throw fail();
+  if (!Array.isArray(data.envelopes) || data.envelopes.length > MAX_HISTORY_INPUT_VERSIONS) throw fail();
   const envelopes = array(data.envelopes, e => copyCloudEnvelope(e, code.datasetId));
-  historyCapacity(envelopes);
+  if (
+    !envelopes.length ||
+    envelopes.reduce((sum, e) => sum + e.ciphertext.length + e.iv.length + (e.keyCapsule?.length || 0), 0) >
+      MAX_HISTORY_INPUT_CHARS
+  )
+    throw fail();
   if (new Set(envelopes.map(e => e.versionId)).size !== envelopes.length) throw fail();
   envelopes.sort((a, b) => a.versionId.localeCompare(b.versionId));
   return {
@@ -107,7 +131,7 @@ export async function createEncryptedHistoryArchive(options) {
   }
 }
 /** Validates against independently trusted pairing code + dataKey, never the file's own claim of trust. */
-export async function verifyEncryptedHistoryArchive(options) {
+export async function readEncryptedHistoryArchive(options) {
   try {
     const input = object(
       options,
@@ -149,12 +173,25 @@ export async function verifyEncryptedHistoryArchive(options) {
       cryptoSource: input.cryptoSource
     });
     return Object.freeze({
+      history,
+      envelopes: data.envelopes,
       status: 'archive_verified',
       sha256,
-      capacity: historyCapacity(data.envelopes),
+      capacity: historyCapacity(data.envelopes, history),
       heads: Object.freeze(history.observedHeads().map(pin => Object.freeze(pin)))
     });
   } catch {
     throw fail();
   }
+}
+
+/** Verification UI receives no decrypted snapshots or secrets. */
+export async function verifyEncryptedHistoryArchive(options) {
+  const opened = await readEncryptedHistoryArchive(options);
+  return Object.freeze({
+    status: opened.status,
+    sha256: opened.sha256,
+    capacity: opened.capacity,
+    heads: opened.heads
+  });
 }
