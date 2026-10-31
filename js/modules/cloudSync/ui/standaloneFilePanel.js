@@ -18,6 +18,8 @@ const SECTIONS = {
   preferences: 'Настройки'
 };
 const STATUS = {
+  encryption_password_incorrect:
+    'Не удалось разблокировать прежний ключ. Проверьте пароль шифрования. Новый ключ не создавался, облачные файлы не менялись.',
   folder_ambiguous: 'найдено несколько папок приложения — выберите нужную, дата не определяет папку',
   checked: 'проверен',
   empty: 'полных файлов пока нет',
@@ -53,8 +55,8 @@ export function askStandalonePassword({ doc = document, repeat = false } = {}) {
     dialog.className = 'modal cloud-key-dialog';
     dialog.setAttribute('aria-labelledby', 'standalone-password-title');
     dialog.innerHTML = `<form novalidate autocomplete="off">
-      <h3 id="standalone-password-title">${repeat ? 'Пароль шифрования полного файла' : 'Открыть облачный файл'}</h3>
-      <p>${repeat ? 'Не менее 8 символов. Используйте не менее 6 различных символов и не очевидную последовательность. Без пароля или запомненного ключа файл не восстановить.' : 'Введите пароль, которым зашифрован файл на другом ПК. Открытие не заменяет местные данные.'}</p>
+      <h3 id="standalone-password-title">${repeat ? 'Пароль шифрования полного файла' : 'Пароль шифрования'}</h3>
+      <p>${repeat ? 'Не менее 8 символов. Используйте не менее 6 различных символов и не очевидную последовательность. Без пароля или запомненного ключа файл не восстановить.' : 'Введите пароль, которым зашифрованы ваши файлы. Сам ввод пароля не заменяет местные данные.'}</p>
       <label>Пароль<input class="input" name="password" type="password" maxlength="1024" autocomplete="${repeat ? 'new-password' : 'current-password'}" /></label>
       ${repeat ? '<label>Повторите пароль<input class="input" name="repeat" type="password" maxlength="1024" autocomplete="new-password" /></label>' : ''}
       <p class="modal-error" role="alert" id="standalone-password-error"></p>
@@ -355,7 +357,7 @@ export function bindStandaloneFilePanel(options) {
         source = planSyncIdentities({ snapshot: normalized }).snapshot;
       }
       const canSeal = await engine.canSeal();
-      const password = canSeal ? undefined : await passwordDialog({ repeat: true });
+      const password = canSeal ? undefined : await passwordDialog({ repeat: !engine.hasEncryptionKey?.() });
       if (password === null) return;
       const prepared = await engine.prepareSave({
         targets: targets(),

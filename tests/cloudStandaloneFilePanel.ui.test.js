@@ -117,6 +117,11 @@ describe('standalone full file UX', () => {
     expect(f.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: 'Сохранить полный файл?' }));
     expect(el('status').textContent).toContain('каждого диска');
   });
+  it('asks only for the existing password, not a new-password repeat, after restart without remembered master', async () => {
+    const f = setup({ runtime: { hasEncryptionKey: vi.fn(() => true) } });
+    await click('save');
+    expect(f.password).toHaveBeenCalledWith({ repeat: false });
+  });
   it('does not show a new-password ceremony when the protected/current-session key is unlocked', async () => {
     const f = setup({ runtime: { canSeal: vi.fn(async () => true) } });
     await click('save');

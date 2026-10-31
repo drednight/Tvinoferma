@@ -512,6 +512,20 @@ describe('standalone exchange: two providers and two PCs', () => {
     });
     expect(JSON.stringify(opened.contents.publicSnapshot)).toContain('Current data, not the previous attempt');
   });
+  it('unlocks the existing encryption bundle after restart instead of silently creating another password/key', async () => {
+    const f = fixture({ recalled: null });
+    const cfg = readStandaloneState(f.local.settings);
+    cfg.key = { bundle: first.unlocked.bundle, pin: first.unlocked.pin };
+    f.local.settings.cloudStandaloneFiles = cfg;
+    expect(f.engine.hasEncryptionKey()).toBe(true);
+    expect(await f.engine.canSeal()).toBe(false);
+    await expect(f.engine.prepareSave({ targets: ['google'], password: 'Wrong password 123' })).rejects.toThrow();
+    expect(f.calls.google).toHaveLength(0);
+    const token = await f.engine.prepareSave({ targets: ['google'], password });
+    expect((await f.engine.save(token, { confirmed: true })).results[0].status).toBe('sent_verified');
+    const opened = await openStandaloneFile({ envelope: f.calls.google[0].envelope, password, cryptoSource });
+    expect(opened.unlocked.bundle.bundleId).toBe(first.unlocked.bundle.bundleId);
+  });
   it('does not require old history payloads even when opening a standalone file with missing ancestors', async () => {
     const orphan = await encryptSnapshot({
       snapshot: second.contents,

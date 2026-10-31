@@ -11,7 +11,7 @@ import { privateDifferences, applyPrivateSelection, PRIVATE_FIELDS } from './pri
 import { snapshotFileHash, sameFilePin, filePin } from './snapshotFileState.js';
 import { object, array } from './exportSchema.js';
 import { validateJsonSnapshot } from './envelope.js';
-import { copyKeyBundle } from './keyBundle.js';
+import { copyKeyBundle, openKeyBundle } from './keyBundle.js';
 import { copyCloudEnvelope, validGoogleId } from './providers/common.js';
 import {
   STANDALONE_DATASET_ID,
@@ -310,6 +310,7 @@ export function createStandaloneFileExchange(ports) {
         await ports.chooseFolder(folderId);
       });
     },
+    hasEncryptionKey: () => !!config().key,
     canSeal() {
       return run(async () => {
         if (!key) key = (await ports.recalledKey?.(config().key)) || null;
@@ -484,6 +485,25 @@ export function createStandaloneFileExchange(ports) {
         const scanned = await scanAll(targets, true);
         const supersedes = [...new Map(scanned.entries.map(entry => [entry.versionId, pinOf(entry)])).values()];
         if (!key) key = (await ports.recalledKey?.(config().key)) || null;
+        const savedKey = config().key;
+        if (!key && savedKey) {
+          // Not the first save: unlock the existing bundle, do not silently create
+          // another password/key after every app restart when OS remembering is off.
+          let opened;
+          try {
+            opened = await openKeyBundle({
+              bundle: savedKey.bundle,
+              expectedDatasetId: STANDALONE_DATASET_ID,
+              expectedPin: savedKey.pin,
+              role: 'main',
+              secret: options.password,
+              cryptoSource
+            });
+          } catch {
+            throw fail('encryption_password_incorrect');
+          }
+          key = { ...savedKey, dataKey: opened.dataKey };
+        }
         const sealed = await seal({ ...options, snapshot: source, unlocked: key, supersedes, cryptoSource });
         key = sealed.unlocked;
         const sha256 = await hashEnvelope(sealed.envelope);
