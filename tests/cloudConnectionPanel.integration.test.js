@@ -10,7 +10,7 @@ import { parseGoogleCredentialRecord } from '../js/modules/cloudSync/providers/o
 import { parseYandexCredentialRecord } from '../js/modules/cloudSync/providers/oauthYandexCredentialRecord.js';
 
 const html = readFileSync('index.html', 'utf8');
-const panel = html.match(/<details class="panel fold cloud-registration"[\s\S]*?<\/details>/)?.[0];
+const panel = new DOMParser().parseFromString(html, 'text/html').getElementById('cloud-registration-panel')?.outerHTML;
 const CLIENT = {
   google: '123456789-test_client.apps.googleusercontent.com',
   yandex: '0123456789abcdef0123456789abcdef'
@@ -30,6 +30,7 @@ function fakeNative(provider, extra = {}) {
   let dataset = 'empty';
   let identities = 0;
   const invoke = vi.fn(async (command, args) => {
+    if (command === 'cloud_google_client_read') return { status: 'ready', clientId: CLIENT.google };
     if (command === 'cloud_credential_binding_read') {
       if (!stored) return { status: 'empty' };
       const record = parse(provider, stored.record);

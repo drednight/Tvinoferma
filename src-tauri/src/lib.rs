@@ -39,6 +39,8 @@ mod cloud_credential_store;
 mod cloud_dataset_binding;
 mod cloud_disk_transport;
 #[cfg(windows)]
+mod cloud_google_client;
+#[cfg(windows)]
 mod cloud_initial_outbox;
 #[cfg(windows)]
 mod cloud_key_state;
@@ -229,6 +231,8 @@ pub fn run() {
             commands::cloud_oauth::cloud_oauth_callback_poll,
             commands::cloud_oauth::cloud_oauth_callback_cancel,
             commands::cloud_oauth_transport::cloud_oauth_network,
+            commands::cloud_google_client::cloud_google_client_read,
+            commands::cloud_google_client::cloud_google_client_import,
             // Экспериментальные операции с версиями; UI и очередь не подключены.
             commands::cloud_disk_transport::cloud_disk_network,
             // полный сброс: «Вернуть к заводским настройкам»

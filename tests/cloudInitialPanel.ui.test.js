@@ -92,6 +92,7 @@ function setup(extra = {}) {
   const invoke = vi.fn();
   bindInitialCloudPanel({
     desktop: extra.desktop !== false,
+    prepareData: vi.fn(async () => true),
     loadNative: async () => ({ invoke }),
     makeSetup,
     makeRecovery,
@@ -352,5 +353,31 @@ describe('экспериментальный первый снимок и вос
     click('cloud-setup-resume');
     await vi.waitFor(() => expect(f.resume).toHaveBeenCalledWith({ resumeConfirmed: true, backupKeySaved: true }));
     expect(f.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('автоматическая подготовка местных данных перед новым набором', () => {
+  it('сначала сохраняет и подготавливает ID, затем начинает ключи', async () => {
+    const prepareData = vi.fn(async () => true);
+    const f = setup({ prepareData });
+    prepareInput();
+    click('cloud-setup-create');
+    await vi.waitFor(() => expect(f.begin).toHaveBeenCalledOnce());
+    expect(prepareData).toHaveBeenCalledOnce();
+    expect(prepareData.mock.invocationCallOrder[0]).toBeLessThan(f.begin.mock.invocationCallOrder[0]);
+  });
+  it.each([false, 'throw'])('ошибка подготовки %s не запускает новый набор и не отправляет файл', async outcome => {
+    const f = setup({
+      prepareData: vi.fn(async () => {
+        if (outcome === 'throw') throw new Error('PRIVATE_DISK_ERROR');
+        return false;
+      })
+    });
+    prepareInput();
+    click('cloud-setup-create');
+    await vi.waitFor(() => expect(byId('cloud-setup-create').disabled).toBe(false));
+    expect(f.begin).not.toHaveBeenCalled();
+    expect(f.send).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain('PRIVATE_DISK_ERROR');
   });
 });

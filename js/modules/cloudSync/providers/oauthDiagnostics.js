@@ -3,7 +3,7 @@
 // provider descriptions, response bodies, URLs, identifiers or credentials.
 const REASONS = Object.freeze({
   client_secret_required:
-    'Google требует параметр client_secret, который текущая сборка не передаёт. Это ограничение подключения в программе; не вставляйте секрет в поле Client ID.',
+    'Google требует client_secret. Импортируйте JSON OAuth-клиента типа Desktop в разделе разовой настройки. Секрет в поле Client ID вводить нельзя.',
   invalid_client:
     'Сервис отклонил параметры OAuth-клиента. Это может быть несовместимость способа обмена, а не ошибка введённого ID.',
   invalid_grant:
