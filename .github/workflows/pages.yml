@@ -34,7 +34,7 @@ jobs:
       - run: npm run build -- --base=/Tvinoferma/
       # Демо-лаборатория работает без сборщика: ей нужны сырые css/ и js/ рядом
       - run: cp -r demo css js dist/
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
