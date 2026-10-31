@@ -1,6 +1,7 @@
 // @ts-check
 // Снимок одного марафона/папки: только проверенные поля и ссылки на устойчивые sync-ID.
 // Не запускает скрипты. История lastSync содержит локальные ошибки входа и не экспортируется.
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { isSyncId } from './envelope.js';
 import {
   array,
@@ -68,7 +69,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function link(map, id) {
   if (!(map instanceof Map) || !text(id) || !isSyncId(map.get(id))) {
-    throw new Error('Не найдена ссылка марафона; экспорт остановлен');
+    throw preparationError(new Error('Не найдена ссылка марафона; экспорт остановлен'), 'reference');
   }
   return map.get(id);
 }
@@ -76,17 +77,17 @@ function nullableLink(map, id) {
   return id === null ? null : link(map, id);
 }
 function unique(values) {
-  if (new Set(values).size !== values.length) throw invalidExport();
+  if (new Set(values).size !== values.length) throw invalidExport('duplicate');
   return values;
 }
 function date(value) {
   const result = text(value);
-  if (!DATE.test(result)) throw invalidExport();
+  if (!DATE.test(result)) throw invalidExport('date_format');
   return result;
 }
 function integer(value, min, max = Number.MAX_SAFE_INTEGER) {
   const result = number(value);
-  if (!Number.isSafeInteger(result) || result < min || result > max) throw invalidExport();
+  if (!Number.isSafeInteger(result) || result < min || result > max) throw invalidExport('integer_range');
   return result;
 }
 
@@ -99,40 +100,45 @@ export function safeSiteUrl(value) {
   try {
     url = new URL(raw);
   } catch {
-    throw invalidExport();
+    throw invalidExport('url_format');
   }
-  if (
-    url.protocol !== 'https:' ||
-    !['pwonline.ru', 'www.pwonline.ru'].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.port ||
-    url.hash
-  )
-    throw invalidExport();
+  if (url.protocol !== 'https:') throw invalidExport('url_scheme');
+  if (!['pwonline.ru', 'www.pwonline.ru'].includes(url.hostname)) throw invalidExport('url_host');
+  if (url.username || url.password) throw invalidExport('url_auth');
+  if (url.port) throw invalidExport('url_port');
+  // navigate_clean пишет READY в адрес перед запуском парсера; старые версии
+  // titles/detail сохраняли весь href. Результаты парсеров тоже передаются в hash.
+  // Это локальный транспорт, НЕ переносимые данные: не декодировать и не экспортировать.
+  // Неизвестные фрагменты по-прежнему останавливают экспорт, как и опасная основа URL.
+  const parserFragment =
+    /^#TF_READY_(loading|interactive|complete)$/.test(url.hash) ||
+    /^#TF_(TITLE_V4_|DETAIL_V4_|MARATHON_DATA_|NEWS_V1_)/.test(url.hash);
+  if (url.hash && !parserFragment) throw invalidExport('url_fragment');
   const seen = new Set();
   for (const [key, item] of url.searchParams) {
-    if (seen.has(key)) throw invalidExport();
+    if (seen.has(key)) throw invalidExport('url_query_duplicate');
     seen.add(key);
     const ok =
       (['article', 'page', 'id'].includes(key) && /^\d+$/.test(item)) ||
       (key === 'archive' && item === 'news') ||
       (key === 'type' && item === 'event');
-    if (!ok) throw invalidExport();
+    if (!ok) throw invalidExport('url_query');
   }
-  return raw;
+  return parserFragment ? raw.split('#')[0] : raw;
 }
 
 function source(value, templateIds) {
   const data = object(value, ['type', 'url', 'siteName'], ['stageKey', 'stageName', 'templateId', 'newsUrl']);
   return {
     type: oneOf(data.type, ['manual', 'site', 'template']),
-    url: safeSiteUrl(data.url),
+    url: preparationCheck('url', () => safeSiteUrl(data.url)),
     siteName: nullableText(data.siteName),
     stageKey: Object.hasOwn(data, 'stageKey') ? nullableText(data.stageKey) : null,
     stageName: Object.hasOwn(data, 'stageName') ? nullableText(data.stageName) : null,
-    templateId: Object.hasOwn(data, 'templateId') ? nullableLink(templateIds, data.templateId) : null,
-    newsUrl: Object.hasOwn(data, 'newsUrl') ? safeSiteUrl(data.newsUrl) : null
+    templateId: Object.hasOwn(data, 'templateId')
+      ? preparationCheck('templateId', () => nullableLink(templateIds, data.templateId))
+      : null,
+    newsUrl: Object.hasOwn(data, 'newsUrl') ? preparationCheck('newsUrl', () => safeSiteUrl(data.newsUrl)) : null
   };
 }
 
@@ -199,13 +205,15 @@ export function exportMarathon(marathon, options = {}) {
   const common = {
     title: text(data.title),
     description: text(data.description),
-    source: source(data.source, opts.templateSyncIds),
+    source: preparationCheck('source', () => source(data.source, opts.templateSyncIds)),
     createdAt: text(data.createdAt),
     updatedAt: text(data.updatedAt)
   };
   if (kind === 'series') {
-    const childIds = unique(array(data.childIds, id => link(opts.marathonSyncIds, id)));
-    if (childIds.includes(opts.syncId)) throw invalidExport();
+    const childIds = preparationCheck('childIds', () =>
+      unique(array(data.childIds, id => link(opts.marathonSyncIds, id)))
+    );
+    if (childIds.includes(opts.syncId)) throw invalidExport('self_reference');
     return { id: opts.syncId, type: 'marathonSeries', fields: { ...common, childIds } };
   }
 
@@ -216,64 +224,76 @@ export function exportMarathon(marathon, options = {}) {
     used.add(row.syncId);
     return row.syncId;
   };
-  const tasks = array(data.tasks, value => {
-    const task = object(value, TASK_KEYS);
-    const taskId = addId(task);
-    if (taskIds.has(task.id)) throw invalidExport();
-    taskIds.set(task.id, taskId);
-    const schedule = object(task.schedule, ['mode', 'dates', 'weekStartDay']);
-    const rewardIds = new Set();
-    const rewards = array(task.rewards, value => {
-      const reward = object(value, REWARD_KEYS);
-      if (rewardIds.has(reward.id)) throw invalidExport();
-      rewardIds.add(reward.id);
+  const tasks = preparationCheck('tasks', () =>
+    array(data.tasks, value => {
+      const task = object(value, TASK_KEYS);
+      const taskId = addId(task);
+      if (taskIds.has(task.id)) throw invalidExport();
+      taskIds.set(task.id, taskId);
+      const schedule = preparationCheck('schedule', () => object(task.schedule, ['mode', 'dates', 'weekStartDay']));
+      const rewardIds = new Set();
+      const rewards = preparationCheck('rewards', () =>
+        array(task.rewards, value => {
+          const reward = object(value, REWARD_KEYS);
+          if (rewardIds.has(reward.id)) throw invalidExport();
+          rewardIds.add(reward.id);
+          return {
+            id: addId(reward),
+            threshold: integer(reward.threshold, 1),
+            rewardText: text(reward.rewardText),
+            rewardCoins: number(reward.rewardCoins)
+          };
+        })
+      );
       return {
-        id: addId(reward),
-        threshold: integer(reward.threshold, 1),
-        rewardText: text(reward.rewardText),
-        rewardCoins: number(reward.rewardCoins)
+        id: taskId,
+        title: text(task.title),
+        siteTitle: nullableText(task.siteTitle),
+        description: text(task.description),
+        descriptionSource: oneOf(task.descriptionSource, ['', 'site', 'news', 'manual']),
+        targetChecks: preparationCheck('schedule', () => integer(task.targetChecks, 1)),
+        schedule: preparationCheck('schedule', () => ({
+          mode: oneOf(schedule.mode, ['everyDay', 'weekly', 'dates']),
+          dates: preparationCheck('dates', () => unique(array(schedule.dates, date))),
+          weekStartDay: integer(schedule.weekStartDay, 0, 6)
+        })),
+        rewards
       };
-    });
-    return {
-      id: taskId,
-      title: text(task.title),
-      siteTitle: nullableText(task.siteTitle),
-      description: text(task.description),
-      descriptionSource: oneOf(task.descriptionSource, ['', 'site', 'news', 'manual']),
-      targetChecks: integer(task.targetChecks, 1),
-      schedule: {
-        mode: oneOf(schedule.mode, ['everyDay', 'weekly', 'dates']),
-        dates: unique(array(schedule.dates, date)),
-        weekStartDay: integer(schedule.weekStartDay, 0, 6)
-      },
-      rewards
-    };
-  });
+    })
+  );
   const bonusIds = new Set();
-  const bonuses = array(data.bonuses, value => {
-    const bonus = object(value, BONUS_KEYS);
-    if (bonusIds.has(bonus.id)) throw invalidExport();
-    bonusIds.add(bonus.id);
-    return { id: addId(bonus), needTasks: integer(bonus.needTasks, 1), text: text(bonus.text) };
-  });
+  const bonuses = preparationCheck('bonuses', () =>
+    array(data.bonuses, value => {
+      const bonus = object(value, BONUS_KEYS);
+      if (bonusIds.has(bonus.id)) throw invalidExport();
+      bonusIds.add(bonus.id);
+      return { id: addId(bonus), needTasks: integer(bonus.needTasks, 1), text: text(bonus.text) };
+    })
+  );
   const charLink = id => link(opts.characterSyncIds, id);
   const taskLink = id => link(taskIds, id);
-  const participantIds = unique(array(data.participantIds, charLink));
-  const assignments = mappedDictionary(data.assignments, charLink, value => unique(array(value, taskLink)));
-  const progress = mappedDictionary(data.progress, charLink, taskMap => mappedDictionary(taskMap, taskLink, cell));
-  const awards = array(data.awards, value => {
-    const award = object(value, ['characterId', 'charNick', 'taskId', 'taskTitle', 'rewardText', 'coins']);
-    return {
-      characterId: nullableLink(opts.characterSyncIds, award.characterId),
-      charNick: text(award.charNick),
-      taskId: nullableLink(taskIds, award.taskId),
-      taskTitle: text(award.taskTitle),
-      rewardText: text(award.rewardText),
-      coins: number(award.coins)
-    };
-  });
-  const seriesId = nullableLink(opts.marathonSyncIds, data.seriesId);
-  if (seriesId === opts.syncId) throw invalidExport();
+  const participantIds = preparationCheck('participantIds', () => unique(array(data.participantIds, charLink)));
+  const assignments = preparationCheck('assignments', () =>
+    mappedDictionary(data.assignments, charLink, value => unique(array(value, taskLink)))
+  );
+  const progress = preparationCheck('progress', () =>
+    mappedDictionary(data.progress, charLink, taskMap => mappedDictionary(taskMap, taskLink, cell))
+  );
+  const awards = preparationCheck('awards', () =>
+    array(data.awards, value => {
+      const award = object(value, ['characterId', 'charNick', 'taskId', 'taskTitle', 'rewardText', 'coins']);
+      return {
+        characterId: nullableLink(opts.characterSyncIds, award.characterId),
+        charNick: text(award.charNick),
+        taskId: nullableLink(taskIds, award.taskId),
+        taskTitle: text(award.taskTitle),
+        rewardText: text(award.rewardText),
+        coins: number(award.coins)
+      };
+    })
+  );
+  const seriesId = preparationCheck('seriesId', () => nullableLink(opts.marathonSyncIds, data.seriesId));
+  if (seriesId === opts.syncId) throw invalidExport('self_reference');
   return {
     id: opts.syncId,
     type: 'marathon',
@@ -281,14 +301,14 @@ export function exportMarathon(marathon, options = {}) {
       ...common,
       seriesId,
       bonuses,
-      startDate: date(data.startDate),
-      endDate: date(data.endDate),
+      startDate: preparationCheck('startDate', () => date(data.startDate)),
+      endDate: preparationCheck('endDate', () => date(data.endDate)),
       status: oneOf(data.status, ['active', 'completed']),
       participantIds,
       assignments,
       tasks,
       progress,
-      balance: balance(data.balance, opts.characterSyncIds),
+      balance: preparationCheck('balance', () => balance(data.balance, opts.characterSyncIds)),
       awards,
       completedAt: nullableText(data.completedAt)
     }

@@ -131,7 +131,7 @@
 
         const resultData = {
             name: marathonName,
-            sourceUrl: window.location.href,
+            sourceUrl: window.location.href.split('#')[0],
             detectedAt: new Date().toISOString(),
             stages: stages,
             quests: quests,
