@@ -84,7 +84,7 @@ async fn execute(
 
     let fail = || ERROR.to_owned();
     let provider = Provider::parse(&provider).ok_or_else(fail)?;
-    let request = match operation.as_str() {
+    let mut request = match operation.as_str() {
         "exchange" if access_token.is_none() && refresh_claim.is_none() => {
             let body = form
                 .filter(|value| valid_code_form(provider, value))
@@ -135,21 +135,31 @@ async fn execute(
         .timeout(Duration::from_secs(25))
         .build()
         .map_err(|_| fail())?;
+    if provider == Provider::Google && request.3.is_none() {
+        if let Some(body) = request.1.take() {
+            request.1 =
+                Some(super::cloud_google_client::inject_google_secret(app.clone(), body).await?);
+        }
+    }
     // Не посылаем refresh без одноразового перехода именно этой записи:
     // CAS + readback выполняются под общим межпроцессным lock. Потерянный
     // ответ или ошибка блокируют автоматический повтор; откат vault извне не
     // обнаруживается. Никакие входные значения не попадают в журнал.
     if let Some((claim, parsed)) = request.3 {
-        super::cloud_credentials::claim_google_refresh(
-            app,
-            claim.slot_id,
-            claim.expected,
-            claim.pending,
-            parsed.client_id,
-            parsed.refresh_token,
-        )
-        .await
-        .map_err(|_| fail())?;
+        let body = request.1.take().ok_or_else(fail)?;
+        request.1 = Some(
+            super::cloud_credentials::claim_google_refresh(
+                app,
+                claim.slot_id,
+                claim.expected,
+                claim.pending,
+                parsed.client_id,
+                parsed.refresh_token,
+                body,
+            )
+            .await
+            .map_err(|_| fail())?,
+        );
     }
     let mut builder = match (request.1, request.2) {
         (Some(body), None) => client

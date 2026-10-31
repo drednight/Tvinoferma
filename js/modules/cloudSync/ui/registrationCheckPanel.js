@@ -16,6 +16,8 @@ const LOCAL_MESSAGES = Object.freeze({
   ready: 'Доступ сохранён на этом ПК. Его действительность и права, облачные файлы и синхронизация не проверялись.',
   ready_bound:
     'Доступ сохранён, но есть существующая или неполная привязка набора. Локальное удаление заблокировано; облачные файлы и действительность доступа не проверялись.',
+  dataset_incomplete:
+    'Есть неполная привязка набора. Локальное удаление заблокировано; требуется восстановление, а не создание нового набора.',
   dataset_blocked:
     'Есть существующая или неполная привязка набора без доступной учётной записи. Новый вход заблокирован до восстановления; не удаляйте привязку.',
   pending:
@@ -64,6 +66,13 @@ export function bindCloudRegistrationCheck(options) {
   const start = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-start'));
   const cancelButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-cancel'));
   const status = doc.getElementById('cloud-registration-status');
+  const simple = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-connection-simple'));
+  const simpleCancel = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-connection-simple-cancel'));
+  const configFile = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-google-import'));
+  const configStatus = doc.getElementById('cloud-google-config-status');
+  const advanced = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-registration-advanced'));
+  const setupPanel = doc.getElementById('cloud-setup-title')?.closest('section');
+  const filePanel = doc.getElementById('cloud-file-panel');
   const account = doc.getElementById('cloud-registration-account');
   const accountLabel = doc.getElementById('cloud-registration-account-label');
   const accountValue = doc.getElementById('cloud-registration-account-value');
@@ -118,7 +127,7 @@ export function bindCloudRegistrationCheck(options) {
       ]);
       return { invoke, openBrowser: open };
     });
-  /** @type {null | {controller:AbortController, mode:'check'|'inspect'|'enroll'|'forget', selected:'google'|'yandex', installing:boolean}} */
+  /** @type {null | {controller:AbortController, mode:'check'|'inspect'|'enroll'|'forget'|'config', selected:'google'|'yandex', installing:boolean}} */
   let active = null;
   /** @type {null | {provider:'google'|'yandex', status:string, slotId?:string}} */
   let observed = null;
@@ -140,6 +149,22 @@ export function bindCloudRegistrationCheck(options) {
     const selected = selectedProvider();
     const known = observed?.provider === selected ? observed : null;
     const stopped = uncertain.has(selected);
+    if (simple) {
+      simple.disabled = busy || !options.desktop || stopped;
+      simple.hidden = ['ready', 'ready_bound'].includes(known?.status || '');
+    }
+    if (simpleCancel) {
+      simpleCancel.hidden = !['enroll', 'inspect'].includes(active?.mode || '');
+      simpleCancel.disabled = !active || active.controller.signal.aborted;
+    }
+    if (configFile) configFile.disabled = busy || !options.desktop;
+    // Unknown or interrupted access is not permission to create a new dataset.
+    if (setupPanel) setupPanel.hidden = !['ready', 'ready_bound'].includes(known?.status || '') || stopped;
+    if (filePanel) filePanel.hidden = known?.status !== 'ready_bound' || stopped;
+    for (const id of ['cloud-setup-new', 'cloud-setup-existing']) {
+      const fold = doc.getElementById(id);
+      if (fold) fold.hidden = known?.status === 'ready_bound';
+    }
     provider.disabled = busy;
     client.disabled = busy;
     start.disabled = busy || !options.desktop;
@@ -181,6 +206,9 @@ export function bindCloudRegistrationCheck(options) {
   function updateProviderHint() {
     yandexHint.hidden = provider.value !== 'yandex';
     googleHint.hidden = provider.value !== 'google';
+    const label = doc.getElementById('cloud-google-import-label');
+    if (label) label.hidden = provider.value !== 'google';
+    if (configStatus) configStatus.hidden = provider.value !== 'google';
   }
   function uncertainOutcome(selected) {
     uncertain.add(selected);
@@ -213,12 +241,44 @@ export function bindCloudRegistrationCheck(options) {
       const reply = await readBinding({ provider: selected, invoke: native.invoke });
       if (session.controller.signal.aborted) return;
       if (!['empty', 'ready', 'pending', 'blocked'].includes(reply.status)) throw new Error();
+      if (reply.status === 'ready' && reply.binding?.clientId) client.value = reply.binding.clientId;
+      if (reply.status === 'empty') {
+        if (selected === 'google') {
+          try {
+            const config = await native.invoke('cloud_google_client_read', {});
+            if (session.controller.signal.aborted) return;
+            if (config?.status === 'ready' && validOAuthClientId('google', config.clientId)) {
+              client.value = config.clientId;
+              if (configStatus) configStatus.textContent = 'Google настроен. Можно входить.';
+            } else {
+              client.value = '';
+              if (configStatus)
+                configStatus.textContent =
+                  'Для этой сборки один раз импортируйте Desktop JSON в разделе настройки приложения.';
+            }
+          } catch {
+            client.value = '';
+            if (configStatus)
+              configStatus.textContent =
+                'Не удалось прочитать настройки Google. Откройте разовую настройку и импортируйте Desktop JSON; не удаляйте записи Windows вручную.';
+          }
+        } else if (!client.value.trim())
+          client.value =
+            /** @type {ImportMeta & {env?:{VITE_YANDEX_CLIENT_ID?:string}}} */ (import.meta).env
+              ?.VITE_YANDEX_CLIENT_ID || '';
+      }
       let displayStatus = reply.status;
       if (reply.status === 'ready' || reply.status === 'empty') {
         const datasetStatus = await readDataset({ provider: selected, invoke: native.invoke });
         if (session.controller.signal.aborted) return;
         if (!['empty', 'ready', 'blocked'].includes(datasetStatus)) throw new Error();
-        if (datasetStatus !== 'empty') displayStatus = reply.status === 'ready' ? 'ready_bound' : 'dataset_blocked';
+        if (datasetStatus !== 'empty')
+          displayStatus =
+            reply.status !== 'ready'
+              ? 'dataset_blocked'
+              : datasetStatus === 'ready'
+                ? 'ready_bound'
+                : 'dataset_incomplete';
       }
       observed = {
         provider: selected,
@@ -248,7 +308,12 @@ export function bindCloudRegistrationCheck(options) {
     if (!validOAuthClientId(selected, clientId)) {
       target.textContent =
         'Проверьте формат Client ID для выбранного диска. Пароль, секрет приложения и код сюда вводить нельзя.';
-      client.focus();
+      if (advanced) advanced.open = true;
+      if (selected === 'google') {
+        target.textContent =
+          'Google ещё не настроен: один раз выберите Desktop JSON ниже. Секрет вручную вводить не нужно.';
+        configFile?.focus();
+      } else client.focus();
       return null;
     }
     return { selected, clientId };
@@ -263,6 +328,7 @@ export function bindCloudRegistrationCheck(options) {
 
   provider.addEventListener('change', () => {
     clearAccount();
+    if (!validOAuthClientId(selectedProvider(), client.value.trim())) client.value = '';
     updateProviderHint();
     status.textContent = initialStatus();
     observed = null;
@@ -363,10 +429,12 @@ export function bindCloudRegistrationCheck(options) {
     }
   });
 
-  enrollButton.addEventListener('click', async () => {
-    if (!options.desktop || active || enrollButton.disabled) return;
+  async function startEnrollment(quick = false) {
+    if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
+    if (!quick && enrollButton.disabled) return;
     const input = clientForAction(progress);
-    if (!input || observed?.provider !== input.selected || observed.status !== 'empty' || !approve.checked) return;
+    if (!input || observed?.provider !== input.selected || observed.status !== 'empty' || (!quick && !approve.checked))
+      return;
     const { selected, clientId } = input;
     let operation;
     try {
@@ -447,10 +515,63 @@ export function bindCloudRegistrationCheck(options) {
       if (active === session) {
         active = null;
         setBusy();
-        if (inspectAfter && panel.open) void inspect();
+        if (inspectAfter && panel.open) await inspect();
       }
     }
+  }
+  enrollButton.addEventListener('click', () => void startEnrollment());
+  simpleCancel?.addEventListener('click', stop);
+  simple?.addEventListener('click', async () => {
+    if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
+    await inspect();
+    if (observed?.provider !== selectedProvider() || observed.status !== 'empty') return;
+    await startEnrollment(true);
   });
+  configFile?.addEventListener('change', async () => {
+    const file = configFile.files?.[0];
+    configFile.value = '';
+    if (!file || !options.desktop || active || resetStarted) return;
+    if (file.size > 64 * 1024 || !file.size) {
+      if (configStatus) configStatus.textContent = 'Выберите небольшой JSON-файл клиента Google Desktop (до 64 КБ).';
+      return;
+    }
+    let operation;
+    try {
+      operation = beginCloudCredentialOperation();
+    } catch {
+      return;
+    }
+    const session = {
+      controller: new AbortController(),
+      mode: /** @type {'config'} */ ('config'),
+      selected: selectedProvider(),
+      installing: false
+    };
+    active = session;
+    setBusy();
+    try {
+      const native = await loadNative();
+      if (resetStarted) return;
+      // File text exists only for this IPC call: never stored in app state or logs.
+      const reply = await native.invoke('cloud_google_client_import', { json: await file.text() });
+      if (resetStarted) return;
+      if (reply?.status !== 'ready' || !validOAuthClientId('google', reply.clientId)) throw new Error();
+      client.value = reply.clientId;
+      if (configStatus) configStatus.textContent = 'Google настроен. Теперь нажмите «Войти и сохранить доступ».';
+    } catch {
+      if (configStatus)
+        configStatus.textContent =
+          'Импорт не подтверждён. Нужен JSON клиента Desktop, не Web. При сохранённой привязке нельзя менять Client ID; старые данные не удаляйте. Повторно проверьте настройки перед входом.';
+    } finally {
+      operation.finish(false);
+      if (active === session) active = null;
+      setBusy();
+    }
+  });
+  for (const event of ['tf-cloud-root-confirmed', 'tf-cloud-binding-changed'])
+    doc.defaultView?.addEventListener(event, () => {
+      if (panel.open) void inspect();
+    });
 
   forgetButton.addEventListener('click', async () => {
     if (!options.desktop || active || forgetButton.disabled || !forgetApprove.checked) return;

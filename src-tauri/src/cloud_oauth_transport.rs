@@ -125,7 +125,7 @@ fn base_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')
 }
 
-fn valid_client_id(provider: Provider, value: &str) -> bool {
+pub(crate) fn valid_client_id(provider: Provider, value: &str) -> bool {
     match provider {
         Provider::Google => value
             .strip_suffix(".apps.googleusercontent.com")

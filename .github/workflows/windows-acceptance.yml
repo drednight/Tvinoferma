@@ -10,6 +10,8 @@ on:
       - 'js/modules/cloudSync/providers/**'
       - 'js/modules/cloudSync/ui/registrationCheckPanel.js'
       - 'src-tauri/src/cloud_oauth*.rs'
+      - 'src-tauri/src/cloud_google_client.rs'
+      - 'src-tauri/src/commands/cloud_google_client.rs'
       - 'src-tauri/src/commands/cloud_oauth*.rs'
 
 permissions:
@@ -33,6 +35,10 @@ jobs:
           workspaces: src-tauri -> target
       - run: npm ci
       - name: Build executable without installer or updater signature
+        env:
+          TVINOFERMA_GOOGLE_CLIENT_ID: ${{ vars.TVINOFERMA_GOOGLE_CLIENT_ID }}
+          TVINOFERMA_GOOGLE_CLIENT_SECRET: ${{ secrets.TVINOFERMA_GOOGLE_CLIENT_SECRET }}
+          VITE_YANDEX_CLIENT_ID: ${{ vars.TVINOFERMA_YANDEX_CLIENT_ID }}
         run: npm run tauri -- build --no-bundle
       - name: Prepare test executable, source identity and checksum
         shell: pwsh
@@ -55,11 +61,14 @@ jobs:
           одновременно с этой сборкой.
 
           Для диагностики OAuth: Настройки → Синхронизация → Синхронизация между ПК.
-          Введите публичный Client ID и нажмите «Проверить регистрацию».
+          Нажмите «Войти и сохранить доступ», затем сверьте аккаунт.
+          Если приложение ещё не настроено владельцем: Google — импорт Desktop JSON
+          в разовой настройке; Яндекс — публичный Client ID в той же настройке.
           При ошибке сообщите только код вроде token/invalid_client или token/timeout.
           Код причины диагностический: успешный браузерный callback не доказывает вход.
           Не передавайте токены, Client Secret, URL callback или код авторизации в чат.
-          Эта сборка НЕ добавляет передачу client_secret и НЕ доказывает успешный вход.
+          Google client_secret передаётся нативно из защищённой настройки для входа и refresh.
+          JSON не передавайте в чат. Реальный вход и обмен файлами ещё требуют приёмки.
 
           Тесты с имитацией провайдеров не заменяют реальную приёмку Google/Яндекс.
           Контрольный план: docs/CLOUD-SYNC-ACCEPTANCE.md в указанном исходном коде.

@@ -467,13 +467,29 @@
               <p class="muted">Файл на Google/Яндекс Диске · проверка и ручная замена</p>
             </summary>
             <div class="cloud-registration-body">
-              <p class="cloud-registration-warning"><strong>Обмен файлами — экспериментальный режим.</strong> Доступны проверка полного снимка, просмотр различий, подтверждённая замена местных данных и ручная отправка. Отсутствующие записи удаляются только при явно подтверждённой полной замене. Прежние облачные версии сохраняются. Несколько одновременных облачных версий автоматически не объединяются. Итоговый полный файл выбирается явно. Настоящие диски и два Windows-ПК ещё требуют приёмки.</p>
-              <p>Разовая проверка регистрации не сохраняет токены. Авторизация открывается в системном браузере. Сервис может сохранить выданное разрешение даже после отмены; при необходимости доступ можно отозвать в настройках аккаунта диска. Такой отзыв может отключить и другие устройства этой регистрации. Работа с реальными сервисами и настольной сборкой ещё не подтверждена.</p>
-              <form id="cloud-registration-form" autocomplete="off" novalidate>
-                <div class="cloud-registration-fields">
+
+              <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
+              <h4>1. Подключите диск</h4>
+              <p>Войдите в браузере и подтвердите аккаунт. Доступ сохранится только на этом ПК; файлы пока не отправляются.</p>
                   <label for="cloud-registration-provider">Облачный диск
                     <select class="input" id="cloud-registration-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select>
                   </label>
+              <div class="cloud-registration-actions">
+                <button type="button" class="btn" id="cloud-connection-simple">Войти и сохранить доступ</button>
+                <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
+              </div>
+              <p id="cloud-google-config-status" class="muted" role="status"></p>
+              <details id="cloud-registration-advanced">
+                <summary>Разовая настройка приложения и диагностика</summary>
+              <p class="cloud-registration-warning"><strong>Обмен файлами — экспериментальный режим.</strong> Доступны проверка полного снимка, просмотр различий, подтверждённая замена местных данных и ручная отправка. Отсутствующие записи удаляются только при явно подтверждённой полной замене. Прежние облачные версии сохраняются. Несколько одновременных облачных версий автоматически не объединяются. Итоговый полный файл выбирается явно. Настоящие диски и два Windows-ПК ещё требуют приёмки.</p>
+                <p>Разовая проверка не сохраняет токены. Сервис может сохранить выданное разрешение даже после отмены. Отзыв разрешения в аккаунте может отключить другие устройства.</p>
+                <p>Обычным пользователям не нужна регистрация своего приложения, если сборка уже настроена владельцем. Если нет — владелец один раз регистрирует OAuth-приложение. Для Google скачайте JSON клиента типа Desktop и выберите его здесь; пароль или секрет в Client ID не вставляйте.</p>
+                <label id="cloud-google-import-label">Google: импортировать Desktop JSON
+                  <input id="cloud-google-import" type="file" accept=".json,application/json" />
+                </label>
+              <form id="cloud-registration-form" autocomplete="off" novalidate>
+                <div class="cloud-registration-fields">
+
                   <label for="cloud-registration-client">ID зарегистрированного приложения
                     <input class="input" id="cloud-registration-client" type="text" maxlength="240" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="cloud-registration-client-hint" />
                   </label>
@@ -491,10 +507,11 @@
                 <span id="cloud-registration-account-label"></span><bdi dir="ltr" id="cloud-registration-account-value"></bdi>
                 <small>Сверьте с выбранным аккаунтом в браузере. Это только проверка, привязка не сохранена.</small>
               </div>
+              </details>
               <section class="cloud-connection" aria-labelledby="cloud-connection-title">
-                <h4 id="cloud-connection-title">Сохранить доступ на этом ПК · экспериментально</h4>
-                <p>После входа и сверки аккаунта запись доступа и Client ID сохраняются в диспетчере учётных данных Windows. Файлы не ищутся и не изменяются; это ещё не включит синхронизацию. Существующие облачные данные могут быть даже тогда, когда локальной записи нет. Настоящие сервисы и сборка ещё не испытаны.</p>
+                <h4 id="cloud-connection-title">Состояние подключения</h4>
                 <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
+                <details><summary>Проверка и ручное управление доступом</summary>
                 <div class="cloud-registration-actions">
                   <button type="button" class="btn ghost" id="cloud-connection-inspect">Проверить локальную запись</button>
                 </div>
@@ -503,20 +520,21 @@
                   <button type="button" class="btn" id="cloud-connection-start">Сохранить доступ</button>
                   <button type="button" class="btn ghost" id="cloud-connection-cancel" hidden>Отменить вход</button>
                 </div>
+                </details>
                 <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite">Ожидание действия.</p>
-                <div class="cloud-connection-disconnect">
+                <details class="cloud-connection-disconnect"><summary>Удаление локального доступа</summary>
                   <h5>Забыть доступ на этом ПК</h5>
                   <p>Это удаляет только локальную запись доступа, но не облачные файлы, ключи или разрешение у сервиса. При наличии привязки набора или незавершённой операции удаление заблокировано; не стирайте такие записи вручную.</p>
                   <label class="cloud-connection-ack"><input type="checkbox" id="cloud-connection-forget-approve" /> <span>Я хочу удалить сохранённый доступ на этом ПК и понимаю, что разрешение у сервиса останется.</span></label>
                   <button type="button" class="btn ghost" id="cloud-connection-forget">Забыть локальный доступ</button>
-                </div>
+                </details>
               </section>
               <section class="cloud-setup" aria-labelledby="cloud-setup-title">
-                <h4 id="cloud-setup-title">Первый снимок и восстановление · экспериментально</h4>
-                <p>Сначала сохраните доступ выше и подготовьте локальные идентификаторы кнопкой в блоке сравнения. При подготовке создаётся копия state, но не копия хранилища паролей Windows. Существующее облако автоматически не ищется и не удаляется; при наличии старого набора сначала воспользуйтесь восстановлением.</p>
+                <h4 id="cloud-setup-title">2. Выберите, что подключить</h4>
+                <p>Сначала войдите в аккаунт выше. Если на другом ПК уже настроен этот набор — подключите существующий, не создавайте новый. При подготовке нового набора данные сохраняются и ID подготавливаются автоматически с резервной копией. Облако не удаляется.</p>
                 <p class="cloud-registration-warning">Здесь отправляется первый снимок. Последующие сохранения отправляются в отдельном блоке ниже; объединение расходящихся облачных ветвей пока не работает. Google использует корень «Моего диска», Яндекс — папку приложения. Настоящие аккаунты ещё не проверены. Произвольные заметки могут содержать секреты, даже если поля паролей и контактов исключены.</p>
-                <details class="cloud-setup-fold">
-                  <summary>Создать новый независимый набор на этом ПК</summary>
+                <details class="cloud-setup-fold" id="cloud-setup-new">
+                  <summary>Новый набор — это мой первый ПК</summary>
                   <div class="cloud-setup-fields">
                     <label>Основной секрет
                       <select class="input" id="cloud-setup-main-kind"><option value="password">Мой пароль шифрования</option><option value="custom">Мой основной ключ</option></select>
@@ -553,8 +571,8 @@
                     <div class="cloud-registration-actions"><button type="button" class="btn" id="cloud-setup-confirm-button">Подтвердить и сохранить на ПК</button><button type="button" class="btn ghost" id="cloud-setup-cancel">Отменить</button></div>
                   </div>
                 </details>
-                <details class="cloud-setup-fold">
-                  <summary>Восстановить набор с другого ПК</summary>
+                <details class="cloud-setup-fold" id="cloud-setup-existing">
+                  <summary>Существующий набор — у меня уже есть другой ПК</summary>
                   <p>Получите код сверки с уже настроенного ПК по отдельному доверенному каналу и сохраните нужный пароль или запасной ключ. Код не является паролем. Сначала покажем различия без изменения данных.</p>
                   <label>Код сверки
                     <textarea class="input" id="cloud-recovery-code" rows="3" maxlength="3000" spellcheck="false" autocomplete="off"></textarea>

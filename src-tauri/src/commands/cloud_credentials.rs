@@ -174,7 +174,8 @@ pub(super) async fn claim_google_refresh(
     pending: String,
     client_id: String,
     refresh_token: String,
-) -> Result<(), String> {
+    form: String,
+) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         execute_google_refresh_claim(
             &app,
@@ -183,6 +184,7 @@ pub(super) async fn claim_google_refresh(
             &pending,
             &client_id,
             &refresh_token,
+            &form,
         )
     })
     .await
@@ -202,7 +204,8 @@ fn execute_google_refresh_claim(
     _pending: &str,
     _client_id: &str,
     _refresh_token: &str,
-) -> Result<(), String> {
+    _form: &str,
+) -> Result<String, String> {
     Err(ERROR.into())
 }
 
@@ -378,11 +381,18 @@ mod windows_backend {
         pending: &str,
         client_id: &str,
         refresh_token: &str,
-    ) -> Result<(), String> {
+        form: &str,
+    ) -> Result<String, String> {
         let _state_guard = super::super::state::lock_state_io().map_err(|_| ERROR.to_owned())?;
         let app_dir = app.path().app_data_dir().map_err(|_| ERROR.to_owned())?;
         let lock = CredentialLock::try_acquire(&app_dir).map_err(|_| ERROR.to_owned())?;
         let mut vault = NativeVault;
+        // Preflight and refresh claim share the config-import lock. Once claimed,
+        // pending forbids replacing configuration until the attempt is settled.
+        let body = match crate::cloud_google_client::read(&mut vault)? {
+            Some(client) => client.with_form(form)?,
+            None => form.to_owned(),
+        };
         let claimed = cloud_credential_binding::claim_google_refresh(
             &mut vault,
             slot_id,
@@ -394,7 +404,7 @@ mod windows_backend {
         .map_err(|_| ERROR.to_owned())?;
         lock.verify().map_err(|_| ERROR.to_owned())?;
         if claimed {
-            Ok(())
+            Ok(body)
         } else {
             Err(ERROR.into())
         }
@@ -405,7 +415,13 @@ mod windows_backend {
     pub(super) fn cleanup_for_reset(app_dir: &Path) -> Result<(), String> {
         let lock = CredentialLock::try_acquire(app_dir).map_err(|_| ERROR.to_owned())?;
         let mut vault = NativeVault;
-        let mut failed = false;
+        let mut failed = vault.remove(crate::cloud_google_client::KEY).is_err();
+        if vault
+            .read(crate::cloud_google_client::KEY)
+            .map_or(true, |value| value.is_some())
+        {
+            failed = true;
+        }
         for provider in [Provider::Google, Provider::Yandex] {
             if crate::cloud_dataset_binding::forget(&mut vault, provider).is_err() {
                 failed = true;
@@ -588,6 +604,18 @@ mod windows_backend {
                 ),
                 Ok(Outcome::Blocked)
             );
+            let config = serde_json::json!({"installed":{"client_id":client,"client_secret":"synthetic-desktop-secret"}}).to_string();
+            assert_eq!(
+                crate::cloud_google_client::install(&mut first, &config).unwrap(),
+                client
+            );
+            let form = format!("grant_type=refresh_token&client_id={client}&refresh_token={token}");
+            assert!(crate::cloud_google_client::read(&mut second)
+                .unwrap()
+                .unwrap()
+                .with_form(&form)
+                .unwrap()
+                .contains("client_secret=synthetic-desktop-secret"));
             let pin = second
                 .read("cloud-account-binding-v1:google:pin")
                 .unwrap()
@@ -633,6 +661,11 @@ mod windows_backend {
                 cloud_credential_binding::read(&mut first, Provider::Google),
                 Ok(Pair::Empty)
             ));
+            first.remove(crate::cloud_google_client::KEY).unwrap();
+            assert!(second
+                .read(crate::cloud_google_client::KEY)
+                .unwrap()
+                .is_none());
             let yandex = format!("{{\"format\":\"tvinoferma-yandex-oauth-access\",\"version\":1,\"slotId\":\"{SLOT}\",\"clientId\":\"0123456789abcdef\",\"accountKey\":\"synthetic-account\",\"revision\":\"{REV1}\",\"accessToken\":\"synthetic-token\",\"expiresAt\":1800000000000}}");
             assert_eq!(
                 crate::cloud_dataset_binding::install_credential_if_unbound(

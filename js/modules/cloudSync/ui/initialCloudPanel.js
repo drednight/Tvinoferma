@@ -1,4 +1,6 @@
 // @ts-check
+import { saveNow } from '../../../core/storage.js';
+import { stageSyncIdentities } from '../commitSyncIdentities.js';
 // Экспериментальный интерфейс первого снимка и восстановления. Не включает
 // автоматическую синхронизацию и не выдаёт неподтверждённый результат за успех.
 // Секреты не записываются в журнал и не выводятся в текст статуса.
@@ -84,7 +86,7 @@ function record(provider, action, status) {
 
 /**
  * @param {{doc?:Document,desktop:boolean,loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>}>,
- * makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
+ * prepareData?:()=>Promise<boolean>,makeSetup?:typeof createInitialCloudSetup,makeRecovery?:typeof createCloudRecovery,send?:typeof sendInitialCloudRoot,
  * readCode?:typeof readLocalCloudPairingCode,confirm?:(message:string)=>boolean|Promise<boolean>,
  * reviewPanel?:{showExternalReview:(value:any,readOnly?:boolean)=>boolean,hasPreviewSelection:()=>boolean,clearExternalReview?:()=>void}}} options
  */
@@ -257,6 +259,16 @@ export function bindInitialCloudPanel(options) {
     note('Восстановление отменено. Локальные данные и облако не изменены.');
     update();
   });
+  for (const [currentId, otherId] of [
+    ['cloud-setup-new', 'cloud-setup-existing'],
+    ['cloud-setup-existing', 'cloud-setup-new']
+  ]) {
+    const current = /** @type {HTMLDetailsElement|null} */ (doc.getElementById(currentId));
+    const other = /** @type {HTMLDetailsElement|null} */ (doc.getElementById(otherId));
+    current?.addEventListener('toggle', () => {
+      if (current.open && other) other.open = false;
+    });
+  }
   el.create.addEventListener(
     'click',
     () =>
@@ -279,6 +291,22 @@ export function bindInitialCloudPanel(options) {
         el.custom.value = '';
         note('Создаём локальную копию и готовим ключи. Это может занять несколько секунд…');
         try {
+          const preparedData = await (
+            options.prepareData ||
+            (async () => {
+              await saveNow();
+              const staged = stageSyncIdentities();
+              if (staged.status === 'already_assigned') return true;
+              return (
+                staged.status === 'prepared' &&
+                (await staged.operation.commit({ confirmed: true })).status === 'applied'
+              );
+            })
+          )();
+          if (!preparedData || generation !== thisGeneration || selectedProvider() !== chosen) {
+            note('Не удалось подтвердить сохранение данных и ID. Облако не изменялось; проверьте локальное состояние.');
+            return;
+          }
           const native = await loadNative();
           const setup = makeSetup({ provider: chosen, invoke: native.invoke, settingsSelections: selections() });
           const prepared = await setup.begin({ primary, backup, newDatasetConfirmed: true });
@@ -334,6 +362,7 @@ export function bindInitialCloudPanel(options) {
             return;
           }
           clearAttempt();
+          if (result.status === 'prepared') doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-binding-changed'));
           if (result.status === 'prepared' && generation === thisGeneration && selectedProvider() === chosen) {
             showCode(result.pairingCode);
             note(
@@ -372,6 +401,8 @@ export function bindInitialCloudPanel(options) {
             settingsSelections: selections()
           }).resume({ resumeConfirmed: true, backupKeySaved: true });
           record(chosen, 'prepare', outcome.status);
+          if (outcome.status === 'prepared')
+            doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-binding-changed'));
           if (outcome.status === 'prepared' && generation === thisGeneration && selectedProvider() === chosen) {
             showCode(outcome.pairingCode);
             note(`Локальная настройка продолжена. Копия: ${outcome.backup}. На диск ничего не отправлено.`);
@@ -531,6 +562,8 @@ export function bindInitialCloudPanel(options) {
           const outcome = await current.connect({ confirmed: true });
           record(chosen, 'recover', outcome.status);
           clearAttempt();
+          if (outcome.status === 'connected')
+            doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-binding-changed'));
           if (outcome.status === 'connected' && generation === thisGeneration && selectedProvider() === chosen) {
             options.reviewPanel?.showExternalReview(outcome.review, false);
             note(

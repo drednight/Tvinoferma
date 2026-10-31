@@ -497,3 +497,89 @@ describe('безопасная причина OAuth в интерфейсе', ()
     expect(document.body.textContent).not.toContain('PRIVATE_TOKEN');
   });
 });
+
+describe('обычный вход без диагностического квеста', () => {
+  it('одна кнопка сама проверяет локальную запись и запускает сохранение, без разового теста и checkbox', async () => {
+    const s = bind();
+    byId('client').value = clientId;
+    connection('simple').click();
+    connection('simple').click();
+    await vi.waitFor(() => expect(s.enroll).toHaveBeenCalledOnce());
+    expect(s.readBinding).toHaveBeenCalledOnce();
+    expect(s.check).not.toHaveBeenCalled();
+    expect(s.enroll.mock.calls[0][0]).toMatchObject({
+      firstConnectionConfirmed: true,
+      confirmAccount: s.confirmAccount
+    });
+    expect(document.getElementById('cloud-registration-advanced').open).toBe(false);
+  });
+  it.each(['pending', 'blocked'])('не запускает вход и не показывает новый набор при %s', async status => {
+    const s = bind({ readBinding: vi.fn(async () => ({ status })) });
+    byId('client').value = clientId;
+    connection('simple').click();
+    await vi.waitFor(() => expect(s.readBinding).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(connection('simple').disabled).toBe(false));
+    expect(s.enroll).not.toHaveBeenCalled();
+    expect(document.getElementById('cloud-setup-title').closest('section').hidden).toBe(true);
+    expect(document.getElementById('cloud-file-panel').hidden).toBe(true);
+  });
+  it('без Client ID открывает разовую настройку Яндекса, не браузер', async () => {
+    const s = bind();
+    connection('simple').click();
+    await vi.waitFor(() => expect(document.getElementById('cloud-registration-advanced').open).toBe(true));
+    expect(s.enroll).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(byId('client'));
+  });
+  it('подставляет готовый Google client из native, не запрашивая секрет в форме', async () => {
+    const google = '123-example.apps.googleusercontent.com';
+    const invoke = vi.fn(async () => ({ status: 'ready', clientId: google }));
+    const s = bind({ loadNative: async () => ({ invoke, openBrowser: vi.fn() }) });
+    byId('provider').value = 'google';
+    byId('provider').dispatchEvent(new Event('change'));
+    connection('simple').click();
+    await vi.waitFor(() => expect(s.enroll).toHaveBeenCalledOnce());
+    expect(s.enroll.mock.calls[0][0].clientId).toBe(google);
+    expect(invoke).toHaveBeenCalledWith('cloud_google_client_read', {});
+    expect(document.querySelector('[name="client_secret"]')).toBeNull();
+  });
+  it('без Google JSON не пытается обменять код без секрета, открывает импорт', async () => {
+    const s = bind({
+      loadNative: async () => ({ invoke: vi.fn(async () => ({ status: 'empty' })), openBrowser: vi.fn() })
+    });
+    byId('provider').value = 'google';
+    byId('provider').dispatchEvent(new Event('change'));
+    connection('simple').click();
+    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Desktop JSON'));
+    expect(s.enroll).not.toHaveBeenCalled();
+    expect(document.getElementById('cloud-registration-advanced').open).toBe(true);
+  });
+  it('импорт передаёт JSON только native, очищает выбор файла и не сохраняет секрет в Web Storage', async () => {
+    const google = '123-example.apps.googleusercontent.com';
+    const invoke = vi.fn(async () => ({ status: 'ready', clientId: google }));
+    bind({ loadNative: async () => ({ invoke, openBrowser: vi.fn() }) });
+    byId('provider').value = 'google';
+    byId('provider').dispatchEvent(new Event('change'));
+    const storage = vi.spyOn(Storage.prototype, 'setItem');
+    const input = document.getElementById('cloud-google-import');
+    const json = JSON.stringify({ installed: { client_id: google, client_secret: 'FAKE_DESKTOP_CONFIG_SECRET' } });
+    Object.defineProperty(input, 'files', {
+      value: [{ size: json.length, text: async () => json }],
+      configurable: true
+    });
+    input.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('cloud_google_client_import', { json }));
+    await vi.waitFor(() => expect(byId('client').value).toBe(google));
+    expect(input.value).toBe('');
+    expect(storage).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain('FAKE_DESKTOP_CONFIG_SECRET');
+  });
+  it('показывает файловый обмен только после локальной привязки набора, не после разовой проверки', async () => {
+    const s = bind({ readBinding: vi.fn(async () => ready()), readDataset: vi.fn(async () => 'ready') });
+    connection('simple').click();
+    await vi.waitFor(() => expect(document.getElementById('cloud-file-panel').hidden).toBe(false));
+    expect(connection('simple').hidden).toBe(true);
+    expect(s.enroll).not.toHaveBeenCalled();
+    expect(document.getElementById('cloud-setup-new').hidden).toBe(true);
+    expect(byId('client').value).toBe(clientId);
+  });
+});

@@ -92,6 +92,7 @@ function setup(extra = {}) {
   const invoke = vi.fn();
   bindInitialCloudPanel({
     desktop: extra.desktop !== false,
+    prepareData: vi.fn(async () => true),
     loadNative: async () => ({ invoke }),
     makeSetup,
     makeRecovery,
