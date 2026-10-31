@@ -4984,53 +4984,77 @@ describe.each(['google', 'yandex'])('%s: обмен полным файлом в
     expect((await x.checkSnapshotFile(x.opts)).status).toBe('multiple_files');
     expect(f.cloud.session.upload).not.toHaveBeenCalled();
   }, 30000);
-  it('восстанавливает новый полный файл на втором fake ПК без прежнего объединения', async () => {
-    const source = await publicationFixture(provider),
-      sx = await api(source);
-    const { pairingCode } = await source.readLocalCloudPairingCode({
-      provider,
-      invoke: source.fake.invoke,
-      cryptoSource: webcrypto
-    });
-    source.state.characters[0].notes = 'СНИМОК С ПЕРВОГО ПК';
-    source.state.plannerEntries = [];
-    await source.storage.saveNow();
-    const view = await sx.checkSnapshotFile(sx.opts);
-    expect((await sx.uploadSnapshotFile({ ...sx.opts, review: view, confirmed: true })).status).toBe('sent_verified');
-    const target = await fixture();
-    target.state.characters = [];
-    target.state.plannerEntries = [];
-    await target.storage.saveNow();
-    const recovery = target.createCloudRecovery({
-      provider,
-      invoke: target.fake.invoke,
-      cryptoSource: webcrypto,
-      openSession: source.cloud.openSession
-    });
-    const attempt = await recovery.begin({
-      pairingCode,
-      independentPinConfirmed: true,
-      role: 'main',
-      secret: mainSecret
-    });
-    expect(attempt.status).toBe('ready_for_confirmation');
-    expect((await attempt.connect({ confirmed: true })).status).toBe('connected');
-    const exchange = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
-      opts = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto, openSession: source.cloud.openSession };
-    const incoming = await exchange.checkSnapshotFile(opts);
-    expect(incoming.status).toBe('ready');
-    expect((await exchange.replaceFromSnapshotFile({ ...opts, review: incoming, confirmed: true })).status).toBe(
-      'applied'
-    );
-    expect(target.state.characters[0].notes).toBe('СНИМОК С ПЕРВОГО ПК');
-    expect(target.state.characters[0].contacts.password).not.toBe('PRIVATE_PASSWORD');
-    expect(await exchange.checkSnapshotFile(opts)).toMatchObject({
-      status: 'ready',
-      matches: true,
-      localChanged: false,
-      remoteChanged: false
-    });
-  }, 30000);
+  it.each([false, true])(
+    'восстанавливает новый полный файл на втором fake ПК без прежнего объединения (выбор конкурирующих: %s)',
+    async withChoice => {
+      const source = await publicationFixture(provider),
+        sx = await api(source);
+      const { pairingCode } = await source.readLocalCloudPairingCode({
+        provider,
+        invoke: source.fake.invoke,
+        cryptoSource: webcrypto
+      });
+      source.state.characters[0].notes = 'СНИМОК С ПЕРВОГО ПК';
+      source.state.plannerEntries = [];
+      await source.storage.saveNow();
+      let view;
+      if (withChoice) {
+        const root = (await inspectMergeQueue(source, provider)).confirmedPin;
+        await mergeIncoming(source, provider, root, s => {
+          s.sections.characters.records[0].fields.level = 10;
+        });
+        await mergeIncoming(source, provider, root, s => {
+          s.sections.characters.records[0].fields.level = 20;
+        });
+        const variants = await sx.checkSnapshotFile(sx.opts);
+        view = await sx.checkSnapshotFile({ ...sx.opts, choice: variants.choices[0] });
+      } else view = await sx.checkSnapshotFile(sx.opts);
+      expect(
+        (
+          await sx.uploadSnapshotFile({
+            ...sx.opts,
+            review: view,
+            confirmed: true,
+            ...(withChoice ? { resolutionConfirmed: true, overwriteConfirmed: true } : {})
+          })
+        ).status
+      ).toBe('sent_verified');
+      const target = await fixture();
+      target.state.characters = [];
+      target.state.plannerEntries = [];
+      await target.storage.saveNow();
+      const recovery = target.createCloudRecovery({
+        provider,
+        invoke: target.fake.invoke,
+        cryptoSource: webcrypto,
+        openSession: source.cloud.openSession
+      });
+      const attempt = await recovery.begin({
+        pairingCode,
+        independentPinConfirmed: true,
+        role: 'main',
+        secret: mainSecret
+      });
+      expect(attempt.status).toBe('ready_for_confirmation');
+      expect((await attempt.connect({ confirmed: true })).status).toBe('connected');
+      const exchange = await import('../js/modules/cloudSync/snapshotFileExchange.js'),
+        opts = { provider, invoke: target.fake.invoke, cryptoSource: webcrypto, openSession: source.cloud.openSession };
+      const incoming = await exchange.checkSnapshotFile(opts);
+      expect(incoming.status).toBe('ready');
+      expect((await exchange.replaceFromSnapshotFile({ ...opts, review: incoming, confirmed: true })).status).toBe(
+        'applied'
+      );
+      expect(target.state.characters[0].notes).toBe('СНИМОК С ПЕРВОГО ПК');
+      expect(target.state.characters[0].contacts.password).not.toBe('PRIVATE_PASSWORD');
+      expect(await exchange.checkSnapshotFile(opts)).toMatchObject({
+        status: 'ready',
+        matches: true,
+        localChanged: false,
+        remoteChanged: false
+      });
+    },
+    30000
+  );
   it('сохраняет ранее переданную приватную часть только с отдельным согласием', async () => {
     const f = await publicationFixture(provider),
       x = await api(f);
@@ -5083,5 +5107,250 @@ describe.each(['google', 'yandex'])('%s: обмен полным файлом в
     expect(f.state.settings.cloudSnapshotFiles[provider].pending.phase).toBe('prepared');
     expect((await x.resumeSnapshotFileUpload({ ...x.opts, confirmed: true })).status).toBe('sent_verified');
     expect(f.cloud.session.upload).toHaveBeenCalledTimes(2);
+  }, 30000);
+  it('отменяет подготовленный файл без сети с backup, затем отправляет актуальные данные отдельным файлом', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+    const first = await x.checkSnapshotFile(x.opts);
+    expect((await x.uploadSnapshotFile({ ...x.opts, review: first, confirmed: true })).status).toBe('upload_deferred');
+    const oldId = f.state.settings.cloudSnapshotFiles[provider].pending.pin.versionId;
+    f.state.characters[0].notes = 'ТЕКУЩИЕ ДАННЫЕ';
+    await f.storage.saveNow();
+    const before = localStorage.getItem(STORAGE_KEY),
+      calls = f.cloud.openSession.mock.calls.length;
+    const review = await x.inspectSnapshotFileUpload(x.opts);
+    expect(review.phase).toBe('prepared');
+    expect((await x.releaseSnapshotFileUpload({ ...x.opts, review, confirmed: true })).status).toBe(
+      'prepared_cancelled'
+    );
+    expect(f.cloud.openSession).toHaveBeenCalledTimes(calls);
+    expect(f.state.characters[0].notes).toBe('ТЕКУЩИЕ ДАННЫЕ');
+    expect(f.state.settings.cloudSnapshotFiles[provider].pending).toBeNull();
+    expect(Object.values(localStorage).includes(before)).toBe(true);
+    const current = await x.checkSnapshotFile(x.opts);
+    expect((await x.uploadSnapshotFile({ ...x.opts, review: current, confirmed: true })).status).toBe('sent_verified');
+    expect(f.cloud.versions.has(oldId)).toBe(false);
+    expect((await fixturePrivatePayload(f)).publicSnapshot.sections.characters.records[0].fields.notes).toBe(
+      'ТЕКУЩИЕ ДАННЫЕ'
+    );
+  }, 30000);
+  it('снимает неизвестное ожидание только с отдельным согласием; поздний файл разрешается явным выбором, без потери новой правки', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'unknown' });
+    const first = await x.checkSnapshotFile(x.opts);
+    expect((await x.uploadSnapshotFile({ ...x.opts, review: first, confirmed: true })).status).toBe(
+      'verification_pending'
+    );
+    const old = structuredClone(f.state.settings.cloudSnapshotFiles[provider].pending),
+      review = await x.inspectSnapshotFileUpload(x.opts);
+    expect((await x.releaseSnapshotFileUpload({ ...x.opts, review, confirmed: true })).status).toBe(
+      'unknown_acknowledgement_required'
+    );
+    expect(f.state.settings.cloudSnapshotFiles[provider].pending.phase).toBe('attempting');
+    expect(
+      (await x.releaseSnapshotFileUpload({ ...x.opts, review, confirmed: true, unknownOutcomeAcknowledged: true }))
+        .status
+    ).toBe('pending_released_uncertain');
+    expect(f.state.settings.cloudSnapshotFiles[provider].unsettled[0].pin).toEqual(old.pin);
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    vi.resetModules();
+    const freshState = await import('../js/core/state.js');
+    Object.assign(freshState.state, freshState.normalizeState(stored));
+    f.state = freshState.state;
+    f.storage = await import('../js/core/storage.js');
+    Object.assign(x, await import('../js/modules/cloudSync/snapshotFileExchange.js'));
+    f.state.characters[0].notes = 'НОВЕЙШАЯ ПРАВКА';
+    await f.storage.saveNow();
+    const fresh = await x.checkSnapshotFile(x.opts);
+    expect((await x.uploadSnapshotFile({ ...x.opts, review: fresh, confirmed: true })).status).toBe('sent_verified');
+    const accepted = f.state.settings.cloudSnapshotFiles[provider].acceptedPin;
+    f.cloud.versions.set(old.pin.versionId, old.envelope);
+    const variants = await x.checkSnapshotFile(x.opts);
+    expect(variants.status).toBe('multiple_files');
+    const chosen = await x.checkSnapshotFile({
+      ...x.opts,
+      choice: variants.choices.find(c => c.pin.versionId === accepted.versionId)
+    });
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review: chosen,
+          confirmed: true,
+          resolutionConfirmed: true,
+          useCloudFile: true
+        })
+      ).status
+    ).toBe('sent_verified');
+    expect(f.state.characters[0].notes).toBe('НОВЕЙШАЯ ПРАВКА');
+    expect(f.state.settings.cloudSnapshotFiles[provider].unsettled).toEqual([]);
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(3);
+    expect(await x.checkSnapshotFile(x.opts)).toMatchObject({
+      status: 'ready',
+      matches: true,
+      requiresResolution: false
+    });
+  }, 30000);
+  it('выбирает полный облачный файл для диска, не меняя местные данные и не смешивая поля конкурирующих файлов', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    const a = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 10;
+    });
+    const b = await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 20;
+    });
+    const variants = await x.checkSnapshotFile(x.opts);
+    expect(variants.choices).toHaveLength(2);
+    expect((await x.checkSnapshotFile({ ...x.opts, choice: structuredClone(variants.choices[0]) })).status).toBe(
+      'remote_changed'
+    );
+    const review = await x.checkSnapshotFile({
+      ...x.opts,
+      choice: variants.choices.find(c => c.pin.versionId === a.versionId)
+    });
+    expect(review.requiresResolution).toBe(true);
+    expect(
+      (await x.uploadSnapshotFile({ ...x.opts, review, confirmed: true, overwriteConfirmed: true, useCloudFile: true }))
+        .status
+    ).toBe('resolution_confirmation_required');
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          overwriteConfirmed: true,
+          resolutionConfirmed: true,
+          useCloudFile: true
+        })
+      ).status
+    ).toBe('sent_verified');
+    expect(f.state.characters[0].level).toBe(1);
+    expect(f.state.characters[0].contacts.password).toBe('PRIVATE_PASSWORD');
+    const payload = await fixturePrivatePayload(f);
+    expect(payload.version).toBe(6);
+    expect(payload.replacedHeads).toEqual([b]);
+    expect(payload.publicSnapshot.sections.characters.records[0].fields.level).toBe(10);
+    expect(f.cloud.versions.size).toBe(4);
+    const incoming = await x.checkSnapshotFile(x.opts);
+    expect(incoming.requiresResolution).toBe(false);
+    expect((await x.replaceFromSnapshotFile({ ...x.opts, review: incoming, confirmed: true })).status).toBe('applied');
+    expect(f.state.characters[0].level).toBe(10);
+  }, 30000);
+  it('при конкуренции позволяет выбрать текущий местный файл, не принимая значения выбранного облачного файла', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 10;
+    });
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 20;
+    });
+    f.state.characters[0].notes = 'МЕСТНЫЙ ПОБЕДИТЕЛЬ';
+    await f.storage.saveNow();
+    const variants = await x.checkSnapshotFile(x.opts),
+      review = await x.checkSnapshotFile({ ...x.opts, choice: variants.choices[0] });
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          overwriteConfirmed: true,
+          resolutionConfirmed: true
+        })
+      ).status
+    ).toBe('sent_verified');
+    const fields = (await fixturePrivatePayload(f)).publicSnapshot.sections.characters.records[0].fields;
+    expect(fields).toMatchObject({ level: 1, notes: 'МЕСТНЫЙ ПОБЕДИТЕЛЬ' });
+  }, 30000);
+  it('не применяет выбор, если список heads изменился после просмотра', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 10;
+    });
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 20;
+    });
+    const variants = await x.checkSnapshotFile(x.opts),
+      review = await x.checkSnapshotFile({ ...x.opts, choice: variants.choices[0] });
+    await mergeIncoming(f, provider, root, s => {
+      s.sections.characters.records[0].fields.level = 30;
+    });
+    expect(
+      (
+        await x.uploadSnapshotFile({
+          ...x.opts,
+          review,
+          confirmed: true,
+          overwriteConfirmed: true,
+          resolutionConfirmed: true,
+          useCloudFile: true
+        })
+      ).status
+    ).toBe('remote_changed');
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect((await x.checkSnapshotFile({ ...x.opts, choice: variants.choices[0] })).status).toBe('remote_changed');
+  }, 30000);
+  it('согласие на очистку pending не действует после местного изменения', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+    const first = await x.checkSnapshotFile(x.opts);
+    await x.uploadSnapshotFile({ ...x.opts, review: first, confirmed: true });
+    const review = await x.inspectSnapshotFileUpload(x.opts);
+    f.state.characters[0].notes = 'ПОСЛЕ СОГЛАСИЯ';
+    await f.storage.saveNow();
+    expect((await x.releaseSnapshotFileUpload({ ...x.opts, review, confirmed: true })).status).toBe(
+      'state_changed_or_unsaved'
+    );
+    expect(f.state.settings.cloudSnapshotFiles[provider].pending.phase).toBe('prepared');
+  }, 30000);
+  it('подтверждённая отправка с конкурентным файлом завершается без зависания, но не объявляет единственного победителя', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f),
+      root = (await inspectMergeQueue(f, provider)).confirmedPin;
+    const upload = f.cloud.session.upload.getMockImplementation();
+    f.cloud.session.upload.mockImplementationOnce(async args => {
+      const result = await upload(args);
+      await mergeIncoming(f, provider, root, s => {
+        s.sections.characters.records[0].fields.level = 30;
+      });
+      return result;
+    });
+    const first = await x.checkSnapshotFile(x.opts);
+    expect((await x.uploadSnapshotFile({ ...x.opts, review: first, confirmed: true })).status).toBe(
+      'sent_with_conflicts'
+    );
+    expect(f.state.settings.cloudSnapshotFiles[provider].pending).toBeNull();
+    expect((await x.checkSnapshotFile(x.opts)).status).toBe('multiple_files');
+  }, 30000);
+  it('ошибка backup не очищает подготовленный файл', async () => {
+    const f = await publicationFixture(provider),
+      x = await api(f);
+    f.cloud.session.upload.mockResolvedValueOnce({ status: 'not_sent' });
+    const first = await x.checkSnapshotFile(x.opts);
+    await x.uploadSnapshotFile({ ...x.opts, review: first, confirmed: true });
+    const before = structuredClone(f.state.settings.cloudSnapshotFiles[provider]),
+      review = await x.inspectSnapshotFileUpload(x.opts);
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('backup unavailable');
+    });
+    let result;
+    try {
+      result = await x.releaseSnapshotFileUpload({ ...x.opts, review, confirmed: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(result.status).not.toBe('prepared_cancelled');
+    expect(f.state.settings.cloudSnapshotFiles[provider]).toEqual(before);
+    expect(f.cloud.session.upload).toHaveBeenCalledTimes(1);
   }, 30000);
 });
