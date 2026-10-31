@@ -255,14 +255,21 @@ fn signed_link(value: &str, upload: bool) -> bool {
     };
     let allowed_host = if upload {
         host.strip_prefix("uploader")
-            .and_then(|suffix| suffix.strip_suffix(".dst.yandex.net"))
+            .and_then(|suffix| {
+                suffix
+                    .strip_suffix(".dst.yandex.net")
+                    .or_else(|| suffix.strip_suffix(".disk.yandex.net"))
+            })
             .is_some_and(|middle| {
                 middle
                     .bytes()
                     .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
             })
     } else {
-        host == "downloader.dst.yandex.ru"
+        matches!(
+            host,
+            "downloader.dst.yandex.ru" | "downloader.disk.yandex.ru"
+        )
     };
     let path = path_and_query.split('?').next().unwrap_or_default();
     let prefix = if upload { "upload-target/" } else { "disk/" };
@@ -598,6 +605,37 @@ mod tests {
 
     #[test]
     fn signed_links_restrict_authority_path_and_escapes() {
+        assert!(signed_link(
+            "https://uploader9x.disk.yandex.net/upload-target/FAKE?x=1%2F2",
+            true
+        ));
+        assert!(signed_link(
+            "https://downloader.disk.yandex.ru/disk/FAKE?x=1%2F2",
+            false
+        ));
+        for link in [
+            "https://uploader9x.disk.yandex.net.evil.test/upload-target/x",
+            "https://uploader9x.disk.yandex.net@evil.test/upload-target/x",
+            "https://uploader9x.disk.yandex.net:443/upload-target/x",
+            "https://uploader9x.disk.yandex.net:444/upload-target/x",
+            "https://uploader9x.disk.yandex.net/upload-target/%2e%2e/x",
+            "https://uploader9x.disk.yandex.net/upload-target/%2fx",
+            "https://uploader9x.disk.yandex.net/upload-target/x#secret",
+            "https://other.disk.yandex.net/upload-target/x",
+        ] {
+            assert!(!signed_link(link, true));
+        }
+        for link in [
+            "https://downloader.disk.yandex.ru.evil.test/disk/x",
+            "https://downloader.disk.yandex.ru@evil.test/disk/x",
+            "https://downloader.disk.yandex.ru:444/disk/x",
+            "https://downloader.disk.yandex.ru/disk/%2e%2e/x",
+            "https://downloader.disk.yandex.ru/other/x",
+            "https://uploader9x.disk.yandex.net/disk/x",
+        ] {
+            assert!(!signed_link(link, false));
+        }
+
         assert!(signed_link(
             "https://uploader3.dst.yandex.net/upload-target/?x=1%2F2",
             true

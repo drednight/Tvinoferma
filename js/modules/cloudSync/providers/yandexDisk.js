@@ -77,9 +77,12 @@ function checkedLink(link, method) {
     throw invalid();
   }
   const host = url.hostname;
-  // Только известные из документации хосты. Новые варианты должны быть подтверждены до выпуска.
+  // Only the two observed Yandex transfer host families, not *.yandex.*.
+  // Schema/host evidence is pinned in docs/CLOUD-SYNC-ACCEPTANCE.md.
   const official =
-    method === 'PUT' ? /^uploader[a-z0-9-]*\.dst\.yandex\.net$/.test(host) : host === 'downloader.dst.yandex.ru';
+    method === 'PUT'
+      ? /^uploader[a-z0-9-]*\.(?:dst|disk)\.yandex\.net$/.test(host)
+      : ['downloader.dst.yandex.ru', 'downloader.disk.yandex.ru'].includes(host);
   const expectedPath = method === 'PUT' ? '/upload-target/' : '/disk/';
   if (
     !official ||

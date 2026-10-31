@@ -112,12 +112,13 @@ function fakeCloud(provider) {
         const path = url.searchParams.get('path');
         if (files.has(path)) return json({ error: 'exists' }, 409);
         return json({
-          href: `https://uploader1.dst.yandex.net/upload-target/fake?path=${encodeURIComponent(path)}`,
+          href: `https://uploader9x.disk.yandex.net/upload-target/fake?path=${encodeURIComponent(path)}`,
           method: 'PUT',
-          templated: false
+          templated: false,
+          operation_id: 'FAKE_OPERATION_NOT_PERSISTED'
         });
       }
-      if (url.hostname === 'uploader1.dst.yandex.net' && init.method === 'PUT') {
+      if (url.hostname === 'uploader9x.disk.yandex.net' && init.method === 'PUT') {
         const path = url.searchParams.get('path');
         if (files.has(path)) return json({ error: 'exists' }, 409);
         const item = { body: init.body };
@@ -133,12 +134,12 @@ function fakeCloud(provider) {
         const path = url.searchParams.get('path');
         if (!files.has(path)) return json({ error: 'not found' }, 404);
         return json({
-          href: `https://downloader.dst.yandex.ru/disk/fake?path=${encodeURIComponent(path)}`,
+          href: `https://downloader.disk.yandex.ru/disk/fake?path=${encodeURIComponent(path)}`,
           method: 'GET',
           templated: false
         });
       }
-      if (url.hostname === 'downloader.dst.yandex.ru' && init.method === 'GET') {
+      if (url.hostname === 'downloader.disk.yandex.ru' && init.method === 'GET') {
         const path = url.searchParams.get('path');
         return files.has(path) ? content(files.get(path).body) : content('', 404);
       }

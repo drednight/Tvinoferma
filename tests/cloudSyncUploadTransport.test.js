@@ -370,3 +370,39 @@ describe('неизвестный исход, сроки и границы дов
     expect(secondFetch).not.toHaveBeenCalled();
   });
 });
+
+it.each(['dst', 'disk'])(
+  'принимает формат API с operation_id и uploader.%s, не передаёт ID операции или OAuth в PUT',
+  async domain => {
+    const apiLink = {
+      href: `https://uploader9x.${domain}.yandex.net:443/upload-target/FAKE_SIGNED_LINK`,
+      method: 'PUT',
+      templated: false,
+      operation_id: 'FAKE_OPERATION_ID'
+    };
+    const fetch = vi.fn().mockResolvedValueOnce(json(apiLink)).mockResolvedValueOnce(empty(201));
+    expect(await create('yandex', fetch).upload({ envelope })).toEqual({ status: 'accepted' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][0]).toBe(new URL(apiLink.href).toString());
+    expect(fetch.mock.calls[1][1].headers.Authorization).toBeUndefined();
+    expect(JSON.stringify(fetch.mock.calls[1])).not.toContain('FAKE_OPERATION_ID');
+  }
+);
+
+it.each([null, 123, '', 'x'.repeat(1025), 'line\nbreak', {}, []])(
+  'не разрешает неверный operation_id %# и не начинает PUT',
+  async operation_id => {
+    const fetch = vi.fn(async () => json({ ...link, operation_id }));
+    expect(await create('yandex', fetch).upload({ envelope })).toEqual({ status: 'not_sent' });
+    expect(fetch).toHaveBeenCalledOnce();
+  }
+);
+it('не разрешает дубликаты operation_id, включая escaped name', async () => {
+  const raw = JSON.stringify({ ...link, operation_id: 'FAKE_OPERATION' }).replace(
+    '"operation_id":"FAKE_OPERATION"',
+    '"operation_id":"FAKE_OPERATION","operation_\\u0069d":"DUPLICATE"'
+  );
+  const fetch = vi.fn(async () => json(raw));
+  expect(await create('yandex', fetch).upload({ envelope })).toEqual({ status: 'not_sent' });
+  expect(fetch).toHaveBeenCalledOnce();
+});

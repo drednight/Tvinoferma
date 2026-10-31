@@ -511,3 +511,40 @@ identity перед upload). Rust: добавлен сценарий обоих 
 5. На другом ПК восстановить по независимому коду и основному/запасному секрету,
    сравнить и применить явно. Проверить refresh Google, возврат к Яндексу,
    отсутствие автоматического opt-in контактов/паролей и запрет слепого retry.
+
+### Найденная несовместимость ответов Яндекса (не только диагностика)
+
+После реализации проверки этапов найден и воспроизведён дефект transport:
+`ResourceUploadLink` содержит допустимое строковое `operation_id`, а ссылки имеют
+хосты `uploader<suffix>.disk.yandex.net` / `downloader.disk.yandex.ru`. Прежняя схема
+отклоняла `operation_id` как неизвестное поле и допускала только семейство `dst`.
+До PUT получался `not_sent`, превращавшийся в пользовательский `setup/deferred`.
+При скачивании альтернативный хост мешал бы readback даже после успешной отправки.
+
+Основание — публичные записи API SDK, а не догадка/текущий пользовательский токен:
+- https://github.com/Smolget/yadisk/blob/50f27bf22be74a005426b044307e8733928de679/spec/vcr/disk/upload.yml
+  (ключи href/method/operation_id/templated; uploader9x.disk.yandex.net:443/upload-target/…).
+- https://github.com/Smolget/yadisk/blob/50f27bf22be74a005426b044307e8733928de679/spec/vcr/disk/download.yml
+  (downloader.disk.yandex.ru/disk/…).
+- https://github.com/ivknv/yadisk/blob/dec9f27eeb09ba4d2a7dbe7640bde6c7ee3f2434/src/yadisk/objects/_resources.py
+  (`ResourceUploadLinkObject`: operation_id — optional string).
+В репозиторий не копировались публичные записи, реальные signed URL или токены;
+в тестах только синтетические адреса/ID. Эти источники подтверждают известный
+формат, но НЕ доказывают фактический ответ текущего аккаунта пользователя.
+
+Исправлено: только два конкретных transfer-семейства (`dst` И `disk`) в JS и Rust,
+а не wildcard *.yandex.*. Допускается только известное optional operation_id:
+непустая печатная ASCII-строка до 1024, проверяется и отбрасывается до PUT.
+Неизвестные поля, дубликаты и escaped-дубликаты, неверный тип/длина продолжают
+блокировать запрос. OAuth всё так же отсутствует у uploader; downloader получает
+его только на двух точных хостах. HTTPS/path/redirect/порты/escape guards сохранены;
+стандартный :443 нормализуется JS-строителем до native IPC, нестандартный запрещён.
+
+Два regression сначала воспроизвели `not_sent` вместо `accepted`, затем прошли.
+173 целевых PASS / 5 файлов: реальные варианты схемы на синтетических значениях,
+upload/readback через fake native IPC, оба поколения хостов, запрещённые URL и
+operation_id, отсутствие OAuth/operation_id в PUT и неизвестные исходы.
+Native host/security tests добавлены, окончательные fmt/test/clippy — Windows CI.
+Это исправление реальной несовместимости реализации, но ещё не доказательство,
+что именно она была единственной причиной отказа пользователя. Живая приёмка
+первой отправки/сверки/refresh/обоих дисков на двух ПК остаётся обязательной.

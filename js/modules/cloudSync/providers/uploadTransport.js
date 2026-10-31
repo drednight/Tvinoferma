@@ -383,7 +383,19 @@ export function createCloudUploadTransport(options) {
             response.status === 409 ? undefined : cloudAccessHttpDiagnostic('upload_link', response.status)
           );
         }
-        const link = object(parseReply(await boundedText(response)), ['href', 'method', 'templated']);
+        // ResourceUploadLink may include operation_id. It is NOT a destination,
+        // status proof or retry instruction; validate and discard it before PUT.
+        const supplied = object(
+          parseReply(await boundedText(response)),
+          ['href', 'method', 'templated'],
+          ['operation_id']
+        );
+        if (
+          Object.hasOwn(supplied, 'operation_id') &&
+          (typeof supplied.operation_id !== 'string' || !/^[\x21-\x7e]{1,1024}$/.test(supplied.operation_id))
+        )
+          throw failed();
+        const link = { href: supplied.href, method: supplied.method, templated: supplied.templated };
         requireLive();
         // Строитель вновь проверяет HTTPS, хост, путь и метод временной ссылки.
         const upload = yandexUploadContentRequest({ link, datasetId, versionId: envelope.versionId, envelope });
