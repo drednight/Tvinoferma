@@ -278,6 +278,9 @@ async function openSession(options, folderDiscoveryOnly) {
       ...(provider === 'google' ? { folderId: input.folderId } : {})
     });
     const session = Object.freeze({
+      checkAccount() {
+        return guard(() => base.checkAccount());
+      },
       generateFileId() {
         return guard(() => base.generateFileId());
       },

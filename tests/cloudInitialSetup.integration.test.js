@@ -73,9 +73,16 @@ function fakeNative(generateSyncId, fault = null) {
     if (command === 'cloud_outbox_install_initial') {
       const other = input.provider === 'google' ? 'yandex' : 'google';
       const storedKey = key && JSON.parse(key.record);
+      const link = input.guard.linkSource;
+      const sourceMatches =
+        link &&
+        pins[other] === link.binding &&
+        queues[other] &&
+        queues[other].revisionId === link.revisionId &&
+        queues[other].sha256 === link.sha256 &&
+        queues[other].datasetId === input.args.datasetId;
       if (
-        queues[other] ||
-        pins[other] ||
+        (link ? !sourceMatches : queues[other] || pins[other]) ||
         pins[input.provider] ||
         !storedKey ||
         input.guard.accountSlotId !== accounts[input.provider].slotId ||
@@ -251,6 +258,102 @@ function fakeRecoverySession(envelope) {
 beforeEach(() => vi.restoreAllMocks());
 
 describe.each(['google', 'yandex'])('%s: первичная локальная настройка через fake IPC', provider => {
+  it('подключает второй диск к тому же корню без замены первого и отправляет оба независимо', async () => {
+    const f = await fixture();
+    const pending = await begin(f.setup(provider));
+    const first = await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true });
+    expect(first.status).toBe('prepared');
+    const other = provider === 'google' ? 'yandex' : 'google';
+    const before = JSON.stringify({
+      key: f.fake.key(),
+      pin: f.fake.pin(provider),
+      queue: f.fake.queue(provider),
+      data: localStorage.getItem(STORAGE_KEY)
+    });
+    const { connectAdditionalCloud } = await import('../js/modules/cloudSync/connectAdditionalCloud.js');
+    const connected = await connectAdditionalCloud({
+      provider: other,
+      invoke: f.fake.invoke,
+      cryptoSource: webcrypto,
+      confirmed: true
+    });
+    expect(connected.status).toBe('additional_connected');
+    expect(connected.pairingCode).toBe(first.pairingCode);
+    expect(
+      JSON.stringify({
+        key: f.fake.key(),
+        pin: f.fake.pin(provider),
+        queue: f.fake.queue(provider),
+        data: localStorage.getItem(STORAGE_KEY)
+      })
+    ).toBe(before);
+    expect(localStorage.getItem(connected.backup)).toBe(f.oldRaw);
+    expect(f.fake.invoke.mock.calls.some(([command]) => command === 'cloud_disk_network')).toBe(false);
+    const cloud1 = fakeSendSession(f, provider);
+    const cloud2 = fakeSendSession(f, other);
+    expect(
+      await f.sendInitialCloudRoot({
+        provider: other,
+        invoke: f.fake.invoke,
+        confirmed: true,
+        cryptoSource: webcrypto,
+        openSession: cloud2.openSession
+      })
+    ).toEqual({ status: 'sent_verified' });
+    expect(
+      await f.sendInitialCloudRoot({
+        provider,
+        invoke: f.fake.invoke,
+        confirmed: true,
+        cryptoSource: webcrypto,
+        openSession: cloud1.openSession
+      })
+    ).toEqual({ status: 'sent_verified' });
+    expect(cloud1.stored().envelope).toEqual(cloud2.stored().envelope);
+    // Full-file updates keep TWO independent accepted bases/pending journals.
+    const disk1 = fakeHistorySession(f, provider, cloud1.stored().envelope);
+    const disk2 = fakeHistorySession(f, other, cloud2.stored().envelope);
+    const exchange = await import('../js/modules/cloudSync/snapshotFileExchange.js');
+    const opts = (p, cloud) => ({
+      provider: p,
+      invoke: f.fake.invoke,
+      cryptoSource: webcrypto,
+      openSession: cloud.openSession
+    });
+    f.state.characters[0].notes = 'ИЗМЕНЕНИЕ ДЛЯ ОБОИХ ДИСКОВ';
+    await f.storage.saveNow();
+    for (const [p, cloud] of [
+      [provider, disk1],
+      [other, disk2]
+    ]) {
+      const review = await exchange.checkSnapshotFile(opts(p, cloud));
+      expect(review).toMatchObject({ status: 'ready', localChanged: true });
+      expect((await exchange.uploadSnapshotFile({ ...opts(p, cloud), review, confirmed: true })).status).toBe(
+        'sent_verified'
+      );
+    }
+    expect(Object.keys(f.state.settings.cloudSnapshotFiles).sort()).toEqual(['google', 'yandex']);
+    for (const [p, cloud] of [
+      [provider, disk1],
+      [other, disk2]
+    ]) {
+      expect(await exchange.checkSnapshotFile(opts(p, cloud))).toMatchObject({
+        status: 'ready',
+        matches: true,
+        localChanged: false
+      });
+      expect(cloud.versions.size).toBe(2);
+    }
+
+    expect(
+      (await f.readLocalCloudPairingCode({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto })).pairingCode
+    ).toBe(first.pairingCode);
+    expect(
+      (await f.readLocalCloudPairingCode({ provider: other, invoke: f.fake.invoke, cryptoSource: webcrypto }))
+        .pairingCode
+    ).toBe(first.pairingCode);
+  });
+
   it('местная готовность читает реальную привязку/очередь без refresh, сети и записей', async () => {
     const f = await fixture();
     const pending = await begin(f.setup(provider));
@@ -461,6 +564,91 @@ describe.each(['google', 'yandex'])('%s: первичная локальная �
     expect(await f.sendInitialCloudRoot(opts)).toEqual({ status: 'already_confirmed' });
     expect(network.session.upload).toHaveBeenCalledTimes(1);
   }, 30_000);
+
+  it('проверка API перед отправкой не меняет очередь при отказе доступа', async () => {
+    const f = await fixture();
+    const pending = await begin(f.setup(provider));
+    await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true });
+    const network = fakeSendSession(f, provider);
+    network.session.checkAccount = vi.fn(async () => ({ status: 'identity_forbidden' }));
+    const queue = structuredClone(f.fake.queue(provider));
+    expect(
+      await f.sendInitialCloudRoot({
+        provider,
+        invoke: f.fake.invoke,
+        confirmed: true,
+        cryptoSource: webcrypto,
+        openSession: network.openSession
+      })
+    ).toEqual({ status: 'identity_forbidden' });
+    expect(f.fake.queue(provider)).toEqual(queue);
+    expect(network.session.upload).not.toHaveBeenCalled();
+    expect(network.session.verify).not.toHaveBeenCalled();
+    expect(network.session.dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each(['queue', 'pin'])(
+    'продолжает подключение второго диска после потери ответа %s, не заменяя первый',
+    async stage => {
+      const f = await fixture();
+      const pending = await begin(f.setup(provider));
+      const first = await pending.confirmBackup({ secret: pending.generatedBackupSecret, savedSeparately: true });
+      const other = provider === 'google' ? 'yandex' : 'google';
+      const before = JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) });
+      let lost = false;
+      const invoke = vi.fn(async (command, args) => {
+        const reply = await f.fake.invoke(command, args);
+        if (
+          !lost &&
+          args.provider === other &&
+          command === (stage === 'queue' ? 'cloud_outbox_install_initial' : 'cloud_dataset_binding_install')
+        ) {
+          lost = true;
+          throw new Error('PRIVATE lost IPC reply');
+        }
+        return reply;
+      });
+      const { connectAdditionalCloud } = await import('../js/modules/cloudSync/connectAdditionalCloud.js');
+      const opts = { provider: other, invoke, cryptoSource: webcrypto, confirmed: true };
+      expect((await connectAdditionalCloud(opts)).status).not.toBe('additional_connected');
+      expect(JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) })).toBe(
+        before
+      );
+      const queuedRoot = structuredClone(f.fake.queue(other));
+      expect((await connectAdditionalCloud(opts)).status).toBe('additional_connected');
+      expect(f.fake.queue(other)).toEqual(queuedRoot);
+      expect(
+        (await f.readLocalCloudPairingCode({ provider: other, invoke, cryptoSource: webcrypto })).pairingCode
+      ).toBe(first.pairingCode);
+      expect(JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) })).toBe(
+        before
+      );
+    }
+  );
+
+  it('после сокращения очереди первого диска читает только его закреплённый корень', async () => {
+    const f = await publicationFixture(provider);
+    const { openConnectedPublicationContext } = await import('../js/modules/cloudSync/connectedPublication.js');
+    const context = await openConnectedPublicationContext({ provider, invoke: f.fake.invoke, cryptoSource: webcrypto });
+    expect(await context.queue(f.cloud.session).compactConfirmed()).toEqual({ status: 'compacted', count: 1 });
+    const before = JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) });
+    const { connectAdditionalCloud } = await import('../js/modules/cloudSync/connectAdditionalCloud.js');
+    const other = provider === 'google' ? 'yandex' : 'google';
+    const reply = await connectAdditionalCloud({
+      provider: other,
+      invoke: f.fake.invoke,
+      cryptoSource: webcrypto,
+      confirmed: true,
+      openSession: f.cloud.openSession
+    });
+    expect(reply.status).toBe('additional_connected');
+    expect(f.cloud.session.read).toHaveBeenCalledExactlyOnceWith(f.initialEnvelope.versionId);
+    expect(f.cloud.session.upload).not.toHaveBeenCalled();
+    expect(f.cloud.session.dispose).toHaveBeenCalledOnce();
+    expect(JSON.stringify({ key: f.fake.key(), pin: f.fake.pin(provider), queue: f.fake.queue(provider) })).toBe(
+      before
+    );
+  });
 
   it('при изменении локального снимка не отправляет устаревшую первую версию', async () => {
     const f = await fixture();

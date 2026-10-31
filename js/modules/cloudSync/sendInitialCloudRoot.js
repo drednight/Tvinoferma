@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Ручная ОДНОКРАТНАЯ отправка уже подготовленного корня. Это не полная
 // синхронизация и не публикация последующих изменений. Потерянный результат
 // сверяется чтением, но запрос создания автоматически не повторяется.
@@ -162,6 +163,10 @@ export async function sendInitialCloudRoot(options) {
       !samePin(opened.rootPin, pin.binding.rootPin, 'versionId')
     )
       return result('binding_missing_or_blocked');
+    if (initial.phase !== 'attempting' && typeof session.checkAccount === 'function') {
+      const checked = await session.checkAccount();
+      if (checked.status !== 'access_verified') return result(checked.status);
+    }
     const outbox = queue(session);
     if (initial.phase !== 'attempting') {
       try {
@@ -180,7 +185,7 @@ export async function sendInitialCloudRoot(options) {
         loaded = null;
       }
       const sent = await outbox.sendNext();
-      if (sent.status !== 'needs_verification') return result(sent.status);
+      if (sent.status !== 'needs_verification') return result(cloudAccessDiagnostic(sent) || sent.status);
     }
     const verified = await outbox.verifyNext();
     if (verified.status === 'confirmed') return result(earlierSnapshot ? 'sent_earlier_verified' : 'sent_verified');

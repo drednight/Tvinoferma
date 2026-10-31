@@ -9,6 +9,8 @@ const KEY = 'tf_cloud_activity_v1';
 const MAX = 200;
 const ACTIONS = Object.freeze({
   prepare: 'Подготовка первого набора',
+  additional: 'Подключение того же набора ко второму диску',
+  access: 'Проверка аккаунта и чтения API диска',
   recover: 'Восстановление подключения',
   send: 'Отправка первого снимка',
   queue: 'Подготовка последующих изменений',

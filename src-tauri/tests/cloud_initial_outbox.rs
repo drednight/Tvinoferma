@@ -124,6 +124,7 @@ fn guard() -> Guard<'static> {
         key_slot: KEY_SLOT,
         bundle_id: BUNDLE,
         fingerprint: FP,
+        link_source: None,
     }
 }
 
@@ -289,5 +290,86 @@ fn missing_or_inconsistent_credential_and_key_block_both_providers() {
         );
         assert_eq!(vault.values, before);
         assert!(file.0.is_none());
+    }
+}
+
+#[test]
+fn explicit_shared_link_preserves_source_and_rejects_stale_or_foreign_guards() {
+    for target in [Target::Google, Target::Yandex] {
+        for fault in 0..5 {
+            let (source_provider, source_target, source_name, folder) = match target {
+                Target::Google => (Provider::Yandex, Target::Yandex, "yandex", "-"),
+                Target::Yandex => (Provider::Google, Target::Google, "google", "root"),
+            };
+            let mut vault = setup();
+            let mut source_file = Disk::default();
+            let mut target_file = Disk::default();
+            let raw = envelope();
+            assert_eq!(
+                cloud_outbox_store::install(
+                    &mut vault,
+                    &mut source_file,
+                    source_target,
+                    &record(&raw)
+                ),
+                Ok(Outcome::Installed)
+            );
+            let pin = format!("tf-dataset-binding-v1|{source_name}|ready|{ACCOUNT}|{KEY_SLOT}|{DATASET}|{BUNDLE}|{FP}|{QUEUE_REV}|{FP}|{folder}");
+            assert_eq!(
+                cloud_dataset_binding::install(&mut vault, source_provider, &pin),
+                Ok(VaultOutcome::Installed)
+            );
+            let receipt =
+                match cloud_outbox_store::inspect(&mut vault, &mut source_file, source_target)
+                    .unwrap()
+                {
+                    cloud_outbox_store::Inspection::Ready(value) => value,
+                    _ => panic!("source not ready"),
+                };
+            let original_values = vault.values.clone();
+            let original_file = source_file.0.clone();
+            let foreign_pin = pin.replace(QUEUE_REV, REV);
+            let stale_hash = "b".repeat(64);
+            let mut request = guard();
+            request.link_source = Some(cloud_initial_outbox::LinkSource {
+                binding: if fault == 1 { &foreign_pin } else { &pin },
+                revision_id: if fault == 2 {
+                    REV
+                } else {
+                    &receipt.revision_id
+                },
+                sha256: if fault == 3 {
+                    &stale_hash
+                } else {
+                    &receipt.sha256
+                },
+            });
+            if fault == 4 {
+                request.fingerprint = &stale_hash;
+            }
+            assert_eq!(
+                cloud_initial_outbox::install(
+                    &mut vault,
+                    &mut target_file,
+                    &mut source_file,
+                    target,
+                    &record(&raw),
+                    &request
+                ),
+                Ok(if fault == 0 {
+                    Outcome::Installed
+                } else {
+                    Outcome::Blocked
+                })
+            );
+            assert_eq!(source_file.0, original_file);
+            for (name, value) in &original_values {
+                assert_eq!(vault.values.get(name), Some(value));
+            }
+            if fault != 0 {
+                assert_eq!(vault.values, original_values);
+                assert!(target_file.0.is_none());
+            }
+        }
     }
 }

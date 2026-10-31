@@ -4,6 +4,9 @@
 // не является очередью или межпроцессной блокировкой и не вызывается приложением.
 // Связка не доказывает стабильность ID провайдера, права на все файлы или то,
 // что доверенный fetch соблюдает TLS, CORS, запрет cookies и перенаправлений.
+import { cloudAccessDiagnostic, cloudAccessHttpDiagnostic } from './cloudAccessDiagnostics.js';
+import { googleListRequest } from './googleDrive.js';
+import { yandexListRequest } from './yandexDisk.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { copyCloudEnvelope, validGoogleId } from './common.js';
@@ -81,7 +84,7 @@ export function createAuthenticatedCloudSession(options) {
     throw invalid();
   }
   let active = false;
-  async function guarded(work, write = false) {
+  async function guarded(work, write = false, diagnostic = false) {
     // Нельзя начинать проверку или новую отправку, пока предыдущий write-fetch,
     // проигнорировавший abort, продолжает работать после показанного таймаута.
     if (active || upload.isBusy()) throw invalid();
@@ -91,8 +94,10 @@ export function createAuthenticatedCloudSession(options) {
       try {
         const controller = new AbortController();
         found = await identity({ accessToken, clientId, signal: controller.signal });
-      } catch {
-        return { status: 'account_unavailable' };
+      } catch (error) {
+        return {
+          status: diagnostic ? cloudAccessDiagnostic(error) || 'identity_transport_unavailable' : 'account_unavailable'
+        };
       }
       if (found.accountKey !== accountKey) return { status: 'account_mismatch' };
       try {
@@ -116,6 +121,37 @@ export function createAuthenticatedCloudSession(options) {
     }
   }
   return Object.freeze({
+    // Read-only requests, before any durable send attempt. A successful check is
+    // NOT proof of write permission, upload completion or cloud freshness.
+    async checkAccount() {
+      return guarded(
+        async () => {
+          let reply;
+          try {
+            reply = await get.send(
+              provider === 'google' ? googleListRequest({ datasetId, folderId }) : yandexListRequest({ limit: 1 })
+            );
+          } catch (error) {
+            return { status: cloudAccessDiagnostic(error) || 'disk_transport_unavailable' };
+          }
+          if (reply.status !== 200) return { status: cloudAccessHttpDiagnostic('disk', reply.status) };
+          try {
+            const data = JSON.parse(reply.body);
+            if (
+              provider === 'google'
+                ? !Array.isArray(data.files)
+                : data.type !== 'dir' || !Array.isArray(data._embedded?.items)
+            )
+              return { status: 'disk_invalid_response' };
+          } catch {
+            return { status: 'disk_invalid_response' };
+          }
+          return { status: 'access_verified' };
+        },
+        false,
+        true
+      );
+    },
     async trashVersion(value) {
       const args = object(value, ['envelope', 'rootVersionId', 'checkpointVersionId']),
         expected = copyCloudEnvelope(args.envelope, datasetId);

@@ -3,6 +3,11 @@
 // разовой диагностикой без сохранения привязки; реальное подключение отключено.
 // Реальные сервисы, Tauri и стабильность идентификаторов ещё не проверены; fetchImpl доверенный.
 // Заголовок Authorization, ответ, метку аккаунта и исходные ошибки не логировать.
+import {
+  cloudAccessDiagnostic,
+  cloudAccessHttpDiagnostic,
+  withCloudAccessDiagnostic
+} from './cloudAccessDiagnostics.js';
 import { object } from '../exportSchema.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
 import { copyOAuthAccountLabel } from './oauthAccountLabel.js';
@@ -14,8 +19,8 @@ const MAX_REPLY_BYTES = 8192;
 const MAX_TOKEN_LENGTH = 8192;
 const ERROR = 'Не удалось проверить учётную запись облачного диска';
 
-function failed() {
-  return new Error(ERROR);
+function failed(code = 'identity_invalid_response') {
+  return withCloudAccessDiagnostic(new Error(ERROR), code);
 }
 function validAccessToken(value) {
   return (
@@ -290,7 +295,7 @@ function createIdentityReader(provider, options, includeLabel) {
       abandoned = true;
       controller.abort();
       cancelReader(activeReader);
-      rejectAbort(failed());
+      rejectAbort(failed(pastDeadline() ? 'identity_timeout' : 'identity_aborted'));
     };
     try {
       request.signal.addEventListener('abort', abort, { once: true });
@@ -300,20 +305,24 @@ function createIdentityReader(provider, options, includeLabel) {
     }
     const work = async () => {
       if (abandoned || pastDeadline()) throw failed();
-      const response = await fetchImpl(endpoint, {
-        method: 'GET',
-        headers: { Accept: 'application/json', Authorization: `${authorization} ${request.accessToken}` },
-        redirect: 'error',
-        credentials: 'omit',
-        cache: 'no-store',
-        referrerPolicy: 'no-referrer',
-        signal: controller.signal
-      });
+      let response;
+      try {
+        response = await fetchImpl(endpoint, {
+          method: 'GET',
+          headers: { Accept: 'application/json', Authorization: `${authorization} ${request.accessToken}` },
+          redirect: 'error',
+          credentials: 'omit',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          signal: controller.signal
+        });
+      } catch {
+        throw failed('identity_transport_unavailable');
+      }
       if (
         abandoned ||
         pastDeadline() ||
         !response ||
-        response.status !== 200 ||
         response.redirected ||
         response.type === 'opaque' ||
         response.type === 'opaqueredirect' ||
@@ -321,6 +330,10 @@ function createIdentityReader(provider, options, includeLabel) {
       ) {
         cancelBody(response?.body);
         throw failed();
+      }
+      if (response.status !== 200) {
+        cancelBody(response.body);
+        throw failed(cloudAccessHttpDiagnostic('identity', response.status));
       }
       let raw;
       try {
@@ -360,12 +373,12 @@ function createIdentityReader(provider, options, includeLabel) {
       // В случае нестандартного signal изменение могло произойти при подписке.
       if (request.signal.aborted) abort();
       return await racing;
-    } catch {
+    } catch (error) {
       if (!readingScheduled) active = false;
       abandoned = true;
       controller.abort();
       cancelReader(activeReader);
-      throw failed();
+      throw failed(cloudAccessDiagnostic(error));
     } finally {
       clearTimeout(timer);
       try {
