@@ -1,3 +1,4 @@
+import { cloudDiagnosticSnapshot, clearCloudDiagnostics } from '../js/modules/cloudSync/cloudDiagnostics.js';
 import { withCloudAccessDiagnostic } from '../js/modules/cloudSync/providers/cloudAccessDiagnostics.js';
 import { readFileSync } from 'node:fs';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
@@ -69,7 +70,7 @@ function setup(extra = {}) {
     runtime
   });
   disposers.push(controller.dispose);
-  return { runtime, confirm, password };
+  return { runtime, confirm, password, controller };
 }
 async function click(id) {
   el(id).click();
@@ -82,12 +83,14 @@ async function compare() {
   await vi.waitFor(() => expect(el('check').disabled).toBe(false));
 }
 beforeEach(() => {
+  clearCloudDiagnostics();
   document.body.innerHTML = new DOMParser()
     .parseFromString(html, 'text/html')
     .getElementById('cloud-registration-panel').outerHTML;
 });
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 describe('standalone full file UX', () => {
@@ -456,4 +459,196 @@ it('missing login handler does not hang and logs the reported reason, not a gene
   expect(record).toHaveBeenCalledWith('google', 'standalone_save', 'standalone_credential_refresh_pending');
   expect(f.runtime.save).not.toHaveBeenCalled();
   expect(el('provider-results').textContent).toContain('предыдущее обновление');
+});
+
+describe('download-and-compare visible lifecycle', () => {
+  const feedback = () => el('files').querySelector('.cloud-compare-feedback');
+  const begin = async () => {
+    await click('check');
+    el('files').querySelector('button').click();
+  };
+  const done = () => vi.waitFor(() => expect(el('check').disabled).toBe(false));
+  it('shows real stages and elapsed time with indeterminate progress, blocks duplicate clicks, then focuses the final review', async () => {
+    const pending = Promise.withResolvers();
+    let progress;
+    const record = vi.fn();
+    const f = setup({
+      record,
+      runtime: {
+        review: vi.fn(input => {
+          progress = input.onProgress;
+          return pending.promise;
+        })
+      }
+    });
+    await click('check');
+    vi.useFakeTimers();
+    el('files').querySelector('button').click();
+    await vi.waitFor(() => expect(f.runtime.review).toHaveBeenCalledOnce());
+    expect(feedback().hidden).toBe(false);
+    expect(feedback().textContent).toContain('Проверяем подключение');
+    const bar = feedback().querySelector('progress');
+    expect(bar.hidden).toBe(false);
+    expect(bar.hasAttribute('value')).toBe(false);
+    expect(el('check').disabled).toBe(true);
+    expect(el('files').querySelector('button').disabled).toBe(true);
+    el('files').querySelector('button').dispatchEvent(new Event('click'));
+    expect(f.runtime.review).toHaveBeenCalledOnce();
+    progress('download');
+    expect(feedback().textContent).toContain('2 из 5 · Скачиваем');
+    progress('PRIVATE_URL_AND_TOKEN');
+    expect(feedback().textContent).not.toContain('PRIVATE_URL_AND_TOKEN');
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(feedback().textContent).toContain('Прошло 2 с');
+    for (const stage of ['verify', 'unlock', 'compare']) progress(stage);
+    expect(feedback().textContent).toContain('5 из 5 · Сравниваем');
+    pending.resolve(token());
+    await done();
+    expect(feedback().dataset.state).toBe('success');
+    expect(feedback().textContent).toContain('Сравнение завершено');
+    expect(feedback().textContent).toContain('Местные данные не заменены');
+    expect(bar.hidden).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(document.activeElement).toBe(el('review'));
+    expect(record).toHaveBeenCalledWith('google', 'standalone_compare', 'running');
+    expect(record).toHaveBeenCalledWith('google', 'standalone_compare', 'success');
+    expect(f.runtime.accept).not.toHaveBeenCalled();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it.each(['google_refresh_unconfirmed', 'credential_refresh_pending', 'remote_changed', 'account_changed'])(
+    'shows %s beside the clicked button without a password prompt or retry or false ok',
+    async code => {
+      const record = vi.fn();
+      const f = setup({
+        record,
+        runtime: {
+          review: vi.fn(async () => {
+            throw new Error(code);
+          })
+        }
+      });
+      await begin();
+      await done();
+      expect(f.password).not.toHaveBeenCalled();
+      expect(f.runtime.review).toHaveBeenCalledOnce();
+      expect(feedback().dataset.state).toBe('failed');
+      expect(feedback().textContent).toContain(code);
+      expect(feedback().querySelector('[role=alert]')).not.toBeNull();
+      expect(el('review').hidden).toBe(true);
+      expect(record).toHaveBeenLastCalledWith('google', 'standalone_compare', `standalone_${code}`);
+      const trace = cloudDiagnosticSnapshot().trace.filter(row => row.stage === 'ui_compare');
+      expect(trace.map(row => row.outcome)).toEqual(['start', 'failed']);
+    }
+  );
+  it('keeps the exact safe transport diagnostic and never displays a raw exception', async () => {
+    const record = vi.fn();
+    const f = setup({
+      record,
+      runtime: {
+        review: vi.fn(async () => {
+          throw withCloudAccessDiagnostic(new Error('PRIVATE signed-url password token'), 'download_content_timeout');
+        })
+      }
+    });
+    await begin();
+    await done();
+    expect(feedback().textContent).toContain('download_content_timeout');
+    expect(feedback().textContent).not.toContain('PRIVATE');
+    expect(f.password).not.toHaveBeenCalled();
+    expect(record).toHaveBeenLastCalledWith('google', 'standalone_compare', 'download_content_timeout');
+  });
+  it('asks for a password only on the explicit password-required code and finishes after the one retry', async () => {
+    const review = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('encryption_password_required'))
+      .mockResolvedValueOnce(token());
+    const f = setup({ runtime: { review } });
+    await begin();
+    await done();
+    expect(f.password).toHaveBeenCalledExactlyOnceWith({ repeat: false });
+    expect(review).toHaveBeenCalledTimes(2);
+    expect(review.mock.calls[1][0].password).toBe('Ab3!xyZ7');
+    expect(feedback().dataset.state).toBe('success');
+  });
+  it('reports password cancellation explicitly in the card, journal and diagnostics', async () => {
+    const record = vi.fn();
+    const f = setup({
+      record,
+      password: vi.fn(async () => null),
+      runtime: {
+        review: vi.fn(async () => {
+          throw new Error('encryption_password_required');
+        })
+      }
+    });
+    await begin();
+    await done();
+    expect(feedback().dataset.state).toBe('cancelled');
+    expect(feedback().textContent).toContain('Сравнение отменено');
+    expect(f.runtime.review).toHaveBeenCalledOnce();
+    expect(record).toHaveBeenLastCalledWith('google', 'standalone_compare', 'cancelled');
+    expect(
+      cloudDiagnosticSnapshot()
+        .trace.filter(row => row.stage === 'ui_compare')
+        .at(-1).outcome
+    ).toBe('cancelled');
+    expect(feedback().querySelector('progress').hidden).toBe(true);
+  });
+  it.each(['file_open_unavailable', 'credential_refresh_pending'])(
+    'does not hide %s or start another password ceremony after the password retry',
+    async code => {
+      const review = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('encryption_password_required'))
+        .mockRejectedValueOnce(new Error(code));
+      const f = setup({ runtime: { review } });
+      await begin();
+      await done();
+      expect(f.password).toHaveBeenCalledOnce();
+      expect(review).toHaveBeenCalledTimes(2);
+      expect(feedback().textContent).toContain(code);
+      expect(feedback().dataset.state).toBe('failed');
+      expect(el('review').hidden).toBe(true);
+    }
+  );
+  it('has an explicit no-differences result, and hides that old review if the next attempt fails', async () => {
+    const same = { ...token(), comparison: { entries: [] }, privateChanges: [] };
+    const review = vi.fn().mockResolvedValueOnce(same).mockRejectedValueOnce(new Error('remote_changed'));
+    setup({ runtime: { review } });
+    await begin();
+    await done();
+    expect(feedback().textContent).toContain('различий нет');
+    expect(el('review-status').textContent).toContain('Сравнение завершено');
+    el('files').querySelector('button').click();
+    await done();
+    expect(el('review').hidden).toBe(true);
+    expect(feedback().dataset.state).toBe('failed');
+  });
+  it('cleans up the timer on dispose and ignores late progress/results instead of showing false success', async () => {
+    const pending = Promise.withResolvers();
+    let progress;
+    const record = vi.fn();
+    const f = setup({
+      record,
+      runtime: {
+        review: vi.fn(input => {
+          progress = input.onProgress;
+          return pending.promise;
+        })
+      }
+    });
+    await click('check');
+    vi.useFakeTimers();
+    el('files').querySelector('button').click();
+    await vi.waitFor(() => expect(f.runtime.review).toHaveBeenCalledOnce());
+    f.controller.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+    progress('compare');
+    pending.resolve(token());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(el('review').hidden).toBe(true);
+    expect(el('files').childNodes.length).toBe(0);
+    expect(record).not.toHaveBeenCalledWith('google', 'standalone_compare', 'success');
+    expect(record).toHaveBeenLastCalledWith('google', 'standalone_compare', 'cancelled');
+  });
 });

@@ -657,3 +657,63 @@ it('seals and decrypts all opted-in fields/settings without leaking extra local 
   expect(JSON.stringify(opened.contents)).not.toMatch(/PRIVATE_UI|localOnlyFuture/);
   expect(JSON.stringify(snapshot)).toBe(before);
 });
+
+describe('read-only compare stages and explicit password boundary', () => {
+  it('emits the real five stages without changing local data or publishing anything', async () => {
+    const f = fixture();
+    f.put('google', second);
+    const before = structuredClone(f.local);
+    const progress = vi.fn();
+    await f.review(second, { onProgress: progress });
+    expect(progress.mock.calls.map(([stage]) => stage)).toEqual(['access', 'download', 'verify', 'unlock', 'compare']);
+    expect(f.local).toEqual(before);
+    expect(f.calls.google).toEqual([]);
+    expect(f.calls.yandex).toEqual([]);
+    expect(f.patch).not.toHaveBeenCalled();
+  });
+  it('cannot be broken by a presentation callback throwing an exception', async () => {
+    const f = fixture();
+    f.put('google', second);
+    expect(
+      (
+        await f.review(second, {
+          onProgress() {
+            throw new Error('UI');
+          }
+        })
+      ).versionId
+    ).toBe(second.envelope.versionId);
+  });
+  it('requests a password only after download and verification, not after an access failure', async () => {
+    const f = fixture({ recalled: null });
+    f.put('google', second);
+    const progress = vi.fn();
+    await expect(f.review(second, { onProgress: progress })).rejects.toThrow('encryption_password_required');
+    expect(progress.mock.calls.map(([stage]) => stage)).toEqual(['access', 'download', 'verify', 'unlock']);
+    f.failures.google = { open: true };
+    progress.mockClear();
+    await expect(f.review(second, { onProgress: progress })).rejects.not.toThrow('encryption_password_required');
+    expect(progress.mock.calls.map(([stage]) => stage)).toEqual(['access']);
+  });
+  it('reports a failed password/file check with a safe fixed code and never reaches comparison', async () => {
+    const f = fixture({ recalled: null });
+    f.put('google', second);
+    const progress = vi.fn();
+    await expect(f.review(second, { password: 'wrong123!', onProgress: progress })).rejects.toThrow(
+      'file_open_unavailable'
+    );
+    expect(progress.mock.calls.map(([stage]) => stage)).not.toContain('compare');
+    expect(f.patch).not.toHaveBeenCalled();
+    expect(f.backups).toEqual([]);
+  });
+  it('requests a password for a different valid bundle even when another bundle is remembered', async () => {
+    const different = await sealStandaloneFile({ snapshot: cloudState, password, cryptoSource });
+    await expect(
+      openStandaloneFile({ envelope: different.envelope, unlocked: first.unlocked, cryptoSource })
+    ).rejects.toThrow('encryption_password_required');
+    expect(
+      (await openStandaloneFile({ envelope: different.envelope, unlocked: first.unlocked, password, cryptoSource }))
+        .contents.publicSnapshot
+    ).toBeDefined();
+  });
+});

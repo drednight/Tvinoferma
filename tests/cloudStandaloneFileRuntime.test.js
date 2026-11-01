@@ -373,3 +373,48 @@ it('saves selected settings and contacts with additional local UI keys without e
     )
   ).not.toMatch(/PRIVATE_UI|localOnlyFuture/);
 });
+
+it('second-PC UI shows actual download/decryption/comparison and a final result without any replacement or upload', async () => {
+  const f = await fixture();
+  const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+  await f.runtime.save(prepared, { confirmed: true });
+  Object.assign(
+    f.state,
+    f.normalizeState({ characters: [{ id: 'local', nick: 'Другой ПК' }], settings: { security: { useVault: false } } })
+  );
+  await f.saveNow();
+  const before = localStorage.getItem('tvinoferma_state_v1');
+  const { readFileSync } = await import('node:fs');
+  const { bindStandaloneFilePanel } = await import('../js/modules/cloudSync/ui/standaloneFilePanel.js');
+  const html = new DOMParser().parseFromString(readFileSync('index.html', 'utf8'), 'text/html');
+  document.body.innerHTML = html.getElementById('cloud-registration-panel').outerHTML;
+  const password = vi.fn(async () => 'Ab3!xyZ7');
+  const record = vi.fn();
+  const other = f.createStandaloneFileRuntime(f.native);
+  const controller = bindStandaloneFilePanel({ desktop: true, startup: false, runtime: other, password, record });
+  const stages = [];
+  const observer = new MutationObserver(() => {
+    const feedback = document.querySelector('.cloud-compare-feedback');
+    if (feedback) stages.push(feedback.textContent);
+  });
+  try {
+    await controller.check(true);
+    observer.observe(document.getElementById('cloud-standalone-files'), { subtree: true, childList: true });
+    document.querySelector('#cloud-standalone-files button').click();
+    await vi.waitFor(() => expect(document.getElementById('cloud-standalone-check').disabled).toBe(false), {
+      timeout: 10000
+    });
+    expect(password).toHaveBeenCalledExactlyOnceWith({ repeat: false });
+    expect(stages.some(text => text.includes('Скачиваем полный файл'))).toBe(true);
+    expect(stages.some(text => text.includes('Расшифровываем'))).toBe(true);
+    expect(stages.some(text => text.includes('Сравниваем с данными'))).toBe(true);
+    expect(document.querySelector('.cloud-compare-feedback').dataset.state).toBe('success');
+    expect(document.getElementById('cloud-standalone-review-status').textContent).toContain('Сравнение завершено');
+    expect(record).toHaveBeenLastCalledWith('yandex', 'standalone_compare', 'success');
+    expect(localStorage.getItem('tvinoferma_state_v1')).toBe(before);
+    expect(f.puts).toBe(1);
+  } finally {
+    observer.disconnect();
+    controller.dispose();
+  }
+});

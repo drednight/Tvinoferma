@@ -395,3 +395,29 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cloud-compare-feedback {
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent, #e1a03c);
+  background: rgba(150, 150, 150, 0.08);
+  overflow-wrap: anywhere;
+}
+.cloud-compare-feedback[hidden],
+.cloud-compare-feedback [hidden] {
+  display: none;
+}
+.cloud-compare-feedback p {
+  margin: 0 0 8px;
+}
+.cloud-compare-feedback progress {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  accent-color: var(--accent, #e1a03c);
+}
+.cloud-compare-feedback[data-state='failed'] {
+  border-left-color: #d95757;
+}
+.cloud-compare-feedback[data-state='success'] {
+  border-left-color: #58a878;
+}

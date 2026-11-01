@@ -388,58 +388,84 @@ export function createStandaloneFileExchange(ports) {
       });
     },
     /** Download and read-only comparison. No accepted base, app data or cloud write. */
-    review({ provider, versionId, sha256, password, fields = [] }) {
+    review({ provider, versionId, sha256, password, fields = [], onProgress = null }) {
+      const progress = stage => {
+        try {
+          onProgress?.(stage);
+        } catch {
+          /* Presentation cannot alter cloud work. */
+        }
+      };
       return run(async () => {
         let opened;
         try {
-          opened = await connect(provider);
-          const found = await opened.session.read(versionId);
-          if (found.status !== 'found' || (await hashEnvelope(found.envelope)) !== sha256) throw fail('remote_changed');
-          if (!key) key = (await ports.recalledKey?.(config().key)) || null;
-          const openedFile = await unlock({ envelope: found.envelope, password, unlocked: key, cryptoSource });
+          progress('access');
+          opened = await cloudStep('review_access', provider, () => connect(provider));
+          progress('download');
+          const found = await cloudStep('review_download', provider, () => opened.session.read(versionId));
+          progress('verify');
+          await cloudStep('review_verify', provider, async () => {
+            if (found.status !== 'found' || (await hashEnvelope(found.envelope)) !== sha256)
+              throw fail('remote_changed');
+          });
+          progress('unlock');
+          const openedFile = await cloudStep('review_unlock', provider, async () => {
+            if (!key) key = (await ports.recalledKey?.(config().key)) || null;
+            try {
+              return await unlock({ envelope: found.envelope, password, unlocked: key, cryptoSource });
+            } catch (error) {
+              if (error.message === 'encryption_password_required') throw error;
+              throw fail('file_open_unavailable');
+            }
+          });
           key = openedFile.unlocked;
           decoded.set(sha256, { createdAt: openedFile.contents.createdAt, supersedes: openedFile.contents.supersedes });
-          const original = ports.snapshot();
-          const localState = planSyncIdentities({ snapshot: original, cryptoSource }).snapshot;
-          const cloud = openedFile.contents.publicSnapshot;
-          const local = buildPublicSnapshot(localState, { settingsSelections: cloud.sections.preferences.selections });
-          const comparison = comparePublicSnapshots({ local, cloud });
-          const privateChanges = privateDifferences(openedFile.contents.privateSnapshot, cloud, localState, fields);
-          const base = config()[provider].baseHash;
-          const localHash = await snapshotFileHash(local, cryptoSource);
-          const cloudHash = await snapshotFileHash(cloud, cryptoSource);
-          // Validate the entire replacement before offering Accept.
-          const prepared = prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource });
-          const candidate = prepared.candidateState();
-          const retainedIds = new Set(
-            [...candidate.characters, ...candidate.archivedCharacters].map(row => row.syncId)
-          );
-          const token = Object.freeze({
-            provider,
-            versionId,
-            sha256,
-            createdAt: openedFile.contents.createdAt,
-            comparison,
-            privateChanges,
-            localPrivateAtRisk: [...localState.characters, ...localState.archivedCharacters].some(
-              character =>
-                !retainedIds.has(character.syncId) && PRIVATE_FIELDS.some(field => character.contacts?.[field])
-            ),
-            hasPrivate: !!openedFile.contents.privateSnapshot,
-            bothChanged: !!base && localHash !== base && cloudHash !== base,
-            noCommonBase: !base,
-            supersedes: openedFile.contents.supersedes.length
+          progress('compare');
+          return await cloudStep('review_compare', provider, async () => {
+            const original = ports.snapshot();
+            const localState = planSyncIdentities({ snapshot: original, cryptoSource }).snapshot;
+            const cloud = openedFile.contents.publicSnapshot;
+            const local = buildPublicSnapshot(localState, {
+              settingsSelections: cloud.sections.preferences.selections
+            });
+            const comparison = comparePublicSnapshots({ local, cloud });
+            const privateChanges = privateDifferences(openedFile.contents.privateSnapshot, cloud, localState, fields);
+            const base = config()[provider].baseHash;
+            const localHash = await snapshotFileHash(local, cryptoSource);
+            const cloudHash = await snapshotFileHash(cloud, cryptoSource);
+            // Validate the entire replacement before offering Accept.
+            const prepared = prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource });
+            const candidate = prepared.candidateState();
+            const retainedIds = new Set(
+              [...candidate.characters, ...candidate.archivedCharacters].map(row => row.syncId)
+            );
+            const token = Object.freeze({
+              provider,
+              versionId,
+              sha256,
+              createdAt: openedFile.contents.createdAt,
+              comparison,
+              privateChanges,
+              localPrivateAtRisk: [...localState.characters, ...localState.archivedCharacters].some(
+                character =>
+                  !retainedIds.has(character.syncId) && PRIVATE_FIELDS.some(field => character.contacts?.[field])
+              ),
+              hasPrivate: !!openedFile.contents.privateSnapshot,
+              bothChanged: !!base && localHash !== base && cloudHash !== base,
+              noCommonBase: !base,
+              supersedes: openedFile.contents.supersedes.length
+            });
+            reviews.set(token, {
+              original,
+              candidate,
+              account: opened.account,
+              envelope: found.envelope,
+              contents: openedFile.contents,
+              key,
+              cloudHash
+            });
+            return token;
           });
-          reviews.set(token, {
-            original,
-            candidate,
-            account: opened.account,
-            envelope: found.envelope,
-            contents: openedFile.contents,
-            key,
-            cloudHash
-          });
-          return token;
         } finally {
           opened?.session?.dispose();
         }

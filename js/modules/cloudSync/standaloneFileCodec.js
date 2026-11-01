@@ -133,6 +133,7 @@ export async function openStandaloneFile({ envelope, password, unlocked, cryptoS
     });
     key = unlocked;
   } else {
+    if (typeof password !== 'string' || !password) throw new Error('encryption_password_required');
     const opened = await openKeyBundle({
       bundle: inspected.bundle,
       expectedDatasetId: STANDALONE_DATASET_ID,

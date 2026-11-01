@@ -43,6 +43,7 @@ const OUTCOMES = Object.freeze({
   ...Object.fromEntries(
     Object.entries(STANDALONE_STATUS_MESSAGES).map(([code, message]) => [`standalone_${code}`, message])
   ),
+  running: 'начато; окончательный результат — отдельной записью',
   success: 'подтверждено',
   empty: 'подтверждённых версий не найдено',
   cancelled: 'отменено',
