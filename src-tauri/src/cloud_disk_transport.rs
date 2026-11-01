@@ -340,14 +340,16 @@ pub fn checked_download_redirect(
     let host = authority.strip_suffix(":443").unwrap_or(authority);
     let server = host
         .strip_suffix(".storage.yandex.net")
-        .and_then(|value| value.strip_prefix('s'))
         .ok_or_else(|| redirect_host_rejection(host))?;
+    // One canonical RFC1123 DNS label, not a guessed s<digit> node prefix.
+    // Still no nested names, userinfo, wildcard suffixes, IPs or other families.
     if server.is_empty()
-        || server.len() > 62
-        || !server.as_bytes()[0].is_ascii_digit()
+        || server.len() > 63
+        || !server.as_bytes()[0].is_ascii_alphanumeric()
+        || !server.as_bytes()[server.len() - 1].is_ascii_alphanumeric()
         || !server
             .bytes()
-            .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+            .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase() || b == b'-')
     {
         return Err(redirect_host_rejection(host));
     }
@@ -785,10 +787,53 @@ mod tests {
     }
 
     #[test]
+    fn storage_node_dns_labels_do_not_require_an_s_digit_prefix() {
+        for node in ["s123klg", "leto22f", "s123-vla-1", "node-2", "x"] {
+            let target =
+                format!("https://{node}.storage.yandex.net/rdisk/FAKE_SIGNATURE/file?token=FAKE");
+            assert_eq!(
+                checked_download_redirect(true, 302, &target),
+                Ok(target.clone())
+            );
+            assert!(download_redirect(false, 302, &target).is_none());
+            assert!(download_redirect(true, 200, &target).is_none());
+        }
+        for node in [
+            "-node",
+            "node-",
+            "node_bad",
+            "node.other",
+            "",
+            "xn--node.PRIVATE",
+        ] {
+            let target = format!("https://{node}.storage.yandex.net/rdisk/FAKE?token=FAKE");
+            assert!(download_redirect(true, 302, &target).is_none());
+        }
+        for length in [63, 64] {
+            let node = "a".repeat(length);
+            let target = format!("https://{node}.storage.yandex.net/rdisk/FAKE");
+            assert_eq!(
+                download_redirect(true, 302, &target).is_some(),
+                length == 63
+            );
+        }
+        for target in [
+            "https://node-2.storage.yandex.net.evil.test/rdisk/FAKE",
+            "https://node-2.storage.yandex.net:444/rdisk/FAKE",
+            "https://PRIVATE@node-2.storage.yandex.net/rdisk/FAKE",
+            "http://node-2.storage.yandex.net/rdisk/FAKE",
+            "https://node-2.storage.yandex.net/other/FAKE",
+            "https://node-2.storage.yandex.net/rdisk/%2e%2e/FAKE",
+            "https://node-2.storage.yandex.net/rdisk/FAKE#fragment",
+        ] {
+            assert!(download_redirect(true, 302, target).is_none());
+        }
+    }
+    #[test]
     fn rejected_redirect_host_profiles_are_fixed_and_never_authorize_targets() {
         for (authority, code) in [
             ("s123-PRIVATE.storage.yandex.net", "storage_case"),
-            ("s123-private.storage.yandex.net", "storage_shape"),
+            ("s123_private.storage.yandex.net", "storage_shape"),
             ("S123.storage.yandex.net", "storage_case"),
             ("downloader.disk.yandex.net", "disk_net"),
             ("downloader.dst.disk.yandex.ru", "disk_ru"),

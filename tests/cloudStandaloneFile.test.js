@@ -632,3 +632,28 @@ it('password cancellation before encryption never uploads or creates a pending f
   expect(f.local).toEqual(before);
   expect(f.calls.yandex).toHaveLength(0);
 });
+
+it('seals and decrypts all opted-in fields/settings without leaking extra local UI keys', async () => {
+  const snapshot = structuredClone(cloudState);
+  snapshot.settings.ui.localOnlyFuture = { path: 'PRIVATE_UI_PATH', token: 'PRIVATE_UI_TOKEN' };
+  const before = JSON.stringify(snapshot);
+  const sealed = await sealStandaloneFile({
+    snapshot,
+    unlocked: first.unlocked,
+    cryptoSource,
+    settingsSelections: ['appearance', 'navigation', 'planner', 'eventReminders'],
+    fields: ['email', 'recoveryEmail', 'phone', 'password'],
+    contactsSourceConfirmed: true,
+    acknowledgePasswordRisk: true
+  });
+  const opened = await openStandaloneFile({ envelope: sealed.envelope, unlocked: first.unlocked, cryptoSource });
+  expect(opened.contents.publicSnapshot.sections.preferences.selections).toEqual([
+    'appearance',
+    'navigation',
+    'planner',
+    'eventReminders'
+  ]);
+  expect(opened.contents.privateSnapshot.records[0].fields.password).toBe('CLOUD-PRIVATE');
+  expect(JSON.stringify(opened.contents)).not.toMatch(/PRIVATE_UI|localOnlyFuture/);
+  expect(JSON.stringify(snapshot)).toBe(before);
+});
