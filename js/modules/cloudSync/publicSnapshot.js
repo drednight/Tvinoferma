@@ -106,9 +106,11 @@ export function buildPublicSnapshot(snapshot, options = {}) {
     preparationCheck('plannerEntries', () => exportPlannerEntry(row, { syncId: row.syncId }))
   );
   const finance = preparationCheck('finance', () => exportFinance(root.finance));
-  const preferences = exportPortableSettings(root.settings, {
-    selections: Object.hasOwn(opts, 'settingsSelections') ? opts.settingsSelections : []
-  });
+  const preferences = preparationCheck('preferences', () =>
+    exportPortableSettings(root.settings, {
+      selections: Object.hasOwn(opts, 'settingsSelections') ? opts.settingsSelections : []
+    })
+  );
 
   const allIds = new Set();
   function register(id) {

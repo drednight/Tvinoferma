@@ -1,6 +1,7 @@
 // @ts-check
 // Только явно выбранные переносимые предпочтения. Остальные группы настроек вообще не читаем:
 // пути, параметры ПК, контакты и провайдеры не становятся данными облака по умолчанию.
+import { preparationCheck } from './preparationDiagnostics.js';
 import { normalizeSectionsSettings } from '../../core/sections.js';
 import { DEFAULT_SETTINGS } from '../../core/constants.js';
 import { array, boolean, invalidExport, number, object, oneOf, text } from './exportSchema.js';
@@ -54,18 +55,26 @@ export function exportPortableSettings(settings, options = {}) {
   /** @type {Record<string, any>} */
   const values = {};
   if (choices.some(choice => ['appearance', 'navigation', 'planner'].includes(choice))) {
-    const ui = object(
-      selectedOwn(settings, 'ui'),
-      ['theme', 'plannerView', 'sections'],
-      ['guideSeen', 'onboardingSeen']
-    );
-    if (choices.includes('appearance')) values.appearance = { theme: oneOf(ui.theme, ['dark', 'light']) };
-    if (choices.includes('navigation')) values.navigation = navigation(ui.sections);
-    if (choices.includes('planner')) values.planner = { view: oneOf(ui.plannerView, ['week', 'month']) };
+    // The UI container also holds local/version-specific preferences. Project
+    // only the explicitly selected own data properties; never enumerate/read or
+    // serialize the rest of ui, and never require unselected portable fields.
+    const ui = selectedOwn(settings, 'ui');
+    if (choices.includes('appearance'))
+      values.appearance = preparationCheck('appearance', () => ({
+        theme: oneOf(selectedOwn(ui, 'theme'), ['dark', 'light'])
+      }));
+    if (choices.includes('navigation'))
+      values.navigation = preparationCheck('navigation', () => navigation(selectedOwn(ui, 'sections')));
+    if (choices.includes('planner'))
+      values.planner = preparationCheck('planner', () => ({
+        view: oneOf(selectedOwn(ui, 'plannerView'), ['week', 'month'])
+      }));
   }
   if (choices.includes('eventReminders')) {
     const notifications = selectedOwn(settings, 'notifications');
-    values.eventReminders = eventReminders(selectedOwn(notifications, 'events'));
+    values.eventReminders = preparationCheck('eventReminders', () =>
+      eventReminders(selectedOwn(notifications, 'events'))
+    );
   }
   return { schemaVersion: 1, selections, values };
 }

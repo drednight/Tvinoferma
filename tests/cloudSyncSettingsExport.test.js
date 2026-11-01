@@ -122,12 +122,43 @@ describe('экспорт только выбранных настроек', () =
     settings.ui.sections.order.push('newer-version-section');
     expect(() => exportPortableSettings(settings, { selections: ['navigation'] })).toThrow();
   });
-  it('требует явного выбора и отвергает неизвестные или повторные группы и свойства ui', () => {
+  it('требует явного выбора и отвергает неизвестные или повторные группы', () => {
     expect(() => exportPortableSettings(source())).toThrow();
     expect(() => exportPortableSettings(source(), { selections: ['launcher'] })).toThrow();
     expect(() => exportPortableSettings(source(), { selections: ['planner', 'planner'] })).toThrow();
     const settings = source();
     settings.ui.newUnknownSetting = 'secret';
-    expect(() => exportPortableSettings(settings, { selections: ['planner'] })).toThrow();
+    expect(exportPortableSettings(settings, { selections: ['planner'] }).values.planner).toEqual({ view: 'month' });
+    expect(JSON.stringify(exportPortableSettings(settings, { selections: ['planner'] }))).not.toContain('secret');
   });
+});
+
+it('projects all selected UI groups without reading unknown or unselected fields', () => {
+  const settings = source();
+  settings.ui.localPath = 'PRIVATE_UI_PATH';
+  settings.ui.futurePreference = { account: 'PRIVATE_ACCOUNT' };
+  Object.defineProperty(settings.ui, 'unselectedGetter', {
+    enumerable: true,
+    get() {
+      throw Error('MUST_NOT_READ');
+    }
+  });
+  const result = exportPortableSettings(settings, {
+    selections: ['appearance', 'navigation', 'planner', 'eventReminders']
+  });
+  expect(result.selections).toEqual(['appearance', 'navigation', 'planner', 'eventReminders']);
+  expect(result.values.appearance).toEqual({ theme: 'dark' });
+  expect(JSON.stringify(result)).not.toMatch(/PRIVATE|localPath|futurePreference|unselectedGetter/);
+  expect(settings.ui.localPath).toBe('PRIVATE_UI_PATH');
+});
+it('does not require or read the unselected portable UI fields either', () => {
+  const settings = { ui: { plannerView: 'week' } };
+  Object.defineProperty(settings.ui, 'theme', {
+    enumerable: true,
+    get() {
+      throw Error('MUST_NOT_READ');
+    }
+  });
+  expect(exportPortableSettings(settings, { selections: ['planner'] }).values).toEqual({ planner: { view: 'week' } });
+  expect(() => exportPortableSettings(settings, { selections: ['appearance'] })).toThrow();
 });

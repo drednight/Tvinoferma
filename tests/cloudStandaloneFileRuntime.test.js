@@ -343,3 +343,33 @@ it.each(['binding', 'preview'])('does not restore account presentation after res
   expect(cloudAccountPresentation('yandex')).toEqual({ status: 'unknown', label: null });
   expect(f.puts).toBe(0);
 });
+
+it('saves selected settings and contacts with additional local UI keys without exporting them', async () => {
+  const f = await fixture();
+  f.state.settings.ui.localOnlyFuture = { path: 'PRIVATE_UI_PATH', session: 'PRIVATE_UI_SESSION' };
+  const prepared = await f.runtime.prepareSave({
+    targets: ['yandex'],
+    password: 'Ab3!xyZ7',
+    settingsSelections: ['appearance', 'navigation', 'planner', 'eventReminders'],
+    fields: ['email', 'recoveryEmail', 'phone', 'password'],
+    contactsSourceConfirmed: true,
+    acknowledgePasswordRisk: true
+  });
+  const sent = await f.runtime.save(prepared, { confirmed: true });
+  expect(sent.results).toEqual([{ provider: 'yandex', status: 'sent_verified' }]);
+  expect(f.puts).toBe(1);
+  expect(f.state.settings.ui.localOnlyFuture).toEqual({ path: 'PRIVATE_UI_PATH', session: 'PRIVATE_UI_SESSION' });
+  const check = await f.runtime.check({ manual: true, includeBackups: true });
+  const entry = check.files[0];
+  const review = await f.runtime.review({ ...entry, provider: 'yandex' });
+  expect(review).toBeTruthy();
+  // Ciphertext on disk; optional local UI keys cannot enter even the public projection.
+  const { exportPortableSettings } = await import('../js/modules/cloudSync/settingsExport.js');
+  expect(
+    JSON.stringify(
+      exportPortableSettings(f.state.settings, {
+        selections: ['appearance', 'navigation', 'planner', 'eventReminders']
+      })
+    )
+  ).not.toMatch(/PRIVATE_UI|localOnlyFuture/);
+});

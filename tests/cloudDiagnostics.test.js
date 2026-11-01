@@ -167,3 +167,23 @@ it('preserves the last failed Save even if many later provider checks fail', asy
   expect(cloudDiagnosticReport()).toContain('file_encrypt: TypeError');
   expect(cloudDiagnosticReport()).not.toContain(SECRET);
 });
+
+it('carries only allowlisted schema metadata through the failing snapshot stage', async () => {
+  const { preparationCheck } = await import('../js/modules/cloudSync/preparationDiagnostics.js');
+  const { object } = await import('../js/modules/cloudSync/exportSchema.js');
+  await cloudStep('snapshot_public', null, () =>
+    preparationCheck('preferences', () => object({ [SECRET]: SECRET }, []))
+  ).catch(() => {});
+  const report = cloudDiagnosticReport();
+  expect(report).toContain('setup/identities/preferences/unknown_field');
+  expect(report).not.toContain(SECRET);
+  const forged = new Error('setup/identities/preferences/unknown_field');
+  captureCloudFailure('ui_action', forged);
+  expect(cloudDiagnosticSnapshot().failures.at(-1).code).toBe('unknown_error');
+  recordCloudDiagnostic({
+    stage: 'snapshot_public',
+    outcome: 'failed',
+    code: 'setup/identities/' + SECRET + '/unknown_field'
+  });
+  expect(cloudDiagnosticReport()).not.toContain(SECRET);
+});

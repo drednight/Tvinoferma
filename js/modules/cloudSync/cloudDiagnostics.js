@@ -8,6 +8,7 @@ import {
   withCloudAccessDiagnostic
 } from './providers/cloudAccessDiagnostics.js';
 import { STANDALONE_STATUS_MESSAGES } from './standaloneStatus.js';
+import { safePreparationDiagnosticCode, isPreparationDiagnosticCode } from './preparationDiagnostics.js';
 import { cloudActivity, describeCloudActivity } from './cloudEventLog.js';
 const STAGES = new Set([
   'ui_save',
@@ -131,6 +132,8 @@ function sourceLocations(error) {
 export function safeCloudErrorCode(error) {
   const diagnostic = cloudAccessDiagnostic(error);
   if (diagnostic) return diagnostic;
+  const schema = safePreparationDiagnosticCode(error);
+  if (schema) return schema;
   try {
     const message = error?.message;
     const name = error?.name;
@@ -149,7 +152,7 @@ export function recordCloudDiagnostic({ stage, provider = null, outcome, code = 
     stage,
     provider,
     outcome,
-    ...(CODES.has(code) ? { code } : {}),
+    ...(CODES.has(code) || isPreparationDiagnosticCode(code) ? { code } : {}),
     ...(Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599 ? { httpStatus } : {})
   };
   trace.push(Object.freeze(row));

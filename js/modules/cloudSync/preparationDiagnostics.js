@@ -7,6 +7,9 @@ const SCOPES = new Set([
   'crypto',
   'planner',
   'preferences',
+  'appearance',
+  'navigation',
+  'eventReminders',
   'snapshot',
   'ids',
   'public',
@@ -122,4 +125,20 @@ export function preparationDiagnosticCode(error) {
   const detail = error && typeof error === 'object' ? details.get(error) : null;
   if (!detail) return 'setup/identities/unknown';
   return `setup/identities/${detail.scopes.length ? detail.scopes.join('.') : 'unknown'}/${detail.reason}`;
+}
+
+// Bounded, fixed vocabulary for the copyable cloud report. No arbitrary error
+// fields/messages or user-supplied property names can become schema diagnostics.
+export function safePreparationDiagnosticCode(error) {
+  const detail = error && typeof error === 'object' ? details.get(error) : null;
+  if (!detail) return null;
+  const scopes = detail.scopes.slice(0, 8);
+  return `setup/identities/${scopes.length ? scopes.join('.') : 'unknown'}/${detail.reason}`;
+}
+export function isPreparationDiagnosticCode(value) {
+  if (typeof value !== 'string' || value.length > 300) return false;
+  const parts = value.split('/');
+  if (parts.length !== 4 || parts[0] !== 'setup' || parts[1] !== 'identities' || !REASONS.has(parts[3])) return false;
+  const scopes = parts[2].split('.');
+  return scopes.length <= 8 && scopes.every(scope => SCOPES.has(scope) || (scope === 'unknown' && scopes.length === 1));
 }
