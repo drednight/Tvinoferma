@@ -1061,3 +1061,16 @@ describe('Yandex folder assistant', () => {
     expect(el('yandex-folder-status').textContent).toContain('подтверждена обратным чтением');
   });
 });
+
+it('invalidates only the Yandex folder hint on logout/relogin without cross-provider requests', async () => {
+  const f = setup({ runtime: { checkYandexFolder: vi.fn(async () => ({ status: 'folder_ready' })) } });
+  await click('yandex-folder-check');
+  window.dispatchEvent(new CustomEvent('tf-cloud-credential-removed', { detail: { provider: 'google' } }));
+  expect(el('yandex-folder-status').textContent).toContain('найдена');
+  window.dispatchEvent(new CustomEvent('tf-cloud-credential-removed', { detail: { provider: 'yandex' } }));
+  expect(el('yandex-folder-status').textContent).toContain('после входа');
+  expect(el('yandex-folder-create').hidden).toBe(true);
+  expect(el('yandex-folder-status').parentElement.dataset.state).toBe('idle');
+  expect(f.runtime.check).not.toHaveBeenCalled();
+  expect(f.runtime.checkYandexFolder).toHaveBeenCalledOnce();
+});

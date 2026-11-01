@@ -31,7 +31,9 @@ function fixture() {
     uploadThrows: false,
     folderThrows: false,
     hideCreated: false,
-    folderError: 0
+    folderError: 0,
+    folderReply: 201,
+    conflictOnCreate: false
   };
   const name = version => `tf-v1-${STANDALONE_DATASET_ID}-${version}.tfsc`;
   const path = (root, version) => `${root}${name(version)}`;
@@ -51,7 +53,8 @@ function fixture() {
       if (flags.folderError) return empty(flags.folderError);
       if (flags.visibleExists || flags.folderFile) return empty(409);
       flags.visibleExists = true;
-      return empty(201);
+      flags.folderFile = flags.conflictOnCreate;
+      return empty(flags.folderReply);
     }
     if (args.operation === 'list') {
       if (visible && ((!flags.visibleExists && !flags.folderFile) || flags.hideCreated)) return empty(404);
@@ -289,4 +292,17 @@ describe('independent Yandex directory preparation', () => {
     expect(cloudAccessDiagnostic(result)).toBe('folder_forbidden');
     expect(f.invoke.mock.calls.some(([, a]) => a.args.operation === 'upload_content')).toBe(false);
   });
+});
+
+it('accepts a concurrent 409 only after rechecking a real directory; never overwrites a file conflict', async () => {
+  const good = fixture();
+  good.flags.folderReply = 409;
+  expect((await good.session.ensureStorage()).status).toBe('folder_ready');
+  const bad = fixture();
+  bad.flags.folderReply = 409;
+  bad.flags.conflictOnCreate = true;
+  expect((await bad.session.ensureStorage()).status).toBe('folder_creation_unconfirmed');
+  expect(bad.invoke.mock.calls.filter(([, a]) => a.args.operation === 'folder_create')).toHaveLength(1);
+  expect(bad.files.size).toBe(0);
+  expect(bad.invoke.mock.calls.some(([, a]) => a.args.operation === 'upload_content')).toBe(false);
 });

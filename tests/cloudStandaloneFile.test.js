@@ -744,3 +744,30 @@ it.each(['google', 'yandex'])(
     expect(f.calls[provider]).toHaveLength(0);
   }
 );
+
+it('keeps folder-only work inside the existing global operation barrier and always disposes the session', async () => {
+  const f = fixture();
+  const before = structuredClone(f.local);
+  let release;
+  const hold = new Promise(resolve => {
+    release = resolve;
+  });
+  const session = { inspectStorage: vi.fn(() => hold), ensureStorage: vi.fn(), dispose: vi.fn() };
+  f.ports.open = vi.fn(async () => ({ account: f.accounts.yandex, session }));
+  const checking = f.engine.checkYandexFolder();
+  await vi.waitFor(() => expect(session.inspectStorage).toHaveBeenCalledOnce());
+  await expect(f.engine.check()).rejects.toThrow('busy');
+  expect(f.ports.open).toHaveBeenCalledWith('yandex', { createFolder: false });
+  release({ status: 'folder_missing' });
+  expect((await checking).status).toBe('folder_missing');
+  expect(session.dispose).toHaveBeenCalledOnce();
+  expect(f.patch).not.toHaveBeenCalled();
+  expect(f.ports.recalledKey).not.toHaveBeenCalled();
+  expect(f.local).toEqual(before);
+  session.ensureStorage.mockRejectedValue(new Error('synthetic'));
+  await expect(f.engine.checkYandexFolder({ create: true, confirmed: true })).rejects.toThrow('synthetic');
+  expect(session.dispose).toHaveBeenCalledTimes(2);
+  expect(f.engine.isBusy()).toBe(false);
+  f.engine.dispose();
+  await expect(f.engine.checkYandexFolder()).rejects.toThrow('closed');
+});

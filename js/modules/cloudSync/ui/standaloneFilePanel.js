@@ -816,7 +816,7 @@ export function bindStandaloneFilePanel(options) {
         : 'failed';
     if (!['folder_ready', 'folder_created', 'folder_missing', 'folder_file_verified'].includes(result.status))
       el('copy-report').hidden = false;
-    status.textContent = el('yandex-folder-status').textContent;
+    if (operation) status.textContent = el('yandex-folder-status').textContent;
     if (operation && el('operation'))
       el('operation').dataset.state = el('yandex-folder-status').parentElement.dataset.state;
   }
@@ -1066,7 +1066,17 @@ export function bindStandaloneFilePanel(options) {
     clearReview();
     keyDialog?.close();
   };
+  const invalidateFolder = event => {
+    if (event.detail?.provider !== 'yandex') return;
+    el('yandex-folder-status').textContent = 'Проверьте папку после входа в прежний аккаунт Яндекса.';
+    el('yandex-folder-help').textContent =
+      'Предыдущий результат относится к прежнему сеансу. Проверка ничего не записывает.';
+    el('yandex-folder-create').hidden = true;
+    el('yandex-folder-status').parentElement.dataset.state = 'idle';
+  };
+  doc.defaultView?.addEventListener('tf-cloud-credential-ready', invalidateFolder);
   const credentialRemoved = event => {
+    invalidateFolder(event);
     const provider = event.detail?.provider;
     notices.delete(provider);
     updateBadge();
@@ -1101,6 +1111,7 @@ export function bindStandaloneFilePanel(options) {
       el('interval')?.removeEventListener('change', autoChanged);
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
       doc.defaultView?.removeEventListener('tf-cloud-credential-removed', credentialRemoved);
+      doc.defaultView?.removeEventListener('tf-cloud-credential-ready', invalidateFolder);
       doc.defaultView?.removeEventListener('tf-factory-reset-started', factoryReset);
     }
   };
