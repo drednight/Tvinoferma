@@ -72,3 +72,43 @@ describe('барьер OAuth-сценариев и локального сбро
     operation.finish(false);
   });
 });
+
+describe('queued provider-local logout reservation', () => {
+  it('prevents a new check/OAuth/reset from overtaking the waiting logout', async () => {
+    const { beginCloudLogoutOperation } = await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const first = beginOperation();
+    const second = beginOperation();
+    let acquired = false;
+    const pending = beginCloudLogoutOperation('yandex').then(operation => {
+      acquired = true;
+      return operation;
+    });
+    expect(() => beginOperation()).toThrow();
+    expect(() => beginData()).toThrow();
+    expect(() => beginReset()).toThrow();
+    await expect(beginCloudLogoutOperation('google')).rejects.toThrow();
+    first.finish(false);
+    await Promise.resolve();
+    expect(acquired).toBe(false);
+    second.finish(false);
+    const logout = await pending;
+    expect(acquired).toBe(true);
+    expect(() => beginOperation()).toThrow();
+    logout.finish(false);
+    const next = beginData();
+    next.finish(false);
+  });
+  it('allows only the native slot-CAS logout after unrelated uncertainty, never unblocks reset/data writes', async () => {
+    const { beginCloudLogoutOperation, blockCloudProviderAfterLogout } =
+      await import('../js/modules/cloudSync/credentialResetCoordination.js');
+    const first = beginOperation();
+    first.finish(true);
+    blockCloudProviderAfterLogout('google');
+    const logout = await beginCloudLogoutOperation('yandex');
+    logout.finish(false);
+    expect(() => beginData()).toThrow();
+    expect(() => beginReset()).toThrow();
+    await expect(beginCloudLogoutOperation('google')).rejects.toThrow();
+    await expect(beginCloudLogoutOperation('INVALID')).rejects.toThrow();
+  });
+});

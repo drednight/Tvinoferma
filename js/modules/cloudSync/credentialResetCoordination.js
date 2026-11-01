@@ -6,6 +6,8 @@ let active = 0;
 let dataActive = false;
 let uncertain = false;
 let resetting = false;
+let logoutWaiting = false;
+let wakeLogout = null;
 // An explicit logout with a lost native reply must not leave this provider's
 // cached sessions usable. Other standalone providers remain independent.
 const logoutUncertain = new Set();
@@ -25,7 +27,7 @@ function blocked() {
 
 /** Регистрирует один пользовательский сценарий с возможной записью OAuth. */
 export function beginCloudCredentialOperation() {
-  if (resetting || dataActive) throw blocked();
+  if (resetting || dataActive || logoutWaiting) throw blocked();
   active++;
   let finished = false;
   return Object.freeze({
@@ -35,6 +37,7 @@ export function beginCloudCredentialOperation() {
       finished = true;
       if (outcomeUncertain) uncertain = true;
       active--;
+      if (!active) wakeLogout?.();
     }
   });
 }
@@ -45,7 +48,7 @@ export function beginCloudCredentialOperation() {
  * устойчивый или межпроцессный карантин; после перезапуска нужна проверка.
  */
 export function beginCloudDataOperation() {
-  if (uncertain || resetting || active || dataActive) throw blocked();
+  if (uncertain || resetting || active || dataActive || logoutWaiting) throw blocked();
   dataActive = true;
   active++;
   let finished = false;
@@ -56,6 +59,7 @@ export function beginCloudDataOperation() {
       finished = true;
       if (outcomeUncertain) uncertain = true;
       active--;
+      if (!active) wakeLogout?.();
       dataActive = false;
     }
   });
@@ -67,7 +71,7 @@ export function beginCloudDataOperation() {
  * закрыт до перезапуска, даже если результат сброса неизвестен.
  */
 export function beginCloudCredentialReset() {
-  if (resetting || active || uncertain) throw blocked();
+  if (resetting || active || uncertain || logoutWaiting) throw blocked();
   resetting = true;
   let released = false;
   return () => {
@@ -75,4 +79,38 @@ export function beginCloudCredentialReset() {
     released = true;
     resetting = false;
   };
+}
+
+/**
+ * Reserve an exclusive local logout before waiting for an in-flight file check.
+ * No polling, cancellation of unknown native writes or dependency on signing out
+ * the other provider. A previous uncertainty still blocks reset/data writes;
+ * only this slot-CAS, secret-only logout may proceed under the native lock.
+ */
+export async function beginCloudLogoutOperation(provider) {
+  if (!['google', 'yandex'].includes(provider) || resetting || logoutWaiting || logoutUncertain.has(provider))
+    throw blocked();
+  logoutWaiting = true;
+  try {
+    if (active)
+      await new Promise(resolve => {
+        wakeLogout = resolve;
+      });
+    dataActive = true;
+    active++;
+    let finished = false;
+    return Object.freeze({
+      finish(outcomeUncertain) {
+        if (finished || typeof outcomeUncertain !== 'boolean') throw blocked();
+        finished = true;
+        if (outcomeUncertain) uncertain = true;
+        active--;
+        dataActive = false;
+        if (!active) wakeLogout?.();
+      }
+    });
+  } finally {
+    wakeLogout = null;
+    logoutWaiting = false;
+  }
 }
