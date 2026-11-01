@@ -33,6 +33,14 @@ const codes = new Set(
       'native_redirect_target',
       'native_redirect_format',
       'native_redirect_host',
+      'native_redirect_host_authority',
+      'native_redirect_host_storage_case',
+      'native_redirect_host_storage_shape',
+      'native_redirect_host_disk_net',
+      'native_redirect_host_disk_ru',
+      'native_redirect_host_yandex_net',
+      'native_redirect_host_yandex_ru',
+
       'native_redirect_path',
       'native_redirect_headers',
       'native_redirect_chain',
@@ -102,6 +110,18 @@ const REASONS = {
   native_redirect_target: 'сервер перенаправил на адрес, не разрешённый для скачивания Яндекса',
   native_redirect_format: 'формат подписанного перенаправления не прошёл проверку (HTTPS, длина или кодирование)',
   native_redirect_host: 'хост перенаправления не входит в разрешённое семейство серверов хранения Яндекса',
+  native_redirect_host_authority:
+    'адрес перенаправления содержит запрещённые данные авторизации или нестандартный порт',
+  native_redirect_host_storage_case:
+    'семейство storage.yandex.net распознано, но регистр имени сервера не соответствует политике',
+  native_redirect_host_storage_shape:
+    'семейство storage.yandex.net распознано, но форма имени узла хранения не соответствует политике',
+  native_redirect_host_disk_net:
+    'перенаправление ведёт в семейство disk.yandex.net, а не на разрешённый узел storage.yandex.net',
+  native_redirect_host_disk_ru:
+    'перенаправление ведёт в семейство disk.yandex.ru, а не на разрешённый узел storage.yandex.net',
+  native_redirect_host_yandex_net: 'перенаправление ведёт в другое подсемейство yandex.net; переход не разрешён',
+  native_redirect_host_yandex_ru: 'перенаправление ведёт в другое подсемейство yandex.ru; переход не разрешён',
   native_redirect_path: 'путь перенаправления не соответствует безопасной ссылке хранилища Яндекса',
   native_redirect_headers: 'сервис прислал отсутствующий, повторный или некорректный заголовок перенаправления',
   native_redirect_chain: 'сервер запросил повторное перенаправление; разрешён только один переход на хранилище Яндекса',
@@ -132,6 +152,14 @@ export function nativeCloudAccessDiagnostic(error, operation) {
     cloud_disk_redirect: 'native_redirect',
     cloud_disk_redirect_format: 'native_redirect_format',
     cloud_disk_redirect_host: 'native_redirect_host',
+    cloud_disk_redirect_host_authority: 'native_redirect_host_authority',
+    cloud_disk_redirect_host_storage_case: 'native_redirect_host_storage_case',
+    cloud_disk_redirect_host_storage_shape: 'native_redirect_host_storage_shape',
+    cloud_disk_redirect_host_disk_net: 'native_redirect_host_disk_net',
+    cloud_disk_redirect_host_disk_ru: 'native_redirect_host_disk_ru',
+    cloud_disk_redirect_host_yandex_net: 'native_redirect_host_yandex_net',
+    cloud_disk_redirect_host_yandex_ru: 'native_redirect_host_yandex_ru',
+
     cloud_disk_redirect_path: 'native_redirect_path',
     cloud_disk_redirect_headers: 'native_redirect_headers',
     cloud_disk_redirect_target: 'native_redirect_target',
@@ -144,6 +172,7 @@ export function nativeCloudAccessDiagnostic(error, operation) {
   };
   const stages = {
     identity: 'identity',
+    identity_preview: 'identity',
     list: 'disk',
     download: 'download_content',
     download_link: 'download_link',

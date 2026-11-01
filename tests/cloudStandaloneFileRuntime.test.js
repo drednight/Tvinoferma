@@ -312,3 +312,34 @@ it.each([
   expect(JSON.stringify(f.state.settings.cloudStandaloneFiles)).toBe(original);
   expect(f.puts).toBe(0);
 });
+
+it.each(['binding', 'preview'])('does not restore account presentation after reset during %s read', async phase => {
+  const f = await fixture();
+  const { clearCloudAccountPresentation, cloudAccountPresentation } =
+    await import('../js/modules/cloudSync/cloudAccountPresentation.js');
+  const original = f.native.invoke.getMockImplementation();
+  let release,
+    held = false;
+  f.native.invoke.mockImplementation(async (command, args) => {
+    const reply = await original(command, args);
+    const isPreview = command === 'cloud_disk_network' && args.args.operation === 'identity';
+    if (
+      !held &&
+      (phase === 'binding' ? command === 'cloud_credential_binding_read' && args.provider === 'yandex' : isPreview)
+    ) {
+      held = true;
+      if (isPreview) reply.body = JSON.stringify({ ...JSON.parse(reply.body), login: 'FAKE_PRIVATE_LOGIN' });
+      return new Promise(resolve => {
+        release = () => resolve(reply);
+      });
+    }
+    return reply;
+  });
+  const pending = f.runtime.check({ targets: ['yandex'] });
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  clearCloudAccountPresentation();
+  release();
+  await pending;
+  expect(cloudAccountPresentation('yandex')).toEqual({ status: 'unknown', label: null });
+  expect(f.puts).toBe(0);
+});

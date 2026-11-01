@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudStep } from './cloudDiagnostics.js';
 // Самостоятельные полные копии. В отличие от прежней истории, fingerprint из
 // капсулы здесь — проверка самосогласованности, НЕ независимо доверенный pin.
 // Доверие при первом открытии: выбранный OAuth-аккаунт + пароль + явное принятие.
@@ -68,42 +69,52 @@ export async function sealStandaloneFile(options) {
   if (new Set(selected).size !== selected.length) throw new Error('Повторная категория контактов');
   if (selected.length && !contactsSourceConfirmed) throw new Error('Подтвердите полноту выбранных контактов');
   if (selected.includes('password') && !acknowledgePasswordRisk) throw new Error('Подтвердите риск передачи паролей');
-  const publicSnapshot = buildPublicSnapshot(snapshot, { settingsSelections });
-  const contents = standaloneContents({
-    format: STANDALONE_FORMAT,
-    version: 1,
-    createdAt: now(),
-    publicSnapshot,
-    privateSnapshot:
-      selected.length && [...snapshot.characters, ...snapshot.archivedCharacters].length
-        ? buildPrivateDelta(snapshot, publicSnapshot, selected)
-        : null,
-    // Это только список известных резервных копий. Они НЕ нужны для открытия.
-    supersedes
-  });
+  const publicSnapshot = await cloudStep('snapshot_public', null, () =>
+    buildPublicSnapshot(snapshot, { settingsSelections })
+  );
+  const contents = await cloudStep('snapshot_contents', null, () =>
+    standaloneContents({
+      format: STANDALONE_FORMAT,
+      version: 1,
+      createdAt: now(),
+      publicSnapshot,
+      privateSnapshot:
+        selected.length && [...snapshot.characters, ...snapshot.archivedCharacters].length
+          ? buildPrivateDelta(snapshot, publicSnapshot, selected)
+          : null,
+      // Это только список известных резервных копий. Они НЕ нужны для открытия.
+      supersedes
+    })
+  );
   const key =
     unlocked ||
-    (await createKeyBundle({
+    (await cloudStep('key_create', null, () =>
+      createKeyBundle({
+        datasetId: STANDALONE_DATASET_ID,
+        primary: { kind: 'password', secret: password },
+        backup: { kind: 'generated' },
+        cryptoSource
+      })
+    ));
+  const capsule = await cloudStep('key_capsule', null, () =>
+    makePortableKeyCapsule({
+      bundle: key.bundle,
+      pin: key.pin,
+      dataKey: key.dataKey,
       datasetId: STANDALONE_DATASET_ID,
-      primary: { kind: 'password', secret: password },
-      backup: { kind: 'generated' },
       cryptoSource
-    }));
-  const capsule = await makePortableKeyCapsule({
-    bundle: key.bundle,
-    pin: key.pin,
-    dataKey: key.dataKey,
-    datasetId: STANDALONE_DATASET_ID,
-    cryptoSource
-  });
-  const envelope = await encryptSnapshot({
-    snapshot: contents,
-    keyCapsule: capsule,
-    recoveryKey: key.dataKey,
-    datasetId: STANDALONE_DATASET_ID,
-    versionId: generateSyncId(cryptoSource),
-    cryptoSource
-  });
+    })
+  );
+  const envelope = await cloudStep('file_encrypt', null, () =>
+    encryptSnapshot({
+      snapshot: contents,
+      keyCapsule: capsule,
+      recoveryKey: key.dataKey,
+      datasetId: STANDALONE_DATASET_ID,
+      versionId: generateSyncId(cryptoSource),
+      cryptoSource
+    })
+  );
   // Случайная запасная обёртка совместима с v2, но её секрет не хранится и не
   // выдаётся за пользовательскую резервную копию. Старые ключи не меняются.
   return { envelope, contents, unlocked: { bundle: key.bundle, pin: key.pin, dataKey: key.dataKey } };

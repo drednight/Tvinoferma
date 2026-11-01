@@ -355,3 +355,43 @@
 #cloud-connection-progress:empty {
   display: none;
 }
+
+/* Equal accounts, independent of the destination checkboxes below. */
+.cloud-provider-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.cloud-provider-card {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.cloud-provider-card h4 {
+  margin: 0;
+}
+.cloud-provider-account {
+  overflow-wrap: anywhere;
+  min-height: 2.6em;
+}
+.cloud-provider-card button {
+  margin-top: auto;
+}
+#cloud-diagnostics-report {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: monospace;
+  font-size: 12px;
+}
+.cloud-diagnostics {
+  margin-top: 16px;
+}
+@media (max-width: 540px) {
+  .cloud-provider-cards {
+    grid-template-columns: 1fr;
+  }
+}

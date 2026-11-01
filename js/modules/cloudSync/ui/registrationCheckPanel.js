@@ -1,4 +1,11 @@
 // @ts-check
+import {
+  cloudAccountPresentation,
+  presentCloudAccount,
+  clearCloudAccountPresentation,
+  subscribeCloudAccountPresentation
+} from '../cloudAccountPresentation.js';
+import { copyOAuthAccountLabel } from '../providers/oauthAccountLabel.js';
 import { googleClientImportProblem, GOOGLE_IMPORT_MESSAGES } from '../providers/googleClientImport.js';
 // Разовая диагностика и экспериментальное сохранение OAuth-доступа, без передачи
 // файлов и без работающей синхронизации. В форму вводится только публичный Client ID.
@@ -62,12 +69,36 @@ export function bindCloudRegistrationCheck(options) {
   const doc = options.doc || document;
   const panel = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-registration-panel'));
   const form = /** @type {HTMLFormElement|null} */ (doc.getElementById('cloud-registration-form'));
-  const provider = /** @type {HTMLSelectElement|null} */ (doc.getElementById('cloud-login-provider'));
+  const provider = /** @type {HTMLInputElement|HTMLSelectElement|null} */ (doc.getElementById('cloud-login-provider'));
   const client = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-registration-client'));
   const start = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-start'));
   const cancelButton = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-registration-cancel'));
   const status = doc.getElementById('cloud-registration-status');
   const simple = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-connection-simple'));
+  const providerButtons = /** @type {HTMLButtonElement[]} */ ([...doc.querySelectorAll('[data-cloud-sign-in]')]);
+  const providerKnown = new Map();
+  function renderProviderCards() {
+    for (const selected of ['google', 'yandex']) {
+      const row = cloudAccountPresentation(selected);
+      const label = doc.getElementById(`cloud-${selected}-account`);
+      if (!label) continue;
+      label.replaceChildren();
+      if (row.label) {
+        const value = doc.createElement('bdi');
+        value.dir = 'ltr';
+        value.textContent = row.label.value;
+        label.append('Аккаунт: ', value);
+      } else
+        label.textContent = {
+          unknown: 'Аккаунт ещё не проверен',
+          empty: 'Вход на этом ПК не выполнен',
+          ready: 'Вход сохранён; имя аккаунта пока не подтверждено',
+          pending: 'Предыдущая операция входа не подтверждена',
+          blocked: 'Доступ требует восстановления',
+          unavailable: 'Аккаунт сейчас не удалось проверить'
+        }[row.status];
+    }
+  }
   const simpleCancel = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-connection-simple-cancel'));
   const configFile = /** @type {HTMLInputElement|null} */ (doc.getElementById('cloud-google-import'));
   const configStatus = doc.getElementById('cloud-google-config-status');
@@ -128,6 +159,11 @@ export function bindCloudRegistrationCheck(options) {
   // После неопределённости не разрешаем повтор, даже если позднее показалось пусто.
   const uncertain = new Set();
   let resetStarted = false;
+  subscribeCloudAccountPresentation(() => {
+    renderProviderCards();
+    setBusy();
+  });
+  renderProviderCards();
 
   function selectedProvider() {
     return /** @type {'google'|'yandex'} */ (provider.value);
@@ -149,6 +185,21 @@ export function bindCloudRegistrationCheck(options) {
         ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(known?.status || '');
       simple.hidden = !canReconnect && ['ready', 'ready_bound'].includes(known?.status || '');
       simple.textContent = canReconnect ? 'Повторить вход Google' : 'Войти';
+    }
+    for (const button of providerButtons) {
+      const target = button.dataset.cloudSignIn;
+      const presentationStatus = cloudAccountPresentation(target).status;
+      const knownStatus = presentationStatus === 'unknown' ? providerKnown.get(target) : presentationStatus;
+      const connected = ['ready', 'ready_bound'].includes(knownStatus);
+      button.disabled = busy || !options.desktop || uncertain.has(target) || (target === 'yandex' && connected);
+      button.textContent =
+        target === 'google'
+          ? connected || knownStatus === 'pending'
+            ? 'Повторить вход Google'
+            : 'Войти в Google'
+          : connected
+            ? 'Яндекс подключён'
+            : 'Войти в Яндекс';
     }
     if (simpleCancel) {
       simpleCancel.hidden = !['enroll', 'inspect'].includes(active?.mode || '');
@@ -273,6 +324,9 @@ export function bindCloudRegistrationCheck(options) {
                 ? 'ready_bound'
                 : 'dataset_incomplete';
       }
+      providerKnown.set(selected, displayStatus);
+      const currentLabel = cloudAccountPresentation(selected).label;
+      presentCloudAccount(selected, { status: reply.status, label: reply.status === 'ready' ? currentLabel : null });
       observed = {
         provider: selected,
         status: displayStatus,
@@ -306,6 +360,8 @@ export function bindCloudRegistrationCheck(options) {
     const selected = selectedProvider();
     const clientId = client.value.trim();
     if (!validOAuthClientId(selected, clientId)) {
+      const loginSettings = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-login-settings'));
+      if (loginSettings) loginSettings.open = true;
       target.textContent =
         'Проверьте формат Client ID для выбранного диска. Пароль, секрет приложения и код сюда вводить нельзя.';
       if (advanced) advanced.open = true;
@@ -351,6 +407,7 @@ export function bindCloudRegistrationCheck(options) {
   });
   doc.defaultView?.addEventListener('tf-factory-reset-started', () => {
     resetStarted = true;
+    clearCloudAccountPresentation();
     stop();
     progress.textContent = 'Начался сброс локальных данных. Облачный доступ в этом окне недоступен до перезапуска.';
     setBusy();
@@ -460,6 +517,7 @@ export function bindCloudRegistrationCheck(options) {
     setBusy();
     progress.textContent = 'Подготавливаем вход и проверяем локальную запись…';
     let inspectAfter = false;
+    let confirmedLabel = null;
     try {
       const native = await loadNative();
       if (session.controller.signal.aborted) return;
@@ -471,7 +529,11 @@ export function bindCloudRegistrationCheck(options) {
         signal: session.controller.signal,
         firstConnectionConfirmed: true,
         ...(reconnect ? { reconnect: true } : {}),
-        confirmAccount,
+        async confirmAccount(args) {
+          const accepted = await confirmAccount(args);
+          if (accepted === true) confirmedLabel = copyOAuthAccountLabel(selected, args.label);
+          return accepted;
+        },
         onProgress(stage) {
           if (stage === 'installing') session.installing = true;
           if (session.controller.signal.aborted) return;
@@ -514,6 +576,11 @@ export function bindCloudRegistrationCheck(options) {
         localStatus.textContent = 'Локальная запись требует повторной проверки.';
         inspectAfter = true;
       }
+      if (
+        !resetStarted &&
+        ['installed', 'installed_access_expired', 'installed_refresh_expired'].includes(result.status)
+      )
+        presentCloudAccount(selected, { status: 'ready', label: confirmedLabel });
       return result.status === 'installed';
     } catch {
       if (session.installing) uncertainOutcome(selected);
@@ -542,6 +609,15 @@ export function bindCloudRegistrationCheck(options) {
     return await startEnrollment(true, reconnect);
   }
   simple?.addEventListener('click', signIn);
+  for (const button of providerButtons)
+    button.addEventListener('click', () => {
+      if (active || resetStarted || !options.desktop) return;
+      provider.value = button.dataset.cloudSignIn;
+      if (!validOAuthClientId(selectedProvider(), client.value.trim())) client.value = '';
+      clearAccount();
+      updateProviderHint();
+      void signIn();
+    });
   panel.addEventListener('tf-cloud-connect-for-save', event => {
     const detail = /** @type {CustomEvent} */ (event).detail;
     if (!detail || !['google', 'yandex'].includes(detail.provider) || typeof detail.complete !== 'function') return;
@@ -650,6 +726,8 @@ export function bindCloudRegistrationCheck(options) {
       const outcome = await forget({ provider: selected, slotId, invoke: native.invoke, confirmed: true });
       observed = null;
       if (outcome === 'forgotten') {
+        presentCloudAccount(selected, { status: 'empty' });
+        providerKnown.set(selected, 'empty');
         localStatus.textContent =
           'Локальная запись удалена. Облачные файлы, ключи и разрешение у сервиса не изменялись.';
         progress.textContent = 'Локальный доступ забыт. Для нового входа снова проверьте локальную запись.';

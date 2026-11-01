@@ -1,4 +1,5 @@
 // @ts-check
+import { recordCloudDiagnostic } from '../cloudDiagnostics.js';
 // Экспериментальная связка уже подтверждённой локальной записи, доступа к диску
 // и проверки аккаунта. Она НЕ подключена к UI/настоящим токенам. Ожидаемая
 // привязка должна поступать из ранее проверенной защищённой конфигурации; сама
@@ -18,7 +19,11 @@ import { parseYandexCredentialRecord } from './oauthYandexCredentialRecord.js';
 import { createNativeGoogleCredentialStore, readNativeCredentialBinding } from './nativeCredentialStore.js';
 import { createNativeGoogleRefreshFetch } from './nativeGoogleRefreshFetch.js';
 import { createGoogleCredentialRotation } from './oauthCredentialRotation.js';
-import { createGoogleAccountIdentityReader } from './oauthAccountIdentity.js';
+import {
+  createGoogleAccountPreviewReader,
+  createYandexAccountPreviewReader,
+  createGoogleAccountIdentityReader
+} from './oauthAccountIdentity.js';
 import { createNativeDiskFetch } from './nativeDiskFetch.js';
 import { createAuthenticatedCloudSession } from './authenticatedSession.js';
 import { createGoogleFolderManager } from './googleFolderManager.js';
@@ -139,6 +144,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
       raw = await read();
       const cached = recalledGoogleAccess({ invoke, record: raw, now: now() });
       if (cached) {
+        recordCloudDiagnostic({ stage: 'google_access', provider, outcome: 'reused' });
         token = cached.accessToken;
         expiresAt = cached.expiresAt;
       } else {
@@ -164,9 +170,16 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
         if (current.status === 'refresh_expired') return status('login_required');
         if (current.status !== 'ready' || typeof current.revision !== 'string')
           return status(googleRotationFailure(current.status));
+        recordCloudDiagnostic({ stage: 'google_access', provider, outcome: 'start' });
         const result = /** @type {{status:string,access?:{summary:{expiresAt:number},takeAccessToken:()=>string}}} */ (
           await rotation.refresh({ expectedRevision: current.revision })
         );
+        recordCloudDiagnostic({
+          stage: 'google_access',
+          provider,
+          outcome: result.status === 'refreshed' ? 'refreshed' : 'blocked',
+          code: result.status === 'refreshed' ? null : refreshDiagnostic || googleRotationFailure(result.status)
+        });
         if (result.status === 'refresh_expired') return status('login_required');
         if (result.status !== 'refreshed' || !result.access)
           return withCloudAccessDiagnostic(status(googleRotationFailure(result.status)), refreshDiagnostic);
@@ -227,6 +240,27 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
         active = false;
       }
     }
+    // Optional UI-only read. It is never run merely by opening a session, and
+    // never becomes an authorization/account binding decision. Recheck the exact
+    // protected record AFTER the network response before releasing its label.
+    function previewAccountLabel() {
+      return guard(async () => {
+        const reader =
+          provider === 'google'
+            ? createGoogleAccountPreviewReader({ fetchImpl: diskFetch, timeoutMs: input.timeoutMs ?? 70_000 })
+            : createYandexAccountPreviewReader({ fetchImpl: diskFetch, timeoutMs: input.timeoutMs ?? 70_000 });
+        const identity = await reader({ clientId, accessToken: token, signal: new AbortController().signal });
+        if (
+          identity.accountKey !== accountKey ||
+          (await read()) !== raw ||
+          disposed ||
+          now() + EXPIRY_MARGIN_MS >= expiresAt
+        )
+          return status('account_unavailable');
+        recordCloudDiagnostic({ stage: 'account_label', provider, outcome: 'ok' });
+        return Object.freeze({ status: 'label_verified', label: identity.label });
+      });
+    }
     if (folderDiscoveryOnly) {
       const manager = createGoogleFolderManager({
         clientId,
@@ -237,6 +271,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
       });
       let candidates = new Set();
       const session = Object.freeze({
+        previewAccountLabel,
         ...(standaloneFolderWrite
           ? {
               generateFileId() {
@@ -327,6 +362,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
       ...(provider === 'google' ? { folderId: input.folderId } : {})
     });
     const session = Object.freeze({
+      previewAccountLabel,
       checkAccount() {
         return guard(() => base.checkAccount());
       },

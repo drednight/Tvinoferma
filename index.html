@@ -469,22 +469,28 @@
             <div class="cloud-registration-body">
 
               <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
-              <details id="cloud-login-settings"><summary>Аккаунты и настройка входа</summary>
-              <h4>Подключение диска</h4>
-              <p>Войдите в нужные аккаунты. Можно подключить оба диска.</p>
-                  <label for="cloud-login-provider">Войти через
-                    <select class="input" id="cloud-login-provider"><option value="yandex">Яндекс Диск</option><option value="google">Google Диск</option></select>
-                  </label>
-              <div class="cloud-registration-actions">
-                <button type="button" class="btn" id="cloud-connection-simple">Войти</button>
-                <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
+              <div class="cloud-provider-cards" aria-label="Аккаунты облачных дисков">
+                <section class="cloud-provider-card" aria-labelledby="cloud-google-title">
+                  <h4 id="cloud-google-title">Google Диск</h4>
+                  <p id="cloud-google-account" class="cloud-provider-account" aria-live="polite">Аккаунт ещё не проверен</p>
+                  <button type="button" class="btn" data-cloud-sign-in="google">Войти в Google</button>
+                </section>
+                <section class="cloud-provider-card" aria-labelledby="cloud-yandex-title">
+                  <h4 id="cloud-yandex-title">Яндекс Диск</h4>
+                  <p id="cloud-yandex-account" class="cloud-provider-account" aria-live="polite">Аккаунт ещё не проверен</p>
+                  <button type="button" class="btn" data-cloud-sign-in="yandex">Войти в Яндекс</button>
+                </section>
               </div>
-<label id="cloud-google-import-label">Настройка входа Google: JSON клиента Desktop
+              <input type="hidden" id="cloud-login-provider" value="yandex" />
+              <p class="muted">Можно подключить оба аккаунта. Куда сохранять файл, выбирается отдельно ниже.</p>
+              <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
+              <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
+              <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
+              <details id="cloud-login-settings"><summary>Настройка входа и восстановление</summary>
+              <label id="cloud-google-import-label">Настройка входа Google: JSON клиента Desktop
                   <input id="cloud-google-import" type="file" accept=".json,application/json" />
                 </label>
               <p id="cloud-google-config-status" class="muted" role="status"></p>
-              <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
-              <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
               <details id="cloud-registration-advanced">
                 <summary>Подключение и восстановление</summary>
               <p class="cloud-registration-warning"><strong>Обмен файлами — экспериментальный режим.</strong> Доступны проверка полного снимка, просмотр различий, подтверждённая замена местных данных и ручная отправка. Отсутствующие записи удаляются только при явно подтверждённой полной замене. Прежние облачные версии сохраняются. Несколько одновременных облачных версий автоматически не объединяются. Итоговый полный файл выбирается явно. Настоящие диски и два Windows-ПК ещё требуют приёмки.</p>
@@ -579,6 +585,17 @@
                 <p class="cloud-registration-status" id="cloud-activity-status" aria-live="polite"></p>
                 <ol id="cloud-activity-list"></ol>
                 <button type="button" class="btn ghost small" id="cloud-activity-clear">Очистить местный журнал</button>
+              </details>
+              <details class="cloud-diagnostics" id="cloud-diagnostics-panel">
+                <summary>Диагностика сейчас</summary>
+                <p>Проверка читает облачные файлы, но не отправляет их и не открывает новый вход. Отчёт показывает успешные этапы и место остановки. Аккаунты, пароли, токены, содержимое файлов и ссылки в него не входят.</p>
+                <div class="cloud-registration-actions">
+                  <button type="button" class="btn" id="cloud-diagnostics-check">Проверить сейчас</button>
+                  <button type="button" class="btn ghost" id="cloud-diagnostics-copy">Скопировать отчёт</button>
+                </div>
+                <p id="cloud-diagnostics-status" role="status" aria-live="polite"></p>
+                <label for="cloud-diagnostics-report">Безопасный отчёт для отправки в чат</label>
+                <textarea id="cloud-diagnostics-report" class="input" rows="14" readonly spellcheck="false" dir="ltr"></textarea>
               </details>
             </div>
           </details>
