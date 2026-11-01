@@ -37,6 +37,7 @@ const refresh = 'FAKE_PRIVATE_REFRESH';
 function fixture(
   provider,
   {
+    label = null,
     lostRefresh = false,
     identity = accountKey,
     expiresAt = 3_700_000,
@@ -76,14 +77,19 @@ function fixture(
     }
     if (command === 'cloud_disk_network') {
       expect(args.args.provider).toBe(provider);
-      if (args.args.operation === 'identity')
+      if (['identity', 'identity_preview'].includes(args.args.operation))
         return {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(
             provider === 'google'
-              ? { user: { permissionId: identity } }
-              : { client_id: clients.yandex, psuid: identity }
+              ? {
+                  user: {
+                    permissionId: identity,
+                    ...(label && args.args.operation === 'identity_preview' ? { emailAddress: label } : {})
+                  }
+                }
+              : { client_id: clients.yandex, psuid: identity, ...(label ? { login: label } : {}) }
           )
         };
       if (args.args.operation === 'folder_list')
@@ -267,7 +273,7 @@ describe('поиск кандидатов Google через сохранённы
       cryptoSource: webcrypto
     });
     expect(opened.status).toBe('opened');
-    expect(Object.keys(opened.session).sort()).toEqual(['discover', 'dispose', 'probeRoot']);
+    expect(Object.keys(opened.session).sort()).toEqual(['discover', 'dispose', 'previewAccountLabel', 'probeRoot']);
     const result = await opened.session.discover();
     expect(result).toEqual({ status: 'candidate', folders: [{ folderId: 'FOLDER_CANDIDATE', name: 'Твиноферма' }] });
     noSecret(result);
@@ -760,3 +766,62 @@ it.each(['invalid_grant', 'invalid_client', 'client_secret_required', 'timeout']
     expect(f.invoke.mock.calls.filter(([cmd]) => cmd === 'cloud_oauth_network')).toHaveLength(1);
   }
 );
+
+// Explicit optional display read: must not broaden file capabilities or trust IDs as labels.
+it.each([
+  ['google', 'fake-user@example.test'],
+  ['yandex', 'fake-user']
+])('previews %s only on request, from verified identity', async (provider, label) => {
+  const f = fixture(provider, { label });
+  const opened = await openNativeCloudSession({ ...f.options, now: () => 100_000 });
+  expect(opened.status).toBe('opened');
+  expect(
+    f.invoke.mock.calls.filter(
+      ([command, args]) => command === 'cloud_disk_network' && args.args.operation === 'identity_preview'
+    )
+  ).toHaveLength(0);
+  expect(await opened.session.previewAccountLabel()).toEqual({
+    status: 'label_verified',
+    label: { kind: provider === 'google' ? 'email' : 'login', value: label }
+  });
+  opened.session.dispose();
+  expect(await opened.session.previewAccountLabel()).toEqual({ status: 'account_unavailable' });
+});
+it('does not release a label after the protected record changes during preview', async () => {
+  const f = fixture('yandex', { label: 'fake-user' });
+  const original = f.invoke.getMockImplementation();
+  f.invoke.mockImplementation(async (command, args) => {
+    const reply = await original(command, args);
+    if (command === 'cloud_disk_network') f.replace(null);
+    return reply;
+  });
+  const opened = await openNativeCloudSession({ ...f.options, now: () => 100_000 });
+  expect(await opened.session.previewAccountLabel()).toEqual({ status: 'unavailable' });
+});
+it('does not release a display label for another account', async () => {
+  const f = fixture('yandex', { label: 'another-user', identity: 'OTHER_ACCOUNT' });
+  const opened = await openNativeCloudSession({ ...f.options, now: () => 100_000 });
+  expect(await opened.session.previewAccountLabel()).toEqual({ status: 'account_unavailable' });
+});
+
+it('does not release a preview disposed while its post-network record check is pending', async () => {
+  const f = fixture('yandex', { label: 'fake-user' });
+  const original = f.invoke.getMockImplementation();
+  let fetched = false,
+    release;
+  f.invoke.mockImplementation(async (command, args) => {
+    const reply = await original(command, args);
+    if (command === 'cloud_disk_network') fetched = true;
+    if (command === 'cloud_credential_read' && fetched)
+      return new Promise(resolve => {
+        release = () => resolve(reply);
+      });
+    return reply;
+  });
+  const opened = await openNativeCloudSession({ ...f.options, now: () => 100_000 });
+  const pending = opened.session.previewAccountLabel();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  opened.session.dispose();
+  release();
+  expect(await pending).toEqual({ status: 'account_unavailable' });
+});

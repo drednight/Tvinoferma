@@ -1,3 +1,4 @@
+import { clearCloudAccountPresentation } from '../js/modules/cloudSync/cloudAccountPresentation.js';
 import { legacyCloudHtml } from './helpers/legacyCloudHtml.js';
 // @vitest-environment jsdom
 // Вся цепочка панели до поддельного IPC/провайдера. Настоящих токенов, Tauri и облаков здесь нет.
@@ -117,10 +118,13 @@ async function start() {
   conn('start').click();
 }
 function assertNoPrivate() {
-  const visible = document.body.textContent;
+  const clone = document.body.cloneNode(true);
+  clone.querySelector('.cloud-provider-cards')?.remove();
+  const visible = clone.textContent;
   for (const secret of [SECRET, ACCOUNT, CODE, ...Object.values(LABEL)]) expect(visible).not.toContain(secret);
 }
 beforeEach(() => {
+  clearCloudAccountPresentation();
   expect(panel).toBeTruthy();
   document.body.innerHTML = `<main>${panel}</main>`;
 });

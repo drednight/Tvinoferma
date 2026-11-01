@@ -1,4 +1,5 @@
 // @ts-check
+import { presentCloudAccount, cloudAccountPresentationGeneration } from './cloudAccountPresentation.js';
 // Desktop composition. Metadata contains public bundle + encrypted pending file,
 // never password/dataKey. OS-vault remembering is explicit and separately scoped.
 import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
@@ -43,8 +44,30 @@ export function createStandaloneFileRuntime(native) {
     const result = await replace(original, candidate, 'pre-cloud-standalone-file-receipt');
     if (result.status !== 'applied') throw error(result.status);
   }
+  async function presentLabel(provider, session, generation) {
+    if (generation !== cloudAccountPresentationGeneration()) return;
+    try {
+      const preview = await session.previewAccountLabel?.();
+      if (generation === cloudAccountPresentationGeneration() && preview?.status === 'label_verified')
+        if (generation !== cloudAccountPresentationGeneration()) throw error('closed');
+      presentCloudAccount(provider, { status: 'ready', label: preview.label });
+    } catch {
+      /* optional display must not block file exchange */
+    }
+  }
   async function open(provider, { createFolder }) {
+    const generation = cloudAccountPresentationGeneration();
     const local = await readNativeCredentialBinding({ provider, invoke: native.invoke });
+    presentCloudAccount(provider, {
+      status:
+        local.status === 'empty'
+          ? 'empty'
+          : local.status === 'ready'
+            ? 'ready'
+            : local.status === 'pending'
+              ? 'pending'
+              : 'blocked'
+    });
     if (local.status === 'empty') throw error('credential_missing');
     if (local.status === 'pending') throw error('credential_refresh_pending');
     if (local.status !== 'ready' || !local.binding) throw error('credential_binding_blocked');
@@ -59,6 +82,7 @@ export function createStandaloneFileRuntime(native) {
         throw withCloudAccessDiagnostic(error(opened.status), cloudAccessDiagnostic(opened));
       refreshUncertain = false;
       try {
+        await presentLabel(provider, opened.session, generation);
         let found = await opened.session.discover();
         if (!['empty', 'candidate', 'ambiguous'].includes(found.status)) throw error('folder_unavailable');
         if (found.folders.length === 0 && !createFolder) return { account, session: null };
@@ -110,6 +134,7 @@ export function createStandaloneFileRuntime(native) {
     if (opened.status !== 'opened')
       throw withCloudAccessDiagnostic(error(opened.status), cloudAccessDiagnostic(opened));
     if (provider === 'google') refreshUncertain = false;
+    else await presentLabel(provider, opened.session, generation);
     return { account, folderId: folderId || null, session: opened.session };
   }
   return createStandaloneFileExchange({

@@ -291,6 +291,31 @@ pub fn download_redirect(allowed: bool, status: u16, location: &str) -> Option<S
     checked_download_redirect(allowed, status, location).ok()
 }
 
+// Fixed, non-personal rejection profile only. Never return the authority,
+// Location, path or query. This classifier DOES NOT authorize any target.
+fn redirect_host_rejection(host: &str) -> &'static str {
+    if host.contains('@') || host.contains(':') {
+        return "cloud_disk_redirect_host_authority";
+    }
+    let lower = host.to_ascii_lowercase();
+    if lower == "storage.yandex.net" || lower.ends_with(".storage.yandex.net") {
+        if host != lower {
+            "cloud_disk_redirect_host_storage_case"
+        } else {
+            "cloud_disk_redirect_host_storage_shape"
+        }
+    } else if lower == "disk.yandex.net" || lower.ends_with(".disk.yandex.net") {
+        "cloud_disk_redirect_host_disk_net"
+    } else if lower == "disk.yandex.ru" || lower.ends_with(".disk.yandex.ru") {
+        "cloud_disk_redirect_host_disk_ru"
+    } else if lower == "yandex.net" || lower.ends_with(".yandex.net") {
+        "cloud_disk_redirect_host_yandex_net"
+    } else if lower == "yandex.ru" || lower.ends_with(".yandex.ru") {
+        "cloud_disk_redirect_host_yandex_ru"
+    } else {
+        "cloud_disk_redirect_host"
+    }
+}
 /// Fixed failure categories only. Never return the signed address or hostname.
 pub fn checked_download_redirect(
     allowed: bool,
@@ -316,7 +341,7 @@ pub fn checked_download_redirect(
     let server = host
         .strip_suffix(".storage.yandex.net")
         .and_then(|value| value.strip_prefix('s'))
-        .ok_or("cloud_disk_redirect_host")?;
+        .ok_or_else(|| redirect_host_rejection(host))?;
     if server.is_empty()
         || server.len() > 62
         || !server.as_bytes()[0].is_ascii_digit()
@@ -324,7 +349,7 @@ pub fn checked_download_redirect(
             .bytes()
             .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
     {
-        return Err("cloud_disk_redirect_host");
+        return Err(redirect_host_rejection(host));
     }
     let path = rest.split('?').next().ok_or("cloud_disk_redirect_path")?;
     if !path.starts_with("rdisk/") || path.len() <= 6 {
@@ -460,6 +485,11 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
         }
         (Provider::Google, "identity") => {
             request.url = GOOGLE_IDENTITY.into();
+            request.accept_json = true;
+            request.max_response = MAX_IDENTITY_BYTES;
+        }
+        (Provider::Google, "identity_preview") => {
+            request.url = "https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%2CemailAddress%29".into();
             request.accept_json = true;
             request.max_response = MAX_IDENTITY_BYTES;
         }
@@ -755,10 +785,52 @@ mod tests {
     }
 
     #[test]
+    fn rejected_redirect_host_profiles_are_fixed_and_never_authorize_targets() {
+        for (authority, code) in [
+            ("s123-PRIVATE.storage.yandex.net", "storage_case"),
+            ("s123-private.storage.yandex.net", "storage_shape"),
+            ("S123.storage.yandex.net", "storage_case"),
+            ("downloader.disk.yandex.net", "disk_net"),
+            ("downloader.dst.disk.yandex.ru", "disk_ru"),
+            ("PRIVATE.other.yandex.net", "yandex_net"),
+            ("PRIVATE.other.yandex.ru", "yandex_ru"),
+            ("PRIVATE@s123.storage.yandex.net", "authority"),
+            ("s123.storage.yandex.net:444", "authority"),
+        ] {
+            let location = format!("https://{authority}/rdisk/PRIVATE?token=PRIVATE");
+            let expected = format!("cloud_disk_redirect_host_{code}");
+            assert_eq!(
+                checked_download_redirect(true, 302, &location),
+                Err(expected.as_str())
+            );
+            assert!(download_redirect(true, 302, &location).is_none());
+            assert!(!expected.contains("PRIVATE"));
+        }
+        assert_eq!(
+            checked_download_redirect(
+                true,
+                302,
+                "https://s123.storage.yandex.net.evil.test/rdisk/PRIVATE"
+            ),
+            Err("cloud_disk_redirect_host")
+        );
+    }
+    #[test]
     fn google_operations_build_fixed_urls_and_require_exact_fields() {
         let identity = prepare(args("google", "identity")).unwrap();
         assert_eq!(identity.url, GOOGLE_IDENTITY);
         assert_eq!(identity.authorization.as_deref(), Some("Bearer FAKE_TOKEN"));
+        let preview = prepare(args("google", "identity_preview")).unwrap();
+        assert_eq!(preview.method, Method::Get);
+        assert_eq!(preview.url, "https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%2CemailAddress%29");
+        assert_eq!(preview.max_response, MAX_IDENTITY_BYTES);
+        assert!(preview.accept_json);
+        assert!(preview.body.is_none());
+        assert!(!preview.download_redirect);
+        let mut invalid_preview = args("google", "identity_preview");
+        invalid_preview.link = Some("https://evil.test/PRIVATE".into());
+        assert!(prepare(invalid_preview).is_none());
+        assert!(prepare(args("yandex", "identity_preview")).is_none());
         let generate = prepare(args("google", "generate_id")).unwrap();
         assert_eq!(
             generate.url,

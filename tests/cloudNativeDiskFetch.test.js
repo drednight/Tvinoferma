@@ -870,3 +870,25 @@ describe.each(['google', 'yandex'])('%s: ключ → очередь → вос�
     pinnedOther.session.dispose();
   }, 30_000);
 });
+
+it('allows only the fixed Google email+identity preview GET, with the identity response cap', async () => {
+  const url = 'https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%2CemailAddress%29';
+  const invoke = vi.fn(async () => ({ status: 200, contentType: 'application/json', body: '{}' }));
+  const fetchImpl = createNativeDiskFetch({ provider: 'google', invoke });
+  const init = fetchInit('GET', { Accept: 'application/json', Authorization: `Bearer ${accessToken}` });
+  await fetchImpl(url, init);
+  expect(invoke.mock.calls[0]).toEqual([
+    'cloud_disk_network',
+    { args: { provider: 'google', operation: 'identity_preview', accessToken } }
+  ]);
+  for (const address of [
+    url + '&other=1',
+    url.replace('permissionId%2C', ''),
+    url.replace('www.googleapis.com', 'evil.test')
+  ])
+    await expect(fetchImpl(address, init)).rejects.toThrow();
+  await expect(fetchImpl(url, { ...init, method: 'POST' })).rejects.toThrow();
+  expect(invoke).toHaveBeenCalledOnce();
+  invoke.mockResolvedValue({ status: 200, contentType: 'application/json', body: 'x'.repeat(8193) });
+  await expect(fetchImpl(url, init)).rejects.toThrow();
+});

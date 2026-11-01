@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudStep } from './cloudDiagnostics.js';
 import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Simple immutable full-file exchange. No connectedPublication, legacy outbox,
 // root, history materialisation, pairing, merge or automatic publication.
@@ -167,11 +168,11 @@ export function createStandaloneFileExchange(ports) {
   }
   const config = () => readStandaloneState(ports.snapshot().settings);
   async function patch(change) {
-    await ports.patch(change);
+    await cloudStep('local_patch', null, () => ports.patch(change));
   }
   async function connect(provider, createFolder = false) {
     if (!PROVIDERS.includes(provider)) throw fail('provider_invalid');
-    const opened = await ports.open(provider, { createFolder });
+    const opened = await cloudStep('open_account', provider, () => ports.open(provider, { createFolder }));
     const row = config()[provider];
     if (row.account !== null && row.account !== opened.account) {
       opened.session?.dispose();
@@ -527,11 +528,11 @@ export function createStandaloneFileExchange(ports) {
         const targets = [...new Set(options.targets)];
         if (!targets.length || targets.some(provider => !PROVIDERS.includes(provider)))
           throw fail('destination_required');
-        if (!options.source) await ports.ensureIds();
+        if (!options.source) await cloudStep('ensure_ids', null, () => ports.ensureIds());
         const original = ports.snapshot();
         const source = options.source || original;
         if (options.fields?.length && !options.source) ports.assertContacts?.(source);
-        const scanned = await scanAll(targets, true);
+        const scanned = await cloudStep('scan_destinations', null, () => scanAll(targets, true));
         if (!scanned.results.some(row => ['checked', 'empty'].includes(row.status)))
           throw Object.assign(fail('destinations_unavailable'), { results: scanned.results });
         const supersedes = [...new Map(scanned.entries.map(entry => [entry.versionId, pinOf(entry)])).values()];
@@ -547,23 +548,29 @@ export function createStandaloneFileExchange(ports) {
           // another password/key after every app restart when OS remembering is off.
           let opened;
           try {
-            opened = await openKeyBundle({
-              bundle: savedKey.bundle,
-              expectedDatasetId: STANDALONE_DATASET_ID,
-              expectedPin: savedKey.pin,
-              role: 'main',
-              secret: password,
-              cryptoSource
-            });
+            opened = await cloudStep('key_unlock', null, () =>
+              openKeyBundle({
+                bundle: savedKey.bundle,
+                expectedDatasetId: STANDALONE_DATASET_ID,
+                expectedPin: savedKey.pin,
+                role: 'main',
+                secret: password,
+                cryptoSource
+              })
+            );
           } catch {
             throw fail('encryption_password_incorrect');
           }
           key = { ...savedKey, dataKey: opened.dataKey };
         }
-        const sealed = await seal({ ...options, password, snapshot: source, unlocked: key, supersedes, cryptoSource });
+        const sealed = await cloudStep('file_seal', null, () =>
+          seal({ ...options, password, snapshot: source, unlocked: key, supersedes, cryptoSource })
+        );
         key = sealed.unlocked;
-        const sha256 = await hashEnvelope(sealed.envelope);
-        const contentHash = await snapshotFileHash(sealed.contents.publicSnapshot, cryptoSource);
+        const sha256 = await cloudStep('file_hash', null, () => hashEnvelope(sealed.envelope));
+        const contentHash = await cloudStep('snapshot_hash', null, () =>
+          snapshotFileHash(sealed.contents.publicSnapshot, cryptoSource)
+        );
         const token = Object.freeze({
           targets,
           results: scanned.results,

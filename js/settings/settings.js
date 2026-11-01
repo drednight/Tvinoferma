@@ -1,6 +1,7 @@
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
 
+import { bindCloudDiagnosticsPanel } from '../modules/cloudSync/ui/cloudDiagnosticsPanel.js';
 import { bindStandaloneFilePanel } from '../modules/cloudSync/ui/standaloneFilePanel.js';
 
 import {
@@ -578,7 +579,7 @@ function bindSettingInputs() {
 
 export function bindSettings() {
   bindCloudRegistrationCheck({ desktop: isTauri() });
-  bindStandaloneFilePanel({ desktop: isTauri() });
+  const standaloneFiles = bindStandaloneFilePanel({ desktop: isTauri() });
   let legacyBound = false;
   const bindLegacy = () => {
     if (legacyBound) return;
@@ -611,6 +612,7 @@ export function bindSettings() {
     bindLegacy();
   });
   bindCloudActivityPanel();
+  bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
   bindGuides();
   bindFeedback();
   balanceSettingsColumns();

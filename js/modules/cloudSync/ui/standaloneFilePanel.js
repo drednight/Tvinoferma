@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudStep, captureCloudFailure, recordCloudDiagnostic } from '../cloudDiagnostics.js';
 import { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } from '../providers/cloudAccessDiagnostics.js';
 import { createStandaloneFileRuntime } from '../standaloneFileRuntime.js';
 import { inspectStateFile } from '../inspectStateFile.js';
@@ -127,19 +128,21 @@ export function bindStandaloneFilePanel(options) {
   function log(provider, action, outcome) {
     (options.record || recordCloudActivity)(provider, action, outcome);
   }
-  async function action(fn) {
+  async function action(fn, stage = 'ui_action') {
     if (busy || !options.desktop || stopped) return;
     setBusy(true);
     try {
-      await fn(await getRuntime());
+      return await cloudStep(stage, null, async () => fn(await getRuntime()));
     } catch (error) {
+      const failure = captureCloudFailure(stage, error);
       if (Array.isArray(error.results)) {
         showResults(error.results);
         for (const row of error.results) log(row.provider, 'standalone_save', standaloneActivityOutcome(row));
       }
       status.textContent =
         STATUS[error.message] ||
-        'Не удалось безопасно завершить действие. Проверьте подключение и повторите проверку. Ничего не считайте подтверждённым; ключи и аккаунт удалять не нужно.';
+        `Действие остановлено на этапе ${failure.stage}; код ${failure.code}. Скопируйте отчёт в разделе «Диагностика сейчас» под журналом. Ничего не считайте подтверждённым; ключи и аккаунт удалять не нужно.`;
+      return { diagnosticFailed: true };
     } finally {
       setBusy(false);
     }
@@ -149,6 +152,12 @@ export function bindStandaloneFilePanel(options) {
     for (const result of results) {
       const li = doc.createElement('li');
       const diagnostic = cloudAccessDiagnostic(result);
+      recordCloudDiagnostic({
+        stage: 'provider_result',
+        provider: result.provider,
+        outcome: ['checked', 'empty', 'sent_verified'].includes(result.status) ? 'ok' : 'blocked',
+        code: diagnostic || result.status
+      });
       const reconnectHint =
         result.provider === 'google' && GOOGLE_RECONNECT_STATUSES.includes(result.status)
           ? '. Повторный вход — только в прежний аккаунт'
@@ -315,7 +324,7 @@ export function bindStandaloneFilePanel(options) {
     }
   }
   async function check(manual) {
-    await action(async engine => {
+    return action(async engine => {
       const result = await engine.check({ manual, includeBackups: manual && el('show-backups').checked });
       const available = result.results.find(row => ['checked', 'empty'].includes(row.status));
       showFiles(result.files);
@@ -327,7 +336,9 @@ export function bindStandaloneFilePanel(options) {
             ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
             : result.files.length
               ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
-              : 'Проверка завершена: новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
+              : 'Новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
+      if (available && result.results.some(row => !['checked', 'empty', 'credential_missing'].includes(row.status)))
+        status.textContent = 'Проверка частичная: один из подключённых дисков недоступен. ' + status.textContent;
       for (const resultRow of result.results) {
         if (resultRow.status === 'credential_missing') continue;
         log(
@@ -340,7 +351,8 @@ export function bindStandaloneFilePanel(options) {
               : standaloneActivityOutcome(resultRow)
         );
       }
-    });
+      return result;
+    }, 'ui_check');
   }
   el('source').addEventListener('change', () => {
     el('source-file-label').hidden = el('source').value !== 'file';
@@ -424,7 +436,9 @@ export function bindStandaloneFilePanel(options) {
         return;
       }
       status.textContent = 'Отправка и проверка файла на диске…';
-      const result = await engine.save(prepared, { confirmed: true, remember: el('remember').checked });
+      const result = await cloudStep('save_dispatch', null, () =>
+        engine.save(prepared, { confirmed: true, remember: el('remember').checked })
+      );
       showResults(result.results);
       status.textContent =
         result.remembering === 'unavailable'
@@ -437,7 +451,7 @@ export function bindStandaloneFilePanel(options) {
           row.status === 'sent_verified' ? 'success' : standaloneActivityOutcome(row)
         );
       resetPrivate();
-    })
+    }, 'ui_save')
   );
   el('accept').addEventListener('click', () =>
     action(async engine => {

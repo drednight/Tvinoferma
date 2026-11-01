@@ -1,7 +1,17 @@
 import { defineConfig } from 'vite';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+const version = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
+let revision = 'unknown';
+try {
+  revision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+} catch {
+  /* source archive */
+}
 
 export default defineConfig({
   clearScreen: false,
+  define: { __TF_BUILD_INFO__: JSON.stringify({ version, revision }) },
   server: {
     port: 1420,
     strictPort: true,

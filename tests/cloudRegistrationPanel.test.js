@@ -1,3 +1,4 @@
+import { clearCloudAccountPresentation } from '../js/modules/cloudSync/cloudAccountPresentation.js';
 import { legacyAccessHtml } from './helpers/legacyAccessHtml.js';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
@@ -59,6 +60,7 @@ function bind(extra = {}) {
   };
 }
 beforeEach(() => {
+  clearCloudAccountPresentation();
   expect(source).toBeTruthy();
   document.body.innerHTML = `<main>${source}</main>`;
 });
@@ -226,6 +228,7 @@ describe('настоящие настройки: диагностика, дос�
 const SLOT = '01234567-89ab-4cde-8f01-23456789abcd';
 const PRIVATE = 'FAKE_PRIVATE_TOKEN_OR_ACCOUNT';
 function connection(id) {
+  if (id === 'simple') return document.querySelector(`[data-cloud-sign-in="${byId('provider').value}"]`);
   return document.getElementById(`cloud-connection-${id}`);
 }
 function ready() {
@@ -269,7 +272,7 @@ describe('экспериментальный локальный доступ в 
       firstConnectionConfirmed: true,
       invoke: s.invoke,
       openBrowser: s.openBrowser,
-      confirmAccount: s.confirmAccount
+      confirmAccount: expect.any(Function)
     });
     await vi.waitFor(() => expect(connection('progress').textContent).toContain('Доступ сохранён'));
     expect(connection('progress').textContent).toContain('сохранить полный файл или проверить файлы другого ПК');
@@ -511,7 +514,7 @@ describe('обычный вход без диагностического кве
     expect(s.check).not.toHaveBeenCalled();
     expect(s.enroll.mock.calls[0][0]).toMatchObject({
       firstConnectionConfirmed: true,
-      confirmAccount: s.confirmAccount
+      confirmAccount: expect.any(Function)
     });
     expect(document.getElementById('cloud-registration-advanced').open).toBe(false);
   });
@@ -578,12 +581,12 @@ describe('обычный вход без диагностического кве
   it('не открывает прежний файловый обмен при входе в ранее привязанный аккаунт', async () => {
     const s = bind({ readBinding: vi.fn(async () => ready()), readDataset: vi.fn(async () => 'ready') });
     connection('simple').click();
-    await vi.waitFor(() => expect(connection('simple').hidden).toBe(true));
+    await vi.waitFor(() => expect(connection('simple').disabled).toBe(true));
     expect(document.getElementById('cloud-file-panel')).toBeNull();
-    expect(connection('simple').hidden).toBe(true);
+    expect(connection('simple').disabled).toBe(true);
     expect(s.enroll).not.toHaveBeenCalled();
     expect(document.getElementById('cloud-setup-new')).toBeNull();
-    expect(byId('client').value).toBe(clientId);
+    await vi.waitFor(() => expect(byId('client').value).toBe(clientId));
   });
 });
 

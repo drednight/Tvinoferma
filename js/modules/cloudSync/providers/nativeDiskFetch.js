@@ -1,4 +1,5 @@
 // @ts-check
+import { recordCloudDiagnostic, captureCloudFailure } from '../cloudDiagnostics.js';
 import { nativeCloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 // Экспериментальный мост существующих изолированных протоколов к native IPC.
 // Сеть и ограничения повторно проверяются в Rust; тесты с
@@ -26,6 +27,8 @@ import {
 
 const ERROR = 'Не удалось безопасно выполнить запрос облачного диска';
 const GOOGLE_IDENTITY = 'https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%29';
+const GOOGLE_IDENTITY_PREVIEW =
+  'https://www.googleapis.com/drive/v3/about?fields=user%28permissionId%2CemailAddress%29';
 const YANDEX_IDENTITY = 'https://login.yandex.ru/info?format=json';
 const GOOGLE_UPLOAD =
   'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id%2Cname%2CappProperties';
@@ -161,6 +164,9 @@ function checkedRequest(provider, address, init) {
   let maxBody = MAX_SMALL;
   if (request.method === 'GET' && !hasBody && address === (provider === 'google' ? GOOGLE_IDENTITY : YANDEX_IDENTITY)) {
     result = { ...base, operation: 'identity', accessToken: token(request.headers, provider, true) };
+    maxBody = MAX_IDENTITY;
+  } else if (provider === 'google' && request.method === 'GET' && !hasBody && address === GOOGLE_IDENTITY_PREVIEW) {
+    result = { ...base, operation: 'identity_preview', accessToken: token(request.headers, provider, true) };
     maxBody = MAX_IDENTITY;
   } else if (provider === 'google' && request.method === 'GET' && !hasBody) {
     const accessToken = token(request.headers, provider, false);
@@ -304,6 +310,8 @@ export function createNativeDiskFetch(options) {
         throw failed();
       }
       active = true;
+      const stage = `disk_${request.args.operation}`;
+      recordCloudDiagnostic({ stage, provider, outcome: 'start' });
       try {
         const result = object(await invoke('cloud_disk_network', { args: request.args }), [
           'status',
@@ -333,9 +341,23 @@ export function createNativeDiskFetch(options) {
         // только исходный проверенный адрес; единственный разрешённый CDN-шаг
         // Яндекса проверяется в Rust и не раскрывает подписанный Location в JS.
         Object.defineProperty(response, 'url', { value: address });
+        recordCloudDiagnostic({
+          stage,
+          provider,
+          outcome: result.status < 400 ? 'ok' : 'blocked',
+          httpStatus: result.status
+        });
         return response;
       } catch (error) {
-        throw withCloudAccessDiagnostic(failed(), nativeCloudAccessDiagnostic(error, request.args.operation));
+        const safe = withCloudAccessDiagnostic(failed(), nativeCloudAccessDiagnostic(error, request.args.operation));
+        captureCloudFailure(stage, safe, provider);
+        recordCloudDiagnostic({
+          stage,
+          provider,
+          outcome: 'failed',
+          code: nativeCloudAccessDiagnostic(error, request.args.operation)
+        });
+        throw safe;
       } finally {
         active = false;
       }
