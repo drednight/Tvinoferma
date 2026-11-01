@@ -123,7 +123,7 @@ impl<'a> Cursor<'a> {
     }
 }
 
-fn valid_client(provider: Provider, value: &str) -> bool {
+pub(crate) fn valid_client(provider: Provider, value: &str) -> bool {
     let id = match provider {
         Provider::Google => match value.strip_suffix(".apps.googleusercontent.com") {
             Some(prefix) if (3..=200).contains(&prefix.len()) => prefix,
@@ -136,7 +136,7 @@ fn valid_client(provider: Provider, value: &str) -> bool {
         .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
 }
 
-fn valid_account(value: &str) -> bool {
+pub(crate) fn valid_account(value: &str) -> bool {
     (1..=256).contains(&value.len())
         && value
             .bytes()

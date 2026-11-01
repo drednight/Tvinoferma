@@ -5,6 +5,9 @@ import {
   clearCloudAccountPresentation,
   subscribeCloudAccountPresentation
 } from '../cloudAccountPresentation.js';
+import { confirmModal } from '../../../core/ui.js';
+import { recordCloudActivity } from '../cloudEventLog.js';
+import { clearGoogleAccess } from '../providers/googleAccessMemory.js';
 import { copyOAuthAccountLabel } from '../providers/oauthAccountLabel.js';
 import { googleClientImportProblem, GOOGLE_IMPORT_MESSAGES } from '../providers/googleClientImport.js';
 // Разовая диагностика и экспериментальное сохранение OAuth-доступа, без передачи
@@ -14,16 +17,25 @@ import { describeOAuthFailure } from '../providers/oauthDiagnostics.js';
 import { validOAuthClientId } from '../providers/oauthCommon.js';
 import { checkCloudOAuthRegistration } from '../providers/oauthRegistrationCheck.js';
 import { enrollNativeCloudAccount } from '../providers/nativeOAuthEnrollment.js';
-import { forgetUnboundNativeCredential, readNativeCredentialBinding } from '../providers/nativeCredentialStore.js';
+import {
+  forgetUnboundNativeCredential,
+  logoutNativeCredential,
+  readNativeCredentialBinding
+} from '../providers/nativeCredentialStore.js';
 import { createNativeDatasetBindingStore } from '../providers/nativeDatasetBindingStore.js';
 import { createCloudAccountConfirmation } from './confirmCloudAccount.js';
-import { beginCloudCredentialOperation } from '../credentialResetCoordination.js';
+import {
+  beginCloudCredentialOperation,
+  beginCloudDataOperation,
+  blockCloudProviderAfterLogout
+} from '../credentialResetCoordination.js';
 
 const LOCAL_MESSAGES = Object.freeze({
+  signed_out: 'Вы вышли на этом ПК. Привязка сохранена; войдите в прежний аккаунт для продолжения.',
   empty: 'Локальная запись доступа не найдена. Это не доказывает, что старого подключения или облачных данных не было.',
   ready: 'Доступ сохранён на этом ПК. Его действительность и права, облачные файлы и синхронизация не проверялись.',
   ready_bound:
-    'Доступ сохранён, но есть существующая или неполная привязка набора. Локальное удаление заблокировано; облачные файлы и действительность доступа не проверялись.',
+    'Доступ сохранён; при выходе прежняя привязка набора и ключи остаются на этом ПК. Облачные файлы и действительность доступа не проверялись.',
   dataset_incomplete:
     'Есть неполная привязка набора. Локальное удаление заблокировано; требуется восстановление, а не создание нового набора.',
   dataset_blocked:
@@ -62,7 +74,7 @@ const ENROLL_MESSAGES = Object.freeze({
  * loadNative?:()=>Promise<{invoke:(command:string,args:any)=>Promise<any>,openBrowser:(url:string)=>Promise<any>}>,
  * check?:typeof checkCloudOAuthRegistration, enroll?:typeof enrollNativeCloudAccount,
  * readBinding?:typeof readNativeCredentialBinding, readDataset?:(args:{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>})=>Promise<string>,
- * forget?:typeof forgetUnboundNativeCredential,
+ * forget?:typeof forgetUnboundNativeCredential, logout?:typeof logoutNativeCredential, confirmLogout?:(args:any)=>Promise<boolean>,
  * confirmAccount?:ReturnType<typeof createCloudAccountConfirmation>}} options
  */
 export function bindCloudRegistrationCheck(options) {
@@ -76,6 +88,7 @@ export function bindCloudRegistrationCheck(options) {
   const status = doc.getElementById('cloud-registration-status');
   const simple = /** @type {HTMLButtonElement|null} */ (doc.getElementById('cloud-connection-simple'));
   const providerButtons = /** @type {HTMLButtonElement[]} */ ([...doc.querySelectorAll('[data-cloud-sign-in]')]);
+  const logoutButtons = /** @type {HTMLButtonElement[]} */ ([...doc.querySelectorAll('[data-cloud-sign-out]')]);
   const providerKnown = new Map();
   function renderProviderCards() {
     for (const selected of ['google', 'yandex']) {
@@ -92,6 +105,7 @@ export function bindCloudRegistrationCheck(options) {
         label.textContent = {
           unknown: 'Аккаунт ещё не проверен',
           empty: 'Вход на этом ПК не выполнен',
+          signed_out: 'Вход снят на этом ПК; файлы и ключ сохранены',
           ready: 'Вход сохранён; имя аккаунта пока не подтверждено',
           pending: 'Предыдущая операция входа не подтверждена',
           blocked: 'Доступ требует восстановления',
@@ -201,6 +215,18 @@ export function bindCloudRegistrationCheck(options) {
             ? 'Яндекс подключён'
             : 'Войти в Яндекс';
     }
+    for (const button of logoutButtons) {
+      const target = button.dataset.cloudSignOut;
+      button.disabled =
+        busy ||
+        !options.desktop ||
+        uncertain.has(target) ||
+        !['ready', 'ready_bound'].includes(
+          cloudAccountPresentation(target).status === 'unknown'
+            ? providerKnown.get(target)
+            : cloudAccountPresentation(target).status
+        );
+    }
     if (simpleCancel) {
       simpleCancel.hidden = !['enroll', 'inspect'].includes(active?.mode || '');
       simpleCancel.disabled = !active || active.controller.signal.aborted;
@@ -284,8 +310,9 @@ export function bindCloudRegistrationCheck(options) {
       if (session.controller.signal.aborted) return;
       const reply = await readBinding({ provider: selected, invoke: native.invoke });
       if (session.controller.signal.aborted) return;
-      if (!['empty', 'ready', 'pending', 'blocked'].includes(reply.status)) throw new Error();
-      if (reply.status === 'ready' && reply.binding?.clientId) client.value = reply.binding.clientId;
+      if (!['empty', 'ready', 'pending', 'blocked', 'signed_out'].includes(reply.status)) throw new Error();
+      if (['ready', 'signed_out'].includes(reply.status) && reply.binding?.clientId)
+        client.value = reply.binding.clientId;
       if (reply.status === 'empty' || (selected === 'google' && ['pending', 'ready'].includes(reply.status))) {
         if (selected === 'google') {
           try {
@@ -493,7 +520,7 @@ export function bindCloudRegistrationCheck(options) {
     if (
       !input ||
       observed?.provider !== input.selected ||
-      (!reconnect && observed.status !== 'empty') ||
+      (!reconnect && !['empty', 'signed_out'].includes(observed.status)) ||
       (!quick && !approve?.checked)
     )
       return;
@@ -605,7 +632,7 @@ export function bindCloudRegistrationCheck(options) {
     const reconnect =
       selectedProvider() === 'google' &&
       ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(observed.status);
-    if (!reconnect && observed.status !== 'empty') return;
+    if (!reconnect && !['empty', 'signed_out'].includes(observed.status)) return;
     return await startEnrollment(true, reconnect);
   }
   simple?.addEventListener('click', signIn);
@@ -695,6 +722,78 @@ export function bindCloudRegistrationCheck(options) {
   for (const event of ['tf-cloud-root-confirmed', 'tf-cloud-binding-changed'])
     doc.defaultView?.addEventListener(event, () => {
       if (panel.open) void inspect();
+    });
+
+  for (const button of logoutButtons)
+    button.addEventListener('click', async () => {
+      if (button.disabled || active || resetStarted || !options.desktop) return;
+      const selected = /** @type {'google'|'yandex'} */ (button.dataset.cloudSignOut);
+      if (!['google', 'yandex'].includes(selected)) return;
+      const agreed = await (options.confirmLogout || confirmModal)({
+        title: `Выйти из ${selected === 'google' ? 'Google Диска' : 'Яндекс Диска'}?`,
+        text: 'Будет удалён только вход на этом ПК. Облачные файлы, ключ шифрования, привязка к прежнему аккаунту и незавершённые отправки сохранятся. Для продолжения войдите в прежний аккаунт. Разрешение приложения в самом сервисе этим не отзывается; его можно отозвать в настройках аккаунта (это может затронуть другие ПК).',
+        okText: 'Выйти на этом ПК',
+        danger: true
+      });
+      if (!agreed || active || resetStarted) return;
+      let operation;
+      try {
+        operation = beginCloudDataOperation();
+      } catch {
+        progress.textContent = 'Дождитесь завершения облачной операции и повторите выход.';
+        return;
+      }
+      const session = {
+        controller: new AbortController(),
+        mode: /** @type {'forget'} */ ('forget'),
+        selected,
+        installing: false
+      };
+      active = session;
+      setBusy();
+      let started = false;
+      try {
+        const native = await loadNative();
+        const binding = await readBinding({ provider: selected, invoke: native.invoke });
+        if (binding.status !== 'ready' || !binding.binding) {
+          progress.textContent = 'Выход остановлен: запись изменилась или требует восстановления. Ничего не удалялось.';
+          return;
+        }
+        started = true;
+        if (selected === 'google') clearGoogleAccess(native.invoke);
+        recordCloudActivity(selected, 'credential_logout', 'running');
+        const result = await (options.logout || logoutNativeCredential)({
+          provider: selected,
+          slotId: binding.binding.slotId,
+          invoke: native.invoke,
+          confirmed: true
+        });
+        if (result !== 'forgotten') {
+          recordCloudActivity(selected, 'credential_logout', 'blocked');
+          progress.textContent =
+            'Выход заблокирован защитой привязки или запись изменилась. Ключи и доступ не удалялись.';
+          return;
+        }
+        recordCloudActivity(selected, 'credential_logout', 'success');
+        if (selected === 'google') clearGoogleAccess(native.invoke);
+        presentCloudAccount(selected, { status: 'signed_out' });
+        providerKnown.set(selected, 'signed_out');
+        observed = null;
+        progress.textContent = 'Вы вышли на этом ПК. Облачные файлы, ключи и незавершённые отправки сохранены.';
+        doc.defaultView?.dispatchEvent(
+          new CustomEvent('tf-cloud-credential-removed', { detail: { provider: selected } })
+        );
+      } catch {
+        if (started) {
+          blockCloudProviderAfterLogout(selected);
+          recordCloudActivity(selected, 'credential_logout', 'uncertain');
+          uncertainOutcome(selected);
+        } else progress.textContent = 'Не удалось проверить вход; удаление не запускалось.';
+      } finally {
+        operation.finish(uncertain.has(selected));
+        if (active === session) active = null;
+        setBusy();
+      }
     });
 
   forgetButton?.addEventListener('click', async () => {

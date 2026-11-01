@@ -55,6 +55,7 @@ async function fixture() {
       const args = wrapped.args;
       if (typeof failures[args.operation] === 'string') throw failures[args.operation];
       if (failures[args.operation]) return { status: failures[args.operation], contentType: null, body: '' };
+      if (args.operation === 'folder_create') return { status: 201, contentType: null, body: '' };
       if (args.operation === 'identity') return reply({ client_id: binding.clientId, psuid: binding.accountKey });
       if (args.operation === 'list') {
         const items = [...disk.keys()].map(name => ({ name, type: 'file', modified: '2026-10-31T10:00:00Z' }));
@@ -249,7 +250,14 @@ it('reports download denial without another blind retry or clearing the pending 
   const after = f.native.invoke.mock.calls.filter(
     ([c, a]) => c === 'cloud_disk_network' && a.args.operation === 'download_link'
   ).length;
-  expect(after - before).toBe(1);
+  // One metadata/link lookup per distinct physical folder, never a retry of
+  // the rejected request or a repeated signed-content download.
+  expect(after - before).toBe(2);
+  const roots = f.native.invoke.mock.calls
+    .filter(([c, a]) => c === 'cloud_disk_network' && a.args.operation === 'download_link')
+    .slice(-2)
+    .map(([, a]) => a.args.folderId || 'app:/');
+  expect(new Set(roots).size).toBe(2);
   expect(f.diagnostic(continued)).toBe('download_link_forbidden');
   expect(f.puts).toBe(1);
   expect(f.state.settings.cloudStandaloneFiles.yandex.pending).not.toBeNull();

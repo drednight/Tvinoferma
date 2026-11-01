@@ -216,6 +216,8 @@ pub fn run() {
             commands::cloud_credentials::cloud_credential_install,
             commands::cloud_credentials::cloud_credential_compare_exchange,
             commands::cloud_credentials::cloud_credential_forget,
+            commands::cloud_credentials::cloud_credential_logout,
+            commands::cloud_credentials::cloud_credential_resume,
             commands::cloud_credentials::cloud_credential_forget_if_unbound,
             // Экспериментальный ключ данных; настройка в UI ещё не реализована.
             commands::cloud_dataset_binding::cloud_dataset_binding_read,

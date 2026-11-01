@@ -416,6 +416,24 @@ fn no_extra(args: &CloudDiskArgs) -> bool {
 pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
     let provider = Provider::parse(&args.provider)?;
     let operation = std::mem::take(&mut args.operation);
+    let visible = if provider == Provider::Yandex && args.folder_id.is_some() {
+        if args.folder_id.take()?.as_str() != "tvinoferma-visible"
+            || !matches!(
+                operation.as_str(),
+                "folder_create" | "list" | "metadata" | "download_link" | "upload_link"
+            )
+        {
+            return None;
+        }
+        true
+    } else {
+        false
+    };
+    let yandex_root = if visible {
+        "disk:/Твиноферма/"
+    } else {
+        "app:/"
+    };
     let is_unsigned_upload = provider == Provider::Yandex && operation == "upload_content";
     let authorization = if is_unsigned_upload {
         if args.access_token.is_some() {
@@ -588,6 +606,17 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
             request.content_type = Some(format!("multipart/related; boundary={boundary}"));
             request.body = Some(format!("{head}{envelope}{tail}"));
         }
+        (Provider::Yandex, "folder_create") => {
+            if !visible {
+                return None;
+            }
+            request.method = Method::Put;
+            request.url = format!(
+                "{YANDEX_RESOURCES}?path={}",
+                form_encode("disk:/Твиноферма")
+            );
+            request.accept_json = true;
+        }
         (Provider::Yandex, "list") => {
             let offset = args
                 .offset
@@ -598,7 +627,8 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
                 .take()
                 .filter(|value| (1..=1000).contains(value))?;
             request.url = format!(
-                "{YANDEX_RESOURCES}?path=app%3A%2F&offset={offset}&limit={limit}&sort=name"
+                "{YANDEX_RESOURCES}?path={}&offset={offset}&limit={limit}&sort=name",
+                form_encode(yandex_root)
             );
             request.accept_json = true;
             request.max_response = MAX_METADATA_BYTES;
@@ -613,8 +643,11 @@ pub fn prepare(mut args: CloudDiskArgs) -> Option<PreparedRequest> {
             };
             request.url = format!(
                 "{YANDEX_RESOURCES}{suffix}?path={}",
-                form_encode(&version_path(&dataset, &version))
+                form_encode(&format!("{yandex_root}tf-v1-{dataset}-{version}.tfsc"))
             );
+            if visible && dataset != "7eab1931-650f-4dc7-98bb-f9e903526af4" {
+                return None;
+            }
             if operation == "upload_link" {
                 request.url.push_str("&overwrite=false");
             }
@@ -959,6 +992,68 @@ mod tests {
         unsafe_upload.link = Some("https://uploader.dst.yandex.net/upload-target/file".into());
         unsafe_upload.body = Some(envelope());
         assert!(prepare(unsafe_upload).is_none());
+    }
+
+    #[test]
+    fn ordinary_yandex_folder_is_fixed_and_explicit() {
+        let mut create = args("yandex", "folder_create");
+        assert!(prepare(args("yandex", "folder_create")).is_none());
+        create.folder_id = Some("tvinoferma-visible".into());
+        let request = prepare(create).unwrap();
+        assert_eq!(request.method, Method::Put);
+        assert_eq!(
+            request.url,
+            format!("{YANDEX_RESOURCES}?path=disk%3A%2F%D0%A2%D0%B2%D0%B8%D0%BD%D0%BE%D1%84%D0%B5%D1%80%D0%BC%D0%B0")
+        );
+        assert!(request.body.is_none());
+        assert!(request.authorization.is_some());
+        let mut list = args("yandex", "list");
+        list.folder_id = Some("tvinoferma-visible".into());
+        list.offset = Some(0);
+        list.limit = Some(100);
+        let request = prepare(list).unwrap();
+        assert_eq!(request.method, Method::Get);
+        assert!(request.url.ends_with("%2F&offset=0&limit=100&sort=name"));
+        assert!(!request.url.contains("app%3A"));
+        for operation in ["metadata", "download_link", "upload_link"] {
+            let mut input = args("yandex", operation);
+            input.folder_id = Some("tvinoferma-visible".into());
+            input.dataset_id = Some("7eab1931-650f-4dc7-98bb-f9e903526af4".into());
+            input.version_id = Some(VERSION.into());
+            let request = prepare(input).unwrap();
+            assert!(request.url.contains("path=disk%3A%2F%D0%A2"));
+            assert!(!request.url.contains("path=app%3A"));
+            assert_eq!(request.method, Method::Get);
+            if operation == "upload_link" {
+                assert!(request.url.ends_with("&overwrite=false"));
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_yandex_folder_rejects_arbitrary_paths_and_legacy_mutations() {
+        for folder in ["disk:/Private", "app:/", "tvinoferma-visible/../Private"] {
+            let mut input = args("yandex", "folder_create");
+            input.folder_id = Some(folder.into());
+            assert!(prepare(input).is_none());
+        }
+        for operation in [
+            "upload_link",
+            "metadata",
+            "download_link",
+            "retire",
+            "upload_content",
+        ] {
+            let mut input = args("yandex", operation);
+            input.folder_id = Some("tvinoferma-visible".into());
+            input.dataset_id = Some(DATASET.into());
+            input.version_id = Some(VERSION.into());
+            assert!(prepare(input).is_none());
+        }
+        let mut create = args("yandex", "folder_create");
+        create.folder_id = Some("tvinoferma-visible".into());
+        create.body = Some("unrequested payload".into());
+        assert!(prepare(create).is_none());
     }
 
     #[test]

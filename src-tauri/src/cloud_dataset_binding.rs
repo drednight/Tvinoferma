@@ -128,7 +128,9 @@ fn matches_local(
 ) -> Result<bool, StoreError> {
     let account = match cloud_credential_binding::read(vault, provider)? {
         Pair::Ready { binding, .. } if !binding.pending => binding,
-        Pair::Empty | Pair::Blocked | Pair::Ready { .. } => return Ok(false),
+        Pair::Empty | Pair::Blocked | Pair::SignedOut { .. } | Pair::Ready { .. } => {
+            return Ok(false)
+        }
     };
     let Some(key) = cloud_key_state::public_binding(vault)? else {
         return Ok(false);
@@ -223,7 +225,7 @@ pub(crate) fn forget_credential_if_unbound(
     }
     match cloud_credential_binding::read(vault, provider)? {
         Pair::Ready { binding, .. } if !binding.pending && binding.slot_id == expected_slot => {}
-        Pair::Empty | Pair::Ready { .. } => return Ok(Outcome::Mismatch),
+        Pair::Empty | Pair::SignedOut { .. } | Pair::Ready { .. } => return Ok(Outcome::Mismatch),
         Pair::Blocked => return Ok(Outcome::Blocked),
     }
     cloud_credential_binding::forget(vault, provider)

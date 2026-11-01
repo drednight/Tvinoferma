@@ -175,6 +175,14 @@ export function bindStandaloneFilePanel(options) {
   // Consent and backup acknowledgements are intentionally never restored.
   for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) el(id).checked = false;
   el('source-file-label').hidden = el('source').value !== 'file';
+  function updateConsentVisibility() {
+    const selected = fields();
+    const consents = el('consents');
+    if (consents) consents.hidden = selected.length === 0;
+    const password = el('password-risk-label');
+    if (password) password.hidden = !selected.includes('password');
+  }
+  updateConsentVisibility();
   function saveOptions() {
     const value = {
       version: 1,
@@ -188,6 +196,10 @@ export function bindStandaloneFilePanel(options) {
   }
   const optionsChanged = event => {
     const input = event.target;
+    if (input.matches('[data-standalone-private]')) {
+      resetAcknowledgements();
+      updateConsentVisibility();
+    }
     if (
       input.matches(
         '[data-standalone-destination],[data-standalone-private],[data-standalone-setting],#cloud-standalone-source,#cloud-standalone-remember,#cloud-standalone-show-backups'
@@ -296,6 +308,10 @@ export function bindStandaloneFilePanel(options) {
           ? '. Повторный вход — только в прежний аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
+      if (result.storageNotice === 'visible_permissions_required')
+        li.append(
+          ' Старые копии доступны в папке приложения. Для обычной папки «Твиноферма» проверьте права чтения и записи: выйдите и войдите в Яндекс заново.'
+        );
       if (reconnectHint) {
         const reconnect = doc.createElement('button');
         reconnect.type = 'button';
@@ -438,7 +454,7 @@ export function bindStandaloneFilePanel(options) {
         };
         void action(
           async engine => {
-            privacy();
+            // Comparison is read-only: replacement/export acknowledgements are not needed here.
             let token;
             const input = {
               provider,
@@ -549,11 +565,14 @@ export function bindStandaloneFilePanel(options) {
   el('select-all').addEventListener('click', () => {
     for (const input of checkboxes('[data-standalone-private],[data-standalone-setting]')) input.checked = true;
     // Deliberately do NOT tick consent/risk or destination boxes.
+    resetAcknowledgements();
+    updateConsentVisibility();
     saveOptions();
   });
   el('select-none').addEventListener('click', () => {
     for (const input of checkboxes('[data-standalone-private],[data-standalone-setting]')) input.checked = false;
     resetAcknowledgements();
+    updateConsentVisibility();
     saveOptions();
   });
   el('save').addEventListener('click', () =>
@@ -723,6 +742,12 @@ export function bindStandaloneFilePanel(options) {
     files.replaceChildren();
     reviewPanel.hidden = true;
   };
+  const credentialRemoved = () => {
+    review = null;
+    reviewPanel.hidden = true;
+    if (!busy && !stopped) void check(false);
+  };
+  doc.defaultView?.addEventListener('tf-cloud-credential-removed', credentialRemoved);
   const factoryReset = () => {
     clearStandaloneFileOptions(doc);
     reset();
@@ -741,6 +766,7 @@ export function bindStandaloneFilePanel(options) {
     dispose() {
       reset();
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
+      doc.defaultView?.removeEventListener('tf-cloud-credential-removed', credentialRemoved);
       doc.defaultView?.removeEventListener('tf-factory-reset-started', factoryReset);
     }
   };

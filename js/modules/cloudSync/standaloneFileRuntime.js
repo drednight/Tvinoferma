@@ -59,16 +59,15 @@ export function createStandaloneFileRuntime(native) {
     const local = await readNativeCredentialBinding({ provider, invoke: native.invoke });
     if (generation !== cloudAccountPresentationGeneration()) throw error('closed');
     presentCloudAccount(provider, {
-      status:
-        local.status === 'empty'
-          ? 'empty'
-          : local.status === 'ready'
-            ? 'ready'
-            : local.status === 'pending'
-              ? 'pending'
-              : 'blocked'
+      status: ['empty', 'signed_out'].includes(local.status)
+        ? local.status
+        : local.status === 'ready'
+          ? 'ready'
+          : local.status === 'pending'
+            ? 'pending'
+            : 'blocked'
     });
-    if (local.status === 'empty') throw error('credential_missing');
+    if (['empty', 'signed_out'].includes(local.status)) throw error('credential_missing');
     if (local.status === 'pending') throw error('credential_refresh_pending');
     if (local.status !== 'ready' || !local.binding) throw error('credential_binding_blocked');
     const account = await digest(JSON.stringify([provider, local.binding.clientId, local.binding.accountKey]));

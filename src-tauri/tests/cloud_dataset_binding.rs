@@ -402,3 +402,42 @@ fn first_connection_requires_no_existing_or_incomplete_dataset_pin() {
         assert_eq!(orphan.values, before);
     }
 }
+
+#[test]
+fn explicit_logout_suspends_a_bound_dataset_and_same_account_resume_restores_it() {
+    for provider in [Provider::Google, Provider::Yandex] {
+        let mut vault = setup(provider);
+        let raw = pin(provider);
+        cloud_dataset_binding::install(&mut vault, provider, &raw).unwrap();
+        let key_before = cloud_key_state::read(&mut vault).unwrap();
+        assert!(ready(&mut vault, provider, &raw));
+        assert_eq!(
+            cloud_credential_binding::logout(&mut vault, provider, ACCOUNT, ROOT),
+            Ok(Outcome::Forgotten)
+        );
+        assert!(matches!(
+            cloud_dataset_binding::read(&mut vault, provider),
+            Ok(DatasetInspection::Blocked)
+        ));
+        assert!(matches!(
+            cloud_credential_binding::read(&mut vault, provider),
+            Ok(cloud_credential_binding::Pair::SignedOut { .. })
+        ));
+        assert_eq!(
+            cloud_credential_binding::resume(
+                &mut vault,
+                provider,
+                ACCOUNT,
+                ROOT,
+                &credentials(provider)
+            ),
+            Ok(Outcome::Installed)
+        );
+        assert!(ready(&mut vault, provider, &raw));
+        // Byte-for-byte identity of the key state remains the existing contract.
+        assert!(
+            matches!((key_before,cloud_key_state::read(&mut vault).unwrap()),
+            (cloud_credential_store::Inspection::Ready{record:before,..},cloud_credential_store::Inspection::Ready{record:after,..}) if before == after)
+        );
+    }
+}

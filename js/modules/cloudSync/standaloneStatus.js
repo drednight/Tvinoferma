@@ -1,6 +1,8 @@
 // @ts-check
 // Fixed public messages only; shared by the panel and its non-secret activity log.
 export const STANDALONE_STATUS_MESSAGES = Object.freeze({
+  credential_logout_unconfirmed:
+    'Результат выхода на этом ПК неизвестен. Дождитесь завершения операции и перезапустите приложение перед новым входом; файлы и ключи сохранены.',
   google_refresh_unconfirmed:
     'Google не подтвердил обновление токена. Старый refresh не повторяется; нужен новый вход в прежний аккаунт.',
   google_refresh_store_unconfirmed:

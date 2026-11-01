@@ -473,12 +473,21 @@
                 <section class="cloud-provider-card" aria-labelledby="cloud-google-title">
                   <h4 id="cloud-google-title">Google Диск</h4>
                   <p id="cloud-google-account" class="cloud-provider-account" aria-live="polite">Аккаунт ещё не проверен</p>
+                  <p class="muted">Файлы — в обычной папке «Твиноферма» на вашем Google Диске.</p>
+                  <div class="cloud-registration-actions">
                   <button type="button" class="btn" data-cloud-sign-in="google">Войти в Google</button>
+                  <button type="button" class="btn ghost small" data-cloud-sign-out="google" title="Снять авторизацию только на этом ПК" aria-label="Выйти из Google Диска на этом ПК">Выйти</button>
+                  </div>
                 </section>
                 <section class="cloud-provider-card" aria-labelledby="cloud-yandex-title">
                   <h4 id="cloud-yandex-title">Яндекс Диск</h4>
                   <p id="cloud-yandex-account" class="cloud-provider-account" aria-live="polite">Аккаунт ещё не проверен</p>
+                  <p class="muted">Файлы — в обычной папке «Твиноферма». Старый доступ может потребовать нового входа с правами чтения и записи диска.</p>
+                  <div class="cloud-registration-actions">
                   <button type="button" class="btn" data-cloud-sign-in="yandex">Войти в Яндекс</button>
+                  <button type="button" class="btn ghost small" data-cloud-sign-out="yandex" title="Снять авторизацию только на этом ПК" aria-label="Выйти из Яндекс Диска на этом ПК">Выйти</button>
+                  </div>
+
                 </section>
               </div>
               <input type="hidden" id="cloud-login-provider" value="yandex" />
@@ -505,7 +514,7 @@
                   </label>
                 </div>
                 <p class="muted" id="cloud-registration-client-hint">Введите только открытый Client ID, не пароль, не Client Secret и не код авторизации. Разовая проверка его не сохраняет; при отдельном сохранении доступа ID остаётся на этом ПК вместе с привязкой.</p>
-                <p class="cloud-registration-config" id="cloud-registration-yandex-hint">Яндекс: сверьте точный Redirect URI <code dir="ltr">http://127.0.0.1:37181/oauth/cloud/callback</code> и разрешение <code dir="ltr">cloud_api:disk.app_folder</code>. Если адрес не совпадает, сервис может использовать другой зарегистрированный адрес.</p>
+                <p class="cloud-registration-config" id="cloud-registration-yandex-hint">Яндекс: сверьте точный Redirect URI <code dir="ltr">http://127.0.0.1:37181/oauth/cloud/callback</code> и разрешение <code dir="ltr">cloud_api:disk.app_folder</code>, <code dir="ltr">cloud_api:disk.read</code> и <code dir="ltr">cloud_api:disk.write</code>. Чтение и запись диска требуются API для обычной папки; приложение обращается только к фиксированной папке «Твиноферма» и старой папке приложения. Если адрес не совпадает, сервис может использовать другой зарегистрированный адрес.</p>
                 <p class="cloud-registration-config" id="cloud-registration-google-hint" hidden>Google: OAuth-клиент типа Desktop app и разрешение <code dir="ltr">https://www.googleapis.com/auth/drive.file</code>; локальный порт выбирается автоматически.</p>
                 <div class="cloud-registration-actions">
                   <button type="submit" class="btn" id="cloud-registration-start">Проверить регистрацию</button>
@@ -534,37 +543,55 @@
                 </div>
 
                 <p id="cloud-standalone-encryption-status" class="muted" role="status">Пароль шифрования задаётся при первом сохранении после проверки диска. Уже открытый или запомненный в ОС ключ используется без повторного ввода. Пароль нельзя посмотреть; не забывайте его для другого ПК.</p>
-                <details><summary>Где находятся облачные файлы?</summary><p>Google Диск: обычная папка «Твиноферма» (если вы её переместили или переименовали, используется прежняя папка по ID). Яндекс Диск: папка приложения, API-путь app:/; ищите в веб-интерфейсе в разделе «Приложения», название зависит от регистрации OAuth-приложения. Клиент диска на ПК может не показывать эту папку. Имена: tf-v1-7eab1931-650f-4dc7-98bb-f9e903526af4-&lt;версия&gt;.tfsc. Это зашифрованные файлы, не state.json.</p></details>
-                <details id="cloud-standalone-options"><summary>Параметры файла</summary>
-                <label>Что сохранить
-                  <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
-                </label>
-                <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
-                  <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
-                </label>
-                <h5>Контакты и настройки — только по выбору</h5>
-                  <p id="cloud-standalone-options-status" class="muted" role="status">Выбор категорий, направлений и параметров запоминается только на этом ПК. Подтверждения полноты контактов и риска паролей требуются заново для каждой операции. Выбранный файл с ПК нужно указывать заново; путь и содержимое не запоминаются.</p>
-                  <p class="cloud-registration-warning">При первом запуске контакты и пароли не передаются. Запомненный выбор полей не заменяет отдельное подтверждение перед отправкой или принятием. Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, в том числе ранее переданные секреты.</p>
-                  <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
-                  <fieldset><legend>Приватные поля</legend>
-                    <label><input type="checkbox" value="email" data-standalone-private /> Email</label>
-                    <label><input type="checkbox" value="recoveryEmail" data-standalone-private /> Запасной email</label>
-                    <label><input type="checkbox" value="phone" data-standalone-private /> Телефон</label>
-                    <label><input type="checkbox" value="password" data-standalone-private /> Пароли</label>
-                  </fieldset>
-                  <label><input type="checkbox" id="cloud-standalone-contacts-confirm" /> Проверил полноту выбранных контактов. Перед их заменой сохранил отдельную копию: backup state.json не копирует Windows vault.</label>
-                  <label><input type="checkbox" id="cloud-standalone-password-risk" /> Разрешаю передачу или замену выбранных паролей и понимаю риск их раскрытия при утрате пароля шифрования.</label>
-                  <fieldset><legend>Настройки для сохранения</legend>
-                    <label><input type="checkbox" value="appearance" data-standalone-setting /> Тема</label>
-                    <label><input type="checkbox" value="navigation" data-standalone-setting /> Меню разделов</label>
-                    <label><input type="checkbox" value="planner" data-standalone-setting /> Вид календаря</label>
-                    <label><input type="checkbox" value="eventReminders" data-standalone-setting /> Напоминания</label>
-                  </fieldset>
-
-                <label><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ на этом ПК в защищённом хранилище ОС (не пароль и не открытые данные)</label>
-<label><input type="checkbox" id="cloud-standalone-show-backups" /> При ручной проверке показать и резервные полные копии</label>
-<button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
-<p class="muted">Каждый файл открывается самостоятельно, без исходного ПК и прежних версий. Прежние копии остаются резервными, дата не выбирает победителя. Сбой одного диска не отменяет успешное сохранение на другом. Если ответ потерялся, сначала проверяем результат, а не создаём новую версию. Реальные аккаунты и два Windows-ПК ещё требуют приёмки.</p>
+                <details><summary>Где находятся облачные файлы?</summary><p>Google Диск: обычная папка «Твиноферма» (если вы её переместили или переименовали, используется прежняя папка по ID). Яндекс Диск: обычная папка «Твиноферма» в корне диска. Новые файлы сохраняются туда; прежние файлы из «Приложения» тоже доступны для сравнения и не удаляются. Для обычной папки нужны права чтения и записи диска, поэтому со старым доступом может понадобиться выйти и войти заново. Имена: tf-v1-7eab1931-650f-4dc7-98bb-f9e903526af4-&lt;версия&gt;.tfsc. Это зашифрованные файлы, не state.json.</p></details>
+                <details id="cloud-standalone-options" class="cloud-file-options">
+                  <summary>Параметры файла <span class="muted">— состав и защита</span></summary>
+                  <div class="cloud-file-options-body">
+                    <p class="muted">Основные данные приложения входят в полную копию всегда. Ниже выберите дополнительные поля и настройки. Для скачивания и сравнения подтверждения замены не нужны.</p>
+                    <section class="cloud-option-card">
+                      <h5>Источник файла</h5>
+                      <label>Что сохранить
+                        <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
+                      </label>
+                      <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
+                        <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
+                      </label>
+                    </section>
+                    <div class="cloud-option-toolbar">
+                      <h5>Дополнительно включить в копию</h5>
+                      <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
+                    </div>
+                    <div class="cloud-options-grid">
+                      <fieldset class="cloud-option-card"><legend>Контакты и пароли</legend>
+                        <p class="muted">По умолчанию выключены. Только выбранные поля, в зашифрованном виде.</p>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="email" data-standalone-private /> Email</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="recoveryEmail" data-standalone-private /> Запасной email</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="phone" data-standalone-private /> Телефон</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="password" data-standalone-private /> Пароли <span class="cloud-option-risk">Личные данные</span></label>
+                      </fieldset>
+                      <fieldset class="cloud-option-card"><legend>Настройки приложения</legend>
+                        <p class="muted">Выберите, что перенести вместе с данными. Остальные настройки этого ПК сохранятся.</p>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="appearance" data-standalone-setting /> Тема</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="navigation" data-standalone-setting /> Меню разделов</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="planner" data-standalone-setting /> Вид календаря</label>
+                        <label class="cloud-option-toggle"><input type="checkbox" value="eventReminders" data-standalone-setting /> Напоминания</label>
+                      </fieldset>
+                    </div>
+                    <section class="cloud-option-card cloud-option-consents" id="cloud-standalone-consents" hidden>
+                      <h5>Перед отправкой или заменой</h5>
+                      <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-contacts-confirm" /> Проверил полноту выбранных контактов. Перед заменой местных контактов сохранил их отдельную копию.</label>
+                      <label class="cloud-option-toggle" id="cloud-standalone-password-risk-label" hidden><input type="checkbox" id="cloud-standalone-password-risk" /> Разрешаю передачу или замену выбранных паролей. Если пароль шифрования станет известен другим, пароли из копии могут быть раскрыты.</label>
+                      <p class="muted">Для сравнения эти подтверждения не нужны. Резервный state.json не копирует контакты из Windows vault. Подтверждения запрашиваются заново для каждой отправки или замены.</p>
+                    </section>
+                    <section class="cloud-option-card">
+                      <h5>На этом компьютере</h5>
+                      <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ в защищённом хранилище ОС — не пароль и не открытые данные</label>
+                      <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-show-backups" /> При ручной проверке показывать и резервные полные копии</label>
+                      <button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
+                      <p id="cloud-standalone-options-status" class="muted" role="status">Выбор категорий, направлений и параметров запоминается только на этом ПК. Подтверждения и путь к файлу не сохраняются.</p>
+                    </section>
+                    <details class="cloud-file-help"><summary>Что не передаётся и что остаётся в облаке</summary><p class="muted">Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, включая ранее переданные секреты. Каждый файл открывается самостоятельно, без исходного ПК. Дата не выбирает победителя; сбой одного диска не отменяет сохранение на другом. Если ответ потерялся, сначала проверяем результат, а не создаём новую версию. Реальные аккаунты и два Windows-ПК ещё требуют приёмки.</p></details>
+                  </div>
                 </details>
                 <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
                 <ul id="cloud-standalone-provider-results"></ul>

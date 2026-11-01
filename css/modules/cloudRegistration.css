@@ -421,3 +421,123 @@
 .cloud-compare-feedback[data-state='success'] {
   border-left-color: #58a878;
 }
+
+/* Full-file options: a compact, readable hierarchy instead of a checkbox wall. */
+.cloud-file-options > summary {
+  padding: 12px 0;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cloud-file-options > summary .muted {
+  font-weight: 400;
+}
+.cloud-file-options-body {
+  display: grid;
+  gap: 16px;
+  padding: 8px 0 16px;
+}
+.cloud-file-options-body p {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 0.9em;
+}
+.cloud-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.cloud-option-card {
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.cloud-option-card h5,
+.cloud-option-toolbar h5 {
+  margin: 0;
+  font-size: 1em;
+}
+.cloud-option-card legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.cloud-option-card > label:not(.cloud-option-toggle) {
+  display: grid;
+  gap: 8px;
+}
+.cloud-option-card .input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.cloud-option-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cloud-option-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.5;
+  padding: 7px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.cloud-option-toggle:hover {
+  background: rgba(150, 150, 150, 0.08);
+}
+.cloud-option-toggle input {
+  flex: 0 0 auto;
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+}
+.cloud-option-toggle:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cloud-option-risk {
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7em;
+  color: var(--text);
+  background: rgba(232, 192, 90, 0.12);
+  white-space: nowrap;
+}
+.cloud-option-consents {
+  border-color: rgba(232, 192, 90, 0.45);
+  background: rgba(232, 192, 90, 0.04);
+}
+.cloud-file-options [hidden] {
+  display: none;
+}
+.cloud-file-help > summary {
+  cursor: pointer;
+  font-size: 0.9em;
+}
+.cloud-file-help > p {
+  margin-top: 10px;
+}
+.cloud-provider-card > .cloud-registration-actions {
+  margin-top: auto;
+  padding-top: 8px;
+}
+@media (max-width: 640px) {
+  .cloud-options-grid {
+    grid-template-columns: 1fr;
+  }
+  .cloud-file-options > summary .muted {
+    display: block;
+    margin-left: 18px;
+  }
+}
+
+.cloud-option-card > button {
+  justify-self: start;
+}

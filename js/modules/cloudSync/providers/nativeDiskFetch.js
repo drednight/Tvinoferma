@@ -6,6 +6,8 @@ import { nativeCloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudA
 // fake invoke не доказывают работу Tauri, настоящего диска, сохранность очереди,
 // шифрование перед передачей или безопасность ключей. Не журналировать параметры,
 // токен, подписанные ссылки, конверт или исходные ошибки.
+import { STANDALONE_DATASET_ID } from '../standaloneFileConstants.js';
+import { YANDEX_VISIBLE_ROOT, YANDEX_VISIBLE_FOLDER } from './yandexDisk.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
 import { copyCloudEnvelope, validGoogleId, versionFileName } from './common.js';
@@ -158,11 +160,38 @@ function checkedRequest(provider, address, init) {
   )
     throw failed();
   const url = canonicalUrl(address);
+  let visible = false;
+  const visiblePath = url.searchParams.get('path');
+  if (
+    provider === 'yandex' &&
+    url.origin === 'https://cloud-api.yandex.net' &&
+    (visiblePath === YANDEX_VISIBLE_ROOT.slice(0, -1) || visiblePath?.startsWith(YANDEX_VISIBLE_ROOT))
+  ) {
+    visible = true;
+    const relative =
+      visiblePath === YANDEX_VISIBLE_ROOT.slice(0, -1) ? '' : visiblePath.slice(YANDEX_VISIBLE_ROOT.length);
+    if (relative && idsForPath(`app:/${relative}`).datasetId !== STANDALONE_DATASET_ID) throw failed();
+    url.searchParams.set('path', `app:/${relative}`);
+    address = url.toString();
+  }
   const hasBody = Object.hasOwn(request, 'body');
   const base = { provider, operation: '', accessToken: undefined };
   let result;
   let maxBody = MAX_SMALL;
-  if (request.method === 'GET' && !hasBody && address === (provider === 'google' ? GOOGLE_IDENTITY : YANDEX_IDENTITY)) {
+  if (
+    visible &&
+    request.method === 'PUT' &&
+    !hasBody &&
+    url.pathname === '/v1/disk/resources' &&
+    url.searchParams.size === 1 &&
+    url.searchParams.get('path') === 'app:/'
+  ) {
+    result = { ...base, operation: 'folder_create', accessToken: token(request.headers, provider, true) };
+  } else if (
+    request.method === 'GET' &&
+    !hasBody &&
+    address === (provider === 'google' ? GOOGLE_IDENTITY : YANDEX_IDENTITY)
+  ) {
     result = { ...base, operation: 'identity', accessToken: token(request.headers, provider, true) };
     maxBody = MAX_IDENTITY;
   } else if (provider === 'google' && request.method === 'GET' && !hasBody && address === GOOGLE_IDENTITY_PREVIEW) {
@@ -278,6 +307,7 @@ function checkedRequest(provider, address, init) {
       body: request.body
     };
   } else throw failed();
+  if (visible) result.folderId = YANDEX_VISIBLE_FOLDER;
   return { args: result, signal: request.signal, maxBody };
 }
 

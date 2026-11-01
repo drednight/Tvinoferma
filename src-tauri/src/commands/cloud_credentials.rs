@@ -29,6 +29,8 @@ pub struct CloudBindingReply {
     client_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     account_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    logout_id: Option<String>,
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -44,6 +46,15 @@ enum Action {
         next: String,
     },
     Forget,
+    Logout {
+        expected_slot: String,
+        logout_id: String,
+    },
+    Resume {
+        expected_slot: String,
+        expected_logout_id: String,
+        record: String,
+    },
     ForgetIfUnbound {
         expected_slot: String,
     },
@@ -119,6 +130,55 @@ pub async fn cloud_credential_compare_exchange(
             slot_id,
             expected,
             next,
+        },
+    )
+    .await
+}
+
+/// Slot-CAS local logout: preserve identity, dataset pins and encryption keys.
+#[tauri::command]
+pub async fn cloud_credential_logout(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    provider: String,
+    expected_slot: String,
+    logout_id: String,
+    confirmed: bool,
+) -> Result<CloudCredentialReply, String> {
+    if window.label() != "main" || !confirmed {
+        return Err(ERROR.into());
+    }
+    perform(
+        app,
+        provider,
+        Action::Logout {
+            expected_slot,
+            logout_id,
+        },
+    )
+    .await
+}
+
+/// Resume only the observed logout nonce and the same pinned account/client/slot.
+#[tauri::command]
+pub async fn cloud_credential_resume(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    provider: String,
+    expected_slot: String,
+    expected_logout_id: String,
+    record: String,
+) -> Result<CloudCredentialReply, String> {
+    if window.label() != "main" {
+        return Err(ERROR.into());
+    }
+    perform(
+        app,
+        provider,
+        Action::Resume {
+            expected_slot,
+            expected_logout_id,
+            record,
         },
     )
     .await
@@ -291,6 +351,7 @@ mod windows_backend {
         let result = match action {
             Action::Read => match cloud_credential_binding::read(&mut vault, provider) {
                 Ok(Pair::Empty) => Ok(reply("empty")),
+                Ok(Pair::SignedOut { .. }) => Ok(reply("signed_out")),
                 Ok(Pair::Blocked) => Ok(reply("blocked")),
                 Ok(Pair::Ready { binding, record }) => Ok(CloudCredentialReply {
                     status: "ready",
@@ -312,6 +373,25 @@ mod windows_backend {
                 next,
             } => cloud_credential_binding::compare_exchange(
                 &mut vault, provider, &slot_id, &expected, &next,
+            )
+            .map(outcome)
+            .map_err(|_| ERROR.to_owned()),
+            Action::Logout {
+                expected_slot,
+                logout_id,
+            } => cloud_credential_binding::logout(&mut vault, provider, &expected_slot, &logout_id)
+                .map(outcome)
+                .map_err(|_| ERROR.to_owned()),
+            Action::Resume {
+                expected_slot,
+                expected_logout_id,
+                record,
+            } => cloud_credential_binding::resume(
+                &mut vault,
+                provider,
+                &expected_slot,
+                &expected_logout_id,
+                &record,
             )
             .map(outcome)
             .map_err(|_| ERROR.to_owned()),
@@ -345,29 +425,40 @@ mod windows_backend {
         let result = match cloud_credential_binding::read(&mut vault, provider)
             .map_err(|_| ERROR.to_owned())?
         {
+            Pair::SignedOut { binding, logout_id } => CloudBindingReply {
+                status: "signed_out",
+                slot_id: Some(binding.slot_id),
+                client_id: Some(binding.client_id),
+                account_key: Some(binding.account_key),
+                logout_id: Some(logout_id),
+            },
             Pair::Empty => CloudBindingReply {
                 status: "empty",
                 slot_id: None,
                 client_id: None,
                 account_key: None,
+                logout_id: None,
             },
             Pair::Blocked => CloudBindingReply {
                 status: "blocked",
                 slot_id: None,
                 client_id: None,
                 account_key: None,
+                logout_id: None,
             },
             Pair::Ready { binding, .. } if binding.pending => CloudBindingReply {
                 status: "pending",
                 slot_id: None,
                 client_id: None,
                 account_key: None,
+                logout_id: None,
             },
             Pair::Ready { binding, .. } => CloudBindingReply {
                 status: "ready",
                 slot_id: Some(binding.slot_id),
                 client_id: Some(binding.client_id),
                 account_key: Some(binding.account_key),
+                logout_id: None,
             },
         };
         lock.verify().map_err(|_| ERROR.to_owned())?;
@@ -428,7 +519,7 @@ mod windows_backend {
             }
             match cloud_credential_binding::read(&mut vault, provider) {
                 Ok(Pair::Empty) => {}
-                Ok(Pair::Ready { .. } | Pair::Blocked) => {
+                Ok(Pair::Ready { .. } | Pair::SignedOut { .. } | Pair::Blocked) => {
                     if cloud_credential_binding::forget(&mut vault, provider).is_err() {
                         failed = true;
                     }
@@ -603,6 +694,26 @@ mod windows_backend {
                     SLOT
                 ),
                 Ok(Outcome::Blocked)
+            );
+            assert_eq!(
+                cloud_credential_binding::logout(&mut first, Provider::Google, SLOT, ATTEMPT),
+                Ok(Outcome::Forgotten)
+            );
+            assert!(
+                matches!(cloud_credential_binding::read(&mut second, Provider::Google), Ok(Pair::SignedOut { binding, .. }) if binding.slot_id == SLOT)
+            );
+            assert_eq!(
+                cloud_credential_binding::resume(
+                    &mut second,
+                    Provider::Google,
+                    SLOT,
+                    ATTEMPT,
+                    &before
+                ),
+                Ok(Outcome::Installed)
+            );
+            assert!(
+                matches!(crate::cloud_dataset_binding::read(&mut first, Provider::Google), Ok(crate::cloud_dataset_binding::DatasetInspection::Ready(ref pin)) if pin == &dataset_pin)
             );
             let config = serde_json::json!({"installed":{"client_id":client,"client_secret":"synthetic-desktop-secret"}}).to_string();
             assert_eq!(

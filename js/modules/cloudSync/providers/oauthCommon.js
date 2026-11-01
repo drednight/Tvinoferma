@@ -14,7 +14,7 @@ export const OAUTH_PROVIDERS = Object.freeze({
   yandex: Object.freeze({
     authorize: 'https://oauth.yandex.com/authorize',
     token: 'https://oauth.yandex.com/token',
-    scope: 'cloud_api:disk.app_folder'
+    scope: 'cloud_api:disk.app_folder cloud_api:disk.read cloud_api:disk.write'
   })
 });
 
