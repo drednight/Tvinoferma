@@ -14,6 +14,12 @@ const STAGES = new Set([
   'ui_save',
   'ui_check',
   'ui_action',
+  'ui_compare',
+  'review_access',
+  'review_download',
+  'review_verify',
+  'review_unlock',
+  'review_compare',
   'ensure_ids',
   'scan_destinations',
   'open_account',
@@ -64,7 +70,7 @@ const CODES = new Set([
   'destination_required',
   'credential_changed'
 ]);
-const OUTCOMES = new Set(['start', 'ok', 'failed', 'blocked', 'reused', 'refreshed']);
+const OUTCOMES = new Set(['start', 'ok', 'failed', 'blocked', 'reused', 'refreshed', 'cancelled']);
 const SOURCES = [
   'standaloneFileExchange.js',
   'standaloneFileRuntime.js',
@@ -194,7 +200,12 @@ export async function cloudStep(stage, provider, work) {
     return value;
   } catch (error) {
     const failure = captureCloudFailure(stage, error, provider);
-    recordCloudDiagnostic({ stage, provider, outcome: 'failed', code: failure.code });
+    recordCloudDiagnostic({
+      stage,
+      provider,
+      outcome: failure.code === 'compare_cancelled' ? 'cancelled' : 'failed',
+      code: failure.code
+    });
     throw error;
   }
 }

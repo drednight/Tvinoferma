@@ -12,6 +12,63 @@ import { STANDALONE_STATUS_MESSAGES as STATUS, GOOGLE_RECONNECT_STATUSES } from 
 import { prepareStandaloneSave } from '../standaloneSaveFlow.js';
 import { standaloneActivityOutcome, recordCloudActivity } from '../cloudEventLog.js';
 
+const COMPARE_STAGES = Object.freeze({
+  access: '1 из 5 · Проверяем подключение к диску…',
+  download: '2 из 5 · Скачиваем полный файл…',
+  verify: '3 из 5 · Проверяем целостность файла…',
+  unlock: '4 из 5 · Расшифровываем и проверяем содержимое…',
+  compare: '5 из 5 · Сравниваем с данными этого ПК…',
+  password: 'Ожидаем пароль шифрования в открытом окне…'
+});
+// Indeterminate progress: the transport does not expose a trustworthy byte total.
+function compareFeedback(doc, card, provider) {
+  const box = doc.createElement('div');
+  box.className = 'cloud-compare-feedback';
+  box.hidden = true;
+  const message = doc.createElement('p');
+  message.setAttribute('role', 'status');
+  message.setAttribute('aria-live', 'polite');
+  message.setAttribute('aria-atomic', 'true');
+  const bar = doc.createElement('progress');
+  bar.setAttribute('aria-label', 'Скачивание и сравнение выполняется');
+  const elapsed = doc.createElement('small');
+  elapsed.setAttribute('aria-hidden', 'true');
+  box.append(message, bar, elapsed);
+  card.append(box);
+  let timer = null;
+  return {
+    start() {
+      box.hidden = false;
+      box.dataset.state = 'running';
+      message.setAttribute('role', 'status');
+      bar.setAttribute('aria-busy', 'true');
+      bar.hidden = false;
+      elapsed.hidden = false;
+      const started = Date.now();
+      const tick = () => {
+        elapsed.textContent = `Прошло ${Math.floor((Date.now() - started) / 1000)} с. Процент загрузки сервером не сообщается.`;
+      };
+      tick();
+      timer = setInterval(tick, 1000);
+    },
+    stage(stage) {
+      if (Object.hasOwn(COMPARE_STAGES, stage)) message.textContent = `${NAMES[provider]} · ${COMPARE_STAGES[stage]}`;
+    },
+    finish(text, state) {
+      this.stop();
+      box.dataset.state = state;
+      message.textContent = text;
+      message.setAttribute('role', state === 'failed' ? 'alert' : 'status');
+    },
+    stop() {
+      if (timer !== null) clearInterval(timer);
+      timer = null;
+      bar.hidden = true;
+      elapsed.hidden = true;
+      bar.removeAttribute('aria-busy');
+    }
+  };
+}
 const NAMES = { google: 'Google Диск', yandex: 'Яндекс Диск' };
 const SECTIONS = {
   characters: 'Персонажи',
@@ -99,6 +156,7 @@ export function bindStandaloneFilePanel(options) {
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
+  let stopComparison = null;
   let busy = false,
     stopped = false,
     review = null,
@@ -126,15 +184,25 @@ export function bindStandaloneFilePanel(options) {
       input.disabled = busy || !options.desktop || stopped;
   }
   function log(provider, action, outcome) {
-    (options.record || recordCloudActivity)(provider, action, outcome);
+    try {
+      (options.record || recordCloudActivity)(provider, action, outcome);
+    } catch {
+      /* Logging must not interrupt the operation. */
+    }
   }
-  async function action(fn, stage = 'ui_action') {
+  async function action(fn, stage = 'ui_action', hooks = {}) {
     if (busy || !options.desktop || stopped) return;
     setBusy(true);
     try {
-      return await cloudStep(stage, null, async () => fn(await getRuntime()));
+      hooks.start?.();
+      return await cloudStep(stage, hooks.provider || null, async () => {
+        const engine = await getRuntime();
+        if (stopped) throw new Error('closed');
+        return fn(engine);
+      });
     } catch (error) {
-      const failure = captureCloudFailure(stage, error);
+      if (stopped) return;
+      const failure = captureCloudFailure(stage, error, hooks.provider || null);
       if (Array.isArray(error.results)) {
         showResults(error.results);
         for (const row of error.results) log(row.provider, 'standalone_save', standaloneActivityOutcome(row));
@@ -142,8 +210,10 @@ export function bindStandaloneFilePanel(options) {
       status.textContent =
         STATUS[error.message] ||
         `Действие остановлено на этапе ${failure.stage}; код ${failure.code}. Скопируйте отчёт в разделе «Диагностика сейчас» под журналом. Ничего не считайте подтверждённым; ключи и аккаунт удалять не нужно.`;
+      hooks.error?.(error, failure);
       return { diagnosticFailed: true };
     } finally {
+      hooks.finally?.();
       setBusy(false);
     }
   }
@@ -290,36 +360,92 @@ export function bindStandaloneFilePanel(options) {
       open.className = 'btn ghost';
       open.type = 'button';
       open.textContent = 'Скачать и сравнить';
-      open.addEventListener('click', () =>
-        action(async engine => {
-          privacy();
-          let token;
-          const input = {
-            provider: file.locations[0].provider,
-            versionId: file.versionId,
-            sha256: file.sha256,
-            fields: fields()
-          };
-          try {
-            token = await engine.review(input);
-          } catch (error) {
-            if (['remote_changed', 'local_changed', 'account_changed'].includes(error.message)) throw error;
-            const password = await passwordDialog({ repeat: false });
-            if (password === null) return;
+      card.append(title, open);
+      const provider = file.locations[0].provider;
+      const feedback = compareFeedback(doc, card, provider);
+      open.addEventListener('click', () => {
+        let settled = false;
+        const finish = (text, state, outcome) => {
+          if (settled) return;
+          settled = true;
+          feedback.finish(text, state);
+          log(provider, 'standalone_compare', outcome);
+        };
+        const ensureActive = () => {
+          if (stopped) throw new Error('closed');
+        };
+        void action(
+          async engine => {
+            privacy();
+            let token;
+            const input = {
+              provider,
+              versionId: file.versionId,
+              sha256: file.sha256,
+              fields: fields(),
+              onProgress: stage => {
+                if (!stopped) feedback.stage(stage);
+              }
+            };
             try {
+              token = await engine.review(input);
+            } catch (error) {
+              ensureActive();
+              // Access/network/integrity failures are NOT password requests.
+              if (error.message !== 'encryption_password_required') throw error;
+              feedback.stage('password');
+              const password = await passwordDialog({ repeat: false });
+              ensureActive();
+              if (password === null) throw new Error('compare_cancelled', { cause: error });
               token = await engine.review({ ...input, password });
-            } catch {
-              status.textContent =
-                'Не удалось открыть или проверить файл. Проверьте пароль; местные данные не заменены.';
-              return;
+            }
+            ensureActive();
+            showReview(token);
+            const hasDifferences = token.comparison.entries.length || token.privateChanges.length;
+            const result = `${NAMES[provider]} · Сравнение завершено. ${hasDifferences ? 'Различия показаны ниже.' : 'В выбранных данных различий нет.'} Местные данные не заменены; на диски ничего не отправлялось.`;
+            finish(result, 'success', 'success');
+            status.textContent = result;
+            el('review-status').textContent = `${result} ${el('review-status').textContent}`;
+            reviewPanel.setAttribute('tabindex', '-1');
+            reviewPanel.focus({ preventScroll: true });
+            reviewPanel.scrollIntoView?.({ block: 'nearest' });
+          },
+          'ui_compare',
+          {
+            provider,
+            start() {
+              // Never leave an older comparison looking like this attempt's result.
+              review = null;
+              reviewPanel.hidden = true;
+              feedback.start();
+              feedback.stage('access');
+              log(provider, 'standalone_compare', 'running');
+              stopComparison = () =>
+                finish('Сравнение прервано при закрытии. Местные данные не заменены.', 'cancelled', 'cancelled');
+            },
+            error(error, failure) {
+              const cancelled = error.message === 'compare_cancelled';
+              const diagnostic = cloudAccessDiagnostic(error);
+              const explanation =
+                STATUS[error.message] || 'Не удалось завершить действие. Скопируйте безопасный отчёт под журналом.';
+              const result = `${cancelled ? '' : 'Сравнение остановлено. '}${explanation}${diagnostic ? ' ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''} Этап: ${failure.stage}; код: ${failure.code}. Местные данные не заменены; ключи и аккаунты сохранены.`;
+              finish(
+                result,
+                cancelled ? 'cancelled' : 'failed',
+                cancelled
+                  ? 'cancelled'
+                  : cloudAccessDiagnostic(error) || standaloneActivityOutcome({ status: error.message })
+              );
+              // Preserve WeakMap access diagnostics rather than reducing everything to a generic error.
+              status.textContent = result;
+            },
+            finally() {
+              feedback.stop();
+              stopComparison = null;
             }
           }
-          showReview(token);
-          log(input.provider, 'standalone_compare', 'success');
-          status.textContent = 'Файл скачан и проверен. Посмотрите различия; местные данные ещё не заменялись.';
-        })
-      );
-      card.append(title, open);
+        );
+      });
       files.append(card);
     }
   }
@@ -523,6 +649,8 @@ export function bindStandaloneFilePanel(options) {
   };
   const reset = () => {
     stopped = true;
+    stopComparison?.();
+    stopComparison = null;
     runtime?.dispose?.();
     if (timer) clearInterval(timer);
     setBusy(false);
