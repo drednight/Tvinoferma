@@ -1,6 +1,7 @@
 // @ts-check
 // Desktop composition. Metadata contains public bundle + encrypted pending file,
 // never password/dataKey. OS-vault remembering is explicit and separately scoped.
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 import { saveNow } from '../../core/storage.js';
 import { currentCloudStateSnapshot, stageGuardedCloudStateWrite } from './guardedStateWrite.js';
 import { stageSyncIdentities } from './commitSyncIdentities.js';
@@ -54,7 +55,8 @@ export function createStandaloneFileRuntime(native) {
     if (provider === 'google') {
       refreshUncertain = true;
       const opened = await openStoredStandaloneGoogleFolder({ invoke: native.invoke });
-      if (opened.status !== 'opened') throw error(opened.status);
+      if (opened.status !== 'opened')
+        throw withCloudAccessDiagnostic(error(opened.status), cloudAccessDiagnostic(opened));
       refreshUncertain = false;
       try {
         let found = await opened.session.discover();
@@ -105,7 +107,8 @@ export function createStandaloneFileRuntime(native) {
         ...(folderId ? { folderId } : {})
       })
     );
-    if (opened.status !== 'opened') throw error(opened.status);
+    if (opened.status !== 'opened')
+      throw withCloudAccessDiagnostic(error(opened.status), cloudAccessDiagnostic(opened));
     if (provider === 'google') refreshUncertain = false;
     return { account, folderId: folderId || null, session: opened.session };
   }
@@ -128,7 +131,8 @@ export function createStandaloneFileRuntime(native) {
       const account = await digest(JSON.stringify(['google', local.binding.clientId, local.binding.accountKey]));
       refreshUncertain = true;
       const opened = await openStoredStandaloneGoogleFolder({ invoke: native.invoke });
-      if (opened.status !== 'opened') throw error(opened.status);
+      if (opened.status !== 'opened')
+        throw withCloudAccessDiagnostic(error(opened.status), cloudAccessDiagnostic(opened));
       refreshUncertain = false;
       try {
         const found = await opened.session.discover();

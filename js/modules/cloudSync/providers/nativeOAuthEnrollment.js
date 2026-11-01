@@ -4,6 +4,7 @@
 // Windows/Tauri, восстановление после сбоев и оба провайдера ещё не испытаны.
 // Здесь нет передачи файлов, пароля шифрования, очереди или применения данных.
 // Токены, ответы, подписи, accountKey и исходные ошибки никогда не журналируются.
+import { rememberGoogleAccess } from './googleAccessMemory.js';
 import { createNativeGoogleReconnectInstaller } from './nativeGoogleReconnection.js';
 import { parseGoogleCredentialRecord } from './oauthCredentialRecord.js';
 import { object } from '../exportSchema.js';
@@ -94,6 +95,7 @@ export async function enrollNativeCloudAccount(options) {
   let flow = null;
   let lease = null;
   let attempt = null;
+  let freshAccess = null;
   let installationStarted = false;
   const cancel = () => {
     // В install-стадии попытка возвращает installation_in_progress и не делает
@@ -194,21 +196,35 @@ export async function enrollNativeCloudAccount(options) {
         ? createGoogleAccountPreviewReader({ fetchImpl })
         : createYandexAccountPreviewReader({ fetchImpl });
     const nativeInstaller = reconnectInstaller || createNativeCredentialInstaller(storageOptions);
+    let verifiedGoogleRecord = null;
     const installer = Object.freeze({
       installIfAbsent(args) {
         installationStarted = true;
         progress('installing');
         return nativeInstaller.installIfAbsent(args);
       },
-      verifyInstallation(args) {
-        return nativeInstaller.verifyInstallation(args);
+      async verifyInstallation(args) {
+        const verified = await nativeInstaller.verifyInstallation(args);
+        if (verified && provider === 'google')
+          verifiedGoogleRecord = reconnectInstaller ? reconnectInstaller.takeVerifiedRecord() : args.record;
+        return verified;
       }
     });
     let accountChanged = false;
     const create = provider === 'google' ? createGoogleEnrollmentAttempt : createYandexEnrollmentAttempt;
     attempt = create({
       clientId: input.clientId,
-      tokenResponse: lease,
+      tokenResponse: {
+        summary: lease.summary,
+        takeSecrets() {
+          const secrets = lease.takeSecrets();
+          freshAccess = secrets.accessToken;
+          return secrets;
+        },
+        discard() {
+          lease.discard();
+        }
+      },
       async previewAccount(args) {
         progress('identity');
         const identity = await previewAccount(args);
@@ -232,11 +248,27 @@ export async function enrollNativeCloudAccount(options) {
     // Не подменяем фактический ответ на `cancelled` после начала установки.
     const completed = await attempt.complete();
     if (accountChanged) return result('account_changed');
+    if (completed.status === 'installed' && provider === 'google' && verifiedGoogleRecord && !signal.aborted) {
+      try {
+        rememberGoogleAccess({
+          invoke: input.invoke,
+          record: verifiedGoogleRecord,
+          accessToken: freshAccess,
+          expiresAt: lease.summary.expiresAt
+        });
+      } catch {
+        /* An optional memory optimization cannot undo a verified installation. */
+      }
+    }
+    verifiedGoogleRecord = null;
     return completed.status === 'failed' ? diagnostics.failure() : completed;
   } catch {
     if (installationStarted) return result('installation_uncertain');
     return signal.aborted ? result('cancelled') : diagnostics.failure();
   } finally {
+    // Explicitly release the secret captured by the token-response closure.
+    // eslint-disable-next-line no-useless-assignment
+    freshAccess = null;
     signal.removeEventListener('abort', cancel);
     lease?.discard();
     if (flow) void flow.cancel().catch(() => {});

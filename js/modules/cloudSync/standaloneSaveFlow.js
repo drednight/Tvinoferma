@@ -1,4 +1,5 @@
 // @ts-check
+import { GOOGLE_RECONNECT_STATUSES } from './standaloneStatus.js';
 // Resume only preparation after explicit browser sign-in. Never retries a write,
 // settles a refresh claim, changes a key, or removes an immutable pending file.
 export async function prepareStandaloneSave({ engine, options, connect, progress }) {
@@ -17,8 +18,7 @@ export async function prepareStandaloneSave({ engine, options, connect, progress
     if (!options.targets.includes(row.provider) || attempted.has(row.provider)) continue;
     const needsLogin =
       row.status === 'credential_missing' ||
-      (row.provider === 'google' &&
-        ['credential_refresh_pending', 'credential_blocked', 'login_required'].includes(row.status));
+      (row.provider === 'google' && GOOGLE_RECONNECT_STATUSES.includes(row.status));
     if (!needsLogin) continue;
     attempted.add(row.provider);
     progress(row.provider);

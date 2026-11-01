@@ -235,10 +235,10 @@ describe('особые исходы подключения через fake IPC',
   it('Google не повторяет потерянный refresh после нового открытия', async () => {
     const f = fixture('google', { lostRefresh: true });
     expect(await openNativeCloudSession({ ...f.options, now: () => 100_000 })).toEqual({
-      status: 'credential_blocked'
+      status: 'google_refresh_unconfirmed'
     });
     expect(await openNativeCloudSession({ ...f.options, now: () => 100_000 })).toEqual({
-      status: 'credential_blocked'
+      status: 'credential_refresh_pending'
     });
     expect(f.invoke.mock.calls.filter(([command]) => command === 'cloud_oauth_network')).toHaveLength(1);
   });
@@ -715,5 +715,48 @@ it.each(['native', 'schema'])(
     expect(cloudAccessDiagnostic(result)).toBe(kind === 'native' ? 'disk_native_connect' : 'disk_invalid_response');
     expect(JSON.stringify(result)).not.toContain('PRIVATE');
     opened.session.dispose();
+  }
+);
+
+it('reuses one verified Google access for folder discovery and disk operations, not repeated refresh POSTs', async () => {
+  const f = fixture('google');
+  const folder = await openStoredStandaloneGoogleFolder({ invoke: f.invoke, now: () => 100_000 });
+  expect(folder.status).toBe('opened');
+  expect((await folder.session.discover()).status).toBe('empty');
+  folder.session.dispose();
+  const record = f.record();
+  const disk = await openNativeCloudSession({ ...f.options, now: () => 101_000 });
+  expect(disk.status).toBe('opened');
+  expect((await disk.session.listWithDates()).status).toBe('listed');
+  expect(f.record()).toBe(record);
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd === 'cloud_oauth_network')).toHaveLength(1);
+  disk.session.dispose();
+});
+
+it.each(['invalid_grant', 'invalid_client', 'client_secret_required', 'timeout'])(
+  'retains fixed Google refresh %s reason without repeating the POST',
+  async reason => {
+    const { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } =
+      await import('../js/modules/cloudSync/providers/cloudAccessDiagnostics.js');
+    const f = fixture('google', { lostRefresh: true });
+    const base = f.invoke.getMockImplementation();
+    f.invoke.mockImplementation(async (command, args) => {
+      try {
+        return await base(command, args);
+      } catch (error) {
+        if (command === 'cloud_oauth_network' && args.operation === 'refresh') throw `oauth_${reason}`;
+        throw error;
+      }
+    });
+    const failed = await openNativeCloudSession({ ...f.options, now: () => 100_000 });
+    expect(failed.status).toBe('google_refresh_unconfirmed');
+    const code = cloudAccessDiagnostic(failed);
+    expect(code).toBe(reason === 'timeout' ? 'refresh_timeout' : `refresh_oauth_${reason}`);
+    expect(CLOUD_ACCESS_MESSAGES[code]).toContain('Обновление доступа Google');
+    noSecret(failed);
+    expect(await openNativeCloudSession({ ...f.options, now: () => 100_000 })).toEqual({
+      status: 'credential_refresh_pending'
+    });
+    expect(f.invoke.mock.calls.filter(([cmd]) => cmd === 'cloud_oauth_network')).toHaveLength(1);
   }
 );

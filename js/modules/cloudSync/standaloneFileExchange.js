@@ -115,6 +115,11 @@ function addPin(list, pin) {
 // transport errors (which can contain tokens, signed links or response bodies).
 function providerFailure(error) {
   return [
+    'google_refresh_unconfirmed',
+    'google_refresh_store_unconfirmed',
+    'google_scope_unverified',
+    'credential_changed',
+    'busy',
     'credential_missing',
     'credential_blocked',
     'credential_refresh_pending',

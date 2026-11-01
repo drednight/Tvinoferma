@@ -286,7 +286,17 @@ fn signed_link(value: &str, upload: bool) -> bool {
 /// One CDN hop ONLY for an already validated Yandex content GET. Never receives
 /// or returns OAuth, cookies, referrer, method/body or arbitrary request headers.
 /// The signed Location stays native-only and is never logged.
+#[cfg(test)]
 pub fn download_redirect(allowed: bool, status: u16, location: &str) -> Option<String> {
+    checked_download_redirect(allowed, status, location).ok()
+}
+
+/// Fixed failure categories only. Never return the signed address or hostname.
+pub fn checked_download_redirect(
+    allowed: bool,
+    status: u16,
+    location: &str,
+) -> Result<String, &'static str> {
     if !allowed
         || !matches!(status, 301 | 302 | 303 | 307 | 308)
         || location.is_empty()
@@ -296,13 +306,17 @@ pub fn download_redirect(allowed: bool, status: u16, location: &str) -> Option<S
             .all(|b| (0x21..=0x7e).contains(&b) && !matches!(b, b'#' | b'\\'))
         || !valid_percent_encoding(location)
     {
-        return None;
+        return Err("cloud_disk_redirect_format");
     }
-    let (authority, rest) = location.strip_prefix("https://")?.split_once('/')?;
+    let (authority, rest) = location
+        .strip_prefix("https://")
+        .and_then(|value| value.split_once('/'))
+        .ok_or("cloud_disk_redirect_format")?;
     let host = authority.strip_suffix(":443").unwrap_or(authority);
     let server = host
-        .strip_suffix(".storage.yandex.net")?
-        .strip_prefix('s')?;
+        .strip_suffix(".storage.yandex.net")
+        .and_then(|value| value.strip_prefix('s'))
+        .ok_or("cloud_disk_redirect_host")?;
     if server.is_empty()
         || server.len() > 62
         || !server.as_bytes()[0].is_ascii_digit()
@@ -310,20 +324,42 @@ pub fn download_redirect(allowed: bool, status: u16, location: &str) -> Option<S
             .bytes()
             .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
     {
-        return None;
+        return Err("cloud_disk_redirect_host");
     }
-    let path = rest.split('?').next()?;
-    let lower = path.to_ascii_lowercase();
-    if !path.starts_with("rdisk/")
-        || path.len() <= 6
-        || path.split('/').any(|s| matches!(s, "." | ".."))
-        || lower.contains("%2f")
-        || lower.contains("%5c")
-        || lower.contains("%2e")
+    let path = rest.split('?').next().ok_or("cloud_disk_redirect_path")?;
+    if !path.starts_with("rdisk/") || path.len() <= 6 {
+        return Err("cloud_disk_redirect_path");
+    }
+    // The suffix is an opaque signed capability, not an application file path.
+    // Accept escaped separators/dots as DATA, preserving the exact wire string.
+    // Still reject traversal after one decode, backslashes, controls and nested
+    // escapes (which could acquire traversal meaning after another decode).
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = if bytes[index] == b'%' {
+            let value = u8::from_str_radix(&path[index + 1..index + 3], 16)
+                .map_err(|_| "cloud_disk_redirect_format")?;
+            index += 3;
+            value
+        } else {
+            let value = bytes[index];
+            index += 1;
+            value
+        };
+        if byte <= 0x20 || byte == 0x7f || matches!(byte, b'\\' | b'%') {
+            return Err("cloud_disk_redirect_path");
+        }
+        decoded.push(byte);
+    }
+    if decoded
+        .split(|byte| *byte == b'/')
+        .any(|segment| segment == b"." || segment == b"..")
     {
-        return None;
+        return Err("cloud_disk_redirect_path");
     }
-    Some(location.to_owned())
+    Ok(location.to_owned())
 }
 
 fn version_path(dataset: &str, version: &str) -> String {
@@ -940,13 +976,41 @@ mod redirect_tests {
             "https://s123klg.storage.yandex.net/other/file",
             "https://s123klg.storage.yandex.net/rdisk/../file",
             "https://s123klg.storage.yandex.net/rdisk/%2e%2e/file",
-            "https://s123klg.storage.yandex.net/rdisk/a%2ffile",
             "https://s123klg.storage.yandex.net/rdisk/file#fragment",
             "https://s123klg.storage.yandex.net/rdisk/file?bad=%xx",
             "/rdisk/file",
         ] {
             assert!(download_redirect(true, 302, invalid).is_none());
         }
+        for valid in [
+            "https://s123klg.storage.yandex.net/rdisk/opaque%2Fsignature/file%2Etfsc?signature=FAKE",
+            "https://s123klg.storage.yandex.net:443/rdisk/opaque%2fsignature",
+        ] {
+            assert_eq!(download_redirect(true, 302, valid).as_deref(), Some(valid));
+        }
+        for invalid in [
+            "https://s123klg.storage.yandex.net/rdisk/a%2f..%2ffile",
+            "https://s123klg.storage.yandex.net/rdisk/%252e%252e/file",
+            "https://s123klg.storage.yandex.net/rdisk/a%5cfile",
+            "https://s123klg.storage.yandex.net/rdisk/a%00file",
+        ] {
+            assert_eq!(
+                checked_download_redirect(true, 302, invalid),
+                Err("cloud_disk_redirect_path")
+            );
+        }
+        assert_eq!(
+            checked_download_redirect(true, 302, "https://evil.test/rdisk/FAKE"),
+            Err("cloud_disk_redirect_host")
+        );
+        assert_eq!(
+            checked_download_redirect(true, 302, "http://s123klg.storage.yandex.net/rdisk/FAKE"),
+            Err("cloud_disk_redirect_format")
+        );
+        assert_eq!(
+            checked_download_redirect(true, 302, "https://s123klg.storage.yandex.net/other/FAKE"),
+            Err("cloud_disk_redirect_path")
+        );
         let get = prepare(CloudDiskArgs {
             provider: "yandex".into(),
             operation: "download_content".into(),

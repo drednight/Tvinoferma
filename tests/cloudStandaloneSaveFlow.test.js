@@ -69,3 +69,14 @@ describe('one manual save includes explicit sign-in without retrying writes', ()
     expect(f.connect).toHaveBeenCalledExactlyOnceWith('google');
   });
 });
+
+it.each(['google_refresh_unconfirmed', 'google_refresh_store_unconfirmed', 'google_scope_unverified'])(
+  'offers one fresh sign-in for the exact Google failure %s, never a refresh loop',
+  async status => {
+    const f = fixture(unavailable([row('google', status)]));
+    await f.run();
+    expect(f.connect).toHaveBeenCalledExactlyOnceWith('google');
+    expect(f.engine.prepareSave).toHaveBeenCalledTimes(2);
+    expect(f.engine.save).not.toHaveBeenCalled();
+  }
+);

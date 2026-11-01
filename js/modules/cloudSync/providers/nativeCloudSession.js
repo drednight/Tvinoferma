@@ -4,7 +4,8 @@
 // привязка должна поступать из ранее проверенной защищённой конфигурации; сама
 // запись ОС, текущий ответ провайдера и этот код не доказывают согласие/свежесть.
 // Секреты, записи, параметры IPC, аккаунты и исходные ошибки не журналируются.
-import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic, googleRefreshDiagnostic } from './cloudAccessDiagnostics.js';
+import { recalledGoogleAccess, rememberGoogleAccess } from './googleAccessMemory.js';
 import { createNativeVersionRetirement } from './nativeVersionRetirement.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
@@ -24,6 +25,23 @@ import { createGoogleFolderManager } from './googleFolderManager.js';
 
 const ERROR = 'Не удалось безопасно подготовить облачную сессию';
 const EXPIRY_MARGIN_MS = 5000;
+function googleRotationFailure(value) {
+  const codes = {
+    blocked_pending: 'credential_refresh_pending',
+    refresh_expired: 'login_required',
+    store_unavailable: 'credential_unavailable',
+    exchange_uncertain: 'google_refresh_unconfirmed',
+    begin_uncertain: 'google_refresh_store_unconfirmed',
+    finish_uncertain: 'google_refresh_store_unconfirmed',
+    scope_unverified: 'google_scope_unverified',
+    identity_unverified: 'account_unavailable',
+    account_changed: 'account_changed',
+    refreshed_access_expired: 'login_required',
+    busy: 'busy',
+    changed: 'credential_changed'
+  };
+  return Object.hasOwn(codes, value) ? codes[value] : 'credential_binding_blocked';
+}
 function failed() {
   return new Error(ERROR);
 }
@@ -118,30 +136,49 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
     if (provider === 'google') {
       const store = createNativeGoogleCredentialStore({ ...binding, invoke, timeoutMs });
       read = store.read;
-      const rotation = createGoogleCredentialRotation({
-        ...binding,
-        store,
-        makeGuardedFetch: claim => createNativeGoogleRefreshFetch({ invoke, claim }),
-        verifyAccount: createGoogleAccountIdentityReader({ fetchImpl: diskFetch, timeoutMs }),
-        now,
-        timeoutMs,
-        identityTimeoutMs: timeoutMs,
-        ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
-      });
-      const current = /** @type {{status:string,revision?:string}} */ (await rotation.inspect());
-      if (current.status === 'refresh_expired') return status('login_required');
-      if (current.status !== 'ready' || typeof current.revision !== 'string') return status('credential_blocked');
-      const result = /** @type {{status:string,access?:{summary:{expiresAt:number},takeAccessToken:()=>string}}} */ (
-        await rotation.refresh({ expectedRevision: current.revision })
-      );
-      if (result.status === 'refresh_expired') return status('login_required');
-      if (result.status !== 'refreshed' || !result.access) return status('credential_blocked');
-      expiresAt = result.access.summary.expiresAt;
-      token = result.access.takeAccessToken();
       raw = await read();
-      if (typeof raw !== 'string') return status('credential_blocked');
-      const parsed = parseGoogleCredentialRecord(raw);
-      if (!credentialMatches(parsed, binding) || parsed.phase !== 'ready') return status('credential_blocked');
+      const cached = recalledGoogleAccess({ invoke, record: raw, now: now() });
+      if (cached) {
+        token = cached.accessToken;
+        expiresAt = cached.expiresAt;
+      } else {
+        let refreshDiagnostic;
+        const rotation = createGoogleCredentialRotation({
+          ...binding,
+          store,
+          makeGuardedFetch: claim =>
+            createNativeGoogleRefreshFetch({
+              invoke,
+              claim,
+              onDiagnostic: code => {
+                refreshDiagnostic = googleRefreshDiagnostic(code);
+              }
+            }),
+          verifyAccount: createGoogleAccountIdentityReader({ fetchImpl: diskFetch, timeoutMs }),
+          now,
+          timeoutMs,
+          identityTimeoutMs: timeoutMs,
+          ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
+        });
+        const current = /** @type {{status:string,revision?:string}} */ (await rotation.inspect());
+        if (current.status === 'refresh_expired') return status('login_required');
+        if (current.status !== 'ready' || typeof current.revision !== 'string')
+          return status(googleRotationFailure(current.status));
+        const result = /** @type {{status:string,access?:{summary:{expiresAt:number},takeAccessToken:()=>string}}} */ (
+          await rotation.refresh({ expectedRevision: current.revision })
+        );
+        if (result.status === 'refresh_expired') return status('login_required');
+        if (result.status !== 'refreshed' || !result.access)
+          return withCloudAccessDiagnostic(status(googleRotationFailure(result.status)), refreshDiagnostic);
+        expiresAt = result.access.summary.expiresAt;
+        token = result.access.takeAccessToken();
+        raw = await read();
+        if (typeof raw !== 'string') return status('credential_binding_blocked');
+        const parsed = parseGoogleCredentialRecord(raw);
+        if (!credentialMatches(parsed, binding) || parsed.phase !== 'ready')
+          return status('credential_binding_blocked');
+        rememberGoogleAccess({ invoke, record: raw, accessToken: token, expiresAt, now: now() });
+      }
     } else {
       read = async () => {
         const reply = object(

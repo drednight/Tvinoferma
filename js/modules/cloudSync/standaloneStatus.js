@@ -1,6 +1,13 @@
 // @ts-check
 // Fixed public messages only; shared by the panel and its non-secret activity log.
 export const STANDALONE_STATUS_MESSAGES = Object.freeze({
+  google_refresh_unconfirmed:
+    'Google не подтвердил обновление токена. Старый refresh не повторяется; нужен новый вход в прежний аккаунт.',
+  google_refresh_store_unconfirmed:
+    'Запись обновлённого доступа Google не подтверждена. Ключи и ожидающий файл сохранены; требуется проверка входа.',
+  google_scope_unverified:
+    'Google не подтвердил запрошенное разрешение при обновлении доступа. Новый файл не отправлялся.',
+  credential_changed: 'Запись входа изменилась во время проверки. Повторите проверку; аккаунт не заменялся.',
   credential_missing: 'диск не подключён на этом ПК — выберите его выше и нажмите «Войти»',
   credential_refresh_pending:
     'предыдущее обновление доступа не подтверждено. Нужен новый вход в тот же аккаунт; ключи и ожидающий файл сохранены',
@@ -41,3 +48,12 @@ export const STANDALONE_STATUS_MESSAGES = Object.freeze({
   contacts_required: 'Подтвердите полноту выбранных контактов и наличие отдельной копии перед их заменой.',
   password_risk_confirmation_required: 'Отдельно подтвердите риск передачи или замены паролей.'
 });
+
+export const GOOGLE_RECONNECT_STATUSES = Object.freeze([
+  'credential_blocked',
+  'credential_refresh_pending',
+  'login_required',
+  'google_refresh_unconfirmed',
+  'google_refresh_store_unconfirmed',
+  'google_scope_unverified'
+]);
