@@ -469,6 +469,7 @@
             <div class="cloud-registration-body">
 
               <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
+              <details id="cloud-login-settings"><summary>Аккаунты и настройка входа</summary>
               <h4>Подключение диска</h4>
               <p>Войдите в нужные аккаунты. Можно подключить оба диска.</p>
                   <label for="cloud-login-provider">Войти через
@@ -512,15 +513,16 @@
               </div>
 </details>
 
+              </details>
               <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
                 <h4 id="cloud-standalone-title">Облачная копия</h4>
-                <p>Сохраните данные здесь. На другом ПК войдите в тот же аккаунт и нажмите «Проверить». Без вашего решения местные данные не заменяются.</p>
+                <p>Выберите диски и нажмите «Сохранить в облако». Если нужен вход, предложим его по ходу сохранения. На другом ПК войдите в тот же аккаунт и нажмите «Проверить». Без вашего решения местные данные не заменяются.</p>
                 <fieldset id="cloud-standalone-destinations"><legend>Куда сохранить</legend>
                   <label><input type="checkbox" value="google" data-standalone-destination /> Google Диск</label>
                   <label><input type="checkbox" value="yandex" data-standalone-destination /> Яндекс Диск</label>
                 </fieldset>
                 <div class="cloud-registration-actions">
-                  <button type="button" class="btn" id="cloud-standalone-save">Сохранить на диск</button>
+                  <button type="button" class="btn" id="cloud-standalone-save">Сохранить в облако</button>
                   <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
 
                 </div>

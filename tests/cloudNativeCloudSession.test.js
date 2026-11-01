@@ -695,3 +695,25 @@ describe('standalone Google folder capability (not legacy discovery)', () => {
     opened.session.dispose();
   });
 });
+
+it.each(['native', 'schema'])(
+  'preserves the Yandex list %s failure through the real native session wrappers',
+  async kind => {
+    const { cloudAccessDiagnostic } = await import('../js/modules/cloudSync/providers/cloudAccessDiagnostics.js');
+    const f = fixture('yandex');
+    const invoke = async (command, args) => {
+      if (command === 'cloud_disk_network' && args.args.operation === 'list') {
+        if (kind === 'native') throw 'cloud_disk_connect';
+        return { status: 200, contentType: 'application/json', body: '{"PRIVATE":"must not leak"}' };
+      }
+      return f.invoke(command, args);
+    };
+    const opened = await openNativeCloudSession({ ...f.options, invoke, now: () => 1_000_000 });
+    expect(opened.status).toBe('opened');
+    const result = await opened.session.listWithDates();
+    expect(result.status).toBe('unavailable');
+    expect(cloudAccessDiagnostic(result)).toBe(kind === 'native' ? 'disk_native_connect' : 'disk_invalid_response');
+    expect(JSON.stringify(result)).not.toContain('PRIVATE');
+    opened.session.dispose();
+  }
+);

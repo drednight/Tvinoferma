@@ -45,7 +45,10 @@ function setup(extra = {}) {
   const runtime = {
     check: vi.fn(async () => ({ files: [file], results: [{ provider: 'google', status: 'checked' }], pending: [] })),
     canSeal: vi.fn(async () => false),
-    prepareSave: vi.fn(async () => ({ remoteCopies: 0, hasPrivate: false, hasUnacceptedCopies: false })),
+    prepareSave: vi.fn(async options => {
+      if (!(await runtime.canSeal())) await options.requestPassword({ repeat: !runtime.hasEncryptionKey?.() });
+      return { remoteCopies: 0, hasPrivate: false, hasUnacceptedCopies: false };
+    }),
     save: vi.fn(async () => ({ results: [{ provider: 'google', status: 'sent_verified' }] })),
     review: vi.fn(async () => token()),
     accept: vi.fn(async () => ({ status: 'applied' })),
@@ -408,4 +411,49 @@ it('does not suggest fresh OAuth over a damaged account binding', async () => {
   await click('check');
   expect(el('provider-results').textContent).toContain('не совпадает с привязкой');
   expect(el('provider-results').querySelector('button')).toBeNull();
+});
+
+it('one save waits for Google same-account sign-in then re-prepares and saves without another click', async () => {
+  const record = vi.fn();
+  const runtime = {
+    prepareSave: vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('destinations_unavailable'), {
+          results: [{ provider: 'google', status: 'credential_refresh_pending' }]
+        })
+      )
+      .mockResolvedValue({ results: [{ provider: 'google', status: 'checked' }], remoteCopies: 0 })
+  };
+  const f = setup({ record, runtime });
+  const login = vi.fn(event => {
+    event.detail.handled = true;
+    expect(f.runtime.save).not.toHaveBeenCalled();
+    expect(el('save').disabled).toBe(true);
+    event.detail.complete(true);
+  });
+  document.getElementById('cloud-registration-panel').addEventListener('tf-cloud-connect-for-save', login);
+  await click('save');
+  expect(login).toHaveBeenCalledOnce();
+  expect(f.password).not.toHaveBeenCalled(); // overridden preparation never requests a password
+  expect(f.runtime.prepareSave).toHaveBeenCalledTimes(2);
+  expect(f.runtime.save).toHaveBeenCalledOnce();
+});
+
+it('missing login handler does not hang and logs the reported reason, not a generic failure', async () => {
+  const record = vi.fn();
+  const f = setup({
+    record,
+    runtime: {
+      prepareSave: vi.fn(async () => {
+        throw Object.assign(new Error('destinations_unavailable'), {
+          results: [{ provider: 'google', status: 'credential_refresh_pending' }]
+        });
+      })
+    }
+  });
+  await click('save');
+  expect(record).toHaveBeenCalledWith('google', 'standalone_save', 'standalone_credential_refresh_pending');
+  expect(f.runtime.save).not.toHaveBeenCalled();
+  expect(el('provider-results').textContent).toContain('предыдущее обновление');
 });

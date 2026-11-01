@@ -103,3 +103,12 @@ describe('местный журнал синхронизации', () => {
     expect(cloudActivity()).toHaveLength(2);
   });
 });
+
+it('retains the exact safe standalone reason instead of collapsing it to not completed', () => {
+  recordCloudActivity('google', 'standalone_save', 'standalone_credential_refresh_pending');
+  recordCloudActivity('yandex', 'standalone_save', 'disk_invalid_response');
+  const rows = cloudActivity();
+  expect(describeCloudActivity(rows[1])).toContain('предыдущее обновление доступа не подтверждено');
+  expect(describeCloudActivity(rows[0])).toContain('Чтение списка файлов — ответ или ссылка');
+  expect(() => recordCloudActivity('google', 'standalone_save', 'standalone_PRIVATE_TOKEN')).toThrow();
+});

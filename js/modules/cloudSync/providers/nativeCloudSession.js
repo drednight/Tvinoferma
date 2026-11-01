@@ -4,6 +4,7 @@
 // привязка должна поступать из ранее проверенной защищённой конфигурации; сама
 // запись ОС, текущий ответ провайдера и этот код не доказывают согласие/свежесть.
 // Секреты, записи, параметры IPC, аккаунты и исходные ошибки не журналируются.
+import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './cloudAccessDiagnostics.js';
 import { createNativeVersionRetirement } from './nativeVersionRetirement.js';
 import { object } from '../exportSchema.js';
 import { isSyncId } from '../envelope.js';
@@ -181,9 +182,9 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
         }
         try {
           return await work();
-        } catch {
+        } catch (error) {
           // После начала work исключение не доказывает отсутствие отправки.
-          return status(write ? 'unknown' : 'unavailable');
+          return withCloudAccessDiagnostic(status(write ? 'unknown' : 'unavailable'), cloudAccessDiagnostic(error));
         }
       } finally {
         active = false;

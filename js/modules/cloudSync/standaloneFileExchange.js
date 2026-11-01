@@ -194,7 +194,8 @@ export function createStandaloneFileExchange(ports) {
         continue;
       }
       const found = await opened.session.read(item.versionId);
-      if (found.status !== 'found' || found.envelope.versionId !== item.versionId) throw fail('file_unavailable');
+      if (found.status !== 'found' || found.envelope.versionId !== item.versionId)
+        throw withCloudAccessDiagnostic(fail('file_unavailable'), cloudAccessDiagnostic(found));
       const sha256 = await hashEnvelope(found.envelope);
       await tryCached({ envelope: found.envelope, sha256 });
       const entry = {
@@ -531,6 +532,11 @@ export function createStandaloneFileExchange(ports) {
         const supersedes = [...new Map(scanned.entries.map(entry => [entry.versionId, pinOf(entry)])).values()];
         if (!key) key = (await ports.recalledKey?.(config().key)) || null;
         const savedKey = config().key;
+        let password = options.password;
+        if (!key && typeof options.requestPassword === 'function') {
+          password = await options.requestPassword({ repeat: !savedKey });
+          if (password === null) throw fail('save_cancelled');
+        }
         if (!key && savedKey) {
           // Not the first save: unlock the existing bundle, do not silently create
           // another password/key after every app restart when OS remembering is off.
@@ -541,7 +547,7 @@ export function createStandaloneFileExchange(ports) {
               expectedDatasetId: STANDALONE_DATASET_ID,
               expectedPin: savedKey.pin,
               role: 'main',
-              secret: options.password,
+              secret: password,
               cryptoSource
             });
           } catch {
@@ -549,7 +555,7 @@ export function createStandaloneFileExchange(ports) {
           }
           key = { ...savedKey, dataKey: opened.dataKey };
         }
-        const sealed = await seal({ ...options, snapshot: source, unlocked: key, supersedes, cryptoSource });
+        const sealed = await seal({ ...options, password, snapshot: source, unlocked: key, supersedes, cryptoSource });
         key = sealed.unlocked;
         const sha256 = await hashEnvelope(sealed.envelope);
         const contentHash = await snapshotFileHash(sealed.contents.publicSnapshot, cryptoSource);
@@ -609,7 +615,8 @@ export function createStandaloneFileExchange(ports) {
               opened = null;
             }
             const scanned = token.results.find(row => row.provider === provider);
-            if (scanned && !['checked', 'empty'].includes(scanned.status)) throw fail(scanned.status);
+            if (scanned && !['checked', 'empty'].includes(scanned.status))
+              throw withCloudAccessDiagnostic(fail(scanned.status), cloudAccessDiagnostic(scanned));
             opened = await connect(provider, true);
             const current = await readCopies(provider, opened, true);
             const witnessed = current
@@ -665,7 +672,7 @@ export function createStandaloneFileExchange(ports) {
               : config()[provider].pending
                 ? 'verification_pending'
                 : providerFailure(error);
-            results.push({ provider, status: code });
+            results.push(withCloudAccessDiagnostic({ provider, status: code }, cloudAccessDiagnostic(error)));
           } finally {
             opened?.session?.dispose();
           }

@@ -167,7 +167,7 @@ export function createGoogleVersionReader(options) {
     // другой файл с таким же versionId или именем.
     if (expectedFileId !== undefined && files[0].id !== expectedFileId) return { status: 'identity_mismatch' };
     const response = await sendSafe(send, googleDownloadRequest(files[0].id), MAX_VERSION_TEXT);
-    if (response.status !== 200) throw failed();
+    if (response.status !== 200) throw withCloudAccessDiagnostic(failed(), cloudAccessDiagnostic(response));
     let parsed;
     try {
       parsed = envelope(response.body, datasetId, versionId);

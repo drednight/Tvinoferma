@@ -514,6 +514,7 @@ export function bindCloudRegistrationCheck(options) {
         localStatus.textContent = 'Локальная запись требует повторной проверки.';
         inspectAfter = true;
       }
+      return result.status === 'installed';
     } catch {
       if (session.installing) uncertainOutcome(selected);
       else if (!session.controller.signal.aborted)
@@ -538,9 +539,27 @@ export function bindCloudRegistrationCheck(options) {
       selectedProvider() === 'google' &&
       ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(observed.status);
     if (!reconnect && observed.status !== 'empty') return;
-    await startEnrollment(true, reconnect);
+    return await startEnrollment(true, reconnect);
   }
   simple?.addEventListener('click', signIn);
+  panel.addEventListener('tf-cloud-connect-for-save', event => {
+    const detail = /** @type {CustomEvent} */ (event).detail;
+    if (!detail || !['google', 'yandex'].includes(detail.provider) || typeof detail.complete !== 'function') return;
+    detail.handled = true;
+    if (!options.desktop || active || resetStarted || uncertain.has(detail.provider)) {
+      detail.complete(false);
+      return;
+    }
+    const loginSettings = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-login-settings'));
+    if (loginSettings) loginSettings.open = true;
+    provider.value = detail.provider;
+    clearAccount();
+    updateProviderHint();
+    void signIn().then(
+      value => detail.complete(value === true),
+      () => detail.complete(false)
+    );
+  });
   panel.addEventListener('tf-cloud-reconnect-google', () => {
     if (!options.desktop || active || resetStarted || uncertain.has('google')) return;
     provider.value = 'google';
