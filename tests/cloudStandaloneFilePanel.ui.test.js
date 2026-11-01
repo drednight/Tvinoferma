@@ -955,3 +955,32 @@ describe('cross-PC workspace redesign', () => {
     localStorage.removeItem('tf_cloud_auto_check_v1');
   });
 });
+
+it('keeps all IDs unique when legacy recovery is mounted alongside the new dialogs', () => {
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  parsed
+    .getElementById('cloud-registration-panel')
+    .append(parsed.getElementById('cloud-legacy-template').content.cloneNode(true));
+  const ids = [...parsed.querySelectorAll('[id]')].map(node => node.id);
+  expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
+});
+it('acknowledges identical copies on both providers in the header after keeping local data', async () => {
+  document.body.insertAdjacentHTML('afterbegin', '<button id="cloud-copy-badge" hidden></button>');
+  setup({
+    runtime: {
+      check: vi.fn(async () => ({
+        files: [file],
+        unacceptedFiles: [file],
+        results: [
+          { provider: 'google', status: 'checked' },
+          { provider: 'yandex', status: 'checked' }
+        ],
+        pending: []
+      }))
+    }
+  });
+  await compare();
+  expect(document.getElementById('cloud-copy-badge').hidden).toBe(false);
+  await click('decline');
+  expect(document.getElementById('cloud-copy-badge').hidden).toBe(true);
+});

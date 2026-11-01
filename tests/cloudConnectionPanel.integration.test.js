@@ -139,7 +139,7 @@ describe('панель → PKCE → локальная запись с подд�
     async provider => {
       const { native, confirmAccount } = setup(provider);
       await start();
-      await vi.waitFor(() => expect(conn('progress').textContent).toContain('Доступ сохранён'));
+      await vi.waitFor(() => expect(conn('progress').textContent).toBe(''));
       expect(native.openBrowser).toHaveBeenCalledOnce();
       expect(confirmAccount).toHaveBeenCalledOnce();
       expect(confirmAccount.mock.calls[0][0].label.value).toBe(LABEL[provider]);
@@ -153,7 +153,7 @@ describe('панель → PKCE → локальная запись с подд�
       expect(native.invoke.mock.calls.some(([command]) => command === 'cloud_disk_network')).toBe(false);
       assertNoPrivate();
       await inspect();
-      expect(conn('local').textContent).toContain('облачные файлы и синхронизация не проверялись');
+      expect(conn('local').textContent).toBe('');
       conn('forget-approve').click();
       conn('forget').click();
       await vi.waitFor(() => expect(conn('progress').textContent).toContain('Локальный доступ забыт'));
@@ -169,7 +169,7 @@ describe('панель → PKCE → локальная запись с подд�
   it('при появлении pin после проверки backend блокирует забывание и сохраняет доступ', async () => {
     const { native } = setup('yandex');
     await start();
-    await vi.waitFor(() => expect(conn('progress').textContent).toContain('Доступ сохранён'));
+    await vi.waitFor(() => expect(conn('progress').textContent).toBe(''));
     await inspect();
     native.setDataset('blocked');
     conn('forget-approve').click();

@@ -280,10 +280,19 @@ export function bindStandaloneFilePanel(options) {
   }
   function updateBadge() {
     if (!badge) return;
-    const providers = [...notices].filter(([, value]) => value).map(([provider]) => NAMES[provider]);
+    const providers = [...notices].filter(([, value]) => value.length).map(([provider]) => NAMES[provider]);
     badge.hidden = !providers.length;
     badge.textContent = 'Облачная копия ждёт сравнения';
     badge.title = `Непринятая копия: ${providers.join(', ')}. Это копия данных, не обновление приложения. Ничего не заменяется автоматически.`;
+  }
+  function acknowledgeNotice(token) {
+    const pin = `${token.versionId}:${token.sha256}`;
+    for (const [provider, pins] of notices)
+      notices.set(
+        provider,
+        pins.filter(item => item !== pin)
+      );
+    updateBadge();
   }
   const openCloudCopies = () => {
     doc.querySelector('[data-tab="settings"]')?.click();
@@ -683,7 +692,9 @@ export function bindStandaloneFilePanel(options) {
         else if (unaccepted && ['checked', 'empty'].includes(row.status))
           notices.set(
             row.provider,
-            unaccepted.some(file => file.locations.some(location => location.provider === row.provider))
+            unaccepted
+              .filter(file => file.locations.some(location => location.provider === row.provider))
+              .map(file => `${file.versionId}:${file.sha256}`)
           );
       }
       updateBadge();
@@ -855,8 +866,7 @@ export function bindStandaloneFilePanel(options) {
       });
       status.textContent = STATUS[result.status] || 'Замена не подтверждена; повторите проверку местных данных.';
       if (result.status === 'applied') {
-        notices.delete(review.provider);
-        updateBadge();
+        acknowledgeNotice(review);
       }
       log(review.provider, 'file_replace', result.status === 'applied' ? 'success' : 'unavailable');
       if (result.status === 'applied') {
@@ -872,8 +882,7 @@ export function bindStandaloneFilePanel(options) {
       if (!review) return;
       const provider = review.provider;
       const result = await engine.decline(review);
-      notices.delete(provider);
-      updateBadge();
+      acknowledgeNotice(review);
       clearReview();
       status.textContent = STATUS[result.status];
       resetAcknowledgements();

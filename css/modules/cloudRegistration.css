@@ -715,3 +715,10 @@
     padding: 16px;
   }
 }
+@media (max-width: 640px) {
+  .cloud-copy-badge {
+    max-width: 220px;
+    white-space: normal;
+    line-height: 1.3;
+  }
+}
