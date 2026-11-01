@@ -77,16 +77,19 @@ describe('independent explicit local cloud logout', () => {
     expect(f.readBinding).not.toHaveBeenCalled();
     expect(accounts.cloudAccountPresentation('yandex').status).toBe('ready');
   });
-  it('cannot log out while a file/OAuth operation is active', async () => {
+  it('waits for the active file/OAuth operation, then logs out without disconnecting the other disk', async () => {
     const f = await setup();
     const running = coordination.beginCloudCredentialOperation();
     try {
       button('google').click();
-      await vi.waitFor(() => expect(progress()).toContain('Дождитесь'));
+      await vi.waitFor(() => expect(progress()).toContain('Ожидаем завершения'));
       expect(f.logout).not.toHaveBeenCalled();
     } finally {
       running.finish(false);
     }
+    await vi.waitFor(() => expect(f.logout).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(progress()).toContain('Вы вышли'));
+    expect(accounts.cloudAccountPresentation('yandex').status).toBe('ready');
   });
   it('holds an exclusive barrier during native logout and keeps keys/files out of its IPC', async () => {
     let release;

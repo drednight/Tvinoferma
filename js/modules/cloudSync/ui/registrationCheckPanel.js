@@ -26,16 +26,15 @@ import { createNativeDatasetBindingStore } from '../providers/nativeDatasetBindi
 import { createCloudAccountConfirmation } from './confirmCloudAccount.js';
 import {
   beginCloudCredentialOperation,
-  beginCloudDataOperation,
+  beginCloudLogoutOperation,
   blockCloudProviderAfterLogout
 } from '../credentialResetCoordination.js';
 
 const LOCAL_MESSAGES = Object.freeze({
   signed_out: 'Вы вышли на этом ПК. Привязка сохранена; войдите в прежний аккаунт для продолжения.',
   empty: 'Локальная запись доступа не найдена. Это не доказывает, что старого подключения или облачных данных не было.',
-  ready: 'Доступ сохранён на этом ПК. Его действительность и права, облачные файлы и синхронизация не проверялись.',
-  ready_bound:
-    'Доступ сохранён; при выходе прежняя привязка набора и ключи остаются на этом ПК. Облачные файлы и действительность доступа не проверялись.',
+  ready: '',
+  ready_bound: '',
   dataset_incomplete:
     'Есть неполная привязка набора. Локальное удаление заблокировано; требуется восстановление, а не создание нового набора.',
   dataset_blocked:
@@ -46,8 +45,7 @@ const LOCAL_MESSAGES = Object.freeze({
     'Локальная запись доступа неполная или не совпадает с привязкой. Не удаляйте её и не повторяйте вход до восстановления.'
 });
 const ENROLL_MESSAGES = Object.freeze({
-  installed:
-    'Доступ сохранён на этом ПК после сверки аккаунта. Облачные файлы не изменялись. Теперь можно сохранить полный файл или проверить файлы другого ПК.',
+  installed: '',
   installed_access_expired:
     'Доступ сохранён, но срок токена уже истёк. Синхронизация не работает; требуется восстановить авторизацию. Ключи и облачные файлы не удаляйте.',
   installed_refresh_expired:
@@ -175,9 +173,14 @@ export function bindCloudRegistrationCheck(options) {
   let resetStarted = false;
   subscribeCloudAccountPresentation(() => {
     renderProviderCards();
+
     setBusy();
   });
   renderProviderCards();
+
+  const settingsDialog = /** @type {HTMLDialogElement|null} */ (doc.getElementById('cloud-login-settings-dialog'));
+  doc.getElementById('cloud-login-settings-open')?.addEventListener('click', () => settingsDialog?.showModal());
+  doc.getElementById('cloud-login-settings-close')?.addEventListener('click', () => settingsDialog?.close());
 
   function selectedProvider() {
     return /** @type {'google'|'yandex'} */ (provider.value);
@@ -387,8 +390,7 @@ export function bindCloudRegistrationCheck(options) {
     const selected = selectedProvider();
     const clientId = client.value.trim();
     if (!validOAuthClientId(selected, clientId)) {
-      const loginSettings = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-login-settings'));
-      if (loginSettings) loginSettings.open = true;
+      if (settingsDialog && !settingsDialog.open) settingsDialog.showModal();
       target.textContent =
         'Проверьте формат Client ID для выбранного диска. Пароль, секрет приложения и код сюда вводить нельзя.';
       if (advanced) advanced.open = true;
@@ -653,8 +655,6 @@ export function bindCloudRegistrationCheck(options) {
       detail.complete(false);
       return;
     }
-    const loginSettings = /** @type {HTMLDetailsElement|null} */ (doc.getElementById('cloud-login-settings'));
-    if (loginSettings) loginSettings.open = true;
     provider.value = detail.provider;
     clearAccount();
     updateProviderHint();
@@ -736,13 +736,6 @@ export function bindCloudRegistrationCheck(options) {
         danger: true
       });
       if (!agreed || active || resetStarted) return;
-      let operation;
-      try {
-        operation = beginCloudDataOperation();
-      } catch {
-        progress.textContent = 'Дождитесь завершения облачной операции и повторите выход.';
-        return;
-      }
       const session = {
         controller: new AbortController(),
         mode: /** @type {'forget'} */ ('forget'),
@@ -750,7 +743,18 @@ export function bindCloudRegistrationCheck(options) {
         installing: false
       };
       active = session;
+      progress.textContent = 'Выходим… Ожидаем завершения текущей облачной операции; второй диск отключать не нужно.';
       setBusy();
+      let operation;
+      try {
+        operation = await beginCloudLogoutOperation(selected);
+      } catch {
+        progress.textContent =
+          'Выход сейчас недоступен: проверьте неподтверждённые операции или перезапустите приложение.';
+        if (active === session) active = null;
+        setBusy();
+        return;
+      }
       let started = false;
       try {
         const native = await loadNative();
@@ -780,8 +784,10 @@ export function bindCloudRegistrationCheck(options) {
         providerKnown.set(selected, 'signed_out');
         observed = null;
         progress.textContent = 'Вы вышли на этом ПК. Облачные файлы, ключи и незавершённые отправки сохранены.';
-        doc.defaultView?.dispatchEvent(
-          new CustomEvent('tf-cloud-credential-removed', { detail: { provider: selected } })
+        queueMicrotask(() =>
+          doc.defaultView?.dispatchEvent(
+            new CustomEvent('tf-cloud-credential-removed', { detail: { provider: selected } })
+          )
         );
       } catch {
         if (started) {

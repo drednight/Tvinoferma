@@ -82,9 +82,24 @@ async function compare() {
   await vi.waitFor(() => expect(el('review').hidden).toBe(false));
   await vi.waitFor(() => expect(el('check').disabled).toBe(false));
 }
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: {
+    configurable: true,
+    value() {
+      this.open = true;
+    }
+  },
+  close: {
+    configurable: true,
+    value() {
+      this.open = false;
+    }
+  }
+});
 beforeEach(() => {
   clearCloudDiagnostics();
   localStorage.removeItem('tf_cloud_file_options_v1');
+  localStorage.removeItem('tf_cloud_auto_check_v1');
   document.body.innerHTML = new DOMParser()
     .parseFromString(html, 'text/html')
     .getElementById('cloud-registration-panel').outerHTML;
@@ -104,7 +119,8 @@ describe('standalone full file UX', () => {
   it('shows grouped destinations, dates, additions, changes and full-replacement deletions with safe text', async () => {
     const f = setup();
     await compare();
-    expect(el('files').textContent).toContain('Google Диск + Яндекс Диск');
+    expect(el('files').textContent).not.toContain('Google Диск + Яндекс Диск');
+    expect(el('files').querySelectorAll('.cloud-copy-card')).toHaveLength(2);
     expect(el('files').textContent).toContain('часовой пояс');
     expect(el('differences').textContent).toContain('Будет удалено');
     expect(el('differences').textContent).toContain('Будет добавлено');
@@ -168,8 +184,11 @@ describe('standalone full file UX', () => {
     expect([...document.querySelectorAll('[data-standalone-private]')].every(input => input.checked)).toBe(true);
     for (const id of ['contacts-confirm', 'password-risk', 'remember']) expect(el(id).checked).toBe(false);
     expect(document.querySelector('[data-standalone-destination][value=yandex]').checked).toBe(false);
-    await click('save');
-    expect(el('status').textContent).toContain('полноту');
+    el('save').click();
+    await vi.waitFor(() => expect(el('private-dialog').open).toBe(true));
+    expect(el('contacts-confirm').checked).toBe(false);
+    el('private-cancel').click();
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
     await click('select-none');
     expect([...document.querySelectorAll('[data-standalone-private]')].some(input => input.checked)).toBe(false);
   });
@@ -212,9 +231,11 @@ describe('standalone full file UX', () => {
   });
   it('keeps advanced sources, privacy, backups and recovery folded away from primary actions', () => {
     setup();
-    expect(el('options').open).toBe(false);
-    for (const id of ['source', 'remember', 'forget', 'show-backups', 'contacts-confirm'])
-      expect(el('options').contains(el(id))).toBe(true);
+    expect(el('options').tagName).toBe('SECTION');
+    expect(el('options').compareDocumentPosition(el('title')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(el('options').contains(el('source'))).toBe(true);
+    for (const id of ['remember', 'forget', 'show-backups']) expect(el('key-dialog').contains(el(id))).toBe(true);
+    expect(el('private-dialog').contains(el('contacts-confirm'))).toBe(true);
     expect(el('legacy')).toBeNull();
     expect(el('save').closest('details').id).toBe('cloud-registration-panel');
     expect(el('check').closest('details').id).toBe('cloud-registration-panel');
@@ -314,8 +335,8 @@ describe('standalone full file UX', () => {
   });
   it('periodic/startup checks and account-ready events only check, never save or apply', async () => {
     let tick;
-    vi.spyOn(globalThis, 'setInterval').mockImplementation(fn => {
-      tick = fn;
+    vi.spyOn(globalThis, 'setInterval').mockImplementation((fn, interval) => {
+      if (interval === 5 * 60 * 1000) tick = fn;
       return 123;
     });
     const f = setup({ startup: true });
@@ -340,7 +361,7 @@ describe('encryption password dialog', () => {
       this.open = true;
     });
     const promise = askStandalonePassword({ repeat: true });
-    const dialog = document.querySelector('dialog'),
+    const dialog = document.querySelector('.cloud-key-dialog'),
       form = dialog.querySelector('form');
     expect(dialog.querySelector('[role=alert]').hidden).toBe(true);
     const pass = form.elements.namedItem('password'),
@@ -369,7 +390,7 @@ describe('encryption password dialog', () => {
       this.open = true;
     });
     const promise = askStandalonePassword();
-    const dialog = document.querySelector('dialog');
+    const dialog = document.querySelector('.cloud-key-dialog');
     expect(dialog.querySelectorAll('input[type=password]')).toHaveLength(1);
     const input = dialog.querySelector('input');
     input.value = 'private';
@@ -698,8 +719,11 @@ describe('remembered file parameters and password explanation', () => {
     for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) expect(el(id).checked).toBe(false);
     expect(el('remember').checked).toBe(true);
     expect(el('show-backups').checked).toBe(true);
-    await click('save');
-    expect(el('status').textContent).toContain('полноту');
+    el('save').click();
+    await vi.waitFor(() => expect(el('private-dialog').open).toBe(true));
+    expect(el('contacts-confirm').checked).toBe(false);
+    el('private-cancel').click();
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
   });
   it('resets remembered parameters on factory reset, but not ordinary dispose', () => {
     const f = setup();
@@ -762,10 +786,12 @@ describe('clear file options without comparison-time replacement consent', () =>
     expect(f.runtime.review).toHaveBeenCalledWith(expect.objectContaining({ fields: ['email', 'password'] }));
     expect(el('contacts-confirm').checked).toBe(false);
     expect(el('password-risk').checked).toBe(false);
-    await click('accept');
+    el('accept').click();
+    await vi.waitFor(() => expect(el('private-dialog').open).toBe(true));
     expect(f.runtime.accept).not.toHaveBeenCalled();
     expect(f.runtime.save).not.toHaveBeenCalled();
-    expect(el('status').textContent).toContain('контактов');
+    el('private-cancel').click();
+    await vi.waitFor(() => expect(el('accept').disabled).toBe(false));
   });
   it('explains old Yandex authorization without hiding available legacy copies', async () => {
     setup({
@@ -780,5 +806,152 @@ describe('clear file options without comparison-time replacement consent', () =>
     await click('check');
     expect(el('provider-results').textContent).toContain('войдите в Яндекс заново');
     expect(el('files').querySelector('button').textContent).toBe('Скачать и сравнить');
+  });
+});
+
+describe('cross-PC workspace redesign', () => {
+  it('closes and reopens the same modal without declining, applying, uploading or downloading again', async () => {
+    const f = setup();
+    await compare();
+    expect(el('review').open).toBe(true);
+    expect(el('differences').querySelectorAll('.cloud-diff-card')).toHaveLength(3);
+    el('review-close').click();
+    expect(el('review').open).toBe(false);
+    expect(el('reopen').hidden).toBe(false);
+    el('reopen').click();
+    expect(el('review').open).toBe(true);
+    el('review').dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(el('review').hidden).toBe(true);
+    expect(f.runtime.review).toHaveBeenCalledOnce();
+    expect(f.runtime.decline).not.toHaveBeenCalled();
+    expect(f.runtime.accept).not.toHaveBeenCalled();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('does not cover the final replacement confirmation with a native modal, returns to review on cancellation', async () => {
+    const confirm = vi.fn(async () => {
+      expect(el('review').open).toBe(false);
+      return false;
+    });
+    const f = setup({ confirm });
+    await compare();
+    await click('accept');
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(el('review').open).toBe(true);
+    expect(f.runtime.accept).not.toHaveBeenCalled();
+  });
+  it('requests selected private consent only at the action, never implicitly grants password risk', async () => {
+    const f = setup();
+    document.querySelector('[data-standalone-private][value=password]').checked = true;
+    el('save').click();
+    await vi.waitFor(() => expect(el('private-dialog').open).toBe(true));
+    el('private-confirm').click();
+    expect(f.runtime.prepareSave).not.toHaveBeenCalled();
+    el('contacts-confirm').checked = true;
+    el('private-confirm').click();
+    expect(f.runtime.prepareSave).not.toHaveBeenCalled();
+    el('password-risk').checked = true;
+    el('private-confirm').click();
+    await vi.waitFor(() => expect(el('save').disabled).toBe(false));
+    expect(f.runtime.prepareSave).toHaveBeenCalledWith(
+      expect.objectContaining({ contactsSourceConfirmed: true, acknowledgePasswordRisk: true, fields: ['password'] })
+    );
+    expect(f.runtime.save).toHaveBeenCalledOnce();
+    expect(el('password-risk').checked).toBe(false);
+  });
+  it.each(['save', 'check'])(
+    'shows immediate indeterminate progress and final result for %s, suppresses duplicate clicks',
+    async kind => {
+      const pending = Promise.withResolvers();
+      const method = kind === 'save' ? 'prepareSave' : 'check';
+      const f = setup({ runtime: { [method]: vi.fn(() => pending.promise) } });
+      el(kind).click();
+      await vi.waitFor(() => expect(f.runtime[method]).toHaveBeenCalledOnce());
+      expect(el('operation').hidden).toBe(false);
+      expect(el('operation').getAttribute('aria-busy')).toBe('true');
+      expect(el('operation').querySelector('progress').hasAttribute('value')).toBe(false);
+      el(kind).dispatchEvent(new Event('click'));
+      expect(f.runtime[method]).toHaveBeenCalledOnce();
+      if (kind === 'check')
+        pending.resolve({
+          files: [],
+          unacceptedFiles: [],
+          results: [{ provider: 'yandex', status: 'empty' }],
+          pending: []
+        });
+      else pending.resolve({ results: [], remoteCopies: 0 });
+      await vi.waitFor(() => expect(el(kind).disabled).toBe(false));
+      expect(el('operation').querySelector('progress').hidden).toBe(true);
+      expect(el('operation-message').textContent).toBe(el('status').textContent);
+    }
+  );
+  it('shows a data-copy header badge only for unaccepted copies and opens the cloud section', async () => {
+    document.body.insertAdjacentHTML(
+      'afterbegin',
+      '<button id="cloud-copy-badge" hidden></button><button data-tab="settings"></button>'
+    );
+    const nav = vi.fn();
+    document.querySelector('[data-tab=settings]').addEventListener('click', nav);
+    const f = setup({
+      runtime: {
+        check: vi.fn(async () => ({
+          files: [file],
+          unacceptedFiles: [file],
+          results: [
+            { provider: 'google', status: 'checked' },
+            { provider: 'yandex', status: 'checked' }
+          ],
+          pending: []
+        }))
+      }
+    });
+    await click('check');
+    const badge = document.getElementById('cloud-copy-badge');
+    expect(badge.hidden).toBe(false);
+    expect(badge.title).toContain('не обновление приложения');
+    badge.click();
+    expect(nav).toHaveBeenCalledOnce();
+    expect(document.getElementById('cloud-registration-panel').open).toBe(true);
+    f.runtime.check.mockResolvedValue({
+      files: [file],
+      unacceptedFiles: [],
+      results: [
+        { provider: 'google', status: 'checked' },
+        { provider: 'yandex', status: 'checked' }
+      ],
+      pending: []
+    });
+    await click('check');
+    expect(badge.hidden).toBe(true);
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('removes only the logged-out provider copies and notification without starting another cross-provider check', async () => {
+    const f = setup();
+    await click('check');
+    window.dispatchEvent(new CustomEvent('tf-cloud-credential-removed', { detail: { provider: 'yandex' } }));
+    expect(el('files').querySelectorAll('.cloud-copy-card')).toHaveLength(1);
+    expect(el('files').textContent).toContain('Google Диск');
+    expect(el('files').textContent).not.toContain('Яндекс Диск');
+    expect(f.runtime.check).toHaveBeenCalledOnce();
+  });
+  it('persists disabled startup and reschedules an independent read-only interval, then cleans it up', async () => {
+    localStorage.setItem('tf_cloud_auto_check_v1', JSON.stringify({ version: 1, startup: false, minutes: 0 }));
+    const f = setup({ startup: true });
+    expect(f.runtime.check).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    el('interval').value = '15';
+    el('interval').dispatchEvent(new Event('change'));
+    await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(f.runtime.check).toHaveBeenCalledOnce();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+    expect(f.runtime.accept).not.toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem('tf_cloud_auto_check_v1'))).toEqual({
+      version: 1,
+      startup: false,
+      minutes: 15
+    });
+    f.controller.dispose();
+    await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+    expect(f.runtime.check).toHaveBeenCalledOnce();
+    localStorage.removeItem('tf_cloud_auto_check_v1');
   });
 });

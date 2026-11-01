@@ -25,6 +25,15 @@ import {
 
 const PROVIDERS = ['google', 'yandex'];
 const HASH = /^[0-9a-f]{64}$/;
+// Optional UI feedback cannot alter a cloud action or leak addresses/data.
+function reportProgress(callback, provider, stage) {
+  try {
+    callback?.({ provider, stage });
+  } catch {
+    /* feedback only */
+  }
+}
+
 const emptyRow = () => ({
   account: null,
   folderId: null,
@@ -288,11 +297,12 @@ export function createStandaloneFileExchange(ports) {
       Object.freeze({ ...token, locations: Object.freeze(locations) })
     );
   }
-  async function scanAll(targets, fresh = false) {
+  async function scanAll(targets, fresh = false, onProgress = null) {
     if (!key) key = (await ports.recalledKey?.(config().key)) || null;
     const entries = [],
       results = [];
     for (const provider of targets) {
+      reportProgress(onProgress, provider, 'access');
       let opened;
       try {
         opened = await connect(provider);
@@ -300,6 +310,7 @@ export function createStandaloneFileExchange(ports) {
           results.push({ provider, status: 'empty' });
           continue;
         }
+        reportProgress(onProgress, provider, 'read');
         const copies = await readCopies(provider, opened, fresh);
         entries.push(...copies);
         results.push({
@@ -374,7 +385,7 @@ export function createStandaloneFileExchange(ports) {
         return !!key;
       });
     },
-    check({ targets = PROVIDERS, manual = false, includeBackups = false } = {}) {
+    check({ targets = PROVIDERS, manual = false, includeBackups = false, onProgress = null } = {}) {
       return run(async () => {
         // A check may settle an earlier receipt, but NEVER sends a file.
         const pending = [];
@@ -390,8 +401,13 @@ export function createStandaloneFileExchange(ports) {
             opened?.session?.dispose();
           }
         }
-        const scanned = await scanAll(targets, manual);
-        return { files: view(scanned.entries, manual, includeBackups), results: scanned.results, pending };
+        const scanned = await scanAll(targets, manual, onProgress);
+        return {
+          files: view(scanned.entries, manual, includeBackups),
+          unacceptedFiles: view(scanned.entries, false, includeBackups),
+          results: scanned.results,
+          pending
+        };
       });
     },
     /** Download and read-only comparison. No accepted base, app data or cloud write. */
@@ -569,7 +585,7 @@ export function createStandaloneFileExchange(ports) {
         const original = ports.snapshot();
         const source = options.source || original;
         if (options.fields?.length && !options.source) ports.assertContacts?.(source);
-        const scanned = await cloudStep('scan_destinations', null, () => scanAll(targets, true));
+        const scanned = await cloudStep('scan_destinations', null, () => scanAll(targets, true, options.onProgress));
         if (!scanned.results.some(row => ['checked', 'empty'].includes(row.status)))
           throw Object.assign(fail('destinations_unavailable'), { results: scanned.results });
         const supersedes = [...new Map(scanned.entries.map(entry => [entry.versionId, pinOf(entry)])).values()];
@@ -639,13 +655,14 @@ export function createStandaloneFileExchange(ports) {
         return token;
       });
     },
-    save(token, { confirmed = false, remember = false } = {}) {
+    save(token, { confirmed = false, remember = false, onProgress = null } = {}) {
       return run(async () => {
         const prepared = uploads.get(token);
         if (!prepared || !confirmed) throw fail('confirmation_required');
         uploads.delete(token);
         const results = [];
         for (const provider of token.targets) {
+          reportProgress(onProgress, provider, 'prepare');
           let opened;
           try {
             if (sourceWitness(ports.snapshot()) !== prepared.sourceWitness) throw fail('local_changed');
@@ -702,6 +719,7 @@ export function createStandaloneFileExchange(ports) {
             // The durable intent exists before the ONLY upload call. Regardless of
             // HTTP success/failure/timeout, only exact readback may report success.
             let uploadDiagnostic;
+            reportProgress(onProgress, provider, 'upload');
             try {
               uploadDiagnostic = cloudAccessDiagnostic(
                 await opened.session.upload({ envelope: pending.envelope, ...(fileId ? { fileId } : {}) })
@@ -709,6 +727,7 @@ export function createStandaloneFileExchange(ports) {
             } catch {
               /* Verify uncertain outcomes; never create another version. */
             }
+            reportProgress(onProgress, provider, 'verify');
             const verified = await confirmPending(provider, opened);
             results.push(
               verified.status === 'sent_verified'

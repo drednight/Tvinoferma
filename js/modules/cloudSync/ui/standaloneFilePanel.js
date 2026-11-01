@@ -1,4 +1,10 @@
 // @ts-check
+import {
+  providerCopyRows,
+  readCloudAutoCheck,
+  writeCloudAutoCheck,
+  clearCloudAutoCheck
+} from './cloudCopyPresentation.js';
 import { cloudStep, captureCloudFailure, recordCloudDiagnostic } from '../cloudDiagnostics.js';
 import { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } from '../providers/cloudAccessDiagnostics.js';
 import { createStandaloneFileRuntime } from '../standaloneFileRuntime.js';
@@ -208,10 +214,97 @@ export function bindStandaloneFilePanel(options) {
       saveOptions();
   };
   panel.addEventListener('change', optionsChanged);
+  const autoCheck = readCloudAutoCheck(doc);
+  if (el('startup')) el('startup').checked = autoCheck.startup;
+  if (el('interval')) el('interval').value = String(autoCheck.minutes);
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
   let stopComparison = null;
+  let operationTimer = null;
+  let cancelPrivate = null;
+  let listedFiles = [];
+  const notices = new Map();
+  const badge = doc.getElementById('cloud-copy-badge');
+  const showDialog = dialog => {
+    dialog.hidden = false;
+    if (!dialog.open) dialog.showModal();
+  };
+  function hideReview() {
+    reviewPanel.close();
+    reviewPanel.hidden = true;
+  }
+  function clearReview() {
+    review = null;
+    hideReview();
+    if (el('reopen')) el('reopen').hidden = true;
+  }
+  function startOperation(stage) {
+    const box = el('operation');
+    if (!box) return;
+    box.hidden = false;
+    box.setAttribute('aria-busy', 'true');
+    box.querySelector('progress').hidden = false;
+    const started = Date.now();
+    const tick = () => {
+      el('operation-message').textContent =
+        status.textContent || (stage === 'ui_save' ? 'Подготавливаем облачную копию…' : 'Проверяем облачные копии…');
+      el('operation-elapsed').textContent =
+        `Прошло ${Math.floor((Date.now() - started) / 1000)} с. Процент сервером не сообщается.`;
+    };
+    tick();
+    operationTimer = setInterval(tick, 1000);
+  }
+  function operationProgress({ provider, stage }) {
+    if (stopped || !Object.hasOwn(NAMES, provider)) return;
+    const labels = {
+      access: 'Проверяем доступ…',
+      read: 'Читаем список и проверяем целостность копий…',
+      prepare: 'Проверяем папку и готовим отправку…',
+      upload: 'Отправляем зашифрованный файл…',
+      verify: 'Скачиваем отправленный файл для проверки…'
+    };
+    if (!Object.hasOwn(labels, stage)) return;
+    status.textContent = `${NAMES[provider]} · ${labels[stage]}`;
+    if (el('operation-message')) el('operation-message').textContent = status.textContent;
+  }
+  function finishOperation() {
+    if (operationTimer !== null) clearInterval(operationTimer);
+    operationTimer = null;
+    const box = el('operation');
+    if (!box || box.hidden) return;
+    box.removeAttribute('aria-busy');
+    box.querySelector('progress').hidden = true;
+    el('operation-message').textContent = status.textContent;
+    el('operation-elapsed').textContent = '';
+  }
+  function updateBadge() {
+    if (!badge) return;
+    const providers = [...notices].filter(([, value]) => value).map(([provider]) => NAMES[provider]);
+    badge.hidden = !providers.length;
+    badge.textContent = 'Облачная копия ждёт сравнения';
+    badge.title = `Непринятая копия: ${providers.join(', ')}. Это копия данных, не обновление приложения. Ничего не заменяется автоматически.`;
+  }
+  const openCloudCopies = () => {
+    doc.querySelector('[data-tab="settings"]')?.click();
+    const parent = doc.getElementById('cloud-registration-panel');
+    if (parent) parent.open = true;
+    el('files').scrollIntoView?.({ block: 'center' });
+    el('check').focus({ preventScroll: true });
+  };
+  badge?.addEventListener('click', openCloudCopies);
+  el('reopen')?.addEventListener('click', () => {
+    if (review) showDialog(reviewPanel);
+  });
+  el('review-close')?.addEventListener('click', hideReview);
+  reviewPanel.addEventListener('cancel', event => {
+    event.preventDefault();
+    hideReview();
+  });
+  const keyDialog = el('key-dialog');
+  el('key-settings')?.addEventListener('click', () => showDialog(keyDialog));
+  keyDialog?.querySelector('[data-cloud-close]')?.addEventListener('click', () => keyDialog.close());
+
   let busy = false,
     stopped = false,
     review = null,
@@ -235,8 +328,11 @@ export function bindStandaloneFilePanel(options) {
   }
   function setBusy(value) {
     busy = value;
-    for (const input of panel.querySelectorAll('button,input,select'))
+    for (const input of panel.querySelectorAll('button,input,select')) {
+      if (input.closest('#cloud-standalone-private-dialog') || input.hasAttribute('data-cloud-close')) continue;
       input.disabled = busy || !options.desktop || stopped;
+    }
+    panel.setAttribute('aria-busy', String(busy));
   }
   function log(provider, action, outcome) {
     try {
@@ -250,6 +346,10 @@ export function bindStandaloneFilePanel(options) {
     setBusy(true);
     try {
       saveOptions();
+      if (stage === 'ui_save' || stage === 'ui_check') {
+        status.textContent = stage === 'ui_save' ? 'Подготавливаем облачную копию…' : 'Проверяем облачные копии…';
+        startOperation(stage);
+      }
       hooks.start?.();
       return await cloudStep(stage, hooks.provider || null, async () => {
         const engine = await getRuntime();
@@ -289,6 +389,7 @@ export function bindStandaloneFilePanel(options) {
       return { diagnosticFailed: true };
     } finally {
       hooks.finally?.();
+      finishOperation();
       setBusy(false);
     }
   }
@@ -308,6 +409,8 @@ export function bindStandaloneFilePanel(options) {
           ? '. Повторный вход — только в прежний аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
+      if (result.provider === 'yandex' && result.status === 'sent_verified')
+        li.append(' Папка: Яндекс Диск → Твиноферма.');
       if (result.storageNotice === 'visible_permissions_required')
         li.append(
           ' Старые копии доступны в папке приложения. Для обычной папки «Твиноферма» проверьте права чтения и записи: выйдите и войдите в Яндекс заново.'
@@ -370,10 +473,46 @@ export function bindStandaloneFilePanel(options) {
       el('provider-results').append(li);
     }
   }
-  function privacy() {
-    if (fields().length && !el('contacts-confirm').checked) throw new Error('contacts_required');
-    if (fields().includes('password') && !el('password-risk').checked)
-      throw new Error('password_risk_confirmation_required');
+  async function privacy() {
+    if (
+      !fields().length ||
+      (el('contacts-confirm').checked && (!fields().includes('password') || el('password-risk').checked))
+    )
+      return true;
+    if (options.confirmPrivate) {
+      const agreed = await options.confirmPrivate({ fields: fields() });
+      if (!agreed) return false;
+      el('contacts-confirm').checked = true;
+      el('password-risk').checked = fields().includes('password');
+      return true;
+    }
+    updateConsentVisibility();
+    const dialog = el('private-dialog');
+    return new Promise(resolve => {
+      const finish = value => {
+        dialog.close();
+        el('private-confirm').removeEventListener('click', accept);
+        el('private-cancel').removeEventListener('click', cancel);
+        dialog.removeEventListener('cancel', cancel);
+        cancelPrivate = null;
+        if (!value) resetAcknowledgements();
+        resolve(value);
+      };
+      const accept = () => {
+        if (el('contacts-confirm').checked && (!fields().includes('password') || el('password-risk').checked))
+          finish(true);
+      };
+      const cancel = event => {
+        event?.preventDefault();
+        finish(false);
+      };
+      cancelPrivate = () => finish(false);
+      el('private-confirm').addEventListener('click', accept);
+      el('private-cancel').addEventListener('click', cancel);
+      dialog.addEventListener('cancel', cancel);
+      status.textContent = 'Ожидаем подтверждение выбранных приватных полей в открытом окне…';
+      showDialog(dialog);
+    });
   }
   function resetAcknowledgements() {
     el('contacts-confirm').checked = false;
@@ -382,7 +521,8 @@ export function bindStandaloneFilePanel(options) {
   function showReview(token) {
     review = token;
     reviewFields = fields();
-    reviewPanel.hidden = false;
+    showDialog(reviewPanel);
+    if (el('reopen')) el('reopen').hidden = false;
     el('backup-ack-label').hidden = !token.localPrivateAtRisk;
     el('backup-ack').checked = false;
     el('review-status').textContent =
@@ -402,6 +542,7 @@ export function bindStandaloneFilePanel(options) {
           : entry.kind === 'only_cloud'
             ? 'Будет добавлено на этот ПК'
             : 'Будет изменено';
+      li.className = `cloud-diff-card cloud-diff-${entry.kind}`;
       li.textContent = `${SECTIONS[entry.section] || 'Данные'} — ${kind}${entry.label ? `: ${entry.label}` : ''}`;
       const nested = doc.createElement('ul');
       for (const change of entry.changes.slice(0, 30)) {
@@ -418,6 +559,7 @@ export function bindStandaloneFilePanel(options) {
     }
     for (const field of token.privateChanges) {
       const li = doc.createElement('li');
+      li.className = 'cloud-diff-card';
       li.textContent = `Приватное поле ${field.field}: ${field.clears ? 'будет очищено' : 'будет заменено'}; значения скрыты.`;
       list.append(li);
     }
@@ -428,12 +570,13 @@ export function bindStandaloneFilePanel(options) {
     }
   }
   function showFiles(rows) {
+    listedFiles = rows;
     files.replaceChildren();
-    for (const file of rows) {
+    for (const file of providerCopyRows(rows, el('show-backups').checked)) {
       const card = doc.createElement('div');
-      card.className = 'cloud-review-pending';
+      card.className = 'cloud-copy-card';
       const title = doc.createElement('p');
-      title.textContent = `${file.locations.map(location => NAMES[location.provider]).join(' + ')} — ${file.locations.map(location => dateLabel(location.modifiedAt)).join(' / ')}. Даты диска справочные, часовой пояс этого ПК. Версия ${file.versionId.slice(0, 8)}.`;
+      title.textContent = `${NAMES[file.locations[0].provider]} — ${dateLabel(file.locations[0].modifiedAt)}. ${el('show-backups').checked ? '' : 'Последняя доступная по дате диска. '}Дата справочная, часовой пояс этого ПК. Версия ${file.versionId.slice(0, 8)}.`;
       const open = doc.createElement('button');
       open.className = 'btn ghost';
       open.type = 'button';
@@ -480,7 +623,7 @@ export function bindStandaloneFilePanel(options) {
             ensureActive();
             showReview(token);
             const hasDifferences = token.comparison.entries.length || token.privateChanges.length;
-            const result = `${NAMES[provider]} · Сравнение завершено. ${hasDifferences ? 'Различия показаны ниже.' : 'В выбранных данных различий нет.'} Местные данные не заменены; на диски ничего не отправлялось.`;
+            const result = `${NAMES[provider]} · Сравнение завершено. ${hasDifferences ? 'Различия открыты в отдельном окне.' : 'В выбранных данных различий нет.'} Местные данные не заменены; на диски ничего не отправлялось.`;
             finish(result, 'success', 'success');
             status.textContent = result;
             el('review-status').textContent = `${result} ${el('review-status').textContent}`;
@@ -493,8 +636,7 @@ export function bindStandaloneFilePanel(options) {
             provider,
             start() {
               // Never leave an older comparison looking like this attempt's result.
-              review = null;
-              reviewPanel.hidden = true;
+              clearReview();
               feedback.start();
               feedback.stage('access');
               log(provider, 'standalone_compare', 'running');
@@ -529,7 +671,25 @@ export function bindStandaloneFilePanel(options) {
   }
   async function check(manual) {
     return action(async engine => {
-      const result = await engine.check({ manual, includeBackups: manual && el('show-backups').checked });
+      status.textContent = 'Проверяем Google Диск и Яндекс Диск: доступ, список файлов и целостность копий…';
+      const result = await engine.check({
+        manual,
+        includeBackups: manual && el('show-backups').checked,
+        onProgress: operationProgress
+      });
+      const unaccepted = result.unacceptedFiles || (!manual ? result.files : null);
+      for (const row of result.results) {
+        if (row.status === 'credential_missing') notices.delete(row.provider);
+        else if (unaccepted && ['checked', 'empty'].includes(row.status))
+          notices.set(
+            row.provider,
+            unaccepted.some(file => file.locations.some(location => location.provider === row.provider))
+          );
+      }
+      updateBadge();
+      if (el('last-check'))
+        el('last-check').textContent =
+          `Последняя проверка: ${dateLabel(Date.now())}. ${result.results.some(row => !['checked', 'empty', 'credential_missing'].includes(row.status)) ? 'Есть ошибки — подробности ниже.' : 'Проверка завершена.'}`;
       const available = result.results.find(row => ['checked', 'empty'].includes(row.status));
       showFiles(result.files);
       showResults([...result.results.filter(row => manual || row.status !== 'credential_missing'), ...result.pending]);
@@ -539,7 +699,7 @@ export function bindStandaloneFilePanel(options) {
           : !available
             ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
             : result.files.length
-              ? `Доступно полных копий для сравнения: ${result.files.length}. Совпадающие файлы объединены по содержимому; разные выберите явно. Ничего не применяется и не отправляется автоматически.`
+              ? `Доступно полных копий для сравнения: ${result.files.length}. Показана последняя доступная копия каждого диска; предыдущие можно включить в дополнительных параметрах. Ничего не применяется и не отправляется автоматически.`
               : 'Новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
       if (available && result.results.some(row => !['checked', 'empty', 'credential_missing'].includes(row.status)))
         status.textContent = 'Проверка частичная: один из подключённых дисков недоступен. ' + status.textContent;
@@ -577,7 +737,7 @@ export function bindStandaloneFilePanel(options) {
   });
   el('save').addEventListener('click', () =>
     action(async engine => {
-      privacy();
+      if (!(await privacy())) return;
       if (!targets().length) {
         status.textContent = 'Выберите Google Диск, Яндекс Диск или оба.';
         return;
@@ -614,9 +774,11 @@ export function bindStandaloneFilePanel(options) {
         },
         options: {
           targets: targets(),
+          onProgress: operationProgress,
           source,
           async requestPassword(input) {
             if (stopped) throw new Error('closed');
+            status.textContent = 'Ожидаем пароль шифрования в открытом окне…';
             const password = await passwordDialog(input);
             if (stopped) throw new Error('closed');
             return password;
@@ -646,7 +808,7 @@ export function bindStandaloneFilePanel(options) {
       }
       status.textContent = 'Отправка и проверка файла на диске…';
       const result = await cloudStep('save_dispatch', null, () =>
-        engine.save(prepared, { confirmed: true, remember: el('remember').checked })
+        engine.save(prepared, { confirmed: true, remember: el('remember').checked, onProgress: operationProgress })
       );
       showResults(result.results);
       status.textContent =
@@ -665,19 +827,23 @@ export function bindStandaloneFilePanel(options) {
   el('accept').addEventListener('click', () =>
     action(async engine => {
       if (!review) return;
-      privacy();
       // Changing private scope invalidates the displayed preview.
       if (JSON.stringify(fields()) !== JSON.stringify(reviewFields)) {
         status.textContent = 'Изменён выбор приватных полей. Скачайте и сравните файл заново.';
         return;
       }
+      if (!(await privacy())) return;
+      hideReview();
       const agreed = await confirmAction({
         title: 'Заменить местные данные полной копией?',
         text: 'Будут добавлены, изменены и удалены записи по показанному сравнению. Сначала создаётся резервная копия местных данных. Невыбранные контакты, сессии и настройки этого ПК не переносятся из облака. Второй диск не перезаписывается. Продолжить?',
         okText: 'Принять полную копию',
         danger: true
       });
-      if (!agreed) return;
+      if (!agreed) {
+        showDialog(reviewPanel);
+        return;
+      }
       const result = await engine.accept(review, {
         confirmed: true,
         fields: fields(),
@@ -688,10 +854,13 @@ export function bindStandaloneFilePanel(options) {
         remember: el('remember').checked
       });
       status.textContent = STATUS[result.status] || 'Замена не подтверждена; повторите проверку местных данных.';
+      if (result.status === 'applied') {
+        notices.delete(review.provider);
+        updateBadge();
+      }
       log(review.provider, 'file_replace', result.status === 'applied' ? 'success' : 'unavailable');
       if (result.status === 'applied') {
-        review = null;
-        reviewPanel.hidden = true;
+        clearReview();
         resetAcknowledgements();
         doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-applied'));
         if (result.remembering === 'unavailable') status.textContent += ' Запомнить ключ в ОС не удалось.';
@@ -703,8 +872,9 @@ export function bindStandaloneFilePanel(options) {
       if (!review) return;
       const provider = review.provider;
       const result = await engine.decline(review);
-      review = null;
-      reviewPanel.hidden = true;
+      notices.delete(provider);
+      updateBadge();
+      clearReview();
       status.textContent = STATUS[result.status];
       resetAcknowledgements();
       log(provider, 'standalone_keep', 'success');
@@ -712,6 +882,7 @@ export function bindStandaloneFilePanel(options) {
   );
   el('forget').addEventListener('click', () =>
     action(async engine => {
+      keyDialog.close();
       if (
         !(await confirmAction({
           title: 'Забыть запомненный ключ?',
@@ -724,39 +895,69 @@ export function bindStandaloneFilePanel(options) {
       status.textContent = 'Запомненный ключ удалён. Для открытия потребуется пароль.';
     })
   );
+  el('show-backups').addEventListener('change', () => showFiles(listedFiles));
   setBusy(false);
   const startup = options.startup !== false && options.desktop;
   let timer = null;
   const connected = () => {
     if (!busy && !stopped) void check(false);
   };
+  function schedule() {
+    if (timer) clearInterval(timer);
+    timer = null;
+    const minutes = Number(el('interval')?.value ?? 5);
+    if (startup && minutes) timer = setInterval(connected, minutes * 60 * 1000);
+  }
+  const autoChanged = () => {
+    const value = { version: 1, startup: !!el('startup')?.checked, minutes: Number(el('interval')?.value ?? 5) };
+    if (!writeCloudAutoCheck(doc, value))
+      status.textContent = 'Не удалось запомнить расписание. Оно действует до закрытия приложения.';
+    schedule();
+  };
+  el('startup')?.addEventListener('change', autoChanged);
+  el('interval')?.addEventListener('change', autoChanged);
   const reset = () => {
     stopped = true;
     panel.removeEventListener('change', optionsChanged);
     stopComparison?.();
     stopComparison = null;
+    cancelPrivate?.();
+    finishOperation();
+    badge?.removeEventListener('click', openCloudCopies);
+    if (badge) badge.hidden = true;
+    notices.clear();
     runtime?.dispose?.();
     if (timer) clearInterval(timer);
     setBusy(false);
     review = null;
     files.replaceChildren();
-    reviewPanel.hidden = true;
+    listedFiles = [];
+    clearReview();
+    keyDialog?.close();
   };
-  const credentialRemoved = () => {
-    review = null;
-    reviewPanel.hidden = true;
-    if (!busy && !stopped) void check(false);
+  const credentialRemoved = event => {
+    const provider = event.detail?.provider;
+    notices.delete(provider);
+    updateBadge();
+    if (review?.provider === provider) clearReview();
+    if (!busy && !stopped)
+      showFiles(
+        listedFiles
+          .map(file => ({ ...file, locations: file.locations.filter(location => location.provider !== provider) }))
+          .filter(file => file.locations.length)
+      );
   };
   doc.defaultView?.addEventListener('tf-cloud-credential-removed', credentialRemoved);
   const factoryReset = () => {
     clearStandaloneFileOptions(doc);
+    clearCloudAutoCheck(doc);
     reset();
   };
   doc.defaultView?.addEventListener('tf-factory-reset-started', factoryReset);
   if (startup) {
     doc.defaultView?.addEventListener('tf-cloud-credential-ready', connected);
-    timer = setInterval(connected, 5 * 60 * 1000);
-    void check(false);
+    schedule();
+    if (autoCheck.startup) void check(false);
   }
   if (!options.desktop)
     status.textContent =
@@ -765,6 +966,8 @@ export function bindStandaloneFilePanel(options) {
     check,
     dispose() {
       reset();
+      el('startup')?.removeEventListener('change', autoChanged);
+      el('interval')?.removeEventListener('change', autoChanged);
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
       doc.defaultView?.removeEventListener('tf-cloud-credential-removed', credentialRemoved);
       doc.defaultView?.removeEventListener('tf-factory-reset-started', factoryReset);

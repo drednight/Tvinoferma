@@ -59,6 +59,20 @@ function bind(extra = {}) {
     confirmAccount: extra.confirmAccount || confirmAccount
   };
 }
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: {
+    configurable: true,
+    value() {
+      this.open = true;
+    }
+  },
+  close: {
+    configurable: true,
+    value() {
+      this.open = false;
+    }
+  }
+});
 beforeEach(() => {
   clearCloudAccountPresentation();
   expect(source).toBeTruthy();
@@ -274,8 +288,8 @@ describe('экспериментальный локальный доступ в 
       openBrowser: s.openBrowser,
       confirmAccount: expect.any(Function)
     });
-    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Доступ сохранён'));
-    expect(connection('progress').textContent).toContain('сохранить полный файл или проверить файлы другого ПК');
+    await vi.waitFor(() => expect(connection('progress').textContent).toBe(''));
+    expect(connection('progress').textContent).not.toContain('Доступ сохранён');
     expect(connection('progress').textContent).not.toContain('набор данных ещё нужно подключить');
     expect(connection('approve').checked).toBe(false);
     expect(storage).not.toHaveBeenCalled();
@@ -301,7 +315,7 @@ describe('экспериментальный локальный доступ в 
   it.each([
     ['empty', 'ready', 'привязка набора без доступной'],
     ['empty', 'blocked', 'привязка набора без доступной'],
-    ['ready', 'ready', 'при выходе прежняя привязка набора и ключи остаются'],
+    ['ready', 'ready', ''],
     ['ready', 'blocked', 'Локальное удаление заблокировано']
   ])('не обходит старую привязку при account=%s, dataset=%s', async (account, dataset, message) => {
     const s = bind({
@@ -349,7 +363,7 @@ describe('экспериментальный локальный доступ в 
   it('забывает только проверенный slot после отдельного согласия', async () => {
     const s = bind({ readBinding: vi.fn(async () => ready()) });
     await inspectConnection();
-    expect(connection('local').textContent).toContain('облачные файлы и синхронизация не проверялись');
+    expect(connection('local').textContent).toBe('');
     expect(connection('forget').disabled).toBe(true);
     approveInput('forget-approve');
     connection('forget').click();
@@ -450,7 +464,7 @@ describe('экспериментальный локальный доступ в 
     expect(signal.aborted).toBe(true);
     expect(connection('progress').textContent).toContain('может завершиться после отмены');
     gate.resolve({ status: 'installed' });
-    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Доступ сохранён'));
+    await vi.waitFor(() => expect(connection('progress').textContent).toBe(''));
     expect(connection('start').disabled).toBe(true);
   });
 
@@ -617,7 +631,7 @@ describe('Google JSON import failures are actionable and never expose file conte
     byId('provider').value = 'google';
     byId('provider').dispatchEvent(new Event('change'));
     const input = document.getElementById('cloud-google-import');
-    expect(input.closest('details').id).toBe('cloud-login-settings');
+    expect(input.closest('dialog').id).toBe('cloud-login-settings-dialog');
     Object.defineProperty(input, 'files', {
       configurable: true,
       value: [{ size: json.length, text: async () => json }]

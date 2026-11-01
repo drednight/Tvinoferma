@@ -1,6 +1,20 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 
+Object.defineProperties(HTMLDialogElement.prototype, {
+  showModal: {
+    configurable: true,
+    value() {
+      this.open = true;
+    }
+  },
+  close: {
+    configurable: true,
+    value() {
+      this.open = false;
+    }
+  }
+});
 beforeEach(() => {
   vi.resetModules();
   localStorage.clear();
@@ -194,8 +208,8 @@ describe('standalone UI through real runtime and guarded storage', () => {
       expect(document.querySelector('[data-standalone-destination]:checked')).toBeNull();
       document.querySelector('[data-standalone-destination][value=yandex]').checked = true;
       save.click();
-      await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
-      const dialog = document.querySelector('dialog');
+      await vi.waitFor(() => expect(document.querySelector('.cloud-key-dialog')).not.toBeNull());
+      const dialog = document.querySelector('.cloud-key-dialog');
       expect(dialog.querySelector('[role=alert]').hidden).toBe(true);
       dialog.querySelector('[name=password]').value = 'Ab3!xyZ7';
       dialog.querySelector('[name=repeat]').value = 'Ab3!xyZ7';
@@ -206,13 +220,13 @@ describe('standalone UI through real runtime and guarded storage', () => {
         'полный файл сохранён и сверен'
       );
       expect(confirmAction).not.toHaveBeenCalled();
-      expect(document.querySelector('dialog')).toBeNull();
+      expect(document.querySelector('.cloud-key-dialog')).toBeNull();
       f.state.characters[0].nick = 'После первой отправки';
       await f.saveNow();
       save.click();
       await vi.waitFor(() => expect(save.disabled).toBe(false), { timeout: 10000 });
       expect(f.puts).toBe(2);
-      expect(document.querySelector('dialog')).toBeNull();
+      expect(document.querySelector('.cloud-key-dialog')).toBeNull();
       expect(confirmAction).not.toHaveBeenCalled();
       expect(f.state.settings.cloudStandaloneFiles.yandex.pending).toBeNull();
     } finally {
@@ -402,7 +416,7 @@ it('second-PC UI shows actual download/decryption/comparison and a final result 
   const controller = bindStandaloneFilePanel({ desktop: true, startup: false, runtime: other, password, record });
   const stages = [];
   const observer = new MutationObserver(() => {
-    const feedback = document.querySelector('.cloud-compare-feedback');
+    const feedback = document.querySelector('#cloud-standalone-files .cloud-compare-feedback');
     if (feedback) stages.push(feedback.textContent);
   });
   try {
@@ -416,7 +430,7 @@ it('second-PC UI shows actual download/decryption/comparison and a final result 
     expect(stages.some(text => text.includes('Скачиваем полный файл'))).toBe(true);
     expect(stages.some(text => text.includes('Расшифровываем'))).toBe(true);
     expect(stages.some(text => text.includes('Сравниваем с данными'))).toBe(true);
-    expect(document.querySelector('.cloud-compare-feedback').dataset.state).toBe('success');
+    expect(document.querySelector('#cloud-standalone-files .cloud-compare-feedback').dataset.state).toBe('success');
     expect(document.getElementById('cloud-standalone-review-status').textContent).toContain('Сравнение завершено');
     expect(record).toHaveBeenLastCalledWith('yandex', 'standalone_compare', 'success');
     expect(localStorage.getItem('tvinoferma_state_v1')).toBe(before);
