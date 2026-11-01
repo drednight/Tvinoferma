@@ -476,3 +476,25 @@ describe('полная замена публичным файлом — не ч�
     ).toThrow();
   });
 });
+
+it('full replacement preserves namesakes with distinct sync IDs instead of applying selective-merge nickname rules', () => {
+  const remote = ready({
+    characters: [
+      { id: 'one', nick: 'Герой' },
+      { id: 'two', nick: 'герой' }
+    ],
+    archivedCharacters: [{ id: 'old', nick: 'Герой' }]
+  });
+  const cloud = buildPublicSnapshot(remote);
+  const local = ready({ characters: [{ id: 'local', nick: 'Герой', contacts: { email: 'LOCAL_PRIVATE' } }] });
+  const candidate = prepareFullPublicSnapshotReplace({
+    localState: local,
+    cloudSnapshot: cloud,
+    cryptoSource: webcrypto
+  }).candidateState();
+  expect(candidate.characters.map(row => row.nick)).toEqual(['Герой', 'герой']);
+  expect(candidate.archivedCharacters.map(row => row.nick)).toEqual(['Герой']);
+  expect(new Set([...candidate.characters, ...candidate.archivedCharacters].map(row => row.id)).size).toBe(3);
+  expect(comparePublicSnapshots({ local: buildPublicSnapshot(candidate), cloud }).entries).toEqual([]);
+  expect(candidate.characters.every(row => row.contacts?.email !== 'LOCAL_PRIVATE')).toBe(true);
+});

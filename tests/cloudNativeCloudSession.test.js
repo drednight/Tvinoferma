@@ -825,3 +825,50 @@ it('does not release a preview disposed while its post-network record check is p
   release();
   expect(await pending).toEqual({ status: 'account_unavailable' });
 });
+
+it('keeps the selected protected account through repeated automatic refreshes with same-token lifetime replies', async () => {
+  const f = fixture('google');
+  const base = f.invoke.getMockImplementation();
+  f.invoke.mockImplementation(async (command, args) => {
+    const value = await base(command, args);
+    if (command === 'cloud_oauth_network' && args.operation === 'refresh') {
+      const payload = JSON.parse(value.body);
+      payload.refresh_token_expires_in = 600000;
+      return { ...value, body: JSON.stringify(payload) };
+    }
+    return value;
+  });
+  let now = 100000;
+  const deadlines = [];
+  for (let i = 0; i < 3; i++) {
+    const opened = await openNativeCloudSession({ ...f.options, now: () => now });
+    expect(opened.status).toBe('opened');
+    opened.session.dispose();
+    const record = JSON.parse(f.record());
+    expect(record).toMatchObject({ phase: 'ready', accountKey, clientId: clients.google, refreshToken: refresh });
+    deadlines.push(record.refreshExpiresAt);
+    now += 300001; // expiry of the independent five-minute memory optimisation
+  }
+  expect(new Set(deadlines).size).toBe(1); // no extension of the original refresh deadline
+  expect(
+    f.invoke.mock.calls.filter(([cmd, args]) => cmd === 'cloud_oauth_network' && args.operation === 'refresh')
+  ).toHaveLength(3);
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd === 'cloud_credential_compare_exchange')).toHaveLength(3);
+});
+
+it('reports a fixed refresh response rejection instead of losing it in google_refresh_unconfirmed, and never replays it', async () => {
+  const { cloudAccessDiagnostic } = await import('../js/modules/cloudSync/providers/cloudAccessDiagnostics.js');
+  const f = fixture('google');
+  const base = f.invoke.getMockImplementation();
+  f.invoke.mockImplementation(async (command, args) => {
+    const result = await base(command, args);
+    if (command === 'cloud_oauth_network') return { ...result, body: 'PRIVATE_INVALID_RESPONSE' };
+    return result;
+  });
+  const failed = await openNativeCloudSession({ ...f.options, now: () => 100000 });
+  expect(failed.status).toBe('google_refresh_unconfirmed');
+  expect(cloudAccessDiagnostic(failed)).toBe('refresh_invalid_response');
+  expect(JSON.stringify(failed)).not.toContain('PRIVATE_INVALID_RESPONSE');
+  expect((await openNativeCloudSession({ ...f.options, now: () => 100000 })).status).toBe('credential_refresh_pending');
+  expect(f.invoke.mock.calls.filter(([cmd]) => cmd === 'cloud_oauth_network')).toHaveLength(1);
+});

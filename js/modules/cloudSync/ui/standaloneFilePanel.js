@@ -12,6 +12,12 @@ import { STANDALONE_STATUS_MESSAGES as STATUS, GOOGLE_RECONNECT_STATUSES } from 
 import { prepareStandaloneSave } from '../standaloneSaveFlow.js';
 import { standaloneActivityOutcome, recordCloudActivity } from '../cloudEventLog.js';
 
+import {
+  readStandaloneFileOptions,
+  writeStandaloneFileOptions,
+  clearStandaloneFileOptions
+} from './standaloneFileOptions.js';
+
 const COMPARE_STAGES = Object.freeze({
   access: '1 из 5 · Проверяем подключение к диску…',
   download: '2 из 5 · Скачиваем полный файл…',
@@ -153,6 +159,43 @@ export function bindStandaloneFilePanel(options) {
       .map(item => item.value);
   const targets = () => choices('[data-standalone-destination]');
   const fields = () => choices('[data-standalone-private]');
+  const optionLists = {
+    destinations: '[data-standalone-destination]',
+    privateFields: '[data-standalone-private]',
+    settings: '[data-standalone-setting]'
+  };
+  const savedOptions = readStandaloneFileOptions(doc);
+  if (savedOptions) {
+    for (const [key, selector] of Object.entries(optionLists))
+      for (const input of checkboxes(selector)) input.checked = savedOptions[key].includes(input.value);
+    el('source').value = savedOptions.source;
+    el('remember').checked = savedOptions.remember;
+    el('show-backups').checked = savedOptions.backups;
+  }
+  // Consent and backup acknowledgements are intentionally never restored.
+  for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) el(id).checked = false;
+  el('source-file-label').hidden = el('source').value !== 'file';
+  function saveOptions() {
+    const value = {
+      version: 1,
+      source: el('source').value,
+      remember: el('remember').checked,
+      backups: el('show-backups').checked
+    };
+    for (const [key, selector] of Object.entries(optionLists)) value[key] = choices(selector);
+    if (!writeStandaloneFileOptions(doc, value))
+      el('options-status').textContent = 'Не удалось запомнить параметры на этом ПК. Выбор действует до закрытия окна.';
+  }
+  const optionsChanged = event => {
+    const input = event.target;
+    if (
+      input.matches(
+        '[data-standalone-destination],[data-standalone-private],[data-standalone-setting],#cloud-standalone-source,#cloud-standalone-remember,#cloud-standalone-show-backups'
+      )
+    )
+      saveOptions();
+  };
+  panel.addEventListener('change', optionsChanged);
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
@@ -194,11 +237,31 @@ export function bindStandaloneFilePanel(options) {
     if (busy || !options.desktop || stopped) return;
     setBusy(true);
     try {
+      saveOptions();
       hooks.start?.();
       return await cloudStep(stage, hooks.provider || null, async () => {
         const engine = await getRuntime();
         if (stopped) throw new Error('closed');
-        return fn(engine);
+        try {
+          return await fn(engine);
+        } finally {
+          try {
+            if (!stopped && engine.encryptionStatus) {
+              const messages = {
+                unlocked:
+                  'Ключ шифрования уже открыт в этом запуске или получен из защищённого хранилища ОС — повторный ввод пароля не нужен. Это не означает, что пароль можно посмотреть.',
+                locked:
+                  'Файлы уже защищены прежним паролем. Ключ закрыт: при сохранении или открытии понадобится тот же пароль.',
+                not_created:
+                  'При первом сохранении после проверки диска задайте пароль шифрования (не менее 8 символов) и повторите его. Это не пароль Google/Яндекса.'
+              };
+              el('encryption-status').textContent =
+                messages[engine.encryptionStatus()] || 'Для файла другого ключа может понадобиться его пароль.';
+            }
+          } catch {
+            /* An optional key hint must not change the action's result. */
+          }
+        }
       });
     } catch (error) {
       if (stopped) return;
@@ -296,8 +359,7 @@ export function bindStandaloneFilePanel(options) {
     if (fields().includes('password') && !el('password-risk').checked)
       throw new Error('password_risk_confirmation_required');
   }
-  function resetPrivate() {
-    for (const input of checkboxes('[data-standalone-private]')) input.checked = false;
+  function resetAcknowledgements() {
     el('contacts-confirm').checked = false;
     el('password-risk').checked = false;
   }
@@ -487,10 +549,12 @@ export function bindStandaloneFilePanel(options) {
   el('select-all').addEventListener('click', () => {
     for (const input of checkboxes('[data-standalone-private],[data-standalone-setting]')) input.checked = true;
     // Deliberately do NOT tick consent/risk or destination boxes.
+    saveOptions();
   });
   el('select-none').addEventListener('click', () => {
     for (const input of checkboxes('[data-standalone-private],[data-standalone-setting]')) input.checked = false;
-    resetPrivate();
+    resetAcknowledgements();
+    saveOptions();
   });
   el('save').addEventListener('click', () =>
     action(async engine => {
@@ -576,7 +640,7 @@ export function bindStandaloneFilePanel(options) {
           'standalone_save',
           row.status === 'sent_verified' ? 'success' : standaloneActivityOutcome(row)
         );
-      resetPrivate();
+      resetAcknowledgements();
     }, 'ui_save')
   );
   el('accept').addEventListener('click', () =>
@@ -609,7 +673,7 @@ export function bindStandaloneFilePanel(options) {
       if (result.status === 'applied') {
         review = null;
         reviewPanel.hidden = true;
-        resetPrivate();
+        resetAcknowledgements();
         doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-applied'));
         if (result.remembering === 'unavailable') status.textContent += ' Запомнить ключ в ОС не удалось.';
       }
@@ -623,7 +687,7 @@ export function bindStandaloneFilePanel(options) {
       review = null;
       reviewPanel.hidden = true;
       status.textContent = STATUS[result.status];
-      resetPrivate();
+      resetAcknowledgements();
       log(provider, 'standalone_keep', 'success');
     })
   );
@@ -649,6 +713,7 @@ export function bindStandaloneFilePanel(options) {
   };
   const reset = () => {
     stopped = true;
+    panel.removeEventListener('change', optionsChanged);
     stopComparison?.();
     stopComparison = null;
     runtime?.dispose?.();
@@ -658,9 +723,13 @@ export function bindStandaloneFilePanel(options) {
     files.replaceChildren();
     reviewPanel.hidden = true;
   };
+  const factoryReset = () => {
+    clearStandaloneFileOptions(doc);
+    reset();
+  };
+  doc.defaultView?.addEventListener('tf-factory-reset-started', factoryReset);
   if (startup) {
     doc.defaultView?.addEventListener('tf-cloud-credential-ready', connected);
-    doc.defaultView?.addEventListener('tf-factory-reset-started', reset);
     timer = setInterval(connected, 5 * 60 * 1000);
     void check(false);
   }
@@ -672,7 +741,7 @@ export function bindStandaloneFilePanel(options) {
     dispose() {
       reset();
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
-      doc.defaultView?.removeEventListener('tf-factory-reset-started', reset);
+      doc.defaultView?.removeEventListener('tf-factory-reset-started', factoryReset);
     }
   };
 }

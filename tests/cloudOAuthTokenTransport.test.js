@@ -515,3 +515,16 @@ describe('подготовительный одноразовый POST OAuth', (
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
+
+it('accepts remaining refresh lifetime without a replacement token only in an explicit refresh exchange', async () => {
+  const payload = JSON.parse(validJson('google', { refresh_token_expires_in: 5000 }));
+  delete payload.refresh_token;
+  const { instance } = transport('google', 'refresh', {
+    now: () => 1000,
+    fetchImpl: async () => response('google', JSON.stringify(payload))
+  });
+  const lease = await instance.send(createGoogleRefreshRequest({ clientId: clients.google, refreshToken: 'FAKE_OLD' }));
+  expect(lease.summary.refreshExpiresAt).toBe(5001000);
+  expect(lease.summary.refreshAvailable).toBe(false);
+  expect(lease.takeSecrets().refreshToken).toBeNull();
+});

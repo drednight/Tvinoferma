@@ -261,7 +261,7 @@ function tokenLease(values, provider, operation, startedAt, receivedAt, now, yan
   if (!Number.isSafeInteger(expiresAt) || receivedAt < startedAt || receivedAt >= expiresAt) throw unknown();
   let refreshExpiresAt = null;
   if (Object.hasOwn(values, 'refresh_token_expires_in')) {
-    if (!Object.hasOwn(values, 'refresh_token')) throw unknown();
+    if (!Object.hasOwn(values, 'refresh_token') && operation !== 'refresh') throw unknown();
     refreshExpiresAt = startedAt + values.refresh_token_expires_in * 1000;
     if (!Number.isSafeInteger(refreshExpiresAt) || receivedAt >= refreshExpiresAt) throw unknown();
   }
@@ -331,12 +331,12 @@ function tokenLease(values, provider, operation, startedAt, receivedAt, now, yan
  * вызывающий код обязан сам проверить политику прав. Сохранения токенов и
  * подтверждения аккаунта здесь нет.
  * @param {{provider:'google'|'yandex', clientId:string, operation:'code'|'refresh',
- * fetchImpl: typeof fetch, timeoutMs?:number, now?:() => number}} options
+ * fetchImpl: typeof fetch, timeoutMs?:number, now?:() => number, onDiagnostic?:(code:string)=>void}} options
  */
 export function createCloudOAuthTokenTransport(options) {
   let input;
   try {
-    input = object(options, ['provider', 'clientId', 'operation', 'fetchImpl'], ['timeoutMs', 'now']);
+    input = object(options, ['provider', 'clientId', 'operation', 'fetchImpl'], ['timeoutMs', 'now', 'onDiagnostic']);
   } catch {
     throw invalid();
   }
@@ -347,7 +347,8 @@ export function createCloudOAuthTokenTransport(options) {
     !['code', 'refresh'].includes(input.operation) ||
     (input.operation === 'refresh' && input.provider !== 'google') ||
     typeof input.fetchImpl !== 'function' ||
-    (input.now !== undefined && typeof input.now !== 'function')
+    (input.now !== undefined && typeof input.now !== 'function') ||
+    (input.onDiagnostic !== undefined && typeof input.onDiagnostic !== 'function')
   )
     throw invalid();
   const timeoutMs = input.timeoutMs === undefined ? 30000 : input.timeoutMs;
@@ -375,6 +376,7 @@ export function createCloudOAuthTokenTransport(options) {
       let abandoned = false;
       let activeReader = null;
       let timer;
+      let diagnostic = 'refresh_transport_unavailable';
       const work = async () => {
         const response = await input.fetchImpl(checked.url, {
           method: 'POST',
@@ -386,6 +388,7 @@ export function createCloudOAuthTokenTransport(options) {
           referrerPolicy: 'no-referrer',
           signal: controller.signal
         });
+        diagnostic = 'refresh_invalid_response';
         if (
           abandoned ||
           !response ||
@@ -418,6 +421,7 @@ export function createCloudOAuthTokenTransport(options) {
       try {
         const deadline = new Promise((_, reject) => {
           timer = setTimeout(() => {
+            diagnostic = 'refresh_timeout';
             abandoned = true;
             controller.abort();
             cancelReader(activeReader);
@@ -426,6 +430,13 @@ export function createCloudOAuthTokenTransport(options) {
         });
         return await Promise.race([work(), deadline]);
       } catch {
+        if (input.operation === 'refresh') {
+          try {
+            input.onDiagnostic?.(diagnostic);
+          } catch {
+            /* No diagnostic can change the result. */
+          }
+        }
         abandoned = true;
         controller.abort();
         cancelReader(activeReader);

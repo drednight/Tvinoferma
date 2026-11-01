@@ -283,7 +283,9 @@ function materialize(
   const localIds = new Map();
   const usedCharIds = [...charsBefore.values()].map(char => char.id);
   const nickOwners = new Map();
-  for (const record of rows(target, 'characters')) {
+  // Full copies preserve distinct identities, including active/archive namesakes.
+  // Name-based collision checks belong only to selective application.
+  for (const record of fullReplacement ? [] : rows(target, 'characters')) {
     const nick = record.fields.nick.trim().toLocaleLowerCase('ru');
     const selected = chosen('characters', record.id);
     const previous = nickOwners.get(nick);

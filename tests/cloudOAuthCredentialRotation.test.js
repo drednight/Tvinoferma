@@ -499,3 +499,25 @@ describe('отключённая модель согласования Google re
     containsNoSecret(outcome);
   });
 });
+
+it.each([
+  [null, 5000, 5100000],
+  [200000, 5000, 200000],
+  [6000000, 1000, 1100000]
+])('keeps the same refresh and the conservative lifetime (%s, %s)', async (known, remaining, expected) => {
+  const backing = fixture(record({ refreshExpiresAt: known }));
+  const { coordinator, fetchImpl } = setup({
+    backing,
+    fetchImpl: vi.fn(async () => reply({ refresh_token_expires_in: remaining }))
+  });
+  const result = await coordinator.refresh({ expectedRevision: revision });
+  expect(result.status).toBe('refreshed');
+  result.access.discard();
+  expect(JSON.parse(backing.get())).toMatchObject({
+    phase: 'ready',
+    accountKey,
+    refreshToken: oldRefresh,
+    refreshExpiresAt: expected
+  });
+  expect(fetchImpl).toHaveBeenCalledOnce();
+});
