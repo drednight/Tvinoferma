@@ -48,8 +48,7 @@ export function createStandaloneFileRuntime(native) {
     if (generation !== cloudAccountPresentationGeneration()) return;
     try {
       const preview = await session.previewAccountLabel?.();
-      if (generation === cloudAccountPresentationGeneration() && preview?.status === 'label_verified')
-        if (generation !== cloudAccountPresentationGeneration()) throw error('closed');
+      if (generation !== cloudAccountPresentationGeneration() || preview?.status !== 'label_verified') return;
       presentCloudAccount(provider, { status: 'ready', label: preview.label });
     } catch {
       /* optional display must not block file exchange */
@@ -58,6 +57,7 @@ export function createStandaloneFileRuntime(native) {
   async function open(provider, { createFolder }) {
     const generation = cloudAccountPresentationGeneration();
     const local = await readNativeCredentialBinding({ provider, invoke: native.invoke });
+    if (generation !== cloudAccountPresentationGeneration()) throw error('closed');
     presentCloudAccount(provider, {
       status:
         local.status === 'empty'
