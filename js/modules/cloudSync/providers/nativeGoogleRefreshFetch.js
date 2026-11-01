@@ -3,6 +3,7 @@
 // ожидаемую ready-запись на pending ДО POST и сверить client/token с формой.
 // После неизвестного исхода нельзя повторять; UI и реальные токены не испытаны.
 // Токены, формы, ответы и исходные ошибки нельзя журналировать.
+import { nativeOAuthDiagnostic } from './oauthDiagnostics.js';
 import { object } from '../exportSchema.js';
 import { OAUTH_PROVIDERS, validOAuthClientId } from './oauthCommon.js';
 import { parseGoogleCredentialRecord, validCredentialId } from './oauthCredentialRecord.js';
@@ -125,14 +126,17 @@ function checkedClaim(value) {
  * Одноразовая попытка для фиксированного refresh Google. Claim содержит секретную
  * ready-запись и pending; IPC проверяет их и атомарно расходует до отправки.
  * Отмена JS не останавливает начавшийся IPC; потерянный ответ не допускает повтор.
- * @param {{invoke:(command:string,args:any)=>Promise<unknown>,claim:{slotId:string,expected:string,pending:string}}} options
+ * @param {{invoke:(command:string,args:any)=>Promise<unknown>,claim:{slotId:string,expected:string,pending:string},onDiagnostic?:(code:string)=>void}} options
  * @returns {typeof fetch}
  */
 export function createNativeGoogleRefreshFetch(options) {
   let invoke;
   let claim;
+  let onDiagnostic;
   try {
-    const input = object(options, ['invoke', 'claim']);
+    const input = object(options, ['invoke', 'claim'], ['onDiagnostic']);
+    if (input.onDiagnostic !== undefined && typeof input.onDiagnostic !== 'function') throw failed();
+    onDiagnostic = input.onDiagnostic;
     if (typeof input.invoke !== 'function') throw failed();
     invoke = input.invoke;
     claim = checkedClaim(input.claim);
@@ -196,7 +200,12 @@ export function createNativeGoogleRefreshFetch(options) {
             end();
             resolve(response);
           })
-          .catch(() => {
+          .catch(error => {
+            try {
+              onDiagnostic?.(nativeOAuthDiagnostic(error));
+            } catch {
+              /* diagnostics do not change the operation */
+            }
             active = false;
             rejectOnce();
           });

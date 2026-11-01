@@ -25,7 +25,8 @@ export function createNativeGoogleReconnectInstaller({
     timeoutMs
   });
   let spent = false,
-    installation = null;
+    installation = null,
+    verifiedRecord = null;
   return Object.freeze({
     async installIfAbsent(args) {
       if (spent) throw new Error('reconnect_spent');
@@ -72,10 +73,17 @@ export function createNativeGoogleReconnectInstaller({
       installation = { request: input.record, record: next };
       return 'installed';
     },
+    takeVerifiedRecord() {
+      const record = verifiedRecord;
+      verifiedRecord = null;
+      return record;
+    },
     async verifyInstallation(args) {
       if (!installation || args.record !== installation.request) return false;
       try {
-        return (await store.read()) === installation.record;
+        const verified = (await store.read()) === installation.record;
+        if (verified) verifiedRecord = installation.record;
+        return verified;
       } finally {
         installation = null;
       }

@@ -5,7 +5,7 @@
 
 use crate::cloud_disk_transport::CloudDiskArgs;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::cloud_disk_transport::{download_redirect, prepare, Method};
+use crate::cloud_disk_transport::{checked_download_redirect, prepare, Method};
 use serde::Serialize;
 
 const ERROR: &str = "Не удалось безопасно выполнить запрос облачного диска";
@@ -164,9 +164,12 @@ async fn execute(args: CloudDiskArgs) -> Result<CloudDiskReply, String> {
         let location = locations
             .next()
             .and_then(|v| v.to_str().ok())
-            .and_then(|value| download_redirect(request.download_redirect, status, value))
-            .filter(|_| locations.next().is_none())
-            .ok_or_else(|| "cloud_disk_redirect_target".to_owned())?;
+            .ok_or_else(|| "cloud_disk_redirect_headers".to_owned())?;
+        if locations.next().is_some() {
+            return Err("cloud_disk_redirect_headers".into());
+        }
+        let location = checked_download_redirect(request.download_redirect, status, location)
+            .map_err(str::to_owned)?;
         drop(response); // Do not read redirect bodies.
         let remaining = download_deadline.saturating_duration_since(tokio::time::Instant::now());
         if remaining.is_zero() {

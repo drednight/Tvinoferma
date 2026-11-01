@@ -3,6 +3,7 @@
 // WeakMap metadata never enters durable queues or serialized IPC payloads.
 const codes = new Set(
   [
+    'refresh',
     'identity',
     'disk',
     'upload_link',
@@ -13,6 +14,10 @@ const codes = new Set(
     'verification'
   ].flatMap(stage =>
     [
+      'oauth_invalid_client',
+      'oauth_invalid_grant',
+      'oauth_client_secret_required',
+      'oauth_rejected',
       'unauthorized',
       'forbidden',
       'rate_limited',
@@ -26,6 +31,10 @@ const codes = new Set(
       'native_connect',
       'native_redirect',
       'native_redirect_target',
+      'native_redirect_format',
+      'native_redirect_host',
+      'native_redirect_path',
+      'native_redirect_headers',
       'native_redirect_chain',
       'native_encoding',
       'native_size',
@@ -62,6 +71,7 @@ export function cloudAccessHttpDiagnostic(stage, status) {
 }
 
 const STAGES = {
+  refresh: 'Обновление доступа Google',
   identity: 'Сверка аккаунта',
   disk: 'Чтение списка файлов',
   upload_link: 'Получение ссылки отправки',
@@ -72,6 +82,11 @@ const STAGES = {
   verification: 'Сверка отправленного файла'
 };
 const REASONS = {
+  oauth_invalid_client: 'сервис отклонил настройки OAuth-клиента; нужна проверка Desktop JSON того же приложения',
+  oauth_invalid_grant: 'сервис отклонил refresh-токен; нужен новый вход в прежний аккаунт',
+  oauth_client_secret_required:
+    'не найден обязательный client_secret; восстановите Desktop JSON прежнего клиента локально',
+  oauth_rejected: 'сервис отклонил обновление доступа; результат нельзя повторять автоматически',
   unauthorized: 'сервис отклонил доступ (HTTP 401)',
   forbidden: 'сервис запретил доступ (HTTP 403); проверьте права приложения',
   rate_limited: 'лимит запросов (HTTP 429); повторите позже',
@@ -85,6 +100,10 @@ const REASONS = {
   native_connect: 'не удалось установить соединение с сервисом (сеть, DNS или TLS)',
   native_redirect: 'сервис ответил перенаправлением; переход остановлен безопасной политикой',
   native_redirect_target: 'сервер перенаправил на адрес, не разрешённый для скачивания Яндекса',
+  native_redirect_format: 'формат подписанного перенаправления не прошёл проверку (HTTPS, длина или кодирование)',
+  native_redirect_host: 'хост перенаправления не входит в разрешённое семейство серверов хранения Яндекса',
+  native_redirect_path: 'путь перенаправления не соответствует безопасной ссылке хранилища Яндекса',
+  native_redirect_headers: 'сервис прислал отсутствующий, повторный или некорректный заголовок перенаправления',
   native_redirect_chain: 'сервер запросил повторное перенаправление; разрешён только один переход на хранилище Яндекса',
   native_encoding: 'сервис прислал неподдерживаемое сжатие ответа',
   native_size: 'ответ превышает допустимый размер',
@@ -111,6 +130,10 @@ export function nativeCloudAccessDiagnostic(error, operation) {
     cloud_disk_transport: 'transport_unavailable',
     cloud_disk_busy: 'native_busy',
     cloud_disk_redirect: 'native_redirect',
+    cloud_disk_redirect_format: 'native_redirect_format',
+    cloud_disk_redirect_host: 'native_redirect_host',
+    cloud_disk_redirect_path: 'native_redirect_path',
+    cloud_disk_redirect_headers: 'native_redirect_headers',
     cloud_disk_redirect_target: 'native_redirect_target',
     cloud_disk_redirect_chain: 'native_redirect_chain',
     cloud_disk_encoding: 'native_encoding',
@@ -133,4 +156,30 @@ export function nativeCloudAccessDiagnostic(error, operation) {
   if (typeof error !== 'string' || !Object.hasOwn(reasons, error) || !Object.hasOwn(stages, operation))
     return undefined;
   return `${stages[operation]}_${reasons[error]}`;
+}
+
+// Only fixed native OAuth reasons; never provider descriptions or raw errors.
+export function googleRefreshDiagnostic(code) {
+  const reasons = {
+    invalid_client: 'oauth_invalid_client',
+    invalid_grant: 'oauth_invalid_grant',
+    client_secret_required: 'oauth_client_secret_required',
+    timeout: 'timeout',
+    connection_failed: 'native_connect',
+    busy: 'native_busy',
+    server_error: 'service_unavailable',
+    network_failed: 'transport_unavailable',
+    transport_failed: 'transport_unavailable',
+    rate_limited: 'rate_limited',
+    response_invalid: 'invalid_response',
+    invalid_request: 'oauth_rejected',
+    unauthorized_client: 'oauth_rejected',
+    invalid_scope: 'oauth_rejected',
+    access_denied: 'oauth_rejected',
+    http_400: 'oauth_rejected',
+    http_401: 'unauthorized',
+    http_403: 'forbidden',
+    http_rejected: 'oauth_rejected'
+  };
+  return typeof code === 'string' && Object.hasOwn(reasons, code) ? `refresh_${reasons[code]}` : undefined;
 }

@@ -461,3 +461,56 @@ it('declining fresh Google account confirmation keeps the old access unchanged',
   expect(s.slots.get('google')).toEqual(old);
   expect(s.invoke.mock.calls.some(([c]) => c === 'cloud_credential_compare_exchange')).toBe(false);
 });
+
+it.each([false, true])(
+  'fresh Google OAuth is usable immediately without a refresh POST (reconnect=%s)',
+  async reconnect => {
+    const { openStoredStandaloneGoogleFolder, openStoredNativeCloudSession } =
+      await import('../js/modules/cloudSync/providers/nativeCloudSession.js');
+    const s = setup('google');
+    const base = s.invoke.getMockImplementation();
+    s.invoke.mockImplementation(async (command, args) => {
+      if (command === 'cloud_disk_network') {
+        const body =
+          args.args.operation === 'identity'
+            ? { user: { permissionId: ACCOUNT } }
+            : { files: [], incompleteSearch: false };
+        return { status: 200, ...json(body) };
+      }
+      return base(command, args);
+    });
+    expect(await enrollNativeCloudAccount(s.options)).toEqual({ status: 'installed' });
+    if (reconnect)
+      expect(await enrollNativeCloudAccount({ ...s.options, reconnect: true })).toEqual({ status: 'installed' });
+    const record = s.slots.get('google').record;
+    const folder = await openStoredStandaloneGoogleFolder({ invoke: s.invoke });
+    expect(folder.status).toBe('opened');
+    expect((await folder.session.discover()).status).toBe('empty');
+    folder.session.dispose();
+    const disk = await openStoredNativeCloudSession({
+      provider: 'google',
+      datasetId: '31234567-89ab-4cde-8f01-23456789abcd',
+      folderId: 'FAKE_FOLDER',
+      invoke: s.invoke
+    });
+    expect(disk.status).toBe('opened');
+    expect((await disk.session.listWithDates()).status).toBe('listed');
+    disk.session.dispose();
+    expect(s.slots.get('google').record).toBe(record);
+    expect(
+      s.invoke.mock.calls.filter(([c, a]) => c === 'cloud_oauth_network' && a.operation === 'refresh')
+    ).toHaveLength(0);
+  }
+);
+
+it('does not cache a token after an installation with an unknown outcome', async () => {
+  const { recalledGoogleAccess } = await import('../js/modules/cloudSync/providers/googleAccessMemory.js');
+  const s = setup('google', {
+    install: async () => {
+      throw new Error('PRIVATE lost response');
+    }
+  });
+  expect(await enrollNativeCloudAccount(s.options)).toEqual({ status: 'installation_uncertain' });
+  const record = s.slots.get('google').record;
+  expect(recalledGoogleAccess({ invoke: s.invoke, record })).toBeNull();
+});

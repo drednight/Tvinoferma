@@ -7,7 +7,7 @@ import { planSyncIdentities } from '../identityMigration.js';
 import { MAX_SNAPSHOT_BYTES } from '../envelope.js';
 import { validateEncryptionPassword } from '../keyBundle.js';
 import { confirmModal } from '../../../core/ui.js';
-import { STANDALONE_STATUS_MESSAGES as STATUS } from '../standaloneStatus.js';
+import { STANDALONE_STATUS_MESSAGES as STATUS, GOOGLE_RECONNECT_STATUSES } from '../standaloneStatus.js';
 import { prepareStandaloneSave } from '../standaloneSaveFlow.js';
 import { standaloneActivityOutcome, recordCloudActivity } from '../cloudEventLog.js';
 
@@ -150,8 +150,7 @@ export function bindStandaloneFilePanel(options) {
       const li = doc.createElement('li');
       const diagnostic = cloudAccessDiagnostic(result);
       const reconnectHint =
-        result.provider === 'google' &&
-        ['credential_blocked', 'credential_refresh_pending', 'login_required'].includes(result.status)
+        result.provider === 'google' && GOOGLE_RECONNECT_STATUSES.includes(result.status)
           ? '. Повторный вход — только в прежний аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
