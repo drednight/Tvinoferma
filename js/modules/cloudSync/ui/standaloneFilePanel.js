@@ -1,4 +1,5 @@
 // @ts-check
+import { cloudChangePath, cloudChangeValue, cloudChangeCounts, folderNextStep } from './cloudFilePresentation.js';
 import {
   providerCopyRows,
   readCloudAutoCheck,
@@ -6,7 +7,11 @@ import {
   clearCloudAutoCheck
 } from './cloudCopyPresentation.js';
 import { cloudStep, captureCloudFailure, recordCloudDiagnostic } from '../cloudDiagnostics.js';
-import { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } from '../providers/cloudAccessDiagnostics.js';
+import {
+  cloudAccessDiagnostic,
+  CLOUD_ACCESS_MESSAGES,
+  withCloudAccessDiagnostic
+} from '../providers/cloudAccessDiagnostics.js';
 import { createStandaloneFileRuntime } from '../standaloneFileRuntime.js';
 import { inspectStateFile } from '../inspectStateFile.js';
 import { normalizeState } from '../../../core/state.js';
@@ -183,6 +188,15 @@ export function bindStandaloneFilePanel(options) {
   el('source-file-label').hidden = el('source').value !== 'file';
   function updateConsentVisibility() {
     const selected = fields();
+    const summary = el('selection-summary');
+    if (summary)
+      summary.textContent = selected.length
+        ? `Личные поля: ${selected.length} · Настройки: ${choices('[data-standalone-setting]').length}`
+        : `Без контактов и паролей · Настройки: ${choices('[data-standalone-setting]').length}`;
+    if (el('target-summary'))
+      el('target-summary').textContent = targets().length
+        ? `Выбрано дисков: ${targets().length}`
+        : 'Выберите диск ниже';
     const consents = el('consents');
     if (consents) consents.hidden = selected.length === 0;
     const password = el('password-risk-label');
@@ -202,6 +216,7 @@ export function bindStandaloneFilePanel(options) {
   }
   const optionsChanged = event => {
     const input = event.target;
+    updateConsentVisibility();
     if (input.matches('[data-standalone-private]')) {
       resetAcknowledgements();
       updateConsentVisibility();
@@ -243,6 +258,7 @@ export function bindStandaloneFilePanel(options) {
     const box = el('operation');
     if (!box) return;
     box.hidden = false;
+    box.dataset.state = 'running';
     box.setAttribute('aria-busy', 'true');
     box.querySelector('progress').hidden = false;
     const started = Date.now();
@@ -274,6 +290,7 @@ export function bindStandaloneFilePanel(options) {
     const box = el('operation');
     if (!box || box.hidden) return;
     box.removeAttribute('aria-busy');
+    if (box.dataset.state === 'running') box.dataset.state = 'idle';
     box.querySelector('progress').hidden = true;
     el('operation-message').textContent = status.textContent;
     el('operation-elapsed').textContent = '';
@@ -355,8 +372,15 @@ export function bindStandaloneFilePanel(options) {
     setBusy(true);
     try {
       saveOptions();
-      if (stage === 'ui_save' || stage === 'ui_check') {
-        status.textContent = stage === 'ui_save' ? 'Подготавливаем облачную копию…' : 'Проверяем облачные копии…';
+      if (['ui_save', 'ui_check', 'ui_folder_check', 'ui_folder_create'].includes(stage)) {
+        status.textContent =
+          stage === 'ui_save'
+            ? 'Подготавливаем облачную копию…'
+            : stage === 'ui_check'
+              ? 'Проверяем облачные копии…'
+              : stage === 'ui_folder_create'
+                ? 'Яндекс Диск · Создаём и проверяем пустую папку…'
+                : 'Яндекс Диск · Проверяем обычную папку…';
         startOperation(stage);
       }
       hooks.start?.();
@@ -387,6 +411,8 @@ export function bindStandaloneFilePanel(options) {
     } catch (error) {
       if (stopped) return;
       const failure = captureCloudFailure(stage, error, hooks.provider || null);
+      if (el('operation')) el('operation').dataset.state = 'failed';
+      if (el('copy-report')) el('copy-report').hidden = false;
       if (Array.isArray(error.results)) {
         showResults(error.results);
         for (const row of error.results) log(row.provider, 'standalone_save', standaloneActivityOutcome(row));
@@ -403,9 +429,20 @@ export function bindStandaloneFilePanel(options) {
     }
   }
   function showResults(results) {
+    const failed = results.some(
+      row => !['checked', 'empty', 'sent_verified', 'credential_missing'].includes(row.status)
+    );
+    if (el('copy-report')) el('copy-report').hidden = !failed;
+    if (el('operation')) el('operation').dataset.state = failed ? 'failed' : 'success';
     el('provider-results').replaceChildren();
     for (const result of results) {
       const li = doc.createElement('li');
+      li.className = 'cloud-provider-result';
+      li.dataset.state = ['checked', 'empty', 'sent_verified'].includes(result.status)
+        ? 'success'
+        : result.status === 'credential_missing'
+          ? 'idle'
+          : 'failed';
       const diagnostic = cloudAccessDiagnostic(result);
       recordCloudDiagnostic({
         stage: 'provider_result',
@@ -418,8 +455,13 @@ export function bindStandaloneFilePanel(options) {
           ? '. Повторный вход — только в прежний аккаунт'
           : '';
       li.textContent = `${NAMES[result.provider]}: ${STATUS[result.status] || 'действие не подтверждено'}${diagnostic ? '. ' + CLOUD_ACCESS_MESSAGES[diagnostic] : ''}${reconnectHint}`;
-      if (result.provider === 'yandex' && result.status === 'sent_verified')
-        li.append(' Папка: Яндекс Диск → Твиноферма.');
+      if (result.provider === 'yandex' && result.status === 'sent_verified') {
+        if (result.storageLocation === 'visible') {
+          li.append(' Папка: Яндекс Диск → Твиноферма.');
+          folderResult({ status: 'folder_file_verified' }, false);
+        } else if (result.storageLocation === 'legacy')
+          li.append(' Подтверждён прежний файл в папке приложения, не новая запись в обычную папку.');
+      }
       if (result.storageNotice === 'visible_permissions_required')
         li.append(
           ' Старые копии доступны в папке приложения. Для обычной папки «Твиноферма» проверьте права чтения и записи: выйдите и войдите в Яндекс заново.'
@@ -541,6 +583,15 @@ export function bindStandaloneFilePanel(options) {
       (token.localPrivateAtRisk ? 'Удаление затронет местные контакты: сначала сохраните их отдельную копию. ' : '') +
       'При принятии добавится содержимое только из облака, местные отсутствующие в облаке записи будут удалены. Это полная замена, не объединение.' +
       (token.hasPrivate ? ' В файле есть приватная часть; без отдельного выбора она не применяется.' : '');
+    const counts = el('review-counts');
+    if (counts) {
+      counts.replaceChildren();
+      for (const [label, count] of cloudChangeCounts(token.comparison.entries)) {
+        const chip = doc.createElement('span');
+        chip.textContent = `${label}: ${count}`;
+        counts.append(chip);
+      }
+    }
     const list = el('differences');
     list.replaceChildren();
     for (const entry of token.comparison.entries) {
@@ -556,11 +607,13 @@ export function bindStandaloneFilePanel(options) {
       const nested = doc.createElement('ul');
       for (const change of entry.changes.slice(0, 30)) {
         const item = doc.createElement('li');
-        const value = part =>
-          !part?.present
-            ? 'отсутствует'
-            : (typeof part.value === 'string' ? part.value : JSON.stringify(part.value)).slice(0, 300);
-        item.textContent = `${change.path.join(' › ')}: ${value(change.local)} → ${value(change.cloud)}`;
+        const path = doc.createElement('strong');
+        path.className = 'cloud-diff-field';
+        path.textContent = cloudChangePath(change.path);
+        const values = doc.createElement('span');
+        values.className = 'cloud-diff-values';
+        values.textContent = `${cloudChangeValue(change.local, change.path)} → ${cloudChangeValue(change.cloud, change.path)}`;
+        item.append(path, values);
         nested.append(item);
       }
       if (nested.childNodes.length) li.append(nested);
@@ -584,8 +637,11 @@ export function bindStandaloneFilePanel(options) {
     for (const file of providerCopyRows(rows, el('show-backups').checked)) {
       const card = doc.createElement('div');
       card.className = 'cloud-copy-card';
+      const heading = doc.createElement('h5');
+      heading.textContent = NAMES[file.locations[0].provider];
+      card.append(heading);
       const title = doc.createElement('p');
-      title.textContent = `${NAMES[file.locations[0].provider]} — ${dateLabel(file.locations[0].modifiedAt)}. ${el('show-backups').checked ? '' : 'Последняя доступная по дате диска. '}Дата справочная, часовой пояс этого ПК. Версия ${file.versionId.slice(0, 8)}.`;
+      title.textContent = `${dateLabel(file.locations[0].modifiedAt)}. ${el('show-backups').checked ? '' : 'Последняя доступная по дате диска. '}Версия ${file.versionId.slice(0, 8)}. Дата справочная, часовой пояс этого ПК.`;
       const open = doc.createElement('button');
       open.className = 'btn ghost';
       open.type = 'button';
@@ -710,7 +766,7 @@ export function bindStandaloneFilePanel(options) {
           : !available
             ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
             : result.files.length
-              ? `Доступно полных копий для сравнения: ${result.files.length}. Показана последняя доступная копия каждого диска; предыдущие можно включить в дополнительных параметрах. Ничего не применяется и не отправляется автоматически.`
+              ? `Доступно копий по дискам: ${providerCopyRows(result.files, el('show-backups').checked).length}. Показана последняя доступная копия каждого диска; предыдущие можно включить в дополнительных параметрах. Ничего не применяется и не отправляется автоматически.`
               : 'Новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
       if (available && result.results.some(row => !['checked', 'empty', 'credential_missing'].includes(row.status)))
         status.textContent = 'Проверка частичная: один из подключённых дисков недоступен. ' + status.textContent;
@@ -729,6 +785,72 @@ export function bindStandaloneFilePanel(options) {
       return result;
     }, 'ui_check');
   }
+  el('copy-report')?.addEventListener('click', () => {
+    const diagnostics = doc.getElementById('cloud-diagnostics-panel');
+    if (diagnostics) diagnostics.open = true;
+    doc.getElementById('cloud-diagnostics-copy')?.click();
+    diagnostics?.scrollIntoView?.({ block: 'nearest' });
+  });
+  function folderResult(result, operation = true) {
+    const diagnostic = cloudAccessDiagnostic(result);
+    recordCloudDiagnostic({
+      stage: 'provider_result',
+      provider: 'yandex',
+      outcome: ['folder_ready', 'folder_created', 'folder_missing', 'folder_file_verified'].includes(result.status)
+        ? 'ok'
+        : 'blocked',
+      code: diagnostic || result.status
+    });
+    el('yandex-folder-status').textContent = STATUS[result.status] || 'Состояние папки не подтверждено.';
+    if (diagnostic) el('yandex-folder-status').textContent += ' ' + CLOUD_ACCESS_MESSAGES[diagnostic];
+    el('yandex-folder-help').textContent = folderNextStep(result.status, diagnostic);
+    el('yandex-folder-create').hidden = result.status !== 'folder_missing';
+    el('yandex-folder-status').parentElement.dataset.state = [
+      'folder_ready',
+      'folder_created',
+      'folder_file_verified'
+    ].includes(result.status)
+      ? 'success'
+      : result.status === 'folder_missing'
+        ? 'idle'
+        : 'failed';
+    if (!['folder_ready', 'folder_created', 'folder_missing', 'folder_file_verified'].includes(result.status))
+      el('copy-report').hidden = false;
+    if (operation) status.textContent = el('yandex-folder-status').textContent;
+    if (operation && el('operation'))
+      el('operation').dataset.state = el('yandex-folder-status').parentElement.dataset.state;
+  }
+  function folderAction(create) {
+    return action(
+      async engine => {
+        if (create) status.textContent = 'Ожидаем подтверждение создания пустой папки…';
+        if (
+          create &&
+          !(await confirmAction({
+            title: 'Создать папку на Яндекс Диске?',
+            text: 'Создадим только пустую папку «Твиноферма» в корне Диска и проверим её. Данные не отправляются, старые файлы и ключи не меняются.',
+            okText: 'Создать пустую папку'
+          }))
+        ) {
+          status.textContent = 'Создание папки отменено. Данные не отправлялись.';
+          return;
+        }
+        const result = await engine.checkYandexFolder({ create, ...(create ? { confirmed: true } : {}) });
+        if (stopped) return;
+        folderResult(result);
+        return result;
+      },
+      create ? 'ui_folder_create' : 'ui_folder_check',
+      {
+        provider: 'yandex',
+        error(error) {
+          folderResult(withCloudAccessDiagnostic({ status: error.message }, cloudAccessDiagnostic(error)));
+        }
+      }
+    );
+  }
+  el('yandex-folder-check')?.addEventListener('click', () => void folderAction(false));
+  el('yandex-folder-create')?.addEventListener('click', () => void folderAction(true));
   el('source').addEventListener('change', () => {
     el('source-file-label').hidden = el('source').value !== 'file';
   });
@@ -944,7 +1066,17 @@ export function bindStandaloneFilePanel(options) {
     clearReview();
     keyDialog?.close();
   };
+  const invalidateFolder = event => {
+    if (event.detail?.provider !== 'yandex') return;
+    el('yandex-folder-status').textContent = 'Проверьте папку после входа в прежний аккаунт Яндекса.';
+    el('yandex-folder-help').textContent =
+      'Предыдущий результат относится к прежнему сеансу. Проверка ничего не записывает.';
+    el('yandex-folder-create').hidden = true;
+    el('yandex-folder-status').parentElement.dataset.state = 'idle';
+  };
+  doc.defaultView?.addEventListener('tf-cloud-credential-ready', invalidateFolder);
   const credentialRemoved = event => {
+    invalidateFolder(event);
     const provider = event.detail?.provider;
     notices.delete(provider);
     updateBadge();
@@ -979,6 +1111,7 @@ export function bindStandaloneFilePanel(options) {
       el('interval')?.removeEventListener('change', autoChanged);
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
       doc.defaultView?.removeEventListener('tf-cloud-credential-removed', credentialRemoved);
+      doc.defaultView?.removeEventListener('tf-cloud-credential-ready', invalidateFolder);
       doc.defaultView?.removeEventListener('tf-factory-reset-started', factoryReset);
     }
   };

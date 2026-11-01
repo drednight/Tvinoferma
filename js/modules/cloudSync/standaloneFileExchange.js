@@ -359,7 +359,13 @@ export function createStandaloneFileExchange(ports) {
       row.baseHash = pending.contentHash;
       row.accepted = addPin(row.accepted, pending.pin);
     });
-    return { provider, status: 'sent_verified' };
+    return {
+      provider,
+      status: 'sent_verified',
+      ...(provider === 'yandex' && ['visible', 'legacy'].includes(verified.storageLocation)
+        ? { storageLocation: verified.storageLocation }
+        : {})
+    };
   }
   return Object.freeze({
     isBusy: () => busy,
@@ -378,6 +384,20 @@ export function createStandaloneFileExchange(ports) {
       });
     },
     hasEncryptionKey: () => !!config().key,
+    /** Explicit, folder-only Yandex action. No upload, key creation or receipt mutation. */
+    checkYandexFolder({ create = false, confirmed = false } = {}) {
+      if (create && confirmed !== true) throw fail('confirmation_required');
+      if (typeof create !== 'boolean') throw fail('confirmation_required');
+      return run(async () => {
+        let opened;
+        try {
+          opened = await connect('yandex');
+          return await (create ? opened.session.ensureStorage() : opened.session.inspectStorage());
+        } finally {
+          opened?.session?.dispose();
+        }
+      });
+    },
     encryptionStatus: () => (key ? 'unlocked' : config().key ? 'locked' : 'not_created'),
     canSeal() {
       return run(async () => {

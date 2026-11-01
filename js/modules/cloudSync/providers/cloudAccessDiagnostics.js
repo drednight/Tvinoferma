@@ -6,6 +6,7 @@ const codes = new Set(
     'refresh',
     'identity',
     'disk',
+    'folder',
     'upload_link',
     'upload_content',
     'download_link',
@@ -82,6 +83,7 @@ const STAGES = {
   refresh: 'Обновление доступа Google',
   identity: 'Сверка аккаунта',
   disk: 'Чтение списка файлов',
+  folder: 'Папка Яндекс Диска',
   upload_link: 'Получение ссылки отправки',
   upload_content: 'Отправка содержимого',
   download_link: 'Получение ссылки скачивания',
@@ -173,6 +175,7 @@ export function nativeCloudAccessDiagnostic(error, operation) {
   const stages = {
     identity: 'identity',
     identity_preview: 'identity',
+    folder_create: 'folder',
     list: 'disk',
     download: 'download_content',
     download_link: 'download_link',

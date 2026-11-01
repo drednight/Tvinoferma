@@ -984,3 +984,93 @@ it('acknowledges identical copies on both providers in the header after keeping 
   await click('decline');
   expect(document.getElementById('cloud-copy-badge').hidden).toBe(true);
 });
+
+describe('Yandex folder assistant', () => {
+  it('checks only the folder and creates an empty one only after a separate confirmation', async () => {
+    const checkYandexFolder = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'folder_missing' })
+      .mockResolvedValueOnce({ status: 'folder_created' });
+    const f = setup({ runtime: { checkYandexFolder } });
+    await click('yandex-folder-check');
+    expect(checkYandexFolder).toHaveBeenCalledWith({ create: false });
+    expect(el('yandex-folder-create').hidden).toBe(false);
+    expect(f.runtime.check).not.toHaveBeenCalled();
+    await click('yandex-folder-create');
+    expect(f.confirm).toHaveBeenCalledWith(expect.objectContaining({ okText: 'Создать пустую папку' }));
+    expect(checkYandexFolder).toHaveBeenLastCalledWith({ create: true, confirmed: true });
+    expect(el('yandex-folder-status').textContent).toContain('создана и проверена');
+    expect(el('yandex-folder-create').hidden).toBe(true);
+    expect(f.runtime.prepareSave).not.toHaveBeenCalled();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+    expect(f.password).not.toHaveBeenCalled();
+  });
+  it('does not create on cancellation or retry an uncertain folder PUT automatically', async () => {
+    const checkYandexFolder = vi.fn().mockResolvedValue({ status: 'folder_creation_unconfirmed' });
+    const f = setup({ confirm: vi.fn(async () => false), runtime: { checkYandexFolder } });
+    el('yandex-folder-create').hidden = false;
+    await click('yandex-folder-create');
+    expect(checkYandexFolder).not.toHaveBeenCalled();
+    expect(el('status').textContent).toContain('отменено');
+    await click('yandex-folder-check');
+    expect(checkYandexFolder).toHaveBeenCalledOnce();
+    expect(el('yandex-folder-create').hidden).toBe(true);
+    expect(el('yandex-folder-help').textContent).toContain('Сначала проверьте');
+    expect(f.runtime.save).not.toHaveBeenCalled();
+  });
+  it('shows actionable rights errors and exposes the existing sanitized report action', async () => {
+    const checkYandexFolder = vi.fn(async () =>
+      withCloudAccessDiagnostic({ status: 'folder_not_created' }, 'folder_forbidden')
+    );
+    setup({ runtime: { checkYandexFolder } });
+    document.body.insertAdjacentHTML(
+      'beforeend',
+      '<details id="cloud-diagnostics-panel"><button id="cloud-diagnostics-copy"></button></details>'
+    );
+    const copied = vi.fn();
+    document.getElementById('cloud-diagnostics-copy').addEventListener('click', copied);
+    await click('yandex-folder-check');
+    expect(el('yandex-folder-status').textContent).toContain('HTTP 403');
+    expect(el('yandex-folder-help').textContent).toContain('старый токен');
+    expect(el('copy-report').hidden).toBe(false);
+    el('copy-report').click();
+    expect(copied).toHaveBeenCalledOnce();
+  });
+  it('never labels a legacy pending receipt as a file saved to the ordinary root', async () => {
+    setup({
+      runtime: {
+        save: vi.fn(async () => ({
+          results: [{ provider: 'yandex', status: 'sent_verified', storageLocation: 'legacy' }]
+        }))
+      }
+    });
+    await click('save');
+    expect(el('provider-results').textContent).toContain('прежний файл в папке приложения');
+    expect(el('provider-results').textContent).not.toContain('Папка: Яндекс Диск → Твиноферма');
+  });
+  it('updates the ordinary folder hint only for a verified visible copy', async () => {
+    setup({
+      runtime: {
+        save: vi.fn(async () => ({
+          results: [{ provider: 'yandex', status: 'sent_verified', storageLocation: 'visible' }]
+        }))
+      }
+    });
+    await click('save');
+    expect(el('provider-results').textContent).toContain('Папка: Яндекс Диск → Твиноферма');
+    expect(el('yandex-folder-status').textContent).toContain('подтверждена обратным чтением');
+  });
+});
+
+it('invalidates only the Yandex folder hint on logout/relogin without cross-provider requests', async () => {
+  const f = setup({ runtime: { checkYandexFolder: vi.fn(async () => ({ status: 'folder_ready' })) } });
+  await click('yandex-folder-check');
+  window.dispatchEvent(new CustomEvent('tf-cloud-credential-removed', { detail: { provider: 'google' } }));
+  expect(el('yandex-folder-status').textContent).toContain('найдена');
+  window.dispatchEvent(new CustomEvent('tf-cloud-credential-removed', { detail: { provider: 'yandex' } }));
+  expect(el('yandex-folder-status').textContent).toContain('после входа');
+  expect(el('yandex-folder-create').hidden).toBe(true);
+  expect(el('yandex-folder-status').parentElement.dataset.state).toBe('idle');
+  expect(f.runtime.check).not.toHaveBeenCalled();
+  expect(f.runtime.checkYandexFolder).toHaveBeenCalledOnce();
+});

@@ -139,7 +139,7 @@ describe('standalone desktop composition with real guarded JS storage', () => {
     const f = await fixture();
     const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
     const sent = await f.runtime.save(prepared, { confirmed: true });
-    expect(sent.results).toEqual([{ provider: 'yandex', status: 'sent_verified' }]);
+    expect(sent.results).toEqual([{ provider: 'yandex', status: 'sent_verified', storageLocation: 'visible' }]);
     expect(f.puts).toBe(1);
     expect(f.disk.size).toBe(1);
     expect(f.state.characters.every(character => typeof character.syncId === 'string')).toBe(true);
@@ -378,7 +378,7 @@ it('saves selected settings and contacts with additional local UI keys without e
     acknowledgePasswordRisk: true
   });
   const sent = await f.runtime.save(prepared, { confirmed: true });
-  expect(sent.results).toEqual([{ provider: 'yandex', status: 'sent_verified' }]);
+  expect(sent.results).toEqual([{ provider: 'yandex', status: 'sent_verified', storageLocation: 'visible' }]);
   expect(f.puts).toBe(1);
   expect(f.state.settings.ui.localOnlyFuture).toEqual({ path: 'PRIVATE_UI_PATH', session: 'PRIVATE_UI_SESSION' });
   const check = await f.runtime.check({ manual: true, includeBackups: true });
@@ -439,4 +439,53 @@ it('second-PC UI shows actual download/decryption/comparison and a final result 
     observer.disconnect();
     controller.dispose();
   }
+});
+
+it('creates and inspects the ordinary Yandex directory without cloud copies, Google access, keys or state writes', async () => {
+  const f = await fixture();
+  const original = f.native.invoke.getMockImplementation();
+  let exists = false;
+  f.native.invoke.mockImplementation(async (command, wrapped) => {
+    if (
+      command === 'cloud_disk_network' &&
+      wrapped.args.operation === 'list' &&
+      wrapped.args.folderId === 'tvinoferma-visible' &&
+      !exists
+    )
+      return { status: 404, body: '', contentType: null };
+    if (command === 'cloud_disk_network' && wrapped.args.operation === 'folder_create') exists = true;
+    return original(command, wrapped);
+  });
+  const before = structuredClone(f.state);
+  expect((await f.runtime.checkYandexFolder()).status).toBe('folder_missing');
+  expect(() => f.runtime.checkYandexFolder({ create: true })).toThrow('confirmation_required');
+  expect(exists).toBe(false);
+  expect((await f.runtime.checkYandexFolder({ create: true, confirmed: true })).status).toBe('folder_created');
+  expect(f.state).toEqual(before);
+  expect(f.puts).toBe(0);
+  expect(f.native.invoke.mock.calls.some(([command]) => /key|dataset|outbox/.test(command))).toBe(false);
+  expect(
+    f.native.invoke.mock.calls
+      .filter(([cmd]) => cmd === 'cloud_disk_network')
+      .every(([, wrapped]) => wrapped.args.provider === 'yandex')
+  ).toBe(true);
+});
+it('saves a first copy through the real runtime when both Yandex roots are initially absent', async () => {
+  const f = await fixture();
+  const original = f.native.invoke.getMockImplementation();
+  let exists = false;
+  f.native.invoke.mockImplementation(async (command, wrapped) => {
+    if (command === 'cloud_disk_network') {
+      const args = wrapped.args;
+      if (args.operation === 'list' && (!args.folderId || !exists)) return { status: 404, body: '', contentType: null };
+      if (args.operation === 'download_link' && !args.folderId) return { status: 404, body: '', contentType: null };
+      if (args.operation === 'folder_create') exists = true;
+    }
+    return original(command, wrapped);
+  });
+  const prepared = await f.runtime.prepareSave({ targets: ['yandex'], password: 'Ab3!xyZ7' });
+  const saved = await f.runtime.save(prepared, { confirmed: true });
+  expect(saved.results).toEqual([{ provider: 'yandex', status: 'sent_verified', storageLocation: 'visible' }]);
+  expect(exists).toBe(true);
+  expect(f.puts).toBe(1);
 });

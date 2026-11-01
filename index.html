@@ -469,7 +469,7 @@
             </summary>
             <div class="cloud-registration-body">
 
-              <p class="muted">Экспериментально · полный обмен на двух ПК ещё требует приёмки</p>
+              <div class="cloud-workspace-intro"><p class="cloud-eyebrow">Облачные копии данных · Тестовый режим</p><h4>Ваши данные на другом компьютере</h4><p>Сохраните зашифрованную копию на диск. На другом ПК скачайте её, посмотрите различия и решите, принимать ли изменения.</p><ol class="cloud-workspace-steps"><li><b>1</b><span>Подключите диск<small>Google, Яндекс или оба</small></span></li><li><b>2</b><span>Сохраните копию<small>Только по вашей команде</small></span></li><li><b>3</b><span>Сравните на другом ПК<small>Без автоматической замены</small></span></li></ol></div>
               <div class="cloud-provider-cards" aria-label="Аккаунты облачных дисков">
                 <section class="cloud-provider-card" aria-labelledby="cloud-google-title">
                   <h4 id="cloud-google-title">Google Диск</h4>
@@ -483,7 +483,7 @@
                 <section class="cloud-provider-card" aria-labelledby="cloud-yandex-title">
                   <h4 id="cloud-yandex-title">Яндекс Диск</h4>
                   <p id="cloud-yandex-account" class="cloud-provider-account" aria-live="polite">Аккаунт ещё не проверен</p>
-                  <p class="muted">Файлы — в обычной папке «Твиноферма». Старый доступ может потребовать нового входа с правами чтения и записи диска.</p>
+                  <p class="muted">Папка «Твиноферма» в корне Диска. После изменения прав приложения войдите заново.</p>
                   <div class="cloud-registration-actions">
                   <button type="button" class="btn" data-cloud-sign-in="yandex">Войти в Яндекс</button>
                   <button type="button" class="btn ghost small" data-cloud-sign-out="yandex" title="Снять авторизацию только на этом ПК" aria-label="Выйти из Яндекс Диска на этом ПК">Выйти</button>
@@ -498,10 +498,10 @@
               <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
               <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
                 <section id="cloud-standalone-options" class="cloud-file-options" aria-labelledby="cloud-options-heading">
-                  <h4 id="cloud-options-heading">Параметры файла</h4>
+                  <div class="cloud-section-heading"><div><span class="cloud-eyebrow">Состав копии</span><h4 id="cloud-options-heading">Параметры файла</h4></div><span id="cloud-standalone-selection-summary" class="cloud-selection-summary" role="status"></span></div>
                   <div class="cloud-file-options-body">
-                    <p class="muted">Основные данные приложения входят в полную копию всегда. Ниже выберите дополнительные поля и настройки. Для скачивания и сравнения подтверждения замены не нужны.</p>
-                    <section class="cloud-option-card">
+                    <p class="muted">Персонажи, пати, календарь, марафоны и финансы входят всегда. Дополнительные поля выберите ниже.</p>
+                    <section class="cloud-option-card cloud-source-card">
                       <h5>Источник файла</h5>
                       <label>Что сохранить
                         <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
@@ -534,12 +534,13 @@
                   </div>
                 </section>
 
-                <h4 id="cloud-standalone-title">Облачная копия</h4>
+                <div class="cloud-section-heading"><div><span class="cloud-eyebrow">Сохранение и проверка</span><h4 id="cloud-standalone-title">Облачная копия</h4></div><span id="cloud-standalone-target-summary" class="cloud-selection-summary" role="status"></span></div>
                 <p>Выберите диски и нажмите «Сохранить в облако». Если нужен вход, предложим его по ходу сохранения. На другом ПК войдите в тот же аккаунт и нажмите «Проверить». Без вашего решения местные данные не заменяются.</p>
                 <fieldset id="cloud-standalone-destinations"><legend>Куда сохранить</legend>
                   <label class="cloud-destination"><input type="checkbox" value="google" data-standalone-destination /><span><strong>Google Диск</strong><small>Папка «Твиноферма»</small></span></label>
                   <label class="cloud-destination"><input type="checkbox" value="yandex" data-standalone-destination /><span><strong>Яндекс Диск</strong><small>Папка «Твиноферма» в корне</small></span></label>
                 </fieldset>
+                <section class="cloud-folder-assistant" aria-labelledby="cloud-yandex-storage-heading"><div class="cloud-section-heading"><h5 id="cloud-yandex-storage-heading">Папка Яндекс Диска</h5><button type="button" class="btn ghost small" id="cloud-standalone-yandex-folder-check">Проверить папку</button></div><p id="cloud-standalone-yandex-folder-status" role="status" aria-live="polite">Папка создаётся при сохранении, а не при входе. Если её нет — проверьте отдельно, без чтения прежних копий.</p><p id="cloud-standalone-yandex-folder-help" class="muted">Проверка ничего не записывает. Можно отдельно создать только пустую папку «Твиноферма».</p><button type="button" class="btn ghost small" id="cloud-standalone-yandex-folder-create" hidden>Создать папку «Твиноферма»</button></section>
                 <div class="cloud-registration-actions">
                   <button type="button" class="btn" id="cloud-standalone-save">Сохранить в облако</button>
                   <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
@@ -556,12 +557,12 @@
                 </section>
                 <div id="cloud-standalone-operation" class="cloud-compare-feedback" hidden><p id="cloud-standalone-operation-message" role="status" aria-live="polite"></p><progress aria-label="Облачная операция выполняется"></progress><small id="cloud-standalone-operation-elapsed" aria-hidden="true"></small></div>
                 <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
-                <ul id="cloud-standalone-provider-results"></ul>
+                <ul id="cloud-standalone-provider-results" aria-label="Результаты по дискам"></ul><button type="button" class="btn ghost small" id="cloud-standalone-copy-report" hidden>Скопировать отчёт об ошибке</button>
                 <div id="cloud-standalone-files"></div>
                 <button type="button" class="btn ghost" id="cloud-standalone-reopen" hidden>Открыть сравнение</button>
                 <dialog id="cloud-standalone-review" class="modal cloud-diff-dialog" aria-labelledby="cloud-standalone-review-title" hidden>
                   <div class="cloud-dialog-heading"><h3 id="cloud-standalone-review-title">Сравнение с облачной копией</h3><button type="button" class="btn ghost" id="cloud-standalone-review-close" data-cloud-close aria-label="Закрыть сравнение">✕</button></div>
-                  <p id="cloud-standalone-review-status"></p>
+                  <div id="cloud-standalone-review-counts" class="cloud-diff-counts" aria-label="Сводка изменений"></div><p id="cloud-standalone-review-status"></p>
                   <ul id="cloud-standalone-differences"></ul>
                   <label id="cloud-standalone-backup-ack-label" hidden><input type="checkbox" id="cloud-standalone-backup-ack" /> Сохранил отдельную копию местных контактов удаляемых персонажей. Backup state.json не копирует Windows vault.</label>
                   <div class="cloud-registration-actions">
@@ -572,7 +573,7 @@
 
                 <button type="button" class="btn ghost small" id="cloud-standalone-key-settings">Ключ и дополнительные параметры</button>
                 <dialog id="cloud-standalone-key-dialog" class="modal cloud-settings-dialog" aria-labelledby="cloud-key-settings-title"><div class="cloud-dialog-heading"><h3 id="cloud-key-settings-title">Хранение на этом ПК</h3><button type="button" class="btn ghost" data-cloud-close aria-label="Закрыть">✕</button></div>                    <section class="cloud-option-card">
-                      <h3>Ключ и дополнительные параметры</h3>
+                      <p class="muted">Ключ позволяет открывать копии без повторного ввода пароля на этом ПК. Для другого компьютера пароль всё равно нужен.</p>
                       <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ в защищённом хранилище ОС</label>
                       <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-show-backups" /> Показывать также предыдущие версии каждого диска</label>
                       <button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
