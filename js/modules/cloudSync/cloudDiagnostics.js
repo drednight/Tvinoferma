@@ -20,6 +20,7 @@ const STAGES = new Set([
   'review_verify',
   'review_unlock',
   'review_compare',
+  'review_replace',
   'ensure_ids',
   'scan_destinations',
   'open_account',

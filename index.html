@@ -533,6 +533,8 @@
 
                 </div>
 
+                <p id="cloud-standalone-encryption-status" class="muted" role="status">Пароль шифрования задаётся при первом сохранении после проверки диска. Уже открытый или запомненный в ОС ключ используется без повторного ввода. Пароль нельзя посмотреть; не забывайте его для другого ПК.</p>
+                <details><summary>Где находятся облачные файлы?</summary><p>Google Диск: обычная папка «Твиноферма» (если вы её переместили или переименовали, используется прежняя папка по ID). Яндекс Диск: папка приложения, API-путь app:/; ищите в веб-интерфейсе в разделе «Приложения», название зависит от регистрации OAuth-приложения. Клиент диска на ПК может не показывать эту папку. Имена: tf-v1-7eab1931-650f-4dc7-98bb-f9e903526af4-&lt;версия&gt;.tfsc. Это зашифрованные файлы, не state.json.</p></details>
                 <details id="cloud-standalone-options"><summary>Параметры файла</summary>
                 <label>Что сохранить
                   <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
@@ -541,7 +543,8 @@
                   <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
                 </label>
                 <h5>Контакты и настройки — только по выбору</h5>
-                  <p class="cloud-registration-warning">По умолчанию контакты и пароли не передаются. Поля ниже разрешают их отправку только в этот снимок или применение только при следующем принятии. Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, в том числе ранее переданные секреты.</p>
+                  <p id="cloud-standalone-options-status" class="muted" role="status">Выбор категорий, направлений и параметров запоминается только на этом ПК. Подтверждения полноты контактов и риска паролей требуются заново для каждой операции. Выбранный файл с ПК нужно указывать заново; путь и содержимое не запоминаются.</p>
+                  <p class="cloud-registration-warning">При первом запуске контакты и пароли не передаются. Запомненный выбор полей не заменяет отдельное подтверждение перед отправкой или принятием. Сессии сайтов, cookies, профили браузера и пути этого ПК не передаются. Заметки могут содержать личные сведения. Прежние резервные файлы остаются в облаке, в том числе ранее переданные секреты.</p>
                   <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
                   <fieldset><legend>Приватные поля</legend>
                     <label><input type="checkbox" value="email" data-standalone-private /> Email</label>

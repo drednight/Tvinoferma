@@ -160,6 +160,9 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
                 refreshDiagnostic = googleRefreshDiagnostic(code);
               }
             }),
+          onDiagnostic: code => {
+            refreshDiagnostic ||= code;
+          },
           verifyAccount: createGoogleAccountIdentityReader({ fetchImpl: diskFetch, timeoutMs }),
           now,
           timeoutMs,

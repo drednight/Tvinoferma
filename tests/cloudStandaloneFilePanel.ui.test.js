@@ -84,6 +84,7 @@ async function compare() {
 }
 beforeEach(() => {
   clearCloudDiagnostics();
+  localStorage.removeItem('tf_cloud_file_options_v1');
   document.body.innerHTML = new DOMParser()
     .parseFromString(html, 'text/html')
     .getElementById('cloud-registration-panel').outerHTML;
@@ -172,7 +173,7 @@ describe('standalone full file UX', () => {
     await click('select-none');
     expect([...document.querySelectorAll('[data-standalone-private]')].some(input => input.checked)).toBe(false);
   });
-  it('does not retain a private-export policy after a save', async () => {
+  it('retains chosen categories, but never a private-export consent, after a save', async () => {
     const f = setup();
     document.querySelector('[data-standalone-private][value=email]').checked = true;
     el('contacts-confirm').checked = true;
@@ -180,7 +181,7 @@ describe('standalone full file UX', () => {
     expect(f.runtime.prepareSave).toHaveBeenCalledWith(
       expect.objectContaining({ fields: ['email'], contactsSourceConfirmed: true })
     );
-    expect(document.querySelector('[data-standalone-private][value=email]').checked).toBe(false);
+    expect(document.querySelector('[data-standalone-private][value=email]').checked).toBe(true);
     expect(el('contacts-confirm').checked).toBe(false);
   });
   it('requires another preview if private selections change after comparison', async () => {
@@ -650,5 +651,84 @@ describe('download-and-compare visible lifecycle', () => {
     expect(el('files').childNodes.length).toBe(0);
     expect(record).not.toHaveBeenCalledWith('google', 'standalone_compare', 'success');
     expect(record).toHaveBeenLastCalledWith('google', 'standalone_compare', 'cancelled');
+  });
+});
+
+describe('remembered file parameters and password explanation', () => {
+  it('restores the exact explicit choices on a new binding, never consent, a filename or a secret', async () => {
+    const f = setup();
+    const selectors = [
+      '[data-standalone-destination][value=yandex]',
+      '[data-standalone-private][value=email]',
+      '[data-standalone-private][value=password]',
+      '[data-standalone-setting][value=appearance]'
+    ];
+    for (const selector of selectors) {
+      const input = document.querySelector(selector);
+      input.checked = true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    for (const id of ['remember', 'show-backups']) {
+      el(id).checked = true;
+      el(id).dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    el('contacts-confirm').checked = true;
+    el('password-risk').checked = true;
+    el('source').value = 'file';
+    el('source').dispatchEvent(new Event('change', { bubbles: true }));
+    const saved = JSON.parse(localStorage.getItem('tf_cloud_file_options_v1'));
+    expect(Object.keys(saved).sort()).toEqual([
+      'backups',
+      'destinations',
+      'privateFields',
+      'remember',
+      'settings',
+      'source',
+      'version'
+    ]);
+    f.controller.dispose();
+    document.body.innerHTML = new DOMParser()
+      .parseFromString(html, 'text/html')
+      .getElementById('cloud-registration-panel').outerHTML;
+    setup({ chooseDestination: false });
+    for (const selector of selectors) expect(document.querySelector(selector).checked).toBe(true);
+    expect(el('source').value).toBe('file');
+    expect(el('source-file-label').hidden).toBe(false);
+    expect(el('source-file').files.length).toBe(0);
+    for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) expect(el(id).checked).toBe(false);
+    expect(el('remember').checked).toBe(true);
+    expect(el('show-backups').checked).toBe(true);
+    await click('save');
+    expect(el('status').textContent).toContain('полноту');
+  });
+  it('resets remembered parameters on factory reset, but not ordinary dispose', () => {
+    const f = setup();
+    const input = document.querySelector('[data-standalone-setting][value=planner]');
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(localStorage.getItem('tf_cloud_file_options_v1')).not.toBeNull();
+    document.defaultView.dispatchEvent(new Event('tf-factory-reset-started'));
+    expect(localStorage.getItem('tf_cloud_file_options_v1')).toBeNull();
+    f.controller.dispose();
+  });
+  it('ignores corrupt preferences and reports storage denial without preventing ordinary work', async () => {
+    localStorage.setItem('tf_cloud_file_options_v1', '{broken');
+    setup({ runtime: { encryptionStatus: () => 'unlocked' } });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('PRIVATE_STORAGE');
+    });
+    await click('check');
+    expect(el('options-status').textContent).toContain('Не удалось запомнить');
+    expect(el('encryption-status').textContent).toContain('повторный ввод пароля не нужен');
+    expect(document.body.textContent).not.toContain('PRIVATE_STORAGE');
+  });
+  it.each([
+    ['locked', 'Ключ закрыт'],
+    ['not_created', 'При первом сохранении']
+  ])('explains %s without showing or resetting a password', async (state, message) => {
+    const f = setup({ runtime: { encryptionStatus: () => state } });
+    await click('check');
+    expect(el('encryption-status').textContent).toContain(message);
+    expect(f.password).not.toHaveBeenCalled();
   });
 });

@@ -717,3 +717,30 @@ describe('read-only compare stages and explicit password boundary', () => {
     ).toBeDefined();
   });
 });
+
+it.each(['google', 'yandex'])(
+  'downloads, compares and accepts a full %s copy with active and archived namesakes without matching by nickname',
+  async provider => {
+    const f = fixture();
+    const duplicate = normalize({
+      characters: [
+        { id: 'same-a', nick: 'Первый' },
+        { id: 'same-b', nick: 'Первый' }
+      ],
+      archivedCharacters: [{ id: 'old', nick: 'Первый' }]
+    });
+    const file = await sealStandaloneFile({ snapshot: duplicate, unlocked: first.unlocked, cryptoSource });
+    f.put(provider, file);
+    const before = structuredClone(f.local);
+    const review = await f.review(file, { provider });
+    expect(f.local).toEqual(before);
+    expect(f.calls[provider]).toHaveLength(0);
+    await expect(f.engine.accept(review, { confirmed: true })).rejects.toThrow('contacts_required');
+    const result = await f.engine.accept(review, { confirmed: true, contactsBackupConfirmed: true });
+    expect(result.status).toBe('applied');
+    expect(f.local.characters).toHaveLength(2);
+    expect(f.local.archivedCharacters).toHaveLength(1);
+    expect(f.backups).toHaveLength(1);
+    expect(f.calls[provider]).toHaveLength(0);
+  }
+);

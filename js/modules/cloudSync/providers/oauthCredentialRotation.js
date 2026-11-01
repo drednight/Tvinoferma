@@ -122,7 +122,7 @@ async function verifyWithinDeadline(verifyAccount, accessToken, clientId, timeou
  * @param {{slotId:string, clientId:string, accountKey:string,
  * store:{read:()=>Promise<string|null>, compareExchange:(expected:string,next:string)=>Promise<'swapped'|'mismatch'>},
  * fetchImpl?:typeof fetch, makeGuardedFetch?:(claim:{slotId:string,expected:string,pending:string})=>typeof fetch, verifyAccount:(arg:{accessToken:string,clientId:string,signal:AbortSignal})=>Promise<{accountKey:string}>,
- * cryptoSource?:Crypto, now?:()=>number, timeoutMs?:number, identityTimeoutMs?:number}} options
+ * cryptoSource?:Crypto, now?:()=>number, timeoutMs?:number, identityTimeoutMs?:number,onDiagnostic?:(code:string)=>void}} options
  */
 export function createGoogleCredentialRotation(options) {
   let input;
@@ -131,7 +131,7 @@ export function createGoogleCredentialRotation(options) {
     input = object(
       options,
       ['slotId', 'clientId', 'accountKey', 'store', 'verifyAccount'],
-      ['fetchImpl', 'makeGuardedFetch', 'cryptoSource', 'now', 'timeoutMs', 'identityTimeoutMs']
+      ['fetchImpl', 'makeGuardedFetch', 'cryptoSource', 'now', 'timeoutMs', 'identityTimeoutMs', 'onDiagnostic']
     );
     store = object(input.store, ['read', 'compareExchange']);
   } catch {
@@ -150,6 +150,7 @@ export function createGoogleCredentialRotation(options) {
     (typeof input.fetchImpl === 'function') === (typeof input.makeGuardedFetch === 'function') ||
     (input.fetchImpl !== undefined && typeof input.fetchImpl !== 'function') ||
     (input.makeGuardedFetch !== undefined && typeof input.makeGuardedFetch !== 'function') ||
+    (input.onDiagnostic !== undefined && typeof input.onDiagnostic !== 'function') ||
     typeof input.verifyAccount !== 'function' ||
     typeof clock !== 'function' ||
     !crypto?.subtle ||
@@ -267,7 +268,8 @@ export function createGoogleCredentialRotation(options) {
             operation: 'refresh',
             fetchImpl: refreshFetch,
             timeoutMs,
-            now
+            now,
+            ...(input.onDiagnostic ? { onDiagnostic: input.onDiagnostic } : {})
           });
         } catch {
           return UNAVAILABLE;
@@ -346,7 +348,16 @@ export function createGoogleCredentialRotation(options) {
         // При подтверждённом ответе без нового refresh сохраняем именно старый
         // и его прежний срок. При новом — только новый и его срок, если указан.
         const rotated = secrets.refreshToken !== null;
-        const nextRefreshExpiresAt = rotated ? response.summary.refreshExpiresAt : record.refreshExpiresAt;
+        // A refresh response may report the remaining lifetime of the SAME token
+        // without returning refresh_token again. Never extend its known deadline.
+        const reportedExpiry = response.summary.refreshExpiresAt;
+        const nextRefreshExpiresAt = rotated
+          ? reportedExpiry
+          : record.refreshExpiresAt === null
+            ? reportedExpiry
+            : reportedExpiry === null
+              ? record.refreshExpiresAt
+              : Math.min(record.refreshExpiresAt, reportedExpiry);
         try {
           const afterIdentity = nowValue(now);
           if (

@@ -1,4 +1,5 @@
 // @ts-check
+import { preparationCheck } from './preparationDiagnostics.js';
 import { cloudStep } from './cloudDiagnostics.js';
 import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Simple immutable full-file exchange. No connectedPublication, legacy outbox,
@@ -361,6 +362,7 @@ export function createStandaloneFileExchange(ports) {
       });
     },
     hasEncryptionKey: () => !!config().key,
+    encryptionStatus: () => (key ? 'unlocked' : config().key ? 'locked' : 'not_created'),
     canSeal() {
       return run(async () => {
         if (!key) key = (await ports.recalledKey?.(config().key)) || null;
@@ -434,7 +436,11 @@ export function createStandaloneFileExchange(ports) {
             const localHash = await snapshotFileHash(local, cryptoSource);
             const cloudHash = await snapshotFileHash(cloud, cryptoSource);
             // Validate the entire replacement before offering Accept.
-            const prepared = prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource });
+            const prepared = await cloudStep('review_replace', provider, () =>
+              preparationCheck('roundtrip', () =>
+                prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource })
+              )
+            );
             const candidate = prepared.candidateState();
             const retainedIds = new Set(
               [...candidate.characters, ...candidate.archivedCharacters].map(row => row.syncId)
