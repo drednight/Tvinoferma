@@ -191,7 +191,13 @@ export function createAuthenticatedCloudSession(options) {
       return guarded(() => verifier.verify(checked));
     },
     async listWithDates() {
-      return guarded(async () => ({ status: 'listed', versions: await reader.listWithDates() }));
+      return guarded(async () => {
+        try {
+          return { status: 'listed', versions: await reader.listWithDates() };
+        } catch (error) {
+          throw withCloudAccessDiagnostic(invalid(), cloudAccessDiagnostic(error) || 'disk_invalid_response');
+        }
+      });
     },
     /** @param {string} versionId */
     async read(versionId) {

@@ -1,5 +1,6 @@
 // @ts-check
-import { CLOUD_ACCESS_MESSAGES } from './providers/cloudAccessDiagnostics.js';
+import { STANDALONE_STATUS_MESSAGES } from './standaloneStatus.js';
+import { cloudAccessDiagnostic, CLOUD_ACCESS_MESSAGES } from './providers/cloudAccessDiagnostics.js';
 // Локальный, неавторитетный журнал пользовательских действий. Он не является
 // очередью или доказательством успешной синхронизации и пока не переносится на ПК.
 // Принимает только заранее заданные коды: никаких имён, путей, ошибок, ответов API,
@@ -39,6 +40,9 @@ const ACTIONS = Object.freeze({
 });
 const OUTCOMES = Object.freeze({
   ...CLOUD_ACCESS_MESSAGES,
+  ...Object.fromEntries(
+    Object.entries(STANDALONE_STATUS_MESSAGES).map(([code, message]) => [`standalone_${code}`, message])
+  ),
   success: 'подтверждено',
   empty: 'подтверждённых версий не найдено',
   cancelled: 'отменено',
@@ -113,4 +117,14 @@ export function describeCloudActivity(entry) {
   if (!valid(entry)) return '';
   const disk = entry.provider === 'google' ? 'Google Диск' : 'Яндекс Диск';
   return `${new Date(entry.at).toLocaleString('ru-RU', { timeZoneName: 'short' })} · ${disk} · ${ACTIONS[entry.action]} — ${OUTCOMES[entry.outcome]}`;
+}
+
+/** Only allowlisted statuses/WeakMap diagnostics, never exception text. */
+export function standaloneActivityOutcome(result) {
+  return (
+    cloudAccessDiagnostic(result) ||
+    (typeof result?.status === 'string' && Object.hasOwn(STANDALONE_STATUS_MESSAGES, result.status)
+      ? `standalone_${result.status}`
+      : 'unavailable')
+  );
 }

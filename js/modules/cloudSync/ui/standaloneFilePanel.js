@@ -7,7 +7,9 @@ import { planSyncIdentities } from '../identityMigration.js';
 import { MAX_SNAPSHOT_BYTES } from '../envelope.js';
 import { validateEncryptionPassword } from '../keyBundle.js';
 import { confirmModal } from '../../../core/ui.js';
-import { recordCloudActivity } from '../cloudEventLog.js';
+import { STANDALONE_STATUS_MESSAGES as STATUS } from '../standaloneStatus.js';
+import { prepareStandaloneSave } from '../standaloneSaveFlow.js';
+import { standaloneActivityOutcome, recordCloudActivity } from '../cloudEventLog.js';
 
 const NAMES = { google: 'Google Диск', yandex: 'Яндекс Диск' };
 const SECTIONS = {
@@ -18,46 +20,7 @@ const SECTIONS = {
   finance: 'Финансы',
   preferences: 'Настройки'
 };
-const STATUS = {
-  credential_missing: 'диск не подключён на этом ПК — выберите его выше и нажмите «Войти»',
-  credential_refresh_pending:
-    'предыдущее обновление доступа не подтверждено. Нужен новый вход в тот же аккаунт; ключи и ожидающий файл сохранены',
-  credential_binding_blocked:
-    'защищённая запись доступа не совпадает с привязкой или повреждена. Нужна проверка восстановления; ключи и записи не удаляйте',
-  credential_blocked: 'доступ заблокирован или обновление не подтверждено. Не удаляйте ключи и записи доступа',
-  credential_unavailable: 'не удалось прочитать доступ в Windows. Проверьте подключение, не удаляя ключи',
-  login_required: 'срок доступа истёк. Требуется восстановить вход; облачные файлы и ключи сохранены',
-  account_unavailable: 'не удалось сверить аккаунт — проверьте сеть и права доступа',
-  folder_unavailable: 'не удалось проверить папку приложения — проверьте сеть и права доступа',
-  folder_changed: 'прежняя папка не найдена. Проверьте аккаунт и папку, не создавая новый ключ',
-  folder_verification_pending: 'создание папки пока не подтверждено. Повторите проверку, не удаляя доступ',
-  destinations_unavailable: 'Отправка не началась: выбранные диски недоступны. Причина указана ниже.',
-  encryption_password_incorrect:
-    'Не удалось разблокировать прежний ключ. Проверьте пароль шифрования. Новый ключ не создавался, облачные файлы не менялись.',
-  folder_ambiguous: 'найдено несколько папок приложения — выберите нужную, дата не определяет папку',
-  checked: 'проверен',
-  empty: 'полных файлов пока нет',
-  unavailable: 'не удалось проверить — проверьте вход и сеть; не удаляйте ключи и аккаунт',
-  sent_verified: 'полный файл сохранён и сверен чтением с диска',
-  verification_pending: 'отправка пока не подтверждена: сначала проверяем прежний файл',
-  content_mismatch: 'прочитанные байты не совпали с отправленными; новая отправка остановлена',
-  local_changed: 'местные данные изменились — повторите подготовку или сравнение',
-  remote_changed: 'облачный файл изменился — повторите проверку',
-  account_changed: 'аккаунт изменился; прежнее подключение не заменено',
-  applied:
-    'Полная облачная копия принята. Местные данные перед заменой сохранены в резервной копии. Отправка на второй диск НЕ выполнялась.',
-  kept_local:
-    'Свои данные оставлены без замены. Эта версия не будет напоминаться до следующей версии; ручная проверка доступна.',
-  idle: 'незавершённой отправки нет',
-  busy: 'дождитесь завершения текущей операции',
-  state_changed: 'данные изменились — скачайте и сравните заново',
-  disk_changed_or_unsaved: 'местный файл изменился — дождитесь сохранения и повторите сравнение',
-  write_unconfirmed_restart: 'местная запись не подтверждена. Перезапустите приложение и проверьте резервную копию.',
-  contacts_unavailable:
-    'Хранилище контактов недоступно или не проверено. Снимите приватные поля; не считайте пустые контакты подтверждёнными.',
-  contacts_required: 'Подтвердите полноту выбранных контактов и наличие отдельной копии перед их заменой.',
-  password_risk_confirmation_required: 'Отдельно подтвердите риск передачи или замены паролей.'
-};
+
 const dateLabel = value => {
   const date = new Date(value);
   return value && Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'дата не сообщена';
@@ -146,6 +109,16 @@ export function bindStandaloneFilePanel(options) {
     }
     return runtime;
   };
+  async function connectForSave(provider) {
+    if (stopped) return false;
+    return new Promise(resolve => {
+      const detail = { provider, handled: false, complete: resolve };
+      doc
+        .getElementById('cloud-registration-panel')
+        ?.dispatchEvent(new CustomEvent('tf-cloud-connect-for-save', { detail }));
+      if (!detail.handled) resolve(false);
+    });
+  }
   function setBusy(value) {
     busy = value;
     for (const input of panel.querySelectorAll('button,input,select'))
@@ -162,8 +135,7 @@ export function bindStandaloneFilePanel(options) {
     } catch (error) {
       if (Array.isArray(error.results)) {
         showResults(error.results);
-        for (const row of error.results)
-          log(row.provider, 'standalone_save', cloudAccessDiagnostic(row) || 'unavailable');
+        for (const row of error.results) log(row.provider, 'standalone_save', standaloneActivityOutcome(row));
       }
       status.textContent =
         STATUS[error.message] ||
@@ -366,7 +338,7 @@ export function bindStandaloneFilePanel(options) {
             ? 'success'
             : resultRow.status === 'empty'
               ? 'empty'
-              : cloudAccessDiagnostic(resultRow) || 'unavailable'
+              : standaloneActivityOutcome(resultRow)
         );
       }
     });
@@ -414,21 +386,28 @@ export function bindStandaloneFilePanel(options) {
       }
       status.textContent = 'Подготовка файла…';
       el('provider-results').replaceChildren();
-      const canSeal = await engine.canSeal();
-      const password = canSeal ? undefined : await passwordDialog({ repeat: !engine.hasEncryptionKey?.() });
-      if (password === null) {
-        status.textContent = 'Отправка отменена. Облачные файлы не менялись.';
-        return;
-      }
-      const prepared = await engine.prepareSave({
-        targets: targets(),
-        source,
-        password,
-        fields: fields(),
-        acknowledgePasswordRisk: el('password-risk').checked,
-        contactsSourceConfirmed: el('contacts-confirm').checked,
-        settingsSelections: choices('[data-standalone-setting]')
+      const prepared = await prepareStandaloneSave({
+        engine,
+        connect: connectForSave,
+        progress: provider => {
+          status.textContent = `Для ${NAMES[provider]} нужен вход. Завершите его в браузере; затем продолжим сохранение.`;
+        },
+        options: {
+          targets: targets(),
+          source,
+          async requestPassword(input) {
+            if (stopped) throw new Error('closed');
+            const password = await passwordDialog(input);
+            if (stopped) throw new Error('closed');
+            return password;
+          },
+          fields: fields(),
+          acknowledgePasswordRisk: el('password-risk').checked,
+          contactsSourceConfirmed: el('contacts-confirm').checked,
+          settingsSelections: choices('[data-standalone-setting]')
+        }
       });
+      if (stopped) return;
       const needsConfirmation = prepared.hasUnacceptedCopies || prepared.hasPrivate || !!source;
       const agreed =
         !needsConfirmation ||
@@ -456,9 +435,7 @@ export function bindStandaloneFilePanel(options) {
         log(
           row.provider,
           'standalone_save',
-          row.status === 'sent_verified'
-            ? 'success'
-            : cloudAccessDiagnostic(row) || (row.status === 'verification_pending' ? 'uncertain' : 'unavailable')
+          row.status === 'sent_verified' ? 'success' : standaloneActivityOutcome(row)
         );
       resetPrivate();
     })

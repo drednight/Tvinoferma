@@ -612,7 +612,7 @@ describe('Google JSON import failures are actionable and never expose file conte
     byId('provider').value = 'google';
     byId('provider').dispatchEvent(new Event('change'));
     const input = document.getElementById('cloud-google-import');
-    expect(input.closest('details').id).toBe('cloud-registration-panel');
+    expect(input.closest('details').id).toBe('cloud-login-settings');
     Object.defineProperty(input, 'files', {
       configurable: true,
       value: [{ size: json.length, text: async () => json }]
@@ -669,4 +669,35 @@ describe('production login without legacy access controls', () => {
       ...(status === 'empty' ? {} : { reconnect: true })
     });
   });
+});
+
+it('completes the save-driven Google reconnect only after enrollment and cleanup', async () => {
+  const google = '123-example.apps.googleusercontent.com';
+  const s = bind({
+    loadNative: async () => ({
+      invoke: vi.fn(async () => ({ status: 'ready', clientId: google })),
+      openBrowser: vi.fn()
+    }),
+    readBinding: vi.fn(async () => ({ status: 'pending' }))
+  });
+  const detail = { provider: 'google', handled: false, complete: vi.fn() };
+  document
+    .getElementById('cloud-registration-panel')
+    .dispatchEvent(new CustomEvent('tf-cloud-connect-for-save', { detail }));
+  expect(detail.handled).toBe(true);
+  await vi.waitFor(() => expect(detail.complete).toHaveBeenCalledExactlyOnceWith(true));
+  expect(s.enroll).toHaveBeenCalledWith(expect.objectContaining({ provider: 'google', reconnect: true }));
+  expect(byId('provider').disabled).toBe(false);
+  expect(document.querySelector('[data-standalone-destination][value=google]').checked).toBe(false);
+});
+
+it('does not resume saving after OAuth cancellation or a different account', async () => {
+  const s = bind({ enroll: vi.fn(async () => ({ status: 'account_changed' })) });
+  byId('client').value = clientId;
+  const detail = { provider: 'yandex', handled: false, complete: vi.fn() };
+  document
+    .getElementById('cloud-registration-panel')
+    .dispatchEvent(new CustomEvent('tf-cloud-connect-for-save', { detail }));
+  await vi.waitFor(() => expect(detail.complete).toHaveBeenCalledExactlyOnceWith(false));
+  expect(s.enroll).toHaveBeenCalledOnce();
 });

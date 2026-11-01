@@ -589,3 +589,46 @@ describe('standalone exchange: two providers and two PCs', () => {
     );
   });
 });
+
+it('keeps a failed Yandex preflight reason when Google can save; never writes to the failed target', async () => {
+  const { cloudAccessDiagnostic, withCloudAccessDiagnostic } =
+    await import('../js/modules/cloudSync/providers/cloudAccessDiagnostics.js');
+  const f = fixture();
+  const open = f.ports.open;
+  f.ports.open = async (...args) => {
+    if (args[0] === 'yandex') throw withCloudAccessDiagnostic(new Error('network'), 'disk_native_connect');
+    return open(...args);
+  };
+  const plan = await f.engine.prepareSave({ targets: ['google', 'yandex'], password, fields: [] });
+  const result = await f.engine.save(plan, { confirmed: true });
+  expect(result.results.find(row => row.provider === 'google').status).toBe('sent_verified');
+  const failed = result.results.find(row => row.provider === 'yandex');
+  expect(failed.status).toBe('unavailable');
+  expect(cloudAccessDiagnostic(failed)).toBe('disk_native_connect');
+  expect(f.calls.yandex).toHaveLength(0);
+});
+
+it('does not ask for an encryption password until at least one selected disk passes preflight', async () => {
+  const f = fixture({ recalled: null });
+  const requestPassword = vi.fn(async () => password);
+  f.failures.google = { open: true };
+  f.failures.yandex = { open: true };
+  await expect(f.engine.prepareSave({ targets: ['google', 'yandex'], requestPassword })).rejects.toThrow(
+    'destinations_unavailable'
+  );
+  expect(requestPassword).not.toHaveBeenCalled();
+  f.failures.yandex = {};
+  await f.engine.prepareSave({ targets: ['yandex'], requestPassword });
+  expect(requestPassword).toHaveBeenCalledExactlyOnceWith({ repeat: true });
+  expect(f.calls.yandex).toHaveLength(0);
+});
+
+it('password cancellation before encryption never uploads or creates a pending file', async () => {
+  const f = fixture({ recalled: null });
+  const before = structuredClone(f.local);
+  await expect(f.engine.prepareSave({ targets: ['yandex'], requestPassword: async () => null })).rejects.toThrow(
+    'save_cancelled'
+  );
+  expect(f.local).toEqual(before);
+  expect(f.calls.yandex).toHaveLength(0);
+});
