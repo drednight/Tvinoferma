@@ -3,6 +3,7 @@
 // первого доступа вызывается из UI, но настоящие сборки, провайдеры и безопасное
 // восстановление после сбоев не проверены. Никакого localStorage/fallback.
 // Записи, аргументы IPC и исходные ошибки содержат секреты: не журналировать.
+import { generateSyncId } from '../envelope.js';
 import { object } from '../exportSchema.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
 import { parseGoogleCredentialRecord, validCredentialId } from './oauthCredentialRecord.js';
@@ -87,7 +88,7 @@ export async function inspectNativeCredential(options) {
     if (!validProvider(input.provider) || typeof input.invoke !== 'function') throw failed();
     const reply = response(
       await callWithin(input.invoke, 'cloud_credential_read', { provider: input.provider }, timeoutOf(input.timeoutMs)),
-      ['empty', 'ready', 'blocked']
+      ['empty', 'ready', 'blocked', 'signed_out']
     );
     if (reply.status !== 'ready') return Object.freeze({ status: reply.status });
     const record =
@@ -106,7 +107,7 @@ export async function inspectNativeCredential(options) {
  * возвращается. Сам pin не доказывает отсутствия совместного отката или живого
  * доступа к провайдеру. accountKey — личный идентификатор, не журналировать.
  * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number}} options
- * @returns {Promise<{status:string,binding?:{slotId:string,clientId:string,accountKey:string}}>}
+ * @returns {Promise<{status:string,binding?:{slotId:string,clientId:string,accountKey:string,logoutId?:string}}>}
  */
 export async function readNativeCredentialBinding(options) {
   try {
@@ -120,23 +121,25 @@ export async function readNativeCredentialBinding(options) {
         timeoutOf(input.timeoutMs)
       ),
       ['status'],
-      ['slotId', 'clientId', 'accountKey']
+      ['slotId', 'clientId', 'accountKey', 'logoutId']
     );
     if (['empty', 'blocked', 'pending'].includes(reply.status)) {
       if (Object.keys(reply).length !== 1) throw failed();
       return Object.freeze({ status: reply.status });
     }
     if (
-      reply.status !== 'ready' ||
-      Object.keys(reply).length !== 4 ||
+      !['ready', 'signed_out'].includes(reply.status) ||
+      Object.keys(reply).length !== (reply.status === 'signed_out' ? 5 : 4) ||
+      (reply.status === 'signed_out' && !validCredentialId(reply.logoutId)) ||
       !validCredentialId(reply.slotId) ||
       !validOAuthClientId(input.provider, reply.clientId) ||
       !validOAuthAccountKey(reply.accountKey)
     )
       throw failed();
     return Object.freeze({
-      status: 'ready',
+      status: reply.status,
       binding: Object.freeze({
+        ...(reply.status === 'signed_out' ? { logoutId: reply.logoutId } : {}),
         slotId: reply.slotId,
         clientId: reply.clientId,
         accountKey: reply.accountKey
@@ -153,14 +156,24 @@ export async function readNativeCredentialBinding(options) {
  * всех записей не доказывает, что это первый вход. `blocked`, ошибка IPC или
  * потеря ответа означают неопределённость и запрещают повтор в этом экземпляре.
  * Проверка чтением не доказывает fsync, отсутствие отката или работу Windows.
- * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number}} options
+ * @param {{provider:'google'|'yandex',invoke:(command:string,args:any)=>Promise<any>,timeoutMs?:number,resume?:{slotId:string,clientId:string,accountKey:string,logoutId:string}}} options
  */
 export function createNativeCredentialInstaller(options) {
   let input;
   let timeoutMs;
   try {
-    input = object(options, ['provider', 'invoke'], ['timeoutMs']);
+    input = object(options, ['provider', 'invoke'], ['timeoutMs', 'resume']);
     if (!validProvider(input.provider) || typeof input.invoke !== 'function') throw failed();
+    if (input.resume) {
+      const r = object(input.resume, ['slotId', 'clientId', 'accountKey', 'logoutId']);
+      if (
+        !validCredentialId(r.slotId) ||
+        !validCredentialId(r.logoutId) ||
+        !validOAuthClientId(input.provider, r.clientId) ||
+        !validOAuthAccountKey(r.accountKey)
+      )
+        throw failed();
+    }
     timeoutMs = timeoutOf(input.timeoutMs);
   } catch {
     throw failed();
@@ -175,6 +188,8 @@ export function createNativeCredentialInstaller(options) {
       try {
         request = argumentsFor(provider, args);
         if (provider === 'google' && request.parsed.phase !== 'ready') throw failed();
+        if (input.resume && ['slotId', 'clientId', 'accountKey'].some(key => input.resume[key] !== request[key]))
+          throw failed();
       } catch {
         throw failed();
       }
@@ -183,13 +198,20 @@ export function createNativeCredentialInstaller(options) {
         const result = response(
           await callWithin(
             invoke,
-            'cloud_credential_install',
-            { provider, slotId: request.slotId, record: request.record },
+            input.resume ? 'cloud_credential_resume' : 'cloud_credential_install',
+            input.resume
+              ? {
+                  provider,
+                  expectedSlot: request.slotId,
+                  expectedLogoutId: input.resume.logoutId,
+                  record: request.record
+                }
+              : { provider, slotId: request.slotId, record: request.record },
             timeoutMs
           ),
-          ['installed', 'occupied', 'blocked']
+          ['installed', 'occupied', 'blocked', 'mismatch']
         );
-        if (result.status === 'occupied') {
+        if (['occupied', 'mismatch'].includes(result.status)) {
           phase = 'finished';
           return 'occupied';
         }
@@ -378,4 +400,27 @@ export async function forgetNativeCredential(options) {
   } catch {
     throw failed();
   }
+}
+
+/** Explicit local logout, including dataset-bound accounts. No cloud/key deletion. */
+export async function logoutNativeCredential(options) {
+  const input = object(options, ['provider', 'slotId', 'invoke', 'confirmed'], ['timeoutMs']);
+  if (
+    !validProvider(input.provider) ||
+    !validCredentialId(input.slotId) ||
+    typeof input.invoke !== 'function' ||
+    input.confirmed !== true
+  )
+    throw failed();
+  const logoutId = generateSyncId();
+  const reply = response(
+    await callWithin(
+      input.invoke,
+      'cloud_credential_logout',
+      { provider: input.provider, expectedSlot: input.slotId, logoutId, confirmed: true },
+      timeoutOf(input.timeoutMs)
+    ),
+    ['forgotten', 'blocked', 'mismatch']
+  );
+  return reply.status;
 }

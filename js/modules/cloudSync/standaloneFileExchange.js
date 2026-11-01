@@ -302,7 +302,12 @@ export function createStandaloneFileExchange(ports) {
         }
         const copies = await readCopies(provider, opened, fresh);
         entries.push(...copies);
-        results.push({ provider, status: 'checked', count: copies.length });
+        results.push({
+          provider,
+          status: 'checked',
+          count: copies.length,
+          ...(opened.session.storageNotice?.() ? { storageNotice: opened.session.storageNotice() } : {})
+        });
       } catch (error) {
         results.push(
           withCloudAccessDiagnostic(

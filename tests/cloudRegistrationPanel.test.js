@@ -301,15 +301,17 @@ describe('экспериментальный локальный доступ в 
   it.each([
     ['empty', 'ready', 'привязка набора без доступной'],
     ['empty', 'blocked', 'привязка набора без доступной'],
-    ['ready', 'ready', 'Локальное удаление заблокировано'],
+    ['ready', 'ready', 'при выходе прежняя привязка набора и ключи остаются'],
     ['ready', 'blocked', 'Локальное удаление заблокировано']
-  ])('запрещает вход и удаление при account=%s, dataset=%s', async (account, dataset, message) => {
+  ])('не обходит старую привязку при account=%s, dataset=%s', async (account, dataset, message) => {
     const s = bind({
       readBinding: vi.fn(async () => (account === 'empty' ? { status: 'empty' } : ready())),
       readDataset: vi.fn(async () => dataset)
     });
     await inspectConnection();
     expect(connection('local').textContent).toContain(message);
+    // Explicit logout is now distinct from destructive legacy forget/rebind.
+    expect(document.querySelector('[data-cloud-sign-out=yandex]').disabled).toBe(account !== 'ready');
     expect(connection('approve').disabled).toBe(true);
     expect(connection('start').disabled).toBe(true);
     expect(connection('forget-approve').disabled).toBe(true);

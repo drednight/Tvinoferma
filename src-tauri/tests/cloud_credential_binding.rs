@@ -207,6 +207,9 @@ fn every_interrupted_install_is_empty_blocked_or_exact_complete_pair() {
         vault.fail_at = None;
         match cloud_credential_binding::read(&mut vault, Provider::Google).unwrap() {
             Pair::Empty | Pair::Blocked => {}
+            Pair::SignedOut { .. } => {
+                panic!("initial installation cannot create a signed-out identity")
+            }
             Pair::Ready { binding, record } => {
                 assert_eq!(binding.slot_id, SLOT);
                 assert_eq!(binding.client_id, CLIENT);
@@ -342,4 +345,146 @@ fn encoded_form_is_bound_before_one_fake_network_attempt() {
     assert!(guarded(&form));
     assert!(!guarded(&form));
     assert_eq!(posts, 1);
+}
+
+#[test]
+fn logout_removes_secrets_but_retains_identity_and_unrelated_vault_entries() {
+    for (provider, record) in [(Provider::Google, ready()), (Provider::Yandex, yandex())] {
+        let mut vault = Vault::default();
+        assert_eq!(
+            cloud_credential_binding::install(&mut vault, provider, SLOT, &record),
+            Ok(Outcome::Installed)
+        );
+        vault
+            .data
+            .insert("preserved-dataset-pin".into(), "synthetic-pin".into());
+        vault
+            .data
+            .insert("preserved-key".into(), "synthetic-key".into());
+        assert_eq!(
+            cloud_credential_binding::logout(&mut vault, provider, SLOT, ATTEMPT),
+            Ok(Outcome::Forgotten)
+        );
+        assert!(matches!(
+            cloud_credential_service::read(&mut vault, provider),
+            Ok(cloud_credential_store::Inspection::Empty)
+        ));
+        assert!(
+            matches!(cloud_credential_binding::read(&mut vault, provider), Ok(Pair::SignedOut {binding,logout_id}) if binding.slot_id == SLOT && binding.account_key == ACCOUNT && logout_id == ATTEMPT)
+        );
+        assert_eq!(
+            vault.data.get("preserved-dataset-pin").map(String::as_str),
+            Some("synthetic-pin")
+        );
+        assert_eq!(
+            vault.data.get("preserved-key").map(String::as_str),
+            Some("synthetic-key")
+        );
+        assert!(!vault
+            .data
+            .values()
+            .any(|value| value.contains(TOKEN) || value.contains("fake-token")));
+        // Normal enrollment cannot discard the signed-out identity pin.
+        assert_eq!(
+            cloud_credential_binding::install(&mut vault, provider, SLOT, &record),
+            Ok(Outcome::Blocked)
+        );
+        let before = vault.data.clone();
+        for wrong in [
+            record.replace(ACCOUNT, "other-account"),
+            record.replace(SLOT, REV2),
+        ] {
+            assert!(!matches!(
+                cloud_credential_binding::resume(&mut vault, provider, SLOT, ATTEMPT, &wrong),
+                Ok(Outcome::Installed)
+            ));
+            assert_eq!(vault.data, before);
+        }
+        assert_eq!(
+            cloud_credential_binding::resume(&mut vault, provider, SLOT, REV2, &record),
+            Ok(Outcome::Mismatch)
+        );
+        assert_eq!(
+            cloud_credential_binding::resume(&mut vault, provider, SLOT, ATTEMPT, &record),
+            Ok(Outcome::Installed)
+        );
+        assert!(
+            matches!(cloud_credential_binding::read(&mut vault, provider), Ok(Pair::Ready {record:stored,..}) if stored == record)
+        );
+        // A fresh logout invalidates an older, delayed explicit OAuth attempt.
+        assert_eq!(
+            cloud_credential_binding::logout(&mut vault, provider, SLOT, REV2),
+            Ok(Outcome::Forgotten)
+        );
+        assert_eq!(
+            cloud_credential_binding::resume(&mut vault, provider, SLOT, ATTEMPT, &record),
+            Ok(Outcome::Mismatch)
+        );
+    }
+}
+
+#[test]
+fn logout_never_crosses_an_observed_slot_or_pending_refresh() {
+    let mut vault = Vault::default();
+    let record = ready();
+    assert_eq!(
+        cloud_credential_binding::install(&mut vault, Provider::Google, SLOT, &record),
+        Ok(Outcome::Installed)
+    );
+    let before = vault.data.clone();
+    assert_eq!(
+        cloud_credential_binding::logout(&mut vault, Provider::Google, REV2, ATTEMPT),
+        Ok(Outcome::Blocked)
+    );
+    assert_eq!(vault.data, before);
+    assert_eq!(
+        cloud_credential_binding::compare_exchange(
+            &mut vault,
+            Provider::Google,
+            SLOT,
+            &record,
+            &pending()
+        ),
+        Ok(Outcome::Swapped)
+    );
+    let before = vault.data.clone();
+    assert_eq!(
+        cloud_credential_binding::logout(&mut vault, Provider::Google, SLOT, ATTEMPT),
+        Ok(Outcome::Blocked)
+    );
+    assert_eq!(vault.data, before);
+}
+
+#[test]
+fn partial_logout_is_never_mistaken_for_usable_credentials_or_permission_to_rebind() {
+    let mut measured = Vault::default();
+    cloud_credential_binding::install(&mut measured, Provider::Google, SLOT, &ready()).unwrap();
+    measured.operations = 0;
+    cloud_credential_binding::logout(&mut measured, Provider::Google, SLOT, ATTEMPT).unwrap();
+    let operations = measured.operations;
+    for fail_at in 1..=operations {
+        let mut vault = Vault::default();
+        cloud_credential_binding::install(&mut vault, Provider::Google, SLOT, &ready()).unwrap();
+        vault
+            .data
+            .insert("preserved-key".into(), "synthetic-key".into());
+        vault.operations = 0;
+        vault.fail_at = Some(fail_at);
+        assert!(
+            cloud_credential_binding::logout(&mut vault, Provider::Google, SLOT, ATTEMPT).is_err()
+        );
+        vault.fail_at = None;
+        assert!(!matches!(
+            cloud_credential_binding::read(&mut vault, Provider::Google),
+            Ok(Pair::Ready { .. }) | Ok(Pair::Empty)
+        ));
+        assert_eq!(
+            cloud_credential_binding::install(&mut vault, Provider::Google, SLOT, &ready()),
+            Ok(Outcome::Blocked)
+        );
+        assert_eq!(
+            vault.data.get("preserved-key").map(String::as_str),
+            Some("synthetic-key")
+        );
+    }
 }

@@ -3,7 +3,7 @@
 // настроек, но проверена только на поддельных данных. Windows-installer ещё не
 // подтвердил устойчивость, защиту от отката, работу Tauri и реальных провайдеров.
 // Передаваемые записи, аргументы callback и исходные ошибки не должны логироваться.
-import { generateSyncId } from '../envelope.js';
+import { generateSyncId, isSyncId } from '../envelope.js';
 import { object } from '../exportSchema.js';
 import { validOAuthAccountKey, validOAuthClientId } from './oauthCommon.js';
 import { copyOAuthAccountLabel } from './oauthAccountLabel.js';
@@ -77,7 +77,7 @@ function checkedClock(clock) {
  * previewAccount:(args:{accessToken:string,clientId:string,signal:AbortSignal})=>Promise<{accountKey:string,label:{kind:string,value:string}|null}>,
  * confirmAccount:(args:{provider:'google'|'yandex',clientId:string,label:{kind:string,value:string},signal:AbortSignal})=>Promise<boolean>,
  * installer:{installIfAbsent:(args:any)=>Promise<'installed'|'occupied'>,verifyInstallation:(args:any)=>Promise<boolean>},
- * cryptoSource?:Crypto, now?:()=>number, identityTimeoutMs?:number, confirmationTimeoutMs?:number, installationTimeoutMs?:number}} options
+ * slotId?:string, cryptoSource?:Crypto, now?:()=>number, identityTimeoutMs?:number, confirmationTimeoutMs?:number, installationTimeoutMs?:number}} options
  */
 function createEnrollmentAttempt(provider, options) {
   let input;
@@ -88,8 +88,9 @@ function createEnrollmentAttempt(provider, options) {
     input = object(
       options,
       ['clientId', 'tokenResponse', 'previewAccount', 'confirmAccount', 'installer'],
-      ['cryptoSource', 'now', 'identityTimeoutMs', 'confirmationTimeoutMs', 'installationTimeoutMs']
+      ['slotId', 'cryptoSource', 'now', 'identityTimeoutMs', 'confirmationTimeoutMs', 'installationTimeoutMs']
     );
+    if (input.slotId !== undefined && !isSyncId(input.slotId)) throw invalid();
     response = object(input.tokenResponse, ['summary', 'takeSecrets', 'discard']);
     summary = object(response.summary, [
       'provider',
@@ -323,7 +324,7 @@ function createEnrollmentAttempt(provider, options) {
         let installation;
         try {
           remaining();
-          const slotId = generateSyncId(crypto);
+          const slotId = input.slotId || generateSyncId(crypto);
           const revision = generateSyncId(crypto);
           if (slotId === revision) throw invalid();
           const record =

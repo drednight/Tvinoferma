@@ -6,6 +6,16 @@ let active = 0;
 let dataActive = false;
 let uncertain = false;
 let resetting = false;
+// An explicit logout with a lost native reply must not leave this provider's
+// cached sessions usable. Other standalone providers remain independent.
+const logoutUncertain = new Set();
+export function blockCloudProviderAfterLogout(provider) {
+  if (!['google', 'yandex'].includes(provider)) throw blocked();
+  logoutUncertain.add(provider);
+}
+export function cloudProviderLogoutUncertain(provider) {
+  return logoutUncertain.has(provider);
+}
 
 function blocked() {
   return new Error(

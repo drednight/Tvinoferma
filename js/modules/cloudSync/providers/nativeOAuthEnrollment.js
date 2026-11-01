@@ -15,7 +15,11 @@ import { createCloudOAuthTokenTransport } from './oauthTokenTransport.js';
 import { createGoogleAccountPreviewReader, createYandexAccountPreviewReader } from './oauthAccountIdentity.js';
 import { createNativeOAuthCheckFetch } from './nativeOAuthCheckFetch.js';
 import { createGoogleEnrollmentAttempt, createYandexEnrollmentAttempt } from './oauthCredentialEnrollment.js';
-import { createNativeCredentialInstaller, inspectNativeCredential } from './nativeCredentialStore.js';
+import {
+  createNativeCredentialInstaller,
+  inspectNativeCredential,
+  readNativeCredentialBinding
+} from './nativeCredentialStore.js';
 
 const ERROR = 'Не удалось безопасно подготовить подключение облачного диска';
 function failed() {
@@ -118,6 +122,13 @@ export async function enrollNativeCloudAccount(options) {
     };
     const local = await inspectNativeCredential(storageOptions);
     if (signal.aborted) return result('cancelled');
+    let signedOut = null;
+    if (local.status === 'signed_out') {
+      const observed = await readNativeCredentialBinding(storageOptions);
+      if (observed.status !== 'signed_out' || !observed.binding?.logoutId) return result('local_blocked');
+      if (observed.binding.clientId !== input.clientId) return result('account_changed');
+      signedOut = observed.binding;
+    }
     let reconnectRecord = null;
     let reconnectInstaller = null;
     if (input.reconnect === true && ['configured', 'pending'].includes(local.status)) {
@@ -150,7 +161,7 @@ export async function enrollNativeCloudAccount(options) {
     } else {
       if (input.reconnect === true) return result('local_blocked');
       if (local.status === 'configured') return result('already_configured');
-      if (local.status !== 'empty') return result('local_blocked');
+      if (local.status !== 'empty' && !signedOut) return result('local_blocked');
     }
     const fetchImpl = createNativeOAuthCheckFetch({
       provider,
@@ -195,7 +206,9 @@ export async function enrollNativeCloudAccount(options) {
       provider === 'google'
         ? createGoogleAccountPreviewReader({ fetchImpl })
         : createYandexAccountPreviewReader({ fetchImpl });
-    const nativeInstaller = reconnectInstaller || createNativeCredentialInstaller(storageOptions);
+    const nativeInstaller =
+      reconnectInstaller ||
+      createNativeCredentialInstaller({ ...storageOptions, ...(signedOut ? { resume: signedOut } : {}) });
     let verifiedGoogleRecord = null;
     const installer = Object.freeze({
       installIfAbsent(args) {
@@ -228,7 +241,10 @@ export async function enrollNativeCloudAccount(options) {
       async previewAccount(args) {
         progress('identity');
         const identity = await previewAccount(args);
-        if (reconnectRecord && identity.accountKey !== reconnectRecord.accountKey) {
+        if (
+          (reconnectRecord && identity.accountKey !== reconnectRecord.accountKey) ||
+          (signedOut && identity.accountKey !== signedOut.accountKey)
+        ) {
           accountChanged = true;
           throw failed();
         }
@@ -239,6 +255,7 @@ export async function enrollNativeCloudAccount(options) {
         return input.confirmAccount(args);
       },
       installer,
+      ...(signedOut ? { slotId: signedOut.slotId } : {}),
       ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {})
     });
     if (signal.aborted) {

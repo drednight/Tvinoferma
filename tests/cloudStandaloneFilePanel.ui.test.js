@@ -732,3 +732,53 @@ describe('remembered file parameters and password explanation', () => {
     expect(f.password).not.toHaveBeenCalled();
   });
 });
+
+describe('clear file options without comparison-time replacement consent', () => {
+  it('shows privacy acknowledgements only for selected fields, resets them on scope changes', () => {
+    setup();
+    expect(el('consents').hidden).toBe(true);
+    const email = document.querySelector('[data-standalone-private][value=email]');
+    email.checked = true;
+    email.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(el('consents').hidden).toBe(false);
+    expect(el('password-risk-label').hidden).toBe(true);
+    el('contacts-confirm').checked = true;
+    const password = document.querySelector('[data-standalone-private][value=password]');
+    password.checked = true;
+    password.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(el('password-risk-label').hidden).toBe(false);
+    expect(el('contacts-confirm').checked).toBe(false);
+    el('select-none').click();
+    expect(el('consents').hidden).toBe(true);
+  });
+  it('downloads and compares selected contacts/passwords without export or replacement consent, but blocks accepting them', async () => {
+    const f = setup();
+    for (const value of ['email', 'password']) {
+      const input = document.querySelector(`[data-standalone-private][value=${value}]`);
+      input.checked = true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    await compare();
+    expect(f.runtime.review).toHaveBeenCalledWith(expect.objectContaining({ fields: ['email', 'password'] }));
+    expect(el('contacts-confirm').checked).toBe(false);
+    expect(el('password-risk').checked).toBe(false);
+    await click('accept');
+    expect(f.runtime.accept).not.toHaveBeenCalled();
+    expect(f.runtime.save).not.toHaveBeenCalled();
+    expect(el('status').textContent).toContain('контактов');
+  });
+  it('explains old Yandex authorization without hiding available legacy copies', async () => {
+    setup({
+      runtime: {
+        check: vi.fn(async () => ({
+          files: [file],
+          results: [{ provider: 'yandex', status: 'checked', storageNotice: 'visible_permissions_required' }],
+          pending: []
+        }))
+      }
+    });
+    await click('check');
+    expect(el('provider-results').textContent).toContain('войдите в Яндекс заново');
+    expect(el('files').querySelector('button').textContent).toBe('Скачать и сравнить');
+  });
+});

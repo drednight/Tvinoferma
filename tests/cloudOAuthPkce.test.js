@@ -84,7 +84,9 @@ describe('desktop OAuth PKCE: изолированная подготовка', 
       expect(auth.searchParams.get('client_id')).toBe(input.clientId);
       expect(auth.searchParams.get('response_type')).toBe('code');
       expect(auth.searchParams.get('scope')).toBe(
-        provider === 'google' ? 'https://www.googleapis.com/auth/drive.file' : 'cloud_api:disk.app_folder'
+        provider === 'google'
+          ? 'https://www.googleapis.com/auth/drive.file'
+          : 'cloud_api:disk.app_folder cloud_api:disk.read cloud_api:disk.write'
       );
       expect(auth.searchParams.get('state')).toBe(start.state);
       expect(auth.searchParams.get('redirect_uri')).toBe(`http://127.0.0.1:${port}/oauth/cloud/callback`);

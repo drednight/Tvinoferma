@@ -176,7 +176,7 @@ function tokenRequest(provider, clientId, redirectUri, verifier, code) {
     redirect: 'error',
     body: fields.toString()
   });
-  // authorizeUrl выше запросил ровно cloud_api:disk.app_folder как обязательное
+  // authorizeUrl выше запросил фиксированные права папки приложения, чтения и записи как обязательные
   // право без optional_scope. PKCE связывает обмен с этой попыткой; сохранение
   // свидетельства по идентичности объекта не позволяет случайно приписать его
   // скопированному запросу или коду другого клиента.

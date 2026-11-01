@@ -10,6 +10,7 @@ import { readLog, writeLogBounded } from '../../core/logStore.js';
 const KEY = 'tf_cloud_activity_v1';
 const MAX = 200;
 const ACTIONS = Object.freeze({
+  credential_logout: 'Выход из облачного аккаунта на этом ПК',
   standalone_save: 'Сохранение самостоятельного полного файла',
   standalone_compare: 'Скачивание и сравнение полного файла',
   standalone_keep: 'Сохранение местных данных без принятия облака',

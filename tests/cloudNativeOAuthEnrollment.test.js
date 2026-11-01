@@ -46,6 +46,7 @@ function setup(provider, extra = {}) {
     if (command === 'cloud_credential_binding_read') {
       const stored = slots.get(args.provider);
       if (!stored) return { status: 'empty' };
+      if (stored.status === 'signed_out') return { status: 'signed_out', ...extra.signedOut };
       if (stored.status !== 'ready') return { status: 'blocked' };
       const parsed =
         args.provider === 'google'
@@ -62,6 +63,17 @@ function setup(provider, extra = {}) {
       if (stored?.record !== args.expected || stored?.slotId !== args.slotId) return { status: 'mismatch' };
       slots.set(args.provider, { status: 'ready', slotId: args.slotId, record: args.next });
       return { status: 'swapped' };
+    }
+    if (command === 'cloud_credential_resume') {
+      if (extra.resume) return extra.resume(args);
+      if (
+        slots.get(args.provider)?.status !== 'signed_out' ||
+        args.expectedSlot !== extra.signedOut.slotId ||
+        args.expectedLogoutId !== extra.signedOut.logoutId
+      )
+        return { status: 'mismatch' };
+      slots.set(args.provider, { status: 'ready', slotId: args.expectedSlot, record: args.record });
+      return { status: 'installed' };
     }
     if (command === 'cloud_credential_install') {
       if (slots.has(args.provider)) return { status: 'occupied' };
@@ -85,6 +97,7 @@ function setup(provider, extra = {}) {
     }
     throw new Error(`FAKE_PRIVATE_ERROR ${ACCESS}`);
   });
+  if (extra.signedOut) slots.set(provider, { status: 'signed_out' });
   const openBrowser = vi.fn(async () => {});
   const confirmAccount = vi.fn(extra.confirm || (async () => true));
   const options = {
@@ -513,4 +526,48 @@ it('does not cache a token after an installation with an unknown outcome', async
   expect(await enrollNativeCloudAccount(s.options)).toEqual({ status: 'installation_uncertain' });
   const record = s.slots.get('google').record;
   expect(recalledGoogleAccess({ invoke: s.invoke, record })).toBeNull();
+});
+
+describe('same-account reauthorization after explicit local logout', () => {
+  const signedOut = provider => ({
+    slotId: '01234567-89ab-4cde-8f01-23456789abcd',
+    clientId: CLIENTS[provider],
+    accountKey: ACCOUNT,
+    logoutId: '11234567-89ab-4cde-8f01-23456789abcd'
+  });
+  it.each(['google', 'yandex'])(
+    '%s reuses the pinned slot after fresh PKCE and exact identity checks, never initial install',
+    async provider => {
+      const f = setup(provider, { signedOut: signedOut(provider) });
+      expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'installed' });
+      const calls = f.invoke.mock.calls.filter(([c]) => c === 'cloud_credential_resume');
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1]).toMatchObject({
+        provider,
+        expectedSlot: signedOut(provider).slotId,
+        expectedLogoutId: signedOut(provider).logoutId
+      });
+      expect(f.invoke.mock.calls.some(([c]) => c === 'cloud_credential_install')).toBe(false);
+      expect(f.slots.get(provider).slotId).toBe(signedOut(provider).slotId);
+    }
+  );
+  it.each(['google', 'yandex'])('%s rejects a different account without native install/resume', async provider => {
+    const f = setup(provider, { signedOut: { ...signedOut(provider), accountKey: 'OTHER_ACCOUNT' } });
+    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'account_changed' });
+    expect(f.invoke.mock.calls.some(([c]) => ['cloud_credential_resume', 'cloud_credential_install'].includes(c))).toBe(
+      false
+    );
+    expect(f.slots.get(provider).status).toBe('signed_out');
+  });
+  it('does not replace a signed-out identity when a different client is selected', async () => {
+    const f = setup('yandex', { signedOut: { ...signedOut('yandex'), clientId: 'abcdef0123456789' } });
+    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'account_changed' });
+    expect(f.openBrowser).not.toHaveBeenCalled();
+  });
+  it('a stale logout nonce never installs over a later logout', async () => {
+    const f = setup('yandex', { signedOut: signedOut('yandex'), resume: () => ({ status: 'mismatch' }) });
+    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'already_configured' });
+    expect(f.slots.get('yandex').status).toBe('signed_out');
+    expect(f.invoke.mock.calls.filter(([c]) => c === 'cloud_credential_resume')).toHaveLength(1);
+  });
 });

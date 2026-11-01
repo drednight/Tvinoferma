@@ -121,3 +121,7 @@ export function yandexUploadContentRequest({ link, datasetId, versionId, envelop
 export function yandexDownloadContentRequest(link) {
   return { method: 'GET', url: checkedLink(link, 'GET'), credential: 'yandex-download', redirect: 'error' };
 }
+
+// Fixed ordinary directory for independent full-file copies only.
+export const YANDEX_VISIBLE_ROOT = 'disk:/Твиноферма/';
+export const YANDEX_VISIBLE_FOLDER = 'tvinoferma-visible';

@@ -1,4 +1,7 @@
 // @ts-check
+import { createYandexVisibleSession } from './yandexVisibleSession.js';
+import { cloudProviderLogoutUncertain } from '../credentialResetCoordination.js';
+import { STANDALONE_DATASET_ID } from '../standaloneFileConstants.js';
 import { recordCloudDiagnostic } from '../cloudDiagnostics.js';
 // Экспериментальная связка уже подтверждённой локальной записи, доступа к диску
 // и проверки аккаунта. Она НЕ подключена к UI/настоящим токенам. Ожидаемая
@@ -128,6 +131,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
     throw failed();
   }
   const provider = /** @type {'google'|'yandex'} */ (input.provider);
+  if (cloudProviderLogoutUncertain(provider)) return status('credential_logout_unconfirmed');
   const { slotId, clientId, accountKey, datasetId, invoke } = input;
   const timeoutMs = /** @type {number} */ (input.timeoutMs ?? 25_000);
   const now = clock(input.now || (() => Date.now()));
@@ -218,6 +222,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
     let active = false;
     let disposed = false;
     async function guard(work, write = false) {
+      if (cloudProviderLogoutUncertain(provider)) return status('credential_logout_unconfirmed');
       if (disposed || active) return status('account_unavailable');
       active = true;
       try {
@@ -345,7 +350,11 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
       });
       return Object.freeze({ status: 'opened', session });
     }
-    const base = createAuthenticatedCloudSession({
+    const makeSession =
+      provider === 'yandex' && datasetId === STANDALONE_DATASET_ID
+        ? createYandexVisibleSession
+        : createAuthenticatedCloudSession;
+    const base = makeSession({
       provider,
       clientId,
       accountKey,
@@ -366,6 +375,7 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
     });
     const session = Object.freeze({
       previewAccountLabel,
+      storageNotice: () => /** @type {any} */ (base).storageNotice?.() || null,
       checkAccount() {
         return guard(() => base.checkAccount());
       },
@@ -428,7 +438,7 @@ export async function openStoredNativeCloudSession(options) {
       invoke: input.invoke,
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs })
     });
-    if (local.status === 'empty') return status('credential_missing');
+    if (['empty', 'signed_out'].includes(local.status)) return status('credential_missing');
     if (local.status !== 'ready' || !local.binding) return status('credential_blocked');
     return await openNativeCloudSession({
       ...input,

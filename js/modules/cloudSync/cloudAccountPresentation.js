@@ -15,7 +15,7 @@ export function cloudAccountPresentation(provider) {
 export function presentCloudAccount(provider, { status, label = null }) {
   if (
     !providers.includes(provider) ||
-    !['unknown', 'empty', 'ready', 'pending', 'blocked', 'unavailable'].includes(status)
+    !['unknown', 'empty', 'signed_out', 'ready', 'pending', 'blocked', 'unavailable'].includes(status)
   )
     return;
   let safe = null;

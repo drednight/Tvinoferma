@@ -135,7 +135,9 @@ pub(crate) fn install(vault: &mut impl CredentialVault, json: &str) -> Result<St
         .map_err(|_| "oauth_client_config_unavailable".to_owned())?
     {
         Pair::Blocked => return Err("oauth_client_config_blocked".into()),
-        Pair::Ready { binding, .. } if binding.client_id != client.id => {
+        Pair::Ready { binding, .. } | Pair::SignedOut { binding, .. }
+            if binding.client_id != client.id =>
+        {
             return Err("oauth_client_config_client_changed".into())
         }
         _ => {}
