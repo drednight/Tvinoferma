@@ -375,6 +375,12 @@ async function openSession(options, folderDiscoveryOnly, standaloneFolderWrite =
     });
     const session = Object.freeze({
       previewAccountLabel,
+      inspectStorage() {
+        return guard(() => /** @type {any} */ (base).inspectStorage());
+      },
+      ensureStorage() {
+        return guard(() => /** @type {any} */ (base).ensureStorage(), true);
+      },
       storageNotice: () => /** @type {any} */ (base).storageNotice?.() || null,
       checkAccount() {
         return guard(() => base.checkAccount());

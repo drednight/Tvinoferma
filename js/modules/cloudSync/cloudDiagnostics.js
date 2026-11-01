@@ -15,6 +15,8 @@ const STAGES = new Set([
   'ui_check',
   'ui_action',
   'ui_compare',
+  'ui_folder_check',
+  'ui_folder_create',
   'review_access',
   'review_download',
   'review_verify',

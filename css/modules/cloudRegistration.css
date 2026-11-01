@@ -722,3 +722,170 @@
     line-height: 1.3;
   }
 }
+
+/* A clear workspace, not a wall of warnings and implementation details. */
+.cloud-workspace-intro {
+  padding: 20px 0 8px;
+}
+.cloud-workspace-intro h4 {
+  margin: 6px 0 10px;
+  font-size: 1.3rem;
+}
+.cloud-workspace-intro > p:last-of-type {
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.cloud-eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+.cloud-workspace-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  list-style: none;
+  margin: 20px 0;
+  padding: 0;
+}
+.cloud-workspace-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+.cloud-workspace-steps b {
+  display: grid;
+  place-items: center;
+  flex: 0 0 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.cloud-workspace-steps small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.cloud-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.cloud-section-heading h4,
+.cloud-section-heading h5 {
+  margin: 4px 0;
+}
+.cloud-selection-summary {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.cloud-source-card {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.4fr) minmax(0, 1fr);
+  align-items: center;
+}
+#cloud-standalone-source-file-label {
+  grid-column: 1 / -1;
+}
+.cloud-folder-assistant {
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-left: 3px solid var(--accent);
+}
+.cloud-folder-assistant p {
+  margin: 10px 0;
+  line-height: 1.6;
+  font-size: 0.88rem;
+}
+.cloud-folder-assistant[data-state='failed'] {
+  border-left-color: #d95757;
+}
+.cloud-folder-assistant[data-state='success'] {
+  border-left-color: #58a878;
+}
+#cloud-standalone-provider-results {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cloud-provider-result {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  line-height: 1.6;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.cloud-provider-result[data-state='success'] {
+  border-left-color: #58a878;
+}
+.cloud-provider-result[data-state='failed'] {
+  border-left-color: #d95757;
+}
+.cloud-provider-result button {
+  margin: 10px 0 0;
+}
+.cloud-copy-card h5 {
+  margin: 0;
+  font-size: 1rem;
+}
+.cloud-copy-card > p {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.cloud-diff-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.cloud-diff-counts span {
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.8rem;
+}
+.cloud-diff-field,
+.cloud-diff-values {
+  display: block;
+  font-size: 0.88rem;
+}
+.cloud-diff-field {
+  margin: 8px 0 2px;
+  font-weight: 500;
+  color: var(--text);
+}
+#cloud-standalone-yandex-folder-create[hidden],
+#cloud-standalone-copy-report[hidden] {
+  display: none;
+}
+@media (max-width: 760px) {
+  .cloud-workspace-steps {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 540px) {
+  .cloud-source-card {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 import { encryptSnapshot, generateRecoveryKey, generateSyncId } from '../js/modules/cloudSync/envelope.js';
+import { cloudAccessDiagnostic } from '../js/modules/cloudSync/providers/cloudAccessDiagnostics.js';
 import { STANDALONE_DATASET_ID } from '../js/modules/cloudSync/standaloneFileConstants.js';
 import { createNativeDiskFetch } from '../js/modules/cloudSync/providers/nativeDiskFetch.js';
 import { createYandexVisibleSession } from '../js/modules/cloudSync/providers/yandexVisibleSession.js';
@@ -28,7 +29,9 @@ function fixture() {
     wrongAccount: false,
     folderFile: false,
     uploadThrows: false,
-    folderThrows: false
+    folderThrows: false,
+    hideCreated: false,
+    folderError: 0
   };
   const name = version => `tf-v1-${STANDALONE_DATASET_ID}-${version}.tfsc`;
   const path = (root, version) => `${root}${name(version)}`;
@@ -45,12 +48,13 @@ function fixture() {
       return empty(flags.legacyError);
     if (args.operation === 'folder_create') {
       if (flags.folderThrows) throw 'cloud_disk_connect';
+      if (flags.folderError) return empty(flags.folderError);
       if (flags.visibleExists || flags.folderFile) return empty(409);
       flags.visibleExists = true;
       return empty(201);
     }
     if (args.operation === 'list') {
-      if (visible && !flags.visibleExists && !flags.folderFile) return empty(404);
+      if (visible && ((!flags.visibleExists && !flags.folderFile) || flags.hideCreated)) return empty(404);
       if (visible && flags.folderFile) return json({ type: 'file' });
       const all = [...files.keys()].filter(key => key.startsWith(root)).sort();
       const items = all
@@ -223,5 +227,66 @@ describe('ordinary Yandex folder with immutable legacy reads', () => {
       await expect(f.fetchImpl(url.toString(), init)).rejects.toThrow();
     }
     expect(f.invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('independent Yandex directory preparation', () => {
+  it('treats only a genuine legacy root 404 as empty, so a first ordinary save is not blocked', async () => {
+    const f = fixture();
+    f.flags.legacyError = 404;
+    expect(await f.session.listWithDates()).toEqual({ status: 'listed', versions: [] });
+    expect((await f.session.read(envelope.versionId)).status).toBe('not_found');
+    expect((await f.session.upload({ envelope })).status).toBe('accepted');
+    expect(f.flags.visibleExists).toBe(true);
+    expect((await f.session.verify({ envelope })).status).toBe('verified');
+  });
+  it.each([401, 403, 429, 500])('does not relabel a legacy %s as an empty root', async status => {
+    const f = fixture();
+    f.flags.legacyError = status;
+    expect((await f.session.listWithDates()).status).not.toBe('listed');
+    expect(f.invoke.mock.calls.some(([, a]) => a.args.operation === 'folder_create')).toBe(false);
+  });
+  it('checks only the ordinary directory, without creating it or reading legacy/file contents', async () => {
+    const f = fixture();
+    f.flags.legacyError = 500;
+    expect(await f.session.inspectStorage()).toEqual({ status: 'folder_missing' });
+    expect(f.invoke.mock.calls.every(([, a]) => ['identity', 'list'].includes(a.args.operation))).toBe(true);
+    expect(
+      f.invoke.mock.calls
+        .filter(([, a]) => a.args.operation === 'list')
+        .every(([, a]) => a.args.folderId === YANDEX_VISIBLE_FOLDER)
+    ).toBe(true);
+  });
+  it('creates only the fixed empty folder, verifies it, does not upload and does not repeat a PUT when it already exists', async () => {
+    const f = fixture();
+    f.flags.legacyError = 500;
+    expect(await f.session.ensureStorage()).toEqual({ status: 'folder_created' });
+    expect(f.files.size).toBe(0);
+    expect(await f.session.ensureStorage()).toEqual({ status: 'folder_ready' });
+    expect(f.invoke.mock.calls.filter(([, a]) => a.args.operation === 'folder_create')).toHaveLength(1);
+    expect(f.invoke.mock.calls.some(([, a]) => /upload|download/.test(a.args.operation))).toBe(false);
+  });
+  it('never reports a 201 alone as verified creation', async () => {
+    const f = fixture();
+    f.flags.hideCreated = true;
+    expect((await f.session.ensureStorage()).status).toBe('folder_creation_unconfirmed');
+    expect(f.invoke.mock.calls.filter(([, a]) => a.args.operation === 'folder_create')).toHaveLength(1);
+    expect(f.files.size).toBe(0);
+  });
+  it('preserves an uncertain creation as such and exposes a fixed folder-connect reason without raw details', async () => {
+    const f = fixture();
+    f.flags.folderThrows = true;
+    const result = await f.session.ensureStorage();
+    expect(result.status).toBe('folder_creation_unconfirmed');
+    expect(cloudAccessDiagnostic(result)).toBe('folder_native_connect');
+    expect(JSON.stringify(result)).not.toContain('FAKE_TOKEN');
+  });
+  it('distinguishes a denied folder creation from a failed file upload', async () => {
+    const f = fixture();
+    f.flags.folderError = 403;
+    const result = await f.session.ensureStorage();
+    expect(result.status).toBe('folder_not_created');
+    expect(cloudAccessDiagnostic(result)).toBe('folder_forbidden');
+    expect(f.invoke.mock.calls.some(([, a]) => a.args.operation === 'upload_content')).toBe(false);
   });
 });
