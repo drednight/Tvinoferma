@@ -207,6 +207,9 @@ fn every_interrupted_install_is_empty_blocked_or_exact_complete_pair() {
         vault.fail_at = None;
         match cloud_credential_binding::read(&mut vault, Provider::Google).unwrap() {
             Pair::Empty | Pair::Blocked => {}
+            Pair::SignedOut { .. } => {
+                panic!("initial installation cannot create a signed-out identity")
+            }
             Pair::Ready { binding, record } => {
                 assert_eq!(binding.slot_id, SLOT);
                 assert_eq!(binding.client_id, CLIENT);
