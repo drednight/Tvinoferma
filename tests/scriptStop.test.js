@@ -93,3 +93,23 @@ it('keeps the real header dock above script overlays and returns it to the heade
   expect(dock.classList.contains('is-script-overlay')).toBe(false);
   task.finish();
 });
+it('never persists the runtime native acknowledgement promise into the task journal', async () => {
+  const { startTask } = await import('../js/core/taskLog.js');
+  const task = startTask('Runtime fields');
+  task.watch('char:a');
+  await task.ready();
+  task.finish();
+  const rows = Object.values(localStorage)
+    .map(value => {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Array.isArray)
+    .flat();
+  const saved = rows.find(row => row?.id === task.id);
+  expect(saved).toBeTruthy();
+  expect(saved).not.toHaveProperty('_scopeReady');
+});

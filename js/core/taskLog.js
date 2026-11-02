@@ -53,7 +53,7 @@ function wasPageReloaded() {
 
 /** Строки журнала для localStorage: без рантайм-полей, самые новые сверху. */
 function journalRows(list) {
-  return list.slice(0, MAX_TASKS).map(t => ({ ...t, scopes: [], open: false }));
+  return list.slice(0, MAX_TASKS).map(t => ({ ...t, _scopeReady: undefined, scopes: [], open: false }));
 }
 
 function loadJournal() {
