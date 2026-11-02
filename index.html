@@ -507,6 +507,7 @@
                       <label>Что сохранить
                         <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
                       </label>
+                      <details><summary>Чем отличаются эти варианты?</summary><p>«Текущие данные приложения» — состояние, которое сейчас открыто в Твиноферме. «Сохранённый файл state.json» — отдельный выбранный вами файл: он может быть старее текущих данных или взят с другого ПК. Его выбор не открывает и не заменяет данные приложения; он используется только как источник облачной копии. Контакты из хранилища Windows не находятся в state.json автоматически. Дополнительные приватные поля передаются только при отдельном выборе и подтверждении.</p></details>
                       <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
                         <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
                       </label>

@@ -161,3 +161,78 @@ it('never restores a checking lock after a crash and fences a late response afte
   expect(service.snapshot().codes).toEqual([]);
   expect(JSON.parse(store.getItem('tf_promo_discovery_v1')).codes).toEqual([]);
 });
+
+describe('news metadata from separate paragraphs (acceptance examples, synthetic HTML)', () => {
+  const html = (code, deadline, server, rewards) =>
+    `<h1>Подарки</h1><article><p><a href="/pin/${code}">Активировать</a></p><p>Промокод можно активировать ${deadline}.</p><p>Предметы хранятся 7 дней.</p>${server ? `<p>Важно! Предметы можно перевести только на сервер «${server}».</p>` : ''}<p>В состав подарка входят:</p><ul>${rewards.map(r => `<li>${r}</li>`).join('')}</ul></article>`;
+  it('9142: 23:59 MSK, explicit 2026, Cepheus restriction and all nine reward types', () => {
+    const rewards = [
+      'S-коробка ×50',
+      'Камень божества ×50',
+      'Метеорит ×75',
+      'Платиновый амулет ×5',
+      'Платиновый идол ×5',
+      'Самоцвет оружия ×50',
+      'Самоцвет реликвии ×50',
+      'Самоцвет брони ×50',
+      'Запечатанная грамота Лиги ×25'
+    ];
+    const [row] = articleCodes(html('PWCEPHEUS26', 'до 23:59 МСК 25 октября 2026 года', 'Цефей', rewards), '9142');
+    expect(row.expiresOn).toBe('2026-10-25');
+    expect(row.expiresText).toContain('23:59 МСК');
+    expect(row.serverRestriction).toBe('Цефей');
+    expect(row.rewards).toEqual(rewards);
+  });
+  it('9126: yearless deadline is displayed without inventing a year, separate Mizar restriction', () => {
+    const [row] = articleCodes(
+      html(
+        'PWMIZAR2026HB',
+        'до 23:59 МСК 4 октября',
+        'Мицар',
+        Array.from({ length: 13 }, (_, i) => `Предмет ${i + 1}`)
+      ),
+      '9126'
+    );
+    expect(row.expiresText).toContain('23:59 МСК 4 октября');
+    expect(row.expiresOn).toBeNull();
+    expect(row.serverRestriction).toBe('Мицар');
+    expect(row.rewards).toHaveLength(13);
+  });
+  it('9110: transfer start is not the activation deadline; no server is invented', () => {
+    const article = html('PWZNANIYA26', 'до 23:59 МСК 13 сентября', null, ['Колокол', 'Небесная пилюля ×30']).replace(
+      '<article>',
+      '<article><p>Перевод доступен после 19:00 МСК 31 августа.</p>'
+    );
+    const [row] = articleCodes(article, '9110');
+    expect(row.expiresText).toContain('13 сентября');
+    expect(row.expiresText).not.toContain('31 августа');
+    expect(row.serverRestriction).toBeNull();
+    expect(row.rewards).toHaveLength(2);
+  });
+  it('hiding survives reload and the code can be restored without deleting its metadata', async () => {
+    const disk = storage(),
+      read = async args => ({ status: 200, html: args.article ? article() : index });
+    const first = createPromoDiscovery({ storage: disk, read });
+    await first.check();
+    first.setHidden('PWMIZAR2026HB');
+    const second = createPromoDiscovery({ storage: disk, read });
+    expect(second.snapshot().hiddenCodes).toContain('PWMIZAR2026HB');
+    expect(second.snapshot().codes[0].code).toBe('PWMIZAR2026HB');
+    second.setHidden('PWMIZAR2026HB', false);
+    expect(second.snapshot().hiddenCodes).toEqual([]);
+  });
+});
+
+it('preserves a post-date clock and MSK without taking a later transfer start', () => {
+  expect(
+    expiryHint('Промокод действует до 25 октября 2026 года в 23:59 МСК. Перевод после 19:00 МСК.').expiresText
+  ).toContain('23:59 МСК');
+});
+it('new hidden codes remain persistable after the first 200 discoveries', () => {
+  const disk = storage(),
+    first = createPromoDiscovery({ storage: disk, read: async () => ({ status: 200, html: index }) });
+  for (let n = 0; n < 205; n++) first.setHidden(`PWTEST${String(n).padStart(4, '0')}`);
+  const second = createPromoDiscovery({ storage: disk, read: async () => ({ status: 200, html: index }) });
+  expect(second.snapshot().hiddenCodes).toHaveLength(205);
+  expect(second.snapshot().hiddenCodes).toContain('PWTEST0204');
+});

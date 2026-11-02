@@ -54,8 +54,8 @@ describe('форма «Сундук караванщика»', () => {
     openCaravanDialog();
     expect($('.tf-dialog-title').textContent).toContain('Сундук караванщика');
     expect($('.tf-dialog').textContent).toContain('«Сундуки караванщика»');
-    expect($('[data-act="start"]').textContent).toContain('Проверить инвентари');
-    expect($('[data-act="dry"]').textContent).toContain('Только посчитать');
+    expect($('[data-act="start"]').textContent).toContain('Открыть сундуки');
+    expect($('[data-act="dry"]').textContent).toContain('Проверить сайт');
     expect($('[data-act="start"]').disabled).toBe(true);
     expect($('[data-act="dry"]').disabled).toBe(true);
   });
@@ -64,7 +64,7 @@ describe('форма «Сундук караванщика»', () => {
     openCaravanDialog();
     $('[data-q="all"]').click();
     expect($('#caravan-count').textContent).toBe('Выбрано: 3 из 3');
-    expect($('[data-act="start"]').disabled).toBe(false);
+    expect($('[data-act="start"]').disabled).toBe(true);
     $('[data-q="none"]').click();
     expect($('#caravan-count').textContent).toBe('Выбрано: 0 из 3');
     $('[data-q="logged"]').click();
@@ -89,75 +89,56 @@ describe('форма «Сундук караванщика»', () => {
   });
 });
 
-describe('персонажи без входа на сайт', () => {
-  const noLogin = () =>
-    state.characters.map(c => (c.id === 'c' ? { ...c, isLoggedIn: true } : { ...c, isLoggedIn: false }));
-
-  it('в форме видна подсказка с ними по именам', () => {
-    state.characters = noLogin();
+describe('сначала реальный сайт, независимо от GameCenter', () => {
+  it('проверяет даже сохранённый статус false без просьбы запомнить GameCenter', async () => {
+    state.characters.forEach(c => {
+      c.isLoggedIn = false;
+    });
+    mocks.invoke.mockImplementation(async (_, a) =>
+      reply(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0 })
+    );
     openCaravanDialog({ ids: ['a', 'b', 'c'] });
-    const warn = $('#caravan-nologin');
-    expect(warn.hidden).toBe(false);
-    expect(warn.textContent).toContain('Аа, Бб');
-    expect(warn.textContent).toContain('Запомнить текущий вход');
-  });
-
-  it('без входа у всех выбор не запускается, объясняем почему', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
-    state.characters = [{ id: 'a', nick: 'Аа', isLoggedIn: false }];
-    openCaravanDialog({ ids: ['a'] });
-    $('[data-act="start"]').click();
-    await wait(100);
-    expect(mocks.invoke).not.toHaveBeenCalled();
-    expect(mocks.confirm).not.toHaveBeenCalled();
-    expect(mocks.toast.mock.calls[0][0]).toContain('нет входа на сайт');
-  });
-
-  it('при запуске пропускает их и спрашивает, продолжать ли без них', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
-    state.characters = noLogin();
-    openCaravanDialog({ ids: ['a', 'b', 'c'] });
-    $('[data-act="start"]').click();
-    await wait(200);
-    expect(mocks.confirm).toHaveBeenCalledTimes(2); // «пропустить?» и подтверждение открытия
-    expect(mocks.confirm.mock.calls[0][0].text).toContain('Пропущу 2 из 3');
-    expect(mocks.confirm.mock.calls[0][0].text).toContain('Аа, Бб');
-    expect(mocks.confirm.mock.calls[1][0].text).toContain('Персонажей: 1');
-    const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'open_caravan_chests');
-    expect(calls.map(c => c[1].charId)).toEqual(['c']);
-  });
-
-  it('отказ пропустить — не запускаем ничего', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
-    mocks.confirm.mockResolvedValueOnce(false);
-    state.characters = noLogin();
-    openCaravanDialog({ ids: ['a', 'c'] });
-    $('[data-act="start"]').click();
-    await wait(100);
-    expect(mocks.invoke).not.toHaveBeenCalled();
-  });
-
-  it('у кого вход есть — лишних вопросов нет', async () => {
-    mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
-    state.characters = [
-      { id: 'a', nick: 'Аа' },
-      { id: 'c', nick: 'Вв', isLoggedIn: true }
-    ];
-    openCaravanDialog({ ids: ['a', 'c'] });
-    expect($('#caravan-nologin').hidden).toBe(true);
-    $('[data-act="start"]').click();
+    expect($('#caravan-nologin').textContent).not.toContain('Запомнить текущий вход');
+    expect($('[data-act="start"]').disabled).toBe(true);
+    $('[data-act="dry"]').click();
     await wait(150);
-    expect(mocks.confirm).toHaveBeenCalledTimes(1);
-    const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'open_caravan_chests');
-    expect(calls.map(c => c[1].charId).sort()).toEqual(['a', 'c']);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.map(c => c[1].charId).sort()).toEqual(['a', 'b', 'c']);
+    expect(mocks.invoke.mock.calls.every(c => c[1].dryRun)).toBe(true);
+  });
+  it('истинное отсутствие сессии показывает результат сайта, а не отказ по GameCenter', async () => {
+    mocks.invoke.mockImplementation(async (_, a) =>
+      reply(a.charId, { status: 'not_logged_in', dryRun: true, clicked: false, found: 0, opened: 0, chests: [] })
+    );
+    openCaravanDialog({ ids: ['a'] });
+    $('[data-act="dry"]').click();
+    await wait(150);
+    expect($('.tf-dialog').textContent).toContain('Нет входа на сайт');
+    expect($('[data-act="real"]')).toBeNull();
+    expect($('[data-act="dry-again"]')).not.toBeNull();
   });
 });
+
+// A separate, successful read-only scan always precedes destructive test runs.
+async function scanAndOpen() {
+  const implementation = mocks.invoke.getMockImplementation();
+  mocks.invoke.mockImplementation(async (cmd, a) =>
+    a.dryRun
+      ? reply(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0 })
+      : implementation?.(cmd, a)
+  );
+  $('[data-act="dry"]').click();
+  await wait(150);
+  mocks.invoke.mockClear();
+  $('[data-act="real"]').click();
+  await wait(100);
+}
 
 describe('запуск', () => {
   it('«Проверить инвентари» спрашивает подтверждение и вызывает команду для выбранных', async () => {
     mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
     openCaravanDialog({ ids: ['a', 'c'] });
-    $('[data-act="start"]').click();
+    await scanAndOpen();
     await wait(150);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
     expect(mocks.confirm.mock.calls[0][0].text).toContain('Персонажей: 2');
@@ -171,10 +152,10 @@ describe('запуск', () => {
   it('отказ в подтверждении — ничего не запускается', async () => {
     mocks.confirm.mockResolvedValue(false);
     openCaravanDialog({ ids: ['a'] });
-    $('[data-act="start"]').click();
+    await scanAndOpen();
     await wait();
     expect(mocks.invoke).not.toHaveBeenCalled();
-    expect($('[data-act="start"]')).not.toBeNull();
+    expect($('[data-act="real"]')).not.toBeNull();
   });
 
   it('«Только посчитать» не спрашивает подтверждение, шлёт dryRun и предлагает открыть найденное', async () => {
@@ -228,7 +209,7 @@ describe('запуск', () => {
         : reply(a.charId)
     );
     openCaravanDialog({ ids: ['a', 'b'] });
-    $('[data-act="start"]').click();
+    await scanAndOpen();
     await wait(150);
     expect($('.tf-dialog').textContent).toContain('Открыто 1 из 2');
     expect($('.tf-dialog').textContent).toContain('остался в инвентаре');
@@ -255,16 +236,16 @@ describe('запуск', () => {
       )
     );
     openCaravanDialog({ ids: ['a', 'b'] });
-    $('[data-act="start"]').click();
+    $('[data-act="dry"]').click();
     await wait(150);
     expect($('.tf-dialog').textContent).toContain('Нет входа на сайт');
-    expect($('[data-act="retry"]').disabled).toBe(false);
+    expect($('[data-act="dry-again"]')).not.toBeNull();
   });
 
   it('«← К списку» возвращает форму с сохранённым выбором', async () => {
     mocks.invoke.mockImplementation(async (_, a) => reply(a.charId));
     openCaravanDialog({ ids: ['a'] });
-    $('[data-act="start"]').click();
+    await scanAndOpen();
     await wait(150);
     $('[data-act="back"]').click();
     expect($('#caravan-count').textContent).toBe('Выбрано: 1 из 3');
@@ -280,7 +261,7 @@ describe('запуск', () => {
         })
     );
     openCaravanDialog({ ids: ['a', 'b', 'c', 'd', 'e'] });
-    $('[data-act="start"]').click();
+    await scanAndOpen();
     await wait(150);
     expect(releases).toHaveLength(3); // по лимиту окон — три одновременно
     $('[data-act="stop"]').click();
@@ -289,5 +270,102 @@ describe('запуск', () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(3);
     expect($('.tf-dialog-sub').textContent).toContain('Остановлено');
     expect($('.tf-dialog').textContent).toContain('Открыто сундуков: 2');
+  });
+});
+
+describe('отдельный выбор количества после сайта', () => {
+  const setupScan = async ({ shared = false } = {}) => {
+    mocks.invoke.mockImplementation(async (_, a) =>
+      reply(
+        a.charId,
+        a.dryRun
+          ? {
+              status: 'dry_run',
+              dryRun: true,
+              clicked: false,
+              opened: 0,
+              found: 5,
+              accountKey: shared ? 'a'.repeat(64) : (a.charId === 'a' ? 'a' : 'b').repeat(64)
+            }
+          : { opened: a.maxChests || 5, found: 5 }
+      )
+    );
+    openCaravanDialog({ ids: shared ? ['a', 'b'] : ['a'] });
+    $('[data-act="dry"]').click();
+    await wait(150);
+  };
+  const count = (id, n) => {
+    const input = $(`[data-caravan-limit="${id}"]`);
+    input.value = String(n);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const custom = () => {
+    const radio = $('[name=caravan-amount][value=count]');
+    radio.checked = true;
+    radio.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  it('сайт читается для всех; один общий аккаунт открывается ровно один раз и остаётся привязан к проверенному входу', async () => {
+    await setupScan({ shared: true });
+    expect(mocks.invoke.mock.calls).toHaveLength(2);
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('[data-caravan-limit]')).toHaveLength(1);
+    custom();
+    count('a', 2);
+    mocks.invoke.mockClear();
+    $('[data-act="real"]').click();
+    await wait(150);
+    expect(mocks.invoke.mock.calls).toHaveLength(1);
+    expect(mocks.invoke.mock.calls[0][1]).toMatchObject({
+      charId: 'a',
+      dryRun: false,
+      maxChests: 2,
+      expectedAccountKey: 'a'.repeat(64)
+    });
+  });
+  it('«все» не передаёт ограничение от прежнего ручного количества', async () => {
+    await setupScan();
+    custom();
+    count('a', 1);
+    const all = $('[name=caravan-amount][value=all]');
+    all.checked = true;
+    all.dispatchEvent(new Event('input', { bubbles: true }));
+    mocks.invoke.mockClear();
+    $('[data-act="real"]').click();
+    await wait(150);
+    expect(mocks.invoke.mock.calls[0][1]).not.toHaveProperty('maxChests');
+  });
+  it('некорректное, дробное и завышенное количество не запускает открытие', async () => {
+    await setupScan();
+    custom();
+    for (const n of [1.5, 6, -1]) {
+      count('a', n);
+      mocks.invoke.mockClear();
+      $('[data-act="real"]').click();
+      await wait(20);
+      expect(mocks.invoke).not.toHaveBeenCalled();
+    }
+  });
+  it('повтор частичного результата берёт только остаток выбранного количества, не первоначальный лимит', async () => {
+    await setupScan();
+    custom();
+    count('a', 2);
+    mocks.invoke.mockReset().mockImplementation(async (_, a) =>
+      reply(a.charId, {
+        status: 'partial',
+        opened: 1,
+        found: 5,
+        chests: [
+          { cartId: '1', state: 'opened' },
+          { cartId: '2', state: 'not_opened' }
+        ]
+      })
+    );
+    $('[data-act="real"]').click();
+    await wait(150);
+    expect(mocks.invoke.mock.calls[0][1].maxChests).toBe(2);
+    mocks.invoke.mockReset().mockImplementation(async (_, a) => reply(a.charId, { opened: 1, found: 4 }));
+    $('[data-act="retry"]').click();
+    await wait(150);
+    expect(mocks.invoke.mock.calls[0][1]).toMatchObject({ maxChests: 1, expectedAccountKey: 'a'.repeat(64) });
   });
 });

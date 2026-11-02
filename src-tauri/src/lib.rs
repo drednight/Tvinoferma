@@ -192,6 +192,7 @@ pub fn run() {
             marathons::parse_specific_marathon_page,
             marathons::fetch_marathon_news,
             automation::promo_news::fetch_promo_news_page,
+            automation::promo_news::open_promo_news_article,
             // хранилище
             commands::state::load_state,
             commands::state::load_state_raw,

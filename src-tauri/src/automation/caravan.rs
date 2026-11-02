@@ -19,6 +19,7 @@ use crate::parsers::{eval_and_wait, navigate_scoped, read_hash_payload, tf_log, 
 use crate::pool;
 use crate::windows::window_is_open;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tauri::{command, AppHandle};
 
@@ -28,7 +29,7 @@ const ACTIVATE_URL: &str = "https://pwonline.ru/promo_items.php?do=activate&cart
 const PREFIX: &str = "#TF_CARAVAN_V1_";
 const CLEAR_HASH: &str = "history.replaceState(null, '', location.pathname + location.search);";
 /// Больше сундуков за один запуск не открываем: остальные откроются следующим запуском.
-const MAX_CHESTS: usize = 30;
+const MAX_CHESTS: usize = 500;
 
 /// Номер сундука идёт в адрес страницы, поэтому допускаются только цифры.
 pub fn is_valid_cart_id(id: &str) -> bool {
@@ -54,6 +55,7 @@ struct Chest {
 
 #[derive(Debug, PartialEq)]
 struct Scan {
+    account_key: Option<String>,
     chests: Vec<Chest>,
     /// Сундуки других видов: их не открываем
     other: u64,
@@ -75,7 +77,17 @@ fn classify_scan(res: Wait) -> Result<Scan, (&'static str, String)> {
                     });
                 }
             }
+            let account = data["account"].as_str().unwrap_or("").trim().to_lowercase();
+            let account_key = if !account.is_empty()
+                && account.len() <= 512
+                && !account.chars().any(char::is_control)
+            {
+                Some(format!("{:x}", Sha256::digest(account.as_bytes())))
+            } else {
+                None
+            };
             Ok(Scan {
+                account_key,
                 chests,
                 other: data["other"].as_u64().unwrap_or(0),
             })
@@ -195,9 +207,20 @@ pub async fn open_caravan_chests(
     char_id: String,
     dry_run: Option<bool>,
     timeout_seconds: Option<u64>,
+    max_chests: Option<usize>,
+    expected_account_key: Option<String>,
 ) -> Result<Value, String> {
     let dry = dry_run.unwrap_or(false);
     let fail = |error: &str| payload(&char_id, "error", Some(error), dry, false, 0, 0, 0, vec![]);
+    if expected_account_key
+        .as_ref()
+        .is_some_and(|s| s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return Ok(fail("bad_account"));
+    }
+    if max_chests.is_some_and(|n| n == 0 || n > MAX_CHESTS) {
+        return Ok(fail("bad_count"));
+    }
     if !is_valid_char_id(&char_id) {
         return Ok(fail("bad_char"));
     }
@@ -235,6 +258,10 @@ pub async fn open_caravan_chests(
             return Ok(payload(&char_id, status, err, dry, false, 0, 0, 0, vec![]));
         }
     };
+    if expected_account_key.is_some() && expected_account_key != scan.account_key {
+        task.finish(Some(&char_id), true, true).await;
+        return Ok(fail("account_changed"));
+    }
     let found = scan.chests.len();
     tf_log(
         &app,
@@ -258,13 +285,22 @@ pub async fn open_caravan_chests(
             .iter()
             .map(|c| chest_json(c, "found", None, &[]))
             .collect();
-        return Ok(payload(
+        let mut res = payload(
             &char_id, status, None, dry, false, found, scan.other, 0, list,
-        ));
+        );
+        if let Some(key) = &scan.account_key {
+            res["accountKey"] = json!(key);
+        }
+        return Ok(res);
     }
 
     // 2. Каждый сундук: отметить все предметы и нажать кнопку один раз
-    let todo: Vec<Chest> = scan.chests.iter().take(MAX_CHESTS).cloned().collect();
+    let todo: Vec<Chest> = scan
+        .chests
+        .iter()
+        .take(max_chests.unwrap_or(MAX_CHESTS))
+        .cloned()
+        .collect();
     let mut states: Vec<(Chest, &'static str, Option<String>, Vec<String>)> = Vec::new();
     let mut stop: Option<(&'static str, String)> = None;
     for chest in &todo {
@@ -458,6 +494,31 @@ mod tests {
         Some((Some(e.to_string()), Value::Null))
     }
 
+    #[test]
+    fn account_binding_is_opaque_and_does_not_mix_different_site_accounts() {
+        let a = classify_scan(ok(
+            json!({"state":"scan","account":"  SYNTHETIC-LOGIN ","chests":[]}),
+        ))
+        .unwrap();
+        let same = classify_scan(ok(
+            json!({"state":"scan","account":"synthetic-login","chests":[]}),
+        ))
+        .unwrap();
+        let other = classify_scan(ok(
+            json!({"state":"scan","account":"another-synthetic-login","chests":[]}),
+        ))
+        .unwrap();
+        assert_eq!(a.account_key, same.account_key);
+        assert_ne!(a.account_key, other.account_key);
+        let key = a.account_key.unwrap();
+        assert_eq!(key.len(), 64);
+        assert!(key.bytes().all(|b| b.is_ascii_hexdigit()));
+        assert!(!key.contains("login"));
+        assert!(classify_scan(ok(json!({"state":"scan","chests":[]})))
+            .unwrap()
+            .account_key
+            .is_none());
+    }
     #[test]
     fn cart_id_is_digits_only() {
         assert!(is_valid_cart_id("43915985"));

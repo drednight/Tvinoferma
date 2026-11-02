@@ -39,6 +39,8 @@ const OWN_ERROR_TEXT = {
   button_not_found: 'в сундуке нет кнопки отправки (возможно, сайт изменил вёрстку)',
   selection_changed: 'отметки в сундуке изменились, ничего не нажато',
   no_items: 'в сундуке нет предметов',
+  inventory_limit: 'Найдено больше 500 сундуков. Автоматическое открытие не запущено.',
+  account_changed: 'Аккаунт сайта изменился после подсчёта. Проверьте сайт заново.',
   form_not_found: 'на странице сундука нет формы (возможно, сайт изменил вёрстку)'
 };
 export const caravanErrorText = code => OWN_ERROR_TEXT[code] || errorText(code);
@@ -96,6 +98,9 @@ export function rowFromPayload(char, payload, error) {
         : null,
     detail: null,
     dryRun: !!payload.dryRun,
+    ...(typeof payload.accountKey === 'string' && /^[a-f0-9]{64}$/.test(payload.accountKey)
+      ? { accountKey: payload.accountKey }
+      : {}),
     clicked: !!payload.clicked,
     found: num(payload.found),
     other: num(payload.other),
