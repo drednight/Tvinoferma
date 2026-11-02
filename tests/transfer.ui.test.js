@@ -739,3 +739,46 @@ it('groups five identical packets into one row, rejects fractional counts and se
   expect(args.itemSelection.map(item => item.qty)).toEqual([50, 50]);
   await wait(100);
 });
+it('merges categories/deadlines, chooses earliest exact packets, supports All and search without losing choices', async () => {
+  preload();
+  const items = [
+    { id: 'late', name: 'Набор', qty: 50, source: 'Акция A', until: '23:59 10.11.2026' },
+    { id: 'unknown', name: 'Набор', qty: 50, source: 'Акция B', until: '' },
+    { id: 'early', name: 'Набор', qty: 50, source: 'Акция C', until: '08:00 04.11.2026' },
+    { id: 'other', name: 'Другое', qty: 1, source: 'Акция A', until: '' }
+  ];
+  mocks.invoke.mockImplementation(async (command, args) =>
+    command === 'read_transfer_page' ? { status: 'ok', roster: rosterOf(args.charId, { items }) } : sent(args)
+  );
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
+  const count = $('[data-item-group="0"]');
+  expect(count.max).toBe('3');
+  expect($('.tr-packet-details').open).toBe(false);
+  count.value = '0';
+  count.dispatchEvent(new Event('change', { bubbles: true }));
+  $('[data-group-max]').click();
+  expect(count.value).toBe('3');
+  $('[data-items-clear]').click();
+  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 0 пак. · 0 предметов');
+  count.value = '1';
+  count.dispatchEvent(new Event('change', { bubbles: true }));
+  const other = $('[data-item-group="1"]');
+  other.value = '0';
+  other.dispatchEvent(new Event('change', { bubbles: true }));
+  const search = $('[data-item-search]');
+  search.value = 'Другое';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(count.closest('tr').hidden).toBe(true);
+  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 1 пак. · 50 предметов');
+  $('.tr-preview-dialog [data-preview-close]').click();
+  $('#tr-ack').click();
+  $('[data-act="start"]').click();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  expect(mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].itemSelection).toEqual([
+    { id: 'early', name: 'Набор', qty: 50, source: 'Акция C', until: '08:00 04.11.2026' }
+  ]);
+  await wait(100);
+});

@@ -1,3 +1,4 @@
+import { promoDeadlineLabel } from './promoDeadlineLabel.js';
 import { dockCurrentTask, onTaskChange } from '../../core/taskLog.js';
 import { state } from '../../core/state.js';
 import { loadLog } from './promoLog.js';
@@ -88,9 +89,7 @@ export function renderPromoSuggestions(dlg) {
     const title = document.createElement('b');
     title.textContent = row.code;
     const info = document.createElement('small');
-    info.textContent = row.expiresText
-      ? `Промокод активен ${row.expiresText}`
-      : 'Срок действия промокода в новости не найден';
+    info.textContent = `Промокод активен до: ${promoDeadlineLabel(row)}`;
     const source = document.createElement('span');
     source.textContent = row.title;
     const add = document.createElement('button');
@@ -98,7 +97,7 @@ export function renderPromoSuggestions(dlg) {
     add.className = 'btn secondary small promo-news-add';
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
     add.disabled = !!row.expiresOn && row.expiresOn < today;
-    add.textContent = '+';
+    add.textContent = 'Добавить промокод';
     add.title = add.disabled ? 'Срок из новости истёк' : 'Добавить промокод';
     add.setAttribute('aria-label', add.title);
     add.onclick = () => {
@@ -117,7 +116,7 @@ export function renderPromoSuggestions(dlg) {
     const rewards = document.createElement('details');
     const caption = document.createElement('summary');
     caption.textContent = `Содержимое промокода (${row.rewards?.length || 0})`;
-    rewards.open = true;
+    rewards.open = false;
     rewards.append(caption);
     if (row.rewards?.length) {
       const list = document.createElement('ul');

@@ -19,7 +19,7 @@ vi.mock('../js/modules/automation/promoDiscovery.js', () => ({
           code: 'PWEXAMPLE26',
           title: 'Новость',
           sourceUrl: 'https://pwonline.ru/news.php?article=9142',
-          expiresText: 'до 23:59 МСК 25 октября 2026',
+          expiresText: 'до 23:59 мск 25 октября 2026',
           serverRestriction: 'Цефей',
           rewards: ['Метеорит ×75', '<img src=x onerror=alert(1)>']
         }
@@ -88,7 +88,7 @@ describe('article viewer and accessible Stop', () => {
     );
   });
   it('shows deadline, restriction and reward text without executing source markup', () => {
-    expect(document.body.textContent).toContain('23:59 МСК');
+    expect(document.body.textContent).toContain('23:59 мск');
     expect(document.body.textContent).toContain('Доступен для сервера: «Цефей»');
     expect(document.querySelectorAll('.promo-news-option li')).toHaveLength(2);
     expect(document.querySelector('img')).toBeNull();
@@ -99,23 +99,23 @@ describe('article viewer and accessible Stop', () => {
   });
 });
 
-it('offers icon-only article/add/hide actions in the requested order with accessible labels', () => {
+it('offers article/text add/hide actions in the requested order with accessible labels', () => {
   const card = document.querySelector('.promo-news-option');
   expect(
     [...card.querySelectorAll('.promo-news-actions button')].map(button => button.getAttribute('aria-label'))
   ).toEqual(['Открыть статью', 'Добавить промокод', 'Скрыть промокод']);
   expect([...card.querySelectorAll('.promo-news-actions button')].map(button => button.textContent)).toEqual([
     '🌐',
-    '+',
+    'Добавить промокод',
     '⊘'
   ]);
 });
 
-it('matches the reference order and shows reward list initially, with a full-width icon-only add action', () => {
+it('matches the reference order and collapses reward list initially, with a full-width text add action', () => {
   const card = document.querySelector('.promo-news-option');
   expect([...card.children].map(el => el.tagName)).toEqual(['B', 'SPAN', 'SMALL', 'SMALL', 'DETAILS', 'DIV']);
   expect(card.children[1].textContent).toBe('Новость');
-  expect(card.children[2].textContent).toContain('Промокод активен до 23:59 МСК');
-  expect(card.querySelector('details').open).toBe(true);
+  expect(card.children[2].textContent).toContain('Промокод активен до: 23:59 мск');
+  expect(card.querySelector('details').open).toBe(false);
   expect(card.querySelector('.promo-news-actions button:nth-child(2)').classList.contains('promo-news-add')).toBe(true);
 });

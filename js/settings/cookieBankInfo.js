@@ -46,7 +46,7 @@ export function initCookieBankInfo({ characters, readStatus = defaultReadStatus 
           if (metadata.length) {
             const wrap = document.createElement('div');
             wrap.className = 'promo-scroll';
-            wrap.innerHTML = `<table class="cookie-bank-table"><thead><tr><th>Куки</th><th>Тип</th><th>Срок истечения</th></tr></thead><tbody>${metadata
+            wrap.innerHTML = `<table class="cookie-bank-table"><thead><tr><th>Куки</th><th>Тип</th><th>Срок истечения</th><th>Сайт</th></tr></thead><tbody>${metadata
               .map((cookie, index) => {
                 const type =
                   cookie.kind === 'session'
@@ -62,7 +62,11 @@ export function initCookieBankInfo({ characters, readStatus = defaultReadStatus 
                       : 'Не сообщён';
                 const basis =
                   cookie.expiryBasis === 'savedAtPlusMaxAge' ? ' · ориентир: Max-Age от времени сохранения' : '';
-                return `<tr><td>№ ${index + 1}</td><td>${type}</td><td>${escapeHtml(expires + basis)}</td></tr>`;
+                const site =
+                  typeof cookie.site === 'string' && /^(?:[a-z0-9-]+\.)*pwonline\.ru$/i.test(cookie.site)
+                    ? cookie.site.toLowerCase()
+                    : 'Не сообщён';
+                return `<tr><td>№ ${index + 1}</td><td>${type}</td><td>${escapeHtml(expires + basis)}</td><td>${escapeHtml(site)}</td></tr>`;
               })
               .join('')}</tbody></table>`;
             line.append(wrap);

@@ -12,6 +12,7 @@ it('starts collapsed, lazily reads anonymous metadata and never invents a sessio
       cookieMetadata: [
         {
           kind: 'persistent',
+          site: 'pwonline.ru',
           expiresAt: 1781000294,
           name: 'DO_NOT_DISPLAY_COOKIE_NAME',
           value: 'DO_NOT_DISPLAY_VALUE'
@@ -31,6 +32,13 @@ it('starts collapsed, lazily reads anonymous metadata and never invents a sessio
   await vi.waitFor(() => expect(document.body.textContent).toContain('Игрок a →'));
   expect(readStatus).toHaveBeenCalledTimes(1);
   expect(document.body.textContent).toContain('2026');
+  expect([...document.querySelectorAll('th')].map(el => el.textContent)).toEqual([
+    'Куки',
+    'Тип',
+    'Срок истечения',
+    'Сайт'
+  ]);
+  expect(document.body.textContent).toContain('pwonline.ru');
   expect(document.body.textContent).toContain('Сохранены в банк:');
   expect(document.body.textContent).toContain('срок истёк');
   expect(document.body.textContent).toContain('Не задан сайтом — точной даты нет');

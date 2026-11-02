@@ -68,7 +68,21 @@ export function attachVaultConflictRecovery({ raw, aliases, review }) {
   button.className = 'btn secondary';
   button.dataset.vaultReview = '';
   button.textContent = 'Сравнить контакты и выбрать источник';
-  banner.append(button);
+  const fieldLabels = { email: 'почта', password: 'пароль', recoveryEmail: 'резервная почта', phone: 'телефон' };
+  const differences = review.conflicts.map(conflict => {
+    const local = JSON.parse(conflict.file || '{}'),
+      windows = JSON.parse(conflict.windows || '{}');
+    const fields = CONTACT_FIELDS.filter(field => (local[field] || '') !== (windows[field] || ''));
+    return `${conflict.id}: ${fields.map(field => fieldLabels[field]).join(', ')}`;
+  });
+  const summary = document.createElement('details');
+  summary.dataset.vaultConflictSummary = '';
+  const heading = document.createElement('summary');
+  heading.textContent = `Отличаются контакты у ${review.conflicts.length} персонажей — какие поля?`;
+  const explanation = document.createElement('p');
+  explanation.textContent = `Локальная проверка при запуске. Отличаются контакты (${review.conflicts.length}): ${differences.join('; ')}. По этим данным нельзя определить, какая версия новее. Файл можно перенести с другого ПК, но защищённые записи Windows этим переносом не заменяются.`;
+  summary.append(heading, explanation);
+  banner.append(summary, button);
   button.onclick = () => {
     let consent;
     const result = document.createElement('p');

@@ -170,6 +170,8 @@ it('missing or ambiguous raw IDs do not offer a replacement', () => {
 it('comparison is opt-in, escaped and masked by default; cancel and unconfirmed choice make no IPC calls', () => {
   attachVaultConflictRecovery({ raw, review });
   expect(invoke).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-vault-conflict-summary]').textContent).toContain('a: почта, пароль');
+  expect(document.querySelector('[data-vault-conflict-summary]').textContent).not.toContain('PRIVATE');
   document.querySelector('[data-vault-review]').click();
   expect(document.body.innerHTML).not.toContain('PRIVATE_FILE');
   expect(document.body.innerHTML).not.toContain('PRIVATE_WINDOWS');
