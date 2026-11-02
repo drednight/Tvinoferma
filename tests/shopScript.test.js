@@ -2,7 +2,7 @@
 //   site-shop.html         — /chests2.php: баланс 54, камни, сундуки «Знак…», «Камень асуров» упёрся в лимит («Доступно Вам: 0 шт.»)
 //   site-shop-history.html — /chests2.php?do=history: 6 записей «Покупка предмета …»
 // Данные очищены: логин заменён, токены покупок обнулены.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { runPageScript, fixture, editDom } from './helpers/pageScript.js';
 
 const WANTED = [
@@ -24,6 +24,8 @@ const shop = () => fixture('site-shop.html');
 const byName = (r, name) => r.data.items.find(i => i.want === name);
 
 beforeEach(() => {
+  window.__TF_STOPPED = false;
+  window.__TF_STOP_EPOCH = 0;
   window.__TF_SHOP = undefined;
 });
 
@@ -220,6 +222,25 @@ describe('shop.js: нажатие (click) — как человек: «Купи�
     const m = window.location.hash.match(/#TF_SHOP_V1_(.*)$/);
     return m ? JSON.parse(decodeURIComponent(m[1])) : null;
   };
+
+  it.each([false, true])('Stop prevents delayed Yes in a visible window (resumed=%s)', async resumed => {
+    const { buildScript } = await import('./helpers/pageScript.js');
+    vi.useFakeTimers();
+    try {
+      const clicks = withSiteScript(shop());
+      window.__TF_SHOP = { mode: 'click', wanted: WANTED, target: 'Камень лагеря', expectPrice: 40 };
+      new Function(buildScript('shop.js'))();
+      window.__TF_STOPPED = true;
+      window.__TF_STOP_EPOCH++;
+      if (resumed) window.__TF_STOPPED = false;
+      vi.advanceTimersByTime(1000);
+      expect(clicks).toEqual([]);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      window.__TF_STOPPED = false;
+    }
+  });
 
   it('нажимает «Купить», сверяет окно и один раз нажимает «Да» по адресу этого предмета', async () => {
     const clicks = withSiteScript(shop());

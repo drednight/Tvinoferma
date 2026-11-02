@@ -73,8 +73,11 @@ export function rememberCustomPage(url) {
 export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const extra = customPages();
-  const task = startTask('🔍 Поиск марафонов на сайте', { dock, total: 100 }).watch('scan');
-  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  const task = startTask('🔍 Поиск марафонов на сайте', { dock, total: 100 });
+  await task.waitTurn();
+  if (task.cancelled) return { titles: [], errors: [], scanner, task };
+  task.watch('scan');
+  await task?.ready?.(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(
     scanner
@@ -119,8 +122,11 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
 /** Разбирает страницу марафона. → { marathon: {name, sourceUrl, stages, quests, debug}, error, task } */
 export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
-  const task = startTask('📥 Загрузка заданий марафона', { dock }).watch('detail');
-  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  const task = startTask('📥 Загрузка заданий марафона', { dock });
+  await task.waitTurn();
+  if (task.cancelled) return { marathon: null, error: 'cancelled', task };
+  task.watch('detail');
+  await task?.ready?.(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Страница: ${url}`);
   task.log(scanner ? `Профиль: ${scanner.nick}` : 'Без профиля со входом', scanner ? 'info' : 'warn');
@@ -160,8 +166,11 @@ export const isNewsUrl = url => /news\.php\?.*article=\d+/i.test(String(url || '
  * → { marathon: {name, sourceUrl, newsUrl, stages, quests, debug}, error, task }
  */
 export async function loadNewsPage(url, { dock = false, onTask } = {}) {
-  const task = startTask('📰 Разбор новости о марафоне', { dock }).watch('news');
-  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  const task = startTask('📰 Разбор новости о марафоне', { dock });
+  await task.waitTurn();
+  if (task.cancelled) return { marathon: null, error: 'cancelled', task };
+  task.watch('news');
+  await task?.ready?.(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Новость: ${url}`);
   const wait = new Promise(r => {
@@ -217,12 +226,16 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
  * → { items: [{id,url,title,date,isoDate}], error, task }; ошибка на одной странице не отменяет найденное на других.
  */
 export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, onTask } = {}) {
-  const task = startTask('🔎 Поиск новости о марафоне', { dock }).watch('news');
-  await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
+  const task = startTask('🔎 Поиск новости о марафоне', { dock });
+  await task.waitTurn();
+  if (task.cancelled) return { items: [], error: 'cancelled', task };
+  task.watch('news');
+  await task?.ready?.(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   const loaded = [];
   let firstError = null;
   for (let page = 1; page <= pages; page++) {
+    if (task.cancelled) break;
     const url = newsListUrl(page);
     task.log(`Страница ${page} из ${pages}: ${url}`);
     const wait = new Promise(r => {
@@ -342,6 +355,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
   noUrl.forEach(m => task.log(`«${m.title}»: не указана страница на сайте — пропущен`, 'warn'));
   byUrl.forEach((ids, url) => task.log(`${url}: ${ids.size} перс.`));
   task.watch(...jobs.map(j => `char:${j.charId}`));
+  await task?.ready?.();
 
   const report = {}; // marathonId -> { changes: [], errors: [] }
   marathons.forEach(m => {

@@ -102,6 +102,8 @@ const KEY = '1000000002_3_1000000003';
 const FILL = { shard: '3', recipient: KEY, charName: '#Тестовый' };
 
 beforeEach(() => {
+  window.__TF_STOPPED = false;
+  window.__TF_STOP_EPOCH = 0;
   window.__TF_XFER = undefined;
   delete window.shards;
   delete window.jQuery;
@@ -358,6 +360,27 @@ describe('transfer.js: click (единственное нажатие «Пере
     window.__TF_XFER = { mode: 'click', ...FILL, count };
     return count;
   };
+
+  it.each([false, true])('Stop prevents delayed Yes in a visible window (resumed=%s)', resumed => {
+    vi.useFakeTimers();
+    try {
+      ready();
+      const yes = vi.fn();
+      document.querySelector('.js-transfer-done').addEventListener('click', yes);
+      exec();
+      window.__TF_STOPPED = true;
+      window.__TF_STOP_EPOCH++;
+      if (resumed) window.__TF_STOPPED = false;
+      document.querySelector('.modals').style.display = 'block';
+      vi.advanceTimersByTime(2000);
+      expect(go.__h).toHaveBeenCalledTimes(1);
+      expect(yes).not.toHaveBeenCalled();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      window.__TF_STOPPED = false;
+    }
+  });
 
   it('нажимает «Передать» ровно один раз; окна подтверждения нет — «Да» не нажимается', () => {
     vi.useFakeTimers();

@@ -9,6 +9,13 @@
 //   history — только чтение: «История монет» (последние 10 записей).
 // Ответ: #TF_SHOP_V1_<json> = { data, error }.
 (function () {
+  // A visible manual window survives Stop. Its delayed confirmation must not,
+  // even if a new native operation clears the flag in the same document.
+  var stopEpoch = window.__TF_STOP_EPOCH || 0;
+  function wasCancelled() {
+    return !!window.__TF_STOPPED || stopEpoch !== (window.__TF_STOP_EPOCH || 0);
+  }
+
   function report(data, error) {
     var payload = { data: data, error: error ? String(error) : null };
     window.location.hash = 'TF_SHOP_V1_' + encodeURIComponent(JSON.stringify(payload));
@@ -253,6 +260,7 @@
       link.click();
       if (stopped) { report(null, 'modal_missing'); return; }
       setTimeout(function () {
+        if (wasCancelled()) return;
         var modal = TF.q('shop.modal');
         var yes = TF.q('shop.modalConfirm');
         var title = TF.q('shop.modalTitle');

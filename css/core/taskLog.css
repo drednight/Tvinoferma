@@ -905,3 +905,20 @@ body[data-ui-style='next'] .tf-dock-toggle {
 .sr-details li + li {
   margin-top: 4px;
 }
+
+/* Emergency controls stay clickable above script workspaces, but below real
+   confirmations (z-index 2000). Never raise the whole application's topbar. */
+body #tf-task-dock.is-script-overlay {
+  position: fixed;
+  top: 8px;
+  right: 16px;
+  z-index: 1100;
+  width: var(--tf-dock-w);
+  max-width: calc(100vw - 32px);
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-2);
+}

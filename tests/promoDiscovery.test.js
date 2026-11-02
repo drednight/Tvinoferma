@@ -1,0 +1,163 @@
+import { describe, it, expect, vi } from 'vitest';
+import {
+  articleId,
+  pinCode,
+  newsArticles,
+  articleCodes,
+  expiryHint
+} from '../js/modules/automation/promoNewsParser.js';
+import { createPromoDiscovery, promoCoverage } from '../js/modules/automation/promoDiscovery.js';
+const index = '<a href="./news.php?article=123">Новость</a><a href="https://pwonline.ru/news.php?article=456">Ещё</a>';
+const article = (code = 'PWMIZAR2026HB') =>
+  `<h1>Подарок</h1><div class="js-mediator-article"><p>Промокод действует до 5 ноября 2026 года: <a href="./pin/${code}">Активировать</a></p></div>`;
+const storage = () => {
+  const map = new Map();
+  return { getItem: k => map.get(k) || null, setItem: (k, v) => map.set(k, v) };
+};
+describe('official public news extraction', () => {
+  it('resolves absolute, root relative and ./pin links, and folds duplicate codes', () => {
+    for (const url of ['https://pwonline.ru/pin/PWMIZAR2026HB', '/pin/PWMIZAR2026HB', './pin/PWMIZAR2026HB'])
+      expect(pinCode(url, 'https://pwonline.ru/news.php?article=1')).toBe('PWMIZAR2026HB');
+    expect(articleCodes(article(), '123')).toEqual([
+      expect.objectContaining({
+        code: 'PWMIZAR2026HB',
+        expiresOn: '2026-11-05',
+        sourceUrl: 'https://pwonline.ru/news.php?article=123'
+      })
+    ]);
+    expect(newsArticles(index + index)).toEqual(['123', '456']);
+  });
+  it.each([
+    'https://evil.test/pin/ABCD1234',
+    'https://pwonline.ru.evil.test/pin/ABCD1234',
+    'javascript:alert(1)',
+    'https://a@pwonline.ru/pin/ABCD1234',
+    '/pin/../admin',
+    '/pin/ABC',
+    '/pin/ABC%2FDEF'
+  ])('rejects activation link %s', value => expect(pinCode(value)).toBeNull());
+  it('does not discover codes in prose/scripts/nav or execute HTML', () => {
+    const html =
+      '<h1>Новость</h1><article><p>NOTACODE1234</p><script>window.HACKED=true</script><img src=x onerror="window.HACKED=true"></article><nav><a href="/pin/NAVCODE">x</a></nav>';
+    expect(articleCodes(html, '1')).toEqual([]);
+    expect(window.HACKED).toBeUndefined();
+    expect(articleId('https://evil.test/news.php?article=123')).toBeNull();
+  });
+  it('reports anti-bot/changed markup instead of a false no-code success', () => {
+    expect(() => newsArticles('<title>Just a moment</title>')).toThrow('challenge');
+    expect(() => newsArticles('<h1>Unavailable</h1>')).toThrow('markup');
+    expect(() => articleCodes('<p>Maintenance</p>', '1')).toThrow('markup');
+  });
+  it('keeps uncertain deadlines as source text, validates dates, does not mix two codes', () => {
+    expect(expiryHint('Промокод до 31.02.2026')).toMatchObject({ expiresOn: null });
+    expect(expiryHint('Промокод до 5 ноября')).toMatchObject({ expiresOn: null, expiresText: expect.any(String) });
+    expect(expiryHint('Скидки до 5 ноября 2026')).toEqual({ expiresOn: null, expiresText: null });
+    const html = article().replace('</p>', '<a href="/pin/SECOND12">Второй</a></p>');
+    expect(articleCodes(html, '1').every(row => row.expiresOn === null)).toBe(true);
+  });
+});
+describe('bounded background discovery', () => {
+  const clock = Date.parse('2026-11-02T03:00:00Z');
+  it('reads both indexes and every unique news, deduplicates, persists and does not fetch again the same Moscow day', async () => {
+    const read = vi.fn(async args => ({ status: 200, html: args.page ? index : article() }));
+    let now = clock;
+    const store = storage();
+    const service = createPromoDiscovery({ read, storage: store, now: () => now });
+    const first = await service.check();
+    expect(first.status).toBe('checked');
+    expect(first.checked).toBe(2);
+    expect(first.codes).toHaveLength(1);
+    expect(read).toHaveBeenCalledTimes(4);
+    await service.check();
+    expect(read).toHaveBeenCalledTimes(4);
+    await createPromoDiscovery({ read, storage: store, now: () => now }).check();
+    expect(read).toHaveBeenCalledTimes(4);
+    now += 86400000;
+    await service.check();
+    expect(read).toHaveBeenCalledTimes(8);
+  });
+  it('deduplicates concurrent startup/open/manual checks and never sends PIN or character commands', async () => {
+    let done;
+    const held = new Promise(r => {
+      done = r;
+    });
+    const read = vi.fn(async args => {
+      await held;
+      return { status: 200, html: args.page ? index : article() };
+    });
+    const service = createPromoDiscovery({ read, storage: storage(), now: () => clock });
+    const a = service.check(),
+      b = service.check({ force: true });
+    expect(a).toBe(b);
+    done();
+    await a;
+    expect(read.mock.calls.every(([args]) => Object.keys(args).sort().join(',') === 'article,page')).toBe(true);
+  });
+  it('uses at most two article requests concurrently and keeps partial discoveries on an error', async () => {
+    let active = 0,
+      maximum = 0;
+    const read = vi.fn(async args => {
+      if (args.page) return { status: 200, html: index };
+      active++;
+      maximum = Math.max(maximum, active);
+      await Promise.resolve();
+      active--;
+      return args.article === '456' ? { status: 403 } : { status: 200, html: article() };
+    });
+    const service = createPromoDiscovery({ read, storage: storage(), now: () => clock });
+    const result = await service.check();
+    expect(result.status).toBe('partial');
+    expect(result.lastCompleteAt).toBe(0);
+    expect(result.codes).toHaveLength(1);
+    expect(maximum).toBeLessThanOrEqual(2);
+    await service.check();
+    expect(read).toHaveBeenCalledTimes(4);
+    await service.check({ force: true });
+    expect(service.snapshot().codes).toHaveLength(1);
+  });
+  it('ends on budget, never claims a complete scan, and does not discard old codes when offline', async () => {
+    let now = clock;
+    let offline = false;
+    const read = vi.fn(async args => {
+      if (offline) throw Error('offline');
+      if (args.article) now += 70000;
+      return {
+        status: 200,
+        html: args.page ? index.replace('</a>', '</a><a href="?article=789">more</a>') : article()
+      };
+    });
+    const service = createPromoDiscovery({ read, storage: storage(), now: () => now });
+    expect((await service.check()).status).toBe('partial');
+    offline = true;
+    expect((await service.check({ force: true })).codes).toHaveLength(1);
+  });
+  it('provides only confirmed local-log coverage; discovery never marks a code activated', () => {
+    expect(
+      promoCoverage(
+        [{ code: 'CODE1234' }],
+        [{ id: 'a' }, { id: 'b' }],
+        [{ code: 'code1234', entered: { a: { at: 'today' } } }]
+      )[0]
+    ).toMatchObject({ entered: 1, remaining: 1 });
+  });
+});
+it('never restores a checking lock after a crash and fences a late response after dispose/reset', async () => {
+  const store = storage();
+  store.setItem('tf_promo_discovery_v1', JSON.stringify({ version: 1, status: 'checking', codes: [], articles: {} }));
+  let release;
+  const held = new Promise(r => (release = r));
+  const service = createPromoDiscovery({
+    storage: store,
+    read: async args => {
+      await held;
+      return { status: 200, html: args.page ? index : article() };
+    }
+  });
+  expect(service.snapshot().status).toBe('partial');
+  const pending = service.check({ force: true });
+  service.dispose();
+  release();
+  await pending;
+  expect(service.snapshot().codes).toEqual([]);
+  expect(JSON.parse(store.getItem('tf_promo_discovery_v1')).codes).toEqual([]);
+});

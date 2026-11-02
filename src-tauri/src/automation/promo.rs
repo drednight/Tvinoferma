@@ -8,7 +8,7 @@
 //! - режим `dry_run` доходит до осмотра страницы и не нажимает ничего;
 //! - код в консоль не пишется; награда со страницы успеха возвращается в `rewards`.
 
-use crate::parsers::{eval_and_wait, navigate_clean, tf_log, with_common};
+use crate::parsers::{eval_and_wait, navigate_scoped, tf_log, with_common};
 use crate::pool;
 use crate::windows::window_label;
 use serde_json::{json, Value};
@@ -191,7 +191,7 @@ pub async fn activate_promo(
     let url = format!("{}{}", PIN_URL, code);
     let task = pool::acquire(&app, &char_id, &url).await?;
     tf_log(&app, &scope, "info", task.describe());
-    navigate_clean(task.window(), &url).await?;
+    navigate_scoped(task.window(), &url, &scope).await?;
 
     // 1. Осмотр страницы (только чтение)
     let inspect = eval_and_wait(
@@ -239,10 +239,12 @@ pub async fn activate_promo(
 
     // 2. Нажатие: строго один раз, без повторов
     tf_log(&app, &scope, "step", format!("Нажимаю «{}»", label));
-    if task
-        .window()
-        .eval(with_common(&pin_script("click", &code, "")))
-        .is_err()
+    if crate::parsers::eval_scoped(
+        task.window(),
+        &with_common(&pin_script("click", &code, "")),
+        &scope,
+    )
+    .is_err()
     {
         task.finish(Some(&char_id), true, true).await;
         return Ok(payload(

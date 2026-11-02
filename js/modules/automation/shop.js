@@ -1,3 +1,4 @@
+import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/shop.js
 // <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков: покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
 // Цены, наличие, описание и лимиты всегда читаются с сайта при открытии окна (команда read_shop); данные прошлого чтения
@@ -98,7 +99,10 @@ export function openShopDialog({ ids = [] } = {}) {
     onClose: () => {
       closed = true;
       clearTimeout(renderTimer);
-      if (running) running.cancelled = true;
+      if (running) {
+        running.stop?.();
+        running.cancelled = true;
+      }
       if (scanSignal) scanSignal.cancelled = true;
     }
   });
@@ -440,7 +444,7 @@ export function openShopDialog({ ids = [] } = {}) {
       'Цены, наличие и баланс читаются с сайта при открытии окна. Покупка необратима — запрос подтверждается.';
     dlg.body.innerHTML = `
       ${noteHtml({
-        icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+        icon: '◈',
         title: 'Что сделает это окно',
         text:
           'Отмеченные предметы покупаются за Древние монеты на аккаунте сайта: каждый покупается отдельной покупкой, штука за штукой. ' +
@@ -470,6 +474,15 @@ export function openShopDialog({ ids = [] } = {}) {
       <button class="btn secondary" data-act="dry" title="Откроет магазин и найдёт кнопку «Купить», но не нажмёт её: ничего не покупается и не записывается">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить</button>`;
     renderDynamic();
+
+    layoutScriptWorkspace(dlg, {
+      selected: accSel,
+      apply(ids) {
+        accSel.clear();
+        ids.forEach(id => accSel.add(id));
+        renderPick();
+      }
+    });
   }
 
   /** Всё, что зависит от данных сайта и выбора. Строки с полями ввода пересобираются только вызовом из scheduleRender (не во время ввода). */
@@ -654,12 +667,14 @@ export function openShopDialog({ ids = [] } = {}) {
     );
     const signal = { cancelled: false };
     running = signal;
+    signal.stop = () => task.stop();
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
     await task.waitTurn();
     task.watch(...accounts.map(a => `char:${a.char.id}`));
+    await task.ready?.();
     task.setStep(`${accounts.length} акк., по ${browserSlots.max} одновременно`);
 
     phase = 'running';
@@ -667,9 +682,11 @@ export function openShopDialog({ ids = [] } = {}) {
       ? '👁 Пробный запуск: магазин открывается, кнопка ищется, но не нажимается.'
       : 'Идёт покупка: аккаунты обрабатываются несколько одновременно, предметы у каждого — по очереди, штука за штукой.';
     dlg.body.innerHTML = runningHtml(accounts);
-    dlg.foot.innerHTML = `<span class="shop-muted sd-foot-spacer">«Стоп» не начинает новых покупок; начатая закончится и будет учтена.</span>
+    layoutScriptWorkspace(dlg);
+    dlg.foot.innerHTML = `<span class="shop-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
+      signal.stop?.();
       signal.cancelled = true;
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = '⏳ Останавливаю…';
@@ -861,7 +878,7 @@ export function openShopDialog({ ids = [] } = {}) {
           ]
         : [
             {
-              icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+              icon: '◈',
               label: 'куплено',
               value: s.bought,
               tone: 'ok'
@@ -897,6 +914,8 @@ export function openShopDialog({ ids = [] } = {}) {
           ? '<button class="btn secondary" data-act="back">← К выбору</button><button class="btn primary" data-act="real"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить по-настоящему</button>'
           : `<button class="btn primary" data-act="again" ${checking ? 'disabled' : ''}>🛒 Активировать другие предметы</button>`
       }`;
+
+    layoutScriptWorkspace(dlg);
   }
 
   /* ------------------------------ события ------------------------------ */

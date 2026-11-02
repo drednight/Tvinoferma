@@ -1,3 +1,4 @@
+import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/transfer.js
 // 📦 Передача предметов в игру (Issue #26): диалог «браузеры → сервер → получатель → сводка → передача → итог».
 // Подарки лежат на аккаунте сайта; приложение управляет страницей /promo_items.php в окне каждого браузера.
@@ -109,7 +110,10 @@ export function openTransferDialog({ ids = [] } = {}) {
     wide: true,
     onClose: () => {
       offStatus();
-      if (running) running.cancelled = true;
+      if (running) {
+        running.stop?.();
+        running.cancelled = true;
+      }
     }
   });
   dlg.body.classList.add('tr-body'); // блоки не сжимаются, окно прокручивается (иначе список браузеров схлопывается)
@@ -254,6 +258,15 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn secondary" data-act="dry" title="Пройти все шаги, но не нажимать «Передать»">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start" disabled>📦 Передать</button>`;
     updateAll();
+
+    layoutScriptWorkspace(dlg, {
+      selected: selected,
+      apply(ids) {
+        selected.clear();
+        ids.forEach(id => selected.add(id));
+        renderForm();
+      }
+    });
   }
 
   const notesHtml = () =>
@@ -395,12 +408,14 @@ export function openTransferDialog({ ids = [] } = {}) {
     );
     const signal = { cancelled: false };
     running = signal;
+    signal.stop = () => task.stop();
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
     await task.waitTurn();
     task.watch(...chars.map(c => `char:${c.id}`));
+    await task.ready?.();
     task.setStep(`${chars.length} браузеров, по ${browserSlots.max} одновременно, повторов до ${retries}`);
     renderScanning(chars, signal);
 
@@ -438,6 +453,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       const p = dlg.body.querySelector('#tr-progress');
       if (alive() && p) p.textContent = 'Читаю список серверов…';
       running = signal;
+      signal.stop = () => task.stop();
       try {
         await refreshServerStatus({ signal, invokeFn: invoke, retries, retryDelayMs });
       } finally {
@@ -496,9 +512,11 @@ export function openTransferDialog({ ids = [] } = {}) {
           )
           .join('')}</tbody></table></div>`
       })}`;
-    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых чтений; начатые завершатся.</span>
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
+
+    layoutScriptWorkspace(dlg);
   }
 
   function updateScanning(row, done, total) {
@@ -518,6 +536,7 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   function bindStop(signal) {
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
+      signal.stop?.();
       signal.cancelled = true;
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = '⏳ Останавливаю…';
@@ -537,12 +556,14 @@ export function openTransferDialog({ ids = [] } = {}) {
     );
     const signal = { cancelled: false };
     running = signal;
+    signal.stop = () => task.stop();
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
     await task.waitTurn();
     task.watch(...plans.map(p => `char:${p.char.id}`));
+    await task.ready?.();
     task.setStep(
       `${todo.length} аккаунтов, по ${browserSlots.max} одновременно${dry ? ', без нажатия «Передать»' : ''}`
     );
@@ -619,9 +640,11 @@ export function openTransferDialog({ ids = [] } = {}) {
       : 'Идёт передача: аккаунты обрабатываются несколько одновременно. После «Передать» сайт открывает историю передач — по ней я проверяю результат.';
     dlg.body.innerHTML = `${progressHtml('tr-progress', 0, plans.length)}
       ${sectionHtml('Ход передачи', { body: tableHtml(plans, new Map()) })}`;
-    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых передач; уже нажатые завершатся и будут записаны в журнал.</span>
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
+
+    layoutScriptWorkspace(dlg);
   }
 
   function updateRunning(row, done, total) {
@@ -692,6 +715,8 @@ export function openTransferDialog({ ids = [] } = {}) {
       <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить неудачные${s.rerun ? ` (${s.rerun})` : ''}</button>
       <button class="btn primary" data-act="close">Закрыть</button>`;
+
+    layoutScriptWorkspace(dlg);
   }
 
   /* ----------------------------- события ----------------------------- */

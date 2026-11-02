@@ -12,7 +12,7 @@
 //! - режим `dry_run` доходит до осмотра страницы и ничего не нажимает.
 
 use crate::automation::promo::is_valid_char_id;
-use crate::parsers::{eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common};
+use crate::parsers::{eval_and_wait, navigate_scoped, read_hash_payload, tf_log, with_common};
 use crate::pool;
 use crate::windows::window_is_open;
 use serde_json::{json, Value};
@@ -223,7 +223,7 @@ async fn read_page(
     let scope = format!("char:{}", char_id);
     let task = pool::acquire(app, char_id, url).await?;
     tf_log(app, &scope, "info", task.describe());
-    navigate_clean(task.window(), url).await?;
+    navigate_scoped(task.window(), url, &scope).await?;
     let res = eval_and_wait(task.window(), &shop_script(cfg), PREFIX, timeout, &scope).await;
     task.finish(Some(char_id), close_after, page_was_logged_in(&res))
         .await;
@@ -357,7 +357,7 @@ pub async fn buy_shop_item(
     let timeout = timeout_seconds.unwrap_or(25).max(5);
     let task = pool::acquire(&app, &char_id, SHOP_URL).await?;
     tf_log(&app, &scope, "info", task.describe());
-    navigate_clean(task.window(), SHOP_URL).await?;
+    navigate_scoped(task.window(), SHOP_URL, &scope).await?;
 
     // 1. Осмотр страницы (только чтение)
     let inspect_cfg = json!({
@@ -428,10 +428,12 @@ pub async fn buy_shop_item(
     let click_cfg = json!({
         "mode": "click", "wanted": names, "target": item, "expectPrice": expect_price
     });
-    if task
-        .window()
-        .eval(with_common(&shop_script(&click_cfg)))
-        .is_err()
+    if crate::parsers::eval_scoped(
+        task.window(),
+        &with_common(&shop_script(&click_cfg)),
+        &scope,
+    )
+    .is_err()
     {
         task.finish(Some(&char_id), true, true).await;
         return Ok(fail("click_failed"));
@@ -483,7 +485,10 @@ pub async fn buy_shop_item(
                 "Страница после покупки не распознана, перечитываю магазин",
             );
             let mut page = None;
-            if navigate_clean(task.window(), SHOP_URL).await.is_ok() {
+            if navigate_scoped(task.window(), SHOP_URL, &scope)
+                .await
+                .is_ok()
+            {
                 let scan_cfg = json!({ "mode": "scan", "wanted": names });
                 let scan = eval_and_wait(
                     task.window(),
@@ -510,7 +515,11 @@ pub async fn buy_shop_item(
 
     // 4. Неясный исход: «История монет» нужна для сверки (приложение само ничего не повторяет)
     let mut history = Value::Null;
-    if status == "unknown" && navigate_clean(task.window(), HISTORY_URL).await.is_ok() {
+    if status == "unknown"
+        && navigate_scoped(task.window(), HISTORY_URL, &scope)
+            .await
+            .is_ok()
+    {
         let history_cfg = json!({ "mode": "history" });
         let res = eval_and_wait(
             task.window(),
