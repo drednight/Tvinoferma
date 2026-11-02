@@ -682,6 +682,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
+    if (!alive() || running) return;
     const todo = plans.filter(p => p.run);
     const task = startTask(
       `📦 ${dry ? 'Пробная п' : 'П'}ередача предметов → ${[...new Set(todo.map(p => p.serverName))].join(', ')}`,

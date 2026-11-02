@@ -840,3 +840,59 @@ it('an explicit override in the confirmation can run an otherwise restricted sel
   expect(Object.keys(loadLimits())).toHaveLength(1);
   await wait(100);
 });
+
+it('closing the parent while confirmation is open cancels the launch without a backup or send', async () => {
+  preload();
+  const dlg = openTransferDialog({ ids: ['a'] });
+  pickRow('a', '3');
+  pick('[data-pick="a"]', K(3, 1));
+  $('[data-act=start]').click();
+  await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
+  dlg.close();
+  await wait();
+  expect($('.tr-confirm-dialog')).toBeNull();
+  expect(mocks.backup).not.toHaveBeenCalled();
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
+});
+it('closing during the backup never starts the accepted plan afterwards', async () => {
+  let release;
+  mocks.backup.mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        release = resolve;
+      })
+  );
+  preload();
+  const dlg = openTransferDialog({ ids: ['a'] });
+  pickRow('a', '3');
+  pick('[data-pick="a"]', K(3, 1));
+  await confirmTransfer();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  expect(dlg.el.inert).toBe(true);
+  dlg.close();
+  release('backup');
+  await wait(100);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
+});
+it('closing while a retry confirmation is pending does not send after the answer', async () => {
+  mocks.invoke.mockResolvedValue({ status: 'error', clicked: false, error: 'load_failed' });
+  preload();
+  const dlg = openTransferDialog({ ids: ['a'] });
+  pickRow('a', '3');
+  pick('[data-pick="a"]', K(3, 1));
+  await confirmTransfer();
+  await vi.waitFor(() => expect($('[data-act=retry]')).not.toBeNull());
+  let release;
+  mocks.confirm.mockImplementationOnce(
+    () =>
+      new Promise(resolve => {
+        release = resolve;
+      })
+  );
+  $('[data-act=retry]').click();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  dlg.close();
+  release(true);
+  await wait(100);
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(1);
+});
