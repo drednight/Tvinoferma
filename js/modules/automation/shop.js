@@ -423,7 +423,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${
         g.others.length
           ? `<div class="shop-muted">также: ${g.members
-              .filter(member => member.nick !== g.nick)
+              .filter(member => member !== (g.rep || g.members[0]))
               .map(member => `${classIconHtml(member)}${escapeHtml(member.nick)}`)
               .join(', ')}</div>`
           : ''
