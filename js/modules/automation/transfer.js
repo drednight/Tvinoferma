@@ -230,14 +230,15 @@ export function openTransferDialog({ ids = [] } = {}) {
           'Сервер в строке обязателен: без него браузер пропускается. Сундуки не открываются — награду выбирают на сайте. ' +
           'Передача необратима, поэтому перед запуском стоит прочитать блок «Что будет передано».'
       })}
-      <details class="tr-servers" id="tr-servers">
-        <summary title="Серверы нужны не для перевода, а чтобы в списках рядом с ними были зелёные/красные точки. Открывать здесь нечего — обновление страницы серверов есть ниже.">🖥 Статус серверов</summary>
         <div class="tr-top"><label>Сервер для всех <select class="input" data-bulk-server aria-label="Сервер для всех"><option value="">— выберите сервер —</option>${servers()
           .filter(sv => sv.id)
           .map(sv => `<option value="${escapeHtml(sv.id)}">${escapeHtml(sv.name)}</option>`)
           .join(
             ''
           )}</select></label><button type="button" class="btn secondary small" data-act="bulk-server">Применить всем</button></div>
+      <details class="tr-servers" id="tr-servers">
+        <summary title="Серверы нужны не для перевода, а чтобы в списках рядом с ними были зелёные/красные точки. Открывать здесь нечего — обновление страницы серверов есть ниже.">🖥 Статус серверов</summary>
+
       <div class="tr-top">
           <div class="server-status" id="tr-server-status">${serverStatusHtml(getServerStatus())}</div>
           <button class="btn secondary small" data-act="refresh-servers" title="Прочитать заново страницу «Статус серверов» (аккаунты не нужны)">🔄 Обновить сервера</button>

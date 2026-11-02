@@ -796,6 +796,7 @@ it('applies one server to all characters, including unselected ones, without inv
   openTransferDialog({ ids: ['a'] });
   const bulk = $('[data-bulk-server]');
   expect(bulk.closest('.sp-side')).not.toBeNull();
+  expect(bulk.closest('details')).toBeNull();
   bulk.value = '5';
   $('[data-act="bulk-server"]').click();
   expect(loadPrefs().servers).toMatchObject({ a: '5', b: '5', c: '5' });
