@@ -384,3 +384,11 @@
   color: var(--text-dim);
   font-size: 0.8rem;
 }
+
+/* Reserve the top-right emergency dock instead of hiding it under the modal. */
+.tf-overlay:has(.sp-container) {
+  padding-top: 88px;
+}
+.modal-container.sp-container {
+  max-height: calc(100dvh - 110px);
+}

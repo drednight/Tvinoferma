@@ -77,3 +77,19 @@ it('cancelling a queued task never resumes or cancels scopes belonging to the ru
   expect(native).not.toHaveBeenCalled();
   current.finish();
 });
+it('keeps the real header dock above script overlays and returns it to the header afterwards', async () => {
+  const { startTask, renderDock } = await import('../js/core/taskLog.js');
+  const task = startTask('Script');
+  const dialog = document.createElement('div');
+  dialog.className = 'sp-container';
+  document.body.append(dialog);
+  renderDock();
+  const dock = document.querySelector('#tf-task-dock');
+  expect(dock.parentElement).toBe(document.body);
+  expect(dock.classList.contains('is-script-overlay')).toBe(true);
+  dialog.remove();
+  renderDock();
+  expect(dock.parentElement).toBe(document.querySelector('.topbar-right'));
+  expect(dock.classList.contains('is-script-overlay')).toBe(false);
+  task.finish();
+});

@@ -1,5 +1,6 @@
 // Variant B promoted from the demo. Only presentation/selection: real runners,
 // confirmations, per-account deduplication and uncertain-write rules stay intact.
+import { renderDock } from '../../core/taskLog.js';
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { partiesOf } from '../parties/membership.js';
@@ -15,6 +16,7 @@ export function layoutScriptWorkspace(dlg, selection) {
     dlg.close = () => {
       ctx.picker?.close();
       close();
+      renderDock();
     };
   }
   if (dlg.body.querySelector(':scope > .sp-body')) return;
@@ -129,4 +131,5 @@ export function layoutScriptWorkspace(dlg, selection) {
     main.append(...children);
   }
   dlg.body.replaceChildren(body);
+  renderDock();
 }

@@ -798,6 +798,12 @@ export function renderDock() {
   visible.sort((a, b) => rank(a) - rank(b));
   visible.length = Math.min(visible.length, 6);
   const current = dockCurrentTask();
+  // A script dialog must not cover the emergency Stop in the header. Portal only
+  // the dock, not the entire topbar; confirmations stay above it.
+  const floating = !!current && !!document.querySelector('.sp-container');
+  const host = floating ? document.body : dockHost();
+  if (dock.parentElement !== host) host.append(dock);
+  dock.classList.toggle('is-script-overlay', floating);
   dock.classList.toggle('is-open', !dockFolded);
   dock.classList.toggle('is-idle', !current);
 
