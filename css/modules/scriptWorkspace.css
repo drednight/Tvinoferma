@@ -493,3 +493,15 @@
   background: var(--surface-1);
   margin: 8px 0;
 }
+
+.sp-side > * {
+  min-width: 0;
+}
+.sp-side .tr-top {
+  min-width: 0;
+  max-width: 100%;
+}
+.sp-side .tr-top button {
+  white-space: normal;
+  max-width: 100%;
+}

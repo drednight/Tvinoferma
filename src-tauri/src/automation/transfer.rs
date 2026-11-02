@@ -427,8 +427,7 @@ pub async fn transfer_items(
         return Ok(fail("selection_required"));
     }
     if item_selection.as_ref().is_some_and(|items| {
-        items.len() > 5000
-            || serde_json::to_string(items).map_or(true, |s| s.len() > 1_000_000)
+        items.len() > 5000 || serde_json::to_string(items).map_or(true, |s| s.len() > 1_000_000)
     }) {
         return Ok(fail("bad_selection"));
     }
