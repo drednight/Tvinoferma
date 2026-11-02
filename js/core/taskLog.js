@@ -317,6 +317,7 @@ class Task {
   }
   /** Привязать события Rust с этим scope (например `char:<id>` или `scan`). */
   watch(...scopes) {
+    if (this.cancelled || this.status !== 'running') return this;
     scopes.forEach(s => {
       if (!this.scopes.includes(s)) {
         this.scopes.push(s);

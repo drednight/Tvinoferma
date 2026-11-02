@@ -63,3 +63,17 @@ it('does not start work that was waiting for a shared browser slot on Stop', asy
   expect(worker).not.toHaveBeenCalled();
   expect(rows[0].cancelled).toBe(true);
 });
+it('cancelling a queued task never resumes or cancels scopes belonging to the running task', async () => {
+  const { startTask } = await import('../js/core/taskLog.js');
+  const current = startTask('Current');
+  current.watch('scan');
+  await current.ready();
+  native.mockClear();
+  const queued = startTask('Queued');
+  queued.stop();
+  await queued.waitTurn();
+  queued.watch('scan');
+  await queued.ready();
+  expect(native).not.toHaveBeenCalled();
+  current.finish();
+});

@@ -15,7 +15,7 @@ fn cancelled_scopes() -> &'static Mutex<Vec<String>> {
     LIST.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-/// Пометить scope отменённым. Список ограничен: он живёт, пока скрипт не ушёл.
+/// Пометить scope отменённым до следующего явного запуска. Не вытеснять активную отмену.
 pub fn cancel_scope(scope: &str) {
     let scope = scope.trim();
     if scope.is_empty() {
