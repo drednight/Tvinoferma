@@ -44,6 +44,7 @@
 
     "transfer.title": ["#content_top h2"],
     "transfer.accountName": ["#content_top_2 strong", ".auth_h strong"],
+    "transfer.content": ["#content_body"],
     "transfer.form": [".js-transfer-form"],
     "transfer.row": ["table.promo_items tr"],
     "transfer.itemBlock": [".item_input_block"],
@@ -123,6 +124,11 @@
     "promo.success": ["успешно активировали"],
 
     "transfer.titleText": ["Передача предметов"],
+    "transfer.emptyTitle": ["Ваша корзина с подарками пуста"],
+    "transfer.emptyText": [
+      "В настоящий момент, у вас нет предметов для передачи в игру.",
+      "У Вас нет подарков, которые можно перевести в игру."
+    ],
     "transfer.warningTitle": ["Предупреждение"],
     "transfer.historyAccount": ["Игровой аккаунт:"],
     "transfer.historyChar": ["Персонаж:"],

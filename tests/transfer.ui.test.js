@@ -154,12 +154,24 @@ describe('форма', () => {
     expect(calls.b).toMatchObject({ shardId: '5', recipient: K(5, 7), charName: 'Одинокий' });
   });
 
-  it('сервер не выбран в строке — браузер пропускается с понятной причиной; остальные идут', () => {
+  it('сервер не выбран в строке — браузер пропускается с понятной причиной; остальные идут', async () => {
     preload();
     openTransferDialog({ ids: ['a', 'b'] });
     pickRow('b', '5');
     expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 2');
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === 'read_transfer_page') {
+        const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+        const roster = loadRosters()[args.charId];
+        return {
+          status: 'ok',
+          roster: roster ? { ...roster, items: roster.pending.items } : { ...rosterOf('99'), items: [] }
+        };
+      }
+      return answer(command, args);
+    });
     $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('Сервер не выбран');
   });
 
@@ -278,7 +290,7 @@ describe('форма', () => {
     expect($('#tr-forget').disabled).toBe(true);
   });
 
-  it('персонаж без ника на сайте: он в списке получателей как «без ника (Класс, ур. N)» и подставляется сам', () => {
+  it('персонаж без ника на сайте: он в списке получателей как «без ника (Класс, ур. N)» и подставляется сам', async () => {
     setRoster('a', {
       ...rosterOf('77'),
       shards: [{ id: '3', name: 'Фенрир', chars: [{ key: K(3, 9), name: '', cls: 'Призрак', level: 103 }] }]
@@ -289,8 +301,20 @@ describe('форма', () => {
       'Авто: без ника (Призрак, ур. 103)',
       'без ника (Призрак, ур. 103)'
     ]);
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === 'read_transfer_page') {
+        const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+        const roster = loadRosters()[args.charId];
+        return {
+          status: 'ok',
+          roster: roster ? { ...roster, items: roster.pending.items } : { ...rosterOf('99'), items: [] }
+        };
+      }
+      return answer(command, args);
+    });
     $('#tr-plan-btn').click();
-    expect($('.tr-line').textContent).toContain('без ника (Призрак, ур. 103)');
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('без ника (Призрак, ур. 103)');
   });
 
   it('🔄 в строке читает только этого персонажа (без «Статуса серверов»)', async () => {
@@ -366,16 +390,28 @@ describe('форма', () => {
     expect($('[data-act="start"]').disabled).toBe(false);
   });
 
-  it('единственный персонаж на сервере — получатель подставляется сам', () => {
+  it('единственный персонаж на сервере — получатель подставляется сам', async () => {
     preload();
     openTransferDialog({ ids: ['a'] });
     pickRow('a', '5');
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === 'read_transfer_page') {
+        const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+        const roster = loadRosters()[args.charId];
+        return {
+          status: 'ok',
+          roster: roster ? { ...roster, items: roster.pending.items } : { ...rosterOf('99'), items: [] }
+        };
+      }
+      return answer(command, args);
+    });
     $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('единственный на сервере');
     expect($('[data-act="dry"]').disabled).toBe(false);
   });
 
-  it('«Что будет передано»: после выбора персонажей, раскрывает ПОЛНЫЙ список предметов (без «ещё N»), список браузеров остаётся', () => {
+  it('«Что будет передано»: после выбора персонажей, раскрывает ПОЛНЫЙ список предметов (без «ещё N»), список браузеров остаётся', async () => {
     const items = Array.from({ length: 13 }, (_, i) => ({ id: String(i), name: `Награда ${i}`, qty: i === 0 ? 5 : 1 }));
     setRoster('a', rosterOf('77', { items }));
     setRoster('b', rosterOf('88'));
@@ -385,9 +421,21 @@ describe('форма', () => {
     expect($('.tr-preview-dialog')).toBeNull();
     expect($('#tr-summary').textContent).not.toContain('Награда');
     expect($('#tr-plan-btn').textContent).toContain('Что будет передано');
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === 'read_transfer_page') {
+        const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+        const roster = loadRosters()[args.charId];
+        return {
+          status: 'ok',
+          roster: roster ? { ...roster, items: roster.pending.items } : { ...rosterOf('99'), items: [] }
+        };
+      }
+      return answer(command, args);
+    });
     $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog')).not.toBeNull();
-    expect($('.tr-preview-dialog').querySelectorAll('li')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
+    expect($('.tr-preview-dialog').querySelectorAll('[data-item-id]')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('ещё');
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('×5');
     // окно прокручивается, блоки не сжимаются: список браузеров остался на месте
@@ -397,14 +445,26 @@ describe('форма', () => {
     expect($('.tr-preview-dialog')).toBeNull();
   });
 
-  it('сохранённый получатель пропал с сайта: в плане подсказка «выберите заново»', () => {
+  it('сохранённый получатель пропал с сайта: в плане подсказка «выберите заново»', async () => {
     preload();
     window.localStorage.setItem(
       'tf_transfer_prefs_v1',
       JSON.stringify({ servers: { a: '3' }, picks: { a: { 3: K(3, 99) } } })
     );
     openTransferDialog({ ids: ['a'] });
+    mocks.invoke.mockImplementation(async (command, args) => {
+      if (command === 'read_transfer_page') {
+        const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+        const roster = loadRosters()[args.charId];
+        return {
+          status: 'ok',
+          roster: roster ? { ...roster, items: roster.pending.items } : { ...rosterOf('99'), items: [] }
+        };
+      }
+      return answer(command, args);
+    });
     $('#tr-plan-btn').click();
+    await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('выберите заново');
   });
 
@@ -594,4 +654,53 @@ describe('Журналы → Передачи', () => {
     const all = document.querySelectorAll('.tf-dialog');
     expect(all[all.length - 1].textContent).toContain('Метеорит');
   });
+});
+
+it('fresh preview omits empty characters, shows available packet quantities and carries exact checkboxes into native transfer', async () => {
+  preload();
+  const items = [
+    { id: '11', name: 'Пакет', qty: 5 },
+    { id: '12', name: 'Оставить на сайте', qty: 2 }
+  ];
+  mocks.invoke.mockImplementation(async (command, args) =>
+    command === 'read_transfer_page'
+      ? { status: 'ok', roster: rosterOf(args.charId, { items: args.charId === 'a' ? items : [] }) }
+      : sent(args)
+  );
+  openTransferDialog({ ids: ['a', 'b'] });
+  ['a', 'b'].forEach(id => pickRow(id, '5'));
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-id]')).toHaveLength(2));
+  expect([...document.querySelectorAll('.tr-preview-dialog h4')].map(el => el.textContent)).toEqual(['Аа']);
+  expect($('.tr-preview-dialog').textContent).toContain('×5');
+  const unchecked = $('[data-item-id="12"]');
+  unchecked.click();
+  $('.tr-preview-dialog [data-preview-close]').click();
+  $('#tr-ack').click();
+  $('[data-act="start"]').click();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  const calls = mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items');
+  expect(calls).toHaveLength(1);
+  expect(calls[0][1].itemSelection).toEqual([{ id: '11', name: 'Пакет', qty: 5, source: '', until: '' }]);
+  await wait(100);
+});
+it('the shared Кого запускать radio actually filters the visible transfer roster', () => {
+  preload();
+  openTransferDialog();
+  const all = $('.script-target input[value="all"]');
+  all.checked = true;
+  all.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(document.querySelectorAll('#tr-list .tr-row')).toHaveLength(3);
+  const logged = $('.script-target input[value="logged"]');
+  logged.checked = true;
+  logged.dispatchEvent(new Event('change', { bubbles: true }));
+  expect([...document.querySelectorAll('#tr-list .tr-row')].map(el => el.dataset.row)).toEqual(['c']);
+});
+it('closing preview before async setup does not start a website scan', async () => {
+  preload();
+  openTransferDialog({ ids: ['a'] });
+  $('#tr-plan-btn').click();
+  $('.tr-preview-dialog [data-preview-close]').click();
+  await wait(150);
+  expect(mocks.invoke).not.toHaveBeenCalled();
 });

@@ -28,7 +28,6 @@ import {
   loadPrefs,
   savePrefs,
   setRoster,
-  reconcileRoster,
   clearPending,
   pruneRosters,
   recordTransfer,
@@ -93,6 +92,8 @@ export function openTransferDialog({ ids = [] } = {}) {
   pruneRosters(state.characters.map(c => c.id));
   const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
   let search = '';
+  let loginFilter = 'all';
+  const itemChoices = new Map();
   let rosters = loadRosters();
   const prefs = loadPrefs();
   let scanNotes = []; // что не удалось прочитать при последнем чтении
@@ -144,6 +145,15 @@ export function openTransferDialog({ ids = [] } = {}) {
     const q = search.trim().toLowerCase();
     return [...state.characters]
       .sort(byNick)
+      .filter(
+        c =>
+          loginFilter === 'all' ||
+          (loginFilter === 'selected'
+            ? selected.has(c.id)
+            : loginFilter === 'logged'
+              ? c.isLoggedIn === true
+              : c.isLoggedIn !== true)
+      )
       .filter(c => !q || [c.nick, c.className, ...(c.tags || [])].join(' ').toLowerCase().includes(q));
   }
 
@@ -234,6 +244,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         aside: `<span class="sd-count" id="tr-count"></span>`,
         body: `
         <div class="promo-quick">
+
           <input class="input" id="tr-search" aria-label="Поиск браузера" placeholder="Поиск: ник, класс, тег" value="${escapeHtml(search)}">
           <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
           <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
@@ -260,7 +271,8 @@ export function openTransferDialog({ ids = [] } = {}) {
 
     layoutScriptWorkspace(dlg, {
       selected: selected,
-      apply(ids) {
+      apply(ids, mode) {
+        loginFilter = mode === 'all' ? 'all' : 'selected';
         selected.clear();
         ids.forEach(id => selected.add(id));
         renderForm();
@@ -274,7 +286,22 @@ export function openTransferDialog({ ids = [] } = {}) {
       : '';
 
   const currentPlans = () =>
-    planTransfer(selectedChars(), rosters, { shards: serverMap(), picks: picksOf(), limits: force ? {} : limitsMap() });
+    planTransfer(selectedChars(), rosters, {
+      shards: serverMap(),
+      picks: picksOf(),
+      limits: force ? {} : limitsMap()
+    }).map(p => {
+      const pending = rosters[p.char.id]?.pending;
+      if (!pending || pending.stale) return p;
+      const excluded = new Set((p.skipped || []).map(i => i.id));
+      const choices = itemChoices.get(p.char.id);
+      const itemSelection = pending.items.filter(i => !excluded.has(i.id) && (!choices || choices.has(i.id)));
+      return {
+        ...p,
+        itemSelection,
+        ...(p.run && !itemSelection.length ? { run: false, status: 'nothing_to_transfer' } : {})
+      };
+    });
 
   const skipLine = p => {
     const info = statusInfo(p.status);
@@ -289,7 +316,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     return `${force ? '<div class="promo-alert">⚠ Обход ограничений включён: приложение не пропускает акции, которые сайт ранее принимал только на другой сервер. Сайт может отклонить такие предметы предупреждением.</div>' : ''}
       <div class="sd-summary">
         <div class="sd-summary-line">Будет передано с аккаунтов: <b>${run}</b> из <b>${plans.length}</b>${skipped ? `. Пропущено: <b>${skipped}</b> — причины в блоке «Что будет передано».` : '.'}</div>
-        <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Лимит сайта «не более 6 предметов за раз» снят: отмечаются все предметы.</div>
+        <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Передаются только выбранные пакеты. Для выбора и свежей проверки откройте «Что будет передано».</div>
       </div>`;
   }
 
@@ -299,29 +326,6 @@ export function openTransferDialog({ ids = [] } = {}) {
       ? `<div class="promo-warn tr-limited">🔒 Не передаём — сайт принимает их только на другой сервер:
         <ul class="tr-items">${list.map(i => `<li>${escapeHtml(i.name)}${i.qty > 1 ? ` <b>×${i.qty}</b>` : ''} <span class="promo-muted">— «${escapeHtml(i.source)}»: только на «${escapeHtml(i.server)}»</span></li>`).join('')}</ul></div>`
       : '';
-
-  /** Подробный план: по каждому браузеру — куда уйдёт и ПОЛНЫЙ список предметов (без «ещё N»). */
-  function planHtml(plans) {
-    if (!selected.size) return '';
-    return plans
-      .map(p => {
-        if (!p.run) return skipLine(p);
-        const pend = rosters[p.char.id]?.pending;
-        const known = pend && !pend.stale;
-        const skippedIds = new Set((p.skipped || []).map(i => i.id));
-        const items = known ? itemTotals(pend.items.filter(i => !skippedIds.has(i.id))) : [];
-        const body = !known
-          ? '<div class="promo-muted">Что ждёт передачи — выяснится на странице сайта. Нажмите «Обновить информацию по всем персонажам», чтобы увидеть заранее.</div>'
-          : items.length
-            ? `<ul class="tr-items">${items.map(i => `<li>${escapeHtml(i.name)}${i.qty > 1 ? ` <b>×${i.qty}</b>` : ''}</li>`).join('')}</ul>`
-            : '<div class="promo-muted">Сейчас нет предметов.</div>';
-        return `<div class="tr-plan-item">
-        <div class="tr-line">➡️ <b>${escapeHtml(p.char.nick)}</b> → ${escapeHtml(p.serverName)} → <b>${escapeHtml(charLine(p.recipient))}</b>${p.auto ? ' <span class="promo-muted">(единственный на сервере)</span>' : ''}</div>
-        ${known ? `<div class="promo-muted">📦 Предметов к передаче: ${items.length}${pend.chests ? ` · сундуков: ${pend.chests} (не передаются, награду выбирают на сайте)` : ''}</div>` : ''}
-        ${body}${limitedHtml(p.skipped)}</div>`;
-      })
-      .join('');
-  }
 
   function updateAll() {
     const count = dlg.body.querySelector('#tr-count');
@@ -343,21 +347,76 @@ export function openTransferDialog({ ids = [] } = {}) {
     }
     const ack = dlg.body.querySelector('#tr-ack')?.checked;
     const canRun = plans.some(p => p.run);
+    const selectionKnown = plans.filter(p => p.run).every(p => Array.isArray(p.itemSelection));
     const start = dlg.foot.querySelector('[data-act="start"]');
     const dry = dlg.foot.querySelector('[data-act="dry"]');
-    if (start) start.disabled = !(canRun && ack);
+    if (start) start.disabled = !(canRun && ack && selectionKnown);
     if (dry) dry.disabled = !canRun;
   }
 
   function quickSelect(kind) {
     if (kind === 'plan') {
-      const preview = openOverlay({ title: '📋 Что будет передано', wide: true });
+      if (running || !selected.size) return;
+      const chars = selectedChars();
+      let previewClosed = false;
+      const preview = openOverlay({
+        title: '📋 Что будет передано',
+        wide: true,
+        onClose: () => {
+          previewClosed = true;
+          if (running) running.stop?.();
+        }
+      });
       preview.el.querySelector('.modal-container').classList.add('tr-preview-dialog');
       preview.sub.textContent =
-        'Текущий план по прочитанным данным сайта. Ничего не передаётся при открытии этого окна.';
-      preview.body.innerHTML = planHtml(currentPlans()) || '<p>Выберите персонажей.</p>';
-      preview.foot.innerHTML = '<button type="button" class="btn primary">Закрыть</button>';
-      preview.foot.querySelector('button').onclick = () => preview.close();
+        'Проверяю предметы на сайте отмеченных персонажей (до 30 с на попытку). Ничего не передаётся.';
+      preview.body.innerHTML = '<p>Читаю сайт…</p>';
+      void (async () => {
+        const checked = await scan(chars, { servers: false, isCancelled: () => previewClosed });
+        const freshIds = new Set((checked || []).filter(row => row.status === 'ok').map(row => row.charId));
+        if (!preview.el.isConnected || !alive()) return;
+        preview.foot.querySelector('[data-preview-stop]').hidden = true;
+        preview.sub.textContent =
+          'Отметьте точные пакеты для передачи. Сайт передаёт пакет целиком: количество внутри пакета не делится. Снятые предметы останутся на сайте. Изменение состава перед отправкой остановит передачу.';
+        const plans = currentPlans();
+        preview.body.innerHTML =
+          notesHtml() +
+            plans
+              .filter(
+                p =>
+                  freshIds.has(p.char.id) &&
+                  rosters[p.char.id]?.pending?.items?.length &&
+                  !rosters[p.char.id].pending.stale
+              )
+              .map(p => {
+                const excluded = new Set((p.skipped || []).map(i => i.id));
+                const items = rosters[p.char.id].pending.items.filter(i => !excluded.has(i.id));
+                if (!items.length) return '';
+                const choices = itemChoices.get(p.char.id);
+                return `<section><h4>${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}${items.map(i => `<label class="promo-item"><input type="checkbox" data-transfer-char="${escapeHtml(p.char.id)}" data-item-id="${escapeHtml(i.id)}" ${!choices || choices.has(i.id) ? 'checked' : ''}>${escapeHtml(i.name)} <b>×${i.qty}</b><small>${escapeHtml(i.source)}${i.qty > 1 ? ' · пакет целиком' : ''}</small></label>`).join('')}</section>`;
+              })
+              .join('') || '<p>Нет перечисленных предметов для передачи.</p>';
+        preview.body.onchange = event => {
+          const input = event.target.closest('[data-transfer-char]');
+          if (!input) return;
+          const id = input.dataset.transferChar;
+          const choices = itemChoices.get(id) || new Set(rosters[id].pending.items.map(i => i.id));
+          if (input.checked) choices.add(input.dataset.itemId);
+          else choices.delete(input.dataset.itemId);
+          itemChoices.set(id, choices);
+          updateAll();
+        };
+      })().catch(() => {
+        if (preview.el.isConnected)
+          preview.body.textContent = 'Не удалось прочитать сайт. Прежний выбор сохранён; повторите проверку.';
+      });
+      preview.foot.innerHTML =
+        '<button type="button" class="btn danger" data-preview-stop>Стоп проверки</button><button type="button" class="btn primary" data-preview-close>Закрыть</button>';
+      preview.foot.querySelector('[data-preview-stop]').onclick = () => {
+        running?.stop?.();
+        preview.close();
+      };
+      preview.foot.querySelector('[data-preview-close]').onclick = () => preview.close();
       return;
     }
     if (kind === 'none') selected.clear();
@@ -395,10 +454,11 @@ export function openTransferDialog({ ids = [] } = {}) {
   /* ----------------------- чтение серверов ----------------------- */
 
   /** @param {{ servers?: boolean }} [opts] servers: false — не перечитывать «Статус серверов» (для проверки отдельных персонажей) */
-  async function scan(chars, { servers: readServers = true } = {}) {
+  async function scan(chars, { servers: readServers = true, isCancelled = () => false } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
+    if (isCancelled() || !alive()) return [];
     const task = startTask(
       chars.length === 1
         ? `📦 Серверы и персонаж: ${chars[0].nick}`
@@ -420,7 +480,6 @@ export function openTransferDialog({ ids = [] } = {}) {
 
     const { invoke } = await import('@tauri-apps/api/core');
     let rows;
-    const renamed = []; // что разошлось со снимком сайта: пропавшие получатели и персонажи
     try {
       rows = await scanRosters({
         chars,
@@ -431,14 +490,8 @@ export function openTransferDialog({ ids = [] } = {}) {
         task,
         onRow: (row, done, all) => {
           if (row.status === 'ok' && row.roster) {
-            // Снимок «до» нужен для сверки: персонаж мог быть на сайте, а теперь исчез
-            const before = loadRosters()[row.charId];
-            setRoster(row.charId, row.roster);
-            const char = state.characters.find(c => c.id === row.charId);
-            const diff = row.roster.empty
-              ? { gone: [], missingChar: false }
-              : reconcileRoster(row.charId, char?.nick, before);
-            if (diff.gone.length || diff.missingChar) renamed.push({ nick: row.nick, ...diff });
+            // Неполный ответ сайта не стирает прежние списки и выбор пользователя.
+            setRoster(row.charId, row.roster, new Date(), { preserveLookup: true });
           }
           if (alive()) updateScanning(row, done, all);
         }
@@ -469,15 +522,6 @@ export function openTransferDialog({ ids = [] } = {}) {
     const empty = rows.filter(r => r.status === 'ok' && r.roster?.empty);
     if (empty.length)
       scanNotes.push(`${empty.map(r => r.nick).join(', ')}: подарков нет — передавать нечего, перенос пропущен`);
-    for (const r of renamed) {
-      const parts = [];
-      if (r.gone.length) parts.push(`получателей на выбранном сервере больше нет (${r.gone.length}) — выбор сброшен`);
-      if (r.missingChar)
-        parts.push(
-          'самого персонажа на аккаунте не видно: возможно, переименован или удалён — сервер и выборы сброшены, проверьте запись'
-        );
-      scanNotes.push(`${r.nick}: ${parts.join('; ')}`);
-    }
     const ok = rows.filter(r => r.status === 'ok').length;
     task.finish(
       `${signal.cancelled ? 'Остановлено. ' : ''}Прочитано ${ok} из ${rows.length}`,
@@ -489,14 +533,9 @@ export function openTransferDialog({ ids = [] } = {}) {
     empty.forEach(r =>
       task.log(`${r.nick}: подарков нет, серверы и персонажи оставлены как есть — передавать нечего`, 'info')
     );
-    renamed.forEach(r =>
-      task.log(
-        `${r.nick}: ${r.missingChar ? 'персонажа на аккаунте нет (переименован или удалён) — сервер и выборы сброшены' : `получателей больше нет: сброшено ${r.gone.length}`}`,
-        'warn'
-      )
-    );
     rosters = loadRosters();
     if (alive()) renderForm();
+    return rows;
   }
 
   function renderScanning(chars, signal) {

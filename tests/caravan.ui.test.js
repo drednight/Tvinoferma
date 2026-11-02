@@ -99,7 +99,7 @@ describe('сначала реальный сайт, независимо от Ga
       reply(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0 })
     );
     openCaravanDialog({ ids: ['a', 'b', 'c'] });
-    expect($('#caravan-nologin').textContent).not.toContain('Запомнить текущий вход');
+    expect($('#caravan-nologin')).toBeNull();
     expect($('[data-act="start"]').disabled).toBe(true);
     $('[data-act="dry"]').click();
     await wait(150);

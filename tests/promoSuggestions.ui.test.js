@@ -94,7 +94,7 @@ describe('article viewer and accessible Stop', () => {
     expect(document.querySelector('img')).toBeNull();
   });
   it('persists hiding only the chosen code', () => {
-    [...document.querySelectorAll('button')].find(b => b.textContent === 'Больше не показывать').click();
+    [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === 'Скрыть промокод').click();
     expect(mocks.hide).toHaveBeenCalledWith('PWEXAMPLE26');
   });
 });

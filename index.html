@@ -463,6 +463,12 @@
         </section>
         <section class="settings-group" id="settings-sync" aria-labelledby="settings-sync-title">
           <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Компьютеры, фоновые проверки, свежесть данных и диагностика.</p></header>
+          <section class="panel" id="cookie-bank-info">
+            <h3>Банк куки сайта</h3>
+            <p class="hint">Сроки сохранённых куки pwonline.ru. Секретные значения не показываются. Сайт может завершить сессию раньше указанной даты.</p>
+            <button id="cookie-bank-refresh" class="btn secondary" type="button">Обновить сроки</button>
+            <div id="cookie-bank-expiry" aria-live="polite"></div>
+          </section>
           <details class="panel fold cloud-registration" id="cloud-registration-panel">
             <summary>
               <h3>☁️ Синхронизация между ПК</h3>
@@ -497,6 +503,7 @@
               <button type="button" class="btn ghost" id="cloud-connection-simple-cancel" hidden>Отменить вход</button>
               <p class="cloud-registration-status" id="cloud-connection-local" role="status" aria-live="polite">Локальная запись не проверена.</p>
               <p class="cloud-registration-status" id="cloud-connection-progress" role="status" aria-live="polite"></p>
+
               <section class="cloud-file" id="cloud-standalone-panel" aria-labelledby="cloud-standalone-title">
                 <section id="cloud-standalone-options" class="cloud-file-options" aria-labelledby="cloud-options-heading">
                   <div class="cloud-section-heading"><div><span class="cloud-eyebrow">Состав копии</span><h4 id="cloud-options-heading">Параметры файла</h4></div><span id="cloud-standalone-selection-summary" class="cloud-selection-summary" role="status"></span></div>
@@ -507,11 +514,12 @@
                       <label>Что сохранить
                         <select class="input" id="cloud-standalone-source"><option value="current">Текущие данные приложения</option><option value="file">Сохранённый файл state.json</option></select>
                       </label>
-                      <details><summary>Чем отличаются эти варианты?</summary><p>«Текущие данные приложения» — состояние, которое сейчас открыто в Твиноферме. «Сохранённый файл state.json» — отдельный выбранный вами файл: он может быть старее текущих данных или взят с другого ПК. Его выбор не открывает и не заменяет данные приложения; он используется только как источник облачной копии. Контакты из хранилища Windows не находятся в state.json автоматически. Дополнительные приватные поля передаются только при отдельном выборе и подтверждении.</p></details>
+
                       <label id="cloud-standalone-source-file-label" hidden>Совместимый полный файл
                         <input id="cloud-standalone-source-file" type="file" accept=".json,application/json" />
                       </label>
                     </section>
+                    <details><summary>Чем отличаются эти варианты?</summary><p>«Текущие данные приложения» — состояние, которое сейчас открыто в Твиноферме. «Сохранённый файл state.json» — отдельный выбранный вами файл: он может быть старее текущих данных или взят с другого ПК. Его выбор не открывает и не заменяет данные приложения; он используется только как источник облачной копии. Контакты из хранилища Windows не находятся в state.json автоматически. Дополнительные приватные поля передаются только при отдельном выборе и подтверждении.</p></details>
                     <div class="cloud-option-toolbar">
                       <h5>Дополнительно включить в копию</h5>
                       <div class="cloud-registration-actions"><button type="button" class="btn ghost small" id="cloud-standalone-select-all">Выбрать все категории</button><button type="button" class="btn ghost small" id="cloud-standalone-select-none">Снять все</button></div>
@@ -545,23 +553,11 @@
                 <section class="cloud-folder-assistant" aria-labelledby="cloud-yandex-storage-heading"><div class="cloud-section-heading"><h5 id="cloud-yandex-storage-heading">Папка Яндекс Диска</h5><button type="button" class="btn ghost small" id="cloud-standalone-yandex-folder-check">Проверить папку</button></div><p id="cloud-standalone-yandex-folder-status" role="status" aria-live="polite">Папка создаётся при сохранении, а не при входе. Если её нет — проверьте отдельно, без чтения прежних копий.</p><p id="cloud-standalone-yandex-folder-help" class="muted">Проверка ничего не записывает. Можно отдельно создать только пустую папку «Твиноферма».</p><button type="button" class="btn ghost small" id="cloud-standalone-yandex-folder-create" hidden>Создать папку «Твиноферма»</button></section>
                 <div class="cloud-registration-actions">
                   <button type="button" class="btn" id="cloud-standalone-save">Сохранить в облако</button>
-                  <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
 
                 </div>
 
                 <p id="cloud-standalone-encryption-status" class="muted" role="status">Пароль шифрования задаётся при первом сохранении после проверки диска. Уже открытый или запомненный в ОС ключ используется без повторного ввода. Пароль нельзя посмотреть; не забывайте его для другого ПК.</p>
                 <details><summary>Где находятся облачные файлы?</summary><p>Google Диск: обычная папка «Твиноферма» (если вы её переместили или переименовали, используется прежняя папка по ID). Яндекс Диск: обычная папка «Твиноферма» в корне диска. Новые файлы сохраняются туда; прежние файлы из «Приложения» тоже доступны для сравнения и не удаляются. Для обычной папки нужны права чтения и записи диска, поэтому со старым доступом может понадобиться выйти и войти заново. Имена: tf-v1-7eab1931-650f-4dc7-98bb-f9e903526af4-&lt;версия&gt;.tfsc. Это зашифрованные файлы, не state.json.</p></details>
-                <section class="cloud-auto-check cloud-option-card" aria-labelledby="cloud-auto-heading">
-                  <h5 id="cloud-auto-heading">Проверка облачных копий</h5>
-                  <label class="cloud-option-toggle"><input id="cloud-standalone-startup" type="checkbox" checked /> Проверять при запуске приложения</label>
-                  <label>Повторять проверку <select class="input" id="cloud-standalone-interval"><option value="0">Только вручную</option><option value="15" selected>Каждые 15 минут</option><option value="30">Каждые 30 минут</option><option value="60">Каждый час</option><option value="custom">Своё время…</option></select></label><label id="cloud-standalone-custom-interval-label" hidden>Период в минутах <input type="number" class="input" id="cloud-standalone-custom-interval" min="15" max="10080" step="1" value="15" /></label>
-                  <p class="muted" id="cloud-standalone-last-check">Ещё не проверяли в этом запуске. Автопроверка ничего не отправляет и не заменяет.</p>
-                </section>
-                <div id="cloud-standalone-operation" class="cloud-compare-feedback" hidden><p id="cloud-standalone-operation-message" role="status" aria-live="polite"></p><progress aria-label="Облачная операция выполняется"></progress><small id="cloud-standalone-operation-elapsed" aria-hidden="true"></small></div>
-                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
-                <ul id="cloud-standalone-provider-results" aria-label="Результаты по дискам"></ul><button type="button" class="btn ghost small" id="cloud-standalone-copy-report" hidden>Скопировать отчёт об ошибке</button>
-                <div id="cloud-standalone-files"></div>
-                <button type="button" class="btn ghost" id="cloud-standalone-reopen" hidden>Открыть сравнение</button>
                 <dialog id="cloud-standalone-review" class="modal cloud-diff-dialog" aria-labelledby="cloud-standalone-review-title" hidden>
                   <div class="cloud-dialog-heading"><h3 id="cloud-standalone-review-title">Сравнение с облачной копией</h3><button type="button" class="btn ghost" id="cloud-standalone-review-close" data-cloud-close aria-label="Закрыть сравнение">✕</button></div>
                   <div id="cloud-standalone-review-counts" class="cloud-diff-counts" aria-label="Сводка изменений"></div><p id="cloud-standalone-review-status"></p>
@@ -577,9 +573,23 @@
                 <dialog id="cloud-standalone-key-dialog" class="modal cloud-settings-dialog" aria-labelledby="cloud-key-settings-title"><div class="cloud-dialog-heading"><h3 id="cloud-key-settings-title">Хранение на этом ПК</h3><button type="button" class="btn ghost" data-cloud-close aria-label="Закрыть">✕</button></div>                    <section class="cloud-option-card">
                       <p class="muted">Ключ позволяет открывать копии без повторного ввода пароля на этом ПК. Для другого компьютера пароль всё равно нужен.</p>
                       <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-remember" /> Запомнить ключ в защищённом хранилище ОС</label>
-                      <label class="cloud-option-toggle"><input type="checkbox" id="cloud-standalone-show-backups" /> Показывать также предыдущие версии каждого диска</label>
                       <button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
                       <p id="cloud-standalone-options-status" class="muted" role="status">Параметры действуют на этом ПК. Пароль шифрования здесь не хранится. Без запомненного ключа при новом запуске понадобится пароль.</p>
+                    </section>
+                    <section class="cloud-option-card">
+                  <h4>Проверка облачных копий</h4>
+                  <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
+                <section class="cloud-auto-check cloud-option-card" aria-labelledby="cloud-auto-heading">
+                  <h5 id="cloud-auto-heading">Автоматическая проверка</h5>
+                  <label class="cloud-option-toggle"><input id="cloud-standalone-startup" type="checkbox" checked /> Проверять при запуске приложения</label>
+                  <label>Повторять проверку <select class="input" id="cloud-standalone-interval"><option value="0">Только вручную</option><option value="15" selected>Каждые 15 минут</option><option value="30">Каждые 30 минут</option><option value="60">Каждый час</option><option value="custom">Своё время…</option></select></label><label id="cloud-standalone-custom-interval-label" hidden>Период в минутах <input type="number" class="input" id="cloud-standalone-custom-interval" min="15" max="10080" step="1" value="15" /></label>
+                  <p class="muted" id="cloud-standalone-last-check">Ещё не проверяли в этом запуске. Автопроверка ничего не отправляет и не заменяет.</p>
+                </section>
+                <div id="cloud-standalone-operation" class="cloud-compare-feedback" hidden><p id="cloud-standalone-operation-message" role="status" aria-live="polite"></p><progress aria-label="Облачная операция выполняется"></progress><small id="cloud-standalone-operation-elapsed" aria-hidden="true"></small></div>
+                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
+                <ul id="cloud-standalone-provider-results" aria-label="Результаты по дискам"></ul><button type="button" class="btn ghost small" id="cloud-standalone-copy-report" hidden>Скопировать отчёт об ошибке</button>
+                <div id="cloud-standalone-files"></div>
+                <button type="button" class="btn ghost" id="cloud-standalone-reopen" hidden>Открыть сравнение</button>
                     </section>
 </dialog>
                 <dialog id="cloud-standalone-private-dialog" class="modal cloud-settings-dialog" aria-labelledby="cloud-standalone-private-title"><h3 id="cloud-standalone-private-title">Подтвердите выбранные приватные поля</h3>                    <section class="cloud-option-card cloud-option-consents" id="cloud-standalone-consents" hidden>

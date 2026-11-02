@@ -101,6 +101,7 @@ export async function enrollNativeCloudAccount(options) {
   let attempt = null;
   let freshAccess = null;
   let installationStarted = false;
+  let clientId = input.clientId;
   const cancel = () => {
     // В install-стадии попытка возвращает installation_in_progress и не делает
     // ложное утверждение, будто native-запись или ответ провайдера отменены.
@@ -126,7 +127,10 @@ export async function enrollNativeCloudAccount(options) {
     if (local.status === 'signed_out') {
       const observed = await readNativeCredentialBinding(storageOptions);
       if (observed.status !== 'signed_out' || !observed.binding?.logoutId) return result('local_blocked');
-      if (observed.binding.clientId !== input.clientId) return result('account_changed');
+      // Yandex psuid belongs to an OAuth client. Reuse the trusted binding's client,
+      // never rewrite the account/slot to match a different client's identity.
+      if (provider === 'yandex') clientId = observed.binding.clientId;
+      else if (observed.binding.clientId !== clientId) return result('account_changed');
       signedOut = observed.binding;
     }
     let reconnectRecord = null;
@@ -172,7 +176,7 @@ export async function enrollNativeCloudAccount(options) {
     progress('browser');
     flow = await startCloudOAuth({
       provider,
-      clientId: input.clientId,
+      clientId,
       invoke: input.invoke,
       openBrowser: input.openBrowser,
       ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
@@ -196,7 +200,7 @@ export async function enrollNativeCloudAccount(options) {
     if (signal.aborted) return result('cancelled');
     const tokenTransport = createCloudOAuthTokenTransport({
       provider,
-      clientId: input.clientId,
+      clientId,
       operation: 'code',
       fetchImpl
     });
@@ -226,7 +230,7 @@ export async function enrollNativeCloudAccount(options) {
     let accountChanged = false;
     const create = provider === 'google' ? createGoogleEnrollmentAttempt : createYandexEnrollmentAttempt;
     attempt = create({
-      clientId: input.clientId,
+      clientId,
       tokenResponse: {
         summary: lease.summary,
         takeSecrets() {

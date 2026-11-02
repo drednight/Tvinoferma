@@ -181,7 +181,6 @@ export function bindStandaloneFilePanel(options) {
       for (const input of checkboxes(selector)) input.checked = savedOptions[key].includes(input.value);
     el('source').value = savedOptions.source;
     el('remember').checked = savedOptions.remember;
-    el('show-backups').checked = savedOptions.backups;
   }
   // Consent and backup acknowledgements are intentionally never restored.
   for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) el(id).checked = false;
@@ -208,7 +207,7 @@ export function bindStandaloneFilePanel(options) {
       version: 1,
       source: el('source').value,
       remember: el('remember').checked,
-      backups: el('show-backups').checked
+      backups: true
     };
     for (const [key, selector] of Object.entries(optionLists)) value[key] = choices(selector);
     if (!writeStandaloneFileOptions(doc, value))
@@ -223,7 +222,7 @@ export function bindStandaloneFilePanel(options) {
     }
     if (
       input.matches(
-        '[data-standalone-destination],[data-standalone-private],[data-standalone-setting],#cloud-standalone-source,#cloud-standalone-remember,#cloud-standalone-show-backups'
+        '[data-standalone-destination],[data-standalone-private],[data-standalone-setting],#cloud-standalone-source,#cloud-standalone-remember'
       )
     )
       saveOptions();
@@ -359,7 +358,8 @@ export function bindStandaloneFilePanel(options) {
     busy = value;
     for (const input of panel.querySelectorAll('button,input,select')) {
       if (input.closest('#cloud-standalone-private-dialog') || input.hasAttribute('data-cloud-close')) continue;
-      input.disabled = busy || !options.desktop || stopped;
+      input.disabled =
+        busy || !options.desktop || stopped || (input.id === 'cloud-standalone-accept' && !!review?.replacementBlocked);
     }
     panel.setAttribute('aria-busy', String(busy));
   }
@@ -579,7 +579,11 @@ export function bindStandaloneFilePanel(options) {
     if (el('reopen')) el('reopen').hidden = false;
     el('backup-ack-label').hidden = !token.localPrivateAtRisk;
     el('backup-ack').checked = false;
+    el('accept').disabled = !!token.replacementBlocked;
     el('review-status').textContent =
+      (token.replacementBlocked
+        ? `Сравнение только для чтения. Полная замена заблокирована проверкой связей/перезапуска: ${token.replacementBlocked}. Местные данные, ключи и привязки не изменены. `
+        : '') +
       `Дата внутри файла: ${dateLabel(token.createdAt)}. ` +
       (token.bothChanged ? 'ВНИМАНИЕ: и местные, и облачные данные изменились относительно принятой базы. ' : '') +
       (token.noCommonBase ? 'Общая принятая база пока неизвестна. ' : '') +
@@ -640,23 +644,42 @@ export function bindStandaloneFilePanel(options) {
       list.append(li);
     }
   }
+  const selectedVersions = new Map();
   function showFiles(rows) {
     listedFiles = rows;
     files.replaceChildren();
-    for (const file of providerCopyRows(rows, el('show-backups').checked)) {
+    for (const provider of ['google', 'yandex']) {
+      const versions = providerCopyRows(rows, true).filter(row => row.locations[0].provider === provider);
+      if (!versions.length) continue;
+      let file = versions.find(row => row.versionId === selectedVersions.get(provider)) || versions[0];
+      const selector = doc.createElement('select');
+      selector.className = 'input';
+      selector.setAttribute('aria-label', `Версия копии: ${NAMES[provider]}`);
+      for (const row of versions) {
+        const option = doc.createElement('option');
+        option.value = row.versionId;
+        option.textContent = `${dateLabel(row.locations[0].modifiedAt)} · версия ${row.versionId.slice(0, 8)}`;
+        option.selected = row.versionId === file.versionId;
+        selector.append(option);
+      }
       const card = doc.createElement('div');
       card.className = 'cloud-copy-card';
       const heading = doc.createElement('h5');
       heading.textContent = NAMES[file.locations[0].provider];
       card.append(heading);
       const title = doc.createElement('p');
-      title.textContent = `${dateLabel(file.locations[0].modifiedAt)}. ${el('show-backups').checked ? '' : 'Последняя доступная по дате диска. '}Версия ${file.versionId.slice(0, 8)}. Дата справочная, часовой пояс этого ПК.`;
+      const updateVersion = () => {
+        file = versions.find(row => row.versionId === selector.value) || versions[0];
+        selectedVersions.set(provider, file.versionId);
+        title.textContent = `${dateLabel(file.locations[0].modifiedAt)} · версия ${file.versionId.slice(0, 8)}. Будет скачана выбранная версия; часовой пояс этого ПК.`;
+      };
+      updateVersion();
+      selector.addEventListener('change', updateVersion);
       const open = doc.createElement('button');
       open.className = 'btn ghost';
       open.type = 'button';
       open.textContent = 'Скачать и сравнить';
-      card.append(title, open);
-      const provider = file.locations[0].provider;
+      card.append(selector, title, open);
       const feedback = compareFeedback(doc, card, provider);
       open.addEventListener('click', () => {
         let settled = false;
@@ -748,7 +771,7 @@ export function bindStandaloneFilePanel(options) {
       status.textContent = 'Проверяем Google Диск и Яндекс Диск: доступ, список файлов и целостность копий…';
       const result = await engine.check({
         manual,
-        includeBackups: manual && el('show-backups').checked,
+        includeBackups: true,
         onProgress: operationProgress
       });
       const unaccepted = result.unacceptedFiles || (!manual ? result.files : null);
@@ -775,7 +798,7 @@ export function bindStandaloneFilePanel(options) {
           : !available
             ? 'Не удалось проверить диски. Причины указаны ниже; файлы не отправлялись.'
             : result.files.length
-              ? `Доступно копий по дискам: ${providerCopyRows(result.files, el('show-backups').checked).length}. Показана последняя доступная копия каждого диска; предыдущие можно включить в дополнительных параметрах. Ничего не применяется и не отправляется автоматически.`
+              ? `Доступно копий по дискам: ${providerCopyRows(result.files, true).length}. Предыдущие версии доступны в отдельном списке каждого диска. Ничего не применяется и не отправляется автоматически.`
               : 'Новых непринятых копий не обнаружено на успешно проверенных дисках. Отклонённые версии доступны при ручной проверке.';
       if (available && result.results.some(row => !['checked', 'empty', 'credential_missing'].includes(row.status)))
         status.textContent = 'Проверка частичная: один из подключённых дисков недоступен. ' + status.textContent;
@@ -968,7 +991,7 @@ export function bindStandaloneFilePanel(options) {
   );
   el('accept').addEventListener('click', () =>
     action(async engine => {
-      if (!review) return;
+      if (!review || review.replacementBlocked) return;
       // Changing private scope invalidates the displayed preview.
       if (JSON.stringify(fields()) !== JSON.stringify(reviewFields)) {
         status.textContent = 'Изменён выбор приватных полей. Скачайте и сравните файл заново.';
@@ -1035,7 +1058,6 @@ export function bindStandaloneFilePanel(options) {
       status.textContent = 'Запомненный ключ удалён. Для открытия потребуется пароль.';
     })
   );
-  el('show-backups').addEventListener('change', () => showFiles(listedFiles));
   setBusy(false);
   const startup = options.startup !== false && options.desktop;
   let timer = null;

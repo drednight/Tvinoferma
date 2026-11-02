@@ -236,3 +236,8 @@ it('new hidden codes remain persistable after the first 200 discoveries', () => 
   expect(second.snapshot().hiddenCodes).toHaveLength(205);
   expect(second.snapshot().hiddenCodes).toContain('PWTEST0204');
 });
+
+it('reward names and quantities exclude the real website hover descriptions', () => {
+  const html = `<article><a href="/pin/PWEXAMPLE26">Код</a><p>В состав подарка входят:</p><ul><li><span class="img_item_small_cont"><span><em>Пилюля х50</em><strong>Описание:</strong> Даёт опыт. Тип: опыт.</span><b><img src="x"></b></span>Небесная пилюля (50 шт.);</li><li>Амулет ×2</li></ul></article>`;
+  expect(articleCodes(html, '123')[0].rewards).toEqual(['Небесная пилюля (50 шт.);', 'Амулет ×2']);
+});

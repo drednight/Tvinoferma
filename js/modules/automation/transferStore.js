@@ -60,7 +60,7 @@ export const saveRosters = rosters => writeJson(ROSTER_KEY, rosters);
  * а список «что ждёт передачи» обновляем: сейчас там действительно пусто, и перенос
  * персонажа пропускается (см. `planTransfer`, статус `nothing_to_transfer`).
  */
-export function setRoster(charId, data, now = new Date()) {
+export function setRoster(charId, data, now = new Date(), { preserveLookup = false } = {}) {
   const all = loadRosters();
   const next = normalizeRoster(data, now);
   const prev = all[charId];
@@ -68,6 +68,19 @@ export function setRoster(charId, data, now = new Date()) {
     next.shards = prev.shards;
     next.siteId = next.siteId || prev.siteId;
     next.accountName = next.accountName || prev.accountName;
+  }
+  if (preserveLookup && prev?.shards?.length && next.shards.length) {
+    const fresh = new Map(next.shards.map(shard => [shard.id, shard]));
+    next.shards = prev.shards
+      .map(old => {
+        const current = fresh.get(old.id);
+        if (!current) return old;
+        fresh.delete(old.id);
+        const chars = new Map(old.chars.map(char => [char.key, char]));
+        for (const char of current.chars) chars.set(char.key, char);
+        return { ...current, chars: [...chars.values()] };
+      })
+      .concat([...fresh.values()]);
   }
   all[charId] = next;
   saveRosters(all);

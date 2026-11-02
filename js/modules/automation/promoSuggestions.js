@@ -78,7 +78,10 @@ export function renderPromoSuggestions(dlg) {
       label.textContent = 'Не удалось открыть браузер. Адрес: https://pwonline.ru/news.php';
     }
   };
-  section.append(label, refresh, open);
+  const newsActions = document.createElement('div');
+  newsActions.className = 'promo-news-actions';
+  newsActions.append(refresh, open);
+  section.append(label, newsActions);
   for (const row of promoCoverage(visible, state.characters, loadLog())) {
     const card = document.createElement('div');
     card.className = 'promo-news-option';
@@ -93,7 +96,9 @@ export function renderPromoSuggestions(dlg) {
     add.className = 'btn secondary small';
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
     add.disabled = !!row.expiresOn && row.expiresOn < today;
-    add.textContent = add.disabled ? 'Срок из новости истёк' : 'Добавить код';
+    add.textContent = '+';
+    add.title = add.disabled ? 'Срок из новости истёк' : 'Добавить промокод';
+    add.setAttribute('aria-label', add.title);
     add.onclick = () => {
       const input = dlg.body.querySelector('#promo-code');
       if (!input) return;
@@ -125,7 +130,9 @@ export function renderPromoSuggestions(dlg) {
     const browser = document.createElement('button');
     browser.type = 'button';
     browser.className = 'btn ghost small';
-    browser.textContent = '🌐 Открыть новость';
+    browser.textContent = '↗';
+    browser.title = 'Открыть статью';
+    browser.setAttribute('aria-label', browser.title);
     browser.dataset.promoNewsOpen = '';
     browser.disabled = !window.__TAURI_INTERNALS__ || !!dockCurrentTask();
     browser.title =
@@ -150,9 +157,14 @@ export function renderPromoSuggestions(dlg) {
     const hide = document.createElement('button');
     hide.type = 'button';
     hide.className = 'btn ghost small';
-    hide.textContent = 'Больше не показывать';
+    hide.textContent = '⊘';
+    hide.title = 'Скрыть промокод';
+    hide.setAttribute('aria-label', hide.title);
     hide.onclick = () => service.setHidden(row.code);
-    card.append(title, source, info, server, rewards, browser, add, hide);
+    const actions = document.createElement('div');
+    actions.className = 'promo-news-actions';
+    actions.append(browser, add, hide);
+    card.append(title, source, info, server, rewards, actions);
     section.append(card);
   }
   if (cache.status === 'checked' && !cache.codes.length) {
@@ -164,7 +176,8 @@ export function renderPromoSuggestions(dlg) {
     const restore = document.createElement('button');
     restore.type = 'button';
     restore.className = 'btn ghost small';
-    restore.textContent = `Вернуть скрытые коды (${cache.hiddenCodes.length})`;
+    restore.textContent = `Вернуть скрытые промокоды (${cache.hiddenCodes.length})`;
+    restore.style.marginTop = '16px';
     restore.onclick = () => service.restoreHidden();
     section.append(restore);
   }

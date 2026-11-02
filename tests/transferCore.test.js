@@ -416,6 +416,17 @@ describe('аккаунт без подарков: серверы остаютс�
     expect(r.pending.items).toEqual([]);
   });
 
+  it('пустая корзина сохраняет выбранный сервер и получателя даже при повторной сверке', () => {
+    setRoster('a', scan(), NOW);
+    savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+    const before = loadRosters().a,
+      prefs = loadPrefs();
+    setRoster('a', EMPTY_PAGE, NOW);
+    expect(reconcileRoster('a', '#Тест', before)).toEqual({ gone: [], missingChar: false });
+    expect(loadPrefs()).toEqual(prefs);
+    expect(loadRosters().a.pending.items).toEqual([]);
+  });
+
   it('первое пустое чтение (без прежних данных) не создаёт серверов', () => {
     setRoster('b', EMPTY_PAGE, NOW);
     expect(loadRosters().b.shards).toEqual([]);
@@ -847,4 +858,19 @@ describe('акции, привязанные к серверу', () => {
       });
     });
   });
+});
+
+it('live lookups preserve previous servers, recipients and selected values when a shard or character is absent', () => {
+  setRoster('a', {
+    shards: [
+      { id: '3', name: 'Фенрир', chars: [{ key: K(3, 2), name: 'Прежний' }] },
+      { id: '5', name: 'Мицар', chars: [{ key: K(5, 7), name: 'Другой' }] }
+    ]
+  });
+  savePrefs({ servers: { a: '3' }, picks: { a: { 3: K(3, 2) } } });
+  const before = loadPrefs();
+  setRoster('a', { shards: [{ id: '3', name: 'Фенрир', chars: [] }], items: [] }, new Date(), { preserveLookup: true });
+  expect(loadRosters().a.shards).toHaveLength(2);
+  expect(loadRosters().a.shards.find(shard => shard.id === '3').chars[0].name).toBe('Прежний');
+  expect(loadPrefs()).toEqual(before);
 });
