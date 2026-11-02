@@ -94,6 +94,7 @@ export function renderPromoSuggestions(dlg) {
     countdown.className = 'promo-deadline-countdown';
     const deadline = promoDeadlineState(row);
     countdown.textContent = deadline.text;
+    if (deadline.tone) countdown.dataset.tone = deadline.tone;
     const source = document.createElement('span');
     source.textContent = row.title;
     const add = document.createElement('button');

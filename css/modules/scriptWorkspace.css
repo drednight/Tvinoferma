@@ -633,3 +633,96 @@
   display: block;
   color: var(--muted);
 }
+
+.promo-deadline-countdown[data-tone='danger'] {
+  color: var(--danger);
+}
+.promo-deadline-countdown[data-tone='warning'] {
+  color: var(--warning);
+}
+.promo-deadline-countdown[data-tone='success'] {
+  color: var(--success);
+}
+.tr-confirm-dialog {
+  max-width: 580px;
+}
+.tr-confirm-controls {
+  display: grid;
+  gap: 18px;
+}
+.tr-confirm-controls label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.tr-confirm-controls input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+}
+.shop-limits-table small {
+  display: block;
+  color: var(--muted);
+  margin-top: 6px;
+}
+/* Few positions occupy the full row; larger inventories form a compact catalogue. */
+.tr-item-grid {
+  display: block;
+}
+.tr-item-grid thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.tr-item-grid tbody {
+  display: grid;
+  gap: 10px;
+}
+.tr-item-grid.is-medium tbody {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tr-item-grid.is-many tbody {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.tr-item-grid tbody tr {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  align-content: start;
+}
+.tr-item-grid td {
+  border: none;
+  padding: 6px;
+  min-width: 0;
+}
+.tr-item-grid td:first-child {
+  grid-column: 1 / -1;
+}
+.tr-item-grid td:nth-child(2)::before {
+  content: 'Доступно';
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+.tr-item-grid td:nth-child(3)::before {
+  content: 'Передать наборов';
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-bottom: 4px;
+}
+@media (max-width: 1200px) {
+  .tr-item-grid.is-many tbody {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .tr-item-grid.is-many tbody,
+  .tr-item-grid.is-medium tbody {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,3 +1,4 @@
+import { openShopLimits } from './shopLimitsView.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/shop.js
@@ -495,6 +496,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="log">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
+      <button class="btn secondary" data-act="limits">Лимиты и сроки</button>
       <button class="btn secondary" data-act="dry" title="Откроет магазин и найдёт кнопку «Купить», но не нажмёт её: ничего не покупается и не записывается">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить</button>`;
     renderDynamic();
@@ -1083,6 +1085,10 @@ export function openShopDialog({ ids = [] } = {}) {
     }
     if (act === 'start') {
       await launch(false);
+      return;
+    }
+    if (act === 'limits') {
+      openShopLimits();
       return;
     }
     if (act === 'dry') {

@@ -1,3 +1,4 @@
+import { confirmTransfer } from './transferConfirm.js';
 import { groupTransferItems, chooseTransferPackets, transferExpiry } from './transferItemGroups.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
@@ -33,9 +34,7 @@ import {
   pruneRosters,
   recordTransfer,
   limitsMap,
-  saveLimits,
-  loadLimits,
-  clearLimits
+  saveLimits
 } from './transferStore.js';
 import { scanRosters, runTransferBatch } from './transferRunner.js';
 import { getServerStatus, refreshServerStatus, onServerStatus } from '../servers/serverStatus.js';
@@ -45,6 +44,8 @@ import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './s
 import { makeScriptReport } from './scriptReport.js';
 import { openScriptStatistics } from './scriptReportView.js';
 
+const setsLabel = n =>
+  `${n} ${n % 100 >= 11 && n % 100 <= 14 ? 'наборов' : n % 10 === 1 ? 'набор' : n % 10 >= 2 && n % 10 <= 4 ? 'набора' : 'наборов'}`;
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 const charLine = c => `${charTitle(c)} (${c.cls || '?'}, ур. ${c.level})`;
@@ -104,6 +105,8 @@ export function openTransferDialog({ ids = [] } = {}) {
   let lastPlans = [];
   let lastDry = false;
   let lastReports = []; // включает прошлые попытки текущего повтора
+  let confirming = false;
+  let confirmationAbort = null;
   let force = false; // «обойти ограничения приложения»: запомненные ограничения по серверам не применяются (не запоминается между открытиями)
 
   let offStatus = () => {};
@@ -112,6 +115,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     wide: true,
     onClose: () => {
       offStatus();
+      confirmationAbort?.abort();
       if (running) {
         running.stop?.();
         running.cancelled = true;
@@ -264,11 +268,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         <div class="tr-summary" id="tr-summary"></div>
         `
       })}
-      <div class="tr-ack-box">
-        <label class="tr-ack"><input type="checkbox" id="tr-ack"> <span>⚠ Понимаю, что передача необратима: предметы уйдут в игру и вернуть их нельзя.</span></label>
-        <label class="tr-force"><input type="checkbox" id="tr-force" ${force ? 'checked' : ''}> <span><b>Обойти ограничения приложения</b> и попытаться передать всё на указанных персонажей: запомненные ограничения («только на другой сервер») не применяются, отмечаются все предметы. Ограничения самого сайта (например, «награды можно перевести после 20:00…») это не отменяет: сайт может отклонить передачу.</span></label>
-        <button class="btn ghost small" data-act="forget-limits" id="tr-forget" title="Приложение запоминает, что сайт принимает акцию только на другой сервер, и не отмечает её там. Эта кнопка стирает запомненное: акции снова будут отмечаться везде."></button>
-      </div>`;
+      `;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="log" title="Журнал передач">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
@@ -294,11 +294,11 @@ export function openTransferDialog({ ids = [] } = {}) {
       ? `<div class="promo-alert">${scanNotes.map(n => `<div>⚠ ${escapeHtml(n)}</div>`).join('')}</div>`
       : '';
 
-  const currentPlans = () =>
+  const currentPlans = ({ ignoreLimits = force } = {}) =>
     planTransfer(selectedChars(), rosters, {
       shards: serverMap(),
       picks: picksOf(),
-      limits: force ? {} : limitsMap()
+      limits: ignoreLimits ? {} : limitsMap()
     }).map(p => {
       const pending = rosters[p.char.id]?.pending;
       if (!pending || pending.stale) return p;
@@ -348,18 +348,12 @@ export function openTransferDialog({ ids = [] } = {}) {
         selected.size > 1 ? `🔍 Проверить персонажей (${selected.size})` : '🔍 Проверить персонажа';
     const planBtn = dlg.foot.querySelector('#tr-plan-btn');
     if (planBtn) planBtn.textContent = '📋 Что будет передано';
-    const forget = dlg.body.querySelector('#tr-forget');
-    if (forget) {
-      const n = Object.keys(loadLimits()).length;
-      forget.textContent = n ? `🧹 Забыть запомненные ограничения (${n})` : '🧹 Запомненных ограничений нет';
-      forget.disabled = !n;
-    }
-    const ack = dlg.body.querySelector('#tr-ack')?.checked;
     const canRun = plans.some(p => p.run);
-    const selectionKnown = plans.filter(p => p.run).every(p => Array.isArray(p.itemSelection));
+    const potential = currentPlans({ ignoreLimits: true });
+    const selectionKnown = potential.filter(p => p.run).every(p => Array.isArray(p.itemSelection));
     const start = dlg.foot.querySelector('[data-act="start"]');
     const dry = dlg.foot.querySelector('[data-act="dry"]');
-    if (start) start.disabled = !(canRun && ack && selectionKnown && !invalidItemChoices.size);
+    if (start) start.disabled = !(potential.some(p => p.run) && selectionKnown && !invalidItemChoices.size);
     if (dry) dry.disabled = !canRun;
   }
 
@@ -386,7 +380,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         if (!preview.el.isConnected || !alive()) return;
         preview.foot.querySelector('[data-preview-stop]').hidden = true;
         preview.sub.textContent =
-          'Укажите количество предметов (0 — оставить на сайте), кратное размеру набора. Сначала выбираются наборы с ближайшим известным сроком, затем с неизвестным. Категории объединены; набор неделим. Перед отправкой сайт проверяется заново.';
+          'Укажите количество наборов (0 — оставить на сайте). Сначала выбираются наборы с ближайшим известным сроком, затем с неизвестным. Категории объединены; набор неделим. Перед отправкой сайт проверяется заново.';
         for (const key of invalidItemChoices) {
           if (freshIds.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
         }
@@ -411,7 +405,7 @@ export function openTransferDialog({ ids = [] } = {}) {
                 const groups = groupTransferItems(items);
                 groupsByChar.set(p.char.id, groups);
                 return `<section><h4>${classIconHtml(p.char)} ${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}
-                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Поменять предметов</th></tr></thead><tbody>${groups
+                  <div class="promo-scroll"><table class="promo-table tr-item-groups tr-item-grid ${groups.length >= 9 ? 'is-many' : groups.length >= 4 ? 'is-medium' : 'is-few'}"><thead><tr><th>Предмет</th><th>Доступно</th><th>Передать наборов</th></tr></thead><tbody>${groups
                     .map((group, index) => {
                       const count = group.items.filter(item => !choices || choices.has(item.id)).length;
                       const batches = new Map();
@@ -429,7 +423,7 @@ export function openTransferDialog({ ids = [] } = {}) {
                         new Set(group.items.map(item => item.until || '')).size > 1
                           ? `<details class="tr-packet-details"><summary>${expiry}</summary><ul>${[...batches.values()].map(batch => `<li>${batch.count * group.qty} шт. · ${escapeHtml(batch.source || 'Без категории')} · ${escapeHtml(batch.until || 'Без срока')}</li>`).join('')}</ul></details>`
                           : `<small>${expiry}</small>`;
-                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>В наборе ×${group.qty} штук</small>${details}</td><td>${group.items.length * group.qty} шт.</td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length * group.qty}" step="${group.qty}" value="${count * group.qty}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Поменять предметов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все предметы этой позиции">Все</button></div><small data-selected-quantity>Выбрано: ${count * group.qty} шт.</small><small>Кратно ${group.qty}; набор неделим</small></td></tr>`;
+                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>В наборе ×${group.qty} штук</small>${details}</td><td>${setsLabel(group.items.length)}<small>${group.items.length * group.qty} шт. предмета</small></td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать наборов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все предметы этой позиции">Все</button></div><small data-selected-quantity>Выбрано: ${setsLabel(count)} (${count * group.qty} шт.)</small></td></tr>`;
                     })
                     .join('')}</tbody></table></div></section>`;
               })
@@ -445,7 +439,7 @@ export function openTransferDialog({ ids = [] } = {}) {
             units += n * group.qty;
           }
           preview.body.querySelector('[data-transfer-total]').textContent =
-            `Выбрано: ${units} шт. (${packets} наборов)`;
+            `Выбрано: ${units} шт. (${setsLabel(packets)})`;
         };
         updateTotal();
         preview.body.onclick = event => {
@@ -457,7 +451,7 @@ export function openTransferDialog({ ids = [] } = {}) {
             preview.body.querySelectorAll('[data-item-group]').forEach(input => {
               input.value = '0';
               input.setCustomValidity('');
-              input.closest('td').querySelector('[data-selected-quantity]').textContent = 'Выбрано: 0 шт.';
+              input.closest('td').querySelector('[data-selected-quantity]').textContent = 'Выбрано: 0 наборов (0 шт.)';
             });
             updateTotal();
             updateAll();
@@ -490,11 +484,9 @@ export function openTransferDialog({ ids = [] } = {}) {
           const group = groupsByChar.get(id)?.[Number(input.dataset.itemGroup)];
           if (!group) return;
           const choices = itemChoices.get(id) || new Set(rosters[id].pending.items.map(i => i.id));
-          const count = input.value.trim() ? Number(input.value) / group.qty : NaN;
+          const count = input.value.trim() ? Number(input.value) : NaN;
           const next = chooseTransferPackets(group, count, choices);
-          input.setCustomValidity(
-            next ? '' : `Укажите количество от 0 до ${group.items.length * group.qty}, кратное ${group.qty}`
-          );
+          input.setCustomValidity(next ? '' : `Укажите целое число наборов от 0 до ${group.items.length}`);
           const key = JSON.stringify([id, input.dataset.itemGroup]);
           if (!next) {
             invalidItemChoices.add(key);
@@ -506,7 +498,7 @@ export function openTransferDialog({ ids = [] } = {}) {
           itemChoices.set(id, next);
           updateTotal();
           input.closest('td').querySelector('[data-selected-quantity]').textContent =
-            `Выбрано: ${count * group.qty} шт.`;
+            `Выбрано: ${setsLabel(count)} (${count * group.qty} шт.)`;
           updateAll();
         };
       })().catch(() => {
@@ -690,6 +682,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
+    if (!alive() || running) return;
     const todo = plans.filter(p => p.run);
     const task = startTask(
       `📦 ${dry ? 'Пробная п' : 'П'}ередача предметов → ${[...new Set(todo.map(p => p.serverName))].join(', ')}`,
@@ -881,11 +874,6 @@ export function openTransferDialog({ ids = [] } = {}) {
       savePrefs(prefs);
       rerenderRow(id);
       updateAll();
-    } else if (t.id === 'tr-ack') {
-      updateAll();
-    } else if (t.id === 'tr-force') {
-      force = t.checked;
-      updateAll();
     } else if (t.matches('[data-id]')) {
       if (t.checked) selected.add(t.dataset.id);
       else selected.delete(t.dataset.id);
@@ -908,23 +896,47 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   /** Запуск по плану; возвращает после результата. */
   async function run(dry) {
+    if (confirming || running) return;
     if (invalidItemChoices.size) {
       toast('Исправьте количество в «Что будет передано»', 'warning');
       return;
     }
-    const plans = currentPlans();
-    if (!plans.some(p => p.run)) {
+    force = false;
+    const potential = currentPlans({ ignoreLimits: !dry });
+    if (!potential.some(p => p.run)) {
       toast('Некому передавать: отметьте браузеры и выберите в строках сервер и получателя', 'warning');
       return;
     }
-    if (!dry) {
-      if (!dlg.body.querySelector('#tr-ack')?.checked) {
-        toast('Поставьте галочку: передача необратима', 'warning');
-        return;
-      }
-      if (!(await ensureBackup())) return;
+    if (!dry && potential.filter(p => p.run).some(p => !Array.isArray(p.itemSelection))) {
+      toast('Сначала проверьте предметы в «Что будет передано»', 'warning');
+      return;
     }
-    await start(plans, dry);
+    confirming = true;
+    try {
+      let plans = currentPlans();
+      if (!dry) {
+        confirmationAbort = new AbortController();
+        const answer = await confirmTransfer({
+          signal: confirmationAbort.signal,
+          parent: dlg.el,
+          plansFor: ignoreLimits => currentPlans({ ignoreLimits })
+        });
+        if (!answer || !alive()) return;
+        force = answer.force;
+        plans = answer.plans;
+        dlg.el.inert = true;
+        try {
+          if (!(await ensureBackup()) || !alive()) return;
+        } finally {
+          dlg.el.inert = false;
+        }
+      }
+      await start(plans, dry);
+    } finally {
+      confirming = false;
+      confirmationAbort = null;
+      force = false;
+    }
   }
 
   dlg.foot.addEventListener('click', async e => {
@@ -998,22 +1010,6 @@ export function openTransferDialog({ ids = [] } = {}) {
     }
     if (act === 'refresh-servers') await refreshServers();
     if (act === 'refresh-all' && !running) await scan([...state.characters].sort(byNick));
-    if (act === 'forget-limits' && !running) {
-      const n = Object.keys(loadLimits()).length;
-      if (n) {
-        const ok = await confirmModal({
-          title: `Забыть запомненные ограничения (${n})?`,
-          text: 'Акции, которые сайт принимает только на определённый сервер, снова будут отмечаться на всех серверах; приложение запомнит их заново, если сайт откажет.',
-          okText: 'Забыть',
-          danger: true
-        });
-        if (ok) {
-          clearLimits();
-          updateAll();
-          toast('Запомненные ограничения стёрты', 'info');
-        }
-      }
-    }
     if (act === 'refresh-one' && !running) {
       const c = state.characters.find(x => x.id === e.target.closest('[data-char]')?.dataset.char);
       if (c) await scan([c], { servers: false });

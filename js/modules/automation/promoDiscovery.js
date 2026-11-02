@@ -53,12 +53,19 @@ export function createPromoDiscovery({
   cache.restoredExpired = Array.isArray(cache.restoredExpired)
     ? cache.restoredExpired.filter(key => typeof key === 'string' && key.length <= 400).slice(-200)
     : [];
+  // Keep explicit user restoration made before year inference was introduced.
+  for (const row of cache.codes) {
+    const key = promoExpiryKey(row, now());
+    if (cache.restoredExpired.includes(key.replace(/\.\d{4}$/, '')) && !cache.restoredExpired.includes(key))
+      cache.restoredExpired.push(key);
+  }
+  cache.restoredExpired = cache.restoredExpired.slice(-200);
   const hideExpired = () => {
     let changed = false;
     for (const row of cache.codes) {
       if (
         promoDeadlineState(row, now()).expired &&
-        !cache.restoredExpired.includes(promoExpiryKey(row)) &&
+        !cache.restoredExpired.includes(promoExpiryKey(row, now())) &&
         !cache.hiddenCodes.includes(row.code)
       ) {
         cache.hiddenCodes.push(row.code);
@@ -197,7 +204,7 @@ export function createPromoDiscovery({
           ...cache.restoredExpired,
           ...cache.codes
             .filter(row => cache.hiddenCodes.includes(row.code) && promoDeadlineState(row, now()).expired)
-            .map(promoExpiryKey)
+            .map(row => promoExpiryKey(row, now()))
         ])
       ].slice(-200);
       cache.hiddenCodes = [];
@@ -214,7 +221,7 @@ export function createPromoDiscovery({
       if (!hidden) {
         const row = cache.codes.find(row => row.code === code);
         if (row && promoDeadlineState(row, now()).expired)
-          cache.restoredExpired = [...new Set([...cache.restoredExpired, promoExpiryKey(row)])].slice(-200);
+          cache.restoredExpired = [...new Set([...cache.restoredExpired, promoExpiryKey(row, now())])].slice(-200);
       }
       cache.hiddenCodes = cache.hiddenCodes.slice(-5000);
       publish();

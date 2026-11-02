@@ -54,6 +54,29 @@ export function createDemoState(now = new Date()) {
     marathon: { title: 'Путь героя', days: 7, percent: 33 },
     bank: 4780,
     chosenDay: 0,
+    dayTasks: {},
+    calendarMonth: 0,
+    attentionEnabled: true,
+    promoEnabled: true,
+    gold: 12840000,
+    windows: [
+      { id: 'w1', charId: 'c1', title: 'Звеномир · Север' },
+      { id: 'w2', charId: 'c2', title: 'Тихомир · Север' }
+    ],
+    promos: [{ code: 'PWDEMO2026', expiresOn: mskAddDays(mskDate(now), 2), entered: ['c1', 'c2'] }],
+    marathonProgress: [
+      { charId: 'c1', completed: 5, required: 7, daysLeft: 4, siteTodayDone: true },
+      { charId: 'c2', completed: 3, required: 7, daysLeft: 4, siteTodayDone: false },
+      { charId: 'c3', completed: 1, required: 7, daysLeft: 4, siteTodayDone: true },
+      { charId: 'c4', completed: 4, required: 7, daysLeft: 4, siteTodayDone: false }
+    ],
+    marathonTasks: [
+      { title: 'Победить монстров', description: 'Закрыть задание события' },
+      { title: 'Пройти данж', description: 'Выполнить условие марафона' },
+      { title: 'Выполнить поручение', description: 'Забрать награду и проверить отметку' }
+    ],
+    marathonCheckedAt: '',
+    marathonChecking: false,
     tasks: { daily: true, marathon: false, party: false },
     clanResponses: { 'clan-1': '', 'clan-2': '' },
     poll: {
@@ -121,6 +144,7 @@ export function applyAppSnapshot(state, snapshot) {
     auth: character.checking ? 'checking' : character.isLoggedIn ? 'online' : 'offline',
     coins: Number(character.coins) || 0
   }));
+  state.windows = state.windows.filter(w => state.characters.some(c => c.id === w.charId));
   state.parties = snapshot.parties.map(party => ({
     id: String(party.id || ''),
     name: String(party.name || ''),
@@ -136,6 +160,14 @@ export function applyAppSnapshot(state, snapshot) {
         time: String(event.time || ''),
         detail: 'Запись календаря · пример',
         color: event.color === 'purple' ? 'violet' : 'blue'
+      }));
+  if (Array.isArray(snapshot.marathonTasks))
+    state.marathonTasks = snapshot.marathonTasks
+      .filter(task => task && typeof task === 'object')
+      .slice(0, 30)
+      .map(task => ({
+        title: String(task.title || '').slice(0, 160),
+        description: String(task.description || '').slice(0, 500)
       }));
   const marathon = snapshot.marathon;
   state.marathon =
@@ -162,8 +194,40 @@ export function applyAppSnapshot(state, snapshot) {
 }
 
 export function demoDays(date) {
-  return Array.from({ length: 5 }, (_, i) => {
-    const day = mskAddDays(date, i);
-    return { ...dungeonInfoForDate(day), offset: i };
+  return Array.from({ length: 7 }, (_, i) => {
+    const offset = i - 1;
+    const day = mskAddDays(date, offset);
+    return { ...dungeonInfoForDate(day), offset };
   });
+}
+
+export function marathonRisk(row) {
+  const remaining = Math.max(0, row.required - row.completed);
+  const spare = row.daysLeft - remaining;
+  return {
+    remaining,
+    spare,
+    tone: !remaining ? 'green' : spare < 0 ? 'red' : spare <= 1 ? 'amber' : 'green',
+    label: !remaining
+      ? 'Готово'
+      : spare < 0
+        ? `Отстаёт: не хватает ${-spare} дн.`
+        : spare === 0
+          ? 'На грани — без пропусков'
+          : spare === 1
+            ? 'Запас всего 1 день'
+            : `Запас ${spare} дн.`
+  };
+}
+export function selectedTasks(state) {
+  if (!state.chosenDay) return state.tasks;
+  const date = mskAddDays(state.date, state.chosenDay);
+  return (state.dayTasks[date] ||= {});
+}
+export function activePromos(state) {
+  return state.promoEnabled
+    ? state.promos.filter(
+        promo => promo.expiresOn >= state.date && state.characters.some(c => !promo.entered.includes(c.id))
+      )
+    : [];
 }
