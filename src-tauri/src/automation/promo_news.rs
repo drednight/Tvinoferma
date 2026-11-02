@@ -1,6 +1,8 @@
 //! Public news only: no character cookies, login, PIN activation, redirects or arbitrary URLs.
+use crate::parsers::{eval_and_wait, navigate_scoped, QUIET_SCOPE};
 use serde_json::{json, Value};
 use std::time::Duration;
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 fn news_url(page: Option<u8>, article: Option<&str>) -> Result<String, String> {
     match (page, article) {
@@ -35,12 +37,22 @@ fn decode_html(bytes: &[u8], content_type: &str) -> String {
 
 #[tauri::command]
 pub async fn fetch_promo_news_page(
+    app: AppHandle,
     page: Option<u8>,
     article: Option<String>,
+    browser: Option<bool>,
 ) -> Result<Value, String> {
     let url = news_url(page, article.as_deref())?;
+    if browser.unwrap_or(false) {
+        return browser_page(app, &url, article.is_some()).await;
+    }
     let _ = rustls::crypto::ring::default_provider().install_default();
     let client = reqwest::Client::builder()
+        .user_agent(concat!(
+            "Tvinoferma/",
+            env!("CARGO_PKG_VERSION"),
+            " (public news reader)"
+        ))
         .tls_backend_rustls()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -93,6 +105,103 @@ pub async fn fetch_promo_news_page(
     Ok(json!({"status":200,"html":decode_html(&body,&content_type)}))
 }
 
+// A normal WebView2 reader when the website denies a non-browser HTTP client.
+// Separate incognito profile: NEVER reuse a character window or cookie bank.
+fn public_news_navigation(url: &Url) -> bool {
+    if url.scheme() == "about" {
+        return url.path() == "blank" && url.query().is_none();
+    }
+    if url.scheme() != "https"
+        || !matches!(url.host_str(), Some("pwonline.ru" | "www.pwonline.ru"))
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+        || url.path() != "/news.php"
+    {
+        return false;
+    }
+    let fields: Vec<_> = url.query_pairs().collect();
+    if fields.len() == 1 && fields[0].0 == "article" {
+        return news_url(None, Some(&fields[0].1)).is_ok();
+    }
+    fields.len() == 3
+        && fields
+            .iter()
+            .filter(|(k, v)| k == "archive" && v == "news")
+            .count()
+            == 1
+        && fields
+            .iter()
+            .filter(|(k, v)| k == "type" && v == "last")
+            .count()
+            == 1
+        && fields
+            .iter()
+            .filter(|(k, v)| k == "page" && matches!(v.as_ref(), "1" | "2"))
+            .count()
+            == 1
+}
+async fn browser_page(app: AppHandle, url: &str, article: bool) -> Result<Value, String> {
+    static READER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    let _lease = tokio::time::timeout(Duration::from_secs(14), READER.lock())
+        .await
+        .map_err(|_| "news_timeout")?;
+    const LABEL: &str = "public-promo-news-readonly";
+    let window = if let Some(window) = app.get_webview_window(LABEL) {
+        window
+    } else {
+        let dir = app
+            .path()
+            .app_cache_dir()
+            .map_err(|_| "news_client")?
+            .join("anonymous-public-news");
+        std::fs::create_dir_all(&dir).map_err(|_| "news_client")?;
+        WebviewWindowBuilder::new(
+            &app,
+            LABEL,
+            WebviewUrl::External(Url::parse("about:blank").map_err(|_| "news_client")?),
+        )
+        .title("Public news reader")
+        .visible(false)
+        .focused(false)
+        .skip_taskbar(true)
+        .incognito(true)
+        .data_directory(dir)
+        .on_navigation(public_news_navigation)
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_download(|_, _| false)
+        .build()
+        .map_err(|_| "news_client")?
+    };
+    let result = async {
+        navigate_scoped(&window, url, QUIET_SCOPE)
+            .await
+            .map_err(|_| "news_network".to_string())?;
+        let script = format!(
+            "window.__TF_PUBLIC_PROMO_NEWS={};\n{}",
+            json!({"article":article,"url":url}),
+            include_str!("../scripts/promo_news_public.js")
+        );
+        match eval_and_wait(&window, &script, "#TF_PUBLIC_NEWS_V1_", 10, QUIET_SCOPE).await {
+            Some((None, data)) if data["html"].is_string() => {
+                Ok(json!({"status":200,"html":data["html"],"reader":"webview"}))
+            }
+            Some((Some(error), _)) => Err(match error.as_str() {
+                "news_challenge" => "news_challenge",
+                "news_http_403" => "news_http_403",
+                "news_size" => "news_size",
+                _ => "news_markup",
+            }
+            .into()),
+            _ => Err("news_timeout".into()),
+        }
+    }
+    .await;
+    // Unload article timers/resources; keep only the isolated reader infrastructure.
+    let _ = window.navigate(Url::parse("about:blank").map_err(|_| "news_client")?);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +221,27 @@ mod tests {
             "1234567890123",
         ] {
             assert!(news_url(None, Some(bad)).is_err());
+        }
+    }
+    #[test]
+    fn reader_cannot_navigate_to_login_pin_or_foreign_hosts() {
+        for value in [
+            "https://pwonline.ru/news.php?article=123",
+            "https://www.pwonline.ru/news.php?archive=news&type=last&page=2",
+            "about:blank",
+        ] {
+            assert!(public_news_navigation(&Url::parse(value).unwrap()));
+        }
+        for value in [
+            "https://pwonline.ru/pin/CODE1234",
+            "https://pwonline.ru/login.php",
+            "https://other.test/news.php?article=1",
+            "http://pwonline.ru/news.php?article=1",
+            "https://pwonline.ru/news.php?article=1&do=login",
+            "https://pwonline.ru/news.php?archive=news&type=last&page=3",
+            "https://pwonline.ru/news.php?archive=news&archive=news&type=last",
+        ] {
+            assert!(!public_news_navigation(&Url::parse(value).unwrap()));
         }
     }
     #[test]

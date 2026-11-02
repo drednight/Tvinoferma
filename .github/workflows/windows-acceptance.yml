@@ -22,6 +22,7 @@ on:
       - 'js/modules/cloudSync/marathonExport.js'
       - 'js/modules/cloudSync/applyPublicSnapshot.js'
       - 'src-tauri/src/scripts/marathon*.js'
+      - 'src-tauri/src/scripts/promo_news_public.js'
       - 'src-tauri/src/cloud_*.rs'
       - 'src-tauri/src/commands/cloud_*.rs'
 

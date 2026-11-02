@@ -38,3 +38,21 @@ it('party mode starts without a guessed party and only reveals the party selecto
   expect(dlg.body.querySelector('#promo-count').textContent).toContain('0');
   dlg.close();
 });
+it('renders the actual demo B matrix, class icons and login stripes, recalculating it on code changes', () => {
+  state.characters[0].class = 'Воин';
+  state.characters[1].class = 'Жрец';
+  const dlg = openPromoDialog({ ids: ['a', 'b'] });
+  const input = dlg.body.querySelector('#promo-code');
+  input.value = 'CODE2026';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(dlg.body.querySelector('.sp-main [data-script-plan] th code').textContent).toBe('CODE2026');
+  const rows = [...dlg.body.querySelectorAll('[data-script-plan] tbody tr')];
+  expect(rows).toHaveLength(2);
+  expect(rows[0].classList.contains('st-online')).toBe(true);
+  expect(rows[1].classList.contains('st-offline')).toBe(true);
+  expect(rows[0].querySelector('.char-class-ico').getAttribute('src')).toContain('var.webp');
+  expect(rows[0].textContent).toContain('в плане');
+  expect(dlg.body.querySelector('[data-script-summary]').textContent).toContain('2');
+  expect(dlg.body.querySelector('.promo-dot')).toBeNull();
+  dlg.close();
+});

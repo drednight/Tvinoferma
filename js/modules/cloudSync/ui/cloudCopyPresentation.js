@@ -21,16 +21,20 @@ export function providerCopyRows(files, showPrevious = false) {
 }
 const AUTO_KEY = 'tf_cloud_auto_check_v1';
 const valid = value =>
-  value?.version === 1 && typeof value.startup === 'boolean' && [0, 5, 15, 30, 60].includes(value.minutes);
+  value?.version === 1 &&
+  typeof value.startup === 'boolean' &&
+  Number.isSafeInteger(value.minutes) &&
+  (value.minutes === 0 || (value.minutes >= 15 && value.minutes <= 10080));
 export function readCloudAutoCheck(doc) {
   try {
     const raw = doc.defaultView?.localStorage?.getItem(AUTO_KEY);
     const value = raw && raw.length < 256 ? JSON.parse(raw) : null;
+    if (value?.version === 1 && value.minutes === 5) value.minutes = 15;
     if (valid(value)) return { version: 1, startup: value.startup, minutes: value.minutes };
   } catch {
     /* unavailable storage: safe defaults */
   }
-  return { version: 1, startup: true, minutes: 5 };
+  return { version: 1, startup: true, minutes: 15 };
 }
 export function writeCloudAutoCheck(doc, value) {
   try {

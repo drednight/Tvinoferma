@@ -6,11 +6,22 @@ import { promoDiscovery, promoCoverage } from './promoDiscovery.js';
 export function renderPromoSuggestions(dlg) {
   const field = dlg.body.querySelector('#promo-code')?.parentElement;
   if (!field) return;
-  field.querySelector('[data-promo-discovery]')?.remove();
-  const section = document.createElement('section');
+  const previous = field.querySelector('[data-promo-discovery]');
+  const expanded = previous?.open === true;
+  previous?.remove();
+  const section = document.createElement('details');
+  section.open = expanded;
   section.dataset.promoDiscovery = '';
   const service = promoDiscovery(),
     cache = service.snapshot();
+  const heading = document.createElement('summary');
+  heading.textContent =
+    cache.status === 'checking'
+      ? 'Проверка новостей…'
+      : cache.status === 'partial'
+        ? `Новости: проверка не завершена${cache.errors?.includes('news_http_403') ? ' (HTTP 403)' : ''}`
+        : `Промокоды из новостей: ${cache.codes.length}`;
+  section.append(heading);
   const label = document.createElement('p');
   label.className = 'muted';
   label.textContent =
@@ -30,7 +41,25 @@ export function renderPromoSuggestions(dlg) {
   refresh.onclick = () => {
     void service.check({ force: true });
   };
-  section.append(label, refresh);
+  if (cache.errors?.includes('news_http_403'))
+    label.textContent += ' Сайт отказал в доступе (HTTP 403); это не означает, что кодов нет.';
+  if (cache.errors?.includes('news_challenge'))
+    label.textContent += ' Сайт требует проверку безопасности. Автоматического обхода защиты нет.';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'btn ghost small';
+  open.textContent = 'Открыть новости в браузере';
+  open.disabled = !window.__TAURI_INTERNALS__;
+  open.onclick = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open('https://pwonline.ru/news.php?archive=news&type=last&page=1');
+    } catch {
+      label.textContent =
+        'Не удалось открыть браузер. Адрес: https://pwonline.ru/news.php?archive=news&type=last&page=1';
+    }
+  };
+  section.append(label, refresh, open);
   for (const row of promoCoverage(cache.codes, state.characters, loadLog())) {
     const card = document.createElement('div');
     card.className = 'promo-news-option';

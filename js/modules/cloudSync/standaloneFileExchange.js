@@ -9,7 +9,7 @@ import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cl
 import { buildPublicSnapshot } from './publicSnapshot.js';
 import { comparePublicSnapshots } from './compareSnapshots.js';
 import { prepareFullPublicSnapshotReplace } from './applyPublicSnapshot.js';
-import { planSyncIdentities } from './identityMigration.js';
+import { planComparisonIdentities } from './comparisonIdentities.js';
 import { privateDifferences, applyPrivateSelection, PRIVATE_FIELDS } from './privateSnapshot.js';
 import { snapshotFileHash, sameFilePin, filePin } from './snapshotFileState.js';
 import { object, array } from './exportSchema.js';
@@ -466,7 +466,8 @@ export function createStandaloneFileExchange(ports) {
           progress('compare');
           return await cloudStep('review_compare', provider, async () => {
             const original = ports.snapshot();
-            const localState = planSyncIdentities({ snapshot: original, cryptoSource }).snapshot;
+            const projection = planComparisonIdentities({ snapshot: original, cryptoSource });
+            const localState = projection.snapshot;
             const cloud = openedFile.contents.publicSnapshot;
             const local = buildPublicSnapshot(localState, {
               settingsSelections: cloud.sections.preferences.selections
@@ -492,6 +493,7 @@ export function createStandaloneFileExchange(ports) {
               sha256,
               createdAt: openedFile.contents.createdAt,
               comparison,
+              duplicatePartyIds: projection.duplicatePartyIds,
               privateChanges,
               localPrivateAtRisk: [...localState.characters, ...localState.archivedCharacters].some(
                 character =>

@@ -143,12 +143,12 @@ describe('desktop OAuth PKCE: изолированная подготовка', 
     const flow = await startCloudOAuth(allowed.input);
     const url = new URL(allowed.openBrowser.mock.calls[0][0]);
     expect(url.searchParams.get('access_type')).toBe('offline');
-    expect(url.searchParams.get('prompt')).toBe('consent');
+    expect(url.searchParams.get('prompt')).toBe('consent select_account');
     await flow.cancel();
     for (const [provider, extra] of [
       ['google', { requestOffline: false, forceConsent: true }],
       ['google', { forceConsent: 'true' }],
-      ['yandex', { forceConsent: true }]
+      ['yandex', { forceConsent: 'yes' }]
     ]) {
       const s = options(provider, extra);
       await expect(startCloudOAuth(s.input)).rejects.toThrow();
@@ -446,4 +446,13 @@ describe('desktop OAuth PKCE: изолированная подготовка', 
     expect(native.invoke).not.toHaveBeenCalled();
     expect(openBrowser).not.toHaveBeenCalled();
   });
+});
+
+it('explicit Yandex login always requests its documented consent screen; Google-only prompt is not sent', async () => {
+  const s = options('yandex', { forceConsent: true });
+  const flow = await startCloudOAuth(s.input);
+  const url = new URL(s.openBrowser.mock.calls[0][0]);
+  expect(url.searchParams.get('force_confirm')).toBe('yes');
+  expect(url.searchParams.has('prompt')).toBe(false);
+  await flow.cancel();
 });

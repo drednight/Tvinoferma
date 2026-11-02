@@ -177,7 +177,7 @@ export async function enrollNativeCloudAccount(options) {
       openBrowser: input.openBrowser,
       ...(input.cryptoSource ? { cryptoSource: input.cryptoSource } : {}),
       requestOffline: true,
-      ...(provider === 'google' ? { forceConsent: true } : {})
+      forceConsent: true
     });
     if (signal.aborted) {
       cancel();

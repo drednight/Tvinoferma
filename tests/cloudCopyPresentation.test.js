@@ -36,10 +36,21 @@ describe('per-provider presentation, not automatic replacement ordering', () => 
   });
 });
 it('persists only validated startup and interval preferences, reset restores safe defaults', () => {
-  expect(readCloudAutoCheck(document)).toEqual({ version: 1, startup: true, minutes: 5 });
+  expect(readCloudAutoCheck(document)).toEqual({ version: 1, startup: true, minutes: 15 });
   expect(writeCloudAutoCheck(document, { version: 1, startup: false, minutes: 15 })).toBe(true);
   expect(readCloudAutoCheck(document)).toEqual({ version: 1, startup: false, minutes: 15 });
   expect(writeCloudAutoCheck(document, { version: 1, startup: true, minutes: -1 })).toBe(false);
   clearCloudAutoCheck(document);
-  expect(readCloudAutoCheck(document).minutes).toBe(5);
+  expect(readCloudAutoCheck(document).minutes).toBe(15);
+});
+
+it('supports custom whole-minute periods and migrates old five-minute schedules without a tight loop', () => {
+  for (const minutes of [0, 15, 30, 60, 47, 1440, 10080]) {
+    expect(writeCloudAutoCheck(document, { version: 1, startup: false, minutes })).toBe(true);
+    expect(readCloudAutoCheck(document).minutes).toBe(minutes);
+  }
+  for (const minutes of [1, 5, 14, 15.5, NaN, Infinity, 10081, '30'])
+    expect(writeCloudAutoCheck(document, { version: 1, startup: true, minutes })).toBe(false);
+  localStorage.setItem('tf_cloud_auto_check_v1', JSON.stringify({ version: 1, startup: false, minutes: 5 }));
+  expect(readCloudAutoCheck(document)).toEqual({ version: 1, startup: false, minutes: 15 });
 });

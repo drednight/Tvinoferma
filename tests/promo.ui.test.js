@@ -56,14 +56,16 @@ beforeEach(async () => {
 });
 
 describe('форма промокодов', () => {
-  it('нет галочек и пояснения про страницу /pin; есть «Выбрать всех», фильтра по пати нет', () => {
+  it('вариант B: пропуск введённых закреплён, отдельный выбор и план без старых подсказок /pin', () => {
     openPromoDialog();
-    expect($('.tf-dialog').querySelectorAll('input[type=checkbox]:not([data-id])')).toHaveLength(0);
+    expect($('.sp-check input').checked).toBe(true);
+    expect($('.sp-check input').disabled).toBe(true);
     expect($('.tf-dialog').textContent).not.toMatch(/pwonline\.ru\/pin|Ввести/);
     expect($('.tf-dialog').querySelector('#promo-party')).toBeNull();
     expect($('[data-q="all"]').textContent).toContain('Выбрать всех');
     expect($('.tf-dialog-title').textContent).toContain('🎁');
-    expect($('.promo-hint').textContent).toContain('До 10');
+    expect($('[data-script-plan]')).toBeTruthy();
+    expect($('.sp-field label').textContent).toBe('Промокоды');
   });
 
   it('«Выбрать всех» отмечает всех, «Снять выбор» — снимает', () => {

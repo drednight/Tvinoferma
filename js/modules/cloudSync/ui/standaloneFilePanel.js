@@ -231,7 +231,10 @@ export function bindStandaloneFilePanel(options) {
   panel.addEventListener('change', optionsChanged);
   const autoCheck = readCloudAutoCheck(doc);
   if (el('startup')) el('startup').checked = autoCheck.startup;
-  if (el('interval')) el('interval').value = String(autoCheck.minutes);
+  if (el('interval'))
+    el('interval').value = [0, 15, 30, 60].includes(autoCheck.minutes) ? String(autoCheck.minutes) : 'custom';
+  if (el('custom-interval')) el('custom-interval').value = String(autoCheck.minutes || 15);
+  if (el('custom-interval-label')) el('custom-interval-label').hidden = el('interval')?.value !== 'custom';
   const confirmAction = options.confirm || confirmModal;
   const passwordDialog = options.password || (opts => askStandalonePassword({ doc, ...opts }));
   let runtime = options.runtime || null;
@@ -580,6 +583,9 @@ export function bindStandaloneFilePanel(options) {
       `Дата внутри файла: ${dateLabel(token.createdAt)}. ` +
       (token.bothChanged ? 'ВНИМАНИЕ: и местные, и облачные данные изменились относительно принятой базы. ' : '') +
       (token.noCommonBase ? 'Общая принятая база пока неизвестна. ' : '') +
+      (token.duplicatePartyIds
+        ? `В местных пати повторяются идентификаторы: ${token.duplicatePartyIds}. Все записи показаны раздельно только для просмотра; принадлежность к повторным пати неоднозначна. Местные ID и связи не исправлялись. Это сравнение для полной замены, не для объединения. `
+        : '') +
       (token.localPrivateAtRisk ? 'Удаление затронет местные контакты: сначала сохраните их отдельную копию. ' : '') +
       'При принятии добавится содержимое только из облака, местные отсутствующие в облаке записи будут удалены. Это полная замена, не объединение.' +
       (token.hasPrivate ? ' В файле есть приватная часть; без отдельного выбора она не применяется.' : '');
@@ -1033,20 +1039,35 @@ export function bindStandaloneFilePanel(options) {
   const connected = () => {
     if (!busy && !stopped) void check(false);
   };
+  function intervalMinutes() {
+    const value = el('interval')?.value;
+    const minutes = Number(value === 'custom' ? el('custom-interval')?.value : (value ?? 15));
+    return Number.isSafeInteger(minutes) &&
+      ((value !== 'custom' && minutes === 0) || (minutes >= 15 && minutes <= 10080))
+      ? minutes
+      : null;
+  }
   function schedule() {
     if (timer) clearInterval(timer);
     timer = null;
-    const minutes = Number(el('interval')?.value ?? 5);
+    const minutes = intervalMinutes();
     if (startup && minutes) timer = setInterval(connected, minutes * 60 * 1000);
   }
   const autoChanged = () => {
-    const value = { version: 1, startup: !!el('startup')?.checked, minutes: Number(el('interval')?.value ?? 5) };
+    if (el('custom-interval-label')) el('custom-interval-label').hidden = el('interval')?.value !== 'custom';
+    const minutes = intervalMinutes();
+    if (minutes === null) {
+      status.textContent = 'Введите целое число минут от 15 до 10080. Прежнее расписание сохранено.';
+      return;
+    }
+    const value = { version: 1, startup: !!el('startup')?.checked, minutes };
     if (!writeCloudAutoCheck(doc, value))
       status.textContent = 'Не удалось запомнить расписание. Оно действует до закрытия приложения.';
     schedule();
   };
   el('startup')?.addEventListener('change', autoChanged);
   el('interval')?.addEventListener('change', autoChanged);
+  el('custom-interval')?.addEventListener('change', autoChanged);
   const reset = () => {
     stopped = true;
     panel.removeEventListener('change', optionsChanged);
@@ -1109,6 +1130,7 @@ export function bindStandaloneFilePanel(options) {
       reset();
       el('startup')?.removeEventListener('change', autoChanged);
       el('interval')?.removeEventListener('change', autoChanged);
+      el('custom-interval')?.removeEventListener('change', autoChanged);
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', connected);
       doc.defaultView?.removeEventListener('tf-cloud-credential-removed', credentialRemoved);
       doc.defaultView?.removeEventListener('tf-cloud-credential-ready', invalidateFolder);

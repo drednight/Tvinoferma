@@ -203,6 +203,9 @@ export function bindCloudRegistrationCheck(options) {
       simple.hidden = !canReconnect && ['ready', 'ready_bound'].includes(known?.status || '');
       simple.textContent = canReconnect ? 'Повторить вход Google' : 'Войти';
     }
+    doc.querySelectorAll('[data-cloud-config-provider]').forEach(button => {
+      /** @type {HTMLButtonElement} */ (button).disabled = busy || resetStarted;
+    });
     for (const button of providerButtons) {
       const target = button.dataset.cloudSignIn;
       const presentationStatus = cloudAccountPresentation(target).status;
@@ -277,6 +280,20 @@ export function bindCloudRegistrationCheck(options) {
       : 'Проверка доступна только в настольном приложении. В браузерном примере подключения и передачи данных нет.';
   }
   function updateProviderHint() {
+    const title = doc.getElementById('cloud-config-provider-title');
+    if (title)
+      title.textContent =
+        provider.value === 'yandex'
+          ? 'Настройка и восстановление Яндекс Диска'
+          : 'Настройка и восстановление Google Диска';
+    doc
+      .querySelectorAll('[data-cloud-config-provider]')
+      .forEach(button =>
+        button.setAttribute(
+          'aria-pressed',
+          String(button.getAttribute('data-cloud-config-provider') === provider.value)
+        )
+      );
     yandexHint.hidden = provider.value !== 'yandex';
     googleHint.hidden = provider.value !== 'google';
     const label = doc.getElementById('cloud-google-import-label');
@@ -424,6 +441,17 @@ export function bindCloudRegistrationCheck(options) {
     setBusy();
     if (panel.open) void inspect();
   });
+  doc.querySelectorAll('[data-cloud-config-provider]').forEach(button =>
+    button.addEventListener('click', () => {
+      if (active || resetStarted) return;
+      const selected = button.getAttribute('data-cloud-config-provider');
+      if (!['google', 'yandex'].includes(selected) || selected === provider.value) return;
+      provider.value = selected;
+      client.value = '';
+      provider.dispatchEvent(new Event('change', { bubbles: true }));
+      void inspect();
+    })
+  );
   client.addEventListener('input', () => {
     clearAccount();
     if (!active) status.textContent = initialStatus();

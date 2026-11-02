@@ -337,7 +337,7 @@
   display: grid;
   gap: 10px;
 }
-.script-target label {
+.script-target label:not(.sp-radio) {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -391,4 +391,55 @@
 }
 .modal-container.sp-container {
   max-height: calc(100dvh - 110px);
+}
+
+/* One visual language: class icon in the name, login state on the left edge. */
+.sp-main .promo-table tr.st-online > td:first-child,
+.sp-main .shop-table tr.st-online > td:first-child,
+.sp-main .promo-item.st-online {
+  border-left: 3px solid var(--success);
+}
+.sp-main .promo-table tr.st-offline > td:first-child,
+.sp-main .shop-table tr.st-offline > td:first-child,
+.sp-main .promo-item.st-offline {
+  border-left: 3px solid var(--danger);
+}
+.sp-main .promo-table tr.st-checking > td:first-child,
+.sp-main .shop-table tr.st-checking > td:first-child,
+.sp-main .promo-item.st-checking {
+  border-left: 3px solid var(--warning);
+}
+.sp-main tr.st-unknown > td:first-child,
+.sp-main .promo-item.st-unknown {
+  border-left: 3px solid var(--border);
+}
+.sp-frozen-settings {
+  display: grid;
+  gap: 14px;
+}
+.sp-side .sp-field > .promo-codes-info {
+  font-size: 0.76rem;
+}
+.sp-main td .char-class-ico {
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* The same compact class badge as the approved demo, including unknown classes. */
+.char-class-ico {
+  display: inline-block;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  object-fit: cover;
+  vertical-align: middle;
+  background: var(--surface-2);
+}
+.char-class-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-weight: 800;
 }

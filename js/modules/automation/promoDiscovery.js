@@ -1,3 +1,4 @@
+import { createPublicNewsReader } from './publicNewsReader.js';
 import { newsArticles, articleCodes } from './promoNewsParser.js';
 export const DISCOVERY_KEY = 'tf_promo_discovery_v1';
 const day = ms =>
@@ -156,15 +157,18 @@ if (typeof window !== 'undefined')
     service = null;
   });
 export function promoDiscovery() {
-  if (!service)
+  if (!service) {
+    let reader;
     service = createPromoDiscovery({
       read: async args => {
         if (!window.__TAURI_INTERNALS__) throw Error('desktop_only');
         const { invoke } = await import('@tauri-apps/api/core');
-        return invoke('fetch_promo_news_page', args);
+        reader ||= createPublicNewsReader(invoke);
+        return reader(args);
       },
       onChange: () => window.dispatchEvent(new CustomEvent('tf-promo-news-changed'))
     });
+  }
   return service;
 }
 export function discoveredPromos() {

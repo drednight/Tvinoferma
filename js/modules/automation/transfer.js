@@ -1,3 +1,4 @@
+import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/transfer.js
 // 📦 Передача предметов в игру (Issue #26): диалог «браузеры → сервер → получатель → сводка → передача → итог».
@@ -44,7 +45,6 @@ import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './s
 import { makeScriptReport } from './scriptReport.js';
 import { openScriptStatistics } from './scriptReportView.js';
 
-const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 const charLine = c => `${charTitle(c)} (${c.cls || '?'}, ур. ${c.level})`;
@@ -193,9 +193,9 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   /** Строка: галочка · персонаж приложения · что известно · сервер · получатель на этом сервере. */
   const rowHtml = c => `
-      <div class="promo-item tr-row" data-row="${escapeHtml(c.id)}">
+      <div class="promo-item tr-row ${stripeCls(c)}" data-row="${escapeHtml(c.id)}">
         <label class="tr-pick"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-          <span>${dot(c)}</span><b>${escapeHtml(c.nick)}</b></label>
+          ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b></label>
         <button class="btn ghost small tr-refresh" data-act="refresh-one" data-char="${escapeHtml(c.id)}" title="Прочитать заново серверы, персонажей и то, что ждёт передачи — только у «${escapeHtml(c.nick)}»">🔄</button>
         <span class="promo-muted tr-info">${escapeHtml(infoText(c))}</span>
         ${serverCell(c)}
@@ -508,7 +508,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         body: `<div class="promo-scroll"><table class="promo-table"><tbody>${chars
           .map(
             c =>
-              `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-scan="${escapeHtml(c.id)}"><span class="promo-muted">⏳ в очереди</span></td></tr>`
+              `<tr class="${stripeCls(c)}"><td><b>${classIconHtml(c)} ${escapeHtml(c.nick)}</b></td><td data-scan="${escapeHtml(c.id)}"><span class="promo-muted">⏳ в очереди</span></td></tr>`
           )
           .join('')}</tbody></table></div>`
       })}`;
@@ -516,7 +516,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
 
-    layoutScriptWorkspace(dlg);
+    layoutScriptWorkspace(dlg, undefined, { running: true });
   }
 
   function updateScanning(row, done, total) {
@@ -627,7 +627,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       <tbody>${plans
         .map(p => {
           const row = byId.get(p.char.id);
-          return `<tr data-row="${escapeHtml(p.char.id)}"><td><b>${escapeHtml(p.char.nick)}</b></td>
+          return `<tr class="${stripeCls(p.char)}" data-row="${escapeHtml(p.char.id)}"><td><b>${classIconHtml(p.char)} ${escapeHtml(p.char.nick)}</b></td>
           <td>${p.recipient ? `${escapeHtml(p.serverName)} → ${escapeHtml(charTitle(p.recipient))}` : '—'}</td>
           <td data-count="${escapeHtml(p.char.id)}">${row?.count || ''}</td>
           <td data-cell="${escapeHtml(p.char.id)}">${cellHtml(row)}</td></tr>`;
@@ -644,7 +644,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     bindStop(signal);
 
-    layoutScriptWorkspace(dlg);
+    layoutScriptWorkspace(dlg, undefined, { running: true });
   }
 
   function updateRunning(row, done, total) {

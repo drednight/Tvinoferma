@@ -6,16 +6,23 @@ import { getClassIconSrc } from '../../core/constants.js';
 import { openOverlay } from '../marathons/overlay.js';
 
 /** Состояние входа на сайт; «проверяется» важнее сохранённого признака входа. */
-export const loginStatus = c => (c.checking ? 'checking' : c.isLoggedIn === true ? 'online' : 'offline');
+export const loginStatus = c =>
+  c.checking ? 'checking' : c.isLoggedIn === true ? 'online' : c.isLoggedIn === false ? 'offline' : 'unknown';
 export const stripeCls = c => `st-${loginStatus(c)}`;
 export const statusTitle = c =>
-  ({ checking: 'Проверка входа на сайт', online: 'Есть вход на сайт', offline: 'Нет входа на сайт' })[loginStatus(c)];
+  ({
+    checking: 'Проверка входа на сайт',
+    online: 'Есть вход на сайт',
+    offline: 'Нет входа на сайт',
+    unknown: 'Вход ещё не проверен'
+  })[loginStatus(c)];
 
 export function classIconHtml(c) {
-  const src = getClassIconSrc(c.cls);
+  const cls = c.class || c.cls || c.className || '';
+  const src = getClassIconSrc(cls);
   return src
-    ? `<img class="char-class-ico" src="/${escapeHtml(src).replace(/^\//, '')}" alt="${escapeHtml(c.cls)}" title="${escapeHtml(c.cls)}">`
-    : `<span class="char-class-ico char-class-letter" title="${escapeHtml(c.cls)}">${escapeHtml(c.cls?.[0] || '?')}</span>`;
+    ? `<img class="char-class-ico" src="/${escapeHtml(src).replace(/^\//, '')}" alt="${escapeHtml(cls)}" title="${escapeHtml(cls)}">`
+    : `<span class="char-class-ico char-class-letter" title="${escapeHtml(cls)}">${escapeHtml(cls?.[0] || '?')}</span>`;
 }
 
 let pickerSequence = 0;
@@ -57,7 +64,7 @@ export function openCharacterPicker({ characters, selected, parent, returnFocus,
     <div class="cp-filters">
       <label class="cp-field cp-search"><span>Поиск</span><input class="input" type="search" data-picker-search autocomplete="off" placeholder="Ник, класс или пати"></label>
       <label class="cp-field"><span>Вход на сайт</span><select class="select" data-picker-status>
-        <option value="all">Все состояния</option><option value="online">Есть вход</option><option value="offline">Нет входа</option><option value="checking">Проверяется</option>
+        <option value="all">Все состояния</option><option value="online">Есть вход</option><option value="offline">Нет входа</option><option value="unknown">Не проверен</option><option value="checking">Проверяется</option>
       </select></label>
       <label class="cp-field"><span>Пати</span><select class="select" data-picker-party><option value="">Все пати</option>${options(characters.flatMap(c => c.parties || [c.party]))}</select></label>
       <label class="cp-field"><span>Класс</span><select class="select" data-picker-class><option value="">Все классы</option>${options(characters.map(c => c.cls))}</select></label>
@@ -117,7 +124,12 @@ export function openCharacterPicker({ characters, selected, parent, returnFocus,
       ? visible
           .map(c => {
             const state = loginStatus(c);
-            const stateText = { online: 'Есть вход', offline: 'Нет входа', checking: 'Проверяется' }[state];
+            const stateText = {
+              online: 'Есть вход',
+              offline: 'Нет входа',
+              unknown: 'Не проверен',
+              checking: 'Проверяется'
+            }[state];
             return `<label class="promo-item cp-character ${stripeCls(c)}" title="${escapeHtml(statusTitle(c))}">
               <input type="checkbox" data-picker-id="${escapeHtml(c.id)}" ${draft.has(c.id) ? 'checked' : ''}>
               ${classIconHtml(c)}

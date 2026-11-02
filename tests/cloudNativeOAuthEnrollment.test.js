@@ -175,9 +175,10 @@ describe('полный экспериментальный PKCE → подтве�
     const authorize = new URL(s.openBrowser.mock.calls[0][0]);
     if (provider === 'google') {
       expect(authorize.searchParams.get('access_type')).toBe('offline');
-      expect(authorize.searchParams.get('prompt')).toBe('consent');
+      expect(authorize.searchParams.get('prompt')).toBe('consent select_account');
     } else {
       expect(authorize.searchParams.has('prompt')).toBe(false);
+      expect(authorize.searchParams.get('force_confirm')).toBe('yes');
     }
   });
 

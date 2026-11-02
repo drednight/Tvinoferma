@@ -1,3 +1,4 @@
+import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/shop.js
 // <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков: покупка за Древние монеты (магазин подарков, chests2.php): диалог «предметы → аккаунты и количество → запуск → итоги».
@@ -49,7 +50,6 @@ import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './s
 import { makeScriptReport } from './scriptReport.js';
 import { openScriptStatistics } from './scriptReportView.js';
 
-const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const fmt = n => formatCoins(n);
 const clock = d => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -402,9 +402,9 @@ export function openShopDialog({ ids = [] } = {}) {
             : `⚠ ${SCAN_FAIL[g.state] || SCAN_FAIL.error}${g.error && g.state === 'error' ? ` (${errorText(g.error)})` : ''}`;
       cells = `<td colspan="${defs.length + 1}" class="shop-muted">${escapeHtml(msg)}</td>`;
     }
-    return `<tr class="shop-row${ok ? '' : ' shop-dim'}" data-g="${idx}">
+    return `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}${ok ? '' : ' shop-dim'}" data-g="${idx}">
       <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
-      <td><b>${escapeHtml(g.nick)}</b> ${dot(g.rep || g.members[0])}${g.others.length ? `<div class="shop-muted">также: ${escapeHtml(g.others.join(', '))}</div>` : ''}
+      <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${g.others.length ? `<div class="shop-muted">также: ${escapeHtml(g.others.join(', '))}</div>` : ''}
         ${parties ? `<div class="shop-muted">${escapeHtml(parties)}</div>` : ''}</td>
       <td class="shop-num">${bal}</td>${cells}</tr>`;
   }
@@ -645,7 +645,7 @@ export function openShopDialog({ ids = [] } = {}) {
           .map(a =>
             a.orders
               .map(
-                o => `<tr><td><b>${escapeHtml(a.char.nick)}</b></td><td>${escapeHtml(itemName(o.key))} × ${o.qty}</td>
+                o => `<tr class="${stripeCls(a.char)}"><td>${classIconHtml(a.char)}<b>${escapeHtml(a.char.nick)}</b></td><td>${escapeHtml(itemName(o.key))} × ${o.qty}</td>
     <td data-run="${escapeHtml(cellKey(a, o.key))}"><span class="shop-muted">⏳ в очереди</span></td></tr>`
               )
               .join('')
@@ -682,7 +682,7 @@ export function openShopDialog({ ids = [] } = {}) {
       ? '👁 Пробный запуск: магазин открывается, кнопка ищется, но не нажимается.'
       : 'Идёт покупка: аккаунты обрабатываются несколько одновременно, предметы у каждого — по очереди, штука за штукой.';
     dlg.body.innerHTML = runningHtml(accounts);
-    layoutScriptWorkspace(dlg);
+    layoutScriptWorkspace(dlg, undefined, { running: true });
     dlg.foot.innerHTML = `<span class="shop-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
@@ -857,7 +857,7 @@ export function openShopDialog({ ids = [] } = {}) {
             ]
               .filter(Boolean)
               .join(' — ');
-            return `<tr><td>${i === 0 ? `<b>${escapeHtml(a.char.nick)}</b>${others.length ? `<div class="shop-muted">также: ${escapeHtml(others.join(', '))}</div>` : ''}` : ''}</td>
+            return `<tr class="${stripeCls(a.char)}"><td>${i === 0 ? `${classIconHtml(a.char)}<b>${escapeHtml(a.char.nick)}</b>${others.length ? `<div class="shop-muted">также: ${escapeHtml(others.join(', '))}</div>` : ''}` : ''}</td>
           <td>${escapeHtml(r.item)}</td>
           <td class="shop-res-${info.level}" title="${escapeHtml(detail)}">${info.icon} ${escapeHtml(resultLabel(r))}${detail && r.status !== 'dry_run' ? `<div class="shop-muted">${escapeHtml(detail)}</div>` : ''}</td>
           <td>${r.spent ? `${fmt(r.spent)} мон.` : '—'}</td><td>${i === 0 ? balCell : ''}</td></tr>`;
