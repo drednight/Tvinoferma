@@ -35,6 +35,15 @@ export function createPromoDiscovery({
     if (old?.version === 1 && Array.isArray(old.codes) && old.articles && typeof old.articles === 'object')
       cache = { ...empty(), ...old, codes: old.codes.filter(c => /^[A-Z0-9_-]{4,40}$/.test(c?.code)).slice(0, 200) };
   } catch {}
+  cache.hiddenCodes = Array.isArray(cache.hiddenCodes)
+    ? cache.hiddenCodes.filter(c => typeof c === 'string' && /^[A-Z0-9_-]{4,40}$/.test(c)).slice(-5000)
+    : [];
+  if (cache.metadataVersion !== 2) {
+    cache.articles = {};
+    cache.lastCompleteAt = 0;
+    cache.lastAttemptAt = 0;
+    cache.metadataVersion = 2;
+  }
   if (cache.status === 'checking') cache.status = 'partial';
   const publish = () => {
     if (disposed) return;
@@ -141,6 +150,18 @@ export function createPromoDiscovery({
       cache = empty();
     },
     snapshot,
+    restoreHidden() {
+      cache.hiddenCodes = [];
+      publish();
+    },
+    setHidden(code, hidden = true) {
+      if (!/^[A-Z0-9_-]{4,40}$/.test(code)) return;
+      cache.hiddenCodes = Array.isArray(cache.hiddenCodes) ? cache.hiddenCodes : [];
+      cache.hiddenCodes = cache.hiddenCodes.filter(value => value !== code);
+      if (hidden) cache.hiddenCodes.push(code);
+      cache.hiddenCodes = cache.hiddenCodes.slice(-5000);
+      publish();
+    },
     check({ force = false } = {}) {
       if (flight) return flight;
       flight = scan(force).finally(() => {
@@ -172,7 +193,8 @@ export function promoDiscovery() {
   return service;
 }
 export function discoveredPromos() {
-  return promoDiscovery().snapshot().codes;
+  const cache = promoDiscovery().snapshot();
+  return cache.codes.filter(c => !cache.hiddenCodes?.includes(c.code));
 }
 export function promoCoverage(codes, characters, log) {
   return codes.map(code => {

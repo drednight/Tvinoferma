@@ -443,3 +443,32 @@
   color: var(--text-dim);
   font-weight: 800;
 }
+
+/* Transfer preview is an independent readable dialog, not a clipped inline panel. */
+.tr-preview-dialog .tr-items {
+  max-height: none;
+  overflow: visible;
+}
+.tr-preview-dialog .tr-plan-item {
+  max-height: none;
+}
+
+.tr-preview-dialog {
+  height: auto;
+  max-height: calc(100dvh - 24px);
+}
+.tr-preview-dialog .tf-dialog-body {
+  max-height: none;
+  overflow-y: auto;
+}
+.caravan-open-settings label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.caravan-open-settings input[type='number'] {
+  width: 7rem;
+  flex: none;
+}

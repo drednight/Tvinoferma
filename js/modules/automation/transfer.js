@@ -94,7 +94,6 @@ export function openTransferDialog({ ids = [] } = {}) {
   const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
   let search = '';
   let rosters = loadRosters();
-  let showPlan = false; // развёрнут ли список «что будет передано»
   const prefs = loadPrefs();
   let scanNotes = []; // что не удалось прочитать при последнем чтении
   let running = null; // { cancelled } пока идёт чтение или передача
@@ -240,11 +239,10 @@ export function openTransferDialog({ ids = [] } = {}) {
           <button class="btn ghost small" data-q="logged" title="Отметить всех, у кого по данным приложения есть вход">🟢 Все с входом</button>
           <button class="btn ghost small" data-q="none">Снять выбор</button>
           <button class="btn secondary small" data-act="refresh-selected" id="tr-check-btn" title="Прочитать серверы, персонажей и то, что ждёт передачи — только у отмеченных (остальные не трогаем)"></button>
-          <button class="btn secondary small" data-q="plan" id="tr-plan-btn" title="Расписать по каждому браузеру: куда и какие предметы будут переданы"></button>
         </div>
         <div class="promo-list tr-list" id="tr-list">${listHtml()}</div>
         <div class="tr-summary" id="tr-summary"></div>
-        <div class="tr-plan" id="tr-plan" hidden></div>`
+        `
       })}
       <div class="tr-ack-box">
         <label class="tr-ack"><input type="checkbox" id="tr-ack"> <span>⚠ Понимаю, что передача необратима: предметы уйдут в игру и вернуть их нельзя.</span></label>
@@ -255,6 +253,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="log" title="Журнал передач">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
+      <button class="btn secondary" data-q="plan" id="tr-plan-btn">📋 Что будет передано</button>
       <button class="btn secondary" data-act="dry" title="Пройти все шаги, но не нажимать «Передать»">👁 Пробный запуск</button>
       <button class="btn primary" data-act="start" disabled>📦 Передать</button>`;
     updateAll();
@@ -330,17 +329,12 @@ export function openTransferDialog({ ids = [] } = {}) {
     const plans = currentPlans();
     const box = dlg.body.querySelector('#tr-summary');
     if (box) box.innerHTML = summaryHtml(plans);
-    const planBox = dlg.body.querySelector('#tr-plan');
-    if (planBox) {
-      planBox.hidden = !showPlan;
-      planBox.innerHTML = showPlan ? planHtml(plans) : '';
-    }
     const checkBtn = dlg.body.querySelector('#tr-check-btn');
     if (checkBtn)
       checkBtn.textContent =
         selected.size > 1 ? `🔍 Проверить персонажей (${selected.size})` : '🔍 Проверить персонажа';
-    const planBtn = dlg.body.querySelector('#tr-plan-btn');
-    if (planBtn) planBtn.textContent = showPlan ? '🔼 Скрыть список' : '📋 Что будет передано';
+    const planBtn = dlg.foot.querySelector('#tr-plan-btn');
+    if (planBtn) planBtn.textContent = '📋 Что будет передано';
     const forget = dlg.body.querySelector('#tr-forget');
     if (forget) {
       const n = Object.keys(loadLimits()).length;
@@ -357,8 +351,13 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   function quickSelect(kind) {
     if (kind === 'plan') {
-      showPlan = !showPlan;
-      updateAll();
+      const preview = openOverlay({ title: '📋 Что будет передано', wide: true });
+      preview.el.querySelector('.modal-container').classList.add('tr-preview-dialog');
+      preview.sub.textContent =
+        'Текущий план по прочитанным данным сайта. Ничего не передаётся при открытии этого окна.';
+      preview.body.innerHTML = planHtml(currentPlans()) || '<p>Выберите персонажей.</p>';
+      preview.foot.innerHTML = '<button type="button" class="btn primary">Закрыть</button>';
+      preview.foot.querySelector('button').onclick = () => preview.close();
       return;
     }
     if (kind === 'none') selected.clear();
@@ -780,6 +779,10 @@ export function openTransferDialog({ ids = [] } = {}) {
   }
 
   dlg.foot.addEventListener('click', async e => {
+    if (e.target.closest('[data-q=plan]')) {
+      quickSelect('plan');
+      return;
+    }
     const btn = e.target.closest('[data-act]');
     if (!btn || btn.disabled) return;
     const act = btn.dataset.act;
@@ -829,6 +832,10 @@ export function openTransferDialog({ ids = [] } = {}) {
   });
   // Кнопки обновления стоят в теле формы, а не внизу: обрабатываем здесь
   dlg.body.addEventListener('click', async e => {
+    if (e.target.closest('[data-q=plan]')) {
+      quickSelect('plan');
+      return;
+    }
     const act = e.target.closest('[data-act]')?.dataset.act;
     if (act === 'refresh-servers') await refreshServers();
     if (act === 'refresh-all' && !running) await scan([...state.characters].sort(byNick));

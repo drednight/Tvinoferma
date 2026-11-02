@@ -160,7 +160,7 @@ describe('форма', () => {
     pickRow('b', '5');
     expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 2');
     $('#tr-plan-btn').click();
-    expect($('#tr-plan').textContent).toContain('Сервер не выбран');
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('Сервер не выбран');
   });
 
   it('сервер и получатель каждой строки запоминаются между открытиями', () => {
@@ -309,7 +309,8 @@ describe('форма', () => {
     mocks.invoke.mockImplementation(async (cmd, a) => answer(cmd, a));
     openTransferDialog({ ids: ['a', 'c'] });
     const btns = [...document.querySelectorAll('.promo-quick button')];
-    expect(btns.indexOf($('#tr-check-btn'))).toBe(btns.indexOf($('#tr-plan-btn')) - 1);
+    expect(btns).toContain($('#tr-check-btn'));
+    expect($('#tr-plan-btn').closest('.tf-dialog-foot')).not.toBeNull();
     expect($('#tr-check-btn').textContent).toContain('Проверить персонажей (2)');
     $('#tr-check-btn').click();
     await wait(600);
@@ -370,7 +371,7 @@ describe('форма', () => {
     openTransferDialog({ ids: ['a'] });
     pickRow('a', '5');
     $('#tr-plan-btn').click();
-    expect($('#tr-plan').textContent).toContain('единственный на сервере');
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('единственный на сервере');
     expect($('[data-act="dry"]').disabled).toBe(false);
   });
 
@@ -381,19 +382,19 @@ describe('форма', () => {
     openTransferDialog({ ids: [] });
     $('[data-q="all"]').click();
     ['a', 'b'].forEach(id => pickRow(id, '5'));
-    expect($('#tr-plan').hidden).toBe(true);
+    expect($('.tr-preview-dialog')).toBeNull();
     expect($('#tr-summary').textContent).not.toContain('Награда');
     expect($('#tr-plan-btn').textContent).toContain('Что будет передано');
     $('#tr-plan-btn').click();
-    expect($('#tr-plan').hidden).toBe(false);
-    expect($('#tr-plan').querySelectorAll('li')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
-    expect($('#tr-plan').textContent).not.toContain('ещё');
-    expect($('#tr-plan').textContent).toContain('×5');
+    expect($('.tr-preview-dialog')).not.toBeNull();
+    expect($('.tr-preview-dialog').querySelectorAll('li')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('ещё');
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('×5');
     // окно прокручивается, блоки не сжимаются: список браузеров остался на месте
     expect($('.tf-dialog-body').classList.contains('tr-body')).toBe(true);
     expect(document.querySelectorAll('#tr-list .tr-row')).toHaveLength(3);
-    $('#tr-plan-btn').click();
-    expect($('#tr-plan').hidden).toBe(true);
+    $('.tr-preview-dialog .tf-close').click();
+    expect($('.tr-preview-dialog')).toBeNull();
   });
 
   it('сохранённый получатель пропал с сайта: в плане подсказка «выберите заново»', () => {
@@ -404,7 +405,7 @@ describe('форма', () => {
     );
     openTransferDialog({ ids: ['a'] });
     $('#tr-plan-btn').click();
-    expect($('#tr-plan').textContent).toContain('выберите заново');
+    expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('выберите заново');
   });
 
   it('два браузера одного аккаунта сайта передают один раз', () => {

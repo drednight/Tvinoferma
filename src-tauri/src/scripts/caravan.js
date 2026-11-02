@@ -68,7 +68,8 @@
         if (TF.has(c.name, 'caravan.chestName')) mine.push({ cartId: c.cartId, until: c.until });
         else other++;
       });
-      report({ state: 'scan', chests: mine.slice(0, 60), other: other }, null);
+      if(mine.length>500){report(null,'inventory_limit');return;}
+      report({ state: 'scan', chests: mine, other: other, account: textOf(TF.q('transfer.accountName')) }, null);
       return;
     }
 

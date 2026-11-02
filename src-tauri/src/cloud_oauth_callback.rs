@@ -28,8 +28,11 @@ const ATTEMPT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 // CSP разрешает только этот неизменяемый скрипт. Он убирает query из текущей
 // адресной строки, но не гарантирует удаления уже сохранённых браузером копий.
 const CLEAN_QUERY_SCRIPT: &str =
+    "try{history.replaceState(null,'','/oauth/cloud/complete')}catch{};setTimeout(function(){window.close()},700)";
+const CLEAN_QUERY_SCRIPT_HASH: &str = "sha256-Gex6j1ECZdC3/6Buyn7gfEvFYEbVv+AYTyniYGJyav4=";
+const FAILED_QUERY_SCRIPT: &str =
     "try{history.replaceState(null,'','/oauth/cloud/complete')}catch{}";
-const CLEAN_QUERY_SCRIPT_HASH: &str = "sha256-uLjbzFaaRTCAu+D40i9MEp3QBMqFkaNgmJaSxH0xm6g=";
+const FAILED_QUERY_SCRIPT_HASH: &str = "sha256-uLjbzFaaRTCAu+D40i9MEp3QBMqFkaNgmJaSxH0xm6g=";
 const BAD_REQUEST: &str = "Некорректные параметры авторизации облачного диска";
 const BUSY: &str = "Уже выполняется другая авторизация облачного диска";
 const UNAVAILABLE: &str = "Не удалось открыть локальный адрес для авторизации";
@@ -553,7 +556,7 @@ fn respond(stream: &mut TcpStream, accepted: bool) {
     let (status, message) = if accepted {
         (
             "200 OK",
-            "Ответ получен. Вернитесь в Твиноферму и закройте эту вкладку.",
+            "Ответ получен. Продолжите авторизацию в Твиноферме. Если браузер не разрешил закрыть вкладку автоматически, закройте её вручную.",
         )
     } else {
         (
@@ -562,9 +565,14 @@ fn respond(stream: &mut TcpStream, accepted: bool) {
         )
     };
     // Только постоянные строки: код, state и текст ошибки никогда не отражаются в HTML.
-    let body = format!("<!doctype html><html lang=\"ru\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><script>{CLEAN_QUERY_SCRIPT}</script><title>Твиноферма</title><p>{message}</p></html>");
+    let (script, script_hash) = if accepted {
+        (CLEAN_QUERY_SCRIPT, CLEAN_QUERY_SCRIPT_HASH)
+    } else {
+        (FAILED_QUERY_SCRIPT, FAILED_QUERY_SCRIPT_HASH)
+    };
+    let body = format!("<!doctype html><html lang=\"ru\"><meta charset=\"utf-8\"><meta name=\"referrer\" content=\"no-referrer\"><script>{script}</script><title>Твиноферма</title><p>{message}</p></html>");
     let headers = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; script-src '{CLEAN_QUERY_SCRIPT_HASH}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nPragma: no-cache\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; script-src '{script_hash}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nConnection: close\r\n\r\n",
         body.len()
     );
     if stream.set_write_timeout(Some(READ_TICK)).is_err() {

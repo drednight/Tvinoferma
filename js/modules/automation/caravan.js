@@ -1,4 +1,5 @@
 import { classIconHtml, stripeCls } from './characterPicker.js';
+import { groupAccounts } from './shopCore.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/caravan.js
 // 🧰 Сундук караванщика: диалог «персонажи → проверка инвентарей → итоги».
@@ -55,6 +56,8 @@ export function openCaravanDialog({ ids = [] } = {}) {
   const selected = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
   let search = '';
   let running = null; // { cancelled } пока идёт запуск
+  let openAll = true;
+  const limits = {};
   let lastRows = []; // результаты последнего запуска
   let lastChars = [];
   let lastDry = false;
@@ -117,18 +120,18 @@ export function openCaravanDialog({ ids = [] } = {}) {
     if (warn) {
       const skipped = withoutLogin(selectedChars());
       warn.innerHTML = skipped.length
-        ? `⚠ Без входа на сайт: ${escapeHtml(skipped.map(c => c.nick).join(', '))}. Их инвентарь не откроется — при запуске они будут пропущены. Войдите в игру у этих персонажей: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter».`
+        ? `⚠ Без входа на сайт: ${escapeHtml(skipped.map(c => c.nick).join(', '))}. Сохранённый статус может устареть: «Проверить сайт» прочитает реальную сессию. Проверьте вход на сайте в браузере персонажа. Вход GameCenter для этой операции не используется.`
         : '';
       warn.hidden = !skipped.length;
     }
     dlg.foot.querySelectorAll('[data-act="start"],[data-act="dry"]').forEach(b => {
-      b.disabled = !selected.size;
+      b.disabled = b.dataset.act === 'start' || !selected.size;
     });
   }
 
   function renderForm() {
     dlg.sub.textContent =
-      'Выберите персонажей и нажмите «Проверить инвентари»: у каждого будут открыты все «Сундуки караванщика».';
+      'Сначала «Проверить сайт» — только подсчёт сундуков. Затем выберите количество и отдельно подтвердите открытие.';
     dlg.body.innerHTML = `
       ${noteHtml({
         icon: '🧰',
@@ -154,9 +157,10 @@ export function openCaravanDialog({ ids = [] } = {}) {
     dlg.foot.innerHTML = `
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
-      <button class="btn secondary" data-act="dry" title="Откроет инвентарь и посчитает «Сундуки караванщика», но ничего не откроет и не нажмёт">👁 Только посчитать сундуки</button>
-      <button class="btn primary" data-act="start" title="Откроет инвентарь, найдёт «Сундуки караванщика», отметит все предметы и нажмёт «Перевести»">📦 Проверить инвентари</button>`;
+      <button class="btn primary" data-act="dry" title="Откроет инвентарь и посчитает «Сундуки караванщика», но ничего не откроет и не нажмёт">🔍 Проверить сайт</button>
+      <button class="btn secondary" data-act="start" title="Откроет инвентарь, найдёт «Сундуки караванщика», отметит все предметы и нажмёт «Перевести»">📦 Открыть сундуки</button>`;
     updateCount();
+    dlg.foot.querySelector('[data-act=start]').disabled = true;
 
     layoutScriptWorkspace(dlg, {
       selected: selected,
@@ -207,6 +211,8 @@ export function openCaravanDialog({ ids = [] } = {}) {
       rows = await runCaravanBatch({
         chars,
         dryRun: dry,
+        limits: openAll ? undefined : limits,
+        accountKeys: Object.fromEntries(lastRows.filter(r => r.accountKey).map(r => [r.charId, r.accountKey])),
         signal,
         task,
         invokeFn: invoke,
@@ -228,9 +234,21 @@ export function openCaravanDialog({ ids = [] } = {}) {
     task.setScriptReport(makeScriptReport('caravan', rows, { dryRun: dry }));
     task.finish(summaryText(rows, { dry, stopped: signal.cancelled }), taskLevel(rows));
     lastReports = [...historyReports, { ...makeScriptReport('caravan', rows, { dryRun: dry }), at: task.startedAt }];
-    lastRows = rows;
+    if (!dry && !openAll) {
+      for (const row of rows) limits[row.charId] = Math.max(0, (limits[row.charId] || 0) - row.opened);
+    }
+    lastRows = dry
+      ? rows
+      : rows.map(row => ({
+          ...row,
+          ...(row.accountKey ? {} : { accountKey: lastRows.find(old => old.charId === row.charId)?.accountKey })
+        }));
     lastChars = chars;
     lastDry = dry;
+    if (dry) {
+      openAll = true;
+      for (const row of rows) limits[row.charId] = row.found || 0;
+    }
     if (alive()) renderResults(signal.cancelled);
   }
 
@@ -306,6 +324,19 @@ export function openCaravanDialog({ ids = [] } = {}) {
           )
           .join('')}</tbody></table></div>`
       })}
+      ${
+        lastDry
+          ? `<section class="caravan-open-settings"><h4>Сколько сундуков открыть</h4><label><input type="radio" name="caravan-amount" value="all" ${openAll ? 'checked' : ''}> Открыть все найденные</label><label><input type="radio" name="caravan-amount" value="count" ${openAll ? '' : 'checked'}> Указать количество по аккаунтам</label>${accountRepresentatives(
+              lastChars
+            )
+              .filter(c => (byId.get(c.id)?.found || 0) > 0)
+              .map(
+                c =>
+                  `<label>${escapeHtml(c.nick)}: <input class="input" type="number" min="0" max="${byId.get(c.id).found}" step="1" data-caravan-limit="${escapeHtml(c.id)}" value="${limits[c.id] || 0}" ${openAll ? 'disabled' : ''}> из ${byId.get(c.id).found}</label>`
+              )
+              .join('')}</section>`
+          : ''
+      }
       ${lastDry ? '<p class="promo-muted">Ничего не открыто и не нажато. Если сундуки найдены — можно открывать по-настоящему.</p>' : ''}
       ${s.unknown ? '<p class="promo-warn">❓ Результат не подтверждён: кнопка могла быть нажата. Проверьте инвентарь на сайте; автоматически такие строки не повторяются.</p>' : ''}
       ${s.partial ? '<p class="promo-warn">⚠ Часть сундуков осталась в инвентаре: «Повторить» откроет только их.</p>' : ''}`;
@@ -327,7 +358,27 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
   /* ------------------------- события ------------------------------ */
 
+  function updateAmount(t) {
+    if (t.name === 'caravan-amount') {
+      openAll = t.value === 'all';
+      dlg.body.querySelectorAll('[data-caravan-limit]').forEach(n => {
+        n.disabled = openAll;
+      });
+      return true;
+    }
+    if (t.matches('[data-caravan-limit]')) {
+      const n = Number(t.value),
+        max = Number(t.max);
+      if (Number.isSafeInteger(n) && n >= 0 && n <= max) {
+        limits[t.dataset.caravanLimit] = n;
+        t.setCustomValidity('');
+      } else t.setCustomValidity('Введите целое число в пределах найденного количества');
+      return true;
+    }
+    return false;
+  }
   dlg.body.addEventListener('input', e => {
+    if (updateAmount(e.target)) return;
     if (e.target.id === 'caravan-search') {
       search = e.target.value;
       dlg.body.querySelector('#caravan-list').innerHTML = listHtml();
@@ -335,6 +386,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
   });
   dlg.body.addEventListener('change', e => {
     const t = e.target;
+    if (updateAmount(t)) return;
     if (t.matches('[data-id]')) {
       if (t.checked) selected.add(t.dataset.id);
       else selected.delete(t.dataset.id);
@@ -347,36 +399,33 @@ export function openCaravanDialog({ ids = [] } = {}) {
   });
 
   /** Подтверждение перед настоящим запуском: сундуки открываются необратимо. */
-  const confirmRun = chars =>
-    confirmModal({
-      title: 'Открыть сундуки караванщика?',
-      text: `Персонажей: ${chars.length}. В каждом «Сундуке караванщика» будут отмечены все предметы и нажато «Перевести». Действие необратимо. Другие сундуки не трогаются.`,
-      okText: `Проверить инвентари (${chars.length})`,
-      danger: true
-    });
+  let confirming = false;
+  const confirmRun = async chars => {
+    if (confirming || running) return false;
+    confirming = true;
+    try {
+      return await confirmModal({
+        title: 'Открыть сундуки караванщика?',
+        text: `Персонажей: ${chars.length}. ${openAll ? 'Открыть все сундуки (до 500 за запуск).' : `Количество: ${chars.map(c => `${c.nick}: ${limits[c.id]}`).join(', ')}.`} В каждом «Сундуке караванщика» будут отмечены все предметы и нажато «Перевести». Действие необратимо. Другие сундуки не трогаются.`,
+        okText: `Открыть сундуки (${chars.length})`,
+        danger: true
+      });
+    } finally {
+      confirming = false;
+    }
+  };
 
   /**
-   * Пропускает персонажей без подтверждённого входа: у них сайт не откроет инвентарь,
-   * и в журнале осталась бы строка «нет входа» вместо результата.
-   * `null` — запускать нечего (отказ или не осталось ни одного подходящего персонажа).
+   * Выбирает одного представителя каждого известного аккаунта сайта.
+   * Сохранённый статус не запрещает реальную проверку сайта.
    */
-  async function dropWithoutLogin(chars) {
-    const skipped = withoutLogin(chars);
-    if (!skipped.length) return chars;
-    const left = chars.filter(c => c.isLoggedIn !== false);
-    if (!left.length) {
-      toast(
-        'У всех выбранных нет входа на сайт — инвентарь открыть не удастся. Войдите в игру у этих персонажей и повторите проверку.',
-        'warning'
-      );
-      return null;
+  function accountRepresentatives(chars) {
+    // Saved status may be stale. The real website, not GameCenter or a dot, decides.
+    const map = {};
+    for (const row of lastRows) {
+      if (row.accountKey) map[row.charId] = 'caravan:' + row.accountKey;
     }
-    const ok = await confirmModal({
-      title: 'У части персонажей нет входа',
-      text: `Пропущу ${skipped.length} из ${chars.length}: ${skipped.map(c => c.nick).join(', ')}. Без входа на сайт инвентарь не открыть. Войдите в игру у этих персонажей: карточка персонажа → «🎮 Запуск игры» → «🔑 Запомнить текущий вход GameCenter».`,
-      okText: `Продолжить без них (${left.length})`
-    });
-    return ok ? left : null;
+    return groupAccounts(chars, map).map(g => g.members[0]);
   }
 
   dlg.foot.addEventListener('click', async e => {
@@ -398,29 +447,47 @@ export function openCaravanDialog({ ids = [] } = {}) {
       return;
     }
     if (act === 'dry-again') {
-      const again = await dropWithoutLogin(lastChars);
+      const again = lastChars;
       if (again?.length) await start(again, { dry: true });
       return;
     }
     if (act === 'real') {
-      const found = lastChars.filter(c => (lastRows.find(r => r.charId === c.id)?.found || 0) > 0);
-      const chars = found.length ? await dropWithoutLogin(found) : null;
-      if (chars?.length && (await confirmRun(chars))) await start(chars);
+      const found = accountRepresentatives(lastChars).filter(
+        c => (lastRows.find(r => r.charId === c.id)?.found || 0) > 0
+      );
+      if ([...dlg.body.querySelectorAll('[data-caravan-limit]')].some(n => !n.checkValidity())) {
+        toast('Проверьте количество сундуков', 'warning');
+        return;
+      }
+      const chosen = found.filter(c => openAll || limits[c.id] > 0);
+      const chars = chosen.length ? await accountRepresentatives(chosen) : null;
+      if (!chars?.length) {
+        toast('Укажите количество хотя бы для одного аккаунта', 'warning');
+        return;
+      }
+      if (chars.some(c => !lastRows.find(row => row.charId === c.id)?.accountKey)) {
+        toast('Сайт не сообщил аккаунт инвентаря. Открытие не запущено; проверьте сайт и вход заново.', 'warning');
+        return;
+      }
+      if (!running && (await confirmRun(chars))) await start(chars);
       return;
     }
     if (act === 'retry') {
-      const rerun = lastChars.filter(c => isRerunnable(lastRows.find(r => r.charId === c.id)));
-      const again = rerun.length ? await dropWithoutLogin(rerun) : null;
+      const rerun = lastChars.filter(
+        c => (openAll || limits[c.id] > 0) && isRerunnable(lastRows.find(r => r.charId === c.id))
+      );
+      const again = rerun.length ? await accountRepresentatives(rerun) : null;
       if (again?.length && (await confirmRun(again))) await start(again, { historyReports: lastReports });
       return;
     }
-    if (act === 'start' || act === 'dry') {
+    if (act === 'start') return;
+    if (act === 'dry') {
       const picked = selectedChars();
       if (!picked.length) {
         toast('Выберите хотя бы одного персонажа', 'warning');
         return;
       }
-      const chars = await dropWithoutLogin(picked);
+      const chars = picked;
       if (!chars?.length) return;
       if (act === 'dry') {
         await start(chars, { dry: true });

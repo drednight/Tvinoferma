@@ -64,12 +64,12 @@ export function newsArticles(html) {
 export function expiryHint(text) {
   const clean = String(text).replace(/\s+/g, ' ').trim();
   const match =
-    /(?:срок действия|промокод|пин[- ]?код|активир\S*)[^.!?]{0,100}?(?:до|по)\s+(\d{1,2})[.\s/-]+(\d{1,2}|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)[.\s/-]*(\d{4})?(?:[^.!?]{0,45})/i.exec(
+    /(?:срок действия|промокод|пин[- ]?код|активир\S*)[^!?]{0,180}?(?:до|по)\s+(?:(\d{1,2}:\d{2})\s*(мск|по Москве)?\s*)?(\d{1,2})[.\s/-]+(\d{1,2}|января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)[.\s/-]*(\d{4})?(?:\s*года)?(?:\s*включительно)?(?:\s*[,;]?\s*(?:до|в)?\s*\d{1,2}:\d{2}\s*(?:мск|по Москве)?)?/i.exec(
       clean
     );
   if (!match) return { expiresText: null, expiresOn: null };
-  const month = /^\d+$/.test(match[2])
-    ? Number(match[2])
+  const month = /^\d+$/.test(match[4])
+    ? Number(match[4])
     : [
         'января',
         'февраля',
@@ -83,11 +83,11 @@ export function expiryHint(text) {
         'октября',
         'ноября',
         'декабря'
-      ].indexOf(match[2].toLowerCase()) + 1;
-  const day = Number(match[1]);
+      ].indexOf(match[4].toLowerCase()) + 1;
+  const day = Number(match[3]);
   let expiresOn = null;
-  if (match[3]) {
-    const iso = `${match[3]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  if (match[5]) {
+    const iso = `${match[5]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     const date = new Date(iso + 'T00:00:00Z');
     if (Number.isFinite(+date) && date.toISOString().startsWith(iso)) expiresOn = iso;
   }
@@ -107,16 +107,43 @@ export function articleCodes(html, id) {
     const code = pinCode(a.getAttribute('href'), sourceUrl);
     if (!code) continue;
     const paragraph = a.closest('p,li') || a.parentElement;
-    const text = paragraph?.textContent || '';
     const paragraphCodes = new Set(
       [...paragraph.querySelectorAll('a[href]')]
         .map(link => pinCode(link.getAttribute('href'), sourceUrl))
         .filter(Boolean)
     );
+    const allCodes = new Set(
+      [...content.querySelectorAll('a[href]')]
+        .map(link => pinCode(link.getAttribute('href'), sourceUrl))
+        .filter(Boolean)
+    );
+    const scope = allCodes.size === 1 ? content : paragraph;
     const hints =
       paragraphCodes.size > 1
         ? { expiresText: 'Несколько кодов и условий — проверьте новость', expiresOn: null }
-        : expiryHint(text.length <= 900 ? text : '');
+        : expiryHint((scope?.textContent || '').replace(/\s+/g, ' ').slice(0, 50000));
+    const serverMatch =
+      /(?:перевести|переводить|передать)[^.!?]{0,100}?только\s+на\s+(?:сервер\s*)?[«"]([^»"]{1,60})[»"]/i.exec(
+        scope?.textContent || ''
+      );
+    const rewards = [];
+    for (const list of scope.querySelectorAll('ul,ol')) {
+      let previous = list.previousElementSibling;
+      for (let n = 0; n < 3 && previous && !previous.textContent.trim(); n++)
+        previous = previous.previousElementSibling;
+      const before = previous?.textContent || '';
+      if (
+        /(?:состав|содержим|внутри|вы получите|вам достанутся|в награду|код (?:содержит|включает)|следующие предметы)/i.test(
+          before
+        )
+      ) {
+        rewards.push(
+          ...[...list.querySelectorAll(':scope > li')]
+            .map(n => n.textContent.replace(/\s+/g, ' ').trim().slice(0, 300))
+            .filter(Boolean)
+        );
+      }
+    }
     const old = found.get(code);
     found.set(code, {
       code,
@@ -124,6 +151,8 @@ export function articleCodes(html, id) {
       sourceUrl,
       pinUrl: `${SITE}/pin/${code}`,
       ...hints,
+      serverRestriction: serverMatch ? serverMatch[1].trim() : null,
+      rewards: rewards.slice(0, 60),
       ...(old && old.expiresText !== hints.expiresText
         ? { expiresText: 'В новости несколько условий — проверьте источник', expiresOn: null }
         : {})

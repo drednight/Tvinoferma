@@ -1,7 +1,26 @@
+import { dockCurrentTask, onTaskChange } from '../../core/taskLog.js';
 import { state } from '../../core/state.js';
 import { loadLog } from './promoLog.js';
 import { parseCodes } from './promoCore.js';
 import { promoDiscovery, promoCoverage } from './promoDiscovery.js';
+
+let viewerRequested = false;
+const closeViewer = async () => {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('close_promo_news_article');
+};
+// Discovery stays parallel. Only an owned modal article must not obscure Stop.
+const unsubscribe = onTaskChange(() => {
+  const active = !!dockCurrentTask();
+  document.querySelectorAll('[data-promo-news-open]').forEach(button => {
+    button.disabled = active || !window.__TAURI_INTERNALS__;
+  });
+  if (active && viewerRequested) {
+    viewerRequested = false;
+    void closeViewer().catch(() => {});
+  }
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribe);
 
 export function renderPromoSuggestions(dlg) {
   const field = dlg.body.querySelector('#promo-code')?.parentElement;
@@ -14,13 +33,14 @@ export function renderPromoSuggestions(dlg) {
   section.dataset.promoDiscovery = '';
   const service = promoDiscovery(),
     cache = service.snapshot();
+  const visible = cache.codes.filter(c => !cache.hiddenCodes?.includes(c.code));
   const heading = document.createElement('summary');
   heading.textContent =
     cache.status === 'checking'
       ? 'Проверка новостей…'
       : cache.status === 'partial'
         ? `Новости: проверка не завершена${cache.errors?.includes('news_http_403') ? ' (HTTP 403)' : ''}`
-        : `Промокоды из новостей: ${cache.codes.length}`;
+        : `Промокоды из новостей: ${visible.length}`;
   section.append(heading);
   const label = document.createElement('p');
   label.className = 'muted';
@@ -53,14 +73,13 @@ export function renderPromoSuggestions(dlg) {
   open.onclick = async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-shell');
-      await open('https://pwonline.ru/news.php?archive=news&type=last&page=1');
+      await open('https://pwonline.ru/news.php');
     } catch {
-      label.textContent =
-        'Не удалось открыть браузер. Адрес: https://pwonline.ru/news.php?archive=news&type=last&page=1';
+      label.textContent = 'Не удалось открыть браузер. Адрес: https://pwonline.ru/news.php';
     }
   };
   section.append(label, refresh, open);
-  for (const row of promoCoverage(cache.codes, state.characters, loadLog())) {
+  for (const row of promoCoverage(visible, state.characters, loadLog())) {
     const card = document.createElement('div');
     card.className = 'promo-news-option';
     const title = document.createElement('b');
@@ -84,13 +103,70 @@ export function renderPromoSuggestions(dlg) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     };
-    card.append(title, source, info, add);
+    const server = document.createElement('small');
+    server.textContent = row.serverRestriction
+      ? `Только сервер «${row.serverRestriction}»`
+      : 'Ограничение по серверу в новости не найдено — проверьте источник';
+    const rewards = document.createElement('details');
+    const caption = document.createElement('summary');
+    caption.textContent = `Содержимое промокода (${row.rewards?.length || 0})`;
+    rewards.append(caption);
+    if (row.rewards?.length) {
+      const list = document.createElement('ul');
+      for (const name of row.rewards) {
+        const item = document.createElement('li');
+        item.textContent = name;
+        list.append(item);
+      }
+      rewards.append(list);
+    } else {
+      rewards.append('Список предметов не распознан — откройте новость.');
+    }
+    const browser = document.createElement('button');
+    browser.type = 'button';
+    browser.className = 'btn ghost small';
+    browser.textContent = '🌐 Открыть новость';
+    browser.dataset.promoNewsOpen = '';
+    browser.disabled = !window.__TAURI_INTERNALS__ || !!dockCurrentTask();
+    browser.title =
+      'Окно источника доступно, когда скрипт не выполняется, чтобы кнопка Стоп оставалась доступна. Поиск новостей продолжается фоном.';
+    browser.onclick = async () => {
+      if (dockCurrentTask()) return;
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const id = new URL(row.sourceUrl).searchParams.get('article');
+        if (!/^\d{1,12}$/.test(id || '')) throw Error();
+        viewerRequested = true;
+        await invoke('open_promo_news_article', { article: id });
+        if (dockCurrentTask()) {
+          viewerRequested = false;
+          await closeViewer();
+        }
+      } catch {
+        viewerRequested = false;
+        info.textContent = 'Не удалось открыть новость в WebView.';
+      }
+    };
+    const hide = document.createElement('button');
+    hide.type = 'button';
+    hide.className = 'btn ghost small';
+    hide.textContent = 'Больше не показывать';
+    hide.onclick = () => service.setHidden(row.code);
+    card.append(title, source, info, server, rewards, browser, add, hide);
     section.append(card);
   }
   if (cache.status === 'checked' && !cache.codes.length) {
     const p = document.createElement('p');
     p.textContent = 'На проверенных страницах ссылок активации промокодов не найдено.';
     section.append(p);
+  }
+  if (cache.hiddenCodes?.length) {
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn ghost small';
+    restore.textContent = `Вернуть скрытые коды (${cache.hiddenCodes.length})`;
+    restore.onclick = () => service.restoreHidden();
+    section.append(restore);
   }
   field.append(section);
 }

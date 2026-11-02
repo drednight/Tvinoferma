@@ -75,9 +75,45 @@ function cursorFor(raw) {
     }
     throw failed();
   };
+  const skip = (depth = 0) => {
+    if (depth > 12) throw failed();
+    whitespace();
+    const c = raw[index];
+    if (c === '"') {
+      string();
+      return;
+    }
+    if (c === '{' || c === '[') {
+      const object = c === '{',
+        end = object ? '}' : ']',
+        seen = new Set();
+      literal(c);
+      whitespace();
+      if (raw[index] !== end) {
+        for (;;) {
+          if (object) {
+            const key = string();
+            if (seen.has(key)) throw failed();
+            seen.add(key);
+            literal(':');
+          }
+          skip(depth + 1);
+          whitespace();
+          if (raw[index] !== ',') break;
+          literal(',');
+        }
+      }
+      literal(end);
+      return;
+    }
+    const match = /^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(raw.slice(index));
+    if (!match) throw failed();
+    index += match[0].length;
+  };
   return {
     literal,
     string,
+    skip,
     peek() {
       whitespace();
       return raw[index];
@@ -143,20 +179,44 @@ function parseYandexIdentity(raw, clientId, includeLabel) {
   const json = cursorFor(raw);
   const values = Object.create(null);
   const allowed = new Set(['login', 'id', 'client_id', 'psuid']);
+  const seen = new Set();
+  const extras = new Set([
+    'default_email',
+    'emails',
+    'birthday',
+    'default_avatar_id',
+    'is_avatar_empty',
+    'display_name',
+    'real_name',
+    'first_name',
+    'last_name',
+    'sex',
+    'old_social_login',
+    'social_profiles',
+    'openid_id',
+    'default_phone'
+  ]);
   json.literal('{');
   if (json.peek() !== '}') {
     while (true) {
       const key = json.string();
-      if (!allowed.has(key) || Object.hasOwn(values, key)) throw failed();
+      if (seen.has(key)) throw failed();
+      seen.add(key);
       json.literal(':');
-      const value = json.string();
-      if (
-        !value ||
-        value.length > 1024 ||
-        [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
-      )
-        throw failed();
-      values[key] = value;
+      if (!allowed.has(key)) {
+        if (!extras.has(key)) throw failed();
+        json.skip();
+      } else {
+        const value = json.string();
+        if (
+          !value ||
+          value.length > 1024 ||
+          [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
+        )
+          throw failed();
+        values[key] = value;
+      }
+
       if (json.peek() !== ',') break;
       json.literal(',');
     }

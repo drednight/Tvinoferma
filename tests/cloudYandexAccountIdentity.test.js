@@ -68,7 +68,6 @@ describe('отключённое чтение идентификатора Ян�
     `{"client_id":"${clientId}","psuid":"email@example.test"}`,
     `{"client_id":"${clientId}","psuid":"${accountKey}","client_id":"other"}`,
     `{"client_id":"${clientId}","client_\\u0069d":"${clientId}","psuid":"${accountKey}"}`,
-    `{"client_id":"${clientId}","psuid":"${accountKey}","default_email":"PRIVATE_EMAIL"}`,
     `{"client_id":"${clientId}","psuid":"${accountKey}","login":null}`,
     `{"client_id":"${clientId}","psuid":"${accountKey}","id":123}`,
     `{"client_id":"${clientId}","psuid":"${accountKey}","id":"PRIVATE\\nVALUE"}`,
@@ -80,6 +79,43 @@ describe('отключённое чтение идентификатора Ян�
     for (const secret of [token, accountKey, login, userId, 'PRIVATE_EMAIL']) expect(message).not.toContain(secret);
   });
 
+  it('ignores documented profile fields, including nested JSON, without returning any PII', async () => {
+    const profile = {
+      client_id: clientId,
+      psuid: accountKey,
+      login,
+      default_email: 'PRIVATE_EMAIL',
+      emails: ['PRIVATE_EMAIL'],
+      is_avatar_empty: true,
+      default_phone: { id: 12, number: 'PRIVATE_PHONE' },
+      social_profiles: [{ provider: 'test', addresses: [] }],
+      birthday: '',
+      display_name: 'PRIVATE_NAME'
+    };
+    const verify = createYandexAccountIdentityReader({ fetchImpl: async () => response(JSON.stringify(profile)) });
+    expect(await verify(args())).toEqual({ accountKey });
+  });
+  it.each(['"emails": [ ]', '"default_phone": { }'])(
+    'accepts whitespace in empty profile containers: %s',
+    async extra => {
+      const verify = createYandexAccountIdentityReader({
+        fetchImpl: async () => response(`{"client_id":"${clientId}","psuid":"${accountKey}",${extra}}`)
+      });
+      expect(await verify(args())).toEqual({ accountKey });
+    }
+  );
+  it.each([
+    '"emails":[],"emails":[]',
+    '"default_phone":{"id":1,"id":2}',
+    '"emails":[true,]',
+    '"is_avatar_empty":truefalse',
+    '"access_token":"PRIVATE_TOKEN"'
+  ])('rejects ambiguous or malformed extra fields: %s', async extra => {
+    const verify = createYandexAccountIdentityReader({
+      fetchImpl: async () => response(`{"client_id":"${clientId}","psuid":"${accountKey}",${extra}}`)
+    });
+    expect(await errorMessage(verify(args()))).toContain('Не удалось проверить');
+  });
   it('ограничивает статус, redirect, URL и размер без раскрытия исходного ответа', async () => {
     for (const reply of [
       response('PRIVATE', { status: 401 }),

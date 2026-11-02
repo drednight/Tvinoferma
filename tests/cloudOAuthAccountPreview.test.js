@@ -67,7 +67,16 @@ describe('отключённые readers для предпросмотра ак�
 
   it('Яндекс сверяет client_id, возвращает login, но не подменяет его id или email', async () => {
     const fetchImpl = vi.fn(async url =>
-      reply(url, { login, id: 'FAKE_PRIVATE_USER_ID', psuid: accountKey, client_id: yandexClient })
+      reply(url, {
+        login,
+        id: 'FAKE_PRIVATE_USER_ID',
+        psuid: accountKey,
+        client_id: yandexClient,
+        display_name: 'PRIVATE_NAME',
+        is_avatar_empty: true,
+        emails: ['PRIVATE_EMAIL'],
+        default_phone: { id: 12, number: 'PRIVATE_PHONE' }
+      })
     );
     const preview = createYandexAccountPreviewReader({ fetchImpl });
     const result = await preview(args(yandexClient));
@@ -164,7 +173,6 @@ describe('отключённые readers для предпросмотра ак�
     { login: 'кириллица', psuid: accountKey, client_id: yandexClient },
     { login: 'user@not-a-login.example', psuid: accountKey, client_id: yandexClient },
     { login: 'x'.repeat(129), psuid: accountKey, client_id: yandexClient },
-    { login, psuid: accountKey, client_id: yandexClient, default_email: 'PRIVATE_RESPONSE' },
     `{"client_id":"${yandexClient}","psuid":"${accountKey}","login":"${login}","l\\u006fgin":"PRIVATE_RESPONSE"}`
   ])('не показывает неподходящий или неоднозначный ответ Яндекса: %#', async body => {
     const preview = createYandexAccountPreviewReader({ fetchImpl: async url => reply(url, body) });

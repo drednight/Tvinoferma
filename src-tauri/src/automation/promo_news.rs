@@ -6,7 +6,8 @@ use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 fn news_url(page: Option<u8>, article: Option<&str>) -> Result<String, String> {
     match (page, article) {
-        (Some(n @ 1..=2), None) => Ok(format!(
+        (Some(1), None) => Ok("https://pwonline.ru/news.php".into()),
+        (Some(n @ 2), None) => Ok(format!(
             "https://pwonline.ru/news.php?archive=news&type=last&page={n}"
         )),
         (None, Some(id))
@@ -124,22 +125,23 @@ fn public_news_navigation(url: &Url) -> bool {
     if fields.len() == 1 && fields[0].0 == "article" {
         return news_url(None, Some(&fields[0].1)).is_ok();
     }
-    fields.len() == 3
-        && fields
-            .iter()
-            .filter(|(k, v)| k == "archive" && v == "news")
-            .count()
-            == 1
-        && fields
-            .iter()
-            .filter(|(k, v)| k == "type" && v == "last")
-            .count()
-            == 1
-        && fields
-            .iter()
-            .filter(|(k, v)| k == "page" && matches!(v.as_ref(), "1" | "2"))
-            .count()
-            == 1
+    fields.is_empty()
+        || fields.len() == 3
+            && fields
+                .iter()
+                .filter(|(k, v)| k == "archive" && v == "news")
+                .count()
+                == 1
+            && fields
+                .iter()
+                .filter(|(k, v)| k == "type" && v == "last")
+                .count()
+                == 1
+            && fields
+                .iter()
+                .filter(|(k, v)| k == "page" && matches!(v.as_ref(), "1" | "2"))
+                .count()
+                == 1
 }
 async fn browser_page(app: AppHandle, url: &str, article: bool) -> Result<Value, String> {
     static READER: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -202,12 +204,124 @@ async fn browser_page(app: AppHandle, url: &str, article: bool) -> Result<Value,
     result
 }
 
+fn article_navigation(url: &Url, article: &str) -> bool {
+    public_news_navigation(url)
+        && (url.as_str() == "about:blank"
+            || url.query_pairs().count() == 1
+                && url
+                    .query_pairs()
+                    .any(|(key, value)| key == "article" && value == article))
+}
+
+/// User-requested article viewer. A separate anonymous owned WebView, never a character profile.
+#[tauri::command]
+pub async fn open_promo_news_article(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    article: String,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("news_request_invalid".into());
+    }
+    let url = Url::parse(&news_url(None, Some(&article))?).map_err(|_| "news_request_invalid")?;
+    const LABEL: &str = "public-promo-news-viewer";
+    if let Some(viewer) = app.get_webview_window(LABEL) {
+        let _ = viewer.set_focus();
+        return if viewer
+            .url()
+            .map(|current| current.query() == url.query())
+            .unwrap_or(false)
+        {
+            Ok(())
+        } else {
+            Err("news_viewer_busy".into())
+        };
+    }
+    let main = window.clone();
+    let article_id = article;
+    let cache = app
+        .path()
+        .app_cache_dir()
+        .map_err(|_| "news_client")?
+        .join("public-promo-news-viewer-v1");
+    std::fs::create_dir_all(&cache).map_err(|_| "news_client")?;
+    let viewer = WebviewWindowBuilder::new(&app, LABEL, WebviewUrl::External(url))
+        .title("Новость — источник промокода")
+        .inner_size(1040., 760.)
+        .resizable(true)
+        .visible(false)
+        .incognito(true)
+        .data_directory(cache)
+        .on_navigation(move |url| article_navigation(url, &article_id))
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+        .on_download(|_, _| false)
+        .parent(&window)
+        .map_err(|_| "news_client")?
+        .build()
+        .map_err(|_| "news_client")?;
+    viewer.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            let _ = main.set_enabled(true);
+            let _ = main.set_focus();
+        }
+    });
+    if window.set_enabled(false).is_err() {
+        let _ = viewer.close();
+        return Err("news_client".into());
+    }
+    if viewer.show().is_err() {
+        let _ = window.set_enabled(true);
+        let _ = viewer.close();
+        return Err("news_client".into());
+    }
+    let _ = viewer.set_focus();
+    Ok(())
+}
+
+/// Restore access to Stop if a background script starts while an article is open.
+#[tauri::command]
+pub fn close_promo_news_article(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("news_request_invalid".into());
+    }
+    if let Some(viewer) = app.get_webview_window("public-promo-news-viewer") {
+        viewer.destroy().map_err(|_| "news_client")?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
+    fn viewer_is_pinned_to_the_requested_article() {
+        for value in [
+            "https://pwonline.ru/news.php?article=9142",
+            "https://www.pwonline.ru/news.php?article=9142#rewards",
+            "about:blank",
+        ] {
+            assert!(article_navigation(&Url::parse(value).unwrap(), "9142"));
+        }
+        for value in [
+            "https://pwonline.ru/news.php?article=9126",
+            "https://pwonline.ru/news.php",
+            "https://pwonline.ru/pin/PWTEST2026",
+            "https://pwonline.ru/news.php?article=9142&article=9142",
+            "https://pwonline.ru/news.php?article=9142&do=activate",
+            "https://other.test/news.php?article=9142",
+        ] {
+            assert!(!article_navigation(&Url::parse(value).unwrap(), "9142"));
+        }
+    }
+    #[test]
     fn only_two_indexes_and_numeric_articles() {
-        assert!(news_url(Some(1), None).is_ok());
+        assert_eq!(
+            news_url(Some(1), None).unwrap(),
+            "https://pwonline.ru/news.php"
+        );
         assert!(news_url(Some(2), None).is_ok());
         assert!(news_url(None, Some("12345")).is_ok());
         assert!(news_url(Some(3), None).is_err());
@@ -226,6 +340,7 @@ mod tests {
     #[test]
     fn reader_cannot_navigate_to_login_pin_or_foreign_hosts() {
         for value in [
+            "https://pwonline.ru/news.php",
             "https://pwonline.ru/news.php?article=123",
             "https://www.pwonline.ru/news.php?archive=news&type=last&page=2",
             "about:blank",

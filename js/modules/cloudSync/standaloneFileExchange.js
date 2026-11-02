@@ -494,6 +494,7 @@ export function createStandaloneFileExchange(ports) {
               createdAt: openedFile.contents.createdAt,
               comparison,
               duplicatePartyIds: projection.duplicatePartyIds,
+              orderingNormalized: prepared.orderingNormalized,
               privateChanges,
               localPrivateAtRisk: [...localState.characters, ...localState.archivedCharacters].some(
                 character =>

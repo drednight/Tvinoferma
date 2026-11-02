@@ -3,6 +3,7 @@
 // не сохраняет state и не доверяет облаку: вызывающий обязан проверить историю,
 // повторно сверить состояние и создать резервную копию перед записью. Контакты,
 // пути, входы и статусы текущего ПК остаются локальными. Не журналировать значения.
+import { preparationCheck, preparationError } from './preparationDiagnostics.js';
 import { characterIdFor } from '../../core/ids.js';
 import { normalizeState, normalizeCharacter } from '../../core/state.js';
 import { CLAN_ENTRY_PREFIX } from '../guild/core.js';
@@ -630,6 +631,12 @@ export function prepareFullPublicSnapshotReplace(options) {
   if (reviewSnapshotDependencies(target).issues.length) throw invalid();
   const local = buildPublicSnapshot(input.localState, { settingsSelections: target.sections.preferences.selections });
   comparePublicSnapshots({ local, cloud: target });
+  // These arrays are derived from record order/date on every app reload. Keep
+  // every record and every field untouched; canonicalise presentation only.
+  const originalOrder = clone(target);
+  setOrders(target, target, target);
+  const orderingChanges = comparePublicSnapshots({ local: originalOrder, cloud: target }).entries;
+  if (orderingChanges.some(entry => entry.kind !== 'order_changed')) throw invalid();
   const selected = SECTIONS.flatMap(section => rows(target, section).map(record => ({ section, id: record.id })));
   const candidate = materialize(
     input.localState,
@@ -642,13 +649,20 @@ export function prepareFullPublicSnapshotReplace(options) {
     true
   );
   const { ui, ...normalized } = normalizeState(candidate);
-  if (
-    !samePublic(
-      buildPublicSnapshot(candidate, { settingsSelections: target.sections.preferences.selections }),
-      target
-    ) ||
-    !samePublic(buildPublicSnapshot(normalized, { settingsSelections: target.sections.preferences.selections }), target)
-  )
-    throw invalid();
-  return Object.freeze({ candidateState: () => clone(candidate) });
+  for (const [state, reason] of [
+    [candidate, 'reference'],
+    [normalized, 'reload_changes']
+  ]) {
+    const projected = buildPublicSnapshot(state, { settingsSelections: target.sections.preferences.selections });
+    if (!samePublic(projected, target)) {
+      const section = comparePublicSnapshots({ local: projected, cloud: target }).entries[0]?.section;
+      preparationCheck(section, () => {
+        throw preparationError(invalid(), reason);
+      });
+    }
+  }
+  return Object.freeze({
+    candidateState: () => clone(candidate),
+    orderingNormalized: [...new Set(orderingChanges.map(entry => entry.section))]
+  });
 }

@@ -58,6 +58,11 @@ pub fn cloud_oauth_callback_poll(
         CallbackStatus::Cancelled => ("cancelled", None),
         CallbackStatus::Consumed => ("consumed", None),
     };
+    if matches!(status, "code" | "denied" | "error") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
     Ok(CloudOAuthPoll { status, code })
 }
 

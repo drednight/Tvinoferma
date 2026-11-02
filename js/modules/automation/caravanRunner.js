@@ -33,6 +33,8 @@ const range = (r, random) => r[0] + random() * (r[1] - r[0]);
 export async function runCaravanBatch({
   chars,
   dryRun = false,
+  limits,
+  accountKeys,
   signal = { cancelled: false },
   invokeFn,
   limiter = browserSlots,
@@ -67,6 +69,8 @@ export async function runCaravanBatch({
         payload = await invokeFn('open_caravan_chests', {
           charId: char.id,
           dryRun,
+          ...(!dryRun && accountKeys?.[char.id] ? { expectedAccountKey: accountKeys[char.id] } : {}),
+          ...(!dryRun && limits?.[char.id] ? { maxChests: limits[char.id] } : {}),
           timeoutSeconds: Math.min(25 + 15 * a, 60)
         });
       } catch (e) {
