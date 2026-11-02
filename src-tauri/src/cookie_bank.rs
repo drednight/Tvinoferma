@@ -401,6 +401,7 @@ fn cookie_metadata(cookies: &[String], saved_at: u64) -> Vec<CookieMetadata> {
             (
                 i64::try_from(saved_at)
                     .ok()
+                    .filter(|at| *at > 0)
                     .map(|at| at.saturating_add(age.whole_seconds())),
                 Some("savedAtPlusMaxAge"),
                 "persistent",
@@ -582,7 +583,7 @@ mod expiry_tests {
     #[test]
     fn max_age_uses_saved_time_but_sessions_never_get_invented_dates() {
         let rows = [
-            "private=value; Domain=pwonline.ru; Max-Age=60",
+            "private=value; Domain=pwonline.ru; Max-Age=60; Expires=Wed, 09 Jun 2027 10:18:14 GMT",
             "private=value; Domain=pwonline.ru",
         ]
         .map(String::from);
@@ -592,5 +593,8 @@ mod expiry_tests {
         assert_eq!(metadata[0].expiry_basis, Some("savedAtPlusMaxAge"));
         assert_eq!(metadata[1].expires_at, None);
         assert_eq!(metadata[1].kind, "session");
+        let undated = cookie_metadata(&rows, 0);
+        assert_eq!(undated[0].kind, "persistent");
+        assert_eq!(undated[0].expires_at, None);
     }
 }
