@@ -26,6 +26,8 @@
     "marathon.description": ["p"],
 
     "news.article": [".js-mediator-article", "#content_body"],
+    "news.publicArticle": [".js-mediator-article", "#content_body", "article", ".news-text", ".news_text", ".news-content", "#news-content"],
+    "news.publicLinks": ["a[href*=\"article=\"]"],
     "news.title": ["#content_top h1", "h1"],
     "news.junk": ["img, script, style, iframe, .img_item_small_cont > span"],
 

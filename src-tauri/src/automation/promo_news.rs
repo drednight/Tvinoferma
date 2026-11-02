@@ -178,8 +178,8 @@ async fn browser_page(app: AppHandle, url: &str, article: bool) -> Result<Value,
             .await
             .map_err(|_| "news_network".to_string())?;
         let script = format!(
-            "window.__TF_PUBLIC_PROMO_NEWS={{article:{}}};\n{}",
-            article,
+            "window.__TF_PUBLIC_PROMO_NEWS={};\n{}",
+            json!({"article":article,"url":url}),
             include_str!("../scripts/promo_news_public.js")
         );
         match eval_and_wait(&window, &script, "#TF_PUBLIC_NEWS_V1_", 10, QUIET_SCOPE).await {
