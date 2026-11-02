@@ -103,15 +103,11 @@ pub async fn navigate_scoped(
 #[tauri::command]
 pub async fn cancel_scope_command(scope: String) -> Result<(), String> {
     cancel_scope(&scope);
-    let windows: Vec<_> = active_windows()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .iter()
-        .filter(|row| row.1 == scope)
-        .map(|row| row.2.clone())
-        .collect();
-    for window in windows {
-        interrupt_window(&window);
+    // Keep ownership locked until interruption is dispatched. Otherwise an old
+    // guard could disappear after a snapshot and Stop could destroy a new lease.
+    let windows = active_windows().lock().unwrap_or_else(|p| p.into_inner());
+    for (_, _, window) in windows.iter().filter(|row| row.1 == scope) {
+        interrupt_window(window);
     }
     Ok(())
 }

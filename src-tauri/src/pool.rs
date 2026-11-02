@@ -212,6 +212,9 @@ impl TaskWin {
 
 impl Drop for TaskWin {
     fn drop(&mut self) {
+        // Unregister before publishing the free slot: Stop holds the registry
+        // lock while interrupting, so a later lease cannot inherit that Stop.
+        self._scope.take();
         if let Kind::Profile { created_here } = self.kind {
             if !self.cleaned {
                 dispose(&self.window, created_here, true);
