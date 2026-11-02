@@ -19,7 +19,7 @@ vi.mock('../js/modules/automation/promoDiscovery.js', () => ({
           code: 'PWEXAMPLE26',
           title: 'Новость',
           sourceUrl: 'https://pwonline.ru/news.php?article=9142',
-          expiresText: 'до 23:59 мск 25 октября 2026',
+          expiresText: 'до 23:59 мск 25 октября 2099',
           serverRestriction: 'Цефей',
           rewards: ['Метеорит ×75', '<img src=x onerror=alert(1)>']
         }
@@ -113,7 +113,7 @@ it('offers article/text add/hide actions in the requested order with accessible 
 
 it('matches the reference order and collapses reward list initially, with a full-width text add action', () => {
   const card = document.querySelector('.promo-news-option');
-  expect([...card.children].map(el => el.tagName)).toEqual(['B', 'SPAN', 'SMALL', 'SMALL', 'DETAILS', 'DIV']);
+  expect([...card.children].map(el => el.tagName)).toEqual(['B', 'SPAN', 'SMALL', 'SMALL', 'SMALL', 'DETAILS', 'DIV']);
   expect(card.children[1].textContent).toBe('Новость');
   expect(card.children[2].textContent).toContain('Промокод активен до: 23:59 мск');
   expect(card.querySelector('details').open).toBe(false);

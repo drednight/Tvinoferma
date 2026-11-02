@@ -151,14 +151,14 @@ export function openCaravanDialog({ ids = [] } = {}) {
         const rows = new Map(lastRows.map(row => [row.charId, row]));
         const chars = state.characters.filter(char => ids.has(char.id)).sort(byNick);
         if (!chars.length) return '<p class="muted">Выберите персонажей слева.</p>';
-        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div data-caravan-progress></div><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th><th>Состояние</th></tr></thead><tbody>${chars
+        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div data-caravan-progress></div><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th><th>Состояние</th><th data-caravan-quantity-head hidden>Перевести / открыть, шт.</th></tr></thead><tbody>${chars
           .map(char => {
             const row = rows.get(char.id);
             const count =
               row && ['dry_run', 'nothing', 'success', 'partial'].includes(row.status)
                 ? Math.max(0, Number(row.found || 0) - Number(row.opened || 0))
                 : null;
-            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td data-chest-count="${escapeHtml(char.id)}">${count === null ? 'Не проверено — нажмите «Проверить сайт»' : `<b>${count}</b> шт.`}</td><td data-cell="${escapeHtml(char.id)}">${row ? cellHtml(row) : 'Не проверено'}</td></tr>`;
+            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td data-chest-count="${escapeHtml(char.id)}">${count === null ? 'Не проверено — нажмите «Проверить сайт»' : `<b>${count}</b> шт.`}</td><td data-cell="${escapeHtml(char.id)}">${row ? cellHtml(row) : 'Не проверено'}</td><td data-caravan-quantity="${escapeHtml(char.id)}" hidden></td></tr>`;
           })
           .join('')}</tbody></table></div>`;
       },
@@ -186,6 +186,9 @@ export function openCaravanDialog({ ids = [] } = {}) {
     const { browserSlots } = await import('../sync/queue.js');
     const { invoke } = await import('@tauri-apps/api/core');
 
+    dlg.body.querySelectorAll('[data-caravan-limit],[name=caravan-amount]').forEach(input => {
+      input.disabled = true;
+    });
     const task = startTask(`🧰 Сундук караванщика${dry ? ' (только подсчёт)' : ''}: ${chars.length} перс.`, {
       total: chars.length,
       cancelable: true
@@ -325,7 +328,6 @@ export function openCaravanDialog({ ids = [] } = {}) {
   function renderResults(stopped) {
     const s = summarize(lastRows);
     dlg.sub.textContent = summaryText(lastRows, { dry: lastDry, stopped });
-    const byId = new Map(lastRows.map(r => [r.charId, r]));
     const side = dlg.body.querySelector('.sp-side');
     if (side) {
       side.inert = false;
@@ -339,15 +341,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
       ${resultChips(s, lastDry)}
       ${
         lastDry
-          ? `<section class="caravan-open-settings"><h4>Сколько сундуков открыть</h4><label><input type="radio" name="caravan-amount" value="all" ${openAll ? 'checked' : ''}> Открыть все найденные</label><label><input type="radio" name="caravan-amount" value="count" ${openAll ? '' : 'checked'}> Указать количество по аккаунтам</label>${accountRepresentatives(
-              lastChars
-            )
-              .filter(c => (byId.get(c.id)?.found || 0) > 0)
-              .map(
-                c =>
-                  `<label>${escapeHtml(c.nick)}: <input class="input" type="number" min="0" max="${byId.get(c.id).found}" step="1" data-caravan-limit="${escapeHtml(c.id)}" value="${limits[c.id] || 0}" ${openAll ? 'disabled' : ''}> из ${byId.get(c.id).found}</label>`
-              )
-              .join('')}</section>`
+          ? `<section class="caravan-open-settings"><h4>Сколько сундуков открыть</h4><label><input type="radio" name="caravan-amount" value="all" ${openAll ? 'checked' : ''}> Открыть все найденные</label><label><input type="radio" name="caravan-amount" value="count" ${openAll ? '' : 'checked'}> Указать количество по аккаунтам</label></section>`
           : ''
       }
       ${lastDry ? '<p class="promo-muted">Ничего не открыто и не нажато. Если сундуки найдены — можно открывать по-настоящему.</p>' : ''}
@@ -355,6 +349,21 @@ export function openCaravanDialog({ ids = [] } = {}) {
       ${s.partial ? '<p class="promo-warn">⚠ Часть сундуков осталась в инвентаре: «Повторить» откроет только их.</p>' : ''}`;
     dlg.body.querySelector('.sp-main').append(outcome);
     const found = lastDry && s.found > 0;
+    const quantityHead = dlg.body.querySelector('[data-caravan-quantity-head]');
+    if (quantityHead) quantityHead.hidden = !found;
+    const reps = new Map(accountRepresentatives(lastChars).map(c => [c.id, c]));
+    const rowsById = new Map(lastRows.map(row => [row.charId, row]));
+    dlg.body.querySelectorAll('[data-caravan-quantity]').forEach(cell => {
+      cell.hidden = !found;
+      const id = cell.dataset.caravanQuantity;
+      const row = rowsById.get(id);
+      cell.innerHTML =
+        reps.has(id) && row?.found > 0
+          ? `<input class="input" type="number" min="0" max="${row.found}" step="1" data-caravan-limit="${escapeHtml(id)}" value="${openAll ? row.found : limits[id] || 0}" aria-label="Открыть сундуков: ${escapeHtml(reps.get(id).nick)}"><small>из ${row.found}; все предметы внутри</small>`
+          : row?.found > 0
+            ? 'Общий инвентарь аккаунта'
+            : '—';
+    });
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>
       <button class="btn secondary" data-act="report">📋 Таблица действий</button>
@@ -373,14 +382,23 @@ export function openCaravanDialog({ ids = [] } = {}) {
   /* ------------------------- события ------------------------------ */
 
   function updateAmount(t) {
+    if (running || confirming) return true;
     if (t.name === 'caravan-amount') {
       openAll = t.value === 'all';
       dlg.body.querySelectorAll('[data-caravan-limit]').forEach(n => {
-        n.disabled = openAll;
+        if (openAll) {
+          n.setCustomValidity('');
+          n.value = n.max;
+          limits[n.dataset.caravanLimit] = Number(n.max);
+        }
       });
       return true;
     }
     if (t.matches('[data-caravan-limit]')) {
+      openAll = false;
+      dlg.body.querySelectorAll('[name=caravan-amount]').forEach(radio => {
+        radio.checked = radio.value === 'count';
+      });
       const n = Number(t.value),
         max = Number(t.max);
       if (Number.isSafeInteger(n) && n >= 0 && n <= max) {

@@ -272,3 +272,67 @@ it('refreshes old cached reward metadata without losing codes or hidden choices'
   expect(service.snapshot().codes[0].rewards).toEqual(['Награда ×2']);
   expect(service.snapshot().hiddenCodes).toEqual(['PWEXAMPLE26']);
 });
+
+it('auto-hides expired codes immediately, preserves manual hiding, and restores durably for the same deadline', () => {
+  const disk = storage();
+  const now = () => Date.parse('2026-11-03T00:00:00Z');
+  const rows = [
+    { code: 'EXPIRED26', expiresOn: '2026-11-02' },
+    { code: 'FUTURE26', expiresOn: '2026-11-05' },
+    { code: 'YEARLESS26', expiresText: 'до 4 октября' }
+  ];
+  disk.setItem(
+    'tf_promo_discovery_v1',
+    JSON.stringify({ version: 1, metadataVersion: 3, articles: {}, codes: rows, hiddenCodes: ['MANUAL26'] })
+  );
+  const first = createPromoDiscovery({ storage: disk, now });
+  expect(first.snapshot().hiddenCodes).toEqual(['MANUAL26', 'EXPIRED26']);
+  first.restoreHidden();
+  expect(first.snapshot().hiddenCodes).toEqual([]);
+  first.dispose();
+  const second = createPromoDiscovery({ storage: disk, now });
+  expect(second.snapshot().hiddenCodes).toEqual([]);
+  second.setHidden('EXPIRED26');
+  expect(second.snapshot().hiddenCodes).toEqual(['EXPIRED26']);
+  second.restoreHidden();
+  expect(second.snapshot().codes).toEqual(rows);
+  second.dispose();
+  const stored = JSON.parse(disk.getItem('tf_promo_discovery_v1'));
+  stored.codes[0].expiresOn = '2026-11-01';
+  disk.setItem('tf_promo_discovery_v1', JSON.stringify(stored));
+  const changed = createPromoDiscovery({ storage: disk, now });
+  expect(changed.snapshot().hiddenCodes).toEqual(['EXPIRED26']);
+  changed.dispose();
+});
+
+it('an already open service hides a newly expired code on its deadline tick without a network scan', () => {
+  vi.useFakeTimers();
+  const disk = storage();
+  const read = vi.fn();
+  let now = Date.parse('2026-11-02T20:59:30Z');
+  disk.setItem(
+    'tf_promo_discovery_v1',
+    JSON.stringify({
+      version: 1,
+      metadataVersion: 3,
+      articles: {},
+      codes: [{ code: 'EXPIREST26', expiresOn: '2026-11-02' }]
+    })
+  );
+  const changed = vi.fn();
+  const service = createPromoDiscovery({ storage: disk, read, now: () => now, onChange: changed });
+  try {
+    expect(service.snapshot().hiddenCodes).toEqual([]);
+    now = Date.parse('2026-11-02T21:00:00Z');
+    vi.advanceTimersByTime(30000);
+    expect(changed).toHaveBeenCalled();
+    expect(service.snapshot().hiddenCodes).toEqual(['EXPIREST26']);
+    expect(read).not.toHaveBeenCalled();
+    service.restoreHidden();
+    vi.advanceTimersByTime(60000);
+    expect(service.snapshot().hiddenCodes).toEqual([]);
+  } finally {
+    service.dispose();
+    vi.useRealTimers();
+  }
+});

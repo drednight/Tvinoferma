@@ -58,3 +58,12 @@ it('does not show raw native errors and allows an explicit retry', async () => {
   expect(document.body.textContent).not.toContain('PRIVATE_ERROR');
   expect(document.querySelector('button').disabled).toBe(false);
 });
+
+it('temporarily hides the bank for everyone and does not bind native metadata reads in settings', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  expect(doc.getElementById('cookie-bank-info').hidden).toBe(true);
+  const settings = readFileSync(new URL('../js/settings/settings.js', import.meta.url), 'utf8');
+  expect(settings).not.toContain('initCookieBankInfo');
+});

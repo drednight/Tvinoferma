@@ -151,7 +151,7 @@ export function layoutScriptWorkspace(dlg, selection, { running = false } = {}) 
                 .filter(c => ctx.ids.has(c.id))
                 .map(
                   c =>
-                    `<div class="script-plan-row promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
+                    `<div class="script-plan-row promo-item ${stripeCls(c)}">${classIconHtml(c)}<b>${esc(c.nick)}</b><small>${esc(
                       partiesOf(c, state.parties)
                         .map(p => p.name)
                         .join(', ')

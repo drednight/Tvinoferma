@@ -1,4 +1,3 @@
-import { initCookieBankInfo } from './cookieBankInfo.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
 
@@ -619,7 +618,7 @@ export function bindSettings() {
   balanceSettingsColumns();
   bindSettingInputs();
   initSettingsSections();
-  initCookieBankInfo({ characters: () => [...state.characters, ...(state.archivedCharacters || [])] });
+
   initSoundTonePicker();
 
   document.getElementById('test-notifications-btn')?.addEventListener('click', async () => {

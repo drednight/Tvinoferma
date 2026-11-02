@@ -310,6 +310,9 @@ describe('отдельный выбор количества после сайт
     expect(mocks.invoke.mock.calls).toHaveLength(2);
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(document.querySelectorAll('[data-caravan-limit]')).toHaveLength(1);
+    expect($('[data-caravan-limit]').closest('td').cellIndex).toBe(3);
+    expect($('[data-caravan-quantity-head]').hidden).toBe(false);
+    expect($('[data-act=real]').disabled).toBe(false);
     custom();
     count('a', 2);
     mocks.invoke.mockClear();
@@ -391,7 +394,9 @@ it('initial plan is a chest-count table, unknown before the website check and ob
     reply(args.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0, found: 7 })
   );
   openCaravanDialog({ ids: ['a'] });
-  expect($('.caravan-plan-table thead').textContent).toBe('ПерсонажСундуки караванщикаСостояние');
+  expect($('.caravan-plan-table thead').textContent).toBe(
+    'ПерсонажСундуки караванщикаСостояниеПеревести / открыть, шт.'
+  );
   expect($('.caravan-plan-table tbody').textContent).toContain('Аа');
   expect($('.caravan-plan-table tbody').textContent).toContain('Не проверено');
   expect($('.caravan-plan-table tbody').textContent).not.toContain('0 шт.');

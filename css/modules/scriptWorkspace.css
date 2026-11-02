@@ -623,3 +623,13 @@
     width: 27%;
   }
 }
+
+/* Found chests: quantity belongs to the account row, not a detached second plan. */
+.caravan-plan-table [data-caravan-quantity] .input {
+  width: 100px;
+  max-width: 100%;
+}
+.caravan-plan-table [data-caravan-quantity] small {
+  display: block;
+  color: var(--muted);
+}

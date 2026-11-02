@@ -230,7 +230,7 @@ describe('окно: аккаунты', () => {
     await wait();
     expect(mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop')).toHaveLength(2);
     expect($$('tr.shop-row')).toHaveLength(2);
-    expect(rowOf('Вв').textContent).toContain('также: Бб');
+    expect(rowOf('Вв').textContent).toContain('также: ?Бб');
     expect(rowOf('Вв').textContent).toContain('54');
   });
 
@@ -546,4 +546,39 @@ describe('журнал покупок', () => {
     expect(shopLogSource.list()[0].status).toBe('warn'); // «куплено до лимита»
     expect(detailsHtml(store.loadShopLog()[0])).toContain('Куплено до лимита: 4 из 6');
   });
+});
+
+it('table refresh scans only selected characters, updates shared balances/limits, and keeps unselected accounts', async () => {
+  openShopDialog({ ids: ['c'] });
+  await wait();
+  expect($('.sp-side [data-q="refresh-all"]')).not.toBeNull();
+  site.U1.balance = 18;
+  site.U1.left.light = 2;
+  mocks.invoke.mockClear();
+  $('[data-q="refresh"]').click();
+  await wait();
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop').map(([, args]) => args.charId)).toEqual(['c']);
+  expect(state.characters.filter(c => ['b', 'c'].includes(c.id)).map(c => c.ancientCoins)).toEqual([18, 18]);
+  expect(state.characters.find(c => c.id === 'a').ancientCoins).toBe(5);
+  expect(rowOf('Аа').textContent).toContain('5 с сайта');
+  expect(rowOf('Вв').textContent).toContain('18 с сайта');
+  expect(store.getAccount(store.charSiteMap().c).items.light.available).toBe(2);
+  mocks.invoke.mockClear();
+  $('[data-q="refresh-all"]').click();
+  await wait();
+  expect(
+    mocks.invoke.mock.calls
+      .filter(([cmd]) => cmd === 'read_shop')
+      .map(([, args]) => args.charId)
+      .sort()
+  ).toEqual(['a', 'c']);
+});
+it('table refresh without selection never silently scans all accounts', async () => {
+  openShopDialog();
+  await wait();
+  mocks.invoke.mockClear();
+  $('[data-q="refresh"]').click();
+  await wait(20);
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Отметьте'), 'info');
 });
