@@ -1,4 +1,4 @@
-import { groupTransferItems, chooseTransferPackets } from './transferItemGroups.js';
+import { groupTransferItems, chooseTransferPackets, transferExpiry } from './transferItemGroups.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/transfer.js
@@ -379,7 +379,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         if (!preview.el.isConnected || !alive()) return;
         preview.foot.querySelector('[data-preview-stop]').hidden = true;
         preview.sub.textContent =
-          'Укажите число одинаковых позиций для передачи (0 — оставить все на сайте). Сайт передаёт каждый пакет целиком: количество внутри пакета не делится. Снятые предметы останутся на сайте. Изменение состава перед отправкой остановит передачу.';
+          'Укажите количество пакетов (0 — оставить на сайте). Сначала выбираются пакеты с ближайшим известным сроком, затем с неизвестным. Категории объединены; пакет передаётся целиком. Перед отправкой сайт проверяется заново.';
         for (const key of invalidItemChoices) {
           if (freshIds.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
         }
@@ -387,7 +387,8 @@ export function openTransferDialog({ ids = [] } = {}) {
         const plans = currentPlans();
         const groupsByChar = new Map();
         preview.body.innerHTML =
-          notesHtml() +
+          '<div class="tr-preview-tools"><input class="input" type="search" data-item-search placeholder="Найти предмет" aria-label="Найти предмет"><button type="button" class="btn ghost small" data-items-clear>Снять всё</button><span data-transfer-total role="status"></span></div><small class="promo-muted">Поиск только скрывает строки — выбор пакетов не меняется. «Снять всё» оставит все предметы на сайте.</small>' +
+            notesHtml() +
             plans
               .filter(
                 p =>
@@ -403,14 +404,64 @@ export function openTransferDialog({ ids = [] } = {}) {
                 const groups = groupTransferItems(items);
                 groupsByChar.set(p.char.id, groups);
                 return `<section><h4>${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}
-                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Передать позиций</th></tr></thead><tbody>${groups
+                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Передать пакетов</th></tr></thead><tbody>${groups
                     .map((group, index) => {
                       const count = group.items.filter(item => !choices || choices.has(item.id)).length;
-                      return `<tr><td><b>${escapeHtml(group.name)}</b><small>${escapeHtml(group.source)}${group.until ? ` · до ${escapeHtml(group.until)}` : ''}</small><small>В одной позиции: ×${group.qty} (неделимый пакет)</small></td><td>${group.items.length} поз. · всего ×${group.items.length * group.qty}</td><td><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать позиций: ${escapeHtml(group.name)}"><small data-selected-quantity>Предметов: ×${count * group.qty}</small></td></tr>`;
+                      const batches = new Map();
+                      for (const item of group.items) {
+                        const key = JSON.stringify([item.source || '', item.until || '']);
+                        const batch = batches.get(key) || { ...item, count: 0 };
+                        batch.count++;
+                        batches.set(key, batch);
+                      }
+                      const first = group.items.find(item => Number.isFinite(transferExpiry(item.until)));
+                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>Пакет ×${group.qty}</small><details class="tr-packet-details"><summary>${first ? `Ближайший срок: ${escapeHtml(first.until)}` : 'Срок не указан / не распознан'}</summary><ul>${[...batches.values()].map(batch => `<li>${batch.count} пак. · ${escapeHtml(batch.source || 'Без категории')} · ${escapeHtml(batch.until || 'Без срока')}</li>`).join('')}</ul></details></td><td>${group.items.length} пак.<small>всего ×${group.items.length * group.qty}</small></td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать пакетов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все пакеты этого предмета">Все</button></div><small data-selected-quantity>Предметов: ×${count * group.qty}</small></td></tr>`;
                     })
                     .join('')}</tbody></table></div></section>`;
               })
               .join('') || '<p>Нет перечисленных предметов для передачи.</p>';
+        const updateTotal = () => {
+          let packets = 0,
+            units = 0;
+          for (const input of preview.body.querySelectorAll('[data-item-group]')) {
+            const group = groupsByChar.get(input.dataset.transferChar)[Number(input.dataset.itemGroup)];
+            const selected = itemChoices.get(input.dataset.transferChar);
+            const n = group.items.filter(item => !selected || selected.has(item.id)).length;
+            packets += n;
+            units += n * group.qty;
+          }
+          preview.body.querySelector('[data-transfer-total]').textContent =
+            `Выбрано: ${packets} пак. · ${units} предметов`;
+        };
+        updateTotal();
+        preview.body.onclick = event => {
+          if (event.target.closest('[data-items-clear]')) {
+            for (const id of groupsByChar.keys()) itemChoices.set(id, new Set());
+            for (const key of invalidItemChoices) {
+              if (groupsByChar.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
+            }
+            preview.body.querySelectorAll('[data-item-group]').forEach(input => {
+              input.value = '0';
+              input.setCustomValidity('');
+              input.closest('td').querySelector('[data-selected-quantity]').textContent = 'Предметов: ×0';
+            });
+            updateTotal();
+            updateAll();
+            return;
+          }
+          const max = event.target.closest('[data-group-max]');
+          if (!max) return;
+          const input = max.closest('tr').querySelector('[data-item-group]');
+          input.value = input.max;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        preview.body.oninput = event => {
+          if (!event.target.matches('[data-item-search]')) return;
+          const query = event.target.value.trim().toLocaleLowerCase('ru-RU');
+          preview.body.querySelectorAll('[data-transfer-group-row]').forEach(row => {
+            row.hidden = !row.textContent.toLocaleLowerCase('ru-RU').includes(query);
+          });
+        };
         preview.body.onchange = event => {
           const input = event.target.closest('[data-transfer-char]');
           if (!input) return;
@@ -430,7 +481,8 @@ export function openTransferDialog({ ids = [] } = {}) {
           }
           invalidItemChoices.delete(key);
           itemChoices.set(id, next);
-          input.parentElement.querySelector('[data-selected-quantity]').textContent =
+          updateTotal();
+          input.closest('td').querySelector('[data-selected-quantity]').textContent =
             `Предметов: ×${count * group.qty}`;
           updateAll();
         };

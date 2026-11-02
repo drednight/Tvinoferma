@@ -22,8 +22,7 @@ import {
   summarize,
   summaryText,
   taskLevel,
-  isRerunnable,
-  plainRow
+  isRerunnable
 } from './caravanCore.js';
 import { runCaravanBatch } from './caravanRunner.js';
 import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './scriptUi.js';
@@ -58,6 +57,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
   let running = null; // { cancelled } пока идёт запуск
   let openAll = true;
   const limits = {};
+  const knownAccounts = new Map();
   let lastRows = []; // результаты последнего запуска
   let lastChars = [];
   let lastDry = false;
@@ -151,14 +151,14 @@ export function openCaravanDialog({ ids = [] } = {}) {
         const rows = new Map(lastRows.map(row => [row.charId, row]));
         const chars = state.characters.filter(char => ids.has(char.id)).sort(byNick);
         if (!chars.length) return '<p class="muted">Выберите персонажей слева.</p>';
-        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th></tr></thead><tbody>${chars
+        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div data-caravan-progress></div><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th><th>Состояние</th></tr></thead><tbody>${chars
           .map(char => {
             const row = rows.get(char.id);
             const count =
               row && ['dry_run', 'nothing', 'success', 'partial'].includes(row.status)
                 ? Math.max(0, Number(row.found || 0) - Number(row.opened || 0))
                 : null;
-            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td>${count === null ? (row ? escapeHtml(rowLabel(row)) : 'Не проверено — нажмите «Проверить сайт»') : `<b>${count}</b> шт.`}</td></tr>`;
+            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td data-chest-count="${escapeHtml(char.id)}">${count === null ? 'Не проверено — нажмите «Проверить сайт»' : `<b>${count}</b> шт.`}</td><td data-cell="${escapeHtml(char.id)}">${row ? cellHtml(row) : 'Не проверено'}</td></tr>`;
           })
           .join('')}</tbody></table></div>`;
       },
@@ -259,15 +259,18 @@ export function openCaravanDialog({ ids = [] } = {}) {
     dlg.sub.textContent = dry
       ? '👁 Только подсчёт: инвентарь открывается, сундуки считаются, ничего не нажимается.'
       : 'Идёт открытие: персонажи обрабатываются несколько одновременно, сундуки у каждого — по очереди.';
-    dlg.body.innerHTML = `${progressHtml('caravan-progress', 0, chars.length)}
-      ${sectionHtml('Ход работы', {
-        body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${chars
-          .map(
-            c =>
-              `<tr class="${stripeCls(c)}"><td><b>${classIconHtml(c)} ${escapeHtml(c.nick)}</b></td><td data-cell="${escapeHtml(c.id)}">${cellHtml(null)}</td></tr>`
-          )
-          .join('')}</tbody></table></div>`
-      })}`;
+    dlg.body.querySelector('.caravan-plan-outcome')?.remove();
+    const side = dlg.body.querySelector('.sp-side');
+    if (side) {
+      side.inert = true;
+      side.classList.add('is-locked');
+    }
+    const progress = dlg.body.querySelector('[data-caravan-progress]');
+    if (progress) progress.innerHTML = progressHtml('caravan-progress', 0, chars.length);
+    const active = new Set(chars.map(char => char.id));
+    dlg.body.querySelectorAll('[data-cell]').forEach(cell => {
+      cell.textContent = active.has(cell.dataset.cell) ? 'В очереди' : 'Не выбран для этого запуска';
+    });
     dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
@@ -277,11 +280,22 @@ export function openCaravanDialog({ ids = [] } = {}) {
       e.currentTarget.textContent = '⏳ Останавливаю…';
     };
 
-    layoutScriptWorkspace(dlg, undefined, { running: true });
+    // Preserve the plan/table and its scroll position; only row cells change.
   }
 
-  function updateRunning(row, done, total) {
+  function updatePlanRow(row) {
+    if (row.accountKey) knownAccounts.set(row.charId, row.accountKey);
     setCell(row.charId, cellHtml(row));
+    const known = ['dry_run', 'nothing', 'success', 'partial'].includes(row.status);
+    const remaining = known ? Math.max(0, row.found - row.opened) : null;
+    for (const cell of dlg.body.querySelectorAll('[data-chest-count]')) {
+      const id = cell.dataset.chestCount;
+      if (id !== row.charId && (!row.accountKey || knownAccounts.get(id) !== row.accountKey)) continue;
+      cell.textContent = remaining === null ? 'Результат не подтверждён' : `${remaining} шт.`;
+    }
+  }
+  function updateRunning(row, done, total) {
+    updatePlanRow(row);
     setProgress(dlg.body, 'caravan-progress', done, total);
   }
 
@@ -312,16 +326,17 @@ export function openCaravanDialog({ ids = [] } = {}) {
     const s = summarize(lastRows);
     dlg.sub.textContent = summaryText(lastRows, { dry: lastDry, stopped });
     const byId = new Map(lastRows.map(r => [r.charId, r]));
-    dlg.body.innerHTML = `
+    const side = dlg.body.querySelector('.sp-side');
+    if (side) {
+      side.inert = false;
+      side.classList.remove('is-locked');
+    }
+    lastRows.forEach(updatePlanRow);
+    dlg.body.querySelector('.caravan-plan-outcome')?.remove();
+    const outcome = document.createElement('section');
+    outcome.className = 'caravan-plan-outcome';
+    outcome.innerHTML = `
       ${resultChips(s, lastDry)}
-      ${sectionHtml('Итог по персонажам', {
-        body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${lastChars
-          .map(
-            c =>
-              `<tr class="${stripeCls(c)}"><td><b>${classIconHtml(c)} ${escapeHtml(c.nick)}</b></td><td>${cellHtml(byId.get(c.id) || plainRow(c, 'not_run'))}</td></tr>`
-          )
-          .join('')}</tbody></table></div>`
-      })}
       ${
         lastDry
           ? `<section class="caravan-open-settings"><h4>Сколько сундуков открыть</h4><label><input type="radio" name="caravan-amount" value="all" ${openAll ? 'checked' : ''}> Открыть все найденные</label><label><input type="radio" name="caravan-amount" value="count" ${openAll ? '' : 'checked'}> Указать количество по аккаунтам</label>${accountRepresentatives(
@@ -338,6 +353,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
       ${lastDry ? '<p class="promo-muted">Ничего не открыто и не нажато. Если сундуки найдены — можно открывать по-настоящему.</p>' : ''}
       ${s.unknown ? '<p class="promo-warn">❓ Результат не подтверждён: кнопка могла быть нажата. Проверьте инвентарь на сайте; автоматически такие строки не повторяются.</p>' : ''}
       ${s.partial ? '<p class="promo-warn">⚠ Часть сундуков осталась в инвентаре: «Повторить» откроет только их.</p>' : ''}`;
+    dlg.body.querySelector('.sp-main').append(outcome);
     const found = lastDry && s.found > 0;
     dlg.foot.innerHTML = `
       <button class="btn ghost" data-act="back">← К списку</button>

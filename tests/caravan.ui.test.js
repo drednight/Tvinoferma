@@ -391,7 +391,7 @@ it('initial plan is a chest-count table, unknown before the website check and ob
     reply(args.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0, found: 7 })
   );
   openCaravanDialog({ ids: ['a'] });
-  expect($('.caravan-plan-table thead').textContent).toBe('ПерсонажСундуки караванщика');
+  expect($('.caravan-plan-table thead').textContent).toBe('ПерсонажСундуки караванщикаСостояние');
   expect($('.caravan-plan-table tbody').textContent).toContain('Аа');
   expect($('.caravan-plan-table tbody').textContent).toContain('Не проверено');
   expect($('.caravan-plan-table tbody').textContent).not.toContain('0 шт.');
@@ -399,4 +399,46 @@ it('initial plan is a chest-count table, unknown before the website check and ob
   await vi.waitFor(() => expect($('[data-act="back"]')).not.toBeNull());
   $('[data-act="back"]').click();
   expect($('.caravan-plan-table tbody').textContent).toContain('7 шт.');
+});
+
+it('keeps the exact plan/table DOM through counting, opening and results; controls are locked only while running', async () => {
+  let finish;
+  mocks.invoke.mockImplementation(
+    async (_, args) =>
+      new Promise(resolve => {
+        finish = () =>
+          resolve(
+            reply(args.charId, {
+              status: args.dryRun ? 'dry_run' : 'success',
+              dryRun: args.dryRun,
+              clicked: !args.dryRun,
+              found: 4,
+              opened: args.dryRun ? 0 : 2
+            })
+          );
+      })
+  );
+  openCaravanDialog({ ids: ['a'] });
+  const table = $('.caravan-plan-table'),
+    plan = table.closest('.script-plan');
+  $('[data-act="dry"]').click();
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect($('.caravan-plan-table')).toBe(table);
+  expect(table.closest('.script-plan')).toBe(plan);
+  expect(plan.querySelector('h4').textContent).toBe('План запуска');
+  expect($('.sp-side').inert).toBe(true);
+  finish();
+  await vi.waitFor(() => expect($('[data-act="real"]')).not.toBeNull());
+  expect($('.caravan-plan-table')).toBe(table);
+  expect(table.textContent).toContain('4 шт.');
+  expect($('.sp-side').inert).toBe(false);
+  finish = null;
+  $('[data-act="real"]').click();
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect($('.caravan-plan-table')).toBe(table);
+  finish();
+  await vi.waitFor(() => expect($('[data-act="retry"]')).not.toBeNull());
+  expect($('.caravan-plan-table')).toBe(table);
+  expect(table.textContent).toContain('2 шт.');
+  expect(document.querySelectorAll('.caravan-plan-table')).toHaveLength(1);
 });

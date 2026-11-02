@@ -379,6 +379,7 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
 #[serde(rename_all = "camelCase")]
 struct CookieMetadata {
     kind: &'static str,
+    site: Option<String>,
     expires_at: Option<i64>,
     expiry_basis: Option<&'static str>,
 }
@@ -389,6 +390,7 @@ fn cookie_metadata(cookies: &[String], saved_at: u64) -> Vec<CookieMetadata> {
         let Ok(cookie) = Cookie::parse(raw.clone()) else {
             metadata.push(CookieMetadata {
                 kind: "unknown",
+                site: None,
                 expires_at: None,
                 expiry_basis: None,
             });
@@ -413,6 +415,9 @@ fn cookie_metadata(cookies: &[String], saved_at: u64) -> Vec<CookieMetadata> {
         };
         metadata.push(CookieMetadata {
             kind,
+            site: cookie
+                .domain()
+                .map(|domain| domain.trim_start_matches('.').to_lowercase()),
             expires_at,
             expiry_basis,
         });
@@ -579,6 +584,8 @@ mod expiry_tests {
         assert!(!output.contains("private"));
         assert!(!output.contains("secret"));
         assert_eq!(metadata[2].expires_at, None);
+        assert_eq!(metadata[0].site.as_deref(), Some("pwonline.ru"));
+        assert_eq!(metadata[1].site.as_deref(), Some("pwonline.ru"));
     }
     #[test]
     fn max_age_uses_saved_time_but_sessions_never_get_invented_dates() {
