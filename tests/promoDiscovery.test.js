@@ -286,7 +286,7 @@ it('auto-hides expired codes immediately, preserves manual hiding, and restores 
     JSON.stringify({ version: 1, metadataVersion: 3, articles: {}, codes: rows, hiddenCodes: ['MANUAL26'] })
   );
   const first = createPromoDiscovery({ storage: disk, now });
-  expect(first.snapshot().hiddenCodes).toEqual(['MANUAL26', 'EXPIRED26']);
+  expect(first.snapshot().hiddenCodes).toEqual(['MANUAL26', 'EXPIRED26', 'YEARLESS26']);
   first.restoreHidden();
   expect(first.snapshot().hiddenCodes).toEqual([]);
   first.dispose();
@@ -335,4 +335,21 @@ it('an already open service hides a newly expired code on its deadline tick with
     service.dispose();
     vi.useRealTimers();
   }
+});
+
+it('retains restoration from the previous yearless label format', () => {
+  const disk = storage();
+  disk.setItem(
+    'tf_promo_discovery_v1',
+    JSON.stringify({
+      version: 1,
+      metadataVersion: 3,
+      articles: {},
+      codes: [{ code: 'RESTORED26', expiresText: 'до 04.10' }],
+      restoredExpired: ['RESTORED26|04.10']
+    })
+  );
+  const service = createPromoDiscovery({ storage: disk, now: () => Date.parse('2026-11-02T12:00:00Z') });
+  expect(service.snapshot().hiddenCodes).toEqual([]);
+  service.dispose();
 });

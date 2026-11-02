@@ -83,6 +83,12 @@ beforeEach(async () => {
   ({ setRoster, loadPrefs, loadTransferLog } = await import('../js/modules/automation/transferStore.js'));
 });
 
+const confirmTransfer = async () => {
+  $('[data-act="start"]').click();
+  await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
+  $('#tr-ack').click();
+  $('[data-confirm-transfer]').click();
+};
 const preload = () => {
   setRoster('a', rosterOf('77'));
   setRoster('b', rosterOf('88'));
@@ -146,8 +152,7 @@ describe('форма', () => {
     pickRow('a', '3');
     pick('[data-pick="a"]', K(3, 2));
     pickRow('b', '5');
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(400);
     const calls = Object.fromEntries(mocks.invoke.mock.calls.map(c => [c[1].charId, c[1]]));
     expect(calls.a).toMatchObject({ shardId: '3', recipient: K(3, 2), charName: 'Второй' });
@@ -249,45 +254,28 @@ describe('форма', () => {
     expect($('#tr-list input[type=checkbox]:checked')).toBeNull(); // отметки не появились сами
   });
 
-  it('блок подтверждения: «Обойти ограничения» не применяет запомненные ограничения; «Забыть» стирает их', async () => {
-    const MIC = 'День рождения «Мицара»';
+  it('keeps acknowledgement and override in a per-launch modal; cancelling never sends items', async () => {
     const { saveLimits, loadLimits } = await import('../js/modules/automation/transferStore.js');
-    const { normKey } = await import('../js/modules/automation/transferCore.js');
-    saveLimits({ server: 'Мицар', sources: [MIC] });
-    mocks.invoke.mockImplementation(async (_, a) => ({
-      charId: a.charId,
-      status: 'dry_run',
-      clicked: false,
-      count: 1,
-      items: []
-    }));
+    saveLimits({ server: 'Мицар', sources: ['Акция Мицара'] });
+    mocks.invoke.mockImplementation(async (_, args) => sent(args));
     preload();
     openTransferDialog({ ids: ['a'] });
-    pickRow('a', '3');
-    pick('[data-pick="a"]', K(3, 1));
-    expect($('.tr-ack-box #tr-ack')).not.toBeNull();
+    pickRow('a', '5');
+    expect($('#tr-ack')).toBeNull();
+    expect($('#tr-force')).toBeNull();
+    $('[data-act="start"]').click();
+    await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
+    expect($('#tr-ack').checked).toBe(false);
+    expect($('[data-confirm-transfer]').disabled).toBe(true);
     expect($('#tr-forget').textContent).toContain('(1)');
-    $('[data-act="dry"]').click();
+    $('[data-confirm-cancel]').click();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect($('.tf-overlay').inert).toBe(false);
+    await wait(0);
+    await confirmTransfer();
     await wait(300);
-    expect(mocks.invoke.mock.calls[0][1].skipSources).toEqual([normKey(MIC)]);
-    // обход
-    mocks.invoke.mockClear();
-    $('[data-act="back"]').click();
-    pickRow('a', '3');
-    pick('[data-pick="a"]', K(3, 1));
-    $('#tr-force').click();
-    expect($('#tr-summary').textContent).toContain('Обход ограничений включён');
-    $('[data-act="dry"]').click();
-    await wait(300);
-    expect(mocks.invoke.mock.calls[0][1].skipSources).toEqual([]);
-    expect(Object.keys(loadLimits())).toHaveLength(1); // обход ничего не стирает
-    // забыть
-    $('[data-act="back"]').click();
-    $('#tr-forget').click();
-    // Подтверждение асинхронное (confirmModal), поэтому дожидаемся результата
-    await vi.waitFor(() => expect(mocks.confirm).toHaveBeenCalled());
-    await vi.waitFor(() => expect(Object.keys(loadLimits())).toHaveLength(0));
-    expect($('#tr-forget').disabled).toBe(true);
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true);
+    expect(Object.keys(loadLimits())).toHaveLength(1);
   });
 
   it('персонаж без ника на сайте: он в списке получателей как «без ника (Класс, ур. N)» и подставляется сам', async () => {
@@ -375,7 +363,7 @@ describe('форма', () => {
     expect(rowOf('a').querySelector('.tr-server').textContent).not.toContain('Капелла');
   });
 
-  it('кнопка «Передать» неактивна без галочки; пробный запуск доступен при выбранных сервере и получателе', () => {
+  it('кнопка «Передать» открывает подтверждение, пробный запуск доступен без боковой галочки', () => {
     preload();
     openTransferDialog({ ids: ['a'] });
     expect($('[data-act="dry"]').disabled).toBe(true);
@@ -385,9 +373,8 @@ describe('форма', () => {
     pick('[data-pick="a"]', K(3, 2));
     expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 1');
     expect($('[data-act="dry"]').disabled).toBe(false);
-    expect($('[data-act="start"]').disabled).toBe(true);
-    $('#tr-ack').click();
     expect($('[data-act="start"]').disabled).toBe(false);
+    expect($('#tr-ack')).toBeNull();
   });
 
   it('единственный персонаж на сервере — получатель подставляется сам', async () => {
@@ -510,8 +497,7 @@ describe('запуск', () => {
   it('реальная передача: бэкап один раз, вызовы transfer_items, итог и журнал; сайт, где «Передать» нажато, пишется в журнал', async () => {
     mocks.invoke.mockImplementation(async (_, a) => sent(a));
     open();
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(400);
     expect(mocks.backup).toHaveBeenCalledTimes(1);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
@@ -540,8 +526,7 @@ describe('запуск', () => {
         })
     );
     open();
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(100);
     const stop = $('[data-act="stop"]');
     expect(stop).not.toBeNull();
@@ -558,8 +543,7 @@ describe('запуск', () => {
       a.charId === 'a' ? { charId: 'a', status: 'challenge', clicked: false } : sent(a)
     );
     open();
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(400);
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     mocks.invoke.mockClear();
@@ -590,8 +574,7 @@ describe('запуск', () => {
       }
     }));
     open(['a']);
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(400);
     expect($('.tf-dialog-sub').textContent).toContain('Не всё: 1');
     expect(document.body.textContent).toContain('Мицар');
@@ -621,8 +604,7 @@ describe('запуск', () => {
     mocks.backup.mockRejectedValueOnce(new Error('disk'));
     mocks.confirm.mockReturnValue(false);
     open(['a']);
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(100);
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
@@ -641,8 +623,7 @@ describe('Журналы → Передачи', () => {
     openTransferDialog({ ids: ['a'] });
     pickRow('a', '3');
     pick('[data-pick="a"]', K(3, 1));
-    $('#tr-ack').click();
-    $('[data-act="start"]').click();
+    await confirmTransfer();
     await wait(400);
     $('[data-act="log"]').click();
     const dialogs = document.querySelectorAll('.tf-dialog');
@@ -679,8 +660,7 @@ it('fresh preview omits empty characters, shows available packet quantities and 
   unchecked.value = '0';
   unchecked.dispatchEvent(new Event('change', { bubbles: true }));
   $('.tr-preview-dialog [data-preview-close]').click();
-  $('#tr-ack').click();
-  $('[data-act="start"]').click();
+  await confirmTransfer();
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const calls = mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items');
   expect(calls).toHaveLength(1);
@@ -719,24 +699,23 @@ it('groups five identical packets into one row, rejects fractional counts and se
   $('#tr-plan-btn').click();
   await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
   const count = $('[data-item-group="0"]');
-  expect(count.max).toBe('250');
-  expect(count.step).toBe('50');
+  expect(count.max).toBe('5');
+  expect(count.step).toBe('1');
   expect($('.tr-preview-dialog .tr-packet-details')).toBeNull();
   expect($('.tr-preview-dialog').textContent).toContain('250 шт.');
-  $('#tr-ack').click();
   count.value = '1.5';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   expect($('[data-act="start"]').disabled).toBe(true);
   expect($('#tr-summary').textContent).toContain('Исправьте количество');
-  count.value = '100';
+  count.value = '2';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   const other = $('[data-item-group="1"]');
   other.value = '0';
   other.dispatchEvent(new Event('change', { bubbles: true }));
-  expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Выбрано: 100 шт.');
+  expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Выбрано: 2 набора (100 шт.)');
   $('.tr-preview-dialog [data-preview-close]').click();
   expect($('[data-act="start"]').disabled).toBe(false);
-  $('[data-act="start"]').click();
+  await confirmTransfer();
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const args = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1];
   expect(args.itemSelection.map(item => item.id)).toEqual(['11', '12']);
@@ -759,19 +738,19 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
   $('#tr-plan-btn').click();
   await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
   const count = $('[data-item-group="0"]');
-  expect(count.max).toBe('150');
+  expect(count.max).toBe('3');
   expect($('.tr-packet-details').open).toBe(false);
   count.value = '0';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   $('[data-group-max]').click();
-  expect(count.value).toBe('150');
+  expect(count.value).toBe('3');
   $('[data-items-clear]').click();
   $('[data-items-all]').click();
-  expect(count.value).toBe('150');
+  expect(count.value).toBe('3');
   expect($('[data-item-group="1"]').value).toBe('1');
   $('[data-items-clear]').click();
   expect($('[data-transfer-total]').textContent).toBe('Выбрано: 0 шт. (0 наборов)');
-  count.value = '50';
+  count.value = '1';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   const other = $('[data-item-group="1"]');
   other.value = '0';
@@ -780,10 +759,9 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
   search.value = 'Другое';
   search.dispatchEvent(new Event('input', { bubbles: true }));
   expect(count.closest('tr').hidden).toBe(true);
-  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 50 шт. (1 наборов)');
+  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 50 шт. (1 набор)');
   $('.tr-preview-dialog [data-preview-close]').click();
-  $('#tr-ack').click();
-  $('[data-act="start"]').click();
+  await confirmTransfer();
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   expect(mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].itemSelection).toEqual([
     { id: 'early', name: 'Набор', qty: 50, source: 'Акция C', until: '08:00 04.11.2026' }
@@ -804,4 +782,61 @@ it('applies one server to all characters, including unselected ones, without inv
   expect($('[data-srv="b"]').value).toBe('5');
   expect(rowOf('c').textContent).toContain('не загружено');
   expect([...document.querySelectorAll('#tr-list [data-id]:checked')].map(input => input.dataset.id)).toEqual(['a']);
+});
+
+it('selects 20 out of 21 real sets of 25, not fractional items, and preserves exact native fingerprints', async () => {
+  preload();
+  const items = Array.from({ length: 21 }, (_, i) => ({
+    id: String(i + 1),
+    name: 'Небесная пилюля',
+    qty: 25,
+    source: 'Акция',
+    until: '23:59 12.11.2026'
+  }));
+  mocks.invoke.mockImplementation(async (command, args) =>
+    command === 'read_transfer_page' ? { status: 'ok', roster: rosterOf(args.charId, { items }) } : sent(args)
+  );
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect($('[data-item-group]')).not.toBeNull());
+  const input = $('[data-item-group]');
+  expect(input.max).toBe('21');
+  expect(input.step).toBe('1');
+  expect(input.closest('tr').textContent).toContain('21 набор');
+  input.value = '20';
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(input.closest('tr').textContent).toContain('20 наборов (500 шт.)');
+  $('.tr-preview-dialog [data-preview-close]').click();
+  await confirmTransfer();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  const selection = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].itemSelection;
+  expect(selection).toEqual(items.slice(0, 20));
+  await wait(100);
+});
+
+it('an explicit override in the confirmation can run an otherwise restricted selection; it is not remembered', async () => {
+  const { saveLimits, loadLimits } = await import('../js/modules/automation/transferStore.js');
+  preload();
+  saveLimits({ server: 'Мицар', sources: ['Акция Мицара'] });
+  setRoster(
+    'a',
+    rosterOf('77', { items: [{ id: '11', name: 'Метеорит', qty: 100, source: 'Акция Мицара', until: '' }] })
+  );
+  mocks.invoke.mockImplementation(async (_, args) => sent(args));
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '3');
+  pick('[data-pick="a"]', K(3, 1));
+  expect($('[data-act=start]').disabled).toBe(false);
+  $('[data-act=start]').click();
+  await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
+  $('#tr-ack').click();
+  expect($('[data-confirm-transfer]').disabled).toBe(true);
+  $('#tr-force').click();
+  expect($('[data-confirm-transfer]').disabled).toBe(false);
+  $('[data-confirm-transfer]').click();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  expect(mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1].skipSources).toEqual([]);
+  expect(Object.keys(loadLimits())).toHaveLength(1);
+  await wait(100);
 });

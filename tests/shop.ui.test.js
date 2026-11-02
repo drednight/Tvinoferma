@@ -582,3 +582,41 @@ it('table refresh without selection never silently scans all accounts', async ()
   expect(mocks.invoke).not.toHaveBeenCalled();
   expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Отметьте'), 'info');
 });
+
+it('opens all-character item limits next to the dry run without additional native actions', async () => {
+  openShopDialog({ ids: ['c'] });
+  await wait();
+  const before = mocks.invoke.mock.calls.length;
+  const button = $('.tf-dialog-foot [data-act=limits]');
+  expect(button.nextElementSibling.dataset.act).toBe('dry');
+  button.click();
+  const table = $('.shop-limits-table');
+  expect(table).not.toBeNull();
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(3 * WANTED.length);
+  expect(table.textContent).toContain('Аа');
+  expect(table.textContent).toContain('Бб');
+  expect(table.textContent).toContain('Вв');
+  expect(table.textContent).toContain('Сайт не указывает лимит');
+  expect(table.textContent).toContain('Дата неизвестна');
+  expect(mocks.invoke.mock.calls.length).toBe(before);
+  $('[data-close-limits]').click();
+  expect($('.shop-limits-table')).toBeNull();
+});
+
+it('limit details expose only confirmed reset dates and never invent an unlimited quota', async () => {
+  prefill();
+  const sites = store.charSiteMap();
+  const saved = store.loadShopState();
+  const resetAt = new Date(Date.now() + 4 * 86400000).toISOString();
+  saved.accounts[sites.b].tracks.light = { resetAt, max: 4 };
+  localStorage.setItem(store.STATE_KEY, JSON.stringify(saved));
+  const { openShopLimits } = await import('../js/modules/automation/shopLimitsView.js');
+  const dlg = openShopLimits();
+  expect(dlg.body.textContent).toContain('Сайт не указывает лимит');
+  expect(dlg.body.textContent).toContain('Дата неизвестна');
+  expect(dlg.sub.textContent).toContain('лимит общий');
+  expect(dlg.body.textContent).toContain(
+    new Date(resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
+  );
+  dlg.close();
+});

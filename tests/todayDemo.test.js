@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { applyAppSnapshot, createDemoState, demoDays, partyInfo, summary } from '../demo/today/data.js';
+import { applyAppSnapshot, createDemoState, demoDays, partyInfo, summary, marathonRisk } from '../demo/today/data.js';
 import {
   demoTodayEvents,
   ensureDemoMarathon,
@@ -9,6 +9,7 @@ import {
   makeDemoMarathon
 } from '../demo/app/fixtures.js';
 import { JSDOM } from 'jsdom';
+import { renderVariant } from '../demo/today/render.js';
 
 const html = readFileSync('demo/today/index.html', 'utf8');
 const $ = selector => document.querySelector(selector);
@@ -74,7 +75,15 @@ describe('вымышленные данные демо', () => {
   it('ежедневное задание считает по существующему циклу и московской дате', () => {
     const state = createDemoState(new Date('2026-10-28T12:00:00Z'));
     expect(state.date).toBe('2026-10-28');
-    expect(demoDays(state.date).map(day => day.key)).toEqual(['armor', 'relic', 'weapon', 'armor', 'relic']);
+    expect(demoDays(state.date).map(day => day.key)).toEqual([
+      'weapon',
+      'armor',
+      'relic',
+      'weapon',
+      'armor',
+      'relic',
+      'weapon'
+    ]);
   });
 });
 
@@ -84,7 +93,7 @@ describe('демо страницы «Сегодня»', () => {
       click(`[data-variant="${variant}"]`);
       const root = $(`[data-view="${variant}"]`);
       expect(root).not.toBeNull();
-      expect(root.textContent).toContain('Персонажи');
+      expect(root.textContent).toContain('персонажей');
       expect(root.textContent).toContain('Марафон');
       expect(root.textContent).toContain('События');
       expect(root.textContent).toContain('Eternals');
@@ -104,7 +113,7 @@ describe('демо страницы «Сегодня»', () => {
     for (const variant of ['overview', 'day', 'workspace']) {
       click(`[data-variant="${variant}"]`);
       expect($('[data-clan-panel]')).toBeNull();
-      expect($('[data-view]').textContent).toMatch(/нет активн/i);
+      expect($('[data-marathon-panel]')).toBeNull();
     }
     change('#clan-toggle', true);
     expect($('[data-clan-panel]')).not.toBeNull();
@@ -159,10 +168,12 @@ describe('демо страницы «Сегодня»', () => {
     click('[data-day="2"]');
     expect($('[data-day="2"]').getAttribute('aria-pressed')).toBe('true');
     click('[data-variant="overview"]');
-    expect($('.t-dungeon-body small').textContent).toBe('ДАНЖ ДНЯ');
+    expect($('.t-dungeon-body small').textContent).toBe('ВЫБРАННЫЙ ДЕНЬ');
     click('[data-variant="day"]');
     expect($('.t-dungeon-body small').textContent).toBe('ВЫБРАННЫЙ ДЕНЬ');
     expect($('[data-day="2"]').getAttribute('aria-pressed')).toBe('true');
+    expect($('[data-task="party"]').checked).toBe(false);
+    click('[data-day="0"]');
     expect($('[data-task="party"]').checked).toBe(true);
   });
 
@@ -254,7 +265,7 @@ describe('полные копии разделов', () => {
     expect($('[data-party-select]').textContent).toContain('Новая пати');
     click('[data-variant="workspace"]');
     expect($('[data-view="workspace"]').textContent).toContain('1 234');
-    expect($('[data-view="workspace"]').textContent).toContain('42%');
+    expect($('[data-view="workspace"]').textContent).toContain('Задания марафона');
     message({ type: 'tf-demo:navigated', section: 'settings' });
     expect($('[data-nav-section="settings"]').getAttribute('aria-current')).toBe('page');
     message({ type: 'tf-demo:navigated', section: 'today' });
@@ -402,4 +413,96 @@ describe('состав окон инструментов', () => {
       PARTIES.splice(0, PARTIES.length, ...oldParties);
     }
   });
+});
+
+it('shows all requested modules in every concept and hides conditional modules without placeholders', () => {
+  for (const variant of ['overview', 'day', 'workspace']) {
+    click(`[data-variant="${variant}"]`);
+    expect(document.querySelectorAll('.t-day[data-day]')).toHaveLength(7);
+    for (const selector of [
+      '[data-attention-panel]',
+      '[data-promo-panel]',
+      '[data-marathon-panel]',
+      '[data-clan-panel]',
+      '.t-finance',
+      '.t-window-list'
+    ])
+      expect($(selector)).not.toBeNull();
+  }
+  change('#attention-toggle', false);
+  change('#promo-toggle', false);
+  change('#marathon-toggle', false);
+  change('#clan-toggle', false);
+  for (const variant of ['overview', 'day', 'workspace']) {
+    click(`[data-variant="${variant}"]`);
+    for (const selector of [
+      '[data-attention-panel]',
+      '[data-promo-panel]',
+      '[data-marathon-panel]',
+      '[data-clan-panel]'
+    ])
+      expect($(selector)).toBeNull();
+  }
+});
+it('tracks separate daily marks, lets the month calendar change the day and preserves them across layouts', () => {
+  expect($('[data-task=party]').checked).toBe(false);
+  change('[data-task=party]', true);
+  click('[data-day="-1"]');
+  expect($('[data-task=party]').checked).toBe(false);
+  change('[data-task=party]', true);
+  click('[data-day="5"]');
+  expect($('[data-task=party]').checked).toBe(false);
+  click('[data-day="-1"]');
+  expect($('[data-task=party]').checked).toBe(true);
+  const date = $('[data-calendar-date]');
+  date.click();
+  expect($(`[data-calendar-date="${date.dataset.calendarDate}"]`).getAttribute('aria-pressed')).toBe('true');
+});
+it('renames and closes one fictional window without touching the others', () => {
+  click('[data-window-rename="w1"]');
+  const form = $('[data-rename-window]');
+  form.querySelector('input').value = '<img src=x> Мой танк';
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  expect($('[data-demo-window="w1"]').textContent).toContain('<img src=x> Мой танк');
+  expect($('[data-demo-window="w1"] img[src=x]')).toBeNull();
+  click('[data-window-close="w1"]');
+  expect($('[data-demo-window="w1"]')).toBeNull();
+  expect($('[data-demo-window="w2"]')).not.toBeNull();
+});
+it('simulates reading only marathon participants, exposes risk, and never credits a second check twice', async () => {
+  expect(document.querySelectorAll('[data-marathon-participant]')).toHaveLength(4);
+  expect($('.t-marathon-person.is-red')).not.toBeNull();
+  expect($('.t-marathon-person.is-amber')).not.toBeNull();
+  click('[data-marathon-refresh]');
+  expect($('[data-marathon-refresh]').disabled).toBe(true);
+  await vi.waitFor(() => expect($('[data-marathon-refresh]').disabled).toBe(false));
+  const first = $('[data-marathon-participant="c1"]').textContent;
+  expect(first).toContain('6 / 7');
+  click('[data-marathon-refresh]');
+  await vi.waitFor(() => expect($('[data-marathon-refresh]').disabled).toBe(false));
+  expect($('[data-marathon-participant="c1"]').textContent).toBe(first);
+});
+it('hides a demo promo after simulated entry on all remaining characters', () => {
+  click('[data-demo-promo]');
+  click('[data-confirm-promo]');
+  expect($('[data-promo-panel]')).toBeNull();
+  click('[data-variant="day"]');
+  expect($('[data-promo-panel]')).toBeNull();
+});
+
+it('a completed marathon participant is never at risk, even on the final day', () => {
+  expect(marathonRisk({ required: 7, completed: 7, daysLeft: 0 })).toMatchObject({ tone: 'green', label: 'Готово' });
+});
+it('shows escaped actual demo task titles delivered by the isolated application snapshot', () => {
+  const state = createDemoState();
+  const title = '<img src=x onerror=alert(1)>';
+  applyAppSnapshot(state, {
+    characters: [],
+    parties: [],
+    marathon: { title: 'Событие', days: 4, percent: 0 },
+    marathonTasks: [{ title, description: 'Выполнить данж' }]
+  });
+  expect(state.marathonTasks).toEqual([{ title, description: 'Выполнить данж' }]);
+  expect(renderVariant(state)).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  expect(renderVariant(state)).not.toContain('<img src=x');
 });

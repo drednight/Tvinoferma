@@ -1,6 +1,6 @@
 // Макеты и копии разделов работают только с примером данных; доступ к сайту и Tauri закрыт.
 import { escapeHtml as esc } from '../../js/core/utils.js';
-import { VARIANTS, applyAppSnapshot, createDemoState, partyInfo } from './data.js';
+import { VARIANTS, applyAppSnapshot, createDemoState, partyInfo, selectedTasks } from './data.js';
 import { icon, renderVariant } from './render.js';
 
 let state = createDemoState();
@@ -29,6 +29,7 @@ const dialog = document.querySelector('#demo-dialog');
 const dialogContent = document.querySelector('#dialog-content');
 const toast = document.querySelector('#demo-toast');
 let toastTimer;
+let marathonGeneration = 0;
 
 function showToast(message) {
   toast.textContent = message;
@@ -69,7 +70,9 @@ function focusSelector() {
 }
 
 function render(focus = '') {
+  const calendarOpen = screen.querySelector('.t-month-calendar')?.open;
   if (state.variant !== 'original') screen.innerHTML = renderVariant(state);
+  if (calendarOpen && screen.querySelector('.t-month-calendar')) screen.querySelector('.t-month-calendar').open = true;
   panel.setAttribute('aria-labelledby', `tab-${state.variant}`);
   variantButtons.forEach(button => {
     const active = button.dataset.variant === state.variant;
@@ -92,6 +95,8 @@ function render(focus = '') {
   pollToggle.checked = state.pollEnabled;
   pollToggle.disabled = !state.clanEnabled;
   marathonToggle.checked = state.marathonActive;
+  document.querySelector('#attention-toggle').checked = state.attentionEnabled;
+  document.querySelector('#promo-toggle').checked = state.promoEnabled;
   if (focus && !showingReplica) screen.querySelector(focus)?.focus();
 }
 
@@ -143,6 +148,7 @@ marathonToggle.addEventListener('change', () => {
   sendScenarios();
 });
 document.querySelector('#reset-demo').addEventListener('click', () => {
+  marathonGeneration++;
   const variant = state.variant;
   if (replicaReady) postReplica({ type: 'tf-demo:reset' });
   replicaReady = false;
@@ -215,7 +221,11 @@ function launchDialog() {
 
 function openSection(section) {
   if (section === 'calendar') {
-    chooseVariant('original');
+    const calendar = screen.querySelector('.t-month-calendar');
+    if (calendar) {
+      calendar.open = true;
+      calendar.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    }
     return;
   }
   if (section === 'coins') {
@@ -249,6 +259,86 @@ function openSection(section) {
 }
 
 document.addEventListener('click', event => {
+  const closeWindow = event.target.closest('[data-window-close]');
+  if (closeWindow) {
+    state.windows = state.windows.filter(w => w.id !== closeWindow.dataset.windowClose);
+    render();
+    return;
+  }
+  const focusWindow = event.target.closest('[data-window-focus]');
+  if (focusWindow) {
+    state.activeWindow = focusWindow.dataset.windowFocus;
+    render();
+    return;
+  }
+  const renameWindow = event.target.closest('[data-window-rename]');
+  if (renameWindow) {
+    const w = state.windows.find(w => w.id === renameWindow.dataset.windowRename);
+    if (!w) return;
+    dialogContent.innerHTML = dialogFrame(
+      'Переименовать окно',
+      'Меняется только название вымышленного окна в демо.',
+      `<form data-rename-window="${esc(w.id)}"><label>Название <input class="t-rename-input" name="title" required maxlength="80" value="${esc(w.title)}"></label><button class="t-btn t-btn-primary" type="submit">Сохранить</button></form>`
+    );
+    dialog.showModal();
+    return;
+  }
+  const refresh = event.target.closest('[data-marathon-refresh]');
+  if (refresh) {
+    if (state.marathonChecking) return;
+    state.marathonChecking = true;
+    const generation = ++marathonGeneration;
+    render();
+    setTimeout(() => {
+      if (generation !== marathonGeneration) return;
+      state.marathonProgress
+        .filter(row => state.characters.some(c => c.id === row.charId))
+        .forEach(row => {
+          if (!row.checkedToday && row.siteTodayDone) row.completed = Math.min(row.required, row.completed + 1);
+          row.checkedToday = true;
+        });
+      state.marathonChecking = false;
+      state.marathonCheckedAt = new Date().toLocaleTimeString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      render();
+      showToast('Имитация проверки завершена: прочитаны только участники марафона. Реальный скрипт не запускался.');
+    }, 600);
+    return;
+  }
+  const promo = event.target.closest('[data-demo-promo]');
+  if (promo) {
+    dialogContent.innerHTML = dialogFrame(
+      'Активация промокода',
+      'Только имитация, без сайта.',
+      `<p>Промокод <b>${esc(promo.dataset.demoPromo)}</b> будет отмечен введённым у оставшихся персонажей демо.</p>`,
+      `<button class="t-btn t-btn-primary" data-confirm-promo="${esc(promo.dataset.demoPromo)}">Имитировать активацию</button>`
+    );
+    dialog.showModal();
+    return;
+  }
+  const confirmPromo = event.target.closest('[data-confirm-promo]');
+  if (confirmPromo) {
+    const row = state.promos.find(p => p.code === confirmPromo.dataset.confirmPromo);
+    if (row) row.entered = state.characters.map(c => c.id);
+    dialog.close();
+    render();
+    return;
+  }
+  const month = event.target.closest('[data-calendar-month]');
+  if (month) {
+    state.calendarMonth += Number(month.dataset.calendarMonth);
+    render();
+    return;
+  }
+  const date = event.target.closest('[data-calendar-date]');
+  if (date) {
+    state.chosenDay = Math.round((Date.parse(date.dataset.calendarDate) - Date.parse(state.date)) / 86400000);
+    render();
+    return;
+  }
   const nav = event.target.closest('[data-nav-section]');
   if (nav) {
     navigate(nav.dataset.navSection);
@@ -280,6 +370,11 @@ document.addEventListener('click', event => {
   }
   if (event.target.closest('[data-confirm-launch]')) {
     state.lastLaunch = state.favoriteParty;
+    const group = partyInfo(state.favoriteParty, state);
+    group.members.forEach(c => {
+      if (!state.windows.some(w => w.charId === c.id))
+        state.windows.push({ id: `window-${c.id}`, charId: c.id, title: `${c.nick} · ${group.name}` });
+    });
     dialog.close();
     render();
     showToast('Имитация завершена: окна игры не запускались.');
@@ -296,7 +391,7 @@ screen.addEventListener('change', event => {
     state.favoriteParty = target.value;
     render('[data-party-select]');
   } else if (target.matches('[data-task]')) {
-    state.tasks[target.dataset.task] = target.checked;
+    selectedTasks(state)[target.dataset.task] = target.checked;
     render(`[data-task="${target.dataset.task}"]`);
   }
 });
@@ -319,3 +414,27 @@ screen.addEventListener('submit', event => {
 });
 
 render();
+
+for (const [id, key] of [
+  ['attention-toggle', 'attentionEnabled'],
+  ['promo-toggle', 'promoEnabled']
+]) {
+  document.getElementById(id).addEventListener('change', event => {
+    state[key] = event.target.checked;
+    render();
+  });
+}
+dialog.addEventListener('submit', event => {
+  const form = event.target.closest('[data-rename-window]');
+  if (!form) return;
+  event.preventDefault();
+  const title = form.querySelector('[name=title]').value.trim().slice(0, 80);
+  const w = state.windows.find(w => w.id === form.dataset.renameWindow);
+  if (!title || !w) return;
+  w.title = title;
+  dialog.close();
+  render();
+});
+
+const linkedVariant = new URLSearchParams(location.search).get('variant');
+if (VARIANTS.some(item => item.id === linkedVariant)) chooseVariant(linkedVariant);

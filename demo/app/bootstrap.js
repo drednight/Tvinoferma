@@ -107,6 +107,9 @@ if (!window.__DEMO_GUARD_READY__) {
         parties: state.parties.map(p => ({ id: p.id, name: p.name })),
         events: demoTodayEvents(state, today),
         marathon: marathon ? { title: marathon.title, days, percent: marathonTotals(marathon).percent } : null,
+        marathonTasks: marathon
+          ? marathon.tasks.map(task => ({ title: task.title, description: task.description }))
+          : [],
         bank,
         clanEnabled: !!state.settings.guild.enabled,
         pollEnabled: !!state.settings.guild.poll,

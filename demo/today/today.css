@@ -2015,6 +2015,17 @@ input:focus-visible {
   #today-screen {
     padding: 22px 16px 28px;
   }
+  .t-page-title {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .t-page-title > div:first-child {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .t-page-title > .t-badge {
+    margin-left: auto;
+  }
   .t-page-title h2 {
     font-size: 23px;
   }
@@ -2097,6 +2108,355 @@ input:focus-visible {
     font-size: 0;
   }
   .t-day-view .t-page-title > .t-badge {
+    font-size: 9px;
+  }
+}
+
+/* November concepts: all three share the same actions, not the same hierarchy. */
+.t-finance {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--line);
+  overflow: hidden;
+  margin: 0 0 24px;
+}
+.t-finance > div {
+  display: grid;
+  gap: 6px;
+  padding: 20px 24px;
+  background: var(--surface);
+}
+.t-finance span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.t-finance strong {
+  font-size: clamp(21px, 2.2vw, 32px);
+  letter-spacing: -0.04em;
+}
+.t-finance small {
+  color: var(--faint);
+}
+.t-finance > div:nth-child(1) strong {
+  color: var(--gold);
+}
+.t-finance > div:nth-child(2) strong {
+  color: var(--accent);
+}
+.t-finance > div:nth-child(3) strong {
+  color: var(--green);
+}
+.t-concept-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.t-concept-agenda {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.t-concept-command {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.9fr) minmax(0, 1.7fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+.t-day-alerts,
+.t-command-alerts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.t-day-alerts:empty,
+.t-command-alerts:empty {
+  display: none;
+}
+.t-workspace .t-card {
+  padding: 18px;
+  border-radius: 10px;
+}
+.t-day-view .t-daily-panel {
+  border-top: 3px solid var(--accent);
+}
+.t-day-view .t-concept-agenda > .t-stack:first-child {
+  border-left: 1px solid var(--line-bright);
+  padding-left: 18px;
+}
+.t-attention {
+  border-left: 3px solid var(--gold);
+}
+.t-attention-items {
+  display: grid;
+  gap: 10px;
+  color: var(--muted);
+}
+.t-attention-items button {
+  background: none;
+  border: 0;
+  color: var(--text);
+  text-align: left;
+  padding: 0;
+}
+.t-attention-items p {
+  margin: 0;
+}
+.t-promo-code {
+  font-size: 21px;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+}
+.t-promos p {
+  color: var(--muted);
+}
+.t-daily-panel .t-days {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 20px;
+}
+.t-daily-panel .t-day {
+  min-width: 0;
+  padding: 8px 2px;
+}
+.t-daily-panel .t-day small {
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+.t-daily-panel .t-day img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+.t-daily-panel .t-dungeon-body {
+  margin: 18px 0;
+}
+.t-daily-panel .t-dungeon-body .t-badge {
+  margin-left: auto;
+}
+.t-month-calendar {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.t-month-calendar summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.t-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  text-transform: capitalize;
+}
+.t-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.t-month-grid button {
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--surface-raised);
+  padding: 10px 4px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+}
+.t-month-grid button[aria-current] {
+  border-color: var(--accent);
+}
+.t-month-grid button.is-selected {
+  background: #3a345b;
+}
+.t-month-grid small {
+  text-align: center;
+  color: var(--muted);
+}
+.t-month-calendar > small {
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+}
+.t-window-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.t-window-list {
+  margin-top: 12px;
+}
+.t-window-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+}
+.t-window-row .t-avatar {
+  width: 28px;
+  height: 28px;
+}
+.t-window-row strong {
+  font-size: 12px;
+  display: block;
+  overflow-wrap: anywhere;
+}
+.t-window-row small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.t-window-actions {
+  display: flex;
+  gap: 2px;
+}
+.t-window-actions .t-icon-btn {
+  width: 25px;
+  height: 28px;
+  font-size: 15px;
+}
+.t-rename-input {
+  display: block;
+  margin: 12px 0 18px;
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
+}
+.t-marathon-task {
+  display: flex;
+  gap: 12px;
+  background: var(--surface-raised);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+.t-marathon-task p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+.t-marathon-person {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-left: 3px solid var(--line);
+  padding: 12px;
+  background: var(--surface-raised);
+  margin-bottom: 6px;
+  border-radius: 7px;
+}
+.t-marathon-person .t-avatar {
+  width: 30px;
+  height: 30px;
+}
+.t-marathon-person small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.t-marathon-person > small {
+  grid-column: 2 / -1;
+}
+.t-marathon-person strong {
+  font-size: 12px;
+}
+.t-risk {
+  font-size: 11px;
+  max-width: 150px;
+  text-align: right;
+}
+.t-risk.red {
+  color: var(--red);
+}
+.t-risk.amber {
+  color: var(--gold);
+}
+.t-risk.green {
+  color: var(--green);
+}
+.t-marathon-person.is-red {
+  border-left-color: var(--red);
+}
+.t-marathon-person.is-amber {
+  border-left-color: var(--gold);
+}
+.t-marathon-person.is-green {
+  border-left-color: var(--green);
+}
+.t-marathon-refresh {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.t-marathon-refresh small,
+.t-risk-help {
+  color: var(--muted);
+  font-size: 11px;
+}
+.t-risk-help {
+  margin-top: 14px;
+}
+.t-risk-help summary {
+  cursor: pointer;
+}
+@media (max-width: 1050px) {
+  .t-concept-overview,
+  .t-concept-agenda,
+  .t-concept-command {
+    grid-template-columns: 1fr;
+  }
+  .t-day-view .t-concept-agenda > .t-stack:first-child {
+    padding-left: 0;
+    border: 0;
+  }
+}
+@media (max-width: 650px) {
+  .t-finance > div {
+    padding: 12px 10px;
+  }
+  .t-finance small {
+    font-size: 9px;
+  }
+  .t-finance strong {
+    font-size: 18px;
+  }
+  .t-finance span {
+    font-size: 10px;
+  }
+  .t-day-alerts,
+  .t-command-alerts {
+    grid-template-columns: 1fr;
+  }
+  .t-marathon-person {
+    padding: 9px 7px;
+    gap: 7px;
+  }
+  .t-risk {
+    max-width: 100px;
+  }
+  .t-daily-panel .t-day img {
+    width: 28px;
+    height: 28px;
+  }
+  .t-daily-panel .t-day span {
     font-size: 9px;
   }
 }
