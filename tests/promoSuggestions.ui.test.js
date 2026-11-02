@@ -98,3 +98,15 @@ describe('article viewer and accessible Stop', () => {
     expect(mocks.hide).toHaveBeenCalledWith('PWEXAMPLE26');
   });
 });
+
+it('offers icon-only article/add/hide actions in the requested order with accessible labels', () => {
+  const card = document.querySelector('.promo-news-option');
+  expect(
+    [...card.querySelectorAll('.promo-news-actions button')].map(button => button.getAttribute('aria-label'))
+  ).toEqual(['Открыть статью', 'Добавить промокод', 'Скрыть промокод']);
+  expect([...card.querySelectorAll('.promo-news-actions button')].map(button => button.textContent)).toEqual([
+    '↗',
+    '+',
+    '⊘'
+  ]);
+});

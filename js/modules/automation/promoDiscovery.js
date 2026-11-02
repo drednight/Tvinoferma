@@ -38,11 +38,15 @@ export function createPromoDiscovery({
   cache.hiddenCodes = Array.isArray(cache.hiddenCodes)
     ? cache.hiddenCodes.filter(c => typeof c === 'string' && /^[A-Z0-9_-]{4,40}$/.test(c)).slice(-5000)
     : [];
-  if (cache.metadataVersion !== 2) {
+  if (cache.metadataVersion !== 3) {
     cache.articles = {};
     cache.lastCompleteAt = 0;
     cache.lastAttemptAt = 0;
-    cache.metadataVersion = 2;
+    // Old rewards were flattened together with hover descriptions. They cannot
+    // be separated reliably after truncation; retain codes/hidden choices and
+    // refetch just their public metadata, without showing stale descriptions.
+    cache.codes = cache.codes.map(row => ({ ...row, rewards: [] }));
+    cache.metadataVersion = 3;
   }
   if (cache.status === 'checking') cache.status = 'partial';
   const publish = () => {

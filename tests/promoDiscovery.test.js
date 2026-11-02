@@ -241,3 +241,34 @@ it('reward names and quantities exclude the real website hover descriptions', ()
   const html = `<article><a href="/pin/PWEXAMPLE26">Код</a><p>В состав подарка входят:</p><ul><li><span class="img_item_small_cont"><span><em>Пилюля х50</em><strong>Описание:</strong> Даёт опыт. Тип: опыт.</span><b><img src="x"></b></span>Небесная пилюля (50 шт.);</li><li>Амулет ×2</li></ul></article>`;
   expect(articleCodes(html, '123')[0].rewards).toEqual(['Небесная пилюля (50 шт.);', 'Амулет ×2']);
 });
+
+it('refreshes old cached reward metadata without losing codes or hidden choices', async () => {
+  const disk = storage();
+  const at = Date.now();
+  disk.setItem(
+    'tf_promo_discovery_v1',
+    JSON.stringify({
+      version: 1,
+      metadataVersion: 2,
+      status: 'checked',
+      articles: { 123: at },
+      codes: [{ code: 'PWEXAMPLE26', rewards: ['Описание: OLD DESCRIPTION'], firstSeenAt: at }],
+      hiddenCodes: ['PWEXAMPLE26'],
+      lastCompleteAt: at,
+      lastAttemptAt: at
+    })
+  );
+  const read = vi.fn(async ({ article: id }) => ({
+    status: 200,
+    html: id
+      ? `<article><a href="/pin/PWEXAMPLE26">Код</a><p>В состав подарка входят:</p><ul><li>Награда ×2</li></ul></article>`
+      : '<a href="/news.php?article=123">Новость</a>'
+  }));
+  const service = createPromoDiscovery({ storage: disk, now: () => at, read });
+  expect(service.snapshot().codes[0].rewards).toEqual([]);
+  expect(service.snapshot().hiddenCodes).toEqual(['PWEXAMPLE26']);
+  await service.check();
+  expect(read).toHaveBeenCalledWith({ page: null, article: '123' });
+  expect(service.snapshot().codes[0].rewards).toEqual(['Награда ×2']);
+  expect(service.snapshot().hiddenCodes).toEqual(['PWEXAMPLE26']);
+});
