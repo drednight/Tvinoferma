@@ -58,7 +58,7 @@ impl Drop for ScopeWindow {
     }
 }
 fn interrupt_window(window: &WebviewWindow) {
-    let _ = window.eval("window.__TF_STOPPED=true; window.stop();");
+    let _ = window.eval("window.__TF_STOPPED=true; window.__TF_STOP_EPOCH=(window.__TF_STOP_EPOCH||0)+1; window.stop();");
     // Unload timers/fetch/observers in hidden automation documents; never close
     // a user's visible login/game window or remove its saved session.
     if !window.is_visible().unwrap_or(true) {
@@ -84,7 +84,9 @@ pub fn eval_scoped(window: &WebviewWindow, script: &str, scope: &str) -> Result<
     if list.iter().any(|s| s == scope) {
         return Err("cancelled".into());
     }
-    window.eval(script).map_err(|_| "script_eval".to_string())
+    window
+        .eval(format!("window.__TF_STOPPED=false;\n{}", script))
+        .map_err(|_| "script_eval".to_string())
 }
 pub async fn navigate_scoped(
     window: &WebviewWindow,

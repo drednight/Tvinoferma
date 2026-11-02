@@ -17,6 +17,13 @@
 //            на сервер «Мицар»»), ответ: { state: 'warning', message, onlyServer }.
 // Ответ: #TF_XFER_V1_<json> = { data, error }. Все тексты и селекторы: selectors.json (transfer.*).
 (function () {
+  // A visible manual window survives Stop. Its delayed confirmation must not,
+  // even if a new native operation clears the flag in the same document.
+  var stopEpoch = window.__TF_STOP_EPOCH || 0;
+  function wasCancelled() {
+    return !!window.__TF_STOPPED || stopEpoch !== (window.__TF_STOP_EPOCH || 0);
+  }
+
   function report(data, error) {
     var payload = { data: data, error: error ? String(error) : null };
     window.location.hash = 'TF_XFER_V1_' + encodeURIComponent(JSON.stringify(payload));
@@ -118,7 +125,7 @@
     return el ? textOf(el).substring(0, 240) : null;
   }
   function confirmModal() {
-    if (window.__TF_XFER_CONFIRMED) return;
+    if (wasCancelled() || window.__TF_XFER_CONFIRMED) return;
     var modal = TF.q('transfer.modal');
     var yes = TF.q('transfer.modalYes');
     if (modal && yes && !hidden(modal)) { window.__TF_XFER_CONFIRMED = true; yes.click(); }
