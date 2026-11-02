@@ -147,6 +147,21 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
     layoutScriptWorkspace(dlg, {
       selected: selected,
+      preview(ids) {
+        const rows = new Map(lastRows.map(row => [row.charId, row]));
+        const chars = state.characters.filter(char => ids.has(char.id)).sort(byNick);
+        if (!chars.length) return '<p class="muted">Выберите персонажей слева.</p>';
+        return `<p class="promo-muted">Количество — по последней проверке сайта в этом окне. До проверки оно неизвестно; у персонажей одного аккаунта инвентарь общий.</p><div class="promo-scroll"><table class="promo-table caravan-plan-table"><thead><tr><th>Персонаж</th><th>Сундуки караванщика</th></tr></thead><tbody>${chars
+          .map(char => {
+            const row = rows.get(char.id);
+            const count =
+              row && ['dry_run', 'nothing', 'success', 'partial'].includes(row.status)
+                ? Math.max(0, Number(row.found || 0) - Number(row.opened || 0))
+                : null;
+            return `<tr class="${stripeCls(char)}"><td><b>${classIconHtml(char)} ${escapeHtml(char.nick)}</b></td><td>${count === null ? (row ? escapeHtml(rowLabel(row)) : 'Не проверено — нажмите «Проверить сайт»') : `<b>${count}</b> шт.`}</td></tr>`;
+          })
+          .join('')}</tbody></table></div>`;
+      },
       apply(ids) {
         selected.clear();
         ids.forEach(id => selected.add(id));

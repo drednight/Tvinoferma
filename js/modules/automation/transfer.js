@@ -1,3 +1,4 @@
+import { groupTransferItems, chooseTransferPackets } from './transferItemGroups.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/transfer.js
@@ -94,6 +95,7 @@ export function openTransferDialog({ ids = [] } = {}) {
   let search = '';
   let loginFilter = 'all';
   const itemChoices = new Map();
+  const invalidItemChoices = new Set();
   let rosters = loadRosters();
   const prefs = loadPrefs();
   let scanNotes = []; // что не удалось прочитать при последнем чтении
@@ -313,7 +315,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       return '<div class="promo-muted">Отметьте браузеры (аккаунты сайта), с которых нужно передать предметы.</div>';
     const run = plans.filter(p => p.run).length;
     const skipped = plans.length - run;
-    return `${force ? '<div class="promo-alert">⚠ Обход ограничений включён: приложение не пропускает акции, которые сайт ранее принимал только на другой сервер. Сайт может отклонить такие предметы предупреждением.</div>' : ''}
+    return `${invalidItemChoices.size ? '<p class="promo-warn">Исправьте количество в «Что будет передано»: передача заблокирована.</p>' : ''}${force ? '<div class="promo-alert">⚠ Обход ограничений включён: приложение не пропускает акции, которые сайт ранее принимал только на другой сервер. Сайт может отклонить такие предметы предупреждением.</div>' : ''}
       <div class="sd-summary">
         <div class="sd-summary-line">Будет передано с аккаунтов: <b>${run}</b> из <b>${plans.length}</b>${skipped ? `. Пропущено: <b>${skipped}</b> — причины в блоке «Что будет передано».` : '.'}</div>
         <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Передаются только выбранные пакеты. Для выбора и свежей проверки откройте «Что будет передано».</div>
@@ -350,7 +352,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     const selectionKnown = plans.filter(p => p.run).every(p => Array.isArray(p.itemSelection));
     const start = dlg.foot.querySelector('[data-act="start"]');
     const dry = dlg.foot.querySelector('[data-act="dry"]');
-    if (start) start.disabled = !(canRun && ack && selectionKnown);
+    if (start) start.disabled = !(canRun && ack && selectionKnown && !invalidItemChoices.size);
     if (dry) dry.disabled = !canRun;
   }
 
@@ -377,8 +379,13 @@ export function openTransferDialog({ ids = [] } = {}) {
         if (!preview.el.isConnected || !alive()) return;
         preview.foot.querySelector('[data-preview-stop]').hidden = true;
         preview.sub.textContent =
-          'Отметьте точные пакеты для передачи. Сайт передаёт пакет целиком: количество внутри пакета не делится. Снятые предметы останутся на сайте. Изменение состава перед отправкой остановит передачу.';
+          'Укажите число одинаковых позиций для передачи (0 — оставить все на сайте). Сайт передаёт каждый пакет целиком: количество внутри пакета не делится. Снятые предметы останутся на сайте. Изменение состава перед отправкой остановит передачу.';
+        for (const key of invalidItemChoices) {
+          if (freshIds.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
+        }
+        updateAll();
         const plans = currentPlans();
+        const groupsByChar = new Map();
         preview.body.innerHTML =
           notesHtml() +
             plans
@@ -393,17 +400,38 @@ export function openTransferDialog({ ids = [] } = {}) {
                 const items = rosters[p.char.id].pending.items.filter(i => !excluded.has(i.id));
                 if (!items.length) return '';
                 const choices = itemChoices.get(p.char.id);
-                return `<section><h4>${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}${items.map(i => `<label class="promo-item"><input type="checkbox" data-transfer-char="${escapeHtml(p.char.id)}" data-item-id="${escapeHtml(i.id)}" ${!choices || choices.has(i.id) ? 'checked' : ''}>${escapeHtml(i.name)} <b>×${i.qty}</b><small>${escapeHtml(i.source)}${i.qty > 1 ? ' · пакет целиком' : ''}</small></label>`).join('')}</section>`;
+                const groups = groupTransferItems(items);
+                groupsByChar.set(p.char.id, groups);
+                return `<section><h4>${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}
+                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Передать позиций</th></tr></thead><tbody>${groups
+                    .map((group, index) => {
+                      const count = group.items.filter(item => !choices || choices.has(item.id)).length;
+                      return `<tr><td><b>${escapeHtml(group.name)}</b><small>${escapeHtml(group.source)}${group.until ? ` · до ${escapeHtml(group.until)}` : ''}</small><small>В одной позиции: ×${group.qty} (неделимый пакет)</small></td><td>${group.items.length} поз. · всего ×${group.items.length * group.qty}</td><td><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать позиций: ${escapeHtml(group.name)}"><small data-selected-quantity>Предметов: ×${count * group.qty}</small></td></tr>`;
+                    })
+                    .join('')}</tbody></table></div></section>`;
               })
               .join('') || '<p>Нет перечисленных предметов для передачи.</p>';
         preview.body.onchange = event => {
           const input = event.target.closest('[data-transfer-char]');
           if (!input) return;
           const id = input.dataset.transferChar;
+          const group = groupsByChar.get(id)?.[Number(input.dataset.itemGroup)];
+          if (!group) return;
           const choices = itemChoices.get(id) || new Set(rosters[id].pending.items.map(i => i.id));
-          if (input.checked) choices.add(input.dataset.itemId);
-          else choices.delete(input.dataset.itemId);
-          itemChoices.set(id, choices);
+          const count = input.value.trim() ? Number(input.value) : NaN;
+          const next = chooseTransferPackets(group, count, choices);
+          input.setCustomValidity(next ? '' : `Укажите целое число от 0 до ${group.items.length}`);
+          const key = JSON.stringify([id, input.dataset.itemGroup]);
+          if (!next) {
+            invalidItemChoices.add(key);
+            updateAll();
+            input.reportValidity();
+            return;
+          }
+          invalidItemChoices.delete(key);
+          itemChoices.set(id, next);
+          input.parentElement.querySelector('[data-selected-quantity]').textContent =
+            `Предметов: ×${count * group.qty}`;
           updateAll();
         };
       })().catch(() => {
@@ -584,6 +612,7 @@ export function openTransferDialog({ ids = [] } = {}) {
   /* ----------------------------- запуск ----------------------------- */
 
   async function start(plans, dry, { historyReports = [] } = {}) {
+    if (invalidItemChoices.size) return;
     const { scriptSettings } = await import('../sync/syncManager.js');
     const { retries, retryDelayMs } = scriptSettings();
     const { browserSlots } = await import('../sync/queue.js');
@@ -802,6 +831,10 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   /** Запуск по плану; возвращает после результата. */
   async function run(dry) {
+    if (invalidItemChoices.size) {
+      toast('Исправьте количество в «Что будет передано»', 'warning');
+      return;
+    }
     const plans = currentPlans();
     if (!plans.some(p => p.run)) {
       toast('Некому передавать: отметьте браузеры и выберите в строках сервер и получателя', 'warning');

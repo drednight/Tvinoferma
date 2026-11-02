@@ -125,3 +125,8 @@
 .health-panel-footer p {
   font-size: 0.75rem;
 }
+
+.storage-readonly-banner [data-vault-review] {
+  max-width: 100%;
+  white-space: normal;
+}

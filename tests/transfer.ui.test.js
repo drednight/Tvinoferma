@@ -435,7 +435,7 @@ describe('форма', () => {
     $('#tr-plan-btn').click();
     await vi.waitFor(() => expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('Читаю сайт…'));
     expect($('.tr-preview-dialog')).not.toBeNull();
-    expect($('.tr-preview-dialog').querySelectorAll('[data-item-id]')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
+    expect($('.tr-preview-dialog').querySelectorAll('[data-item-group]')).toHaveLength(13 + 1); // 13 предметов у «Аа» и 1 у «Бб»
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).not.toContain('ещё');
     expect($('.tr-preview-dialog .tf-dialog-body').textContent).toContain('×5');
     // окно прокручивается, блоки не сжимаются: список браузеров остался на месте
@@ -670,11 +670,12 @@ it('fresh preview omits empty characters, shows available packet quantities and 
   openTransferDialog({ ids: ['a', 'b'] });
   ['a', 'b'].forEach(id => pickRow(id, '5'));
   $('#tr-plan-btn').click();
-  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-id]')).toHaveLength(2));
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
   expect([...document.querySelectorAll('.tr-preview-dialog h4')].map(el => el.textContent)).toEqual(['Аа']);
   expect($('.tr-preview-dialog').textContent).toContain('×5');
-  const unchecked = $('[data-item-id="12"]');
-  unchecked.click();
+  const unchecked = $('[data-item-group="1"]');
+  unchecked.value = '0';
+  unchecked.dispatchEvent(new Event('change', { bubbles: true }));
   $('.tr-preview-dialog [data-preview-close]').click();
   $('#tr-ack').click();
   $('[data-act="start"]').click();
@@ -703,4 +704,38 @@ it('closing preview before async setup does not start a website scan', async () 
   $('.tr-preview-dialog [data-preview-close]').click();
   await wait(150);
   expect(mocks.invoke).not.toHaveBeenCalled();
+});
+it('groups five identical packets into one row, rejects fractional counts and sends only two exact IDs', async () => {
+  preload();
+  const items = ['11', '12', '13', '14', '15'].map(id => ({ id, name: 'Набор', qty: 50 }));
+  items.push({ id: '16', name: 'Набор', qty: 1 });
+  mocks.invoke.mockImplementation(async (command, args) =>
+    command === 'read_transfer_page' ? { status: 'ok', roster: rosterOf(args.charId, { items }) } : sent(args)
+  );
+  openTransferDialog({ ids: ['a'] });
+  pickRow('a', '5');
+  $('#tr-plan-btn').click();
+  await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
+  const count = $('[data-item-group="0"]');
+  expect(count.max).toBe('5');
+  expect($('.tr-preview-dialog').textContent).toContain('всего ×250');
+  $('#tr-ack').click();
+  count.value = '1.5';
+  count.dispatchEvent(new Event('change', { bubbles: true }));
+  expect($('[data-act="start"]').disabled).toBe(true);
+  expect($('#tr-summary').textContent).toContain('Исправьте количество');
+  count.value = '2';
+  count.dispatchEvent(new Event('change', { bubbles: true }));
+  const other = $('[data-item-group="1"]');
+  other.value = '0';
+  other.dispatchEvent(new Event('change', { bubbles: true }));
+  expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Предметов: ×100');
+  $('.tr-preview-dialog [data-preview-close]').click();
+  expect($('[data-act="start"]').disabled).toBe(false);
+  $('[data-act="start"]').click();
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
+  const args = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1];
+  expect(args.itemSelection.map(item => item.id)).toEqual(['11', '12']);
+  expect(args.itemSelection.map(item => item.qty)).toEqual([50, 50]);
+  await wait(100);
 });

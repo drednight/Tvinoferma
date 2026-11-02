@@ -88,12 +88,14 @@ export function renderPromoSuggestions(dlg) {
     const title = document.createElement('b');
     title.textContent = row.code;
     const info = document.createElement('small');
-    info.textContent = `${row.expiresText || 'Срок в новости не найден'} · нет подтверждения ввода в местном журнале: ${row.remaining} из ${state.characters.length}`;
+    info.textContent = row.expiresText
+      ? `Промокод активен ${row.expiresText}`
+      : 'Срок действия промокода в новости не найден';
     const source = document.createElement('span');
     source.textContent = row.title;
     const add = document.createElement('button');
     add.type = 'button';
-    add.className = 'btn secondary small';
+    add.className = 'btn secondary small promo-news-add';
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
     add.disabled = !!row.expiresOn && row.expiresOn < today;
     add.textContent = '+';
@@ -110,11 +112,12 @@ export function renderPromoSuggestions(dlg) {
     };
     const server = document.createElement('small');
     server.textContent = row.serverRestriction
-      ? `Только сервер «${row.serverRestriction}»`
+      ? `Доступен для сервера: «${row.serverRestriction}»`
       : 'Ограничение по серверу в новости не найдено — проверьте источник';
     const rewards = document.createElement('details');
     const caption = document.createElement('summary');
     caption.textContent = `Содержимое промокода (${row.rewards?.length || 0})`;
+    rewards.open = true;
     rewards.append(caption);
     if (row.rewards?.length) {
       const list = document.createElement('ul');
@@ -130,7 +133,7 @@ export function renderPromoSuggestions(dlg) {
     const browser = document.createElement('button');
     browser.type = 'button';
     browser.className = 'btn ghost small';
-    browser.textContent = '↗';
+    browser.textContent = '🌐';
     browser.title = 'Открыть статью';
     browser.setAttribute('aria-label', browser.title);
     browser.dataset.promoNewsOpen = '';

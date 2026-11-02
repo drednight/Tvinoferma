@@ -89,7 +89,7 @@ describe('article viewer and accessible Stop', () => {
   });
   it('shows deadline, restriction and reward text without executing source markup', () => {
     expect(document.body.textContent).toContain('23:59 МСК');
-    expect(document.body.textContent).toContain('Только сервер «Цефей»');
+    expect(document.body.textContent).toContain('Доступен для сервера: «Цефей»');
     expect(document.querySelectorAll('.promo-news-option li')).toHaveLength(2);
     expect(document.querySelector('img')).toBeNull();
   });
@@ -105,8 +105,17 @@ it('offers icon-only article/add/hide actions in the requested order with access
     [...card.querySelectorAll('.promo-news-actions button')].map(button => button.getAttribute('aria-label'))
   ).toEqual(['Открыть статью', 'Добавить промокод', 'Скрыть промокод']);
   expect([...card.querySelectorAll('.promo-news-actions button')].map(button => button.textContent)).toEqual([
-    '↗',
+    '🌐',
     '+',
     '⊘'
   ]);
+});
+
+it('matches the reference order and shows reward list initially, with a full-width icon-only add action', () => {
+  const card = document.querySelector('.promo-news-option');
+  expect([...card.children].map(el => el.tagName)).toEqual(['B', 'SPAN', 'SMALL', 'SMALL', 'DETAILS', 'DIV']);
+  expect(card.children[1].textContent).toBe('Новость');
+  expect(card.children[2].textContent).toContain('Промокод активен до 23:59 МСК');
+  expect(card.querySelector('details').open).toBe(true);
+  expect(card.querySelector('.promo-news-actions button:nth-child(2)').classList.contains('promo-news-add')).toBe(true);
 });
