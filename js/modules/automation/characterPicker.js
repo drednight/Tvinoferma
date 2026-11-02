@@ -59,7 +59,7 @@ export function openCharacterPicker({ characters, selected, parent, returnFocus,
       <label class="cp-field"><span>Вход на сайт</span><select class="select" data-picker-status>
         <option value="all">Все состояния</option><option value="online">Есть вход</option><option value="offline">Нет входа</option><option value="checking">Проверяется</option>
       </select></label>
-      <label class="cp-field"><span>Пати</span><select class="select" data-picker-party><option value="">Все пати</option>${options(characters.map(c => c.party))}</select></label>
+      <label class="cp-field"><span>Пати</span><select class="select" data-picker-party><option value="">Все пати</option>${options(characters.flatMap(c => c.parties || [c.party]))}</select></label>
       <label class="cp-field"><span>Класс</span><select class="select" data-picker-class><option value="">Все классы</option>${options(characters.map(c => c.cls))}</select></label>
       <label class="cp-field"><span>Сортировка</span><select class="select" data-picker-sort><option value="asc">А → Я</option><option value="desc">Я → А</option></select></label>
     </div>
@@ -97,7 +97,7 @@ export function openCharacterPicker({ characters, selected, parent, returnFocus,
         return (
           matchesQuery &&
           (status.value === 'all' || loginStatus(c) === status.value) &&
-          (!party.value || c.party === party.value) &&
+          (!party.value || (c.parties || [c.party]).includes(party.value)) &&
           (!cls.value || c.cls === cls.value) &&
           (!onlySelected.checked || draft.has(c.id))
         );

@@ -444,7 +444,7 @@ export function openShopDialog({ ids = [] } = {}) {
       'Цены, наличие и баланс читаются с сайта при открытии окна. Покупка необратима — запрос подтверждается.';
     dlg.body.innerHTML = `
       ${noteHtml({
-        icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+        icon: '◈',
         title: 'Что сделает это окно',
         text:
           'Отмеченные предметы покупаются за Древние монеты на аккаунте сайта: каждый покупается отдельной покупкой, штука за штукой. ' +
@@ -878,7 +878,7 @@ export function openShopDialog({ ids = [] } = {}) {
           ]
         : [
             {
-              icon: '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg>',
+              icon: '◈',
               label: 'куплено',
               value: s.bought,
               tone: 'ok'

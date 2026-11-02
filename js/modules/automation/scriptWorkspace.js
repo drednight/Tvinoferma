@@ -57,7 +57,8 @@ export function layoutScriptWorkspace(dlg, selection) {
       ctx.picker = openCharacterPicker({
         characters: state.characters.map(c => ({
           ...c,
-          cls: c.className,
+          cls: c.class || c.className,
+          parties: partiesOf(c, state.parties).map(p => p.name),
           party: partiesOf(c, state.parties)
             .map(p => p.name)
             .join(', ')
@@ -101,7 +102,7 @@ export function layoutScriptWorkspace(dlg, selection) {
               .filter(c => ctx.ids.has(c.id))
               .map(
                 c =>
-                  `<div class="promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.className })}<b>${esc(c.nick)}</b><small>${esc(
+                  `<div class="promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
                     partiesOf(c, state.parties)
                       .map(p => p.name)
                       .join(', ')

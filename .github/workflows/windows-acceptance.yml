@@ -9,6 +9,13 @@ on:
       - '.github/workflows/windows-acceptance.yml'
       # Include orchestration changes as well as adapters: they are bundled in the exe.
       - 'js/modules/cloudSync/**'
+      - 'js/modules/automation/**'
+      - 'js/core/taskLog.js'
+      - 'js/modules/sync/queue.js'
+      - 'css/modules/scriptWorkspace.css'
+      - 'src-tauri/src/automation/**'
+      - 'src-tauri/src/parsers.rs'
+      - 'src-tauri/src/pool.rs'
       - 'js/modules/characters/stateManager.js'
       # Marathon projection and embedded parser fixes need a fresh native executable too.
       - 'js/modules/cloudSync/marathonExport.js'

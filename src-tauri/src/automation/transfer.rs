@@ -346,7 +346,7 @@ pub async fn read_server_status(
     };
     let timeout = timeout_seconds.unwrap_or(20).max(5);
     let task = pool::acquire_anonymous(&app, STATUS_KEY, STATUS_URL).await?;
-    navigate_scoped(task.window(), STATUS_URL, &scope).await?;
+    navigate_scoped(task.window(), STATUS_URL, STATUS_SCOPE).await?;
 
     let res = eval_and_wait(
         task.window(),
