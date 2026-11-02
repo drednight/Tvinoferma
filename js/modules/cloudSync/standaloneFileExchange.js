@@ -1,5 +1,5 @@
 // @ts-check
-import { preparationCheck } from './preparationDiagnostics.js';
+import { preparationCheck, safePreparationDiagnosticCode } from './preparationDiagnostics.js';
 import { cloudStep } from './cloudDiagnostics.js';
 import { cloudAccessDiagnostic, withCloudAccessDiagnostic } from './providers/cloudAccessDiagnostics.js';
 // Simple immutable full-file exchange. No connectedPublication, legacy outbox,
@@ -478,15 +478,20 @@ export function createStandaloneFileExchange(ports) {
             const localHash = await snapshotFileHash(local, cryptoSource);
             const cloudHash = await snapshotFileHash(cloud, cryptoSource);
             // Validate the entire replacement before offering Accept.
-            const prepared = await cloudStep('review_replace', provider, () =>
-              preparationCheck('roundtrip', () =>
-                prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource })
-              )
-            );
-            const candidate = prepared.candidateState();
-            const retainedIds = new Set(
-              [...candidate.characters, ...candidate.archivedCharacters].map(row => row.syncId)
-            );
+            let prepared = null;
+            let replacementBlocked = null;
+            try {
+              prepared = await cloudStep('review_replace', provider, () =>
+                preparationCheck('roundtrip', () =>
+                  prepareFullPublicSnapshotReplace({ localState, cloudSnapshot: cloud, cryptoSource })
+                )
+              );
+            } catch (error) {
+              replacementBlocked = safePreparationDiagnosticCode(error);
+              if (!replacementBlocked) throw error;
+            }
+            const candidate = prepared?.candidateState() ?? null;
+            const retainedIds = new Set(cloud.sections.characters.records.map(row => row.id));
             const token = Object.freeze({
               provider,
               versionId,
@@ -494,7 +499,8 @@ export function createStandaloneFileExchange(ports) {
               createdAt: openedFile.contents.createdAt,
               comparison,
               duplicatePartyIds: projection.duplicatePartyIds,
-              orderingNormalized: prepared.orderingNormalized,
+              orderingNormalized: prepared?.orderingNormalized || [],
+              replacementBlocked,
               privateChanges,
               localPrivateAtRisk: [...localState.characters, ...localState.archivedCharacters].some(
                 character =>
@@ -547,6 +553,7 @@ export function createStandaloneFileExchange(ports) {
       return run(async () => {
         const review = reviews.get(token);
         if (!review || !confirmed) throw fail('confirmation_required');
+        if (!review.candidate || token.replacementBlocked) throw fail('replacement_blocked');
         if (JSON.stringify(ports.snapshot()) !== JSON.stringify(review.original)) throw fail('local_changed');
         if ((fields.length || token.localPrivateAtRisk) && !contactsBackupConfirmed) throw fail('contacts_required');
         if (fields.length) ports.assertContacts?.(review.original);

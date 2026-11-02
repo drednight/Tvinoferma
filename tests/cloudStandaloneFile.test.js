@@ -815,3 +815,32 @@ it('duplicate-party review still protects the raw local CAS and contacts from re
   expect(f.backups).toHaveLength(0);
   expect(f.ports.replace).not.toHaveBeenCalled();
 });
+
+it('preserves a verified read-only comparison with a precise safe dependency failure, but refuses all replacement writes', async () => {
+  const contents = structuredClone(second.contents);
+  contents.publicSnapshot.sections.characters.records[0].fields.partyIds = [generateSyncId(cryptoSource)];
+  const envelope = await encryptSnapshot({
+    snapshot: contents,
+    datasetId: STANDALONE_DATASET_ID,
+    versionId: generateSyncId(cryptoSource),
+    keyCapsule: second.envelope.keyCapsule,
+    recoveryKey: first.unlocked.dataKey,
+    cryptoSource
+  });
+  const f = fixture();
+  const file = { envelope };
+  f.put('google', file);
+  const before = structuredClone(f.local);
+  const token = await f.review(file);
+  expect(token.comparison.entries.length).toBeGreaterThan(0);
+  expect(token.replacementBlocked).toBe('setup/identities/roundtrip.dependencies.characters/reference');
+  expect(token.replacementBlocked).not.toContain(
+    contents.publicSnapshot.sections.characters.records[0].fields.partyIds[0]
+  );
+  await expect(f.engine.accept(token, { confirmed: true })).rejects.toThrow('replacement_blocked');
+  expect(f.local).toEqual(before);
+  expect(f.ports.replace).not.toHaveBeenCalled();
+  expect(f.backups).toEqual([]);
+  expect(f.calls.google).toEqual([]);
+  expect(f.calls.yandex).toEqual([]);
+});

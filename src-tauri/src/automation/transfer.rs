@@ -295,7 +295,7 @@ pub async fn read_transfer_page(
         return Ok(reply("error", Some("window_open"), Value::Null));
     }
     let scope = format!("char:{}", char_id);
-    let timeout = timeout_seconds.unwrap_or(25).max(5);
+    let timeout = timeout_seconds.unwrap_or(30).clamp(5, 30);
     let task = pool::acquire(&app, &char_id, PAGE_URL).await?;
     tf_log(&app, &scope, "info", task.describe());
     navigate_scoped(task.window(), PAGE_URL, &scope).await?;
@@ -393,6 +393,7 @@ pub async fn transfer_items(
     recipient: String,
     char_name: Option<String>,
     skip_sources: Option<Vec<String>>,
+    item_selection: Option<Vec<Value>>,
     dry_run: Option<bool>,
     timeout_seconds: Option<u64>,
 ) -> Result<Value, String> {
@@ -422,6 +423,14 @@ pub async fn transfer_items(
         return Ok(fail("window_open"));
     }
 
+    if !dry && item_selection.is_none() {
+        return Ok(fail("selection_required"));
+    }
+    if item_selection.as_ref().is_some_and(|items| {
+        items.len() > 5000 || serde_json::to_string(items).map_or(true, |s| s.len() > 1_000_000)
+    }) {
+        return Ok(fail("bad_selection"));
+    }
     let name = clean_name(char_name.as_deref().unwrap_or(""));
     let skip = clean_sources(skip_sources.as_deref().unwrap_or(&[]));
     let scope = format!("char:{}", char_id);
@@ -431,7 +440,7 @@ pub async fn transfer_items(
     navigate_scoped(task.window(), PAGE_URL, &scope).await?;
 
     // 1. Выбор в списках сайта (ничего не отправляется)
-    let fill_cfg = json!({ "mode": "fill", "shard": shard_id, "recipient": recipient, "charName": name, "skipSources": skip });
+    let fill_cfg = json!({ "mode": "fill", "shard": shard_id, "recipient": recipient, "charName": name, "skipSources": skip, "itemSelection": item_selection });
     let filled = eval_and_wait(
         task.window(),
         &xfer_script(&fill_cfg),
@@ -498,7 +507,7 @@ pub async fn transfer_items(
         format!("Передаю предметов: {}", filled.count),
     );
     let _ = task.window().eval(CLEAR_HASH);
-    let click_cfg = json!({ "mode": "click", "shard": shard_id, "recipient": recipient, "count": filled.count });
+    let click_cfg = json!({ "mode": "click", "shard": shard_id, "recipient": recipient, "count": filled.count, "itemSelection": filled.items });
     if crate::parsers::eval_scoped(
         task.window(),
         &with_common(&xfer_script(&click_cfg)),

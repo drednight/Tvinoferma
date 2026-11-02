@@ -139,7 +139,16 @@ export function articleCodes(html, id) {
       ) {
         rewards.push(
           ...[...list.querySelectorAll(':scope > li')]
-            .map(n => n.textContent.replace(/\s+/g, ' ').trim().slice(0, 300))
+            .map(n => {
+              const copy = n.cloneNode(true);
+              // На сайте описание находится во всплывающей карточке, не в названии награды.
+              copy.querySelectorAll('.img_item_small_cont, .item-tooltip, [role="tooltip"]').forEach(el => el.remove());
+              return copy.textContent
+                .replace(/\s+/g, ' ')
+                .trim()
+                .replace(/^[•–—-]\s*/, '')
+                .slice(0, 300);
+            })
             .filter(Boolean)
         );
       }

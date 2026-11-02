@@ -345,12 +345,17 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
                 .unwrap_or("")
                 .to_string();
             match read_record(&dir, &id) {
-                Ok(Some(r)) => out.push(serde_json::json!({
-                    "charId": id,
-                    "savedAt": r.saved_at,
-                    "ageMinutes": now_secs().saturating_sub(r.saved_at) / 60,
-                    "cookies": r.cookies.len(),
-                })),
+                Ok(Some(r)) => {
+                    let (expires_at, session_cookies) = expiry_metadata(&r.cookies);
+                    out.push(serde_json::json!({
+                        "charId": id,
+                        "savedAt": r.saved_at,
+                        "ageMinutes": now_secs().saturating_sub(r.saved_at) / 60,
+                        "cookies": r.cookies.len(),
+                        "expiresAt": expires_at,
+                        "sessionCookies": session_cookies,
+                    }));
+                }
                 Ok(None) => {}
                 Err(e) => out.push(serde_json::json!({ "charId": id, "error": e })),
             }
@@ -358,6 +363,27 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
         Ok(out)
     })
     .await
+}
+
+// Earliest persistent expiry is informational, not a promise of authentication.
+// Neither cookie names nor values leave the native bank.
+fn expiry_metadata(cookies: &[String]) -> (Option<i64>, usize) {
+    let mut earliest = None;
+    let mut sessions = 0;
+    for raw in cookies {
+        if let Ok(cookie) = Cookie::parse(raw.clone()) {
+            if !in_scope(&cookie) {
+                continue;
+            }
+            if let Some(date) = cookie.expires_datetime() {
+                let at = date.unix_timestamp();
+                earliest = Some(earliest.map_or(at, |old: i64| old.min(at)));
+            } else {
+                sessions += 1;
+            }
+        }
+    }
+    (earliest, sessions)
 }
 
 /// Удаляет сессию персонажа из банка.
@@ -491,5 +517,24 @@ mod tests {
         assert_eq!(back.value(), "abc123");
         assert_eq!(back.domain(), Some("pwonline.ru"));
         assert_eq!(back.http_only(), Some(true));
+    }
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    use super::expiry_metadata;
+    #[test]
+    fn expiry_is_metadata_only_scoped_and_earliest() {
+        let rows = [
+            "secret=private; Domain=pwonline.ru; Expires=Wed, 09 Jun 2027 10:18:14 GMT",
+            "other=private; Domain=.pwonline.ru; Expires=Tue, 09 Jun 2026 10:18:14 GMT",
+            "session=private; Domain=pwonline.ru",
+            "foreign=private; Domain=example.com; Expires=Wed, 09 Jun 2021 10:18:14 GMT",
+        ]
+        .map(String::from);
+        let (expiry, sessions) = expiry_metadata(&rows);
+        assert_eq!(expiry, Some(1781000294));
+        assert_eq!(sessions, 1);
+        assert_eq!(expiry_metadata(&[]), (None, 0));
     }
 }

@@ -560,10 +560,31 @@ describe('same-account reauthorization after explicit local logout', () => {
     );
     expect(f.slots.get(provider).status).toBe('signed_out');
   });
-  it('does not replace a signed-out identity when a different client is selected', async () => {
+  it('restores the original Yandex client for client-scoped psuid without resetting its binding', async () => {
+    const clientId = 'abcdef0123456789';
+    const f = setup('yandex', {
+      signedOut: { ...signedOut('yandex'), clientId },
+      identity: () => json({ login: LABELS.yandex, id: '123456', client_id: clientId, psuid: ACCOUNT })
+    });
+    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'installed' });
+    const url = new URL(f.openBrowser.mock.calls[0][0]);
+    expect(url.searchParams.get('client_id')).toBe(clientId);
+    const exchange = f.invoke.mock.calls.find(
+      ([command, args]) => command === 'cloud_oauth_network' && args.operation === 'exchange'
+    );
+    expect(new URLSearchParams(exchange[1].form).get('client_id')).toBe(clientId);
+    const record = parseYandexCredentialRecord(f.slots.get('yandex').record);
+    expect(record.clientId).toBe(clientId);
+    expect(record.accountKey).toBe(ACCOUNT);
+    expect(record.slotId).toBe(signedOut('yandex').slotId);
+    expect(f.options.clientId).toBe(CLIENTS.yandex);
+    expect(f.invoke.mock.calls.some(([command]) => command === 'cloud_credential_install')).toBe(false);
+  });
+  it('rejects an identity reported for another client even after restoring the original Yandex client', async () => {
     const f = setup('yandex', { signedOut: { ...signedOut('yandex'), clientId: 'abcdef0123456789' } });
-    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'account_changed' });
-    expect(f.openBrowser).not.toHaveBeenCalled();
+    expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'identity_unverified' });
+    expect(f.invoke.mock.calls.some(([command]) => command === 'cloud_credential_resume')).toBe(false);
+    expect(f.slots.get('yandex').status).toBe('signed_out');
   });
   it('a stale logout nonce never installs over a later logout', async () => {
     const f = setup('yandex', { signedOut: signedOut('yandex'), resume: () => ({ status: 'mismatch' }) });

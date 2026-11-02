@@ -94,7 +94,19 @@ describe('article viewer and accessible Stop', () => {
     expect(document.querySelector('img')).toBeNull();
   });
   it('persists hiding only the chosen code', () => {
-    [...document.querySelectorAll('button')].find(b => b.textContent === 'Больше не показывать').click();
+    [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === 'Скрыть промокод').click();
     expect(mocks.hide).toHaveBeenCalledWith('PWEXAMPLE26');
   });
+});
+
+it('offers icon-only article/add/hide actions in the requested order with accessible labels', () => {
+  const card = document.querySelector('.promo-news-option');
+  expect(
+    [...card.querySelectorAll('.promo-news-actions button')].map(button => button.getAttribute('aria-label'))
+  ).toEqual(['Открыть статью', 'Добавить промокод', 'Скрыть промокод']);
+  expect([...card.querySelectorAll('.promo-news-actions button')].map(button => button.textContent)).toEqual([
+    '↗',
+    '+',
+    '⊘'
+  ]);
 });

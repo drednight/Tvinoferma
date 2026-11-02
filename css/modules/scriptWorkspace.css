@@ -472,3 +472,36 @@
   width: 7rem;
   flex: none;
 }
+
+.promo-news-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.promo-news-option .promo-news-actions {
+  width: 100%;
+}
+.promo-news-option .promo-news-actions button:last-child {
+  margin-left: auto;
+}
+.script-plan-row {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  margin: 8px 0;
+}
+
+.sp-side > * {
+  min-width: 0;
+}
+.sp-side .tr-top {
+  min-width: 0;
+  max-width: 100%;
+}
+.sp-side .tr-top button {
+  white-space: normal;
+  max-width: 100%;
+}

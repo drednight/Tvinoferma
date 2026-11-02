@@ -37,7 +37,7 @@ export async function scanRosters({
       if (signal.cancelled) return { cancelled: true };
       if (attempt === 0 && started++ > 0) await sleepFn(range(START_STAGGER_MS, random));
       task?.setStep?.(`${char.nick}: читаю серверы и персонажей${attempt ? ` (повтор ${attempt}/${retries})` : ''}`);
-      return await invokeFn('read_transfer_page', { charId: char.id, timeoutSeconds: Math.min(25 + 15 * attempt, 60) });
+      return await invokeFn('read_transfer_page', { charId: char.id, timeoutSeconds: 30 });
     },
     {
       limiter,
@@ -163,6 +163,7 @@ export async function runTransferBatch({
           recipient: plan.recipient.key,
           charName: plan.recipient.name,
           skipSources: plan.skipSources || [],
+          itemSelection: plan.itemSelection ?? null,
           dryRun,
           timeoutSeconds: Math.min(30 + 15 * a, 75)
         });

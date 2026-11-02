@@ -105,25 +105,9 @@ export function openCaravanDialog({ ids = [] } = {}) {
 
   const selectedChars = () => state.characters.filter(c => selected.has(c.id)).sort(byNick);
 
-  /**
-   * Персонажи без входа на сайт — по данным приложения, то есть уже проверенные и найденные
-   * без входа (`isLoggedIn === false`). Статус «ещё не проверялся» (undefined) не мешает:
-   * проверка может пройти, а запрещать запуск на пустом месте нельзя.
-   */
-  const withoutLogin = chars => chars.filter(c => c.isLoggedIn === false);
-
   function updateCount() {
     const el = dlg.body.querySelector('#caravan-count');
     if (el) el.textContent = `Выбрано: ${selected.size} из ${state.characters.length}`;
-    // Подсказка прямо в форме: вход нужен, чтобы инвентарь вообще открылся
-    const warn = dlg.body.querySelector('#caravan-nologin');
-    if (warn) {
-      const skipped = withoutLogin(selectedChars());
-      warn.innerHTML = skipped.length
-        ? `⚠ Без входа на сайт: ${escapeHtml(skipped.map(c => c.nick).join(', '))}. Сохранённый статус может устареть: «Проверить сайт» прочитает реальную сессию. Проверьте вход на сайте в браузере персонажа. Вход GameCenter для этой операции не используется.`
-        : '';
-      warn.hidden = !skipped.length;
-    }
     dlg.foot.querySelectorAll('[data-act="start"],[data-act="dry"]').forEach(b => {
       b.disabled = b.dataset.act === 'start' || !selected.size;
     });
@@ -141,7 +125,6 @@ export function openCaravanDialog({ ids = [] } = {}) {
           'отметит в них все предметы и нажмёт «Перевести». Другие сундуки (например, «Подарочный мешок») не трогаются. ' +
           'Персонажи одного аккаунта делят один инвентарь — достаточно выбрать одного из них.'
       })}
-      <div class="promo-warn" id="caravan-nologin" hidden></div>
       ${sectionHtml('Персонажи', {
         aside: `<span class="sd-count" id="caravan-count"></span>`,
         body: `
@@ -296,14 +279,14 @@ export function openCaravanDialog({ ids = [] } = {}) {
         ? [
             { icon: '👁', label: 'сундуков найти', value: s.found, tone: 'ok' },
             { icon: '➖', label: 'без сундуков', value: s.nothing },
-            { icon: '🔴', label: 'без входа', value: s.noLogin, tone: 'err' },
+            { icon: '🔴', label: 'нет входа на сайт', value: s.noLogin, tone: 'err' },
             { icon: '❌', label: 'проблем', value: s.failed + s.challenge, tone: 'err' }
           ]
         : [
             { icon: '📦', label: 'открыто сундуков', value: s.opened, tone: 'ok' },
             { icon: '⚠️', label: 'открыто не всё', value: s.partial, tone: 'warn' },
             { icon: '➖', label: 'без сундуков', value: s.nothing },
-            { icon: '🔴', label: 'без входа', value: s.noLogin, tone: 'err' },
+            { icon: '🔴', label: 'нет входа на сайт', value: s.noLogin, tone: 'err' },
             { icon: '❓', label: 'не проверено', value: s.unknown, tone: 'warn' },
             { icon: '❌', label: 'ошибок', value: s.failed, tone: 'err' },
             { icon: '⏭', label: 'не выполнено', value: s.notRun }

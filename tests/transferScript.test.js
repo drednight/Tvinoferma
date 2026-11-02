@@ -234,18 +234,12 @@ describe('transfer.js: scan (только чтение)', () => {
     expect(run(fixture('site-promoitems.html'), 'scan', {}, { shards: [] }).data.shards).toEqual([]);
   });
 
-  it('переменной shards нет, страница загружена → pending (а не «пусто»); есть заголовок и нет таблиц → пустое состояние', () => {
-    const noVar = run(fixture('site-promoitems.html'), 'scan', {}, { shards: undefined });
-    expect(noVar.error).toBe('pending');
-    const empty = editDom(fixture('site-promoitems.html'), d => {
+  it('отсутствие shards или формы без явного сообщения пустой корзины остаётся pending', () => {
+    expect(run(fixture('site-promoitems.html'), 'scan', {}, { shards: undefined }).error).toBe('pending');
+    const incomplete = editDom(fixture('site-promoitems.html'), d => {
       d.querySelector('.items_container').remove();
     });
-    expect(run(empty, 'scan', {}, { shards: undefined }).data).toMatchObject({
-      state: 'scan',
-      empty: true,
-      items: [],
-      shards: []
-    });
+    expect(run(incomplete, 'scan', {}, { shards: undefined }).error).toBe('pending');
   });
 
   it('настоящая страница «ваша корзина с подарками пуста» → пустое состояние, а не ошибка', () => {
@@ -254,6 +248,33 @@ describe('transfer.js: scan (только чтение)', () => {
     const r = run(fixture('site-promoitems-empty.html'), 'scan');
     expect(r.error).toBeNull();
     expect(r.data).toMatchObject({ state: 'scan', empty: true, shards: [], items: [], chests: 0, locked: 0 });
+  });
+
+  it('новый заголовок пустой корзины из присланной страницы не требует формы или shards', () => {
+    const r = run(fixture('site-promoitems-empty-cart.html'), 'scan', {}, { shards: undefined });
+    expect(r.error).toBeNull();
+    expect(r.data).toMatchObject({ state: 'scan', empty: true, items: [], shards: [], chests: 0, locked: 0 });
+    expect(go).toBeNull();
+  });
+
+  it('если корзина опустела перед заполнением, сообщает no_items и ничего не нажимает', () => {
+    const r = run(fixture('site-promoitems-empty-cart.html'), 'fill', FILL, { shards: undefined });
+    expect(r.error).toBe('no_items');
+    expect(go).toBeNull();
+  });
+
+  it('одного заголовка без подтверждения в содержимом недостаточно для «Нет предметов»', () => {
+    const incomplete = editDom(fixture('site-promoitems-empty-cart.html'), d => {
+      d.querySelector('#content_body').innerHTML = '<p>Загрузка…</p>';
+    });
+    expect(run(incomplete, 'scan', {}, { shards: undefined }).error).toBe('pending');
+  });
+
+  it('новое пустое содержимое не превращает результат уже отправленной передачи в подтверждённый успех', () => {
+    expect(run(fixture('site-promoitems-empty-cart.html'), 'result', {}, { shards: undefined }).error).toBe('unknown');
+    expect(run(fixture('site-promoitems-empty-cart.html'), 'click', FILL, { shards: undefined }).error).toBe(
+      'form_not_found'
+    );
   });
 
   it('вёрстка изменилась: нет формы → pending; нет входа → not_logged_in; «Проверка безопасности» → challenge', () => {
@@ -518,5 +539,64 @@ describe('transfer.js: result (история передачи)', () => {
     exec();
     exec();
     expect(yes).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('exact item packets: fill and click binding', () => {
+  const fresh = () => run(fixture('site-promoitems.html'), 'scan').data.items;
+  it('explicitly clears every prechecked excluded box and selects only the requested packet', () => {
+    const items = fresh();
+    const selected = [items[0]];
+    mount(fixture('site-promoitems.html'), {
+      mode: 'fill',
+      cfg: { shard: '3', recipient: KEY, itemSelection: selected }
+    });
+    document.querySelectorAll('input[type=checkbox]').forEach(box => {
+      box.checked = true;
+    });
+    exec();
+    expect(payload().error).toBeNull();
+    expect(payload().data.items).toEqual(selected);
+    expect([...document.querySelectorAll('input[name="cart_items[]"]:checked')].map(box => box.value)).toEqual([
+      selected[0].id
+    ]);
+  });
+  it('rejects a changed quantity or substituted item, rather than transferring an unconfirmed packet', () => {
+    const selected = fresh()[0];
+    for (const change of [{ qty: selected.qty + 1 }, { name: 'Changed item' }, { id: '999999999999' }]) {
+      const result = run(fixture('site-promoitems.html'), 'fill', {
+        shard: '3',
+        recipient: KEY,
+        itemSelection: [{ ...selected, ...change }]
+      });
+      expect(result.error).toBe('selection_changed');
+      expect(go.__h).not.toHaveBeenCalled();
+    }
+  });
+  it('an empty selection clears prechecks and never clicks transfer', () => {
+    mount(fixture('site-promoitems.html'), { mode: 'fill', cfg: { shard: '3', recipient: KEY, itemSelection: [] } });
+    document.querySelectorAll('input[type=checkbox]').forEach(box => {
+      box.checked = true;
+    });
+    exec();
+    expect(payload().error).toBe('no_items');
+    expect(document.querySelectorAll('input[name="cart_items[]"]:checked')).toHaveLength(0);
+    expect(go.__h).not.toHaveBeenCalled();
+  });
+  it('a same-count selection substitution between fill and click is rejected', () => {
+    const items = fresh();
+    mount(fixture('site-promoitems.html'), {
+      mode: 'fill',
+      cfg: { shard: '3', recipient: KEY, itemSelection: [items[0]] }
+    });
+    exec();
+    expect(payload().error).toBeNull();
+    document.querySelectorAll('input[type=checkbox]').forEach(box => {
+      box.checked = box.value === items[1].id;
+    });
+    window.__TF_XFER = { mode: 'click', shard: '3', recipient: KEY, count: 1, itemSelection: [items[0]] };
+    exec();
+    expect(payload().error).toBe('selection_changed');
+    expect(go.__h).not.toHaveBeenCalled();
   });
 });

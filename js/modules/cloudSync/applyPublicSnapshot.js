@@ -626,9 +626,19 @@ export function preparePublicSnapshotApply(options) {
 export function prepareFullPublicSnapshotReplace(options) {
   const input = object(options, ['localState', 'cloudSnapshot'], ['cryptoSource']);
   validateJsonSnapshot(input.localState);
-  publicSnapshotIdentityTypes(input.cloudSnapshot);
+  preparationCheck('identities', () => publicSnapshotIdentityTypes(input.cloudSnapshot));
   const target = clone(input.cloudSnapshot);
-  if (reviewSnapshotDependencies(target).issues.length) throw invalid();
+  preparationCheck('dependencies', () => {
+    const issues = reviewSnapshotDependencies(target).issues;
+    if (issues.length) {
+      const issue = issues[0];
+      preparationCheck(issue.source.section, () =>
+        preparationCheck(issue.path[0], () => {
+          throw preparationError(invalid(), issue.code === 'missing' ? 'reference' : issue.code);
+        })
+      );
+    }
+  });
   const local = buildPublicSnapshot(input.localState, { settingsSelections: target.sections.preferences.selections });
   comparePublicSnapshots({ local, cloud: target });
   // These arrays are derived from record order/date on every app reload. Keep
@@ -636,17 +646,21 @@ export function prepareFullPublicSnapshotReplace(options) {
   const originalOrder = clone(target);
   setOrders(target, target, target);
   const orderingChanges = comparePublicSnapshots({ local: originalOrder, cloud: target }).entries;
-  if (orderingChanges.some(entry => entry.kind !== 'order_changed')) throw invalid();
+  preparationCheck('ordering', () => {
+    if (orderingChanges.some(entry => entry.kind !== 'order_changed')) throw invalid();
+  });
   const selected = SECTIONS.flatMap(section => rows(target, section).map(record => ({ section, id: record.id })));
-  const candidate = materialize(
-    input.localState,
-    local,
-    target,
-    selected,
-    target.sections.preferences.selections,
-    true,
-    input.cryptoSource,
-    true
+  const candidate = preparationCheck('materialize', () =>
+    materialize(
+      input.localState,
+      local,
+      target,
+      selected,
+      target.sections.preferences.selections,
+      true,
+      input.cryptoSource,
+      true
+    )
   );
   const { ui, ...normalized } = normalizeState(candidate);
   for (const [state, reason] of [

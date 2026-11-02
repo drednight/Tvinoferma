@@ -51,7 +51,7 @@ export function layoutScriptWorkspace(dlg, selection, { running = false } = {}) 
             : ctx.mode === 'party'
               ? state.characters.filter(c => partiesOf(c, state.parties).some(p => p.id === ctx.party)).map(c => c.id)
               : [...ctx.ids];
-      selection.apply(ids);
+      selection.apply(ids, ctx.mode);
     };
     target.addEventListener('change', e => {
       if (e.target.matches('input[type=radio]')) {
@@ -149,7 +149,7 @@ export function layoutScriptWorkspace(dlg, selection, { running = false } = {}) 
               .filter(c => ctx.ids.has(c.id))
               .map(
                 c =>
-                  `<div class="promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
+                  `<div class="script-plan-row promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
                     partiesOf(c, state.parties)
                       .map(p => p.name)
                       .join(', ')

@@ -73,7 +73,7 @@
     if (untilEl) untilEl.remove();
     var text = squash(clone.textContent);
     var m = TF.match('transfer.item', text);
-    return { name: squash(m ? m[1] : text).substring(0, 120), qty: m && m[2] ? Number(m[2]) : 1, until: until };
+    return { name: squash(m ? m[1] : text).substring(0, 120), qty: m && m[2] ? Number(m[2]) : 1, until: until.substring(0, 30) };
   }
   // Предметы страницы: те, что можно передать (есть галочка), сундуки (их выбирают на сайте) и строки без галочки
   function readItems() {
@@ -222,8 +222,18 @@
     var form = TF.q('transfer.form');
     if (!form || shards === null) {
       var heading = TF.q('transfer.title');
-      if (!form && mode === 'scan' && heading && TF.has(textOf(heading), 'transfer.titleText') && !TF.qa('transfer.row').length) {
-        report({ state: 'scan', siteId: siteId(), accountName: '', shards: [], items: [], chests: 0, locked: 0, empty: true }, null);
+      var content = TF.q('transfer.content');
+      // No form/shards is normal on BOTH known empty-cart variants. Missing
+      // markup alone is not evidence of an empty inventory (or of a sent POST).
+      var emptyCart = !form && heading && content && !TF.qa('transfer.row').length &&
+        TF.has(textOf(heading), ['transfer.titleText', 'transfer.emptyTitle']) &&
+        TF.has(textOf(content), 'transfer.emptyText');
+      if (emptyCart && (mode === 'scan' || mode === 'fill')) {
+        if (mode === 'scan') {
+          report({ state: 'scan', siteId: siteId(), accountName: '', shards: [], items: [], chests: 0, locked: 0, empty: true }, null);
+        } else {
+          report(null, 'no_items');
+        }
         return;
       }
       report(document.readyState === 'complete' ? 'complete' : 'loading', mode === 'click' ? 'form_not_found' : 'pending');
@@ -250,6 +260,18 @@
     var shardId = String(cfg.shard || '');
     var recipient = String(cfg.recipient || '');
 
+    function sameItem(actual, expected) {
+      return actual && expected && String(actual.id) === expected.id && actual.name === expected.name && actual.qty === expected.qty && actual.source === expected.source && actual.until === expected.until;
+    }
+    function validSelection(selection) {
+      if (!Array.isArray(selection) || selection.length > 5000) return false;
+      var ids = {};
+      return selection.every(function (it) {
+        if (!it || typeof it.id !== 'string' || !/^\d{1,40}$/.test(it.id) || ids[it.id] || !Number.isSafeInteger(it.qty) || it.qty < 1) return false;
+        ids[it.id] = true;
+        return ['name', 'source', 'until'].every(function (key) { return typeof it[key] === 'string'; });
+      });
+    }
     if (mode === 'fill') {
       // названия акций сравниваются без учёта регистра и «ё»
       var normS = function (s) { return squash(s).toLowerCase().replace(/ё/g, 'е'); };
@@ -259,6 +281,16 @@
         var row = b.closest('tr');
         return !(skipSources.length && row && skipSources.indexOf(normS(sourceOf(row))) !== -1);
       });
+      if (cfg.itemSelection != null) {
+        if (!validSelection(cfg.itemSelection)) { report(null, 'bad_selection'); return; }
+        var available = readItems().items;
+        if (!cfg.itemSelection.every(function (it) {
+          return available.some(function (actual) { return sameItem(actual, it); }) && usable.some(function (b) { return String(b.value) === it.id; });
+        })) { report(null, 'selection_changed'); return; }
+        usable = usable.filter(function (b) { return cfg.itemSelection.some(function (it) { return it.id === String(b.value); }); });
+      }
+      // Even excluded/prechecked and hidden boxes must not leak into the POST.
+      TF.qa('transfer.checkbox').forEach(function (b) { b.checked = false; });
       if (!usable.length) { report(null, 'no_items'); return; }
       shardSel.value = shardId;
       if (shardSel.value !== shardId) { report(shardId, 'server_not_found'); return; }
@@ -284,6 +316,12 @@
     if (mode === 'click') {
       var boxes = TF.qa('transfer.checkbox').filter(function (b) { return b.checked; });
       if (!boxes.length) { report(0, 'no_items'); return; }
+      if (cfg.itemSelection != null) {
+        var currentItems = readItems().items;
+        if (!validSelection(cfg.itemSelection) || cfg.itemSelection.length !== boxes.length || !cfg.itemSelection.every(function (it) {
+          return boxes.some(function (b) { return !hidden(b) && !b.disabled && String(b.value) === it.id; }) && currentItems.some(function (actual) { return sameItem(actual, it); });
+        })) { report(null, 'selection_changed'); return; }
+      }
       if (cfg.count && boxes.length !== Number(cfg.count)) { report(boxes.length, 'selection_changed'); return; }
       if (shardSel.value !== shardId || charSel.value !== recipient) { report(null, 'selection_changed'); return; }
       window.__TF_XFER_CONFIRMED = false;

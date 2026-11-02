@@ -234,7 +234,7 @@ describe('standalone full file UX', () => {
     expect(el('options').tagName).toBe('SECTION');
     expect(el('options').compareDocumentPosition(el('title')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(el('options').contains(el('source'))).toBe(true);
-    for (const id of ['remember', 'forget', 'show-backups']) expect(el('key-dialog').contains(el(id))).toBe(true);
+    for (const id of ['remember', 'forget']) expect(el('key-dialog').contains(el(id))).toBe(true);
     expect(el('private-dialog').contains(el('contacts-confirm'))).toBe(true);
     expect(el('legacy')).toBeNull();
     expect(el('save').closest('details').id).toBe('cloud-registration-panel');
@@ -689,7 +689,7 @@ describe('remembered file parameters and password explanation', () => {
       input.checked = true;
       input.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    for (const id of ['remember', 'show-backups']) {
+    for (const id of ['remember']) {
       el(id).checked = true;
       el(id).dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -718,7 +718,8 @@ describe('remembered file parameters and password explanation', () => {
     expect(el('source-file').files.length).toBe(0);
     for (const id of ['contacts-confirm', 'password-risk', 'backup-ack']) expect(el(id).checked).toBe(false);
     expect(el('remember').checked).toBe(true);
-    expect(el('show-backups').checked).toBe(true);
+    expect(saved.backups).toBe(true);
+    expect(el('show-backups')).toBeNull();
     el('save').click();
     await vi.waitFor(() => expect(el('private-dialog').open).toBe(true));
     expect(el('contacts-confirm').checked).toBe(false);
@@ -1095,5 +1096,61 @@ it('schedules custom minutes, refuses values below 15, and stops polling in manu
   expect(f.runtime.check).toHaveBeenCalledOnce();
   expect(el('custom-interval-label').hidden).toBe(true);
   expect(f.runtime.save).not.toHaveBeenCalled();
+  expect(f.runtime.accept).not.toHaveBeenCalled();
+});
+
+it('keeps one independent dropdown per drive and downloads the selected older version, not latest', async () => {
+  const older = {
+    ...file,
+    versionId: '22222222-2222-4222-8222-222222222222',
+    sha256: 'b'.repeat(64),
+    locations: file.locations.map(location => ({ ...location, modifiedAt: '2026-10-30T10:00:00Z' }))
+  };
+  const f = setup({ runtime: { check: vi.fn(async () => ({ files: [file, older], pending: [], results: [] })) } });
+  await click('check');
+  const cards = [...el('files').querySelectorAll('.cloud-copy-card')];
+  expect(cards).toHaveLength(2);
+  const google = cards[0].querySelector('select');
+  const yandex = cards[1].querySelector('select');
+  expect(google.options).toHaveLength(2);
+  expect(yandex.options).toHaveLength(2);
+  google.value = older.versionId;
+  google.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(yandex.value).toBe(versionId);
+  expect(google.selectedOptions[0].textContent).toMatch(/30\.10\.2026.*22222222/);
+  cards[0].querySelector('button').click();
+  await vi.waitFor(() => expect(f.runtime.review).toHaveBeenCalled());
+  expect(f.runtime.review.mock.calls[0][0]).toMatchObject({
+    provider: 'google',
+    versionId: older.versionId,
+    sha256: older.sha256
+  });
+});
+it('keeps the entire check controls in key settings, and source help below the source card', () => {
+  setup();
+  expect(el('key-dialog').contains(el('startup'))).toBe(true);
+  expect(el('key-dialog').contains(el('interval'))).toBe(true);
+  expect(el('key-dialog').contains(el('files'))).toBe(true);
+  expect(el('key-dialog').contains(el('check'))).toBe(true);
+  const help = [...el('panel').querySelectorAll('details')].find(
+    item => item.querySelector('summary')?.textContent === 'Чем отличаются эти варианты?'
+  );
+  expect(help.closest('.cloud-source-card')).toBeNull();
+});
+it('opens a read-only diff but never enables replacement when strict schema/roundtrip checks refuse it', async () => {
+  const f = setup({
+    runtime: {
+      review: vi.fn(async () => ({
+        ...token(),
+        replacementBlocked: 'setup/identities/roundtrip.dependencies.characters/reference'
+      }))
+    }
+  });
+  await click('check');
+  el('files').querySelector('button').click();
+  await vi.waitFor(() => expect(el('review-status').textContent).toContain('Сравнение только для чтения'));
+  await vi.waitFor(() => expect(el('panel').getAttribute('aria-busy')).toBe('false'));
+  expect(el('accept').disabled).toBe(true);
+  el('accept').click();
   expect(f.runtime.accept).not.toHaveBeenCalled();
 });

@@ -65,7 +65,7 @@ describe('scanRosters', () => {
     const rows = await scanRosters({ chars: mk(1), invokeFn, retries: 2, retryDelayMs: 1, sleepFn: async () => {} });
     expect(invokeFn).toHaveBeenCalledTimes(3);
     expect(rows[0].status).toBe('ok');
-    expect(invokeFn.mock.calls.map(c => c[1].timeoutSeconds)).toEqual([25, 40, 55]);
+    expect(invokeFn.mock.calls.map(c => c[1].timeoutSeconds)).toEqual([30, 30, 30]);
   });
 
   it('стоп до старта: на сайт не ходили, все cancelled', async () => {
@@ -89,6 +89,7 @@ describe('runTransferBatch', () => {
         recipient: '1_3_2',
         charName: '#Тест',
         skipSources: [],
+        itemSelection: null,
         dryRun: false,
         timeoutSeconds: 30
       }
