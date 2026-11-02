@@ -212,6 +212,9 @@ pub async fn open_caravan_chests(
 ) -> Result<Value, String> {
     let dry = dry_run.unwrap_or(false);
     let fail = |error: &str| payload(&char_id, "error", Some(error), dry, false, 0, 0, 0, vec![]);
+    if !dry && expected_account_key.is_none() {
+        return Ok(fail("scan_required"));
+    }
     if expected_account_key
         .as_ref()
         .is_some_and(|s| s.len() != 64 || !s.bytes().all(|b| b.is_ascii_hexdigit()))

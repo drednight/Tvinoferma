@@ -47,9 +47,17 @@ describe('desktop OAuth PKCE: изолированная подготовка', 
     const source = readFileSync('src-tauri/src/cloud_oauth_callback.rs', 'utf8');
     const script = source.match(/const CLEAN_QUERY_SCRIPT: &str =\s*"([^"]+)";/)?.[1];
     const allowed = source.match(/const CLEAN_QUERY_SCRIPT_HASH: &str =\s*"([^"]+)";/)?.[1];
-    expect(script).toBe("try{history.replaceState(null,'','/oauth/cloud/complete')}catch{}");
+    expect(script).toBe(
+      "try{history.replaceState(null,'','/oauth/cloud/complete')}catch{};setTimeout(function(){window.close()},700)"
+    );
+    const failed = source.match(/const FAILED_QUERY_SCRIPT: &str =\s*"([^"]+)";/)?.[1];
+    const failedHash = source.match(/const FAILED_QUERY_SCRIPT_HASH: &str =\s*"([^"]+)";/)?.[1];
+    expect(failed).toBe("try{history.replaceState(null,'','/oauth/cloud/complete')}catch{}");
+    expect(failedHash).toBe(`sha256-${createHash('sha256').update(failed).digest('base64')}`);
+    expect(source).toContain('(CLEAN_QUERY_SCRIPT, CLEAN_QUERY_SCRIPT_HASH)');
+    expect(source).toContain('(FAILED_QUERY_SCRIPT, FAILED_QUERY_SCRIPT_HASH)');
     expect(allowed).toBe(`sha256-${createHash('sha256').update(script).digest('base64')}`);
-    expect(source).toContain("script-src '{CLEAN_QUERY_SCRIPT_HASH}'");
+    expect(source).toContain("script-src '{script_hash}'");
     expect(source).not.toContain("'unsafe-inline'");
   });
 

@@ -278,6 +278,21 @@ pub async fn open_promo_news_article(
     Ok(())
 }
 
+/// Restore access to Stop if a background script starts while an article is open.
+#[tauri::command]
+pub fn close_promo_news_article(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("news_request_invalid".into());
+    }
+    if let Some(viewer) = app.get_webview_window("public-promo-news-viewer") {
+        viewer.destroy().map_err(|_| "news_client")?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

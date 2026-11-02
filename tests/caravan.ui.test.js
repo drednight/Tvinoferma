@@ -22,6 +22,7 @@ const chars = [
 ];
 const reply = (charId, over = {}) => ({
   charId,
+  accountKey: String(charId).repeat(64),
   status: 'success',
   error: null,
   dryRun: false,
@@ -368,4 +369,19 @@ describe('отдельный выбор количества после сайт
     await wait(150);
     expect(mocks.invoke.mock.calls[0][1]).toMatchObject({ maxChests: 1, expectedAccountKey: 'a'.repeat(64) });
   });
+});
+
+it('does not open any inventory without a site account binding, even when chests were counted', async () => {
+  mocks.invoke.mockImplementation(async (_, a) =>
+    reply(a.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0, accountKey: null })
+  );
+  openCaravanDialog({ ids: ['a'] });
+  $('[data-act="dry"]').click();
+  await wait(150);
+  mocks.invoke.mockClear();
+  $('[data-act="real"]').click();
+  await wait(50);
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Сайт не сообщил аккаунт'), 'warning');
 });

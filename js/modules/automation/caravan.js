@@ -465,6 +465,10 @@ export function openCaravanDialog({ ids = [] } = {}) {
         toast('Укажите количество хотя бы для одного аккаунта', 'warning');
         return;
       }
+      if (chars.some(c => !lastRows.find(row => row.charId === c.id)?.accountKey)) {
+        toast('Сайт не сообщил аккаунт инвентаря. Открытие не запущено; проверьте сайт и вход заново.', 'warning');
+        return;
+      }
       if (!running && (await confirmRun(chars))) await start(chars);
       return;
     }

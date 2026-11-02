@@ -1,7 +1,26 @@
+import { dockCurrentTask, onTaskChange } from '../../core/taskLog.js';
 import { state } from '../../core/state.js';
 import { loadLog } from './promoLog.js';
 import { parseCodes } from './promoCore.js';
 import { promoDiscovery, promoCoverage } from './promoDiscovery.js';
+
+let viewerRequested = false;
+const closeViewer = async () => {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('close_promo_news_article');
+};
+// Discovery stays parallel. Only an owned modal article must not obscure Stop.
+const unsubscribe = onTaskChange(() => {
+  const active = !!dockCurrentTask();
+  document.querySelectorAll('[data-promo-news-open]').forEach(button => {
+    button.disabled = active || !window.__TAURI_INTERNALS__;
+  });
+  if (active && viewerRequested) {
+    viewerRequested = false;
+    void closeViewer().catch(() => {});
+  }
+});
+if (import.meta.hot) import.meta.hot.dispose(unsubscribe);
 
 export function renderPromoSuggestions(dlg) {
   const field = dlg.body.querySelector('#promo-code')?.parentElement;
@@ -107,14 +126,24 @@ export function renderPromoSuggestions(dlg) {
     browser.type = 'button';
     browser.className = 'btn ghost small';
     browser.textContent = '🌐 Открыть новость';
-    browser.disabled = !window.__TAURI_INTERNALS__;
+    browser.dataset.promoNewsOpen = '';
+    browser.disabled = !window.__TAURI_INTERNALS__ || !!dockCurrentTask();
+    browser.title =
+      'Окно источника доступно, когда скрипт не выполняется, чтобы кнопка Стоп оставалась доступна. Поиск новостей продолжается фоном.';
     browser.onclick = async () => {
+      if (dockCurrentTask()) return;
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const id = new URL(row.sourceUrl).searchParams.get('article');
         if (!/^\d{1,12}$/.test(id || '')) throw Error();
+        viewerRequested = true;
         await invoke('open_promo_news_article', { article: id });
+        if (dockCurrentTask()) {
+          viewerRequested = false;
+          await closeViewer();
+        }
       } catch {
+        viewerRequested = false;
         info.textContent = 'Не удалось открыть новость в WebView.';
       }
     };
