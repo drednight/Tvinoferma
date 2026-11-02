@@ -24,7 +24,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 # Один экземпляр приложения: повторный запуск поднимает уже открытое окно, а не создаёт второе
 tauri-plugin-single-instance = "2"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "sync"] }
 urlencoding = "2.1"
 # Хранилище учётных данных ОС: Windows Credential Manager / macOS Keychain / Secret Service (Linux)
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

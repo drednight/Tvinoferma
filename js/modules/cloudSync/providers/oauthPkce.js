@@ -91,7 +91,7 @@ function validatedOptions(options) {
     (input.now !== undefined && typeof input.now !== 'function') ||
     (input.requestOffline !== undefined && typeof input.requestOffline !== 'boolean') ||
     (input.forceConsent !== undefined && typeof input.forceConsent !== 'boolean') ||
-    (input.forceConsent === true && (input.provider !== 'google' || input.requestOffline === false))
+    (input.forceConsent === true && input.provider === 'google' && input.requestOffline === false)
   ) {
     throw invalid();
   }
@@ -155,7 +155,8 @@ function authorizeUrl(provider, clientId, redirectUri, challenge, state, request
   // При новом явном подключении повторное согласие может понадобиться, чтобы
   // Google снова выдал refresh token после диагностического входа. Это просьба,
   // а не гарантия выдачи; модуль установки проверяет сам ответ.
-  if (provider === 'google' && forceConsent) url.searchParams.set('prompt', 'consent');
+  if (provider === 'google' && forceConsent) url.searchParams.set('prompt', 'consent select_account');
+  if (provider === 'yandex' && forceConsent) url.searchParams.set('force_confirm', 'yes');
   return url.toString();
 }
 

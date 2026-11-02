@@ -33,8 +33,18 @@ export function pinCode(value, base) {
 }
 function documentOf(html) {
   if (typeof html !== 'string' || html.length > 2 * 1024 * 1024) throw Error('news_size');
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  doc.querySelectorAll('script,style,noscript,iframe,nav,header,footer').forEach(n => n.remove());
+  // Template contents stay inert, including resource elements: no images/iframes
+  // are fetched while parsing HTTP HTML from the news site.
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  template.content
+    .querySelectorAll(
+      'script,style,noscript,iframe,nav,header,footer,img,svg,video,audio,source,object,embed,link,meta,base'
+    )
+    .forEach(n => n.remove());
+  const doc = document.implementation.createHTMLDocument('');
+  doc.title = template.content.querySelector('title')?.textContent || '';
+  doc.body.append(template.content);
   if (
     /проверка безопасности|checking your browser|just a moment|captcha/i.test(
       doc.title + ' ' + doc.body.textContent.slice(0, 300)

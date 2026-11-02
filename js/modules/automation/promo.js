@@ -1,5 +1,6 @@
+import { classIconHtml, stripeCls } from './characterPicker.js';
 import { bindPromoSuggestions, renderPromoSuggestions } from './promoSuggestions.js';
-import { layoutScriptWorkspace } from './scriptWorkspace.js';
+import { layoutScriptWorkspace, refreshScriptPlan } from './scriptWorkspace.js';
 // js/modules/automation/promo.js
 // 🎁 Промокоды (Issue #25): диалог «коды → персонажи → предпросмотр → запуск → итоговая таблица».
 // Rust-команда: activate_promo (src-tauri/src/automation/promo.rs). Журнал: promoLog.js. Правила: docs/COMPLIANCE.md.
@@ -39,7 +40,6 @@ const isSecretPhrase = value =>
       .trim()
       .toLowerCase()
   );
-const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 const when = iso => new Date(iso).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -50,6 +50,7 @@ const rowDetail = r => {
 };
 
 const cellHtml = row => {
+  if (row?.planned) return '<span class="promo-muted">· в плане</span>';
   if (!row) return '<span class="promo-muted">⏳ в очереди</span>';
   const info = statusInfo(row.status);
   const tip = [rowLabel(row), rowDetail(row)].filter(Boolean).join(' — ');
@@ -118,8 +119,8 @@ export function openPromoDialog({ ids = [] } = {}) {
         const parties = partiesOf(c, state.parties)
           .map(p => p.name)
           .join(', ');
-        return `<label class="promo-item"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-        <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
+        return `<label class="promo-item ${stripeCls(c)}"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
+        ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
       })
       .join('');
   }
@@ -167,6 +168,33 @@ export function openPromoDialog({ ids = [] } = {}) {
     updateCodesInfo();
 
     layoutScriptWorkspace(dlg, {
+      plan() {
+        const codes = parseCodes(codesRaw).codes,
+          chars = selectedChars(),
+          plans = planRun(loadLog(), codes, chars),
+          byKey = new Map();
+        let todo = 0,
+          skipped = 0;
+        for (const plan of plans) {
+          for (const c of plan.todo) {
+            todo++;
+            byKey.set(`${c.id}|${codeKey(plan.code)}`, { planned: true });
+          }
+          for (const c of plan.done) {
+            skipped++;
+            byKey.set(`${c.id}|${codeKey(plan.code)}`, { status: 'already_used', skipped: true });
+          }
+        }
+        return {
+          todo,
+          skipped,
+          characters: chars.length,
+          total: todo + skipped,
+          html: codes.length
+            ? tableHtml(codes, chars, byKey)
+            : '<p class="muted">Введите коды слева — здесь появится план: кто получит каждый код.</p>'
+        };
+      },
       selected: selected,
       apply(ids) {
         selected.clear();
@@ -218,6 +246,7 @@ export function openPromoDialog({ ids = [] } = {}) {
       );
     });
     box.innerHTML = lines.join('');
+    refreshScriptPlan(dlg);
   }
 
   function quickSelect(kind) {
@@ -345,7 +374,7 @@ export function openPromoDialog({ ids = [] } = {}) {
       <tbody>${chars
         .map(
           ch =>
-            `<tr data-row="${escapeHtml(ch.id)}"><td><b>${escapeHtml(ch.nick)}</b></td>${codes
+            `<tr class="${stripeCls(ch)}" data-row="${escapeHtml(ch.id)}"><td><b>${classIconHtml(ch)} ${escapeHtml(ch.nick)}</b></td>${codes
               .map(
                 code =>
                   `<td data-cell="${escapeHtml(ch.id)}|${escapeHtml(codeKey(code))}">${cellHtml(byKey.get(`${ch.id}|${codeKey(code)}`))}</td>`
@@ -368,7 +397,7 @@ export function openPromoDialog({ ids = [] } = {}) {
       e.currentTarget.textContent = '⏳ Останавливаю…';
     };
 
-    layoutScriptWorkspace(dlg);
+    layoutScriptWorkspace(dlg, undefined, { running: true });
   }
 
   function updateRunning(row, done, total) {

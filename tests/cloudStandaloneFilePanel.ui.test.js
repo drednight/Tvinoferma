@@ -336,7 +336,7 @@ describe('standalone full file UX', () => {
   it('periodic/startup checks and account-ready events only check, never save or apply', async () => {
     let tick;
     vi.spyOn(globalThis, 'setInterval').mockImplementation((fn, interval) => {
-      if (interval === 5 * 60 * 1000) tick = fn;
+      if (interval === 15 * 60 * 1000) tick = fn;
       return 123;
     });
     const f = setup({ startup: true });
@@ -1073,4 +1073,27 @@ it('invalidates only the Yandex folder hint on logout/relogin without cross-prov
   expect(el('yandex-folder-status').parentElement.dataset.state).toBe('idle');
   expect(f.runtime.check).not.toHaveBeenCalled();
   expect(f.runtime.checkYandexFolder).toHaveBeenCalledOnce();
+});
+it('schedules custom minutes, refuses values below 15, and stops polling in manual mode', async () => {
+  localStorage.setItem('tf_cloud_auto_check_v1', JSON.stringify({ version: 1, startup: false, minutes: 0 }));
+  vi.useFakeTimers();
+  const f = setup({ startup: true });
+  expect([...el('interval').options].map(o => o.value)).toEqual(['0', '15', '30', '60', 'custom']);
+  el('interval').value = 'custom';
+  el('custom-interval').value = '17';
+  el('interval').dispatchEvent(new Event('change'));
+  expect(el('custom-interval-label').hidden).toBe(false);
+  await vi.advanceTimersByTimeAsync(17 * 60000);
+  expect(f.runtime.check).toHaveBeenCalledOnce();
+  el('custom-interval').value = '14';
+  el('custom-interval').dispatchEvent(new Event('change'));
+  expect(JSON.parse(localStorage.getItem('tf_cloud_auto_check_v1')).minutes).toBe(17);
+  expect(el('status').textContent).toContain('15');
+  el('interval').value = '0';
+  el('interval').dispatchEvent(new Event('change'));
+  await vi.advanceTimersByTimeAsync(120 * 60000);
+  expect(f.runtime.check).toHaveBeenCalledOnce();
+  expect(el('custom-interval-label').hidden).toBe(true);
+  expect(f.runtime.save).not.toHaveBeenCalled();
+  expect(f.runtime.accept).not.toHaveBeenCalled();
 });

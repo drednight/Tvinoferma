@@ -1,3 +1,4 @@
+import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/caravan.js
 // 🧰 Сундук караванщика: диалог «персонажи → проверка инвентарей → итоги».
@@ -28,7 +29,6 @@ import { chipsHtml, noteHtml, progressHtml, sectionHtml, setProgress } from './s
 import { makeScriptReport } from './scriptReport.js';
 import { openScriptStatistics } from './scriptReportView.js';
 
-const dot = c => (c.isLoggedIn === true ? '🟢' : c.isLoggedIn === false ? '🔴' : '⚪');
 const byNick = (a, b) => String(a.nick).localeCompare(String(b.nick), 'ru');
 
 const cellHtml = row => {
@@ -94,8 +94,8 @@ export function openCaravanDialog({ ids = [] } = {}) {
         const parties = partiesOf(c, state.parties)
           .map(p => p.name)
           .join(', ');
-        return `<label class="promo-item"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
-        <span class="promo-dot">${dot(c)}</span><b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
+        return `<label class="promo-item ${stripeCls(c)}"><input type="checkbox" data-id="${escapeHtml(c.id)}" ${selected.has(c.id) ? 'checked' : ''}>
+        ${classIconHtml(c)}<b>${escapeHtml(c.nick)}</b><span class="promo-muted promo-item-tags">${escapeHtml(parties)}</span></label>`;
       })
       .join('');
   }
@@ -248,7 +248,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
         body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${chars
           .map(
             c =>
-              `<tr><td><b>${escapeHtml(c.nick)}</b></td><td data-cell="${escapeHtml(c.id)}">${cellHtml(null)}</td></tr>`
+              `<tr class="${stripeCls(c)}"><td><b>${classIconHtml(c)} ${escapeHtml(c.nick)}</b></td><td data-cell="${escapeHtml(c.id)}">${cellHtml(null)}</td></tr>`
           )
           .join('')}</tbody></table></div>`
       })}`;
@@ -261,7 +261,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
       e.currentTarget.textContent = '⏳ Останавливаю…';
     };
 
-    layoutScriptWorkspace(dlg);
+    layoutScriptWorkspace(dlg, undefined, { running: true });
   }
 
   function updateRunning(row, done, total) {
@@ -302,7 +302,7 @@ export function openCaravanDialog({ ids = [] } = {}) {
         body: `<div class="promo-scroll"><table class="promo-table"><thead><tr><th>Персонаж</th><th>Итог</th></tr></thead><tbody>${lastChars
           .map(
             c =>
-              `<tr><td><b>${escapeHtml(c.nick)}</b></td><td>${cellHtml(byId.get(c.id) || plainRow(c, 'not_run'))}</td></tr>`
+              `<tr class="${stripeCls(c)}"><td><b>${classIconHtml(c)} ${escapeHtml(c.nick)}</b></td><td>${cellHtml(byId.get(c.id) || plainRow(c, 'not_run'))}</td></tr>`
           )
           .join('')}</tbody></table></div>`
       })}

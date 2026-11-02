@@ -720,3 +720,25 @@ it('does not resume saving after OAuth cancellation or a different account', asy
   await vi.waitFor(() => expect(detail.complete).toHaveBeenCalledExactlyOnceWith(false));
   expect(s.enroll).toHaveBeenCalledOnce();
 });
+it('opens shared recovery settings for either provider without enrollment or signing out the other one', async () => {
+  const f = bind();
+  const google = document.querySelector('[data-cloud-config-provider=google]'),
+    yandex = document.querySelector('[data-cloud-config-provider=yandex]');
+  google.click();
+  await vi.waitFor(() =>
+    expect(f.readBinding).toHaveBeenLastCalledWith(expect.objectContaining({ provider: 'google' }))
+  );
+  await vi.waitFor(() => expect(google.disabled).toBe(false));
+  expect(byId('provider').value).toBe('google');
+  yandex.click();
+  await vi.waitFor(() =>
+    expect(f.readBinding).toHaveBeenLastCalledWith(expect.objectContaining({ provider: 'yandex' }))
+  );
+  await vi.waitFor(() => expect(yandex.disabled).toBe(false));
+  expect(byId('provider').value).toBe('yandex');
+  expect(byId('yandex-hint').hidden).toBe(false);
+  expect(google.getAttribute('aria-pressed')).toBe('false');
+  expect(yandex.getAttribute('aria-pressed')).toBe('true');
+  expect(f.enroll).not.toHaveBeenCalled();
+  expect(f.forget).not.toHaveBeenCalled();
+});

@@ -771,3 +771,47 @@ it('keeps folder-only work inside the existing global operation barrier and alwa
   f.engine.dispose();
   await expect(f.engine.checkYandexFolder()).rejects.toThrow('closed');
 });
+it('duplicate local parties do not block read-only full-file review; accepting still backs up the exact broken original', async () => {
+  const f = fixture();
+  f.put('google', second);
+  const party = normalize({ parties: [{ id: 'same', name: 'Первый вариант' }] }).parties[0];
+  f.local.parties = [party, { ...party, name: 'Второй вариант' }];
+  f.local.archivedParties = [{ ...party, name: 'Архивный вариант', memberLinks: [] }];
+  const before = structuredClone(f.local),
+    token = await f.review();
+  expect(token.duplicatePartyIds).toBe(2);
+  expect(token.comparison.entries.filter(e => e.section === 'parties')).toHaveLength(3);
+  expect(f.local).toEqual(before);
+  expect(f.patch).not.toHaveBeenCalled();
+  expect(f.ports.replace).not.toHaveBeenCalled();
+  await expect(f.engine.accept(token, { confirmed: false })).rejects.toThrow();
+  expect(f.local).toEqual(before);
+  expect((await f.engine.accept(token, { confirmed: true })).status).toBe('applied');
+  expect(f.backups[0]).toEqual(before);
+  expect(f.local.parties).toHaveLength(0);
+  expect(f.local.archivedParties).toHaveLength(0);
+  expect(f.calls.google).toHaveLength(0);
+  expect(f.calls.yandex).toHaveLength(0);
+});
+it('duplicate-party review still protects the raw local CAS and contacts from replacement', async () => {
+  const f = fixture();
+  f.put('google', second);
+  const party = normalize({ parties: [{ id: 'same', name: 'Первый' }] }).parties[0];
+  f.local.parties = [party, { ...party, name: 'Второй' }];
+  f.local.characters.push(
+    normalize({ characters: [{ id: 'local-only', nick: 'Local', contacts: { password: 'synthetic-local-secret' } }] })
+      .characters[0]
+  );
+  const token = await f.review();
+  expect(token.localPrivateAtRisk).toBe(true);
+  const before = structuredClone(f.local);
+  await expect(f.engine.accept(token, { confirmed: true })).rejects.toThrow();
+  expect(f.local).toEqual(before);
+  expect(f.backups).toHaveLength(0);
+  f.local.parties[1].name = 'Изменено после просмотра';
+  await expect(f.engine.accept(token, { confirmed: true, contactsBackupConfirmed: true })).rejects.toThrow(
+    'local_changed'
+  );
+  expect(f.backups).toHaveLength(0);
+  expect(f.ports.replace).not.toHaveBeenCalled();
+});
