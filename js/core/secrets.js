@@ -21,7 +21,8 @@ const vault = {
   blocked: false, // остановка до перезапуска в этом JS-контексте, не устойчивый карантин
   error: null,
   // charId -> точная строка и её нормализованное содержимое; не выводить в журнал.
-  known: new Map()
+  known: new Map(),
+  conflictReview: null
 };
 
 let invokeImpl = null;
@@ -37,7 +38,13 @@ export function __setInvoke(fn) {
   vault.checked = false;
   vault.blocked = false;
   vault.known.clear();
+  vault.conflictReview = null;
   vault.error = null;
+}
+
+// Private in-memory review; never serialize to state, diagnostics, logs or cloud.
+export function vaultConflictReview() {
+  return vault.conflictReview ? JSON.parse(JSON.stringify(vault.conflictReview)) : null;
 }
 
 export function vaultStatus() {
@@ -236,6 +243,7 @@ export async function hydrateSecrets(
     const known = new Map();
     const usedSources = new Set();
     const updates = [];
+    const conflicts = [];
     let migrated = 0;
     for (const character of characters) {
       const old = oldIds.get(character.id);
@@ -251,7 +259,9 @@ export async function hydrateSecrets(
         // заменить новые значения (включая намеренно пустые) старой записью ОС.
         const local = contactsJson(character.contacts);
         const stored = contactsJson(parsed.get(source));
-        if ((plaintextIds.has(character.id) || local) && local !== stored) throw new VaultConflictError();
+        if ((plaintextIds.has(character.id) || local) && local !== stored) {
+          conflicts.push({ id: character.id, source, file: local, windows: stored });
+        }
         usedSources.add(source);
         known.set(source, { raw: records.get(source), normalized: stored });
         updates.push([character, { ...character.contacts, ...parsed.get(source) }]);
@@ -260,12 +270,18 @@ export async function hydrateSecrets(
         migrated++;
       }
     }
+    if (conflicts.length) {
+      vault.conflictReview = { conflicts, keys: [...keys], records: Object.fromEntries(records) };
+      throw new VaultConflictError();
+    }
+    vault.conflictReview = null;
     for (const [character, contacts] of updates) character.contacts = contacts;
     vault.known = known;
     vault.ready = true;
     vault.error = null;
     return { migrated };
   } catch (error) {
+    if (!(error instanceof VaultConflictError)) vault.conflictReview = null;
     vault.ready = false;
     vault.known.clear();
     vault.error =

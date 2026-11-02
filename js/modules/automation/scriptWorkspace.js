@@ -144,19 +144,21 @@ export function layoutScriptWorkspace(dlg, selection, { running = false } = {}) 
       plan.className = 'script-plan';
       plan.innerHTML =
         '<h4>План запуска</h4>' +
-        (ctx.ids.size
-          ? state.characters
-              .filter(c => ctx.ids.has(c.id))
-              .map(
-                c =>
-                  `<div class="script-plan-row promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
-                    partiesOf(c, state.parties)
-                      .map(p => p.name)
-                      .join(', ')
-                  )}</small></div>`
-              )
-              .join('')
-          : '<p class="muted">Выберите персонажей слева. Никакие действия ещё не запущены.</p>');
+        (selection.preview
+          ? selection.preview(ctx.ids)
+          : ctx.ids.size
+            ? state.characters
+                .filter(c => ctx.ids.has(c.id))
+                .map(
+                  c =>
+                    `<div class="script-plan-row promo-item ${stripeCls(c)}">${classIconHtml({ ...c, cls: c.class || c.className })}<b>${esc(c.nick)}</b><small>${esc(
+                      partiesOf(c, state.parties)
+                        .map(p => p.name)
+                        .join(', ')
+                    )}</small></div>`
+                )
+                .join('')
+            : '<p class="muted">Выберите персонажей слева. Никакие действия ещё не запущены.</p>');
       main.append(plan);
     }
     ctx.settings = side;

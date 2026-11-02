@@ -346,7 +346,12 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
                 .to_string();
             match read_record(&dir, &id) {
                 Ok(Some(r)) => {
-                    let (expires_at, session_cookies) = expiry_metadata(&r.cookies);
+                    let metadata = cookie_metadata(&r.cookies, r.saved_at);
+                    let expires_at = metadata.iter().filter_map(|cookie| cookie.expires_at).min();
+                    let session_cookies = metadata
+                        .iter()
+                        .filter(|cookie| cookie.kind == "session")
+                        .count();
                     out.push(serde_json::json!({
                         "charId": id,
                         "savedAt": r.saved_at,
@@ -354,10 +359,11 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
                         "cookies": r.cookies.len(),
                         "expiresAt": expires_at,
                         "sessionCookies": session_cookies,
+                        "cookieMetadata": metadata,
                     }));
                 }
                 Ok(None) => {}
-                Err(e) => out.push(serde_json::json!({ "charId": id, "error": e })),
+                Err(_) => out.push(serde_json::json!({ "charId": id, "error": "bank_unavailable" })),
             }
         }
         Ok(out)
@@ -365,25 +371,50 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
     .await
 }
 
-// Earliest persistent expiry is informational, not a promise of authentication.
-// Neither cookie names nor values leave the native bank.
-fn expiry_metadata(cookies: &[String]) -> (Option<i64>, usize) {
-    let mut earliest = None;
-    let mut sessions = 0;
+// No cookie names/values leave the bank. Session cookies have no expiry date;
+// saved_at is not a session lifetime. Max-Age takes precedence over Expires.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CookieMetadata {
+    kind: &'static str,
+    expires_at: Option<i64>,
+    expiry_basis: Option<&'static str>,
+}
+
+fn cookie_metadata(cookies: &[String], saved_at: u64) -> Vec<CookieMetadata> {
+    let mut metadata = Vec::new();
     for raw in cookies {
-        if let Ok(cookie) = Cookie::parse(raw.clone()) {
-            if !in_scope(&cookie) {
-                continue;
-            }
-            if let Some(date) = cookie.expires_datetime() {
-                let at = date.unix_timestamp();
-                earliest = Some(earliest.map_or(at, |old: i64| old.min(at)));
-            } else {
-                sessions += 1;
-            }
+        let Ok(cookie) = Cookie::parse(raw.clone()) else {
+            metadata.push(CookieMetadata {
+                kind: "unknown",
+                expires_at: None,
+                expiry_basis: None,
+            });
+            continue;
+        };
+        if !in_scope(&cookie) {
+            continue;
         }
+        let (expires_at, expiry_basis, kind) = if let Some(age) = cookie.max_age() {
+            (
+                i64::try_from(saved_at)
+                    .ok()
+                    .map(|at| at.saturating_add(age.whole_seconds())),
+                Some("savedAtPlusMaxAge"),
+                "persistent",
+            )
+        } else if let Some(date) = cookie.expires_datetime() {
+            (Some(date.unix_timestamp()), Some("expires"), "persistent")
+        } else {
+            (None, None, "session")
+        };
+        metadata.push(CookieMetadata {
+            kind,
+            expires_at,
+            expiry_basis,
+        });
     }
-    (earliest, sessions)
+    metadata
 }
 
 /// Удаляет сессию персонажа из банка.
@@ -522,7 +553,7 @@ mod tests {
 
 #[cfg(test)]
 mod expiry_tests {
-    use super::expiry_metadata;
+    use super::cookie_metadata;
     #[test]
     fn expiry_is_metadata_only_scoped_and_earliest() {
         let rows = [
@@ -532,9 +563,32 @@ mod expiry_tests {
             "foreign=private; Domain=example.com; Expires=Wed, 09 Jun 2021 10:18:14 GMT",
         ]
         .map(String::from);
-        let (expiry, sessions) = expiry_metadata(&rows);
+        let metadata = cookie_metadata(&rows, 0);
+        let expiry = metadata.iter().filter_map(|cookie| cookie.expires_at).min();
+        let sessions = metadata
+            .iter()
+            .filter(|cookie| cookie.kind == "session")
+            .count();
         assert_eq!(expiry, Some(1781000294));
         assert_eq!(sessions, 1);
-        assert_eq!(expiry_metadata(&[]), (None, 0));
+        assert!(cookie_metadata(&[], 0).is_empty());
+        let output = serde_json::to_string(&metadata).unwrap();
+        assert!(!output.contains("private"));
+        assert!(!output.contains("secret"));
+        assert_eq!(metadata[2].expires_at, None);
+    }
+    #[test]
+    fn max_age_uses_saved_time_but_sessions_never_get_invented_dates() {
+        let rows = [
+            "private=value; Domain=pwonline.ru; Max-Age=60",
+            "private=value; Domain=pwonline.ru",
+        ]
+        .map(String::from);
+        let metadata = cookie_metadata(&rows, 1000);
+        assert_eq!(metadata[0].expires_at, Some(1060));
+        assert_eq!(metadata[0].kind, "persistent");
+        assert_eq!(metadata[0].expiry_basis, Some("savedAtPlusMaxAge"));
+        assert_eq!(metadata[1].expires_at, None);
+        assert_eq!(metadata[1].kind, "session");
     }
 }

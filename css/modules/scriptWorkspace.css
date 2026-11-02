@@ -481,9 +481,8 @@
 }
 .promo-news-option .promo-news-actions {
   width: 100%;
-}
-.promo-news-option .promo-news-actions button:last-child {
-  margin-left: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 .script-plan-row {
   padding: 12px;
@@ -504,4 +503,39 @@
 .sp-side .tr-top button {
   white-space: normal;
   max-width: 100%;
+}
+
+.promo-news-option .promo-news-add {
+  width: 100%;
+}
+.tr-item-groups small {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+.tr-item-groups input {
+  width: 7rem;
+  max-width: 100%;
+}
+.cookie-bank-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cookie-bank-table th,
+.cookie-bank-table td {
+  padding: 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.cookie-bank-character {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.vault-conflict-compare td {
+  overflow-wrap: anywhere;
+}
+.vault-conflict-compare .vault-contact-different {
+  border-left: 3px solid var(--warning, #edbd5c);
 }

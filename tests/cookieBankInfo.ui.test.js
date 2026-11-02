@@ -1,21 +1,52 @@
 import { expect, it, vi } from 'vitest';
 import { initCookieBankInfo } from '../js/settings/cookieBankInfo.js';
-it('shows only character and expiry metadata, including session-only and unavailable rows, never cookie secrets', async () => {
-  document.body.innerHTML = '<button id="cookie-bank-refresh"></button><div id="cookie-bank-expiry"></div>';
+it('starts collapsed, lazily reads anonymous metadata and never invents a session expiry or displays secrets', async () => {
+  document.body.innerHTML =
+    '<details id="cookie-bank-info"><summary>Банк</summary><button id="cookie-bank-refresh"></button><div id="cookie-bank-expiry"></div></details>';
   const characters = () => ['a', 'b', 'c', 'd'].map(id => ({ id, nick: `Игрок ${id}` }));
   const readStatus = vi.fn(async () => [
-    { charId: 'a', cookies: 2, expiresAt: 1781000294, sessionCookies: 1, secret: 'DO_NOT_DISPLAY_COOKIE' },
-    { charId: 'b', cookies: 1, expiresAt: null, sessionCookies: 1 },
+    {
+      charId: 'a',
+      cookies: 2,
+      savedAt: 1780000000,
+      cookieMetadata: [
+        {
+          kind: 'persistent',
+          expiresAt: 1781000294,
+          name: 'DO_NOT_DISPLAY_COOKIE_NAME',
+          value: 'DO_NOT_DISPLAY_VALUE'
+        },
+        { kind: 'session', expiresAt: null }
+      ],
+      secret: 'DO_NOT_DISPLAY_COOKIE'
+    },
+    { charId: 'b', cookies: 1, sessionCookies: 1 },
     { charId: 'c', error: 'DO_NOT_DISPLAY_NATIVE_ERROR' }
   ]);
   initCookieBankInfo({ characters, readStatus });
+  expect(document.getElementById('cookie-bank-info').open).toBe(false);
+  expect(readStatus).not.toHaveBeenCalled();
+  document.getElementById('cookie-bank-info').open = true;
+  document.getElementById('cookie-bank-info').dispatchEvent(new Event('toggle'));
   await vi.waitFor(() => expect(document.body.textContent).toContain('Игрок a →'));
+  expect(readStatus).toHaveBeenCalledTimes(1);
   expect(document.body.textContent).toContain('2026');
+  expect(document.body.textContent).toContain('Сохранены в банк:');
   expect(document.body.textContent).toContain('срок истёк');
-  expect(document.body.textContent).toContain('сессионные куки');
+  expect(document.body.textContent).toContain('Не задан сайтом — точной даты нет');
+  expect(document.body.textContent).toContain('сессионных: 1 · постоянных: 1');
+  expect(document.body.textContent).toContain('Подробные сроки недоступны');
   expect(document.body.textContent).toContain('Игрок c → не удалось прочитать банк');
   expect(document.body.textContent).toContain('Игрок d → нет сохранённых куки');
-  expect(document.body.textContent).not.toContain('DO_NOT_DISPLAY');
+  expect(document.body.innerHTML).not.toContain('DO_NOT_DISPLAY');
   document.getElementById('cookie-bank-refresh').click();
   expect(readStatus).toHaveBeenCalledTimes(2);
+});
+it('does not show raw native errors and allows an explicit retry', async () => {
+  document.body.innerHTML = '<button id="cookie-bank-refresh"></button><div id="cookie-bank-expiry"></div>';
+  const readStatus = vi.fn().mockRejectedValue(new Error('PRIVATE_ERROR'));
+  initCookieBankInfo({ characters: () => [], readStatus });
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Windows'));
+  expect(document.body.textContent).not.toContain('PRIVATE_ERROR');
+  expect(document.querySelector('button').disabled).toBe(false);
 });

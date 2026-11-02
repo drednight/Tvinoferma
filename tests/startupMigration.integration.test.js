@@ -312,6 +312,21 @@ describe('реальный порядок старта с имитацией nat
     expect(JSON.stringify(alertMock.mock.calls)).not.toContain('PRIVATE-NEW');
     const { state } = await import('../js/core/state.js');
     expect(state.characters[0].contacts.email).toBe(contacts.email);
+    const compare = document.querySelector('[data-vault-review]');
+    expect(compare).not.toBeNull();
+    compare.click();
+    expect(document.querySelector('.tf-dialog').innerHTML).not.toContain('PRIVATE-NEW');
+    expect(document.querySelector('.tf-dialog').innerHTML).not.toContain('PRIVATE-OLD');
+    const consent = document.querySelectorAll('.tf-dialog-body input[type="checkbox"]')[1];
+    consent.click();
+    document.querySelector('.tf-dialog-foot button:last-child').click();
+    await vi.dynamicImportSettled();
+    expect(calls('save_state_if_unchanged')).toHaveLength(1);
+    expect(JSON.parse(disk.file).characters[0].contacts).toBeNull();
+    expect(disk.backups).toContain(initialRaw);
+    expect(credentials.get('Hero')).toContain('PRIVATE-OLD');
+    expect(calls('secrets_set_many')).toHaveLength(0);
+    expect(document.body.textContent).toContain('Выбор записан');
   });
 
   it('при повреждённой записи vault останавливает миграцию до переноса профилей', async () => {

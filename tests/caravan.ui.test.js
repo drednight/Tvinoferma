@@ -385,3 +385,18 @@ it('does not open any inventory without a site account binding, even when chests
   expect(mocks.confirm).not.toHaveBeenCalled();
   expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Сайт не сообщил аккаунт'), 'warning');
 });
+
+it('initial plan is a chest-count table, unknown before the website check and observed after returning to the list', async () => {
+  mocks.invoke.mockImplementation(async (cmd, args) =>
+    reply(args.charId, { status: 'dry_run', dryRun: true, clicked: false, opened: 0, found: 7 })
+  );
+  openCaravanDialog({ ids: ['a'] });
+  expect($('.caravan-plan-table thead').textContent).toBe('ПерсонажСундуки караванщика');
+  expect($('.caravan-plan-table tbody').textContent).toContain('Аа');
+  expect($('.caravan-plan-table tbody').textContent).toContain('Не проверено');
+  expect($('.caravan-plan-table tbody').textContent).not.toContain('0 шт.');
+  $('[data-act="dry"]').click();
+  await vi.waitFor(() => expect($('[data-act="back"]')).not.toBeNull());
+  $('[data-act="back"]').click();
+  expect($('.caravan-plan-table tbody').textContent).toContain('7 шт.');
+});

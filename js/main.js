@@ -13,7 +13,8 @@ import {
   abortGuardedMigration
 } from './core/storage.js';
 import { migrateState, SCHEMA_VERSION } from './core/migrations.js';
-import { blockUnsafeVaultRead, hydrateSecrets } from './core/secrets.js';
+import { blockUnsafeVaultRead, hydrateSecrets, vaultConflictReview } from './core/secrets.js';
+import { attachVaultConflictRecovery } from './settings/vaultConflictRecovery.js';
 import { hasSafeVaultCharacterMapping } from './core/vaultIdentity.js';
 import { initHotkeys, initDesktop } from './desktop/desktop.js';
 import { initNotifications } from './desktop/notifications.js';
@@ -150,11 +151,13 @@ export async function boot() {
           ? 'Открытые контакты и данные хранилища ОС различаются. Сохранение остановлено: файл данных и защищённая запись контактов на этом ПК содержат разные значения. Это не ошибка входа в Google или Яндекс. Перезапуск сам по себе конфликт не решает; не удаляйте хранилище ОС и резервные копии.'
           : 'Учётные данные не удалось безопасно прочитать. Изменения не сохраняются; проверьте хранилище ОС и копии перед перезапуском. Копии state.json могут не содержать контакты.'
       );
-      alert(
-        conflict
-          ? 'Открытые контакты в файле и данные хранилища ОС различаются. Запись остановлена, ни одна версия не заменена. Перезапуск сам по себе не выбирает правильную версию. Не удаляйте записи Windows: резервный state.json может не содержать защищённые контакты. Требуется отдельный явный выбор источника после проверки обеих версий; автоматической перезаписи нет.'
-          : 'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии перед перезапуском. Копия state.json может не содержать контакты.'
-      );
+      if (conflict && isTauri()) {
+        attachVaultConflictRecovery({ raw, aliases: idAliases, review: vaultConflictReview() });
+      } else {
+        alert(
+          'Не удалось безопасно прочитать хранилище учётных данных. Запись и перенос контактов остановлены. Проверьте доступ к хранилищу ОС, исходные данные и резервные копии перед перезапуском. Копия state.json может не содержать контакты.'
+        );
+      }
     };
     if (raw) {
       // 1a. Миграции схемы: перед изменением формата делаем резервную копию исходного файла
