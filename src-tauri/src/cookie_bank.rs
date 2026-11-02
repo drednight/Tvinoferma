@@ -363,7 +363,9 @@ pub async fn bank_status(app: AppHandle) -> Result<Vec<serde_json::Value>, Strin
                     }));
                 }
                 Ok(None) => {}
-                Err(_) => out.push(serde_json::json!({ "charId": id, "error": "bank_unavailable" })),
+                Err(_) => {
+                    out.push(serde_json::json!({ "charId": id, "error": "bank_unavailable" }))
+                }
             }
         }
         Ok(out)
