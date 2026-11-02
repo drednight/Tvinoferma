@@ -247,16 +247,26 @@ export function openShopDialog({ ids = [] } = {}) {
     }, 120);
   };
 
-  async function scanAll() {
+  async function scanAll(scope = null) {
+    if (scope && !scope.size) {
+      toast('Отметьте персонажей в таблице для обновления', 'info');
+      return;
+    }
     if (scanSignal) scanSignal.cancelled = true;
     const signal = (scanSignal = { cancelled: false });
     const groups = groupAccounts(state.characters, charSiteMap());
     const targets = groups
-      .map(g => ({ g, rep: pickRepresentative(g.members, preset) }))
+      .filter(g => !scope || anyMember(g, scope))
+      .map(g => ({
+        g,
+        rep: pickRepresentative(scope ? g.members.filter(member => scope.has(member.id)) : g.members, preset)
+      }))
       .filter(t => t.rep)
       .sort((a, b) => Number(anyMember(b.g, accSel)) - Number(anyMember(a.g, accSel)));
-    scanInfo.clear();
-    lastScan = null;
+    if (!scope) {
+      scanInfo.clear();
+      lastScan = null;
+    }
     targets.forEach(t => t.g.members.forEach(m => scanInfo.set(m.id, { status: 'pending' })));
     scanning = targets.length > 0;
     scanDone = 0;
@@ -280,6 +290,9 @@ export function openShopDialog({ ids = [] } = {}) {
         });
         const scan = normalizeScan(res);
         if (scan && !signal.cancelled) {
+          t.g.members.forEach(member =>
+            applyCoinBalance(member, scan.balance, { note: 'Баланс аккаунта из магазина подарков', now: scan.at })
+          );
           const { siteKey } = saveScan([t.rep.id, ...t.g.members.map(m => m.id).filter(id => id !== t.rep.id)], scan);
           if (accountNeedsHistory(siteKey)) {
             // Лимит тронут, а когда была последняя покупка — неизвестно: срок обновления берётся из «Истории монет»
@@ -325,6 +338,9 @@ export function openShopDialog({ ids = [] } = {}) {
     );
     if (signal.cancelled || !alive()) return;
     scanning = false;
+    await persist();
+    const { rerenderLists } = await import('../sync/syncManager.js');
+    rerenderLists?.();
     // Предметы, которых больше нет на сайте, из выбора убираются
     picked.forEach(key => {
       const it = siteItem(key);
@@ -404,7 +420,14 @@ export function openShopDialog({ ids = [] } = {}) {
     }
     return `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}${ok ? '' : ' shop-dim'}" data-g="${idx}">
       <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
-      <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${g.others.length ? `<div class="shop-muted">также: ${escapeHtml(g.others.join(', '))}</div>` : ''}
+      <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${
+        g.others.length
+          ? `<div class="shop-muted">также: ${g.members
+              .filter(member => member !== (g.rep || g.members[0]))
+              .map(member => `${classIconHtml(member)}${escapeHtml(member.nick)}`)
+              .join(', ')}</div>`
+          : ''
+      }
         ${parties ? `<div class="shop-muted">${escapeHtml(parties)}</div>` : ''}</td>
       <td class="shop-num">${bal}</td>${cells}</tr>`;
   }
@@ -450,6 +473,7 @@ export function openShopDialog({ ids = [] } = {}) {
           'Отмеченные предметы покупаются за Древние монеты на аккаунте сайта: каждый покупается отдельной покупкой, штука за штукой. ' +
           'Баланс и лимиты читаются с сайта прямо сейчас — старые данные показываются, только пока новая проверка идёт.'
       })}
+      <div class="tr-top"><button type="button" class="btn secondary small" data-q="refresh-all" title="Цены, балансы и доступные лимиты всех аккаунтов">🔄 Обновить цены и балансы</button></div>
       <div class="shop-scan" id="shop-scan"></div>
       ${sectionHtml('Предметы магазина', { hint: 'цены, наличие и лимиты — с сайта', body: `<div class="shop-cards" id="shop-items"></div>` })}
       ${sectionHtml('Аккаунты и количество', {
@@ -461,7 +485,7 @@ export function openShopDialog({ ids = [] } = {}) {
           <input class="input" id="shop-search" aria-label="Поиск аккаунта" placeholder="Поиск: ник, пати, тег, аккаунт" value="${escapeHtml(search)}">
           <button class="btn ghost small" data-q="all">☑ Выбрать всех</button>
           <button class="btn ghost small" data-q="none">Снять выбор</button>
-          <button class="btn ghost small" data-q="refresh" title="Заново прочитать магазин и баланс каждого аккаунта">🔄 Обновить цены и баланс</button>
+          <button class="btn ghost small" data-q="refresh" title="Заново прочитать цены, баланс и лимиты только отмеченных аккаунтов">🔄 Обновить цены и баланс</button>
         </div>
         <div class="shop-scroll" id="shop-table"></div>
         <div class="shop-summary" id="shop-summary"></div>`
@@ -857,7 +881,18 @@ export function openShopDialog({ ids = [] } = {}) {
             ]
               .filter(Boolean)
               .join(' — ');
-            return `<tr class="${stripeCls(a.char)}"><td>${i === 0 ? `${classIconHtml(a.char)}<b>${escapeHtml(a.char.nick)}</b>${others.length ? `<div class="shop-muted">также: ${escapeHtml(others.join(', '))}</div>` : ''}` : ''}</td>
+            return `<tr class="${stripeCls(a.char)}"><td>${
+              i === 0
+                ? `${classIconHtml(a.char)}<b>${escapeHtml(a.char.nick)}</b>${
+                    others.length
+                      ? `<div class="shop-muted">также: ${a.members
+                          .filter(member => member.id !== a.char.id)
+                          .map(member => `${classIconHtml(member)}${escapeHtml(member.nick)}`)
+                          .join(', ')}</div>`
+                      : ''
+                  }`
+                : ''
+            }</td>
           <td>${escapeHtml(r.item)}</td>
           <td class="shop-res-${info.level}" title="${escapeHtml(detail)}">${info.icon} ${escapeHtml(resultLabel(r))}${detail && r.status !== 'dry_run' ? `<div class="shop-muted">${escapeHtml(detail)}</div>` : ''}</td>
           <td>${r.spent ? `${fmt(r.spent)} мон.` : '—'}</td><td>${i === 0 ? balCell : ''}</td></tr>`;
@@ -987,8 +1022,12 @@ export function openShopDialog({ ids = [] } = {}) {
     if (!b || phase !== 'pick') return;
     if (b.dataset.q === 'none') accSel.clear();
     if (b.dataset.q === 'all') view.filter(g => g.state === 'ready').forEach(g => setSel(g, true));
-    if (b.dataset.q === 'refresh') {
+    if (b.dataset.q === 'refresh-all') {
       if (!scanning) scanAll();
+      return;
+    }
+    if (b.dataset.q === 'refresh') {
+      if (!scanning) scanAll(new Set(accSel));
       return;
     }
     q('#shop-table').innerHTML = tableHtml();

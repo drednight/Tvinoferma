@@ -3,7 +3,7 @@ import { promoDeadlineLabel } from '../js/modules/automation/promoDeadlineLabel.
 it('extracts only the formatted date/time, never the sentence or promo PIN', () => {
   expect(
     promoDeadlineLabel({ expiresText: 'промокод PWMIZAR2026HB, который можно активировать до 23:59 мск 4 октября.' })
-  ).toBe('23:59 мск 04.10 (год в новости не указан)');
+  ).toBe('23:59 мск 04.10');
   expect(promoDeadlineLabel({ expiresText: 'Промокод до 4 октября 2026 года в 23:59 МСК' })).toBe(
     '23:59 мск 04.10.2026'
   );
@@ -14,11 +14,20 @@ it('extracts only the formatted date/time, never the sentence or promo PIN', () 
   expect(promoDeadlineLabel({ expiresText: 'Промокод до 04.10.2026' })).toBe('04.10.2026');
 });
 it('does not invent dates/years/timezones or display arbitrary source text', () => {
-  expect(promoDeadlineLabel({ expiresText: 'Промокод до 23:59 4 октября' })).toBe(
-    '23:59 04.10 (год в новости не указан)'
-  );
+  expect(promoDeadlineLabel({ expiresText: 'Промокод до 23:59 4 октября' })).toBe('23:59 04.10');
   for (const text of ['Просто новость', '<img onerror=x>', 'Несколько кодов и условий — проверьте новость'])
     expect(promoDeadlineLabel({ expiresText: text })).toBe('не указан — проверьте новость');
   expect(promoDeadlineLabel({ expiresText: 'Промокод до 31.02.2026' })).toContain('не распознан');
   expect(promoDeadlineLabel({ expiresText: 'Промокод до 24:80 мск 04.10.2026' })).toContain('не распознан');
+});
+
+it('counts inclusive Moscow days and expires only at a confirmed deadline', async () => {
+  const { promoDeadlineState } = await import('../js/modules/automation/promoDeadlineLabel.js');
+  const now = Date.parse('2026-11-02T21:30:00Z'); // 3 November Moscow
+  expect(promoDeadlineState({ expiresOn: '2026-11-05' }, now).days).toBe(3);
+  expect(promoDeadlineState({ expiresOn: '2026-11-03' }, now).days).toBe(1);
+  expect(promoDeadlineState({ expiresOn: '2026-11-02' }, now).expired).toBe(true);
+  expect(promoDeadlineState({ expiresText: 'до 01:00 мск 3 ноября 2026' }, now).expired).toBe(false);
+  expect(promoDeadlineState({ expiresText: 'до 00:20 мск 3 ноября 2026' }, now).text).toBe('Срок промокода истёк');
+  expect(promoDeadlineState({ expiresText: 'до 4 октября' }, now)).toMatchObject({ expired: false, days: null });
 });

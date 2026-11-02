@@ -1,3 +1,5 @@
+import { classIconHtml } from './characterPicker.js';
+import { state } from '../../core/state.js';
 // Таблица подробностей результата и статистика из сохранённых отчётов журнала задач.
 import { escapeHtml } from '../../core/utils.js';
 import { mskStamp } from '../../core/msk.js';
@@ -15,7 +17,7 @@ export function groupScriptReports(reports, query = '') {
       const key = row.charId ? `id:${row.charId}` : `name:${row.nick}`;
       const haystack = [row.nick, row.context, row.action, report.title].join(' ').toLocaleLowerCase('ru');
       if (needle && !haystack.includes(needle)) continue;
-      if (!groups.has(key)) groups.set(key, { key, nick: row.nick, entries: [] });
+      if (!groups.has(key)) groups.set(key, { key, charId: row.charId, nick: row.nick, entries: [] });
       groups
         .get(key)
         .entries.push({ ...row, script: report.title || 'Скрипт', dryRun: !!report.dryRun, at: report.at });
@@ -33,7 +35,7 @@ export function scriptStatisticsHtml(reports, query = '') {
   return groups
     .map(
       group => `<section class="sr-group">
-        <div class="sr-group-head"><h4>${escapeHtml(group.nick)}</h4><span class="muted">Записей: ${group.entries.length}</span></div>
+        <div class="sr-group-head"><h4>${classIconHtml(state.characters.find(c => c.id === group.charId) || {})} ${escapeHtml(group.nick)}</h4><span class="muted">Записей: ${group.entries.length}</span></div>
         <div class="sr-table-wrap"><table class="sr-table">
           <thead><tr><th>Скрипт и дата</th><th>Действие</th><th>Результат</th><th>Подробности</th></tr></thead>
           <tbody>${group.entries

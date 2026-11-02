@@ -1,3 +1,4 @@
+import { promoDeadlineState, promoExpiryKey } from './promoDeadlineLabel.js';
 import { createPublicNewsReader } from './publicNewsReader.js';
 import { newsArticles, articleCodes } from './promoNewsParser.js';
 export const DISCOVERY_KEY = 'tf_promo_discovery_v1';
@@ -49,14 +50,39 @@ export function createPromoDiscovery({
     cache.metadataVersion = 3;
   }
   if (cache.status === 'checking') cache.status = 'partial';
+  cache.restoredExpired = Array.isArray(cache.restoredExpired)
+    ? cache.restoredExpired.filter(key => typeof key === 'string' && key.length <= 400).slice(-200)
+    : [];
+  const hideExpired = () => {
+    let changed = false;
+    for (const row of cache.codes) {
+      if (
+        promoDeadlineState(row, now()).expired &&
+        !cache.restoredExpired.includes(promoExpiryKey(row)) &&
+        !cache.hiddenCodes.includes(row.code)
+      ) {
+        cache.hiddenCodes.push(row.code);
+        changed = true;
+      }
+    }
+    return changed;
+  };
   const publish = () => {
+    hideExpired();
     if (disposed) return;
     try {
       storage.setItem(DISCOVERY_KEY, JSON.stringify(cache));
     } catch {}
     onChange(snapshot());
   };
-  const snapshot = () => structuredClone(cache);
+  const snapshot = () => {
+    if (hideExpired()) {
+      try {
+        storage.setItem(DISCOVERY_KEY, JSON.stringify(cache));
+      } catch {}
+    }
+    return structuredClone(cache);
+  };
   async function scan(force) {
     if (disposed) return empty();
     const started = now();
@@ -148,13 +174,32 @@ export function createPromoDiscovery({
     publish();
     return snapshot();
   }
+  let deadlineDay = day(now());
+  const deadlineTimer = setInterval(() => {
+    if (disposed) return;
+    const currentDay = day(now());
+    if (hideExpired() || currentDay !== deadlineDay) {
+      deadlineDay = currentDay;
+      publish();
+    }
+  }, 30000);
+  deadlineTimer.unref?.();
   return {
     dispose() {
+      clearInterval(deadlineTimer);
       disposed = true;
       cache = empty();
     },
     snapshot,
     restoreHidden() {
+      cache.restoredExpired = [
+        ...new Set([
+          ...cache.restoredExpired,
+          ...cache.codes
+            .filter(row => cache.hiddenCodes.includes(row.code) && promoDeadlineState(row, now()).expired)
+            .map(promoExpiryKey)
+        ])
+      ].slice(-200);
       cache.hiddenCodes = [];
       publish();
     },
@@ -162,7 +207,15 @@ export function createPromoDiscovery({
       if (!/^[A-Z0-9_-]{4,40}$/.test(code)) return;
       cache.hiddenCodes = Array.isArray(cache.hiddenCodes) ? cache.hiddenCodes : [];
       cache.hiddenCodes = cache.hiddenCodes.filter(value => value !== code);
-      if (hidden) cache.hiddenCodes.push(code);
+      if (hidden) {
+        cache.hiddenCodes.push(code);
+        cache.restoredExpired = cache.restoredExpired.filter(key => !key.startsWith(`${code}|`));
+      }
+      if (!hidden) {
+        const row = cache.codes.find(row => row.code === code);
+        if (row && promoDeadlineState(row, now()).expired)
+          cache.restoredExpired = [...new Set([...cache.restoredExpired, promoExpiryKey(row)])].slice(-200);
+      }
       cache.hiddenCodes = cache.hiddenCodes.slice(-5000);
       publish();
     },

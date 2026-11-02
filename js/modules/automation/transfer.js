@@ -230,9 +230,16 @@ export function openTransferDialog({ ids = [] } = {}) {
           'Сервер в строке обязателен: без него браузер пропускается. Сундуки не открываются — награду выбирают на сайте. ' +
           'Передача необратима, поэтому перед запуском стоит прочитать блок «Что будет передано».'
       })}
+        <div class="tr-top"><label>Сервер для всех <select class="input" data-bulk-server aria-label="Сервер для всех"><option value="">— выберите сервер —</option>${servers()
+          .filter(sv => sv.id)
+          .map(sv => `<option value="${escapeHtml(sv.id)}">${escapeHtml(sv.name)}</option>`)
+          .join(
+            ''
+          )}</select></label><button type="button" class="btn secondary small" data-act="bulk-server">Применить всем</button></div>
       <details class="tr-servers" id="tr-servers">
         <summary title="Серверы нужны не для перевода, а чтобы в списках рядом с ними были зелёные/красные точки. Открывать здесь нечего — обновление страницы серверов есть ниже.">🖥 Статус серверов</summary>
-        <div class="tr-top">
+
+      <div class="tr-top">
           <div class="server-status" id="tr-server-status">${serverStatusHtml(getServerStatus())}</div>
           <button class="btn secondary small" data-act="refresh-servers" title="Прочитать заново страницу «Статус серверов» (аккаунты не нужны)">🔄 Обновить сервера</button>
         </div>
@@ -307,7 +314,7 @@ export function openTransferDialog({ ids = [] } = {}) {
 
   const skipLine = p => {
     const info = statusInfo(p.status);
-    return `<div class="tr-line">${info.icon} <b>${escapeHtml(p.char.nick)}</b> — ${escapeHtml(info.label)}${p.detail ? ` (${escapeHtml(p.detail)})` : ''}</div>${limitedHtml(p.skipped)}`;
+    return `<div class="tr-line">${info.icon} <b>${classIconHtml(p.char)} ${escapeHtml(p.char.nick)}</b> — ${escapeHtml(info.label)}${p.detail ? ` (${escapeHtml(p.detail)})` : ''}</div>${limitedHtml(p.skipped)}`;
   };
 
   function summaryHtml(plans) {
@@ -318,7 +325,7 @@ export function openTransferDialog({ ids = [] } = {}) {
     return `${invalidItemChoices.size ? '<p class="promo-warn">Исправьте количество в «Что будет передано»: передача заблокирована.</p>' : ''}${force ? '<div class="promo-alert">⚠ Обход ограничений включён: приложение не пропускает акции, которые сайт ранее принимал только на другой сервер. Сайт может отклонить такие предметы предупреждением.</div>' : ''}
       <div class="sd-summary">
         <div class="sd-summary-line">Будет передано с аккаунтов: <b>${run}</b> из <b>${plans.length}</b>${skipped ? `. Пропущено: <b>${skipped}</b> — причины в блоке «Что будет передано».` : '.'}</div>
-        <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Передаются только выбранные пакеты. Для выбора и свежей проверки откройте «Что будет передано».</div>
+        <div class="promo-muted tr-notes">Передача необратима. Среднее время передачи в игру — около 30 минут. Передаются только выбранные наборы. Для выбора и свежей проверки откройте «Что будет передано».</div>
       </div>`;
   }
 
@@ -379,7 +386,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         if (!preview.el.isConnected || !alive()) return;
         preview.foot.querySelector('[data-preview-stop]').hidden = true;
         preview.sub.textContent =
-          'Укажите количество пакетов (0 — оставить на сайте). Сначала выбираются пакеты с ближайшим известным сроком, затем с неизвестным. Категории объединены; пакет передаётся целиком. Перед отправкой сайт проверяется заново.';
+          'Укажите количество предметов (0 — оставить на сайте), кратное размеру набора. Сначала выбираются наборы с ближайшим известным сроком, затем с неизвестным. Категории объединены; набор неделим. Перед отправкой сайт проверяется заново.';
         for (const key of invalidItemChoices) {
           if (freshIds.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
         }
@@ -387,7 +394,7 @@ export function openTransferDialog({ ids = [] } = {}) {
         const plans = currentPlans();
         const groupsByChar = new Map();
         preview.body.innerHTML =
-          '<div class="tr-preview-tools"><input class="input" type="search" data-item-search placeholder="Найти предмет" aria-label="Найти предмет"><button type="button" class="btn ghost small" data-items-clear>Снять всё</button><span data-transfer-total role="status"></span></div><small class="promo-muted">Поиск только скрывает строки — выбор пакетов не меняется. «Снять всё» оставит все предметы на сайте.</small>' +
+          '<div class="tr-preview-tools"><input class="input" type="search" data-item-search placeholder="Найти предмет" aria-label="Найти предмет"><button type="button" class="btn ghost small" data-items-clear>Снять всё</button><button type="button" class="btn ghost small" data-items-all>Поставить всё</button><span data-transfer-total role="status"></span></div><small class="promo-muted">Поиск только скрывает строки — выбор предметов не меняется. «Снять всё» оставит все предметы на сайте.</small>' +
             notesHtml() +
             plans
               .filter(
@@ -403,8 +410,8 @@ export function openTransferDialog({ ids = [] } = {}) {
                 const choices = itemChoices.get(p.char.id);
                 const groups = groupTransferItems(items);
                 groupsByChar.set(p.char.id, groups);
-                return `<section><h4>${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}
-                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Передать пакетов</th></tr></thead><tbody>${groups
+                return `<section><h4>${classIconHtml(p.char)} ${escapeHtml(p.char.nick)}</h4>${p.run ? `<p>→ ${escapeHtml(p.serverName)} → ${escapeHtml(charLine(p.recipient))}${p.auto ? ' (единственный на сервере)' : ''}</p>` : skipLine(p)}
+                  <div class="promo-scroll"><table class="promo-table tr-item-groups"><thead><tr><th>Предмет</th><th>Доступно</th><th>Поменять предметов</th></tr></thead><tbody>${groups
                     .map((group, index) => {
                       const count = group.items.filter(item => !choices || choices.has(item.id)).length;
                       const batches = new Map();
@@ -415,7 +422,14 @@ export function openTransferDialog({ ids = [] } = {}) {
                         batches.set(key, batch);
                       }
                       const first = group.items.find(item => Number.isFinite(transferExpiry(item.until)));
-                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>Пакет ×${group.qty}</small><details class="tr-packet-details"><summary>${first ? `Ближайший срок: ${escapeHtml(first.until)}` : 'Срок не указан / не распознан'}</summary><ul>${[...batches.values()].map(batch => `<li>${batch.count} пак. · ${escapeHtml(batch.source || 'Без категории')} · ${escapeHtml(batch.until || 'Без срока')}</li>`).join('')}</ul></details></td><td>${group.items.length} пак.<small>всего ×${group.items.length * group.qty}</small></td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать пакетов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все пакеты этого предмета">Все</button></div><small data-selected-quantity>Предметов: ×${count * group.qty}</small></td></tr>`;
+                      const expiry = first
+                        ? `Ближайший срок: ${escapeHtml(first.until)}`
+                        : 'Срок не указан / не распознан';
+                      const details =
+                        new Set(group.items.map(item => item.until || '')).size > 1
+                          ? `<details class="tr-packet-details"><summary>${expiry}</summary><ul>${[...batches.values()].map(batch => `<li>${batch.count * group.qty} шт. · ${escapeHtml(batch.source || 'Без категории')} · ${escapeHtml(batch.until || 'Без срока')}</li>`).join('')}</ul></details>`
+                          : `<small>${expiry}</small>`;
+                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>В наборе ×${group.qty} штук</small>${details}</td><td>${group.items.length * group.qty} шт.</td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length * group.qty}" step="${group.qty}" value="${count * group.qty}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Поменять предметов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все предметы этой позиции">Все</button></div><small data-selected-quantity>Выбрано: ${count * group.qty} шт.</small><small>Кратно ${group.qty}; набор неделим</small></td></tr>`;
                     })
                     .join('')}</tbody></table></div></section>`;
               })
@@ -431,7 +445,7 @@ export function openTransferDialog({ ids = [] } = {}) {
             units += n * group.qty;
           }
           preview.body.querySelector('[data-transfer-total]').textContent =
-            `Выбрано: ${packets} пак. · ${units} предметов`;
+            `Выбрано: ${units} шт. (${packets} наборов)`;
         };
         updateTotal();
         preview.body.onclick = event => {
@@ -443,10 +457,17 @@ export function openTransferDialog({ ids = [] } = {}) {
             preview.body.querySelectorAll('[data-item-group]').forEach(input => {
               input.value = '0';
               input.setCustomValidity('');
-              input.closest('td').querySelector('[data-selected-quantity]').textContent = 'Предметов: ×0';
+              input.closest('td').querySelector('[data-selected-quantity]').textContent = 'Выбрано: 0 шт.';
             });
             updateTotal();
             updateAll();
+            return;
+          }
+          if (event.target.closest('[data-items-all]')) {
+            preview.body.querySelectorAll('[data-item-group]').forEach(input => {
+              input.value = input.max;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
             return;
           }
           const max = event.target.closest('[data-group-max]');
@@ -469,9 +490,11 @@ export function openTransferDialog({ ids = [] } = {}) {
           const group = groupsByChar.get(id)?.[Number(input.dataset.itemGroup)];
           if (!group) return;
           const choices = itemChoices.get(id) || new Set(rosters[id].pending.items.map(i => i.id));
-          const count = input.value.trim() ? Number(input.value) : NaN;
+          const count = input.value.trim() ? Number(input.value) / group.qty : NaN;
           const next = chooseTransferPackets(group, count, choices);
-          input.setCustomValidity(next ? '' : `Укажите целое число от 0 до ${group.items.length}`);
+          input.setCustomValidity(
+            next ? '' : `Укажите количество от 0 до ${group.items.length * group.qty}, кратное ${group.qty}`
+          );
           const key = JSON.stringify([id, input.dataset.itemGroup]);
           if (!next) {
             invalidItemChoices.add(key);
@@ -483,7 +506,7 @@ export function openTransferDialog({ ids = [] } = {}) {
           itemChoices.set(id, next);
           updateTotal();
           input.closest('td').querySelector('[data-selected-quantity]').textContent =
-            `Предметов: ×${count * group.qty}`;
+            `Выбрано: ${count * group.qty} шт.`;
           updateAll();
         };
       })().catch(() => {
@@ -599,9 +622,6 @@ export function openTransferDialog({ ids = [] } = {}) {
         r =>
           `${r.nick}: ${r.status === 'not_logged_in' ? 'нет входа на сайт' : r.status === 'challenge' ? 'сайт показал проверку безопасности' : errorText(r.error)}`
       );
-    const empty = rows.filter(r => r.status === 'ok' && r.roster?.empty);
-    if (empty.length)
-      scanNotes.push(`${empty.map(r => r.nick).join(', ')}: подарков нет — передавать нечего, перенос пропущен`);
     const ok = rows.filter(r => r.status === 'ok').length;
     task.finish(
       `${signal.cancelled ? 'Остановлено. ' : ''}Прочитано ${ok} из ${rows.length}`,
@@ -610,9 +630,11 @@ export function openTransferDialog({ ids = [] } = {}) {
     rows
       .filter(r => r.status !== 'ok' && r.status !== 'cancelled')
       .forEach(r => task.log(`${r.nick}: ${r.status}${r.error ? ` — ${errorText(r.error)}` : ''}`, 'error'));
-    empty.forEach(r =>
-      task.log(`${r.nick}: подарков нет, серверы и персонажи оставлены как есть — передавать нечего`, 'info')
-    );
+    rows
+      .filter(r => r.status === 'ok' && r.roster?.empty)
+      .forEach(r =>
+        task.log(`${r.nick}: подарков нет, серверы и персонажи оставлены как есть — передавать нечего`, 'info')
+      );
     rosters = loadRosters();
     if (alive()) renderForm();
     return rows;
@@ -810,16 +832,19 @@ export function openTransferDialog({ ids = [] } = {}) {
       sent
         .map(r =>
           (r.done?.length || r.missing?.length) && !isOk(r.status)
-            ? `<details class="promo-reward" open><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: передано ${r.done.length} из ${r.items.length}</summary>
+            ? `<details class="promo-reward" open><summary>📦 ${classIconHtml(state.characters.find(c => c.id === r.charId) || {})} ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: передано ${r.done.length} из ${r.items.length}</summary>
             ${r.done.length ? `<div class="promo-muted">✅ Передано (есть в истории сайта):</div>${list(r.done)}` : ''}
             ${r.missing.length ? `<div class="promo-warn">⚠ Не передано${r.warning?.onlyServer ? ` — сайт принимает их только на сервер «${escapeHtml(r.warning.onlyServer)}»` : ''}:</div>${list(r.missing)}` : ''}
             ${limitedHtml(r.limited)}</details>`
-            : `<details class="promo-reward"><summary>📦 ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: ${r.count} предм.</summary>${list(r.items)}${limitedHtml(r.limited)}</details>`
+            : `<details class="promo-reward"><summary>📦 ${classIconHtml(state.characters.find(c => c.id === r.charId) || {})} ${escapeHtml(r.nick)} → ${escapeHtml(r.recipient)}: ${r.count} предм.</summary>${list(r.items)}${limitedHtml(r.limited)}</details>`
         )
         .join('') +
       lastRows
         .filter(r => !sent.includes(r) && r.limited?.length)
-        .map(r => `<div class="tr-plan-item"><b>${escapeHtml(r.nick)}</b>${limitedHtml(r.limited)}</div>`)
+        .map(
+          r =>
+            `<div class="tr-plan-item"><b>${classIconHtml(state.characters.find(c => c.id === r.charId) || {})} ${escapeHtml(r.nick)}</b>${limitedHtml(r.limited)}</div>`
+        )
         .join('');
     dlg.body.innerHTML = `${resultChips(s, lastDry)}
       ${sectionHtml('Результат по браузерам', { body: tableHtml(lastPlans, byId) })}
@@ -961,6 +986,16 @@ export function openTransferDialog({ ids = [] } = {}) {
       return;
     }
     const act = e.target.closest('[data-act]')?.dataset.act;
+    if (act === 'bulk-server' && !running) {
+      const server = dlg.body.querySelector('[data-bulk-server]').value;
+      if (!server) return;
+      for (const c of state.characters) prefs.servers[c.id] = server;
+      savePrefs(prefs);
+      state.characters.forEach(c => rerenderRow(c.id));
+      updateAll();
+      toast('Сервер задан всем. Без подтверждённого получателя передача будет пропущена.', 'info');
+      return;
+    }
     if (act === 'refresh-servers') await refreshServers();
     if (act === 'refresh-all' && !running) await scan([...state.characters].sort(byNick));
     if (act === 'forget-limits' && !running) {

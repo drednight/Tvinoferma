@@ -35,5 +35,22 @@ export function promoDeadlineLabel({ expiresText, expiresOn }) {
   if (time && (Number(time.split(':')[0]) > 23 || Number(time.split(':')[1]) > 59))
     return 'не распознан — проверьте новость';
   const zone = match?.[2] || match?.[7];
-  return `${time ? `${time}${zone ? ' мск' : ''} ` : ''}${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}${year ? `.${year}` : ' (год в новости не указан)'}`;
+  return `${time ? `${time}${zone ? ' мск' : ''} ` : ''}${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}${year ? `.${year}` : ''}`;
 }
+
+export function promoDeadlineState(row, now = Date.now()) {
+  const label = promoDeadlineLabel(row);
+  const date = /(\d{2})\.(\d{2})\.(\d{4})$/.exec(label);
+  if (!date) return { expired: false, days: null, text: 'Срок окончания не определён' };
+  const at = Date.UTC(Number(date[3]), Number(date[2]) - 1, Number(date[1]));
+  const today = new Date(now + 3 * 3600000);
+  const midnight = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  const time = /^(\d{1,2}):(\d{2}) мск /.exec(label);
+  const end = time
+    ? at + (Number(time[1]) * 60 + Number(time[2])) * 60000 - 3 * 3600000
+    : at + 86400000 - 3 * 3600000 - 1;
+  const expired = now > end;
+  const days = expired ? 0 : Math.max(1, Math.floor((at - midnight) / 86400000) + 1);
+  return { expired, days, text: expired ? 'Срок промокода истёк' : `Дней до окончания (включительно): ${days}` };
+}
+export const promoExpiryKey = row => `${row.code}|${promoDeadlineLabel(row)}`;

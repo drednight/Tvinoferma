@@ -189,3 +189,27 @@ describe('caravan.js: служебное', () => {
     expect(run(list(), { mode: 'xyz' }).error).toBe('bad_mode');
   });
 });
+
+it.each(['site-promoitems-empty-cart.html', 'site-promoitems-empty.html'])(
+  'recognizes the saved empty inventory %s, even without an account element',
+  file => {
+    const result = run(fixture(file));
+    expect(result.error).toBeNull();
+    expect(result.data).toMatchObject({ state: 'scan', chests: [], other: 0 });
+  }
+);
+it('an empty heading alone is not evidence of an empty cart', () => {
+  const result = run(
+    editDom(fixture('site-promoitems-empty-cart.html'), doc => {
+      doc.querySelector('#content_body').textContent = 'Сайт временно недоступен';
+    })
+  );
+  expect(result.error).toBe('pending');
+});
+
+it('a transfer title without a form or known empty text is not a zero inventory', () => {
+  expect(
+    run(page('<div id="content_top"><h2>Передача предметов в игру!</h2></div><div id="content_body">Недоступно</div>'))
+      .error
+  ).toBe('pending');
+});

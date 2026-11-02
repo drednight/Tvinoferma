@@ -19,7 +19,7 @@
   var mode = cfg.mode || 'scan';
 
   function squash(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
-  function textOf(el) { return squash(el.innerText || el.textContent); }
+  function textOf(el) { return el ? squash(el.innerText || el.textContent) : ''; }
   function hash(s) {
     var h = 5381;
     for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
@@ -58,7 +58,10 @@
     if (mode === 'scan') {
       // Страница прогружена, когда есть форма передачи или заголовок «Передача предметов»
       var heading = TF.q('transfer.title');
-      var loaded = !!TF.q('transfer.form') || (heading && TF.has(textOf(heading), 'transfer.titleText'));
+      var content = TF.q('transfer.content');
+      var emptyCart = !TF.q('transfer.form') && heading && content && !TF.qa('transfer.row').length &&
+        TF.has(textOf(heading), ['transfer.titleText', 'transfer.emptyTitle']) && TF.has(textOf(content), 'transfer.emptyText');
+      var loaded = emptyCart || !!TF.q('transfer.form');
       if (!loaded) { report(pending(), 'pending'); return; }
       var mine = [];
       var other = 0;

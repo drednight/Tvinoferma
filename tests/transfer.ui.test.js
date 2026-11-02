@@ -671,7 +671,9 @@ it('fresh preview omits empty characters, shows available packet quantities and 
   ['a', 'b'].forEach(id => pickRow(id, '5'));
   $('#tr-plan-btn').click();
   await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
-  expect([...document.querySelectorAll('.tr-preview-dialog h4')].map(el => el.textContent)).toEqual(['Аа']);
+  expect(
+    [...document.querySelectorAll('.tr-preview-dialog h4')].map(el => el.textContent.trim().endsWith('Аа'))
+  ).toEqual([true]);
   expect($('.tr-preview-dialog').textContent).toContain('×5');
   const unchecked = $('[data-item-group="1"]');
   unchecked.value = '0';
@@ -717,19 +719,21 @@ it('groups five identical packets into one row, rejects fractional counts and se
   $('#tr-plan-btn').click();
   await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
   const count = $('[data-item-group="0"]');
-  expect(count.max).toBe('5');
-  expect($('.tr-preview-dialog').textContent).toContain('всего ×250');
+  expect(count.max).toBe('250');
+  expect(count.step).toBe('50');
+  expect($('.tr-preview-dialog .tr-packet-details')).toBeNull();
+  expect($('.tr-preview-dialog').textContent).toContain('250 шт.');
   $('#tr-ack').click();
   count.value = '1.5';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   expect($('[data-act="start"]').disabled).toBe(true);
   expect($('#tr-summary').textContent).toContain('Исправьте количество');
-  count.value = '2';
+  count.value = '100';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   const other = $('[data-item-group="1"]');
   other.value = '0';
   other.dispatchEvent(new Event('change', { bubbles: true }));
-  expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Предметов: ×100');
+  expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Выбрано: 100 шт.');
   $('.tr-preview-dialog [data-preview-close]').click();
   expect($('[data-act="start"]').disabled).toBe(false);
   $('[data-act="start"]').click();
@@ -755,15 +759,19 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
   $('#tr-plan-btn').click();
   await vi.waitFor(() => expect(document.querySelectorAll('[data-item-group]')).toHaveLength(2));
   const count = $('[data-item-group="0"]');
-  expect(count.max).toBe('3');
+  expect(count.max).toBe('150');
   expect($('.tr-packet-details').open).toBe(false);
   count.value = '0';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   $('[data-group-max]').click();
-  expect(count.value).toBe('3');
+  expect(count.value).toBe('150');
   $('[data-items-clear]').click();
-  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 0 пак. · 0 предметов');
-  count.value = '1';
+  $('[data-items-all]').click();
+  expect(count.value).toBe('150');
+  expect($('[data-item-group="1"]').value).toBe('1');
+  $('[data-items-clear]').click();
+  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 0 шт. (0 наборов)');
+  count.value = '50';
   count.dispatchEvent(new Event('change', { bubbles: true }));
   const other = $('[data-item-group="1"]');
   other.value = '0';
@@ -772,7 +780,7 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
   search.value = 'Другое';
   search.dispatchEvent(new Event('input', { bubbles: true }));
   expect(count.closest('tr').hidden).toBe(true);
-  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 1 пак. · 50 предметов');
+  expect($('[data-transfer-total]').textContent).toBe('Выбрано: 50 шт. (1 наборов)');
   $('.tr-preview-dialog [data-preview-close]').click();
   $('#tr-ack').click();
   $('[data-act="start"]').click();
@@ -781,4 +789,19 @@ it('merges categories/deadlines, chooses earliest exact packets, supports All an
     { id: 'early', name: 'Набор', qty: 50, source: 'Акция C', until: '08:00 04.11.2026' }
   ]);
   await wait(100);
+});
+
+it('applies one server to all characters, including unselected ones, without inventing missing recipients', () => {
+  preload();
+  openTransferDialog({ ids: ['a'] });
+  const bulk = $('[data-bulk-server]');
+  expect(bulk.closest('.sp-side')).not.toBeNull();
+  expect(bulk.closest('details')).toBeNull();
+  bulk.value = '5';
+  $('[data-act="bulk-server"]').click();
+  expect(loadPrefs().servers).toMatchObject({ a: '5', b: '5', c: '5' });
+  expect($('[data-srv="a"]').value).toBe('5');
+  expect($('[data-srv="b"]').value).toBe('5');
+  expect(rowOf('c').textContent).toContain('не загружено');
+  expect([...document.querySelectorAll('#tr-list [data-id]:checked')].map(input => input.dataset.id)).toEqual(['a']);
 });
