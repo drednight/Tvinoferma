@@ -83,6 +83,12 @@ export function layoutScriptWorkspace(dlg, selection) {
         child.hidden = true;
         child.classList.add('script-original-selection');
         main.append(child);
+      } else if (child.matches('.sd-note')) {
+        const explanation = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = 'Что сделает скрипт';
+        explanation.append(summary, child);
+        side.append(explanation);
       } else if (
         child.querySelector('#promo-code,#shop-items') ||
         child.matches('.sd-note,.tr-servers,.tr-top,.tr-ack-box')
