@@ -14,7 +14,7 @@
 
 use super::promo::is_valid_char_id;
 use crate::parsers::{
-    eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common, QUIET_SCOPE,
+    eval_and_wait, navigate_scoped, read_hash_payload, tf_log, with_common, QUIET_SCOPE,
 };
 use crate::pool;
 use crate::windows::window_is_open;
@@ -222,7 +222,7 @@ async fn history_after_warning(
     timeout: u64,
     scope: &str,
 ) -> Outcome {
-    let hist = match navigate_clean(task.window(), HISTORY_URL).await {
+    let hist = match navigate_scoped(task.window(), HISTORY_URL, scope).await {
         Ok(_) => classify_result(
             eval_and_wait(
                 task.window(),
@@ -298,7 +298,7 @@ pub async fn read_transfer_page(
     let timeout = timeout_seconds.unwrap_or(25).max(5);
     let task = pool::acquire(&app, &char_id, PAGE_URL).await?;
     tf_log(&app, &scope, "info", task.describe());
-    navigate_clean(task.window(), PAGE_URL).await?;
+    navigate_scoped(task.window(), PAGE_URL, &scope).await?;
 
     let res = eval_and_wait(
         task.window(),
@@ -346,7 +346,7 @@ pub async fn read_server_status(
     };
     let timeout = timeout_seconds.unwrap_or(20).max(5);
     let task = pool::acquire_anonymous(&app, STATUS_KEY, STATUS_URL).await?;
-    navigate_clean(task.window(), STATUS_URL).await?;
+    navigate_scoped(task.window(), STATUS_URL, &scope).await?;
 
     let res = eval_and_wait(
         task.window(),
@@ -428,7 +428,7 @@ pub async fn transfer_items(
     let timeout = timeout_seconds.unwrap_or(30).max(5);
     let task = pool::acquire(&app, &char_id, PAGE_URL).await?;
     tf_log(&app, &scope, "info", task.describe());
-    navigate_clean(task.window(), PAGE_URL).await?;
+    navigate_scoped(task.window(), PAGE_URL, &scope).await?;
 
     // 1. Выбор в списках сайта (ничего не отправляется)
     let fill_cfg = json!({ "mode": "fill", "shard": shard_id, "recipient": recipient, "charName": name, "skipSources": skip });
@@ -499,10 +499,12 @@ pub async fn transfer_items(
     );
     let _ = task.window().eval(CLEAR_HASH);
     let click_cfg = json!({ "mode": "click", "shard": shard_id, "recipient": recipient, "count": filled.count });
-    if task
-        .window()
-        .eval(with_common(&xfer_script(&click_cfg)))
-        .is_err()
+    if crate::parsers::eval_scoped(
+        task.window(),
+        &with_common(&xfer_script(&click_cfg)),
+        &scope,
+    )
+    .is_err()
     {
         task.finish(Some(&char_id), true, true).await;
         return Ok(payload(

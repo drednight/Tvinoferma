@@ -1,0 +1,65 @@
+import { beforeEach, it, expect, vi } from 'vitest';
+const native = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: native }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+beforeEach(() => {
+  vi.resetModules();
+  localStorage.clear();
+  sessionStorage.clear();
+  native.mockReset().mockResolvedValue(undefined);
+  document.body.innerHTML = '<div class="topbar-right"></div>';
+});
+it('dock Stop cancels native scopes even for a task with only onCancel, never resumes at Stop', async () => {
+  const { startTask } = await import('../js/core/taskLog.js');
+  const signal = { cancelled: false };
+  const task = startTask('Script');
+  task.onCancel(() => (signal.cancelled = true));
+  task.watch('char:a', 'char:b');
+  await task.ready();
+  native.mockClear();
+  document.querySelector('[data-dock-stop]').click();
+  await task.ready();
+  expect(signal.cancelled).toBe(true);
+  expect(task.cancelled).toBe(true);
+  expect(native.mock.calls).toEqual([
+    ['cancel_scope_command', { scope: 'char:a' }],
+    ['cancel_scope_command', { scope: 'char:b' }]
+  ]);
+  task.finish('stopped', 'warn');
+});
+it('serializes old cancellation acknowledgement before a new same-character resume', async () => {
+  const { startTask } = await import('../js/core/taskLog.js');
+  const old = startTask('Old');
+  old.watch('char:a');
+  await old.ready();
+  let release;
+  native.mockImplementation(async cmd => {
+    if (cmd === 'cancel_scope_command') await new Promise(r => (release = r));
+  });
+  old.stop();
+  await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+  old.finish('stopped');
+  const next = startTask('New');
+  next.watch('char:a');
+  await Promise.resolve();
+  expect(native.mock.calls.at(-1)[0]).toBe('cancel_scope_command');
+  release();
+  await next.ready();
+  expect(native.mock.calls.at(-1)[0]).toBe('resume_scope_command');
+  next.finish();
+});
+it('does not start work that was waiting for a shared browser slot on Stop', async () => {
+  const { createLimiter, runQueue } = await import('../js/modules/sync/queue.js');
+  const limiter = createLimiter(1);
+  let release;
+  const hold = limiter.run(() => new Promise(r => (release = r)));
+  const signal = { cancelled: false };
+  const worker = vi.fn();
+  const jobs = runQueue(['a'], worker, { limiter, signal });
+  signal.cancelled = true;
+  release();
+  await hold;
+  const rows = await jobs;
+  expect(worker).not.toHaveBeenCalled();
+  expect(rows[0].cancelled).toBe(true);
+});

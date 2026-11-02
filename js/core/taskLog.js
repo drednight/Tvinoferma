@@ -38,6 +38,7 @@ export { ERROR_TEXT, errorText };
 let tasks = [];
 const subscribers = new Set();
 let listenerReady = false;
+let scopeBarrier = Promise.resolve();
 
 /** Отличить перезагрузку страницы от свежего запуска: ключ живёт только в текущей вкладке. */
 function wasPageReloaded() {
@@ -128,6 +129,7 @@ class Task {
     this._onCancel = null;
     this._onPause = null;
     this._onStop = null;
+    this._scopeReady = Promise.resolve();
     this._waiters = []; // ждут очереди: сработают, когда скрипт дойдёт до работы
     this.waiting = false; // стоит в очереди за другим скриптом
   }
@@ -275,7 +277,15 @@ class Task {
       this.finish('Остановлен в очереди', 'warn');
       return this;
     }
-    this.log('Остановлено: работа прервана на середине', 'warn');
+    // Mark first; never resume a scope here: a late resume could undo Stop.
+    const scopes = [...this.scopes];
+    scopeBarrier = this._scopeReady = Promise.all([scopeBarrier, this._scopeReady]).then(() =>
+      Promise.all(scopes.map(scope => invoke('cancel_scope_command', { scope }).catch(() => {})))
+    );
+    this.log(
+      'Останавливаю текущий скрипт. Уже отправленный запрос мог выполниться; автоматически не повторяем.',
+      'warn'
+    );
     return this;
   }
 
@@ -308,9 +318,17 @@ class Task {
   /** Привязать события Rust с этим scope (например `char:<id>` или `scan`). */
   watch(...scopes) {
     scopes.forEach(s => {
-      if (!this.scopes.includes(s)) this.scopes.push(s);
+      if (!this.scopes.includes(s)) {
+        this.scopes.push(s);
+        scopeBarrier = this._scopeReady = Promise.all([scopeBarrier, this._scopeReady]).then(() =>
+          invoke(this.cancelled ? 'cancel_scope_command' : 'resume_scope_command', { scope: s }).catch(() => {})
+        );
+      }
     });
     return this;
+  }
+  async ready() {
+    await this._scopeReady;
   }
   unwatch(...scopes) {
     this.scopes = this.scopes.filter(s => !scopes.includes(s));
@@ -451,8 +469,7 @@ export function taskSignal(task) {
   task.onStop?.(() => {
     signal.cancelled = true;
     // Scope'ы снимаем с отмены перед новым запуском: тот же персонаж должен снова проверяться
-    task.scopes.forEach(s => invoke('resume_scope_command', { scope: s }).catch(() => {}));
-    task.scopes.forEach(s => invoke('cancel_scope_command', { scope: s }).catch(() => {}));
+    // Native cancellation is owned by Task.stop(), including tasks not using taskSignal.
   });
   return signal;
 }

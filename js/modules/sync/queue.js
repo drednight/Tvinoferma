@@ -109,10 +109,11 @@ export async function runQueue(items, worker, opts = {}) {
       result = undefined;
       error = undefined;
       try {
-        result = await limiter.run(() => worker(item, attempt));
+        result = await limiter.run(() => (signal?.cancelled ? undefined : worker(item, attempt)));
       } catch (e) {
         error = e;
       }
+      if (signal?.cancelled && result === undefined && !error) return { item, attempts: attempt, cancelled: true };
       attempt++;
       if (attempt > retries || !shouldRetry(result, error, attempt - 1)) break;
       await sleep(retryDelayMs * attempt);

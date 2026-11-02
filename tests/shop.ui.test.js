@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   rerender: vi.fn()
 }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), saveNow: vi.fn(async () => {}) }));
-vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (cmd, args) =>
+    ['resume_scope_command', 'cancel_scope_command'].includes(cmd) ? Promise.resolve() : mocks.invoke(cmd, args)
+}));
 vi.mock('../js/modules/sync/syncManager.js', () => ({
   scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }),
   refreshAllBalances: mocks.refresh,

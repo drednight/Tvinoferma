@@ -1,3 +1,4 @@
+import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/caravan.js
 // 🧰 Сундук караванщика: диалог «персонажи → проверка инвентарей → итоги».
 // Что делает кнопка «Проверить инвентари» для каждого выбранного персонажа: заходит на сайт Perfect World, открывает
@@ -63,7 +64,10 @@ export function openCaravanDialog({ ids = [] } = {}) {
     title: '🧰 Сундук караванщика',
     wide: true,
     onClose: () => {
-      if (running) running.cancelled = true;
+      if (running) {
+        running.stop?.();
+        running.cancelled = true;
+      }
     }
   });
   dlg.foot.classList.add('sd-foot');
@@ -153,6 +157,15 @@ export function openCaravanDialog({ ids = [] } = {}) {
       <button class="btn secondary" data-act="dry" title="Откроет инвентарь и посчитает «Сундуки караванщика», но ничего не откроет и не нажмёт">👁 Только посчитать сундуки</button>
       <button class="btn primary" data-act="start" title="Откроет инвентарь, найдёт «Сундуки караванщика», отметит все предметы и нажмёт «Перевести»">📦 Проверить инвентари</button>`;
     updateCount();
+
+    layoutScriptWorkspace(dlg, {
+      selected: selected,
+      apply(ids) {
+        selected.clear();
+        ids.forEach(id => selected.add(id));
+        renderForm();
+      }
+    });
   }
 
   function quickSelect(kind) {
@@ -177,12 +190,14 @@ export function openCaravanDialog({ ids = [] } = {}) {
     });
     const signal = { cancelled: false };
     running = signal;
+    signal.stop = () => task.stop();
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
     await task.waitTurn();
     task.watch(...chars.map(c => `char:${c.id}`));
+    await task.ready?.();
     task.setStep(`${chars.length} перс., по ${browserSlots.max} одновременно, повторов до ${retries}`);
     renderRunning(chars, signal, dry);
 
@@ -237,13 +252,16 @@ export function openCaravanDialog({ ids = [] } = {}) {
           )
           .join('')}</tbody></table></div>`
       })}`;
-    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых персонажей; уже начатый закончится, открытые сундуки учтутся.</span>
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
+      signal.stop?.();
       signal.cancelled = true;
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = '⏳ Останавливаю…';
     };
+
+    layoutScriptWorkspace(dlg);
   }
 
   function updateRunning(row, done, total) {
@@ -303,6 +321,8 @@ export function openCaravanDialog({ ids = [] } = {}) {
           : `<button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить${s.rerun ? ` (${s.rerun})` : ''}</button>`
       }
       <button class="btn ${found ? 'ghost' : 'primary'}" data-act="close">Закрыть</button>`;
+
+    layoutScriptWorkspace(dlg);
   }
 
   /* ------------------------- события ------------------------------ */

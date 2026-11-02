@@ -22,9 +22,6 @@ pub fn cancel_scope(scope: &str) {
         return;
     }
     if let Ok(mut list) = cancelled_scopes().lock() {
-        if list.len() > 256 {
-            list.clear();
-        }
         if !list.iter().any(|s| s == scope) {
             list.push(scope.to_string());
         }
@@ -42,7 +39,63 @@ pub fn is_scope_cancelled(scope: &str) -> bool {
     cancelled_scopes()
         .lock()
         .map(|list| list.iter().any(|s| s == scope))
-        .unwrap_or(false)
+        .unwrap_or(true)
+}
+
+/// Windows owned by active parser calls. Guards prevent cancelling a later lease.
+fn active_windows() -> &'static Mutex<Vec<(u64, String, WebviewWindow)>> {
+    static WINDOWS: OnceLock<Mutex<Vec<(u64, String, WebviewWindow)>>> = OnceLock::new();
+    WINDOWS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+pub struct ScopeWindow(u64);
+impl Drop for ScopeWindow {
+    fn drop(&mut self) {
+        active_windows()
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .retain(|row| row.0 != self.0);
+    }
+}
+fn interrupt_window(window: &WebviewWindow) {
+    let _ = window.eval("window.__TF_STOPPED=true; window.stop();");
+    // Unload timers/fetch/observers in hidden automation documents; never close
+    // a user's visible login/game window or remove its saved session.
+    if !window.is_visible().unwrap_or(true) {
+        let _ = window.destroy();
+    }
+}
+pub fn register_scope_window(window: &WebviewWindow, scope: &str) -> ScopeWindow {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    active_windows()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .push((id, scope.to_string(), window.clone()));
+    if is_scope_cancelled(scope) {
+        interrupt_window(window);
+    }
+    ScopeWindow(id)
+}
+/// Serialize native dispatch with Stop; no new page script after cancellation.
+pub fn eval_scoped(window: &WebviewWindow, script: &str, scope: &str) -> Result<(), String> {
+    let list = cancelled_scopes().lock().unwrap_or_else(|p| p.into_inner());
+    if list.iter().any(|s| s == scope) {
+        return Err("cancelled".into());
+    }
+    window.eval(script).map_err(|_| "script_eval".to_string())
+}
+pub async fn navigate_scoped(
+    window: &WebviewWindow,
+    url: &str,
+    scope: &str,
+) -> Result<u64, String> {
+    if is_scope_cancelled(scope) {
+        return Err("cancelled".into());
+    }
+    let _guard = register_scope_window(window, scope);
+    navigate_with_scope(window, url, Some(scope)).await
 }
 
 /// Прервать работу по scope прямо сейчас (кнопка «стоп»). Останавливается уже
@@ -50,6 +103,16 @@ pub fn is_scope_cancelled(scope: &str) -> bool {
 #[tauri::command]
 pub async fn cancel_scope_command(scope: String) -> Result<(), String> {
     cancel_scope(&scope);
+    let windows: Vec<_> = active_windows()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .iter()
+        .filter(|row| row.1 == scope)
+        .map(|row| row.2.clone())
+        .collect();
+    for window in windows {
+        interrupt_window(&window);
+    }
     Ok(())
 }
 
@@ -112,15 +175,31 @@ fn is_ready(url_str: &str) -> bool {
 /// Теперь ждём разбора DOM (`readyState` не `loading`), но не дольше тех же 1.5 с —
 /// медленная страница не должна висеть вечно.
 pub async fn navigate_clean(window: &WebviewWindow, url: &str) -> Result<u64, String> {
+    navigate_with_scope(window, url, None).await
+}
+async fn navigate_with_scope(
+    window: &WebviewWindow,
+    url: &str,
+    scope: Option<&str>,
+) -> Result<u64, String> {
     let started = Instant::now();
-    let _ = window.eval("history.replaceState(null, '', location.pathname + location.search);");
     let target = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
-    window.navigate(target).map_err(|e| e.to_string())?;
+    {
+        let list = cancelled_scopes().lock().unwrap_or_else(|p| p.into_inner());
+        if scope.is_some_and(|s| list.iter().any(|v| v == s)) {
+            return Err("cancelled".into());
+        }
+        let _ = window.eval("history.replaceState(null, '', location.pathname + location.search);");
+        window.navigate(target).map_err(|e| e.to_string())?;
+    }
     let deadline = started + Duration::from_millis(1500);
     let probe = format!(
         "try{{history.replaceState(null,'',location.pathname+location.search+'{READY_PREFIX}'+document.readyState)}}catch(e){{}}"
     );
     loop {
+        if scope.is_some_and(is_scope_cancelled) {
+            return Err("cancelled".into());
+        }
         let _ = window.eval(&probe);
         // DOM разобран — читаем; «loading» ждём дальше, но не дольше потолка
         if window.url().map(|u| is_ready(u.as_str())).unwrap_or(false) {
@@ -188,6 +267,7 @@ pub async fn eval_and_wait(
     timeout_secs: u64,
     scope: &str,
 ) -> Option<(Option<String>, serde_json::Value)> {
+    let _guard = register_scope_window(window, scope);
     let app = window.app_handle().clone();
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let mut last_eval: Option<Instant> = None;
@@ -214,7 +294,9 @@ pub async fn eval_and_wait(
             .map(|t| t.elapsed() >= Duration::from_millis(1500))
             .unwrap_or(true);
         if need_eval {
-            let _ = window.eval(&full_script);
+            if eval_scoped(window, &full_script, scope).is_err() {
+                return None;
+            }
             last_eval = Some(Instant::now());
         }
         // Пауза между опросами url: чем она меньше, тем точнее виден реальный разбор.
@@ -222,6 +304,9 @@ pub async fn eval_and_wait(
         // круге — в замерах это выглядело как «разбор 0.4 с» при фактическом 0.05 с.
         tokio::time::sleep(Duration::from_millis(100)).await;
 
+        if is_scope_cancelled(scope) {
+            return None;
+        }
         let Ok(url) = window.url() else { continue };
         let Some((error, data)) = read_hash_payload(url.as_str(), prefix) else {
             continue;

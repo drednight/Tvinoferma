@@ -339,6 +339,7 @@ export async function runAuthChecks(
   const cancelledScopes = new Set();
   task?.onStop?.(() => chars.forEach(c => cancelledScopes.add(c.id)));
   task?.watch(...chars.map(c => `char:${c.id}`));
+  await task?.ready?.();
   task?.setStep(`${chars.length} персонажей, по ${browserSlots.max} одновременно, повторов до ${retries}`);
   chars.forEach(c => setAuthChecking(c.id, true));
   rerender();
@@ -503,6 +504,7 @@ export async function refreshAllBalances(
     }
   }
   task.watch(...list.map(c => `char:${c.id}`));
+  await task?.ready?.();
   let updated = 0,
     failed = 0,
     skipped = 0;

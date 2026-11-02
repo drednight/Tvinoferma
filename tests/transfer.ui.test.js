@@ -12,7 +12,10 @@ vi.mock('../js/core/storage.js', () => ({
   saveNow: vi.fn(async () => {}),
   createBackup: mocks.backup
 }));
-vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: (cmd, args) =>
+    ['resume_scope_command', 'cancel_scope_command'].includes(cmd) ? Promise.resolve() : mocks.invoke(cmd, args)
+}));
 vi.mock('../js/modules/sync/syncManager.js', () => ({ scriptSettings: () => ({ retries: 0, retryDelayMs: 0 }) }));
 vi.mock('../js/modules/sync/queue.js', async orig => ({ ...(await orig()), sleep: async () => {} })); // без реальных пауз
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.confirm }));

@@ -15,7 +15,7 @@
 //! - кнопка каждого сундука нажимается один раз; `clicked = true` означает «заново запускать вслепую нельзя».
 
 use super::promo::is_valid_char_id;
-use crate::parsers::{eval_and_wait, navigate_clean, read_hash_payload, tf_log, with_common};
+use crate::parsers::{eval_and_wait, navigate_scoped, read_hash_payload, tf_log, with_common};
 use crate::pool;
 use crate::windows::window_is_open;
 use serde_json::{json, Value};
@@ -209,7 +209,7 @@ pub async fn open_caravan_chests(
     let timeout = timeout_seconds.unwrap_or(25).max(5);
     let task = pool::acquire(&app, &char_id, PAGE_URL).await?;
     tf_log(&app, &scope, "info", task.describe());
-    navigate_clean(task.window(), PAGE_URL).await?;
+    navigate_scoped(task.window(), PAGE_URL, &scope).await?;
 
     // 1. Список сундуков (только чтение)
     let scan = eval_and_wait(
@@ -280,7 +280,7 @@ pub async fn open_caravan_chests(
             "step",
             format!("Открываю сундук {} (до {})", chest.cart_id, chest.until),
         );
-        navigate_clean(task.window(), &url).await?;
+        navigate_scoped(task.window(), &url, &scope).await?;
         let fill = eval_and_wait(
             task.window(),
             &caravan_script(&json!({ "mode": "fill", "cartId": chest.cart_id })),
@@ -313,10 +313,12 @@ pub async fn open_caravan_chests(
 
         let _ = task.window().eval(CLEAR_HASH);
         let click_cfg = json!({ "mode": "click", "cartId": chest.cart_id, "count": filled.count });
-        if task
-            .window()
-            .eval(with_common(&caravan_script(&click_cfg)))
-            .is_err()
+        if crate::parsers::eval_scoped(
+            task.window(),
+            &with_common(&caravan_script(&click_cfg)),
+            &scope,
+        )
+        .is_err()
         {
             states.push((
                 chest.clone(),
@@ -367,7 +369,7 @@ pub async fn open_caravan_chests(
     let had_errors = states.iter().any(|s| s.1 == "error") || stop.is_some();
     let mut remaining: Option<Vec<String>> = None;
     if clicked > 0 {
-        navigate_clean(task.window(), PAGE_URL).await?;
+        navigate_scoped(task.window(), PAGE_URL, &scope).await?;
         let rescan = eval_and_wait(
             task.window(),
             &caravan_script(&json!({ "mode": "scan" })),

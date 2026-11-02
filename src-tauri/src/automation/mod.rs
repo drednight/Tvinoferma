@@ -7,3 +7,5 @@ pub mod caravan;
 pub mod promo;
 pub mod shop;
 pub mod transfer;
+
+pub mod promo_news;

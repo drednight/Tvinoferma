@@ -74,6 +74,7 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const extra = customPages();
   const task = startTask('🔍 Поиск марафонов на сайте', { dock, total: 100 }).watch('scan');
+  await task?.ready?.();
   await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(
@@ -120,6 +121,7 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
 export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   const scanner = pickScannerCharacter();
   const task = startTask('📥 Загрузка заданий марафона', { dock }).watch('detail');
+  await task?.ready?.();
   await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Страница: ${url}`);
@@ -161,6 +163,7 @@ export const isNewsUrl = url => /news\.php\?.*article=\d+/i.test(String(url || '
  */
 export async function loadNewsPage(url, { dock = false, onTask } = {}) {
   const task = startTask('📰 Разбор новости о марафоне', { dock }).watch('news');
+  await task?.ready?.();
   await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   task.log(`Новость: ${url}`);
@@ -218,6 +221,7 @@ export async function loadNewsPage(url, { dock = false, onTask } = {}) {
  */
 export async function searchNewsList({ pages = NEWS_LIST_PAGES, dock = false, onTask } = {}) {
   const task = startTask('🔎 Поиск новости о марафоне', { dock }).watch('news');
+  await task?.ready?.();
   await task.waitTurn(); // в доке — ждём очереди, вне дока (мастер) ждать нечего
   onTask?.(task);
   const loaded = [];
@@ -342,6 +346,7 @@ export async function syncMarathons(marathons, callbacks = {}) {
   noUrl.forEach(m => task.log(`«${m.title}»: не указана страница на сайте — пропущен`, 'warn'));
   byUrl.forEach((ids, url) => task.log(`${url}: ${ids.size} перс.`));
   task.watch(...jobs.map(j => `char:${j.charId}`));
+  await task?.ready?.();
 
   const report = {}; // marathonId -> { changes: [], errors: [] }
   marathons.forEach(m => {

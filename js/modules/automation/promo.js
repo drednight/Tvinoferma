@@ -1,3 +1,5 @@
+import { bindPromoSuggestions, renderPromoSuggestions } from './promoSuggestions.js';
+import { layoutScriptWorkspace } from './scriptWorkspace.js';
 // js/modules/automation/promo.js
 // 🎁 Промокоды (Issue #25): диалог «коды → персонажи → предпросмотр → запуск → итоговая таблица».
 // Rust-команда: activate_promo (src-tauri/src/automation/promo.rs). Журнал: promoLog.js. Правила: docs/COMPLIANCE.md.
@@ -85,10 +87,14 @@ export function openPromoDialog({ ids = [] } = {}) {
     title: '🎁 Активация промокодов',
     wide: true,
     onClose: () => {
-      if (running) running.cancelled = true;
+      if (running) {
+        running.stop?.();
+        running.cancelled = true;
+      }
     }
   });
   dlg.foot.classList.add('sd-foot');
+  bindPromoSuggestions(dlg);
   const alive = () => dlg.el.isConnected;
 
   /* ---------------------------- форма ---------------------------- */
@@ -159,6 +165,16 @@ export function openPromoDialog({ ids = [] } = {}) {
       <button class="btn primary" data-act="start">▶ Запустить</button>`;
     updateCount();
     updateCodesInfo();
+
+    layoutScriptWorkspace(dlg, {
+      selected: selected,
+      apply(ids) {
+        selected.clear();
+        ids.forEach(id => selected.add(id));
+        renderForm();
+      }
+    });
+    renderPromoSuggestions(dlg);
   }
 
   const selectedChars = () => state.characters.filter(c => selected.has(c.id)).sort(byNick);
@@ -246,12 +262,14 @@ export function openPromoDialog({ ids = [] } = {}) {
     });
     const signal = { cancelled: false };
     running = signal;
+    signal.stop = () => task.stop();
     task.onCancel(() => {
       signal.cancelled = true;
     });
     // Ждём своей очереди: пока идёт другой скрипт, работу не начинаем
     await task.waitTurn();
     task.watch(...chars.map(c => `char:${c.id}`));
+    await task.ready?.();
     task.setStep(
       `${chars.length} перс. × ${codes.length} код., по ${browserSlots.max} одновременно, повторов до ${retries}`
     );
@@ -341,13 +359,16 @@ export function openPromoDialog({ ids = [] } = {}) {
       ? '👁 Пробный запуск: страницы открываются, кнопка ищется, но не нажимается.'
       : 'Идёт ввод: персонажи обрабатываются несколько одновременно, коды у каждого — по очереди.';
     dlg.body.innerHTML = `${progressHtml('promo-progress', 0, codes.length * chars.length)}${tableHtml(codes, chars, new Map())}`;
-    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» не начинает новых вводов; уже начатые завершатся, введённое сохранится.</span>
+    dlg.foot.innerHTML = `<span class="promo-muted sd-foot-spacer">«Стоп» прерывает текущую работу. Уже отправленный запрос мог выполниться; неизвестный результат не повторяется.</span>
       <button class="btn danger" data-act="stop">⏹ Стоп</button>`;
     dlg.foot.querySelector('[data-act="stop"]').onclick = e => {
+      signal.stop?.();
       signal.cancelled = true;
       e.currentTarget.disabled = true;
       e.currentTarget.textContent = '⏳ Останавливаю…';
     };
+
+    layoutScriptWorkspace(dlg);
   }
 
   function updateRunning(row, done, total) {
@@ -412,6 +433,8 @@ export function openPromoDialog({ ids = [] } = {}) {
       <span class="sd-foot-spacer"></span>
       <button class="btn secondary" data-act="retry" ${s.rerun ? '' : 'disabled'}>🔁 Повторить ввод${s.rerun ? ` (${s.rerun})` : ''}</button>
       <button class="btn primary" data-act="close">Закрыть</button>`;
+
+    layoutScriptWorkspace(dlg);
   }
 
   /** Итог пробного запуска: где кнопка найдена, а где нет; в журнал ничего не пишется. */

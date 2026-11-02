@@ -129,9 +129,12 @@ fn schedule_idle_destroy(app: &AppHandle, slot: usize) {
 }
 
 /// Ждёт свободный слот и возвращает (слот, окно воркера).
-async fn lease(app: &AppHandle) -> Result<(usize, WebviewWindow), String> {
+async fn lease(app: &AppHandle, scope: &str) -> Result<(usize, WebviewWindow), String> {
     let deadline = Instant::now() + Duration::from_secs(LEASE_WAIT_SECS);
     loop {
+        if crate::parsers::is_scope_cancelled(scope) {
+            return Err("cancelled".into());
+        }
         if let Some(slot) = try_take(app) {
             return match ensure_window(app, slot).await {
                 Ok(w) => Ok((slot, w)),
@@ -160,6 +163,8 @@ pub struct TaskWin {
     app: AppHandle,
     window: WebviewWindow,
     kind: Kind,
+    _scope: Option<crate::parsers::ScopeWindow>,
+    cleaned: bool,
 }
 
 impl TaskWin {
@@ -179,10 +184,14 @@ impl TaskWin {
     /// Завершает задачу.
     /// - `char_id`/`refresh_bank`: после успешной задачи свежие куки персонажа пишутся в банк (только для воркера пула);
     /// - `close_profile`: закрыть окно профиля, если оно создано для этой задачи (только для схемы с профилем).
-    pub async fn finish(self, char_id: Option<&str>, close_profile: bool, refresh_bank: bool) {
+    pub async fn finish(mut self, char_id: Option<&str>, close_profile: bool, refresh_bank: bool) {
         match &self.kind {
             Kind::Pool { .. } => {
-                if refresh_bank {
+                if refresh_bank
+                    && !char_id
+                        .map(|id| crate::parsers::is_scope_cancelled(&format!("char:{}", id)))
+                        .unwrap_or(false)
+                {
                     if let Some(id) = char_id {
                         if let Err(e) =
                             cookie_bank::save_from_window(&self.app, id, &self.window).await
@@ -196,26 +205,50 @@ impl TaskWin {
             }
             Kind::Profile { created_here } => dispose(&self.window, *created_here, close_profile),
         }
+        self.cleaned = true;
         // Слот возвращается в пул в Drop
     }
 }
 
 impl Drop for TaskWin {
     fn drop(&mut self) {
+        if let Kind::Profile { created_here } = self.kind {
+            if !self.cleaned {
+                dispose(&self.window, created_here, true);
+            }
+        }
         if let Kind::Pool { slot } = self.kind {
-            free_slot(&self.app, slot);
+            if self.cleaned {
+                free_slot(&self.app, slot);
+            } else {
+                let app = self.app.clone();
+                let window = self.window.clone();
+                tauri::async_runtime::spawn(async move {
+                    cookie_bank::wipe_scope(&window).await;
+                    free_slot(&app, slot);
+                });
+            }
         }
     }
 }
 
 /// Окно для задачи персонажа: воркер пула с его сессией из банка, а если сессии в банке нет, окно его профиля.
 pub async fn acquire(app: &AppHandle, char_id: &str, url: &str) -> Result<TaskWin, String> {
+    let scope = format!("char:{}", char_id);
+    if crate::parsers::is_scope_cancelled(&scope) {
+        return Err("cancelled".into());
+    }
     if cookie_bank::has_session(app, char_id) {
-        match lease(app).await {
+        match lease(app, &scope).await {
             Ok((slot, window)) => match cookie_bank::restore_into(app, char_id, &window).await {
                 Ok(_) => {
                     return Ok(TaskWin {
                         app: app.clone(),
+                        _scope: Some(crate::parsers::register_scope_window(
+                            &window,
+                            &format!("char:{}", char_id),
+                        )),
+                        cleaned: false,
                         window,
                         kind: Kind::Pool { slot },
                     })
@@ -228,6 +261,7 @@ pub async fn acquire(app: &AppHandle, char_id: &str, url: &str) -> Result<TaskWi
                     free_slot(app, slot);
                 }
             },
+            Err(e) if e == "cancelled" => return Err(e),
             Err(e) => println!(
                 "[POOL] {}: воркер недоступен ({}), использую профиль",
                 char_id, e
@@ -237,6 +271,11 @@ pub async fn acquire(app: &AppHandle, char_id: &str, url: &str) -> Result<TaskWi
     let (window, created_here) = get_or_create_hidden_window(app, char_id, url).await?;
     Ok(TaskWin {
         app: app.clone(),
+        _scope: Some(crate::parsers::register_scope_window(
+            &window,
+            &format!("char:{}", char_id),
+        )),
+        cleaned: false,
         window,
         kind: Kind::Profile { created_here },
     })
@@ -248,6 +287,8 @@ pub async fn acquire_anonymous(app: &AppHandle, key: &str, url: &str) -> Result<
     let (window, created_here) = get_or_create_hidden_window(app, key, url).await?;
     Ok(TaskWin {
         app: app.clone(),
+        _scope: None,
+        cleaned: false,
         window,
         kind: Kind::Profile { created_here },
     })
@@ -267,6 +308,8 @@ pub async fn acquire_for_scan(
             let (window, created_here) = pick_scan_window(app, other, url, fallback_key).await?;
             Ok(TaskWin {
                 app: app.clone(),
+                _scope: None,
+                cleaned: false,
                 window,
                 kind: Kind::Profile { created_here },
             })

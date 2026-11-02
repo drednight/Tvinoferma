@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "selectors": {
+    "common.challengeScript": ["script[src*=\"bp_chl\"]"],
+
+    "balance.container": [".points_info"],
+    "balance.value": ["strong"],
+    "balance.userMarker": [
+      ".user-nick",
+      ".header-user-name",
+      "[class*=\"username\"]",
+      ".info__forumname",
+      "a[href*=\"usercp.php\"] > strong"
+    ],
+
+    "auth.nick": [".info__forumname"],
+
+    "titles.heading": ["h2"],
+
+    "marathon.heading": ["h2"],
+    "marathon.legend": [".status_legend"],
+    "marathon.container": [".season_marathon"],
+    "marathon.quest": [":scope > div"],
+    "marathon.questTitle": ["b"],
+    "marathon.progressValue": [".progress span"],
+    "marathon.description": ["p"],
+
+    "news.article": [".js-mediator-article", "#content_body"],
+    "news.title": ["#content_top h1", "h1"],
+    "news.junk": ["img, script, style, iframe, .img_item_small_cont > span"],
+
+    "promo.input": ["form[action*=\"pin.php\"] input[name=\"pin\"]", "input#pin", "input[name=\"pin\"]"],
+    "promo.controls": [
+      "input[type=\"submit\"], button[type=\"submit\"], button"
+    ],
+    "promo.content": ["#content_body"],
+    "promo.title": ["h2"],
+    "promo.error": ["#content_body .m_error", ".m_error"],
+    "promo.rewardsBox": [".pin_bonuses_list"],
+    "promo.rewards": [".pin_bonuses_list li"],
+    "promo.choice": ["select"],
+
+    "transfer.title": ["#content_top h2"],
+    "transfer.accountName": ["#content_top_2 strong", ".auth_h strong"],
+    "transfer.form": [".js-transfer-form"],
+    "transfer.row": ["table.promo_items tr"],
+    "transfer.itemBlock": [".item_input_block"],
+    "transfer.chest": [".chest_input_block", "a[href*=\"do=activate\"]"],
+    "transfer.label": ["label"],
+    "transfer.checkbox": ["input[type=\"checkbox\"][name=\"cart_items[]\"]"],
+    "transfer.until": [".date_end"],
+    "transfer.promoHead": [".promo_container_content_body"],
+    "transfer.promoTitle": ["h6"],
+    "transfer.shard": ["select.js-shard"],
+    "transfer.char": ["select.js-char"],
+    "transfer.go": [".js-transfer-go"],
+    "transfer.modal": [".modals"],
+    "transfer.modalYes": [".js-transfer-done"],
+    "transfer.error": ["#content_body .m_error", ".m_error"],
+    "transfer.warningBox": [".panelsurround", "#content_body"],
+    "transfer.historyRow": ["table.promo_history tr"],
+    "transfer.name": ["b"],
+    "transfer.promoSmall": ["small"],
+    "transfer.statusItem": [".servers_container ul li", ".server_status_container li"],
+    "transfer.statusOnline": [".server_status_1"],
+    "transfer.statusOffline": [".server_status_0"],
+    "transfer.statusRecommend": [".recommend strong"],
+    "shop.item": ["li.chest_info_container"],
+    "shop.title": [".chest_title"],
+    "shop.price": [".chest_price"],
+    "shop.priceValue": ["strong"],
+    "shop.buyLink": ["a.chest_buy_link", ".chest_shop_block a"],
+    "shop.blocked": [".chest_disabled_block"],
+    "shop.infoText": [".img_item_cont > span", ".img_item_cont span"],
+    "shop.image": [".img_item_cont img"],
+    "shop.modal": [".modalDialog"],
+    "shop.modalConfirm": [".modalDialog a.buy", ".modalDialog .buy"],
+    "shop.modalTitle": [".modalDialog .modalTitle"],
+    "shop.account": ["#content_top_2 h2 a strong", "#content_top_2 strong", ".auth_h strong"],
+    "shop.historyRows": ["table.promo_history_points tr"],
+
+    "caravan.link": ["a[href*=\"do=activate\"]"],
+    "caravan.form": ["form[action*=\"do=activate\"]"],
+    "caravan.itemLabel": ["label"],
+    "caravan.itemBox": ["input[type=\"checkbox\"][name=\"chest_items[]\"]"],
+    "caravan.submit": ["input.chest_submit_button", "form[action*=\"do=activate\"] input[type=\"submit\"]"]
+  },
+  "texts": {
+    "common.challengeTitle": ["Проверка безопасности"],
+    "common.notLoggedIn": ["Вы не авторизованы"],
+
+    "balance.notLoggedIn": [
+      "Для доступа к разделу необходимо войти",
+      "Ошибка авторизации"
+    ],
+    "balance.notLoggedInUrl": ["login.php", "vkplay"],
+
+    "auth.welcome": ["Добро пожаловать"],
+
+    "titles.skipHeading": ["Новости"],
+
+    "marathon.noAccess": ["не имеете доступа"],
+
+    "promo.buttonLabels": ["активировать", "ввести", "применить"],
+    "promo.used": [
+      "уже активировали",
+      "уже активирован",
+      "уже использован",
+      "уже введен",
+      "уже введён"
+    ],
+    "promo.expired": ["время действия", "срок действия", "истекло", "истёк", "истек"],
+    "promo.invalid": [
+      "не добавлены бонусы",
+      "не существует",
+      "недействител",
+      "неверный",
+      "не найден"
+    ],
+    "promo.empty": ["пустой пин-код"],
+    "promo.success": ["успешно активировали"],
+
+    "transfer.titleText": ["Передача предметов"],
+    "transfer.warningTitle": ["Предупреждение"],
+    "transfer.historyAccount": ["Игровой аккаунт:"],
+    "transfer.historyChar": ["Персонаж:"],
+    "transfer.historyServer": ["Сервер:"],
+
+    "caravan.chestName": ["Сундук караванщика"]
+  },
+  "regex": {
+    "promo.reward": [
+      "^(.*?)(?:\\s+x\\s*(\\d+))?\\s*\\(ID:\\s*(\\d+)\\)(?:,\\s*(.+))?$"
+    ],
+    "transfer.item": ["^(.*?)(?:\\s+x\\s*(\\d+))?$"],
+    "transfer.historyItem": ["^(.*?)\\s+x\\s*(\\d+)$"],
+    "transfer.historyDate": ["^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$"],
+    "transfer.historyPromo": ["^\\((.*)\\)$"],
+    "transfer.onlyServer": ["только на сервер\\s*[«\"“]([^»\"”]+)[»\"”]"],
+    "caravan.cartId": ["[?&]cart_id=(\\d+)"],
+    "shop.available": ["Доступно\\s+Вам:?\\s*(\\d+)"],
+    "shop.maxMonth": ["Максимальное\\s+количество\\s+в\\s+месяц:?\\s*(\\d+)"],
+    "shop.itemId": ["[?&]id=(\\d+)"],
+    "shop.kind": ["[?&]use_(chest|item)=1"],
+    "shop.buyHref": ["do=buy"],
+    "news.date": [
+      "Обсудить\\s+(\\d{2}\\.\\d{2}\\.\\d{4})",
+      "(\\d{2}\\.\\d{2}\\.\\d{4})"
+    ]
+  }
+}

@@ -12,3 +12,5 @@ coverage
 *.md
 index.html
 tests/fixtures
+
+archive/
