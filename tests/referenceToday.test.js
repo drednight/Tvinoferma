@@ -78,9 +78,12 @@ describe('Today 12 revised connected dashboard', () => {
     expect(root.querySelectorAll('.rt-news article')).toHaveLength(3);
     expect($('.rt-news').textContent).toContain('16:20');
     expect($('.rt-news details')).toBeNull();
+    expect([...root.querySelectorAll('.rt-news article a')].map(a => a.href)).toEqual(
+      [3, 2, 1].map(id => `https://pwonline.ru/news.php?article=${id}`)
+    );
     expect(root.textContent).not.toContain('Сохранённый пример');
   });
-  it('active promo source URL, entry status and rewards are visible, no hidden-code controls', () => {
+  it('promo rewards are collapsed on every render, with no source link', () => {
     mocks.promos = [
       {
         code: 'CURRENT',
@@ -94,7 +97,13 @@ describe('Today 12 revised connected dashboard', () => {
     expect($('.rt-promo').textContent).toContain('CURRENT');
     expect($('.rt-promo').textContent).toContain('Введён: 2');
     expect($('.rt-promo').textContent).toContain('Награда × 2');
-    expect($('.rt-promo a').href).toContain('article=3');
+    expect($('.rt-promo a')).toBeNull();
+    const details = $('.rt-promo details');
+    expect(details.open).toBe(false);
+    details.querySelector('summary').click();
+    expect(details.open).toBe(true);
+    render();
+    expect($('.rt-promo details').open).toBe(false);
     expect($('[data-today-action=promo-restore]')).toBeNull();
   });
   it('tabs separate timed events from To-Do, preserving task completion across tabs', () => {
@@ -197,4 +206,18 @@ it('independent compact refresh actions replace the combined server button and r
   $('[data-today-action=promo-refresh]').click();
   await vi.waitFor(() => expect(mocks.actions).toHaveBeenCalledWith('promo-refresh', { partyId: 'p1' }));
   expect(mocks.actions).toHaveBeenCalledWith('news-refresh', { partyId: 'p1' });
+});
+
+it('keeps copy as an accessible icon beside the party event title, without a parties navigation button', () => {
+  const copy = $('[data-today-copy-party]');
+  expect(copy.closest('.rt-party-heading').querySelector('b')).not.toBeNull();
+  expect(copy.getAttribute('aria-label')).toContain('кроме своего');
+  expect(copy.querySelector('svg')).not.toBeNull();
+  expect($('.rt-clan [data-go-source=parties]')).toBeNull();
+});
+it('restores the attendance pressed state from the saved response', () => {
+  state.guild = { events: [{ id: 'saved', title: 'Сбор', response: 'yes' }], parties: [] };
+  render();
+  expect($('[data-today-vote=saved][data-value=yes]').getAttribute('aria-pressed')).toBe('true');
+  expect($('[data-today-vote=saved][data-value=no]').getAttribute('aria-pressed')).toBe('false');
 });

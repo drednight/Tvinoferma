@@ -1,5 +1,6 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { parseLatestNews, refreshSiteFeed, siteFeedSnapshot } from '../js/modules/dashboard/siteFeed.js';
+import { mskDate, mskAddDays } from '../js/core/msk.js';
 import { state } from '../js/core/state.js';
 import { connectedTodayState, runTodayAction } from '../js/modules/dashboard/todayRuntime.js';
 import { createLabState } from '../demo/design-lab/model.js';
@@ -139,4 +140,24 @@ it('uses exactly the top finance widget balances, including month corrections', 
   } finally {
     state.finance = previous;
   }
+});
+
+it('shows the nearest upcoming marathon within seven days, not a distant one', () => {
+  const today = mskDate();
+  const upcoming = days => ({
+    id: `m${days}`,
+    title: `Марафон ${days}`,
+    startDate: mskAddDays(today, days),
+    endDate: mskAddDays(today, days + 20),
+    tasks: [],
+    participantIds: []
+  });
+  state.marathons = [upcoming(10), upcoming(7), upcoming(2)];
+  const preview = { ...createLabState(), production: true };
+  const result = connectedTodayState(preview);
+  expect(result.scenarios.marathon).toBe(true);
+  expect(result.day.marathon.id).toBe('m2');
+  expect(result.day.marathon.percent).toBe(0);
+  state.marathons = [upcoming(8)];
+  expect(connectedTodayState(preview).scenarios.marathon).toBe(false);
 });

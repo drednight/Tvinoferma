@@ -972,3 +972,9 @@
   grid-column: auto;
   max-height: none;
 }
+
+/* Cross-PC workspace is not exposed in the main application for now. */
+#cloud-registration-panel[hidden],
+#cloud-copy-badge {
+  display: none !important;
+}

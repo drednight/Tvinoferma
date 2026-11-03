@@ -4,7 +4,7 @@ import { normalizeGuildData } from '../guild/core.js';
 // Routes dashboard actions to the existing production modules, never to demo launchers.
 import { state } from '../../core/state.js';
 import { CLASS_ICON_MAP } from '../../core/constants.js';
-import { mskDate } from '../../core/msk.js';
+import { mskDate, mskAddDays } from '../../core/msk.js';
 import { normalizePlannerEntry } from './planner.js';
 import { discoveredPromos, promoCoverage } from '../automation/promoDiscovery.js';
 import { loadLog } from '../automation/promoLog.js';
@@ -38,7 +38,11 @@ export function connectedTodayState(preview) {
     if (!s.parties.some(p => p.id === s.day.favoriteParty)) s.day.favoriteParty = s.parties[0]?.id || '';
     s.guild = normalizeGuildData(state.settings.guild);
     const marathons = todayData(state).marathons;
-    const active = state.marathons.find(m => marathons.some(p => p.id === m.id));
+    const active =
+      state.marathons.find(m => marathons.some(p => p.id === m.id)) ||
+      state.marathons
+        .filter(m => m.kind !== 'series' && m.startDate > s.day.date && m.startDate <= mskAddDays(s.day.date, 7))
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
     const progress = marathons.find(p => p.id === active?.id);
     s.scenarios.marathon = !!active;
     if (active) {

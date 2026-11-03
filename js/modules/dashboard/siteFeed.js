@@ -10,6 +10,7 @@ try {
     current = {
       articles: saved.articles
         .filter(a => articleId(a.url) && typeof a.title === 'string')
+        .sort((a, b) => Number(articleId(b.url)) - Number(articleId(a.url)))
         .slice(0, 3)
         .map(a => ({
           id: articleId(a.url),
