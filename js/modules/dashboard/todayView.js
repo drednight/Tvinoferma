@@ -11,12 +11,10 @@ import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins } from '../../core/coins.js';
 import { todayData, daysWord, todayStr } from './today.js';
-import { plannerHtml, bindPlanner, openPlannerDay, openPlannerEntryForm } from './plannerView.js';
-import { plannerEventsForDate, entryStatusForDate, setEntryStatusForDate } from './planner.js';
+import { plannerEventsForDate } from './planner.js';
 import { eventEndTime } from './timeline.js';
 import { dungeonInfoForDate, dungeonStrip, shiftDate } from '../dungeons/schedule.js';
-import { persist } from '../../core/storage.js';
-import { renderGuildToday, setGuildRefresh } from '../guild/page.js';
+import { setGuildRefresh } from '../guild/page.js';
 
 /**
  * Подпись времени записи для списка панели: «19:30–20:00 · ивент», «марафон · весь день»,
@@ -294,113 +292,6 @@ export function todayHtml(deps = {}, appState = state) {
 export function renderToday(root, deps = {}) {
   if (!root) return;
   const render = () => renderToday(root, deps);
-  // День списка берём на момент отрисовки: отметка обязана попасть в то вхождение, которое
-  // пользователь видит. Если взять дату в момент клика, приложение, пережившее полночь,
-  // записало бы отметку в следующий день, которого на экране ещё нет.
-  const today = todayStr();
   setGuildRefresh(render);
-  if (renderConnectedToday(root, deps, render)) return;
-  const summary =
-    todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
-  root.innerHTML = `<div class="today-layout-actions"><button type="button" class="btn ghost" data-today-reference-open>Новый вид «Сегодня»</button></div><div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div><div id="guild-today" hidden></div>${summary}`;
-  root.querySelector('[data-today-reference-open]').onclick = () => {
-    root.dataset.referenceToday = 'true';
-    render();
-  };
-  bindToday(root, deps);
-  bindPlanner(root, { ...deps, render });
-  // Блок клана под колонками календаря: перерисовываем вместе со страницей, иначе его не будет после правок в календаре.
-  // Отмеченное клановое событие само ложится в календарь, поэтому панели нужна вся перерисовка «Сегодня», а не только её кусок.
-  renderGuildToday();
-  root.querySelector('[data-today-side]')?.addEventListener('click', e => {
-    // Записи-марафоны открываются прямо из панели
-    const act = e.target.closest?.('[data-today-act="open-marathon"]');
-    if (act) {
-      deps.run?.('open-marathon', act.dataset.todayMarathon);
-      return;
-    }
-    const btn = e.target.closest?.('[data-open-day]');
-    if (btn) {
-      openPlannerDay(btn.dataset.openDay, { ...deps, render });
-      return;
-    }
-    const add = e.target.closest?.('[data-todo-add]');
-    if (add) {
-      addTodoFor(add.dataset.todoAdd, { ...deps, render });
-      return;
-    }
-    const status = e.target.closest?.('[data-todo-status]');
-    if (status) {
-      setTodoStatus(today, status.dataset.todoStatus, render);
-      return;
-    }
-  });
-  // Галочка живёт в label, а не в кнопке: кликается целиком и не мешает выделению текста
-  root.querySelector('[data-today-side]')?.addEventListener('change', e => {
-    const box = e.target.closest?.('[data-todo-toggle]');
-    if (box) setTodoStatus(today, box.dataset.todoToggle, render, box.checked ? 'done' : 'todo');
-  });
-}
-
-/**
- * Отметка в списке задач на день: галочка ставит и снимает «выполнено», кнопка справа перебирает
- * статус по кругу. Только свои записи — марафоны и ивенты из расписания не трогаем.
- *
- * День обязателен: у повторяющейся записи состояние своё у каждого вхождения, и отметка
- * в списке «Сегодня» не должна трогать вчера или завтра.
- *
- * @param {string} date день списка, МСК
- * @param {string} id
- * @param {() => void} render
- * @param {string} [status] конкретный статус; без него берётся следующий по кругу
- */
-async function setTodoStatus(date, id, render, status) {
-  const entry = state.plannerEntries.find(item => item.id === id);
-  if (!entry) return;
-  const current = entryStatusForDate(entry, date);
-  const next = status || STATUS_NEXT[current] || 'todo';
-  if (!setEntryStatusForDate(entry, date, next)) return;
-  await persist();
-  render();
-}
-
-/**
- * Новая задача на день.
- *
- * Форма та же, что у записей календаря, и время в ней по умолчанию пустое: задача из
- * списка дня не привязана к часу — с временем она рисовалась бы блоком на шкале, а
- * здесь нужен просто список дел.
- *
- * @param {string} date
- * @param {{ render?: () => void }} deps
- */
-function addTodoFor(date, deps = {}) {
-  openPlannerEntryForm(date, deps);
-}
-
-/** Кнопки экрана: действия в строках, переходы и сворачивание. */
-function bindToday(root, deps = {}) {
-  const section = root.querySelector('[data-today]');
-  if (!section || section.dataset.bound) return;
-  section.dataset.bound = 'true';
-
-  section.addEventListener('click', async e => {
-    const btn = /** @type {HTMLElement | null} */ (/** @type {HTMLElement} */ (e.target).closest('[data-today-act]'));
-    if (!btn) return;
-
-    const action = btn.dataset.todayAct;
-    const charId = btn.dataset.todayChar;
-    const marathonId = btn.dataset.todayMarathon;
-    if (action === 'check-auth-one' || action === 'balance-one') {
-      deps.run?.(action, charId);
-      return;
-    }
-    if (action === 'open-marathon') {
-      deps.run?.('open-marathon', marathonId);
-      return;
-    }
-    if (action === 'open-party') {
-      deps.run?.('open-party', btn.dataset.todayParty);
-    }
-  });
+  renderConnectedToday(root, deps, render);
 }

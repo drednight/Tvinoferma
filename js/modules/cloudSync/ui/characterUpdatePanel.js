@@ -1,5 +1,5 @@
 import { sameJsonValue } from '../valueEquality.js';
-import { characterFieldText } from './characterFieldText.js';
+import { characterFieldText, characterFieldDifferences } from './characterFieldText.js';
 import { CHARACTER_UPDATE_FIELDS } from '../characterUpdates.js';
 
 const controllers = new WeakMap();
@@ -131,6 +131,10 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
           const before = local.fields[key],
             after = remote.fields[key];
           if (sameJsonValue(before, after)) continue;
+          if (key === 'lastCoinUpdate') {
+            node('p', 'Дата проверки монет: автоматически сохраняется последняя по времени.', content);
+            continue;
+          }
           count++;
           const field = node('label', undefined, content);
           field.className = 'cloud-character-field';
@@ -138,8 +142,20 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
           check.type = 'checkbox';
           check.value = key;
           node('strong', title, field);
-          node('span', 'На этом ПК: ' + characterFieldText(key, before), field);
-          node('span', 'В облаке: ' + characterFieldText(key, after), field);
+          const split = node('div', undefined, field);
+          split.className = 'cloud-split';
+          const header = node('div', undefined, split);
+          header.className = 'cloud-split-row cloud-split-head';
+          node('span', 'Показатель', header);
+          node('span', 'На этом ПК', header);
+          node('span', 'В облаке', header);
+          for (const difference of characterFieldDifferences(key, before, after)) {
+            const line = node('div', undefined, split);
+            line.className = 'cloud-split-row';
+            node('span', difference.label || title, line);
+            node('span', characterFieldText(difference.label ? '' : key, difference.before), line);
+            node('span', characterFieldText(difference.label ? '' : key, difference.after), line);
+          }
         }
         if (!count)
           node(

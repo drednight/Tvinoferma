@@ -420,7 +420,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const defs = pickedDefs();
     view = sortGroups(allGroups().filter(matches));
     if (!view.length) return '<p class="shop-muted">В выбранной группе никого нет.</p>';
-    return `<table class="shop-table"><thead><tr><th>Выбор</th><th>Персонаж / общий аккаунт</th>${defs.map(d => `<th>${escapeHtml(d.name)}</th>`).join('')}</tr></thead><tbody>${view.map((g, i) => `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}" data-g="${i}"><td><input type="checkbox" data-sel="${i}" ${isSel(g) ? 'checked' : ''} aria-label="${escapeHtml(g.nick)}"></td><td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${g.others.length ? `<small>Также: ${g.others.map(escapeHtml).join(', ')}</small>` : ''}<small>${escapeHtml(g.account || 'Аккаунт не проверен')}</small></td>${defs.map(d => `<td><label><input type="checkbox" data-pick-name="${i}|${d.key}" ${getQty(g, d.key) > 0 ? 'checked' : ''}>${escapeHtml(d.name)}</label></td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    return `<table class="shop-table"><thead><tr><th>Выбор</th><th>Персонажи</th><th>Древние монеты</th>${defs.map(d => `<th><span class="shop-th-name">${escapeHtml(d.name)}</span><label><input type="checkbox" data-pick-all="${d.key}" ${view.every(g => getQty(g, d.key) > 0) ? 'checked' : ''}> Всем</label></th>`).join('')}</tr></thead><tbody>${view.map((g, i) => `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}" data-g="${i}"><td><input type="checkbox" data-sel="${i}" ${isSel(g) ? 'checked' : ''} aria-label="${escapeHtml(g.nick)}"></td><td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${g.others.length ? `<small>Также: ${g.others.map(escapeHtml).join(', ')}</small>` : ''}</td><td class="shop-current-balance">${fmt(g.balance)} мон.</td>${defs.map(d => `<td><label><input type="checkbox" data-pick-name="${i}|${d.key}" ${getQty(g, d.key) > 0 ? 'checked' : ''}>${escapeHtml(d.name)}</label></td>`).join('')}</tr>`).join('')}</tbody></table>`;
   }
 
   function openQuantities(dry = false) {
@@ -429,16 +429,16 @@ export function openShopDialog({ ids = [] } = {}) {
     if (!groups.length) return toast('Выберите персонажей и названия предметов', 'info');
     phase = 'quantity';
     const quantities = openOverlay({
-      title: dry ? 'Пробный запуск — количества' : 'Количество подарков по аккаунтам',
+      title: dry ? 'Пробный запуск — количества' : 'Количество подарков',
       wide: true,
       onClose: () => {
         if (phase === 'quantity') renderPick();
       }
     });
     quantities.sub.textContent =
-      'Один баланс и лимит на аккаунт. Offline-персонажи остаются выбранными; покупка возможна только после проверки входа на сайт. Количества сами по себе ничего не покупают.';
+      'Offline-персонажи остаются выбранными; покупка возможна только после проверки входа на сайт. Количества сами по себе ничего не покупают.';
     const defs = pickedDefs();
-    quantities.body.innerHTML = `<div class="shop-scroll"><table class="shop-table"><thead><tr><th>Персонажи / аккаунт</th><th>Древние монеты</th>${defs.map(d => `<th>${escapeHtml(d.name)}</th>`).join('')}<th>Сумма / остаток</th></tr></thead><tbody>${groups.map((g, i) => `<tr><td><b>${escapeHtml(g.nick)}</b><small>${g.others.map(escapeHtml).join(', ')}</small>${g.state !== 'ready' ? '<small>Нет подтверждённого входа / данных сайта</small>' : ''}</td><td>${fmt(g.balance)}</td>${defs.map(d => `<td>${getQty(g, d.key) > 0 ? quantityCellHtml(g, d, i) : 'Не выбрано'}</td>`).join('')}<td data-quantity-total="${i}"></td></tr>`).join('')}</tbody></table></div>`;
+    quantities.body.innerHTML = `<div class="shop-scroll"><table class="shop-table shop-quantity-table"><thead><tr><th>Персонажи</th><th>Баланс</th>${defs.map(d => `<th><span>${escapeHtml(d.name)}</span><button type="button" class="btn ghost small" data-quantity-max="${d.key}">Максимум</button></th>`).join('')}<th>Сумма / остаток</th></tr></thead><tbody>${groups.map((g, i) => `<tr><td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b><small>${g.others.map(escapeHtml).join(', ')}</small>${g.state !== 'ready' ? '<small>Нет подтверждённого входа / данных сайта</small>' : ''}</td><td>${fmt(g.balance)}</td>${defs.map(d => `<td>${getQty(g, d.key) > 0 ? quantityCellHtml(g, d, i) : 'Не выбрано'}</td>`).join('')}<td data-quantity-total="${i}"></td></tr>`).join('')}</tbody></table></div>`;
     const recalc = () =>
       groups.forEach((g, i) => {
         const plan = planFor(g);
@@ -451,6 +451,20 @@ export function openShopDialog({ ids = [] } = {}) {
         quantities.body.querySelector(`[data-quantity-total="${i}"]`).textContent =
           `Сумма: ${fmt(plan.spent)} · Остаток: ${fmt(plan.left)}${plan.qty < plan.requested ? ' · Объём ограничен балансом / лимитом' : ''}`;
       });
+    quantities.body.addEventListener('click', e => {
+      const button = e.target.closest('[data-quantity-max]');
+      if (!button) return;
+      const key = button.dataset.quantityMax;
+      groups.forEach((g, i) => {
+        if (g.state !== 'ready' || getQty(g, key) <= 0 || !g.items[key]?.buyable) return;
+        setQty(g, key, MAX_QTY);
+        const qty = planFor(g).rows.find(r => r.key === key)?.qty || 0;
+        setQty(g, key, qty);
+        const input = quantities.body.querySelector(`[data-qty="${i}|${key}"]`);
+        if (input) input.value = String(qty);
+      });
+      recalc();
+    });
     quantities.body.addEventListener('input', e => {
       const t = e.target;
       if (!t.matches('[data-qty]')) return;
@@ -505,7 +519,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <div class="shop-scan" id="shop-scan"></div>
       ${sectionHtml('Предметы магазина', { hint: 'цены, наличие и лимиты — с сайта', body: `<div class="shop-cards" id="shop-items"></div>` })}
       ${sectionHtml('Персонажи и выбранные предметы', {
-        hint: 'баланс у аккаунта сайта один на всех его персонажей',
+        hint: 'Выберите предметы для каждого персонажа или сразу для всех',
         aside: `<span class="sd-count" id="shop-count"></span>`,
         body: `
         <div class="shop-quick">
@@ -583,7 +597,7 @@ export function openShopDialog({ ids = [] } = {}) {
   /** Обновляет «цена × кол = сумма», остаток и общий итог, не трогая поля ввода. */
   function updatePlans() {
     const sel = q('#shop-count');
-    if (sel) sel.textContent = `Отмечено аккаунтов: ${view.filter(isSel).length} из ${view.length}`;
+    if (sel) sel.textContent = `Отмечено: ${view.filter(isSel).length} из ${view.length}`;
     const summary = q('#shop-summary');
     if (summary) {
       summary.replaceChildren();
@@ -981,6 +995,15 @@ export function openShopDialog({ ids = [] } = {}) {
     const t = e.target;
     if (t.id === 'shop-party') {
       party = t.value;
+      q('#shop-table').innerHTML = tableHtml();
+      updatePlans();
+      return;
+    }
+    if (t.matches('[data-pick-all]')) {
+      view.forEach(g => {
+        setQty(g, t.dataset.pickAll, t.checked ? Math.max(1, getQty(g, t.dataset.pickAll)) : 0);
+        if (t.checked) setSel(g, true);
+      });
       q('#shop-table').innerHTML = tableHtml();
       updatePlans();
       return;

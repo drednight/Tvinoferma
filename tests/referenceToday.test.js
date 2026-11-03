@@ -168,3 +168,33 @@ it('the event stream is chronological rather than shuffled by task priority/stat
   const rows = referenceDayEvents(state).filter(e => ['later', 'early'].includes(e.id));
   expect(rows.map(e => e.id)).toEqual(['early', 'later']);
 });
+it('calendar labels weekdays/dungeons without pass icons and can return to current date', () => {
+  $('[data-today-action=calendar]').click();
+  expect([...dialog.querySelectorAll('.rt-calendar-weekdays b')].map(e => e.textContent)).toEqual([
+    'Пн',
+    'Вт',
+    'Ср',
+    'Чт',
+    'Пт',
+    'Сб',
+    'Вс'
+  ]);
+  expect(dialog.querySelector('.rt-calendar-grid img')).toBeNull();
+  expect(dialog.querySelector('[data-today-date] small').textContent).toMatch(/Оружие|Доспех|Реликвия/);
+  $('[data-today-date="2026-11-04"]').click();
+  $('[data-today-action=calendar-today]').click();
+  expect(state.day.chosenDay).toBe(0);
+  expect($('[data-today-date="2026-11-03"]').getAttribute('aria-pressed')).toBe('true');
+});
+it('independent compact refresh actions replace the combined server button and removed footer', async () => {
+  expect($('[data-today-action=news-refresh]').closest('.rt-news')).not.toBeNull();
+  expect($('[data-today-action=promo-refresh]').previousElementSibling.dataset.todayAction).toBe('promo');
+  expect(root.textContent).not.toContain('Обновить с серверами');
+  expect(root.textContent).not.toContain('Подключения этой страницы');
+  expect(root.textContent).not.toContain('Источник статуса ввода');
+  expect(root.textContent).toContain('Запущено окон');
+  $('[data-today-action=news-refresh]').click();
+  $('[data-today-action=promo-refresh]').click();
+  await vi.waitFor(() => expect(mocks.actions).toHaveBeenCalledWith('promo-refresh', { partyId: 'p1' }));
+  expect(mocks.actions).toHaveBeenCalledWith('news-refresh', { partyId: 'p1' });
+});

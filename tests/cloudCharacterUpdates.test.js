@@ -263,3 +263,17 @@ it('a contact candidate never steals a local character already owned by another 
     ''
   );
 });
+it.each(['2026-11-02T10:00:00.000Z', '2026-11-04T10:00:00.000Z', null])(
+  'automatically keeps latest check (%s) without selecting balance or date',
+  remote => {
+    const f = fixture();
+    f.localState.characters[0].lastCoinUpdate = '2026-11-03T10:00:00.000Z';
+    f.cloud.sections.characters.records[0].fields.lastCoinUpdate = remote;
+    f.cloud.sections.characters.records[0].fields.ancientCoins = 100;
+    const { candidate } = prepareCharacterUpdates({ ...f, account, selections: f.select([]) });
+    expect(candidate.characters[0].lastCoinUpdate).toBe(
+      remote && remote > f.localState.characters[0].lastCoinUpdate ? remote : f.localState.characters[0].lastCoinUpdate
+    );
+    expect(candidate.characters[0].ancientCoins).toBe(f.localState.characters[0].ancientCoins);
+  }
+);

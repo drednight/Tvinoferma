@@ -123,7 +123,7 @@ describe('разметка экрана «Сегодня»', () => {
 
 describe('отрисовка и действия', () => {
   const root = () => document.getElementById('today-root');
-  const section = () => document.querySelector('[data-today]');
+  const section = () => document.querySelector('.rt-reference');
 
   it('экран рисуется в собственном контейнере', () => {
     renderToday(root(), {});
@@ -134,7 +134,8 @@ describe('отрисовка и действия', () => {
   it('повторная отрисовка не дублирует экран', () => {
     renderToday(root(), {});
     renderToday(root(), {});
-    expect(document.querySelectorAll('[data-today]')).toHaveLength(1);
+    expect(root().querySelectorAll('.rt-reference')).toHaveLength(1);
+    expect(document.querySelectorAll('.rt-connected-dialog')).toHaveLength(1);
   });
 
   it('на пустых данных показывает понятное пустое состояние', () => {
@@ -142,18 +143,16 @@ describe('отрисовка и действия', () => {
     expect(section()).not.toBeNull();
     state.characters = [];
     renderToday(root(), {});
-    expect(section()).toBeNull();
-    expect(root().textContent).toContain('Добавьте первого персонажа');
+    expect(section()).not.toBeNull();
+    expect(root().textContent).toContain('Отряд не выбран');
   });
 
-  it('кнопка действия вызывает переданный обработчик с id персонажа', () => {
-    state.characters = [{ id: 'a', nick: 'Аа', isLoggedIn: false, dungeonPasses: {} }];
-    const run = vi.fn();
-    renderToday(root(), { run });
-    document.querySelector('[data-today-act="check-auth-one"]').click();
-    expect(run).toHaveBeenCalledWith('check-auth-one', 'a');
+  it('показывает только новый вид без переключателей и прежней панели', () => {
+    renderToday(root(), {});
+    expect(root().querySelector('[data-today-reference-back]')).toBeNull();
+    expect(root().querySelector('[data-today-reference-open]')).toBeNull();
+    expect(root().querySelector('.today-cols')).toBeNull();
   });
-
   it('кнопка марафона передаёт его id', () => {
     state.marathons = [
       {
@@ -170,7 +169,7 @@ describe('отрисовка и действия', () => {
     ];
     const run = vi.fn();
     renderToday(root(), { run });
-    document.querySelector('[data-today-act="open-marathon"]').click();
+    document.querySelector('[data-go-source="marathons"]').click();
     expect(run).toHaveBeenCalledWith('open-marathon', 'm1');
   });
 
@@ -178,6 +177,6 @@ describe('отрисовка и действия', () => {
     expect(() => renderToday(null, {})).not.toThrow();
     const detached = document.createElement('div');
     expect(() => renderToday(detached, {})).not.toThrow();
-    expect(detached.querySelector('[data-today]')).not.toBeNull();
+    expect(detached.querySelector('.rt-reference')).not.toBeNull();
   });
 });

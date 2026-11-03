@@ -86,8 +86,21 @@ it('stats/pass/sky diffs use labels rather than JSON or internal stat keys', () 
   v.locals[0].fields = { stats: { endurance: 1 }, dungeonPasses: { weapon: 1 }, sky: { name: null, level: null } };
   v.records[0].fields = { stats: { endurance: 2 }, dungeonPasses: { weapon: 3 }, sky: { name: 'Небо', level: 1 } };
   renderCharacterUpdatePanel(host, v, vi.fn());
-  expect(host.textContent).toContain('Выносливость: 2');
-  expect(host.textContent).toContain('Оружие: 3');
+  expect([...host.querySelectorAll('.cloud-split-row')].some(r => r.textContent === 'Выносливость12')).toBe(true);
+  expect([...host.querySelectorAll('.cloud-split-row')].some(r => r.textContent === 'Оружие13')).toBe(true);
   expect(host.textContent).not.toContain('"endurance"');
   expect(host.textContent).not.toContain('{"');
+});
+it('split shows only unequal nested metrics and date has no checkbox', () => {
+  const v = view();
+  v.records[0].matchedLocalId = 'local';
+  v.locals[0].fields = { ...fields, stats: { hp: 100, mp: 200 }, lastCoinUpdate: '2026-11-03T10:00:00Z' };
+  v.records[0].fields = { ...fields, stats: { hp: 101, mp: 200 }, lastCoinUpdate: '2026-11-02T10:00:00Z' };
+  renderCharacterUpdatePanel(host, v, vi.fn());
+  expect(host.querySelector('input[value="lastCoinUpdate"]')).toBeNull();
+  const stats = host.querySelector('input[value="stats"]').closest('label');
+  expect(stats.querySelectorAll('.cloud-split-row')).toHaveLength(2);
+  expect(stats.textContent).toContain('На этом ПК');
+  expect(stats.textContent).toContain('В облаке');
+  expect(stats.textContent).not.toContain('200');
 });

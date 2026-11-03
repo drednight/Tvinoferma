@@ -1,3 +1,4 @@
+import { appendSplitDifference } from './splitDifference.js';
 import { humanCloudValue } from './cloudFilePresentation.js';
 // @ts-check
 // Экспериментальный просмотр только УЖЕ закреплённого набора. Не создаёт набор
@@ -477,9 +478,11 @@ export function bindCloudReviewPanel(options) {
               : entry.kind === 'marked_cloud_deletion'
                 ? 'Показать запись, сохранённую на этом ПК'
                 : 'Показать различия полей';
-          const pre = doc.createElement('pre');
+          const split = !tooLong && ['changed', 'settings_changed'].includes(entry.kind);
+          const pre = doc.createElement(split ? 'div' : 'pre');
           if (tooLong) detail = detail.slice(0, MAX_DETAIL_CHARS) + '\n… остальное не показано';
-          pre.textContent = detail;
+          if (split) for (const change of entry.changes) appendSplitDifference(pre, change);
+          else pre.textContent = detail;
           details.append(title, pre);
           row.append(details);
         }

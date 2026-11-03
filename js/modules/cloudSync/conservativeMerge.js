@@ -3,6 +3,7 @@
 // повторно проверить облако и локальный файл и создать backup перед записью.
 // Отсутствие и удаление не угадываются. Снимки могут содержать личные примечания:
 // ни значения, ни исходные ошибки нельзя помещать в журнал.
+import { latestCoinCheck } from './coinCheckPolicy.js';
 import { array, object } from './exportSchema.js';
 import { isSyncId } from './envelope.js';
 import { comparePublicSnapshots, publicSnapshotIdentityTypes } from './compareSnapshots.js';
@@ -423,6 +424,12 @@ function planWithoutPlannerDeletions(options) {
         fields: structuredClone(there.fields),
         ...(Object.hasOwn(there, 'archived') ? { archived: there.archived } : {})
       };
+      if (target.type === 'character') {
+        // Only this field is automatic. Keep the plan and materialization
+        // witness consistent without resolving balance or identity conflicts.
+        const latest = latestCoinCheck(current.fields.lastCoinUpdate, incoming.fields.lastCoinUpdate);
+        for (const item of [before, current, incoming]) item.fields.lastCoinUpdate = latest;
+      }
       if (target.type === 'marathon') {
         const tasks = mergeNestedEntities(
           before.fields.tasks,

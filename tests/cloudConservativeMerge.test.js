@@ -1211,3 +1211,35 @@ describe('штатный лимит истории характеристик б
     expect(applied.stats.strength).toBe(useCloud ? 13 : 12);
   });
 });
+it.each([
+  ['2026-11-03T10:00:00.000Z', '2026-11-04T10:00:00.000Z'],
+  ['2026-11-04T10:00:00.000Z', '2026-11-03T10:00:00.000Z']
+])('coin-check policy survives three-way planning and exact materialization (%s/%s)', (local, cloud) => {
+  const f = fixture();
+  f.localState.characters[0].lastCoinUpdate = local;
+  f.local = buildPublicSnapshot(f.localState, { settingsSelections: ['appearance'] });
+  f.cloud.sections.characters.records[0].fields.lastCoinUpdate = cloud;
+  f.cloud.sections.characters.records[0].fields.level = 20;
+  const original = structuredClone(f.cloud);
+  const plan = merge(f);
+  expect(plan.status).toBe('prepared');
+  const expected = local > cloud ? local : cloud;
+  expect(plan.snapshot().sections.characters.records[0].fields.lastCoinUpdate).toBe(expected);
+  const prepared = preparePublicSnapshotApply({
+    localState: f.localState,
+    cloudSnapshot: plan.snapshot(),
+    selectedRecords: plan.selectedRecords(),
+    selectedSettings: plan.selectedSettings(),
+    includeFinanceSettings: plan.includeFinanceSettings,
+    cryptoSource: webcrypto
+  });
+  expect(prepared.candidatePublicSnapshot()).toEqual(plan.snapshot());
+  expect(prepared.candidateState().characters[0].lastCoinUpdate).toBe(expected);
+  expect(f.cloud).toEqual(original);
+  f.local.sections.characters.records[0].fields.ancientCoins = 100;
+  f.cloud.sections.characters.records[0].fields.ancientCoins = 200;
+  const conflicts = merge(f);
+  expect(conflicts.status).toBe('conflicts');
+  expect(conflicts.conflicts.some(c => c.path.includes('lastCoinUpdate'))).toBe(false);
+  expect(conflicts.conflicts.some(c => c.path.includes('ancientCoins'))).toBe(true);
+});

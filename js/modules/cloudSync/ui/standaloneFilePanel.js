@@ -1,6 +1,7 @@
+import { appendSplitDifference } from './splitDifference.js';
 // @ts-check
 import { renderCharacterUpdatePanel, setCharacterUpdateBusy } from './characterUpdatePanel.js';
-import { cloudChangePath, cloudChangeValue, cloudChangeCounts, folderNextStep } from './cloudFilePresentation.js';
+import { cloudChangeCounts, folderNextStep } from './cloudFilePresentation.js';
 import {
   providerCopyRows,
   readCloudAutoCheck,
@@ -671,13 +672,7 @@ export function bindStandaloneFilePanel(options) {
       const nested = doc.createElement('ul');
       for (const change of entry.changes.slice(0, 30)) {
         const item = doc.createElement('li');
-        const path = doc.createElement('strong');
-        path.className = 'cloud-diff-field';
-        path.textContent = cloudChangePath(change.path);
-        const values = doc.createElement('span');
-        values.className = 'cloud-diff-values';
-        values.textContent = `${cloudChangeValue(change.local, change.path)} → ${cloudChangeValue(change.cloud, change.path)}`;
-        item.append(path, values);
+        appendSplitDifference(item, change);
         nested.append(item);
       }
       if (nested.childNodes.length) li.append(nested);
