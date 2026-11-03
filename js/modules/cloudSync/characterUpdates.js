@@ -1,3 +1,4 @@
+import { latestCoinCheck } from './coinCheckPolicy.js';
 import { sameJsonValue as same } from './valueEquality.js';
 import { exportCharacter } from './characterExport.js';
 import { parsePrivateSnapshot } from './privateSnapshot.js';
@@ -155,7 +156,9 @@ export function characterUpdateReview(localState, cloud, account, privateSnapsho
             { ...local, syncId: c.id },
             { syncId: c.id, partySyncIds, archived: localState.archivedCharacters.includes(local) }
           );
-          publicEqual = same(projected, c);
+          const effective = structuredClone(c);
+          effective.fields.lastCoinUpdate = latestCoinCheck(local.lastCoinUpdate, c.fields.lastCoinUpdate);
+          publicEqual = same(projected, effective);
           otherPublicDifferences = Object.entries(extraLabels)
             .filter(([key]) => !same(projected.fields[key], c.fields[key]))
             .map(([, label]) => label);
@@ -211,8 +214,13 @@ export function prepareCharacterUpdates({ localState, cloud, account, selections
     usedLocal.add(local.id);
     usedCloud.add(remote.id);
     // Matching never archives/restores a character or changes party membership.
-    const selected = choice.fields.filter(k => !same(local[k], remote.fields[k]));
-    for (const key of selected) local[key] = structuredClone(remote.fields[key]);
+    const selected = choice.fields.filter(k => k !== 'lastCoinUpdate' && !same(local[k], remote.fields[k]));
+    const lastCheck = latestCoinCheck(local.lastCoinUpdate, remote.fields.lastCoinUpdate);
+    if (!same(local.lastCoinUpdate, lastCheck)) {
+      local.lastCoinUpdate = lastCheck;
+      selected.push('lastCoinUpdate');
+    }
+    for (const key of selected) if (key !== 'lastCoinUpdate') local[key] = structuredClone(remote.fields[key]);
     changes.push({ cloudId: remote.id, localId: local.id, fields: selected });
     saved = saved.filter(m => m.cloudId !== remote.id && m.localId !== local.id);
     saved.push({ cloudId: remote.id, localId: local.id });

@@ -10,6 +10,10 @@ vi.mock('../js/modules/launcher/runningWindows.js', () => ({
 }));
 
 let state, todoListHtml, renderToday, normalizePlannerEntry;
+const drawToday = (root, deps) => {
+  renderToday(root, deps);
+  root.querySelector('[data-today-tab="todo"]').click();
+};
 
 const NOW = new Date('2026-10-05T12:00:00');
 const TODAY = '2026-10-05';
@@ -141,8 +145,8 @@ describe('туду лист: выполненные отдельно', () => {
 
   it('в списке выполненных работает та же отметка: снятие возвращает задачу в работу', async () => {
     state.plannerEntries = [mine('Сделано', 'done')];
-    renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('.todo-done-list [data-todo-toggle]');
+    drawToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-today-todo]');
     expect(box.checked).toBe(true);
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
@@ -164,8 +168,8 @@ describe('туду лист: выполненные отдельно', () => {
 describe('задачи на день: действия', () => {
   it('галочка ставит «выполнено» и сохраняет', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'todo')];
-    renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('[data-todo-toggle]');
+    drawToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-today-todo]');
     box.checked = true;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('done'));
@@ -175,8 +179,8 @@ describe('задачи на день: действия', () => {
 
   it('снятая галочка возвращает делу статус «ожидает»', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'done')];
-    renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('[data-todo-toggle]');
+    drawToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-today-todo]');
     expect(box.checked).toBe(true);
     box.checked = false;
     box.dispatchEvent(new Event('change', { bubbles: true }));
@@ -186,8 +190,8 @@ describe('задачи на день: действия', () => {
   it('кнопка статуса перебирает по кругу: ожидает → в работе → выполнено', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'todo')];
     const root = document.getElementById('today-root');
-    renderToday(root, {});
-    const click = () => document.querySelector('.todo-status').click();
+    drawToday(root, {});
+    const click = () => document.querySelector('[data-today-status]').click();
     click();
     await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('doing'));
     click();
@@ -214,8 +218,8 @@ describe('задачи на день: действия', () => {
         lastSync: null
       }
     ];
-    renderToday(document.getElementById('today-root'), {});
-    expect(document.querySelector('[data-todo-toggle]')).toBeNull();
+    drawToday(document.getElementById('today-root'), {});
+    expect(document.querySelector('[data-today-todo]')).toBeNull();
   });
 });
 
@@ -231,18 +235,18 @@ describe('повтор в списке задач на день', () => {
 
   it('дела, отмеченные вчера, сегодня приходят неотмеченными', () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
-    renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('[data-todo-toggle]');
+    drawToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-today-todo]');
     expect(box.checked).toBe(false);
-    expect(document.querySelector('.todo-status').textContent.trim()).toBe('Ожидает');
+    expect(document.querySelector('[data-today-status]').textContent.trim()).toBe('Ожидает');
     // Во вчерашнем дне та же запись осталась отмеченной
     expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
   });
 
   it('отметка сегодняшнего дня не трогает вчерашнее вхождение', async () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
-    renderToday(document.getElementById('today-root'), {});
-    const box = document.querySelector('[data-todo-toggle]');
+    drawToday(document.getElementById('today-root'), {});
+    const box = document.querySelector('[data-today-todo]');
     box.checked = true;
     box.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
@@ -251,8 +255,8 @@ describe('повтор в списке задач на день', () => {
 
   it('кнопка статуса перебирает состояние именно сегодняшнего дня', async () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
-    renderToday(document.getElementById('today-root'), {});
-    const click = () => document.querySelector('.todo-status').click();
+    drawToday(document.getElementById('today-root'), {});
+    const click = () => document.querySelector('[data-today-status]').click();
     click();
     await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('doing'));
     click();
@@ -324,10 +328,10 @@ describe('сколько задач видно сразу', () => {
 
 describe('блок окон игры ушёл с «Сегодня»', () => {
   it('управление окнами живёт в «Инструментах», на «Сегодня» его больше нет', () => {
-    renderToday(document.getElementById('today-root'), {});
+    drawToday(document.getElementById('today-root'), {});
     expect(document.querySelector('[data-running-windows]')).toBeNull();
     expect(document.querySelector('.rwn-block')).toBeNull();
     // Список задач на день на месте
-    expect(document.querySelector('.todo-list, .today-empty')).not.toBeNull();
+    expect(document.querySelector('.rt-events')).not.toBeNull();
   });
 });

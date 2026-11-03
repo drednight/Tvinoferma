@@ -62,7 +62,8 @@ describe('полный каталог двух независимых лабор
         const root = document.createElement('div');
         root.innerHTML = renderPage(page.source, v, createLabState());
         expect(root.querySelector('[data-entry]')).not.toBeNull();
-        expect(root.querySelector('.lg-coverage')).not.toBeNull();
+        if (v.kind === 'reference') expect(root.querySelector('.lg-coverage')).toBeNull();
+        else expect(root.querySelector('.lg-coverage')).not.toBeNull();
       });
   it('search, filters, and selection inputs are backed by the same model', () => {
     const state = createLabState();

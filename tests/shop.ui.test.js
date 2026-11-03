@@ -171,7 +171,7 @@ describe('gift item selection → quantities → guarded purchase', () => {
     expect($('[data-card=light] details').textContent).toContain('Описание');
     expect($('[data-card=light] details').open).toBe(false);
   });
-  it('main table contains names only, no quantities, balances or remainder totals', async () => {
+  it('main table has choices and current balances, without quantities or remainder totals', async () => {
     await setup();
     $('[data-item=valor]').click();
     expect($('#shop-table input[type=number]')).toBeNull();
@@ -411,4 +411,29 @@ it('retry from the new quantity workflow still requires consent and buys only th
   await clickFoot('retry', 900);
   expect(attempts).toBe(4);
   expect(mocks.confirm.mock.calls.at(-1)[0].text).toContain('2 шт.');
+});
+it('shows balance immediately after nickname and selects an item for every unique shared wallet', async () => {
+  await setup();
+  $('[data-item=valor]').click();
+  const row = rowOf('Вв');
+  expect(row.children[2].textContent).toContain('54');
+  expect(row.textContent).not.toContain('общий аккаунт');
+  $('[data-pick-all=valor]').click();
+  expect($$('[data-pick-name]:checked')).toHaveLength(2);
+  expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+  $('[data-pick-all=valor]').click();
+  expect($$('[data-pick-name]:checked')).toHaveLength(0);
+});
+it('column maximum caps each selected character by balance/quota without purchasing or enabling a missing item', async () => {
+  site.U1.balance = 500;
+  state.characters[2].class = 'Воин';
+  await setup();
+  $('[data-item=light]').click();
+  $('[data-pick-all=light]').click();
+  const dlg = await next();
+  expect(dlg.querySelector('th').textContent).toBe('Персонажи');
+  expect(dlg.querySelector('tbody td img')).not.toBeNull();
+  dlg.querySelector('[data-quantity-max=light]').click();
+  expect([...dlg.querySelectorAll('[data-qty]')].map(i => Number(i.value)).sort()).toEqual([0, 4]);
+  expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
 });

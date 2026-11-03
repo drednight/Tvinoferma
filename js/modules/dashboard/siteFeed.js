@@ -1,6 +1,6 @@
 // Shared public feed: the same allowlisted reader as promo discovery, no credentials.
 import { createPublicNewsReader } from '../automation/publicNewsReader.js';
-import { articleId, newsArticleText } from '../automation/promoNewsParser.js';
+import { articleId } from '../automation/promoNewsParser.js';
 const KEY = 'tf_today_news_v1';
 let current = { articles: [], updatedAt: null, status: 'idle' },
   flight = null;
@@ -14,8 +14,7 @@ try {
         .map(a => ({
           id: articleId(a.url),
           url: `https://pwonline.ru/news.php?article=${articleId(a.url)}`,
-          title: a.title.slice(0, 240),
-          text: typeof a.text === 'string' ? a.text.slice(0, 1800) : ''
+          title: a.title.slice(0, 240)
         })),
       updatedAt:
         typeof saved.updatedAt === 'string' && Number.isFinite(Date.parse(saved.updatedAt)) ? saved.updatedAt : null,
@@ -54,14 +53,7 @@ export function refreshSiteFeed({ invokeFn, now = () => new Date() } = {}) {
       const response = await read({ page: 1, article: null });
       if (response?.status !== 200) throw Error('news_http');
       const articles = parseLatestNews(response.html);
-      const expanded = await Promise.all(
-        articles.map(async a => {
-          const response = await read({ page: null, article: a.id });
-          if (response?.status !== 200) throw Error('news_http');
-          return { ...a, text: newsArticleText(response.html) };
-        })
-      );
-      current = { articles: expanded, updatedAt: now().toISOString(), status: 'ready' };
+      current = { articles, updatedAt: now().toISOString(), status: 'ready' };
       try {
         globalThis.localStorage?.setItem(KEY, JSON.stringify({ version: 1, ...current }));
       } catch {}

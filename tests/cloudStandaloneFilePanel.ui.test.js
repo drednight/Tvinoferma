@@ -124,7 +124,7 @@ describe('standalone full file UX', () => {
     expect(el('files').textContent).toContain('часовой пояс');
     expect(el('differences').textContent).toContain('Будет удалено');
     expect(el('differences').textContent).toContain('Будет добавлено');
-    expect(el('differences').textContent).toContain('Было → Стало');
+    expect(el('differences').textContent).toContain('БылоСтало');
     expect(el('review-status').textContent).toContain('и местные, и облачные');
     expect(el('differences').querySelector('img')).toBeNull();
     const groups = [...el('differences').querySelectorAll(':scope > li > details')];

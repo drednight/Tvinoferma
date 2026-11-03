@@ -327,3 +327,42 @@
   height: 100%;
   object-fit: contain;
 }
+.shop-quantity-table th:first-child,
+.shop-quantity-table td:first-child {
+  width: 220px;
+  min-width: 220px;
+  max-width: none;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+.shop-quantity-table th:nth-child(2),
+.shop-quantity-table td:nth-child(2) {
+  width: 110px;
+  min-width: 110px;
+}
+.shop-quantity-table th {
+  vertical-align: top;
+}
+.shop-quantity-table th span {
+  display: block;
+  margin-bottom: 8px;
+}
+.shop-quantity-table th button {
+  display: block;
+  margin: 8px 0 0;
+}
+.shop-quantity-table td:first-child b {
+  display: inline;
+}
+.shop-current-balance {
+  white-space: nowrap;
+}
+.shop-quantity-table td:first-child small {
+  display: block;
+  margin-top: 4px;
+}
+.shop-quantity-table td:first-child img {
+  margin-right: 6px;
+  vertical-align: middle;
+}

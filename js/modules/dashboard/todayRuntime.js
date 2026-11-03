@@ -9,12 +9,12 @@ import { normalizePlannerEntry } from './planner.js';
 import { discoveredPromos, promoCoverage } from '../automation/promoDiscovery.js';
 import { loadLog } from '../automation/promoLog.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
-import { balances } from '../finance/model.js';
+import { currentBalances } from '../finance/model.js';
 export const nativeToday = () => !!globalThis.window?.__TAURI_INTERNALS__;
 export function connectedTodayState(preview) {
   let s = preview;
   if (nativeToday() || preview.production) {
-    const bank = balances(state.finance.operations, state.finance.settings.opening);
+    const bank = currentBalances(state.finance);
     s = {
       ...preview,
       day: { ...preview.day, date: mskDate(), gold: bank.gold, bank: bank.coins },
@@ -98,12 +98,11 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
   } else if (action === 'event-add') {
     state.plannerEntries.push(normalizePlannerEntry({ date, title, time, kind }));
     await (await import('../../core/storage.js')).persist();
+  } else if (action === 'promo-refresh') {
+    await (await import('../automation/promoDiscovery.js')).promoDiscovery().check({ force: true });
   } else if (action === 'news-refresh') {
     const { invoke } = await import('@tauri-apps/api/core');
-    await Promise.all([
-      (await import('../servers/serverStatus.js')).refreshServerStatus({ invokeFn: invoke }),
-      (await import('./siteFeed.js')).refreshSiteFeed({ invokeFn: invoke })
-    ]);
+    await (await import('./siteFeed.js')).refreshSiteFeed({ invokeFn: invoke });
   }
   return { ok: true };
 }

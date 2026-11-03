@@ -1,4 +1,4 @@
-import { cloudChangeValue, cloudChangePath } from './cloudFilePresentation.js';
+import { appendSplitDifference } from './splitDifference.js';
 // @ts-check
 import {
   checkSnapshotFile,
@@ -236,7 +236,7 @@ export function bindSnapshotFilePanel(options) {
         details.append(summary, fields);
         for (const change of entry.changes.slice(0, 30)) {
           const field = doc.createElement('li');
-          field.textContent = `${cloudChangePath(change.path)}: ${cloudChangeValue(change.local, change.path)} → ${cloudChangeValue(change.cloud, change.path)}`;
+          appendSplitDifference(field, change);
           fields.append(field);
         }
         if (entry.changes.length > 30) {

@@ -56,7 +56,7 @@ describe('production Today adapters', () => {
     expect(first).toBe(second);
     release();
     await first;
-    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(invoke).toHaveBeenCalledTimes(1);
     const stamp = siteFeedSnapshot().updatedAt;
     await refreshSiteFeed({ invokeFn: async () => ({ status: 500 }) });
     expect(siteFeedSnapshot()).toMatchObject({ updatedAt: stamp, status: 'unavailable' });
@@ -122,4 +122,21 @@ it('the connected calendar reuses the production editor for add/edit, preserving
   await vi.waitFor(() => expect(state.plannerEntries[0].title).toBe('Изменённый план'));
   expect(state.plannerEntries[0].id).toBe(id);
   expect(state.characters[0].contacts.password).toBe('MUST_NOT_LEAK');
+});
+it('uses exactly the top finance widget balances, including month corrections', () => {
+  const previous = state.finance;
+  try {
+    state.finance = {
+      settings: { opening: { gold: 10, coins: 20 }, monthAdjust: { '2026-11': { gold: 1000, coins: 2000 } } },
+      operations: [
+        { date: '2026-11-03', currency: 'gold', kind: 'in', amount: 1 },
+        { date: '2026-11-03', currency: 'coins', kind: 'in', amount: 2 }
+      ]
+    };
+    const s = connectedTodayState({ ...createLabState(), production: true });
+    expect(s.day.gold).toBe(1001);
+    expect(s.day.bank).toBe(2002);
+  } finally {
+    state.finance = previous;
+  }
 });

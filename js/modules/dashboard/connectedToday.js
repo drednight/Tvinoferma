@@ -1,4 +1,4 @@
-// Opt-in view of the real Today screen. No fake characters or launcher model.
+// Production Today screen. No fake characters or launcher model.
 import { mskDate } from '../../core/msk.js';
 import { openPlannerDay, openPlannerEntryForm } from './plannerView.js';
 import { connectedTodayState } from './todayRuntime.js';
@@ -9,7 +9,6 @@ import { toast } from '../../core/ui.js';
 import { renderReferenceToday, bindReferenceToday } from './referenceTodayView.js';
 const sessions = new WeakMap();
 export function renderConnectedToday(root, deps, render) {
-  if (root.dataset.referenceToday !== 'true') return false;
   let session = sessions.get(root);
   if (!session) {
     const model = {
@@ -24,7 +23,7 @@ export function renderConnectedToday(root, deps, render) {
     const dialog = document.createElement('dialog');
     dialog.className = 'rt-reference rt-connected-dialog';
     dialog.innerHTML =
-      '<button type="button" data-connected-dialog-close>Закрыть</button><h2></h2><div data-connected-dialog-body></div>';
+      '<h2></h2><div data-connected-dialog-body></div><footer class="rt-dialog-footer"><button type="button" class="btn" data-connected-dialog-close>Закрыть</button></footer>';
     root.after(dialog);
     dialog.querySelector('button').onclick = () => dialog.close();
     const body = dialog.querySelector('[data-connected-dialog-body]');
@@ -62,6 +61,7 @@ export function renderConnectedToday(root, deps, render) {
         if (source.dataset.goSource === 'marathons') {
           const active = connectedTodayState(model).day.marathon;
           if (active?.id) deps.run?.('open-marathon', active.id);
+          else document.querySelector('.tab[data-tab=marathons]')?.click();
         } else if (source.dataset.goSource === 'parties') deps.run?.('open-party', model.day.favoriteParty);
       }
     });
@@ -75,12 +75,6 @@ export function renderConnectedToday(root, deps, render) {
     sessions.set(root, session);
   }
   session.model.day.date = mskDate();
-  root.innerHTML =
-    '<div class="today-layout-actions"><button class="btn ghost" data-today-reference-back>К прежнему виду</button></div>' +
-    renderReferenceToday(session.model);
-  root.querySelector('[data-today-reference-back]').onclick = () => {
-    root.dataset.referenceToday = 'false';
-    render();
-  };
+  root.innerHTML = renderReferenceToday(session.model);
   return true;
 }

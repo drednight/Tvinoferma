@@ -930,3 +930,45 @@
 #cloud-standalone-full-replacement {
   margin: 16px 0;
 }
+.cloud-character-field {
+  display: block;
+}
+.cloud-split {
+  margin: 10px 0;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cloud-split-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+.cloud-split-row > span {
+  padding: 9px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+}
+.cloud-split-row > span + span {
+  border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+.cloud-split-head {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  .cloud-split-row {
+    grid-template-columns: minmax(72px, 0.65fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .cloud-split-row > span {
+    padding: 6px;
+    font-size: 12px;
+  }
+}
+.cloud-character-field .cloud-split-row > span {
+  grid-column: auto;
+  max-height: none;
+}

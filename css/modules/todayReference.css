@@ -879,3 +879,35 @@
   white-space: pre-line;
   font-size: 12px;
 }
+.rt-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  text-align: center;
+  gap: 6px;
+  margin: 16px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.rt-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.rt-reference .rt-refresh {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+}
+
+.rt-promos > footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rt-promos > footer > .primary {
+  flex: 1;
+}
+.rt-reference .rt-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

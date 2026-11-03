@@ -1,3 +1,4 @@
+import { latestCoinCheck } from './coinCheckPolicy.js';
 // @ts-check
 // Преобразование выбранных публичных записей в локальный кандидат. Этот модуль
 // не сохраняет state и не доверяет облаку: вызывающий обязан проверить историю,
@@ -358,6 +359,8 @@ function materialize(
       chars.set(record.id, before);
       continue;
     }
+    // target is an isolated comparison projection, never the authenticated input.
+    if (before) record.fields.lastCoinUpdate = latestCoinCheck(before.lastCoinUpdate, record.fields.lastCoinUpdate);
     const fields = clone(record.fields);
     fields.partyIds = fields.partyIds.map(id => resolve(localIds, id));
     fields.mainPartyId = resolve(localIds, fields.mainPartyId, true);
