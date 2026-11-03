@@ -1,3 +1,4 @@
+import { humanCloudValue } from './cloudFilePresentation.js';
 // @ts-check
 // Экспериментальный просмотр только УЖЕ закреплённого набора. Не создаёт набор
 // или ключи; выборочное применение и ограниченное объединение — разные действия.
@@ -136,16 +137,16 @@ function display(value) {
   if (!value.present) return 'нет в этой версии';
   if (value.value === null) return 'не задано';
   if (typeof value.value === 'string') return value.value || 'пусто';
-  return JSON.stringify(value.value, null, 2);
+  return humanCloudValue(value.value);
 }
 function detailFor(entry, comparison) {
   if (entry.kind === 'marked_cloud_deletion') {
     const record = comparison.localRecord(entry.section, entry.id);
-    return JSON.stringify(record?.fields ?? {}, null, 2);
+    return humanCloudValue(record?.fields ?? {});
   }
   if (entry.kind === 'only_cloud') {
     const record = comparison.cloudRecord(entry.section, entry.id);
-    return JSON.stringify(record?.fields ?? {}, null, 2);
+    return humanCloudValue(record?.fields ?? {});
   }
   if (entry.kind === 'changed' || entry.kind === 'settings_changed') {
     return entry.changes

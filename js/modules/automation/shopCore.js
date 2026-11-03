@@ -1,3 +1,4 @@
+import { siteItemImage } from './siteItemIcon.js';
 // js/modules/automation/shopCore.js
 // <svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Активация подарков (покупка за Древние монеты) (магазин подарков, chests2.php): чистая логика без интерфейса —
 // список закреплённых предметов, разбор ответа сайта, расчёт количества и остатка, лимиты и срок их обновления,
@@ -87,7 +88,7 @@ export function normalizeScanItem(raw, def) {
     blocked,
     buyable: price != null && price > 0 && !blocked && raw.hasLink !== false,
     desc: cleanDesc(raw.desc),
-    image: /^https:\/\/[^\s"'<>]+$/.test(String(raw.image || '')) ? String(raw.image) : '',
+    image: siteItemImage(raw.image),
     label: squash(raw.label)
   };
 }
@@ -298,7 +299,7 @@ export function limitView(item, track, now = new Date()) {
   const exhausted = item.available === 0;
   const resetAt = track?.resetAt && Date.parse(track.resetAt) > now.getTime() ? track.resetAt : null;
   const daysLeft = resetAt ? Math.max(0, Math.ceil((Date.parse(resetAt) - now.getTime()) / DAY_MS)) : null;
-  const max = item.max ?? null;
+  const max = item.max ?? item.observedMax ?? track?.observedMax ?? null;
   const left = resetAt
     ? `обновится ${fmtDate(resetAt)} (${daysLeft > 0 ? `через ${daysLeft} дн.` : 'сегодня'})`
     : exhausted
@@ -311,6 +312,7 @@ export function limitView(item, track, now = new Date()) {
     limited: true,
     available: item.available,
     max,
+    maxSource: item.max != null ? 'site' : max != null ? 'observed' : null,
     exhausted,
     resetAt,
     daysLeft,

@@ -1,3 +1,5 @@
+import { sameJsonValue } from '../valueEquality.js';
+import { characterFieldText } from './characterFieldText.js';
 import { CHARACTER_UPDATE_FIELDS } from '../characterUpdates.js';
 
 const controllers = new WeakMap();
@@ -71,7 +73,13 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
     parentBusy = value;
     update();
   });
-  for (const remote of view.records) {
+  const equal = view.records.filter(r => r.identical);
+  if (equal.length)
+    node(
+      'p',
+      `Совпадают автоматически: ${equal.length}. Публичные и предоставленные приватные поля проверены; ручная сверка и запись не требуются.`
+    );
+  for (const remote of view.records.filter(r => !r.identical)) {
     const row = node('details', undefined, list);
     row.className = 'cloud-character-row';
     const summary = node('summary', `${remote.nick}${remote.archived ? ' (в архиве облака)' : ''}`, row);
@@ -90,6 +98,24 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
         `${local.nick} · ${local.id}${local.archived ? ' (архив этого ПК)' : ''}${remote.suggestedLocalIds.includes(local.id) ? ' — совпадает ник, проверьте' : ''}`
       );
     select.value = remote.matchedLocalId;
+    if (remote.matchReason === 'contacts')
+      node(
+        'p',
+        'Сопоставлено по нику, классу и связанным контактам из файла; предоставленный пароль тоже проверен, если присутствует. Значения скрыты. Соответствие не разрешает перезапись контактов.',
+        row
+      );
+    if (remote.otherPublicDifferences?.length)
+      node(
+        'p',
+        `Другие отличия: ${remote.otherPublicDifferences.join(', ')}. Эти данные видны в общем сравнении файла; здесь они не перезаписываются.`,
+        row
+      );
+    if (remote.privateFields?.length)
+      node(
+        'p',
+        `Контакты / пароль: ${remote.privateEqual ? 'совпадают' : 'есть отличия; перенос выбирается отдельно'}. Привязка взята из characterId файла, а не порядка строк.`,
+        row
+      );
     const content = node('div', undefined, row);
     content.className = 'cloud-character-fields';
     const entry = { remote, select, fields: content };
@@ -102,9 +128,9 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
       if (local) {
         let count = 0;
         for (const [key, title] of Object.entries(CHARACTER_UPDATE_FIELDS)) {
-          const before = JSON.stringify(local.fields[key]),
-            after = JSON.stringify(remote.fields[key]);
-          if (before === after) continue;
+          const before = local.fields[key],
+            after = remote.fields[key];
+          if (sameJsonValue(before, after)) continue;
           count++;
           const field = node('label', undefined, content);
           field.className = 'cloud-character-field';
@@ -112,8 +138,8 @@ export function renderCharacterUpdatePanel(host, view, onApply) {
           check.type = 'checkbox';
           check.value = key;
           node('strong', title, field);
-          node('span', 'На этом ПК: ' + (before ?? 'нет'), field);
-          node('span', 'В облаке: ' + (after ?? 'нет'), field);
+          node('span', 'На этом ПК: ' + characterFieldText(key, before), field);
+          node('span', 'В облаке: ' + characterFieldText(key, after), field);
         }
         if (!count)
           node(

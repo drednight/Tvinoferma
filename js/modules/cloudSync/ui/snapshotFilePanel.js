@@ -1,3 +1,4 @@
+import { cloudChangeValue, cloudChangePath } from './cloudFilePresentation.js';
 // @ts-check
 import {
   checkSnapshotFile,
@@ -233,27 +234,9 @@ export function bindSnapshotFilePanel(options) {
           fields = doc.createElement('ul');
         summary.textContent = `Изменённые поля: ${entry.changes.length}`;
         details.append(summary, fields);
-        const names = {
-          fields: 'Данные',
-          notes: 'Заметка',
-          level: 'Уровень',
-          nick: 'Ник',
-          archived: 'Архив',
-          partyIds: 'Пати',
-          mainPartyId: 'Основная пати',
-          partyOrder: 'Порядок в пати',
-          order: 'Порядок',
-          title: 'Название',
-          name: 'Название',
-          status: 'Статус'
-        };
-        const value = part =>
-          !part?.present
-            ? 'отсутствует'
-            : (typeof part.value === 'string' ? part.value : JSON.stringify(part.value)).slice(0, 400);
         for (const change of entry.changes.slice(0, 30)) {
           const field = doc.createElement('li');
-          field.textContent = `${change.path.map(key => names[key] || key).join(' › ')}: ${value(change.local)} → ${value(change.cloud)}`;
+          field.textContent = `${cloudChangePath(change.path)}: ${cloudChangeValue(change.local, change.path)} → ${cloudChangeValue(change.cloud, change.path)}`;
           fields.append(field);
         }
         if (entry.changes.length > 30) {

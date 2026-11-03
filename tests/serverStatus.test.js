@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 // «Статус серверов»: чтение без аккаунтов при запуске и по расписанию, плашка в шапке, настройка «Свежесть данных» (Issue #26)
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), promo: vi.fn(async () => {}), news: vi.fn(async () => {}) }));
+vi.mock('../js/modules/dashboard/siteFeed.js', () => ({ refreshSiteFeed: mocks.news }));
+vi.mock('../js/modules/automation/promoDiscovery.js', () => ({
+  promoDiscovery: () => ({ check: mocks.promo })
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 
 const SERVERS = {
@@ -19,6 +23,8 @@ let ss, view;
 
 beforeEach(async () => {
   vi.resetModules();
+  mocks.promo.mockClear();
+  mocks.news.mockClear();
   window.localStorage.clear();
   window.__TAURI_INTERNALS__ = {};
   mocks.invoke.mockReset().mockImplementation(async () => ({ ...SERVERS }));
@@ -233,4 +239,25 @@ describe('без журнала и уведомлений', () => {
     expect(fn).not.toContain('tf_log');
     expect(rs).toContain('const STATUS_SCOPE: &str = QUIET_SCOPE;');
   });
+});
+
+it('promo schedule is independent of server refresh disabling, uses the current configured interval and honors 0 startup-only', async () => {
+  vi.useFakeTimers();
+  const settings = { freshness: { serverStatusMinutes: 0, promoMinutes: 60 } };
+  const stop = ss.startServerStatusScheduler(() => settings);
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(mocks.promo).toHaveBeenCalledWith({ maxAgeMs: 3600000 });
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  const count = mocks.promo.mock.calls.length;
+  settings.freshness.promoMinutes = 0;
+  await vi.advanceTimersByTimeAsync(60000);
+  expect(mocks.promo).toHaveBeenCalledTimes(count);
+  settings.freshness.promoMinutes = 1;
+  await vi.advanceTimersByTimeAsync(30000);
+  expect(mocks.promo).toHaveBeenLastCalledWith({ maxAgeMs: 600000 });
+  stop();
+});
+it('startup starts the shared news reader alongside server refresh', async () => {
+  await ss.loadServerStatusOnStartup(() => ({}));
+  expect(mocks.news).toHaveBeenCalledWith({ invokeFn: mocks.invoke });
 });

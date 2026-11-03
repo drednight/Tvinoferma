@@ -686,7 +686,8 @@ export function bindStandaloneFilePanel(options) {
     for (const field of token.privateChanges) {
       const li = doc.createElement('li');
       li.className = 'cloud-diff-card';
-      li.textContent = `Приватное поле ${field.field}: ${field.clears ? 'будет очищено' : 'будет заменено'}; значения скрыты.`;
+      const labels = { password: 'Пароль', email: 'Почта', recoveryEmail: 'Резервная почта', phone: 'Телефон' };
+      li.textContent = `${field.label || 'Персонаж'} — ${labels[field.field] || 'Приватное поле'}: ${field.clears ? 'в файле пусто; очистка только по отдельному выбору' : 'значения отличаются'}. Значения скрыты; перенос требует отдельного выбора и подтверждения.`;
       category('private', 'Контакты и пароли — значения скрыты').append(li);
     }
     if (!list.childNodes.length) {

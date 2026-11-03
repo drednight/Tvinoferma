@@ -444,7 +444,9 @@ export async function boot() {
 
     console.log('[BOOT] Application ready.');
     if (isTauri() && !startupReadOnly)
-      void import('./modules/automation/promoDiscovery.js').then(m => m.promoDiscovery().check()).catch(() => {});
+      void import('./modules/automation/promoDiscovery.js')
+        .then(m => m.promoDiscovery().check({ force: true }))
+        .catch(() => {});
 
     // Только ранее закреплённые облачные наборы: отсутствие привязки не создаёт новый.
     if (isTauri() && !startupReadOnly) window.dispatchEvent(new CustomEvent('tf-cloud-startup-check'));

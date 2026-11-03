@@ -298,3 +298,21 @@ describe('аутентифицированная v4-история ручной 
     await expect(f.verify([f.root.envelope, changed])).rejects.toThrow();
   });
 });
+
+it('a verified cross-ID character association compares its private fields against the right local character, not another row', () => {
+  const f = fixture();
+  const original = f.state.characters[0];
+  const cloudId = f.id;
+  original.syncId = generateSyncId(webcrypto);
+  const differences = privateDifferences(
+    f.delta,
+    f.publicSnapshot,
+    f.state,
+    ['password'],
+    [{ id: cloudId, matchedLocalId: original.id }]
+  );
+  expect(differences).toHaveLength(1);
+  expect(differences[0].localPresent).toBe(true);
+  expect(JSON.stringify(differences)).not.toContain('LOCAL_PASSWORD');
+  expect(JSON.stringify(differences)).not.toContain('CLOUD_PASSWORD');
+});

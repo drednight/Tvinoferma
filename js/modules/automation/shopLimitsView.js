@@ -10,8 +10,8 @@ export function openShopLimits({ refresh } = {}) {
   const dlg = openOverlay({ title: 'Лимиты подарков по персонажам', wide: true });
   let busy = false;
   dlg.sub.textContent =
-    'У персонажей одного аккаунта лимит общий. «Доступно: N из Х»: N — остаток, Х — указанный сайтом лимит. Дата — обновление лимита, не срок предмета.';
-  dlg.body.innerHTML = `<div class="shop-quick"><label>Поиск<input class="input" type="search" data-limits-search placeholder="Ник, класс или аккаунт"></label><label>Предмет<select class="input" data-limits-item><option value="">Все предметы</option>${SHOP_ITEMS.map(d => `<option value="${d.key}">${esc(d.name)}</option>`).join('')}</select></label><label>Лимит<select class="input" data-limits-filter><option value="limited">Все с указанным лимитом</option><option value="available">Есть остаток</option><option value="exhausted">Лимит исчерпан</option><option value="unlimited">Без указанного лимита</option><option value="unknown">Нет данных сайта</option></select></label></div><p data-limits-status role="status"></p><div class="promo-scroll"><table class="promo-table shop-limits-table"><thead><tr><th>Персонаж / аккаунт</th><th>Предмет</th><th>Доступно</th><th>Когда обновится</th></tr></thead><tbody></tbody></table></div>`;
+    'У персонажей одного аккаунта лимит общий. «Доступно: N из Х»: N — остаток, Х — указанный сайтом лимит. Если Х не указан, максимум — наибольший прочитанный остаток этого предмета среди аккаунтов. Дата — обновление лимита, не срок предмета.';
+  dlg.body.innerHTML = `<div class="shop-quick"><label>Поиск<input class="input" type="search" data-limits-search placeholder="Ник, класс или аккаунт"></label><label>Предмет<select class="input" data-limits-item><option value="">Все предметы</option>${SHOP_ITEMS.map(d => `<option value="${d.key}">${esc(d.name)}</option>`).join('')}</select></label><label>Лимит<select class="input" data-limits-filter><option value="all">Все</option><option value="maximum">Максимум</option><option value="below">Меньше максимума</option><option value="exhausted">Исчерпано</option><option value="unknown">Нет данных</option><option value="reset">Есть дата обновления</option></select></label></div><p data-limits-status role="status"></p><div class="promo-scroll"><table class="promo-table shop-limits-table"><thead><tr><th>Персонаж / аккаунт</th><th>Предмет</th><th>Доступно</th><th>Когда обновится</th></tr></thead><tbody></tbody></table></div>`;
   dlg.foot.innerHTML =
     '<button type="button" class="btn ghost" data-close-limits>Закрыть</button><span class="sd-foot-spacer"></span><button type="button" class="btn primary" data-refresh-limits>Обновить информацию по лимитам</button>';
   const q = selector => dlg.body.querySelector(selector);
@@ -25,38 +25,31 @@ export function openShopLimits({ refresh } = {}) {
       const account = getAccount(sites[c.id]);
       if (query && ![c.nick, c.class, account?.account].join(' ').toLocaleLowerCase('ru').includes(query)) continue;
       const defs = SHOP_ITEMS.filter(d => !key || d.key === key);
-      const limited = defs.filter(d => {
-        const item = account?.items[d.key],
-          limit = limitView(item, account?.tracks[d.key]);
-        return (
-          limit &&
-          (filter === 'limited' ||
-            (filter === 'available' && limit.available > 0) ||
-            (filter === 'exhausted' && limit.available === 0))
-        );
-      });
-      // Unlimited/unknown filters show one honest character summary, not a list
-      // of invented per-item quotas or all eight missing items.
-      let cells = limited.map(def => {
-        const item = account.items[def.key],
-          track = account.tracks[def.key],
-          limit = limitView(item, track);
-        const reset = limit.resetAt
-          ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
-          : track?.resetAt && Date.parse(track.resetAt) <= Date.now()
-            ? 'Срок обновления прошёл — перечитайте сайт'
-            : 'Дата неизвестна — сайт её не сообщил';
-        return `<td>${esc(def.name)}</td><td>Доступно: ${limit.available}${limit.max != null ? ` из ${limit.max}` : ' (максимум не указан)'}</td><td>${esc(reset)}</td>`;
-      });
-      if (
-        filter === 'unlimited' &&
-        defs.some(d => account?.items[d.key]?.found && account.items[d.key].available == null)
-      )
-        cells = [
-          '<td colspan="3">Есть найденные предметы без указанного лимита. Это не доказательство безлимитной покупки.</td>'
-        ];
-      if (filter === 'unknown' && (!account || defs.some(d => !account.items[d.key]?.found)))
-        cells = ['<td colspan="3">Нет данных об аккаунте или выбранный предмет не найден на сайте.</td>'];
+      const cells = defs
+        .filter(d => {
+          const limit = limitView(account?.items[d.key], account?.tracks[d.key]);
+          return (
+            filter === 'all' ||
+            (filter === 'unknown' && !limit) ||
+            (filter === 'reset' && Number.isFinite(Date.parse(account?.tracks[d.key]?.resetAt))) ||
+            (limit &&
+              ((filter === 'maximum' && limit.max != null && limit.available === limit.max) ||
+                (filter === 'below' && limit.max != null && limit.available < limit.max) ||
+                (filter === 'exhausted' && limit.available === 0)))
+          );
+        })
+        .map(def => {
+          const limit = limitView(account?.items[def.key], account?.tracks[def.key]);
+          const available = limit
+            ? `Доступно: ${limit.available}${limit.max != null ? ` из ${limit.max}${limit.maxSource === 'observed' ? ' (максимум наблюдений)' : ''}` : ''}`
+            : 'Нет данных';
+          const reset = limit?.resetAt
+            ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
+            : account?.tracks[def.key]?.resetAt && Date.parse(account.tracks[def.key].resetAt) <= Date.now()
+              ? 'Срок обновления прошёл — перечитайте сайт'
+              : 'Дата не указана';
+          return `<td>${esc(def.name)}</td><td>${esc(available)}</td><td>${esc(reset)}</td>`;
+        });
       cells.forEach((cell, index) =>
         rows.push(
           `<tr>${index === 0 ? `<td rowspan="${cells.length}">${classIconHtml(c)} <b>${esc(c.nick)}</b><small>${esc(account?.account || 'Аккаунт не проверен')}</small><small>${account?.at ? 'Проверено: ' + esc(new Date(account.at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })) + ' мск' : 'Нет данных сайта'}</small></td>` : ''}${cell}</tr>`

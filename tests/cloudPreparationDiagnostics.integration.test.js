@@ -238,3 +238,29 @@ describe('безопасная диагностика всей подготов�
     expect(getter).not.toHaveBeenCalled();
   });
 });
+
+it('materialization keeps the planner source/ID guard and diagnoses its exact safe substage without changing data', async () => {
+  const f = await fixture({
+    plannerEntries: [{ id: 'manual-entry', title: 'FAKE_PRIVATE_EVENT', date: '2026-11-03' }]
+  });
+  const { planSyncIdentities } = await import('../js/modules/cloudSync/identityMigration.js');
+  const { buildPublicSnapshot } = await import('../js/modules/cloudSync/publicSnapshot.js');
+  const { prepareFullPublicSnapshotReplace } = await import('../js/modules/cloudSync/applyPublicSnapshot.js');
+  const { preparationCheck } = await import('../js/modules/cloudSync/preparationDiagnostics.js');
+  const { ui: _ui, ...raw } = f.state;
+  const local = planSyncIdentities({ snapshot: raw, cryptoSource: webcrypto }).snapshot,
+    cloud = buildPublicSnapshot(local);
+  cloud.sections.planner.records[0].fields.source = { kind: 'guild', eventId: 'fake_site_event' };
+  const before = structuredClone(local);
+  let caught;
+  try {
+    preparationCheck('roundtrip', () =>
+      prepareFullPublicSnapshotReplace({ localState: local, cloudSnapshot: cloud, cryptoSource: webcrypto })
+    );
+  } catch (error) {
+    caught = error;
+  }
+  expect(f.preparationDiagnosticCode(caught)).toBe('setup/identities/roundtrip.materialize.planner/local_id');
+  expect(local).toEqual(before);
+  expect(f.preparationDiagnosticCode(caught)).not.toMatch(/FAKE|PRIVATE|manual-entry|fake_site_event/);
+});

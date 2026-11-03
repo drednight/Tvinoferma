@@ -68,7 +68,7 @@ export function buildPrivateDelta(snapshot, publicSnapshot, fields) {
     publicSnapshot
   );
 }
-export function privateDifferences(value, publicSnapshot, localState, fields) {
+export function privateDifferences(value, publicSnapshot, localState, fields, matches = []) {
   validateJsonSnapshot(localState);
   buildPublicSnapshot(localState, { settingsSelections: publicSnapshot.sections.preferences.selections });
   const permitted = new Set(
@@ -81,7 +81,12 @@ export function privateDifferences(value, publicSnapshot, localState, fields) {
   if (!value) return [];
   const result = [];
   for (const row of parsePrivateSnapshot(value, publicSnapshot).records) {
-    const char = local.get(row.characterId);
+    const match = matches.find(m => m.id === row.characterId);
+    const char =
+      local.get(row.characterId) ||
+      (match?.matchedLocalId
+        ? [...localState.characters, ...localState.archivedCharacters].find(c => c.id === match.matchedLocalId)
+        : null);
     for (const field of PRIVATE_FIELDS) {
       if (!permitted.has(field) || !Object.hasOwn(row.fields, field)) continue;
       const incoming = row.fields[field];
@@ -90,7 +95,10 @@ export function privateDifferences(value, publicSnapshot, localState, fields) {
       result.push({
         characterId: row.characterId,
         field,
-        label: char?.nick || 'Персонаж отсутствует на этом ПК',
+        label:
+          char?.nick ||
+          publicSnapshot.sections.characters.records.find(record => record.id === row.characterId)?.fields.nick ||
+          'Персонаж отсутствует на этом ПК',
         selectable: !!char,
         clears: incoming === '',
         localPresent: current !== null && current !== '',

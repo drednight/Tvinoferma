@@ -1,6 +1,23 @@
+import { CHARACTER_UPDATE_FIELDS } from '../characterUpdates.js';
+import { STAT_FIELDS } from '../../characters/statsOcr.js';
+import { characterFieldText } from './characterFieldText.js';
 // @ts-check
 // Presentation only: never alters comparisons, snapshots or acceptance rules.
 const PATHS = {
+  fields: 'Поля',
+  ...CHARACTER_UPDATE_FIELDS,
+  ...Object.fromEntries(STAT_FIELDS.map(f => [f.key, f.label])),
+  weapon: 'Оружие',
+  armor: 'Доспех',
+  relic: 'Реликвия',
+  statsHistory: 'История характеристик',
+  coinHistory: 'История монет',
+  coinsParserV: 'Версия проверки баланса',
+  marathonData: 'Данные марафона',
+  partyIds: 'Пати',
+  mainPartyId: 'Основная пати',
+  partyOrder: 'Порядок в пати',
+
   statusByDate: 'Выполнение по дням',
   updatedAt: 'Дата изменения',
   createdAt: 'Дата создания',
@@ -30,7 +47,7 @@ export function cloudChangeValue(part, path = []) {
     if (typeof value === 'string' && Object.hasOwn(statuses, value)) return statuses[value];
   }
   if (typeof value === 'boolean') return value ? 'Да' : 'Нет';
-  return (typeof value === 'string' ? value : JSON.stringify(value)).slice(0, 300);
+  return humanCloudValue(value, path.at(-1)).slice(0, typeof value === 'string' ? 300 : 4000);
 }
 export function cloudChangeCounts(entries) {
   return [
@@ -54,4 +71,26 @@ export function folderNextStep(status, diagnostic) {
   if (diagnostic?.includes('_native_connect') || diagnostic?.endsWith('_timeout'))
     return 'Проверьте доступность Яндекс Диска и сеть на этом ПК. Смена пароля шифрования не исправляет DNS или TLS. Скопируйте безопасный отчёт для диагностики.';
   return 'Не удаляйте ключи, аккаунт или прежние файлы. Скопируйте безопасный отчёт: в нём будет этап отказа без токенов и содержимого данных.';
+}
+
+export function humanCloudValue(value, key = '', depth = 0) {
+  if (depth > 5) return 'Вложенные данные';
+  if (['stats', 'dungeonPasses', 'sky', 'lastCoinUpdate'].includes(key)) return characterFieldText(key, value);
+  if (value == null) return 'Не указано';
+  if (typeof value === 'boolean') return value ? 'Да' : 'Нет';
+  if (typeof value !== 'object') return String(value);
+  if (Array.isArray(value))
+    return value.length
+      ? value
+          .slice(0, 40)
+          .map(v => humanCloudValue(v, '', depth + 1))
+          .join(' · ')
+      : 'Нет записей';
+  return Object.entries(value)
+    .slice(0, 50)
+    .map(
+      ([k, v]) =>
+        `${(Object.hasOwn(PATHS, k) ? PATHS[k] : '') || (/^\d{4}-\d{2}-\d{2}$/.test(k) ? k.split('-').reverse().join('.') : 'Дополнительно')}: ${humanCloudValue(v, k, depth + 1)}`
+    )
+    .join(' · ');
 }

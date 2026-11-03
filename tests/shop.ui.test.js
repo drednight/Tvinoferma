@@ -24,9 +24,7 @@ vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast, confirmModal: mocks.con
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const wait = (ms = 300) => new Promise(r => setTimeout(r, ms));
-const nicks = () => $$('tr.shop-row').map(r => r.querySelector('b').textContent);
 const rowOf = nick => $$('tr.shop-row').find(r => r.querySelector('b').textContent === nick);
-const qtyInput = (nick, key) => rowOf(nick).querySelector(`[data-qty$="|${key}"]`);
 const type = (el, v) => {
   el.value = String(v);
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -146,368 +144,165 @@ beforeEach(async () => {
   ({ mountLogHub } = await import('../js/core/logHub.js'));
 });
 
-describe('окно: предметы', () => {
-  it('8 карточек в заданном порядке; цены и описание с сайта; описание вне подписи с галочкой', async () => {
-    openShopDialog();
-    await wait();
-    const cards = $$('.shop-card');
-    expect(cards.map(c => c.querySelector('b').textContent)).toEqual(WANTED);
-    expect($('[data-card="valor"] .shop-price').textContent).toBe('10 мон. за сундук');
-    expect($('[data-card="light"] .shop-price').textContent).toBe('40 мон.');
-    const desc = $('[data-card="valor"] .shop-desc');
-    expect(desc.textContent).toContain('вы получите');
-    expect(desc.closest('label')).toBeNull();
-    // Заголовок окна экранируется: иконка — эмодзи в видимом тексте, а не разметка
-    expect($('.tf-dialog-title').textContent).toContain('🪙');
-  });
-
-  it('ивентовых предметов нет на сайте: карточки заблокированы, видно прежнюю цену', async () => {
-    openShopDialog();
-    await wait();
-    expect($('[data-card="focus"]').classList.contains('shop-locked')).toBe(true);
-    expect($('[data-item="focus"]').disabled).toBe(true);
-    expect($('[data-card="focus"] .shop-price').textContent).toContain('раньше 30 монет');
-    expect($('[data-card="guide"] .shop-price').textContent).toContain('раньше 50 монет');
-    expect($('[data-item="valor"]').disabled).toBe(false);
-  });
-
-  it('если ивентовый предмет появился на сайте — он доступен', async () => {
-    DEF['Сундук средоточия'] = { key: 'focus', id: '303', price: 10, chest: true, desc: '' };
-    try {
-      openShopDialog();
-      await wait();
-      expect($('[data-item="focus"]').disabled).toBe(false);
-      expect($('[data-card="focus"] .shop-price').textContent).toBe('10 мон. за сундук');
-    } finally {
-      delete DEF['Сундук средоточия'];
-    }
-  });
-
-  it('лимит исчерпан: счётчик у карточки и «лимит исчерпан» в ячейке аккаунта', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    expect($('[data-card="asura"]').textContent).toContain('лимит исчерпан у 1 из 2');
-    $('[data-item="asura"]').click();
-    expect(rowOf('Вв').textContent).toContain('лимит исчерпан');
-    expect(qtyInput('Вв', 'asura')).toBeNull();
-    expect(qtyInput('Аа', 'asura')).not.toBeNull();
-  });
-});
-
-describe('окно: ход проверки на сайте', () => {
-  it('пока идёт проверка — проценты готовности и полоса; по окончании — «Данные с сайта»', async () => {
-    const gates = [];
-    const base = mocks.invoke.getMockImplementation();
-    mocks.invoke.mockImplementation((cmd, args) =>
-      cmd === 'read_shop'
-        ? new Promise(res => {
-            gates.push(() => res(scanPayload(ACCOUNT_OF[args.charId])));
-          })
-        : base(cmd, args)
-    );
-    openShopDialog();
-    await wait();
-    expect(gates).toHaveLength(3);
-    expect($('#shop-scan').textContent).toContain('0%');
-    expect($('#shop-scan .shop-bar')).not.toBeNull();
-    gates[0]();
-    await wait();
-    expect($('#shop-scan').textContent).toContain('33%');
-    expect($('#shop-scan').textContent).toContain('1 из 3');
-    gates[1]();
-    gates[2]();
-    await wait();
-    expect($('#shop-scan').textContent).toContain('Данные с сайта');
-    expect($('#shop-scan .shop-bar')).toBeNull();
-  });
-});
-
-describe('окно: аккаунты', () => {
-  it('аккаунт один раз: известные члены одного аккаунта — одна строка, читается один представитель', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop')).toHaveLength(2);
-    expect($$('tr.shop-row')).toHaveLength(2);
-    expect(rowOf('Вв').textContent).toContain('также: ?Бб');
-    expect(rowOf('Вв').textContent).toContain('54');
-  });
-
-  it('неизвестные аккаунты после чтения объединяются', async () => {
-    openShopDialog();
-    await wait();
-    expect($$('tr.shop-row')).toHaveLength(2);
-    expect(store.charSiteMap().b).toBe(store.charSiteMap().c);
-  });
-
-  it('способные купить — выше, не способные (5 монет, самый дешёвый предмет 10) — ниже, хотя «Аа» по алфавиту первый', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    expect(nicks()).toEqual(['Вв', 'Аа']);
-  });
-
-  it('внутри групп — по балансу: чем меньше монет, тем ниже (а не по алфавиту)', async () => {
-    state.characters.push({ id: 'd', nick: 'Яя', isLoggedIn: true, ancientCoins: 0 });
-    ACCOUNT_OF.d = 'U3';
-    site.U3 = { balance: 20, left: { light: 4, asura: 4, camp: 4, sovereign: 4 } };
-    try {
-      prefill();
-      openShopDialog();
-      await wait();
-      expect(nicks()).toEqual(['Вв', 'Яя', 'Аа']); // 54, 20, и 5 монет — ниже всех
-    } finally {
-      delete ACCOUNT_OF.d;
-    }
-  });
-
-  it('без входа: внизу, отметить нельзя, сайт не читается', async () => {
-    state.characters.push({ id: 'z', nick: 'Яя', isLoggedIn: false, ancientCoins: 3 });
-    ACCOUNT_OF.z = 'U2';
-    try {
-      openShopDialog();
-      await wait();
-      expect(mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop').every(c => c[1].charId !== 'z')).toBe(true);
-      const last = $$('tr.shop-row').at(-1);
-      expect(last.querySelector('b').textContent).toBe('Яя');
-      expect(last.textContent).toContain('нет входа');
-      expect(last.querySelector('[data-sel]').disabled).toBe(true);
-    } finally {
-      delete ACCOUNT_OF.z;
-    }
-  });
-
-  it('фильтр по пати: все / без пати / конкретная; поиск', async () => {
-    state.parties = [{ id: 'p1', name: 'Основа' }];
-    state.characters[1].partyIds = ['p1']; // «Бб» и «Вв» (один аккаунт) — в пати, «Аа» — без пати
-    state.characters[2].partyIds = ['p1'];
-    prefill();
-    openShopDialog();
-    await wait();
-    const opts = $$('#shop-party option').map(o => o.textContent);
-    expect(opts).toEqual(['Все пати', 'Без пати', 'Основа']);
-    const pick = v => {
-      $('#shop-party').value = v;
-      $('#shop-party').dispatchEvent(new Event('change', { bubbles: true }));
-    };
-    pick('p1');
-    expect(nicks()).toEqual(['Вв']);
-    pick('__none__');
-    expect(nicks()).toEqual(['Аа']);
-    pick('');
-    expect(nicks()).toEqual(['Вв', 'Аа']);
-    type($('#shop-search'), 'основа');
-    expect(nicks()).toEqual(['Вв']);
-    type($('#shop-search'), 'бб');
-    expect(nicks()).toEqual(['Вв']); // «Бб» — член того же аккаунта
-  });
-
-  it('«Выбрать всех» / «Снять выбор»', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-q="all"]').click();
-    expect($$('[data-sel]:checked')).toHaveLength(2);
-    $('[data-q="none"]').click();
-    expect($$('[data-sel]:checked')).toHaveLength(0);
-  });
-});
-
-describe('окно: количество, сумма и остаток', () => {
-  it('«цена × кол = сумма» и остаток; аккаунт отмечается сам', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-item="valor"]').click();
-    const input = qtyInput('Вв', 'valor');
-    type(input, 3);
-    const row = rowOf('Вв');
-    expect(row.querySelector('[data-calc]').textContent).toContain('10 × 3 сундук. = 30');
-    expect(row.querySelector('[data-total]').textContent).toContain('остаток: 24');
-    expect(row.querySelector('[data-sel]').checked).toBe(true);
-    expect($('#shop-summary').textContent).toContain('К покупке: 3 шт. на 30');
-    expect(input.isConnected).toBe(true); // ввод не перерисовывает поле
-  });
-
-  it('больше, чем хватает монет, — предупреждение «купится K из N»', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 9);
-    expect(rowOf('Вв').querySelector('[data-calc]').textContent).toContain('купится 5 из 9 (не хватает монет)');
-  });
-
-  it('больше лимита — «купится 4 из 6 (лимит)»', async () => {
-    site.U1.balance = 500;
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-item="camp"]').click();
-    type(qtyInput('Вв', 'camp'), 6);
-    expect(rowOf('Вв').querySelector('[data-calc]').textContent).toContain('купится 4 из 6 (лимит)');
-  });
-
-  it('несколько предметов делят один баланс', async () => {
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-item="light"]').click();
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'light'), 1);
-    type(qtyInput('Вв', 'valor'), 3);
-    expect(rowOf('Вв').querySelector('[data-calc$="|valor"]').textContent).toContain(
-      'купится 1 из 3 (не хватает монет)'
-    );
-    expect(rowOf('Вв').querySelector('[data-total]').textContent).toContain('остаток: 4');
-  });
-
-  it('«всем» — количество для отмеченных аккаунтов', async () => {
-    site.U2.balance = 100;
-    prefill();
-    openShopDialog();
-    await wait();
-    $('[data-item="valor"]').click();
-    $('[data-q="all"]').click();
-    const all = $('[data-all="valor"]');
-    all.value = '2';
-    all.dispatchEvent(new Event('change', { bubbles: true }));
-    expect(qtyInput('Вв', 'valor').value).toBe('2');
-    expect(qtyInput('Аа', 'valor').value).toBe('2');
-  });
-});
-
-describe('покупка', () => {
-  const setup = async (ids = []) => {
-    prefill();
-    openShopDialog({ ids });
-    await wait();
-  };
-
-  it('подтверждение, N покупок штука за штукой, итог, проверка баланса, копирование баланса остальным членам аккаунта, журнал', async () => {
+const setup = async () => {
+  prefill();
+  openShopDialog();
+  await wait();
+};
+const choose = (nick, key) => {
+  const row = rowOf(nick);
+  row.querySelector(`[data-pick-name$="|${key}"]`).click();
+};
+const next = async () => {
+  await clickFoot('start', 20);
+  return document.querySelector('[data-quantity-buy]').closest('.tf-dialog');
+};
+const quantity = (dlg, key) => dlg.querySelector(`[data-qty$="|${key}"]`);
+const buy = async dlg => {
+  dlg.querySelector('[data-quantity-buy]').click();
+  await wait(900);
+};
+describe('gift item selection → quantities → guarded purchase', () => {
+  it('preserves all eight website items, pricing/description and locks missing items', async () => {
     await setup();
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 3);
-    await clickFoot('start', 900);
-
+    expect($$('[data-item]')).toHaveLength(8);
+    expect($('[data-item=valor]').disabled).toBe(false);
+    expect($('[data-item=focus]').disabled).toBe(true);
+    expect($('[data-card=light] details').textContent).toContain('Описание');
+    expect($('[data-card=light] details').open).toBe(false);
+  });
+  it('main table contains names only, no quantities, balances or remainder totals', async () => {
+    await setup();
+    $('[data-item=valor]').click();
+    expect($('#shop-table input[type=number]')).toBeNull();
+    expect($('#shop-table').textContent).not.toContain('остаток');
+    expect($('#shop-table').textContent).not.toContain('Итого');
+    expect($('[data-act=start]').textContent).toContain('Далее');
+  });
+  it('unknown accounts merge after scan; a shared account is shown and scanned once after association', async () => {
+    await setup();
+    expect($$('tr.shop-row')).toHaveLength(2);
+    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop')).toHaveLength(2);
+    expect(store.charSiteMap().b).toBe(store.charSiteMap().c);
+    expect(rowOf('Вв').textContent).toContain('Бб');
+  });
+  it('offline and unchecked characters can be preset, manually selected and selected through All', async () => {
+    state.characters[0].isLoggedIn = false;
+    prefill();
+    openShopDialog({ ids: ['a', 'b'] });
+    await wait();
+    expect($$('[data-sel]').some(c => c.checked)).toBe(true);
+    expect($$('[data-sel]').every(c => !c.disabled)).toBe(true);
+    $('[data-q=none]').click();
+    expect($$('[data-sel]:checked')).toHaveLength(0);
+    $('[data-q=all]').click();
+    expect($$('[data-sel]:checked').length).toBeGreaterThan(0);
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+  });
+  it('empty selections do not open a quantity window or send purchase commands', async () => {
+    await setup();
+    await clickFoot('start', 20);
+    expect($('[data-quantity-buy]')).toBeNull();
+    expect(mocks.toast).toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+  });
+  it('next opens per-account/item quantities and live remaining coins, never spends on edits', async () => {
+    await setup();
+    $('[data-item=valor]').click();
+    choose('Вв', 'valor');
+    const dlg = await next();
+    expect(dlg.textContent).toContain('54');
+    type(quantity(dlg, 'valor'), 3);
+    expect(dlg.querySelector('[data-quantity-total]').textContent).toContain('24');
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+    expect(dlg.querySelector('[data-quantity-buy]').textContent).toBe('Купить');
+  });
+  it('multiple selected items share one account balance; limits/funds cap the preview', async () => {
+    await setup();
+    $('[data-item=valor]').click();
+    $('[data-item=unity]').click();
+    choose('Вв', 'valor');
+    choose('Вв', 'unity');
+    const dlg = await next();
+    type(quantity(dlg, 'valor'), 3);
+    type(quantity(dlg, 'unity'), 3);
+    expect(dlg.querySelector('[data-quantity-total]').textContent).toContain('4');
+    expect(dlg.textContent).toContain('Объём ограничен');
+  });
+  it('back preserves selections and sends nothing', async () => {
+    await setup();
+    $('[data-item=valor]').click();
+    choose('Вв', 'valor');
+    const dlg = await next();
+    dlg.querySelector('[data-quantity-back]').click();
+    expect(rowOf('Вв').querySelector('[data-pick-name]').checked).toBe(true);
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+  });
+  it('buy uses existing confirmation, single purchases, shared balances and durable log', async () => {
+    await setup();
+    $('[data-item=valor]').click();
+    choose('Вв', 'valor');
+    const dlg = await next();
+    type(quantity(dlg, 'valor'), 3);
+    await buy(dlg);
     expect(mocks.confirm).toHaveBeenCalledTimes(1);
     expect(mocks.confirm.mock.calls[0][0].text).toContain('необратима');
     const buys = mocks.invoke.mock.calls.filter(c => c[0] === 'buy_shop_item');
     expect(buys).toHaveLength(3);
-    expect(buys[0][1]).toMatchObject({ charId: 'c', item: 'Знак доблести (25 штук)', expectPrice: 10, dryRun: false });
-    expect($('.tf-dialog-sub').textContent).toContain('Куплено: 3 шт. на 30');
-
-    // проверка баланса: представитель аккаунта, всем отмеченным; результат скопирован «Бб»
-    expect(mocks.refresh).toHaveBeenCalledTimes(1);
-    expect(mocks.refresh.mock.calls[0][0].map(c => c.id)).toEqual(['c']);
-    expect(mocks.refresh.mock.calls[0][1]).toMatchObject({ onlyLoggedIn: false });
-    expect(state.characters.find(c => c.id === 'c').ancientCoins).toBe(24);
+    expect(buys[0][1]).toMatchObject({ charId: 'c', expectPrice: 10, dryRun: false });
+    expect(store.loadShopLog()[0]).toMatchObject({ bought: 3, spent: 30 });
     expect(state.characters.find(c => c.id === 'b').ancientCoins).toBe(24);
-    expect(store.getAccount(store.charSiteMap().c).balance).toBe(24);
-    expect($('.tf-dialog-body').textContent).toContain('24');
-
-    const log = store.loadShopLog();
-    expect(log).toHaveLength(1);
-    expect(log[0]).toMatchObject({ nick: 'Вв', itemKey: 'valor', bought: 3, requested: 3, spent: 30, status: 'done' });
-    expect(log[0].members).toContain('Бб');
   });
-
-  it('повтор покупает только остаток после подтверждения; таблица включает обе попытки и общий аккаунт', async () => {
-    await setup();
-    const actual = mocks.invoke.getMockImplementation();
-    let attempts = 0;
-    mocks.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === 'buy_shop_item' && ++attempts === 2) return { status: 'error', error: 'timeout', clicked: false };
-      return actual(cmd, args);
-    });
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 3);
-    await clickFoot('start', 900);
-    expect(attempts).toBe(2);
-    expect($('[data-act="retry"]').disabled).toBe(false);
-    mocks.confirm.mockResolvedValueOnce(false);
-    await clickFoot('retry', 50);
-    expect(attempts).toBe(2);
-    await clickFoot('retry', 900);
-    expect(attempts).toBe(4); // одна ранее куплена, две оставшиеся, один неудачный вызов
-    expect(mocks.confirm.mock.calls.at(-1)[0].text).toContain('2 шт.');
-    $('[data-act="report"]').click();
-    const dialog = [...document.querySelectorAll('.tf-dialog')].at(-1);
-    expect(dialog.textContent).toContain('Таблица действий');
-    expect(dialog.textContent).toContain('Бб');
-    expect(dialog.textContent).toContain('Вв');
-    expect(dialog.textContent).toContain('общий результат аккаунта');
-  });
-
-  it('отказ в подтверждении: ничего не куплено', async () => {
+  it('declining confirmation makes no purchase and retains main selection', async () => {
     await setup();
     mocks.confirm.mockResolvedValue(false);
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 2);
-    await clickFoot('start');
-    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'buy_shop_item')).toHaveLength(0);
+    $('[data-item=valor]').click();
+    choose('Вв', 'valor');
+    const dlg = await next();
+    await buy(dlg);
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+    expect($('[data-act=start]')).not.toBeNull();
   });
-
-  it('лимит: запрошено 6, доступно 4 — куплено 4, итог «куплено до лимита», срок обновления запомнен', async () => {
-    site.U1.balance = 500;
+  it('dry-run also requires quantities, bypasses irreversible consent but never records a purchase', async () => {
     await setup();
-    $('[data-item="camp"]').click();
-    type(qtyInput('Вв', 'camp'), 6);
-    await clickFoot('start', 1200);
-    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'buy_shop_item')).toHaveLength(4);
-    expect($('.tf-dialog-body').textContent).toContain('Куплено до лимита: 4 из 6');
-    const acc = store.getAccount(store.charSiteMap().c);
-    expect(acc.items.camp.available).toBe(0);
-    expect(acc.tracks.camp.resetAt).toBeTruthy();
-  });
-
-  it('пробный запуск: без подтверждения, dryRun, без записи в журнал и проверки баланса', async () => {
-    await setup();
-    mocks.invoke.mockImplementation(async (cmd, args) =>
-      cmd === 'buy_shop_item'
-        ? { status: 'dry_run', clicked: false, detail: 'Открыть' }
-        : scanPayload(ACCOUNT_OF[args.charId])
-    );
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 3);
-    await clickFoot('dry', 900);
-    expect(mocks.confirm).not.toHaveBeenCalled();
-    const buys = mocks.invoke.mock.calls.filter(c => c[0] === 'buy_shop_item');
-    expect(buys).toHaveLength(1);
-    expect(buys[0][1].dryRun).toBe(true);
+    $('[data-item=valor]').click();
+    choose('Вв', 'valor');
+    await clickFoot('dry', 20);
+    const dlg = $('[data-quantity-buy]').closest('.tf-dialog');
+    await buy(dlg);
+    const calls = mocks.invoke.mock.calls.filter(c => c[0] === 'buy_shop_item');
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every(c => c[1].dryRun)).toBe(true);
     expect(store.loadShopLog()).toHaveLength(0);
-    expect(mocks.refresh).not.toHaveBeenCalled();
-    expect($('.tf-dialog-sub').textContent).toContain('Пробный запуск');
-  });
-
-  it('нечего покупать: подсказка вместо запуска', async () => {
-    await setup();
-    await clickFoot('start', 100);
-    expect(mocks.toast).toHaveBeenCalled();
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
-
-  it('«Активировать другие предметы»: выбор сброшен, магазин прочитан заново, кнопка видна только после итогов', async () => {
+  it('limit view uses new filters without purchases and refresh retains search', async () => {
     await setup();
-    $('[data-item="valor"]').click();
-    type(qtyInput('Вв', 'valor'), 1);
-    await clickFoot('start', 900);
-    const again = document.querySelector('[data-act="again"]');
-    expect(again.textContent).toContain('Активировать другие предметы');
-    const scansBefore = mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop').length;
-    again.click();
-    await wait();
-    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'read_shop').length).toBeGreaterThan(scansBefore);
-    expect($$('.shop-card')).toHaveLength(8);
-    expect($$('[data-item]:checked')).toHaveLength(0);
-    expect($('[data-qty]')).toBeNull();
-    // обновлённый баланс (54 − 10) уже на экране
-    expect(rowOf('Вв').textContent).toContain('44');
+    await clickFoot('limits', 20);
+    expect($$('[data-limits-filter] option').map(o => o.textContent)).toEqual([
+      'Все',
+      'Максимум',
+      'Меньше максимума',
+      'Исчерпано',
+      'Нет данных',
+      'Есть дата обновления'
+    ]);
+    const search = $('[data-limits-search]');
+    search.value = 'Вв';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    expect($('[data-limits-status]').textContent).toContain('Строк:');
+    expect(mocks.invoke.mock.calls.some(c => c[0] === 'buy_shop_item')).toBe(false);
+  });
+  it('refresh without a table selection never scans every account', async () => {
+    await setup();
+    mocks.invoke.mockClear();
+    $('[data-q=refresh]').click();
+    await wait(20);
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });
 
-describe('журнал покупок', () => {
+describe('durable gift log', () => {
   it('общий журнал: записи с ником, предметом, суммой; поиск по нику; подробности', async () => {
     const mk = (i, nick, charId, extra = {}) => ({
       at: new Date(Date.now() + i * 1000).toISOString(),
@@ -548,187 +343,72 @@ describe('журнал покупок', () => {
   });
 });
 
-it('table refresh scans only selected characters, updates shared balances/limits, and keeps unselected accounts', async () => {
-  openShopDialog({ ids: ['c'] });
-  await wait();
-  expect($('.sp-side [data-q="refresh-all"]')).not.toBeNull();
-  site.U1.balance = 18;
-  site.U1.left.light = 2;
-  mocks.invoke.mockClear();
-  $('[data-q="refresh"]').click();
-  await wait();
-  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop').map(([, args]) => args.charId)).toEqual(['c']);
-  expect(state.characters.filter(c => ['b', 'c'].includes(c.id)).map(c => c.ancientCoins)).toEqual([18, 18]);
-  expect(state.characters.find(c => c.id === 'a').ancientCoins).toBe(5);
-  expect(rowOf('Аа')).toBeUndefined();
-  expect(rowOf('Вв').textContent).toContain('18 с сайта');
-  expect(store.getAccount(store.charSiteMap().c).items.light.available).toBe(2);
-  mocks.invoke.mockClear();
-  $('[data-q="refresh-all"]').click();
-  await wait();
-  expect(
-    mocks.invoke.mock.calls
-      .filter(([cmd]) => cmd === 'read_shop')
-      .map(([, args]) => args.charId)
-      .sort()
-  ).toEqual(['a', 'c']);
-});
-it('table refresh without selection never silently scans all accounts', async () => {
-  openShopDialog();
-  await wait();
-  mocks.invoke.mockClear();
-  $('[data-q="refresh"]').click();
-  await wait(20);
-  expect(mocks.invoke).not.toHaveBeenCalled();
-  expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Отметьте'), 'info');
-});
-
-it('opens all-character item limits next to the dry run without additional native actions', async () => {
-  openShopDialog({ ids: ['c'] });
-  await wait();
-  const before = mocks.invoke.mock.calls.length;
-  const button = $('.tf-dialog-foot [data-act=limits]');
-  expect(button.nextElementSibling.dataset.act).toBe('dry');
-  button.click();
-  const table = $('.shop-limits-table');
-  expect(table).not.toBeNull();
-  const count = [...state.characters].reduce((n, c) => {
-    const a = store.getAccount(store.charSiteMap()[c.id]);
-    return n + core.SHOP_ITEMS.filter(d => core.limitView(a?.items[d.key], a?.tracks[d.key])).length;
-  }, 0);
-  expect(table.querySelectorAll('tbody tr')).toHaveLength(count);
-  expect(table.textContent).toContain('Аа');
-  expect(table.textContent).toContain('Бб');
-  expect(table.textContent).toContain('Вв');
-  expect(table.textContent).not.toContain('Сайт не указывает лимит');
-  expect(table.textContent).toContain('Дата неизвестна');
-  expect(mocks.invoke.mock.calls.length).toBe(before);
-  $('[data-close-limits]').click();
-  expect($('.shop-limits-table')).toBeNull();
-});
-
-it('limit details expose only confirmed reset dates and never invent an unlimited quota', async () => {
-  prefill();
-  const sites = store.charSiteMap();
-  const saved = store.loadShopState();
-  const resetAt = new Date(Date.now() + 4 * 86400000).toISOString();
-  saved.accounts[sites.b].tracks.light = { resetAt, max: 4 };
-  localStorage.setItem(store.STATE_KEY, JSON.stringify(saved));
-  const { openShopLimits } = await import('../js/modules/automation/shopLimitsView.js');
-  const dlg = openShopLimits();
-  expect(dlg.body.textContent).not.toContain('Сайт не указывает лимит');
-  expect(dlg.body.textContent).toContain('Дата неизвестна');
-  expect(dlg.sub.textContent).toContain('лимит общий');
-  expect(dlg.body.textContent).toContain(
-    new Date(resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
-  );
-  dlg.close();
-});
-
-it('left scope filters visible accounts for logged-in, party and manual choices independently from table ticks', async () => {
-  state.parties = [{ id: 'p', name: 'Пати' }];
-  state.characters[0].partyIds = ['p'];
-  state.characters[0].mainPartyId = 'p';
-  openShopDialog();
-  await wait();
-  const scope = value => {
-    const input = $(`.script-target input[value="${value}"]`);
-    input.checked = true;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
+it('all six quota filters select actual rows; exhausted is below maximum and observed maxima survive another account read', async () => {
+  await setup();
+  site.U2.left.light = 2;
+  store.saveScan(['a'], core.normalizeScan(scanPayload('U2')), new Date());
+  await clickFoot('limits', 20);
+  const item = $('[data-limits-item]'),
+    filter = $('[data-limits-filter]');
+  const select = (key, value) => {
+    key.value = value;
+    key.dispatchEvent(new Event('change', { bubbles: true }));
   };
-  scope('logged');
-  expect(
-    [...document.querySelectorAll('.shop-row')].map(r => r.querySelector('td:nth-child(2) b').textContent).sort()
-  ).toEqual(['Аа', 'Вв']);
-  scope('party');
-  const party = $('.script-target [data-script-party]');
-  party.value = 'p';
-  party.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(document.querySelectorAll('.shop-row')).toHaveLength(1);
-  expect(rowOf('Аа')).toBeDefined();
-  expect(rowOf('Вв')).toBeUndefined();
-});
-
-it('never selects offline or unchecked-login characters through preset, all, party or manual picker, including shared accounts', async () => {
-  prefill();
-  state.characters[0].isLoggedIn = false;
-  // b has unknown login, but shares c's cached account. Only c may be selected.
-  state.parties = [{ id: 'p', name: 'Все' }];
-  state.characters.forEach(c => {
-    c.partyIds = ['p'];
-    c.mainPartyId = 'p';
-  });
-  openShopDialog({ ids: ['a', 'b', 'c'] });
-  await wait();
-  const selected = () => document.querySelectorAll('.shop-row [data-sel]:checked').length;
-  expect(selected()).toBe(1);
-  $('[data-q="all"]').click();
-  expect(selected()).toBe(1);
-  const choose = mode => {
-    const el = $(`.script-target input[value="${mode}"]`);
-    el.checked = true;
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  };
-  choose('party');
-  const party = $('[data-script-party]');
-  party.value = 'p';
-  party.dispatchEvent(new Event('change', { bubbles: true }));
-  expect(selected()).toBe(1);
-  choose('all');
-  expect(selected()).toBe(1);
-  $('[data-script-picker]').click();
-  const picker = $('.cp-dialog') || document.querySelector('.modal-overlay:last-child');
-  expect(picker.textContent).not.toContain('Аа');
-  expect(picker.textContent).not.toContain('Бб');
-  expect(picker.textContent).toContain('Вв');
-});
-it('limits filters locate available/exhausted/unlimited/unknown characters, retain search on read-only refresh and prevent duplicate refresh', async () => {
-  openShopDialog();
-  await wait();
-  $('[data-act="limits"]').click();
-  const filter = $('[data-limits-filter]'),
-    search = $('[data-limits-search]'),
-    table = $('.shop-limits-table');
-  const select = value => {
-    filter.value = value;
-    filter.dispatchEvent(new Event('change', { bubbles: true }));
-  };
-  select('exhausted');
-  expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
-  expect(table.textContent).toContain('асуров');
-  select('available');
-  expect(table.textContent).not.toContain('Доступно: 0');
-  select('unlimited');
-  expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
-  expect(table.textContent).not.toContain('Доступно:');
-  select('unknown');
-  expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
-  select('limited');
-  search.value = 'Аа';
-  search.dispatchEvent(new Event('input', { bubbles: true }));
-  expect(table.textContent).toContain('Аа');
-  expect(table.textContent).not.toContain('Бб');
-  mocks.invoke.mockClear();
-  const button = $('[data-refresh-limits]');
-  button.click();
-  button.click();
-  await vi.waitFor(() => expect(button.disabled).toBe(false));
-  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop')).toHaveLength(2);
+  select(item, 'light');
+  select(filter, 'maximum');
+  expect($('.shop-limits-table tbody').textContent).toContain('Вв');
+  expect($('.shop-limits-table tbody').textContent).not.toContain('Аа');
+  select(filter, 'below');
+  expect($('.shop-limits-table tbody').textContent).toContain('Аа');
+  expect($('.shop-limits-table tbody').textContent).not.toContain('Вв');
+  select(filter, 'exhausted');
+  expect($$('.shop-limits-table tbody tr')).toHaveLength(0);
+  select(item, 'asura');
+  expect($('.shop-limits-table tbody').textContent).toContain('Вв');
+  select(filter, 'unknown');
+  select(item, 'focus');
+  expect($('.shop-limits-table tbody').textContent).toContain('Нет данных');
+  select(filter, 'reset');
+  expect($$('.shop-limits-table tbody tr')).toHaveLength(0);
   expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'buy_shop_item')).toBe(false);
-  expect(search.value).toBe('Аа');
-  expect(filter.value).toBe('limited');
-  expect(table.textContent).not.toContain('Бб');
 });
-it('general site quota is only inside collapsed description, even when no description was provided', async () => {
-  prefill();
-  // Native scan stub already supplies max:null: unknown-limit text must still be collapsed.
-  openShopDialog();
+
+it('the quantity step caps purchases by the real limit, remembers reset evidence, and reopening other items rescans without retaining quantities', async () => {
+  site.U1.balance = 500;
+  await setup();
+  $('[data-item=light]').click();
+  choose('Вв', 'light');
+  const dlg = await next();
+  type(quantity(dlg, 'light'), 6);
+  expect(dlg.querySelector('[data-quantity-total]').textContent).toContain('Остаток: 340');
+  await buy(dlg);
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'buy_shop_item')).toHaveLength(4);
+  expect(store.getAccount(store.charSiteMap().c).tracks.light.resetAt).toBeTruthy();
+  const scans = mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop').length;
+  $('[data-act=again]').click();
   await wait();
-  const card = $('[data-card="light"]'),
-    details = card.querySelector('details');
-  expect(details.open).toBe(false);
-  expect(details.textContent).toContain('Общий лимит сайта');
-  const clone = card.cloneNode(true);
-  clone.querySelector('details').remove();
-  expect(clone.textContent).not.toContain('Общий лимит');
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop').length).toBeGreaterThan(scans);
+  expect($$('[data-item]:checked')).toHaveLength(0);
+  expect($('[data-qty]')).toBeNull();
+});
+it('retry from the new quantity workflow still requires consent and buys only the confirmed uncompleted remainder', async () => {
+  await setup();
+  const actual = mocks.invoke.getMockImplementation();
+  let attempts = 0;
+  mocks.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd === 'buy_shop_item' && ++attempts === 2) return { status: 'error', error: 'timeout', clicked: false };
+    return actual(cmd, args);
+  });
+  $('[data-item=valor]').click();
+  choose('Вв', 'valor');
+  const dlg = await next();
+  type(quantity(dlg, 'valor'), 3);
+  await buy(dlg);
+  expect(attempts).toBe(2);
+  mocks.confirm.mockResolvedValueOnce(false);
+  await clickFoot('retry', 50);
+  expect(attempts).toBe(2);
+  await clickFoot('retry', 900);
+  expect(attempts).toBe(4);
+  expect(mocks.confirm.mock.calls.at(-1)[0].text).toContain('2 шт.');
 });

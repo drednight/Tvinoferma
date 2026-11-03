@@ -296,7 +296,8 @@ describe('карточки персонажей и настройки', () => {
       'freshness.balanceHours',
       'freshness.loginHours',
       'freshness.marathonHours',
-      'freshness.serverStatusMinutes'
+      'freshness.serverStatusMinutes',
+      'freshness.promoMinutes'
     ]);
     // Подпись «= 1 день» только у полей в часах. Кроме свежести она есть ещё у интервала
     // автопроверки входа (scripts.authIntervalHours) — это тоже часы.
@@ -369,7 +370,8 @@ describe('карточки персонажей и настройки', () => {
       balanceHours: 24,
       loginHours: 24,
       marathonHours: 24,
-      serverStatusMinutes: 10
+      serverStatusMinutes: 10,
+      promoMinutes: 60
     });
   });
 });

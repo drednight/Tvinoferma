@@ -91,7 +91,7 @@ describe('обмен полным файлом — интерфейс', () => {
       )
     });
     await compare();
-    expect(el('list').textContent).toContain('Заметка: Старая → <script>new</script>');
+    expect(el('list').textContent).toContain('Заметки: Старая → <script>new</script>');
     expect(el('list').querySelector('script')).toBeNull();
   });
   it('требует подтверждение полной замены, включая отсутствующие записи', async () => {

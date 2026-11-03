@@ -250,6 +250,9 @@ export async function enrollNativeCloudAccount(options) {
           (reconnectRecord && identity.accountKey !== reconnectRecord.accountKey) ||
           (signedOut && identity.accountKey !== signedOut.accountKey)
         ) {
+          // Fixed-stage evidence only: the provider identity differs from the pin.
+          // Do not erase the binding, resume a different account or log either ID.
+          progress('identity_binding_mismatch');
           accountChanged = true;
           throw failed();
         }

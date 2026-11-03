@@ -77,7 +77,7 @@ function render() {
    .join(
      ''
    )}</select></label><label class="lg-compact"><input type="checkbox" data-compact ${state.compact ? 'checked' : ''}/>Компактно</label></div></div><div class="lg-variant-buttons">${list.map(v => `<button data-variant="${v.id}" aria-pressed="${!original && variant === v.id}"><span>${String(v.id).padStart(2, '0')}</span><b>${esc(v.name)}</b><small>${esc(v.kind)}</small></button>`).join('')}<button class="lg-original-button" data-original aria-pressed="${original}"><span>↗</span><b>Исходная</b><small>Не считается</small></button></div><p class="lg-design-note">${original ? 'Адаптированный снимок приложения, а не новый дизайн.' : esc(v.principle)} ${mode === 'next' ? esc(meta.why) : ''}</p></section>
- <p class="lg-safety-banner">Все аккаунты, суммы, задания и результаты вымышлены. Нет обращения к сайту, Rust или лаунчеру. Вводите только тестовые названия; изменения живут в памяти вкладки. Настоящие пароли, ключи и контакты вводить нельзя.</p>
+ <p class="lg-safety-banner">${v.reference ? 'В браузерном предпросмотре персонажи и суммы — примеры, записи остаются в памяти. Новости и промокоды — из общего источника приложения, не выдуманная свежая лента. Рабочие действия требуют десктопного приложения и используют его штатные проверки. Настоящие пароли, ключи и контакты сюда вводить нельзя.' : 'Все аккаунты, суммы, задания и результаты вымышлены. Нет обращения к сайту, Rust или лаунчеру. Вводите только тестовые названия; изменения живут в памяти вкладки. Настоящие пароли, ключи и контакты вводить нельзя.'}</p>
  <div class="lg-shell"><aside class="lg-sidebar"><div class="lg-product-mark">${icon('rune')}<b>Твиноферма</b><small>${mode === 'next' ? 'YOUR PERFECT WORKSPACE' : 'PERFECT WORLD COMPANION'}</small></div><nav aria-label="Страницы приложения">${pages.map(p => `<button data-page="${p.id}" aria-label="${esc(p.label)}" aria-current="${p.id === page ? 'page' : 'false'}" title="${esc(p.label)}">${icon(p.icon)}<span>${esc(p.label)}</span>${p.id === page ? '<i></i>' : ''}</button>`).join('')}</nav><div class="lg-sidebar-bottom"><span class="lg-local-dot"></span><span>Только демонстрация<br/><small>Аккаунты не подключены</small></span></div></aside>
  <main class="lg-main" id="content"><header class="lg-page-header"><div><span class="lg-eyebrow">${mode === 'next' ? 'Личное рабочее пространство' : 'Управление аккаунтами'} / ${esc(v.name)}</span><h2>${esc(meta.label)}</h2><p>${esc(meta.description || meta.why)}</p></div><div class="lg-page-actions"><button class="lg-button" data-command>${icon('search')} Команды <kbd>Ctrl K</kbd></button><button class="lg-button primary" data-primary>${primaryLabel(src)}</button></div></header>${state.running ? `<div class="lg-running-bar">${queueView(state)}<button class="lg-icon-button danger" data-stop aria-label="Немедленно остановить">■</button></div>` : ''}
  <div id="lg-content">${original || (mode === 'classic' && src === 'today' && variant <= 3) ? frameContent() : renderPage(src, v, state)}</div><footer class="lg-page-footer"><span>${mode === 'next' ? 'Переосмысление · 100 сочетаний, включая Сегодня 12' : 'Лаборатория · 8 страниц × 10 вариантов'}</span><span>Perfect World · менеджер аккаунтов, не чит</span></footer></main></div>`;
@@ -493,6 +493,10 @@ root.addEventListener('click', event => {
     if (['characters', 'parties', 'runes', 'bank', 'marathons'].includes(src)) editForm(src);
     else if (src === 'settings') entry('application');
     else if (src === 'today') {
+      if (validVariant().reference) {
+        root.querySelector('[data-today-action=calendar]')?.click();
+        return;
+      }
       state.detail = 'daily';
       if (mode === 'classic' && variant <= 3) variant = 2;
       render();
