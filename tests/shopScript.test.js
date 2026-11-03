@@ -330,3 +330,14 @@ describe('shop.js: история монет (history)', () => {
     expect(run(fixture('site-warning.html'), 'history').error).toBe('not_logged_in');
   });
 });
+
+it.each(['Доступно: 3 из 12', 'Доступно Вам: 3 из 12', 'Доступно:\u00a03\u00a0из\u00a012 шт.'])(
+  'reads N and authoritative X from %s, ahead of old monthly text',
+  text => {
+    const html = editDom(shop(), d => {
+      d.querySelector('#hash_item42765 .img_item_cont > span').textContent =
+        text + ' Максимальное количество в месяц: 99';
+    });
+    expect(byName(run(html), 'Камень лагеря')).toMatchObject({ available: 3, max: 12 });
+  }
+);

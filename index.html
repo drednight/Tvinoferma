@@ -560,13 +560,18 @@
                 <details><summary>Где находятся облачные файлы?</summary><p>Google Диск: обычная папка «Твиноферма» (если вы её переместили или переименовали, используется прежняя папка по ID). Яндекс Диск: обычная папка «Твиноферма» в корне диска. Новые файлы сохраняются туда; прежние файлы из «Приложения» тоже доступны для сравнения и не удаляются. Для обычной папки нужны права чтения и записи диска, поэтому со старым доступом может понадобиться выйти и войти заново. Имена: tf-v1-7eab1931-650f-4dc7-98bb-f9e903526af4-&lt;версия&gt;.tfsc. Это зашифрованные файлы, не state.json.</p></details>
                 <dialog id="cloud-standalone-review" class="modal cloud-diff-dialog" aria-labelledby="cloud-standalone-review-title" hidden>
                   <div class="cloud-dialog-heading"><h3 id="cloud-standalone-review-title">Сравнение с облачной копией</h3><button type="button" class="btn ghost" id="cloud-standalone-review-close" data-cloud-close aria-label="Закрыть сравнение">✕</button></div>
+                  <section id="cloud-standalone-character-updates" class="cloud-option-card" aria-label="Сопоставление и обновление персонажей"></section>
+                  <details id="cloud-standalone-full-replacement"><summary>Полная замена всех данных — не объединение</summary>
+                  <p>Отдельный опасный режим: записи могут быть удалены. Для обновления существующих персонажей используйте сопоставление выше.</p>
                   <div id="cloud-standalone-review-counts" class="cloud-diff-counts" aria-label="Сводка изменений"></div><p id="cloud-standalone-review-status"></p>
                   <ul id="cloud-standalone-differences"></ul>
                   <label id="cloud-standalone-backup-ack-label" hidden><input type="checkbox" id="cloud-standalone-backup-ack" /> Сохранил отдельную копию местных контактов удаляемых персонажей. Backup state.json не копирует Windows vault.</label>
                   <div class="cloud-registration-actions">
                     <button type="button" class="btn" id="cloud-standalone-accept">Принять полную облачную копию с резервной копией</button>
-                    <button type="button" class="btn ghost" id="cloud-standalone-decline">Оставить свои данные</button>
+
                   </div>
+                  </details>
+                  <button type="button" class="btn ghost" id="cloud-standalone-decline">Оставить свои данные</button>
                 </dialog>
 
                 <section class="cloud-option-card">

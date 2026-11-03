@@ -139,7 +139,7 @@ describe('панель → PKCE → локальная запись с подд�
     async provider => {
       const { native, confirmAccount } = setup(provider);
       await start();
-      await vi.waitFor(() => expect(conn('progress').textContent).toBe(''));
+      await vi.waitFor(() => expect(conn('progress').textContent).toContain('Вход сохранён и проверен'));
       expect(native.openBrowser).toHaveBeenCalledOnce();
       expect(confirmAccount).toHaveBeenCalledOnce();
       expect(confirmAccount.mock.calls[0][0].label.value).toBe(LABEL[provider]);
@@ -169,7 +169,7 @@ describe('панель → PKCE → локальная запись с подд�
   it('при появлении pin после проверки backend блокирует забывание и сохраняет доступ', async () => {
     const { native } = setup('yandex');
     await start();
-    await vi.waitFor(() => expect(conn('progress').textContent).toBe(''));
+    await vi.waitFor(() => expect(conn('progress').textContent).toContain('Вход сохранён и проверен'));
     await inspect();
     native.setDataset('blocked');
     conn('forget-approve').click();

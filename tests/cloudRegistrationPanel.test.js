@@ -1,3 +1,8 @@
+import {
+  clearCloudDiagnostics,
+  cloudDiagnosticSnapshot,
+  cloudDiagnosticReport
+} from '../js/modules/cloudSync/cloudDiagnostics.js';
 import { clearCloudAccountPresentation } from '../js/modules/cloudSync/cloudAccountPresentation.js';
 import { legacyAccessHtml } from './helpers/legacyAccessHtml.js';
 // @vitest-environment jsdom
@@ -75,6 +80,7 @@ Object.defineProperties(HTMLDialogElement.prototype, {
 });
 beforeEach(() => {
   clearCloudAccountPresentation();
+  clearCloudDiagnostics();
   expect(source).toBeTruthy();
   document.body.innerHTML = `<main>${source}</main>`;
 });
@@ -288,7 +294,7 @@ describe('экспериментальный локальный доступ в 
       openBrowser: s.openBrowser,
       confirmAccount: expect.any(Function)
     });
-    await vi.waitFor(() => expect(connection('progress').textContent).toBe(''));
+    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Вход сохранён и проверен'));
     expect(connection('progress').textContent).not.toContain('Доступ сохранён');
     expect(connection('progress').textContent).not.toContain('набор данных ещё нужно подключить');
     expect(connection('approve').checked).toBe(false);
@@ -464,7 +470,7 @@ describe('экспериментальный локальный доступ в 
     expect(signal.aborted).toBe(true);
     expect(connection('progress').textContent).toContain('может завершиться после отмены');
     gate.resolve({ status: 'installed' });
-    await vi.waitFor(() => expect(connection('progress').textContent).toBe(''));
+    await vi.waitFor(() => expect(connection('progress').textContent).toContain('Вход сохранён и проверен'));
     expect(connection('start').disabled).toBe(true);
   });
 
@@ -741,4 +747,88 @@ it('opens shared recovery settings for either provider without enrollment or sig
   expect(yandex.getAttribute('aria-pressed')).toBe('true');
   expect(f.enroll).not.toHaveBeenCalled();
   expect(f.forget).not.toHaveBeenCalled();
+});
+
+it('records registration-only separately, then the real Yandex install/readback stages and result without secrets', async () => {
+  const s = bind({
+    enroll: vi.fn(async options => {
+      for (const stage of [
+        'checking_local',
+        'browser',
+        'token',
+        'identity',
+        'confirming',
+        'installing',
+        'verifying_installation',
+        'PRIVATE_UNSAFE_STAGE'
+      ])
+        options.onProgress(stage);
+      return { status: 'installed', secret: 'PRIVATE_UNSAFE_RESULT' };
+    })
+  });
+  byId('client').value = clientId;
+  submit();
+  await vi.waitFor(() => expect(s.check).toHaveBeenCalled());
+  await vi.waitFor(() =>
+    expect(
+      cloudDiagnosticSnapshot().trace.some(
+        r => r.stage === 'oauth_registration_check' && r.code === 'registration_only' && r.outcome === 'ok'
+      )
+    ).toBe(true)
+  );
+  connection('simple').click();
+  await vi.waitFor(() => expect(connection('progress').textContent).toContain('Вход сохранён и проверен'));
+  const trace = cloudDiagnosticSnapshot().trace;
+  expect(trace.some(r => r.stage === 'oauth_verify_install' && r.provider === 'yandex')).toBe(true);
+  expect(trace.some(r => r.stage === 'oauth_login' && r.code === 'login_installed' && r.outcome === 'ok')).toBe(true);
+  expect(cloudDiagnosticReport()).not.toContain('PRIVATE_UNSAFE');
+  expect(cloudDiagnosticReport()).not.toContain(clientId);
+});
+it('a dataset without credentials visibly stops login before OAuth, reports the safe fixed reason and preserves protection', async () => {
+  const s = bind({ readDataset: vi.fn(async () => 'ready') });
+  byId('client').value = clientId;
+  connection('simple').click();
+  await vi.waitFor(() => expect(connection('progress').textContent).toContain('Вход не запущен'));
+  expect(connection('progress').textContent).toContain('Новый вход заблокирован');
+  expect(s.enroll).not.toHaveBeenCalled();
+  expect(
+    cloudDiagnosticSnapshot().trace.some(r => r.stage === 'oauth_login' && r.code === 'login_local_dataset_blocked')
+  ).toBe(true);
+});
+it('records failed Yandex account confirmation and does not show a saved-account claim', async () => {
+  bind({
+    enroll: vi.fn(async options => {
+      options.onProgress('confirming');
+      return { status: 'confirmation_unverified', secret: 'PRIVATE_CONFIRM' };
+    })
+  });
+  byId('client').value = clientId;
+  connection('simple').click();
+  await vi.waitFor(() => expect(connection('progress').textContent).toContain('Подтверждение аккаунта не получено'));
+  expect(cloudDiagnosticSnapshot().trace).toContainEqual(
+    expect.objectContaining({
+      stage: 'oauth_login',
+      provider: 'yandex',
+      code: 'login_confirmation_unverified',
+      outcome: 'failed'
+    })
+  );
+  expect(cloudDiagnosticReport()).not.toContain('PRIVATE_CONFIRM');
+});
+
+it('keeps a fixed OAuth token failure reason in diagnostics but rejects arbitrary diagnostic text', async () => {
+  bind({
+    enroll: vi.fn(async options => {
+      options.onProgress('token');
+      return { status: 'failed', diagnostic: { stage: 'token', code: 'invalid_client', body: 'PRIVATE_OAUTH_BODY' } };
+    })
+  });
+  byId('client').value = clientId;
+  connection('simple').click();
+  await vi.waitFor(() =>
+    expect(cloudDiagnosticSnapshot().trace).toContainEqual(
+      expect.objectContaining({ stage: 'oauth_token', code: 'oauth_invalid_client', outcome: 'failed' })
+    )
+  );
+  expect(cloudDiagnosticReport()).not.toContain('PRIVATE_OAUTH_BODY');
 });

@@ -1160,3 +1160,61 @@ it('opens a read-only diff but never enables replacement when strict schema/roun
   el('accept').click();
   expect(f.runtime.accept).not.toHaveBeenCalled();
 });
+
+it('defaults to non-deleting reconciliation; explicit field choice and confirmation never call full replacement', async () => {
+  const t = token();
+  t.characterUpdates = {
+    locals: [{ id: 'local', nick: 'Первый', fields: { level: 10 } }],
+    records: [
+      { id: 'cloud', nick: 'Первый', fields: { level: 20 }, matchedLocalId: 'local', suggestedLocalIds: ['local'] }
+    ]
+  };
+  const f = setup({
+    runtime: { review: vi.fn(async () => t), updateCharacters: vi.fn(async () => ({ status: 'applied' })) }
+  });
+  await compare();
+  expect(el('character-updates').hidden).toBe(false);
+  expect(el('full-replacement').open).toBe(false);
+  expect(el('accept').closest('details')).toBe(el('full-replacement'));
+  const apply = el('character-updates').querySelector('[data-character-update-apply]');
+  expect(apply.disabled).toBe(true);
+  el('character-updates').querySelector('input[value="level"]').click();
+  el('character-updates').querySelector('[data-character-update-ack]').click();
+  apply.click();
+  await vi.waitFor(() =>
+    expect(f.runtime.updateCharacters).toHaveBeenCalledWith(t, {
+      confirmed: true,
+      selections: [{ cloudId: 'cloud', localId: 'local', fields: ['level'] }]
+    })
+  );
+  await vi.waitFor(() => expect(el('review').hidden).toBe(true));
+  expect(f.confirm).toHaveBeenCalledWith(
+    expect.objectContaining({ title: 'Обновить только выбранные поля персонажей?' })
+  );
+  expect(f.runtime.accept).not.toHaveBeenCalled();
+  expect(f.runtime.save).not.toHaveBeenCalled();
+  expect(el('status').textContent).toContain('Никто не удалён');
+});
+it('cancelling selective confirmation restores the comparison and resets acknowledgment without writing', async () => {
+  const t = token();
+  t.characterUpdates = {
+    locals: [{ id: 'local', nick: 'Первый', fields: { level: 10 } }],
+    records: [
+      { id: 'cloud', nick: 'Первый', fields: { level: 20 }, matchedLocalId: 'local', suggestedLocalIds: ['local'] }
+    ]
+  };
+  const f = setup({
+    confirm: vi.fn(async () => false),
+    runtime: { review: vi.fn(async () => t), updateCharacters: vi.fn() }
+  });
+  await compare();
+  const host = el('character-updates');
+  host.querySelector('input[value="level"]').click();
+  host.querySelector('[data-character-update-ack]').click();
+  host.querySelector('button').click();
+  await vi.waitFor(() => expect(f.confirm).toHaveBeenCalled());
+  await vi.waitFor(() => expect(host.querySelector('[data-character-update-ack]').checked).toBe(false));
+  expect(el('review').hidden).toBe(false);
+  expect(f.runtime.updateCharacters).not.toHaveBeenCalled();
+  expect(f.runtime.accept).not.toHaveBeenCalled();
+});

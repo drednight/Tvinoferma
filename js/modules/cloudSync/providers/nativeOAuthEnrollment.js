@@ -221,6 +221,7 @@ export async function enrollNativeCloudAccount(options) {
         return nativeInstaller.installIfAbsent(args);
       },
       async verifyInstallation(args) {
+        progress('verifying_installation');
         const verified = await nativeInstaller.verifyInstallation(args);
         if (verified && provider === 'google')
           verifiedGoogleRecord = reconnectInstaller ? reconnectInstaller.takeVerifiedRecord() : args.record;

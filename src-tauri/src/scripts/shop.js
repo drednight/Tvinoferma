@@ -114,7 +114,7 @@
     var infoEl = TF.q('shop.infoText', li);
     var info = infoEl ? String(infoEl.textContent || '') : '';
     var am = TF.match('shop.available', info);
-    var mm = TF.match('shop.maxMonth', info);
+    var mm = TF.match('shop.availableMax', info) || TF.match('shop.maxMonth', info);
     var img = TF.q('shop.image', li);
     return {
       name: squash(titleEl.textContent),

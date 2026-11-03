@@ -46,3 +46,22 @@ it('aborting the parent closes the child without approving anything', async () =
   expect($('.tr-confirm-dialog')).toBeNull();
   expect($('#parent').inert).toBe(false);
 });
+
+it('confirmation summary only counts accounts and sets, never the sum of items', async () => {
+  const promise = confirmTransfer({
+    parent: $('#parent'),
+    plansFor: () => [
+      {
+        run: true,
+        itemSelection: [
+          { id: '1', qty: 25 },
+          { id: '2', qty: 30 }
+        ]
+      }
+    ]
+  });
+  expect($('.tr-confirm-dialog').textContent).toContain('Аккаунтов: 1. Наборов: 2.');
+  expect($('.tr-confirm-dialog').textContent).not.toMatch(/предметов:\s*55|55 шт/);
+  $('[data-confirm-cancel]').click();
+  await promise;
+});

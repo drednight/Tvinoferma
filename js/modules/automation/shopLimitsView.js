@@ -1,46 +1,103 @@
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/utils.js';
+import { escapeHtml as esc } from '../../core/utils.js';
 import { openOverlay } from '../marathons/overlay.js';
 import { classIconHtml } from './characterPicker.js';
 import { SHOP_ITEMS, limitView } from './shopCore.js';
 import { charSiteMap, getAccount } from './shopStore.js';
 
-export function openShopLimits() {
+// Reading only. Refresh uses the shop's existing grouped scanner (never purchase).
+export function openShopLimits({ refresh } = {}) {
   const dlg = openOverlay({ title: 'Лимиты подарков по персонажам', wide: true });
-  const sites = charSiteMap();
+  let busy = false;
   dlg.sub.textContent =
-    'Последние прочитанные данные сайта. У персонажей одного аккаунта лимит общий, не суммируется. Дата ниже — обновление лимита, а не срок самого предмета.';
-  dlg.body.innerHTML = `<div class="promo-scroll"><table class="promo-table shop-limits-table"><thead><tr><th>Персонаж / аккаунт</th><th>Предмет</th><th>Доступно</th><th>Когда обновится</th></tr></thead><tbody>${[
-    ...state.characters
-  ]
-    .sort((a, b) => String(a.nick).localeCompare(String(b.nick), 'ru'))
-    .map(c => {
+    'У персонажей одного аккаунта лимит общий. «Доступно: N из Х»: N — остаток, Х — указанный сайтом лимит. Дата — обновление лимита, не срок предмета.';
+  dlg.body.innerHTML = `<div class="shop-quick"><label>Поиск<input class="input" type="search" data-limits-search placeholder="Ник, класс или аккаунт"></label><label>Предмет<select class="input" data-limits-item><option value="">Все предметы</option>${SHOP_ITEMS.map(d => `<option value="${d.key}">${esc(d.name)}</option>`).join('')}</select></label><label>Лимит<select class="input" data-limits-filter><option value="limited">Все с указанным лимитом</option><option value="available">Есть остаток</option><option value="exhausted">Лимит исчерпан</option><option value="unlimited">Без указанного лимита</option><option value="unknown">Нет данных сайта</option></select></label></div><p data-limits-status role="status"></p><div class="promo-scroll"><table class="promo-table shop-limits-table"><thead><tr><th>Персонаж / аккаунт</th><th>Предмет</th><th>Доступно</th><th>Когда обновится</th></tr></thead><tbody></tbody></table></div>`;
+  dlg.foot.innerHTML =
+    '<button type="button" class="btn ghost" data-close-limits>Закрыть</button><span class="sd-foot-spacer"></span><button type="button" class="btn primary" data-refresh-limits>Обновить информацию по лимитам</button>';
+  const q = selector => dlg.body.querySelector(selector);
+  const render = () => {
+    const sites = charSiteMap(),
+      filter = q('[data-limits-filter]').value,
+      key = q('[data-limits-item]').value;
+    const query = q('[data-limits-search]').value.trim().toLocaleLowerCase('ru');
+    const rows = [];
+    for (const c of [...state.characters].sort((a, b) => String(a.nick).localeCompare(String(b.nick), 'ru'))) {
       const account = getAccount(sites[c.id]);
-      const limited = SHOP_ITEMS.filter(def => {
-        const item = account?.items[def.key];
-        return item?.found && limitView(item, account?.tracks[def.key]);
+      if (query && ![c.nick, c.class, account?.account].join(' ').toLocaleLowerCase('ru').includes(query)) continue;
+      const defs = SHOP_ITEMS.filter(d => !key || d.key === key);
+      const limited = defs.filter(d => {
+        const item = account?.items[d.key],
+          limit = limitView(item, account?.tracks[d.key]);
+        return (
+          limit &&
+          (filter === 'limited' ||
+            (filter === 'available' && limit.available > 0) ||
+            (filter === 'exhausted' && limit.available === 0))
+        );
       });
-      return limited
-        .map((def, index) => {
-          const item = account?.items[def.key];
-          const track = account?.tracks[def.key];
-          const limit = limitView(item, track);
-          const availability = `${limit.available}${limit.max ? ` из ${limit.max}` : ''}`;
-          const reset = !limit
-            ? '—'
-            : limit.resetAt
-              ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
-              : track?.resetAt && Date.parse(track.resetAt) <= Date.now()
-                ? 'Срок обновления прошёл — перечитайте сайт'
-                : 'Дата неизвестна — сайт её не сообщил';
-          return `<tr>${index === 0 ? `<td rowspan="${limited.length}">${classIconHtml(c)} <b>${escapeHtml(c.nick)}</b><small>${escapeHtml(account?.account || 'Аккаунт не проверен')}</small><small>${account?.at ? `Проверено: ${escapeHtml(new Date(account.at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }))} мск` : 'Нет данных сайта'}</small></td>` : ''}<td>${escapeHtml(def.name)}</td><td>${escapeHtml(availability)}</td><td>${escapeHtml(reset)}</td></tr>`;
-        })
-        .join('');
-    })
-    .join(
-      ''
-    )}</tbody></table></div><p class="shop-muted">Показаны только найденные на сайте предметы с явно указанным лимитом. Если таблица пуста — таких данных пока нет; обновите магазин.</p>`;
-  dlg.foot.innerHTML = '<button type="button" class="btn primary" data-close-limits>Закрыть</button>';
+      // Unlimited/unknown filters show one honest character summary, not a list
+      // of invented per-item quotas or all eight missing items.
+      let cells = limited.map(def => {
+        const item = account.items[def.key],
+          track = account.tracks[def.key],
+          limit = limitView(item, track);
+        const reset = limit.resetAt
+          ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
+          : track?.resetAt && Date.parse(track.resetAt) <= Date.now()
+            ? 'Срок обновления прошёл — перечитайте сайт'
+            : 'Дата неизвестна — сайт её не сообщил';
+        return `<td>${esc(def.name)}</td><td>Доступно: ${limit.available}${limit.max != null ? ` из ${limit.max}` : ' (максимум не указан)'}</td><td>${esc(reset)}</td>`;
+      });
+      if (
+        filter === 'unlimited' &&
+        defs.some(d => account?.items[d.key]?.found && account.items[d.key].available == null)
+      )
+        cells = [
+          '<td colspan="3">Есть найденные предметы без указанного лимита. Это не доказательство безлимитной покупки.</td>'
+        ];
+      if (filter === 'unknown' && (!account || defs.some(d => !account.items[d.key]?.found)))
+        cells = ['<td colspan="3">Нет данных об аккаунте или выбранный предмет не найден на сайте.</td>'];
+      cells.forEach((cell, index) =>
+        rows.push(
+          `<tr>${index === 0 ? `<td rowspan="${cells.length}">${classIconHtml(c)} <b>${esc(c.nick)}</b><small>${esc(account?.account || 'Аккаунт не проверен')}</small><small>${account?.at ? 'Проверено: ' + esc(new Date(account.at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })) + ' мск' : 'Нет данных сайта'}</small></td>` : ''}${cell}</tr>`
+        )
+      );
+    }
+    q('tbody').innerHTML = rows.join('');
+    if (!busy)
+      q('[data-limits-status]').textContent = rows.length
+        ? `Строк: ${rows.length}. Поиск и фильтры не меняют выбор в магазине.`
+        : 'По выбранным фильтрам ничего не найдено.';
+  };
+  dlg.body.addEventListener('input', e => {
+    if (e.target.matches('[data-limits-search]')) render();
+  });
+  dlg.body.addEventListener('change', render);
   dlg.foot.querySelector('[data-close-limits]').onclick = () => dlg.close();
+  const button = dlg.foot.querySelector('[data-refresh-limits]');
+  button.disabled = typeof refresh !== 'function';
+  button.onclick = async () => {
+    if (busy || typeof refresh !== 'function') return;
+    busy = true;
+    button.disabled = true;
+    q('[data-limits-status]').textContent = 'Читаем лимиты аккаунтов с сайта…';
+    try {
+      await refresh();
+      if (dlg.el.isConnected) {
+        busy = false;
+        render();
+        q('[data-limits-status]').textContent +=
+          ' Проверка завершена; для недоступных аккаунтов сохранены прежние данные и их дата.';
+      }
+    } catch {
+      if (dlg.el.isConnected)
+        q('[data-limits-status]').textContent =
+          'Не удалось обновить сейчас: возможно, другая проверка ещё идёт. Прежние данные и фильтры сохранены.';
+    } finally {
+      busy = false;
+      button.disabled = false;
+    }
+  };
+  render();
   return dlg;
 }

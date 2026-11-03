@@ -170,7 +170,8 @@ describe('полный экспериментальный PKCE → подтве�
       'identity',
       'confirming',
       'identity',
-      'installing'
+      'installing',
+      'verifying_installation'
     ]);
     const authorize = new URL(s.openBrowser.mock.calls[0][0]);
     if (provider === 'google') {

@@ -28,6 +28,7 @@ const REASONS = Object.freeze({
   response_invalid: 'Ответ сервиса не прошёл проверку формата или разрешений.',
   transport_failed: 'Нативный запрос не выполнен или его ответ не прошёл проверку. Исходные данные ошибки скрыты.'
 });
+export const OAUTH_DIAGNOSTIC_CODES = Object.freeze(Object.keys(REASONS));
 const STAGES = Object.freeze({
   browser: 'Ответ браузера',
   token: 'Обмен кода на токен',

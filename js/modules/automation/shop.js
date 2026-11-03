@@ -74,7 +74,7 @@ export function openShopDialog({ ids = [] } = {}) {
     return null;
   }
 
-  const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
+  const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id && c.isLoggedIn === true)));
   const accSel = new Set(preset); // отмеченные персонажи; аккаунт отмечен, если отмечен любой его персонаж
   let visibleScope = new Set(preset.size ? preset : state.characters.map(c => c.id));
   const picked = new Set(); // выбранные предметы (ключи SHOP_ITEMS)
@@ -127,10 +127,10 @@ export function openShopDialog({ ids = [] } = {}) {
   const setQty = (g, key, n) => g.members.forEach(m => qtyMap.set(`${m.id}|${key}`, n));
   const setSel = (g, on) =>
     g.members.forEach(m => {
-      if (on) accSel.add(m.id);
+      if (on && m.isLoggedIn === true) accSel.add(m.id);
       else accSel.delete(m.id);
     });
-  const isSel = g => anyMember(g, accSel);
+  const isSel = g => g.members.some(m => m.isLoggedIn === true && accSel.has(m.id));
   const pickedDefs = () => SHOP_ITEMS.filter(d => picked.has(d.key));
 
   function infoOf(g) {
@@ -390,15 +390,18 @@ export function openShopDialog({ ids = [] } = {}) {
     ]
       .filter(Boolean)
       .join(' · ');
-    const desc =
-      found && it.desc
-        ? `<details class="shop-desc"><summary>Описание</summary><div>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</div></details>`
-        : '';
+    const generalLimit =
+      it?.max != null
+        ? `Общий лимит сайта: ${fmt(it.max)} на аккаунт (Х в «Доступно: N из Х»). Остаток каждого аккаунта — в таблице.`
+        : 'Общий лимит сайта не указан или не прочитан. Не считаем оставшееся количество максимальным лимитом.';
+    const desc = found
+      ? `<details class="shop-desc"><summary>Описание</summary>${it.desc ? `<div>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</div>` : ''}<p class="shop-muted">${escapeHtml(generalLimit)}</p></details>`
+      : '';
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
         ${siteItemIconHtml(it?.image)}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
       <div class="shop-price">${escapeHtml(price)}</div>
-      ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${it?.max != null ? `<div class="shop-muted">Общий лимит сайта: ${fmt(it.max)} в месяц на аккаунт. Остаток — в таблице.</div>` : '<div class="shop-muted">Общий лимит сайта не прочитан.</div>'}${desc}</div>`;
+      ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
   }
 
   function cellHtml(g, def, idx) {
@@ -434,7 +437,7 @@ export function openShopDialog({ ids = [] } = {}) {
       cells = `<td colspan="${defs.length + 1}" class="shop-muted">${escapeHtml(msg)}</td>`;
     }
     return `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}${ok ? '' : ' shop-dim'}" data-g="${idx}">
-      <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
+      <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok && g.members.some(m => m.isLoggedIn === true) ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
       <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${
         g.others.length
           ? `<div class="shop-muted">также: ${g.members
@@ -520,10 +523,13 @@ export function openShopDialog({ ids = [] } = {}) {
       dlg,
       {
         selected: accSel,
+        eligible: c => c.isLoggedIn === true,
         apply(ids) {
           visibleScope = new Set(ids);
           accSel.clear();
-          ids.forEach(id => accSel.add(id));
+          ids
+            .filter(id => state.characters.some(c => c.id === id && c.isLoggedIn === true))
+            .forEach(id => accSel.add(id));
           renderPick();
         }
       },
@@ -1108,7 +1114,12 @@ export function openShopDialog({ ids = [] } = {}) {
       return;
     }
     if (act === 'limits') {
-      openShopLimits();
+      openShopLimits({
+        refresh: async () => {
+          if (scanning) throw new Error('busy');
+          await scanAll();
+        }
+      });
       return;
     }
     if (act === 'dry') {

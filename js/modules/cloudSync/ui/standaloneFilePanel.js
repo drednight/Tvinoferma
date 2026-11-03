@@ -1,4 +1,5 @@
 // @ts-check
+import { renderCharacterUpdatePanel, setCharacterUpdateBusy } from './characterUpdatePanel.js';
 import { cloudChangePath, cloudChangeValue, cloudChangeCounts, folderNextStep } from './cloudFilePresentation.js';
 import {
   providerCopyRows,
@@ -361,6 +362,7 @@ export function bindStandaloneFilePanel(options) {
       input.disabled =
         busy || !options.desktop || stopped || (input.id === 'cloud-standalone-accept' && !!review?.replacementBlocked);
     }
+    setCharacterUpdateBusy(el('character-updates'), busy || !options.desktop || stopped);
     panel.setAttribute('aria-busy', String(busy));
   }
   function log(provider, action, outcome) {
@@ -577,6 +579,38 @@ export function bindStandaloneFilePanel(options) {
     reviewFields = fields();
     showDialog(reviewPanel);
     if (el('reopen')) el('reopen').hidden = false;
+    if (el('full-replacement')) el('full-replacement').open = false;
+    const matching = el('character-updates');
+    if (matching)
+      renderCharacterUpdatePanel(matching, token.characterUpdates, async selections => {
+        if (review !== token) return;
+        await action(async engine => {
+          hideReview();
+          try {
+            const count = selections.reduce((n, c) => n + c.fields.length, 0);
+            if (
+              !(await confirmAction({
+                title: 'Обновить только выбранные поля персонажей?',
+                text: `Сопоставлено персонажей: ${selections.length}. Выбрано полей: ${count}. Удалений: 0. Сначала создаётся резервная копия. ID, контакты, группы, архивность и привязки этого ПК не изменяются. Сопоставления запоминаются на этом ПК; полная облачная копия не принимается и не отправляется.`,
+                okText: 'Обновить выбранное'
+              }))
+            )
+              return;
+            const result = await engine.updateCharacters(token, { confirmed: true, selections });
+            status.textContent =
+              result.status === 'applied'
+                ? 'Выбранные поля обновлены, сопоставления сохранены. Никто не удалён. Облачный файл целиком не принят и не отправлен; для нового сравнения перечитайте копию.'
+                : STATUS[result.status] || 'Обновление не подтверждено. Повторите сравнение.';
+            if (result.status === 'applied') {
+              clearReview();
+              resetAcknowledgements();
+              doc.defaultView?.dispatchEvent(new CustomEvent('tf-cloud-applied'));
+            }
+          } finally {
+            if (review === token) showDialog(reviewPanel);
+          }
+        });
+      });
     el('backup-ack-label').hidden = !token.localPrivateAtRisk;
     el('backup-ack').checked = false;
     el('accept').disabled = !!token.replacementBlocked;
