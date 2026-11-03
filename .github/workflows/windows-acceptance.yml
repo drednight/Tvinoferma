@@ -59,12 +59,21 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: windows-acceptance-no-lto-v1
+      # Temporary lock repair, removed after the generated patch is checked in.
+      - name: Resolve paired notification lock
+        shell: pwsh
+        run: |
+          cargo update --manifest-path src-tauri/Cargo.toml -p tauri-plugin-notification --precise 2.8.0
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $patch = (git diff -- src-tauri/Cargo.lock) -join "`n"
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($patch + "`n"))
+          Write-Host "::notice title=Notification lock patch::$encoded"
       - name: Build executable without installer or updater signature
         env:
           TVINOFERMA_GOOGLE_CLIENT_ID: ${{ vars.TVINOFERMA_GOOGLE_CLIENT_ID }}
           TVINOFERMA_GOOGLE_CLIENT_SECRET: ${{ secrets.TVINOFERMA_GOOGLE_CLIENT_SECRET }}
           VITE_YANDEX_CLIENT_ID: ${{ vars.TVINOFERMA_YANDEX_CLIENT_ID }}
-        run: npm run tauri -- build --no-bundle
+        run: ./.github/scripts/build-windows-acceptance.ps1
       - name: Prepare test executable, source identity and checksum
         shell: pwsh
         run: |
