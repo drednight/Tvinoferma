@@ -4,7 +4,18 @@ import globals from 'globals';
 export default [
   // demo/ — отдельная площадка макетов, в сборку приложения не входит. Её сценарии
   // проверяются тестами в tests/, форматирование обеспечивает prettier.
-  { ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'public/**', 'coverage/**', 'demo/**', 'archive/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'src-tauri/**',
+      'public/**',
+      'coverage/**',
+      'demo/**',
+      'demo2/**',
+      'archive/**'
+    ]
+  },
   js.configs.recommended,
   {
     files: ['js/**/*.js'],

@@ -11,7 +11,9 @@ import { extname, resolve, sep } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT || 1420);
 // Можно открыть нужную лабораторию сразу в предпросмотре, не меняя стандартный адрес.
-const entry = /^\/demo\/[a-z0-9/._-]+\.html(?:\?show=(?:statistics|cloud-sync))?$/i.test(process.env.DEMO_ENTRY || '')
+const entry = /^\/(?:demo|demo2)\/[a-z0-9/._-]+\.html(?:\?show=(?:statistics|cloud-sync))?$/i.test(
+  process.env.DEMO_ENTRY || ''
+)
   ? process.env.DEMO_ENTRY
   : '/demo/tools-modals.html';
 
@@ -38,6 +40,7 @@ const MIME = {
 // поэтому запрет доступа к .git и произвольным файлам нужен и без CORS.
 const IMAGE_TYPES = new Set(['.png', '.webp', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2']);
 const ROUTES = [
+  { prefix: '/demo2/', dir: resolve(ROOT, 'demo2'), extensions: new Set(['.html', '.js', '.css', ...IMAGE_TYPES]) },
   { prefix: '/demo/', dir: resolve(ROOT, 'demo'), extensions: new Set(['.html', '.js', '.css', ...IMAGE_TYPES]) },
   { prefix: '/js/', dir: resolve(ROOT, 'js'), extensions: new Set(['.js']) },
   { prefix: '/css/', dir: resolve(ROOT, 'css'), extensions: new Set(['.css']) },
