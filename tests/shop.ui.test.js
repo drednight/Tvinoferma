@@ -648,3 +648,87 @@ it('left scope filters visible accounts for logged-in, party and manual choices 
   expect(rowOf('Аа')).toBeDefined();
   expect(rowOf('Вв')).toBeUndefined();
 });
+
+it('never selects offline or unchecked-login characters through preset, all, party or manual picker, including shared accounts', async () => {
+  prefill();
+  state.characters[0].isLoggedIn = false;
+  // b has unknown login, but shares c's cached account. Only c may be selected.
+  state.parties = [{ id: 'p', name: 'Все' }];
+  state.characters.forEach(c => {
+    c.partyIds = ['p'];
+    c.mainPartyId = 'p';
+  });
+  openShopDialog({ ids: ['a', 'b', 'c'] });
+  await wait();
+  const selected = () => document.querySelectorAll('.shop-row [data-sel]:checked').length;
+  expect(selected()).toBe(1);
+  $('[data-q="all"]').click();
+  expect(selected()).toBe(1);
+  const choose = mode => {
+    const el = $(`.script-target input[value="${mode}"]`);
+    el.checked = true;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  choose('party');
+  const party = $('[data-script-party]');
+  party.value = 'p';
+  party.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(selected()).toBe(1);
+  choose('all');
+  expect(selected()).toBe(1);
+  $('[data-script-picker]').click();
+  const picker = $('.cp-dialog') || document.querySelector('.modal-overlay:last-child');
+  expect(picker.textContent).not.toContain('Аа');
+  expect(picker.textContent).not.toContain('Бб');
+  expect(picker.textContent).toContain('Вв');
+});
+it('limits filters locate available/exhausted/unlimited/unknown characters, retain search on read-only refresh and prevent duplicate refresh', async () => {
+  openShopDialog();
+  await wait();
+  $('[data-act="limits"]').click();
+  const filter = $('[data-limits-filter]'),
+    search = $('[data-limits-search]'),
+    table = $('.shop-limits-table');
+  const select = value => {
+    filter.value = value;
+    filter.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  select('exhausted');
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
+  expect(table.textContent).toContain('асуров');
+  select('available');
+  expect(table.textContent).not.toContain('Доступно: 0');
+  select('unlimited');
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+  expect(table.textContent).not.toContain('Доступно:');
+  select('unknown');
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(3);
+  select('limited');
+  search.value = 'Аа';
+  search.dispatchEvent(new Event('input', { bubbles: true }));
+  expect(table.textContent).toContain('Аа');
+  expect(table.textContent).not.toContain('Бб');
+  mocks.invoke.mockClear();
+  const button = $('[data-refresh-limits]');
+  button.click();
+  button.click();
+  await vi.waitFor(() => expect(button.disabled).toBe(false));
+  expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop')).toHaveLength(2);
+  expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'buy_shop_item')).toBe(false);
+  expect(search.value).toBe('Аа');
+  expect(filter.value).toBe('limited');
+  expect(table.textContent).not.toContain('Бб');
+});
+it('general site quota is only inside collapsed description, even when no description was provided', async () => {
+  prefill();
+  // Native scan stub already supplies max:null: unknown-limit text must still be collapsed.
+  openShopDialog();
+  await wait();
+  const card = $('[data-card="light"]'),
+    details = card.querySelector('details');
+  expect(details.open).toBe(false);
+  expect(details.textContent).toContain('Общий лимит сайта');
+  const clone = card.cloneNode(true);
+  clone.querySelector('details').remove();
+  expect(clone.textContent).not.toContain('Общий лимит');
+});

@@ -1,4 +1,6 @@
 // @ts-check
+import { recordCloudDiagnostic } from '../cloudDiagnostics.js';
+import { ENROLLMENT_STAGES, ENROLLMENT_RESULTS, ENROLLMENT_LOCAL_STATES } from '../enrollmentDiagnostics.js';
 import {
   cloudAccountPresentation,
   presentCloudAccount,
@@ -45,7 +47,8 @@ const LOCAL_MESSAGES = Object.freeze({
     'Локальная запись доступа неполная или не совпадает с привязкой. Не удаляйте её и не повторяйте вход до восстановления.'
 });
 const ENROLL_MESSAGES = Object.freeze({
-  installed: '',
+  installed:
+    'Вход сохранён и проверен в приложении на этом ПК. Это не разовая проверка регистрации. Теперь можно проверять файлы облака.',
   installed_access_expired:
     'Доступ сохранён, но срок токена уже истёк. Синхронизация не работает; требуется восстановить авторизацию. Ключи и облачные файлы не удаляйте.',
   installed_refresh_expired:
@@ -494,6 +497,7 @@ export function bindCloudRegistrationCheck(options) {
     try {
       const native = await loadNative();
       if (session.controller.signal.aborted) return;
+      recordCloudDiagnostic({ stage: 'oauth_registration_check', provider: selected, outcome: 'start' });
       const result = await check({
         provider: selected,
         clientId,
@@ -507,6 +511,12 @@ export function bindCloudRegistrationCheck(options) {
           else if (stage === 'token') status.textContent = 'Проверяем ответ авторизации…';
           else if (stage === 'identity') status.textContent = 'Проверяем, какой аккаунт выбрал сервис…';
         }
+      });
+      recordCloudDiagnostic({
+        stage: 'oauth_registration_check',
+        provider: selected,
+        outcome: result.status === 'checked' ? 'ok' : 'failed',
+        code: 'registration_only'
       });
       if (session.controller.signal.aborted) return;
       if (result.status === 'checked') {
@@ -547,6 +557,13 @@ export function bindCloudRegistrationCheck(options) {
     if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
     if (!quick && enrollButton?.disabled) return;
     const input = clientForAction(progress);
+    if (!input)
+      recordCloudDiagnostic({
+        stage: 'oauth_login',
+        provider: selectedProvider(),
+        outcome: 'failed',
+        code: 'login_missing_client_id'
+      });
     if (
       !input ||
       observed?.provider !== input.selected ||
@@ -592,6 +609,8 @@ export function bindCloudRegistrationCheck(options) {
           return accepted;
         },
         onProgress(stage) {
+          if (Object.hasOwn(ENROLLMENT_STAGES, stage))
+            recordCloudDiagnostic({ stage: ENROLLMENT_STAGES[stage], provider: selected, outcome: 'start' });
           if (stage === 'installing') session.installing = true;
           if (session.controller.signal.aborted) return;
           if (stage === 'checking_local')
@@ -603,7 +622,22 @@ export function bindCloudRegistrationCheck(options) {
           else if (stage === 'identity') progress.textContent = 'Проверяем аккаунт у сервиса…';
           else if (stage === 'confirming') progress.textContent = 'Сверьте аккаунт в отдельном окне подтверждения.';
           else if (stage === 'installing') progress.textContent = 'Сохраняем доступ; начатую запись нельзя отменить.';
+          else if (stage === 'verifying_installation')
+            progress.textContent = 'Проверяем, что запись входа действительно сохранена на этом ПК…';
         }
+      });
+      if (result.status === 'failed' && describeOAuthFailure(result.diagnostic))
+        recordCloudDiagnostic({
+          stage: ENROLLMENT_STAGES[result.diagnostic.stage],
+          provider: selected,
+          outcome: 'failed',
+          code: 'oauth_' + result.diagnostic.code
+        });
+      recordCloudDiagnostic({
+        stage: 'oauth_login',
+        provider: selected,
+        outcome: result.status === 'installed' ? 'ok' : 'failed',
+        code: ENROLLMENT_RESULTS.includes(result.status) ? 'login_' + result.status : 'login_failed'
       });
       if (
         result.status === 'installation_uncertain' ||
@@ -640,6 +674,7 @@ export function bindCloudRegistrationCheck(options) {
         presentCloudAccount(selected, { status: 'ready', label: confirmedLabel });
       return result.status === 'installed';
     } catch {
+      recordCloudDiagnostic({ stage: 'oauth_login', provider: selected, outcome: 'failed', code: 'login_failed' });
       if (session.installing) uncertainOutcome(selected);
       else if (!session.controller.signal.aborted)
         progress.textContent =
@@ -657,12 +692,30 @@ export function bindCloudRegistrationCheck(options) {
   simpleCancel?.addEventListener('click', stop);
   async function signIn() {
     if (!options.desktop || active || resetStarted || uncertain.has(selectedProvider())) return;
+    const selected = selectedProvider();
+    recordCloudDiagnostic({ stage: 'oauth_login', provider: selected, outcome: 'start' });
+    recordCloudDiagnostic({ stage: 'oauth_local', provider: selected, outcome: 'start' });
     await inspect();
     if (observed?.provider !== selectedProvider()) return;
+    const localState = observed.status;
+    const code = ENROLLMENT_LOCAL_STATES.includes(localState) ? 'login_local_' + localState : 'login_local_unavailable';
+    recordCloudDiagnostic({
+      stage: 'oauth_local',
+      provider: selected,
+      outcome: ['empty', 'signed_out', 'ready', 'ready_bound'].includes(localState) ? 'ok' : 'failed',
+      code
+    });
     const reconnect =
       selectedProvider() === 'google' &&
       ['ready', 'ready_bound', 'pending', 'dataset_incomplete'].includes(observed.status);
-    if (!reconnect && !['empty', 'signed_out'].includes(observed.status)) return;
+    if (!reconnect && !['empty', 'signed_out'].includes(observed.status)) {
+      if (progress)
+        progress.textContent = ['ready', 'ready_bound'].includes(localState)
+          ? 'Вход уже сохранён на этом ПК. Можно проверить облачные файлы ниже.'
+          : `Вход не запущен. ${Object.hasOwn(LOCAL_MESSAGES, localState) ? LOCAL_MESSAGES[localState] : 'Не удалось безопасно проверить локальную запись.'} Не удаляйте ключи и контакты; скопируйте безопасный отчёт из «Диагностика сейчас».`;
+      recordCloudDiagnostic({ stage: 'oauth_login', provider: selected, outcome: 'failed', code });
+      return;
+    }
     return await startEnrollment(true, reconnect);
   }
   simple?.addEventListener('click', signIn);

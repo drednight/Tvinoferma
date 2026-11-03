@@ -37,7 +37,13 @@ export function layoutScriptWorkspace(dlg, selection, { running = false, initial
     target.setAttribute('aria-label', 'Кого запускать');
     const choices = [
       ['logged', '🟢 Только с входом', `${state.characters.filter(c => c.isLoggedIn === true).length} персонажей`],
-      ['all', '👥 Все', `${state.characters.length} персонажей`],
+      [
+        'all',
+        '👥 Все',
+        selection.eligible
+          ? `${state.characters.filter(selection.eligible).length} доступных из ${state.characters.length}`
+          : `${state.characters.length} персонажей`
+      ],
       ['party', '🛡 По пати…', `${state.parties.length} пати на выбор`],
       ['manual', '🖐 Выбрать вручную', 'открыть выбор персонажей']
     ];
@@ -51,7 +57,10 @@ export function layoutScriptWorkspace(dlg, selection, { running = false, initial
             : ctx.mode === 'party'
               ? state.characters.filter(c => partiesOf(c, state.parties).some(p => p.id === ctx.party)).map(c => c.id)
               : [...ctx.ids];
-      selection.apply(ids, ctx.mode);
+      selection.apply(
+        ids.filter(id => !selection.eligible || state.characters.some(c => c.id === id && selection.eligible(c))),
+        ctx.mode
+      );
     };
     target.addEventListener('change', e => {
       if (e.target.matches('input[type=radio]')) {
@@ -70,14 +79,16 @@ export function layoutScriptWorkspace(dlg, selection, { running = false, initial
     });
     const openPicker = e => {
       ctx.picker = openCharacterPicker({
-        characters: state.characters.map(c => ({
-          ...c,
-          cls: c.class || c.className,
-          parties: partiesOf(c, state.parties).map(p => p.name),
-          party: partiesOf(c, state.parties)
-            .map(p => p.name)
-            .join(', ')
-        })),
+        characters: state.characters
+          .filter(c => !selection.eligible || selection.eligible(c))
+          .map(c => ({
+            ...c,
+            cls: c.class || c.className,
+            parties: partiesOf(c, state.parties).map(p => p.name),
+            party: partiesOf(c, state.parties)
+              .map(p => p.name)
+              .join(', ')
+          })),
         selected: ctx.ids,
         parent: dlg.el,
         returnFocus: e.target?.matches('input') ? e.target : target.querySelector('[data-script-picker]'),

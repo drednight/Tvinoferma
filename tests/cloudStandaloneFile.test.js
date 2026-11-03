@@ -844,3 +844,77 @@ it('preserves a verified read-only comparison with a precise safe dependency fai
   expect(f.calls.google).toEqual([]);
   expect(f.calls.yandex).toEqual([]);
 });
+
+describe('selective character update is not full-file acceptance', () => {
+  it('changes only selected fields with a backup; preserves extra local characters/tasks/contacts and receipts', async () => {
+    const f = fixture();
+    f.put('google', second);
+    const before = structuredClone(f.local),
+      token = await f.review();
+    const remote = token.characterUpdates.records[0];
+    expect(remote.matchedLocalId).toBe(original.characters[0].id);
+    expect(
+      await f.engine.updateCharacters(token, {
+        confirmed: true,
+        selections: [{ cloudId: remote.id, localId: original.characters[0].id, fields: ['nick'] }]
+      })
+    ).toMatchObject({ status: 'applied' });
+    expect(f.local.characters.map(c => c.id)).toEqual(original.characters.map(c => c.id));
+    expect(f.local.characters[0].nick).toBe(cloudState.characters[0].nick);
+    expect(f.local.characters[0].contacts).toEqual(before.characters[0].contacts);
+    expect(f.local.characters[0].syncId).toBe(before.characters[0].syncId);
+    expect(f.local.characters[1]).toEqual(before.characters[1]);
+    expect(f.local.plannerEntries).toEqual(before.plannerEntries);
+    expect(f.local.settings.cloudStandaloneFiles).toEqual(before.settings.cloudStandaloneFiles);
+    expect(f.backups).toEqual([before]);
+    expect(f.ports.rememberKey).not.toHaveBeenCalled();
+    expect(f.calls.google).toEqual([]);
+    await expect(f.engine.updateCharacters(token, { confirmed: true, selections: [] })).rejects.toThrow(
+      'confirmation_required'
+    );
+  });
+  it('still allows safe field updates without repairing duplicate local party IDs', async () => {
+    const f = fixture();
+    const party = normalize({ parties: [{ id: 'dup', name: 'A' }] }).parties[0];
+    f.local.parties = [party, { ...party, name: 'B' }];
+    f.put('google', second);
+    const token = await f.review();
+    expect(token.duplicatePartyIds).toBe(1);
+    const before = structuredClone(f.local);
+    expect(
+      await f.engine.updateCharacters(token, {
+        confirmed: true,
+        selections: [
+          { cloudId: token.characterUpdates.records[0].id, localId: original.characters[0].id, fields: ['nick'] }
+        ]
+      })
+    ).toMatchObject({ status: 'applied' });
+    expect(f.local.parties).toEqual(before.parties);
+  });
+  it.each(['local', 'remote', 'account', 'confirmation', 'field', 'forged'])(
+    'rejects %s changes without a write',
+    async type => {
+      const f = fixture();
+      f.put('google', second);
+      const token = await f.review();
+      const selections = [
+        {
+          cloudId: token.characterUpdates.records[0].id,
+          localId: original.characters[0].id,
+          fields: type === 'field' ? ['contacts'] : ['nick']
+        }
+      ];
+      if (type === 'local') f.local.characters[1].notes = 'edited';
+      if (type === 'remote') f.disks.google.delete(second.envelope.versionId);
+      if (type === 'account') f.accounts.google = 'c'.repeat(64);
+      await expect(
+        f.engine.updateCharacters(type === 'forged' ? { ...token } : token, {
+          confirmed: type !== 'confirmation',
+          selections
+        })
+      ).rejects.toThrow();
+      expect(f.ports.replace).not.toHaveBeenCalled();
+      expect(f.backups).toEqual([]);
+    }
+  );
+});

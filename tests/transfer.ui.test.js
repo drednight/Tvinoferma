@@ -915,3 +915,10 @@ it('closing while a retry confirmation is pending does not send after the answer
   await wait(100);
   expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(1);
 });
+
+it('footer places Next to the right of Dry Run', async () => {
+  openTransferDialog();
+  await wait();
+  const foot = $('.tf-dialog-foot');
+  expect(foot.querySelector('[data-act="dry"]').nextElementSibling).toBe($('#tr-plan-btn'));
+});

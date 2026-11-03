@@ -889,3 +889,44 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cloud-character-list {
+  max-height: min(54vh, 36rem);
+  overflow: auto;
+  margin: 12px 0;
+  scrollbar-gutter: stable;
+}
+.cloud-character-row {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 4px;
+}
+.cloud-character-row summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.cloud-character-row select {
+  width: 100%;
+  margin: 8px 0;
+}
+.cloud-character-fields {
+  display: grid;
+  gap: 10px;
+}
+.cloud-character-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.cloud-character-field span {
+  grid-column: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 8rem;
+  overflow: auto;
+}
+#cloud-standalone-full-replacement {
+  margin: 16px 0;
+}

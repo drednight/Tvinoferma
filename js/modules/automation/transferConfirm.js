@@ -33,7 +33,7 @@ export function confirmTransfer({ parent, plansFor, signal }) {
       const plans = plansFor(dlg.body.querySelector('#tr-force').checked).filter(plan => plan.run);
       const items = plans.flatMap(plan => plan.itemSelection || []);
       dlg.body.querySelector('[data-confirm-summary]').textContent =
-        `Аккаунтов: ${plans.length}. Наборов: ${items.length}; предметов: ${items.reduce((sum, item) => sum + item.qty, 0)} шт. Перед отправкой сайт проверяется заново.`;
+        `Аккаунтов: ${plans.length}. Наборов: ${items.length}. Перед отправкой сайт проверяется заново.`;
       dlg.foot.querySelector('[data-confirm-transfer]').disabled =
         !dlg.body.querySelector('#tr-ack').checked || !items.length;
       const n = Object.keys(loadLimits()).length;

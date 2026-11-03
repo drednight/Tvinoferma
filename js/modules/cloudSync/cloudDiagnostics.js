@@ -10,7 +10,11 @@ import {
 import { STANDALONE_STATUS_MESSAGES } from './standaloneStatus.js';
 import { safePreparationDiagnosticCode, isPreparationDiagnosticCode } from './preparationDiagnostics.js';
 import { cloudActivity, describeCloudActivity } from './cloudEventLog.js';
+import { OAUTH_DIAGNOSTIC_CODES } from './providers/oauthDiagnostics.js';
+import { ENROLLMENT_STAGES, ENROLLMENT_DIAGNOSTIC_CODES } from './enrollmentDiagnostics.js';
 const STAGES = new Set([
+  ...Object.values(ENROLLMENT_STAGES),
+  'oauth_registration_check',
   'ui_save',
   'ui_check',
   'ui_action',
@@ -57,6 +61,8 @@ const STAGES = new Set([
   'account_label'
 ]);
 const CODES = new Set([
+  ...ENROLLMENT_DIAGNOSTIC_CODES,
+  ...OAUTH_DIAGNOSTIC_CODES.map(code => 'oauth_' + code),
   ...Object.keys(STANDALONE_STATUS_MESSAGES),
   ...Object.keys(CLOUD_ACCESS_MESSAGES),
   'unknown_error',

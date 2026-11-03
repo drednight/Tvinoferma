@@ -336,3 +336,11 @@ describe('итоги покупки', () => {
     });
   });
 });
+
+it('uses explicit X even when older tracking inferred a higher maximum; never invents X from remaining N', () => {
+  const item = { found: true, available: 3, max: 6 };
+  const track = { max: 99, available: 4 };
+  expect(limitView(item, track).max).toBe(6);
+  expect(reconcileTrack(track, item).max).toBe(6);
+  expect(limitView({ ...item, max: null }, track).max).toBeNull();
+});

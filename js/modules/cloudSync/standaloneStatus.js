@@ -1,6 +1,8 @@
 // @ts-check
 // Fixed public messages only; shared by the panel and its non-secret activity log.
 export const STANDALONE_STATUS_MESSAGES = Object.freeze({
+  character_update_invalid:
+    'Сопоставления или выбранные поля не прошли проверку. Ничего не заменено. Перечитайте копию и проверьте соответствия; один местный персонаж нельзя связать с несколькими облачными.',
   credential_logout_unconfirmed:
     'Результат выхода на этом ПК неизвестен. Дождитесь завершения операции и перезапустите приложение перед новым входом; файлы и ключи сохранены.',
   google_refresh_unconfirmed:

@@ -1,3 +1,4 @@
+import { characterUpdateReview, prepareCharacterUpdates } from './characterUpdates.js';
 // @ts-check
 import { preparationCheck, safePreparationDiagnosticCode } from './preparationDiagnostics.js';
 import { cloudStep } from './cloudDiagnostics.js';
@@ -498,6 +499,7 @@ export function createStandaloneFileExchange(ports) {
               sha256,
               createdAt: openedFile.contents.createdAt,
               comparison,
+              characterUpdates: characterUpdateReview(original, cloud, opened.account),
               duplicatePartyIds: projection.duplicatePartyIds,
               orderingNormalized: prepared?.orderingNormalized || [],
               replacementBlocked,
@@ -522,6 +524,34 @@ export function createStandaloneFileExchange(ports) {
             });
             return token;
           });
+        } finally {
+          opened?.session?.dispose();
+        }
+      });
+    },
+    updateCharacters(token, { confirmed = false, selections = [] } = {}) {
+      return run(async () => {
+        const review = reviews.get(token);
+        if (!review || !confirmed) throw fail('confirmation_required');
+        if (JSON.stringify(ports.snapshot()) !== JSON.stringify(review.original)) throw fail('local_changed');
+        const prepared = prepareCharacterUpdates({
+          localState: review.original,
+          cloud: review.contents.publicSnapshot,
+          account: review.account,
+          selections
+        });
+        let opened;
+        try {
+          opened = await connect(token.provider);
+          if (opened.account !== review.account) throw fail('account_changed');
+          const found = await opened.session.read(token.versionId);
+          if (found.status !== 'found' || (await hashEnvelope(found.envelope)) !== token.sha256)
+            throw fail('remote_changed');
+          // Partial update is not acceptance of the full file/base. No accepted
+          // receipt, automatic publication, credentials or encryption-key change.
+          const result = await ports.replace(review.original, prepared.candidate, 'pre-cloud-character-update');
+          if (result.status === 'applied') reviews.delete(token);
+          return result;
         } finally {
           opened?.session?.dispose();
         }

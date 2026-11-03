@@ -274,8 +274,8 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="log" title="Журнал передач">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
-      <button class="btn primary" data-q="plan" id="tr-plan-btn">Далее →</button>
       <button class="btn secondary" data-act="dry" title="Пройти все шаги, но не нажимать «Передать»">👁 Пробный запуск</button>
+      <button class="btn primary" data-q="plan" id="tr-plan-btn">Далее →</button>
 `;
     updateAll();
 

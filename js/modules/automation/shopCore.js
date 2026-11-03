@@ -241,7 +241,7 @@ export function reconcileTrack(track, item, now = new Date()) {
     t.lastBuyAt = null;
     t.resetAt = null;
   }
-  t.max = Math.max(t.max || 0, item.max || 0, item.available) || null;
+  t.max = item.max ?? (Math.max(t.max || 0, item.available) || null);
   t.available = item.available;
   t.seenAt = now.toISOString();
   if (t.lastBuyAt && !t.resetAt) t.resetAt = addMonthMsk(t.lastBuyAt);
@@ -262,7 +262,7 @@ export function trackAfterPurchase(track, { at, availableBefore = null, availabl
 /** Нужна ли «История монет»: лимит уже тронут, а когда была последняя покупка — неизвестно. */
 export function needsHistory(item, track) {
   if (!item?.found || item.available == null || track?.lastBuyAt) return false;
-  const max = Math.max(track?.max || 0, item.max || 0);
+  const max = item.max ?? track?.max ?? 0;
   return item.available === 0 || (max > 0 && item.available < max);
 }
 
@@ -298,7 +298,7 @@ export function limitView(item, track, now = new Date()) {
   const exhausted = item.available === 0;
   const resetAt = track?.resetAt && Date.parse(track.resetAt) > now.getTime() ? track.resetAt : null;
   const daysLeft = resetAt ? Math.max(0, Math.ceil((Date.parse(resetAt) - now.getTime()) / DAY_MS)) : null;
-  const max = Math.max(track?.max || 0, item.max || 0) || null;
+  const max = item.max ?? null;
   const left = resetAt
     ? `обновится ${fmtDate(resetAt)} (${daysLeft > 0 ? `через ${daysLeft} дн.` : 'сегодня'})`
     : exhausted
