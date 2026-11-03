@@ -366,3 +366,24 @@
   margin-right: 6px;
   vertical-align: middle;
 }
+
+/* The 120×80 website preview contains a small centred icon, not item artwork. */
+.site-item-icon--framed {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  overflow: hidden;
+}
+.site-item-icon--framed img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 80px;
+  max-width: none;
+  max-height: none;
+  transform: translate(-50%, -50%);
+  object-fit: fill;
+  flex: none;
+}

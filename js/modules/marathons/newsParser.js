@@ -105,6 +105,15 @@ function parseRange(text, pub) {
 /** «Успешное выполнение четырех испытаний позволит вам завладеть Летним ларцом июня» */
 function parseBonus(text) {
   const t = norm(text);
+  // Modern news puts the count in words and the complete reward list after a colon.
+  // Keep punctuation inside quantities such as «100 шт.» instead of truncating at a dot.
+  const additional = t.match(
+    /(?:пройдя|завершив|выполнив)\s+(\d+|[а-яё]+)\s+(?:испытани|задани|поручени)[а-яё]*\s+из\s+(?:\d+|[а-яё]+)[\s\S]*?получите\s+дополнительн[а-яё]*\s+наград[а-яё]*\s*:\s*(.+)/i
+  );
+  if (additional) {
+    const needTasks = /^\d+$/.test(additional[1]) ? Number(additional[1]) : NUM_WORDS[additional[1].toLowerCase()];
+    if (needTasks) return { needTasks, text: additional[2].replace(/[.\s]+$/, '') };
+  }
   const m = t.match(
     /(?:выполнени[а-яё]*|пройдя|завершив|выполнив)\s+(\d+|[а-яё]+)\s+(?:из\s+\S+\s+)?(?:испытани|задани|поручени)[а-яё]*[^.]*?(?:завладеть|получить|получите|достанется|вознагра[а-яё]*)\s+([^,.:;]+)/i
   );
@@ -240,6 +249,12 @@ export function parseNewsHtml(html, meta = {}) {
   const sections = [];
   let ctx = { heading: null, range: null, bonus: null };
   let introRange = null;
+  const recordBonus = bonus => {
+    ctx.bonus = bonus;
+    // A reward paragraph may follow its task table, as in the November news.
+    const previous = sections.at(-1);
+    if (previous && previous.heading === ctx.heading && !previous.bonus) previous.bonus = bonus;
+  };
   const els = root.querySelectorAll('h2, h3, h4, .click_spoiler, p, li, table');
   for (const el of els) {
     if (el.closest('table') && el.tagName !== 'TABLE' && el.closest('table') !== el) {
@@ -247,7 +262,7 @@ export function parseNewsHtml(html, meta = {}) {
       if (!isTaskTable(el.closest('table'))) {
         if (el.tagName === 'P' || el.tagName === 'LI') {
           const b = parseBonus(el.textContent);
-          if (b) ctx.bonus = b;
+          if (b) recordBonus(b);
           const r = parseRange(el.textContent, pub);
           if (r && !ctx.range) ctx.range = r;
         }
@@ -264,7 +279,7 @@ export function parseNewsHtml(html, meta = {}) {
       if (r && !ctx.range) ctx.range = r;
       if (r && !introRange) introRange = r;
       const b = parseBonus(el.textContent);
-      if (b) ctx.bonus = b;
+      if (b) recordBonus(b);
       continue;
     }
     if (el.tagName === 'TABLE' && isTaskTable(el) && ![...el.querySelectorAll('table')].some(isTaskTable)) {
