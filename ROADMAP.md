@@ -37,7 +37,7 @@
 ## Прогресс
 
 <!-- roadmap:start -->
-**Всего выполнено:** `██░░░░░░░░` 16/73 (22%) · обновлено 2026-11-02
+**Всего выполнено:** `███░░░░░░░` 23/73 (32%) · обновлено 2026-11-03
 
 ### v0.2.3 — Баги: баланс монет и фильтр классов
 
@@ -48,12 +48,12 @@
 
 ### v0.3 — Описания заданий, несколько партий, заметки, чистый репозиторий
 
-`█████████░` 8/9 (89%)
+`██████████` 9/9 (100%)
 
 - [x] [#3](https://github.com/drednight/Tvinoferma/issues/3) **0.3** Описания заданий марафона — Высокий, M
 - [x] [#4](https://github.com/drednight/Tvinoferma/issues/4) **0.4** Несколько партий у одного персонажа — Высокий, M
 - [x] [#5](https://github.com/drednight/Tvinoferma/issues/5) **1.1** `ROADMAP.md` в репозитории и Issues — Высокий, S
-- [ ] [#6](https://github.com/drednight/Tvinoferma/issues/6) **1.2** About, topics, скриншоты, лицензия — Средний, S
+- [x] [#6](https://github.com/drednight/Tvinoferma/issues/6) **1.2** About, topics, скриншоты, лицензия — Средний, S
 - [x] [#7](https://github.com/drednight/Tvinoferma/issues/7) **1.3** ESLint + Prettier + `checkJs` — Средний, S
 - [x] [#8](https://github.com/drednight/Tvinoferma/issues/8) **1.4** Rust: `clippy`, `rustfmt`, `cargo audit`; `npm audit` — Средний, S
 - [x] [#11](https://github.com/drednight/Tvinoferma/issues/11) **1.7** Документация для разработчика — Низкий, S
@@ -96,15 +96,15 @@
 
 ### v0.7 — Данжи, каталог контента, дашборд
 
-`░░░░░░░░░░` 0/7 (0%)
+`███░░░░░░░` 2/7 (29%)
 
 - [ ] [#30](https://github.com/drednight/Tvinoferma/issues/30) **5.1** Циклический календарь — Высокий, S
 - [ ] [#31](https://github.com/drednight/Tvinoferma/issues/31) **5.2** Таблица допусков по Sky Level — Высокий, M
 - [ ] [#32](https://github.com/drednight/Tvinoferma/issues/32) **5.3** Сравнение статов с рекомендуемыми — Средний, M
 - [ ] [#33](https://github.com/drednight/Tvinoferma/issues/33) **5.4** Учёт пропусков в данжи — Средний, S
-- [ ] [#34](https://github.com/drednight/Tvinoferma/issues/34) **5.5** Вкладка «Данжи» и интеграция с дашбордом — Средний, S
+- [x] [#34](https://github.com/drednight/Tvinoferma/issues/34) **5.5** Вкладка «Данжи» и интеграция с дашбордом — Средний, S
 - [ ] [#35](https://github.com/drednight/Tvinoferma/issues/35) **6.1** Удалённый каталог контента — Средний, M
-- [ ] [#39](https://github.com/drednight/Tvinoferma/issues/39) **7.1** Дашборд «Сегодня» — Высокий, M
+- [x] [#39](https://github.com/drednight/Tvinoferma/issues/39) **7.1** Дашборд «Сегодня» — Высокий, M
 
 ### v0.8 — Переводы и шаблоны рун
 
@@ -116,10 +116,10 @@
 
 ### v0.9 — Поиск, безопасность данных
 
-`░░░░░░░░░░` 0/9 (0%)
+`█░░░░░░░░░` 1/9 (11%)
 
 - [ ] [#81](https://github.com/drednight/Tvinoferma/issues/81) **2.8** Обновление selectors.json с GitHub без пересборки — Низкий, M
-- [ ] [#40](https://github.com/drednight/Tvinoferma/issues/40) **7.2** Командная палитра Ctrl+K — Средний, M
+- [x] [#40](https://github.com/drednight/Tvinoferma/issues/40) **7.2** Командная палитра Ctrl+K — Средний, M
 - [ ] [#41](https://github.com/drednight/Tvinoferma/issues/41) **7.3** Уведомления и расписание — Средний, M
 - [ ] [#42](https://github.com/drednight/Tvinoferma/issues/42) **7.4** Календарь / таймлайн марафонов — Средний, M
 - [ ] [#48](https://github.com/drednight/Tvinoferma/issues/48) **8.2** Валидация `state.json` схемой — Средний, M
@@ -130,16 +130,16 @@
 
 ### v1.0 — Стабильный релиз: changelog, E2E, тесты
 
-`░░░░░░░░░░` 0/4 (0%)
+`███░░░░░░░` 1/4 (25%)
 
-- [ ] [#63](https://github.com/drednight/Tvinoferma/issues/63) **13.1** `CHANGELOG.md` и semver — Средний, S
+- [x] [#63](https://github.com/drednight/Tvinoferma/issues/63) **13.1** `CHANGELOG.md` и semver — Средний, S
 - [ ] [#64](https://github.com/drednight/Tvinoferma/issues/64) **13.2** Подпись установщика Windows — Средний, M
 - [ ] [#66](https://github.com/drednight/Tvinoferma/issues/66) **13.4** E2E-тесты (tauri-driver) — Средний, L
 - [ ] [#67](https://github.com/drednight/Tvinoferma/issues/67) **13.5** Покрытие тестами — Средний, M
 
 ### После 1.0 — Инжекция, банк, арена, облако, косметика
 
-`█░░░░░░░░░` 1/20 (5%)
+`██░░░░░░░░` 3/20 (15%)
 
 - [ ] [#24](https://github.com/drednight/Tvinoferma/issues/24) **3.6** Сохранённые представления — Низкий, S
 - [ ] [#29](https://github.com/drednight/Tvinoferma/issues/29) **4.5** Пресеты скриптов — Низкий, S
@@ -159,7 +159,7 @@
 - [ ] [#61](https://github.com/drednight/Tvinoferma/issues/61) **12.2** Google Sheets — экспорт таблиц — Низкий, L
 - [ ] [#62](https://github.com/drednight/Tvinoferma/issues/62) **12.3** Синхронизация между ПК — Низкий, L
 - [ ] [#65](https://github.com/drednight/Tvinoferma/issues/65) **13.3** Каналы stable / beta — Низкий, M
-- [ ] [#68](https://github.com/drednight/Tvinoferma/issues/68) **13.6** Проверка сборок macOS / Linux — Низкий, M
-- [ ] [#69](https://github.com/drednight/Tvinoferma/issues/69) **13.7** Размер установщика — Низкий, S
+- [x] [#68](https://github.com/drednight/Tvinoferma/issues/68) **13.6** Проверка сборок macOS / Linux — Низкий, M
+- [x] [#69](https://github.com/drednight/Tvinoferma/issues/69) **13.7** Размер установщика — Низкий, S
 
 <!-- roadmap:end -->
