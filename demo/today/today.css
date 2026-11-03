@@ -2460,3 +2460,22 @@ input:focus-visible {
     font-size: 9px;
   }
 }
+
+/* Embedded legacy concepts keep their interactions, but the new gallery supplies navigation. */
+.demo-embedded .demo-header,
+.demo-embedded .demo-controls,
+.demo-embedded .demo-footer,
+.demo-embedded .app-sidebar,
+.demo-embedded .app-topbar,
+.demo-embedded .demo-copy-note {
+  display: none;
+}
+.demo-embedded .demo-wrap {
+  max-width: none;
+  padding: 0;
+}
+.demo-embedded .app-shell {
+  grid-template-columns: 1fr;
+  border: 0;
+  border-radius: 0;
+}

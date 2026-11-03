@@ -438,3 +438,5 @@ dialog.addEventListener('submit', event => {
 
 const linkedVariant = new URLSearchParams(location.search).get('variant');
 if (VARIANTS.some(item => item.id === linkedVariant)) chooseVariant(linkedVariant);
+
+if (new URLSearchParams(location.search).get('embed') === '1') document.body.classList.add('demo-embedded');
