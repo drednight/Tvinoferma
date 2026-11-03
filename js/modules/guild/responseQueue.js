@@ -66,7 +66,10 @@ export function createResponseQueue({
       task = await begin();
       await task.waitTurn();
       // Other scripts may have held the dock while the user was still choosing events.
-      while (Date.now() < lastAction + RESPONSE_IDLE_MS) await pause(lastAction + RESPONSE_IDLE_MS - Date.now());
+      while (Date.now() < lastAction + RESPONSE_IDLE_MS) {
+        task.progress(0, getEntries().length, 'Ожидание последних ответов');
+        await pause(lastAction + RESPONSE_IDLE_MS - Date.now());
+      }
       if (!enabled()) return;
       snapshot = getEntries().filter(row => !row.failed);
       for (const [index, row] of snapshot.entries()) {
@@ -125,7 +128,7 @@ export function createResponseQueue({
         /* retained in memory */
       }
     } finally {
-      if (task?.status === 'running') task.finish('Перенос остановлен: клан отключён', 'warn');
+      if (task?.status === 'running') task.finish('Перенос приостановлен. Ответы сохранены локально.', 'warn');
       running = false;
       changed();
       schedule();
