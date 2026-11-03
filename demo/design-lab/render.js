@@ -1,3 +1,4 @@
+import { renderReferenceToday } from './referenceToday.js';
 import { CLASS_ICON_MAP } from '../../js/core/constants.js';
 import { escapeHtml as esc } from '../../js/core/utils.js';
 import { entriesFor, visibleEntries, featureList, demoDays, marathonRisk, selectedDay } from './model.js';
@@ -258,6 +259,7 @@ export function coverage(source) {
     .join('')}</div></details>`;
 }
 export function renderPage(source, variant, s) {
+  if (source === 'today' && variant.reference) return renderReferenceToday(s);
   if (variant.preferred) return preferredPage(source, variant, s);
   return `${['today', 'bank'].includes(source) ? currencyStrip(s) : ''}${
     source === 'today'

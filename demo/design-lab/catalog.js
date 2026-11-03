@@ -417,6 +417,19 @@ export function nextVariantsFor(page) {
       id: i + 7,
       preferred: i + 1,
       kind: ['today', 'parties'].includes(source) ? 'tree' : 'split'
-    }))
+    })),
+    ...(source === 'today'
+      ? [
+          {
+            id: 12,
+            name: 'Сегодня · по вашему эскизу',
+            theme: 'graphite',
+            kind: 'reference',
+            reference: true,
+            principle:
+              'Новости и дела слева; промокоды, марафон, запуск и клан справа. Без отдельного календаря на главной.'
+          }
+        ]
+      : [])
   ];
 }

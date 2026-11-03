@@ -31,7 +31,7 @@ describe('полный каталог двух независимых лабор
   });
   it('has six original and five follow-up concepts per page', () => {
     expect(NEXT_PAGES).toHaveLength(9);
-    expect(NEXT_PAGES.flatMap(p => nextVariantsFor(p.id))).toHaveLength(99);
+    expect(NEXT_PAGES.flatMap(p => nextVariantsFor(p.id))).toHaveLength(100);
     expect(new Set(NEXT_PAGES.map(p => p.source))).toEqual(new Set([...PAGES.map(p => p.id), 'activity']));
     for (const page of NEXT_PAGES) {
       expect(
