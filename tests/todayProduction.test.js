@@ -72,7 +72,7 @@ describe('production Today adapters', () => {
     expect(s.parties[0].id).toBe('real');
     expect(s.characters[0]).toMatchObject({ nick: 'Реальный', icon: 'var', coins: 100 });
     expect(s.characters[0].contacts).toBeUndefined();
-    expect(JSON.stringify(s.characters)).not.toContain('MUST_NOT_LEAK');
+    expect(JSON.stringify(s)).not.toContain('MUST_NOT_LEAK');
     expect(s.scenarios.clan).toBe(false);
     expect(s.scenarios.marathon).toBe(false);
   });

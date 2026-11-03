@@ -32,7 +32,7 @@ export function connectedTodayState(preview) {
       parties: state.parties.map(p => ({ ...p, label: p.name })),
       calendarEvents: state.plannerEntries,
       activeWindows: runningWindows(),
-      plannerState: state,
+      plannerState: { plannerEntries: state.plannerEntries, marathons: state.marathons },
       scenarios: { ...preview.scenarios, clan: state.settings.guild?.enabled === true }
     };
     if (!s.parties.some(p => p.id === s.day.favoriteParty)) s.day.favoriteParty = s.parties[0]?.id || '';
