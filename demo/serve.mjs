@@ -11,11 +11,12 @@ import { extname, resolve, sep } from 'node:path';
 const ROOT = resolve(import.meta.dirname, '..');
 const PORT = Number(process.env.PORT || 1420);
 // Можно открыть нужную лабораторию сразу в предпросмотре, не меняя стандартный адрес.
-const entry = /^\/(?:demo|demo2)\/[a-z0-9/._-]+\.html(?:\?show=(?:statistics|cloud-sync))?$/i.test(
-  process.env.DEMO_ENTRY || ''
-)
-  ? process.env.DEMO_ENTRY
-  : '/demo/tools-modals.html';
+const entry =
+  /^\/(?:demo|demo2)\/[a-z0-9/._-]+\.html(?:\?(?:show=(?:statistics|cloud-sync)|page=[a-z-]+&variant=\d{1,2}))?$/i.test(
+    process.env.DEMO_ENTRY || ''
+  )
+    ? process.env.DEMO_ENTRY
+    : '/demo/tools-modals.html';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',

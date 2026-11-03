@@ -1,3 +1,4 @@
+import { bindReferenceToday } from './referenceToday.js';
 import { PAGES, NEXT_PAGES, variantsFor, nextVariantsFor } from './catalog.js';
 import {
   createLabState,
@@ -67,7 +68,7 @@ function render() {
     list = choices();
   document.body.className = `lg-body theme-${v.theme} ${mode === 'next' ? 'is-next' : 'is-classic'} ${state.compact ? 'is-compact' : ''} palette-${state.palette}`;
   root.innerHTML = `<header class="lg-lab-header"><a class="lg-lab-brand" href="${mode === 'next' ? '../demo/variants/index.html' : '../../demo2/index.html'}"><span>ТФ</span><div>Твиноферма <small>${mode === 'next' ? 'DEMO 2 / ПЕРЕОСМЫСЛЕНИЕ' : 'DESIGN LAB / 80 ВАРИАНТОВ'}</small></div></a><div class="lg-lab-links"><span class="lg-demo-badge">Изолированный прототип</span><a href="${mode === 'next' ? '../demo/variants/index.html' : '../../demo2/index.html'}">${mode === 'next' ? '80 вариантов страниц' : 'Новая программа · demo2'} ↗</a><button class="lg-text" data-map>Карта функций</button><button class="lg-text" data-reset>Сбросить пример</button></div></header>
- <section class="lg-variant-picker" aria-label="Сравнение дизайн-концептов"><div class="lg-picker-heading"><div><span class="lg-eyebrow">${mode === 'next' ? '5 новых «Атлас» (07–11) + 6 прежних концептов' : '10 вариантов на страницу · исходный отдельно'}</span><h1>${esc(meta.label)} <span>${original ? 'Исходная' : String(variant).padStart(2, '0') + ' / ' + list.length}</span></h1></div><div class="lg-picker-actions"><button class="lg-icon-button" data-previous aria-label="Предыдущий вариант">←</button><button class="lg-icon-button" data-next aria-label="Следующий вариант">→</button><label>Палитра<select data-palette aria-label="Цветовая палитра">${[
+ <section class="lg-variant-picker" aria-label="Сравнение дизайн-концептов"><div class="lg-picker-heading"><div><span class="lg-eyebrow">${mode === 'next' ? (source() === 'today' ? 'Новый 12 — по вашему эскизу · прежние 01–11 сохранены' : '5 новых «Атлас» (07–11) + 6 прежних концептов') : '10 вариантов на страницу · исходный отдельно'}</span><h1>${esc(meta.label)} <span>${original ? 'Исходная' : String(variant).padStart(2, '0') + ' / ' + list.length}</span></h1></div><div class="lg-picker-actions"><button class="lg-icon-button" data-previous aria-label="Предыдущий вариант">←</button><button class="lg-icon-button" data-next aria-label="Следующий вариант">→</button><label>Палитра<select data-palette aria-label="Цветовая палитра">${[
    ['concept', 'Авторская'],
    ['dark', 'Тёмная'],
    ['light', 'Светлая']
@@ -79,7 +80,7 @@ function render() {
  <p class="lg-safety-banner">Все аккаунты, суммы, задания и результаты вымышлены. Нет обращения к сайту, Rust или лаунчеру. Вводите только тестовые названия; изменения живут в памяти вкладки. Настоящие пароли, ключи и контакты вводить нельзя.</p>
  <div class="lg-shell"><aside class="lg-sidebar"><div class="lg-product-mark">${icon('rune')}<b>Твиноферма</b><small>${mode === 'next' ? 'YOUR PERFECT WORKSPACE' : 'PERFECT WORLD COMPANION'}</small></div><nav aria-label="Страницы приложения">${pages.map(p => `<button data-page="${p.id}" aria-label="${esc(p.label)}" aria-current="${p.id === page ? 'page' : 'false'}" title="${esc(p.label)}">${icon(p.icon)}<span>${esc(p.label)}</span>${p.id === page ? '<i></i>' : ''}</button>`).join('')}</nav><div class="lg-sidebar-bottom"><span class="lg-local-dot"></span><span>Только демонстрация<br/><small>Аккаунты не подключены</small></span></div></aside>
  <main class="lg-main" id="content"><header class="lg-page-header"><div><span class="lg-eyebrow">${mode === 'next' ? 'Личное рабочее пространство' : 'Управление аккаунтами'} / ${esc(v.name)}</span><h2>${esc(meta.label)}</h2><p>${esc(meta.description || meta.why)}</p></div><div class="lg-page-actions"><button class="lg-button" data-command>${icon('search')} Команды <kbd>Ctrl K</kbd></button><button class="lg-button primary" data-primary>${primaryLabel(src)}</button></div></header>${state.running ? `<div class="lg-running-bar">${queueView(state)}<button class="lg-icon-button danger" data-stop aria-label="Немедленно остановить">■</button></div>` : ''}
- <div id="lg-content">${original || (mode === 'classic' && src === 'today' && variant <= 3) ? frameContent() : renderPage(src, v, state)}</div><footer class="lg-page-footer"><span>${mode === 'next' ? 'Переосмысление · 9 страниц × 11 концептов' : 'Лаборатория · 8 страниц × 10 вариантов'}</span><span>Perfect World · менеджер аккаунтов, не чит</span></footer></main></div>`;
+ <div id="lg-content">${original || (mode === 'classic' && src === 'today' && variant <= 3) ? frameContent() : renderPage(src, v, state)}</div><footer class="lg-page-footer"><span>${mode === 'next' ? 'Переосмысление · 100 сочетаний, включая Сегодня 12' : 'Лаборатория · 8 страниц × 10 вариантов'}</span><span>Perfect World · менеджер аккаунтов, не чит</span></footer></main></div>`;
 }
 function primaryLabel(src) {
   return {
@@ -343,6 +344,7 @@ function map() {
       .join('')}`
   );
 }
+bindReferenceToday({ root, dialog, getState: () => state, render, modal, toast, launchParty });
 root.addEventListener('click', event => {
   const el = event.target.closest('button,[data-action]');
   if (!el) return;
