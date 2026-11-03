@@ -127,6 +127,10 @@ describe('standalone full file UX', () => {
     expect(el('differences').textContent).toContain('Было → Стало');
     expect(el('review-status').textContent).toContain('и местные, и облачные');
     expect(el('differences').querySelector('img')).toBeNull();
+    const groups = [...el('differences').querySelectorAll(':scope > li > details')];
+    expect(groups).toHaveLength(2);
+    expect(groups.every(group => !group.open)).toBe(true);
+    expect(groups.map(group => group.querySelector('summary').textContent)).toEqual(['Персонажи (2)', 'Календарь (1)']);
     expect(f.runtime.accept).not.toHaveBeenCalled();
     expect(f.runtime.save).not.toHaveBeenCalled();
   });
@@ -1126,12 +1130,14 @@ it('keeps one independent dropdown per drive and downloads the selected older ve
     sha256: older.sha256
   });
 });
-it('keeps the entire check controls in key settings, and source help below the source card', () => {
+it('keeps only key and auto-check settings in extras, with checks/results on the main page', () => {
   setup();
   expect(el('key-dialog').contains(el('startup'))).toBe(true);
   expect(el('key-dialog').contains(el('interval'))).toBe(true);
-  expect(el('key-dialog').contains(el('files'))).toBe(true);
-  expect(el('key-dialog').contains(el('check'))).toBe(true);
+  expect(el('key-dialog').contains(el('files'))).toBe(false);
+  expect(el('key-dialog').contains(el('check'))).toBe(false);
+  for (const key of ['status', 'provider-results', 'files', 'reopen', 'operation', 'last-check'])
+    expect(el('key-dialog').contains(el(key))).toBe(false);
   const help = [...el('panel').querySelectorAll('details')].find(
     item => item.querySelector('summary')?.textContent === 'Чем отличаются эти варианты?'
   );

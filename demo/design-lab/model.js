@@ -26,6 +26,17 @@ export function createLabState() {
       site: `pw-demo-${i + 1}`,
       game: `game-demo-${i + 1}`
     })),
+    archivedCharacters: [
+      {
+        ...CHARACTERS[0],
+        id: 'archived-demo',
+        nick: 'Архивный герой',
+        archived: true,
+        site: 'archive-demo',
+        game: 'archive-game'
+      }
+    ],
+    showArchive: false,
     parties: PARTIES.map(p => ({ ...p })),
     runes: structuredClone(DEMO_RUNES.runes),
     extraMarathons: [],
@@ -371,7 +382,7 @@ export function markDay(s, key, value) {
 export function launchParty(s, id, ids) {
   const party = s.parties.find(p => p.id === id);
   if (!party) return;
-  for (const c of s.characters.filter(c => c.party === id && ids.includes(c.id)))
+  for (const c of s.characters.filter(c => !c.archived && c.party === id && ids.includes(c.id)))
     if (!s.activeWindows.some(w => w.charId === c.id))
       s.activeWindows.push({ id: `window-${c.id}`, charId: c.id, title: `${c.nick} · ${party.name}` });
 }

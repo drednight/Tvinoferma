@@ -1,3 +1,4 @@
+import { CLASS_ICON_MAP } from '../../js/core/constants.js';
 import { escapeHtml as esc } from '../../js/core/utils.js';
 import { entriesFor, visibleEntries, featureList, demoDays, marathonRisk, selectedDay } from './model.js';
 const assets = new URL('../../assets/', import.meta.url).href;
@@ -51,7 +52,24 @@ export function currencyStrip(s) {
   return `<div class="lg-currencies" aria-label="Три разные валюты"><div><small>Золото</small><strong>${s.day.gold.toLocaleString('ru-RU')}</strong><span>Игровой баланс · пример</span></div><div><small>Голд</small><strong>${s.day.bank.toLocaleString('ru-RU')}</strong><span>Отдельная валюта · пример</span></div><div><small>Древние монеты</small><strong>${s.characters.reduce((n, c) => n + c.coins, 0).toLocaleString('ru-RU')}</strong><span>По аккаунтам · пример</span></div></div>`;
 }
 export function windows(s) {
-  return `<div class="lg-window-list">${s.activeWindows.map(w => `<div><span><b>${esc(w.title)}</b><small>Игровое окно · имитация</small></span><button class="lg-text" data-rename-window="${esc(w.id)}">Название</button><button class="lg-icon-button" data-close-window="${esc(w.id)}" aria-label="Закрыть ${esc(w.title)}">×</button></div>`).join('') || '<p class="lg-muted">Нет вымышленных окон. Запустите пати в демо.</p>'}</div>`;
+  return `<div class="lg-window-list">${
+    s.activeWindows
+      .map(
+        w =>
+          `<div>${avatar({ icon: w.icon || s.characters.find(c => c.id === w.charId)?.icon })}<span><b>${esc(w.title)}</b><small>Игровое окно · имитация</small></span><select data-window-icon="${esc(w.id)}" aria-label="Класс окна ${esc(w.title)}">${Object.entries(
+            CLASS_ICON_MAP
+          )
+            .map(([name, file]) => [file.replace('.webp', ''), name])
+            .map(
+              ([id, name]) =>
+                `<option value="${id}" ${id === (w.icon || s.characters.find(c => c.id === w.charId)?.icon) ? 'selected' : ''}>${name}</option>`
+            )
+            .join(
+              ''
+            )}</select><button class="lg-text" data-rename-window="${esc(w.id)}">Название</button><button class="lg-icon-button" data-close-window="${esc(w.id)}" aria-label="Закрыть ${esc(w.title)}">×</button></div>`
+      )
+      .join('') || '<p class="lg-muted">Нет вымышленных окон. Запустите пати в демо.</p>'
+  }</div>`;
 }
 export function daily(s) {
   const day = selectedDay(s),
@@ -240,6 +258,7 @@ export function coverage(source) {
     .join('')}</div></details>`;
 }
 export function renderPage(source, variant, s) {
+  if (variant.preferred) return preferredPage(source, variant, s);
   return `${['today', 'bank'].includes(source) ? currencyStrip(s) : ''}${
     source === 'today'
       ? `<div class="lg-scenarios" aria-label="Сценарии страницы Сегодня">${[
@@ -269,4 +288,102 @@ function monthCalendar(s) {
       return `<button data-date="${date}" aria-pressed="${date === selectedDay(s)}">${i + 1}</button>`;
     }
   ).join('')}</div></details>`;
+}
+
+// Five follow-up designs share the user's chosen information architecture, not
+// five unrelated dashboards. All effects below remain inside the demo model.
+function preferredPage(source, variant, s) {
+  let rows = visibleEntries(source, s);
+  if (source === 'characters' && s.showArchive)
+    rows = s.archivedCharacters.map(c => ({
+      id: c.id,
+      title: c.nick,
+      subtitle: c.className,
+      icon: c.icon,
+      entity: c,
+      group: 'Архив',
+      status: 'Архив',
+      description: 'Не участвует в проверках и запуске.'
+    }));
+  if (source === 'settings')
+    rows = [
+      ['application', 'Приложение', 'Игра, окна, трей и уведомления'],
+      ['cloud', 'Синхронизация', 'Диски, фоновые проверки и парсеры'],
+      ['updates', 'Обновления', 'Версия и проверка обновлений'],
+      ['security', 'Данные и безопасность', 'Копии и защищённое хранилище'],
+      ['help', 'Справка', 'Инструкции и горячие клавиши'],
+      ['feedback', 'Предложения', 'Обратная связь'],
+      ['danger', 'Опасные действия', 'Удаление только после отдельного решения']
+    ].map(([id, title, description]) => ({ id, title, description, subtitle: description }));
+  const selected = rows.find(e => e.id === s.detail) || rows[0];
+  const rail = `<nav class="lg-preferred-nav" aria-label="${source === 'today' ? 'Блоки дня' : 'Выбор записи'}">${rows.map(e => `<button data-detail="${esc(e.id)}" aria-pressed="${e.id === selected?.id}">${face(e)}${e.metric && e.metric !== e.group ? `<small>${esc(e.metric)}</small>` : ''}</button>`).join('')}</nav>`;
+  const archive =
+    source === 'characters'
+      ? `<div class="lg-toolbar"><button class="lg-button" data-toggle-archive>${s.showArchive ? '← Действующие' : 'Архив (не проверяется)'}</button><span>Вход на сайт ≠ запуск игры</span></div>`
+      : '';
+  const work = selected ? preferredDetail(source, selected, s) : '<p>Нет записей. Измените поиск или фильтр.</p>';
+  const title =
+    source === 'activity'
+      ? '<p>Здесь только очередь, результаты и причины остановки. «Рабочая сессия» — это открытые игровые окна; управление ими находится в «Игровом пространстве».</p>'
+      : '';
+  return `<section class="lg-preferred preferred-${variant.preferred}" data-composition="${variant.kind}">${title}${archive}${source === 'today' || source === 'settings' ? '' : toolbar(source, s)}${['today', 'bank'].includes(source) ? currencyStrip(s) : ''}<div class="lg-preferred-work">${rail}<section class="lg-preferred-detail" data-entry="${esc(selected?.id || 'empty')}">${work}</section></div>${source === 'parties' ? `<section class="lg-panel lg-extra"><h2>Работающие окна</h2>${windows(s)}<div class="lg-toolbar"><button class="lg-button" data-arrange="tile">Рядом: два ряда по два окна</button><button class="lg-button" data-arrange="stack">Друг за другом со сдвигом</button></div><p class="lg-muted">Первый вариант располагает до четырёх окон без перекрытия. Второй оставляет видимыми заголовки окон. В демо меняется только схема, не окна компьютера.</p>${s.arrangement ? `<p role="status">Выбрана схема: ${s.arrangement === 'tile' ? 'два ряда по два окна' : 'окна со сдвигом'}</p>` : ''}</section>` : ''}${source === 'today' ? preferredNews() : ''}${coverage(source)}</section>`;
+}
+function preferredNews() {
+  return `<section class="lg-panel lg-extra"><h2>Новости pwonline.ru</h2><p class="lg-muted">Последние новости из сохранённого примера сайта, не актуальная онлайн-лента. Свежие публикации — по ссылке «Все новости».</p><ul><li><a href="https://pwonline.ru/news.php?article=9124" target="_blank" rel="noopener noreferrer">24.09.2026 · День середины осени в Идеальном Мире ↗</a></li><li><a href="https://pwonline.ru/news.php?article=9111" target="_blank" rel="noopener noreferrer">02.09.2026 · Изменение наград «Летних бонусов Арены Авроры» ↗</a></li></ul><a href="https://pwonline.ru/news.php" target="_blank" rel="noopener noreferrer">Все новости сайта ↗</a></section>`;
+}
+function preferredDetail(source, e, s) {
+  const head = `<header><span class="lg-eyebrow">${esc(e.group || 'Раздел')}</span><h2>${esc(e.title)}</h2><p>${esc(e.description || '')}</p></header>`;
+  if (source === 'today') return head + todayBody(e, s);
+  if (source === 'characters') {
+    const c = e.entity;
+    return `${head}${facets(e)}<dl class="lg-facets"><div><dt>Аккаунт сайта</dt><dd>${esc(c.site || 'Демо')}</dd></div><div><dt>Аккаунт игры</dt><dd>${esc(c.game || 'Демо')}</dd></div></dl>${c.archived ? '<p>Пока персонаж в архиве, проверки, массовый выбор и запуск его пропускают.</p>' : `<div class="lg-toolbar"><button class="lg-button" data-site-login="${esc(c.id)}">Войти на сайт · имитация</button><button class="lg-button primary" data-game-launch="${esc(c.id)}">▶ Запустить игру</button><button class="lg-button" data-edit-inline="${esc(c.id)}">Редактировать персонажа</button></div>`}`;
+  }
+  if (source === 'parties')
+    return `${head}<p>Измените название и отметьте участников, затем сохраните состав. Это не запускает игру.</p><form class="lg-editor" data-party-editor="${esc(e.id)}"><label>Название пати<input name="name" required maxlength="80" value="${esc(e.title)}"></label><fieldset><legend>Состав пати</legend>${s.characters
+      .filter(c => !c.archived)
+      .map(
+        c =>
+          `<label><input type="checkbox" name="member" value="${esc(c.id)}" ${c.party === e.id ? 'checked' : ''}>${avatar({ icon: c.icon })} ${esc(c.nick)}${c.party && c.party !== e.id ? ` · сейчас ${esc(s.parties.find(p => p.id === c.party)?.name || 'в другой пати')}` : ''}</label>`
+      )
+      .join(
+        ''
+      )}</fieldset><button class="lg-button" type="submit">Сохранить название и состав</button></form><button class="lg-button primary" data-launch-party="${esc(e.id)}">▶ Выбрать участников и запустить</button>`;
+  if (source === 'tools')
+    return `${head}<p class="lg-safety">Настройка операции на этой странице, без окна поверх неё. Все действия — вымышленные.</p><form class="lg-editor" data-operation-editor="${esc(e.id)}"><fieldset><legend>Персонажи</legend>${s.characters
+      .filter(c => !c.archived)
+      .map(
+        c =>
+          `<label><input type="checkbox" name="target" value="${esc(c.id)}" ${s.selected.has(c.id) ? 'checked' : ''}> ${esc(c.nick)}</label>`
+      )
+      .join(
+        ''
+      )}</fieldset>${e.id === 'promo' ? '<label>Промокод<input name="code" required value="PWDEMO2026"></label>' : ''}${e.id === 'transfer' ? '<label>Сервер<select name="server"><option>Фенрир</option><option>Мицар</option></select></label><label>Наборов по 25 предметов<input name="sets" type="number" min="0" max="21" step="1" value="2" required></label><p>20 наборов × 25 = 500 предметов. Настоящий сайт не открывается.</p>' : ''}${e.group === 'Действие' ? '<label><input name="ack" type="checkbox"> Проверил предметы, количество и получателей. Только имитация.</label>' : ''}<div class="lg-toolbar"><button type="submit" name="mode" value="dry" class="lg-button">Пробный запуск</button><button type="submit" name="mode" value="run" class="lg-button primary">${e.group === 'Действие' ? 'Подтвердить в демо' : 'Проверить в демо'}</button></div></form>${queueView(s)}`;
+  if (source === 'settings') {
+    const labels =
+      e.id === 'application'
+        ? [
+            ['tray', 'Сворачивать в трей'],
+            ['notifications', 'Уведомления']
+          ]
+        : e.id === 'cloud'
+          ? [['checks', 'Фоновые проверки (только параметр демо)']]
+          : [];
+    return `${head}<p>Та же структура разделов, что в текущей программе; параметры открываются справа, а не в диалоге.</p>${labels.map(([key, label]) => `<label class="lg-ack"><input type="checkbox" data-pref="${key}" ${s.preferences[key] ? 'checked' : ''}> ${label}</label>`).join('')}${e.id === 'application' ? '<label class="lg-field">Путь игрового центра<input data-setting-text="launcher" placeholder="Выберите путь в настоящем приложении" value="' + esc(s.preferences.launcher || '') + '"></label>' : ''}${e.id === 'cloud' ? '<section class="lg-panel"><h3>Google Диск / Яндекс Диск</h3><p>В демо не подключены. Сравнение, контакты и ключи не читаются.</p><label>Повторять проверку<select data-setting-text="interval"><option>Вручную</option><option>15 минут</option><option>30 минут</option><option>60 минут</option></select></label><h3>Парсеры и диагностика</h3><p>Доступны в Синхронизации, как в текущем приложении.</p></section>' : ''}<p class="lg-muted">Изменения живут только в памяти вкладки. Для полных исходных контролов откройте «Исходная»; это не настройки настоящего приложения.</p>`;
+  }
+  if (source === 'bank')
+    return `${head}<p>Один счёт — одна валюта. Для сверки выберите операцию слева; суммы разных валют не складываются.</p>${body(e, source, s)}<div class="lg-scroll"><table><caption>Движение: ${esc(e.entity.currency)}</caption><thead><tr><th>Операция</th><th>Сумма</th><th>Категория</th></tr></thead><tbody>${s.ledger
+      .filter(o => o.currency === e.entity.currency)
+      .map(
+        o => `<tr><td>${esc(o.title)}</td><td>${o.amount.toLocaleString('ru-RU')}</td><td>${esc(o.category)}</td></tr>`
+      )
+      .join('')}</tbody></table></div>`;
+  if (source === 'marathons')
+    return `${head}<details open><summary>Развернуть марафон: задания, участники и отметки</summary>${body(e, source, s)}<div class="lg-feature-grid">${featureList(
+      source
+    )
+      .map(f => `<button class="lg-button" data-feature="${esc(f)}">${esc(f)}</button>`)
+      .join(
+        ''
+      )}</div></details><details class="lg-extra"><summary>Все исходные элементы управления марафонами</summary><p>Изолированный снимок исходной страницы: задания, участники, редактирование, архив и остальные контролы. Его данные отдельно от примера сверху.</p><iframe class="lg-marathon-original" title="Исходные контролы марафонов" src="../demo/app/index.html" sandbox="allow-scripts allow-forms allow-modals" data-marathon-original></iframe></details>`;
+  return head + body(e, source, s);
 }

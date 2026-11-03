@@ -385,7 +385,38 @@ const nextKinds = {
   activity: ['timeline', 'table', 'cards', 'board', 'workspace', 'focus'],
   settings: ['split', 'tree', 'cards', 'board', 'workspace', 'focus']
 };
+export const PREFERRED_CONCEPTS = [
+  {
+    name: 'Атлас · спокойный',
+    theme: 'navy',
+    principle: 'Левый указатель, одинаковые блоки дня и рабочая карточка справа.'
+  },
+  {
+    name: 'Атлас · светлый',
+    theme: 'swiss',
+    principle: 'Широкая рабочая область, открытые действия и лёгкие разделители.'
+  },
+  { name: 'Атлас · компактный', theme: 'graphite', principle: 'Плотные списки, узкое дерево и меньше прокрутки.' },
+  {
+    name: 'Атлас · просторный',
+    theme: 'mint',
+    principle: 'Крупные списки, видимые пояснения и формы прямо на странице.'
+  },
+  {
+    name: 'Атлас · рабочий',
+    theme: 'material',
+    principle: 'Вертикальный список, закреплённые действия, сведения и журнал рядом.'
+  }
+];
 export function nextVariantsFor(page) {
   const source = NEXT_PAGES.find(p => p.id === page)?.source;
-  return NEXT_CONCEPTS.map((v, i) => ({ ...v, id: i + 1, kind: nextKinds[source][i] }));
+  return [
+    ...NEXT_CONCEPTS.map((v, i) => ({ ...v, id: i + 1, kind: nextKinds[source][i] })),
+    ...PREFERRED_CONCEPTS.map((v, i) => ({
+      ...v,
+      id: i + 7,
+      preferred: i + 1,
+      kind: ['today', 'parties'].includes(source) ? 'tree' : 'split'
+    }))
+  ];
 }

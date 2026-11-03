@@ -16,28 +16,30 @@ export function openShopLimits() {
     .sort((a, b) => String(a.nick).localeCompare(String(b.nick), 'ru'))
     .map(c => {
       const account = getAccount(sites[c.id]);
-      return SHOP_ITEMS.map((def, index) => {
+      const limited = SHOP_ITEMS.filter(def => {
         const item = account?.items[def.key];
-        const track = account?.tracks[def.key];
-        const limit = limitView(item, track);
-        const availability = !account
-          ? 'Не проверено'
-          : !item?.found
-            ? 'Не найден на сайте'
-            : limit
-              ? `${limit.available}${limit.max ? ` из ${limit.max}` : ''}`
-              : 'Сайт не указывает лимит';
-        const reset = !limit
-          ? '—'
-          : limit.resetAt
-            ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
-            : track?.resetAt && Date.parse(track.resetAt) <= Date.now()
-              ? 'Срок обновления прошёл — перечитайте сайт'
-              : 'Дата неизвестна — сайт её не сообщил';
-        return `<tr>${index === 0 ? `<td rowspan="${SHOP_ITEMS.length}">${classIconHtml(c)} <b>${escapeHtml(c.nick)}</b><small>${escapeHtml(account?.account || 'Аккаунт не проверен')}</small><small>${account?.at ? `Проверено: ${escapeHtml(new Date(account.at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }))} мск` : 'Нет данных сайта'}</small></td>` : ''}<td>${escapeHtml(def.name)}</td><td>${escapeHtml(availability)}</td><td>${escapeHtml(reset)}</td></tr>`;
-      }).join('');
+        return item?.found && limitView(item, account?.tracks[def.key]);
+      });
+      return limited
+        .map((def, index) => {
+          const item = account?.items[def.key];
+          const track = account?.tracks[def.key];
+          const limit = limitView(item, track);
+          const availability = `${limit.available}${limit.max ? ` из ${limit.max}` : ''}`;
+          const reset = !limit
+            ? '—'
+            : limit.resetAt
+              ? new Date(limit.resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
+              : track?.resetAt && Date.parse(track.resetAt) <= Date.now()
+                ? 'Срок обновления прошёл — перечитайте сайт'
+                : 'Дата неизвестна — сайт её не сообщил';
+          return `<tr>${index === 0 ? `<td rowspan="${limited.length}">${classIconHtml(c)} <b>${escapeHtml(c.nick)}</b><small>${escapeHtml(account?.account || 'Аккаунт не проверен')}</small><small>${account?.at ? `Проверено: ${escapeHtml(new Date(account.at).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }))} мск` : 'Нет данных сайта'}</small></td>` : ''}<td>${escapeHtml(def.name)}</td><td>${escapeHtml(availability)}</td><td>${escapeHtml(reset)}</td></tr>`;
+        })
+        .join('');
     })
-    .join('')}</tbody></table></div>`;
+    .join(
+      ''
+    )}</tbody></table></div><p class="shop-muted">Показаны только найденные на сайте предметы с явно указанным лимитом. Если таблица пуста — таких данных пока нет; обновите магазин.</p>`;
   dlg.foot.innerHTML = '<button type="button" class="btn primary" data-close-limits>Закрыть</button>';
   dlg.foot.querySelector('[data-close-limits]').onclick = () => dlg.close();
   return dlg;

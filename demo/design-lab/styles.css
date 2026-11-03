@@ -2338,3 +2338,138 @@ summary {
   font-size: 10px;
   color: var(--muted);
 }
+
+/* Follow-up concepts 07–11: same chosen workflow, five usable densities/layouts. */
+.lg-preferred {
+  --rail: 260px;
+}
+.lg-preferred-work {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.lg-preferred-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.lg-preferred-nav button {
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: inherit;
+  background: var(--surface);
+  cursor: pointer;
+}
+.lg-preferred-nav button[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.lg-preferred-detail {
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+.lg-preferred-detail > header {
+  margin-bottom: 20px;
+}
+.lg-preferred .lg-editor fieldset {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px;
+}
+.lg-preferred .lg-editor fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lg-preferred .lg-editor input[type='checkbox'] {
+  width: 17px;
+  min-height: 17px;
+}
+.lg-preferred .lg-window-list > div {
+  flex-wrap: wrap;
+}
+.lg-preferred .lg-window-list select {
+  max-width: 140px;
+}
+.lg-marathon-original {
+  width: 100%;
+  min-height: 760px;
+  border: 0;
+}
+.preferred-2 {
+  --rail: 320px;
+}
+.preferred-2 .lg-preferred-detail {
+  border: 0;
+  border-left: 2px solid var(--line);
+  border-radius: 0;
+}
+.preferred-2 .lg-preferred-nav button {
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
+.preferred-3 {
+  --rail: 210px;
+  font-size: 13px;
+}
+.preferred-3 .lg-preferred-nav button {
+  padding: 9px;
+  gap: 3px;
+}
+.preferred-3 .lg-preferred-detail {
+  padding: 16px;
+}
+.preferred-4 {
+  --rail: 300px;
+}
+.preferred-4 .lg-preferred-work {
+  gap: 32px;
+}
+.preferred-4 .lg-preferred-nav button {
+  padding: 20px;
+  border-radius: 18px;
+}
+.preferred-4 .lg-preferred-detail {
+  padding: 32px;
+}
+.preferred-5 .lg-preferred-work {
+  grid-template-columns: minmax(0, 1fr);
+}
+.preferred-5 .lg-preferred-nav {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  position: relative;
+}
+.preferred-5 .lg-preferred-nav button {
+  border-radius: 4px;
+  padding: 12px;
+}
+@media (max-width: 850px) {
+  .lg-preferred .lg-preferred-work {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .lg-preferred .lg-preferred-nav {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .lg-preferred .lg-preferred-nav button {
+    flex: 0 0 200px;
+  }
+  .lg-preferred .lg-preferred-detail {
+    padding: 16px;
+  }
+}

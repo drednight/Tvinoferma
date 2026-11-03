@@ -607,6 +607,23 @@ export function bindStandaloneFilePanel(options) {
     }
     const list = el('differences');
     list.replaceChildren();
+    const categories = new Map();
+    const category = (key, title) => {
+      if (!categories.has(key)) {
+        const li = doc.createElement('li');
+        const details = doc.createElement('details'); // Collapsed on every fresh comparison.
+        const summary = doc.createElement('summary');
+        summary.textContent = title;
+        const rows = doc.createElement('ul');
+        details.append(summary, rows);
+        li.append(details);
+        list.append(li);
+        categories.set(key, { summary, rows, title, count: 0 });
+      }
+      const group = categories.get(key);
+      group.summary.textContent = `${group.title} (${++group.count})`;
+      return group.rows;
+    };
     for (const entry of token.comparison.entries) {
       const li = doc.createElement('li');
       const kind =
@@ -630,13 +647,13 @@ export function bindStandaloneFilePanel(options) {
         nested.append(item);
       }
       if (nested.childNodes.length) li.append(nested);
-      list.append(li);
+      category(entry.section, SECTIONS[entry.section] || 'Данные').append(li);
     }
     for (const field of token.privateChanges) {
       const li = doc.createElement('li');
       li.className = 'cloud-diff-card';
       li.textContent = `Приватное поле ${field.field}: ${field.clears ? 'будет очищено' : 'будет заменено'}; значения скрыты.`;
-      list.append(li);
+      category('private', 'Контакты и пароли — значения скрыты').append(li);
     }
     if (!list.childNodes.length) {
       const li = doc.createElement('li');

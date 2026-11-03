@@ -15,7 +15,7 @@ const mode = document.body.dataset.lab === 'next' ? 'next' : 'classic';
 const pages = mode === 'next' ? NEXT_PAGES : PAGES;
 const params = new URLSearchParams(location.search);
 let page = pages.find(p => p.id === params.get('page'))?.id || pages[0].id;
-let variant = Number(params.get('variant')) || 1;
+let variant = Number(params.get('variant')) || (mode === 'next' ? 7 : 1);
 let original = params.get('original') === '1';
 let state = createLabState();
 let toastTimer, runTimer;
@@ -67,7 +67,7 @@ function render() {
     list = choices();
   document.body.className = `lg-body theme-${v.theme} ${mode === 'next' ? 'is-next' : 'is-classic'} ${state.compact ? 'is-compact' : ''} palette-${state.palette}`;
   root.innerHTML = `<header class="lg-lab-header"><a class="lg-lab-brand" href="${mode === 'next' ? '../demo/variants/index.html' : '../../demo2/index.html'}"><span>ТФ</span><div>Твиноферма <small>${mode === 'next' ? 'DEMO 2 / ПЕРЕОСМЫСЛЕНИЕ' : 'DESIGN LAB / 80 ВАРИАНТОВ'}</small></div></a><div class="lg-lab-links"><span class="lg-demo-badge">Изолированный прототип</span><a href="${mode === 'next' ? '../demo/variants/index.html' : '../../demo2/index.html'}">${mode === 'next' ? '80 вариантов страниц' : 'Новая программа · demo2'} ↗</a><button class="lg-text" data-map>Карта функций</button><button class="lg-text" data-reset>Сбросить пример</button></div></header>
- <section class="lg-variant-picker" aria-label="Сравнение дизайн-концептов"><div class="lg-picker-heading"><div><span class="lg-eyebrow">${mode === 'next' ? 'Основная концепция + 5 альтернатив на страницу' : '10 вариантов на страницу · исходный отдельно'}</span><h1>${esc(meta.label)} <span>${original ? 'Исходная' : String(variant).padStart(2, '0') + ' / ' + list.length}</span></h1></div><div class="lg-picker-actions"><button class="lg-icon-button" data-previous aria-label="Предыдущий вариант">←</button><button class="lg-icon-button" data-next aria-label="Следующий вариант">→</button><label>Палитра<select data-palette aria-label="Цветовая палитра">${[
+ <section class="lg-variant-picker" aria-label="Сравнение дизайн-концептов"><div class="lg-picker-heading"><div><span class="lg-eyebrow">${mode === 'next' ? '5 новых «Атлас» (07–11) + 6 прежних концептов' : '10 вариантов на страницу · исходный отдельно'}</span><h1>${esc(meta.label)} <span>${original ? 'Исходная' : String(variant).padStart(2, '0') + ' / ' + list.length}</span></h1></div><div class="lg-picker-actions"><button class="lg-icon-button" data-previous aria-label="Предыдущий вариант">←</button><button class="lg-icon-button" data-next aria-label="Следующий вариант">→</button><label>Палитра<select data-palette aria-label="Цветовая палитра">${[
    ['concept', 'Авторская'],
    ['dark', 'Тёмная'],
    ['light', 'Светлая']
@@ -79,7 +79,7 @@ function render() {
  <p class="lg-safety-banner">Все аккаунты, суммы, задания и результаты вымышлены. Нет обращения к сайту, Rust или лаунчеру. Вводите только тестовые названия; изменения живут в памяти вкладки. Настоящие пароли, ключи и контакты вводить нельзя.</p>
  <div class="lg-shell"><aside class="lg-sidebar"><div class="lg-product-mark">${icon('rune')}<b>Твиноферма</b><small>${mode === 'next' ? 'YOUR PERFECT WORKSPACE' : 'PERFECT WORLD COMPANION'}</small></div><nav aria-label="Страницы приложения">${pages.map(p => `<button data-page="${p.id}" aria-label="${esc(p.label)}" aria-current="${p.id === page ? 'page' : 'false'}" title="${esc(p.label)}">${icon(p.icon)}<span>${esc(p.label)}</span>${p.id === page ? '<i></i>' : ''}</button>`).join('')}</nav><div class="lg-sidebar-bottom"><span class="lg-local-dot"></span><span>Только демонстрация<br/><small>Аккаунты не подключены</small></span></div></aside>
  <main class="lg-main" id="content"><header class="lg-page-header"><div><span class="lg-eyebrow">${mode === 'next' ? 'Личное рабочее пространство' : 'Управление аккаунтами'} / ${esc(v.name)}</span><h2>${esc(meta.label)}</h2><p>${esc(meta.description || meta.why)}</p></div><div class="lg-page-actions"><button class="lg-button" data-command>${icon('search')} Команды <kbd>Ctrl K</kbd></button><button class="lg-button primary" data-primary>${primaryLabel(src)}</button></div></header>${state.running ? `<div class="lg-running-bar">${queueView(state)}<button class="lg-icon-button danger" data-stop aria-label="Немедленно остановить">■</button></div>` : ''}
- <div id="lg-content">${original || (mode === 'classic' && src === 'today' && variant <= 3) ? frameContent() : renderPage(src, v, state)}</div><footer class="lg-page-footer"><span>${mode === 'next' ? 'Переосмысление · 9 страниц × 6 концептов' : 'Лаборатория · 8 страниц × 10 вариантов'}</span><span>Perfect World · менеджер аккаунтов, не чит</span></footer></main></div>`;
+ <div id="lg-content">${original || (mode === 'classic' && src === 'today' && variant <= 3) ? frameContent() : renderPage(src, v, state)}</div><footer class="lg-page-footer"><span>${mode === 'next' ? 'Переосмысление · 9 страниц × 11 концептов' : 'Лаборатория · 8 страниц × 10 вариантов'}</span><span>Perfect World · менеджер аккаунтов, не чит</span></footer></main></div>`;
 }
 function primaryLabel(src) {
   return {
@@ -178,6 +178,14 @@ function entry(id) {
     e = entriesFor(src, state).find(e => e.id === id);
   if (!e) return;
   state.detail = id;
+  if (
+    mode === 'next' &&
+    validVariant().preferred &&
+    ['characters', 'tools', 'settings', 'marathons', 'runes'].includes(src)
+  ) {
+    render();
+    return;
+  }
   if (src === 'today') {
     render();
     $('.lg-matrix-detail')?.scrollIntoView?.({ block: 'nearest' });
@@ -226,6 +234,14 @@ function launchDialog(id) {
   );
 }
 function feature(name) {
+  if (mode === 'next' && validVariant().preferred && source() === 'tools') {
+    const tool = entriesFor('tools', state).find(e => e.title === name || name.includes(e.title));
+    if (/журнал|отчёт|история/i.test(name)) return goSource('activity');
+    state.detail = tool?.id || state.detail || 'auth';
+    render();
+    toast('Параметры операции открыты на странице; реальных действий нет.');
+    return;
+  }
   if (name === 'Календарь событий')
     return modal(
       'Добавить личное событие',
@@ -358,6 +374,37 @@ root.addEventListener('click', event => {
     toast('Пример сброшен. Данные приложения не затронуты.');
     return;
   }
+  if (el.hasAttribute('data-toggle-archive')) {
+    state.showArchive = !state.showArchive;
+    state.detail = '';
+    render();
+    return;
+  }
+  if (el.hasAttribute('data-site-login')) {
+    const c = state.characters.find(c => c.id === el.dataset.siteLogin && !c.archived);
+    if (c) c.auth = 'online';
+    render();
+    toast('Вход изменён только в учебной модели. Сайт не открывался.');
+    return;
+  }
+  if (el.hasAttribute('data-game-launch')) {
+    const c = state.characters.find(c => c.id === el.dataset.gameLaunch && !c.archived);
+    if (c && !state.activeWindows.some(w => w.charId === c.id))
+      state.activeWindows.push({ id: `window-${c.id}`, charId: c.id, title: c.nick });
+    render();
+    toast('Добавлено только вымышленное окно.');
+    return;
+  }
+  if (el.hasAttribute('data-edit-inline'))
+    return editForm(
+      'characters',
+      state.characters.find(c => c.id === el.dataset.editInline)
+    );
+  if (el.hasAttribute('data-arrange')) {
+    state.arrangement = el.dataset.arrange;
+    render();
+    return;
+  }
   if (el.hasAttribute('data-map')) return map();
   if (el.hasAttribute('data-command')) return commands();
   if (el.hasAttribute('data-open')) return entry(el.dataset.open);
@@ -375,7 +422,9 @@ root.addEventListener('click', event => {
     return;
   }
   if (el.hasAttribute('data-select-all')) {
-    visibleEntries(source(), state).forEach(e => state.selected.add(e.id));
+    visibleEntries(source(), state)
+      .filter(e => !e.entity?.archived)
+      .forEach(e => state.selected.add(e.id));
     render();
     return;
   }
@@ -450,6 +499,37 @@ root.addEventListener('click', event => {
     } else commands();
   }
 });
+root.addEventListener('submit', event => {
+  const form = event.target;
+  if (!form.matches('[data-party-editor],[data-operation-editor]')) return;
+  event.preventDefault();
+  if (!form.checkValidity()) return form.reportValidity();
+  const data = new FormData(form);
+  if (form.hasAttribute('data-party-editor')) {
+    const party = state.parties.find(p => p.id === form.dataset.partyEditor);
+    if (!party) return;
+    party.name = String(data.get('name')).trim();
+    party.label = party.name;
+    state.detail = party.id;
+    const ids = new Set(data.getAll('member'));
+    state.characters.forEach(c => {
+      if (ids.has(c.id) && !c.archived) c.party = party.id;
+      else if (c.party === party.id) c.party = '';
+    });
+    render();
+    toast('Состав сохранён только в демо.');
+    return;
+  }
+  const ids = data.getAll('target').filter(id => state.characters.some(c => c.id === id && !c.archived));
+  if (!ids.length) return toast('Выберите хотя бы одного действующего персонажа.');
+  if (form.dataset.operationEditor === 'transfer' && Number(data.get('sets')) === 0)
+    return toast('Ноль наборов — ничего не передаётся.');
+  state.selected = new Set(ids);
+  const tool = entriesFor('tools', state).find(e => e.id === form.dataset.operationEditor);
+  if (tool.group === 'Действие' && event.submitter?.value !== 'dry' && !data.has('ack'))
+    return toast('Подтвердите предметы, количество и получателей.');
+  startSimulation(`${tool.title}${event.submitter?.value === 'dry' ? ' · пробный запуск' : ''}`);
+});
 root.addEventListener('input', event => {
   if (!event.target.matches('[data-search]')) return;
   state.query = event.target.value;
@@ -469,6 +549,11 @@ root.addEventListener('change', event => {
     e.checked ? state.selected.add(e.dataset.select) : state.selected.delete(e.dataset.select);
   } else if (e.matches('[data-day-task]')) markDay(state, e.dataset.dayTask, e.checked);
   else if (e.matches('[data-party-select]')) state.day.favoriteParty = e.value;
+  else if (e.matches('[data-window-icon]')) {
+    const w = state.activeWindows.find(w => w.id === e.dataset.windowIcon);
+    if (w) w.icon = e.value;
+  } else if (e.matches('[data-pref]')) state.preferences[e.dataset.pref] = e.checked;
+  else if (e.matches('[data-setting-text]')) state.preferences[e.dataset.settingText] = e.value;
   else if (e.matches('[data-scenario]')) state.scenarios[e.dataset.scenario] = e.checked;
   else return;
   render();
@@ -681,6 +766,11 @@ window.addEventListener('keydown', event => {
   }
 });
 window.addEventListener('message', event => {
+  const marathon = [...root.querySelectorAll('[data-marathon-original]')].find(f => f.contentWindow === event.source);
+  if (marathon && event.origin === 'null' && event.data?.type === 'tf-demo:ready') {
+    marathon.contentWindow.postMessage({ type: 'tf-demo:navigate', section: 'marathons' }, '*');
+    return;
+  }
   const frame = $('#lg-original-frame');
   if (
     !frame ||

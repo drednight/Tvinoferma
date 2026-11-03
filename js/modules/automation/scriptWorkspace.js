@@ -7,10 +7,10 @@ import { partiesOf } from '../parties/membership.js';
 import { openCharacterPicker, classIconHtml, stripeCls } from './characterPicker.js';
 
 const contexts = new WeakMap();
-export function layoutScriptWorkspace(dlg, selection, { running = false } = {}) {
+export function layoutScriptWorkspace(dlg, selection, { running = false, initialMode = 'manual' } = {}) {
   let ctx = contexts.get(dlg);
   if (!ctx) {
-    ctx = { id: crypto.randomUUID(), mode: 'manual', party: '', ids: new Set(), picker: null };
+    ctx = { id: crypto.randomUUID(), mode: initialMode, party: '', ids: new Set(), picker: null };
     contexts.set(dlg, ctx);
     const close = dlg.close;
     dlg.close = () => {

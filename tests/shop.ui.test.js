@@ -560,7 +560,7 @@ it('table refresh scans only selected characters, updates shared balances/limits
   expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'read_shop').map(([, args]) => args.charId)).toEqual(['c']);
   expect(state.characters.filter(c => ['b', 'c'].includes(c.id)).map(c => c.ancientCoins)).toEqual([18, 18]);
   expect(state.characters.find(c => c.id === 'a').ancientCoins).toBe(5);
-  expect(rowOf('Аа').textContent).toContain('5 с сайта');
+  expect(rowOf('Аа')).toBeUndefined();
   expect(rowOf('Вв').textContent).toContain('18 с сайта');
   expect(store.getAccount(store.charSiteMap().c).items.light.available).toBe(2);
   mocks.invoke.mockClear();
@@ -592,11 +592,15 @@ it('opens all-character item limits next to the dry run without additional nativ
   button.click();
   const table = $('.shop-limits-table');
   expect(table).not.toBeNull();
-  expect(table.querySelectorAll('tbody tr')).toHaveLength(3 * WANTED.length);
+  const count = [...state.characters].reduce((n, c) => {
+    const a = store.getAccount(store.charSiteMap()[c.id]);
+    return n + core.SHOP_ITEMS.filter(d => core.limitView(a?.items[d.key], a?.tracks[d.key])).length;
+  }, 0);
+  expect(table.querySelectorAll('tbody tr')).toHaveLength(count);
   expect(table.textContent).toContain('Аа');
   expect(table.textContent).toContain('Бб');
   expect(table.textContent).toContain('Вв');
-  expect(table.textContent).toContain('Сайт не указывает лимит');
+  expect(table.textContent).not.toContain('Сайт не указывает лимит');
   expect(table.textContent).toContain('Дата неизвестна');
   expect(mocks.invoke.mock.calls.length).toBe(before);
   $('[data-close-limits]').click();
@@ -612,11 +616,35 @@ it('limit details expose only confirmed reset dates and never invent an unlimite
   localStorage.setItem(store.STATE_KEY, JSON.stringify(saved));
   const { openShopLimits } = await import('../js/modules/automation/shopLimitsView.js');
   const dlg = openShopLimits();
-  expect(dlg.body.textContent).toContain('Сайт не указывает лимит');
+  expect(dlg.body.textContent).not.toContain('Сайт не указывает лимит');
   expect(dlg.body.textContent).toContain('Дата неизвестна');
   expect(dlg.sub.textContent).toContain('лимит общий');
   expect(dlg.body.textContent).toContain(
     new Date(resetAt).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' мск'
   );
   dlg.close();
+});
+
+it('left scope filters visible accounts for logged-in, party and manual choices independently from table ticks', async () => {
+  state.parties = [{ id: 'p', name: 'Пати' }];
+  state.characters[0].partyIds = ['p'];
+  state.characters[0].mainPartyId = 'p';
+  openShopDialog();
+  await wait();
+  const scope = value => {
+    const input = $(`.script-target input[value="${value}"]`);
+    input.checked = true;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  scope('logged');
+  expect(
+    [...document.querySelectorAll('.shop-row')].map(r => r.querySelector('td:nth-child(2) b').textContent).sort()
+  ).toEqual(['Аа', 'Вв']);
+  scope('party');
+  const party = $('.script-target [data-script-party]');
+  party.value = 'p';
+  party.dispatchEvent(new Event('change', { bubbles: true }));
+  expect(document.querySelectorAll('.shop-row')).toHaveLength(1);
+  expect(rowOf('Аа')).toBeDefined();
+  expect(rowOf('Вв')).toBeUndefined();
 });

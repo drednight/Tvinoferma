@@ -87,7 +87,12 @@
       if (!label) return;
       if (!box || box.disabled) { out.locked++; return; }
       var info = parseLabel(label);
-      out.items.push({ id: String(box.value), name: info.name, qty: info.qty, until: info.until, source: sourceOf(row) });
+      var image = block.querySelector('img[src]');
+      var imageUrl = '';
+      try { imageUrl = image && String(image.getAttribute('src') || '').trim() ? new URL(image.getAttribute('src'), location.href).href : ''; } catch (_) {}
+      var item = { id: String(box.value), name: info.name, qty: info.qty, until: info.until, source: sourceOf(row) };
+      if (imageUrl) item.image = imageUrl;
+      out.items.push(item);
     });
     return out;
   }

@@ -569,6 +569,18 @@
                   </div>
                 </dialog>
 
+                <section class="cloud-option-card">
+                  <h4>Проверка облачных копий</h4>
+                  <button type="button" class="btn ghost" id="cloud-standalone-check">Обновить список и проверить</button>
+                  <p class="muted" id="cloud-standalone-last-check">Ещё не проверяли в этом запуске. Автопроверка ничего не отправляет и не заменяет.</p>
+
+                <div id="cloud-standalone-operation" class="cloud-compare-feedback" hidden><p id="cloud-standalone-operation-message" role="status" aria-live="polite"></p><progress aria-label="Облачная операция выполняется"></progress><small id="cloud-standalone-operation-elapsed" aria-hidden="true"></small></div>
+                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Результаты проверки подключённых дисков появятся здесь. Отправка — только вручную.</p>
+                <ul id="cloud-standalone-provider-results" aria-label="Результаты по дискам"></ul><button type="button" class="btn ghost small" id="cloud-standalone-copy-report" hidden>Скопировать отчёт об ошибке</button>
+                <div id="cloud-standalone-files"></div>
+                <button type="button" class="btn ghost" id="cloud-standalone-reopen" hidden>Открыть сравнение</button>
+                    </section>
+
                 <button type="button" class="btn ghost small" id="cloud-standalone-key-settings">Ключ и дополнительные параметры</button>
                 <dialog id="cloud-standalone-key-dialog" class="modal cloud-settings-dialog" aria-labelledby="cloud-key-settings-title"><div class="cloud-dialog-heading"><h3 id="cloud-key-settings-title">Хранение на этом ПК</h3><button type="button" class="btn ghost" data-cloud-close aria-label="Закрыть">✕</button></div>                    <section class="cloud-option-card">
                       <p class="muted">Ключ позволяет открывать копии без повторного ввода пароля на этом ПК. Для другого компьютера пароль всё равно нужен.</p>
@@ -576,21 +588,12 @@
                       <button type="button" class="btn ghost small" id="cloud-standalone-forget">Забыть запомненный ключ</button>
                       <p id="cloud-standalone-options-status" class="muted" role="status">Параметры действуют на этом ПК. Пароль шифрования здесь не хранится. Без запомненного ключа при новом запуске понадобится пароль.</p>
                     </section>
-                    <section class="cloud-option-card">
-                  <h4>Проверка облачных копий</h4>
-                  <button type="button" class="btn ghost" id="cloud-standalone-check">Проверить</button>
                 <section class="cloud-auto-check cloud-option-card" aria-labelledby="cloud-auto-heading">
                   <h5 id="cloud-auto-heading">Автоматическая проверка</h5>
                   <label class="cloud-option-toggle"><input id="cloud-standalone-startup" type="checkbox" checked /> Проверять при запуске приложения</label>
                   <label>Повторять проверку <select class="input" id="cloud-standalone-interval"><option value="0">Только вручную</option><option value="15" selected>Каждые 15 минут</option><option value="30">Каждые 30 минут</option><option value="60">Каждый час</option><option value="custom">Своё время…</option></select></label><label id="cloud-standalone-custom-interval-label" hidden>Период в минутах <input type="number" class="input" id="cloud-standalone-custom-interval" min="15" max="10080" step="1" value="15" /></label>
-                  <p class="muted" id="cloud-standalone-last-check">Ещё не проверяли в этом запуске. Автопроверка ничего не отправляет и не заменяет.</p>
+
                 </section>
-                <div id="cloud-standalone-operation" class="cloud-compare-feedback" hidden><p id="cloud-standalone-operation-message" role="status" aria-live="polite"></p><progress aria-label="Облачная операция выполняется"></progress><small id="cloud-standalone-operation-elapsed" aria-hidden="true"></small></div>
-                <p id="cloud-standalone-status" class="cloud-registration-status" role="status" aria-live="polite">Проверяем подключённые диски при запуске и каждые 5 минут. Отправка — только вручную.</p>
-                <ul id="cloud-standalone-provider-results" aria-label="Результаты по дискам"></ul><button type="button" class="btn ghost small" id="cloud-standalone-copy-report" hidden>Скопировать отчёт об ошибке</button>
-                <div id="cloud-standalone-files"></div>
-                <button type="button" class="btn ghost" id="cloud-standalone-reopen" hidden>Открыть сравнение</button>
-                    </section>
 </dialog>
                 <dialog id="cloud-standalone-private-dialog" class="modal cloud-settings-dialog" aria-labelledby="cloud-standalone-private-title"><h3 id="cloud-standalone-private-title">Подтвердите выбранные приватные поля</h3>                    <section class="cloud-option-card cloud-option-consents" id="cloud-standalone-consents" hidden>
                       <h5>Перед отправкой или заменой</h5>

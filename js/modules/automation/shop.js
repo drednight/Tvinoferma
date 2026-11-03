@@ -1,3 +1,4 @@
+import { siteItemIconHtml } from './siteItemIcon.js';
 import { openShopLimits } from './shopLimitsView.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { layoutScriptWorkspace } from './scriptWorkspace.js';
@@ -75,6 +76,7 @@ export function openShopDialog({ ids = [] } = {}) {
 
   const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
   const accSel = new Set(preset); // отмеченные персонажи; аккаунт отмечен, если отмечен любой его персонаж
+  let visibleScope = new Set(preset.size ? preset : state.characters.map(c => c.id));
   const picked = new Set(); // выбранные предметы (ключи SHOP_ITEMS)
   const qtyMap = new Map(); // `${id персонажа}|${ключ предмета}` → количество (запоминается для всех персонажей аккаунта)
   const scanInfo = new Map(); // id персонажа → { status: pending|ok|nologin|challenge|error, error }
@@ -169,7 +171,11 @@ export function openShopDialog({ ids = [] } = {}) {
     };
   }
 
-  const allGroups = () => groupAccounts(state.characters, charSiteMap()).map(buildGroup);
+  const allGroups = () =>
+    groupAccounts(
+      state.characters.filter(c => visibleScope.has(c.id)),
+      charSiteMap()
+    ).map(buildGroup);
 
   const partyNames = g => [...new Set(g.members.flatMap(m => partiesOf(m, state.parties).map(p => p.name)))];
 
@@ -217,7 +223,13 @@ export function openShopDialog({ ids = [] } = {}) {
     const cat = loadCatalog()[key];
     if (lastScan) {
       const it = lastScan.items[key];
-      return { ...it, desc: it.desc || cat?.desc || '', fresh: true };
+      return {
+        ...it,
+        desc: it.desc || cat?.desc || '',
+        image: it.image || cat?.image || '',
+        max: it.max ?? cat?.max ?? null,
+        fresh: true
+      };
     }
     if (cat)
       return {
@@ -226,6 +238,8 @@ export function openShopDialog({ ids = [] } = {}) {
         found: true,
         price: cat.price ?? null,
         desc: cat.desc || '',
+        image: cat.image || '',
+        max: cat.max ?? null,
         kind: cat.kind || '',
         fresh: false
       };
@@ -382,9 +396,9 @@ export function openShopDialog({ ids = [] } = {}) {
         : '';
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
-        <span>${def.icon}</span><b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
+        ${siteItemIconHtml(it?.image)}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
       <div class="shop-price">${escapeHtml(price)}</div>
-      ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
+      ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${it?.max != null ? `<div class="shop-muted">Общий лимит сайта: ${fmt(it.max)} в месяц на аккаунт. Остаток — в таблице.</div>` : '<div class="shop-muted">Общий лимит сайта не прочитан.</div>'}${desc}</div>`;
   }
 
   function cellHtml(g, def, idx) {
@@ -436,14 +450,15 @@ export function openShopDialog({ ids = [] } = {}) {
   function tableHtml() {
     const defs = pickedDefs();
     view = sortGroups(allGroups().filter(matches));
-    if (!view.length) return '<div class="shop-empty empty-state">Никого не найдено</div>';
+    if (!view.length)
+      return '<div class="shop-empty empty-state">В выбранной группе никого нет. Измените выбор слева.</div>';
     const head = defs
       .map(d => {
         const it = siteItem(d.key);
         const short = d.name.replace(/\s*\([^)]*\)\s*$/, '');
         const price =
           it?.price != null ? `${fmt(it.price)} мон.${unitOf(d, it) === 'сундук.' ? ' / сундук' : ''}` : '—';
-        return `<th class="shop-col"><div class="shop-th" title="${escapeHtml(d.name)}"><div class="shop-th-name">${d.icon} ${escapeHtml(short)}</div>
+        return `<th class="shop-col"><div class="shop-th" title="${escapeHtml(d.name)}"><div class="shop-th-name">${siteItemIconHtml(it?.image)} ${escapeHtml(short)}</div>
         <div class="shop-th-price">${escapeHtml(price)}</div>
         <input class="input shop-all" type="number" min="0" step="1" placeholder="всем" data-all="${d.key}" title="Количество для всех отмеченных аккаунтов"></div></th>`;
       })
@@ -501,14 +516,19 @@ export function openShopDialog({ ids = [] } = {}) {
       <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить</button>`;
     renderDynamic();
 
-    layoutScriptWorkspace(dlg, {
-      selected: accSel,
-      apply(ids) {
-        accSel.clear();
-        ids.forEach(id => accSel.add(id));
-        renderPick();
-      }
-    });
+    layoutScriptWorkspace(
+      dlg,
+      {
+        selected: accSel,
+        apply(ids) {
+          visibleScope = new Set(ids);
+          accSel.clear();
+          ids.forEach(id => accSel.add(id));
+          renderPick();
+        }
+      },
+      { initialMode: preset.size ? 'manual' : 'all' }
+    );
   }
 
   /** Всё, что зависит от данных сайта и выбора. Строки с полями ввода пересобираются только вызовом из scheduleRender (не во время ввода). */
