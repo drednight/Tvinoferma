@@ -221,3 +221,26 @@ it('restores the attendance pressed state from the saved response', () => {
   expect($('[data-today-vote=saved][data-value=yes]').getAttribute('aria-pressed')).toBe('true');
   expect($('[data-today-vote=saved][data-value=no]').getAttribute('aria-pressed')).toBe('false');
 });
+
+it('renders article IDs in their own boxes, without external-link arrows', async () => {
+  await refreshSiteFeed({
+    invokeFn: async () => ({
+      status: 200,
+      html:
+        '<table>' +
+        [9151, 9154, 9152]
+          .map(id => `<tr class="news_page"><td><a href="/news.php?article=${id}">Новость ${id}</a></td></tr>`)
+          .join('') +
+        '</table>'
+    })
+  });
+  render();
+  expect([...root.querySelectorAll('.rt-news-number')].map(e => e.textContent)).toEqual(['#9151', '#9154', '#9152']);
+  expect([...root.querySelectorAll('.rt-news-card a')].some(e => e.textContent.includes('↗'))).toBe(false);
+});
+it('keeps the To-Do checkbox without the three-state cycling control', () => {
+  $('[data-today-tab=todo]').click();
+  expect($('[data-today-todo=todo]')).not.toBeNull();
+  expect($('[data-today-status]')).toBeNull();
+  expect($('.rt-events').textContent).not.toMatch(/Ожидает|В работе|Выполнено/);
+});

@@ -11,6 +11,18 @@ import { loadLog } from '../automation/promoLog.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
 import { currentBalances } from '../finance/model.js';
 export const nativeToday = () => !!globalThis.window?.__TAURI_INTERNALS__;
+/** Maximum tier reward, including coins even when the parser also supplies a label. */
+export function taskMaxReward(task) {
+  const reward = [...(task.rewards || [])].sort((a, b) => (b.threshold || 0) - (a.threshold || 0))[0];
+  if (!reward) return 'Не указана';
+  const coins = Number(reward.rewardCoins) || 0;
+  const text = (reward.rewardText || '').trim();
+  return (
+    [coins > 0 ? `${coins} монет` : '', /^(?:древние\s+)?монет[а-яё]*$/i.test(text) ? '' : text]
+      .filter(Boolean)
+      .join(' + ') || 'Не указана'
+  );
+}
 export function connectedTodayState(preview) {
   let s = preview;
   if (nativeToday() || preview.production) {
@@ -55,7 +67,7 @@ export function connectedTodayState(preview) {
       };
       s.day.marathonTasks = active.tasks.map(t => ({
         ...t,
-        maxReward: t.rewards.map(r => r.rewardText || `${r.rewardCoins} монет`).join(' / ')
+        maxReward: taskMaxReward(t)
       }));
     }
   }

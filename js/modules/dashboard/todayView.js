@@ -73,11 +73,6 @@ export function todaySideHtml(appState = state) {
     </aside>`;
 }
 
-/** Подпись статуса в списке задач на день: что видно на кнопке справа. */
-const STATUS_TEXT = { todo: 'Ожидает', doing: 'В работе', done: 'Выполнено' };
-/** Следующий статус по клику: ждёт → в работе → выполнено → обратно в ожидает. */
-const STATUS_NEXT = { todo: 'doing', doing: 'done', done: 'todo' };
-
 /** Сколько задач показывать сразу в каждом списке, пока места хватает. */
 const TODO_BASE_ROWS = 4;
 
@@ -128,13 +123,10 @@ function todoRowHtml(e, own) {
       <small class="muted">${escapeHtml(eventTimeText(e))}</small>
     </span>
     ${
-      own
-        ? `<button type="button" class="todo-status is-${escapeHtml(status)}" data-todo-status="${escapeHtml(e.id)}"
-           title="Следующий статус: ${escapeHtml(STATUS_TEXT[STATUS_NEXT[status]])}">${escapeHtml(STATUS_TEXT[status])}</button>`
-        : e.source === 'marathon'
-          ? `<button type="button" class="btn secondary small" data-today-act="open-marathon"
+      !own && e.source === 'marathon'
+        ? `<button type="button" class="btn secondary small" data-today-act="open-marathon"
              data-today-marathon="${escapeHtml(e.marathonId)}" title="Открыть марафон «${escapeHtml(e.title)}»">Открыть</button>`
-          : ''
+        : ''
     }
   </li>`;
 }

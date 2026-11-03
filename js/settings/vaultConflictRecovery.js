@@ -1,6 +1,7 @@
 // Explicit Windows-source recovery only. Never writes/deletes vault entries and
 // never unblocks this JS context. A verified original-file backup precedes CAS.
 // Other processes are not locked: the UI asks to close them; rechecks fail closed.
+import { createFileContactRecovery } from './fileContactRecovery.js';
 import { CONTACT_FIELDS } from '../core/secrets.js';
 import { openOverlay } from '../modules/marathons/overlay.js';
 
@@ -63,6 +64,7 @@ export function attachVaultConflictRecovery({ raw, aliases, review }) {
   const banner = document.getElementById('storage-readonly-banner');
   if (!banner || !review || banner.querySelector('[data-vault-review]')) return;
   const recover = createWindowsContactRecovery({ raw, aliases, review });
+  const recoverFile = createFileContactRecovery({ raw, aliases, review });
   if (!recover) return;
   const button = document.createElement('button');
   button.className = 'btn secondary';
@@ -90,7 +92,7 @@ export function attachVaultConflictRecovery({ raw, aliases, review }) {
     const content = document.createElement('div');
     const explanation = document.createElement('p');
     explanation.textContent =
-      'Ни одна версия пока не заменена. Сравните значения на этом ПК. Можно использовать защищённую запись Windows: перед этим сохраняется проверенная копия исходного файла, затем только конфликтующие открытые контакты заменяются ссылкой на Windows. Сами записи Windows, ключи и привязки дисков не меняются. Старые контакты останутся в резервной копии: она может содержать пароли — храните её безопасно. Если нужна версия из файла, отмените выбор: автоматической перезаписи Windows здесь нет.';
+      'Ни одна версия пока не заменена. Сравните значения на этом ПК. Можно использовать защищённую запись Windows: перед этим сохраняется проверенная копия исходного файла, затем только конфликтующие открытые контакты заменяются ссылкой на Windows. Сами записи Windows, ключи и привязки дисков не меняются. Старые контакты останутся в резервной копии: она может содержать пароли — храните её безопасно. Можно выбрать и версию файла: прежние контакты Windows сначала копируются в отдельные защищённые записи и проверяются чтением, затем выбранные контакты переносятся в Windows. Защищённое хранение остаётся включённым. Автоматического выбора нет.';
     content.append(explanation);
     const showLabel = document.createElement('label');
     const show = document.createElement('input');
@@ -139,7 +141,16 @@ export function attachVaultConflictRecovery({ raw, aliases, review }) {
       consent,
       ' Я проверил(а) обе версии, закрыл(а) другие копии приложения и выбираю контакты Windows с защищённым хранением. Контакты из файла сохранятся в копии.'
     );
-    content.append(consentLabel, result);
+    const sourceLabel = document.createElement('label');
+    sourceLabel.textContent = 'Какие контакты актуальны? ';
+    const source = document.createElement('select');
+    source.className = 'input';
+    source.setAttribute('aria-label', 'Источник контактов');
+    source.innerHTML =
+      '<option value="windows">Из Windows</option>' +
+      (recoverFile ? '<option value="file">Из файла → защищённое хранилище Windows</option>' : '');
+    sourceLabel.append(source);
+    content.append(sourceLabel, consentLabel, result);
     let completed = false;
     let busy = false;
     const dlg = openOverlay({
@@ -174,26 +185,43 @@ export function attachVaultConflictRecovery({ raw, aliases, review }) {
         return;
       }
       busy = true;
+      source.disabled = true;
       use.disabled = true;
       cancel.disabled = true;
       button.disabled = true;
       result.textContent = 'Проверяю источники и создаю копию… Не закрывайте приложение.';
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const backup = await recover(invoke);
+        const fileChoice = source.value === 'file';
+        const recovery = fileChoice
+          ? await recoverFile(invoke)
+          : { backup: await recover(invoke), vaultBackupId: null };
+        const backup = recovery.backup;
         show.checked = false;
         render();
         completed = true;
-        result.textContent = `Выбор записан. Исходный файл сохранён: ${backup}. Защищённая запись Windows не изменена. Нажмите «Перезапустить» для повторной безопасной загрузки; до неё обычное сохранение заблокировано.`;
+        result.textContent = `Выбор записан. Исходный файл сохранён: ${backup}. ${recovery.vaultBackupId ? `Прежние контакты Windows сохранены в защищённой копии ${recovery.vaultBackupId}; выбранные контакты файла перенесены в Windows.` : 'Защищённая запись Windows не изменена.'} Нажмите «Перезапустить» для повторной безопасной загрузки; до неё обычное сохранение заблокировано.`;
         use.textContent = 'Перезапустить';
         use.disabled = false;
         cancel.textContent = 'Закрыть (сохранение пока заблокировано)';
       } catch {
-        result.textContent = STOP;
+        result.textContent =
+          source.value === 'file'
+            ? 'Выбор не подтверждён. Сохранение остаётся остановленным. Копии не удалялись. Перезапустите приложение и сравните источники; автоматического повтора нет.'
+            : STOP;
       } finally {
         busy = false;
         cancel.disabled = false;
       }
+    };
+    source.onchange = () => {
+      consent.checked = false;
+      use.disabled = true;
+      const file = source.value === 'file';
+      use.textContent = file ? 'Использовать контакты файла' : 'Использовать контакты Windows';
+      consentLabel.lastChild.textContent = file
+        ? ' Я сравнил(а) обе версии, закрыл(а) другие копии приложения и выбираю контакты файла. Перед заменой прежние контакты Windows будут сохранены отдельно в защищённом хранилище; исходный файл — в резервной копии.'
+        : ' Я сравнил(а) обе версии, закрыл(а) другие копии приложения и выбираю контакты Windows. Исходный файл сохранится в резервной копии.';
     };
     dlg.foot.append(cancel, use);
     consent.onchange = () => {

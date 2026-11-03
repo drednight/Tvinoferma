@@ -7,6 +7,11 @@ on:
   pull_request:
     paths:
       - '.github/workflows/windows-acceptance.yml'
+      - '.github/actions/setup-frontend/**'
+      - 'js/modules/dashboard/**'
+      - 'js/settings/**'
+      - 'js/core/secrets.js'
+      - 'css/modules/todayReference.css'
       # Include orchestration changes as well as adapters: they are bundled in the exe.
       - 'js/modules/cloudSync/**'
       - 'js/modules/automation/**'
@@ -45,16 +50,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
+      - uses: ./.github/actions/setup-frontend
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
           shared-key: windows-acceptance-no-lto-v1
-      - run: npm ci
       - name: Build executable without installer or updater signature
         env:
           TVINOFERMA_GOOGLE_CLIENT_ID: ${{ vars.TVINOFERMA_GOOGLE_CLIENT_ID }}
@@ -82,18 +83,11 @@ jobs:
           Не запускайте поверх рабочего профиля и не запускайте старую версию
           одновременно с этой сборкой.
 
-          Для диагностики OAuth: Настройки → Синхронизация → Синхронизация между ПК.
-          Нажмите «Войти» или «Повторить вход Google» рядом с ошибкой, затем сверьте аккаунт.
-          Если приложение ещё не настроено владельцем: Google — импорт Desktop JSON
-          в разовой настройке; Яндекс — публичный Client ID в той же настройке.
-          При ошибке сообщите только код вроде token/invalid_client или token/timeout.
-          Код причины диагностический: успешный браузерный callback не доказывает вход.
-          Не передавайте токены, Client Secret, URL callback или код авторизации в чат.
-          Google client_secret передаётся нативно из защищённой настройки для входа и refresh.
-          JSON не передавайте в чат. Реальный вход и обмен файлами ещё требуют приёмки.
+          Проверьте новости на «Сегодня», награды марафона, выбор предметов и список дел.
+          При конфликте контактов нажмите «Сравнить контакты и выбрать источник».
+          Сравните обе версии до подтверждения. Автоматического выбора нет.
+          Не передавайте пароли, токены, куки и содержимое резервных копий в чат.
 
-          Тесты с имитацией провайдеров не заменяют реальную приёмку Google/Яндекс.
-          Контрольный план: docs/CLOUD-SYNC-ACCEPTANCE.md в указанном исходном коде.
           Стабильный релиз не публиковался; подписи автообновления нет.
           "@ | Set-Content -Encoding utf8 acceptance/ПРОЧИТАТЬ.txt
           $hash = (Get-FileHash acceptance/Tvinoferma.exe -Algorithm SHA256).Hash.ToLowerInvariant()

@@ -56,24 +56,20 @@ const parse = html => {
 };
 
 describe('задачи на день: разметка', () => {
-  it('у своей записи есть чекбокс, название и кнопка статуса', () => {
+  it('у своей записи есть чекбокс и название, без переключателя статуса', () => {
     const host = parse(todoListHtml([mine('Пропыть караван', 'todo')], TODAY));
     const row = host.querySelector('.todo-row');
     expect(row.textContent).toContain('Пропыть караван');
     expect(row.querySelector('[data-todo-toggle]')).not.toBeNull();
-    expect(row.querySelector('.todo-status').textContent.trim()).toBe('Ожидает');
+    expect(row.querySelector('.todo-status')).toBeNull();
     expect(row.querySelector('.todo-check.is-empty')).toBeNull();
   });
 
-  it('статусы подписаны словами, а не выведены из галочки', () => {
+  it('разметка сохраняет отметку выполнения без кнопок статуса', () => {
     const host = parse(
       todoListHtml([mine('Ожидает', 'todo'), mine('В работе', 'doing'), mine('Сделано', 'done')], TODAY)
     );
-    expect([...host.querySelectorAll('.todo-status')].map(b => b.textContent.trim())).toEqual([
-      'Ожидает',
-      'В работе',
-      'Выполнено'
-    ]);
+    expect(host.querySelectorAll('.todo-status')).toHaveLength(0);
     // Галочка отмечена только у выполненного: «в работе» — не производное от неё
     expect([...host.querySelectorAll('[data-todo-toggle]')].map(i => i.checked)).toEqual([false, false, true]);
     expect(host.querySelectorAll('.todo-row')[1].className).toContain('is-doing');
@@ -187,16 +183,18 @@ describe('задачи на день: действия', () => {
     await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('todo'));
   });
 
-  it('кнопка статуса перебирает по кругу: ожидает → в работе → выполнено', async () => {
+  it('галочка переключает выполнено/не выполнено без промежуточной кнопки статуса', async () => {
     state.plannerEntries = [mine('Пропыть караван', 'todo')];
-    const root = document.getElementById('today-root');
-    drawToday(root, {});
-    const click = () => document.querySelector('[data-today-status]').click();
-    click();
-    await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('doing'));
-    click();
+    drawToday(document.getElementById('today-root'), {});
+    expect(document.querySelector('[data-today-status]')).toBeNull();
+    const set = checked => {
+      const box = document.querySelector('[data-today-todo]');
+      box.checked = checked;
+      box.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    set(true);
     await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('done'));
-    click();
+    set(false);
     await vi.waitFor(() => expect(state.plannerEntries[0].status).toBe('todo'));
   });
 
@@ -238,7 +236,7 @@ describe('повтор в списке задач на день', () => {
     drawToday(document.getElementById('today-root'), {});
     const box = document.querySelector('[data-today-todo]');
     expect(box.checked).toBe(false);
-    expect(document.querySelector('[data-today-status]').textContent.trim()).toBe('Ожидает');
+    expect(document.querySelector('[data-today-status]')).toBeNull();
     // Во вчерашнем дне та же запись осталась отмеченной
     expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
   });
@@ -253,15 +251,14 @@ describe('повтор в списке задач на день', () => {
     expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
   });
 
-  it('кнопка статуса перебирает состояние именно сегодняшнего дня', async () => {
+  it('галочка меняет только сегодняшнее вхождение без переключателя статуса', async () => {
     state.plannerEntries = [daily('Поранки', { statusByDate: { '2026-10-04': 'done' } })];
     drawToday(document.getElementById('today-root'), {});
-    const click = () => document.querySelector('[data-today-status]').click();
-    click();
-    await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('doing'));
-    click();
+    expect(document.querySelector('[data-today-status]')).toBeNull();
+    const box = document.querySelector('[data-today-todo]');
+    box.checked = true;
+    box.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.waitFor(() => expect(state.plannerEntries[0].statusByDate[TODAY]).toBe('done'));
-    // Вчерашний день остался выполненным, а не переписан новым состоянием
     expect(state.plannerEntries[0].statusByDate['2026-10-04']).toBe('done');
   });
 });

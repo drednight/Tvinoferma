@@ -75,7 +75,7 @@ export function renderReferenceToday(input) {
   const clanParties = s.guild?.parties || [{ name: party?.label || '', members }];
   const promos = s.sitePromos || [];
   return `<section class="rt-reference" data-composition="reference">${input.production ? '' : `<div class="rt-intro"><div><span class="lg-eyebrow">Вариант по вашему эскизу · 12</span><h3>Всё, что нужно сегодня</h3><p>Ближайшие дела, запуск и информация об аккаунтах.</p></div>${!nativeToday() && !input.production ? `<label class="rt-clan-toggle"><input type="checkbox" data-scenario="clan" ${s.scenarios.clan ? 'checked' : ''}>Показать подключённый клан</label>` : ''}</div>`}
- <div class="rt-board"><div class="rt-left"><section class="lg-panel rt-news"><div class="rt-heading"><h3>Новости Perfect World</h3><a href="https://pwonline.ru/news.php" target="_blank" rel="noopener noreferrer">Все новости ↗</a><button type="button" class="lg-button rt-refresh" data-today-action="news-refresh" title="Обновить новости" aria-label="Обновить новости">${refreshIcon}</button></div><small>Последнее обновление · ${esc(stamp(feed.updatedAt))}</small>${feed.articles.map((a, i) => `<article class="rt-news-card"><span class="rt-news-number">${String(i + 1).padStart(2, '0')}</span><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)} ↗</a></article>`).join('') || '<p class="lg-muted">Онлайн-лента ещё не получена. Чтение сайта выполняется в десктопном приложении вместе с обновлением серверов.</p>'}${feed.status === 'unavailable' ? '<p role="status">Сайт недоступен; дата успешного обновления не изменена.</p>' : ''}</section>
+ <div class="rt-board"><div class="rt-left"><section class="lg-panel rt-news"><div class="rt-heading"><h3>Новости Perfect World</h3><a href="https://pwonline.ru/news.php" target="_blank" rel="noopener noreferrer">Все новости ↗</a><button type="button" class="lg-button rt-refresh" data-today-action="news-refresh" title="Обновить новости" aria-label="Обновить новости">${refreshIcon}</button></div><small>Последнее обновление · ${esc(stamp(feed.updatedAt))}</small>${feed.articles.map(a => `<article class="rt-news-card"><span class="rt-news-number">#${esc(a.id)}</span><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a></article>`).join('') || '<p class="lg-muted">Онлайн-лента ещё не получена. Чтение сайта выполняется в десктопном приложении вместе с обновлением серверов.</p>'}${feed.status === 'unavailable' ? '<p role="status">Сайт недоступен; дата успешного обновления не изменена.</p>' : ''}</section>
  <section class="lg-panel rt-today" data-entry="daily"><div class="rt-heading"><h3>Сегодня</h3><small>${esc(dateLabel(date))}</small></div><div class="rt-dungeon is-${dungeon.key}">${pass(dungeon.key, dungeon.name)}<div><small>ДАНЖ ДНЯ</small><strong>${esc(dungeon.name)}</strong><span>Цикл календаря приложения</span></div></div>
  <div class="rt-week">${dungeonStrip(mskAddDays(s.day.date, -1), mskAddDays(s.day.date, 5))
    .map(
@@ -83,7 +83,7 @@ export function renderReferenceToday(input) {
        `<button type="button" data-day="${i - 1}" aria-pressed="${s.day.chosenDay === i - 1}"><small>${i === 1 ? 'Сегодня' : i === 0 ? 'Вчера' : new Date(`${d.date}T12:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', timeZone: 'Europe/Moscow' })}</small>${pass(d.key, d.name)}<span>${d.date.slice(8)}.${d.date.slice(5, 7)}</span></button>`
    )
    .join('')}</div>
- <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label><button type="button" class="lg-text" data-today-status="${esc(e.id || '')}" data-status="${esc(e.status || 'todo')}">${{ todo: 'Ожидает', doing: 'В работе', done: 'Выполнено' }[e.status || 'todo']}</button>` : `<b>${esc(e.title)}</b>`}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
+ <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label>` : `<b>${esc(e.title)}</b>`}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
  <div class="rt-right"><div class="rt-top"><section class="lg-panel rt-promos"><div class="rt-heading"><h3>Промокоды</h3><small>Действуют: ${promos.length}</small></div><div class="rt-promo-list">${
    promos
      .map(p => {
@@ -177,18 +177,6 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
     if (el.hasAttribute('data-today-tab')) {
       raw.referenceTab = el.dataset.todayTab;
       render();
-      return;
-    }
-    if (el.hasAttribute('data-today-status')) {
-      const id = el.dataset.todayStatus,
-        status = { todo: 'doing', doing: 'done', done: 'todo' }[el.dataset.status] || 'todo';
-      if (raw.production && planner?.todo) await planner.todo(id, selectedDate(s), status);
-      else if (nativeToday()) await execute('todo', { eventId: id, date: selectedDate(s), response: status });
-      else {
-        const entry = raw.calendarEvents.find(r => r.id === id);
-        if (entry) setEntryStatusForDate(entry, selectedDate(s), status);
-        render();
-      }
       return;
     }
     if (el.dataset.todayAction === 'calendar-today') {

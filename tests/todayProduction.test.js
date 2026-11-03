@@ -2,7 +2,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { parseLatestNews, refreshSiteFeed, siteFeedSnapshot } from '../js/modules/dashboard/siteFeed.js';
 import { mskDate, mskAddDays } from '../js/core/msk.js';
 import { state } from '../js/core/state.js';
-import { connectedTodayState, runTodayAction } from '../js/modules/dashboard/todayRuntime.js';
+import { connectedTodayState, runTodayAction, taskMaxReward } from '../js/modules/dashboard/todayRuntime.js';
 import { createLabState } from '../demo/design-lab/model.js';
 const calls = vi.hoisted(() => ({ launch: vi.fn(), windows: vi.fn(), persist: vi.fn() }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ launchPartyByName: calls.launch }));
@@ -36,7 +36,7 @@ describe('production Today adapters', () => {
       '<script>alert(1)</script><a href="https://evil.test/news.php?article=99">Bad</a>' +
         [1, 2, 3, 4, 4].map(n => `<a href="/news.php?article=${n}">Новость ${n}</a>`).join('')
     );
-    expect(rows.map(r => r.id)).toEqual(['4', '3', '2']);
+    expect(rows.map(r => r.id)).toEqual(['1', '2', '3']);
     expect(rows.every(r => r.url.startsWith('https://pwonline.ru/news.php?article='))).toBe(true);
     expect(() => parseLatestNews('<p>Нет новостей</p>')).toThrow();
   });
@@ -160,4 +160,28 @@ it('shows the nearest upcoming marathon within seven days, not a distant one', (
   expect(result.day.marathon.percent).toBe(0);
   state.marathons = [upcoming(8)];
   expect(connectedTodayState(preview).scenarios.marathon).toBe(false);
+});
+
+it('keeps editorial news order rather than sorting preallocated article IDs or promotional links', () => {
+  const order = [9151, 9154, 9152];
+  const html =
+    '<a href="/news.php?article=9999">Рекламная ссылка</a><table>' +
+    order
+      .map(id => `<tr class="news_page"><td><a href="/news.php?article=${id}">Новость ${id}</a></td></tr>`)
+      .join('') +
+    '</table>';
+  expect(parseLatestNews(html).map(a => a.id)).toEqual(order.map(String));
+});
+it('shows coins in the maximum tier, not a generic label or all lower tiers', () => {
+  expect(
+    taskMaxReward({
+      rewards: [
+        { threshold: 5, rewardCoins: 10, rewardText: 'Монеты' },
+        { threshold: 15, rewardCoins: 30, rewardText: 'Монеты' }
+      ]
+    })
+  ).toBe('30 монет');
+  expect(taskMaxReward({ rewards: [{ threshold: 1, rewardCoins: 7, rewardText: 'Сундук' }] })).toBe('7 монет + Сундук');
+  expect(taskMaxReward({ rewards: [{ threshold: 1, rewardCoins: 0, rewardText: 'Сундук' }] })).toBe('Сундук');
+  expect(taskMaxReward({ rewards: [] })).toBe('Не указана');
 });
