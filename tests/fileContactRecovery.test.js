@@ -171,3 +171,18 @@ it('rejects missing/ambiguous characters and stale local plans without IPC', () 
   expect(createFileContactRecovery({ raw, review })).toBeNull();
   expect(invoke).not.toHaveBeenCalled();
 });
+it('keeps a safe manifest even for a contact ID matching an Object prototype property', async () => {
+  const value = records.a;
+  delete records.a;
+  Object.defineProperty(records, '__proto__', { value, enumerable: true, writable: true, configurable: true });
+  raw.characters[0].id = '__proto__';
+  disk = JSON.stringify(raw);
+  review.keys = ['__proto__', 'b'];
+  review.records = JSON.parse(JSON.stringify(records));
+  review.conflicts[0].id = '__proto__';
+  review.conflicts[0].source = '__proto__';
+  const result = await createFileContactRecovery({ raw, review })(invoke);
+  const manifest = JSON.parse(records[`${result.vaultBackupId}-manifest`]);
+  expect(Object.hasOwn(manifest.sources, '__proto__')).toBe(true);
+  expect(records[manifest.sources.__proto__]).toBe(value);
+});

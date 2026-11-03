@@ -81,7 +81,7 @@ export function createFileContactRecovery({ raw, aliases = {}, review }) {
       // Preserve the old Windows source under NEW random vault keys, not in plaintext files.
       const vaultBackupId = `recovery-${crypto.randomUUID()}`;
       const protectedCopies = Object.create(null);
-      const manifest = {};
+      const manifest = Object.create(null);
       [...sources].forEach((source, index) => {
         const key = `${vaultBackupId}-${index}`;
         protectedCopies[key] = pinned.records[source];
