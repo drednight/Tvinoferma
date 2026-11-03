@@ -3,9 +3,9 @@
 import { escapeHtml } from '../../core/utils.js';
 export function siteItemImage(value) {
   try {
-    const url = new URL(value);
+    const url = new URL(String(value).startsWith('//') ? 'https:' + value : value);
     return url.protocol === 'https:' &&
-      ['pwonline.ru', 'www.pwonline.ru'].includes(url.hostname) &&
+      ['pwonline.ru', 'www.pwonline.ru', 'cdn.pwonline.ru'].includes(url.hostname) &&
       !url.username &&
       !url.password &&
       !url.port &&

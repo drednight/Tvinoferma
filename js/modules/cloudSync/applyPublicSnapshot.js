@@ -216,7 +216,7 @@ function identityPool(snapshot, target, cryptoSource) {
         return id;
       }
     }
-    throw invalid();
+    throw preparationError(invalid(), 'id_collision');
   };
 }
 function mappedDictionary(input, keyMap, valueMap) {
@@ -225,7 +225,7 @@ function mappedDictionary(input, keyMap, valueMap) {
 function resolve(map, id, nullable = false) {
   if (nullable && id === null) return null;
   const value = map.get(id);
-  if (!value) throw invalid();
+  if (!value) throw preparationError(invalid(), 'reference');
   return value;
 }
 function existingMap(values) {
@@ -454,8 +454,12 @@ function materialize(
       id: oldBonuses.get(bonus.id)?.id || allocate('bonus'),
       syncId: bonus.id
     }));
-    const assignments = mappedDictionary(f.assignments, localIds, value => value.map(id => resolve(taskIds, id)));
-    const progress = mappedDictionary(f.progress, localIds, value => mappedDictionary(value, taskIds, item => item));
+    const assignments = preparationCheck('assignments', () =>
+      mappedDictionary(f.assignments, localIds, value => value.map(id => resolve(taskIds, id)))
+    );
+    const progress = preparationCheck('progress', () =>
+      mappedDictionary(f.progress, localIds, value => mappedDictionary(value, taskIds, item => item))
+    );
     const balance = Object.fromEntries(
       ['start', 'end'].map(side => [side, mappedDictionary(f.balance[side], localIds, value => value)])
     );
@@ -495,11 +499,13 @@ function materialize(
     const source = f.source;
     delete f.source;
     const localId = localIds.get(record.id);
-    if (
-      (source.kind === 'guild') !== localId.startsWith(CLAN_ENTRY_PREFIX) ||
-      (source.kind === 'guild' && localId !== CLAN_ENTRY_PREFIX + source.eventId)
-    )
-      throw invalid();
+    preparationCheck('planner', () => {
+      if (
+        (source.kind === 'guild') !== localId.startsWith(CLAN_ENTRY_PREFIX) ||
+        (source.kind === 'guild' && localId !== CLAN_ENTRY_PREFIX + source.eventId)
+      )
+        throw preparationError(invalid(), 'local_id');
+    });
     planner.set(record.id, { id: localId, syncId: record.id, ...f });
   }
   state.plannerEntries = listFor(planner, target.sections.planner.order);

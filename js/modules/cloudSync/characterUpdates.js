@@ -1,3 +1,6 @@
+import { sameJsonValue as same } from './valueEquality.js';
+import { exportCharacter } from './characterExport.js';
+import { parsePrivateSnapshot } from './privateSnapshot.js';
 // Explicit, non-deleting character reconciliation. Not a full snapshot merge.
 // Does not rewrite syncIds, local IDs, memberships, launcher settings or vault.
 import { normalizeState } from '../../core/state.js';
@@ -17,7 +20,6 @@ export const CHARACTER_UPDATE_FIELDS = Object.freeze({
   lastCoinUpdate: 'Дата проверки монет'
 });
 const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const allCharacters = s => [...s.characters, ...s.archivedCharacters];
 function invalid() {
   return new Error('character_update_invalid');
@@ -74,7 +76,7 @@ export function readCharacterMatches(settings, account) {
   }
   return structuredClone(data.accounts.find(row => row.account === account)?.matches || []);
 }
-export function characterUpdateReview(localState, cloud, account) {
+export function characterUpdateReview(localState, cloud, account, privateSnapshot = null) {
   publicSnapshotIdentityTypes(cloud);
   const matches = readCharacterMatches(localState.settings, account);
   const locals = allCharacters(localState).map(c => ({
@@ -86,22 +88,99 @@ export function characterUpdateReview(localState, cloud, account) {
   }));
   if (new Set(locals.map(c => c.id)).size !== locals.length) throw invalid();
   const name = s => String(s).trim().toLocaleLowerCase('ru');
+  const privateRows = privateSnapshot ? parsePrivateSnapshot(privateSnapshot, cloud).records : [];
+  const privateById = new Map(privateRows.map(r => [r.characterId, r]));
+  const originals = allCharacters(localState),
+    originalById = new Map(originals.map(c => [c.id, c]));
+  const byName = new Map();
+  for (const c of originals) {
+    const key = JSON.stringify([name(c.nick), c.class]);
+    const rows = byName.get(key) || [];
+    rows.push(c);
+    byName.set(key, rows);
+  }
+  const partySyncIds = new Map([...localState.parties, ...localState.archivedParties].map(p => [p.id, p.syncId]));
+  const extraLabels = {
+    partyIds: 'Состав групп',
+    mainPartyId: 'Главная группа',
+    partyOrder: 'Порядок в группах',
+    statsHistory: 'История характеристик',
+    coinHistory: 'История монет',
+    marathonData: 'Марафоны',
+    coinsParserV: 'Версия проверки монет',
+    createdAt: 'Дата создания',
+    updatedAt: 'Дата изменения'
+  };
+  // Keep values confined to this call. Only identity decisions/field names leave it.
+  const recordIds = new Set(cloud.sections.characters.records.map(c => c.id));
+  const candidateIds = c => {
+    const row = privateById.get(c.id);
+    if (!row) return [];
+    const populated = Object.entries(row.fields).filter(([, v]) => v !== '');
+    if (!populated.some(([k]) => ['email', 'recoveryEmail', 'phone'].includes(k))) return [];
+    return (byName.get(JSON.stringify([name(c.fields.nick), c.fields.class])) || [])
+      .filter(
+        l =>
+          name(l.nick) === name(c.fields.nick) &&
+          l.class === c.fields.class &&
+          (!l.syncId || l.syncId === c.id || !recordIds.has(l.syncId)) &&
+          populated.every(([k, v]) => l.contacts?.[k] === v)
+      )
+      .map(l => l.id);
+  };
+  const records = cloud.sections.characters.records;
+  const candidatesByCloud = new Map(records.map(c => [c.id, candidateIds(c)])),
+    candidateUse = new Map();
+  for (const ids of candidatesByCloud.values())
+    for (const id of ids) candidateUse.set(id, (candidateUse.get(id) || 0) + 1);
   return {
     locals,
-    records: cloud.sections.characters.records.map(c => {
+    records: records.map(c => {
       const remembered = matches.find(m => m.cloudId === c.id && locals.some(l => l.id === m.localId));
-      const identity = locals.filter(l => l.syncId === c.id);
+      const identity = locals.filter(l => l.syncId === c.id),
+        candidates = candidatesByCloud.get(c.id);
+      const contactMatch = candidates.length === 1 && candidateUse.get(candidates[0]) === 1 ? candidates[0] : '';
+      const matchedLocalId =
+        identity.length === 1 ? identity[0].id : identity.length > 1 ? '' : remembered?.localId || contactMatch;
+      const local = originalById.get(matchedLocalId);
+      const row = privateById.get(c.id);
+      const privateFields = row ? Object.keys(row.fields) : [];
+      const privateEqual = !row || (local && privateFields.every(k => local.contacts?.[k] === row.fields[k]));
+      let publicEqual = false,
+        otherPublicDifferences = [];
+      if (local) {
+        try {
+          // An in-memory comparison projection only; never assigns/repairs stored IDs.
+          const projected = exportCharacter(
+            { ...local, syncId: c.id },
+            { syncId: c.id, partySyncIds, archived: localState.archivedCharacters.includes(local) }
+          );
+          publicEqual = same(projected, c);
+          otherPublicDifferences = Object.entries(extraLabels)
+            .filter(([key]) => !same(projected.fields[key], c.fields[key]))
+            .map(([, label]) => label);
+          if (projected.archived !== c.archived) otherPublicDifferences.push('Архивность');
+        } catch {
+          otherPublicDifferences = ['Привязки или дополнительные данные требуют общей сверки'];
+        }
+      }
       return {
         id: c.id,
         nick: c.fields.nick,
         archived: c.archived,
         fields: fields(c.fields),
-        matchedLocalId: identity.length === 1 ? identity[0].id : identity.length > 1 ? '' : remembered?.localId || '',
+        matchedLocalId,
+        matchReason: identity.length === 1 ? 'identity' : remembered ? 'remembered' : contactMatch ? 'contacts' : null,
+        identical: publicEqual && !!privateEqual,
+        otherPublicDifferences,
+        privateFields,
+        privateEqual: !!privateEqual,
         suggestedLocalIds: locals.filter(l => name(l.nick) === name(c.fields.nick)).map(l => l.id)
       };
     })
   };
 }
+
 export function prepareCharacterUpdates({ localState, cloud, account, selections }) {
   validateJsonSnapshot(localState);
   const view = characterUpdateReview(localState, cloud, account);

@@ -1,3 +1,4 @@
+import { refreshSiteFeed } from '../dashboard/siteFeed.js';
 // js/modules/servers/serverStatus.js
 // «Статус серверов» pwonline.ru (Issue #26): общий источник для плашки в шапке и окна передачи предметов.
 // Страница /server_status.php открыта всем, поэтому аккаунты не нужны: читает служебное окно приложения (команда `read_server_status`).
@@ -88,10 +89,21 @@ export function setServerStatus(data) {
   return current;
 }
 
+async function backgroundPromos(getSettings) {
+  if (!window.__TAURI_INTERNALS__) return;
+  const promoMinutes = Number(getSettings()?.freshness?.promoMinutes ?? 60);
+  if (promoMinutes > 0) {
+    const { promoDiscovery } = await import('../automation/promoDiscovery.js');
+    await promoDiscovery().check({ maxAgeMs: Math.max(10, promoMinutes) * 60000 });
+  }
+}
 async function backgroundRead(getSettings) {
   if (!window.__TAURI_INTERNALS__) return null;
   const { invoke } = await import('@tauri-apps/api/core');
   const s = getSettings()?.scripts || {};
+  // Independent reads start together; failed news never blocks server/auth startup.
+  void refreshSiteFeed({ invokeFn: invoke });
+  void backgroundPromos(getSettings).catch(() => {});
   return refreshServerStatus({
     invokeFn: invoke,
     retries: Math.min(2, Math.max(0, Number(s.retries) || 0)),
@@ -118,6 +130,7 @@ export async function loadServerStatusOnStartup(getSettings, maxWaitMs = 25000) 
 /** Фоновое расписание: каждые полминуты проверяет, не пора ли перечитать (интервал берётся из настроек «на лету»). */
 export function startServerStatusScheduler(getSettings, tickMs = 30000) {
   const tick = () => {
+    void backgroundPromos(getSettings).catch(() => {});
     if (inflight) return;
     if (isStatusDue(current, serverStatusMinutes(getSettings()), Date.now(), lastAttemptAt)) {
       backgroundRead(getSettings).catch(e => console.warn('[SERVERS] schedule', e));

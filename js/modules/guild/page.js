@@ -188,7 +188,7 @@ function syncErrorText(error) {
  * Обновляет сводку и сохраняет её. Возвращает true при успехе.
  * `silent` — для проверки по расписанию: без сообщений об ошибке.
  */
-async function syncGuild({ silent = false } = {}) {
+export async function syncGuild({ silent = false } = {}) {
   let report;
   try {
     report = await syncGuildFromSite();
@@ -262,17 +262,17 @@ function respondErrorText(error) {
  * красным, а отмеченное событие — записью в календаре. Говорим только когда что-то сломалось
  * или понадобился вход на сайт.
  */
-async function respond(eventId, response) {
+export async function respond(eventId, response) {
   let result;
   try {
     result = await respondToEvent(eventId, response);
   } catch (error) {
     toast(respondErrorText(error), 'warning');
-    return;
+    return false;
   }
   if (!result?.ok) {
     toast(result?.message || 'Сайт не принял отметку', 'error');
-    return;
+    return false;
   }
   // Сайт применяет отметку не мгновенно: ждём и перечитываем сводку по-настоящему,
   // чтобы календарь и панель показали то, что реально записалось.
@@ -286,6 +286,7 @@ async function respond(eventId, response) {
   }
   if (await syncClanEntries(data)) renderTodayNow();
   else renderGuildToday();
+  return true;
 }
 
 /**

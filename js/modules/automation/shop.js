@@ -58,12 +58,6 @@ const clock = d => d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-d
 const MAX_QTY = 999;
 const unitOf = (def, item) => (def?.chest || item?.kind === 'chest' ? 'сундук.' : 'шт.');
 
-const SCAN_FAIL = {
-  nologin: 'нет входа на сайт',
-  challenge: 'сайт показал проверку безопасности',
-  error: 'не удалось прочитать магазин'
-};
-
 /**
  * Открывает диалог «Активация подарков» (покупка за Древние монеты).
  * @param {{ ids?: string[] }} [opts] ids — персонажи, отмеченные заранее (например, в режиме «Выбрать»)
@@ -74,7 +68,7 @@ export function openShopDialog({ ids = [] } = {}) {
     return null;
   }
 
-  const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id && c.isLoggedIn === true)));
+  const preset = new Set(ids.filter(id => state.characters.some(c => c.id === id)));
   const accSel = new Set(preset); // отмеченные персонажи; аккаунт отмечен, если отмечен любой его персонаж
   let visibleScope = new Set(preset.size ? preset : state.characters.map(c => c.id));
   const picked = new Set(); // выбранные предметы (ключи SHOP_ITEMS)
@@ -127,10 +121,10 @@ export function openShopDialog({ ids = [] } = {}) {
   const setQty = (g, key, n) => g.members.forEach(m => qtyMap.set(`${m.id}|${key}`, n));
   const setSel = (g, on) =>
     g.members.forEach(m => {
-      if (on && m.isLoggedIn === true) accSel.add(m.id);
+      if (on) accSel.add(m.id);
       else accSel.delete(m.id);
     });
-  const isSel = g => g.members.some(m => m.isLoggedIn === true && accSel.has(m.id));
+  const isSel = g => g.members.some(m => accSel.has(m.id));
   const pickedDefs = () => SHOP_ITEMS.filter(d => picked.has(d.key));
 
   function infoOf(g) {
@@ -228,6 +222,7 @@ export function openShopDialog({ ids = [] } = {}) {
         desc: it.desc || cat?.desc || '',
         image: it.image || cat?.image || '',
         max: it.max ?? cat?.max ?? null,
+        observedMax: cat?.observedMax ?? null,
         fresh: true
       };
     }
@@ -240,6 +235,7 @@ export function openShopDialog({ ids = [] } = {}) {
         desc: cat.desc || '',
         image: cat.image || '',
         max: cat.max ?? null,
+        observedMax: cat.observedMax ?? null,
         kind: cat.kind || '',
         fresh: false
       };
@@ -393,7 +389,9 @@ export function openShopDialog({ ids = [] } = {}) {
     const generalLimit =
       it?.max != null
         ? `Общий лимит сайта: ${fmt(it.max)} на аккаунт (Х в «Доступно: N из Х»). Остаток каждого аккаунта — в таблице.`
-        : 'Общий лимит сайта не указан или не прочитан. Не считаем оставшееся количество максимальным лимитом.';
+        : it?.observedMax != null
+          ? `Максимум наблюдений: ${fmt(it.observedMax)} на аккаунт. Это наибольший прочитанный остаток, а не явно объявленная квота сайта.`
+          : 'Лимит пока не прочитан.';
     const desc = found
       ? `<details class="shop-desc"><summary>Описание</summary>${it.desc ? `<div>${escapeHtml(it.desc).replace(/\n/g, '<br>')}</div>` : ''}<p class="shop-muted">${escapeHtml(generalLimit)}</p></details>`
       : '';
@@ -404,7 +402,7 @@ export function openShopDialog({ ids = [] } = {}) {
       ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
   }
 
-  function cellHtml(g, def, idx) {
+  function quantityCellHtml(g, def, idx) {
     const item = g.items[def.key];
     if (!item?.found) return '<span class="shop-muted">нет на сайте</span>';
     const lv = limitView(item, g.tracks[def.key]);
@@ -414,61 +412,72 @@ export function openShopDialog({ ids = [] } = {}) {
     if (!item.buyable)
       return `<span class="shop-muted">${lv?.exhausted ? 'лимит исчерпан' : 'купить нельзя'}</span>${limit}`;
     const n = getQty(g, def.key);
-    return `<input class="input shop-qty" type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-qty="${idx}|${def.key}" value="${n || ''}"
+    return `<input class="input shop-qty" type="number" min="0" max="999" step="1" inputmode="numeric" placeholder="0" data-qty="${idx}|${def.key}" value="${n || ''}"
       aria-label="${escapeHtml(`${g.nick}: ${def.name}`)}"><div class="shop-calc" data-calc="${idx}|${def.key}"></div>${limit}`;
-  }
-
-  function rowHtml(g, idx, defs) {
-    const ok = g.state === 'ready';
-    const parties = partyNames(g).join(', ');
-    const bal = g.balanceSite
-      ? `<b>${fmt(g.balance)}</b> <span class="shop-muted">с сайта${g.fresh ? '' : ', прошлое чтение'}</span>`
-      : `<b>${fmt(g.balance)}</b> <span class="shop-muted">по данным приложения</span>`;
-    let cells;
-    if (ok)
-      cells = `${defs.map(d => `<td>${cellHtml(g, d, idx)}</td>`).join('')}<td class="shop-total" data-total="${idx}"></td>`;
-    else {
-      const msg =
-        g.state === 'pending'
-          ? '⏳ читаю данные сайта…'
-          : g.state === 'nodata'
-            ? '❔ данных с сайта нет — нажмите «Обновить»'
-            : `⚠ ${SCAN_FAIL[g.state] || SCAN_FAIL.error}${g.error && g.state === 'error' ? ` (${errorText(g.error)})` : ''}`;
-      cells = `<td colspan="${defs.length + 1}" class="shop-muted">${escapeHtml(msg)}</td>`;
-    }
-    return `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}${ok ? '' : ' shop-dim'}" data-g="${idx}">
-      <td><input type="checkbox" data-sel="${idx}" ${isSel(g) && ok ? 'checked' : ''} ${ok && g.members.some(m => m.isLoggedIn === true) ? '' : 'disabled'} aria-label="${escapeHtml(g.nick)}"></td>
-      <td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${
-        g.others.length
-          ? `<div class="shop-muted">также: ${g.members
-              .filter(member => member !== (g.rep || g.members[0]))
-              .map(member => `${classIconHtml(member)}${escapeHtml(member.nick)}`)
-              .join(', ')}</div>`
-          : ''
-      }
-        ${parties ? `<div class="shop-muted">${escapeHtml(parties)}</div>` : ''}</td>
-      <td class="shop-num">${bal}</td>${cells}</tr>`;
   }
 
   function tableHtml() {
     const defs = pickedDefs();
     view = sortGroups(allGroups().filter(matches));
-    if (!view.length)
-      return '<div class="shop-empty empty-state">В выбранной группе никого нет. Измените выбор слева.</div>';
-    const head = defs
-      .map(d => {
-        const it = siteItem(d.key);
-        const short = d.name.replace(/\s*\([^)]*\)\s*$/, '');
-        const price =
-          it?.price != null ? `${fmt(it.price)} мон.${unitOf(d, it) === 'сундук.' ? ' / сундук' : ''}` : '—';
-        return `<th class="shop-col"><div class="shop-th" title="${escapeHtml(d.name)}"><div class="shop-th-name">${siteItemIconHtml(it?.image)} ${escapeHtml(short)}</div>
-        <div class="shop-th-price">${escapeHtml(price)}</div>
-        <input class="input shop-all" type="number" min="0" step="1" placeholder="всем" data-all="${d.key}" title="Количество для всех отмеченных аккаунтов"></div></th>`;
-      })
-      .join('');
-    return `<table class="shop-table"><thead><tr><th></th><th>Аккаунт</th><th>Монеты</th>${head}<th>Итого / остаток</th></tr></thead>
-      <tbody>${view.map((g, i) => rowHtml(g, i, defs)).join('')}</tbody></table>
-      ${defs.length ? '' : '<p class="shop-muted">Отметьте предметы выше — появятся поля количества.</p>'}`;
+    if (!view.length) return '<p class="shop-muted">В выбранной группе никого нет.</p>';
+    return `<table class="shop-table"><thead><tr><th>Выбор</th><th>Персонаж / общий аккаунт</th>${defs.map(d => `<th>${escapeHtml(d.name)}</th>`).join('')}</tr></thead><tbody>${view.map((g, i) => `<tr class="shop-row ${stripeCls(g.rep || g.members[0])}" data-g="${i}"><td><input type="checkbox" data-sel="${i}" ${isSel(g) ? 'checked' : ''} aria-label="${escapeHtml(g.nick)}"></td><td>${classIconHtml(g.rep || g.members[0])}<b>${escapeHtml(g.nick)}</b>${g.others.length ? `<small>Также: ${g.others.map(escapeHtml).join(', ')}</small>` : ''}<small>${escapeHtml(g.account || 'Аккаунт не проверен')}</small></td>${defs.map(d => `<td><label><input type="checkbox" data-pick-name="${i}|${d.key}" ${getQty(g, d.key) > 0 ? 'checked' : ''}>${escapeHtml(d.name)}</label></td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+
+  function openQuantities(dry = false) {
+    if (scanning) return toast('Дождитесь чтения сайта', 'info');
+    const groups = view.filter(g => isSel(g) && pickedDefs().some(d => getQty(g, d.key) > 0));
+    if (!groups.length) return toast('Выберите персонажей и названия предметов', 'info');
+    phase = 'quantity';
+    const quantities = openOverlay({
+      title: dry ? 'Пробный запуск — количества' : 'Количество подарков по аккаунтам',
+      wide: true,
+      onClose: () => {
+        if (phase === 'quantity') renderPick();
+      }
+    });
+    quantities.sub.textContent =
+      'Один баланс и лимит на аккаунт. Offline-персонажи остаются выбранными; покупка возможна только после проверки входа на сайт. Количества сами по себе ничего не покупают.';
+    const defs = pickedDefs();
+    quantities.body.innerHTML = `<div class="shop-scroll"><table class="shop-table"><thead><tr><th>Персонажи / аккаунт</th><th>Древние монеты</th>${defs.map(d => `<th>${escapeHtml(d.name)}</th>`).join('')}<th>Сумма / остаток</th></tr></thead><tbody>${groups.map((g, i) => `<tr><td><b>${escapeHtml(g.nick)}</b><small>${g.others.map(escapeHtml).join(', ')}</small>${g.state !== 'ready' ? '<small>Нет подтверждённого входа / данных сайта</small>' : ''}</td><td>${fmt(g.balance)}</td>${defs.map(d => `<td>${getQty(g, d.key) > 0 ? quantityCellHtml(g, d, i) : 'Не выбрано'}</td>`).join('')}<td data-quantity-total="${i}"></td></tr>`).join('')}</tbody></table></div>`;
+    const recalc = () =>
+      groups.forEach((g, i) => {
+        const plan = planFor(g);
+        for (const def of defs) {
+          const row = plan.rows.find(r => r.key === def.key);
+          const box = quantities.body.querySelector(`[data-calc="${i}|${def.key}"]`);
+          if (box && row)
+            box.textContent = `${fmt(row.price)} × ${row.qty} = ${fmt(row.cost)}${row.qty < row.requested ? ' · Ограничено лимитом / балансом' : ''}`;
+        }
+        quantities.body.querySelector(`[data-quantity-total="${i}"]`).textContent =
+          `Сумма: ${fmt(plan.spent)} · Остаток: ${fmt(plan.left)}${plan.qty < plan.requested ? ' · Объём ограничен балансом / лимитом' : ''}`;
+      });
+    quantities.body.addEventListener('input', e => {
+      const t = e.target;
+      if (!t.matches('[data-qty]')) return;
+      const [i, key] = t.dataset.qty.split('|');
+      const g = groups[Number(i)];
+      if (!g) return;
+      setQty(g, key, parseQty(t.value));
+      recalc();
+    });
+    quantities.foot.innerHTML =
+      '<button class="btn ghost" data-quantity-back>Назад</button><button class="btn primary" data-quantity-buy>' +
+      (dry ? 'Пробный запуск' : 'Купить') +
+      '</button>';
+    quantities.foot.querySelector('[data-quantity-back]').onclick = () => quantities.close();
+    const buy = quantities.foot.querySelector('[data-quantity-buy]');
+    buy.onclick = async () => {
+      if (buy.disabled) return;
+      buy.disabled = true;
+      try {
+        phase = 'pick';
+        quantities.close();
+        await launch(dry);
+      } finally {
+        if (phase === 'pick' && alive()) renderPick();
+      }
+    };
+    recalc();
   }
 
   const partyOptions = () =>
@@ -495,7 +504,7 @@ export function openShopDialog({ ids = [] } = {}) {
       <div class="tr-top"><button type="button" class="btn secondary small" data-q="refresh-all" title="Цены, балансы и доступные лимиты всех аккаунтов">🔄 Обновить цены и балансы</button></div>
       <div class="shop-scan" id="shop-scan"></div>
       ${sectionHtml('Предметы магазина', { hint: 'цены, наличие и лимиты — с сайта', body: `<div class="shop-cards" id="shop-items"></div>` })}
-      ${sectionHtml('Аккаунты и количество', {
+      ${sectionHtml('Персонажи и выбранные предметы', {
         hint: 'баланс у аккаунта сайта один на всех его персонажей',
         aside: `<span class="sd-count" id="shop-count"></span>`,
         body: `
@@ -516,20 +525,18 @@ export function openShopDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
       <button class="btn secondary" data-act="limits">Лимиты и сроки</button>
       <button class="btn secondary" data-act="dry" title="Откроет магазин и найдёт кнопку «Купить», но не нажмёт её: ничего не покупается и не записывается">👁 Пробный запуск</button>
-      <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Купить</button>`;
+      <button class="btn primary" data-act="start"><svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Далее</button>`;
     renderDynamic();
 
     layoutScriptWorkspace(
       dlg,
       {
         selected: accSel,
-        eligible: c => c.isLoggedIn === true,
+        eligible: () => true,
         apply(ids) {
           visibleScope = new Set(ids);
           accSel.clear();
-          ids
-            .filter(id => state.characters.some(c => c.id === id && c.isLoggedIn === true))
-            .forEach(id => accSel.add(id));
+          ids.filter(id => state.characters.some(c => c.id === id)).forEach(id => accSel.add(id));
           renderPick();
         }
       },
@@ -575,51 +582,13 @@ export function openShopDialog({ ids = [] } = {}) {
 
   /** Обновляет «цена × кол = сумма», остаток и общий итог, не трогая поля ввода. */
   function updatePlans() {
-    let qty = 0,
-      spent = 0,
-      accounts = 0,
-      count = 0;
-    view.forEach((g, i) => {
-      if (g.state !== 'ready') return;
-      const plan = planFor(g);
-      pickedDefs().forEach(d => {
-        const box = [...dlg.body.querySelectorAll('[data-calc]')].find(el => el.dataset.calc === `${i}|${d.key}`);
-        const row = plan.rows.find(r => r.key === d.key);
-        if (!box || !row) return;
-        const it = g.items[d.key];
-        if (!row.requested) {
-          box.innerHTML = '';
-          return;
-        }
-        const unit = unitOf(d, it);
-        const cap =
-          row.qty < row.requested
-            ? `<div class="shop-warn">купится ${row.qty} из ${row.requested} (${row.cap === 'limit' ? 'лимит' : 'не хватает монет'})</div>`
-            : '';
-        box.innerHTML = `<span>${fmt(row.price)} × ${row.qty} ${unit} = <b>${fmt(row.cost)}</b></span>${cap}`;
-      });
-      const tot = [...dlg.body.querySelectorAll('[data-total]')].find(el => el.dataset.total === String(i));
-      if (tot)
-        tot.innerHTML = plan.requested
-          ? `<div>Итого: <b>${fmt(plan.spent)}</b></div><div class="${plan.left < 0 ? 'shop-warn' : 'shop-muted'}">остаток: ${fmt(plan.left)}</div>`
-          : `<span class="shop-muted">остаток: ${fmt(g.balance)}</span>`;
-      if (isSel(g)) {
-        count++;
-        if (plan.qty) {
-          accounts++;
-          qty += plan.qty;
-          spent += plan.spent;
-        }
-      }
-    });
     const sel = q('#shop-count');
-    if (sel)
-      sel.textContent = `Отмечено аккаунтов: ${count} из ${view.filter(g => g.state === 'ready').length}${view.length < allGroups().length ? ' (с учётом фильтра)' : ''}`;
-    const sum = q('#shop-summary');
-    if (sum)
-      sum.innerHTML = qty
-        ? `<div class="sd-summary-line">К покупке: <b>${qty}</b> шт. на <b>${fmt(spent)}</b> мон. у аккаунтов: <b>${accounts}</b></div>`
-        : '<span class="shop-muted">Выберите предметы, отметьте аккаунты и укажите количество.</span>';
+    if (sel) sel.textContent = `Отмечено аккаунтов: ${view.filter(isSel).length} из ${view.length}`;
+    const summary = q('#shop-summary');
+    if (summary) {
+      summary.replaceChildren();
+      summary.hidden = true;
+    }
   }
 
   /* ------------------------------ запуск ------------------------------ */
@@ -1016,6 +985,17 @@ export function openShopDialog({ ids = [] } = {}) {
       updatePlans();
       return;
     }
+    if (t.matches('[data-pick-name]')) {
+      const [i, key] = t.dataset.pickName.split('|');
+      const g = view[Number(i)];
+      if (g) {
+        setQty(g, key, t.checked ? 1 : 0);
+        if (t.checked) setSel(g, true);
+        q('#shop-table').innerHTML = tableHtml();
+        updatePlans();
+      }
+      return;
+    }
     if (t.matches('[data-item]')) {
       if (t.checked) picked.add(t.dataset.item);
       else picked.delete(t.dataset.item);
@@ -1049,7 +1029,7 @@ export function openShopDialog({ ids = [] } = {}) {
     const b = e.target.closest('[data-q]');
     if (!b || phase !== 'pick') return;
     if (b.dataset.q === 'none') accSel.clear();
-    if (b.dataset.q === 'all') view.filter(g => g.state === 'ready').forEach(g => setSel(g, true));
+    if (b.dataset.q === 'all') view.forEach(g => setSel(g, true));
     if (b.dataset.q === 'refresh-all') {
       if (!scanning) scanAll();
       return;
@@ -1110,7 +1090,7 @@ export function openShopDialog({ ids = [] } = {}) {
       return;
     }
     if (act === 'start') {
-      await launch(false);
+      openQuantities(false);
       return;
     }
     if (act === 'limits') {
@@ -1123,12 +1103,12 @@ export function openShopDialog({ ids = [] } = {}) {
       return;
     }
     if (act === 'dry') {
-      await launch(true);
+      openQuantities(true);
       return;
     }
     if (act === 'real') {
       renderPick();
-      await launch(false);
+      openQuantities(false);
       return;
     }
     if (act === 'again') {

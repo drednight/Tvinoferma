@@ -90,10 +90,15 @@ export function createPromoDiscovery({
     }
     return structuredClone(cache);
   };
-  async function scan(force) {
+  async function scan(force, maxAgeMs) {
     if (disposed) return empty();
     const started = now();
-    if (!force && cache.lastCompleteAt <= started && cache.lastCompleteAt && day(cache.lastCompleteAt) === day(started))
+    if (
+      !force &&
+      cache.lastCompleteAt <= started &&
+      cache.lastCompleteAt &&
+      (maxAgeMs ? started - cache.lastCompleteAt < maxAgeMs : day(cache.lastCompleteAt) === day(started))
+    )
       return snapshot();
     if (!force && started - cache.lastAttemptAt >= 0 && started - cache.lastAttemptAt < 600000 && cache.lastAttemptAt)
       return snapshot();
@@ -145,7 +150,7 @@ export function createPromoDiscovery({
             !force &&
             cache.articles[id] &&
             cache.articles[id] <= started &&
-            day(cache.articles[id]) === day(started)
+            (maxAgeMs ? started - cache.articles[id] < maxAgeMs : day(cache.articles[id]) === day(started))
           ) {
             cache.checked++;
             continue;
@@ -226,9 +231,9 @@ export function createPromoDiscovery({
       cache.hiddenCodes = cache.hiddenCodes.slice(-5000);
       publish();
     },
-    check({ force = false } = {}) {
+    check({ force = false, maxAgeMs = null } = {}) {
       if (flight) return flight;
-      flight = scan(force).finally(() => {
+      flight = scan(force, Number.isFinite(maxAgeMs) && maxAgeMs >= 600000 ? maxAgeMs : null).finally(() => {
         flight = null;
       });
       return flight;

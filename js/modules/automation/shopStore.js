@@ -101,6 +101,7 @@ export function saveScan(charIds, scan, now = new Date()) {
         kind: item.kind,
         price: item.price,
         max: item.max,
+        observedMax: Math.max(s.catalog[def.key]?.observedMax || 0, item.available || 0),
         desc: item.desc || s.catalog[def.key]?.desc || '',
         image: item.image || s.catalog[def.key]?.image || '',
         at: scan.at
@@ -138,7 +139,8 @@ export function getAccount(siteKey) {
           desc: cat.desc || '',
           image: cat.image || '',
           label: '',
-          ...mine
+          ...mine,
+          observedMax: cat.observedMax ?? null
         }
       ];
     })

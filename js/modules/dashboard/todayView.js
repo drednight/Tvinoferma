@@ -1,3 +1,4 @@
+import { renderConnectedToday } from './connectedToday.js';
 // js/modules/dashboard/todayView.js
 // Экран «Сегодня» (Issue #39): самостоятельная стартовая страница приложения.
 //
@@ -297,14 +298,19 @@ export function renderToday(root, deps = {}) {
   // пользователь видит. Если взять дату в момент клика, приложение, пережившее полночь,
   // записало бы отметку в следующий день, которого на экране ещё нет.
   const today = todayStr();
+  setGuildRefresh(render);
+  if (renderConnectedToday(root, deps, render)) return;
   const summary =
     todayHtml(deps) || '<div class="empty-state">Добавьте первого персонажа, чтобы здесь появилась сводка.</div>';
-  root.innerHTML = `<div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div><div id="guild-today" hidden></div>${summary}`;
+  root.innerHTML = `<div class="today-layout-actions"><button type="button" class="btn ghost" data-today-reference-open>Новый вид «Сегодня»</button></div><div class="today-cols">${plannerHtml(state)}${todaySideHtml(state)}</div><div id="guild-today" hidden></div>${summary}`;
+  root.querySelector('[data-today-reference-open]').onclick = () => {
+    root.dataset.referenceToday = 'true';
+    render();
+  };
   bindToday(root, deps);
   bindPlanner(root, { ...deps, render });
   // Блок клана под колонками календаря: перерисовываем вместе со страницей, иначе его не будет после правок в календаре.
   // Отмеченное клановое событие само ложится в календарь, поэтому панели нужна вся перерисовка «Сегодня», а не только её кусок.
-  setGuildRefresh(render);
   renderGuildToday();
   root.querySelector('[data-today-side]')?.addEventListener('click', e => {
     // Записи-марафоны открываются прямо из панели

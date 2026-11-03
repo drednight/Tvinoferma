@@ -353,3 +353,38 @@ it('retains restoration from the previous yearless label format', () => {
   expect(service.snapshot().hiddenCodes).toEqual([]);
   service.dispose();
 });
+
+it('configured promo interval refreshes the same day, including article cache, without scanning before it is due', async () => {
+  let time = Date.parse('2026-11-03T10:00:00Z');
+  const read = vi.fn(async args => ({ status: 200, html: args.article ? article() : index }));
+  const service = createPromoDiscovery({ read, storage: storage(), now: () => time });
+  await service.check({ maxAgeMs: 60 * 60000 });
+  const first = read.mock.calls.length;
+  time += 59 * 60000;
+  await service.check({ maxAgeMs: 60 * 60000 });
+  expect(read).toHaveBeenCalledTimes(first);
+  time += 2 * 60000;
+  await service.check({ maxAgeMs: 60 * 60000 });
+  expect(read.mock.calls.length).toBeGreaterThan(first);
+  expect(read.mock.calls.filter(([args]) => args.article === '123')).toHaveLength(2);
+  service.dispose();
+});
+it('force/startup bypasses successful same-day cache, while partial failures retain bounded retry backoff', async () => {
+  let time = Date.parse('2026-11-03T10:00:00Z');
+  const read = vi.fn(async args => ({ status: 200, html: args.article ? article() : index }));
+  const service = createPromoDiscovery({ read, storage: storage(), now: () => time });
+  await service.check();
+  const before = read.mock.calls.length;
+  time += 1000;
+  await service.check({ force: true });
+  expect(read.mock.calls.length).toBeGreaterThan(before);
+  time += 61 * 60000;
+  read.mockImplementation(async () => ({ status: 500 }));
+  await service.check({ maxAgeMs: 60 * 60000 });
+  const failed = read.mock.calls.length;
+  time += 30000;
+  await service.check({ maxAgeMs: 60 * 60000 });
+  expect(read).toHaveBeenCalledTimes(failed);
+  expect(service.snapshot().status).toBe('partial');
+  service.dispose();
+});

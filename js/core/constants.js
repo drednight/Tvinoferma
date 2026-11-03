@@ -217,6 +217,7 @@ export const DEFAULT_SETTINGS = {
     balanceHours: 24,
     loginHours: 24,
     marathonHours: 24,
+    promoMinutes: 60, // поиск публичных промокодов: 0 — только при запуске, иначе не чаще 10 минут
     serverStatusMinutes: 10 // как часто перечитывать «Статус серверов» (минуты; 0 — только при запуске). Сайт обновляет его раз в 10 минут
   },
   // mode: startup | daily | weekly | never (см. desktop/updateSchedule.js).

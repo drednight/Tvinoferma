@@ -1218,3 +1218,13 @@ it('cancelling selective confirmation restores the comparison and resets acknowl
   expect(f.runtime.updateCharacters).not.toHaveBeenCalled();
   expect(f.runtime.accept).not.toHaveBeenCalled();
 });
+
+it('private differences name their associated character and human field, without implying consent or revealing values', async () => {
+  const t = token();
+  t.privateChanges = [{ label: 'Мой персонаж', field: 'password', clears: false }];
+  setup({ runtime: { review: vi.fn(async () => t) } });
+  await compare();
+  expect(el('review').textContent).toContain('Мой персонаж — Пароль');
+  expect(el('review').textContent).toContain('перенос требует отдельного выбора и подтверждения');
+  expect(el('review').textContent).not.toContain('Приватное поле password');
+});

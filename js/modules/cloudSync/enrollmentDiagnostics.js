@@ -5,6 +5,7 @@ export const ENROLLMENT_STAGES = Object.freeze({
   waiting: 'oauth_waiting',
   token: 'oauth_token',
   identity: 'oauth_identity',
+  identity_binding_mismatch: 'oauth_identity_binding_mismatch',
   confirming: 'oauth_confirmation',
   installing: 'oauth_install',
   verifying_installation: 'oauth_verify_install'

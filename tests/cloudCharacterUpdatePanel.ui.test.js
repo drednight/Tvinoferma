@@ -72,3 +72,22 @@ it('cannot bypass consent after a parent operation re-enables controls', async (
   button.click();
   expect(apply).not.toHaveBeenCalled();
 });
+
+it('verified identical records are acknowledged automatically, not presented as a manual mapping', () => {
+  const v = view();
+  v.records[0].identical = true;
+  renderCharacterUpdatePanel(host, v, vi.fn());
+  expect(host.textContent).toContain('Совпадают автоматически: 1');
+  expect(host.querySelector('select')).toBeNull();
+});
+it('stats/pass/sky diffs use labels rather than JSON or internal stat keys', () => {
+  const v = view();
+  v.records[0].matchedLocalId = 'local';
+  v.locals[0].fields = { stats: { endurance: 1 }, dungeonPasses: { weapon: 1 }, sky: { name: null, level: null } };
+  v.records[0].fields = { stats: { endurance: 2 }, dungeonPasses: { weapon: 3 }, sky: { name: 'Небо', level: 1 } };
+  renderCharacterUpdatePanel(host, v, vi.fn());
+  expect(host.textContent).toContain('Выносливость: 2');
+  expect(host.textContent).toContain('Оружие: 3');
+  expect(host.textContent).not.toContain('"endurance"');
+  expect(host.textContent).not.toContain('{"');
+});

@@ -192,3 +192,74 @@ it('supports all offered fields and verifies that mappings survive restart witho
     JSON.stringify(buildPublicSnapshot(planSyncIdentities({ snapshot: candidate, cryptoSource }).snapshot))
   ).not.toContain('cloudCharacterMatches');
 });
+
+it('matches a unique same-nick/class character through validated associated contacts and password, without leaking values', () => {
+  const f = fixture(),
+    local = f.localState.characters[0],
+    record = f.cloud.sections.characters.records[0];
+  const privateSnapshot = {
+    schemaVersion: 1,
+    records: [{ characterId: record.id, fields: { email: local.contacts.email, password: local.contacts.password } }]
+  };
+  const view = characterUpdateReview(f.localState, f.cloud, account, privateSnapshot);
+  expect(view.records[0]).toMatchObject({ matchedLocalId: local.id, matchReason: 'contacts', privateEqual: true });
+  expect(JSON.stringify(view)).not.toContain(local.contacts.email);
+  expect(JSON.stringify(view)).not.toContain(local.contacts.password);
+  privateSnapshot.records[0].fields.password = 'DIFFERENT';
+  expect(characterUpdateReview(f.localState, f.cloud, account, privateSnapshot).records[0].matchedLocalId).toBe('');
+});
+it('does not guess from an empty contact or a shared password alone', () => {
+  const f = fixture();
+  for (const fields of [{ email: '', password: '' }, { password: f.localState.characters[0].contacts.password }])
+    expect(
+      characterUpdateReview(f.localState, f.cloud, account, {
+        schemaVersion: 1,
+        records: [{ characterId: f.id, fields }]
+      }).records[0].matchedLocalId
+    ).toBe('');
+});
+it('ambiguous contact duplicates remain explicit rather than being auto-merged', () => {
+  const f = fixture();
+  f.localState.characters[1] = { ...structuredClone(f.localState.characters[0]), id: 'second' };
+  const p = {
+    schemaVersion: 1,
+    records: [{ characterId: f.id, fields: { email: f.localState.characters[0].contacts.email } }]
+  };
+  expect(characterUpdateReview(f.localState, f.cloud, account, p).records[0].matchedLocalId).toBe('');
+});
+it('object insertion order is not a change and verified identical records need no manual comparison', () => {
+  const f = fixture(),
+    l = f.localState.characters[0],
+    r = f.cloud.sections.characters.records[0];
+  l.syncId = r.id;
+  for (const key of Object.keys(r.fields)) l[key] = structuredClone(r.fields[key]);
+  l.stats = Object.fromEntries(Object.entries(l.stats).reverse());
+  expect(characterUpdateReview(f.localState, f.cloud, account).records[0].identical).toBe(true);
+});
+it('a history-only difference is not hidden as identical and reports the category without overwriting it', () => {
+  const f = fixture(),
+    l = f.localState.characters[0],
+    r = f.cloud.sections.characters.records[0];
+  l.syncId = r.id;
+  for (const key of Object.keys(r.fields)) l[key] = structuredClone(r.fields[key]);
+  expect(characterUpdateReview(f.localState, f.cloud, account).records[0].identical).toBe(true);
+  l.coinHistory = [{ date: '2026-11-02', delta: 12, balanceAfter: 12 }];
+  const review = characterUpdateReview(f.localState, f.cloud, account).records[0];
+  expect(review.identical).toBe(false);
+  expect(review.otherPublicDifferences).toContain('История монет');
+});
+
+it('a contact candidate never steals a local character already owned by another strong record in the same file', () => {
+  const f = fixture(),
+    l = f.localState.characters[0];
+  l.syncId = cryptoSource.randomUUID();
+  const other = structuredClone(f.cloud.sections.characters.records[0]);
+  other.id = l.syncId;
+  other.fields.nick = 'Другая облачная запись';
+  f.cloud.sections.characters.records.push(other);
+  f.cloud.sections.characters.order.active.push(other.id);
+  const p = { schemaVersion: 1, records: [{ characterId: f.id, fields: { email: l.contacts.email } }] };
+  expect(characterUpdateReview(f.localState, f.cloud, account, p).records.find(r => r.id === f.id).matchedLocalId).toBe(
+    ''
+  );
+});

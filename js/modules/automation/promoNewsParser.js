@@ -53,6 +53,20 @@ function documentOf(html) {
     throw Error('news_challenge');
   return doc;
 }
+/** Readable, inert excerpt for expanded Today cards; never copy remote HTML. */
+export function newsArticleText(html) {
+  const doc = documentOf(html),
+    body = doc.querySelector('.js-mediator-article, .news-content, .news-body, article');
+  if (!body) throw Error('news_markup');
+  const paragraphs = [...body.querySelectorAll('p')]
+    .map(p => p.textContent.trim().replace(/\s+/g, ' '))
+    .filter(Boolean);
+  const text = (
+    paragraphs.length ? paragraphs.slice(0, 3).join('\n\n') : body.textContent.trim().replace(/\s+/g, ' ')
+  ).slice(0, 1800);
+  if (!text) throw Error('news_markup');
+  return text;
+}
 export function newsArticles(html) {
   const doc = documentOf(html);
   const ids = [

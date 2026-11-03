@@ -556,6 +556,7 @@ describe('same-account reauthorization after explicit local logout', () => {
   it.each(['google', 'yandex'])('%s rejects a different account without native install/resume', async provider => {
     const f = setup(provider, { signedOut: { ...signedOut(provider), accountKey: 'OTHER_ACCOUNT' } });
     expect(await enrollNativeCloudAccount(f.options)).toEqual({ status: 'account_changed' });
+    expect(f.events).toContain('identity_binding_mismatch');
     expect(f.invoke.mock.calls.some(([c]) => ['cloud_credential_resume', 'cloud_credential_install'].includes(c))).toBe(
       false
     );

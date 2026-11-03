@@ -84,9 +84,10 @@ describe('разбор страницы магазина (на настояще�
     expect(cleanDesc('Описание:Первая строка\n  Вторая  ')).toBe('Первая строка\nВторая');
     const def = itemByKey('light');
     expect(normalizeScanItem({ found: true, price: 40, image: 'javascript:alert(1)' }, def).image).toBe('');
-    expect(normalizeScanItem({ found: true, price: 40, image: 'https://cdn.example/x.png' }, def).image).toBe(
-      'https://cdn.example/x.png'
-    );
+    expect(
+      normalizeScanItem({ found: true, price: 40, image: '//cdn.pwonline.ru/img/promo_items/item_47278.png' }, def)
+        .image
+    ).toBe('https://cdn.pwonline.ru/img/promo_items/item_47278.png');
   });
 
   it('плохой ответ не годится: нет баланса, не ok', () => {

@@ -474,7 +474,14 @@ export function createStandaloneFileExchange(ports) {
               settingsSelections: cloud.sections.preferences.selections
             });
             const comparison = comparePublicSnapshots({ local, cloud });
-            const privateChanges = privateDifferences(openedFile.contents.privateSnapshot, cloud, localState, fields);
+            const updates = characterUpdateReview(original, cloud, opened.account, openedFile.contents.privateSnapshot);
+            const privateChanges = privateDifferences(
+              openedFile.contents.privateSnapshot,
+              cloud,
+              localState,
+              fields,
+              updates.records
+            );
             const base = config()[provider].baseHash;
             const localHash = await snapshotFileHash(local, cryptoSource);
             const cloudHash = await snapshotFileHash(cloud, cryptoSource);
@@ -499,7 +506,7 @@ export function createStandaloneFileExchange(ports) {
               sha256,
               createdAt: openedFile.contents.createdAt,
               comparison,
-              characterUpdates: characterUpdateReview(original, cloud, opened.account),
+              characterUpdates: updates,
               duplicatePartyIds: projection.duplicatePartyIds,
               orderingNormalized: prepared?.orderingNormalized || [],
               replacementBlocked,

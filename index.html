@@ -713,9 +713,10 @@
             <div class="hours-field"><input class="input setting-num" type="number" min="1" max="720" step="1" data-setting="freshness.marathonHours" /><span class="muted hours-hint" data-hours-for="freshness.marathonHours"></span></div>
           </div>
           <div class="setting-row">
-            <div><strong>🖥 Статус серверов</strong><p class="muted">Как часто перечитывать страницу «Статус серверов» (плашка в шапке). Читается и при запуске приложения, до проверки входа персонажей. Сайт обновляет её раз в 10 минут; 0 — только при запуске.</p></div>
+            <div><strong>🖥 Статус серверов</strong><p class="muted">Как часто одновременно перечитывать статус серверов и новости «Сегодня». Читается и при запуске приложения, до проверки входа персонажей. Сайт обновляет её раз в 10 минут; 0 — только при запуске.</p></div>
             <div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="1" data-setting="freshness.serverStatusMinutes" /><span class="muted hours-hint">мин</span></div>
           </div>
+          <div class="setting-row"><div><strong>Промокоды на «Сегодня»</strong><p class="muted">Поиск действующих кодов и наград на сайте при запуске и по расписанию. Минимум 10 минут; 0 — только при запуске. Статус ввода берётся из журнала Скриптов.</p></div><div class="hours-field"><input class="input setting-num" type="number" min="0" max="1440" step="10" data-setting="freshness.promoMinutes" /><span class="muted hours-hint">мин</span></div></div>
         </details>
             </div>
             <div class="settings-col">
