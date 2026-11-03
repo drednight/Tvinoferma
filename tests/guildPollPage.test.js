@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}), isTauri: () => true }));
+vi.mock('../js/core/storage.js', () => ({
+  persist: vi.fn(async () => {}),
+  isTauri: () => true,
+  assertStateWriteAvailable: vi.fn()
+}));
 vi.mock('../js/core/ui.js', () => ({ toast: vi.fn() }));
 vi.mock('../js/modules/dashboard/todayView.js', () => ({ renderToday: vi.fn() }));
 vi.mock('../js/modules/planner/render.js', () => ({ renderPlanner: vi.fn() }));

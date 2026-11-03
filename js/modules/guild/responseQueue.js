@@ -42,10 +42,17 @@ export function createResponseQueue({
   async function enqueue(eventId, response) {
     if (!enabled() || !/^\d{1,12}$/.test(String(eventId)) || !['yes', 'no'].includes(response)) return false;
     lastAction = Date.now();
-    await save([
-      ...getEntries().filter(row => row.eventId !== String(eventId)),
-      { eventId: String(eventId), response, failed: false }
-    ]);
+    const choice = { eventId: String(eventId), response, failed: false };
+    try {
+      await save([...getEntries().filter(row => row.eventId !== String(eventId)), choice]);
+    } catch (error) {
+      // Do not let an older debounce timer send a choice whose local save failed.
+      // No second disk write here: its outcome may be uncertain.
+      choice.failed = true;
+      changed();
+      schedule();
+      throw error;
+    }
     schedule();
     return true;
   }
@@ -78,6 +85,7 @@ export function createResponseQueue({
       let report;
       for (let attempt = 0; attempt < 2; attempt++) {
         await pause(3000);
+        if (!enabled()) return;
         try {
           report = await read();
         } catch {
@@ -90,6 +98,7 @@ export function createResponseQueue({
         )
           break;
       }
+      if (!enabled()) return;
       const confirmed = row =>
         report?.events?.some(event => event.id === row.eventId && event.response === row.response);
       const missing = snapshot.filter(row => getEntries().includes(row) && !confirmed(row)).length;

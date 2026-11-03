@@ -10,7 +10,7 @@
 
 import { toast } from '../../core/ui.js';
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
-import { isTauri } from '../../core/storage.js';
+import { isTauri, assertStateWriteAvailable } from '../../core/storage.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
 import { createResponseQueue } from './responseQueue.js';
 import {
@@ -34,6 +34,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Перерисовка всего «Сегодня» — её кладёт todayView.js: нужна, когда меняется календарь. */
 let refreshToday = null;
+let backgroundStarted = false;
+function writesAvailable() {
+  try {
+    assertStateWriteAvailable();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * todayView.js сообщает, как перерисовать «Сегодня» целиком.
@@ -50,7 +59,7 @@ function renderTodayNow() {
 
 /** Показывает или прячет панель клана на «Сегодня» по флагу. */
 export function applyGuildVisibility() {
-  responses.resume();
+  if (backgroundStarted) responses.resume();
   renderGuildToday();
 }
 
@@ -204,6 +213,7 @@ export async function syncGuild({ silent = false } = {}) {
     if (!silent) toast(syncErrorText(error), 'warning');
     return false;
   }
+  if (!writesAvailable()) return false;
   await writeGuildData(report);
   await responses.reconcile(report);
   if (!silent) toast('Сводка обновлена', 'success');
@@ -212,7 +222,7 @@ export async function syncGuild({ silent = false } = {}) {
 
 /** Обновление по расписанию: молча, только при включённой панели клана. */
 export async function autoSync() {
-  if (!isTauri() || !guildEnabled()) return;
+  if (!isTauri() || !guildEnabled() || !writesAvailable()) return;
   if (!(await syncGuild({ silent: true }))) return;
   await syncClanEntries(readGuildData());
   renderTodayNow();
@@ -251,6 +261,7 @@ function scheduleMidnightSync() {
 
 /** Обновление по расписанию: один раз через минуту после старта и потом каждый день в 00:00 МСК. */
 export function startGuildDailySync() {
+  backgroundStarted = true;
   responses.resume();
   setTimeout(autoSync, START_DELAY_MS);
   scheduleMidnightSync();
@@ -259,11 +270,12 @@ export function startGuildDailySync() {
 const responses = createResponseQueue({
   getEntries: readPendingResponses,
   saveEntries: writePendingResponses,
-  enabled: () => isTauri() && guildEnabled(),
+  enabled: () => isTauri() && guildEnabled() && writesAvailable(),
   changed: renderTodayNow,
   send: respondToEvent,
   read: async () => {
     const report = await syncGuildFromSite();
+    if (!writesAvailable()) throw new Error('protected');
     await writeGuildData(report);
     await syncClanEntries(readGuildData());
     renderTodayNow();

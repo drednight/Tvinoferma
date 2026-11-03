@@ -193,6 +193,29 @@ describe('отложенный перенос ответов в кланер', (
     expect(entries).toHaveLength(1);
   });
 
+  it('не забывает уже подтверждённые ответы, если повторное чтение сайта не удалось', async () => {
+    read.mockResolvedValueOnce({ events: [{ id: '1', response: 'yes' }] }).mockRejectedValueOnce('timeout');
+    await queue.enqueue('1', 'yes');
+    await queue.enqueue('2', 'no');
+    await vi.advanceTimersByTimeAsync(13000);
+    expect(entries).toEqual([{ eventId: '2', response: 'no', failed: true }]);
+  });
+
+  it('не отправляет несохранённый выбор по старому таймеру и не повторяет неясную запись на диск', async () => {
+    const store = vi.fn(async rows => {
+      entries = rows;
+      if (rows.some(row => row.response === 'no')) throw new Error('disk');
+    });
+    queue = createResponseQueue({ getEntries: () => entries, saveEntries: store, send, read, begin: async () => task });
+    await queue.enqueue('1', 'yes');
+    await vi.advanceTimersByTimeAsync(6000);
+    await expect(queue.enqueue('1', 'no')).rejects.toThrow('disk');
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(send).not.toHaveBeenCalled();
+    expect(store).toHaveBeenCalledTimes(2);
+    expect(entries[0]).toEqual({ eventId: '1', response: 'no', failed: true });
+  });
+
   it('не принимает повреждённые ID и ответы', async () => {
     expect(await queue.enqueue('1;alert(1)', 'yes')).toBe(false);
     expect(await queue.enqueue('1', 'maybe')).toBe(false);
