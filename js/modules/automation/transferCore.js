@@ -1,3 +1,4 @@
+import { siteItemImage } from './siteItemIcon.js';
 // js/modules/automation/transferCore.js
 // Передача предметов с сайта в игру (Issue #26): чистая логика без интерфейса — список серверов, выбор получателя,
 // статусы, сверка ответа сайта («История передачи») с тем, что отправили.
@@ -92,7 +93,8 @@ export function normalizeRoster(data, now = new Date()) {
       name: squash(i.name).slice(0, 120),
       qty: Number(i.qty) > 0 ? Number(i.qty) : 1,
       until: squash(i.until).slice(0, 30),
-      source: squash(i.source).slice(0, 120)
+      source: squash(i.source).slice(0, 120),
+      ...(siteItemImage(i.image) ? { image: siteItemImage(i.image) } : {})
     }));
   return {
     at: now.toISOString(),

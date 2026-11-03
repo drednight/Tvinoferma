@@ -278,3 +278,52 @@
   background: linear-gradient(90deg, var(--accent), var(--accent-2));
   transition: width 0.2s var(--ease);
 }
+
+/* Keep the horizontal scrollbar within reach even for a long account list. */
+.shop-scroll {
+  min-height: 0;
+  max-height: min(39vh, 360px);
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.shop-table {
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}
+.shop-table th,
+.shop-table td {
+  width: 145px;
+  max-width: 145px;
+  overflow-wrap: anywhere;
+}
+.shop-table th:first-child,
+.shop-table td:first-child {
+  width: 36px;
+}
+.shop-table th:nth-child(2),
+.shop-table td:nth-child(2) {
+  width: 180px;
+}
+.shop-th-name {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  height: 32px;
+  line-height: 32px;
+  max-width: 145px;
+}
+.site-item-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+.site-item-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

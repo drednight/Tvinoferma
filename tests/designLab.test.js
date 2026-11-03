@@ -29,12 +29,19 @@ describe('полный каталог двух независимых лабор
     ).toEqual(['Обзор', 'План дня', 'Пульт']);
     expect(KINDS).toHaveLength(10);
   });
-  it('has a new task-oriented IA with six page-specific alternatives per page', () => {
+  it('has six original and five follow-up concepts per page', () => {
     expect(NEXT_PAGES).toHaveLength(9);
-    expect(NEXT_PAGES.flatMap(p => nextVariantsFor(p.id))).toHaveLength(54);
+    expect(NEXT_PAGES.flatMap(p => nextVariantsFor(p.id))).toHaveLength(99);
     expect(new Set(NEXT_PAGES.map(p => p.source))).toEqual(new Set([...PAGES.map(p => p.id), 'activity']));
     for (const page of NEXT_PAGES) {
-      expect(new Set(nextVariantsFor(page.id).map(v => v.kind)).size).toBe(6);
+      expect(
+        new Set(
+          nextVariantsFor(page.id)
+            .slice(0, 6)
+            .map(v => v.kind)
+        ).size
+      ).toBe(6);
+      expect(nextVariantsFor(page.id).filter(v => v.preferred)).toHaveLength(5);
       expect(page.why.length).toBeGreaterThan(25);
     }
   });

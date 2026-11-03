@@ -83,8 +83,25 @@ beforeEach(async () => {
   ({ setRoster, loadPrefs, loadTransferLog } = await import('../js/modules/automation/transferStore.js'));
 });
 
+const openConfirmation = async () => {
+  if (!$('[data-preview-send]')) {
+    const previous = mocks.invoke.getMockImplementation();
+    const { loadRosters } = await import('../js/modules/automation/transferStore.js');
+    mocks.invoke.mockImplementation((cmd, args) => {
+      if (cmd !== 'read_transfer_page') return previous(cmd, args);
+      const roster = loadRosters()[args.charId];
+      return Promise.resolve({
+        status: 'ok',
+        roster: roster ? { ...roster, items: roster.pending.items } : rosterOf(args.charId)
+      });
+    });
+    $('#tr-plan-btn').click();
+  }
+  await vi.waitFor(() => expect($('[data-preview-send]').disabled).toBe(false));
+  $('[data-preview-send]').click();
+};
 const confirmTransfer = async () => {
-  $('[data-act="start"]').click();
+  await openConfirmation();
   await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
   $('#tr-ack').click();
   $('[data-confirm-transfer]').click();
@@ -154,7 +171,9 @@ describe('форма', () => {
     pickRow('b', '5');
     await confirmTransfer();
     await wait(400);
-    const calls = Object.fromEntries(mocks.invoke.mock.calls.map(c => [c[1].charId, c[1]]));
+    const calls = Object.fromEntries(
+      mocks.invoke.mock.calls.filter(c => c[0] === 'transfer_items').map(c => [c[1].charId, c[1]])
+    );
     expect(calls.a).toMatchObject({ shardId: '3', recipient: K(3, 2), charName: 'Второй' });
     expect(calls.b).toMatchObject({ shardId: '5', recipient: K(5, 7), charName: 'Одинокий' });
   });
@@ -263,13 +282,13 @@ describe('форма', () => {
     pickRow('a', '5');
     expect($('#tr-ack')).toBeNull();
     expect($('#tr-force')).toBeNull();
-    $('[data-act="start"]').click();
+    await openConfirmation();
     await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
     expect($('#tr-ack').checked).toBe(false);
     expect($('[data-confirm-transfer]').disabled).toBe(true);
     expect($('#tr-forget').textContent).toContain('(1)');
     $('[data-confirm-cancel]').click();
-    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
     expect($('.tf-overlay').inert).toBe(false);
     await wait(0);
     await confirmTransfer();
@@ -347,7 +366,7 @@ describe('форма', () => {
     await wait(500);
     expect(mocks.invoke.mock.calls.map(c => c[0])).toEqual(['read_transfer_page', 'read_server_status']);
     expect(rowOf('a').querySelector('.tr-server').textContent).toContain('Фенрир');
-    expect($('[data-act="start"]').disabled).toBe(true);
+    expect($('[data-act="start"]')).toBeNull();
   });
 
   it('страница «Статус серверов» не прочиталась: ни уведомлений, ни записей в журнале; предупреждение только на плашке; серверы с персонажами всё равно есть', async () => {
@@ -373,7 +392,7 @@ describe('форма', () => {
     pick('[data-pick="a"]', K(3, 2));
     expect($('#tr-summary').textContent).toContain('Будет передано с аккаунтов: 1 из 1');
     expect($('[data-act="dry"]').disabled).toBe(false);
-    expect($('[data-act="start"]').disabled).toBe(false);
+    expect($('#tr-plan-btn').disabled).toBe(false);
     expect($('#tr-ack')).toBeNull();
   });
 
@@ -407,7 +426,7 @@ describe('форма', () => {
     ['a', 'b'].forEach(id => pickRow(id, '5'));
     expect($('.tr-preview-dialog')).toBeNull();
     expect($('#tr-summary').textContent).not.toContain('Награда');
-    expect($('#tr-plan-btn').textContent).toContain('Что будет передано');
+    expect($('#tr-plan-btn').textContent).toContain('Далее');
     mocks.invoke.mockImplementation(async (command, args) => {
       if (command === 'read_transfer_page') {
         const { loadRosters } = await import('../js/modules/automation/transferStore.js');
@@ -500,8 +519,8 @@ describe('запуск', () => {
     await confirmTransfer();
     await wait(400);
     expect(mocks.backup).toHaveBeenCalledTimes(1);
-    expect(mocks.invoke).toHaveBeenCalledTimes(2);
-    expect(mocks.invoke.mock.calls.every(c => c[0] === 'transfer_items' && c[1].dryRun === false)).toBe(true);
+    expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(2);
+    expect(mocks.invoke.mock.calls.filter(c => c[0] === 'transfer_items').every(c => c[1].dryRun === false)).toBe(true);
     expect($('.tf-dialog-sub').textContent).toContain('Передано: 2 из 2');
     expect(loadTransferLog()).toHaveLength(2);
     renderTransferLog();
@@ -533,7 +552,7 @@ describe('запуск', () => {
     stop.click();
     release();
     await wait(300);
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(1);
     expect(loadTransferLog()).toHaveLength(1);
     expect($('.tf-dialog-sub').textContent).toContain('Остановлено');
   });
@@ -545,12 +564,12 @@ describe('запуск', () => {
     open();
     await confirmTransfer();
     await wait(400);
-    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(2);
     mocks.invoke.mockClear();
     mocks.invoke.mockImplementation(async (_, a) => sent(a));
     $('[data-act="retry"]').click();
     await wait(400);
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'transfer_items')).toHaveLength(1);
     expect(mocks.invoke.mock.calls[0][1].charId).toBe('a');
   });
 
@@ -606,7 +625,7 @@ describe('запуск', () => {
     open(['a']);
     await confirmTransfer();
     await wait(100);
-    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(false);
   });
 });
 
@@ -705,7 +724,7 @@ it('groups five identical packets into one row, rejects fractional counts and se
   expect($('.tr-preview-dialog').textContent).toContain('250 шт.');
   count.value = '1.5';
   count.dispatchEvent(new Event('change', { bubbles: true }));
-  expect($('[data-act="start"]').disabled).toBe(true);
+  expect($('[data-act="start"]')).toBeNull();
   expect($('#tr-summary').textContent).toContain('Исправьте количество');
   count.value = '2';
   count.dispatchEvent(new Event('change', { bubbles: true }));
@@ -714,7 +733,7 @@ it('groups five identical packets into one row, rejects fractional counts and se
   other.dispatchEvent(new Event('change', { bubbles: true }));
   expect($('.tr-preview-dialog [data-selected-quantity]').textContent).toBe('Выбрано: 2 набора (100 шт.)');
   $('.tr-preview-dialog [data-preview-close]').click();
-  expect($('[data-act="start"]').disabled).toBe(false);
+  expect($('#tr-plan-btn').disabled).toBe(false);
   await confirmTransfer();
   await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'transfer_items')).toBe(true));
   const args = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'transfer_items')[1];
@@ -827,8 +846,8 @@ it('an explicit override in the confirmation can run an otherwise restricted sel
   openTransferDialog({ ids: ['a'] });
   pickRow('a', '3');
   pick('[data-pick="a"]', K(3, 1));
-  expect($('[data-act=start]').disabled).toBe(false);
-  $('[data-act=start]').click();
+  expect($('#tr-plan-btn').disabled).toBe(false);
+  await openConfirmation();
   await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
   $('#tr-ack').click();
   expect($('[data-confirm-transfer]').disabled).toBe(true);
@@ -846,7 +865,7 @@ it('closing the parent while confirmation is open cancels the launch without a b
   const dlg = openTransferDialog({ ids: ['a'] });
   pickRow('a', '3');
   pick('[data-pick="a"]', K(3, 1));
-  $('[data-act=start]').click();
+  await openConfirmation();
   await vi.waitFor(() => expect($('.tr-confirm-dialog')).not.toBeNull());
   dlg.close();
   await wait();

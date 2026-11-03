@@ -1,3 +1,4 @@
+import { siteItemIconHtml } from './siteItemIcon.js';
 import { confirmTransfer } from './transferConfirm.js';
 import { groupTransferItems, chooseTransferPackets, transferExpiry } from './transferItemGroups.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
@@ -273,9 +274,9 @@ export function openTransferDialog({ ids = [] } = {}) {
       <button class="btn ghost" data-act="log" title="Журнал передач">📜 Журнал</button>
       <span class="sd-foot-spacer"></span>
       <button class="btn ghost" data-act="close">✕ Закрыть</button>
-      <button class="btn secondary" data-q="plan" id="tr-plan-btn">📋 Что будет передано</button>
+      <button class="btn primary" data-q="plan" id="tr-plan-btn">Далее →</button>
       <button class="btn secondary" data-act="dry" title="Пройти все шаги, но не нажимать «Передать»">👁 Пробный запуск</button>
-      <button class="btn primary" data-act="start" disabled>📦 Передать</button>`;
+`;
     updateAll();
 
     layoutScriptWorkspace(dlg, {
@@ -347,13 +348,9 @@ export function openTransferDialog({ ids = [] } = {}) {
       checkBtn.textContent =
         selected.size > 1 ? `🔍 Проверить персонажей (${selected.size})` : '🔍 Проверить персонажа';
     const planBtn = dlg.foot.querySelector('#tr-plan-btn');
-    if (planBtn) planBtn.textContent = '📋 Что будет передано';
+    if (planBtn) planBtn.disabled = !selected.size || running || confirming;
     const canRun = plans.some(p => p.run);
-    const potential = currentPlans({ ignoreLimits: true });
-    const selectionKnown = potential.filter(p => p.run).every(p => Array.isArray(p.itemSelection));
-    const start = dlg.foot.querySelector('[data-act="start"]');
     const dry = dlg.foot.querySelector('[data-act="dry"]');
-    if (start) start.disabled = !(potential.some(p => p.run) && selectionKnown && !invalidItemChoices.size);
     if (dry) dry.disabled = !canRun;
   }
 
@@ -362,6 +359,7 @@ export function openTransferDialog({ ids = [] } = {}) {
       if (running || !selected.size) return;
       const chars = selectedChars();
       let previewClosed = false;
+      let previewReady = false;
       const preview = openOverlay({
         title: '📋 Что будет передано',
         wide: true,
@@ -385,6 +383,7 @@ export function openTransferDialog({ ids = [] } = {}) {
           if (freshIds.has(JSON.parse(key)[0])) invalidItemChoices.delete(key);
         }
         updateAll();
+        previewReady = true;
         const plans = currentPlans();
         const groupsByChar = new Map();
         preview.body.innerHTML =
@@ -423,7 +422,7 @@ export function openTransferDialog({ ids = [] } = {}) {
                         new Set(group.items.map(item => item.until || '')).size > 1
                           ? `<details class="tr-packet-details"><summary>${expiry}</summary><ul>${[...batches.values()].map(batch => `<li>${batch.count * group.qty} шт. · ${escapeHtml(batch.source || 'Без категории')} · ${escapeHtml(batch.until || 'Без срока')}</li>`).join('')}</ul></details>`
                           : `<small>${expiry}</small>`;
-                      return `<tr data-transfer-group-row><td><b>${escapeHtml(group.name)}</b><small>В наборе ×${group.qty} штук</small>${details}</td><td>${setsLabel(group.items.length)}<small>${group.items.length * group.qty} шт. предмета</small></td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать наборов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все предметы этой позиции">Все</button></div><small data-selected-quantity>Выбрано: ${setsLabel(count)} (${count * group.qty} шт.)</small></td></tr>`;
+                      return `<tr data-transfer-group-row><td>${siteItemIconHtml(group.image)}<b>${escapeHtml(group.name)}</b><small>В наборе ×${group.qty} штук</small>${details}</td><td>${setsLabel(group.items.length)}<small>${group.items.length * group.qty} шт. предмета</small></td><td><div class="tr-packet-count"><input class="input" type="number" min="0" max="${group.items.length}" step="1" value="${count}" data-transfer-char="${escapeHtml(p.char.id)}" data-item-group="${index}" aria-label="Передать наборов: ${escapeHtml(group.name)}"><button type="button" class="btn ghost small" data-group-max title="Выбрать все предметы этой позиции">Все</button></div><small data-selected-quantity>Выбрано: ${setsLabel(count)} (${count * group.qty} шт.)</small></td></tr>`;
                     })
                     .join('')}</tbody></table></div></section>`;
               })
@@ -440,6 +439,12 @@ export function openTransferDialog({ ids = [] } = {}) {
           }
           preview.body.querySelector('[data-transfer-total]').textContent =
             `Выбрано: ${units} шт. (${setsLabel(packets)})`;
+          const ready = currentPlans({ ignoreLimits: true }).filter(p => p.run);
+          preview.foot.querySelector('[data-preview-send]').disabled =
+            !previewReady ||
+            !!invalidItemChoices.size ||
+            !ready.length ||
+            ready.some(p => !Array.isArray(p.itemSelection));
         };
         updateTotal();
         preview.body.onclick = event => {
@@ -490,6 +495,7 @@ export function openTransferDialog({ ids = [] } = {}) {
           const key = JSON.stringify([id, input.dataset.itemGroup]);
           if (!next) {
             invalidItemChoices.add(key);
+            updateTotal();
             updateAll();
             input.reportValidity();
             return;
@@ -506,10 +512,15 @@ export function openTransferDialog({ ids = [] } = {}) {
           preview.body.textContent = 'Не удалось прочитать сайт. Прежний выбор сохранён; повторите проверку.';
       });
       preview.foot.innerHTML =
-        '<button type="button" class="btn danger" data-preview-stop>Стоп проверки</button><button type="button" class="btn primary" data-preview-close>Закрыть</button>';
+        '<button type="button" class="btn danger" data-preview-stop>Стоп проверки</button><button type="button" class="btn ghost" data-preview-close>← К получателям</button><button type="button" class="btn primary" data-preview-send disabled>Передать предметы в игру</button>';
       preview.foot.querySelector('[data-preview-stop]').onclick = () => {
         running?.stop?.();
         preview.close();
+      };
+      preview.foot.querySelector('[data-preview-send]').onclick = () => {
+        if (!previewReady || running || invalidItemChoices.size) return;
+        preview.close();
+        void run(false);
       };
       preview.foot.querySelector('[data-preview-close]').onclick = () => preview.close();
       return;

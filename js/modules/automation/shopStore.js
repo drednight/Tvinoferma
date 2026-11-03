@@ -100,6 +100,7 @@ export function saveScan(charIds, scan, now = new Date()) {
         id: item.id,
         kind: item.kind,
         price: item.price,
+        max: item.max,
         desc: item.desc || s.catalog[def.key]?.desc || '',
         image: item.image || s.catalog[def.key]?.image || '',
         at: scan.at
