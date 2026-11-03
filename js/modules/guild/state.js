@@ -38,9 +38,10 @@ export function readGuildData() {
  * от прежней схемы обновления не должны в нём копиться.
  */
 export async function writeGuildData(data) {
-  const { enabled } = guildSettings();
+  const { enabled, pendingResponses } = guildSettings();
   state.settings.guild = {
     ...normalizeGuildData(data),
+    pendingResponses: pendingResponses || [],
     syncedAt: Date.now(),
     ...(enabled !== undefined ? { enabled } : {})
   };
@@ -60,4 +61,13 @@ export async function rememberGuildPollVote(pollId, optionIds) {
   state.settings.guild = { ...guildSettings(), poll };
   await persist();
   return true;
+}
+
+/** Durable local intentions; never advance syncedAt or write them into the verified report. */
+export function readPendingResponses() {
+  return guildSettings().pendingResponses || [];
+}
+export async function writePendingResponses(pendingResponses) {
+  state.settings.guild = { ...guildSettings(), pendingResponses };
+  await persist();
 }

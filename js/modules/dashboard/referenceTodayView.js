@@ -7,6 +7,7 @@ import { plannerEventsForDate, monthMatrix, setEntryStatusForDate } from './plan
 import { siteFeedSnapshot } from './siteFeed.js';
 import { connectedTodayState, runTodayAction, nativeToday } from './todayRuntime.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
+import { getClassIconSrcByStem } from '../../core/constants.js';
 import { partyNicks } from '../guild/core.js';
 const assets = import.meta.env?.BASE_URL
   ? import.meta.env.BASE_URL + 'assets/'
@@ -24,9 +25,15 @@ const button = (title, action, extra = '') =>
 const pass = (key, alt = '') => `<img src="${assets}icons/dungeons/pass-${key}.webp" alt="${esc(alt)}">`;
 const refreshIcon =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg>';
+const clanResponseNote = (s, id) => {
+  const pending = s.guild?.pendingResponses?.find(row => row.eventId === id);
+  return pending
+    ? `<span class="rt-vote-note" role="status">${pending.failed ? 'Не подтверждено · нажмите ответ для повтора' : 'Ожидает переноса на сайт'}</span>`
+    : '';
+};
 const member = c => {
   const icon = c.icon || c.cls || '';
-  return `<span class="rt-member">${/^[a-z0-9_-]+$/i.test(icon) ? `<img src="${assets}icons/classes/${esc(icon)}.webp" alt="${esc(c.className || c.title || '')}">` : ''}${esc(c.nick)}</span>`;
+  return `<span class="rt-member">${/^[a-z0-9_-]+$/i.test(icon) ? `<img src="${esc(getClassIconSrcByStem(icon))}" alt="${esc(c.className || c.title || '')}">` : ''}${esc(c.nick)}</span>`;
 };
 const stamp = at =>
   at
@@ -113,13 +120,13 @@ export function renderReferenceToday(input) {
          clanRows
            .map(
              e =>
-               `<article><b>${esc(e.title)}</b><small>${esc(e.when || '')} ${esc(e.comment || '')}</small><div class="rt-attendance">${[
+               `<article><b>${esc(e.title)}</b><small>${esc(e.when || '')} ${esc(e.comment || '')}</small>${clanResponseNote(s, e.id)}<div class="rt-attendance">${[
                  ['yes', 'Пойду'],
                  ['no', 'Не пойду']
                ]
                  .map(
                    ([value, label]) =>
-                     `<button class="lg-button" data-today-vote="${esc(e.id)}" data-value="${value}" aria-pressed="${(s.referenceVotes?.[e.id] || e.response) === value}">${label}</button>`
+                     `<button class="lg-button" data-today-vote="${esc(e.id)}" data-value="${value}" aria-pressed="${(s.guild?.pendingResponses?.find(row => row.eventId === e.id)?.response || (!(nativeToday() || input.production) && s.referenceVotes?.[e.id]) || e.response) === value}">${label}</button>`
                  )
                  .join('')}</div></article>`
            )
@@ -218,6 +225,7 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
       return;
     }
     if (el.hasAttribute('data-today-copy-party')) {
+      if (nativeToday() && s.scenarios.clan) (await import('../guild/page.js')).touchGuildResponses();
       const party = s.parties.find(p => p.id === s.day.favoriteParty),
         members = s.characters.filter(c => c.party === party?.id || c.partyIds?.includes(party?.id)),
         parties = s.guild?.parties || [{ members }],
@@ -230,7 +238,7 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
     if (el.hasAttribute('data-today-vote')) {
       const result = await execute('clan-vote', { eventId: el.dataset.todayVote, response: el.dataset.value });
       if (result.ok) {
-        (raw.referenceVotes ||= {})[el.dataset.todayVote] = el.dataset.value;
+        if (!nativeToday()) (raw.referenceVotes ||= {})[el.dataset.todayVote] = el.dataset.value;
         render();
       }
       return;

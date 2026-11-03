@@ -1,5 +1,6 @@
 import { runningWindows } from '../launcher/runningWindows.js';
 import { todayData } from './today.js';
+import { readPendingResponses } from '../guild/state.js';
 import { normalizeGuildData } from '../guild/core.js';
 // Routes dashboard actions to the existing production modules, never to demo launchers.
 import { state } from '../../core/state.js';
@@ -48,7 +49,7 @@ export function connectedTodayState(preview) {
       scenarios: { ...preview.scenarios, clan: state.settings.guild?.enabled === true }
     };
     if (!s.parties.some(p => p.id === s.day.favoriteParty)) s.day.favoriteParty = s.parties[0]?.id || '';
-    s.guild = normalizeGuildData(state.settings.guild);
+    s.guild = { ...normalizeGuildData(state.settings.guild), pendingResponses: readPendingResponses() };
     const marathons = todayData(state).marathons;
     const active =
       state.marathons.find(m => marathons.some(p => p.id === m.id)) ||
@@ -89,6 +90,8 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
       ok: false,
       message: 'Действие доступно в десктопном приложении: браузерный макет не имеет доступа к вашим аккаунтам и окнам.'
     };
+  if (action?.startsWith('clan-') && state.settings.guild?.enabled === true)
+    (await import('../guild/page.js')).touchGuildResponses();
   if (action?.startsWith('clan-') && state.settings.guild?.enabled !== true)
     return { ok: false, message: 'Клан не активирован.' };
   if (action === 'launch') {
@@ -103,7 +106,7 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
       return { ok: false, message: 'Сводка клана не обновлена.' };
   } else if (action === 'clan-vote') {
     if (!(await (await import('../guild/page.js')).respond(eventId, response)))
-      return { ok: false, message: 'Отметка не подтверждена сайтом.' };
+      return { ok: false, message: 'Не удалось сохранить выбранный ответ.' };
   } else if (action === 'todo') {
     const entry = state.plannerEntries.find(e => e.id === eventId);
     if (entry) {

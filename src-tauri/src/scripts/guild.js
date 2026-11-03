@@ -234,16 +234,44 @@
     return false;
   };
 
+  // A visible window still contains its original DOM after a POST. Verification must
+  // fetch a new profile, not scrape those stale radio buttons again.
+  window.__tfGuildRefresh = async function () {
+    const sequence = ++scrapeSequence;
+    try {
+      if (!isGuildOrigin()) throw new Error('wrong_site');
+      const reply = await fetch(new URL('/index.php', window.__tfGuildOrigin).href, {
+        credentials: 'include', cache: 'no-store'
+      });
+      if (!reply.ok) throw new Error('http');
+      if (reply.url && new URL(reply.url).origin !== window.__tfGuildOrigin) throw new Error('wrong_site');
+      const doc = new DOMParser().parseFromString(await reply.text(), 'text/html');
+      if (!doc.querySelector('.user__events, .user__col'))
+        throw new Error(doc.querySelector('input[type="password"]') ? 'login' : 'page');
+      const data = parseProfile(doc);
+      if (data.poll) {
+        try { data.poll = applyPollOptions(data.poll, await fetchPoll(data.poll.id)); }
+        catch { data.poll.loadError = true; }
+      }
+      if (sequence === scrapeSequence) publish('TFETE1_', { data, error: null });
+    } catch (error) {
+      if (sequence === scrapeSequence) publish('TFETE1_', { data: null, error: clean(error?.message || error) });
+    }
+  };
+
   // Отметка на ивенте тем же запросом, что у формы сайта.
-  // Вердикт читаем мягко: сайт отвечает `{ status: 'success' | 'error', message }`, но если
-  // разметка ответа поменяется, не хочется врать «не принял» на уже применённой отметке.
+  // Сайт отвечает `{ status: 'success' | 'error', message }`. Неизвестный ответ
+  // не доказывает отказ: приложение сверит отметку со свежей страницей профиля.
   window.__tfGuildRespond = async function (eventId, response) {
+    ++scrapeSequence;
     const result = { ok: false, eventId: String(eventId), response: String(response), message: '', detail: '' };
     try {
+      if (!isGuildOrigin()) throw new Error('wrong_site');
+      if (!validId(eventId) || !['yes', 'no'].includes(response)) throw new Error('invalid_response');
       const body = new FormData();
       body.append('event_id', String(eventId));
       body.append('response', String(response));
-      const reply = await fetch('handlers/event_response.php', { method: 'POST', body, credentials: 'include' });
+      const reply = await fetch(new URL('/handlers/event_response.php', window.__tfGuildOrigin).href, { method: 'POST', body, credentials: 'include' });
       const text = await reply.text();
       let json = null;
       try {
@@ -251,8 +279,10 @@
       } catch (e) { /* ответ не JSON — вердикт по нему прочитать нельзя */ }
       const verdict = json && typeof json === 'object' ? json : null;
       const refused = verdict && (verdict.status === 'error' || verdict.success === false || verdict.ok === false);
-      // Запрос дошёл, сервер ответил 2xx и не сказал «нет» — отметка принята.
-      result.ok = reply.ok && !refused;
+      // A login page or an unknown 2xx body is not an acknowledgement. The app
+      // verifies ambiguous results against a freshly fetched profile.
+      result.ok = reply.ok && !refused && !!verdict &&
+        (verdict.status === 'success' || verdict.success === true || verdict.ok === true);
       result.message = clean(verdict?.message || '');
       result.detail = clean(text).slice(0, 200);
     } catch (e) {

@@ -13,7 +13,7 @@ export function serverStatusMeta(snapshot, now = Date.now()) {
   const age = Number.isFinite(at) ? formatAge(now - at) : '';
   if (busy) return { text: status ? `⏳ обновляю… (данные: ${age})` : '⏳ читаю…', warn: false };
   if (!status?.servers?.length) return { text: error ? '⚠ не удалось прочитать' : 'нет данных', warn: !!error };
-  if (error) return { text: `⚠ не обновилось, данные: ${age}`, warn: true };
+  if (error) return { text: `⚠ последнее обновление: ${age}`, warn: true };
   return { text: `обновлено ${age}`, warn: false };
 }
 

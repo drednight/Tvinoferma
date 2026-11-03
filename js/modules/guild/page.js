@@ -12,7 +12,15 @@ import { toast } from '../../core/ui.js';
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
 import { isTauri } from '../../core/storage.js';
 import { getClassIconSrcByStem } from '../../core/constants.js';
-import { guildEnabled, readGuildData, writeGuildData, rememberGuildPollVote } from './state.js';
+import { createResponseQueue } from './responseQueue.js';
+import {
+  readPendingResponses,
+  writePendingResponses,
+  guildEnabled,
+  readGuildData,
+  writeGuildData,
+  rememberGuildPollVote
+} from './state.js';
 import { syncClanEntries } from './plannerBridge.js';
 import { summaryText, responseText, partyNicks, allPartyNicks, isSelfNick, RESPONSE_YES, RESPONSE_NO } from './core.js';
 import { openGuild, syncGuildFromSite, respondToEvent, voteInGuildPoll } from './window.js';
@@ -20,8 +28,6 @@ import { guildPollHtml, safePollLink } from './poll.js';
 
 /** Первая проверка после старта приложения: через минуту, чтобы не мешать запуску. */
 const START_DELAY_MS = 60 * 1000;
-/** Сайт применяет отметку не мгновенно: столько ждём перед перечитыванием сводки. */
-const APPLY_DELAY_MS = 3000;
 /** Москва — UTC+3 круглый год, перехода на летнее время нет. */
 const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,6 +50,7 @@ function renderTodayNow() {
 
 /** Показывает или прячет панель клана на «Сегодня» по флагу. */
 export function applyGuildVisibility() {
+  responses.resume();
   renderGuildToday();
 }
 
@@ -71,6 +78,7 @@ async function onClick(e) {
   }
   const btn = e.target.closest('[data-guild]');
   if (!btn || btn.disabled || !isTauri()) return;
+  touchGuildResponses();
   const act = btn.dataset.guild;
   if (act === 'open') {
     await run(btn, async () => {
@@ -197,16 +205,17 @@ export async function syncGuild({ silent = false } = {}) {
     return false;
   }
   await writeGuildData(report);
+  await responses.reconcile(report);
   if (!silent) toast('Сводка обновлена', 'success');
   return true;
 }
 
 /** Обновление по расписанию: молча, только при включённой панели клана. */
-async function autoSync() {
+export async function autoSync() {
   if (!isTauri() || !guildEnabled()) return;
   if (!(await syncGuild({ silent: true }))) return;
-  if (await syncClanEntries(readGuildData())) renderTodayNow();
-  else renderGuildToday();
+  await syncClanEntries(readGuildData());
+  renderTodayNow();
 }
 
 /** Миллисекунд до ближайшей полуночи по Москве. */
@@ -242,52 +251,40 @@ function scheduleMidnightSync() {
 
 /** Обновление по расписанию: один раз через минуту после старта и потом каждый день в 00:00 МСК. */
 export function startGuildDailySync() {
+  responses.resume();
   setTimeout(autoSync, START_DELAY_MS);
   scheduleMidnightSync();
 }
 
-/** Понятный текст для ошибки отметки на событии. */
-function respondErrorText(error) {
-  const code = String(error?.message || error);
-  if (code === 'login') return 'Нужно авторизоваться: откройте сайт клана и войдите.';
-  if (code === 'timeout') return 'Сайт клана не ответил вовремя. Попробуйте ещё раз.';
-  if (code === 'busy') return 'Сейчас идёт обновление сводки — попробуйте через пару секунд.';
-  return `Не удалось отметиться на событие: ${code}`;
-}
+const responses = createResponseQueue({
+  getEntries: readPendingResponses,
+  saveEntries: writePendingResponses,
+  enabled: () => isTauri() && guildEnabled(),
+  changed: renderTodayNow,
+  send: respondToEvent,
+  read: async () => {
+    const report = await syncGuildFromSite();
+    await writeGuildData(report);
+    await syncClanEntries(readGuildData());
+    renderTodayNow();
+    return report;
+  },
+  begin: async () => {
+    const { startTask } = await import('../../core/taskLog.js');
+    return startTask('Переносятся ответы в кланер');
+  }
+});
 
-/**
- * Отмечает ивент на сайте и молча обновляет всё, что из этого следует.
- *
- * Надписи об успехе нет: ответ виден по самому событию — «Пойду» станет синим, «Не пойду»
- * красным, а отмеченное событие — записью в календаре. Говорим только когда что-то сломалось
- * или понадобился вход на сайт.
- */
+/** Immediate local choice. Confirmation is deliberately a separate background step. */
 export async function respond(eventId, response) {
-  let result;
   try {
-    result = await respondToEvent(eventId, response);
-  } catch (error) {
-    toast(respondErrorText(error), 'warning');
+    return await responses.enqueue(eventId, response);
+  } catch {
+    toast('Не удалось сохранить ответы. Нажмите выбранный ответ для повтора.', 'warning');
     return false;
   }
-  if (!result?.ok) {
-    toast(result?.message || 'Сайт не принял отметку', 'error');
-    return false;
-  }
-  // Сайт применяет отметку не мгновенно: ждём и перечитываем сводку по-настоящему,
-  // чтобы календарь и панель показали то, что реально записалось.
-  await new Promise(resolve => setTimeout(resolve, APPLY_DELAY_MS));
-  const fresh = await syncGuild({ silent: true });
-  const data = readGuildData();
-  if (!fresh) {
-    // Перечитать не вышло: показываем то, что подтвердил сайт, чтобы отметка не «откатилась».
-    data.events = data.events.map(ev => (ev.id === String(eventId) ? { ...ev, response } : ev));
-    await writeGuildData(data);
-  }
-  if (await syncClanEntries(data)) renderTodayNow();
-  else renderGuildToday();
-  return true;
 }
+export const touchGuildResponses = () => responses.touch();
 
 /**
  * Копирует ники одной строкой через пробел — ровно так же, как кнопка «Копировать» на сайте:
@@ -320,8 +317,10 @@ function eventsHtml(data) {
   if (!list.length) return '<p class="muted">Предстоящих событий нет.</p>';
   const rows = list
     .map(ev => {
-      const going = ev.response === RESPONSE_YES;
-      const out = ev.response === RESPONSE_NO;
+      const pending = readPendingResponses().find(row => row.eventId === ev.id);
+      const response = pending?.response || ev.response;
+      const going = response === RESPONSE_YES;
+      const out = response === RESPONSE_NO;
       return `
     <div class="guild-event${going ? ' is-going' : ''}${out ? ' is-out' : ''}">
       <div class="guild-event-main">
@@ -329,7 +328,7 @@ function eventsHtml(data) {
         ${ev.comment ? `<div class="muted">${esc(ev.comment)}</div>` : ''}
       </div>
       <div class="guild-event-actions">
-        <span class="guild-state">${esc(responseText(ev.response))}</span>
+        <span class="guild-state">${esc(pending ? (pending.failed ? 'Не подтверждено · нажмите ответ для повтора' : 'Ожидает переноса на сайт') : responseText(ev.response))}</span>
         <button class="btn small ${going ? 'primary' : 'secondary'}" type="button"
                 data-guild="respond" data-event="${esc(ev.id)}" data-response="yes">Пойду</button>
         <button class="btn small ${out ? 'danger' : 'ghost'}" type="button"

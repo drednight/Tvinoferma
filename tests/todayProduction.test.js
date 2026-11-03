@@ -185,3 +185,30 @@ it('shows coins in the maximum tier, not a generic label or all lower tiers', ()
   expect(taskMaxReward({ rewards: [{ threshold: 1, rewardCoins: 0, rewardText: 'Сундук' }] })).toBe('Сундук');
   expect(taskMaxReward({ rewards: [] })).toBe('Не указана');
 });
+
+it('local clan intentions render immediately, separately from the verified response and stale preview votes', async () => {
+  const { renderReferenceToday } = await import('../js/modules/dashboard/referenceTodayView.js');
+  window.__TAURI_INTERNALS__ = {};
+  state.settings.guild = {
+    enabled: true,
+    syncedAt: 123,
+    events: [{ id: '1', title: 'Событие', response: 'no' }],
+    parties: [{ name: 'Пати', members: [{ nick: 'Жрец', cls: 'priest' }] }],
+    pendingResponses: [{ eventId: '1', response: 'yes', failed: false }]
+  };
+  const model = createLabState();
+  model.referenceVotes = { 1: 'yes' };
+  const root = document.createElement('div');
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.querySelector('[data-today-vote="1"][data-value="yes"]').getAttribute('aria-pressed')).toBe('true');
+  expect(root.textContent).toContain('Ожидает переноса на сайт');
+  expect(root.querySelector('.rt-member img[src$="prist.webp"]')).not.toBeNull();
+  expect(state.settings.guild.events[0].response).toBe('no');
+  state.settings.guild.pendingResponses[0].failed = true;
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.textContent).toContain('Не подтверждено');
+  state.settings.guild.pendingResponses = [];
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.querySelector('[data-today-vote="1"][data-value="no"]').getAttribute('aria-pressed')).toBe('true');
+  expect(root.textContent).not.toContain('Ожидает переноса');
+});

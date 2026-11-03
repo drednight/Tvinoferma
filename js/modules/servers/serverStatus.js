@@ -64,6 +64,9 @@ export function isStatusDue(status, minutes, now = Date.now(), attemptAt = 0) {
 export function refreshServerStatus(opts) {
   if (inflight) return inflight;
   lastAttemptAt = Date.now();
+  // Do not block the public server read on the clan site or its response queue.
+  if (globalThis.window?.__TAURI_INTERNALS__)
+    void import('../guild/page.js').then(({ autoSync }) => autoSync()).catch(error => console.warn('[GUILD]', error));
   inflight = (async () => {
     try {
       const res = await readServerStatus(opts);

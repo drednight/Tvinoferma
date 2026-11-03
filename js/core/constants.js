@@ -64,7 +64,10 @@ export function getClassIconSrc(className) {
  * @returns {string|null}
  */
 export function getClassIconSrcByStem(stem) {
-  const key = String(stem || '').trim();
+  const raw = String(stem || '')
+    .trim()
+    .toLowerCase();
+  const key = raw === 'priest' ? 'prist' : raw;
   return /^[a-z0-9_-]+$/i.test(key) ? `${ICON_BASE_PATH}${key}.webp` : null;
 }
 
