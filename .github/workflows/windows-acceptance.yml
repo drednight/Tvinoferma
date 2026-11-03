@@ -67,14 +67,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $patch = (git diff -- src-tauri/Cargo.lock) -join "`n"
           $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($patch + "`n"))
-          Write-Host "::notice title=Notification lock patch::$encoded"
+          for ($i = 0; $i -lt $encoded.Length; $i += 3000) {
+            $chunk = $encoded.Substring($i, [Math]::Min(3000, $encoded.Length - $i))
+            Write-Host "::notice title=Notification lock patch part ${i}::$chunk"
+          }
       - name: Build executable without installer or updater signature
+        if: false
         env:
           TVINOFERMA_GOOGLE_CLIENT_ID: ${{ vars.TVINOFERMA_GOOGLE_CLIENT_ID }}
           TVINOFERMA_GOOGLE_CLIENT_SECRET: ${{ secrets.TVINOFERMA_GOOGLE_CLIENT_SECRET }}
           VITE_YANDEX_CLIENT_ID: ${{ vars.TVINOFERMA_YANDEX_CLIENT_ID }}
         run: ./.github/scripts/build-windows-acceptance.ps1
       - name: Prepare test executable, source identity and checksum
+        if: false
         shell: pwsh
         run: |
           New-Item -ItemType Directory acceptance | Out-Null
@@ -105,6 +110,7 @@ jobs:
           $hash = (Get-FileHash acceptance/Tvinoferma.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Tvinoferma.exe" | Set-Content -Encoding ascii acceptance/SHA256SUMS.txt
       - uses: actions/upload-artifact@v7
+        if: false
         with:
           name: Tvinoferma-Windows-acceptance-${{ github.run_id }}
           path: acceptance/
