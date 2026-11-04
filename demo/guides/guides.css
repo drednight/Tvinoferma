@@ -1,0 +1,659 @@
+/* demo/guides/guides.css
+   Прототип раздела «Гайды» для Твинофермы.
+   Тёмная тема, переиспользует токены из css/core/variables.css. */
+
+:root {
+  --guides-sidebar-w: 260px;
+  --guides-card-bg: var(--surface-1);
+  --guides-card-hover: var(--surface-2);
+  --guides-tag-bg: rgba(110, 142, 248, 0.1);
+  --guides-tag-border: rgba(110, 142, 248, 0.3);
+  --guides-source-badge-bg: rgba(187, 154, 247, 0.12);
+  --guides-source-badge-border: rgba(187, 154, 247, 0.35);
+  --guides-external-badge-bg: rgba(158, 206, 106, 0.12);
+  --guides-external-badge-border: rgba(158, 206, 106, 0.35);
+  --guides-pinned-badge-bg: rgba(232, 192, 90, 0.15);
+  --guides-pinned-badge-border: rgba(232, 192, 90, 0.4);
+}
+
+.guides-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-lg);
+  min-height: 0;
+}
+
+.guides-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding-bottom: var(--gap-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.guides-kicker {
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.guides-header h1 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.guides-subtitle {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  max-width: 60ch;
+}
+
+.guides-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  margin-bottom: var(--gap-lg);
+  padding: var(--gap) var(--gap-md);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.guides-search {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+}
+
+.guides-search-label {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.guides-filters {
+  display: flex;
+  gap: var(--gap-sm);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.guides-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+  white-space: nowrap;
+}
+
+.guides-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.guides-chip.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.guides-chip.has-count::after {
+  content: attr(data-count);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-faint);
+}
+
+.guides-chip.is-active.has-count::after {
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--on-accent);
+}
+
+/* ---- Sidebar (categories) ---- */
+.guides-layout {
+  display: flex;
+  gap: var(--gap-lg);
+  flex: 1;
+  min-height: 0;
+}
+
+.guides-sidebar {
+  flex: 0 0 auto;
+  width: var(--guides-sidebar-w);
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.guides-sidebar-header {
+  padding: var(--gap-sm) 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--gap);
+}
+
+.guides-sidebar-header h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.guides-sidebar-header p {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+  margin-top: 3px;
+}
+
+.guides-category-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guides-category-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 550;
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+  text-align: left;
+}
+
+.guides-category-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.guides-category-btn.is-active {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.guides-category-btn.is-active .guides-category-icon {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.guides-category-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+}
+
+.guides-category-count {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-faint);
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.guides-category-btn.is-active .guides-category-count {
+  color: var(--on-accent);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.guides-bookmarks-section {
+  margin-top: var(--gap-lg);
+  padding-top: var(--gap);
+  border-top: 1px solid var(--border);
+}
+
+.guides-bookmarks-section h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  margin-bottom: var(--gap-sm);
+}
+
+.guides-bookmarks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guides-bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+}
+
+.guides-bookmark-item:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.guides-bookmark-item .guides-bookmark-star {
+  color: var(--gold);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.guides-bookmark-item .guides-bookmark-remove {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.guides-bookmark-item .guides-bookmark-remove:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.guides-empty-bookmarks {
+  font-size: 0.82rem;
+  color: var(--text-faint);
+  font-style: italic;
+  padding: 8px 10px;
+}
+
+/* ---- Main content ---- */
+.guides-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.guides-toolbar-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: var(--gap-md);
+  flex-wrap: wrap;
+}
+
+.guides-result-count {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+}
+
+.guides-view-toggle {
+  display: flex;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 2px;
+}
+
+.guides-view-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+}
+
+.guides-view-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.guides-view-btn.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- Guide grid ---- */
+.guides-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--gap-md);
+}
+
+.guides-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+}
+
+.guides-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-sm);
+  padding: var(--gap-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--guides-card-bg);
+  transition: all var(--speed) var(--ease);
+  cursor: pointer;
+}
+
+.guides-card:hover {
+  border-color: var(--border-strong);
+  background: var(--guides-card-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+}
+
+.guides-card.is-pinned {
+  border-color: var(--gold);
+}
+
+.guides-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.guides-card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.guides-card-badges {
+  display: flex;
+  gap: var(--gap-xs);
+  flex-shrink: 0;
+}
+
+.guides-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.guides-badge.source {
+  background: var(--guides-source-badge-bg);
+  border: 1px solid var(--guides-source-badge-border);
+  color: var(--accent-2);
+}
+
+.guides-badge.external {
+  background: var(--guides-external-badge-bg);
+  border: 1px solid var(--guides-external-badge-border);
+  color: var(--success);
+}
+
+.guides-badge.pinned {
+  background: var(--guides-pinned-badge-bg);
+  border: 1px solid var(--guides-pinned-badge-border);
+  color: var(--gold);
+}
+
+.guides-badge.stage {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+}
+
+.guides-badge.class {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+}
+
+.guides-badge.pass {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-size: 0.7rem;
+}
+
+.guides-card-description {
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.guides-card-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-md);
+  margin-top: auto;
+  padding-top: var(--gap-sm);
+  border-top: 1px solid var(--border);
+  font-size: 0.76rem;
+  color: var(--text-faint);
+}
+
+.guides-card-tags {
+  display: flex;
+  gap: var(--gap-xs);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.guides-tag {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--guides-tag-bg);
+  border: 1px solid var(--guides-tag-border);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.guides-card-actions {
+  display: flex;
+  gap: var(--gap-xs);
+  margin-top: var(--gap-sm);
+}
+
+.guides-action-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--speed) var(--ease);
+}
+
+.guides-action-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.guides-action-btn.primary {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.guides-action-btn.primary:hover {
+  background: rgba(110, 142, 248, 0.2);
+}
+
+.guides-action-btn.secondary {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-faint);
+}
+
+.guides-action-btn.secondary:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.guides-action-btn .btn-icon {
+  font-size: 0.9rem;
+}
+
+.guides-action-btn.copy-toast {
+  position: relative;
+}
+
+.guides-copy-toast {
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--speed) var(--ease);
+  box-shadow: var(--shadow-2);
+}
+
+.guides-copy-toast.show {
+  opacity: 1;
+}
+
+/* ---- Empty state ---- */
+.guides-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  text-align: center;
+  padding: var(--gap-lg);
+  color: var(--text-dim);
+}
+
+.guides-empty-icon {
+  font-size: 3rem;
+  margin-bottom: var(--gap-sm);
+}
+
+.guides-empty h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.guides-empty p {
+  font-size: 0.88rem;
+  margin: 0;
+  max-width: 360px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+  .guides-layout {
+    flex-direction: column;
+  }
+
+  .guides-sidebar {
+    width: 100%;
+    max-height: 320px;
+    overflow: auto;
+  }
+
+  .guides-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .guides-search {
+    max-width: none;
+  }
+
+  .guides-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guides-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--gap-sm);
+  }
+
+  .guides-card-badges {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .guides-toolbar {
+    padding: var(--gap-sm);
+  }
+
+  .guides-card {
+    padding: var(--gap);
+  }
+
+  .guides-card-actions {
+    flex-direction: column;
+  }
+}
