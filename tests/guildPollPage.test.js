@@ -14,11 +14,11 @@ vi.mock('../js/modules/guild/window.js', () => ({
   respondToEvent: vi.fn(),
   voteInGuildPoll: vi.fn()
 }));
-vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(async () => {}) }));
+vi.mock('../js/core/linkBrowser.js', () => ({ openWebLink: vi.fn(async () => {}) }));
 
 import { state } from '../js/core/state.js';
 import { toast } from '../js/core/ui.js';
-import { open } from '@tauri-apps/plugin-shell';
+import { openWebLink as open } from '../js/core/linkBrowser.js';
 import { syncGuildFromSite, voteInGuildPoll } from '../js/modules/guild/window.js';
 import { bindGuild, renderGuildToday } from '../js/modules/guild/page.js';
 

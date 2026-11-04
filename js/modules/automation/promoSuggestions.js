@@ -1,3 +1,4 @@
+import { openWebLink } from '../../core/linkBrowser.js';
 import { promoDeadlineLabel, promoDeadlineState } from './promoDeadlineLabel.js';
 import { dockCurrentTask, onTaskChange } from '../../core/taskLog.js';
 import { state } from '../../core/state.js';
@@ -5,21 +6,12 @@ import { loadLog } from './promoLog.js';
 import { parseCodes } from './promoCore.js';
 import { promoDiscovery, promoCoverage } from './promoDiscovery.js';
 
-let viewerRequested = false;
-const closeViewer = async () => {
-  const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('close_promo_news_article');
-};
-// Discovery stays parallel. Only an owned modal article must not obscure Stop.
+// The ordinary viewer is non-modal and never owns/disables the main window.
 const unsubscribe = onTaskChange(() => {
   const active = !!dockCurrentTask();
   document.querySelectorAll('[data-promo-news-open]').forEach(button => {
     button.disabled = active || !window.__TAURI_INTERNALS__;
   });
-  if (active && viewerRequested) {
-    viewerRequested = false;
-    void closeViewer().catch(() => {});
-  }
 });
 if (import.meta.hot) import.meta.hot.dispose(unsubscribe);
 
@@ -73,8 +65,7 @@ export function renderPromoSuggestions(dlg) {
   open.disabled = !window.__TAURI_INTERNALS__;
   open.onclick = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open('https://pwonline.ru/news.php');
+      await openWebLink('https://pwonline.ru/news.php');
     } catch {
       label.textContent = 'Не удалось открыть браузер. Адрес: https://pwonline.ru/news.php';
     }
@@ -146,17 +137,10 @@ export function renderPromoSuggestions(dlg) {
     browser.onclick = async () => {
       if (dockCurrentTask()) return;
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
         const id = new URL(row.sourceUrl).searchParams.get('article');
         if (!/^\d{1,12}$/.test(id || '')) throw Error();
-        viewerRequested = true;
-        await invoke('open_promo_news_article', { article: id });
-        if (dockCurrentTask()) {
-          viewerRequested = false;
-          await closeViewer();
-        }
+        await openWebLink(`https://pwonline.ru/news.php?article=${id}`);
       } catch {
-        viewerRequested = false;
         info.textContent = 'Не удалось открыть новость в WebView.';
       }
     };

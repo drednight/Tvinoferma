@@ -163,6 +163,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // окна
             windows::open_sync_window,
+            windows::open_link_browser,
             windows::close_sync_window,
             windows::check_window_exists,
             windows::execute_script_in_window,

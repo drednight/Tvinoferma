@@ -1,3 +1,4 @@
+import { linkProfileOptions } from '../core/linkBrowser.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
 
@@ -243,6 +244,8 @@ export async function renderSettings() {
     }
   }
 
+  const linkSelect = document.querySelector('[data-setting="browser.linkCharacterId"]');
+  if (linkSelect) linkSelect.innerHTML = linkProfileOptions();
   // Значения настроек
   document.querySelectorAll('[data-setting]').forEach(el => {
     const value = getSetting(el.dataset.setting);

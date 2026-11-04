@@ -30,6 +30,7 @@ function screenshotHtml(screen) {
 
 /** Панели настроек: кнопка статьи раскрывает нужную панель. */
 const GUIDE_PANEL_LABEL = {
+  'settings-browser': 'Открыть настройки WebView',
   'settings-launcher': 'Открыть «Запуск игры» в настройках',
   'settings-notifications': 'Открыть «Уведомления» в настройках',
   'settings-freshness': 'Открыть «Свежесть данных» в настройках',

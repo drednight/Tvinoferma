@@ -6,6 +6,7 @@
 // (js/modules/tools/index.js) — там они видны сразу, без второго нажатия.
 // Верхних кнопок «Выбрать»/«Скрипты» и отдельного FAB «Запущенные окна игры» больше нет.
 
+import { bindWebLinks } from './linkBrowser.js';
 import { openCharacterForm } from '../modules/characters/index.js';
 import { refreshAllLoginStatuses, refreshAllBalances, refreshAllMarathonStats } from '../modules/sync/syncManager.js';
 import { toast } from './ui.js';
@@ -15,6 +16,7 @@ import { openCreatePartyModal } from '../modules/parties/manager.js';
  * Инициализация глобальных UI действий
  */
 export function initUiActions() {
+  bindWebLinks();
   setupFabLogic();
 
   // Вызываем обновление сразу после инициализации

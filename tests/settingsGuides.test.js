@@ -59,7 +59,9 @@ describe('данные справки', () => {
   it('важные ограничения описаны прямо, а не заменены общими советами', () => {
     const text = id => guideSearchText(GUIDES.find(guide => guide.id === id));
     expect(text('danger-reset')).toContain('сброс удаляет и резервные копии');
-    expect(text('calendar-entry')).toContain('нет отдельной кнопки редактирования');
+    expect(text('calendar-entry')).toContain('редактировать записи дня');
+    expect(text('calendar-entry')).not.toContain('нет отдельной кнопки редактирования');
+    expect(text('link-browser')).toContain('без персонажа');
     expect(text('gamecenter')).toContain('запомните вход');
     expect(text('marathon-progress')).toContain('большее');
     expect(text('security')).toContain('открыто в state.json');

@@ -29,9 +29,23 @@ it('keeps a neutral fallback rather than guessing an icon from an item name', ()
 it('crops only the framed promo item preview to its central icon, shared by shop and transfer', () => {
   const image = '//cdn.pwonline.ru/img/promo_items/item_72297.png';
   const el = document.createElement('div');
-  el.innerHTML = siteItemIconHtml(image, 'Небесная пилюля 1-го уровня');
+  el.innerHTML = siteItemIconHtml(image, 'Неизвестный предмет');
   expect(el.querySelector('.site-item-icon--framed')).not.toBeNull();
   expect(el.querySelector('img').src).toBe('https:' + image);
   expect(siteItemIconHtml(image, 'Сундук караванщика')).not.toContain('site-item-icon--framed');
   expect(siteItemIconHtml('https://cdn.pwonline.ru/images/chest.png')).not.toContain('site-item-icon--framed');
+});
+
+it('uses all 18 exact local icons before remote art, without framed cropping', async () => {
+  const { localItemNames, localItemIcon } = await import('../js/modules/automation/localItemIcons.js');
+  expect(localItemNames).toHaveLength(18);
+  for (const name of localItemNames) {
+    expect(localItemIcon(name)).toMatch(/assets\/icons\/items\/[a-z0-9-]+\.webp$/);
+    const html = siteItemIconHtml('https://evil.test/image.png', name);
+    expect(html).toContain(localItemIcon(name));
+    expect(html).not.toContain('site-item-icon--framed');
+    expect(html).not.toContain('evil.test');
+  }
+  expect(localItemIcon('  Набор «Самоцветы грёз» ')).toBe(localItemIcon('Набор «Самоцветы грез»'));
+  expect(localItemIcon('Великий метеорит (+ бонус)')).toBe('');
 });

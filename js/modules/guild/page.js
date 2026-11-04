@@ -1,3 +1,4 @@
+import { openWebLink } from '../../core/linkBrowser.js';
 // js/modules/guild/page.js
 // Скрытая панель клана под разделом «Сегодня» (клановый сайт Guild).
 // Отдельной вкладки нет: панель появляется и исчезает по флагу settings.guild.enabled
@@ -78,8 +79,7 @@ async function onClick(e) {
     const url = safePollLink(link.href);
     if (!url) return;
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
+      await openWebLink(url);
     } catch {
       toast('Не удалось открыть ссылку в браузере', 'error');
     }

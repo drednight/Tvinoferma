@@ -147,7 +147,11 @@ export function mergeSettings(input = {}) {
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),
-    browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
+    browser: {
+      ...DEFAULT_SETTINGS.browser,
+      ...(input.browser || {}),
+      linkCharacterId: typeof input.browser?.linkCharacterId === 'string' ? input.browser.linkCharacterId : ''
+    },
     // Ключ раздела клана переехал сюда не здесь: переименование eternals → guild описано
     // миграцией 9 → v10 (js/core/migrations.js), иначе откат на старую версию записал бы
     // поверх файла умолчания. Здесь только приведение к схеме.

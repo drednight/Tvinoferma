@@ -36,7 +36,7 @@ const TABS = GUIDES
       ['parties', 'parties'],
       ['today', 'today'],
       ['marathons', 'marathons'],
-      ['characters', 'scripts', 'scripts'],
+      ['tools', 'scripts'],
       ['characters', 'character-form', 'character-form'],
       ...['promo-dialog', 'transfer-dialog', 'shop-dialog', 'caravan-dialog', 'sync-task'].map(name => [
         'characters',
@@ -46,6 +46,8 @@ const TABS = GUIDES
       ['characters', 'character-profile', 'character-profile'],
       ['marathons', 'marathon-wizard', 'marathon-wizard'],
       ['today', 'planner-entry', 'planner-entry'],
+      ['today', 'calendar-month', 'calendar-month'],
+      ['settings', 'settings-browser', '#settings-browser'],
       ['settings', 'gamecenters', 'gamecenters'],
       ['settings', 'settings-app', '#settings-system'],
       ['settings', 'settings-launcher', '#settings-launcher'],
@@ -62,7 +64,9 @@ const TABS = GUIDES
       ['characters', 'characters'],
       ['parties', 'parties'],
       ['marathons', 'marathons'],
-      ['settings', 'settings']
+      ['settings', 'settings'],
+      ['settings', 'browser', '#settings-browser'],
+      ['today', 'calendar', 'calendar-month']
     ];
 
 const BROWSERS = [
@@ -85,7 +89,19 @@ function findBrowser() {
 
 function demoState() {
   const fixture = join(ROOT, 'tests/fixtures/ui-demo-state.json');
-  const data = JSON.parse(readFileSync(fixture, 'utf8'));
+  // Shift only the synthetic fixture's ISO dates relative to its saved date.
+  // This keeps example marathons/events visible when screenshots are refreshed.
+  const original = JSON.parse(readFileSync(fixture, 'utf8'));
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+  const offset = Date.parse(today) - Date.parse(original.savedAt.slice(0, 10));
+  const data = JSON.parse(
+    JSON.stringify(original).replace(/2026-\d{2}-\d{2}/g, date =>
+      new Date(Date.parse(date) + offset).toISOString().slice(0, 10)
+    )
+  );
+  data.marathons?.forEach(m => {
+    m.title = m.title.replace('Летний', 'Учебный');
+  });
   data.settings ||= {};
   data.settings.ui = { ...data.settings.ui, onboardingSeen: true };
   // Фикстура учебная: назначаем задания участникам и приводим дату сверки к текущему формату.
@@ -269,6 +285,12 @@ async function main() {
     // Иначе первый пустой boot() мог сохраниться поверх фикстуры прямо перед перезагрузкой.
     await send('Page.addScriptToEvaluateOnNewDocument', {
       source: `localStorage.setItem('tvinoferma_state_v1', ${JSON.stringify(demoState())});
+        localStorage.setItem('tf_today_news_v2', JSON.stringify({version: 2, status: 'checked', updatedAt: new Date().toISOString(), articles: [
+          {title: 'Учебная новость: осенние события', url: 'https://pwonline.ru/news.php?article=1'},
+          {title: 'Пример объявления об обновлении', url: 'https://pwonline.ru/news.php?article=2'},
+          {title: 'Учебная новость: подарки и задания', url: 'https://pwonline.ru/news.php?article=3'}
+        ]}));
+        localStorage.setItem('tf_promo_discovery_v1', JSON.stringify({version: 1, status: 'checked', articles: {}, codes: [{code: 'PW-EXAMPLE-ONLY', title: 'Учебная новость', sourceUrl: 'https://pwonline.ru/news.php?article=1', expiresOn: '2099-12-31', rewards: ['Метеорит ×10', 'Облачная пыль ×5']}]}));
         window.__tfErrors = [];
         window.addEventListener('error', (e) => window.__tfErrors.push('error: ' + (e.message || e.type)));
         window.addEventListener('unhandledrejection', (e) => window.__tfErrors.push('rejection: ' + (e.reason && e.reason.message || e.reason)));`
@@ -328,12 +350,13 @@ async function main() {
       'character-form': `import('/js/modules/characters/formEditor.js').then(({ openCharacterForm }) => openCharacterForm())`,
       'character-profile': `(async () => { const { state } = await import('/js/core/state.js'); const { openCharacterProfile } = await import('/js/modules/characters/profileView.js'); openCharacterProfile(state.characters[0]); })()`,
       'marathon-wizard': `import('/js/modules/marathons/wizard.js').then(({ openMarathonWizard }) => { openMarathonWizard(); document.querySelector('[data-src="manual"]').click(); document.querySelector('[data-act="next"]').click(); })`,
+      'calendar-month': `(async () => { document.querySelector('[data-today-action="calendar"]').click(); })()`,
       'planner-entry': `(async () => { const { mskDate } = await import('/js/core/msk.js'); const { openPlannerDay } = await import('/js/modules/dashboard/plannerView.js'); openPlannerDay(mskDate()); document.querySelector('[data-planner-add]').click(); })()`,
       gamecenters: `import('/js/modules/launcher/gcSettingsModal.js').then(({ openGameCentersModal }) => openGameCentersModal())`
     };
     for (const [tab, file, target] of TABS.filter(([, file]) => !ONLY.length || ONLY.includes(file))) {
       await send('Runtime.evaluate', {
-        expression: `import('/js/core/ui.js').then(({ closeModal }) => { document.querySelectorAll('.tf-close').forEach(button => button.click()); closeModal(); window.__tfShotCleanup?.(); window.__tfShotCleanup = null; return true; })`,
+        expression: `import('/js/core/ui.js').then(({ closeModal }) => { document.querySelectorAll('.tf-close').forEach(button => button.click()); document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close()); closeModal(); window.__tfShotCleanup?.(); window.__tfShotCleanup = null; return true; })`,
         awaitPromise: true
       });
       await send('Runtime.evaluate', {
@@ -347,7 +370,7 @@ async function main() {
         if (opened.exceptionDetails) throw new Error(`Не удалось открыть ${target}: ${opened.exceptionDetails.text}`);
         await sleep(600);
         const measured = await send('Runtime.evaluate', {
-          expression: `(() => { const el = document.querySelector('.modal-container'); if (!el) throw new Error('Форма не открылась'); const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`,
+          expression: `(() => { const el = document.querySelector('.modal-container, dialog[open]'); if (!el) throw new Error('Форма не открылась'); const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`,
           returnByValue: true
         });
         if (measured.exceptionDetails || !measured.result?.value) throw new Error(`Форма ${target} не открылась`);
@@ -584,7 +607,7 @@ async function main() {
           };
         });
         const marathonSpans = out.week.spans.filter(s => s.isMarathon);
-        if (!marathonSpans.length) out.week.problems.push('неделя: марафон не показан сплошной полосой');
+        if (document.querySelector('.cal-day') && !marathonSpans.length) out.week.problems.push('неделя: марафон не показан сплошной полосой');
         for (const s of marathonSpans) {
           if (s.daysWide < 2) out.week.problems.push('неделя: полоса марафона не тянется через дни');
         }
