@@ -1,3 +1,4 @@
+import { normalizeMarathonUrl } from './sourceUrl.js';
 // js/modules/marathons/newsParser.js
 // Разбор новости pwonline.ru о марафоне (news.php?article=…):
 // этапы (спойлеры «Летний марафон: июнь» и т.п.), сроки, задания с целями «10/15/20 раз»,
@@ -81,9 +82,7 @@ const nums = s =>
 
 /** https, без завершающего «/» (в новостях бывает «supermarathon.php/»). */
 function cleanPageUrl(href) {
-  const u = new URL(String(href).replace(/^http:/, 'https:'));
-  u.pathname = u.pathname.replace(/\/+$/, '');
-  return u.href;
+  return normalizeMarathonUrl(href);
 }
 
 function parsePubDate(s) {
@@ -232,7 +231,7 @@ export function parseNewsHtml(html, meta = {}) {
   const root = doc.getElementById('tf-news-root');
   const pub = parsePubDate(meta.publishedAt);
   const debug = [];
-  const title = norm(meta.title || root.querySelector('h1')?.textContent || 'Марафон из новости');
+  const title = norm(root.querySelector('h1')?.textContent) || norm(meta.title) || 'Марафон из новости';
 
   // Ссылка на страницу с отметками (FAQ: «Где я могу проследить…? — Здесь»)
   const link = [...root.querySelectorAll('a[href]')]

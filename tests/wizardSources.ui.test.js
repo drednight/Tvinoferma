@@ -232,3 +232,33 @@ describe('устойчивые идентификаторы в настояще�
     expect(state.marathonTemplates[0].tasks[0].syncId).toBe(ids[0]);
   });
 });
+
+it('редактор показывает ссылку под закрытым «Дополнительно», сохраняет вручную исправленную ссылку без READY', async () => {
+  const { createMarathon } = await import('../js/modules/marathons/model.js');
+  const marathon = createMarathon({
+    id: 'edit-url',
+    title: 'Испытания',
+    startDate: '2026-11-01',
+    endDate: '2026-11-10',
+    participantIds: ['c1'],
+    tasks: [{ id: 't', title: 'Задание', targetChecks: 1 }],
+    source: { type: 'site', url: 'https://pwonline.ru/supermarathon.php#TF_READY_interactive' }
+  });
+  state.marathons = [marathon];
+  openMarathonWizard({ marathon });
+  const advanced = $('.tf-source-advanced');
+  expect(advanced.open).toBe(false);
+  expect(advanced.querySelector('summary').textContent).toBe('Дополнительно');
+  advanced.open = true;
+  const select = $('[data-f="url"]');
+  expect(select.value).toBe('https://pwonline.ru/supermarathon.php');
+  select.value = '__custom__';
+  select.dispatchEvent(new Event('change'));
+  const input = $('[data-custom-page]');
+  expect(input.classList.contains('tf-hidden')).toBe(false);
+  input.value = 'https://pwonline.ru/supermarathon2.php#TF_READY_interactive';
+  input.dispatchEvent(new Event('change'));
+  click('[data-act="save"]');
+  await vi.waitFor(() => expect(state.marathons[0].source.url).toBe('https://pwonline.ru/supermarathon2.php'));
+  expect(state.marathons[0].id).toBe('edit-url');
+});

@@ -919,10 +919,10 @@
   justify-content: center;
 }
 
-/* Separate article-number and title boxes, following the site's editorial order. */
+/* One title card per article, following the site's editorial order. */
 .rt-news .rt-news-card {
   display: grid;
-  grid-template-columns: 4.2rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   gap: 8px;
   padding: 0;
@@ -930,7 +930,6 @@
   border: 0;
   background: none;
 }
-.rt-news-number,
 .rt-news .rt-news-card > a {
   display: flex;
   align-items: center;
@@ -941,12 +940,7 @@
   min-height: 44px;
   box-sizing: border-box;
 }
-.rt-news-number {
-  justify-content: center;
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
+
 .rt-reference .rt-news .rt-news-card > a {
   margin: 0;
   color: #fff;
@@ -1017,4 +1011,59 @@
   .rt-attendance .lg-button {
     width: 100%;
   }
+}
+
+.rt-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-right: auto;
+}
+.rt-connected-dialog .rt-dialog-footer {
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.rt-calendar-agenda {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.rt-agenda-item {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--elevated);
+  border-left: 3px solid var(--rt-blue);
+}
+.rt-agenda-item time {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.rt-agenda-item strong {
+  display: block;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.rt-agenda-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.rt-agenda-item.is-done {
+  border-left-color: var(--accent);
+  opacity: 0.7;
+}
+.rt-agenda-empty {
+  padding: 16px;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
 }

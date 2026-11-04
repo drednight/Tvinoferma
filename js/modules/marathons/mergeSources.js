@@ -131,7 +131,10 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
     });
   stages.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
 
-  if (news.name && site.name && !sameText(news.name, site.name)) {
+  const siteName = /^(?:неизвестный марафон|марафон|марафон из новости)$/i.test(String(site.name || '').trim())
+    ? ''
+    : site.name;
+  if (news.name && siteName && !sameText(news.name, siteName)) {
     notes.push({
       level: 'info',
       text: `Название марафона: в новости «${news.name}», на странице «${site.name}» — оставлено название со страницы.`
@@ -141,7 +144,7 @@ export function mergeSiteAndNews({ news = null, site = null } = {}) {
   return {
     raw: {
       origin: 'merged',
-      name: site.name || news.name,
+      name: siteName || news.name || 'Марафон',
       sourceUrl: site.sourceUrl || news.sourceUrl || null,
       newsUrl: news.newsUrl || null,
       stages,

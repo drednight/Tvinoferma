@@ -212,3 +212,28 @@ it('local clan intentions render immediately, separately from the verified respo
   expect(root.querySelector('[data-today-vote="1"][data-value="no"]').getAttribute('aria-pressed')).toBe('true');
   expect(root.textContent).not.toContain('Ожидает переноса');
 });
+
+it('calendar agenda has clear time/title rows and all three actions in the left footer next to Close', async () => {
+  document.body.innerHTML = '<main></main>';
+  const { renderConnectedToday } = await import('../js/modules/dashboard/connectedToday.js');
+  const root = document.querySelector('main');
+  const render = () => renderConnectedToday(root, {}, render);
+  state.plannerEntries = [
+    { id: 'today-task', title: 'Подготовить припасы', date: mskDate(), kind: 'task', status: 'todo' }
+  ];
+  render();
+  const dialog = document.querySelector('dialog');
+  dialog.showModal = () => dialog.setAttribute('open', '');
+  dialog.close = () => dialog.removeAttribute('open');
+  root.querySelector('[data-today-action="calendar"]').click();
+  expect(dialog.querySelector('.rt-calendar-agenda .rt-agenda-item strong').textContent).toBeTruthy();
+  const body = dialog.querySelector('[data-connected-dialog-body]');
+  const footer = dialog.querySelector('.rt-dialog-footer');
+  for (const action of ['calendar-today', 'planner-day', 'event-add']) {
+    expect(footer.querySelector(`.rt-dialog-actions [data-today-action="${action}"]`)).not.toBeNull();
+    expect(body.querySelector(`[data-today-action="${action}"]`)).toBeNull();
+  }
+  expect(footer.querySelector('[data-connected-dialog-close]')).not.toBeNull();
+  footer.querySelector('[data-today-action="calendar-today"]').click();
+  expect(footer.querySelectorAll('[data-today-action="event-add"]')).toHaveLength(1);
+});

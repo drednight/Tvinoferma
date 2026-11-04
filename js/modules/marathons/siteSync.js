@@ -1,3 +1,4 @@
+import { normalizeMarathonUrl } from './sourceUrl.js';
 // js/modules/marathons/siteSync.js
 // Связь марафонов с сайтом pwonline.ru: поиск марафонов, разбор страницы, сверка прогресса.
 // События Rust оборачиваются в Promise, чтобы с ними было удобно работать из интерфейса.
@@ -60,9 +61,10 @@ function withTimeout(promise, ms, fallback) {
 
 /** Свои страницы марафонов, добавленные пользователем (ищутся вместе со стандартными). */
 export function customPages() {
-  return (state.settings?.customMarathonPages || []).filter(u => typeof u === 'string' && u.startsWith('http'));
+  return [...new Set((state.settings?.customMarathonPages || []).map(normalizeMarathonUrl).filter(Boolean))];
 }
 export function rememberCustomPage(url) {
+  url = normalizeMarathonUrl(url);
   if (!url || SITE_PAGES.some(p => p.url === url)) return;
   if (!state.settings) state.settings = {};
   const list = state.settings.customMarathonPages || [];
@@ -121,6 +123,8 @@ export async function scanTitles(onProgress, { dock = false, onTask } = {}) {
 
 /** Разбирает страницу марафона. → { marathon: {name, sourceUrl, stages, quests, debug}, error, task } */
 export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
+  url = normalizeMarathonUrl(url);
+  if (!url) return { marathon: null, error: 'bad_url', task: null };
   const scanner = pickScannerCharacter();
   const task = startTask('📥 Загрузка заданий марафона', { dock });
   await task.waitTurn();
@@ -143,6 +147,7 @@ export async function parseMarathonPage(url, { dock = false, onTask } = {}) {
   }
   const res = await withTimeout(wait, 60000, { marathon: null, error: 'timeout' });
   const m = res.marathon;
+  if (m) m.sourceUrl = normalizeMarathonUrl(m.sourceUrl || url);
   recordParserResult('detail', res.error || (m ? null : 'no_marathon'), { empty: !!m && !m.quests?.length });
   if (res.error || !m) {
     task.finish(`Не удалось разобрать страницу: ${errorText(res.error)}`, 'error');
@@ -284,9 +289,9 @@ export function onCharMarathonData(charId, quests, error) {
 }
 
 function marathonUrlOf(m) {
-  if (m.source?.url) return m.source.url;
+  if (m.source?.url) return normalizeMarathonUrl(m.source.url);
   const series = m.seriesId ? state.marathons.find(s => s.id === m.seriesId) : null;
-  return series?.source?.url || null;
+  return normalizeMarathonUrl(series?.source?.url);
 }
 
 async function fetchChar(charId, url) {

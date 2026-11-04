@@ -22,7 +22,7 @@
         const text = document.body.innerText || '';
         const dm = TF.match('news.date', text);
         report({
-            title: h1 ? h1.textContent.replace(/\s+/g, ' ').trim() : document.title.split(' - ')[0],
+            title: (h1?.textContent || '').replace(/\s+/g, ' ').trim() || document.title.split(' - ')[0].trim(),
             publishedAt: dm ? dm[1] : null,
             url: location.href.split('#')[0],
             html: clone.innerHTML

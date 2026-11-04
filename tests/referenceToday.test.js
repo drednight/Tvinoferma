@@ -43,8 +43,8 @@ beforeEach(() => {
     getState: () => state,
     render,
     toast,
-    modal: (title, body) => {
-      dialog.innerHTML = `<h2>${title}</h2>${body}`;
+    modal: (title, body, actions = '') => {
+      dialog.innerHTML = `<h2>${title}</h2>${body}<footer>${actions}</footer>`;
       dialog.setAttribute('open', '');
     }
   });
@@ -235,7 +235,12 @@ it('renders article IDs in their own boxes, without external-link arrows', async
     })
   });
   render();
-  expect([...root.querySelectorAll('.rt-news-number')].map(e => e.textContent)).toEqual(['#9151', '#9154', '#9152']);
+  expect(root.querySelector('.rt-news-number')).toBeNull();
+  expect([...root.querySelectorAll('.rt-news-card a')].map(e => e.textContent)).toEqual([
+    'Новость 9151',
+    'Новость 9154',
+    'Новость 9152'
+  ]);
   expect([...root.querySelectorAll('.rt-news-card a')].some(e => e.textContent.includes('↗'))).toBe(false);
 });
 it('keeps the To-Do checkbox without the three-state cycling control', () => {
