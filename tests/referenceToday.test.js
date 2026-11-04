@@ -252,3 +252,38 @@ it('keeps the To-Do checkbox without the three-state cycling control', () => {
   expect($('[data-today-status]')).toBeNull();
   expect($('.rt-events').textContent).not.toMatch(/Ожидает|В работе|Выполнено/);
 });
+
+it('places the decoration icon after running windows and displays progress without repeat submission', async () => {
+  let finish;
+  mocks.actions.mockImplementationOnce(async (action, { onProgress }) => {
+    expect(action).toBe('decorate-windows');
+    onProgress({ percent: 50, nick: 'Test', phase: 'apply' });
+    await new Promise(resolve => {
+      finish = resolve;
+    });
+    onProgress({ percent: 100, phase: 'done' });
+    return { ok: true };
+  });
+  const buttons = [...document.querySelectorAll('.rt-launch-actions button')];
+  expect(buttons.map(b => b.dataset.todayAction)).toEqual(['launch', 'windows', 'decorate-windows']);
+  buttons[2].click();
+  await vi.waitFor(() => expect($('[data-today-decoration-progress]').textContent).toContain('50%'));
+  expect($('[data-today-action="decorate-windows"]').disabled).toBe(true);
+  $('[data-today-action="decorate-windows"]').click();
+  expect(mocks.actions).toHaveBeenCalledTimes(1);
+  finish();
+  await vi.waitFor(() => expect($('[data-today-action="decorate-windows"]').disabled).toBe(false));
+  expect($('[data-today-decoration-progress]').textContent).toContain('100%');
+});
+
+it('opens the equipment explanation from the event info button', () => {
+  state.day.date = '2026-11-04';
+  state.day.chosenDay = 0;
+  render();
+  const info = [...document.querySelectorAll('[data-today-info]')].find(b => b.title.includes('свой шмот'));
+  expect(info).toBeTruthy();
+  info.click();
+  expect(dialog.textContent).toContain('Хаос — свой шмот');
+  expect(dialog.textContent).toContain('Порядок — равный шмот');
+  expect(dialog.textContent).toContain('19:00–23:00 (МСК)');
+});

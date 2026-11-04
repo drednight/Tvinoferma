@@ -84,7 +84,7 @@ export function connectedTodayState(preview) {
     )
   };
 }
-export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind } = {}) {
+export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind, onProgress } = {}) {
   if (!nativeToday())
     return {
       ok: false,
@@ -99,7 +99,16 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
     if (!party) return { ok: false, message: 'Выбранный отряд не найден в приложении.' };
     await (await import('../launcher/partyLaunch.js')).launchPartyByName(party.name);
   } else if (action === 'windows') await (await import('../launcher/windowPicker.js')).openWindowPicker();
-  else if (action === 'promo') (await import('../automation/promo.js')).openPromoDialog();
+  else if (action === 'decorate-windows') {
+    const { runningClientDetails, redecorateRunningWindows, redecorateText } = await import('../launcher/launch.js');
+    const { windowRows } = await import('../launcher/windowList.js');
+    const rows = windowRows(await runningClientDetails(), state.characters);
+    const result = await redecorateRunningWindows(rows, { onProgress });
+    return {
+      ok: result.ok + result.fixed > 0 && !result.failed,
+      message: redecorateText(result) || 'Нет опознанных окон игры для переподписи.'
+    };
+  } else if (action === 'promo') (await import('../automation/promo.js')).openPromoDialog();
   else if (action === 'clan-open') await (await import('../guild/window.js')).openGuild();
   else if (action === 'clan-refresh') {
     if (!(await (await import('../guild/page.js')).syncGuild()))

@@ -182,7 +182,10 @@ export const DEFAULT_SETTINGS = {
       'dynasty-battle': { enabled: true, leadMinutes: 10 },
       'guild-rhythm': { enabled: true, leadMinutes: 10 },
       'forbidden-teaching': { enabled: true, leadMinutes: 10 },
-      'hero-arena': { enabled: true, leadMinutes: 10 }
+      'hero-arena': { enabled: true, leadMinutes: 10 },
+      'aurora-chaos': { enabled: true, leadMinutes: 10 },
+      'aurora-order': { enabled: true, leadMinutes: 10 },
+      'imperial-battle': { enabled: true, leadMinutes: 10 }
     }
   },
   // Видимые окна браузера персонажей

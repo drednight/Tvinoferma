@@ -65,6 +65,7 @@ export function referencePromoStatus(p, today, now) {
     text: result.text
   };
 }
+const decorationState = { busy: false, text: '' };
 export function renderReferenceToday(input) {
   const s = connectedTodayState(input),
     date = selectedDate(s),
@@ -91,7 +92,7 @@ export function renderReferenceToday(input) {
        `<button type="button" data-day="${i - 1}" aria-pressed="${s.day.chosenDay === i - 1}"><small>${i === 1 ? 'Сегодня' : i === 0 ? 'Вчера' : new Date(`${d.date}T12:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', timeZone: 'Europe/Moscow' })}</small>${pass(d.key, d.name)}<span>${d.date.slice(8)}.${d.date.slice(5, 7)}</span></button>`
    )
    .join('')}</div>
- <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label>` : `<b>${esc(e.title)}</b>`}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
+ <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label>` : `<b>${esc(e.title)}</b>`}${e.note ? `<button type="button" class="lg-text rt-event-info" data-today-info="${events.indexOf(e)}" title="${esc(e.note)}" aria-label="Пояснение: ${esc(e.title)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button>` : ''}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
  <div class="rt-right"><div class="rt-top"><section class="lg-panel rt-promos"><div class="rt-heading"><h3>Промокоды</h3><small>Действуют: ${promos.length}</small></div><div class="rt-promo-list">${
    promos
      .map(p => {
@@ -101,7 +102,7 @@ export function renderReferenceToday(input) {
      .join('') || '<p class="lg-muted">Действующих кодов пока не найдено.</p>'
  }</div><footer>${button('Открыть промокоды', 'promo', 'primary')}<button type="button" class="lg-button rt-refresh" data-today-action="promo-refresh" title="Проверить действующие промокоды в новостях" aria-label="Обновить промокоды">${refreshIcon}</button></footer></section>
  <section class="lg-panel rt-marathon"><div class="rt-heading"><h3>Марафон</h3>${!nativeToday() && !input.production ? '<span class="rt-pill">Пример</span>' : ''}</div>${s.scenarios.marathon ? `<h4>${esc(s.day.marathon.title)}</h4>${s.day.marathon.startDate > s.day.date ? '<span class="rt-pill">Скоро · ещё не начался</span>' : ''}<p class="rt-period">${esc(s.day.marathon.startDate || mskAddDays(s.day.date, 1))} — ${esc(s.day.marathon.endDate || mskAddDays(s.day.date, 31))}</p><div class="rt-reward-heading"><span>Задачи</span><small>Максимальная награда${!nativeToday() && !input.production ? ' · пример' : ''}</small></div>${s.day.marathonTasks.map((t, i) => `<details class="rt-marathon-task"><summary><span>${esc(t.title)}</span><b>${esc(t.maxReward || (!nativeToday() && !input.production ? ['30 монет', '10 припасов', '3 награды'][i] : 'Не указана') || '—')}</b></summary><p>${esc(t.description || 'Условия задания — в полном разделе марафона.')}</p></details>`).join('')}<button class="rt-progress-link" data-go-source="marathons"><span>Прогресс дня <b>Открыть раздел ↗</b></span><span class="rt-progress-track"><i style="width:${s.day.marathon.percent}%"></i></span><small>${s.day.marathon.percent}%</small></button>` : '<p>Нет активного марафона.</p><button type="button" class="lg-button" data-go-source="marathons">Открыть марафоны ↗</button>'}</section></div>
- <section class="lg-panel rt-launch"><div class="rt-heading"><h3>Быстрый запуск</h3></div><div class="rt-launch-main"><div><small>ВЫБРАННЫЙ ОТРЯД</small><h3>${esc(party?.label || 'Отряд не выбран')}</h3><p>Персонажей: ${members.length}</p></div><div class="rt-people">${members.map(member).join('')}</div></div><label class="rt-party-select">Выбрать отряд<select class="lg-input" data-party-select>${s.parties.map(p => `<option value="${esc(p.id)}" ${p.id === party?.id ? 'selected' : ''}>${esc(p.label || p.name)}</option>`).join('')}</select></label><div class="rt-launch-actions">${button('Запустить выбранный отряд', 'launch', 'primary')}${button('Текущие рабочие окна игры', 'windows')}</div><small>Штатный запуск: проверки GameCenter, привязок, уже открытых окон и подтверждение.</small></section>
+ <section class="lg-panel rt-launch"><div class="rt-heading"><h3>Быстрый запуск</h3></div><div class="rt-launch-main"><div><small>ВЫБРАННЫЙ ОТРЯД</small><h3>${esc(party?.label || 'Отряд не выбран')}</h3><p>Персонажей: ${members.length}</p></div><div class="rt-people">${members.map(member).join('')}</div></div><label class="rt-party-select">Выбрать отряд<select class="lg-input" data-party-select>${s.parties.map(p => `<option value="${esc(p.id)}" ${p.id === party?.id ? 'selected' : ''}>${esc(p.label || p.name)}</option>`).join('')}</select></label><div class="rt-launch-actions">${button('Запустить выбранный отряд', 'launch', 'primary')}${button('Текущие рабочие окна игры', 'windows')}<button type="button" class="lg-button rt-decoration-button" data-today-action="decorate-windows" title="Названия и значки" aria-label="Названия и значки" ${decorationState.busy ? 'disabled' : ''}>🔖</button><span class="rt-decoration-progress" role="status" aria-live="polite" data-today-decoration-progress>${esc(decorationState.text)}</span></div><small>Штатный запуск: проверки GameCenter, привязок, уже открытых окон и подтверждение.</small></section>
  <section class="lg-panel rt-information"><div class="rt-heading"><h3>Информационная панель</h3></div><dl class="rt-information-grid">${[
    ['Золото', s.day.gold],
    ['Голд', s.day.bank],
@@ -215,6 +216,11 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
       planner.day(selectedDate(s));
       return;
     }
+    if (el.hasAttribute('data-today-info')) {
+      const info = referenceDayEvents(s)[Number(el.dataset.todayInfo)];
+      if (info) modal(info.title, `<p>${esc(info.time)}–${esc(info.endTime)} (МСК)</p><p>${esc(info.note)}</p>`);
+      return;
+    }
     if (el.hasAttribute('data-today-event')) {
       if (planner?.day) {
         dialog.close();
@@ -249,6 +255,26 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
       return;
     }
     const action = el.dataset.todayAction;
+    if (action === 'decorate-windows') {
+      if (decorationState.busy) return;
+      decorationState.busy = true;
+      decorationState.text = '0% · Получаю список окон…';
+      render();
+      try {
+        const result = await execute(action, {
+          onProgress: p => {
+            decorationState.text = `${p.percent}% · ${p.nick || (p.phase === 'done' ? 'Обработано' : 'Запрашиваю права администратора…')}`;
+            const status = root.querySelector('[data-today-decoration-progress]');
+            if (status) status.textContent = decorationState.text;
+          }
+        });
+        if (!result.ok) decorationState.text = 'Не завершено: проверьте сообщение';
+      } finally {
+        decorationState.busy = false;
+        render();
+      }
+      return;
+    }
     if (action === 'calendar') {
       raw.referenceMonth = 0;
       calendar();

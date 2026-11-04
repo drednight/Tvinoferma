@@ -25,6 +25,33 @@ export const WEEKDAY_NAMES = ['Понедельник', 'Вторник', 'Ср�
  */
 export const RECURRING_EVENTS = [
   {
+    id: 'aurora-chaos',
+    title: 'Арена Авроры (Хаос)',
+    days: [0, 2, 4, 6],
+    start: '19:00',
+    end: '23:00',
+    color: 'purple',
+    note: 'Хаос — свой шмот. Порядок — равный шмот.'
+  },
+  {
+    id: 'aurora-order',
+    title: 'Арена Авроры (Порядок)',
+    days: [1, 3, 5],
+    start: '19:00',
+    end: '23:00',
+    color: 'blue',
+    note: 'Хаос — свой шмот. Порядок — равный шмот.'
+  },
+  {
+    id: 'imperial-battle',
+    title: 'Императорская битва',
+    days: [0, 1, 2, 3, 4, 5, 6],
+    start: '13:00',
+    end: '22:30',
+    color: 'red',
+    note: 'Режимы Хаос и Порядок чередуются по неделям со среды по вторник. Смена режима каждую среду. Неделя 4–10 ноября 2026 года — Хаос.'
+  },
+  {
     id: 'dynasty-battle',
     title: 'Битва Династий',
     days: [0, 4], // понедельник и пятница
@@ -62,6 +89,14 @@ export const RECURRING_EVENTS = [
   }
 ];
 
+/** Чередование недель от подтверждённой среды 4 ноября 2026 (Хаос). */
+export function imperialBattleMode(date) {
+  const stamp = Date.parse(`${date}T00:00:00Z`);
+  if (!Number.isFinite(stamp) || new Date(stamp).toISOString().slice(0, 10) !== date) return null;
+  const week = Math.floor((stamp - Date.UTC(2026, 10, 4)) / (7 * 86400000));
+  return ((week % 2) + 2) % 2 === 0 ? 'Хаос' : 'Порядок';
+}
+
 /** Ивент по идентификатору (нужен настройкам уведомлений и загрузке состояния). */
 export function recurringEventById(id) {
   return RECURRING_EVENTS.find(e => e.id === id) || null;
@@ -94,10 +129,11 @@ export function recurringDurationMinutes(event) {
  */
 export function recurringEventsForDate(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
+  if (!imperialBattleMode(date)) return [];
   const weekday = weekdayOf(date);
   return RECURRING_EVENTS.filter(event => event.days.includes(weekday)).map(event => ({
     id: `recurring-${event.id}`,
-    title: event.title,
+    title: event.id === 'imperial-battle' ? `${event.title} (${imperialBattleMode(date)})` : event.title,
     date,
     time: event.start,
     endTime: event.end,

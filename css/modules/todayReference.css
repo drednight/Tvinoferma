@@ -1067,3 +1067,15 @@
   border: 1px dashed var(--line);
   border-radius: 10px;
 }
+
+.rt-decoration-button {
+  flex: 0 0 auto;
+}
+.rt-decoration-progress {
+  font-size: 12px;
+  color: var(--muted);
+}
+.rt-event-info {
+  margin-left: 6px;
+  cursor: help;
+}
