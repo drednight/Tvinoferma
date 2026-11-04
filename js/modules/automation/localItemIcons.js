@@ -17,7 +17,23 @@ const files = {
   'Купон на поздравление': 'congratulation-coupon',
   Метеорит: 'meteorite',
   'Набор «Самоцветы грез»': 'dream-gems',
-  'Небесная пилюля 1-го уровня': 'heavenly-pill-1'
+  'Небесная пилюля 1-го уровня': 'heavenly-pill-1',
+  'Золотой камень жребия': 'golden-lot-stone',
+  'Порошок духов': 'spirit-powder',
+  'Приказ феникса': 'phoenix-order',
+  'Самоцвет грез (доспех)': 'dream-gem-armor',
+  'Самоцвет грез (оружие)': 'dream-gem-weapon',
+  'Самоцвет грез (реликвия)': 'dream-gem-relic',
+  'Серебряный камень жребия': 'silver-lot-stone',
+  'Солдатское жалование': 'soldier-pay',
+  'Сущность карты': 'card-essence',
+  'Тайная пилюля - Покой': 'secret-pill-tranquility',
+  'Талон на платиновый амулет': 'platinum-charm-ticket',
+  'Талон на платиновый идол': 'platinum-idol-ticket',
+  'Томик стихов - Безупречность': 'poems-perfection',
+  'Томик стихов - Бесстрашие': 'poems-fearlessness',
+  'Томик стихов - Неуязвимость': 'poems-invulnerability',
+  'Экстракт жидкого золота': 'liquid-gold-extract'
 };
 const normalize = value =>
   String(value || '')
