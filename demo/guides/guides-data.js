@@ -2125,7 +2125,131 @@ export const GUIDES = [
     passType: null,
     updated: '2026',
     external: true
+  },
+
+  // ================= Гайды от группы LamaoMEMao (ВКонтакте) =================
+  {
+    id: 'lamao-hroniki',
+    category: 'locations',
+    title: 'Хроники Героев. Полный гайд (LamaoMEMao)',
+    description: 'Полный гайд по Хроникам Героев от группы LamaoMEMao|Perfect World: хроники Жнеца, Шамана, Призрака и Барда с координатами НИП, паролями и подсказками по квестам.',
+    tags: ['хроники героев', 'lamaomemao', 'жнец', 'шаман', 'призрак', 'бард', 'вконтакте'],
+    url: 'https://vk.ru/@lamao_memao-hroniki-geroev-polnyi-gaid',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'mid',
+    class: null,
+    passType: null,
+    updated: '07.01.2024',
+    external: true
+  },
+  {
+    id: 'lamao-vostochnye-zemli',
+    category: 'locations',
+    title: 'Восточные земли: краткий гайд (LamaoMEMao)',
+    description: 'Краткий гайд по Восточным землям от LamaoMEMao: заполнение Атласа, наследование Ши, статуи, задания мира, сундуки, награды, координаты.',
+    tags: ['восточные земли', 'lamaomemao', 'атлас', 'наследие ши', 'сундуки', 'вконтакте'],
+    url: 'https://vk.ru/@lamao_memao-vostochnye-zemli-kratkii-gaid',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'endgame',
+    class: null,
+    passType: null,
+    updated: '17.01.2024',
+    external: true
+  },
+  {
+    id: 'lamao-khronika-znec',
+    category: 'locations',
+    title: 'Подсказки по хронике Жнеца (LamaoMEMao)',
+    description: 'Подсказки по прохождению хроники Жнеца от LamaoMEMao: координаты, коды сундуков, квесты, битвы с НИП, титул «Наивная жестокость».',
+    tags: ['хроники героев', 'жнец', 'lamaomemao', 'квесты', 'вконтакте'],
+    url: 'https://vk.com/wall-149459137_11216',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'mid',
+    class: null,
+    passType: null,
+    updated: '26.12.2023',
+    external: true
+  },
+  {
+    id: 'lamao-khronika-shaman',
+    category: 'locations',
+    title: 'Подсказки по хронике Шамана (LamaoMEMao)',
+    description: 'Подсказки по прохождению хроники Шамана от LamaoMEMao: карточные мини-игры, координаты НИП, муцин улитки, китовый ус, титул «Журавлиная песня».',
+    tags: ['хроники героев', 'шаман', 'lamaomemao', 'квесты', 'вконтакте'],
+    url: 'https://vk.com/wall-149459137_11224',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'mid',
+    class: null,
+    passType: null,
+    updated: '07.02.2024',
+    external: true
+  },
+  {
+    id: 'lamao-karta-vostoka',
+    category: 'tools',
+    title: 'Карта Ресурсов Востока (LamaoMEMao)',
+    description: 'Обновленная карта ресурсов Восточных земель от LamaoMEMao с координатами спаунов грибов, нефритов и других ресурсов. Также ссылка на Google-таблицу с координатами.',
+    tags: ['восточные земли', 'ресурсы', 'карта', 'lamaomemao', 'сундуки', 'вконтакте'],
+    url: 'https://vk.com/wall-149459137_13935',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'endgame',
+    class: null,
+    passType: null,
+    updated: '22.12.2024',
+    external: true
+  },
+  {
+    id: 'lamao-kitai-2024',
+    category: 'pvp',
+    title: 'Ну что там на Китае? (20.11.2024) — LamaoMEMao',
+    description: 'Обзор китайского обновления от группы LamaoMEMао: Город Великого дня, Восток Глава 2, оптимизация ездовых питомцев, исправления навыков Паньгу и Жреца.',
+    tags: ['китай', 'обновление', 'lamaomemao', 'восток', 'пань гу', 'вконтакте'],
+    url: 'https://vk.com/@lamao_memao-nu-chto-tam-na-kitae-20112024',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'all',
+    class: null,
+    passType: null,
+    updated: '20.11.2024',
+    external: true
+  },
+  {
+    id: 'lamao-dusha-vechnogo-dnya',
+    category: 'locations',
+    title: 'Восточные земли: Душа Вечного дня (LamaoMEMao)',
+    description: 'Гайд по расширению Восточных земель «Душа Вечного дня» от LamaoMEMao: новые ресурсы, Сердце Паньгу, боссы и мобы для прокачки.',
+    tags: ['восточные земли', 'душа вечного дня', 'lamaomemao', 'сердце пань гу', 'ресурсы', 'вконтакте'],
+    url: 'https://vk.com/@lamao_memao-vostochnye-zemli-dusha-vechnogo-dnya',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'endgame',
+    class: null,
+    passType: null,
+    updated: '06.03.2025',
+    external: true
+  },
+  {
+    id: 'lamao-mirovye-kvesty',
+    category: 'locations',
+    title: 'Мировые квесты Восточных земель: город Тянь Нуй (LamaoMEMao)',
+    description: 'Гайд по мировым квестам Восточных земель в городе Тянь Нуй от LamaoMEMao: цепочки квестов, достижения, сбор перьев, история родства Белого и Чёрного.',
+    tags: ['мировые квесты', 'восточные земли', 'тьян нуй', 'lamaomemao', 'достижения', 'вконтакте'],
+    url: 'https://vk.com/@lamao_memao-mirovye-kvesty-vostochnyh-zemel-gorod-tyanui',
+    source: 'LamaoMEMao',
+    sourceLabel: 'ВКонтакте · Группа',
+    stage: 'mid',
+    class: null,
+    passType: null,
+    updated: '2024',
+    external: true
   }
 ];
+
+export const GUIDE_COUNT = GUIDES.length;
 
 export const GUIDE_COUNT = GUIDES.length;
