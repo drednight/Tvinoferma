@@ -64,6 +64,7 @@ const TABS = GUIDES
       ['characters', 'characters'],
       ['parties', 'parties'],
       ['marathons', 'marathons'],
+      ['tools', 'tools'],
       ['settings', 'settings'],
       ['settings', 'browser', '#settings-browser'],
       ['today', 'calendar', 'calendar-month']
@@ -290,7 +291,7 @@ async function main() {
           {title: 'Пример объявления об обновлении', url: 'https://pwonline.ru/news.php?article=2'},
           {title: 'Учебная новость: подарки и задания', url: 'https://pwonline.ru/news.php?article=3'}
         ]}));
-        localStorage.setItem('tf_promo_discovery_v1', JSON.stringify({version: 1, status: 'checked', articles: {}, codes: [{code: 'PW-EXAMPLE-ONLY', title: 'Учебная новость', sourceUrl: 'https://pwonline.ru/news.php?article=1', expiresOn: '2099-12-31', rewards: ['Метеорит ×10', 'Облачная пыль ×5']}]}));
+        localStorage.setItem('tf_promo_discovery_v1', JSON.stringify({version: 1, status: 'checked', articles: {}, codes: [{code: 'PW-EXAMPLE-ONLY', title: 'Учебная новость', sourceUrl: 'https://pwonline.ru/news.php?article=1', expiresOn: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), rewards: ['Метеорит ×10', 'Облачная пыль ×5']}]}));
         window.__tfErrors = [];
         window.addEventListener('error', (e) => window.__tfErrors.push('error: ' + (e.message || e.type)));
         window.addEventListener('unhandledrejection', (e) => window.__tfErrors.push('rejection: ' + (e.reason && e.reason.message || e.reason)));`
