@@ -620,14 +620,54 @@
 
 /* Known promo rewards replace the list marker, not the original quantity text. */
 .promo-reward-row--icon {
-  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   list-style: none;
 }
 .promo-reward-icon {
-  position: absolute;
-  left: -22px;
-  top: 0.15em;
-  width: 16px;
-  height: 16px;
+  display: inline-block;
+  flex: 0 0 18px;
+  align-self: flex-start;
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
+}
+
+/* Shared by gifts and transfers; independent of shop layout. */
+.site-item-icon {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+.site-item-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The 120×80 website preview contains a small centred icon, not item artwork. */
+.site-item-icon--framed {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  overflow: hidden;
+}
+.site-item-icon--framed img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 80px;
+  max-width: none;
+  max-height: none;
+  transform: translate(-50%, -50%);
+  object-fit: fill;
+  flex: none;
 }

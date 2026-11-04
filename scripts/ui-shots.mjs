@@ -64,6 +64,7 @@ const TABS = GUIDES
       ['characters', 'characters'],
       ['parties', 'parties'],
       ['marathons', 'marathons'],
+      ['marathons', 'marathon-table', 'marathon-table'],
       ['tools', 'tools'],
       ['settings', 'settings'],
       ['settings', 'browser', '#settings-browser'],
@@ -351,6 +352,7 @@ async function main() {
       ),
       'character-form': `import('/js/modules/characters/formEditor.js').then(({ openCharacterForm }) => openCharacterForm())`,
       'character-profile': `(async () => { const { state } = await import('/js/core/state.js'); const { openCharacterProfile } = await import('/js/modules/characters/profileView.js'); openCharacterProfile(state.characters[0]); })()`,
+      'marathon-table': `(async () => { const { state } = await import('/js/core/state.js'); const { openMarathon } = await import('/js/modules/marathons/page.js'); openMarathon(state.marathons.find(m => m.kind !== 'series').id); })()`,
       'marathon-wizard': `import('/js/modules/marathons/wizard.js').then(({ openMarathonWizard }) => { openMarathonWizard(); document.querySelector('[data-src="manual"]').click(); document.querySelector('[data-act="next"]').click(); })`,
       'calendar-month': `(async () => { document.querySelector('[data-today-action="calendar"]').click(); })()`,
       'planner-entry': `(async () => { const { mskDate } = await import('/js/core/msk.js'); const { openPlannerDay } = await import('/js/modules/dashboard/plannerView.js'); openPlannerDay(mskDate()); document.querySelector('[data-planner-add]').click(); })()`,
@@ -379,7 +381,7 @@ async function main() {
         if (opened.exceptionDetails) throw new Error(`Не удалось открыть ${target}: ${opened.exceptionDetails.text}`);
         await sleep(600);
         const measured = await send('Runtime.evaluate', {
-          expression: `(() => { const el = document.querySelector('.modal-container, dialog[open]'); if (!el) throw new Error('Форма не открылась'); const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`,
+          expression: `(() => { const el = document.querySelector(${JSON.stringify(target === 'marathon-table' ? '#marathon-list' : '.modal-container, dialog[open]')}); if (!el) throw new Error('Форма не открылась'); const r = el.getBoundingClientRect(); return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1 }; })()`,
           returnByValue: true
         });
         if (measured.exceptionDetails || !measured.result?.value) throw new Error(`Форма ${target} не открылась`);

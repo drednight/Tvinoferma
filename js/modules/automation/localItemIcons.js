@@ -40,12 +40,21 @@ const normalize = value =>
     .normalize('NFKC')
     .toLowerCase()
     .replace(/ё/g, 'е')
+    .replace(/[\u200b-\u200d\ufeff]/g, '')
+    .replace(/[–—−]/g, '-')
     .replace(/[«»“”"]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 const icons = new Map(Object.entries(files).map(([name, key]) => [normalize(name), key]));
 export function localItemIcon(name) {
-  const key = icons.get(normalize(name));
+  const exact = normalize(name);
+  // Strip presentation-only quantity/binding suffixes; never strip categories or levels.
+  const item = exact
+    .replace(/\s*\((?:привязан(?:ный|ная|ное)?|персональн(?:ый|ая|ое)|непередаваемый)\)\s*[.;,]?$/iu, '')
+    .replace(/\s*\(\s*(?:[×xх]\s*)?\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*\)\s*[.;,]?$/iu, '')
+    .replace(/\s*(?:[×xх:]|[-]\s*(?=\d))\s*\d[\d\s.,]*(?:\s*(?:шт\.?|штук[аи]?|ед\.?))?\s*[.;,]?$/iu, '')
+    .trim();
+  const key = icons.get(exact) || icons.get(item);
   return key ? `${import.meta.env.BASE_URL}assets/icons/items/${key}.webp` : '';
 }
 export const localItemNames = Object.keys(files);

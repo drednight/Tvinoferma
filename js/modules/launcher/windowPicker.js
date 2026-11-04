@@ -40,6 +40,7 @@ export async function openWindowPicker(opts = {}) {
   /** @type {Array<any>} */
   let rows = [];
   let busy = false;
+  let decoration = '';
 
   const draw = () => {
     const known = rows.filter(r => r.known).length;
@@ -47,7 +48,8 @@ export async function openWindowPicker(opts = {}) {
       <button type="button" class="btn ghost small" data-act="refresh">🔄 Обновить список</button>
       <button type="button" class="btn ghost small" data-act="redecorate"
               title="Заново поставить окнам игры название «Ник — Класс» и значок класса, если они слетели"
-              ${rows.filter(r => r.known).length ? '' : 'disabled'}>🔖 Названия и значки</button>`;
+              ${!busy && rows.some(r => r.known) ? '' : 'disabled'}>🔖 Названия и значки</button>
+      <span role="status" aria-live="polite" data-decoration-progress>${escapeHtml(decoration)}</span>`;
 
     ov.body.innerHTML = rows.length
       ? `<div class="winp-list">${rows.map(rowHtml).join('')}</div>`
@@ -153,15 +155,25 @@ export async function openWindowPicker(opts = {}) {
    */
   const redecorateOpenWindows = async btn => {
     if (busy) return;
-    const label = btn.textContent;
+    busy = true;
+    decoration = '0% · Получаю список окон…';
     btn.disabled = true;
-    btn.textContent = '⏳ Подписываем…';
     try {
       await reload();
       const { redecorateRunningWindows, redecorateText } = await import('./launch.js');
-      const res = await redecorateRunningWindows(rows);
+      const res = await redecorateRunningWindows(rows, {
+        onProgress: p => {
+          decoration = `${p.percent}% · ${p.phase === 'elevated' ? 'Запрашиваю права администратора…' : p.phase === 'done' ? `Обработано: ${p.done}/${p.total}` : `${p.done}/${p.total} · ${p.nick}`}`;
+          const status = ov.sub.querySelector('[data-decoration-progress]');
+          if (status) status.textContent = decoration;
+        }
+      });
       const done = res.ok + res.fixed;
-      if (done) toast(`Названия и значки восстановлены: окон ${done}`, 'success');
+      if (done)
+        toast(
+          `Названия и значки восстановлены: окон ${done}${res.failed ? `; не удалось: ${res.failed}` : ''}${res.denied ? ' (нет доступа Windows)' : ''}`,
+          res.failed ? 'warning' : 'success'
+        );
       else if (res.denied) toast('Windows не дал доступ к окнам игры', 'error');
       else toast(redecorateText(res) || 'Не удалось восстановить названия и значки', res.skipped ? 'warning' : 'error');
       res.details.forEach(d => console.warn('[WINDOWS] подпись:', d));
@@ -169,8 +181,8 @@ export async function openWindowPicker(opts = {}) {
     } catch (e) {
       toast(`Не удалось восстановить названия и значки: ${errText(e)}`, 'error');
     } finally {
-      btn.disabled = false;
-      btn.textContent = label;
+      busy = false;
+      draw();
     }
   };
 
@@ -219,6 +231,7 @@ export async function openWindowPicker(opts = {}) {
     if (!btn) return;
     const act = btn.dataset.act;
 
+    if (busy && act !== 'close') return;
     if (act === 'refresh') {
       await reload();
       return;

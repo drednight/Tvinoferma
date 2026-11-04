@@ -37,10 +37,10 @@
             let total = 0;
             if (progressEl) {
                 const text = progressEl.innerText.trim();
-                const parts = text.split('/');
-                if (parts.length === 2) {
-                    completed = parseInt(parts[0], 10) || 0;
-                    total = parseInt(parts[1], 10) || 0;
+                const ratio = /^(?:Выполнено:?\s*)?(\d+)\s*\/\s*(\d+)$/i.exec(text.replace(/\u00a0/g, ' '));
+                if (ratio) {
+                    completed = Number(ratio[1]);
+                    total = Number(ratio[2]);
                 }
             }
             if (total > 0 || completed > 0) {

@@ -44,6 +44,13 @@ export async function openWebLink(value) {
   }
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+export async function openCharacterWebLink(value, character) {
+  const url = webLink(value);
+  if (!url || !character?.id) throw new Error('Не задана страница отметок или персонаж.');
+  if (!window.__TAURI_INTERNALS__) throw new Error('Браузер персонажа доступен в приложении.');
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke('open_link_browser', { url, charId: character.id, charNick: character.nick });
+}
 let bound = false;
 export function bindWebLinks() {
   if (bound) return;

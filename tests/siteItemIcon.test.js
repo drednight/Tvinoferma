@@ -61,3 +61,17 @@ it('keeps the three dream gem categories distinct and normalizes ё and whitespa
   expect(localItemIcon('  Самоцвет грёз (доспех)  ')).toBe(urls[0]);
   expect(localItemIcon('Золотой камень жребия')).not.toBe(localItemIcon('Серебряный камень жребия'));
 });
+
+it('matches real item labels with quantities, binding tags and typographic dashes across sections', async () => {
+  const { localItemIcon } = await import('../js/modules/automation/localItemIcons.js');
+  for (const name of [
+    'Приказ феникса (30 шт.).',
+    'Приказ феникса: 30 шт.',
+    'Приказ феникса ×30',
+    'Приказ феникса (30 шт.) (привязанный)'
+  ])
+    expect(localItemIcon(name)).toContain('phoenix-order.webp');
+  expect(localItemIcon('Томик стихов — Бесстрашие (10 шт.)')).toContain('poems-fearlessness.webp');
+  expect(siteItemIconHtml('', 'Самоцвет грёз (доспех) (5 шт.)')).toContain('dream-gem-armor.webp');
+  expect(siteItemIconHtml('', 'Приказ феникса (30 шт.)')).not.toContain('loading="lazy"');
+});

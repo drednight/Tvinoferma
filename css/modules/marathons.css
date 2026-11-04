@@ -1717,3 +1717,9 @@ tr.is-syncing td {
   min-height: 34px;
   padding: 4px 0;
 }
+
+.mr-matrix .mr-site-column {
+  width: 56px;
+  min-width: 56px;
+  text-align: center;
+}

@@ -110,3 +110,15 @@ it('persists system mode, defaults old or invalid settings to WebView, and allow
     charNick: 'Алиса'
   });
 });
+
+it('opens a specific character session for marathon marks regardless of ordinary-link settings', async () => {
+  const { openCharacterWebLink } = await import('../js/core/linkBrowser.js');
+  state.settings.browser = { linkOpenMode: 'system', linkCharacterId: 'bob' };
+  await openCharacterWebLink('https://pwonline.ru/supermarathon2.php', state.characters[0]);
+  expect(mocks.invoke).toHaveBeenCalledWith('open_link_browser', {
+    url: 'https://pwonline.ru/supermarathon2.php',
+    charId: 'alice',
+    charNick: 'Алиса'
+  });
+  expect(mocks.open).not.toHaveBeenCalled();
+});

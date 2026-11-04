@@ -10,6 +10,6 @@ export function promoRewardName(text) {
     .trim();
 }
 export function promoRewardHtml(text, bound = false, itemName = text) {
-  const icon = localItemIcon(promoRewardName(itemName));
-  return `<li class="promo-reward-row${icon ? ' promo-reward-row--icon' : ''}">${icon ? `<img class="promo-reward-icon" src="${escapeHtml(icon)}" width="16" height="16" alt="" aria-hidden="true" loading="lazy" decoding="async">` : ''}${escapeHtml(text)}${bound ? ' <span class="promo-muted">(привязанный)</span>' : ''}</li>`;
+  const icon = localItemIcon(itemName);
+  return `<li class="promo-reward-row${icon ? ' promo-reward-row--icon' : ''}">${icon ? `<img class="promo-reward-icon" src="${escapeHtml(icon)}" width="18" height="18" alt="" aria-hidden="true" decoding="async">` : ''}<span>${escapeHtml(text)}${bound ? ' <span class="promo-muted">(привязанный)</span>' : ''}</span></li>`;
 }

@@ -26,6 +26,6 @@ export function siteItemIconHtml(image, name = '') {
   const framed =
     !local && url && /\/img\/promo_items\/item_\d+\.png$/i.test(new URL(url).pathname) && !/сундук/i.test(name);
   return url
-    ? `<span class="site-item-icon${framed ? ' site-item-icon--framed' : ''}"><img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>`
+    ? `<span class="site-item-icon${framed ? ' site-item-icon--framed' : ''}"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer"></span>`
     : '<span class="site-item-icon" aria-hidden="true">🎁</span>';
 }

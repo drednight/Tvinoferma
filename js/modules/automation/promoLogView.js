@@ -1,3 +1,4 @@
+import { promoRewardHtml } from './promoReward.js';
 // js/modules/automation/promoLogView.js
 // Логи промокодов (Issue #25) как вид логов единого модуля (core/logHub.js, «Настройки → Журналы»).
 // Нажатие на запись открывает окно: награда, персонажи, у которых код введён (и когда), и те, кому не введён (и почему).
@@ -51,7 +52,7 @@ export function detailsHtml(rec) {
   const missed = missedList(rec);
   return `
     <div class="tl-summary"><span>🎁 <code>${escapeHtml(rec.code)}</code></span><span class="muted">первый ввод: ${escapeHtml(when(rec.firstAt))}</span></div>
-    ${rec.reward?.length ? `<div class="promo-log-h">🎁 Награда</div><ul class="promo-log-list">${rec.reward.map(r => `<li>${escapeHtml(rewardLine(r))}${r.bound ? ' <span class="muted">(привязанный)</span>' : ''}</li>`).join('')}</ul>` : '<div class="muted">Награда не записана.</div>'}
+    ${rec.reward?.length ? `<div class="promo-log-h">🎁 Награда</div><ul class="promo-log-list">${rec.reward.map(r => promoRewardHtml(rewardLine(r), r.bound, r.name)).join('')}</ul>` : '<div class="muted">Награда не записана.</div>'}
     <div class="promo-log-h">✅ Введён (${entered.length})</div>
     ${
       entered.length
