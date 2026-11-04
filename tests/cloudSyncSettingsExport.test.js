@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RECURRING_EVENTS } from '../js/modules/dashboard/recurringEvents.js';
 import { mergeSettings } from '../js/core/state/settings.js';
 import { exportPortableSettings } from '../js/modules/cloudSync/settingsExport.js';
 
@@ -86,7 +87,7 @@ describe('экспорт только выбранных настроек', () =
     const result = exportPortableSettings(settings, { selections: ['eventReminders'] });
     expect(result.selections).toEqual(['eventReminders']);
     expect(result.values.eventReminders['dynasty-battle']).toEqual({ enabled: false, leadMinutes: 30 });
-    expect(Object.keys(result.values.eventReminders)).toHaveLength(4);
+    expect(Object.keys(result.values.eventReminders).sort()).toEqual(RECURRING_EVENTS.map(event => event.id).sort());
     expect(JSON.stringify(result)).not.toMatch(/sound|launcher|SECRET|PRIVATE/);
     settings.notifications.events['future-event'] = { enabled: true, leadMinutes: 10 };
     expect(() => exportPortableSettings(settings, { selections: ['eventReminders'] })).toThrow();
