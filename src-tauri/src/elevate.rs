@@ -226,6 +226,7 @@ mod tests {
     fn job_roundtrips_through_json() {
         let job = Job::Decorate {
             targets: vec![DecorateTarget {
+                force: true,
                 pid: 42,
                 title: "Аа — Воин".into(),
                 icon_small: None,
@@ -242,6 +243,7 @@ mod tests {
     fn keys_are_normalized_for_javascript() {
         let job = Job::Decorate {
             targets: vec![DecorateTarget {
+                force: true,
                 pid: 7,
                 title: "T".into(),
                 icon_small: None,

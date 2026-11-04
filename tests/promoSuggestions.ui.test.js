@@ -48,7 +48,13 @@ const button = () => document.querySelector('[data-promo-news-open]');
 describe('article viewer and accessible Stop', () => {
   it('opens the exact news article through native IPC, never a PIN URL', async () => {
     button().click();
-    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('open_promo_news_article', { article: '9142' }));
+    await vi.waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('open_link_browser', {
+        url: 'https://pwonline.ru/news.php?article=9142',
+        charId: null,
+        charNick: null
+      })
+    );
     expect(JSON.stringify(mocks.invoke.mock.calls)).not.toContain('/pin/');
   });
   it('does not disable the main window behind an already running script', () => {
@@ -58,40 +64,25 @@ describe('article viewer and accessible Stop', () => {
     button().click();
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
-  it('closes an owned article as soon as a background script starts, restoring access to Stop', async () => {
+  it('keeps the independent nonmodal viewer open when a background script starts', async () => {
     button().click();
     await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     mocks.current = { status: 'running' };
     mocks.changed();
-    await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('close_promo_news_article'));
+    expect(mocks.invoke).not.toHaveBeenCalledWith('close_promo_news_article');
     expect(button().disabled).toBe(true);
     mocks.current = null;
     mocks.changed();
     expect(button().disabled).toBe(false);
   });
-  it('also covers a script starting while native viewer creation is still pending', async () => {
-    let release;
-    mocks.invoke.mockImplementation(cmd =>
-      cmd === 'open_promo_news_article'
-        ? new Promise(r => {
-            release = r;
-          })
-        : Promise.resolve()
-    );
-    button().click();
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
-    mocks.current = { status: 'running' };
-    mocks.changed();
-    release();
-    await vi.waitFor(() =>
-      expect(mocks.invoke.mock.calls.filter(c => c[0] === 'close_promo_news_article').length).toBeGreaterThanOrEqual(1)
-    );
-  });
   it('shows deadline, restriction and reward text without executing source markup', () => {
     expect(document.body.textContent).toContain('23:59 мск');
     expect(document.body.textContent).toContain('Доступен для сервера: «Цефей»');
     expect(document.querySelectorAll('.promo-news-option li')).toHaveLength(2);
-    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelectorAll('img')).toHaveLength(1);
+    expect(document.querySelector('img').getAttribute('src')).toContain('/items/meteorite.webp');
+    expect(document.querySelector('[onerror]')).toBeNull();
+    expect(document.querySelectorAll('li')[1].textContent).toBe('<img src=x onerror=alert(1)>');
   });
   it('persists hiding only the chosen code', () => {
     [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === 'Скрыть промокод').click();

@@ -43,8 +43,8 @@ beforeEach(() => {
     getState: () => state,
     render,
     toast,
-    modal: (title, body) => {
-      dialog.innerHTML = `<h2>${title}</h2>${body}`;
+    modal: (title, body, actions = '') => {
+      dialog.innerHTML = `<h2>${title}</h2>${body}<footer>${actions}</footer>`;
       dialog.setAttribute('open', '');
     }
   });
@@ -78,23 +78,35 @@ describe('Today 12 revised connected dashboard', () => {
     expect(root.querySelectorAll('.rt-news article')).toHaveLength(3);
     expect($('.rt-news').textContent).toContain('16:20');
     expect($('.rt-news details')).toBeNull();
+    expect([...root.querySelectorAll('.rt-news article a')].map(a => a.href)).toEqual(
+      [3, 2, 1].map(id => `https://pwonline.ru/news.php?article=${id}`)
+    );
     expect(root.textContent).not.toContain('Сохранённый пример');
   });
-  it('active promo source URL, entry status and rewards are visible, no hidden-code controls', () => {
+  it('promo rewards are collapsed on every render, with no source link', () => {
     mocks.promos = [
       {
         code: 'CURRENT',
         expiresOn: '2026-11-04',
         sourceUrl: 'https://pwonline.ru/news.php?article=3',
         entered: 2,
-        rewards: ['Награда × 2']
+        rewards: ['Приказ феникса (30 шт.)', 'Награда × 2']
       }
     ];
     render();
     expect($('.rt-promo').textContent).toContain('CURRENT');
     expect($('.rt-promo').textContent).toContain('Введён: 2');
     expect($('.rt-promo').textContent).toContain('Награда × 2');
-    expect($('.rt-promo a').href).toContain('article=3');
+    expect($('.rt-promo li img').getAttribute('src')).toContain('phoenix-order.webp');
+    expect($('.rt-promo li').textContent).toBe('Приказ феникса (30 шт.)');
+    expect(document.querySelectorAll('.rt-promo li')[1].querySelector('img')).toBeNull();
+    expect($('.rt-promo a')).toBeNull();
+    const details = $('.rt-promo details');
+    expect(details.open).toBe(false);
+    details.querySelector('summary').click();
+    expect(details.open).toBe(true);
+    render();
+    expect($('.rt-promo details').open).toBe(false);
     expect($('[data-today-action=promo-restore]')).toBeNull();
   });
   it('tabs separate timed events from To-Do, preserving task completion across tabs', () => {
@@ -197,4 +209,81 @@ it('independent compact refresh actions replace the combined server button and r
   $('[data-today-action=promo-refresh]').click();
   await vi.waitFor(() => expect(mocks.actions).toHaveBeenCalledWith('promo-refresh', { partyId: 'p1' }));
   expect(mocks.actions).toHaveBeenCalledWith('news-refresh', { partyId: 'p1' });
+});
+
+it('keeps copy as an accessible icon beside the party event title, without a parties navigation button', () => {
+  const copy = $('[data-today-copy-party]');
+  expect(copy.closest('.rt-party-heading').querySelector('b')).not.toBeNull();
+  expect(copy.getAttribute('aria-label')).toContain('кроме своего');
+  expect(copy.querySelector('svg')).not.toBeNull();
+  expect($('.rt-clan [data-go-source=parties]')).toBeNull();
+});
+it('restores the attendance pressed state from the saved response', () => {
+  state.guild = { events: [{ id: 'saved', title: 'Сбор', response: 'yes' }], parties: [] };
+  render();
+  expect($('[data-today-vote=saved][data-value=yes]').getAttribute('aria-pressed')).toBe('true');
+  expect($('[data-today-vote=saved][data-value=no]').getAttribute('aria-pressed')).toBe('false');
+});
+
+it('renders article IDs in their own boxes, without external-link arrows', async () => {
+  await refreshSiteFeed({
+    invokeFn: async () => ({
+      status: 200,
+      html:
+        '<table>' +
+        [9151, 9154, 9152]
+          .map(id => `<tr class="news_page"><td><a href="/news.php?article=${id}">Новость ${id}</a></td></tr>`)
+          .join('') +
+        '</table>'
+    })
+  });
+  render();
+  expect(root.querySelector('.rt-news-number')).toBeNull();
+  expect([...root.querySelectorAll('.rt-news-card a')].map(e => e.textContent)).toEqual([
+    'Новость 9151',
+    'Новость 9154',
+    'Новость 9152'
+  ]);
+  expect([...root.querySelectorAll('.rt-news-card a')].some(e => e.textContent.includes('↗'))).toBe(false);
+});
+it('keeps the To-Do checkbox without the three-state cycling control', () => {
+  $('[data-today-tab=todo]').click();
+  expect($('[data-today-todo=todo]')).not.toBeNull();
+  expect($('[data-today-status]')).toBeNull();
+  expect($('.rt-events').textContent).not.toMatch(/Ожидает|В работе|Выполнено/);
+});
+
+it('places the decoration icon after running windows and displays progress without repeat submission', async () => {
+  let finish;
+  mocks.actions.mockImplementationOnce(async (action, { onProgress }) => {
+    expect(action).toBe('decorate-windows');
+    onProgress({ percent: 50, nick: 'Test', phase: 'apply' });
+    await new Promise(resolve => {
+      finish = resolve;
+    });
+    onProgress({ percent: 100, phase: 'done' });
+    return { ok: true };
+  });
+  const buttons = [...document.querySelectorAll('.rt-launch-actions button')];
+  expect(buttons.map(b => b.dataset.todayAction)).toEqual(['launch', 'windows', 'decorate-windows']);
+  buttons[2].click();
+  await vi.waitFor(() => expect($('[data-today-decoration-progress]').textContent).toContain('50%'));
+  expect($('[data-today-action="decorate-windows"]').disabled).toBe(true);
+  $('[data-today-action="decorate-windows"]').click();
+  expect(mocks.actions).toHaveBeenCalledTimes(1);
+  finish();
+  await vi.waitFor(() => expect($('[data-today-action="decorate-windows"]').disabled).toBe(false));
+  expect($('[data-today-decoration-progress]').textContent).toContain('100%');
+});
+
+it('opens the equipment explanation from the event info button', () => {
+  state.day.date = '2026-11-04';
+  state.day.chosenDay = 0;
+  render();
+  const info = [...document.querySelectorAll('[data-today-info]')].find(b => b.title.includes('свой шмот'));
+  expect(info).toBeTruthy();
+  info.click();
+  expect(dialog.textContent).toContain('Хаос — свой шмот');
+  expect(dialog.textContent).toContain('Порядок — равный шмот');
+  expect(dialog.textContent).toContain('19:00–23:00 (МСК)');
 });

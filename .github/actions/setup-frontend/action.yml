@@ -1,0 +1,18 @@
+name: Frontend dependencies
+description: Install Node and reuse exact, platform-specific npm dependencies without reducing checks.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      id: node
+      with:
+        node-version: 22
+        cache: npm
+    - uses: actions/cache@v6
+      id: dependencies
+      with:
+        path: node_modules
+        key: frontend-modules-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json') }}
+    - if: steps.dependencies.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci --no-audit --no-fund

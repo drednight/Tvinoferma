@@ -1,3 +1,4 @@
+import { linkProfileOptions } from '../core/linkBrowser.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
 
@@ -243,6 +244,8 @@ export async function renderSettings() {
     }
   }
 
+  const linkSelect = document.querySelector('[data-setting="browser.linkCharacterId"]');
+  if (linkSelect) linkSelect.innerHTML = linkProfileOptions();
   // Значения настроек
   document.querySelectorAll('[data-setting]').forEach(el => {
     const value = getSetting(el.dataset.setting);
@@ -250,6 +253,7 @@ export async function renderSettings() {
     else if (el.dataset.setting === 'updates.mode') el.value = resolveUpdateMode(state.settings);
     else el.value = value ?? '';
   });
+  updateBrowserLinkModeInputs();
   updateHoursHints();
   renderEventNotifications();
   renderNotifyKinds();
@@ -536,6 +540,12 @@ function setSetting(path, value) {
   obj[keys[keys.length - 1]] = value;
 }
 
+function updateBrowserLinkModeInputs() {
+  const mode = document.querySelector('[data-setting="browser.linkOpenMode"]');
+  const profile = document.querySelector('[data-setting="browser.linkCharacterId"]');
+  if (profile) profile.disabled = mode?.value === 'system';
+}
+
 function bindSettingInputs() {
   // Подпись «= 3 дня» меняется по мере ввода, до сохранения значения
   document.querySelectorAll('[data-hours-for]').forEach(hint => {
@@ -557,6 +567,7 @@ function bindSettingInputs() {
         updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
+      if (path === 'browser.linkOpenMode') updateBrowserLinkModeInputs();
       if (path === 'updates.mode') setSetting('updates.checkOnStartup', true); // совместимость со старыми версиями
       await persist();
       if (path === 'updates.mode') {
@@ -578,41 +589,44 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
-  bindCloudRegistrationCheck({ desktop: isTauri() });
-  const standaloneFiles = bindStandaloneFilePanel({ desktop: isTauri() });
-  let legacyBound = false;
-  const bindLegacy = () => {
-    if (legacyBound) return;
-    legacyBound = true;
-    bindSnapshotFilePanel({ desktop: isTauri() });
-    bindSnapshotFilePrivatePanel({ desktop: isTauri() });
-    bindSnapshotHistoryArchivePanel({ desktop: isTauri() });
-    // The old merge/auto-publication controls remain available only for legacy recovery.
-    const fileMode = !!document.getElementById('cloud-file-panel');
-    const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });
-    bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
-    bindCloudPublicationPanel({ desktop: isTauri(), disableAutomatic: fileMode });
-    bindPrivateTransferPanel({ desktop: isTauri() });
-    const legacyControls = /** @type {HTMLFieldSetElement|null} */ (document.getElementById('cloud-legacy-controls'));
-    if (legacyControls) {
-      const refreshLegacy = () => {
-        legacyControls.disabled = hasSnapshotFileMode(
-          state.settings,
-          /** @type {HTMLSelectElement} */ (document.getElementById('cloud-registration-provider'))?.value
-        );
-      };
-      refreshLegacy();
-      window.addEventListener('tf-persisted', refreshLegacy);
-      window.addEventListener('tf-cloud-applied', refreshLegacy);
-      document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
-    }
-  };
-  document.getElementById('cloud-legacy-open')?.addEventListener('click', () => {
-    openLegacyCloudRecovery(document);
-    bindLegacy();
-  });
-  bindCloudActivityPanel();
-  bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
+  const cloudEnabled = !document.getElementById('cloud-registration-panel')?.hidden;
+  if (cloudEnabled) {
+    bindCloudRegistrationCheck({ desktop: isTauri() });
+    const standaloneFiles = bindStandaloneFilePanel({ desktop: isTauri() });
+    let legacyBound = false;
+    const bindLegacy = () => {
+      if (legacyBound) return;
+      legacyBound = true;
+      bindSnapshotFilePanel({ desktop: isTauri() });
+      bindSnapshotFilePrivatePanel({ desktop: isTauri() });
+      bindSnapshotHistoryArchivePanel({ desktop: isTauri() });
+      // The old merge/auto-publication controls remain available only for legacy recovery.
+      const fileMode = !!document.getElementById('cloud-file-panel');
+      const cloudReviewPanel = bindCloudReviewPanel({ desktop: isTauri(), startup: !fileMode });
+      bindInitialCloudPanel({ desktop: isTauri(), reviewPanel: cloudReviewPanel });
+      bindCloudPublicationPanel({ desktop: isTauri(), disableAutomatic: fileMode });
+      bindPrivateTransferPanel({ desktop: isTauri() });
+      const legacyControls = /** @type {HTMLFieldSetElement|null} */ (document.getElementById('cloud-legacy-controls'));
+      if (legacyControls) {
+        const refreshLegacy = () => {
+          legacyControls.disabled = hasSnapshotFileMode(
+            state.settings,
+            /** @type {HTMLSelectElement} */ (document.getElementById('cloud-registration-provider'))?.value
+          );
+        };
+        refreshLegacy();
+        window.addEventListener('tf-persisted', refreshLegacy);
+        window.addEventListener('tf-cloud-applied', refreshLegacy);
+        document.getElementById('cloud-registration-provider')?.addEventListener('change', refreshLegacy);
+      }
+    };
+    document.getElementById('cloud-legacy-open')?.addEventListener('click', () => {
+      openLegacyCloudRecovery(document);
+      bindLegacy();
+    });
+    bindCloudActivityPanel();
+    bindCloudDiagnosticsPanel({ desktop: isTauri(), check: standaloneFiles && (() => standaloneFiles.check(true)) });
+  }
   bindGuides();
   bindFeedback();
   balanceSettingsColumns();

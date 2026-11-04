@@ -342,9 +342,19 @@
 <details class="panel fold" id="settings-browser">
           <summary>
             <h3>🌐 Окно браузера персонажа</h3>
-            <p class="muted">Что приложение подправляет на страницах сайта, когда вы открываете их сами.</p>
+            <p class="muted">Открытие ссылок, выбор браузера и настройки страниц сайта.</p>
           </summary>
           <div class="settings-checks">
+            <label class="settings-link-profile">Открывать веб-ссылки
+              <select class="select" data-setting="browser.linkOpenMode" data-value-type="string">
+                <option value="webview">В окне приложения (WebView)</option>
+                <option value="system">В моём браузере (по умолчанию в Windows)</option>
+              </select>
+            </label>
+            <label class="settings-link-profile">Профиль для ссылок приложения
+              <select class="select" data-setting="browser.linkCharacterId" data-value-type="string"><option value="">Без персонажа — отдельный профиль</option></select>
+            </label>
+            <p class="muted">По умолчанию новости и веб-ссылки открываются в WebView без персонажа. Можно выбрать свой системный браузер: тогда используются его сессии, а профиль персонажа ниже не применяется. Выбранный персонаж предоставляет сохранённую сессию сайта; пароли автоматически не вводятся. Удалённый персонаж не заменяется первым в списке. Смена настройки действует на следующие открытия.</p>
             <label><input type="checkbox" data-setting="browser.unlimitedGiftItems" /> Передача предметов: снять лимит сайта «не более 6 предметов за раз» (можно отмечать любое число галочек; слева под «Помощником входа» появится панель «Типы предметов» с кнопками «Отметить»/«Снять» по каждому типу). Действует на окна, открытые после изменения. «Передать» вы нажимаете сами.</label>
             <label><input type="checkbox" data-setting="browser.collectionPanel" /> Мини-игра «Коллекция»: слева под «Помощником входа» показать панель «Коллекция» (цель, «Проверить», «Старт»/«Стоп» и статистика: сколько карт какой категории выпало). Карточки открываются только после вашего подтверждения. Действует на окна, открытые после изменения.</label>
           </div>
@@ -462,14 +472,14 @@
           </div>
         </section>
         <section class="settings-group" id="settings-sync" aria-labelledby="settings-sync-title">
-          <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Компьютеры, фоновые проверки, свежесть данных и диагностика.</p></header>
+          <header class="settings-group-head"><h3 id="settings-sync-title">Синхронизация</h3><p class="muted">Фоновые проверки, свежесть данных и диагностика.</p></header>
           <details class="panel fold" id="cookie-bank-info" hidden>
             <summary><h3>Банк куки сайта</h3><p class="muted">Сохранённые сессии персонажей и сроки куки</p></summary>
             <p class="hint">Куки помогают восстановить вход на pwonline.ru. Ниже — дата сохранения, сайт, тип и сроки каждой куки без её имени и значения. Сессионным куки сайт не назначает дату истечения: её нельзя вычислить по дате сохранения. Любой вход может быть завершён сайтом раньше срока.</p>
             <button id="cookie-bank-refresh" class="btn secondary" type="button">Обновить сроки</button>
             <div id="cookie-bank-expiry" aria-live="polite"></div>
           </details>
-          <details class="panel fold cloud-registration" id="cloud-registration-panel">
+          <details class="panel fold cloud-registration" id="cloud-registration-panel" hidden inert>
             <summary>
               <h3>☁️ Синхронизация между ПК</h3>
               <p class="muted">Файл на Google/Яндекс Диске · проверка и ручная замена</p>

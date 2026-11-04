@@ -726,3 +726,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Gift selection uses the free space below short account lists as well. */
+@media (min-width: 761px) {
+  .sp-main:has(#shop-table) {
+    display: flex;
+    flex-direction: column;
+  }
+  .sp-main > .sd-section:has(#shop-table) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .sp-main #shop-table {
+    flex: 1;
+    max-height: none;
+    min-height: 140px;
+  }
+}

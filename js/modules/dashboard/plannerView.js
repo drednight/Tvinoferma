@@ -362,7 +362,7 @@ function eventRow(event) {
         : `<span class="planner-lock" title="Постоянный ивент: идёт каждую неделю по расписанию">расписание</span>`;
   return `<li class="planner-day-row${event.status === 'done' ? ' is-done' : ''} is-source-${escapeHtml(event.source || 'manual')}">
     <span class="planner-color is-${escapeHtml(event.color || 'blue')}"></span>
-    <span class="planner-day-copy"><b>${escapeHtml(event.title)}</b><small class="muted">${escapeHtml(meta)}</small></span>
+    <span class="planner-day-copy"><b>${escapeHtml(event.title)}</b>${event.note ? `<span tabindex="0" role="img" title="${escapeHtml(event.note)}" aria-label="${escapeHtml(event.note)}"> ⓘ</span>` : ''}<small class="muted">${escapeHtml(meta)}</small></span>
     ${actions}
   </li>`;
 }

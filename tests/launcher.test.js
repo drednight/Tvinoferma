@@ -598,14 +598,12 @@ describe('восстановление названий и значков у з�
     const res = await redecorateRunningWindows([win({ pid: 11 }), win({ pid: 22 })], {
       invoke: (cmd, args) => {
         calls.push({ cmd, args });
-        return Promise.resolve([
-          { pid: 11, status: 'ok' },
-          { pid: 22, status: 'ok' }
-        ]);
+        return Promise.resolve(args.targets.map(t => ({ pid: t.pid, status: 'ok' })));
       }
     });
     expect(calls[0].cmd).toBe('launcher_decorate_clients');
-    expect(calls[0].args.targets.map(t => t.title)).toEqual(['Первый — Хранитель', 'Первый — Хранитель']);
+    expect(calls.map(call => call.args.targets[0].title)).toEqual(['Первый — Хранитель', 'Первый — Хранитель']);
+    expect(calls.every(call => call.args.targets.length === 1 && call.args.targets[0].force)).toBe(true);
     expect(res.ok).toBe(2);
     expect(res.skipped).toBe(0);
   });

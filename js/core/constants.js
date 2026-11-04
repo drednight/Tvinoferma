@@ -64,7 +64,10 @@ export function getClassIconSrc(className) {
  * @returns {string|null}
  */
 export function getClassIconSrcByStem(stem) {
-  const key = String(stem || '').trim();
+  const raw = String(stem || '')
+    .trim()
+    .toLowerCase();
+  const key = raw === 'priest' ? 'prist' : raw;
   return /^[a-z0-9_-]+$/i.test(key) ? `${ICON_BASE_PATH}${key}.webp` : null;
 }
 
@@ -179,11 +182,16 @@ export const DEFAULT_SETTINGS = {
       'dynasty-battle': { enabled: true, leadMinutes: 10 },
       'guild-rhythm': { enabled: true, leadMinutes: 10 },
       'forbidden-teaching': { enabled: true, leadMinutes: 10 },
-      'hero-arena': { enabled: true, leadMinutes: 10 }
+      'hero-arena': { enabled: true, leadMinutes: 10 },
+      'aurora-chaos': { enabled: true, leadMinutes: 10 },
+      'aurora-order': { enabled: true, leadMinutes: 10 },
+      'imperial-battle': { enabled: true, leadMinutes: 10 }
     }
   },
   // Видимые окна браузера персонажей
   browser: {
+    linkOpenMode: 'webview',
+    linkCharacterId: '', // no implicit first-character fallback for ordinary links
     unlimitedGiftItems: true, // на странице передачи предметов снять лимит сайта «не более 6 предметов» (панель «Типы предметов»)
     collectionPanel: true // на странице мини-игры «Коллекция» показать панель с запуском по кнопке и статистикой (Issue #72)
   },

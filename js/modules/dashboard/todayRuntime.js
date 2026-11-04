@@ -1,16 +1,29 @@
 import { runningWindows } from '../launcher/runningWindows.js';
 import { todayData } from './today.js';
+import { readPendingResponses } from '../guild/state.js';
 import { normalizeGuildData } from '../guild/core.js';
 // Routes dashboard actions to the existing production modules, never to demo launchers.
 import { state } from '../../core/state.js';
 import { CLASS_ICON_MAP } from '../../core/constants.js';
-import { mskDate } from '../../core/msk.js';
+import { mskDate, mskAddDays } from '../../core/msk.js';
 import { normalizePlannerEntry } from './planner.js';
 import { discoveredPromos, promoCoverage } from '../automation/promoDiscovery.js';
 import { loadLog } from '../automation/promoLog.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
 import { currentBalances } from '../finance/model.js';
 export const nativeToday = () => !!globalThis.window?.__TAURI_INTERNALS__;
+/** Maximum tier reward, including coins even when the parser also supplies a label. */
+export function taskMaxReward(task) {
+  const reward = [...(task.rewards || [])].sort((a, b) => (b.threshold || 0) - (a.threshold || 0))[0];
+  if (!reward) return 'Не указана';
+  const coins = Number(reward.rewardCoins) || 0;
+  const text = (reward.rewardText || '').trim();
+  return (
+    [coins > 0 ? `${coins} монет` : '', /^(?:древние\s+)?монет[а-яё]*$/i.test(text) ? '' : text]
+      .filter(Boolean)
+      .join(' + ') || 'Не указана'
+  );
+}
 export function connectedTodayState(preview) {
   let s = preview;
   if (nativeToday() || preview.production) {
@@ -36,9 +49,13 @@ export function connectedTodayState(preview) {
       scenarios: { ...preview.scenarios, clan: state.settings.guild?.enabled === true }
     };
     if (!s.parties.some(p => p.id === s.day.favoriteParty)) s.day.favoriteParty = s.parties[0]?.id || '';
-    s.guild = normalizeGuildData(state.settings.guild);
+    s.guild = { ...normalizeGuildData(state.settings.guild), pendingResponses: readPendingResponses() };
     const marathons = todayData(state).marathons;
-    const active = state.marathons.find(m => marathons.some(p => p.id === m.id));
+    const active =
+      state.marathons.find(m => marathons.some(p => p.id === m.id)) ||
+      state.marathons
+        .filter(m => m.kind !== 'series' && m.startDate > s.day.date && m.startDate <= mskAddDays(s.day.date, 7))
+        .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
     const progress = marathons.find(p => p.id === active?.id);
     s.scenarios.marathon = !!active;
     if (active) {
@@ -51,7 +68,7 @@ export function connectedTodayState(preview) {
       };
       s.day.marathonTasks = active.tasks.map(t => ({
         ...t,
-        maxReward: t.rewards.map(r => r.rewardText || `${r.rewardCoins} монет`).join(' / ')
+        maxReward: taskMaxReward(t)
       }));
     }
   }
@@ -67,12 +84,14 @@ export function connectedTodayState(preview) {
     )
   };
 }
-export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind } = {}) {
+export async function runTodayAction(action, { partyId, eventId, response, date, title, time, kind, onProgress } = {}) {
   if (!nativeToday())
     return {
       ok: false,
       message: 'Действие доступно в десктопном приложении: браузерный макет не имеет доступа к вашим аккаунтам и окнам.'
     };
+  if (action?.startsWith('clan-') && state.settings.guild?.enabled === true)
+    (await import('../guild/page.js')).touchGuildResponses();
   if (action?.startsWith('clan-') && state.settings.guild?.enabled !== true)
     return { ok: false, message: 'Клан не активирован.' };
   if (action === 'launch') {
@@ -80,14 +99,23 @@ export async function runTodayAction(action, { partyId, eventId, response, date,
     if (!party) return { ok: false, message: 'Выбранный отряд не найден в приложении.' };
     await (await import('../launcher/partyLaunch.js')).launchPartyByName(party.name);
   } else if (action === 'windows') await (await import('../launcher/windowPicker.js')).openWindowPicker();
-  else if (action === 'promo') (await import('../automation/promo.js')).openPromoDialog();
+  else if (action === 'decorate-windows') {
+    const { runningClientDetails, redecorateRunningWindows, redecorateText } = await import('../launcher/launch.js');
+    const { windowRows } = await import('../launcher/windowList.js');
+    const rows = windowRows(await runningClientDetails(), state.characters);
+    const result = await redecorateRunningWindows(rows, { onProgress });
+    return {
+      ok: result.ok + result.fixed > 0 && !result.failed,
+      message: redecorateText(result) || 'Нет опознанных окон игры для переподписи.'
+    };
+  } else if (action === 'promo') (await import('../automation/promo.js')).openPromoDialog();
   else if (action === 'clan-open') await (await import('../guild/window.js')).openGuild();
   else if (action === 'clan-refresh') {
     if (!(await (await import('../guild/page.js')).syncGuild()))
       return { ok: false, message: 'Сводка клана не обновлена.' };
   } else if (action === 'clan-vote') {
     if (!(await (await import('../guild/page.js')).respond(eventId, response)))
-      return { ok: false, message: 'Отметка не подтверждена сайтом.' };
+      return { ok: false, message: 'Не удалось сохранить выбранный ответ.' };
   } else if (action === 'todo') {
     const entry = state.plannerEntries.find(e => e.id === eventId);
     if (entry) {

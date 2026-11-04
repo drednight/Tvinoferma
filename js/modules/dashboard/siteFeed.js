@@ -1,12 +1,12 @@
 // Shared public feed: the same allowlisted reader as promo discovery, no credentials.
 import { createPublicNewsReader } from '../automation/publicNewsReader.js';
 import { articleId } from '../automation/promoNewsParser.js';
-const KEY = 'tf_today_news_v1';
+const KEY = 'tf_today_news_v2';
 let current = { articles: [], updatedAt: null, status: 'idle' },
   flight = null;
 try {
   const saved = JSON.parse(globalThis.localStorage?.getItem(KEY) || 'null');
-  if (saved?.version === 1 && Array.isArray(saved.articles))
+  if (saved?.version === 2 && Array.isArray(saved.articles))
     current = {
       articles: saved.articles
         .filter(a => articleId(a.url) && typeof a.title === 'string')
@@ -29,13 +29,16 @@ export function parseLatestNews(html) {
   if (/captcha|checking your browser|проверка безопасности/i.test(template.content.textContent.slice(0, 500)))
     throw Error('news_challenge');
   const rows = new Map();
-  for (const a of template.content.querySelectorAll('a[href]')) {
+  // The editorial feed order is authoritative: article IDs are allocated before publication.
+  // Ignore promotional/header links when the site's news table is present.
+  const newsLinks = template.content.querySelectorAll('tr.news_page a[href]');
+  for (const a of newsLinks.length ? newsLinks : template.content.querySelectorAll('a[href]')) {
     const id = articleId(a.getAttribute('href'));
     const title = a.textContent.trim().replace(/\s+/g, ' ').slice(0, 240);
     if (id && title.length > 3 && !rows.has(id))
       rows.set(id, { title, url: `https://pwonline.ru/news.php?article=${id}`, id });
   }
-  const articles = [...rows.values()].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 3);
+  const articles = [...rows.values()].slice(0, 3);
   if (!articles.length) throw Error('news_markup');
   return articles;
 }
@@ -55,7 +58,7 @@ export function refreshSiteFeed({ invokeFn, now = () => new Date() } = {}) {
       const articles = parseLatestNews(response.html);
       current = { articles, updatedAt: now().toISOString(), status: 'ready' };
       try {
-        globalThis.localStorage?.setItem(KEY, JSON.stringify({ version: 1, ...current }));
+        globalThis.localStorage?.setItem(KEY, JSON.stringify({ version: 2, ...current }));
       } catch {}
       return siteFeedSnapshot();
     } catch {

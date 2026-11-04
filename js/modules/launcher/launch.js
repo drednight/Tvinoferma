@@ -377,7 +377,7 @@ export function inspectGameWindows(deps = {}) {
  * итог проверяется по факту, и для неподписанных окон попытка повторяется.
  *
  * @param {Array<{ pid: number, title: string, iconSmall?: number[]|null, iconBig?: number[]|null }>} targets
- * @param {{ invoke?: Function }} [deps]
+ * @param {{ invoke?: Function, onProgress?: Function }} [deps]
  * @returns {Promise<{ ok: number, fixed: number, missing: number, failed: number, details: string[] }>}
  */
 export async function redecorateClients(targets, deps = {}) {
@@ -760,7 +760,7 @@ export function launchStageSummary(stages) {
  * После запуска проверяет, что все окна получили название и значок, и повторяет попытку там, где не вышло.
  * Возвращает текст для журнала задачи или пустую строку, если всё в порядке.
  * @param {Array<{ ok?: boolean, clientPid?: number|null, decor?: { windowTitle?: string|null, iconSmall?: number[]|null, iconBig?: number[]|null }|null }>} results
- * @param {{ invoke?: Function }} [deps]
+ * @param {{ invoke?: Function, onProgress?: Function }} [deps]
  */
 export async function verifyLaunchedDecor(results, deps = {}) {
   const targets = (results || [])
@@ -802,39 +802,41 @@ async function expectedDecor(character) {
  * стёрла бы заголовок настоящего окна игры.
  *
  * @param {Array<{ pid: number, known?: boolean, nick?: string, cls?: string }>} windows строки списка окон
- * @param {{ invoke?: Function }} [deps]
+ * @param {{ invoke?: Function, onProgress?: Function }} [deps]
  * @returns {Promise<{ ok: number, fixed: number, missing: number, failed: number, denied: boolean, skipped: number, details: string[] }>}
  */
 export async function redecorateRunningWindows(windows, deps = {}) {
   const out = { ok: 0, fixed: 0, missing: 0, failed: 0, denied: false, skipped: 0, details: [] };
-  const targets = [];
-  for (const w of windows || []) {
-    // `known` — окно опознано как персонаж приложения; у чужих окон чинить нечего
-    if (!w || !w.pid || !w.known || !w.nick) {
-      out.skipped++;
-      continue;
-    }
-    targets.push({ pid: w.pid, ...(await expectedDecor({ nick: w.nick, class: w.cls })) });
-  }
-  if (!targets.length) {
+  const list = (windows || []).filter(w => w && w.pid && w.known && w.nick);
+  out.skipped = (windows || []).length - list.length;
+  if (!list.length) {
     out.details.push('Не найдено окон, заголовок и значок которых можно восстановить');
     return out;
   }
-  const first = await redecorateClients(targets, deps);
-  out.ok = first.ok;
-  out.fixed = first.fixed;
-  out.missing = first.missing;
-  out.failed = first.failed;
-  // Ничего не вышло — почти всегда значит, что игра запущена от администратора, а Твиноферма
-  // обычным пользователем: Windows не даёт менять чужие окна. Пробуем через помощника с правами.
-  if (!out.ok && !out.fixed) {
-    const admin = await decorateElevated(targets, deps);
-    out.ok = admin.ok;
-    out.fixed = admin.fixed;
-    out.missing = admin.missing;
-    out.failed = admin.failed;
-    out.denied = admin.denied;
-    out.details = [...out.details, ...admin.details];
+  const retry = [];
+  const progress = (done, nick, phase, percent = Math.round((done / list.length) * 95)) =>
+    deps.onProgress?.({ done, total: list.length, nick, phase, percent });
+  for (const [i, w] of list.entries()) {
+    progress(i, w.nick, 'apply');
+    const target = { pid: w.pid, ...(await expectedDecor({ nick: w.nick, class: w.cls })), force: true };
+    const res = await redecorateClients([target], deps);
+    if (!res.ok && !res.fixed && !res.missing && !res.failed) res.failed = 1;
+    for (const key of ['ok', 'fixed', 'missing', 'failed']) out[key] += res[key];
+    out.details.push(...res.details);
+    if (res.failed) retry.push(target);
+    progress(i + 1, w.nick, 'apply');
   }
+  // One elevation prompt for the failed subset, including partial failures.
+  if (retry.length) {
+    progress(list.length, '', 'elevated', 95);
+    const admin = await decorateElevated(retry, deps);
+    out.denied = admin.denied;
+    out.ok += admin.ok;
+    out.fixed += admin.fixed;
+    out.missing += admin.missing;
+    out.failed = Math.max(0, out.failed - admin.ok - admin.fixed - admin.missing);
+    out.details.push(...admin.details);
+  }
+  progress(list.length, '', 'done', 100);
   return out;
 }

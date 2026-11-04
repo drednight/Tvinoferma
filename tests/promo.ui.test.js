@@ -117,6 +117,7 @@ describe('запуск', () => {
       rewards: [{ name: 'Метеорит', qty: 100, id: '1', bound: true }]
     }));
     await run('AAAA1111, BBBB2222', ['a', 'b']);
+    expect(document.querySelector('.promo-reward img').getAttribute('src')).toContain('meteorite.webp');
     expect(mocks.invoke).toHaveBeenCalledTimes(4);
     expect(mocks.invoke.mock.calls.every(c => c[0] === 'activate_promo' && c[1].dryRun === false)).toBe(true);
     expect([...document.querySelectorAll('.promo-table thead th')].map(t => t.textContent)).toEqual([

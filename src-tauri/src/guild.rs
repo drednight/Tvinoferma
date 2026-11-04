@@ -170,7 +170,7 @@ async fn wait_for_hash(
 async fn wait_for_report(win: &WebviewWindow) -> Result<serde_json::Value, String> {
     let _ = win.eval(
         "history.replaceState(null, '', location.pathname + location.search);\
-         if (window.__tfGuildScrape) window.__tfGuildScrape();",
+         if (window.__tfGuildRefresh) window.__tfGuildRefresh();",
     );
     wait_for_hash(win, REPORT_HASH, Duration::from_secs(SYNC_TIMEOUT_SECS)).await
 }

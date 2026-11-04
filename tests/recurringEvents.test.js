@@ -6,6 +6,7 @@ import {
   recurringDurationMinutes,
   recurringEventScheduleText,
   weekdayOf,
+  imperialBattleMode,
   WEEKDAY_NAMES
 } from '../js/modules/dashboard/recurringEvents.js';
 import { plannerEventsForDate, normalizePlannerEntry } from '../js/modules/dashboard/planner.js';
@@ -32,15 +33,17 @@ describe('постоянные ивенты', () => {
     expect(titles(MON)).toContain('Битва Династий');
     expect(titles(FRI)).toContain('Битва Династий');
     expect(titles(WED)).not.toContain('Битва Династий');
-    expect(titles(SAT)).toEqual([]);
+    expect(titles(SAT)).not.toContain('Битва Династий');
   });
 
-  it('в среду два ивента: Ритм Гильдии и Запретное учение', () => {
-    expect(recurringEventsForDate(WED).map(e => e.title)).toEqual(['Ритм Гильдии', 'Запретное учение']);
+  it('сохраняет Ритм Гильдии и Запретное учение в среду', () => {
+    expect(recurringEventsForDate(WED).map(e => e.title)).toEqual(
+      expect.arrayContaining(['Ритм Гильдии', 'Запретное учение'])
+    );
   });
 
   it('Арена Героев в четверг до конца суток', () => {
-    const [arena] = recurringEventsForDate(THU);
+    const arena = recurringEventsForDate(THU).find(e => e.recurringId === 'hero-arena');
     expect(arena.title).toBe('Арена Героев');
     expect(arena.time).toBe('19:00');
     expect(arena.endTime).toBe('24:00');
@@ -69,7 +72,7 @@ describe('постоянные ивенты', () => {
   it('битая дата и чужой день дают пустой список', () => {
     expect(recurringEventsForDate('')).toEqual([]);
     expect(recurringEventsForDate('2026-13-45')).toEqual([]);
-    expect(recurringEventsForDate(SAT)).toEqual([]);
+    expect(recurringEventsForDate(SAT)).toHaveLength(2);
   });
 
   it('день недели считается по календарной дате без часовых поясов', () => {
@@ -92,4 +95,32 @@ describe('постоянные ивенты', () => {
     }
     expect(Object.keys(DEFAULT_SETTINGS.notifications.events).sort()).toEqual(RECURRING_EVENTS.map(e => e.id).sort());
   });
+});
+
+it('сохраняет расписание Авроры и пояснение об экипировке во все семь дней', () => {
+  for (let day = 2; day <= 8; day++) {
+    const date = `2026-11-${String(day).padStart(2, '0')}`;
+    const arena = recurringEventsForDate(date).find(e => e.recurringId.startsWith('aurora-'));
+    expect(arena.title).toBe(`Арена Авроры (${[2, 4, 6, 8].includes(day) ? 'Хаос' : 'Порядок'})`);
+    expect(arena).toMatchObject({ time: '19:00', endTime: '23:00', durationMinutes: 240 });
+    expect(arena.note).toContain('Хаос — свой шмот');
+    expect(arena.note).toContain('Порядок — равный шмот');
+  }
+});
+it('меняет режим ИБ именно в среду, в обе стороны от подтверждённой недели', () => {
+  for (const date of ['2026-11-04', '2026-11-10', '2026-11-18', '2026-10-21', '2026-12-30', '2027-01-05'])
+    expect(imperialBattleMode(date)).toBe('Хаос');
+  for (const date of ['2026-11-03', '2026-11-11', '2026-11-17', '2026-10-28', '2027-01-06'])
+    expect(imperialBattleMode(date)).toBe('Порядок');
+  const battle = recurringEventsForDate('2026-11-04').find(e => e.recurringId === 'imperial-battle');
+  expect(battle).toMatchObject({
+    title: 'Императорская битва (Хаос)',
+    time: '13:00',
+    endTime: '22:30',
+    durationMinutes: 570
+  });
+  expect(recurringEventsForDate('2026-11-11').find(e => e.recurringId === 'imperial-battle').title).toBe(
+    'Императорская битва (Порядок)'
+  );
+  expect(imperialBattleMode('2026-02-30')).toBeNull();
 });

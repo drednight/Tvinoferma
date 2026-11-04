@@ -11,6 +11,7 @@ import { DEFAULT_SETTINGS } from '../constants.js';
 import { SOUND_TONES, DEFAULT_TONE } from '../../desktop/sound.js';
 const SOUND_TONE_IDS = new Set(SOUND_TONES.map(t => t.id));
 import { normalizeGameCenters } from '../../modules/launcher/gameCenters.js';
+import { normalizePendingResponses } from '../../modules/guild/responseQueue.js';
 import { normalizeGuildData } from '../../modules/guild/core.js';
 import { normalizePreflightMode } from '../../modules/launcher/preflight.js';
 import { normalizeSectionsSettings } from '../sections.js';
@@ -23,7 +24,11 @@ const clone = value => JSON.parse(JSON.stringify(value));
  * на приложение. Флаг обязан быть строго булевым, кэш проходит через normalizeGuildData.
  */
 function normalizeGuildSettings(input = {}) {
-  return { ...normalizeGuildData(input), enabled: input?.enabled === true };
+  return {
+    ...normalizeGuildData(input),
+    enabled: input?.enabled === true,
+    pendingResponses: normalizePendingResponses(input?.pendingResponses)
+  };
 }
 
 function normalizeLauncherSettings(input = {}) {
@@ -142,7 +147,12 @@ export function mergeSettings(input = {}) {
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),
-    browser: { ...DEFAULT_SETTINGS.browser, ...(input.browser || {}) },
+    browser: {
+      ...DEFAULT_SETTINGS.browser,
+      ...(input.browser || {}),
+      linkOpenMode: input.browser?.linkOpenMode === 'system' ? 'system' : 'webview',
+      linkCharacterId: typeof input.browser?.linkCharacterId === 'string' ? input.browser.linkCharacterId : ''
+    },
     // Ключ раздела клана переехал сюда не здесь: переименование eternals → guild описано
     // миграцией 9 → v10 (js/core/migrations.js), иначе откат на старую версию записал бы
     // поверх файла умолчания. Здесь только приведение к схеме.

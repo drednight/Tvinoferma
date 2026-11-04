@@ -1,3 +1,4 @@
+import { normalizeMarathonUrl } from './sourceUrl.js';
 // js/modules/marathons/wizard.js
 // Мастер создания / редактирования марафона: Источник → Этапы и задания → Участники → Награды.
 // Несколько выбранных этапов сайта создают СЕРИЮ (папку) с отдельным марафоном на каждый этап.
@@ -702,7 +703,10 @@ export function openMarathonWizard(opts = {}) {
 
   function isDuplicate(url, stageKey) {
     return state.marathons.some(
-      m => m.kind !== 'series' && m.source?.url === url && (m.source?.stageKey || null) === (stageKey || null)
+      m =>
+        m.kind !== 'series' &&
+        normalizeMarathonUrl(m.source?.url) === normalizeMarathonUrl(url) &&
+        (m.source?.stageKey || null) === (stageKey || null)
     );
   }
 
@@ -769,6 +773,7 @@ export function openMarathonWizard(opts = {}) {
 
     const d = W.drafts[W.active];
     const pages = [...SITE_PAGES, ...customPages().map(u => ({ url: u, label: u.replace('https://', '') }))];
+    if (d.source?.url) d.source.url = normalizeMarathonUrl(d.source.url);
     if (d.source?.url && !pages.some(p => p.url === d.source.url))
       pages.push({ url: d.source.url, label: d.source.url.replace('https://', '') });
     const parent = state.marathons.find(m => m.id === (d.seriesId || W.seriesId));
@@ -778,21 +783,18 @@ export function openMarathonWizard(opts = {}) {
 
     ov.body.innerHTML = `${stageBlock}${draftTabs()}
       <div class="tf-panel">
-        <!-- Название марафона — на всю ширину: раньше оно стояло в паре с выбором страницы
-             отметок, а эту функцию временно спрятали (см. ниже) -->
         <div class="field"><label>Название марафона *</label><input class="input" data-f="title" value="${escapeHtml(d.title)}"/></div>
-        <!-- Страница отметок (выбор адреса для сверки с сайтом) временно скрыта: функция
-             работает и данные никуда не делись, но при создании марафона её больше не
-             предлагают выбирать. Чтобы вернуть, достаточно убрать класс tf-hidden —
-             разметка, обработчики и сохранение адреса остались на месте. -->
-        <div class="field tf-hidden">
-          <label>Страница на сайте (для сверки)</label>
-            <select class="select" data-f="url">
-              <option value="">${escapeHtml(inheritLabel)}</option>
-              ${pages.map(p => `<option value="${escapeHtml(p.url)}" ${d.source?.url === p.url ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
-              <option value="__custom__">✏️ Своя ссылка…</option>
-            </select>
-            <input class="input tf-hidden" data-custom-page placeholder="https://pwonline.ru/… — страница, где видны отметки"/></div>
+        <details class="tf-source-advanced"><summary>Дополнительно</summary>
+        <div class="field">
+          <label>Страница на сайте (для сверки отметок)</label>
+          <select class="select" data-f="url">
+            <option value="">${escapeHtml(inheritLabel)}</option>
+            ${pages.map(p => `<option value="${escapeHtml(p.url)}" ${normalizeMarathonUrl(d.source?.url) === p.url ? 'selected' : ''}>${escapeHtml(p.label)}</option>`).join('')}
+            <option value="__custom__">✏️ Своя ссылка…</option>
+          </select>
+          <input class="input tf-hidden" type="url" data-custom-page placeholder="https://pwonline.ru/… — страница, где видны отметки"/>
+          <small class="muted">Укажите страницу с отметками персонажа, а не ссылку на новость. Служебная часть после # удаляется автоматически.</small>
+        </div></details>
         <div class="two-cols">
           <div class="field"><label>Начало *</label><input class="input" type="date" data-f="startDate" value="${d.startDate}"/></div>
           <div class="field"><label>Окончание *</label><input class="input" type="date" data-f="endDate" value="${d.endDate}"/></div>
@@ -834,6 +836,7 @@ export function openMarathonWizard(opts = {}) {
             if (f === 'url') {
               const custom = ov.body.querySelector('[data-custom-page]');
               if (inp.value === '__custom__') {
+                custom.value = d.source?.url || '';
                 custom.classList.remove('tf-hidden');
                 custom.focus();
                 return;
@@ -850,14 +853,17 @@ export function openMarathonWizard(opts = {}) {
           })
     );
     ov.body.querySelector('[data-custom-page]')?.addEventListener('change', e => {
-      const u = e.target.value.trim();
-      if (!/^https?:\/\//.test(u)) {
+      const u = normalizeMarathonUrl(e.target.value);
+      if (!u) {
         toast('Ссылка должна начинаться с https://', 'warning');
         return;
       }
       d.source = { ...d.source, url: u };
       rememberCustomPage(u);
-      render();
+      e.target.value = u;
+      const select = ov.body.querySelector('[data-f="url"]');
+      if (![...select.options].some(option => option.value === u)) select.add(new Option(u, u));
+      select.value = u;
     });
     ov.body.querySelector('[data-act="add-task"]').onclick = () => {
       d.tasks.push(createTask());
@@ -1345,6 +1351,9 @@ export function openMarathonWizard(opts = {}) {
   /* ================= ПРОВЕРКА И СОХРАНЕНИЕ ================= */
   function validateStep(step) {
     if (step === 1) {
+      const custom = ov.body.querySelector('[data-custom-page]');
+      if (custom && !custom.classList.contains('tf-hidden') && !normalizeMarathonUrl(custom.value))
+        return 'Укажите корректную ссылку на страницу отметок (https://…).';
       for (const d of W.drafts) {
         const name = d.title || d.source?.stageName || 'марафон';
         if (!d.title.trim()) return 'Укажите название марафона.';

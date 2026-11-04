@@ -103,6 +103,9 @@ beforeEach(() => {
   document.body.innerHTML = new DOMParser()
     .parseFromString(html, 'text/html')
     .getElementById('cloud-registration-panel').outerHTML;
+  // Exercise the retained experimental module in isolation, not its hidden production entry.
+  document.getElementById('cloud-registration-panel').hidden = false;
+  document.getElementById('cloud-registration-panel').removeAttribute('inert');
 });
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();

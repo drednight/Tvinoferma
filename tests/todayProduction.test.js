@@ -1,7 +1,8 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { parseLatestNews, refreshSiteFeed, siteFeedSnapshot } from '../js/modules/dashboard/siteFeed.js';
+import { mskDate, mskAddDays } from '../js/core/msk.js';
 import { state } from '../js/core/state.js';
-import { connectedTodayState, runTodayAction } from '../js/modules/dashboard/todayRuntime.js';
+import { connectedTodayState, runTodayAction, taskMaxReward } from '../js/modules/dashboard/todayRuntime.js';
 import { createLabState } from '../demo/design-lab/model.js';
 const calls = vi.hoisted(() => ({ launch: vi.fn(), windows: vi.fn(), persist: vi.fn() }));
 vi.mock('../js/modules/launcher/partyLaunch.js', () => ({ launchPartyByName: calls.launch }));
@@ -35,7 +36,7 @@ describe('production Today adapters', () => {
       '<script>alert(1)</script><a href="https://evil.test/news.php?article=99">Bad</a>' +
         [1, 2, 3, 4, 4].map(n => `<a href="/news.php?article=${n}">Новость ${n}</a>`).join('')
     );
-    expect(rows.map(r => r.id)).toEqual(['4', '3', '2']);
+    expect(rows.map(r => r.id)).toEqual(['1', '2', '3']);
     expect(rows.every(r => r.url.startsWith('https://pwonline.ru/news.php?article='))).toBe(true);
     expect(() => parseLatestNews('<p>Нет новостей</p>')).toThrow();
   });
@@ -139,4 +140,100 @@ it('uses exactly the top finance widget balances, including month corrections', 
   } finally {
     state.finance = previous;
   }
+});
+
+it('shows the nearest upcoming marathon within seven days, not a distant one', () => {
+  const today = mskDate();
+  const upcoming = days => ({
+    id: `m${days}`,
+    title: `Марафон ${days}`,
+    startDate: mskAddDays(today, days),
+    endDate: mskAddDays(today, days + 20),
+    tasks: [],
+    participantIds: []
+  });
+  state.marathons = [upcoming(10), upcoming(7), upcoming(2)];
+  const preview = { ...createLabState(), production: true };
+  const result = connectedTodayState(preview);
+  expect(result.scenarios.marathon).toBe(true);
+  expect(result.day.marathon.id).toBe('m2');
+  expect(result.day.marathon.percent).toBe(0);
+  state.marathons = [upcoming(8)];
+  expect(connectedTodayState(preview).scenarios.marathon).toBe(false);
+});
+
+it('keeps editorial news order rather than sorting preallocated article IDs or promotional links', () => {
+  const order = [9151, 9154, 9152];
+  const html =
+    '<a href="/news.php?article=9999">Рекламная ссылка</a><table>' +
+    order
+      .map(id => `<tr class="news_page"><td><a href="/news.php?article=${id}">Новость ${id}</a></td></tr>`)
+      .join('') +
+    '</table>';
+  expect(parseLatestNews(html).map(a => a.id)).toEqual(order.map(String));
+});
+it('shows coins in the maximum tier, not a generic label or all lower tiers', () => {
+  expect(
+    taskMaxReward({
+      rewards: [
+        { threshold: 5, rewardCoins: 10, rewardText: 'Монеты' },
+        { threshold: 15, rewardCoins: 30, rewardText: 'Монеты' }
+      ]
+    })
+  ).toBe('30 монет');
+  expect(taskMaxReward({ rewards: [{ threshold: 1, rewardCoins: 7, rewardText: 'Сундук' }] })).toBe('7 монет + Сундук');
+  expect(taskMaxReward({ rewards: [{ threshold: 1, rewardCoins: 0, rewardText: 'Сундук' }] })).toBe('Сундук');
+  expect(taskMaxReward({ rewards: [] })).toBe('Не указана');
+});
+
+it('local clan intentions render immediately, separately from the verified response and stale preview votes', async () => {
+  const { renderReferenceToday } = await import('../js/modules/dashboard/referenceTodayView.js');
+  window.__TAURI_INTERNALS__ = {};
+  state.settings.guild = {
+    enabled: true,
+    syncedAt: 123,
+    events: [{ id: '1', title: 'Событие', response: 'no' }],
+    parties: [{ name: 'Пати', members: [{ nick: 'Жрец', cls: 'priest' }] }],
+    pendingResponses: [{ eventId: '1', response: 'yes', failed: false }]
+  };
+  const model = createLabState();
+  model.referenceVotes = { 1: 'yes' };
+  const root = document.createElement('div');
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.querySelector('[data-today-vote="1"][data-value="yes"]').getAttribute('aria-pressed')).toBe('true');
+  expect(root.textContent).toContain('Ожидает переноса на сайт');
+  expect(root.querySelector('.rt-member img[src$="prist.webp"]')).not.toBeNull();
+  expect(state.settings.guild.events[0].response).toBe('no');
+  state.settings.guild.pendingResponses[0].failed = true;
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.textContent).toContain('Не подтверждено');
+  state.settings.guild.pendingResponses = [];
+  root.innerHTML = renderReferenceToday(model);
+  expect(root.querySelector('[data-today-vote="1"][data-value="no"]').getAttribute('aria-pressed')).toBe('true');
+  expect(root.textContent).not.toContain('Ожидает переноса');
+});
+
+it('calendar agenda has clear time/title rows and all three actions in the left footer next to Close', async () => {
+  document.body.innerHTML = '<main></main>';
+  const { renderConnectedToday } = await import('../js/modules/dashboard/connectedToday.js');
+  const root = document.querySelector('main');
+  const render = () => renderConnectedToday(root, {}, render);
+  state.plannerEntries = [
+    { id: 'today-task', title: 'Подготовить припасы', date: mskDate(), kind: 'task', status: 'todo' }
+  ];
+  render();
+  const dialog = document.querySelector('dialog');
+  dialog.showModal = () => dialog.setAttribute('open', '');
+  dialog.close = () => dialog.removeAttribute('open');
+  root.querySelector('[data-today-action="calendar"]').click();
+  expect(dialog.querySelector('.rt-calendar-agenda .rt-agenda-item strong').textContent).toBeTruthy();
+  const body = dialog.querySelector('[data-connected-dialog-body]');
+  const footer = dialog.querySelector('.rt-dialog-footer');
+  for (const action of ['calendar-today', 'planner-day', 'event-add']) {
+    expect(footer.querySelector(`.rt-dialog-actions [data-today-action="${action}"]`)).not.toBeNull();
+    expect(body.querySelector(`[data-today-action="${action}"]`)).toBeNull();
+  }
+  expect(footer.querySelector('[data-connected-dialog-close]')).not.toBeNull();
+  footer.querySelector('[data-today-action="calendar-today"]').click();
+  expect(footer.querySelectorAll('[data-today-action="event-add"]')).toHaveLength(1);
 });

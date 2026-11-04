@@ -14,14 +14,23 @@ async function callRust(command, args) {
   return invoke(command, args);
 }
 
+// All operations use the same website window and hash mailbox. A rejection must not
+// poison the chain or let a scheduled read collide with the next response.
+let operation = Promise.resolve();
+function serial(command, args, deps) {
+  const next = operation.then(() => (deps.invoke || callRust)(command, args));
+  operation = next.catch(() => {});
+  return next;
+}
+
 /** Открывает окно (или поднимает уже открытое). */
 export async function openGuild(deps = {}) {
-  return (deps.invoke || callRust)('open_guild_window');
+  return serial('open_guild_window', undefined, deps);
 }
 
 /** Закрывает окно. */
 export async function closeGuild(deps = {}) {
-  return (deps.invoke || callRust)('close_guild_window');
+  return serial('close_guild_window', undefined, deps);
 }
 
 /** Открыто ли окно (видимое или скрытое). */
@@ -34,12 +43,12 @@ export async function isGuildOpen(deps = {}) {
  * Возвращает `{ events, parties, poll }`. Ошибки приходят строкой: `login`, `timeout`, `busy`.
  */
 export async function syncGuildFromSite(deps = {}) {
-  return (deps.invoke || callRust)('guild_sync');
+  return serial('guild_sync', undefined, deps);
 }
 
 /** Отмечает ивент на сайте и ждёт ответа. Возвращает `{ ok, eventId, response, message }`. */
 export async function setGuildResponse(eventId, response, deps = {}) {
-  return (deps.invoke || callRust)('guild_set_response', { eventId: String(eventId), response });
+  return serial('guild_set_response', { eventId: String(eventId), response }, deps);
 }
 
 /**
@@ -52,8 +61,12 @@ export async function respondToEvent(eventId, response, deps = {}) {
 
 /** Голосование через сохранённую сессию окна клана; Rust перепроверяет опрос и варианты. */
 export async function voteInGuildPoll(pollId, optionIds, deps = {}) {
-  return (deps.invoke || callRust)('guild_vote_poll', {
-    pollId: String(pollId),
-    optionIds: optionIds.map(String)
-  });
+  return serial(
+    'guild_vote_poll',
+    {
+      pollId: String(pollId),
+      optionIds: optionIds.map(String)
+    },
+    deps
+  );
 }

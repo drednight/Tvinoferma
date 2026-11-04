@@ -1,3 +1,4 @@
+import { openCharacterWebLink } from '../../core/linkBrowser.js';
 // js/modules/marathons/page.js
 // Раздел «Марафоны» v2: список (с сериями-папками), страница серии, страница марафона
 // с матрицей прогресса «персонаж × задание», сверкой с сайтом и статистикой монет.
@@ -708,7 +709,7 @@ function matrix(m) {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(c);
   });
-  const cols = m.tasks.length + 2;
+  const cols = m.tasks.length + 3;
 
   const rows = [...groups.entries()]
     .map(([party, members]) => {
@@ -734,6 +735,7 @@ function matrix(m) {
               </div>
             </div>
           </td>
+          <td class="mr-site-column"><button type="button" class="btn ghost small" data-character-site="${escapeHtml(c.id)}" ${marathonUrlOf(m) ? '' : 'disabled'} aria-label="Открыть отметки: ${escapeHtml(c.nick)}" title="Страница отметок в браузере этого персонажа">🌐</button></td>
           ${cells.map((x, i) => cellHtml(m, c.id, m.tasks[i].id, x)).join('')}
           <td class="mr-total"><strong>${done}/${assigned}</strong><br/><small class="mr-gold">${coin(coins)}</small></td>
         </tr>`;
@@ -752,7 +754,7 @@ function matrix(m) {
 
   return `
     <table class="mr-matrix">
-      <thead><tr><th class="mr-name">Персонаж</th>${m.tasks
+      <thead><tr><th class="mr-name">Персонаж</th><th class="mr-site-column">Сайт</th>${m.tasks
         .map(
           t => `
         <th title="${escapeHtml(thTitle(t))}">${t.description ? '<span class="mr-th-info">ⓘ</span>' : ''}<div class="mr-th">${escapeHtml(t.title)}</div></th>`
@@ -760,7 +762,7 @@ function matrix(m) {
         .join('')}
         <th>Итого</th></tr></thead>
       <tbody>${rows || `<tr><td colspan="${cols}" class="muted" style="text-align:center;padding:20px">Нет персонажей по фильтру</td></tr>`}</tbody>
-      <tfoot><tr><td class="mr-name muted">Выполнили</td>${foot}<td></td></tr></tfoot>
+      <tfoot><tr><td class="mr-name muted">Выполнили</td><td></td>${foot}<td></td></tr></tfoot>
     </table>`;
 }
 
@@ -833,6 +835,18 @@ function coinsSection(m, t) {
 }
 
 function bindDetail(root, m) {
+  root.querySelectorAll('[data-character-site]').forEach(button => {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      try {
+        await openCharacterWebLink(marathonUrlOf(m), charById(button.dataset.characterSite));
+      } catch (error) {
+        toast(`Не удалось открыть отметки: ${error.message || error}`, 'error');
+      } finally {
+        button.disabled = !marathonUrlOf(m);
+      }
+    });
+  });
   const act = (name, fn) => root.querySelector(`[data-act="${name}"]`)?.addEventListener('click', fn);
   act('sync', () => runSync([m], m.id));
   act('edit', () => openMarathonWizard({ marathon: m }));

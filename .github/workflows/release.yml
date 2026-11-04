@@ -12,21 +12,28 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    name: Release regression (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-frontend
+      - run: npm test -- --shard=${{ matrix.shard }}/4 --maxWorkers=2
+
   build:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          # jsdom 30 требует Node >= 22.22
-          node-version: 22
-          cache: npm
+      - uses: ./.github/actions/setup-frontend
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-      - run: npm ci
-      - run: npm test
       # «Что нового» берётся из раздела версии в CHANGELOG.md — это изменения с прошлого релиза.
       # Нет раздела (забыли переименовать [Unreleased]) — сборка останавливается до компиляции.
       - name: Текст «Что нового» из CHANGELOG.md

@@ -23,7 +23,7 @@ export function renderConnectedToday(root, deps, render) {
     const dialog = document.createElement('dialog');
     dialog.className = 'rt-reference rt-connected-dialog';
     dialog.innerHTML =
-      '<h2></h2><div data-connected-dialog-body></div><footer class="rt-dialog-footer"><button type="button" class="btn" data-connected-dialog-close>Закрыть</button></footer>';
+      '<h2></h2><div data-connected-dialog-body></div><footer class="rt-dialog-footer"><div class="rt-dialog-actions" data-connected-dialog-actions></div><button type="button" class="btn" data-connected-dialog-close>Закрыть</button></footer>';
     root.after(dialog);
     dialog.querySelector('button').onclick = () => dialog.close();
     const body = dialog.querySelector('[data-connected-dialog-body]');
@@ -44,9 +44,10 @@ export function renderConnectedToday(root, deps, render) {
         day: date => openPlannerDay(date, { render, run: deps.run }),
         add: date => openPlannerEntryForm(date, { render, run: deps.run })
       },
-      modal: (title, content) => {
+      modal: (title, content, actions = '') => {
         dialog.querySelector('h2').textContent = title;
         body.innerHTML = content;
+        dialog.querySelector('[data-connected-dialog-actions]').innerHTML = actions;
         if (!dialog.open) dialog.showModal();
       }
     });

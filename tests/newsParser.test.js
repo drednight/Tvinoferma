@@ -56,3 +56,22 @@ describe('parseNewsHtml', () => {
     expect(r.debug.join(' ')).toMatch(/не найдена/);
   });
 });
+
+describe('November news: seven of eight trials, bonus after the task table', () => {
+  const news = readFileSync('tests/fixtures/news-marathon-november.html', 'utf8');
+  const result = parseNewsHtml(news, { title: 'Осенний марафон', publishedAt: '03.11.2026' });
+  it('reads all eight tasks and the actual dates', () => {
+    expect(result.quests).toHaveLength(8);
+    expect(result.stages[0]).toMatchObject({ startDate: '2026-11-04', endDate: '2026-11-11' });
+  });
+  it('retains the full additional reward list, including commas and шт. punctuation', () => {
+    expect(result.stages[0].bonus).toEqual({
+      needTasks: 7,
+      text: '50 древних монет, Метеорит (100 шт.), Камень божества (30 шт.), Коробочка с картой S (30 шт.), Серебряная карта героя (40 шт.)'
+    });
+  });
+  it('accepts the numeric variant too', () => {
+    const numeric = parseNewsHtml(news.replace('семь испытаний из восьми', '7 испытаний из 8'));
+    expect(numeric.stages[0].bonus?.needTasks).toBe(7);
+  });
+});

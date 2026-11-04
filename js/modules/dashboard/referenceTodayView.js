@@ -1,3 +1,4 @@
+import { promoRewardHtml } from '../automation/promoReward.js';
 // Today 12 composes production data helpers. Destructive/native actions go only
 // through todayRuntime; the browser catalog cannot launch imaginary clients.
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
@@ -7,7 +8,7 @@ import { plannerEventsForDate, monthMatrix, setEntryStatusForDate } from './plan
 import { siteFeedSnapshot } from './siteFeed.js';
 import { connectedTodayState, runTodayAction, nativeToday } from './todayRuntime.js';
 import { promoDeadlineState } from '../automation/promoDeadlineLabel.js';
-import { officialUrl } from '../automation/promoNewsParser.js';
+import { getClassIconSrcByStem } from '../../core/constants.js';
 import { partyNicks } from '../guild/core.js';
 const assets = import.meta.env?.BASE_URL
   ? import.meta.env.BASE_URL + 'assets/'
@@ -25,9 +26,15 @@ const button = (title, action, extra = '') =>
 const pass = (key, alt = '') => `<img src="${assets}icons/dungeons/pass-${key}.webp" alt="${esc(alt)}">`;
 const refreshIcon =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1"/></svg>';
+const clanResponseNote = (s, id) => {
+  const pending = s.guild?.pendingResponses?.find(row => row.eventId === id);
+  return pending
+    ? `<span class="rt-vote-note" role="status">${pending.failed ? 'Не подтверждено · нажмите ответ для повтора' : 'Ожидает переноса на сайт'}</span>`
+    : '';
+};
 const member = c => {
   const icon = c.icon || c.cls || '';
-  return `<span class="rt-member">${/^[a-z0-9_-]+$/i.test(icon) ? `<img src="${assets}icons/classes/${esc(icon)}.webp" alt="${esc(c.className || c.title || '')}">` : ''}${esc(c.nick)}</span>`;
+  return `<span class="rt-member">${/^[a-z0-9_-]+$/i.test(icon) ? `<img src="${esc(getClassIconSrcByStem(icon))}" alt="${esc(c.className || c.title || '')}">` : ''}${esc(c.nick)}</span>`;
 };
 const stamp = at =>
   at
@@ -58,6 +65,7 @@ export function referencePromoStatus(p, today, now) {
     text: result.text
   };
 }
+const decorationState = { busy: false, text: '' };
 export function renderReferenceToday(input) {
   const s = connectedTodayState(input),
     date = selectedDate(s),
@@ -76,7 +84,7 @@ export function renderReferenceToday(input) {
   const clanParties = s.guild?.parties || [{ name: party?.label || '', members }];
   const promos = s.sitePromos || [];
   return `<section class="rt-reference" data-composition="reference">${input.production ? '' : `<div class="rt-intro"><div><span class="lg-eyebrow">Вариант по вашему эскизу · 12</span><h3>Всё, что нужно сегодня</h3><p>Ближайшие дела, запуск и информация об аккаунтах.</p></div>${!nativeToday() && !input.production ? `<label class="rt-clan-toggle"><input type="checkbox" data-scenario="clan" ${s.scenarios.clan ? 'checked' : ''}>Показать подключённый клан</label>` : ''}</div>`}
- <div class="rt-board"><div class="rt-left"><section class="lg-panel rt-news"><div class="rt-heading"><h3>Новости Perfect World</h3><a href="https://pwonline.ru/news.php" target="_blank" rel="noopener noreferrer">Все новости ↗</a><button type="button" class="lg-button rt-refresh" data-today-action="news-refresh" title="Обновить новости" aria-label="Обновить новости">${refreshIcon}</button></div><small>Последнее обновление · ${esc(stamp(feed.updatedAt))}</small>${feed.articles.map(a => `<article><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)} ↗</a></article>`).join('') || '<p class="lg-muted">Онлайн-лента ещё не получена. Чтение сайта выполняется в десктопном приложении вместе с обновлением серверов.</p>'}${feed.status === 'unavailable' ? '<p role="status">Сайт недоступен; дата успешного обновления не изменена.</p>' : ''}</section>
+ <div class="rt-board"><div class="rt-left"><section class="lg-panel rt-news"><div class="rt-heading"><h3>Новости Perfect World</h3><a href="https://pwonline.ru/news.php" target="_blank" rel="noopener noreferrer">Все новости ↗</a><button type="button" class="lg-button rt-refresh" data-today-action="news-refresh" title="Обновить новости" aria-label="Обновить новости">${refreshIcon}</button></div><small>Последнее обновление · ${esc(stamp(feed.updatedAt))}</small>${feed.articles.map(a => `<article class="rt-news-card"><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.title)}</a></article>`).join('') || '<p class="lg-muted">Онлайн-лента ещё не получена. Чтение сайта выполняется в десктопном приложении вместе с обновлением серверов.</p>'}${feed.status === 'unavailable' ? '<p role="status">Сайт недоступен; дата успешного обновления не изменена.</p>' : ''}</section>
  <section class="lg-panel rt-today" data-entry="daily"><div class="rt-heading"><h3>Сегодня</h3><small>${esc(dateLabel(date))}</small></div><div class="rt-dungeon is-${dungeon.key}">${pass(dungeon.key, dungeon.name)}<div><small>ДАНЖ ДНЯ</small><strong>${esc(dungeon.name)}</strong><span>Цикл календаря приложения</span></div></div>
  <div class="rt-week">${dungeonStrip(mskAddDays(s.day.date, -1), mskAddDays(s.day.date, 5))
    .map(
@@ -84,18 +92,17 @@ export function renderReferenceToday(input) {
        `<button type="button" data-day="${i - 1}" aria-pressed="${s.day.chosenDay === i - 1}"><small>${i === 1 ? 'Сегодня' : i === 0 ? 'Вчера' : new Date(`${d.date}T12:00:00Z`).toLocaleDateString('ru-RU', { weekday: 'short', timeZone: 'Europe/Moscow' })}</small>${pass(d.key, d.name)}<span>${d.date.slice(8)}.${d.date.slice(5, 7)}</span></button>`
    )
    .join('')}</div>
- <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label><button type="button" class="lg-text" data-today-status="${esc(e.id || '')}" data-status="${esc(e.status || 'todo')}">${{ todo: 'Ожидает', doing: 'В работе', done: 'Выполнено' }[e.status || 'todo']}</button>` : `<b>${esc(e.title)}</b>`}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
+ <div class="rt-tabs" role="tablist" aria-label="Дела выбранного дня"><button type="button" role="tab" aria-selected="${tab === 'events'}" data-today-tab="events">События дня</button><button type="button" role="tab" aria-selected="${tab === 'todo'}" data-today-tab="todo">Список дел</button></div><div class="rt-events" role="tabpanel" aria-label="${tab === 'todo' ? 'Список дел' : 'События дня'}">${rows.map(e => `<div class="rt-event"><div>${tab === 'todo' ? `<label><input type="checkbox" data-today-todo="${esc(e.id || '')}" ${e.status === 'done' ? 'checked' : ''}>${esc(e.title)}</label>` : `<b>${esc(e.title)}</b>`}${e.note ? `<button type="button" class="lg-text rt-event-info" data-today-info="${events.indexOf(e)}" title="${esc(e.note)}" aria-label="Пояснение: ${esc(e.title)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></svg></button>` : ''}<small>${e.source === 'recurring' ? 'Автоматическое событие календаря' : e.source === 'marathon' ? 'Марафон' : 'Запись календаря'}</small></div><time>${esc(e.time || 'В течение дня')}${e.endTime ? '–' + esc(e.endTime) : ''}</time><button class="lg-text" data-today-event="${events.indexOf(e)}">Подробнее ↗</button></div>`).join('') || '<p class="lg-muted">На этот день записей нет.</p>'}</div><div class="rt-calendar-actions">${button('+ Добавить', 'event-add')}${button('Открыть день в календаре ↗', 'calendar', 'primary')}</div></section></div>
  <div class="rt-right"><div class="rt-top"><section class="lg-panel rt-promos"><div class="rt-heading"><h3>Промокоды</h3><small>Действуют: ${promos.length}</small></div><div class="rt-promo-list">${
    promos
      .map(p => {
        const status = referencePromoStatus(p, s.day.date, nativeToday() || input.production ? Date.now() : undefined);
-       const url = officialUrl(p.sourceUrl);
-       return `<article class="rt-promo ${status.tone}"><strong>${esc(p.code)}</strong><small>${esc(status.text)}</small>${url ? `<a href="${esc(url.href)}" target="_blank" rel="noopener noreferrer">Новость с промокодом ↗</a>` : ''}<p>${p.entered > 0 ? `Введён: ${p.entered} из ${s.characters.length} персонажей` : 'Ещё не введён по журналу'}</p><ul>${(p.rewards || []).map(r => `<li>${esc(r)}</li>`).join('') || '<li>Состав награды ещё не прочитан</li>'}</ul></article>`;
+       return `<article class="rt-promo ${status.tone}"><strong>${esc(p.code)}</strong><small>${esc(status.text)}</small><p>${p.entered > 0 ? `Введён: ${p.entered} из ${s.characters.length} персонажей` : 'Ещё не введён по журналу'}</p><details><summary>Показать содержимое</summary><ul>${(p.rewards || []).map(r => promoRewardHtml(r)).join('') || '<li>Состав награды ещё не прочитан</li>'}</ul></details></article>`;
      })
      .join('') || '<p class="lg-muted">Действующих кодов пока не найдено.</p>'
  }</div><footer>${button('Открыть промокоды', 'promo', 'primary')}<button type="button" class="lg-button rt-refresh" data-today-action="promo-refresh" title="Проверить действующие промокоды в новостях" aria-label="Обновить промокоды">${refreshIcon}</button></footer></section>
- <section class="lg-panel rt-marathon"><div class="rt-heading"><h3>Марафон</h3>${!nativeToday() && !input.production ? '<span class="rt-pill">Пример</span>' : ''}</div>${s.scenarios.marathon ? `<h4>${esc(s.day.marathon.title)}</h4><p class="rt-period">${esc(s.day.marathon.startDate || mskAddDays(s.day.date, 1))} — ${esc(s.day.marathon.endDate || mskAddDays(s.day.date, 31))}</p><div class="rt-reward-heading"><span>Задачи</span><small>Максимальная награда${!nativeToday() && !input.production ? ' · пример' : ''}</small></div>${s.day.marathonTasks.map((t, i) => `<details class="rt-marathon-task"><summary><span>${esc(t.title)}</span><b>${esc(t.maxReward || (!nativeToday() && !input.production ? ['30 монет', '10 припасов', '3 награды'][i] : 'Не указана') || '—')}</b></summary><p>${esc(t.description || 'Условия задания — в полном разделе марафона.')}</p></details>`).join('')}<button class="rt-progress-link" data-go-source="marathons"><span>Прогресс дня <b>Открыть раздел ↗</b></span><span class="rt-progress-track"><i style="width:${s.day.marathon.percent}%"></i></span><small>${s.day.marathon.percent}%</small></button>` : '<p>Нет активного марафона.</p><button type="button" class="lg-button" data-go-source="marathons">Открыть марафоны ↗</button>'}</section></div>
- <section class="lg-panel rt-launch"><div class="rt-heading"><h3>Быстрый запуск</h3></div><div class="rt-launch-main"><div><small>ВЫБРАННЫЙ ОТРЯД</small><h3>${esc(party?.label || 'Отряд не выбран')}</h3><p>Персонажей: ${members.length}</p></div><div class="rt-people">${members.map(member).join('')}</div></div><label class="rt-party-select">Выбрать отряд<select class="lg-input" data-party-select>${s.parties.map(p => `<option value="${esc(p.id)}" ${p.id === party?.id ? 'selected' : ''}>${esc(p.label || p.name)}</option>`).join('')}</select></label><div class="rt-launch-actions">${button('Запустить выбранный отряд', 'launch', 'primary')}${button('Текущие рабочие окна игры', 'windows')}</div><small>Штатный запуск: проверки GameCenter, привязок, уже открытых окон и подтверждение.</small></section>
+ <section class="lg-panel rt-marathon"><div class="rt-heading"><h3>Марафон</h3>${!nativeToday() && !input.production ? '<span class="rt-pill">Пример</span>' : ''}</div>${s.scenarios.marathon ? `<h4>${esc(s.day.marathon.title)}</h4>${s.day.marathon.startDate > s.day.date ? '<span class="rt-pill">Скоро · ещё не начался</span>' : ''}<p class="rt-period">${esc(s.day.marathon.startDate || mskAddDays(s.day.date, 1))} — ${esc(s.day.marathon.endDate || mskAddDays(s.day.date, 31))}</p><div class="rt-reward-heading"><span>Задачи</span><small>Максимальная награда${!nativeToday() && !input.production ? ' · пример' : ''}</small></div>${s.day.marathonTasks.map((t, i) => `<details class="rt-marathon-task"><summary><span>${esc(t.title)}</span><b>${esc(t.maxReward || (!nativeToday() && !input.production ? ['30 монет', '10 припасов', '3 награды'][i] : 'Не указана') || '—')}</b></summary><p>${esc(t.description || 'Условия задания — в полном разделе марафона.')}</p></details>`).join('')}<button class="rt-progress-link" data-go-source="marathons"><span>Прогресс дня <b>Открыть раздел ↗</b></span><span class="rt-progress-track"><i style="width:${s.day.marathon.percent}%"></i></span><small>${s.day.marathon.percent}%</small></button>` : '<p>Нет активного марафона.</p><button type="button" class="lg-button" data-go-source="marathons">Открыть марафоны ↗</button>'}</section></div>
+ <section class="lg-panel rt-launch"><div class="rt-heading"><h3>Быстрый запуск</h3></div><div class="rt-launch-main"><div><small>ВЫБРАННЫЙ ОТРЯД</small><h3>${esc(party?.label || 'Отряд не выбран')}</h3><p>Персонажей: ${members.length}</p></div><div class="rt-people">${members.map(member).join('')}</div></div><label class="rt-party-select">Выбрать отряд<select class="lg-input" data-party-select>${s.parties.map(p => `<option value="${esc(p.id)}" ${p.id === party?.id ? 'selected' : ''}>${esc(p.label || p.name)}</option>`).join('')}</select></label><div class="rt-launch-actions">${button('Запустить выбранный отряд', 'launch', 'primary')}${button('Текущие рабочие окна игры', 'windows')}<button type="button" class="lg-button rt-decoration-button" data-today-action="decorate-windows" title="Названия и значки" aria-label="Названия и значки" ${decorationState.busy ? 'disabled' : ''}>🔖</button><span class="rt-decoration-progress" role="status" aria-live="polite" data-today-decoration-progress>${esc(decorationState.text)}</span></div><small>Штатный запуск: проверки GameCenter, привязок, уже открытых окон и подтверждение.</small></section>
  <section class="lg-panel rt-information"><div class="rt-heading"><h3>Информационная панель</h3></div><dl class="rt-information-grid">${[
    ['Золото', s.day.gold],
    ['Голд', s.day.bank],
@@ -115,18 +122,18 @@ export function renderReferenceToday(input) {
          clanRows
            .map(
              e =>
-               `<article><b>${esc(e.title)}</b><small>${esc(e.when || '')} ${esc(e.comment || '')}</small><div class="rt-attendance">${[
+               `<article><b>${esc(e.title)}</b><small>${esc(e.when || '')} ${esc(e.comment || '')}</small>${clanResponseNote(s, e.id)}<div class="rt-attendance">${[
                  ['yes', 'Пойду'],
                  ['no', 'Не пойду']
                ]
                  .map(
                    ([value, label]) =>
-                     `<button class="lg-button" data-today-vote="${esc(e.id)}" data-value="${value}" aria-pressed="${(s.referenceVotes?.[e.id] || e.response) === value}">${label}</button>`
+                     `<button class="lg-button" data-today-vote="${esc(e.id)}" data-value="${value}" aria-pressed="${(s.guild?.pendingResponses?.find(row => row.eventId === e.id)?.response || (!(nativeToday() || input.production) && s.referenceVotes?.[e.id]) || e.response) === value}">${label}</button>`
                  )
                  .join('')}</div></article>`
            )
            .join('') || '<p>Расписание ещё не получено.</p>'
-       }</div><aside><small>СОВМЕСТНЫЕ ПАТИ</small>${clanParties.map((p, i) => `<b>${esc(p.name)}</b><div class="rt-people">${p.members.map(member).join('')}</div><button class="lg-button" data-today-copy-party="${i}">Скопировать ники, кроме своего</button>`).join('')}<button class="lg-text" data-go-source="parties">Составы и пати ↗</button></aside></div></section>`
+       }</div><aside><small>Моя пати</small>${clanParties.map((p, i) => `<div class="rt-party-heading"><b>${esc(p.name)}</b><button type="button" class="lg-button rt-copy-party" data-today-copy-party="${i}" title="Скопировать ники, кроме своего" aria-label="Скопировать ники, кроме своего"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></svg></button></div><div class="rt-people">${p.members.map(member).join('')}</div>`).join('')}</aside></div></section>`
      : ''
  }</div></section>`;
 }
@@ -164,11 +171,15 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
             ? `<button data-today-date="${d}" aria-pressed="${d === date}"><span>${Number(d.slice(8))}</span><small>${esc(dungeonInfoForDate(d).name)}</small><small>${plannerEventsForDate(s.plannerState || { plannerEntries: s.calendarEvents, marathons: [] }, d).length} записей</small></button>`
             : '<span></span>'
         )
-        .join('')}</div><h3>${esc(dateLabel(date))}</h3><ol>${
+        .join('')}</div><h3>${esc(dateLabel(date))}</h3><ul class="rt-calendar-agenda">${
         referenceDayEvents(s)
-          .map(e => `<li>${esc(e.time || 'Весь день')} · ${esc(e.title)}</li>`)
-          .join('') || '<li>Нет записей</li>'
-      }</ol>${button('К текущей дате', 'calendar-today')}${s.production ? button('Редактировать записи дня', 'planner-day') : ''}${button('+ Запись на выбранную дату', 'event-add')}`
+          .map(
+            e =>
+              `<li class="rt-agenda-item${e.status === 'done' ? ' is-done' : ''}"><time>${esc(e.time || 'Весь день')}</time><div><strong>${esc(e.title)}</strong><small>${e.source === 'marathon' ? 'Марафон' : e.kind === 'event' ? 'Событие' : 'Задание'}${e.status === 'done' ? ' · Выполнено' : ''}</small></div></li>`
+          )
+          .join('') || '<li class="rt-agenda-empty">На этот день пока нет записей.</li>'
+      }</ul>`,
+      `${button('К текущей дате', 'calendar-today')}${s.production ? button('Редактировать записи дня', 'planner-day') : ''}${button('+ Запись на выбранную дату', 'event-add')}`
     );
   };
   async function click(event) {
@@ -179,18 +190,6 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
     if (el.hasAttribute('data-today-tab')) {
       raw.referenceTab = el.dataset.todayTab;
       render();
-      return;
-    }
-    if (el.hasAttribute('data-today-status')) {
-      const id = el.dataset.todayStatus,
-        status = { todo: 'doing', doing: 'done', done: 'todo' }[el.dataset.status] || 'todo';
-      if (raw.production && planner?.todo) await planner.todo(id, selectedDate(s), status);
-      else if (nativeToday()) await execute('todo', { eventId: id, date: selectedDate(s), response: status });
-      else {
-        const entry = raw.calendarEvents.find(r => r.id === id);
-        if (entry) setEntryStatusForDate(entry, selectedDate(s), status);
-        render();
-      }
       return;
     }
     if (el.dataset.todayAction === 'calendar-today') {
@@ -217,6 +216,11 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
       planner.day(selectedDate(s));
       return;
     }
+    if (el.hasAttribute('data-today-info')) {
+      const info = referenceDayEvents(s)[Number(el.dataset.todayInfo)];
+      if (info) modal(info.title, `<p>${esc(info.time)}–${esc(info.endTime)} (МСК)</p><p>${esc(info.note)}</p>`);
+      return;
+    }
     if (el.hasAttribute('data-today-event')) {
       if (planner?.day) {
         dialog.close();
@@ -232,6 +236,7 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
       return;
     }
     if (el.hasAttribute('data-today-copy-party')) {
+      if (nativeToday() && s.scenarios.clan) (await import('../guild/page.js')).touchGuildResponses();
       const party = s.parties.find(p => p.id === s.day.favoriteParty),
         members = s.characters.filter(c => c.party === party?.id || c.partyIds?.includes(party?.id)),
         parties = s.guild?.parties || [{ members }],
@@ -244,12 +249,32 @@ export function bindReferenceToday({ root, dialog, getState, render, modal, toas
     if (el.hasAttribute('data-today-vote')) {
       const result = await execute('clan-vote', { eventId: el.dataset.todayVote, response: el.dataset.value });
       if (result.ok) {
-        (raw.referenceVotes ||= {})[el.dataset.todayVote] = el.dataset.value;
+        if (!nativeToday()) (raw.referenceVotes ||= {})[el.dataset.todayVote] = el.dataset.value;
         render();
       }
       return;
     }
     const action = el.dataset.todayAction;
+    if (action === 'decorate-windows') {
+      if (decorationState.busy) return;
+      decorationState.busy = true;
+      decorationState.text = '0% · Получаю список окон…';
+      render();
+      try {
+        const result = await execute(action, {
+          onProgress: p => {
+            decorationState.text = `${p.percent}% · ${p.nick || (p.phase === 'done' ? 'Обработано' : 'Запрашиваю права администратора…')}`;
+            const status = root.querySelector('[data-today-decoration-progress]');
+            if (status) status.textContent = decorationState.text;
+          }
+        });
+        if (!result.ok) decorationState.text = 'Не завершено: проверьте сообщение';
+      } finally {
+        decorationState.busy = false;
+        render();
+      }
+      return;
+    }
     if (action === 'calendar') {
       raw.referenceMonth = 0;
       calendar();

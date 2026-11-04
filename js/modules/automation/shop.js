@@ -397,7 +397,7 @@ export function openShopDialog({ ids = [] } = {}) {
       : '';
     return `<div class="shop-card${locked ? ' shop-locked' : ''}${picked.has(def.key) ? ' shop-picked' : ''}" data-card="${def.key}">
       <label class="shop-pick"><input type="checkbox" data-item="${def.key}" ${picked.has(def.key) ? 'checked' : ''} ${locked ? 'disabled' : ''}>
-        ${siteItemIconHtml(it?.image)}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
+        ${siteItemIconHtml(it?.image, def.name)}<b>${escapeHtml(def.name)}</b><span class="shop-card-check" aria-hidden="true">✓</span></label>
       <div class="shop-price">${escapeHtml(price)}</div>
       ${hint ? `<div class="shop-muted">${escapeHtml(hint)}</div>` : ''}${desc}</div>`;
   }

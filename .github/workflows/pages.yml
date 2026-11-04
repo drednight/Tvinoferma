@@ -23,12 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          # jsdom 30 требует Node >= 22.22
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup-frontend
       # База /Tvinoferma/ — только для Pages: десктопная (Tauri) сборка по-прежнему
       # запускается как npm run build без флага и получает базовый '/'
       - run: npm run build -- --base=/Tvinoferma/

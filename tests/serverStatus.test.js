@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 // «Статус серверов»: чтение без аккаунтов при запуске и по расписанию, плашка в шапке, настройка «Свежесть данных» (Issue #26)
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), promo: vi.fn(async () => {}), news: vi.fn(async () => {}) }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  promo: vi.fn(async () => {}),
+  news: vi.fn(async () => {}),
+  clan: vi.fn(async () => {})
+}));
+vi.mock('../js/modules/guild/page.js', () => ({ autoSync: mocks.clan }));
 vi.mock('../js/modules/dashboard/siteFeed.js', () => ({ refreshSiteFeed: mocks.news }));
 vi.mock('../js/modules/automation/promoDiscovery.js', () => ({
   promoDiscovery: () => ({ check: mocks.promo })
@@ -25,6 +31,7 @@ beforeEach(async () => {
   vi.resetModules();
   mocks.promo.mockClear();
   mocks.news.mockClear();
+  mocks.clan.mockClear();
   window.localStorage.clear();
   window.__TAURI_INTERNALS__ = {};
   mocks.invoke.mockReset().mockImplementation(async () => ({ ...SERVERS }));
@@ -83,6 +90,16 @@ describe('чтение', () => {
       [false, 4]
     ]);
     expect(JSON.parse(window.localStorage.getItem('tf_transfer_servers_v1')).recommended).toBe('Капелла');
+  });
+
+  it('ручное и фоновое чтение запускает обновление клана один раз на общий запрос и не ждёт его', async () => {
+    mocks.clan.mockImplementationOnce(() => new Promise(() => {}));
+    await Promise.all([ss.refreshServerStatus(opts()), ss.refreshServerStatus(opts())]);
+    await vi.waitFor(() => expect(mocks.clan).toHaveBeenCalledTimes(1));
+    expect(ss.getServerStatus().busy).toBe(false);
+    delete window.__TAURI_INTERNALS__;
+    await ss.refreshServerStatus(opts());
+    expect(mocks.clan).toHaveBeenCalledTimes(1);
   });
 
   it('сбой не стирает прежние данные и запоминается как ошибка; успех сбрасывает ошибку', async () => {
@@ -186,7 +203,7 @@ describe('плашка', () => {
     });
     const old = snap({ error: { status: 'challenge', error: null } });
     old.status.at = new Date(Date.now() - 3 * 3600000).toISOString();
-    expect(view.serverStatusMeta(old)).toEqual({ text: '⚠ не обновилось, данные: 3 ч назад', warn: true });
+    expect(view.serverStatusMeta(old)).toEqual({ text: '⚠ последнее обновление: 3 ч назад', warn: true });
   });
 
   it('стоит в нижней части новой боковой панели перед настройками; сама обновляется после чтения', async () => {

@@ -83,6 +83,9 @@ beforeEach(() => {
   clearCloudDiagnostics();
   expect(source).toBeTruthy();
   document.body.innerHTML = `<main>${source}</main>`;
+  // Exercise the retained experimental module in isolation, not its hidden production entry.
+  document.getElementById('cloud-registration-panel').hidden = false;
+  document.getElementById('cloud-registration-panel').removeAttribute('inert');
 });
 afterEach(() => {
   document.body.innerHTML = '';

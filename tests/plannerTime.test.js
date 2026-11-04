@@ -24,6 +24,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -52,7 +53,7 @@ describe('календарь: записи в ячейке месяца', () => 
   it('запись без времени показана названием, подсказка без времени', () => {
     state.plannerEntries = [entry({ id: 'p1', title: 'Без времени', date: '2026-10-06', time: '', color: 'green' })];
     const day = cell(plannerHtml(state), '2026-10-06');
-    expect(chips(day)).toEqual(['Без времени']);
+    expect(chips(day)).toContain('Без времени');
     expect(day.getAttribute('title')).toContain('Без времени');
     expect(day.getAttribute('title')).not.toMatch(/\d\d:\d\d Без времени/);
   });
@@ -71,19 +72,22 @@ describe('календарь: записи в ячейке месяца', () => 
     const day = cell(plannerHtml(state), '2026-10-07');
     const titles = chips(day);
     expect(titles.some(t => t.includes('Ритм Гильдии'))).toBe(true);
-    expect(titles.some(t => t.includes('Запретное учение'))).toBe(true);
+    expect(day.getAttribute('title')).toContain('Запретное учение');
     expect(day.getAttribute('title')).toContain('19:30 Ритм Гильдии');
     expect(day.getAttribute('title')).toContain('20:00 Запретное учение');
   });
 
-  it('в понедельник идёт Битва Династий, в субботу — ничего', () => {
+  it('Битва Династий остаётся в понедельник, а в субботу идёт Аврора', () => {
     const mon = cell(plannerHtml(state), '2026-10-05');
     expect(chips(mon).join(' ')).toContain('Битва Династий');
     const sat = cell(plannerHtml(state), '2026-10-10');
-    expect(sat.querySelector('.planner-chip')).toBeNull();
+    expect(chips(sat).join(' ')).not.toContain('Битва Династий');
+    expect(chips(sat).join(' ')).toContain('Арена Авроры (Порядок)');
   });
 
-  it('пустой день не рисует меток', () => {
+  it('пустой день не рисует меток', async () => {
+    const recurring = await import('../js/modules/dashboard/recurringEvents.js');
+    vi.spyOn(recurring, 'recurringEventsForDate').mockReturnValue([]);
     const day = cell(plannerHtml(state), '2026-10-11');
     expect(day.querySelectorAll('.planner-chip')).toHaveLength(0);
   });
@@ -172,7 +176,9 @@ describe('окно дня: полная шкала 00:00–24:00', () => {
     expect(row.textContent).toContain('10:00–11:00');
   });
 
-  it('пустой день говорит об этом прямо', () => {
+  it('пустой день говорит об этом прямо', async () => {
+    const recurring = await import('../js/modules/dashboard/recurringEvents.js');
+    vi.spyOn(recurring, 'recurringEventsForDate').mockReturnValue([]);
     openPlannerDay('2026-10-11', {});
     expect(document.getElementById('modal-root').textContent).toContain('На этот день записей нет');
   });

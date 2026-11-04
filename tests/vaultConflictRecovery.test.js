@@ -187,3 +187,23 @@ it('comparison is opt-in, escaped and masked by default; cancel and unconfirmed 
   expect(invoke).not.toHaveBeenCalled();
   expect(disk).toBe(original);
 });
+it('offers the file source only explicitly and resets consent when switching source', () => {
+  attachVaultConflictRecovery({ raw, review });
+  document.querySelector('[data-vault-review]').click();
+  const source = document.querySelector('select[aria-label="Источник контактов"]');
+  expect(source.querySelector('option[value=file]')).not.toBeNull();
+  const consents = [...document.querySelectorAll('input[type=checkbox]')];
+  const consent = consents.at(-1);
+  const use = [...document.querySelectorAll('button')].find(b => b.textContent === 'Использовать контакты Windows');
+  consent.checked = true;
+  consent.dispatchEvent(new Event('change'));
+  expect(use.disabled).toBe(false);
+  source.value = 'file';
+  source.dispatchEvent(new Event('change'));
+  expect(consent.checked).toBe(false);
+  expect(use.disabled).toBe(true);
+  expect(use.textContent).toBe('Использовать контакты файла');
+  expect(document.body.textContent).not.toContain('PRIVATE_FILE');
+  expect(document.body.textContent).not.toContain('PRIVATE_WINDOWS');
+  expect(invoke).not.toHaveBeenCalled();
+});

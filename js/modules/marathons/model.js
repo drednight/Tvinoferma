@@ -557,14 +557,27 @@ function sameMonth(a, b) {
 }
 
 /** Находит задание сайта для задания марафона: точное название, затем «без скобок» с учётом месяца этапа. */
-export function matchQuest(task, quests, stageKey) {
-  const exact = normTitle(task.siteTitle || task.title);
-  let q = quests.find(x => normTitle(x.title) === exact);
-  if (q) return q;
-  const base = baseTitle(task.siteTitle || task.title);
-  const candidates = quests.filter(x => baseTitle(x.title) === base);
+export function matchQuest(task, quests, stageKey, eventYear = null) {
+  const title = task.siteTitle || task.title;
+  const monthIndex = value =>
+    MONTHS.findIndex(x =>
+      String(value || '')
+        .toLowerCase()
+        .startsWith(x)
+    );
+  const month = monthIndex(stageKey) >= 0 ? stageKey : parenOf(title);
+  const compatible = q => {
+    const candidate = parenOf(q.title);
+    if (monthIndex(month) >= 0 && monthIndex(candidate) >= 0 && !sameMonth(candidate, month)) return false;
+    const year = /\b20\d{2}\b/.exec(String(month))?.[0] || /\b20\d{2}\b/.exec(parenOf(task.title))?.[0] || eventYear;
+    const otherYear = /\b20\d{2}\b/.exec(candidate)?.[0];
+    return !year || !otherYear || year === otherYear;
+  };
+  const pool = quests.filter(compatible);
+  const exact = pool.find(x => normTitle(x.title) === normTitle(title));
+  if (exact) return exact;
+  const candidates = pool.filter(x => baseTitle(x.title) === baseTitle(title));
   if (candidates.length === 1) return candidates[0];
-  const month = stageKey || parenOf(task.siteTitle || task.title);
   return candidates.find(x => sameMonth(parenOf(x.title), month)) || null;
 }
 
@@ -577,13 +590,20 @@ export function applySiteQuests(m, charId, quests, at = new Date().toISOString()
   if (!Array.isArray(quests) || m.kind === 'series' || m.status === 'completed') return changes;
   if (!m.participantIds.includes(charId)) return changes;
   const day = at.slice(0, 10);
+  if (m.startDate && day < m.startDate) return changes;
 
   m.tasks.forEach(task => {
-    const q = matchQuest(task, quests, m.source?.stageKey);
+    const eventYear = m.startDate?.slice(0, 4) === m.endDate?.slice(0, 4) ? m.startDate?.slice(0, 4) : null;
+    const q = matchQuest(task, quests, m.source?.stageKey, eventYear);
     if (!q) return;
+    if (typeof q.completed !== 'number' && !/^\d+$/.test(String(q.completed))) return;
+    const to = Number(q.completed);
+    if (q.completed === null || q.completed === undefined || !Number.isSafeInteger(to) || to < 0) return;
     const cell = ensureCell(m.progress, charId, task.id);
+    if (cell.syncedAt && Date.parse(at) < Date.parse(cell.syncedAt)) return;
     const from = cell.site;
-    const to = Number(q.completed) || 0;
+    // A correction invalidates inferred site dates, not the user's marks or adjustment.
+    if (from != null && to < from) cell.history = {};
     if (from !== null && from !== undefined && to > from) {
       cell.history[day] = (cell.history[day] || 0) + (to - from);
     }

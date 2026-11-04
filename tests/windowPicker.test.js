@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   details: vi.fn(),
+  redecorate: vi.fn(),
   closePids: vi.fn(),
   closeAll: vi.fn(),
   confirm: vi.fn(),
@@ -12,6 +13,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../js/modules/launcher/launch.js', () => ({
   runningClientDetails: mocks.details,
+  redecorateRunningWindows: mocks.redecorate,
+  redecorateText: () => '',
   closeClientsByPid: mocks.closePids,
   closeAllClients: mocks.closeAll
 }));
@@ -195,4 +198,27 @@ describe('отметить все окна разом', () => {
     refresh.click();
     await vi.waitFor(() => expect(btn('toggle-all').disabled).toBe(true));
   });
+});
+
+it('keeps decoration progress visible across redraws and prevents repeated clicks', async () => {
+  let finish;
+  mocks.redecorate.mockImplementation(
+    (_rows, { onProgress }) =>
+      new Promise(resolve => {
+        onProgress({ percent: 25, done: 1, total: 2, nick: 'Бб', phase: 'apply' });
+        finish = () => {
+          onProgress({ percent: 100, done: 2, total: 2, phase: 'done' });
+          resolve({ ok: 0, fixed: 2, failed: 0, missing: 0, details: [] });
+        };
+      })
+  );
+  await openWindowPicker();
+  document.querySelector('[data-act="redecorate"]').click();
+  await vi.waitFor(() => expect(document.querySelector('[data-decoration-progress]').textContent).toContain('25%'));
+  expect(document.querySelector('[data-act="redecorate"]').disabled).toBe(true);
+  document.querySelector('[data-act="redecorate"]').click();
+  expect(mocks.redecorate).toHaveBeenCalledTimes(1);
+  finish();
+  await vi.waitFor(() => expect(document.querySelector('[data-act="redecorate"]').disabled).toBe(false));
+  expect(document.querySelector('[data-decoration-progress]').textContent).toContain('100%');
 });

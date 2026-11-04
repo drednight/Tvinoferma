@@ -141,8 +141,8 @@ fn guard_popups<'a, M: Manager<tauri::Wry>>(
     label: &str,
     profile_key: &str,
 ) -> WebviewWindowBuilder<'a, tauri::Wry, M> {
-    let unlimited = unlimited_items_enabled(app);
-    let collection = collection_panel_enabled(app);
+    let unlimited = !label.contains("link-view-") && unlimited_items_enabled(app);
+    let collection = !label.contains("link-view-") && collection_panel_enabled(app);
     let app = app.clone();
     let label = label.to_string();
     let profile_key = profile_key.to_string();
@@ -408,6 +408,80 @@ fn raise_above_parent(app: &AppHandle, popup: &WebviewWindow, parent_label: &str
     });
 }
 
+fn parse_link_url(url: &str) -> Result<Url, String> {
+    let parsed = Url::parse(url).map_err(|_| "Некорректная ссылка".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || matches!(
+            parsed.host_str(),
+            Some("tauri.localhost" | "asset.localhost")
+        )
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("Разрешены только веб-ссылки без встроенных учётных данных".into());
+    }
+    Ok(parsed)
+}
+
+fn link_browser_profile(char_id: Option<String>) -> Result<(String, String), String> {
+    match char_id.filter(|id| !id.is_empty()) {
+        Some(id) => {
+            if id.len() > 128
+                || id == "__link_guest__"
+                || !id
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err("Некорректный профиль персонажа".into());
+            }
+            let label = format!("link-view-character-{}", id);
+            Ok((id, label))
+        }
+        None => Ok((
+            "__link_guest__".to_string(),
+            "link-view-anonymous".to_string(),
+        )),
+    }
+}
+
+/// Ordinary web links use a separate window, never the automation mailbox/window.
+/// No selection uses an independent persistent profile; explicit selection shares
+/// the character's site cookies, not passwords or injected login helpers.
+#[command]
+pub async fn open_link_browser(
+    app: AppHandle,
+    url: String,
+    char_id: Option<String>,
+    char_nick: Option<String>,
+) -> Result<String, String> {
+    let parsed = parse_link_url(&url)?;
+    let (key, label) = link_browser_profile(char_id)?;
+    let title = format!(
+        "Браузер — {}",
+        char_nick.as_deref().unwrap_or("без персонажа")
+    );
+    if let Some(win) = app.get_webview_window(&label) {
+        win.set_title(&title).map_err(|e| e.to_string())?;
+        win.navigate(parsed).map_err(|e| e.to_string())?;
+        win.show().map_err(|e| e.to_string())?;
+        win.set_focus().map_err(|e| e.to_string())?;
+        return Ok(label);
+    }
+    let builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::External(parsed))
+        .title(title)
+        .inner_size(1200.0, 800.0)
+        .resizable(true)
+        .data_directory(profile_dir(&app, &key)?)
+        .initialization_script(include_str!("scripts/link_browser.js"))
+        .on_navigation(|url| parse_link_url(url.as_str()).is_ok());
+    let win = guard_popups(builder, &app, &label, &key)
+        .build()
+        .map_err(|e| e.to_string())?;
+    center_window(&app, &win)?;
+    Ok(label)
+}
+
 /// Открывает ВИДИМОЕ окно браузера (для ручного входа/действия)
 #[command]
 pub async fn open_sync_window(
@@ -642,8 +716,36 @@ pub fn dispose(window: &WebviewWindow, created_here: bool, close_after: bool) {
 mod tests {
     use super::{
         centered_position, collection_reports_from_url, is_oauth_callback, is_oauth_popup_url,
+        link_browser_profile, parse_link_url,
     };
     use tauri::Url;
+
+    #[test]
+    fn ordinary_links_reject_schemes_credentials_and_unsafe_profile_paths() {
+        for url in [
+            "file:///C:/secret",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "http://tauri.localhost",
+            "https://user:pass@example.com",
+        ] {
+            assert!(parse_link_url(url).is_err(), "{url}");
+        }
+        assert!(parse_link_url("https://pwonline.ru/news.php?article=1").is_ok());
+        for id in ["../main", "C:/data", "a/b", "a\\b", "__link_guest__"] {
+            assert!(link_browser_profile(Some(id.to_string())).is_err(), "{id}");
+        }
+        let guest = link_browser_profile(None).unwrap();
+        assert_eq!(guest, link_browser_profile(Some(String::new())).unwrap());
+        assert_ne!(
+            guest,
+            link_browser_profile(Some("guest".to_string())).unwrap()
+        );
+        assert_eq!(
+            link_browser_profile(Some("Alice_2".to_string())).unwrap().0,
+            "Alice_2"
+        );
+    }
 
     #[test]
     fn allows_vk_id_and_oauth_callback_popup_hosts() {

@@ -2354,6 +2354,9 @@ pub async fn launcher_close_clients_pids(pids: Vec<u32>) -> Result<CloseReport, 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DecorateTarget {
+    /// Manual reapplication must replace existing titles and icons too.
+    #[serde(default)]
+    pub force: bool,
     /// PID клиента игры
     pub pid: u32,
     /// Ожидаемое название окна («Ник — Класс»)
@@ -2776,6 +2779,10 @@ pub fn run_elevated_self_detached(exe: &str, args: &str) -> Result<(), u32> {
     win::shell_run_elevated_detached(exe, args)
 }
 
+fn should_refresh_icon(force: bool, provided: usize, has_current: bool) -> bool {
+    provided != 0 && (force || !has_current)
+}
+
 /// Подписывает окна клиентов: заголовок «Ник — Класс» и значок класса.
 ///
 /// Вынесено из команды, чтобы тем же кодом пользовался помощник с правами администратора
@@ -2806,15 +2813,16 @@ pub fn decorate_targets(targets: &[DecorateTarget]) -> Vec<DecorateResult> {
         let mut last_title = String::new();
         for w in &windows {
             last_title = w.title.clone();
-            // Заголовок: ставим, если отличается от нужного
-            if w.title != title && win::set_title(w.hwnd, &title).is_err() {
+            // Ручная переподпись повторяет установку даже при совпадающем заголовке
+            if (target.force || w.title != title) && win::set_title(w.hwnd, &title).is_err() {
                 denied = true;
                 continue;
             }
-            // Значок: ставим, если задан и у окна его нет
+            // Ручная переподпись заменяет и существующий значок; автоматическая заполняет отсутствующий
             let has_small = win::details(w.hwnd).small_icon != 0;
             let has_big = win::details(w.hwnd).big_icon != 0;
-            if ((small != 0 && !has_small) || (big != 0 && !has_big))
+            if (should_refresh_icon(target.force, small, has_small)
+                || should_refresh_icon(target.force, big, has_big))
                 && win::set_icons(w.hwnd, small, big).is_err()
             {
                 denied = true;
@@ -2977,6 +2985,16 @@ pub async fn launcher_inspect_windows() -> Result<InspectReport, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manual_decoration_replaces_existing_icons_without_clearing_missing_artwork() {
+        assert!(should_refresh_icon(true, 1, true));
+        assert!(should_refresh_icon(false, 1, false));
+        assert!(!should_refresh_icon(false, 1, true));
+        assert!(!should_refresh_icon(true, 0, true));
+        let old: DecorateTarget = serde_json::from_str(r#"{"pid":1,"title":"A"}"#).unwrap();
+        assert!(!old.force);
+    }
 
     #[test]
     fn window_title_is_cleaned() {

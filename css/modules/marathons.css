@@ -593,7 +593,11 @@
   flex-direction: column;
 }
 .mr-more-col .mr-mini[open] > :not(summary) {
-  overflow: hidden;
+  min-height: 0;
+  max-height: min(360px, 50vh);
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 .mr-mini {
   border: 1px solid var(--border);
@@ -1712,4 +1716,10 @@ tr.is-syncing td {
 .tf-dp-pop .mr-cal-day {
   min-height: 34px;
   padding: 4px 0;
+}
+
+.mr-matrix .mr-site-column {
+  width: 56px;
+  min-width: 56px;
+  text-align: center;
 }
