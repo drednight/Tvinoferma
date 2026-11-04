@@ -1,11 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), open: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: mocks.open }));
 import { state } from '../js/core/state.js';
 import { DEFAULT_SETTINGS } from '../js/core/constants.js';
 import { webLink, linkProfile, linkProfileOptions, openWebLink, bindWebLinks } from '../js/core/linkBrowser.js';
 beforeEach(() => {
   mocks.invoke.mockReset().mockResolvedValue(undefined);
+  mocks.open.mockReset().mockResolvedValue(undefined);
   window.__TAURI_INTERNALS__ = {};
   state.characters = [
     { id: 'alice', nick: 'Алиса' },
@@ -77,4 +79,34 @@ it('preserves the explicit setting through normalization and defaults invalid va
   const { mergeSettings } = await import('../js/core/state/settings.js');
   expect(mergeSettings({ browser: { linkCharacterId: 'bob' } }).browser.linkCharacterId).toBe('bob');
   expect(mergeSettings({ browser: { linkCharacterId: 123 } }).browser.linkCharacterId).toBe('');
+});
+
+it('opens the OS default browser only when explicitly selected, without character credentials or IPC', async () => {
+  state.settings.browser = { linkOpenMode: 'system', linkCharacterId: 'bob' };
+  await openWebLink('https://pwonline.ru/news.php?article=1');
+  expect(mocks.open).toHaveBeenCalledWith('https://pwonline.ru/news.php?article=1');
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  await expect(openWebLink('javascript:alert(1)')).rejects.toThrow();
+  expect(mocks.open).toHaveBeenCalledTimes(1);
+});
+it('does not silently open a WebView when the system browser fails', async () => {
+  state.settings.browser.linkOpenMode = 'system';
+  mocks.open.mockRejectedValueOnce(new Error('OS failure'));
+  await expect(openWebLink('https://example.com/')).rejects.toThrow('OS failure');
+  expect(mocks.invoke).not.toHaveBeenCalled();
+});
+it('persists system mode, defaults old or invalid settings to WebView, and allows switching back', async () => {
+  const { mergeSettings } = await import('../js/core/state/settings.js');
+  expect(DEFAULT_SETTINGS.browser.linkOpenMode).toBe('webview');
+  expect(mergeSettings({ browser: { linkOpenMode: 'system' } }).browser.linkOpenMode).toBe('system');
+  expect(mergeSettings({ browser: { linkOpenMode: 'other' } }).browser.linkOpenMode).toBe('webview');
+  expect(mergeSettings({}).browser.linkOpenMode).toBe('webview');
+  state.settings.browser = { linkOpenMode: 'webview', linkCharacterId: 'alice' };
+  await openWebLink('https://example.com/');
+  expect(mocks.open).not.toHaveBeenCalled();
+  expect(mocks.invoke).toHaveBeenCalledWith('open_link_browser', {
+    url: 'https://example.com/',
+    charId: 'alice',
+    charNick: 'Алиса'
+  });
 });

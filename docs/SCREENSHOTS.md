@@ -23,7 +23,7 @@ npm run shots -- --guides --only today,characters,parties,marathons,scripts,char
 Выборочные снимки:
 
 ```powershell
-npm run shots -- --only today,browser,calendar
+npm run shots -- --only today,browser,calendar,promo-rewards
 npm run shots -- --guides --only settings-browser,calendar-month
 ```
 
@@ -40,6 +40,7 @@ npm run shots -- --guides --only settings-browser,calendar-month
 Preview: файлы должны быть добавлены в Git, а не только существовать локально.
 
 В набор README входят «Сегодня», персонажи, профиль, пати, марафоны, месячный
-календарь, инструменты, настройки, выбор профиля WebView и командная палитра.
+календарь, инструменты, настройки, выбор браузера и профиля WebView, командная палитра
+и раскрытый состав награды промокода.
 Проверка `tests/readmeScreenshots.test.js` проверяет наличие и формат всех изображений,
 на которые ссылается README. Дата последнего обновления набора — 4 ноября 2026 года.

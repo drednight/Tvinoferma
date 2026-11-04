@@ -79,7 +79,10 @@ describe('article viewer and accessible Stop', () => {
     expect(document.body.textContent).toContain('23:59 мск');
     expect(document.body.textContent).toContain('Доступен для сервера: «Цефей»');
     expect(document.querySelectorAll('.promo-news-option li')).toHaveLength(2);
-    expect(document.querySelector('img')).toBeNull();
+    expect(document.querySelectorAll('img')).toHaveLength(1);
+    expect(document.querySelector('img').getAttribute('src')).toContain('/items/meteorite.webp');
+    expect(document.querySelector('[onerror]')).toBeNull();
+    expect(document.querySelectorAll('li')[1].textContent).toBe('<img src=x onerror=alert(1)>');
   });
   it('persists hiding only the chosen code', () => {
     [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === 'Скрыть промокод').click();

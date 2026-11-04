@@ -34,6 +34,10 @@ export function linkProfileOptions(appState = state) {
 export async function openWebLink(value) {
   const url = webLink(value);
   if (!url) throw new Error('Допустимы только ссылки http/https без встроенного логина и пароля.');
+  if (window.__TAURI_INTERNALS__ && state.settings?.browser?.linkOpenMode === 'system') {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    return open(url); // OS default browser; never fall back to another profile on error
+  }
   if (window.__TAURI_INTERNALS__) {
     const { invoke } = await import('@tauri-apps/api/core');
     return invoke('open_link_browser', { url, ...linkProfile() });

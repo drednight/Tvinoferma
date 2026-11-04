@@ -90,13 +90,16 @@ describe('Today 12 revised connected dashboard', () => {
         expiresOn: '2026-11-04',
         sourceUrl: 'https://pwonline.ru/news.php?article=3',
         entered: 2,
-        rewards: ['Награда × 2']
+        rewards: ['Приказ феникса (30 шт.)', 'Награда × 2']
       }
     ];
     render();
     expect($('.rt-promo').textContent).toContain('CURRENT');
     expect($('.rt-promo').textContent).toContain('Введён: 2');
     expect($('.rt-promo').textContent).toContain('Награда × 2');
+    expect($('.rt-promo li img').getAttribute('src')).toContain('phoenix-order.webp');
+    expect($('.rt-promo li').textContent).toBe('Приказ феникса (30 шт.)');
+    expect(document.querySelectorAll('.rt-promo li')[1].querySelector('img')).toBeNull();
     expect($('.rt-promo a')).toBeNull();
     const details = $('.rt-promo details');
     expect(details.open).toBe(false);

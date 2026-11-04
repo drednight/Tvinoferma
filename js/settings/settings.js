@@ -253,6 +253,7 @@ export async function renderSettings() {
     else if (el.dataset.setting === 'updates.mode') el.value = resolveUpdateMode(state.settings);
     else el.value = value ?? '';
   });
+  updateBrowserLinkModeInputs();
   updateHoursHints();
   renderEventNotifications();
   renderNotifyKinds();
@@ -539,6 +540,12 @@ function setSetting(path, value) {
   obj[keys[keys.length - 1]] = value;
 }
 
+function updateBrowserLinkModeInputs() {
+  const mode = document.querySelector('[data-setting="browser.linkOpenMode"]');
+  const profile = document.querySelector('[data-setting="browser.linkCharacterId"]');
+  if (profile) profile.disabled = mode?.value === 'system';
+}
+
 function bindSettingInputs() {
   // Подпись «= 3 дня» меняется по мере ввода, до сохранения значения
   document.querySelectorAll('[data-hours-for]').forEach(hint => {
@@ -560,6 +567,7 @@ function bindSettingInputs() {
         updateHoursHints();
       } else value = el.value;
       setSetting(path, value);
+      if (path === 'browser.linkOpenMode') updateBrowserLinkModeInputs();
       if (path === 'updates.mode') setSetting('updates.checkOnStartup', true); // совместимость со старыми версиями
       await persist();
       if (path === 'updates.mode') {

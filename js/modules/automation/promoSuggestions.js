@@ -1,3 +1,4 @@
+import { promoRewardHtml } from './promoReward.js';
 import { openWebLink } from '../../core/linkBrowser.js';
 import { promoDeadlineLabel, promoDeadlineState } from './promoDeadlineLabel.js';
 import { dockCurrentTask, onTaskChange } from '../../core/taskLog.js';
@@ -115,11 +116,7 @@ export function renderPromoSuggestions(dlg) {
     rewards.append(caption);
     if (row.rewards?.length) {
       const list = document.createElement('ul');
-      for (const name of row.rewards) {
-        const item = document.createElement('li');
-        item.textContent = name;
-        list.append(item);
-      }
+      list.innerHTML = row.rewards.map(name => promoRewardHtml(name)).join('');
       rewards.append(list);
     } else {
       rewards.append('Список предметов не распознан — откройте новость.');

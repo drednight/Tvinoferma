@@ -617,3 +617,17 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Known promo rewards replace the list marker, not the original quantity text. */
+.promo-reward-row--icon {
+  position: relative;
+  list-style: none;
+}
+.promo-reward-icon {
+  position: absolute;
+  left: -22px;
+  top: 0.15em;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}

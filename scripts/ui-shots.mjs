@@ -67,7 +67,8 @@ const TABS = GUIDES
       ['tools', 'tools'],
       ['settings', 'settings'],
       ['settings', 'browser', '#settings-browser'],
-      ['today', 'calendar', 'calendar-month']
+      ['today', 'calendar', 'calendar-month'],
+      ['today', 'promo-rewards', 'promo-rewards']
     ];
 
 const BROWSERS = [
@@ -291,7 +292,7 @@ async function main() {
           {title: 'Пример объявления об обновлении', url: 'https://pwonline.ru/news.php?article=2'},
           {title: 'Учебная новость: подарки и задания', url: 'https://pwonline.ru/news.php?article=3'}
         ]}));
-        localStorage.setItem('tf_promo_discovery_v1', JSON.stringify({version: 1, status: 'checked', articles: {}, codes: [{code: 'PW-EXAMPLE-ONLY', title: 'Учебная новость', sourceUrl: 'https://pwonline.ru/news.php?article=1', expiresOn: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), rewards: ['Метеорит ×10', 'Облачная пыль ×5']}]}));
+        localStorage.setItem('tf_promo_discovery_v1', JSON.stringify({version: 1, metadataVersion: 3, status: 'checked', articles: {}, codes: [{code: 'PW-EXAMPLE-ONLY', title: 'Учебная новость', sourceUrl: 'https://pwonline.ru/news.php?article=1', expiresOn: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10), rewards: ['Приказ феникса (30 шт.)', 'Самоцвет грез (реликвия) (5 шт.)', 'Метеорит ×10', 'Учебная награда без иконки (2 шт.)']}]}));
         window.__tfErrors = [];
         window.addEventListener('error', (e) => window.__tfErrors.push('error: ' + (e.message || e.type)));
         window.addEventListener('unhandledrejection', (e) => window.__tfErrors.push('rejection: ' + (e.reason && e.reason.message || e.reason)));`
@@ -366,7 +367,14 @@ async function main() {
       });
       await sleep(700);
       let clip;
-      if (formShots[target]) {
+      if (target === 'promo-rewards') {
+        const measured = await send('Runtime.evaluate', {
+          expression: `(() => { const el = document.querySelector('.rt-promos'); el.querySelector('details').open = true; const r = el.getBoundingClientRect(); return {x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height, scale: 1}; })()`,
+          returnByValue: true
+        });
+        clip = measured.result.value;
+        await sleep(400);
+      } else if (formShots[target]) {
         const opened = await send('Runtime.evaluate', { expression: formShots[target], awaitPromise: true });
         if (opened.exceptionDetails) throw new Error(`Не удалось открыть ${target}: ${opened.exceptionDetails.text}`);
         await sleep(600);

@@ -1,3 +1,4 @@
+import { promoRewardHtml } from './promoReward.js';
 import { classIconHtml, stripeCls } from './characterPicker.js';
 import { bindPromoSuggestions, renderPromoSuggestions } from './promoSuggestions.js';
 import { layoutScriptWorkspace, refreshScriptPlan } from './scriptWorkspace.js';
@@ -62,7 +63,7 @@ const rewardsHtml = rewards =>
     ? ''
     : `
   <details class="promo-reward"><summary>🎁 Награда: ${rewards.length} шт.</summary>
-    <ul>${rewards.map(r => `<li>${escapeHtml(rewardLine(r))}${r.bound ? ' <span class="promo-muted">(привязанный)</span>' : ''}</li>`).join('')}</ul>
+    <ul>${rewards.map(r => promoRewardHtml(rewardLine(r), r.bound, r.name)).join('')}</ul>
   </details>`;
 
 /**

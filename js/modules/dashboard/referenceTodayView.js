@@ -1,3 +1,4 @@
+import { promoRewardHtml } from '../automation/promoReward.js';
 // Today 12 composes production data helpers. Destructive/native actions go only
 // through todayRuntime; the browser catalog cannot launch imaginary clients.
 import { escapeHtml as esc, copyToClipboard } from '../../core/utils.js';
@@ -95,7 +96,7 @@ export function renderReferenceToday(input) {
    promos
      .map(p => {
        const status = referencePromoStatus(p, s.day.date, nativeToday() || input.production ? Date.now() : undefined);
-       return `<article class="rt-promo ${status.tone}"><strong>${esc(p.code)}</strong><small>${esc(status.text)}</small><p>${p.entered > 0 ? `Введён: ${p.entered} из ${s.characters.length} персонажей` : 'Ещё не введён по журналу'}</p><details><summary>Показать содержимое</summary><ul>${(p.rewards || []).map(r => `<li>${esc(r)}</li>`).join('') || '<li>Состав награды ещё не прочитан</li>'}</ul></details></article>`;
+       return `<article class="rt-promo ${status.tone}"><strong>${esc(p.code)}</strong><small>${esc(status.text)}</small><p>${p.entered > 0 ? `Введён: ${p.entered} из ${s.characters.length} персонажей` : 'Ещё не введён по журналу'}</p><details><summary>Показать содержимое</summary><ul>${(p.rewards || []).map(r => promoRewardHtml(r)).join('') || '<li>Состав награды ещё не прочитан</li>'}</ul></details></article>`;
      })
      .join('') || '<p class="lg-muted">Действующих кодов пока не найдено.</p>'
  }</div><footer>${button('Открыть промокоды', 'promo', 'primary')}<button type="button" class="lg-button rt-refresh" data-today-action="promo-refresh" title="Проверить действующие промокоды в новостях" aria-label="Обновить промокоды">${refreshIcon}</button></footer></section>

@@ -150,6 +150,7 @@ export function mergeSettings(input = {}) {
     browser: {
       ...DEFAULT_SETTINGS.browser,
       ...(input.browser || {}),
+      linkOpenMode: input.browser?.linkOpenMode === 'system' ? 'system' : 'webview',
       linkCharacterId: typeof input.browser?.linkCharacterId === 'string' ? input.browser.linkCharacterId : ''
     },
     // Ключ раздела клана переехал сюда не здесь: переименование eternals → guild описано
