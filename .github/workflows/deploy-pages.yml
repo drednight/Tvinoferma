@@ -4,6 +4,7 @@ on:
   push:
     branches: [arena/d5d23491-tvinoferma]
     paths: ['demo/guides/**', '.github/workflows/deploy-pages.yml']
+  workflow_dispatch:
 
 permissions:
   contents: read
