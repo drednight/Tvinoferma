@@ -68,8 +68,8 @@ $sha = (git rev-parse HEAD).Trim()
 gh workflow run ci.yml --ref $branch
 gh workflow run windows-acceptance.yml --ref $branch
 
-gh run list --workflow ci.yml --branch $branch --commit $sha --limit 5
-gh run list --workflow windows-acceptance.yml --branch $branch --commit $sha --limit 5
+gh run list --workflow ci.yml --branch $branch --limit 5
+gh run list --workflow windows-acceptance.yml --branch $branch --limit 5
 ```
 
 Новые запуски могут появиться в списке не мгновенно. Если список пока пуст, повторите **только `gh run list`**, не запускайте новую сборку без необходимости.
