@@ -134,7 +134,7 @@ it('toolbar auto size only resets selected dimensions and keeps its position', a
   root.querySelector('[data-layout-auto]').click();
   expect(root.querySelector('.rt-news').style.left).toBe('37px');
   expect(root.querySelector('.rt-news').style.top).toBe('29px');
-  expect(root.querySelector('.rt-news').style.width).toBe('320px');
+  expect(root.querySelector('.rt-news').style.width).toBe('fit-content');
   expect(root.querySelector('.rt-news').style.height).toBe('');
   expect(root.querySelector('.rt-clan').style.width).toBe('400px');
   await save(root);
@@ -234,6 +234,6 @@ it('keyboard moves and resizes without grid snapping and Home applies selected a
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   expect(root.querySelector('.rt-news').style.width).toBe('330px');
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-  expect(root.querySelector('.rt-news').style.width).toBe('320px');
+  expect(root.querySelector('.rt-news').style.width).toBe('fit-content');
   expect(root.querySelector('.rt-news').style.left).toBe('1px');
 });

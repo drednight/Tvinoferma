@@ -76,7 +76,8 @@ export function normalizeTodayCanvas(value) {
 export function applyCanvasBlockSize(panel, block) {
   panel.style.left = `${block.x}px`;
   panel.style.top = `${block.y}px`;
-  panel.style.width = block.width ? `${block.width}px` : '320px';
+  panel.style.width = block.width ? `${block.width}px` : 'fit-content';
+  panel.style.maxWidth = block.width ? 'none' : 'min(600px, 100%)';
   panel.style.height = block.height ? `${block.height}px` : '';
   panel.classList.toggle('rt-layout-fixed-height', !!block.height);
 }
@@ -110,7 +111,7 @@ export function applyTodayCanvas(root, value) {
     applyCanvasBlockSize(panel, canvas.blocks[id]);
   }
   const fit = () => {
-    surface.style.width = `${Math.max(canvas.width, ...panels.map(([, panel]) => parseFloat(panel.style.left) + (panel.offsetWidth || parseFloat(panel.style.width))))}px`;
+    surface.style.width = `${Math.max(canvas.width, ...panels.map(([, panel]) => parseFloat(panel.style.left) + (panel.offsetWidth || parseFloat(panel.style.width) || 320)))}px`;
     surface.style.height = `${Math.max(200, ...panels.map(([, panel]) => parseFloat(panel.style.top) + (panel.offsetHeight || parseFloat(panel.style.height) || 400))) + 24}px`;
   };
   fit();
