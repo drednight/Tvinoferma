@@ -94,6 +94,7 @@ export const PASS_TYPES = [
 
 export const DEFAULT_SETTINGS = {
   gameMacros: {
+    points: [],
     enabled: false,
     partyId: '',
     leaders: {},

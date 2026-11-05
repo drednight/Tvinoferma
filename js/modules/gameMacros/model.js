@@ -108,6 +108,7 @@ export function partyMembers(state, partyId) {
   return charactersInPartyOrdered(state.characters, partyId);
 }
 export function resolveTargets(state, config, command, rows) {
+  if (!['all', 'others', 'leader', 'subset'].includes(command.target)) throw new Error('Укажите получателей явно.');
   const members = partyMembers(state, config.partyId);
   if (!members.length) throw new Error('Выберите непустую пати.');
   const leader = config.leaders[config.partyId];

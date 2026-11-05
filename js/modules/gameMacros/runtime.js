@@ -108,12 +108,27 @@ const act = (row, action, extra = {}) =>
   });
 export async function saveProfile(name) {
   if (busy) throw new Error('Дождитесь окончания команды.');
-  const rows = await windowTargets();
-  const windows = [];
-  for (const row of rows) windows.push({ charId: row.charId, ...(await act(row, 'geometry')) });
-  const c = config(),
-    profile = { id: crypto.randomUUID(), name: String(name).slice(0, 80), windows };
-  state.settings.gameMacros = { ...c, profiles: [...c.profiles, profile].slice(-10), profileId: profile.id };
+  busy = true;
+  cancelled = false;
+  void broadcast();
+  try {
+    const c = config();
+    const rows = await windowTargets({ target: 'all', action: 'layout' }, c);
+    const windows = [];
+    for (const row of rows) {
+      await wait(50);
+      windows.push({ charId: row.charId, ...(await act(row, 'geometry')) });
+    }
+    const profile = { id: crypto.randomUUID(), name: String(name).slice(0, 80), windows };
+    state.settings.gameMacros = {
+      ...config(),
+      profiles: [...config().profiles, profile].slice(-10),
+      profileId: profile.id
+    };
+  } finally {
+    busy = false;
+    void broadcast();
+  }
 }
 export async function run(id, hotkey = false) {
   if (id === 'stop') {

@@ -279,9 +279,9 @@ mod win {
                         }
                         pos = POINT { x: p.x, y: p.y };
                     }
-                    if width < 160
-                        || height < 120
-                        || dpi == 0
+                    if !(160..=8000).contains(&width)
+                        || !(120..=8000).contains(&height)
+                        || !(48..=768).contains(&dpi)
                         || pos.x < 0
                         || pos.y < 0
                         || pos.x >= width
