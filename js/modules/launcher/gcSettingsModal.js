@@ -339,7 +339,10 @@ export function openGameCentersModal(opts = {}) {
     info.set(gc.id, { status: 'loading' });
     const setText = () => {
       const el = gcRow(gc.id)?.querySelector('.gcm-gc-who');
-      if (el) el.textContent = infoText(gc);
+      if (el) {
+        el.textContent = infoText(gc);
+        el.setAttribute('title', infoText(gc));
+      }
     };
     setText();
     try {

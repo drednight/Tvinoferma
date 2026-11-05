@@ -23,7 +23,11 @@
 /* --- Список GameCenter --- */
 .gcm-gc {
   display: grid;
-  grid-template-columns: 34px minmax(120px, 180px) minmax(0, 1fr) auto auto;
+  grid-template-columns: 34px auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'icon kind name actions'
+    '. path path path'
+    '. account account account';
   gap: 4px 12px;
   align-items: center;
   padding: 9px 11px;
@@ -36,7 +40,11 @@
 .gcm-gc:hover {
   border-color: var(--border-strong);
 }
+.gcm-gc > .gcm-tag {
+  grid-area: kind;
+}
 .gcm-gc-ico {
+  grid-area: icon;
   display: grid;
   place-items: center;
   width: 30px;
@@ -46,9 +54,15 @@
   font-size: 0.95rem;
 }
 .gcm-gc-name {
+  grid-area: name;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   font-weight: 600;
 }
 .gcm-gc-path {
+  grid-area: path;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -58,10 +72,16 @@
   color: var(--text-faint);
 }
 .gcm-gc-who {
+  grid-area: account;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 0.75rem;
   font-weight: 600;
 }
 .gcm-gc-btns {
+  grid-area: actions;
+  flex-wrap: wrap;
   display: flex;
   gap: 6px;
 }
@@ -243,11 +263,13 @@
 
 @media (max-width: 780px) {
   .gcm-gc {
-    grid-template-columns: 30px minmax(0, 1fr) auto;
-  }
-  .gcm-gc-path,
-  .gcm-gc-who {
-    grid-column: 2 / -1;
+    grid-template-columns: 30px minmax(0, 1fr);
+    grid-template-areas:
+      'icon kind'
+      'name name'
+      'path path'
+      'account account'
+      'actions actions';
   }
   .gcm-filters #gcm-party {
     max-width: none;
