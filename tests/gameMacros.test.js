@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { chord, steps, normalizeGameMacros, resolveTargets } from '../js/modules/gameMacros/model.js';
+import {
+  chord,
+  steps,
+  normalizeGameMacros,
+  resolveTargets,
+  commandPoint,
+  validPoint
+} from '../js/modules/gameMacros/model.js';
 const state = {
   characters: [
     { id: 'a', nick: 'Alpha', partyIds: ['p'] },
@@ -75,4 +82,45 @@ describe('bounded game command model', () => {
       expect(() => resolveTargets(state, config, { target: 'all' }, altered)).toThrow();
     }
   );
+});
+
+describe('explicit subsets and calibrated points', () => {
+  it('never promotes an empty or stale subset to all recipients', () => {
+    for (const charIds of [[], ['c'], ['a', 'deleted']])
+      expect(() => resolveTargets(state, config, { target: 'subset', charIds }, rows)).toThrow();
+    expect(
+      resolveTargets(state, { ...config, leaders: {} }, { target: 'subset', charIds: ['b'] }, rows).map(r => r.charId)
+    ).toEqual(['b']);
+  });
+  it('keeps subset and point authorizations explicit through normalization', () => {
+    const c = normalizeGameMacros({
+      commands: [{ id: 'click', action: 'click', target: 'subset', charIds: ['a', 'a'], pointId: 'point' }]
+    });
+    expect(c.commands[0]).toMatchObject({ target: 'subset', charIds: ['a'], pointId: 'point', resourceAllowed: false });
+  });
+});
+
+describe('calibration validation', () => {
+  const point = { id: 'point', name: 'test', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
+  it('requires valid client geometry and a UI scale label', () => {
+    expect(validPoint(point)).toBe(true);
+    for (const patch of [
+      { x: -1 },
+      { x: 800 },
+      { y: 600 },
+      { dpi: 0 },
+      { width: Infinity },
+      { x: 1.5 },
+      { uiScale: '' }
+    ])
+      expect(validPoint({ ...point, ...patch })).toBe(false);
+  });
+  it('can preview without resource permission but cannot execute', () => {
+    const c = { points: [point] },
+      command = { pointId: 'point', resourceAllowed: false };
+    expect(commandPoint(c, command, false)).toEqual(point);
+    expect(() => commandPoint(c, command)).toThrow();
+    expect(commandPoint(c, { ...command, resourceAllowed: true })).toEqual(point);
+    expect(() => commandPoint(c, { pointId: 'deleted', resourceAllowed: true })).toThrow();
+  });
 });

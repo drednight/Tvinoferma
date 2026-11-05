@@ -72,3 +72,44 @@ describe('single bounded executor', () => {
     expect(text).not.toContain('Alpha');
   });
 });
+
+describe('coordinate input is opt-in and previewed per session', () => {
+  const point = { id: 'point', name: 'test', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
+  const setup = () => {
+    state.settings.gameMacros.points = [point];
+    state.settings.gameMacros.commands = [
+      { id: 'click', name: 'click', action: 'click', target: 'all', pointId: 'point', resourceAllowed: true }
+    ];
+  };
+  it('refuses clicks before preview in the current app session', async () => {
+    setup();
+    await runtime.run('click');
+    expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+  });
+  it('previews without focus or input, then checks geometry again before clicking', async () => {
+    setup();
+    await runtime.previewCommand('click');
+    expect(invoke.mock.calls.some(([, args]) => ['focus', 'click', 'key'].includes(args?.action))).toBe(false);
+    await runtime.run('click');
+    const actions = invoke.mock.calls.map(([, args]) => args?.action).filter(Boolean);
+    expect(actions).toEqual(['preview', 'preview', 'focus', 'click']);
+  });
+  it('refuses input if any recipient fails the non-clicking geometry preflight', async () => {
+    setup();
+    await runtime.previewCommand('click');
+    invoke.mockImplementation(async (command, args) => {
+      if (command === 'launcher_running_details') return [client];
+      if (args?.action === 'preview') throw new Error('size changed');
+      return null;
+    });
+    await runtime.run('click');
+    expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+  });
+  it('still refuses clicks without explicit spending permission after a preview', async () => {
+    setup();
+    state.settings.gameMacros.commands[0].resourceAllowed = false;
+    await runtime.previewCommand('click');
+    await runtime.run('click');
+    expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+  });
+});

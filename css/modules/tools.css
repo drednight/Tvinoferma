@@ -207,3 +207,56 @@
   gap: 8px;
   align-items: stretch;
 }
+
+/* Party controls keep complex command editing separate from the scripts above. */
+#game-macros-block > .row {
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+#game-macros-block form {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0;
+  max-width: 760px;
+}
+#game-macros-block form > label {
+  display: block;
+}
+#game-macros-block form > label > .input,
+#game-macros-block form > label > select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+}
+#game-macros-block fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+#game-macros-block details {
+  margin-top: 16px;
+}
+#game-macros-block .panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.gm-point-map {
+  position: relative;
+  width: min(100%, 640px);
+  border: 2px solid #8c99b9;
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 19%, #64708833 20%),
+    repeating-linear-gradient(90deg, #141b2b, #141b2b 19%, #64708833 20%);
+}
+.gm-point-map > span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  color: #ffcf60;
+  font-size: 26px;
+  line-height: 1;
+  pointer-events: none;
+}

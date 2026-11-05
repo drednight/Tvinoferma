@@ -21,6 +21,7 @@ pub struct Geometry {
     y: i32,
     width: i32,
     height: i32,
+    dpi: u32,
 }
 #[derive(Clone, Deserialize)]
 pub struct Binding {
@@ -64,6 +65,7 @@ pub async fn game_macro_action(
     action: String,
     key: Option<String>,
     rect: Option<GeometryInput>,
+    point: Option<PointInput>,
 ) -> Result<Option<Geometry>, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -79,14 +81,14 @@ pub async fn game_macro_action(
             .ok_or("Game client identity changed or access is unavailable")?;
         let hwnd = client.hwnd.ok_or("No game window")?;
         tauri::async_runtime::spawn_blocking(move || {
-            win::action(hwnd, target.pid, &action, key.as_deref(), rect)
+            win::action(hwnd, target.pid, &action, key.as_deref(), rect, point)
         })
         .await
         .map_err(|_| "Window action failed")?
     }
     #[cfg(not(windows))]
     {
-        let _ = (target, action, key, rect);
+        let _ = (target, action, key, rect, point);
         Err("Game control is Windows-only".into())
     }
 }
@@ -96,6 +98,14 @@ pub struct GeometryInput {
     y: i32,
     width: i32,
     height: i32,
+}
+#[derive(Deserialize)]
+pub struct PointInput {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    dpi: u32,
 }
 #[tauri::command]
 pub async fn game_macro_bindings(
@@ -129,7 +139,11 @@ mod win {
     };
     use std::time::Duration;
     use tauri::Emitter;
-    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::Graphics::Gdi::{
+        ClientToScreen, MonitorFromPoint, ScreenToClient, MONITOR_DEFAULTTONULL,
+    };
+    use windows::Win32::UI::HiDpi::GetDpiForWindow;
     use windows::Win32::UI::Input::KeyboardAndMouse::*;
     use windows::Win32::UI::WindowsAndMessaging::*;
     static GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -179,6 +193,7 @@ mod win {
         action: &str,
         key: Option<&str>,
         rect: Option<GeometryInput>,
+        point: Option<PointInput>,
     ) -> Result<Option<Geometry>, String> {
         let hwnd = HWND(raw as usize as *mut _);
         unsafe {
@@ -242,6 +257,87 @@ mod win {
                         return Err("Windows did not accept all key events".into());
                     }
                 }
+                "capture" | "preview" | "click" => {
+                    let mut r = RECT::default();
+                    GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
+                    let width = r.right - r.left;
+                    let height = r.bottom - r.top;
+                    let dpi = GetDpiForWindow(hwnd);
+                    let mut pos = POINT::default();
+                    if action == "capture" {
+                        if GetForegroundWindow() != hwnd {
+                            return Err("Activate the calibration game window".into());
+                        }
+                        GetCursorPos(&mut pos).map_err(|_| "Cannot read pointer")?;
+                        if !ScreenToClient(hwnd, &mut pos).as_bool() {
+                            return Err("Cannot convert pointer".into());
+                        }
+                    } else {
+                        let p = point.ok_or("Missing calibration")?;
+                        if width != p.width || height != p.height || dpi != p.dpi || dpi == 0 {
+                            return Err("Client size or DPI differs from calibration".into());
+                        }
+                        pos = POINT { x: p.x, y: p.y };
+                    }
+                    if width < 160
+                        || height < 120
+                        || dpi == 0
+                        || pos.x < 0
+                        || pos.y < 0
+                        || pos.x >= width
+                        || pos.y >= height
+                    {
+                        return Err("Point is outside client area".into());
+                    }
+                    if action == "click" {
+                        if GetForegroundWindow() != hwnd
+                            || [0x01, 0x02, 0x10, 0x11, 0x12, 0x5b, 0x5c]
+                                .iter()
+                                .any(|v| GetAsyncKeyState(*v) < 0)
+                        {
+                            return Err("Focus changed or physical input is held".into());
+                        }
+                        let mut screen = pos;
+                        if !ClientToScreen(hwnd, &mut screen).as_bool() {
+                            return Err("Cannot convert calibration".into());
+                        }
+                        SetCursorPos(screen.x, screen.y).map_err(|_| "Cannot position pointer")?;
+                        let under = WindowFromPoint(screen);
+                        if GetForegroundWindow() != hwnd
+                            || (under != hwnd && !IsChild(hwnd, under).as_bool())
+                        {
+                            return Err("Another window covers the calibrated point".into());
+                        }
+                        let mouse = |up: bool| INPUT {
+                            r#type: INPUT_MOUSE,
+                            Anonymous: INPUT_0 {
+                                mi: MOUSEINPUT {
+                                    dwFlags: if up {
+                                        MOUSEEVENTF_LEFTUP
+                                    } else {
+                                        MOUSEEVENTF_LEFTDOWN
+                                    },
+                                    ..Default::default()
+                                },
+                            },
+                        };
+                        if SendInput(
+                            &[mouse(false), mouse(true)],
+                            std::mem::size_of::<INPUT>() as i32,
+                        ) != 2
+                        {
+                            let _ = SendInput(&[mouse(true)], std::mem::size_of::<INPUT>() as i32);
+                            return Err("Windows did not accept the click".into());
+                        }
+                    }
+                    return Ok(Some(Geometry {
+                        x: pos.x,
+                        y: pos.y,
+                        width,
+                        height,
+                        dpi,
+                    }));
+                }
                 "geometry" => {
                     let mut r = RECT::default();
                     GetWindowRect(hwnd, &mut r).map_err(|_| "Cannot read window geometry")?;
@@ -250,6 +346,7 @@ mod win {
                         y: r.top,
                         width: r.right - r.left,
                         height: r.bottom - r.top,
+                        dpi: GetDpiForWindow(hwnd),
                     }));
                 }
                 "layout" => {
@@ -270,6 +367,18 @@ mod win {
                         || r.y + 60 > bottom
                         || r.x + r.width < left + 100
                         || r.y + r.height < top + 60
+                    {
+                        return Err("Saved monitor is unavailable".into());
+                    }
+                    if MonitorFromPoint(
+                        POINT {
+                            x: r.x + 40,
+                            y: r.y + 20,
+                        },
+                        MONITOR_DEFAULTTONULL,
+                    )
+                    .0
+                    .is_null()
                     {
                         return Err("Saved monitor is unavailable".into());
                     }

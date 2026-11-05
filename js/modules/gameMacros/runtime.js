@@ -1,5 +1,5 @@
 import { state } from '../../core/state.js';
-import { normalizeGameMacros, resolveTargets, steps } from './model.js';
+import { normalizeGameMacros, resolveTargets, steps, commandPoint } from './model.js';
 let invoke, emitTo;
 let initialized = false,
   busy = false,
@@ -7,6 +7,7 @@ let initialized = false,
   registered = false;
 let cycleId = '';
 const logs = [];
+const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
   if (!window.__TAURI_INTERNALS__) throw new Error('Нужна настольная версия Windows.');
@@ -83,7 +84,7 @@ export async function openOverlay() {
   await native('game_macro_overlay', { topmost: config().topmost });
   await broadcast();
 }
-export async function windowTargets(command = { target: 'all', action: 'next' }) {
+export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
   const { windowRows } = await import('../launcher/windowList.js');
   const { recalledOwnership } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
@@ -94,7 +95,7 @@ export async function windowTargets(command = { target: 'all', action: 'next' })
     if (state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1)
       row.known = false;
   }
-  return resolveTargets(state, config(), command, rows);
+  return resolveTargets(state, selected, command, rows);
 }
 const act = (row, action, extra = {}) =>
   native('game_macro_action', {
@@ -102,6 +103,7 @@ const act = (row, action, extra = {}) =>
     action,
     key: null,
     rect: null,
+    point: null,
     ...extra
   });
 export async function saveProfile(name) {
@@ -129,7 +131,7 @@ export async function run(id, hotkey = false) {
   cancelled = false;
   void broadcast();
   try {
-    const rows = await windowTargets(command);
+    const rows = await windowTargets(command, c);
     if (hotkey) {
       let foreground = false;
       for (const row of await windowTargets()) {
@@ -149,7 +151,17 @@ export async function run(id, hotkey = false) {
     }
     log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
     if (['next', 'previous'].includes(command.action)) {
-      const found = rows.findIndex(r => r.charId === cycleId),
+      let activeId = cycleId;
+      for (const row of rows) {
+        try {
+          await act(row, 'foreground');
+          activeId = row.charId;
+          break;
+        } catch {
+          /* not active */
+        }
+      }
+      const found = rows.findIndex(r => r.charId === activeId),
         idx = found < 0 && command.action === 'previous' ? 0 : found,
         next = (idx + (command.action === 'next' ? 1 : -1) + rows.length) % rows.length;
       await act(rows[next], 'focus');
@@ -157,9 +169,25 @@ export async function run(id, hotkey = false) {
       log('Окно переключено.');
       return;
     }
-    if (command.action === 'layout') {
+    if (command.action === 'click') {
+      const point = commandPoint(c, command);
+      if (!reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
+      // Check EVERY recipient before the first potentially resource-spending click.
+      for (const row of rows) {
+        await wait(50);
+        await act(row, 'preview', { point });
+      }
+      for (const [index, row] of rows.entries()) {
+        await wait(50);
+        await act(row, 'focus');
+        await wait(100);
+        await act(row, 'click', { point });
+        log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
+      }
+    } else if (command.action === 'layout') {
       const profile = c.profiles.find(p => p.id === c.profileId);
-      if (!profile) throw new Error('no profile');
+      if (!profile || rows.some(row => !profile.windows.some(w => w.charId === row.charId)))
+        throw new Error('no complete profile');
       for (const row of rows) {
         await wait(50);
         const geometry = profile.windows.find(w => w.charId === row.charId);
@@ -187,8 +215,61 @@ export async function run(id, hotkey = false) {
     log(
       cancelled
         ? 'Остановлено пользователем.'
-        : 'Остановлено: проверьте ПЛ, привязки окон, профиль, фокус и отпустите клавиши-модификаторы. Повторов и повышения прав нет.'
+        : 'Остановлено: проверьте ПЛ, привязки окон, профиль/размер/DPI, предпросмотр точки в этом сеансе, разрешение расходов, фокус и отпустите клавиши-модификаторы. Повторов и повышения прав нет.'
     );
+  } finally {
+    busy = false;
+    void broadcast();
+  }
+}
+
+export async function capturePoint(charId, name, uiScale) {
+  if (busy) throw new Error('Дождитесь окончания команды.');
+  if (!name.trim() || !uiScale.trim()) throw new Error('Укажите имя точки и масштаб UI игры.');
+  if (config().points.length >= 30) throw new Error('Не более 30 точек; удалите ненужную.');
+  busy = true;
+  cancelled = false;
+  void broadcast();
+  try {
+    const rows = await windowTargets({ target: 'subset', charIds: [charId] });
+    log('Калибровка: за 5 секунд активируйте выбранное окно игры и наведите мышь на точку. Клика не будет.');
+    await wait(5000);
+    const geometry = await act(rows[0], 'capture');
+    if (cancelled) throw new Error('cancel');
+    const point = {
+      id: crypto.randomUUID(),
+      name: name.trim().slice(0, 80),
+      uiScale: uiScale.trim().slice(0, 40),
+      ...geometry
+    };
+    state.settings.gameMacros = { ...config(), points: [...config().points, point] };
+    log('Точка считана относительно клиентской области. Проверьте схему, масштаб UI и предпросмотр команды.');
+    return point;
+  } finally {
+    busy = false;
+    void broadcast();
+  }
+}
+export async function previewCommand(id) {
+  if (busy) throw new Error('Дождитесь окончания команды.');
+  const c = config(),
+    command = c.commands.find(row => row.id === id);
+  if (!command || command.action !== 'click') throw new Error('Выберите координатную команду.');
+  const point = commandPoint(c, command, false);
+  busy = true;
+  cancelled = false;
+  void broadcast();
+  try {
+    const rows = await windowTargets(command, c);
+    for (const row of rows) {
+      await wait(50);
+      await act(row, 'preview', { point });
+    }
+    reviewedPoints.add(JSON.stringify(point));
+    log(
+      `Предпросмотр без клика: ${rows.map(r => r.nick).join(', ')}; точка ${point.name}; клиент ${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale}. Визуально проверьте соответствие UI на схеме в настройках.`
+    );
+    return point;
   } finally {
     busy = false;
     void broadcast();
