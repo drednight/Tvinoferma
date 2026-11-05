@@ -10,9 +10,9 @@ describe('разбор CHANGELOG.md', () => {
   it('настоящий файл: выпуски сверху вниз, версии и даты на месте', () => {
     const releases = parseChangelog(real);
     expect(releases.length).toBeGreaterThanOrEqual(15);
-    expect(releases[0].version).toBe('2.3.0');
-    expect(releases[0].date).toBe('2026-11-04');
-    expect(releases[0].lead).toContain('Изменения после стабильного выпуска 2.2.0');
+    expect(releases[0].version).toBe('Unreleased');
+    expect(releases[0].date).toBe('');
+    expect(releases[0].lead).toContain('Изменения после стабильного выпуска 2.3.0');
     const v220 = releases.find(r => r.version === '2.2.0');
     expect(v220?.date).toBe('2026-10-20');
     // Порядок файла сохранён: более свежие раньше
@@ -63,7 +63,7 @@ describe('HTML истории', () => {
     // Все выпуски свёрнуты: в списке видно последние пять, более старые — за прокруткой
     expect(items[0].hasAttribute('open')).toBe(false);
     expect(items[1].hasAttribute('open')).toBe(false);
-    expect(items[0].querySelector('.uh-ver').textContent).toBe('Версия 2.3.0');
+    expect(items[0].querySelector('.uh-ver').textContent).toBe('🚧 В разработке');
     const v220 = items.find(d => d.querySelector('.uh-ver').textContent.includes('2.2.0'));
     expect(v220?.querySelector('.uh-date').textContent).toBe('2026-10-20');
     expect(v220?.querySelector('.uh-count').textContent).toMatch(/запис/);

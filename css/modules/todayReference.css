@@ -1079,3 +1079,43 @@
   margin-left: 6px;
   cursor: help;
 }
+
+/* Custom order is opt-in; the original composition remains the default. */
+.rt-board.rt-custom-layout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+.rt-custom-layout > .lg-panel {
+  min-width: 0;
+  width: auto;
+}
+.rt-custom-layout > .rt-clan {
+  grid-column: 1 / -1;
+}
+.today-layout-list {
+  padding: 0;
+  list-style: none;
+}
+.today-layout-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+}
+.today-layout-list li > span:nth-child(2) {
+  flex: 1;
+}
+.today-layout-list li[draggable] {
+  cursor: grab;
+}
+@media (max-width: 1100px) {
+  .rt-board.rt-custom-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .rt-board.rt-custom-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

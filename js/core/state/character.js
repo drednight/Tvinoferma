@@ -115,6 +115,7 @@ export function normalizeCharacter(input = {}) {
       recoveryEmail: String(input.contacts?.recoveryEmail || ''),
       phone: String(input.contacts?.phone || '')
     },
+    siteLogin: { mode: input.siteLogin?.mode === 'gamecenter' ? 'gamecenter' : 'standard' },
     // Запуск игры: у каждого аккаунта свой GameCenter (папка или GameCenter.exe)
     launch: {
       gcPath: String(input.launch?.gcPath || '').trim(),

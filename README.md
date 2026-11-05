@@ -397,3 +397,13 @@ npm run shots    # снимки разделов в docs/screenshots/
 
 *Perfect World is a registered trademark of its respective owners. This software is an independent
 third-party utility designed to assist players with account management via the official game website.*
+
+### В разработке после 2.3.0
+
+Расположение блоков «Сегодня» настраивается в **Настройки → Разделы приложения →
+Расположение блоков на «Сегодня»**: перетаскивание или стрелки, сохранение и сброс.
+На главной странице дополнительные кнопки настройки не показываются.
+
+В контактах персонажа доступен экспериментальный способ входа через GameCenter.
+Это ручной прототип проверки сессии, а не готовый перехват кнопки «Пополнить счёт».
+Порядок проверки и ограничения: [GameCenter — вход на сайт](docs/GAMECENTER-SITE-PILOT.md).

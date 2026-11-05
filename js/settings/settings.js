@@ -1,3 +1,4 @@
+import { bindTodayLayoutPanel } from './todayLayoutPanel.js';
 import { linkProfileOptions } from '../core/linkBrowser.js';
 import { openLegacyCloudRecovery } from '../modules/cloudSync/ui/legacyRecoveryPanel.js';
 // js/settings/settings.js
@@ -589,6 +590,7 @@ function bindSettingInputs() {
 }
 
 export function bindSettings() {
+  bindTodayLayoutPanel();
   const cloudEnabled = !document.getElementById('cloud-registration-panel')?.hidden;
   if (cloudEnabled) {
     bindCloudRegistrationCheck({ desktop: isTauri() });

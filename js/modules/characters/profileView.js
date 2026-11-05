@@ -1,3 +1,4 @@
+import { openGameCenterSitePilot } from './gameCenterSite.js';
 // js/modules/characters/profileView.js
 
 import { state, NOTES_MAX_LENGTH } from '../../core/state.js';
@@ -182,6 +183,8 @@ export function openCharacterProfile(char) {
                 Контактные данные
                 <button type="button" class="btn ghost pf-contacts-all" id="pf-contacts-toggle-all" title="Показать или скрыть сразу все контакты">Показать все</button>
               </summary>
+              <p class="muted">Способ входа на сайт: ${char.siteLogin?.mode === 'gamecenter' ? 'GameCenter (эксперимент)' : 'обычный'}</p>
+              ${char.siteLogin?.mode === 'gamecenter' ? '<button type="button" class="btn ghost small" id="pf-gamecenter-site">Проверить вход через GameCenter…</button>' : ''}
               <div class="pf-contacts">
                 ${contactRowHtml('email', 'Email', contacts.email)}
                 ${contactRowHtml('password', 'Пароль', contacts.password)}
@@ -357,6 +360,7 @@ export function openCharacterProfile(char) {
     });
 
     // «Показать все» / «Скрыть все»: один глаз на все контакты вместо четырёх кликов
+    document.getElementById('pf-gamecenter-site')?.addEventListener('click', () => openGameCenterSitePilot(char));
     const toggleAll = document.getElementById('pf-contacts-toggle-all');
     toggleAll?.addEventListener('click', e => {
       e.stopPropagation();
