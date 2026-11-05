@@ -1,6 +1,7 @@
 // js/modules/characters/list.js
 
 import { state, normalizeTags } from '../../core/state.js';
+import { withPreservedScroll } from '../../core/scrollPreservation.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, needsCoinRecheck } from '../../core/coins.js';
@@ -92,6 +93,8 @@ export function renderCharacters() {
  * а когда он меняется — перерисовывается только список, если вкладка сейчас активна.
  */
 let runningWindowsBound = false;
+/** Фоновое обновление списка окон не должно сбрасывать прокрутку раздела. */
+const activeSection = () => document.querySelector('.page.active')?.getAttribute('data-section') || '';
 export function initRunningWindowsTracking() {
   if (runningWindowsBound) return;
   runningWindowsBound = true;
@@ -100,7 +103,7 @@ export function initRunningWindowsTracking() {
     // Перерисовываем только когда видна вкладка «Персонажи» и не открыт архив:
     // иначе перезаписываем то, что пользователь как раз смотрит в другой вкладке.
     if (!grid || !grid.closest('.page')?.classList.contains('active') || showingCharacterArchive) return;
-    renderFilteredGrid();
+    withPreservedScroll(renderFilteredGrid, { scope: document.body, key: activeSection, focus: false });
   });
 }
 

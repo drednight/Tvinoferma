@@ -1,6 +1,7 @@
 // js/main.js
 
 import { state, normalizeState } from './core/state.js';
+import { withPreservedScroll } from './core/scrollPreservation.js';
 import {
   loadData,
   persist,
@@ -83,7 +84,15 @@ window.addEventListener('tf-factory-reset-started', () => {
 window.addEventListener('tf-cloud-applied', () => {
   applySections(document, state.settings);
   const active = document.querySelector('.page.active')?.dataset.section;
-  if (active) renderActiveTab(active);
+  if (active)
+    withPreservedScroll(() => renderActiveTab(active), {
+      scope: document.body,
+      key: () =>
+        `${document.querySelector('.page.active')?.dataset.section || ''}:${
+          document.querySelector('.page[data-section="marathons"]')?.getAttribute('data-view') || ''
+        }`,
+      focus: false
+    });
   else refreshNavBadges();
 });
 

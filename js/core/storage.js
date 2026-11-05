@@ -148,10 +148,19 @@ export async function forceRenderAndPersist() {
   const { renderCharacters } = await import('../modules/characters/list.js');
   const { renderParties } = await import('../modules/parties/index.js');
   const { renderMarathons } = await import('../modules/marathons/page.js');
+  const { withPreservedScroll } = await import('./scrollPreservation.js');
 
-  renderCharacters();
-  renderParties();
-  renderMarathons();
+  // Импорт и применение облачных данных перерисовывают сразу несколько вкладок;
+  // пользователь при этом не должен терять место, на котором остановился.
+  const activeSection = () => document.querySelector('.page.active')?.getAttribute('data-section') || '';
+  withPreservedScroll(
+    () => {
+      renderCharacters();
+      renderParties();
+      renderMarathons();
+    },
+    { scope: document.body, key: activeSection, focus: false }
+  );
 }
 
 /** Мгновенное сохранение (дожидается очереди записей). */

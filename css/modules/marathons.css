@@ -1406,8 +1406,34 @@ tr.is-syncing td {
 }
 .tf-pick-group td {
   background: rgba(187, 154, 247, 0.08);
+}
+/* При горизонтальной прокрутке таблицы приклеивается только название пати:
+   раньше sticky была у всей строки, и ячейки заданий накладывались друг на друга. */
+.tf-pick-group .tf-pick-name {
   position: sticky;
   left: 0;
+  z-index: 1;
+  background: rgba(187, 154, 247, 0.14);
+}
+.tf-pick-group .tf-pick-cell {
+  text-align: center;
+}
+/* Один клик убирает/возвращает задание у всей пати, не затрагивая остальные группы. */
+.tf-party-task {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
+.tf-party-task.is-remove {
+  color: var(--danger);
+}
+.tf-party-task-count {
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 .tf-col-head {
   display: flex;

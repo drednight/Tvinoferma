@@ -1,6 +1,7 @@
 // js/modules/sync/syncManager.js
 
 import { state } from '../../core/state.js';
+import { withPreservedScroll } from '../../core/scrollPreservation.js';
 import { DEFAULT_SETTINGS } from '../../core/constants.js';
 import { persist } from '../../core/storage.js';
 import { toast } from '../../core/ui.js';
@@ -23,6 +24,9 @@ import { logScope, errorText, startTask, taskSignal } from '../../core/taskLog.j
 import { recordParserResult } from '../../core/parserHealth.js';
 
 let activeListeners = [];
+
+/** Текущая вкладка: если за время сверки её сменили, старую прокрутку не возвращаем. */
+const activeSection = () => document.querySelector('.page.active')?.dataset.section || '';
 
 /**
  * Метка окна браузера → id персонажа.
@@ -67,8 +71,13 @@ export async function handleBrowserWindowClosed(label) {
   if (!char) return;
 
   setAuthChecking(char.id, true);
-  renderCharacters();
-  renderParties();
+  withPreservedScroll(
+    () => {
+      renderCharacters();
+      renderParties();
+    },
+    { scope: document.body, key: activeSection, focus: false }
+  );
   // Даём окну закрыться полностью: пока оно живо, новая попытка ждёт тот же профиль
   await new Promise(r => setTimeout(r, 1000));
   await runAuthChecks([char], { baseTimeout: 8, closeAfter: true, silent: true });
@@ -227,9 +236,15 @@ export function applyBalanceResult(payload, { final = true } = {}) {
   return { char, changed: true, delta };
 }
 
+/** Фоновая перерисовка не должна уводить окно наверх ни в «Персонажах», ни в «Пати». */
 function rerender() {
-  renderCharacters();
-  renderParties();
+  withPreservedScroll(
+    () => {
+      renderCharacters();
+      renderParties();
+    },
+    { scope: document.body, key: activeSection, focus: false }
+  );
 }
 
 /** Перерисовать списки персонажей и пати (после правок баланса вне этого модуля). */
@@ -591,10 +606,15 @@ export async function refreshAllMarathonStats() {
     cancelled ? 'info' : errors ? 'warning' : 'success'
   );
 
-  renderCharacters();
-  renderParties();
   const { renderMarathons } = await import('../marathons/page.js');
-  renderMarathons();
+  withPreservedScroll(
+    () => {
+      renderCharacters();
+      renderParties();
+      renderMarathons();
+    },
+    { scope: document.body, key: activeSection, focus: false }
+  );
 }
 
 /** Идёт ли сейчас проверка входа этого персонажа (пока идёт — вручную открывать сайт нельзя). */
