@@ -227,6 +227,7 @@ export function openEditPartyModal(currentName) {
                 </div>
             </div>
 
+            <div class="field"><label>👑 ПЛ для управления окнами (не меняет лидерство в игре)</label><select class="input" id="party-macro-leader"><option value="">Не назначен</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}" ${state.settings.gameMacros?.leaders?.[party.id] === c.id ? 'selected' : ''}>${escapeHtml(c.nick)}</option>`).join('')}</select><p class="muted">ПЛ должен входить в сохранённый состав пати. При удалении участника назначение сбрасывается.</p></div>
             <!-- 3. Цвет карточки -->
             ${partyColorFieldHtml(currentName, party)}
             
@@ -265,6 +266,11 @@ export function openEditPartyModal(currentName) {
       }
 
       const checkboxes = document.querySelectorAll('.member-checkbox');
+      const selectedLeader = String(document.getElementById('party-macro-leader')?.value || '');
+      if (selectedLeader && ![...checkboxes].some(cb => cb.dataset.charId === selectedLeader && cb.checked)) {
+        setError('ПЛ должен входить в состав пати. Выберите участника или «Не назначен».');
+        return false;
+      }
       const now = new Date().toISOString();
 
       // Состав: добавляем/убираем только эту пати, остальные пати персонажа не трогаем
@@ -273,6 +279,12 @@ export function openEditPartyModal(currentName) {
         if (char && setMembership(char, party.id, cb.checked)) char.updatedAt = now;
       });
 
+      const leader = String(document.getElementById('party-macro-leader')?.value || '');
+      state.settings.gameMacros ||= { leaders: {} };
+      state.settings.gameMacros.leaders ||= {};
+      const member = state.characters.find(c => c.id === leader && isInParty(c, party.id));
+      if (member) state.settings.gameMacros.leaders[party.id] = leader;
+      else delete state.settings.gameMacros.leaders[party.id];
       // Переименование меняет только название: персонажи ссылаются на id
       party.name = newName;
       // Цвет читаем из поля при сохранении, а не по событию ввода: так он сохранится

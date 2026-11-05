@@ -156,6 +156,13 @@ fn build_menu<R: Runtime, M: Manager<R>>(
         true,
         None::<&str>,
     )?;
+    let game_overlay = MenuItem::with_id(
+        app,
+        "game-macro-overlay",
+        "🎮 Памятка клавиш / оверлей",
+        true,
+        None::<&str>,
+    )?;
     let separator = PredefinedMenuItem::separator(app)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
     Menu::with_items(
@@ -165,6 +172,7 @@ fn build_menu<R: Runtime, M: Manager<R>>(
             &favorites_menu,
             &launch,
             &game_windows,
+            &game_overlay,
             &close_game,
             &scripts,
             &separator,
@@ -182,6 +190,9 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main(app),
+            "game-macro-overlay" => {
+                let _ = app.emit_to("main", "tray-action", "game-macro-overlay");
+            }
             "quit" => app.exit(0),
             "close-game" => {
                 // Окна закрываем сразу в Rust (интерфейс может быть свёрнут в трей); итог показывает интерфейс

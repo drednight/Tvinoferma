@@ -93,6 +93,16 @@ export const PASS_TYPES = [
 ];
 
 export const DEFAULT_SETTINGS = {
+  gameMacros: {
+    enabled: false,
+    partyId: '',
+    leaders: {},
+    commands: [],
+    profiles: [],
+    profileId: '',
+    opacity: 0.9,
+    topmost: true
+  },
   privacy: {
     maskEmailByDefault: true,
     maskPasswordByDefault: true,

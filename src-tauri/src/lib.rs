@@ -51,6 +51,7 @@ mod cloud_outbox_store;
 mod commands;
 mod cookie_bank;
 mod elevate;
+mod game_macros;
 mod guild;
 mod injection;
 mod launcher;
@@ -288,6 +289,9 @@ pub fn run() {
             launcher::launcher_has_account,
             // список запущенных окон игры и закрытие выбранных
             launcher::launcher_running_details,
+            game_macros::game_macro_overlay,
+            game_macros::game_macro_action,
+            game_macros::game_macro_bindings,
             launcher::launcher_close_clients_pids,
             // повторная подпись окон (название и значок) после запуска
             launcher::launcher_decorate_clients,

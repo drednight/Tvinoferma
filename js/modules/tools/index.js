@@ -1,3 +1,4 @@
+import { mountGameMacros } from '../gameMacros/panel.js';
 // js/modules/tools/index.js
 // Раздел «Инструменты»: действия над уже заведёнными данными.
 //
@@ -129,7 +130,8 @@ export function renderTools() {
         <button type="button" class="btn ghost" data-tools-act="pick-windows" title="Показать все окна игры и закрыть выбранные">🖥️ Показать все окна</button>
         <button type="button" class="btn ghost" data-tools-act="close-all-windows" title="Закрыть все запущенные окна игры">🛑 Закрыть все окна игры</button>
       </div>
-    </section>`;
+    </section><div data-game-macros-host></div>`;
+  mountGameMacros(el.querySelector('[data-game-macros-host]'));
   fillWindows();
 }
 

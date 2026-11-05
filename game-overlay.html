@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Твиноферма — управление пати</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 14px system-ui;
+        color: #eef1ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      main {
+        background: rgba(16, 20, 30, var(--alpha, 0.9));
+        min-height: 100vh;
+        padding: 14px;
+        border: 1px solid #68749c;
+        border-radius: 10px;
+      }
+      header {
+        font-size: 17px;
+        font-weight: 700;
+        padding: 8px;
+        cursor: move;
+      }
+      button {
+        padding: 8px;
+        margin: 4px;
+        border: 1px solid #637090;
+        border-radius: 7px;
+        background: #20283c;
+        color: inherit;
+        cursor: pointer;
+      }
+      li {
+        margin: 8px 0;
+      }
+      kbd {
+        float: right;
+        color: #b7c2ff;
+      }
+      pre {
+        white-space: pre-wrap;
+        max-height: 260px;
+        overflow: auto;
+        font: 12px system-ui;
+      }
+      .muted {
+        color: #aab1c6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header data-drag>🎮 Управление пати</header>
+      <p class="muted">Памятка клавиш. Ctrl+Alt+Pause — остановить. Оверлей интерактивный, без сквозных кликов.</p>
+      <p id="status">Ожидание главного окна…</p>
+      <button data-action="settings">Настройки команд</button><button data-action="logs">Открыть журнал</button
+      ><button data-action="stop">Остановить</button><button id="close">Скрыть</button>
+      <h3>Назначенные клавиши</h3>
+      <ul id="commands"></ul>
+      <h3>Журнал</h3>
+      <pre id="logs"></pre>
+    </main>
+    <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
+  </body>
+</html>
