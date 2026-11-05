@@ -1,4 +1,4 @@
-import { normalizeTodayOrder } from '../../modules/dashboard/todayLayout.js';
+import { normalizeTodayOrder, normalizeTodaySizes } from '../../modules/dashboard/todayLayout.js';
 // @ts-check
 // js/core/state/settings.js
 // Приведение настроек к схеме — чистые функции без доступа к общему состоянию.
@@ -144,7 +144,8 @@ export function mergeSettings(input = {}) {
       ...DEFAULT_SETTINGS.ui,
       ...(input.ui || {}),
       sections: normalizeSectionsSettings(input.ui?.sections),
-      todayOrder: normalizeTodayOrder(input.ui?.todayOrder)
+      todayOrder: normalizeTodayOrder(input.ui?.todayOrder),
+      todaySizes: normalizeTodaySizes(input.ui?.todaySizes)
     },
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },

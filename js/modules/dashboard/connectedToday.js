@@ -1,4 +1,4 @@
-import { applyTodayLayout } from './todayLayout.js';
+import { renderTodayLayoutEditor } from './todayLayoutEditor.js';
 // Production Today screen. No fake characters or launcher model.
 import { mskDate } from '../../core/msk.js';
 import { openPlannerDay, openPlannerEntryForm } from './plannerView.js';
@@ -81,6 +81,6 @@ export function renderConnectedToday(root, deps, render) {
   }
   session.model.day.date = mskDate();
   root.innerHTML = renderReferenceToday(session.model);
-  applyTodayLayout(root, state.settings.ui.todayOrder);
+  renderTodayLayoutEditor(root);
   return true;
 }

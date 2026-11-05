@@ -5,7 +5,8 @@ export const TODAY_BLOCKS = [
   ['promos', 'Промокоды'],
   ['marathon', 'Марафон'],
   ['launch', 'Быстрый запуск'],
-  ['information', 'Информационная панель']
+  ['information', 'Информационная панель'],
+  ['clan', 'Клан']
 ];
 export function normalizeTodayOrder(value) {
   const allowed = new Set(TODAY_BLOCKS.map(([id]) => id));
@@ -14,14 +15,35 @@ export function normalizeTodayOrder(value) {
 export function todayOrder(value) {
   return [...new Set([...normalizeTodayOrder(value), ...TODAY_BLOCKS.map(([id]) => id)])];
 }
-export function applyTodayLayout(root, value) {
-  if (!normalizeTodayOrder(value).length) return;
+export function applyTodayLayout(root, value, sizes = {}) {
+  const normalizedSizes = normalizeTodaySizes(sizes);
+  if (!normalizeTodayOrder(value).length && !Object.keys(normalizedSizes).length) return;
   const board = root.querySelector('.rt-board');
   if (!board) return;
   const panels = todayOrder(value)
     .map(id => root.querySelector(`.rt-${id}`))
     .filter(Boolean);
-  const extra = [...board.querySelectorAll(':scope > .rt-clan')];
-  board.replaceChildren(...panels, ...extra);
+  board.replaceChildren(...panels);
   board.classList.add('rt-custom-layout');
+  for (const [id] of TODAY_BLOCKS) {
+    const panel = panels.find(el => el.classList.contains(`rt-${id}`));
+    if (!panel) continue;
+    const size = normalizedSizes[id] || {};
+    panel.dataset.layoutWidth = String(size.width || (id === 'clan' ? 3 : 1));
+    panel.style.height = size.height ? `${size.height}px` : '';
+    panel.classList.toggle('rt-layout-fixed-height', !!size.height);
+  }
+}
+
+export function normalizeTodaySizes(value) {
+  const result = {};
+  for (const [id] of TODAY_BLOCKS) {
+    const size = value && typeof value === 'object' && Object.hasOwn(value, id) ? value[id] : null;
+    if (!size || typeof size !== 'object') continue;
+    const row = {};
+    if ([1, 2, 3].includes(size.width)) row.width = size.width;
+    if (Number.isInteger(size.height) && size.height >= 200 && size.height <= 1600) row.height = size.height;
+    if (Object.keys(row).length) result[id] = row;
+  }
+  return result;
 }
