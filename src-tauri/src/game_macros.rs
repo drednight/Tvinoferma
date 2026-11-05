@@ -50,6 +50,9 @@ pub async fn game_macro_overlay(
     if existing_only {
         return Ok(());
     }
+    *OVERLAY_EXPANDED_SIZE
+        .lock()
+        .map_err(|_| "Overlay lock failed")? = None;
     let overlay = tauri::WebviewWindowBuilder::new(
         &app,
         "game-overlay",
@@ -57,7 +60,9 @@ pub async fn game_macro_overlay(
     )
     .title("Твиноферма — управление пати")
     .inner_size(430.0, 580.0)
-    .min_inner_size(320.0, 300.0)
+    .min_inner_size(320.0, 52.0)
+    .decorations(false)
+    .shadow(false)
     .always_on_top(topmost)
     .skip_taskbar(true)
     .transparent(true)
@@ -96,8 +101,51 @@ pub struct ScreenPosition {
     x: i32,
     y: i32,
 }
-static GUIDE_TARGET: std::sync::Mutex<Option<Target>> = std::sync::Mutex::new(None);
+static GUIDE_TARGET: std::sync::Mutex<Option<(String, Target)>> = std::sync::Mutex::new(None);
 
+static OVERLAY_EXPANDED_SIZE: std::sync::Mutex<Option<tauri::PhysicalSize<u32>>> =
+    std::sync::Mutex::new(None);
+#[tauri::command]
+pub fn game_macro_overlay_fold(
+    window: tauri::WebviewWindow,
+    collapsed: bool,
+) -> Result<(), String> {
+    if window.label() != "game-overlay" {
+        return Err("Only the overlay can resize itself".into());
+    }
+    let mut saved = OVERLAY_EXPANDED_SIZE
+        .lock()
+        .map_err(|_| "Overlay lock failed")?;
+    if collapsed {
+        if saved.is_none() {
+            *saved = Some(
+                window
+                    .inner_size()
+                    .map_err(|_| "Cannot read overlay size")?,
+            );
+        }
+        let size = window
+            .inner_size()
+            .map_err(|_| "Cannot read overlay size")?;
+        window
+            .set_resizable(false)
+            .map_err(|_| "Cannot lock compact size")?;
+        window
+            .set_size(tauri::PhysicalSize::new(
+                size.width,
+                (52.0 * window.scale_factor().unwrap_or(1.0)).round() as u32,
+            ))
+            .map_err(|_| "Cannot collapse overlay")?;
+    } else {
+        if let Some(size) = saved.take() {
+            window.set_size(size).map_err(|_| "Cannot expand overlay")?;
+        }
+        window
+            .set_resizable(true)
+            .map_err(|_| "Cannot unlock overlay size")?;
+    }
+    Ok(())
+}
 #[tauri::command]
 pub fn game_macro_navigate(
     window: tauri::WebviewWindow,
@@ -132,25 +180,32 @@ pub async fn game_macro_guide(
     width: u32,
     height: u32,
     target: Option<Target>,
+    request_id: Option<String>,
 ) -> Result<(), String> {
     main_only(&window)?;
     if let Some(old) = app.get_webview_window("game-guide") {
         let _ = old.close();
     }
-    *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = None;
-    if mode == "close" {
+    let previous = GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")?.take();
+    if let Some((id, _)) = previous {
         let _ = app.emit_to(
             "main",
             "game-macro-picked",
-            serde_json::json!({"cancelled":true}),
+            serde_json::json!({"requestId":id,"cancelled":true}),
         );
+    }
+    if mode == "close" {
         return Ok(());
     }
     if mode != "size" && mode != "point" {
         return Err("Unknown guide mode".into());
     }
     let mut origin: Option<(i32, i32)> = None;
+    let request_id = request_id.unwrap_or_default();
     if mode == "point" {
+        if request_id.is_empty() || request_id.len() > 80 {
+            return Err("Invalid calibration request".into());
+        }
         let target = target.ok_or("Select a client for calibration")?;
         let clients = crate::launcher::launcher_running_details().await?;
         let client = clients
@@ -171,7 +226,7 @@ pub async fn game_macro_guide(
         {
             let _ = client;
         }
-        *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = Some(target);
+        *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = Some((request_id.clone(), target));
     } else if !(160..=8000).contains(&width) || !(160..=8000).contains(&height) {
         return Err("Invalid guide size".into());
     }
@@ -205,11 +260,11 @@ pub async fn game_macro_guide(
     }
     let handle = app.clone();
     guide.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed) {
+        if mode == "point" && matches!(event, tauri::WindowEvent::Destroyed) {
             let _ = handle.emit_to(
                 "main",
                 "game-macro-picked",
-                serde_json::json!({"cancelled":true}),
+                serde_json::json!({"requestId":request_id,"cancelled":true}),
             );
         }
     });
@@ -227,7 +282,7 @@ pub async fn game_macro_guide_result(
     if !save {
         return window.close().map_err(|_| "Cannot close guide".into());
     }
-    let target = GUIDE_TARGET
+    let (request_id, target) = GUIDE_TARGET
         .lock()
         .map_err(|_| "Guide lock failed")?
         .clone()
@@ -255,15 +310,19 @@ pub async fn game_macro_guide_result(
             pos.x + size.width as i32 / 2,
             pos.y + (44.0 * scale).round() as i32,
         )?;
-        app.emit_to("main", "game-macro-picked", point)
-            .map_err(|_| "Cannot save calibration")?;
+        app.emit_to(
+            "main",
+            "game-macro-picked",
+            serde_json::json!({"requestId":request_id,"geometry":point}),
+        )
+        .map_err(|_| "Cannot save calibration")?;
+        window.close().map_err(|_| "Cannot close guide".into())
     }
     #[cfg(not(windows))]
     {
-        let _ = (client, pos, size, scale, app);
-        return Err("Windows-only calibration".into());
+        let _ = (client, pos, size, scale, app, request_id);
+        Err("Windows-only calibration".into())
     }
-    window.close().map_err(|_| "Cannot close guide".into())
 }
 #[tauri::command]
 pub async fn game_macro_action(

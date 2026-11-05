@@ -1,5 +1,5 @@
 import { state } from '../../core/state.js';
-import { normalizeGameMacros, resolveTargets, steps, commandPoint } from './model.js';
+import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint } from './model.js';
 let invoke, emitTo;
 let initialized = false,
   busy = false,
@@ -45,7 +45,9 @@ function log(text) {
 export function stop() {
   cancelled = true;
   if (busy && window.__TAURI_INTERNALS__)
-    void native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null }).catch(() => {});
+    void native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null, requestId: null }).catch(
+      () => {}
+    );
   if (busy) log('Запрошена остановка. Уже отправленный ввод отменить нельзя.');
 }
 const wait = async ms => {
@@ -504,7 +506,7 @@ export async function selectMacroParty(partyId) {
 }
 export async function showSize(width, height) {
   if (busy) throw new Error('Сначала остановите текущую команду.');
-  await native('game_macro_guide', { mode: 'size', width, height, target: null });
+  await native('game_macro_guide', { mode: 'size', width, height, target: null, requestId: null });
 }
 export async function pickPoint(charId, name) {
   if (busy) throw new Error('Дождитесь окончания команды.');
@@ -517,6 +519,7 @@ export async function pickPoint(charId, name) {
   let unlisten, timer;
   try {
     const rows = await windowTargets({ target: 'subset', charIds: [charId] });
+    const requestId = crypto.randomUUID();
     let resolveResult, rejectResult;
     const result = new Promise((resolve, reject) => {
       resolveResult = resolve;
@@ -524,12 +527,14 @@ export async function pickPoint(charId, name) {
     });
     void result.catch(() => {});
     unlisten = await listen('game-macro-picked', event => {
+      if (event.payload?.requestId !== requestId) return;
       if (event.payload?.cancelled) rejectResult(new Error('Задание точки отменено.'));
-      else resolveResult(event.payload);
+      else resolveResult(event.payload.geometry);
     });
     timer = setTimeout(() => rejectResult(new Error('Время задания точки истекло.')), 300000);
     await native('game_macro_guide', {
       mode: 'point',
+      requestId,
       width: 280,
       height: 180,
       target: { pid: rows[0].pid, startedAt: rows[0].startedAt }
@@ -540,15 +545,22 @@ export async function pickPoint(charId, name) {
       id: crypto.randomUUID(),
       name: name.trim().slice(0, 80),
       uiScale: 'Ручная калибровка',
-      ...geometry
+      x: geometry.x,
+      y: geometry.y,
+      width: geometry.width,
+      height: geometry.height,
+      dpi: geometry.dpi
     };
+    if (!validPoint(point)) throw new Error('Некорректная точка. Повторите калибровку.');
     state.settings.gameMacros = { ...config(), points: [...config().points, point] };
     log(`Точка «${point.name}» сохранена без клика в игру.`);
     return point;
   } finally {
     clearTimeout(timer);
     unlisten?.();
-    await native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null }).catch(() => {});
+    await native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null, requestId: null }).catch(
+      () => {}
+    );
     busy = false;
     void broadcast();
   }

@@ -39,7 +39,25 @@ async function init() {
     };
   });
   document.querySelector('[data-drag]').onpointerdown = event => {
-    if (event.button === 0) void current.startDragging();
+    if (event.button === 0 && !event.target.closest('button')) void current.startDragging();
+  };
+  let collapsed = false;
+  const fold = document.getElementById('fold');
+  fold.onclick = async () => {
+    fold.disabled = true;
+    try {
+      await invoke('game_macro_overlay_fold', { collapsed: !collapsed });
+      collapsed = !collapsed;
+      document.body.classList.toggle('folded', collapsed);
+      fold.setAttribute('aria-expanded', String(!collapsed));
+      fold.title = collapsed ? 'Развернуть оверлей' : 'Свернуть до верхней полосы';
+      fold.setAttribute('aria-label', fold.title);
+      fold.textContent = collapsed ? '▾' : '▴';
+    } catch {
+      document.getElementById('status').textContent = 'Не удалось изменить размер оверлея.';
+    } finally {
+      fold.disabled = false;
+    }
   };
   document.getElementById('close').onclick = () => current.close();
   await emitTo('main', 'game-overlay-ready', null);

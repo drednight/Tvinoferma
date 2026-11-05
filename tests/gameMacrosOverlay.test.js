@@ -12,6 +12,13 @@ vi.mock('../js/core/storage.js', () => ({ persist: mocks.persist }));
 let state, runtime;
 beforeEach(async () => {
   vi.resetModules();
+  vi.doMock('@tauri-apps/api/event', () => ({
+    listen: async (name, handler) => {
+      mocks.handlers.set(name, handler);
+      return () => mocks.handlers.delete(name);
+    },
+    emitTo: async () => {}
+  }));
   mocks.handlers.clear();
   mocks.invoke.mockReset();
   mocks.persist.mockClear();
@@ -62,7 +69,11 @@ it('captures a moved marker without requiring a game click or a UI scale input',
     )
   );
   expect(mocks.invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
-  mocks.handlers.get('game-macro-picked')({ payload: { x: 20, y: 30, width: 2560, height: 1400, dpi: 144 } });
+  const requestId = mocks.invoke.mock.calls.find(([, args]) => args?.mode === 'point')[1].requestId;
+  mocks.handlers.get('game-macro-picked')({ payload: { requestId: 'old', cancelled: true } });
+  mocks.handlers.get('game-macro-picked')({
+    payload: { requestId, geometry: { x: 20, y: 30, width: 2560, height: 1400, dpi: 144 } }
+  });
   const point = await promise;
   expect(point).toMatchObject({ name: 'Свиток воскрешения', x: 20, y: 30, width: 2560, height: 1400, dpi: 144 });
   expect(runtime.config().points).toHaveLength(1);
@@ -72,7 +83,9 @@ it('does not retain a point if marker selection is cancelled', async () => {
   const promise = runtime.pickPoint('a', 'Отмена');
   const rejection = expect(promise).rejects.toThrow('отменено');
   await vi.waitFor(() => expect(mocks.handlers.has('game-macro-picked')).toBe(true));
-  mocks.handlers.get('game-macro-picked')({ payload: { cancelled: true } });
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([, args]) => args?.mode === 'point')).toBe(true));
+  const requestId = mocks.invoke.mock.calls.find(([, args]) => args?.mode === 'point')[1].requestId;
+  mocks.handlers.get('game-macro-picked')({ payload: { requestId, cancelled: true } });
   await rejection;
   expect(runtime.config().points).toEqual([]);
   expect(runtime.snapshot().busy).toBe(false);

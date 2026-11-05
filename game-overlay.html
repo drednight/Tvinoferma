@@ -19,17 +19,34 @@
         background: transparent;
       }
       main {
-        background: rgba(16, 20, 30, var(--alpha, 0.9));
-        min-height: 100vh;
-        padding: 14px;
-        border: 1px solid #68749c;
+        height: 100vh;
+        overflow: hidden;
+        border: 0;
         border-radius: 10px;
       }
+      #panel {
+        background: rgba(16, 20, 30, var(--alpha, 0.9));
+        height: calc(100vh - 52px);
+        overflow: auto;
+        padding: 14px;
+      }
+      body.folded #panel {
+        display: none;
+      }
+      header span {
+        flex: 1;
+      }
       header {
-        font-size: 17px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(16, 20, 30, calc(var(--alpha, 0.9) * 0.72));
+        font-size: 15px;
         font-weight: 700;
-        padding: 8px;
+        padding: 6px 10px;
         cursor: move;
+        user-select: none;
       }
       button {
         padding: 8px;
@@ -60,16 +77,29 @@
   </head>
   <body>
     <main>
-      <header data-drag>🎮 Управление пати</header>
-      <p class="muted">Ваши сочетания команд. Ctrl+Alt+Pause — остановка при включённом управлении клавишами.</p>
-      <p id="status">Ожидание главного окна…</p>
-      <button data-action="settings">Команды</button><button data-action="overlay-settings">Вид оверлея</button
-      ><button data-action="logs">Открыть журнал</button><button data-action="stop">Остановить</button
-      ><button id="close">Скрыть</button>
-      <h3>Назначенные клавиши</h3>
-      <ul id="commands"></ul>
-      <h3>Журнал</h3>
-      <pre id="logs"></pre>
+      <header data-drag>
+        <span>🎮 Управление пати</span
+        ><button data-action="stop" title="Остановить команду" aria-label="Остановить команду">■</button
+        ><button
+          id="fold"
+          aria-controls="panel"
+          aria-expanded="true"
+          aria-label="Свернуть до верхней полосы"
+          title="Свернуть до верхней полосы"
+        >
+          ▴</button
+        ><button id="close" aria-label="Закрыть оверлей" title="Закрыть оверлей">×</button>
+      </header>
+      <section id="panel">
+        <p class="muted">Ваши сочетания команд. Ctrl+Alt+Pause — остановка при включённом управлении клавишами.</p>
+        <p id="status">Ожидание главного окна…</p>
+        <button data-action="settings">Команды</button><button data-action="overlay-settings">Вид оверлея</button
+        ><button data-action="logs">Открыть журнал</button><button data-action="stop">Остановить</button>
+        <h3>Назначенные клавиши</h3>
+        <ul id="commands"></ul>
+        <h3>Журнал</h3>
+        <pre id="logs"></pre>
+      </section>
     </main>
     <script type="module" src="/js/modules/gameMacros/overlay.js"></script>
   </body>
