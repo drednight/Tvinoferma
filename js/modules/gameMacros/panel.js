@@ -11,6 +11,7 @@ const labels = {
   sequence: 'Последовательность клавиш',
   layout: 'Применить профиль окон'
 };
+let previousUpdate;
 export function mountGameMacros(host) {
   if (!host) return;
   const c = config();
@@ -114,8 +115,8 @@ wait 200</textarea></label><p class="muted">Пример ассиста: SHIFT+1
       button.disabled = data.busy;
     });
   };
-  if (host._gmUpdate) window.removeEventListener('tf-game-macros-changed', host._gmUpdate);
-  host._gmUpdate = update;
+  if (previousUpdate) window.removeEventListener('tf-game-macros-changed', previousUpdate);
+  previousUpdate = update;
   window.addEventListener('tf-game-macros-changed', update);
   update();
   void initGameMacros();
