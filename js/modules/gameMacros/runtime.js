@@ -6,6 +6,7 @@ let initialized = false,
   cancelled = false,
   registered = false;
 let cycleId = '';
+let paused = false;
 const logs = [];
 const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
@@ -18,6 +19,7 @@ export function snapshot() {
   const c = config();
   return {
     busy,
+    paused,
     registered,
     opacity: c.opacity,
     topmost: c.topmost,
@@ -65,7 +67,7 @@ async function applyConfig() {
   const bindings = c.enabled
     ? [
         { id: 'stop', chord: 'CTRL+ALT+PAUSE' },
-        ...c.commands.filter(row => row.hotkey).map(row => ({ id: row.id, chord: row.hotkey }))
+        ...c.commands.filter(row => row.hotkey && commandReady(c, row)).map(row => ({ id: row.id, chord: row.hotkey }))
       ]
     : [];
   try {
@@ -85,6 +87,7 @@ export async function openOverlay() {
   await broadcast();
 }
 export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
+  selected = scopedConfig(selected, command);
   const { windowRows } = await import('../launcher/windowList.js');
   const { recalledOwnership } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
@@ -94,6 +97,15 @@ export async function windowTargets(command = { target: 'all', action: 'next' },
   for (const row of rows) {
     if (state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1)
       row.known = false;
+  }
+  if (command.scope === 'managed') {
+    if (
+      !rows.length ||
+      rows.some(row => !row.known || !row.startedAt || !row.hwnd || row.elevated !== false) ||
+      new Set(rows.map(row => row.charId)).size !== rows.length
+    )
+      throw new Error('Все окна должны быть однозначно распознаны.');
+    return rows;
   }
   return resolveTargets(state, selected, command, rows);
 }
@@ -135,6 +147,18 @@ export async function run(id, hotkey = false) {
     stop();
     return;
   }
+  const requested = config().commands.find(row => row.id === id);
+  if (requested?.action === 'pause') {
+    paused = !paused;
+    stop();
+    log(paused ? 'Макросы на паузе.' : 'Макросы возобновлены.');
+    void broadcast();
+    return;
+  }
+  if (paused) {
+    log('Макросы на паузе. Нажмите «Пауза / продолжить».');
+    return;
+  }
   if (busy) {
     log('Предыдущая команда ещё выполняется.');
     return;
@@ -146,10 +170,18 @@ export async function run(id, hotkey = false) {
   cancelled = false;
   void broadcast();
   try {
+    if (command.action === 'launch') {
+      const party = state.parties.find(p => p.id === c.partyId);
+      if (!party) throw new Error('no party');
+      const { launchPartyByName } = await import('../launcher/partyLaunch.js');
+      await launchPartyByName(party.name);
+      log('Открыта штатная очередь запуска пати.');
+      return;
+    }
     const rows = await windowTargets(command, c);
     if (hotkey) {
       let foreground = false;
-      for (const row of await windowTargets()) {
+      for (const row of rows) {
         try {
           await act(row, 'foreground');
           foreground = true;
@@ -184,7 +216,74 @@ export async function run(id, hotkey = false) {
       log('Окно переключено.');
       return;
     }
-    if (command.action === 'click') {
+    if (command.action === 'f6f1' || command.action === 'optimize') {
+      const scoped = scopedConfig(c, command),
+        leaderId = scoped.leaders[scoped.partyId];
+      const leader = rows.find(row => row.charId === leaderId);
+      if (!leader) throw new Error('PL required');
+      if (command.action === 'f6f1') {
+        for (const row of rows.filter(r => r.charId !== leaderId)) {
+          await wait(50);
+          await act(row, 'focus');
+          await wait(80);
+          await act(row, 'key', { key: 'F6' });
+        }
+        for (const row of rows) {
+          await wait(50);
+          await act(row, 'focus');
+          await wait(80);
+          await act(row, 'key', { key: 'F1' });
+        }
+      } else {
+        const rectFor = row => ({
+          x: 0,
+          y: 0,
+          width: row.charId === leaderId ? c.leaderWidth : c.otherWidth,
+          height: row.charId === leaderId ? c.leaderHeight : c.otherHeight
+        });
+        for (const row of rows) {
+          await wait(50);
+          await act(row, 'resize-check', { rect: rectFor(row) });
+        }
+        await wait(50);
+        await act(leader, 'client-layout', { rect: rectFor(leader) });
+        for (const row of rows.filter(r => r.charId !== leaderId)) {
+          await wait(50);
+          await act(row, 'focus');
+          await wait(80);
+          await act(row, 'key', { key: 'CTRL+F9' });
+          await wait(150);
+          await act(row, 'client-layout', { rect: rectFor(row) });
+        }
+      }
+      await wait(50);
+      await act(leader, 'focus');
+      log(
+        command.action === 'f6f1'
+          ? 'Оба прохода F6 → F1 завершены.'
+          : 'Размеры клиентских областей применены; Ctrl+F9 отправлен остальным.'
+      );
+    } else if (command.action === 'follow') {
+      const point = commandPoint(c, command),
+        menu = commandPoint(c, { ...command, pointId: command.menuPointId });
+      if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
+      for (const row of rows)
+        for (const p of [point, menu]) {
+          await wait(50);
+          await act(row, 'preview', { point: p });
+        }
+      for (const row of rows) {
+        await wait(50);
+        await act(row, 'focus');
+        await wait(80);
+        await act(row, 'key', { key: 'SHIFT+1' });
+        await wait(80);
+        await act(row, 'right-click', { point });
+        await wait(120);
+        await act(row, 'click', { point: menu });
+        log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
+      }
+    } else if (command.action === 'click') {
       const point = commandPoint(c, command);
       if (!reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
       // Check EVERY recipient before the first potentially resource-spending click.
@@ -223,6 +322,19 @@ export async function run(id, hotkey = false) {
           }
         }
         log(`Обработано окон: ${index + 1}/${rows.length}. Ввод отправлен; результат в игре не проверялся.`);
+      }
+    }
+    if (['sequence', 'follow', 'click'].includes(command.action) && !cancelled) {
+      const scoped = scopedConfig(c, command),
+        leaderId = scoped.leaders[scoped.partyId];
+      if (leaderId) {
+        try {
+          const [leader] = await windowTargets({ target: 'leader', action: 'leader' }, scoped);
+          await wait(50);
+          await act(leader, 'focus');
+        } catch {
+          /* no implicit replacement */
+        }
       }
     }
     log('Команда завершена.');
@@ -269,18 +381,23 @@ export async function previewCommand(id) {
   if (busy) throw new Error('Дождитесь окончания команды.');
   const c = config(),
     command = c.commands.find(row => row.id === id);
-  if (!command || command.action !== 'click') throw new Error('Выберите координатную команду.');
+  if (!command || !['click', 'follow'].includes(command.action)) throw new Error('Выберите координатную команду.');
   const point = commandPoint(c, command, false);
   busy = true;
   cancelled = false;
   void broadcast();
   try {
     const rows = await windowTargets(command, c);
-    for (const row of rows) {
-      await wait(50);
-      await act(row, 'preview', { point });
-    }
-    reviewedPoints.add(JSON.stringify(point));
+    const points =
+      command.action === 'follow'
+        ? [point, commandPoint(c, { ...command, pointId: command.menuPointId }, false)]
+        : [point];
+    for (const row of rows)
+      for (const point of points) {
+        await wait(50);
+        await act(row, 'preview', { point });
+      }
+    for (const point of points) reviewedPoints.add(JSON.stringify(point));
     log(
       `Предпросмотр без клика: ${rows.map(r => r.nick).join(', ')}; точка ${point.name}; клиент ${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale}. Визуально проверьте соответствие UI на схеме в настройках.`
     );
@@ -321,4 +438,19 @@ export async function initGameMacros() {
     }
   });
   await configure();
+}
+
+export function scopedConfig(c, command) {
+  return command.scope === 'buff' ? { ...c, partyId: c.buffPartyId } : c;
+}
+export function commandReady(c, command) {
+  if (['click', 'follow'].includes(command.action)) {
+    try {
+      commandPoint(c, command);
+      if (command.action === 'follow') commandPoint(c, { ...command, pointId: command.menuPointId });
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }

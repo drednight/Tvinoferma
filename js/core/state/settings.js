@@ -1,3 +1,4 @@
+import { installAhkPresets } from '../../modules/gameMacros/presets.js';
 import { normalizeGameMacros } from '../../modules/gameMacros/model.js';
 import { normalizeTodayOrder, normalizeTodaySizes, normalizeTodayCanvas } from '../../modules/dashboard/todayLayout.js';
 // @ts-check
@@ -149,7 +150,7 @@ export function mergeSettings(input = {}) {
       todaySizes: normalizeTodaySizes(input.ui?.todaySizes),
       todayCanvas: normalizeTodayCanvas(input.ui?.todayCanvas)
     },
-    gameMacros: normalizeGameMacros(input.gameMacros),
+    gameMacros: normalizeGameMacros(installAhkPresets(input.gameMacros)),
     security: { ...DEFAULT_SETTINGS.security, ...(input.security || {}) },
     scripts: { ...DEFAULT_SETTINGS.scripts, ...(input.scripts || {}) },
     notifications: normalizeNotificationSettings(input.notifications),

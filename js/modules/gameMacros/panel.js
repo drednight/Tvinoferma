@@ -21,18 +21,23 @@ const labels = {
   leader: 'Перейти к ПЛ',
   sequence: 'Последовательность клавиш',
   layout: 'Применить профиль окон',
-  click: 'Клик по откалиброванной точке'
+  click: 'Клик по откалиброванной точке',
+  follow: 'Следование: Shift+1 → ПКМ → Follow',
+  f6f1: 'Два прохода: F6 кроме ПЛ → F1 всем',
+  optimize: 'Размеры клиентов + Ctrl+F9 остальным',
+  launch: 'Штатный запуск пати',
+  pause: 'Пауза / продолжить'
 };
 let previousUpdate;
 export function mountGameMacros(host) {
   if (!host) return;
   const c = config();
   host.innerHTML = `<section class="tools-block" id="game-macros-block"><h3>🎮 Управление пати и макросы</h3><p class="muted">Команды только по вашему запуску. ПЛ назначается в настройках пати (👑); это не меняет лидерство внутри игры. Перед массовыми действиями проверьте правила игры и одно тестовое окно.</p>
-  <div class="row gap"><label>Пати <select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => `<option value="${esc(p.id)}" ${p.id === c.partyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}> Включить глобальные хоткеи</label><button class="btn" data-gm-overlay>Окно-памятка / оверлей</button></div>
+  <div class="row gap"><label>Пати <select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => `<option value="${esc(p.id)}" ${p.id === c.partyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label>Пати для бафа <select data-gm-buff-party><option value="">Выберите отдельно</option>${state.parties.map(p => `<option value="${esc(p.id)}" ${p.id === c.buffPartyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}> Включить глобальные хоткеи</label><button class="btn" data-gm-overlay>Окно-памятка / оверлей</button></div>
   <p class="muted">Хоткеи резервируются в Windows; игровые команды исполняются только при активном окне выбранной пати. Ctrl+Alt+Pause — остановка. Безопаснее выбирать сочетания Ctrl+Alt, не Ctrl+X и Ctrl+F.</p>
   <div class="row gap"><label>Непрозрачность фона <input type="range" min="30" max="100" value="${Math.round(c.opacity * 100)}" data-gm-opacity></label><label><input type="checkbox" data-gm-top ${c.topmost ? 'checked' : ''}> Оверлей поверх окон</label><button class="btn danger" data-gm-stop>Остановить</button></div>
-  <div class="gm-status" data-gm-runtime role="status"></div><h4 class="gm-section-heading">Мои команды</h4>
-  <div class="tools-grid">${c.commands.map(row => `<div class="panel"><b>${esc(row.name)}</b><p>${esc(labels[row.action])} · ${esc(row.hotkey || 'без хоткея')}</p><button class="btn" data-gm-run="${esc(row.id)}">Запустить</button>${row.action === 'click' ? ` <button class="btn" data-gm-preview="${esc(row.id)}">Предпросмотр без клика</button>` : ''} <button class="btn ghost" data-gm-edit="${esc(row.id)}">Изменить</button> <button class="btn ghost" data-gm-delete="${esc(row.id)}">Удалить</button></div>`).join('')}</div>
+  <div class="gm-status" data-gm-runtime role="status"></div><p class="muted">Команды исходного AHK уже добавлены. Хоткеи не включаются автоматически. Для следования нужны точки портрета и меню; для обоих вариантов реса — свои точки и разрешение расходов. «Все распознанные окна» не зависит от выбранной пати, но откажет при неизвестном окне. Запуск и управление аккаунтами используют существующие данные приложения.</p><h4 class="gm-section-heading">Мои команды</h4>
+  <div class="tools-grid">${c.commands.map(row => `<div class="panel"><b>${esc(row.name)}</b><p>${esc(labels[row.action])} · ${esc(row.hotkey || 'без хоткея')}</p><button class="btn" data-gm-run="${esc(row.id)}" ${row.action === 'pause' ? 'data-gm-pause' : ''}>Запустить</button>${['click', 'follow'].includes(row.action) ? ` <button class="btn" data-gm-preview="${esc(row.id)}">Предпросмотр без клика</button>` : ''} <button class="btn ghost" data-gm-edit="${esc(row.id)}">Изменить</button> <button class="btn ghost" data-gm-delete="${esc(row.id)}">Удалить</button></div>`).join('')}</div>
   <details data-gm-editor><summary>Добавить / изменить команду</summary><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><fieldset class="gm-choice-grid gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
     labels
   )
@@ -42,7 +47,7 @@ export function mountGameMacros(host) {
     )
     .join(
       ''
-    )}</fieldset><label>Хоткей <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+    )}</fieldset><label>Хоткей <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="buff">Отдельная пати для бафа</option><option value="managed">Все распознанные запущенные окна</option></select></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
     ['all', 'Вся пати'],
     ['leader', 'Только ПЛ'],
     ['others', 'Кроме ПЛ'],
@@ -56,8 +61,19 @@ export function mountGameMacros(host) {
     partyMembers(state, c.partyId)
       .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
       .join('') || '<p class="muted">Сначала выберите пати.</p>'
-  }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
+  }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><p class="muted" data-gm-follow-field>Основная точка — портрет для ПКМ. Убедитесь, что Shift+1 и этот портрет выбирают именно назначенного ПЛ в игре. Внутриигровое лидерство программа не меняет.</p><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
 wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><div class="gm-editor-footer"><button class="btn primary">Сохранить команду</button><button type="button" class="btn ghost" data-gm-cancel>Отмена</button></div></form></details>
+  <details><summary>Размеры клиентов для F11</summary><p class="muted">Из исходного файла: ПЛ 3440×1440, остальные 1920×1200. Укажите подходящие размеры клиентской области до запуска F11. Положения окон сохраняются; парковки за экран нет. ПЛ берётся из настроек пати, не из текущего окна.</p>${[
+    ['leaderWidth', 'ПЛ: ширина'],
+    ['leaderHeight', 'ПЛ: высота'],
+    ['otherWidth', 'Остальные: ширина'],
+    ['otherHeight', 'Остальные: высота']
+  ]
+    .map(
+      ([key, name]) =>
+        `<label>${name} <input class="input" type="number" min="160" max="8000" data-gm-size="${key}" value="${c[key]}"></label>`
+    )
+    .join('')}</details>
   <details><summary>Профили размещения игровых окон</summary><p class="muted">Сохранение текущих внешних размеров и позиций окон выбранной пати. При смене мониторов профиль проверяется. Игра от администратора не управляется.</p><label>Профиль <select data-gm-profile><option value="">Не выбран</option>${c.profiles.map(p => `<option value="${esc(p.id)}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><button class="btn ghost" data-gm-delete-profile>Удалить выбранный профиль</button><input class="input" data-gm-profile-name placeholder="Название профиля" maxlength="80"><button class="btn" data-gm-save-profile>Запомнить расположение</button></details>
   <details data-gm-calibration><summary>Координатные профили и калибровка</summary>
   <p class="muted">Координаты привязаны к клиентской области, размеру и DPI. Масштаб UI игры указывается вручную: Windows не может проверить его. При изменении UI создайте новую точку. После каждого запуска приложения сначала выполните «Предпросмотр без клика» у нужной команды. Он проверяет окна, но не игровой смысл кнопки. Оверлей или другое окно над точкой блокирует клик.</p>
@@ -91,6 +107,14 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     }
   };
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
+  host.querySelector('[data-gm-buff-party]').onchange = safe(e => save({ buffPartyId: e.target.value }));
+  host.querySelectorAll('[data-gm-size]').forEach(input => {
+    input.onchange = safe(() => {
+      const value = Number(input.value);
+      if (!Number.isInteger(value) || value < 160 || value > 8000) throw new Error('Размер — целое число 160–8000.');
+      return save({ [input.dataset.gmSize]: value });
+    });
+  });
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-opacity]').onchange = safe(e => save({ opacity: Number(e.target.value) / 100 }));
   host.querySelector('[data-gm-top]').onchange = safe(async e => {
@@ -120,13 +144,18 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     const action = form.elements.namedItem('action').value;
     const target = form.elements.namedItem('target').value;
     form.querySelectorAll('[data-gm-click-field]').forEach(el => {
-      el.hidden = action !== 'click';
+      el.hidden = !['click', 'follow'].includes(action);
     });
     form.querySelectorAll('[data-gm-sequence-field]').forEach(el => {
       el.hidden = action !== 'sequence';
     });
-    form.querySelector('[data-gm-targets]').hidden = action === 'leader';
-    form.querySelector('[data-gm-subset]').hidden = action === 'leader' || target !== 'subset';
+    const fixedTarget = ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action);
+    form.querySelector('[data-gm-targets]').hidden = fixedTarget;
+    form.querySelectorAll('[data-gm-follow-field]').forEach(el => {
+      el.hidden = action !== 'follow';
+    });
+    form.querySelector('[data-gm-scope-field]').hidden = ['launch', 'pause', 'optimize'].includes(action);
+    form.querySelector('[data-gm-subset]').hidden = fixedTarget || target !== 'subset';
   };
   form.addEventListener('change', syncFields);
   syncFields();
@@ -142,12 +171,16 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     if (data.action === 'sequence') steps(data.sequence);
     data.sequence = data.action === 'sequence' ? data.sequence : 'F8';
     if (data.action === 'leader') data.target = 'leader';
+    if (['f6f1', 'optimize', 'launch', 'pause'].includes(data.action)) data.target = 'all';
+    if (['optimize', 'launch'].includes(data.action)) data.scope = 'party';
+    if (data.scope === 'managed') data.target = 'all';
     data.charIds = new FormData(form).getAll('charIds');
     data.resourceAllowed = form.elements.namedItem('resourceAllowed').checked;
     if (data.target === 'subset' && !data.charIds.length) throw new Error('Выберите хотя бы одного получателя.');
-    if (data.action === 'click' && (!data.pointId || !data.resourceAllowed))
+    if (['click', 'follow'].includes(data.action) && (!data.pointId || !data.resourceAllowed))
       throw new Error('Выберите точку и явно разрешите координатное действие.');
-    if (!data.id && config().commands.length >= 30) throw new Error('Не более 30 команд.');
+    if (data.action === 'follow' && !data.menuPointId) throw new Error('Выберите точку пункта Follow.');
+    if (!data.id && config().commands.length >= 64) throw new Error('Не более 64 команд.');
     const row = { ...data, id: data.id || crypto.randomUUID() };
     const commands = [...config().commands.filter(c => c.id !== row.id), row];
     const keys = commands.filter(c => c.hotkey).map(c => chord(c.hotkey));
@@ -215,15 +248,19 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
   const update = () => {
     if (!host.isConnected) return;
     const data = snapshot();
-    host.querySelector('[data-gm-runtime]').textContent = data.busy
-      ? 'Команда выполняется'
-      : data.registered
-        ? 'Глобальные хоткеи включены'
-        : 'Глобальные хоткеи не включены';
+    host.querySelector('[data-gm-runtime]').textContent = data.paused
+      ? 'Макросы на паузе'
+      : data.busy
+        ? 'Команда выполняется'
+        : data.registered
+          ? 'Глобальные хоткеи включены'
+          : 'Глобальные хоткеи не включены';
     host.querySelector('#game-macro-log').textContent = data.logs.join('\n') || 'Команд ещё не было.';
-    host.querySelectorAll('button:not([data-gm-stop]), input, select, textarea').forEach(button => {
-      button.disabled = data.busy;
-    });
+    host
+      .querySelectorAll('button:not([data-gm-stop]):not([data-gm-pause]), input, select, textarea')
+      .forEach(button => {
+        button.disabled = data.busy;
+      });
   };
   if (previousUpdate) window.removeEventListener('tf-game-macros-changed', previousUpdate);
   previousUpdate = update;

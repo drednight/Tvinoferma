@@ -114,7 +114,7 @@ pub async fn game_macro_bindings(
     bindings: Vec<Binding>,
 ) -> Result<(), String> {
     main_only(&window)?;
-    if bindings.len() > 34 {
+    if bindings.len() > 65 {
         return Err("Too many hotkeys".into());
     }
     #[cfg(windows)]
@@ -139,7 +139,7 @@ mod win {
     };
     use std::time::Duration;
     use tauri::Emitter;
-    use windows::Win32::Foundation::{HWND, POINT, RECT};
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
     use windows::Win32::Graphics::Gdi::{
         ClientToScreen, MonitorFromPoint, ScreenToClient, MONITOR_DEFAULTTONULL,
     };
@@ -244,20 +244,27 @@ mod win {
                             },
                         },
                     };
-                    let mut events: Vec<INPUT> = mods.iter().map(|v| make(*v, false)).collect();
-                    events.push(make(key, false));
-                    events.push(make(key, true));
-                    events.extend(mods.iter().rev().map(|v| make(*v, true)));
-                    if SendInput(&events, std::mem::size_of::<INPUT>() as i32)
-                        != events.len() as u32
+                    let mut down: Vec<INPUT> = mods.iter().map(|v| make(*v, false)).collect();
+                    down.push(make(key, false));
+                    let mut up = vec![make(key, true)];
+                    up.extend(mods.iter().rev().map(|v| make(*v, true)));
+                    let accepted = SendInput(&down, std::mem::size_of::<INPUT>() as i32);
+                    if accepted == down.len() as u32 {
+                        std::thread::sleep(Duration::from_millis(30));
+                    }
+                    // Always release every potentially pressed key, even after a focus change/partial send.
+                    let released = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
+                    if released != up.len() as u32 {
+                        let _ = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
+                    }
+                    if accepted != down.len() as u32
+                        || released != up.len() as u32
+                        || GetForegroundWindow() != hwnd
                     {
-                        let mut release = vec![make(key, true)];
-                        release.extend(mods.iter().map(|v| make(*v, true)));
-                        let _ = SendInput(&release, std::mem::size_of::<INPUT>() as i32);
-                        return Err("Windows did not accept all key events".into());
+                        return Err("Key input incomplete or focus changed".into());
                     }
                 }
-                "capture" | "preview" | "click" => {
+                "capture" | "preview" | "click" | "right-click" => {
                     let mut r = RECT::default();
                     GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
                     let width = r.right - r.left;
@@ -289,7 +296,7 @@ mod win {
                     {
                         return Err("Point is outside client area".into());
                     }
-                    if action == "click" {
+                    if action == "click" || action == "right-click" {
                         if GetForegroundWindow() != hwnd
                             || [0x01, 0x02, 0x10, 0x11, 0x12, 0x5b, 0x5c]
                                 .iter()
@@ -312,10 +319,11 @@ mod win {
                             r#type: INPUT_MOUSE,
                             Anonymous: INPUT_0 {
                                 mi: MOUSEINPUT {
-                                    dwFlags: if up {
-                                        MOUSEEVENTF_LEFTUP
-                                    } else {
-                                        MOUSEEVENTF_LEFTDOWN
+                                    dwFlags: match (up, action == "right-click") {
+                                        (true, true) => MOUSEEVENTF_RIGHTUP,
+                                        (true, false) => MOUSEEVENTF_LEFTUP,
+                                        (false, true) => MOUSEEVENTF_RIGHTDOWN,
+                                        (false, false) => MOUSEEVENTF_LEFTDOWN,
                                     },
                                     ..Default::default()
                                 },
@@ -337,6 +345,30 @@ mod win {
                         height,
                         dpi,
                     }));
+                }
+                "resize-check" | "client-layout" => {
+                    let desired = rect.ok_or("Missing client size")?;
+                    if !(160..=8000).contains(&desired.width)
+                        || !(160..=8000).contains(&desired.height)
+                    {
+                        return Err("Invalid client size".into());
+                    }
+                    if action == "client-layout" {
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
+                        let mut outer = RECT::default();
+                        let mut inner = RECT::default();
+                        GetWindowRect(hwnd, &mut outer).map_err(|_| "Cannot read geometry")?;
+                        GetClientRect(hwnd, &mut inner).map_err(|_| "Cannot read client area")?;
+                        MoveWindow(
+                            hwnd,
+                            outer.left,
+                            outer.top,
+                            desired.width + outer.right - outer.left - inner.right + inner.left,
+                            desired.height + outer.bottom - outer.top - inner.bottom + inner.top,
+                            true,
+                        )
+                        .map_err(|_| "Cannot resize client")?;
+                    }
                 }
                 "geometry" => {
                     let mut r = RECT::default();
@@ -391,11 +423,50 @@ mod win {
         }
         Ok(None)
     }
+    type WheelContext = Option<(tauri::AppHandle, Vec<(String, u32, u16)>)>;
+    thread_local! {static WHEEL: std::cell::RefCell<WheelContext> = const { std::cell::RefCell::new(None) };}
+    unsafe extern "system" fn wheel_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        if code >= 0
+            && wp.0 as u32 == WM_MOUSEWHEEL
+            && GetAsyncKeyState(0x11) < 0
+            && GetAsyncKeyState(0x10) >= 0
+            && GetAsyncKeyState(0x12) >= 0
+        {
+            let mut class = [0u16; 128];
+            let len = GetClassNameW(GetForegroundWindow(), &mut class);
+            if len > 0 && String::from_utf16_lossy(&class[..len as usize]) == "ElementClient Window"
+            {
+                let event = &*(lp.0 as *const MSLLHOOKSTRUCT);
+                if event.flags & LLMHF_INJECTED == 0 {
+                    let up = ((event.mouseData >> 16) as i16) > 0;
+                    let key = if up { 0xff01 } else { 0xff02 };
+                    let handled = WHEEL.with(|ctx| {
+                        let ctx = ctx.borrow();
+                        if let Some((app, bindings)) = ctx.as_ref() {
+                            if let Some((id, _, _)) = bindings.iter().find(|(_, _, k)| *k == key) {
+                                let _ = app.emit_to("main", "game-macro-hotkey", id);
+                                return true;
+                            }
+                        }
+                        false
+                    });
+                    if handled {
+                        return LRESULT(1);
+                    }
+                }
+            }
+        }
+        CallNextHookEx(None, code, wp, lp)
+    }
     pub fn bindings(app: tauri::AppHandle, bindings: Vec<Binding>) -> Result<(), String> {
         let parsed: Vec<_> = bindings
             .into_iter()
             .map(|b| {
-                let (mods, key) = chord(&b.chord)?;
+                let (mods, key) = match b.chord.as_str() {
+                    "CTRL+WHEELUP" => (vec![0x11], 0xff01),
+                    "CTRL+WHEELDOWN" => (vec![0x11], 0xff02),
+                    _ => chord(&b.chord)?,
+                };
                 let flags = mods.iter().fold(0u32, |v, m| {
                     v | match m {
                         0x11 => 2,
@@ -417,13 +488,38 @@ mod win {
         let (tx, rx) = std::sync::mpsc::channel();
         *guard = Some(std::thread::spawn(move || unsafe {
             let mut ids = Vec::new();
+            let wheel_bindings: Vec<_> = parsed
+                .iter()
+                .filter(|(_, _, key)| *key >= 0xff01)
+                .cloned()
+                .collect();
+            let hook = if wheel_bindings.is_empty() {
+                None
+            } else {
+                WHEEL.with(|ctx| *ctx.borrow_mut() = Some((app.clone(), wheel_bindings)));
+                match SetWindowsHookExW(WH_MOUSE_LL, Some(wheel_hook), None, 0) {
+                    Ok(hook) => Some(hook),
+                    Err(_) => {
+                        WHEEL.with(|ctx| *ctx.borrow_mut() = None);
+                        let _ = tx.send(false);
+                        return;
+                    }
+                }
+            };
             for (i, (_, mods, key)) in parsed.iter().enumerate() {
                 let id = i as i32 + 1;
+                if *key >= 0xff01 {
+                    continue;
+                }
                 if RegisterHotKey(None, id, HOT_KEY_MODIFIERS(*mods | 0x4000), *key as u32).is_err()
                 {
                     for id in ids {
                         let _ = UnregisterHotKey(None, id);
                     }
+                    if let Some(hook) = hook {
+                        let _ = UnhookWindowsHookEx(hook);
+                    }
+                    WHEEL.with(|ctx| *ctx.borrow_mut() = None);
                     let _ = tx.send(false);
                     return;
                 }
@@ -444,6 +540,10 @@ mod win {
             for id in ids {
                 let _ = UnregisterHotKey(None, id);
             }
+            if let Some(hook) = hook {
+                let _ = UnhookWindowsHookEx(hook);
+            }
+            WHEEL.with(|ctx| *ctx.borrow_mut() = None);
         }));
         match rx.recv_timeout(Duration::from_secs(3)) {
             Ok(true) => Ok(()),

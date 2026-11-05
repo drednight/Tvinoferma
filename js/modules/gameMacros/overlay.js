@@ -9,11 +9,13 @@ async function init() {
       '--alpha',
       String(Math.max(0.3, Math.min(1, Number(data.opacity) || 0.9)))
     );
-    document.getElementById('status').textContent = data.busy
-      ? 'Команда выполняется'
-      : data.registered
-        ? 'Хоткеи включены'
-        : 'Хоткеи выключены / недоступны';
+    document.getElementById('status').textContent = data.paused
+      ? 'Макросы на паузе'
+      : data.busy
+        ? 'Команда выполняется'
+        : data.registered
+          ? 'Хоткеи включены'
+          : 'Хоткеи выключены / недоступны';
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
         const li = document.createElement('li'),

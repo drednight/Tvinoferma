@@ -57,7 +57,7 @@ describe('action-specific editor', () => {
     mountGameMacros(document.getElementById('host'));
   });
   it('uses choice cards and only reveals relevant fields', () => {
-    expect(document.querySelectorAll('.gm-action-choices input[type="radio"]').length).toBe(6);
+    expect(document.querySelectorAll('.gm-action-choices input[type="radio"]').length).toBe(11);
     expect(document.querySelector('[data-gm-click-field]').hidden).toBe(true);
     expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
     expect(document.querySelector('[data-gm-subset]').hidden).toBe(true);

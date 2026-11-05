@@ -1,6 +1,19 @@
 import { charactersInPartyOrdered } from '../parties/membership.js';
-export const ACTIONS = ['next', 'previous', 'leader', 'sequence', 'layout', 'click'];
+export const ACTIONS = [
+  'next',
+  'previous',
+  'leader',
+  'sequence',
+  'layout',
+  'click',
+  'follow',
+  'f6f1',
+  'optimize',
+  'launch',
+  'pause'
+];
 export function chord(value) {
+  if (/^CTRL\+WHEEL(UP|DOWN)$/i.test(String(value))) return String(value).toUpperCase();
   const parts = String(value || '')
     .toUpperCase()
     .replace(/\s/g, '')
@@ -23,7 +36,8 @@ export function steps(text) {
       return { wait: ms };
     }
     const key = chord(row);
-    if (!key) throw new Error('Недопустимая клавиша. Пример: SHIFT+1, F7 или wait 200, каждый шаг с новой строки.');
+    if (!key || key.includes('WHEEL'))
+      throw new Error('Недопустимая клавиша. Пример: SHIFT+1, F7 или wait 200, каждый шаг с новой строки.');
     return { key };
   });
 }
@@ -36,7 +50,7 @@ export function normalizeGameMacros(input = {}) {
     }
   }
   const commands = [];
-  for (const row of (Array.isArray(input.commands) ? input.commands : []).slice(0, 30)) {
+  for (const row of (Array.isArray(input.commands) ? input.commands : []).slice(0, 64)) {
     if (!row || !ACTIONS.includes(row.action) || !row.id || commands.some(c => c.id === row.id)) continue;
     let sequence;
     try {
@@ -58,7 +72,9 @@ export function normalizeGameMacros(input = {}) {
         30
       ),
       pointId: String(row.pointId || '').slice(0, 80),
-      resourceAllowed: row.resourceAllowed === true
+      resourceAllowed: row.resourceAllowed === true,
+      scope: ['buff', 'managed'].includes(row.scope) ? row.scope : 'party',
+      menuPointId: String(row.menuPointId || '').slice(0, 80)
     });
   }
   const profiles = [];
@@ -82,6 +98,12 @@ export function normalizeGameMacros(input = {}) {
   }
   return {
     enabled: input.enabled === true,
+    ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
+    buffPartyId: String(input.buffPartyId || '').slice(0, 200),
+    leaderWidth: size(input.leaderWidth, 3440),
+    leaderHeight: size(input.leaderHeight, 1440),
+    otherWidth: size(input.otherWidth, 1920),
+    otherHeight: size(input.otherHeight, 1200),
     partyId: String(input.partyId || '').slice(0, 200),
     leaders,
     commands,
@@ -170,4 +192,8 @@ export function commandPoint(c, command, authorize = true) {
   if (authorize && !command.resourceAllowed)
     throw new Error('Для координатного действия нужно явное разрешение расхода ресурсов и подтверждение масштаба UI.');
   return point;
+}
+
+function size(value, fallback) {
+  return Number.isInteger(value) && value >= 160 && value <= 8000 ? value : fallback;
 }

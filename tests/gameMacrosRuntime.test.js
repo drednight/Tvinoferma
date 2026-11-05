@@ -92,7 +92,7 @@ describe('coordinate input is opt-in and previewed per session', () => {
     expect(invoke.mock.calls.some(([, args]) => ['focus', 'click', 'key'].includes(args?.action))).toBe(false);
     await runtime.run('click');
     const actions = invoke.mock.calls.map(([, args]) => args?.action).filter(Boolean);
-    expect(actions).toEqual(['preview', 'preview', 'focus', 'click']);
+    expect(actions).toEqual(['preview', 'preview', 'focus', 'click', 'focus']);
   });
   it('refuses input if any recipient fails the non-clicking geometry preflight', async () => {
     setup();
@@ -111,5 +111,57 @@ describe('coordinate input is opt-in and previewed per session', () => {
     await runtime.previewCommand('click');
     await runtime.run('click');
     expect(invoke.mock.calls.some(([, args]) => args?.action === 'click')).toBe(false);
+  });
+});
+
+describe('ported multi-pass AHK actions', () => {
+  const twoWindows = () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    invoke.mockImplementation(async command =>
+      command === 'launcher_running_details' ? [client, { ...client, pid: 11, hwnd: 101, title: 'Beta — Воин' }] : null
+    );
+  };
+  it('does F6 on others FIRST, then F1 on all including PL', async () => {
+    twoWindows();
+    state.settings.gameMacros.commands = [{ id: 'combo', name: 'combo', action: 'f6f1', target: 'all' }];
+    await runtime.run('combo');
+    expect(
+      invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => [args.target.pid, args.key])
+    ).toEqual([
+      [11, 'F6'],
+      [10, 'F1'],
+      [11, 'F1']
+    ]);
+  });
+  it('resizes the assigned PL, optimizes others and restores PL', async () => {
+    twoWindows();
+    state.settings.gameMacros.commands = [{ id: 'opt', name: 'opt', action: 'optimize', target: 'all' }];
+    await runtime.run('opt');
+    const resize = invoke.mock.calls
+      .filter(([, args]) => args?.action === 'client-layout')
+      .map(([, args]) => [args.target.pid, args.rect.width, args.rect.height]);
+    expect(resize).toEqual([
+      [10, 3440, 1440],
+      [11, 1920, 1200]
+    ]);
+    expect(
+      invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => [args.target.pid, args.key])
+    ).toEqual([[11, 'CTRL+F9']]);
+  });
+  it('does not send F6 at all if no PL is assigned', async () => {
+    twoWindows();
+    state.settings.gameMacros.leaders = {};
+    state.settings.gameMacros.commands = [{ id: 'combo', name: 'combo', action: 'f6f1', target: 'all' }];
+    await runtime.run('combo');
+    expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(false);
+  });
+  it('can pause without a game window and refuses actions until resumed', async () => {
+    state.settings.gameMacros.commands.push({ id: 'pause', name: 'pause', action: 'pause', target: 'all' });
+    await runtime.run('pause');
+    await runtime.run('test');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(runtime.snapshot().paused).toBe(true);
+    await runtime.run('pause');
+    expect(runtime.snapshot().paused).toBe(false);
   });
 });
