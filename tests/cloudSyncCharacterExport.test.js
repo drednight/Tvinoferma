@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeCharacter } from '../js/core/state/character.js';
 import { exportCharacter } from '../js/modules/cloudSync/characterExport.js';
 
@@ -95,6 +95,19 @@ describe('разрешённые поля персонажа для будуще
     });
     expect(result.fields.coinHistory).toEqual(char.coinHistory);
     expect(JSON.stringify(char)).toBe(before);
+  });
+
+  it('оставляет способ входа на сайт локальным и не читает вложенные данные', () => {
+    const expected = exportCharacter(char, opts);
+    char.siteLogin = { mode: 'gamecenter' };
+    expect(exportCharacter(char, opts)).toEqual(expected);
+    expect(char.siteLogin).toEqual({ mode: 'gamecenter' });
+    const read = vi.fn(() => {
+      throw new Error('must not read local metadata');
+    });
+    Object.defineProperty(char.siteLogin, 'url', { enumerable: true, get: read });
+    expect(exportCharacter(char, opts)).toEqual(expected);
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('переименование и смена локального id не меняют постоянный sync-id', () => {
