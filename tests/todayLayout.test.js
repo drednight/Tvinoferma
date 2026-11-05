@@ -163,36 +163,57 @@ it('normalizes size settings without accepting unknown blocks or invalid dimensi
     clan: { width: 2, height: 480 },
     news: { width: 99, height: -1 },
     evil: { width: 3 },
-    launch: { width: 1, height: '400' }
+    launch: { width: 1, height: '400' },
+    information: { span: 5, height: 300 },
+    marathon: { span: 99 }
   };
-  expect(normalizeTodaySizes(input)).toEqual({ clan: { width: 2, height: 480 }, launch: { width: 1 } });
+  expect(normalizeTodaySizes(input)).toEqual({
+    clan: { width: 2, height: 480 },
+    launch: { width: 1 },
+    information: { span: 5, height: 300 }
+  });
   expect(mergeSettings({ ui: { todaySizes: input } }).ui.todaySizes).toEqual(normalizeTodaySizes(input));
 });
-it('resizes clan in-place, persists both dimensions and restores them outside edit mode', async () => {
+
+function pointer(target, type, x, y, pointerId = 1) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(event, { clientX: x, clientY: y, pointerId, button: 0 });
+  target.dispatchEvent(event);
+}
+function drag(root, id, dx, dy, cancel = false) {
+  const board = root.querySelector('.rt-board');
+  board.getBoundingClientRect = () => ({ width: 1200 });
+  const panel = root.querySelector(`.rt-${id}`);
+  const width = Number(panel.dataset.layoutSpan) * 100;
+  panel.getBoundingClientRect = () => ({ width, height: parseInt(panel.style.height) || 300 });
+  const grip = panel.querySelector('[data-layout-resize]');
+  grip.setPointerCapture = vi.fn();
+  pointer(grip, 'pointerdown', 0, 0);
+  pointer(grip, 'pointermove', dx, dy);
+  pointer(grip, cancel ? 'pointercancel' : 'pointerup', dx, dy);
+}
+it('drags the clan corner to resize, saves dimensions and hides grips outside edit mode', async () => {
   const root = mount();
+  expect(root.querySelector('[data-layout-resize]')).toBeNull();
   toggle();
-  const width = root.querySelector('[data-layout-width-input="clan"]');
-  width.value = '2';
-  width.dispatchEvent(new Event('change'));
-  const height = root.querySelector('[data-layout-height-input="clan"]');
-  height.value = '480';
-  height.dispatchEvent(new Event('change'));
+  expect(root.querySelector('input[type="number"]')).toBeNull();
+  expect(root.querySelector('select')).toBeNull();
+  drag(root, 'clan', -400, 180);
   expect(root.querySelector('.rt-clan').style.height).toBe('480px');
-  expect(root.querySelector('.rt-clan').dataset.layoutWidth).toBe('2');
+  expect(root.querySelector('.rt-clan').dataset.layoutSpan).toBe('8');
   expect(state.settings.ui.todaySizes).toEqual({});
   root.querySelector('[data-layout-save]').click();
   await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todaySizes.clan).toEqual({ width: 2, height: 480 });
+  expect(state.settings.ui.todaySizes.clan).toEqual({ span: 8, height: 480 });
   expect(root.querySelector('.rt-clan').style.height).toBe('480px');
-  expect(root.querySelector('[data-layout-controls]')).toBeNull();
+  expect(root.querySelector('[data-layout-resize]')).toBeNull();
 });
 it('cancel restores saved sizes and storage failure rolls them back too', async () => {
   state.settings.ui.todaySizes = { news: { width: 2, height: 350 } };
   const root = mount();
   toggle();
-  const height = root.querySelector('[data-layout-height-input="news"]');
-  height.value = '700';
-  height.dispatchEvent(new Event('change'));
+  drag(root, 'news', 100, 350);
+  expect(root.querySelector('.rt-news').style.height).toBe('700px');
   root.querySelector('[data-layout-cancel]').click();
   expect(root.querySelector('.rt-news').style.height).toBe('350px');
   toggle();
@@ -206,13 +227,33 @@ it('cancel restores saved sizes and storage failure rolls them back too', async 
   expect(state.settings.ui.todaySizes).toEqual({});
   expect(root.querySelector('.rt-left')).not.toBeNull();
 });
-it('refuses to save out-of-range heights', () => {
+it('clamps dragging to safe dimensions and restores a cancelled gesture', async () => {
   const root = mount();
   toggle();
-  const height = root.querySelector('[data-layout-height-input="news"]');
-  height.value = '99999';
-  height.dispatchEvent(new Event('change'));
+  drag(root, 'news', 100000, 100000);
+  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('12');
+  expect(root.querySelector('.rt-news').style.height).toBe('1600px');
+  drag(root, 'news', -100000, -100000, true);
+  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('12');
+  expect(root.querySelector('.rt-news').style.height).toBe('1600px');
+  drag(root, 'news', -100000, -100000);
+  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('3');
+  expect(root.querySelector('.rt-news').style.height).toBe('200px');
   root.querySelector('[data-layout-save]').click();
-  expect(mocks.persist).not.toHaveBeenCalled();
-  expect(state.settings.ui.todaySizes).toEqual({});
+  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
+  expect(state.settings.ui.todaySizes.news).toEqual({ span: 3, height: 200 });
+});
+it('supports keyboard resizing and resetting a single block to auto size', () => {
+  const root = mount();
+  toggle();
+  const panel = root.querySelector('.rt-news');
+  panel.getBoundingClientRect = () => ({ height: 300 });
+  const grip = panel.querySelector('[data-layout-resize]');
+  grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  expect(panel.dataset.layoutSpan).toBe('5');
+  grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(panel.style.height).toBe('320px');
+  grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  expect(panel.style.height).toBe('');
+  expect(panel.dataset.layoutSpan).toBe('4');
 });

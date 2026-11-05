@@ -1083,21 +1083,37 @@
 /* Custom order is opt-in; the original composition remains the default. */
 .rt-board.rt-custom-layout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   align-items: start;
 }
 .rt-custom-layout > .lg-panel {
   min-width: 0;
   width: auto;
 }
-.rt-custom-layout > [data-layout-width='1'] {
-  grid-column: auto;
+.rt-custom-layout > [data-layout-span] {
+  position: relative;
+  grid-column: span var(--rt-layout-span, 4);
 }
-.rt-custom-layout > [data-layout-width='2'] {
-  grid-column: span 2;
+.rt-layout-resize {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: nwse-resize;
+  touch-action: none;
+  user-select: none;
+  z-index: 2;
 }
-.rt-custom-layout > [data-layout-width='3'] {
-  grid-column: 1 / -1;
+.rt-layout-resize:focus-visible {
+  outline: 2px solid var(--accent);
+}
+.rt-layout-resizing {
+  user-select: none;
 }
 .rt-custom-layout > .rt-layout-fixed-height {
   overflow: auto;
@@ -1111,24 +1127,6 @@
   align-items: center;
   margin-bottom: 12px;
 }
-.rt-layout-controls label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 12px;
-}
-.rt-layout-controls input {
-  width: 85px;
-}
-.rt-layout-controls select,
-.rt-layout-controls input {
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px;
-}
-
 .rt-layout-toolbar {
   margin-bottom: 12px;
   padding: 12px;
@@ -1147,11 +1145,16 @@
 }
 @media (max-width: 1100px) {
   .rt-board.rt-custom-layout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  .rt-custom-layout > [data-layout-span='3'],
+  .rt-custom-layout > [data-layout-span='4'],
+  .rt-custom-layout > [data-layout-span='5'] {
+    grid-column: span 6;
   }
 }
 @media (max-width: 700px) {
-  .rt-custom-layout > [data-layout-width] {
+  .rt-custom-layout > [data-layout-span] {
     grid-column: 1 / -1;
   }
   .rt-board.rt-custom-layout {

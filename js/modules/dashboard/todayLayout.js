@@ -28,11 +28,16 @@ export function applyTodayLayout(root, value, sizes = {}) {
   for (const [id] of TODAY_BLOCKS) {
     const panel = panels.find(el => el.classList.contains(`rt-${id}`));
     if (!panel) continue;
-    const size = normalizedSizes[id] || {};
-    panel.dataset.layoutWidth = String(size.width || (id === 'clan' ? 3 : 1));
-    panel.style.height = size.height ? `${size.height}px` : '';
-    panel.classList.toggle('rt-layout-fixed-height', !!size.height);
+    applyTodayBlockSize(panel, id, normalizedSizes[id] || {});
   }
+}
+
+export function applyTodayBlockSize(panel, id, size) {
+  const span = size.span || (size.width ? size.width * 4 : id === 'clan' ? 12 : 4);
+  panel.dataset.layoutSpan = String(span);
+  panel.style.setProperty('--rt-layout-span', String(span));
+  panel.style.height = size.height ? `${size.height}px` : '';
+  panel.classList.toggle('rt-layout-fixed-height', !!size.height);
 }
 
 export function normalizeTodaySizes(value) {
@@ -42,6 +47,7 @@ export function normalizeTodaySizes(value) {
     if (!size || typeof size !== 'object') continue;
     const row = {};
     if ([1, 2, 3].includes(size.width)) row.width = size.width;
+    if (Number.isInteger(size.span) && size.span >= 3 && size.span <= 12) row.span = size.span;
     if (Number.isInteger(size.height) && size.height >= 200 && size.height <= 1600) row.height = size.height;
     if (Object.keys(row).length) result[id] = row;
   }
