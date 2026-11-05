@@ -77,6 +77,8 @@ describe('порядок запуска по пати', () => {
 
     await partyLaunch.launchPartyByName('Папка 1');
     expect(started()).toEqual(['c', 'a', 'b']);
+    expect(state.settings.gameMacros.partyId).toBe('p1');
+    expect(state.settings.gameMacros.buffPartyId).toBe('p1');
   });
 
   it('у кого порядок не задан — запускаются по алфавиту, но после заданных', async () => {

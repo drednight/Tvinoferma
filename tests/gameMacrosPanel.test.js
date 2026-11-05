@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { state } from '../js/core/state.js';
 import { mountGameMacros } from '../js/modules/gameMacros/panel.js';
+const mocks = vi.hoisted(() => ({ showSize: vi.fn(), openOverlay: vi.fn(), run: vi.fn(), pickPoint: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: vi.fn(async () => {}) }));
 vi.mock('../js/modules/gameMacros/runtime.js', async () => {
   const { normalizeGameMacros } = await import('../js/modules/gameMacros/model.js');
@@ -9,75 +10,88 @@ vi.mock('../js/modules/gameMacros/runtime.js', async () => {
     config: () => normalizeGameMacros(state.settings.gameMacros),
     configure: vi.fn(async () => {}),
     initGameMacros: vi.fn(async () => {}),
-    snapshot: () => ({ logs: ['Test log'], busy: false, registered: false }),
-    openOverlay: vi.fn(),
-    run: vi.fn(),
+    snapshot: () => ({ logs: ['Session log'], busy: false, registered: false }),
+    openOverlay: mocks.openOverlay,
+    run: mocks.run,
     stop: vi.fn(),
-    saveProfile: vi.fn()
+    saveProfile: vi.fn(),
+    pickPoint: mocks.pickPoint,
+    previewCommand: vi.fn(),
+    showSize: mocks.showSize,
+    applyOverlayPreferences: vi.fn(async () => {})
   };
 });
-describe('game macros Tools block', () => {
-  beforeEach(() => {
-    state.parties = [{ id: 'p', name: 'Existing party' }];
-    state.settings.gameMacros = { commands: [{ id: 'next', name: '<unsafe>', action: 'next', hotkey: 'CTRL+ALT+F8' }] };
-    document.body.innerHTML = '<div id="host"></div>';
-    mountGameMacros(document.getElementById('host'));
-  });
-  it('shows an independent block, explicit party choice, transparency, overlay, stop and factual log', () => {
-    expect(document.getElementById('game-macros-block')).not.toBeNull();
-    expect(document.querySelector('[data-gm-party]').value).toBe('');
-    expect(document.querySelector('[data-gm-enabled]').checked).toBe(false);
-    expect(document.querySelector('[data-gm-opacity]')).not.toBeNull();
-    expect(document.querySelector('[data-gm-overlay]')).not.toBeNull();
-    expect(document.querySelector('[data-gm-stop]')).not.toBeNull();
-    expect(document.querySelector('#game-macro-log').textContent).toBe('Test log');
+beforeEach(() => {
+  vi.clearAllMocks();
+  state.parties = [{ id: 'p', name: 'Пати' }];
+  state.characters = [{ id: 'a', nick: 'Alpha', class: 'Воин', partyIds: ['p'] }];
+  state.settings.gameMacros = {
+    partyId: 'p',
+    commands: [{ id: 'next', name: '<unsafe>', action: 'next', hotkey: 'CTRL+ALT+F8' }]
+  };
+  document.body.innerHTML = '<div id="host"></div><div id="modal-root"></div><div id="toast-root"></div>';
+  mountGameMacros(document.getElementById('host'));
+});
+describe('party command workspace', () => {
+  it('has one party selector and separate command menu/detail panel', () => {
+    expect(document.querySelector('[data-gm-buff-party]')).toBeNull();
+    expect(document.querySelector('.gm-command-menu')).not.toBeNull();
+    expect(document.querySelector('.gm-command-detail')).not.toBeNull();
     expect(document.querySelector('unsafe')).toBeNull();
-    expect(document.body.textContent).toContain('<unsafe>');
-    expect(document.body.textContent).toContain('CTRL+ALT+F8');
+    expect(document.querySelector('.gm-command-choice kbd').textContent).toBe('CTRL+ALT+F8');
+    expect(document.body.textContent).not.toContain('Глобальные хоткеи');
+    expect(document.body.textContent).not.toContain('Перед массовыми');
   });
-  it('loads a saved command into the editor without confusing trigger with sequence', () => {
+  it('opens a clean creation modal and can cancel without creating a command', () => {
+    expect(document.querySelector('[data-gm-form]')).toBeNull();
+    document.querySelector('[data-gm-create]').click();
+    const form = document.querySelector('[data-gm-form]');
+    expect(form).not.toBeNull();
+    expect(form.elements.namedItem('name').value).toBe('');
+    document.querySelector('.modal-footer .ghost').click();
+    expect(document.querySelector('[data-gm-form]')).toBeNull();
+    expect(state.settings.gameMacros.commands).toHaveLength(1);
+  });
+  it('edits a saved command without confusing its trigger and sent sequence', () => {
     document.querySelector('[data-gm-edit]').click();
     const form = document.querySelector('[data-gm-form]');
     expect(form.elements.namedItem('hotkey').value).toBe('CTRL+ALT+F8');
     expect(form.elements.namedItem('sequence').value).toBe('F8');
-    expect(document.querySelector('[data-gm-editor]').open).toBe(true);
   });
-});
-
-describe('action-specific editor', () => {
-  const choose = (name, value) => {
+  it('saves a new custom command from the modal', async () => {
+    document.querySelector('[data-gm-create]').click();
     const form = document.querySelector('[data-gm-form]');
-    form.elements.namedItem(name).value = value;
-    form.dispatchEvent(new Event('change', { bubbles: true }));
-  };
-  beforeEach(() => {
-    state.parties = [];
-    state.settings.gameMacros = {};
-    document.body.innerHTML = '<div id="host"></div>';
-    mountGameMacros(document.getElementById('host'));
+    form.elements.namedItem('name').value = 'Моя команда';
+    form.elements.namedItem('sequence').value = 'F7';
+    document.querySelector('.modal-footer .primary').click();
+    await vi.waitFor(() => expect(state.settings.gameMacros.commands).toHaveLength(2));
+    expect(state.settings.gameMacros.commands[1]).toMatchObject({
+      name: 'Моя команда',
+      sequence: 'F7',
+      scope: 'party'
+    });
   });
-  it('uses choice cards and only reveals relevant fields', () => {
-    expect(document.querySelectorAll('.gm-action-choices input[type="radio"]').length).toBe(11);
-    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(true);
-    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
-    expect(document.querySelector('[data-gm-subset]').hidden).toBe(true);
-    choose('action', 'sequence');
-    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(false);
-    choose('target', 'subset');
-    expect(document.querySelector('[data-gm-subset]').hidden).toBe(false);
-    choose('action', 'click');
-    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(false);
-    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
-    choose('action', 'leader');
-    expect(document.querySelector('[data-gm-targets]').hidden).toBe(true);
-    expect(document.querySelector('[data-gm-subset]').hidden).toBe(true);
+  it('opens overlay preferences and session logs only on request', () => {
+    expect(document.querySelector('[data-gm-log-text]')).toBeNull();
+    document.querySelector('[data-gm-logs]').click();
+    expect(document.querySelector('[data-gm-log-text]').textContent).toBe('Session log');
+    document.querySelector('[data-gm-overlay-settings]').click();
+    expect(document.querySelector('.gm-overlay-form')).not.toBeNull();
   });
-  it('cancels the draft and resets the action', () => {
-    choose('action', 'click');
-    document.querySelector('[data-gm-editor]').open = true;
-    document.querySelector('[data-gm-cancel]').click();
-    expect(document.querySelector('[data-gm-editor]').open).toBe(false);
-    expect(document.querySelector('[data-gm-form]').elements.namedItem('action').value).toBe('next');
-    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(true);
+  it('previews the entered physical client boundaries without applying them to game windows', async () => {
+    expect(document.querySelector('[data-gm-size="leaderWidth"]').value).toBe('2560');
+    expect(document.querySelector('[data-gm-size="leaderHeight"]').value).toBe('1400');
+    document.querySelector('[data-gm-size="leaderWidth"]').value = '1920';
+    document.querySelector('[data-gm-show-size="leader"]').click();
+    await vi.waitFor(() => expect(mocks.showSize).toHaveBeenCalledWith(1920, 1400));
+  });
+  it('only shows fields for the selected action in the creation dialog', () => {
+    document.querySelector('[data-gm-create]').click();
+    const form = document.querySelector('[data-gm-form]');
+    expect(form.querySelector('[data-gm-click-field]').hidden).toBe(true);
+    form.elements.namedItem('action').value = 'click';
+    form.dispatchEvent(new Event('change'));
+    expect(form.querySelector('[data-gm-click-field]').hidden).toBe(false);
+    expect(form.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
   });
 });

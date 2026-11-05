@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Экранная рамка</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font: 13px system-ui;
+        color: #f4f7ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      body.size {
+        border: 3px solid #ffd05b;
+        background: rgba(255, 208, 91, 0.025);
+      }
+      .card {
+        background: #151d2ff5;
+        border: 1px solid #8394b8;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 8px 25px #0008;
+        cursor: move;
+      }
+      .size .card {
+        max-width: 360px;
+        margin: 10px;
+      }
+      .point .card {
+        position: absolute;
+        top: 75px;
+        left: 0;
+        width: 100%;
+        font-size: 12px;
+      }
+      .cross {
+        display: none;
+      }
+      .point .cross {
+        display: block;
+        position: absolute;
+        left: 50%;
+        top: 44px;
+        width: 32px;
+        height: 32px;
+        transform: translate(-50%, -50%);
+        border: 2px solid #ffd05b;
+        border-radius: 50%;
+        pointer-events: none;
+      }
+      .cross:before,
+      .cross:after {
+        content: '';
+        position: absolute;
+        background: #ffd05b;
+      }
+      .cross:before {
+        height: 2px;
+        width: 44px;
+        left: -8px;
+        top: 13px;
+      }
+      .cross:after {
+        width: 2px;
+        height: 44px;
+        top: -8px;
+        left: 13px;
+      }
+      p {
+        margin: 5px 0;
+      }
+      button {
+        border: 1px solid #7c8aaa;
+        background: #2b3d62;
+        border-radius: 7px;
+        color: white;
+        padding: 7px 10px;
+        margin: 5px 5px 0 0;
+        cursor: pointer;
+      }
+      #error {
+        color: #ffbc9a;
+      }
+      .point .hint-size {
+        display: none;
+      }
+      .size .hint-point {
+        display: none;
+      }
+      .size #save {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <span class="cross"></span>
+    <section class="card" data-drag>
+      <b id="title"></b>
+      <p class="hint-point">Перетащите панель: совместите центр золотого крестика с нужной точкой.</p>
+      <p class="hint-size">
+        Золотая рамка показывает заданную клиентскую область в пикселях. Игровые окна не изменяются.
+      </p>
+      <button id="save">Сохранить · Enter</button><button id="cancel">Закрыть · Esc</button>
+      <p id="error" role="alert"></p>
+    </section>
+    <script type="module" src="/js/modules/gameMacros/guide.js"></script>
+  </body>
+</html>

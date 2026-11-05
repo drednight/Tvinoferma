@@ -1,4 +1,5 @@
 import { listen, emitTo } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 async function init() {
   const current = getCurrentWindow();
@@ -29,7 +30,13 @@ async function init() {
     document.getElementById('logs').textContent = (data.logs || []).join('\n');
   });
   document.querySelectorAll('[data-action]').forEach(button => {
-    button.onclick = () => emitTo('main', 'game-overlay-action', button.dataset.action);
+    button.onclick = async () => {
+      try {
+        await invoke('game_macro_navigate', { action: button.dataset.action });
+      } catch {
+        document.getElementById('status').textContent = 'Не удалось выполнить действие. Откройте главное окно из трея.';
+      }
+    };
   });
   document.querySelector('[data-drag]').onpointerdown = event => {
     if (event.button === 0) void current.startDragging();

@@ -1,6 +1,6 @@
 //! User-triggered, bounded keyboard operations. Only main can execute, only verified game clients.
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn main_only(window: &tauri::WebviewWindow) -> Result<(), String> {
     if window.label() == "main" {
@@ -34,16 +34,23 @@ pub async fn game_macro_overlay(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
     topmost: bool,
+    position: Option<ScreenPosition>,
+    existing_only: bool,
 ) -> Result<(), String> {
     main_only(&window)?;
     if let Some(overlay) = app.get_webview_window("game-overlay") {
         overlay
             .set_always_on_top(topmost)
             .map_err(|_| "Cannot change overlay mode")?;
-        overlay.show().map_err(|_| "Cannot show overlay")?;
+        if !existing_only {
+            overlay.show().map_err(|_| "Cannot show overlay")?;
+        }
         return Ok(());
     }
-    tauri::WebviewWindowBuilder::new(
+    if existing_only {
+        return Ok(());
+    }
+    let overlay = tauri::WebviewWindowBuilder::new(
         &app,
         "game-overlay",
         tauri::WebviewUrl::App("game-overlay.html".into()),
@@ -56,7 +63,207 @@ pub async fn game_macro_overlay(
     .transparent(true)
     .build()
     .map_err(|_| "Cannot open overlay")?;
+    if let Some(p) =
+        position.filter(|p| (-100000..=100000).contains(&p.x) && (-100000..=100000).contains(&p.y))
+    {
+        if let Ok(monitors) = overlay.available_monitors() {
+            if monitors.iter().any(|m| {
+                let o = m.position();
+                let s = m.size();
+                p.x + 100 > o.x
+                    && p.x < o.x + s.width as i32 - 60
+                    && p.y >= o.y
+                    && p.y < o.y + s.height as i32 - 40
+            }) {
+                let _ = overlay.set_position(tauri::PhysicalPosition::new(p.x, p.y));
+            }
+        }
+    }
+    let handle = app.clone();
+    overlay.on_window_event(move |event| {
+        if let tauri::WindowEvent::Moved(pos) = event {
+            let _ = handle.emit_to(
+                "main",
+                "game-overlay-position",
+                ScreenPosition { x: pos.x, y: pos.y },
+            );
+        }
+    });
     Ok(())
+}
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct ScreenPosition {
+    x: i32,
+    y: i32,
+}
+static GUIDE_TARGET: std::sync::Mutex<Option<Target>> = std::sync::Mutex::new(None);
+
+#[tauri::command]
+pub fn game_macro_navigate(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    action: String,
+) -> Result<(), String> {
+    if !["main", "game-overlay"].contains(&window.label()) {
+        return Err("Untrusted window".into());
+    }
+    match action.as_str() {
+        "stop" => app
+            .emit_to("main", "game-overlay-action", "stop")
+            .map_err(|_| "Cannot stop".into()),
+        "settings" | "logs" | "overlay-settings" => {
+            let main = app
+                .get_webview_window("main")
+                .ok_or("Main window unavailable")?;
+            main.show().map_err(|_| "Cannot show main window")?;
+            let _ = main.unminimize();
+            main.set_focus().map_err(|_| "Cannot focus main window")?;
+            app.emit_to("main", "game-macro-navigate", action)
+                .map_err(|_| "Cannot navigate".into())
+        }
+        _ => Err("Unknown overlay action".into()),
+    }
+}
+#[tauri::command]
+pub async fn game_macro_guide(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    mode: String,
+    width: u32,
+    height: u32,
+    target: Option<Target>,
+) -> Result<(), String> {
+    main_only(&window)?;
+    if let Some(old) = app.get_webview_window("game-guide") {
+        let _ = old.close();
+    }
+    *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = None;
+    if mode == "close" {
+        let _ = app.emit_to(
+            "main",
+            "game-macro-picked",
+            serde_json::json!({"cancelled":true}),
+        );
+        return Ok(());
+    }
+    if mode != "size" && mode != "point" {
+        return Err("Unknown guide mode".into());
+    }
+    let mut origin: Option<(i32, i32)> = None;
+    if mode == "point" {
+        let target = target.ok_or("Select a client for calibration")?;
+        let clients = crate::launcher::launcher_running_details().await?;
+        let client = clients
+            .into_iter()
+            .find(|c| {
+                c.pid == target.pid
+                    && c.started_at == Some(target.started_at)
+                    && c.elevated == Some(false)
+            })
+            .ok_or("Client changed or elevated")?;
+        #[cfg(windows)]
+        {
+            let hwnd = client.hwnd.ok_or("No client window")?;
+            win::action(hwnd, target.pid, "focus", None, None, None)?;
+            origin = Some(win::client_center(hwnd)?);
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = client;
+        }
+        *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = Some(target);
+    } else if !(160..=8000).contains(&width) || !(160..=8000).contains(&height) {
+        return Err("Invalid guide size".into());
+    }
+    let url = format!("game-guide.html?mode={mode}&width={width}&height={height}");
+    let guide =
+        tauri::WebviewWindowBuilder::new(&app, "game-guide", tauri::WebviewUrl::App(url.into()))
+            .title("Твиноферма — экранная рамка")
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .resizable(false)
+            .inner_size(280.0, 240.0)
+            .build()
+            .map_err(|_| "Cannot open guide")?;
+    if mode == "size" {
+        if let Some(m) = window.current_monitor().ok().flatten() {
+            let _ = guide.set_position(*m.position());
+        }
+        guide
+            .set_size(tauri::PhysicalSize::new(width, height))
+            .map_err(|_| "Cannot size guide")?;
+    }
+    if let Some((x, y)) = origin {
+        let s = guide.inner_size().map_err(|_| "Cannot read guide size")?;
+        let scale = guide.scale_factor().unwrap_or(1.0);
+        let _ = guide.set_position(tauri::PhysicalPosition::new(
+            x - s.width as i32 / 2,
+            y - (44.0 * scale) as i32,
+        ));
+    }
+    let handle = app.clone();
+    guide.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            let _ = handle.emit_to(
+                "main",
+                "game-macro-picked",
+                serde_json::json!({"cancelled":true}),
+            );
+        }
+    });
+    Ok(())
+}
+#[tauri::command]
+pub async fn game_macro_guide_result(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    save: bool,
+) -> Result<(), String> {
+    if window.label() != "game-guide" {
+        return Err("Only the guide can confirm its position".into());
+    }
+    if !save {
+        return window.close().map_err(|_| "Cannot close guide".into());
+    }
+    let target = GUIDE_TARGET
+        .lock()
+        .map_err(|_| "Guide lock failed")?
+        .clone()
+        .ok_or("No calibration in progress")?;
+    let clients = crate::launcher::launcher_running_details().await?;
+    let client = clients
+        .into_iter()
+        .find(|c| {
+            c.pid == target.pid
+                && c.started_at == Some(target.started_at)
+                && c.elevated == Some(false)
+        })
+        .ok_or("Client changed or elevated")?;
+    let pos = window
+        .outer_position()
+        .map_err(|_| "Cannot read marker position")?;
+    let size = window.inner_size().map_err(|_| "Cannot read marker size")?;
+    let scale = window
+        .scale_factor()
+        .map_err(|_| "Cannot read marker DPI")?;
+    #[cfg(windows)]
+    {
+        let point = win::capture_at(
+            client.hwnd.ok_or("No client window")?,
+            pos.x + size.width as i32 / 2,
+            pos.y + (44.0 * scale).round() as i32,
+        )?;
+        app.emit_to("main", "game-macro-picked", point)
+            .map_err(|_| "Cannot save calibration")?;
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (client, pos, size, scale, app);
+        return Err("Windows-only calibration".into());
+    }
+    window.close().map_err(|_| "Cannot close guide".into())
 }
 #[tauri::command]
 pub async fn game_macro_action(
@@ -186,6 +393,52 @@ mod win {
             mods.push(code);
         }
         Ok((mods, key))
+    }
+    pub fn client_center(raw: u64) -> Result<(i32, i32), String> {
+        unsafe {
+            let hwnd = HWND(raw as usize as *mut _);
+            let mut r = RECT::default();
+            GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client")?;
+            let mut p = POINT {
+                x: (r.right - r.left) / 2,
+                y: (r.bottom - r.top) / 2,
+            };
+            if !ClientToScreen(hwnd, &mut p).as_bool() {
+                return Err("Cannot locate client".into());
+            }
+            Ok((p.x, p.y))
+        }
+    }
+    pub fn capture_at(raw: u64, x: i32, y: i32) -> Result<Geometry, String> {
+        unsafe {
+            let hwnd = HWND(raw as usize as *mut _);
+            let mut r = RECT::default();
+            GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client")?;
+            let mut p = POINT { x, y };
+            if !ScreenToClient(hwnd, &mut p).as_bool() {
+                return Err("Cannot convert point".into());
+            }
+            let width = r.right - r.left;
+            let height = r.bottom - r.top;
+            let dpi = GetDpiForWindow(hwnd);
+            if !(160..=8000).contains(&width)
+                || !(120..=8000).contains(&height)
+                || !(48..=768).contains(&dpi)
+                || p.x < 0
+                || p.y < 0
+                || p.x >= width
+                || p.y >= height
+            {
+                return Err("Move the marker cross inside the selected game client".into());
+            }
+            Ok(Geometry {
+                x: p.x,
+                y: p.y,
+                width,
+                height,
+                dpi,
+            })
+        }
     }
     pub fn action(
         raw: u64,

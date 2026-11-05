@@ -501,7 +501,9 @@ function bindPartyEvents(container) {
       const members = party
         ? charactersInPartyOrdered(state.characters, party.id)
         : state.characters.filter(c => hasNoParty(c, state.parties));
-      import('../launcher/partyLaunch.js').then(m => m.launchGroup(`Запуск игры: ${name}`, members));
+      import('../launcher/partyLaunch.js').then(m =>
+        m.launchGroup(`Запуск игры: ${name}`, members, { partyId: party?.id })
+      );
       return;
     }
 

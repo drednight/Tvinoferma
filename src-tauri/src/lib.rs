@@ -290,6 +290,9 @@ pub fn run() {
             // список запущенных окон игры и закрытие выбранных
             launcher::launcher_running_details,
             game_macros::game_macro_overlay,
+            game_macros::game_macro_navigate,
+            game_macros::game_macro_guide,
+            game_macros::game_macro_guide_result,
             game_macros::game_macro_action,
             game_macros::game_macro_bindings,
             launcher::launcher_close_clients_pids,

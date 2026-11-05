@@ -141,8 +141,8 @@ describe('ported multi-pass AHK actions', () => {
       .filter(([, args]) => args?.action === 'client-layout')
       .map(([, args]) => [args.target.pid, args.rect.width, args.rect.height]);
     expect(resize).toEqual([
-      [10, 3440, 1440],
-      [11, 1920, 1200]
+      [10, 2560, 1400],
+      [11, 2560, 1400]
     ]);
     expect(
       invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => [args.target.pid, args.key])
@@ -196,7 +196,7 @@ describe('AHK follow, buff and mixed-resolution resurrection', () => {
     ]);
     expect(invoke.mock.calls.find(([, args]) => args?.action === 'key')[1].key).toBe('SHIFT+1');
   });
-  it('buff uses only the separately selected party', async () => {
+  it('buff uses the management party, ignoring a legacy separate buff party', async () => {
     state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['buff'] });
     state.settings.gameMacros.buffPartyId = 'buff';
     state.settings.gameMacros.commands = [
@@ -207,7 +207,7 @@ describe('AHK follow, buff and mixed-resolution resurrection', () => {
     );
     await runtime.run('buff');
     expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => args.target.pid)).toEqual([
-      11
+      10
     ]);
   });
   it('selects an exact point variant per window, without scaling and without requiring a management party', async () => {

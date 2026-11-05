@@ -14,7 +14,7 @@ describe('StanislavFist AHK command migration', () => {
     });
     expect(c.commands.find(c => c.id === 'ahk-buff')).toMatchObject({
       hotkey: 'CTRL+F2',
-      scope: 'buff',
+      scope: 'party',
       sequence: 'F8'
     });
     expect(c.commands.find(c => c.id === 'ahk-resurrect')).toMatchObject({
@@ -27,8 +27,8 @@ describe('StanislavFist AHK command migration', () => {
       menuPointId: '',
       resourceAllowed: false
     });
-    expect(c.leaderWidth).toBe(3440);
-    expect(c.otherHeight).toBe(1200);
+    expect(c.leaderWidth).toBe(2560);
+    expect(c.otherHeight).toBe(1400);
     expect(c.points).toEqual([]);
     expect(mergeSettings({ gameMacros: c }).gameMacros.commands).toEqual(c.commands);
   });

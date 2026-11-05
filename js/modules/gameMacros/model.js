@@ -62,7 +62,9 @@ export function normalizeGameMacros(input = {}) {
     }
     commands.push({
       id: String(row.id).slice(0, 80),
-      name: String(row.name || 'Команда').slice(0, 80),
+      name: String(
+        row.id === 'ahk-buff' && row.name === 'Баф — отдельная пати' ? 'Баф — выбранная пати' : row.name || 'Команда'
+      ).slice(0, 80),
       action: row.action,
       hotkey: chord(row.hotkey),
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
@@ -73,7 +75,7 @@ export function normalizeGameMacros(input = {}) {
       ),
       pointId: String(row.pointId || '').slice(0, 80),
       resourceAllowed: row.resourceAllowed === true,
-      scope: ['buff', 'managed'].includes(row.scope) ? row.scope : 'party',
+      scope: row.scope === 'managed' ? 'managed' : 'party',
       pointIds: [
         ...new Set((Array.isArray(row.pointIds) ? row.pointIds : []).filter(id => typeof id === 'string'))
       ].slice(0, 30),
@@ -99,14 +101,28 @@ export function normalizeGameMacros(input = {}) {
       );
     profiles.push({ id: String(p.id).slice(0, 80), name: String(p.name || 'Профиль').slice(0, 80), windows });
   }
+  const legacySizes =
+    input.sizeDefaultsVersion !== 1 &&
+    input.leaderWidth === 3440 &&
+    input.leaderHeight === 1440 &&
+    input.otherWidth === 1920 &&
+    input.otherHeight === 1200;
   return {
+    sizeDefaultsVersion: 1,
+    overlayPosition:
+      input.overlayPosition &&
+      ['x', 'y'].every(
+        key => Number.isInteger(input.overlayPosition[key]) && Math.abs(input.overlayPosition[key]) < 100000
+      )
+        ? { x: input.overlayPosition.x, y: input.overlayPosition.y }
+        : null,
     enabled: input.enabled === true,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
-    buffPartyId: String(input.buffPartyId || '').slice(0, 200),
-    leaderWidth: size(input.leaderWidth, 3440),
-    leaderHeight: size(input.leaderHeight, 1440),
-    otherWidth: size(input.otherWidth, 1920),
-    otherHeight: size(input.otherHeight, 1200),
+    buffPartyId: String(input.partyId || '').slice(0, 200),
+    leaderWidth: size(legacySizes ? undefined : input.leaderWidth, 2560),
+    leaderHeight: size(legacySizes ? undefined : input.leaderHeight, 1400),
+    otherWidth: size(legacySizes ? undefined : input.otherWidth, 2560),
+    otherHeight: size(legacySizes ? undefined : input.otherHeight, 1400),
     partyId: String(input.partyId || '').slice(0, 200),
     leaders,
     commands,

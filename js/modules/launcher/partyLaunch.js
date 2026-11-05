@@ -263,6 +263,14 @@ export async function launchGroup(title, characters, opts = {}) {
     toast('Запуск игры работает только в приложении (в браузере недоступен)', 'error');
     return null;
   }
+  if (opts.partyId) {
+    try {
+      const { selectMacroParty } = await import('../gameMacros/runtime.js');
+      await selectMacroParty(opts.partyId);
+    } catch {
+      toast('Пати выбрана для команд, но настройку не удалось сохранить.', 'warning');
+    }
+  }
   const signal = { cancelled: false };
   activeLaunches += 1;
   let task = null;

@@ -44,6 +44,8 @@ function log(text) {
 }
 export function stop() {
   cancelled = true;
+  if (busy && window.__TAURI_INTERNALS__)
+    void native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null }).catch(() => {});
   if (busy) log('Запрошена остановка. Уже отправленный ввод отменить нельзя.');
 }
 const wait = async ms => {
@@ -83,7 +85,11 @@ async function applyConfig() {
 }
 export async function openOverlay() {
   await initGameMacros();
-  await native('game_macro_overlay', { topmost: config().topmost });
+  await native('game_macro_overlay', {
+    topmost: config().topmost,
+    position: config().overlayPosition,
+    existingOnly: false
+  });
   await broadcast();
 }
 export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
@@ -428,24 +434,28 @@ export async function initGameMacros() {
   await listen('game-overlay-ready', () => {
     void broadcast();
   });
-  await listen('game-overlay-action', async event => {
-    const action = event.payload;
-    if (action === 'stop') stop();
-    if (action === 'settings' || action === 'logs') {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const main = getCurrentWindow();
-      await main.show();
-      await main.unminimize();
-      await main.setFocus();
-      openSettings();
-      if (action === 'logs') setTimeout(() => document.getElementById('game-macro-log')?.scrollIntoView(), 100);
-    }
+  await listen('game-overlay-action', event => {
+    if (event.payload === 'stop') stop();
+  });
+  await listen('game-macro-navigate', event => {
+    openSettings();
+    setTimeout(() => window.dispatchEvent(new CustomEvent('tf-game-macro-dialog', { detail: event.payload })), 60);
+  });
+  let positionTimer;
+  await listen('game-overlay-position', event => {
+    const p = event.payload;
+    if (!p || !Number.isInteger(p.x) || !Number.isInteger(p.y)) return;
+    state.settings.gameMacros = { ...config(), overlayPosition: { x: p.x, y: p.y } };
+    clearTimeout(positionTimer);
+    positionTimer = setTimeout(() => {
+      import('../../core/storage.js').then(({ persist }) => persist()).catch(() => {});
+    }, 250);
   });
   await configure();
 }
 
-export function scopedConfig(c, command) {
-  return command.scope === 'buff' ? { ...c, partyId: c.buffPartyId } : c;
+export function scopedConfig(c, _command) {
+  return c;
 }
 export function commandReady(c, command) {
   if (['click', 'follow'].includes(command.action)) {
@@ -483,4 +493,73 @@ async function pointPlan(c, command, rows, requireReview, authorize = true) {
     plan.push({ row, point });
   }
   return plan;
+}
+
+export async function selectMacroParty(partyId) {
+  if (!state.parties.some(p => p.id === partyId)) return;
+  state.settings.gameMacros = { ...config(), partyId, buffPartyId: partyId };
+  await (await import('../../core/storage.js')).persist();
+  await configure();
+  window.dispatchEvent(new Event('tf-game-macro-party-selected'));
+}
+export async function showSize(width, height) {
+  if (busy) throw new Error('Сначала остановите текущую команду.');
+  await native('game_macro_guide', { mode: 'size', width, height, target: null });
+}
+export async function pickPoint(charId, name) {
+  if (busy) throw new Error('Дождитесь окончания команды.');
+  if (!name.trim()) throw new Error('Введите название точки.');
+  if (config().points.length >= 30) throw new Error('Удалите ненужную точку: максимум 30.');
+  busy = true;
+  cancelled = false;
+  void broadcast();
+  const { listen } = await import('@tauri-apps/api/event');
+  let unlisten, timer;
+  try {
+    const rows = await windowTargets({ target: 'subset', charIds: [charId] });
+    let resolveResult, rejectResult;
+    const result = new Promise((resolve, reject) => {
+      resolveResult = resolve;
+      rejectResult = reject;
+    });
+    void result.catch(() => {});
+    unlisten = await listen('game-macro-picked', event => {
+      if (event.payload?.cancelled) rejectResult(new Error('Задание точки отменено.'));
+      else resolveResult(event.payload);
+    });
+    timer = setTimeout(() => rejectResult(new Error('Время задания точки истекло.')), 300000);
+    await native('game_macro_guide', {
+      mode: 'point',
+      width: 280,
+      height: 180,
+      target: { pid: rows[0].pid, startedAt: rows[0].startedAt }
+    });
+    const geometry = await result;
+    if (cancelled) throw new Error('Задание точки отменено.');
+    const point = {
+      id: crypto.randomUUID(),
+      name: name.trim().slice(0, 80),
+      uiScale: 'Ручная калибровка',
+      ...geometry
+    };
+    state.settings.gameMacros = { ...config(), points: [...config().points, point] };
+    log(`Точка «${point.name}» сохранена без клика в игру.`);
+    return point;
+  } finally {
+    clearTimeout(timer);
+    unlisten?.();
+    await native('game_macro_guide', { mode: 'close', width: 0, height: 0, target: null }).catch(() => {});
+    busy = false;
+    void broadcast();
+  }
+}
+
+export async function applyOverlayPreferences() {
+  if (!window.__TAURI_INTERNALS__) return;
+  await native('game_macro_overlay', {
+    topmost: config().topmost,
+    position: config().overlayPosition,
+    existingOnly: true
+  });
+  await broadcast();
 }

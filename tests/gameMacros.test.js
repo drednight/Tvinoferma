@@ -124,3 +124,18 @@ describe('calibration validation', () => {
     expect(() => commandPoint(c, { pointId: 'deleted', resourceAllowed: true })).toThrow();
   });
 });
+
+it('migrates only legacy default F11 sizes and preserves customized sizes', () => {
+  const legacy = normalizeGameMacros({ leaderWidth: 3440, leaderHeight: 1440, otherWidth: 1920, otherHeight: 1200 });
+  expect([legacy.leaderWidth, legacy.leaderHeight, legacy.otherWidth, legacy.otherHeight]).toEqual([
+    2560, 1400, 2560, 1400
+  ]);
+  const custom = normalizeGameMacros({ leaderWidth: 1920, leaderHeight: 1080, otherWidth: 1600, otherHeight: 900 });
+  expect([custom.leaderWidth, custom.leaderHeight, custom.otherWidth, custom.otherHeight]).toEqual([
+    1920, 1080, 1600, 900
+  ]);
+  expect(
+    normalizeGameMacros({ ...legacy, leaderWidth: 3440, leaderHeight: 1440, otherWidth: 1920, otherHeight: 1200 })
+      .leaderWidth
+  ).toBe(3440);
+});

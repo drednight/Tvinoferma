@@ -24,10 +24,10 @@ export const AHK_PRESETS = [
   { id: 'ahk-f6f1', name: 'F6 — кроме ПЛ, затем F1 — всем', action: 'f6f1', target: 'all', hotkey: 'CTRL+F6' },
   {
     id: 'ahk-buff',
-    name: 'Баф — отдельная пати',
+    name: 'Баф — выбранная пати',
     action: 'sequence',
     target: 'all',
-    scope: 'buff',
+    scope: 'party',
     hotkey: 'CTRL+F2',
     sequence: 'F8'
   },

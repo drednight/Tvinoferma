@@ -208,41 +208,421 @@
   align-items: stretch;
 }
 
-/* Party controls keep complex command editing separate from the scripts above. */
-#game-macros-block > .row {
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 12px 0;
+/* Party command workspace and its dialogs share the same themed controls. */
+.gm-workspace {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--panel);
 }
-#game-macros-block form {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0;
+.gm-workspace h3,
+.gm-workspace h4,
+.gm-workspace h5 {
+  margin: 0;
+}
+.gm-heading,
+.gm-section-top,
+.gm-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.gm-heading {
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+.gm-heading h3 {
+  font-size: 1.25rem;
+  margin: 6px 0;
+}
+.gm-heading p,
+.gm-section-top p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
   max-width: 760px;
 }
-#game-macros-block form > label {
-  display: block;
+.gm-eyebrow {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
 }
-#game-macros-block form > label > .input,
-#game-macros-block form > label > select {
-  display: block;
-  width: 100%;
-  margin-top: 5px;
+.gm-control-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.5fr);
+  gap: 20px;
+  padding: 18px;
+  background: var(--panel-2);
+  border-radius: 14px;
 }
-#game-macros-block fieldset {
+.gm-field {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.83rem;
+  color: var(--muted);
+  min-width: 0;
 }
-#game-macros-block details {
-  margin-top: 16px;
-}
-#game-macros-block .panel {
-  padding: 12px;
+.gm-workspace select,
+.gm-workspace input:not([type='checkbox']),
+.gm-dialog select,
+.gm-dialog input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']),
+.gm-dialog textarea {
+  box-sizing: border-box;
+  min-height: 42px;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+.gm-workspace option,
+.gm-dialog option {
+  background: var(--panel);
+  color: var(--text);
+}
+.gm-workspace input:focus-visible,
+.gm-workspace select:focus-visible,
+.gm-dialog input:focus-visible,
+.gm-dialog select:focus-visible,
+.gm-dialog textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.gm-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.86rem;
+}
+.gm-switch input {
+  accent-color: var(--accent);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.gm-switch small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+.gm-key-note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  margin: 12px 0;
+}
+.gm-status {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.gm-section-top {
+  margin: 24px 0 14px;
+}
+.gm-section-top h4 {
+  font-size: 1rem;
+}
+.gm-section-top h4 > span {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 6px;
+}
+.gm-command-workbench {
+  display: grid;
+  grid-template-columns: minmax(210px, 32%) minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  overflow: hidden;
+  min-height: 300px;
+}
+.gm-command-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  max-height: 570px;
+  overflow: auto;
+  background: var(--panel-2);
+  border-right: 1px solid var(--border);
+}
+.gm-command-choice {
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  padding: 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.gm-command-choice b {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.gm-command-choice kbd {
+  display: block;
+  color: #d3a83b;
+  font-size: 0.76rem;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.gm-command-choice:hover {
+  background: var(--panel);
+}
+.gm-command-choice.is-selected {
+  background: var(--panel);
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.gm-command-detail {
+  padding: 24px;
+  min-width: 0;
+}
+.gm-detail-head {
+  align-items: flex-start;
+}
+.gm-detail-head h4 {
+  font-size: 1.1rem;
+  margin: 6px 0 20px;
+}
+.gm-icon-actions {
+  display: flex;
+  gap: 5px;
+}
+.gm-icon-actions .btn {
+  min-width: 36px;
+  padding: 8px;
+}
+.gm-command-facts {
+  margin: 0;
+  display: grid;
+  gap: 13px;
+}
+.gm-command-facts > div {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 12px;
+  font-size: 0.85rem;
+}
+.gm-command-facts dt {
+  color: var(--muted);
+}
+.gm-command-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gm-sequence,
+.gm-log {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 14px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+.gm-log {
+  max-height: 60vh;
+  font-size: 0.8rem;
+}
+.gm-command-detail > .muted {
+  font-size: 0.78rem;
+  line-height: 1.6;
+  margin-top: 20px;
+}
+.gm-settings-section {
+  border-top: 1px solid var(--border);
+  margin-top: 24px;
+  padding-top: 2px;
+}
+.gm-size-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.gm-size-card {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 13px;
+  padding: 18px;
+}
+.gm-size-card h5 {
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+.gm-number-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.gm-number-unit {
+  position: relative;
+}
+.gm-number-unit input {
+  padding-right: 42px !important;
+}
+.gm-number-unit small {
+  position: absolute;
+  right: 12px;
+  top: 13px;
+}
+.gm-profile-controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  margin: 14px 0;
+}
+.gm-profile-controls .gm-field {
+  flex: 1;
+}
+.gm-point-form {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr auto;
+  gap: 14px;
+  align-items: end;
+}
+.gm-point-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+.gm-point-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.gm-point-row > div {
+  flex: 1;
+}
+.gm-point-row small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.gm-empty {
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  padding: 18px;
+  text-align: center;
+  border-radius: 10px;
+}
+.gm-bottom-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 26px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.gm-dialog [hidden],
+.gm-workspace [hidden] {
+  display: none !important;
+}
+.gm-dialog form {
+  display: grid;
+  gap: 16px;
+}
+.gm-dialog form > label {
+  display: grid;
+  gap: 7px;
+  font-size: 0.86rem;
+}
+.gm-dialog fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.gm-dialog legend {
+  color: var(--muted);
+  font-size: 0.8rem;
+  padding: 0 6px;
+}
+.gm-dialog .gm-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.gm-dialog .gm-action-choices {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.gm-dialog .gm-choice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.gm-dialog .gm-choice:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+.gm-dialog [data-gm-subset],
+.gm-dialog [data-gm-variants-field] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.gm-dialog [data-gm-variants-field] p {
+  width: 100%;
+}
+.gm-dialog .gm-consent {
+  padding: 12px;
+  background: var(--panel-2);
+  border-radius: 9px;
+  display: block;
+  line-height: 1.6;
+}
+.gm-dialog [data-gm-form-error] {
+  color: #dc655d;
+}
+.gm-overlay-form {
+  display: grid;
+  gap: 20px;
+}
+.gm-overlay-form > p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.gm-overlay-form output {
+  color: var(--text);
+  font-weight: 600;
+}
+.gm-overlay-form input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.gm-overlay-sample {
+  color: #eef1ff;
+  border: 1px solid #6e7e9c;
+  border-radius: 12px;
+  padding: 18px;
+  background: rgba(16, 20, 30, var(--preview-alpha, 0.9));
+}
+.gm-overlay-sample small {
+  display: block;
+  margin: 10px 0;
 }
 .gm-point-map {
   position: relative;
@@ -260,100 +640,34 @@
   line-height: 1;
   pointer-events: none;
 }
-
-/* Consistent themed controls, with a compact, action-specific command editor. */
-#game-macros-block select,
-#game-macros-block input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']),
-#game-macros-block textarea {
-  box-sizing: border-box;
-  min-height: 40px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel-2);
-  color: var(--text);
-  padding: 9px 12px;
-  font: inherit;
-}
-#game-macros-block select:focus-visible,
-#game-macros-block input:focus-visible,
-#game-macros-block textarea:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-#game-macros-block option {
-  background: var(--panel);
-  color: var(--text);
-}
-#game-macros-block [hidden] {
-  display: none !important;
-}
-#game-macros-block [data-gm-form] {
-  max-width: 940px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 18px;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  gap: 18px;
-}
-#game-macros-block [data-gm-form] > fieldset,
-#game-macros-block [data-gm-sequence-field],
-#game-macros-block .gm-consent,
-#game-macros-block .gm-editor-footer {
-  grid-column: 1 / -1;
-}
-#game-macros-block fieldset.gm-choice-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 12px;
-}
-#game-macros-block fieldset.gm-action-choices {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-#game-macros-block .gm-choice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
-  cursor: pointer;
-}
-#game-macros-block .gm-choice:has(input:checked) {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-#game-macros-block .gm-choice input {
-  accent-color: var(--accent);
-  flex-shrink: 0;
-}
-#game-macros-block .gm-consent {
-  padding: 12px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
-}
-.gm-editor-footer {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-.gm-status {
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-.gm-section-heading {
-  margin: 20px 0 10px;
-}
-@media (max-width: 680px) {
-  #game-macros-block [data-gm-form],
-  #game-macros-block fieldset.gm-action-choices {
+@media (max-width: 800px) {
+  .gm-workspace {
+    padding: 16px;
+  }
+  .gm-heading,
+  .gm-section-top {
+    flex-wrap: wrap;
+  }
+  .gm-control-bar,
+  .gm-size-grid,
+  .gm-point-form {
     grid-template-columns: 1fr;
+  }
+  .gm-command-workbench {
+    grid-template-columns: 1fr;
+  }
+  .gm-command-menu {
+    max-height: 260px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .gm-profile-controls {
+    flex-wrap: wrap;
+  }
+  .gm-dialog .gm-action-choices {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gm-command-detail {
+    padding: 16px;
   }
 }
