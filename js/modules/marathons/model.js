@@ -411,9 +411,20 @@ export function calendarStates(m, task, cell, today = todayStr()) {
 /*  Итоги                                                              */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Итоги марафона.
+ *
+ * Процент прогресса считается по отметкам (выполнениям), а не по полностью закрытым
+ * заданиям: 53 отметки из 371 нужной — это 14%, даже если ни одно задание ещё не
+ * доведено до цели. Перевыполнение ячейки (30/25) не завышает общий процент:
+ * в общий зачёт идёт не больше цели задания. `donePercent` оставляет прежнюю метрику
+ * «сколько заданий закрыто» для справки.
+ */
 export function marathonTotals(m) {
   let cells = 0,
     done = 0,
+    checks = 0,
+    maxChecks = 0,
     coins = 0,
     maxCoins = 0,
     failing = 0;
@@ -421,10 +432,10 @@ export function marathonTotals(m) {
     perTask = {};
 
   m.tasks.forEach(t => {
-    perTask[t.id] = { coins: 0, done: 0, assigned: 0 };
+    perTask[t.id] = { coins: 0, done: 0, assigned: 0, checks: 0, maxChecks: 0 };
   });
   m.participantIds.forEach(cid => {
-    perChar[cid] = { coins: 0, done: 0, assigned: 0 };
+    perChar[cid] = { coins: 0, done: 0, assigned: 0, checks: 0, maxChecks: 0 };
     m.tasks.forEach(t => {
       const c = computeCell(m, cid, t.id);
       if (!c.assigned) return;
@@ -432,6 +443,14 @@ export function marathonTotals(m) {
       perChar[cid].assigned++;
       perTask[t.id].assigned++;
       maxCoins += maxRewardCoins(t);
+      const target = Math.max(0, Number(c.target) || 0);
+      const counted = Math.min(Math.max(0, Number(c.count) || 0), target);
+      checks += counted;
+      maxChecks += target;
+      perChar[cid].checks += counted;
+      perChar[cid].maxChecks += target;
+      perTask[t.id].checks += counted;
+      perTask[t.id].maxChecks += target;
       if (c.state === 'done') {
         done++;
         perChar[cid].done++;
@@ -463,12 +482,15 @@ export function marathonTotals(m) {
   return {
     cells,
     done,
+    checks,
+    maxChecks,
     coins,
     maxCoins,
     failing,
     perChar,
     perTask,
-    percent: cells ? Math.round((done / cells) * 100) : 0
+    percent: maxChecks ? Math.min(100, Math.round((checks / maxChecks) * 100)) : 0,
+    donePercent: cells ? Math.round((done / cells) * 100) : 0
   };
 }
 

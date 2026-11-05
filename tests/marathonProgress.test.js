@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { createMarathon, computeCell, calendarStates, rewardPotential } from '../js/modules/marathons/model.js';
+import {
+  createMarathon,
+  computeCell,
+  calendarStates,
+  rewardPotential,
+  marathonTotals
+} from '../js/modules/marathons/model.js';
 
 // 30 дней: июнь 2026, задание на каждый день, цель 25 → запас 5 дней
 const june = (over = {}) =>
@@ -140,5 +146,71 @@ describe('сколько монет можно получить (#72, п.2)', ()
     });
     expect(rewardPotential(m.tasks[0]).text).toBe('7 ДМ за задание');
     expect(rewardPotential(m.tasks[1]).text).toBe('');
+  });
+});
+
+describe('прогресс марафона считается по отметкам, а не по закрытым заданиям', () => {
+  const withMarks = (progress, over = {}) =>
+    createMarathon({
+      id: 'marks',
+      title: 'Отметки',
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+      participantIds: ['c'],
+      tasks: [
+        { id: 't1', title: 'Задание 1', targetChecks: 3 },
+        { id: 't2', title: 'Задание 2', targetChecks: 2 }
+      ],
+      assignments: { c: ['t1', 't2'] },
+      progress,
+      ...over
+    });
+
+  it('53 отметки из 371 нужной дают 14% при 0 выполненных заданий', () => {
+    const tasks = Array.from({ length: 53 }, (_, i) => ({ id: `t${i}`, title: `Задание ${i}`, targetChecks: 7 }));
+    const progress = {
+      c: Object.fromEntries(tasks.map(t => [t.id, { site: 1, adjust: 0, marks: [], history: {} }]))
+    };
+    const m = createMarathon({
+      id: 'big',
+      startDate: '2026-06-01',
+      endDate: '2026-06-30',
+      participantIds: ['c'],
+      tasks,
+      assignments: { c: tasks.map(t => t.id) },
+      progress
+    });
+    expect(marathonTotals(m)).toMatchObject({
+      cells: 53,
+      done: 0,
+      checks: 53,
+      maxChecks: 371,
+      percent: 14,
+      donePercent: 0
+    });
+  });
+
+  it('перевыполнение задания не завышает общий процент', () => {
+    const m = withMarks({
+      c: {
+        t1: { site: 10, adjust: 0, marks: [], history: {} },
+        t2: { site: 0, adjust: 0, marks: [], history: {} }
+      }
+    });
+    expect(marathonTotals(m)).toMatchObject({ cells: 2, done: 1, checks: 3, maxChecks: 5, percent: 60 });
+    expect(computeCell(m, 'c', 't1').count).toBe(10); // в ячейке остаётся 10/3
+  });
+
+  it('все нужные отметки дают 100%, а неназначенные задания не учитываются', () => {
+    const full = withMarks({
+      c: {
+        t1: { site: 3, adjust: 0, marks: [], history: {} },
+        t2: { site: 2, adjust: 0, marks: [], history: {} }
+      }
+    });
+    expect(marathonTotals(full)).toMatchObject({ done: 2, cells: 2, checks: 5, maxChecks: 5, percent: 100 });
+
+    const none = withMarks({}, { assignments: { c: [] } });
+    expect(marathonTotals(none)).toMatchObject({ cells: 0, checks: 0, maxChecks: 0, percent: 0 });
   });
 });

@@ -4,6 +4,7 @@ import { normalizeMarathonUrl } from './sourceUrl.js';
 // Несколько выбранных этапов сайта создают СЕРИЮ (папку) с отдельным марафоном на каждый этап.
 
 import { state } from '../../core/state.js';
+import { withPreservedScroll } from '../../core/scrollPreservation.js';
 import { withoutSyncId } from '../../core/state/syncIdentity.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
@@ -108,7 +109,21 @@ export function openMarathonWizard(opts = {}) {
   });
 
   /* ---------------- общий рендер ---------------- */
+  // Перерисовка того же шага (галочки, кнопки пати) не должна сбрасывать прокрутку
+  // тела мастера и таблицы. При смене шага, наоборот, начинаем сверху.
+  let lastRenderKey = null;
   function render() {
+    const renderKey = `${W.step}:${W.active}`;
+    const sameStep = lastRenderKey === renderKey;
+    lastRenderKey = renderKey;
+    return withPreservedScroll(draw, {
+      scope: ov.el,
+      key: sameStep ? renderKey : null,
+      focus: sameStep
+    });
+  }
+
+  function draw() {
     const steps = isEdit ? STEPS.slice(1) : STEPS;
     const cur = isEdit ? W.step - 1 : W.step;
     ov.sub.innerHTML = `<div class="tf-stepper">${steps
@@ -982,6 +997,22 @@ export function openMarathonWizard(opts = {}) {
     const isIn = cid => d.participantIds.includes(cid);
     const has = (cid, tid) => isIn(cid) && (d.assignments[cid] || []).includes(tid);
     const colCount = tid => d.participantIds.filter(cid => has(cid, tid)).length;
+    /** Сколько участников пати (из числа выбранных) проходит задание. */
+    const partyTaskCount = (g, tid) => (groups.get(g) || []).filter(c => isIn(c.id) && has(c.id, tid)).length;
+    /** Кнопка в строке пати: ✕ убирает задание у всей пати, + возвращает её участникам. */
+    const partyTaskButton = (g, t) => {
+      const members = groups.get(g) || [];
+      const active = members.filter(c => isIn(c.id));
+      const assigned = partyTaskCount(g, t.id);
+      const remove = assigned > 0;
+      const action = remove ? 'Убрать задание' : 'Назначить задание';
+      const label = `${action} «${t.title}» у пати «${g}»`;
+      return `<button type="button" class="btn ghost small tf-party-task${remove ? ' is-remove' : ''}"
+        data-party-task="${escapeHtml(g)}" data-task="${escapeHtml(t.id)}"
+        data-focus-key="party-task:${escapeHtml(g)}:${escapeHtml(t.id)}"
+        title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" ${active.length ? '' : 'disabled'}>
+        ${remove ? '✕' : '+'}<span class="tf-party-task-count">${assigned}/${active.length}</span></button>`;
+    };
 
     ov.body.innerHTML = `${draftTabs()}
       <div class="toolbar tf-mx-toolbar">
@@ -993,7 +1024,7 @@ export function openMarathonWizard(opts = {}) {
           ${W.drafts.length > 1 ? '<button type="button" class="btn small" data-act="copy">📋 Скопировать на все этапы</button>' : ''}
         </div>
       </div>
-      <div class="tf-mx-wrap">
+      <div class="tf-mx-wrap" data-scroll-key="participants-matrix">
         <table class="tf-pick">
           <thead><tr>
             <th class="tf-pick-name">Персонаж</th>
@@ -1011,9 +1042,12 @@ export function openMarathonWizard(opts = {}) {
                 const members = groups.get(g);
                 const inCount = members.filter(c => isIn(c.id)).length;
                 return `
-                <tr class="tf-pick-group"><td colspan="${d.tasks.length + 1}">
-                  <label><input type="checkbox" data-party="${escapeHtml(g)}" ${inCount === members.length ? 'checked' : ''}/>
-                  <strong>${escapeHtml(g)}</strong> <span class="muted">${inCount}/${members.length}</span></label></td></tr>
+                <tr class="tf-pick-group">
+                  <td class="tf-pick-name"><label>
+                    <input type="checkbox" data-party="${escapeHtml(g)}" ${inCount === members.length ? 'checked' : ''}/>
+                    <strong>${escapeHtml(g)}</strong> <span class="muted">${inCount}/${members.length}</span></label></td>
+                  ${d.tasks.map(t => `<td class="tf-pick-cell">${partyTaskButton(g, t)}</td>`).join('')}
+                </tr>
                 ${members
                   .map(
                     c => `
@@ -1031,7 +1065,8 @@ export function openMarathonWizard(opts = {}) {
           </tbody>
           <tfoot><tr><td class="tf-pick-name muted">Выполняют</td>${d.tasks.map(t => `<td class="tf-pick-cell"><strong>${colCount(t.id)}</strong></td>`).join('')}</tr></tfoot>
         </table>
-      </div>`;
+      </div>
+      <p class="muted tf-small">✕ / + в строке пати убирает или возвращает задание сразу всем её участникам; отдельные ячейки правятся ниже.</p>`;
 
     bindTabs();
     const setIn = (cid, on) => {
@@ -1092,6 +1127,30 @@ export function openMarathonWizard(opts = {}) {
       cb =>
         (cb.onchange = () => {
           groups.get(cb.dataset.party).forEach(c => setIn(c.id, cb.checked));
+          render();
+        })
+    );
+    ov.body.querySelectorAll('[data-party-task]').forEach(
+      btn =>
+        (btn.onclick = () => {
+          const party = btn.dataset.partyTask;
+          const tid = btn.dataset.task;
+          const members = (groups.get(party) || []).filter(c => isIn(c.id));
+          if (!members.length) return;
+          // Один клик меняет задание у всех выбранных участников этой пати; персонажи
+          // других пати и неучастники марафона остаются как были.
+          const remove = members.some(c => has(c.id, tid));
+          members.forEach(c => {
+            const list = d.assignments[c.id] || [];
+            d.assignments[c.id] = remove ? list.filter(x => x !== tid) : [...new Set([...list, tid])];
+          });
+          const task = d.tasks.find(t => t.id === tid);
+          toast(
+            remove
+              ? `Задание «${task?.title || ''}» убрано у пати «${party}»`
+              : `Задание «${task?.title || ''}» назначено пати «${party}»`,
+            'success'
+          );
           render();
         })
     );
