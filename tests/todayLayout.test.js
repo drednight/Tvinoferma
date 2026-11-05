@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ persist: vi.fn(async () => {}), toast: vi.fn() }));
 vi.mock('../js/core/storage.js', () => ({ persist: mocks.persist }));
 vi.mock('../js/core/ui.js', () => ({ toast: mocks.toast }));
@@ -6,9 +6,11 @@ import { state } from '../js/core/state.js';
 import { mergeSettings } from '../js/core/state/settings.js';
 import {
   normalizeTodayOrder,
-  normalizeTodaySizes,
   todayOrder,
-  applyTodayLayout
+  applyTodayLayout,
+  normalizeTodaySizes,
+  normalizeTodayCanvas,
+  applyTodayCanvas
 } from '../js/modules/dashboard/todayLayout.js';
 import { bindTodayLayoutPanel } from '../js/settings/todayLayoutPanel.js';
 import {
@@ -26,38 +28,12 @@ beforeEach(() => {
   state.settings = mergeSettings({});
   vi.clearAllMocks();
 });
-it('filters hostile, unknown and duplicate ids and adds future/default blocks', () => {
-  expect(normalizeTodayOrder(['launch', 'launch', 'bad', '<script>'])).toEqual(['launch']);
-  expect(todayOrder(['launch'])).toEqual(['launch', 'news', 'today', 'promos', 'marathon', 'information', 'clan']);
-  expect(mergeSettings({ ui: { todayOrder: ['launch', 'launch', 'bad'] } }).ui.todayOrder).toEqual(['launch']);
-});
-it('leaves the normal layout alone, then moves the original nodes without losing controls', () => {
-  const root = document.createElement('div');
-  root.innerHTML =
-    '<div class="rt-board"><div class="rt-left"><section class="rt-news">News</section><section class="rt-today">Day</section></div><div class="rt-right"><section class="rt-launch"><button>Action</button></section><section class="rt-information">Info</section></div><section class="rt-clan">Extra</section></div>';
-  const button = root.querySelector('button'),
-    click = vi.fn();
-  button.onclick = click;
-  applyTodayLayout(root, []);
-  expect(root.querySelector('.rt-left')).not.toBeNull();
-  applyTodayLayout(root, ['launch', 'information']);
-  expect([...root.querySelector('.rt-board').children].map(e => e.className)).toEqual([
-    'rt-launch',
-    'rt-information',
-    'rt-news',
-    'rt-today',
-    'rt-clan'
-  ]);
-  button.click();
-  expect(click).toHaveBeenCalledOnce();
-});
-
 function mount(clan = true) {
   bindTodayLayoutPanel();
   const root = document.createElement('div');
   document.body.append(root);
   const draw = () => {
-    root.innerHTML = `<div class="rt-board"><div class="rt-left"><section class="rt-news">News</section><section class="rt-today">Day</section><section class="rt-promos">Promos</section></div><div class="rt-right"><section class="rt-marathon">Marathon</section><section class="rt-launch">Launch</section><section class="rt-information">Info</section></div>${clan ? '<section class="rt-clan">Clan</section>' : ''}</div>`;
+    root.innerHTML = `<div class="rt-board"><div class="rt-left">${['news', 'today', 'promos'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3><button data-content-action>Action</button></section>`).join('')}</div><div class="rt-right">${['marathon', 'launch', 'information'].map(id => `<section class="lg-panel rt-${id}"><h3>${id}</h3></section>`).join('')}</div>${clan ? '<section class="lg-panel rt-clan"><h3>Clan</h3></section>' : ''}</div>`;
     renderTodayLayoutEditor(root);
   };
   window.addEventListener('tf-today-layout-changed', draw);
@@ -65,81 +41,161 @@ function mount(clan = true) {
   draw();
   return root;
 }
-const order = root => [...root.querySelector('.rt-board').children].map(el => el.className);
 const toggle = () => {
   const input = document.querySelector('[data-today-layout-edit]');
   input.checked = !input.checked;
   input.dispatchEvent(new Event('change'));
 };
-it('Settings contains only a switch; actual blocks including clan swap on Today and save explicitly', async () => {
-  const root = mount();
-  expect(document.querySelector('[data-layout-up]')).toBeNull();
-  expect(root.querySelector('[data-layout-toolbar]')).toBeNull();
-  toggle();
-  expect(root.querySelectorAll('[data-layout-swap]')).toHaveLength(7);
-  root.querySelector('[data-layout-swap="clan"]').click();
-  root.querySelector('[data-layout-swap="news"]').click();
-  expect(order(root)[0]).toBe('rt-clan');
-  expect(state.settings.ui.todayOrder).toEqual([]);
-  expect(mocks.persist).not.toHaveBeenCalled();
+function pointer(target, type, x, y, pointerId = 1) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.assign(event, { clientX: x, clientY: y, pointerId, button: 0 });
+  target.dispatchEvent(event);
+}
+function drag(root, id, dx, dy, resize = false, cancel = false) {
+  const handle = root.querySelector(`[data-layout-${resize ? 'resize' : 'drag'}="${id}"]`);
+  pointer(handle, 'pointerdown', 0, 0);
+  pointer(window, 'pointermove', dx, dy);
+  pointer(window, cancel ? 'pointercancel' : 'pointerup', dx, dy);
+}
+async function save(root) {
   root.querySelector('[data-layout-save]').click();
   await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todayOrder[0]).toBe('clan');
-  expect(root.querySelector('[data-layout-toolbar]')).toBeNull();
-  expect(document.querySelector('[data-today-layout-edit]').checked).toBe(false);
-  expect(order(root)[0]).toBe('rt-clan');
+}
+it('normalizes stable ids, legacy sizes, and includes clan', () => {
+  expect(normalizeTodayOrder(['launch', 'bad', 'launch', '<script>'])).toEqual(['launch']);
+  expect(todayOrder(['launch'])).toEqual(['launch', 'news', 'today', 'promos', 'marathon', 'information', 'clan']);
+  expect(normalizeTodaySizes({ clan: { width: 2, height: 480 }, launch: { width: 8 }, news: { span: 5 } })).toEqual({
+    clan: { width: 2, height: 480 },
+    news: { span: 5 }
+  });
 });
-it('switching off or cancelling discards drafts and restores the original composition', () => {
+it('leaves default composition intact and preserves existing controls in legacy layout', () => {
+  const root = mount();
+  const click = vi.fn();
+  root.querySelector('[data-content-action]').onclick = click;
+  applyTodayLayout(root, []);
+  expect(root.querySelector('.rt-left')).not.toBeNull();
+  applyTodayLayout(root, ['clan']);
+  root.querySelector('[data-content-action]').click();
+  expect(click).toHaveBeenCalledOnce();
+});
+it('sanitizes free coordinates, dimensions, unknown blocks and non-finite values', () => {
+  const input = {
+    width: 100000,
+    blocks: {
+      news: { x: -10, y: 100000, width: 1, height: 99999 },
+      clan: { x: 17.4, y: 83.2 },
+      bad: { x: 1, y: 2 },
+      launch: { x: NaN, y: 1 }
+    }
+  };
+  const expected = {
+    width: 20000,
+    blocks: { news: { x: 0, y: 20000, width: 160, height: 4000 }, clan: { x: 17, y: 83 } }
+  };
+  expect(normalizeTodayCanvas(input)).toEqual(expected);
+  expect(mergeSettings({ ui: { todayCanvas: input } }).ui.todayCanvas).toEqual(expected);
+  expect(normalizeTodayCanvas({ blocks: {} })).toBeNull();
+});
+it('has no swap buttons or per-block auto buttons; toolbar auto is disabled without selection', () => {
   const root = mount();
   toggle();
-  root.querySelector('[data-layout-swap="news"]').click();
-  root.querySelector('[data-layout-swap="launch"]').click();
+  expect(root.querySelector('[data-layout-swap]')).toBeNull();
+  expect(root.querySelectorAll('[data-layout-auto]')).toHaveLength(1);
+  expect(root.querySelector('[data-layout-toolbar] [data-layout-auto]').disabled).toBe(true);
+  expect(root.querySelectorAll('[data-layout-drag]')).toHaveLength(7);
+  expect(root.querySelectorAll('[data-layout-resize]')).toHaveLength(7);
+});
+it('freely moves and resizes clan without grid snapping, only persisting on Save', async () => {
+  const root = mount();
+  toggle();
+  drag(root, 'clan', 137, 53);
+  const panel = root.querySelector('.rt-clan');
+  expect(panel.style.left).toBe('137px');
+  expect(panel.style.top).toBe('893px');
+  drag(root, 'clan', 43, 81, true);
+  expect(panel.style.width).toBe('363px');
+  expect(panel.style.height).toBe('481px');
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  await save(root);
+  expect(state.settings.ui.todayCanvas.blocks.clan).toEqual({ x: 137, y: 893, width: 363, height: 481 });
+  expect(root.querySelector('.rt-clan').style.left).toBe('137px');
+  expect(root.querySelector('[data-layout-resize]')).toBeNull();
+  expect(root.querySelector('[data-layout-toolbar]')).toBeNull();
+});
+it('toolbar auto size only resets selected dimensions and keeps its position', async () => {
+  const root = mount();
+  toggle();
+  drag(root, 'news', 37, 29);
+  drag(root, 'news', 200, 50, true);
+  drag(root, 'clan', 80, 70, true);
+  pointer(root.querySelector('.rt-news'), 'pointerdown', 0, 0);
+  root.querySelector('[data-layout-auto]').click();
+  expect(root.querySelector('.rt-news').style.left).toBe('37px');
+  expect(root.querySelector('.rt-news').style.top).toBe('29px');
+  expect(root.querySelector('.rt-news').style.width).toBe('320px');
+  expect(root.querySelector('.rt-news').style.height).toBe('');
+  expect(root.querySelector('.rt-clan').style.width).toBe('400px');
+  await save(root);
+  expect(state.settings.ui.todayCanvas.blocks.news).toEqual({ x: 37, y: 29 });
+});
+it('cancel and disabling Settings switch discard the whole draft', () => {
+  const root = mount();
+  toggle();
+  drag(root, 'news', 10, 20);
+  root.querySelector('[data-layout-cancel]').click();
+  expect(root.querySelector('.rt-left')).not.toBeNull();
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  toggle();
+  drag(root, 'news', 50, 30);
   toggle();
   expect(root.querySelector('.rt-left')).not.toBeNull();
-  expect(state.settings.ui.todayOrder).toEqual([]);
   expect(mocks.persist).not.toHaveBeenCalled();
-  toggle();
-  root.querySelector('[data-layout-cancel]').click();
-  expect(isTodayLayoutEditing()).toBe(false);
 });
-it('reset is a draft until saved and restores the original default layout', async () => {
-  state.settings.ui.todayOrder = ['clan', 'launch'];
+it('standard layout reset is a draft; Save restores original composition and clears legacy customization', async () => {
+  state.settings.ui.todayOrder = ['clan'];
+  state.settings.ui.todaySizes = { news: { width: 2 } };
+  state.settings.ui.todayCanvas = { width: 1000, blocks: { news: { x: 50, y: 60, width: 600 } } };
   const root = mount();
   toggle();
   root.querySelector('[data-layout-reset]').click();
-  expect(state.settings.ui.todayOrder).toEqual(['clan', 'launch']);
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
+  expect(state.settings.ui.todayCanvas.blocks.news.x).toBe(50);
+  expect(root.querySelector('.rt-news').style.left).toBe('0px');
+  await save(root);
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  expect(state.settings.ui.todaySizes).toEqual({});
   expect(state.settings.ui.todayOrder).toEqual([]);
   expect(root.querySelector('.rt-left')).not.toBeNull();
 });
-it('hidden clan is not fabricated and its position survives editing other blocks', async () => {
-  state.settings.ui.todayOrder = ['clan', 'news'];
+it('hidden clan coordinates survive editing another block', async () => {
+  state.settings.ui.todayCanvas = { width: 1200, blocks: { clan: { x: 47, y: 333 }, news: { x: 10, y: 20 } } };
   const root = mount(false);
   toggle();
-  expect(root.querySelector('[data-layout-swap="clan"]')).toBeNull();
-  root.querySelector('[data-layout-swap="news"]').click();
-  root.querySelector('[data-layout-swap="launch"]').click();
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todayOrder[0]).toBe('clan');
+  expect(root.querySelector('.rt-clan')).toBeNull();
+  drag(root, 'news', 57, 43);
+  await save(root);
+  expect(state.settings.ui.todayCanvas.blocks.clan).toEqual({ x: 47, y: 333 });
+  expect(state.settings.ui.todayCanvas.blocks.news.x).toBe(67);
 });
-it('failed storage rolls back persisted order, keeps draft available and allows retry', async () => {
+it('newly visible clan is placed below existing blocks', () => {
+  const root = mount();
+  applyTodayCanvas(root, { width: 1200, blocks: { news: { x: 0, y: 100, height: 500 } } });
+  expect(parseFloat(root.querySelector('.rt-clan').style.top)).toBeGreaterThan(600);
+});
+it('storage failure rolls back persisted layout but retains a retryable draft', async () => {
   const root = mount();
   toggle();
-  root.querySelector('[data-layout-swap="clan"]').click();
-  root.querySelector('[data-layout-swap="news"]').click();
+  drag(root, 'news', 77, 23);
   mocks.persist.mockRejectedValueOnce(new Error('disk full'));
   root.querySelector('[data-layout-save]').click();
   await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalled());
-  expect(state.settings.ui.todayOrder).toEqual([]);
-  expect(isTodayLayoutEditing()).toBe(true);
-  expect(order(root)[0]).toBe('rt-clan');
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todayOrder[0]).toBe('clan');
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  expect(root.querySelector('.rt-news').style.left).toBe('77px');
+  await save(root);
+  expect(state.settings.ui.todayCanvas.blocks.news.x).toBe(77);
 });
-it('locks swaps, reset, cancel and Settings switch while a save is pending', async () => {
+it('locks gestures and Settings switch during persistence', async () => {
   const root = mount();
   toggle();
   let resolve;
@@ -151,109 +207,33 @@ it('locks swaps, reset, cancel and Settings switch while a save is pending', asy
   );
   root.querySelector('[data-layout-save]').click();
   expect(root.querySelector('[data-layout-cancel]').disabled).toBe(true);
+  const before = root.querySelector('.rt-news').style.left;
+  drag(root, 'news', 100, 100);
+  expect(root.querySelector('.rt-news').style.left).toBe(before);
   toggle();
   expect(isTodayLayoutEditing()).toBe(true);
-  expect(document.querySelector('[data-today-layout-edit]').checked).toBe(true);
   resolve();
   await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
 });
-
-it('normalizes size settings without accepting unknown blocks or invalid dimensions', () => {
-  const input = {
-    clan: { width: 2, height: 480 },
-    news: { width: 99, height: -1 },
-    evil: { width: 3 },
-    launch: { width: 1, height: '400' },
-    information: { span: 5, height: 300 },
-    marathon: { span: 99 }
-  };
-  expect(normalizeTodaySizes(input)).toEqual({
-    clan: { width: 2, height: 480 },
-    launch: { width: 1 },
-    information: { span: 5, height: 300 }
-  });
-  expect(mergeSettings({ ui: { todaySizes: input } }).ui.todaySizes).toEqual(normalizeTodaySizes(input));
-});
-
-function pointer(target, type, x, y, pointerId = 1) {
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(event, { clientX: x, clientY: y, pointerId, button: 0 });
-  target.dispatchEvent(event);
-}
-function drag(root, id, dx, dy, cancel = false) {
-  const board = root.querySelector('.rt-board');
-  board.getBoundingClientRect = () => ({ width: 1200 });
-  const panel = root.querySelector(`.rt-${id}`);
-  const width = Number(panel.dataset.layoutSpan) * 100;
-  panel.getBoundingClientRect = () => ({ width, height: parseInt(panel.style.height) || 300 });
-  const grip = panel.querySelector('[data-layout-resize]');
-  grip.setPointerCapture = vi.fn();
-  pointer(grip, 'pointerdown', 0, 0);
-  pointer(grip, 'pointermove', dx, dy);
-  pointer(grip, cancel ? 'pointercancel' : 'pointerup', dx, dy);
-}
-it('drags the clan corner to resize, saves dimensions and hides grips outside edit mode', async () => {
-  const root = mount();
-  expect(root.querySelector('[data-layout-resize]')).toBeNull();
-  toggle();
-  expect(root.querySelector('input[type="number"]')).toBeNull();
-  expect(root.querySelector('select')).toBeNull();
-  drag(root, 'clan', -400, 180);
-  expect(root.querySelector('.rt-clan').style.height).toBe('480px');
-  expect(root.querySelector('.rt-clan').dataset.layoutSpan).toBe('8');
-  expect(state.settings.ui.todaySizes).toEqual({});
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todaySizes.clan).toEqual({ span: 8, height: 480 });
-  expect(root.querySelector('.rt-clan').style.height).toBe('480px');
-  expect(root.querySelector('[data-layout-resize]')).toBeNull();
-});
-it('cancel restores saved sizes and storage failure rolls them back too', async () => {
-  state.settings.ui.todaySizes = { news: { width: 2, height: 350 } };
+it('cancelled pointer gesture restores size and position; dimensions stay within limits', () => {
   const root = mount();
   toggle();
-  drag(root, 'news', 100, 350);
-  expect(root.querySelector('.rt-news').style.height).toBe('700px');
-  root.querySelector('[data-layout-cancel]').click();
-  expect(root.querySelector('.rt-news').style.height).toBe('350px');
-  toggle();
-  root.querySelector('[data-layout-reset]').click();
-  mocks.persist.mockRejectedValueOnce(new Error('disk full'));
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(mocks.toast).toHaveBeenCalled());
-  expect(state.settings.ui.todaySizes.news).toEqual({ width: 2, height: 350 });
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todaySizes).toEqual({});
-  expect(root.querySelector('.rt-left')).not.toBeNull();
+  drag(root, 'news', 81, 93, false, true);
+  expect(root.querySelector('.rt-news').style.left).toBe('0px');
+  drag(root, 'news', -99999, -99999, true);
+  expect(root.querySelector('.rt-news').style.width).toBe('160px');
+  expect(root.querySelector('.rt-news').style.height).toBe('120px');
 });
-it('clamps dragging to safe dimensions and restores a cancelled gesture', async () => {
+it('keyboard moves and resizes without grid snapping and Home applies selected auto size', () => {
   const root = mount();
   toggle();
-  drag(root, 'news', 100000, 100000);
-  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('12');
-  expect(root.querySelector('.rt-news').style.height).toBe('1600px');
-  drag(root, 'news', -100000, -100000, true);
-  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('12');
-  expect(root.querySelector('.rt-news').style.height).toBe('1600px');
-  drag(root, 'news', -100000, -100000);
-  expect(root.querySelector('.rt-news').dataset.layoutSpan).toBe('3');
-  expect(root.querySelector('.rt-news').style.height).toBe('200px');
-  root.querySelector('[data-layout-save]').click();
-  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
-  expect(state.settings.ui.todaySizes.news).toEqual({ span: 3, height: 200 });
-});
-it('supports keyboard resizing and resetting a single block to auto size', () => {
-  const root = mount();
-  toggle();
-  const panel = root.querySelector('.rt-news');
-  panel.getBoundingClientRect = () => ({ height: 300 });
-  const grip = panel.querySelector('[data-layout-resize]');
+  const header = root.querySelector('[data-layout-drag="news"]');
+  header.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true }));
+  expect(root.querySelector('.rt-news').style.left).toBe('1px');
+  const grip = root.querySelector('[data-layout-resize="news"]');
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-  expect(panel.dataset.layoutSpan).toBe('5');
-  grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-  expect(panel.style.height).toBe('320px');
+  expect(root.querySelector('.rt-news').style.width).toBe('330px');
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-  expect(panel.style.height).toBe('');
-  expect(panel.dataset.layoutSpan).toBe('4');
+  expect(root.querySelector('.rt-news').style.width).toBe('320px');
+  expect(root.querySelector('.rt-news').style.left).toBe('1px');
 });

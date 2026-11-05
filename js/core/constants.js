@@ -137,6 +137,7 @@ export const DEFAULT_SETTINGS = {
     plannerView: 'week',
     todayOrder: [],
     todaySizes: {},
+    todayCanvas: null,
     // Какие разделы показывать в меню и в каком порядке (js/core/sections.js).
     // Пусто значит «порядок по умолчанию, все видны» — список разделов и так меняется
     // с выходом новой версии, а хранить его копию значило бы забыть об этом.

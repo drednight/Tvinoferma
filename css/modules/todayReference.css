@@ -1161,3 +1161,34 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Free placement: keep exact user coordinates; smaller screens can scroll the canvas. */
+.rt-board.rt-free-layout {
+  display: block;
+  overflow: auto;
+  max-width: 100%;
+}
+.rt-free-surface {
+  position: relative;
+  min-height: 200px;
+}
+.rt-free-surface > .lg-panel,
+.rt-free-surface > section {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  min-width: 0;
+  min-height: 120px;
+  overflow: auto;
+}
+.rt-free-surface > .rt-layout-fixed-height {
+  overflow: auto;
+}
+[data-layout-drag] {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+[data-layout-drag]:focus-visible {
+  outline: 2px solid var(--accent);
+}
