@@ -1,6 +1,7 @@
+import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
 import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint } from './model.js';
-let invoke, emitTo;
+let invoke;
 let initialized = false,
   busy = false,
   cancelled = false,
@@ -30,7 +31,6 @@ export function snapshot() {
 export async function broadcast() {
   window.dispatchEvent(new Event('tf-game-macros-changed'));
   if (!window.__TAURI_INTERNALS__) return;
-  emitTo ||= (await import('@tauri-apps/api/event')).emitTo;
   try {
     await emitTo('game-overlay', 'game-macro-snapshot', snapshot());
   } catch {
@@ -429,7 +429,6 @@ export function openSettings() {
 export async function initGameMacros() {
   if (initialized || !window.__TAURI_INTERNALS__) return;
   initialized = true;
-  const { listen } = await import('@tauri-apps/api/event');
   await listen('game-macro-hotkey', event => {
     if (config().enabled && registered) void run(String(event.payload), true);
   });
@@ -515,7 +514,6 @@ export async function pickPoint(charId, name) {
   busy = true;
   cancelled = false;
   void broadcast();
-  const { listen } = await import('@tauri-apps/api/event');
   let unlisten, timer;
   try {
     const rows = await windowTargets({ target: 'subset', charIds: [charId] });
