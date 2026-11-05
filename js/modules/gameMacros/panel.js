@@ -61,7 +61,7 @@ export function mountGameMacros(host) {
     partyMembers(state, c.partyId)
       .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
       .join('') || '<p class="muted">Сначала выберите пати.</p>'
-  }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><p class="muted" data-gm-follow-field>Основная точка — портрет для ПКМ. Убедитесь, что Shift+1 и этот портрет выбирают именно назначенного ПЛ в игре. Внутриигровое лидерство программа не меняет.</p><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
+  }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><p class="muted" data-gm-follow-field>Основная точка — портрет для ПКМ. Убедитесь, что Shift+1 и этот портрет выбирают именно назначенного ПЛ в игре. Внутриигровое лидерство программа не меняет.</p><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
 wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><div class="gm-editor-footer"><button class="btn primary">Сохранить команду</button><button type="button" class="btn ghost" data-gm-cancel>Отмена</button></div></form></details>
   <details><summary>Размеры клиентов для F11</summary><p class="muted">Из исходного файла: ПЛ 3440×1440, остальные 1920×1200. Укажите подходящие размеры клиентской области до запуска F11. Положения окон сохраняются; парковки за экран нет. ПЛ берётся из настроек пати, не из текущего окна.</p>${[
     ['leaderWidth', 'ПЛ: ширина'],
@@ -151,6 +151,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     });
     const fixedTarget = ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action);
     form.querySelector('[data-gm-targets]').hidden = fixedTarget;
+    form.querySelector('[data-gm-variants-field]').hidden = action !== 'click';
     form.querySelectorAll('[data-gm-follow-field]').forEach(el => {
       el.hidden = action !== 'follow';
     });
@@ -175,6 +176,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     if (['optimize', 'launch'].includes(data.action)) data.scope = 'party';
     if (data.scope === 'managed') data.target = 'all';
     data.charIds = new FormData(form).getAll('charIds');
+    data.pointIds = new FormData(form).getAll('pointIds');
     data.resourceAllowed = form.elements.namedItem('resourceAllowed').checked;
     if (data.target === 'subset' && !data.charIds.length) throw new Error('Выберите хотя бы одного получателя.');
     if (['click', 'follow'].includes(data.action) && (!data.pointId || !data.resourceAllowed))
@@ -201,12 +203,15 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
       const row = config().commands.find(c => c.id === button.dataset.gmEdit);
       for (const [key, value] of Object.entries(row)) {
         const input = form.elements.namedItem(key);
-        if (!input || key === 'charIds') continue;
+        if (!input || ['charIds', 'pointIds'].includes(key)) continue;
         if (input.type === 'checkbox') input.checked = value === true;
         else input.value = value;
       }
       form.querySelectorAll('[name="charIds"]').forEach(input => {
         input.checked = row.charIds.includes(input.value);
+      });
+      form.querySelectorAll('[name="pointIds"]').forEach(input => {
+        input.checked = row.pointIds.includes(input.value);
       });
       syncFields();
       host.querySelector('[data-gm-editor]').open = true;

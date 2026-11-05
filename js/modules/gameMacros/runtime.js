@@ -284,14 +284,12 @@ export async function run(id, hotkey = false) {
         log(`Следование: ввод отправлен для ${row.nick}; результат в игре не проверялся.`);
       }
     } else if (command.action === 'click') {
-      const point = commandPoint(c, command);
-      if (!reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
-      // Check EVERY recipient before the first potentially resource-spending click.
-      for (const row of rows) {
+      const plan = await pointPlan(c, command, rows, true);
+      for (const { row, point } of plan) {
         await wait(50);
         await act(row, 'preview', { point });
       }
-      for (const [index, row] of rows.entries()) {
+      for (const [index, { row, point }] of plan.entries()) {
         await wait(50);
         await act(row, 'focus');
         await wait(100);
@@ -388,16 +386,20 @@ export async function previewCommand(id) {
   void broadcast();
   try {
     const rows = await windowTargets(command, c);
-    const points =
-      command.action === 'follow'
-        ? [point, commandPoint(c, { ...command, pointId: command.menuPointId }, false)]
-        : [point];
-    for (const row of rows)
-      for (const point of points) {
-        await wait(50);
-        await act(row, 'preview', { point });
-      }
-    for (const point of points) reviewedPoints.add(JSON.stringify(point));
+    const plan =
+      command.action === 'click'
+        ? await pointPlan(c, command, rows, false, false)
+        : rows.flatMap(row =>
+            [point, commandPoint(c, { ...command, pointId: command.menuPointId }, false)].map(point => ({ row, point }))
+          );
+    for (const { row, point } of plan) {
+      await wait(50);
+      await act(row, 'preview', { point });
+    }
+    for (const { point } of plan) reviewedPoints.add(JSON.stringify(point));
+    log(
+      `Проверены профили: ${[...new Set(plan.map(({ point }) => `${point.name} (${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale})`))].join('; ')}. Без кликов.`
+    );
     log(
       `Предпросмотр без клика: ${rows.map(r => r.nick).join(', ')}; точка ${point.name}; клиент ${point.width}×${point.height}, DPI ${point.dpi}, UI ${point.uiScale}. Визуально проверьте соответствие UI на схеме в настройках.`
     );
@@ -453,4 +455,30 @@ export function commandReady(c, command) {
     }
   }
   return true;
+}
+
+async function pointPlan(c, command, rows, requireReview, authorize = true) {
+  const primary = commandPoint(c, command, authorize);
+  const candidates = [
+    primary,
+    ...(command.pointIds || [])
+      .filter(id => id !== primary.id)
+      .map(pointId => commandPoint(c, { ...command, pointId }, authorize))
+  ];
+  const plan = [];
+  for (const row of rows) {
+    await wait(50);
+    let point = primary;
+    if (candidates.length > 1) {
+      const metric = await act(row, 'client-info');
+      const matches = candidates.filter(
+        p => p.width === metric.width && p.height === metric.height && p.dpi === metric.dpi
+      );
+      if (matches.length !== 1) throw new Error('Ambiguous/missing calibration for client size and DPI');
+      point = matches[0];
+    }
+    if (requireReview && !reviewedPoints.has(JSON.stringify(point))) throw new Error('preview required');
+    plan.push({ row, point });
+  }
+  return plan;
 }

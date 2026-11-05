@@ -264,7 +264,7 @@ mod win {
                         return Err("Key input incomplete or focus changed".into());
                     }
                 }
-                "capture" | "preview" | "click" | "right-click" => {
+                "capture" | "preview" | "click" | "right-click" | "client-info" => {
                     let mut r = RECT::default();
                     GetClientRect(hwnd, &mut r).map_err(|_| "Cannot read client area")?;
                     let width = r.right - r.left;
@@ -279,7 +279,7 @@ mod win {
                         if !ScreenToClient(hwnd, &mut pos).as_bool() {
                             return Err("Cannot convert pointer".into());
                         }
-                    } else {
+                    } else if action != "client-info" {
                         let p = point.ok_or("Missing calibration")?;
                         if width != p.width || height != p.height || dpi != p.dpi || dpi == 0 {
                             return Err("Client size or DPI differs from calibration".into());

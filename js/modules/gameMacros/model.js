@@ -74,6 +74,9 @@ export function normalizeGameMacros(input = {}) {
       pointId: String(row.pointId || '').slice(0, 80),
       resourceAllowed: row.resourceAllowed === true,
       scope: ['buff', 'managed'].includes(row.scope) ? row.scope : 'party',
+      pointIds: [
+        ...new Set((Array.isArray(row.pointIds) ? row.pointIds : []).filter(id => typeof id === 'string'))
+      ].slice(0, 30),
       menuPointId: String(row.menuPointId || '').slice(0, 80)
     });
   }

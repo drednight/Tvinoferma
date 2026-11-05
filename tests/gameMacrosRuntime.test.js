@@ -165,3 +165,86 @@ describe('ported multi-pass AHK actions', () => {
     expect(runtime.snapshot().paused).toBe(false);
   });
 });
+
+describe('AHK follow, buff and mixed-resolution resurrection', () => {
+  const base = { id: 'portrait', name: 'Portrait', uiScale: '100%', x: 20, y: 20, width: 800, height: 600, dpi: 96 };
+  it('previews both points, then sends Shift+1, right-click and left-click in order', async () => {
+    state.settings.gameMacros.points = [base, { ...base, id: 'menu', name: 'Follow', x: 40, y: 40 }];
+    state.settings.gameMacros.commands = [
+      {
+        id: 'follow',
+        name: 'follow',
+        action: 'follow',
+        target: 'all',
+        pointId: 'portrait',
+        menuPointId: 'menu',
+        resourceAllowed: true
+      }
+    ];
+    await runtime.previewCommand('follow');
+    expect(invoke.mock.calls.some(([, args]) => ['click', 'right-click', 'key'].includes(args?.action))).toBe(false);
+    invoke.mockClear();
+    await runtime.run('follow');
+    expect(invoke.mock.calls.map(([, args]) => args?.action).filter(Boolean)).toEqual([
+      'preview',
+      'preview',
+      'focus',
+      'key',
+      'right-click',
+      'click',
+      'focus'
+    ]);
+    expect(invoke.mock.calls.find(([, args]) => args?.action === 'key')[1].key).toBe('SHIFT+1');
+  });
+  it('buff uses only the separately selected party', async () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['buff'] });
+    state.settings.gameMacros.buffPartyId = 'buff';
+    state.settings.gameMacros.commands = [
+      { id: 'buff', name: 'buff', action: 'sequence', target: 'all', scope: 'buff', sequence: 'F8' }
+    ];
+    invoke.mockImplementation(async command =>
+      command === 'launcher_running_details' ? [client, { ...client, pid: 11, hwnd: 101, title: 'Beta — Воин' }] : null
+    );
+    await runtime.run('buff');
+    expect(invoke.mock.calls.filter(([, args]) => args?.action === 'key').map(([, args]) => args.target.pid)).toEqual([
+      11
+    ]);
+  });
+  it('selects an exact point variant per window, without scaling and without requiring a management party', async () => {
+    state.settings.gameMacros.partyId = '';
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: [] });
+    state.settings.gameMacros.points = [
+      base,
+      { ...base, id: 'wide', name: 'Wide', width: 3440, height: 1440, x: 100, y: 100 }
+    ];
+    state.settings.gameMacros.commands = [
+      {
+        id: 'res',
+        name: 'res',
+        action: 'click',
+        target: 'all',
+        scope: 'managed',
+        pointId: 'portrait',
+        pointIds: ['wide'],
+        resourceAllowed: true
+      }
+    ];
+    invoke.mockImplementation(async (command, args) => {
+      if (command === 'launcher_running_details')
+        return [client, { ...client, pid: 11, hwnd: 101, title: 'Beta — Воин' }];
+      if (args?.action === 'client-info')
+        return args.target.pid === 10 ? { width: 800, height: 600, dpi: 96 } : { width: 3440, height: 1440, dpi: 96 };
+      return null;
+    });
+    await runtime.previewCommand('res');
+    await runtime.run('res');
+    expect(
+      invoke.mock.calls
+        .filter(([, args]) => args?.action === 'click')
+        .map(([, args]) => [args.target.pid, args.point.width])
+    ).toEqual([
+      [10, 800],
+      [11, 3440]
+    ]);
+  });
+});
