@@ -99,6 +99,8 @@ export async function windowTargets(command = { target: 'all', action: 'next' },
       row.known = false;
   }
   if (command.scope === 'managed') {
+    if (command.target !== 'all' || command.action === 'leader')
+      throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
     if (
       !rows.length ||
       rows.some(row => !row.known || !row.startedAt || !row.hwnd || row.elevated !== false) ||

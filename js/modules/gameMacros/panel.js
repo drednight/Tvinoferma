@@ -149,14 +149,30 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
     form.querySelectorAll('[data-gm-sequence-field]').forEach(el => {
       el.hidden = action !== 'sequence';
     });
-    const fixedTarget = ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action);
+    const fixedTarget =
+      ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action) ||
+      form.elements.namedItem('scope').value === 'managed';
     form.querySelector('[data-gm-targets]').hidden = fixedTarget;
     form.querySelector('[data-gm-variants-field]').hidden = action !== 'click';
     form.querySelectorAll('[data-gm-follow-field]').forEach(el => {
       el.hidden = action !== 'follow';
     });
     form.querySelector('[data-gm-scope-field]').hidden = ['launch', 'pause', 'optimize'].includes(action);
-    form.querySelector('[data-gm-subset]').hidden = fixedTarget || target !== 'subset';
+    const subset = form.querySelector('[data-gm-subset]');
+    subset.hidden = fixedTarget || target !== 'subset';
+    const partyId = form.elements.namedItem('scope').value === 'buff' ? c.buffPartyId : c.partyId;
+    if (subset.dataset.partyId !== partyId) {
+      const selected = new Set([...subset.querySelectorAll('input:checked')].map(input => input.value));
+      subset.innerHTML =
+        '<legend>Поднабор получателей</legend>' +
+        partyMembers(state, partyId)
+          .map(
+            char =>
+              `<label><input type="checkbox" name="charIds" value="${esc(char.id)}" ${selected.has(char.id) ? 'checked' : ''}> ${esc(char.class || '')} — ${esc(char.nick)}</label>`
+          )
+          .join('');
+      subset.dataset.partyId = partyId;
+    }
   };
   form.addEventListener('change', syncFields);
   syncFields();
@@ -207,6 +223,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
         if (input.type === 'checkbox') input.checked = value === true;
         else input.value = value;
       }
+      syncFields();
       form.querySelectorAll('[name="charIds"]').forEach(input => {
         input.checked = row.charIds.includes(input.value);
       });

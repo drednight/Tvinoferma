@@ -248,3 +248,11 @@ describe('AHK follow, buff and mixed-resolution resurrection', () => {
     ]);
   });
 });
+
+it('refuses an imported contradictory global scope instead of widening an others/subset target', async () => {
+  state.settings.gameMacros.commands = [
+    { id: 'bad', name: 'bad', action: 'sequence', target: 'others', scope: 'managed', sequence: 'F8' }
+  ];
+  await runtime.run('bad');
+  expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(false);
+});
