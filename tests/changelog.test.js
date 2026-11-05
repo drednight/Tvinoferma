@@ -13,6 +13,11 @@ describe('разбор CHANGELOG.md', () => {
     expect(releases[0].version).toBe('Unreleased');
     expect(releases[0].date).toBe('');
     expect(releases[0].lead).toContain('Изменения после стабильного выпуска 2.3.0');
+    // «В разработке» всегда сверху; первый пронумерованный выпуск — последний стабильный.
+    const latest = releases.find(r => r.version === '2.3.0');
+    expect(latest?.date).toBe('2026-11-04');
+    expect(latest?.lead).toContain('Изменения после стабильного выпуска 2.2.0');
+
     const v220 = releases.find(r => r.version === '2.2.0');
     expect(v220?.date).toBe('2026-10-20');
     // Порядок файла сохранён: более свежие раньше
@@ -64,6 +69,9 @@ describe('HTML истории', () => {
     expect(items[0].hasAttribute('open')).toBe(false);
     expect(items[1].hasAttribute('open')).toBe(false);
     expect(items[0].querySelector('.uh-ver').textContent).toBe('🚧 В разработке');
+    const v230 = items.find(d => d.querySelector('.uh-ver').textContent.includes('2.3.0'));
+    expect(v230?.querySelector('.uh-date').textContent).toBe('2026-11-04');
+
     const v220 = items.find(d => d.querySelector('.uh-ver').textContent.includes('2.2.0'));
     expect(v220?.querySelector('.uh-date').textContent).toBe('2026-10-20');
     expect(v220?.querySelector('.uh-count').textContent).toMatch(/запис/);

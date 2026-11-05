@@ -4,6 +4,7 @@ import { openCharacterWebLink } from '../../core/linkBrowser.js';
 // с матрицей прогресса «персонаж × задание», сверкой с сайтом и статистикой монет.
 
 import { state } from '../../core/state.js';
+import { withPreservedScroll } from '../../core/scrollPreservation.js';
 import { freshnessOf, freshnessChipHtml } from '../../core/freshness.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
@@ -91,7 +92,24 @@ setWizardSavedHandler(id => openMarathon(id));
 /*  Точка входа                                                        */
 /* ================================================================== */
 
+// При сверке страница перерисовывается несколько раз подряд (очередь, старт и конец
+// каждого персонажа). Без сохранения позиции окно уезжает к шапке, а таблица — к
+// первой колонке. Смена марафона/папки — уже другой вид: там начинаем сверху.
+let lastRenderKey = null;
 export function renderMarathons() {
+  const root = document.getElementById('marathon-list');
+  if (!root) return;
+  const renderKey = `${view.type}:${view.id || ''}`;
+  const sameView = lastRenderKey === renderKey;
+  lastRenderKey = renderKey;
+  return withPreservedScroll(drawMarathons, {
+    scope: root,
+    key: sameView ? renderKey : null,
+    focus: sameView
+  });
+}
+
+function drawMarathons() {
   const root = document.getElementById('marathon-list');
   if (!root) return;
   try {
@@ -400,9 +418,9 @@ function marathonCard(m, { inFolder = false } = {}) {
           ${inFolder ? `<button type="button" class="icon-btn mr-unlink" data-unlink="${m.id}" title="Убрать из папки">↩</button>` : ''}
         </span>
       </header>
-      <div class="mr-prog">${progressBar(t.percent)}<b>${t.percent}%</b></div>
+      <div class="mr-prog" title="Прогресс по отметкам: ${t.checks} из ${t.maxChecks}">${progressBar(t.percent)}<b>${t.percent}%</b></div>
       <div class="mr-stats">
-        ${statTile('Выполнено', `${t.done}/${t.cells}`, { title: 'Выполнено заданий' })}
+        ${statTile('Выполнено', `${t.done}/${t.cells}`, { title: `Выполнено заданий; отметок ${t.checks}/${t.maxChecks}` })}
         ${t.failing ? statTile('Не успевают', t.failing, { tone: 'bad', title: 'Не успевают задания' }) : ''}
         ${statTile('Участники', m.participantIds.length, { title: 'Участников' })}
         ${statTile('Заданий', m.tasks.length)}
@@ -467,7 +485,11 @@ function renderSeries(root, s) {
     ${ui.syncTask && ui.syncTaskFor === s.id ? taskCardHtml(ui.syncTask) : ''}
     <div class="kpi-grid mr-kpis">
       ${kpi('Марафонов', kids.length)}${kpi('Участников', charIds.length)}
-      ${kpi('Выполнено заданий', `${totals.reduce((a, x) => a + x.t.done, 0)}/${totals.reduce((a, x) => a + x.t.cells, 0)}`)}
+      ${kpi(
+        'Выполнено заданий',
+        `${totals.reduce((a, x) => a + x.t.done, 0)}/${totals.reduce((a, x) => a + x.t.cells, 0)}`,
+        `отметок ${totals.reduce((a, x) => a + x.t.checks, 0)}/${totals.reduce((a, x) => a + x.t.maxChecks, 0)}`
+      )}
       ${kpi('<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано', `${coins.toLocaleString('ru-RU')}`, maxCoins ? `из ${maxCoins.toLocaleString('ru-RU')} возможных` : '')}
     </div>
     <div class="mr-cards">${kids.map(k => marathonCard(k, { inFolder: true })).join('') || '<div class="empty-state">Папка пуста. Нажмите «+ Марафон» или «📥 Добавить существующие».</div>'}</div>
@@ -569,7 +591,7 @@ function renderDetail(root, m) {
 
     <div class="kpi-grid mr-kpis">
       ${kpi('Прогресс', `${t.percent}%`, progressBar(t.percent))}
-      ${kpi('Выполнено заданий', `${t.done}/${t.cells}`)}
+      ${kpi('Выполнено заданий', `${t.done}/${t.cells}`, `отметок ${t.checks}/${t.maxChecks}`)}
       ${kpi('Не успевают', t.failing ? `<span class="mr-red">${t.failing}</span>` : '0', t.failing ? 'запас дней исчерпан' : 'все в графике')}
       ${kpi(completed ? '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано (итог)' : '<svg class="ic" aria-hidden="true"><use href="#i-coin"/></svg> Заработано', t.coins.toLocaleString('ru-RU'), t.maxCoins ? `из ${t.maxCoins.toLocaleString('ru-RU')} возможных` : 'награды не заданы')}
       ${kpi('Последняя сверка', m.lastSync ? fmtDateTime(m.lastSync.at) : '—', m.lastSync ? `изменений: ${m.lastSync.changes.length} ${syncAgeHtml(m)}` : 'ещё не сверяли с сайтом')}
@@ -592,7 +614,7 @@ function renderDetail(root, m) {
       </div>
     </div>
 
-    <div class="tf-mx-wrap">${matrix(m)}</div>
+    <div class="tf-mx-wrap" data-scroll-key="marathon-matrix">${matrix(m)}</div>
     ${coinsSection(m, t)}`;
 
   bindCrumbs(root);
@@ -980,7 +1002,12 @@ async function runSync(marathons, ownerId = null) {
   );
   try {
     const { renderCharacters } = await import('../characters/list.js');
-    renderCharacters();
+    const activeSection = () => document.querySelector('.page.active')?.dataset.section || '';
+    withPreservedScroll(renderCharacters, {
+      scope: document.body,
+      key: activeSection,
+      focus: false
+    });
   } catch (_) {}
 }
 

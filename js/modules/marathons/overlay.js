@@ -15,7 +15,7 @@ export function openOverlay({ title = '', wide = false, onClose } = {}) {
         <button type="button" class="icon-btn tf-close" title="Закрыть">✕</button>
       </div>
       <div class="tf-dialog-sub"></div>
-      <div class="modal-body tf-dialog-body"></div>
+      <div class="modal-body tf-dialog-body" data-scroll-key="dialog-body"></div>
       <div class="modal-footer tf-dialog-foot"></div>
     </div>`;
   root.appendChild(overlay);

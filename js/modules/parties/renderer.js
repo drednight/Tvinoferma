@@ -1,6 +1,7 @@
 // js/modules/parties/renderer.js
 
 import { state } from '../../core/state.js';
+import { withPreservedScroll } from '../../core/scrollPreservation.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml } from '../../core/utils.js';
 import { formatCoins, roundCoins } from '../../core/coins.js';
@@ -194,6 +195,8 @@ function partyCardHtml(name, members) {
  * Список окон общий и меняется после запуска и закрытия — подписываемся один раз.
  */
 let runningWindowsBound = false;
+/** Фоновое обновление списка окон не должно сбрасывать прокрутку раздела. */
+const activeSection = () => document.querySelector('.page.active')?.getAttribute('data-section') || '';
 function bindRunningWindows() {
   if (runningWindowsBound) return;
   runningWindowsBound = true;
@@ -202,7 +205,7 @@ function bindRunningWindows() {
     // Перерисовываем только когда видна вкладка «Пати»: иначе затираем то,
     // что пользователь в этот момент смотрит в другой вкладке.
     if (!list || !list.closest('.page')?.classList.contains('active')) return;
-    renderPartiesGrid();
+    withPreservedScroll(renderPartiesGrid, { scope: document.body, key: activeSection, focus: false });
   });
 }
 
