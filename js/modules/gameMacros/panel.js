@@ -31,20 +31,33 @@ export function mountGameMacros(host) {
   <div class="row gap"><label>Пати <select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => `<option value="${esc(p.id)}" ${p.id === c.partyId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><label><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}> Включить глобальные хоткеи</label><button class="btn" data-gm-overlay>Окно-памятка / оверлей</button></div>
   <p class="muted">Хоткеи резервируются в Windows; игровые команды исполняются только при активном окне выбранной пати. Ctrl+Alt+Pause — остановка. Безопаснее выбирать сочетания Ctrl+Alt, не Ctrl+X и Ctrl+F.</p>
   <div class="row gap"><label>Непрозрачность фона <input type="range" min="30" max="100" value="${Math.round(c.opacity * 100)}" data-gm-opacity></label><label><input type="checkbox" data-gm-top ${c.topmost ? 'checked' : ''}> Оверлей поверх окон</label><button class="btn danger" data-gm-stop>Остановить</button></div>
-  <div data-gm-runtime></div>
+  <div class="gm-status" data-gm-runtime role="status"></div><h4 class="gm-section-heading">Мои команды</h4>
   <div class="tools-grid">${c.commands.map(row => `<div class="panel"><b>${esc(row.name)}</b><p>${esc(labels[row.action])} · ${esc(row.hotkey || 'без хоткея')}</p><button class="btn" data-gm-run="${esc(row.id)}">Запустить</button>${row.action === 'click' ? ` <button class="btn" data-gm-preview="${esc(row.id)}">Предпросмотр без клика</button>` : ''} <button class="btn ghost" data-gm-edit="${esc(row.id)}">Изменить</button> <button class="btn ghost" data-gm-delete="${esc(row.id)}">Удалить</button></div>`).join('')}</div>
-  <details data-gm-editor><summary>Добавить / изменить команду</summary><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><label>Действие <select name="action">${Object.entries(
+  <details data-gm-editor><summary>Добавить / изменить команду</summary><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><fieldset class="gm-choice-grid gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
     labels
   )
-    .map(([key, value]) => `<option value="${key}">${value}</option>`)
+    .map(
+      ([key, value], index) =>
+        `<label class="gm-choice"><input type="radio" name="action" value="${key}" ${index === 0 ? 'checked' : ''}><span>${esc(value)}</span></label>`
+    )
     .join(
       ''
-    )}</select></label><label>Хоткей <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Получатели <select name="target"><option value="all">Вся выбранная пати</option><option value="others">Кроме ПЛ</option><option value="leader">Только ПЛ</option><option value="subset">Выбранные участники</option></select></label><fieldset data-gm-subset><legend>Поднабор получателей</legend>${
+    )}</fieldset><label>Хоткей <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+    ['all', 'Вся пати'],
+    ['leader', 'Только ПЛ'],
+    ['others', 'Кроме ПЛ'],
+    ['subset', 'Выбрать участников']
+  ]
+    .map(
+      ([key, value], index) =>
+        `<label class="gm-choice"><input type="radio" name="target" value="${key}" ${index === 0 ? 'checked' : ''}><span>${value}</span></label>`
+    )
+    .join('')}</fieldset><fieldset data-gm-subset><legend>Поднабор получателей</legend>${
     partyMembers(state, c.partyId)
       .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
       .join('') || '<p class="muted">Сначала выберите пати.</p>'
-  }</fieldset><label>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><label><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
-wait 200</textarea></label><p class="muted">Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><button class="btn">Сохранить команду</button></form></details>
+  }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
+wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p><div class="gm-editor-footer"><button class="btn primary">Сохранить команду</button><button type="button" class="btn ghost" data-gm-cancel>Отмена</button></div></form></details>
   <details><summary>Профили размещения игровых окон</summary><p class="muted">Сохранение текущих внешних размеров и позиций окон выбранной пати. При смене мониторов профиль проверяется. Игра от администратора не управляется.</p><label>Профиль <select data-gm-profile><option value="">Не выбран</option>${c.profiles.map(p => `<option value="${esc(p.id)}" ${p.id === c.profileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label><button class="btn ghost" data-gm-delete-profile>Удалить выбранный профиль</button><input class="input" data-gm-profile-name placeholder="Название профиля" maxlength="80"><button class="btn" data-gm-save-profile>Запомнить расположение</button></details>
   <details data-gm-calibration><summary>Координатные профили и калибровка</summary>
   <p class="muted">Координаты привязаны к клиентской области, размеру и DPI. Масштаб UI игры указывается вручную: Windows не может проверить его. При изменении UI создайте новую точку. После каждого запуска приложения сначала выполните «Предпросмотр без клика» у нужной команды. Он проверяет окна, но не игровой смысл кнопки. Оверлей или другое окно над точкой блокирует клик.</p>
@@ -103,12 +116,32 @@ wait 200</textarea></label><p class="muted">Пример ассиста: SHIFT+1
     }
   });
   const form = host.querySelector('[data-gm-form]');
+  const syncFields = () => {
+    const action = form.elements.namedItem('action').value;
+    const target = form.elements.namedItem('target').value;
+    form.querySelectorAll('[data-gm-click-field]').forEach(el => {
+      el.hidden = action !== 'click';
+    });
+    form.querySelectorAll('[data-gm-sequence-field]').forEach(el => {
+      el.hidden = action !== 'sequence';
+    });
+    form.querySelector('[data-gm-targets]').hidden = action === 'leader';
+    form.querySelector('[data-gm-subset]').hidden = action === 'leader' || target !== 'subset';
+  };
+  form.addEventListener('change', syncFields);
+  syncFields();
+  host.querySelector('[data-gm-cancel]').onclick = () => {
+    form.reset();
+    syncFields();
+    host.querySelector('[data-gm-editor]').open = false;
+  };
   form.onsubmit = safe(async event => {
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form));
     if (data.hotkey && !chord(data.hotkey)) throw new Error('Неверный хоткей. Пример CTRL+ALT+F8.');
     if (data.action === 'sequence') steps(data.sequence);
-    data.sequence = data.sequence || 'F8';
+    data.sequence = data.action === 'sequence' ? data.sequence : 'F8';
+    if (data.action === 'leader') data.target = 'leader';
     data.charIds = new FormData(form).getAll('charIds');
     data.resourceAllowed = form.elements.namedItem('resourceAllowed').checked;
     if (data.target === 'subset' && !data.charIds.length) throw new Error('Выберите хотя бы одного получателя.');
@@ -142,6 +175,7 @@ wait 200</textarea></label><p class="muted">Пример ассиста: SHIFT+1
       form.querySelectorAll('[name="charIds"]').forEach(input => {
         input.checked = row.charIds.includes(input.value);
       });
+      syncFields();
       host.querySelector('[data-gm-editor]').open = true;
       form.scrollIntoView?.({ block: 'nearest' });
     };

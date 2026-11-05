@@ -43,3 +43,41 @@ describe('game macros Tools block', () => {
     expect(document.querySelector('[data-gm-editor]').open).toBe(true);
   });
 });
+
+describe('action-specific editor', () => {
+  const choose = (name, value) => {
+    const form = document.querySelector('[data-gm-form]');
+    form.elements.namedItem(name).value = value;
+    form.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  beforeEach(() => {
+    state.parties = [];
+    state.settings.gameMacros = {};
+    document.body.innerHTML = '<div id="host"></div>';
+    mountGameMacros(document.getElementById('host'));
+  });
+  it('uses choice cards and only reveals relevant fields', () => {
+    expect(document.querySelectorAll('.gm-action-choices input[type="radio"]').length).toBe(6);
+    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(true);
+    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
+    expect(document.querySelector('[data-gm-subset]').hidden).toBe(true);
+    choose('action', 'sequence');
+    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(false);
+    choose('target', 'subset');
+    expect(document.querySelector('[data-gm-subset]').hidden).toBe(false);
+    choose('action', 'click');
+    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(false);
+    expect(document.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
+    choose('action', 'leader');
+    expect(document.querySelector('[data-gm-targets]').hidden).toBe(true);
+    expect(document.querySelector('[data-gm-subset]').hidden).toBe(true);
+  });
+  it('cancels the draft and resets the action', () => {
+    choose('action', 'click');
+    document.querySelector('[data-gm-editor]').open = true;
+    document.querySelector('[data-gm-cancel]').click();
+    expect(document.querySelector('[data-gm-editor]').open).toBe(false);
+    expect(document.querySelector('[data-gm-form]').elements.namedItem('action').value).toBe('next');
+    expect(document.querySelector('[data-gm-click-field]').hidden).toBe(true);
+  });
+});

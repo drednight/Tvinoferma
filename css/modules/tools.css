@@ -260,3 +260,100 @@
   line-height: 1;
   pointer-events: none;
 }
+
+/* Consistent themed controls, with a compact, action-specific command editor. */
+#game-macros-block select,
+#game-macros-block input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']),
+#game-macros-block textarea {
+  box-sizing: border-box;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 9px 12px;
+  font: inherit;
+}
+#game-macros-block select:focus-visible,
+#game-macros-block input:focus-visible,
+#game-macros-block textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#game-macros-block option {
+  background: var(--panel);
+  color: var(--text);
+}
+#game-macros-block [hidden] {
+  display: none !important;
+}
+#game-macros-block [data-gm-form] {
+  max-width: 940px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  gap: 18px;
+}
+#game-macros-block [data-gm-form] > fieldset,
+#game-macros-block [data-gm-sequence-field],
+#game-macros-block .gm-consent,
+#game-macros-block .gm-editor-footer {
+  grid-column: 1 / -1;
+}
+#game-macros-block fieldset.gm-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px;
+}
+#game-macros-block fieldset.gm-action-choices {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+#game-macros-block .gm-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  cursor: pointer;
+}
+#game-macros-block .gm-choice:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+#game-macros-block .gm-choice input {
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+#game-macros-block .gm-consent {
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+.gm-editor-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.gm-status {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.gm-section-heading {
+  margin: 20px 0 10px;
+}
+@media (max-width: 680px) {
+  #game-macros-block [data-gm-form],
+  #game-macros-block fieldset.gm-action-choices {
+    grid-template-columns: 1fr;
+  }
+}

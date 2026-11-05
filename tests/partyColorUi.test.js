@@ -210,3 +210,35 @@ describe('цвет доезжает до интерфейса', () => {
     expect(badge.getAttribute('style')).toContain('--party-c:hsl(139 86% 65%)');
   });
 });
+
+describe('ПЛ выбирается только из отмеченного состава', () => {
+  it('shows class before nick in both membership and leader controls', () => {
+    const modal = openSettings();
+    const row = modal.querySelector('[data-char-id="a"]').closest('label');
+    expect(row.textContent.indexOf('Воин')).toBeLessThan(row.textContent.indexOf('Аа'));
+    const options = [...modal.querySelector('#party-macro-leader').options];
+    expect(options.map(o => o.value)).toEqual(['', 'a']);
+    expect(options[1].textContent).toBe('Воин — Аа');
+  });
+  it('updates immediately with checkboxes and never automatically replaces a removed PL', () => {
+    state.settings.gameMacros = { leaders: { p1: 'a' } };
+    const modal = openSettings(),
+      select = modal.querySelector('#party-macro-leader');
+    expect(select.value).toBe('a');
+    const extra = modal.querySelector('[data-char-id="c"]');
+    extra.checked = true;
+    extra.dispatchEvent(new Event('change'));
+    expect([...select.options].map(o => o.value)).toEqual(['', 'a', 'c']);
+    expect(select.value).toBe('a');
+    const leader = modal.querySelector('[data-char-id="a"]');
+    leader.checked = false;
+    leader.dispatchEvent(new Event('change'));
+    expect([...select.options].map(o => o.value)).toEqual(['', 'c']);
+    expect(select.value).toBe('');
+    extra.checked = false;
+    extra.dispatchEvent(new Event('change'));
+    expect(select.options.length).toBe(1);
+    expect(select.disabled).toBe(true);
+    expect(state.settings.gameMacros.leaders.p1).toBe('a'); // still a draft until Save
+  });
+});

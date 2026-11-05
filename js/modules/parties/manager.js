@@ -201,7 +201,7 @@ export function openEditPartyModal(currentName) {
       return `
             <label class="member-row${free ? ' is-free' : ''}" style="display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; border-bottom:1px dashed rgba(255,255,255,0.1);">
                 <input type="checkbox" class="member-checkbox" data-char-id="${c.id}" ${isInCurrentGroup ? 'checked' : ''} />
-                <span>${statusIcon} <strong>${escapeHtml(c.nick)}</strong> <small class="muted">(${escapeHtml(c.class)})</small><small class="muted">${place}</small></span>
+                <span>${statusIcon} <small class="muted">${escapeHtml(c.class || 'Без класса')}</small> <strong>${escapeHtml(c.nick)}</strong><small class="muted">${place}</small></span>
             </label>
         `;
     })
@@ -227,7 +227,7 @@ export function openEditPartyModal(currentName) {
                 </div>
             </div>
 
-            <div class="field"><label>👑 ПЛ для управления окнами (не меняет лидерство в игре)</label><select class="input" id="party-macro-leader"><option value="">Не назначен</option>${state.characters.map(c => `<option value="${escapeHtml(c.id)}" ${state.settings.gameMacros?.leaders?.[party.id] === c.id ? 'selected' : ''}>${escapeHtml(c.nick)}</option>`).join('')}</select><p class="muted">ПЛ должен входить в сохранённый состав пати. При удалении участника назначение сбрасывается.</p></div>
+            <div class="field"><label>👑 ПЛ для управления окнами (не меняет лидерство в игре)</label><select class="input" id="party-macro-leader"><option value="">Не назначен</option>${currentMembers.map(c => `<option value="${escapeHtml(c.id)}" ${state.settings.gameMacros?.leaders?.[party.id] === c.id ? 'selected' : ''}>${escapeHtml(c.class || 'Без класса')} — ${escapeHtml(c.nick)}</option>`).join('')}</select><p class="muted">ПЛ должен входить в сохранённый состав пати. При удалении участника назначение сбрасывается.</p></div>
             <!-- 3. Цвет карточки -->
             ${partyColorFieldHtml(currentName, party)}
             
@@ -303,6 +303,26 @@ export function openEditPartyModal(currentName) {
       return true;
     }
   });
+
+  const modalRoot = document.getElementById('modal-root');
+  const leaderSelect = modalRoot.querySelector('#party-macro-leader');
+  const syncLeaderOptions = () => {
+    const previous = leaderSelect.value;
+    const checked = new Set([...modalRoot.querySelectorAll('.member-checkbox:checked')].map(cb => cb.dataset.charId));
+    const members = state.characters.filter(c => checked.has(c.id));
+    leaderSelect.innerHTML =
+      '<option value="">Не назначен</option>' +
+      members
+        .map(
+          c =>
+            `<option value="${escapeHtml(c.id)}">${escapeHtml(c.class || 'Без класса')} — ${escapeHtml(c.nick)}</option>`
+        )
+        .join('');
+    leaderSelect.value = members.some(c => c.id === previous) ? previous : '';
+    leaderSelect.disabled = members.length === 0;
+  };
+  modalRoot.querySelectorAll('.member-checkbox').forEach(cb => cb.addEventListener('change', syncLeaderOptions));
+  syncLeaderOptions();
 
   // Живой предпросмотр цвета: пока пользователь выбирает, образец карточки меняется сразу.
   // Окно собрано синхронно, поэтому обработчики можно вешать сразу — без setTimeout.
