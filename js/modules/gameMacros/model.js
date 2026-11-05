@@ -1,3 +1,4 @@
+import { charactersInPartyOrdered } from '../parties/membership.js';
 export const ACTIONS = ['next', 'previous', 'leader', 'sequence', 'layout'];
 export function chord(value) {
   const parts = String(value || '')
@@ -85,9 +86,7 @@ export function normalizeGameMacros(input = {}) {
   };
 }
 export function partyMembers(state, partyId) {
-  return state.characters
-    .filter(c => (c.partyIds || []).includes(partyId))
-    .sort((a, b) => (a.partyOrder?.[partyId] || 0) - (b.partyOrder?.[partyId] || 0));
+  return charactersInPartyOrdered(state.characters, partyId);
 }
 export function resolveTargets(state, config, command, rows) {
   const members = partyMembers(state, config.partyId);

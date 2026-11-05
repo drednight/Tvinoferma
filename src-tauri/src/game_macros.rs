@@ -78,7 +78,11 @@ pub async fn game_macro_action(
             })
             .ok_or("Game client identity changed or access is unavailable")?;
         let hwnd = client.hwnd.ok_or("No game window")?;
-        return win::action(hwnd, target.pid, &action, key.as_deref(), rect);
+        tauri::async_runtime::spawn_blocking(move || {
+            win::action(hwnd, target.pid, &action, key.as_deref(), rect)
+        })
+        .await
+        .map_err(|_| "Window action failed")?
     }
     #[cfg(not(windows))]
     {
@@ -105,9 +109,9 @@ pub async fn game_macro_bindings(
     }
     #[cfg(windows)]
     {
-        return tauri::async_runtime::spawn_blocking(move || win::bindings(app, bindings))
+        tauri::async_runtime::spawn_blocking(move || win::bindings(app, bindings))
             .await
-            .map_err(|_| "Hotkey worker failed")?;
+            .map_err(|_| "Hotkey worker failed")?
     }
     #[cfg(not(windows))]
     {
@@ -190,7 +194,9 @@ mod win {
                     }
                 }
                 "focus" => {
-                    let _ = ShowWindow(hwnd, SW_RESTORE);
+                    if IsIconic(hwnd).as_bool() {
+                        let _ = ShowWindow(hwnd, SW_RESTORE);
+                    }
                     let _ = SetForegroundWindow(hwnd);
                     std::thread::sleep(Duration::from_millis(80));
                     if GetForegroundWindow() != hwnd {
