@@ -47,11 +47,13 @@ jobs:
             test-times-v1-main-
       # Same deterministic LPT plan on all workers; first run collects a baseline.
       - run: node scripts/run-balanced-tests.mjs ${{ matrix.shard }}/8
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-times-${{ matrix.shard }}
           path: .ci-results/*.json
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 14
 
   frontend-timings:
@@ -63,7 +65,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: test-times-*
           path: .ci-results
@@ -143,6 +145,7 @@ jobs:
           "Cache hit: $env:CACHE_HIT (an empty/false value is not a full hit)." >> $env:GITHUB_STEP_SUMMARY
           $elapsed = ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:CACHE_STARTED) / 1000
           "Cache restore step including action overhead: $elapsed seconds." >> $env:GITHUB_STEP_SUMMARY
+          Write-Host "::notice title=Rust cache::Exact hit=$env:CACHE_HIT; restore with overhead=$elapsed seconds"
           rustc -Vv
           cargo -V
       - run: mkdir dist
