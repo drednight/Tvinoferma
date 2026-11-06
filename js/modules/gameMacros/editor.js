@@ -217,12 +217,12 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
   form.querySelector('[name="compositeConsent"]').checked = row?.resourceAllowed === true;
   builder = mountCompositionEditor(form.querySelector('[data-composition-editor]'), c, row, {
     cursor: async () => (await import('./runtime.js')).recorderCursor(),
-    newPoint: () =>
+    newPoint: partyId =>
       new Promise(resolve => {
         const overlay = openOverlay({ title: 'Новая именованная точка', onClose: resolve });
         overlay.body.innerHTML = `<label>Название<input class="input" data-new-name maxlength="80"></label><label>Участник управляющей пати<select class="input" data-new-character>${partyMembers(
           state,
-          c.partyId
+          partyId
         )
           .map(char => `<option value="${esc(char.id)}">${esc(char.nick)}</option>`)
           .join(
@@ -239,7 +239,9 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
             const runtime = await import('./runtime.js');
             await runtime.pickPoint(
               overlay.body.querySelector('[data-new-character]').value,
-              overlay.body.querySelector('[data-new-name]').value
+              overlay.body.querySelector('[data-new-name]').value,
+              null,
+              partyId
             );
             await (await import('../../core/storage.js')).persist();
             c.points = runtime.config().points;

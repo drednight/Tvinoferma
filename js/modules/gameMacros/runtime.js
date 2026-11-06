@@ -180,6 +180,8 @@ export async function saveProfile(name) {
 export function macroErrorText(error) {
   const raw = String(error?.message || error || 'Не удалось выполнить команду.');
   const messages = {
+    'Point is outside client area':
+      'Абсолютная точка не попадает в клиентскую область получателя. Передача остановлена без клика по другому приложению.',
     'no party': 'Выберите пати в верхней части раздела.',
     'PL required': 'В настройках выбранной пати назначьте ПЛ.',
     'preview required':
@@ -449,7 +451,12 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
         await act(row, 'focus');
         await wait(100);
       }
-      if ((command.button && command.button !== 'left') || command.count === 2 || command.delivery === 'background')
+      if (
+        (command.button && command.button !== 'left') ||
+        command.count === 2 ||
+        command.modifiers?.length ||
+        command.delivery === 'background'
+      )
         await pointer(row, command, point, false);
       else await act(row, 'click', { point });
       log(`Клик отправлен: ${index + 1}/${rows.length}. Игровой результат не проверялся.`);
@@ -720,7 +727,7 @@ export async function showSize(width, height, role = 'leader') {
   }
 }
 
-export async function pickPoint(charId, name, replaceId = null) {
+export async function pickPoint(charId, name, replaceId = null, partyId = config().partyId) {
   if (busy) throw new Error('Дождитесь окончания команды.');
   if (!name.trim()) throw new Error('Введите название точки.');
   if (replaceId && !config().points.some(p => p.id === replaceId))
@@ -731,7 +738,7 @@ export async function pickPoint(charId, name, replaceId = null) {
   void broadcast();
   let unlisten, timer;
   try {
-    const rows = await windowTargets({ target: 'subset', charIds: [charId] });
+    const rows = await windowTargets({ target: 'subset', charIds: [charId], partyId });
     const requestId = crypto.randomUUID();
     let resolveResult, rejectResult;
     const result = new Promise((resolve, reject) => {
@@ -929,30 +936,53 @@ function pointer(row, command, point, checkOnly) {
 export async function recorderCursor() {
   return native('game_macro_cursor');
 }
+const screenReview = cmd => JSON.stringify({ screen: true, x: cmd.x, y: cmd.y });
 async function preflightComposition(plan, c, preview) {
-  const actions = compositionActions(plan);
-  const launched = new Set(actions.filter(a => a.action === 'launch').map(a => a.partyId || c.partyId));
+  const actions = compositionActions(plan),
+    launched = new Set(),
+    changed = new Set(),
+    reviewed = [];
   for (const cmd of actions) {
     await checkpoint();
-    const scoped = scopedConfig(c, cmd);
+    const scoped = scopedConfig(c, cmd),
+      party = scoped.partyId;
+    if (
+      cmd.delivery === 'background' &&
+      !backgroundCompatible(cmd) &&
+      !['launch', 'click', 'screen', 'layout', 'resize'].includes(cmd.action)
+    )
+      throw new Error('Действие переключает окна: выберите обычный режим его блока.');
     if (cmd.action === 'launch') {
-      if (!state.parties.some(p => p.id === (cmd.partyId || c.partyId))) throw new Error('Пати для запуска удалена.');
+      if (!state.parties.some(p => p.id === party)) throw new Error('Пати для запуска удалена.');
+      launched.add(party);
+      changed.add(party);
       continue;
     }
-    if (launched.has(scoped.partyId) && !preview) continue; // launch-dependent identities are verified at execution
-    const rows = await windowTargets(cmd, scoped);
+    let points = [];
+    if (['click', 'follow'].includes(cmd.action)) {
+      points = [
+        commandPoint(scoped, cmd, false),
+        ...(cmd.pointIds || []).map(pointId => commandPoint(scoped, { ...cmd, pointId }, false))
+      ];
+      if (cmd.action === 'follow') points.push(commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false));
+      if (!cmd.resourceAllowed) throw new Error('Разрешите координатные действия.');
+      if (!preview && points.some(p => !reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
+      reviewed.push(...points.map(p => JSON.stringify(p)));
+    }
     if (cmd.action === 'screen') {
       if (!cmd.resourceAllowed) throw new Error('Разрешите действия мышью.');
-      for (const row of rows) await pointer(row, cmd, null, true);
+      if (cmd.delivery === 'background' && cmd.modifiers?.includes('ALT'))
+        throw new Error('Alt+клик: выберите обычный режим блока.');
+      if (!preview && !reviewedPoints.has(screenReview(cmd))) throw new Error('preview required');
+      reviewed.push(screenReview(cmd));
     }
-    if (cmd.action === 'click' || cmd.action === 'follow') {
-      const points =
-        cmd.action === 'click'
-          ? [commandPoint(scoped, cmd, false)]
-          : [commandPoint(scoped, cmd, false), commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false)];
-      if (!preview && (!cmd.resourceAllowed || points.some(p => !reviewedPoints.has(JSON.stringify(p)))))
-        throw new Error('Сначала проверьте точки составной команды предпросмотром и разрешите клики.');
-      for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+    let rows;
+    try {
+      rows = await windowTargets(cmd, scoped);
+    } catch (error) {
+      if (!launched.has(party)) throw error;
+      log('Окна после запуска будут проверены непосредственно перед действием.');
+      continue;
     }
     if (
       cmd.action === 'layout' &&
@@ -964,14 +994,15 @@ async function preflightComposition(plan, c, preview) {
     if (cmd.action === 'resize')
       for (const row of rows)
         await act(row, 'resize-check', { rect: { x: 0, y: 0, width: cmd.width, height: cmd.height } });
-  }
-  if (preview)
-    for (const cmd of actions.filter(a => ['click', 'follow'].includes(a.action))) {
-      const scoped = scopedConfig(c, cmd);
-      reviewedPoints.add(JSON.stringify(commandPoint(scoped, cmd, false)));
-      if (cmd.action === 'follow')
-        reviewedPoints.add(JSON.stringify(commandPoint(scoped, { ...cmd, pointId: cmd.menuPointId }, false)));
+    if (['resize', 'layout', 'optimize'].includes(cmd.action)) changed.add(party);
+    if (changed.has(party) && ['screen', 'click', 'follow'].includes(cmd.action)) {
+      log('Геометрия точки после изменения окон проверяется перед фактическим кликом; предпросмотр не меняет окна.');
+      continue;
     }
+    if (cmd.action === 'screen') for (const row of rows) await pointer(row, cmd, null, true);
+    for (const row of rows) for (const point of points) await act(row, 'preview', { point });
+  }
+  if (preview) for (const id of reviewed) reviewedPoints.add(id);
 }
 export async function previewComposition(id) {
   if (busy) throw new Error('Сначала остановите команду.');
@@ -982,7 +1013,7 @@ export async function previewComposition(id) {
       cmd = c.commands.find(a => a.id === id);
     if (!cmd || cmd.action !== 'composite') throw new Error('Выберите составную команду.');
     await preflightComposition(compileComposition(cmd, c), c, true);
-    log('План, получатели и точки проверены без ввода.');
+    log('План и доступные получатели проверены без ввода; отложенные проверки геометрии указаны выше.');
   } finally {
     busy = false;
     void broadcast();

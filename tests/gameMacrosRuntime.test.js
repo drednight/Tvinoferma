@@ -354,3 +354,60 @@ it('background F6→F1 preserves both passes without activating/restoring the le
     [20, 'key-background', 'F1']
   ]);
 });
+
+describe('composition input and cancellation', () => {
+  const plan = steps => ({
+    id: 'plan',
+    action: 'composite',
+    resourceAllowed: true,
+    blocks: [{ partyId: 'p', target: 'all', delivery: 'background', steps }]
+  });
+  it('requires screen preview and never focuses or sends global input in a background click', async () => {
+    state.settings.gameMacros.commands = [
+      plan([{ type: 'screen', x: 10, y: 20, button: 'right', count: 2, modifiers: ['CTRL'] }])
+    ];
+    await runtime.run('plan');
+    expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_pointer')).toBe(false);
+    await runtime.previewComposition('plan');
+    await runtime.run('plan');
+    expect(
+      invoke.mock.calls.some(
+        ([cmd, args]) =>
+          cmd === 'game_macro_pointer' && args.input.background && args.input.count === 2 && !args.input.checkOnly
+      )
+    ).toBe(true);
+    expect(invoke.mock.calls.some(([cmd]) => cmd === 'game_macro_action')).toBe(false);
+  });
+  it('cancels a paused composition, clears its paused state, and never starts the next key', async () => {
+    state.settings.gameMacros.commands = [plan([{ type: 'pause' }, { type: 'keys', value: 'F8' }])];
+    const running = runtime.run('plan');
+    await vi.waitFor(() => expect(runtime.snapshot().paused).toBe(true));
+    runtime.stop();
+    await running;
+    expect(runtime.snapshot()).toMatchObject({ busy: false, paused: false });
+    expect(
+      invoke.mock.calls.some(
+        ([cmd, args]) => cmd === 'game_macro_action' && ['key', 'background-key'].includes(args.action)
+      )
+    ).toBe(false);
+  });
+  it('does not reject a future-size point before its preceding resize and still checks it before click', async () => {
+    state.settings.gameMacros.points = [
+      { id: 'point', name: 'p', x: 10, y: 20, width: 800, height: 600, dpi: 96, uiScale: '100' }
+    ];
+    state.settings.gameMacros.commands = [
+      plan([
+        { type: 'resize', width: 800, height: 600 },
+        { type: 'point', pointId: 'point', button: 'left', modifiers: ['CTRL'] }
+      ])
+    ];
+    await runtime.previewComposition('plan');
+    await runtime.run('plan');
+    const calls = invoke.mock.calls;
+    const resize = calls.findIndex(([cmd, args]) => cmd === 'game_macro_action' && args.action === 'client-layout');
+    const click = calls.findIndex(([cmd, args]) => cmd === 'game_macro_pointer' && !args.input.checkOnly);
+    expect(resize).toBeGreaterThan(-1);
+    expect(click).toBeGreaterThan(resize);
+    expect(calls[click][1].input.modifiers).toEqual(['CTRL']);
+  });
+});

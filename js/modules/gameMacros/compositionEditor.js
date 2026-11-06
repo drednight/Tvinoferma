@@ -34,9 +34,12 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
       case 'command':
         return `<label>Команда ${select(
           'commandId',
-          c.commands
-            .filter(cmd => cmd.id !== row?.id && !['mirror', 'pause'].includes(cmd.action))
-            .map(cmd => [cmd.id, cmd.name]),
+          [
+            ['', 'Выберите команду'],
+            ...c.commands
+              .filter(cmd => cmd.id !== row?.id && !['mirror', 'pause'].includes(cmd.action))
+              .map(cmd => [cmd.id, cmd.name])
+          ],
           step.commandId
         )}</label><small>Ссылка: изменения исходной команды применяются здесь. Циклы запрещены.</small>`;
       case 'point':
@@ -81,9 +84,12 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
         ['CTRL', 'Ctrl'],
         ['SHIFT', 'Shift'],
         ['ALT', 'Alt'],
-        ['CTRL+SHIFT', 'Ctrl+Shift']
+        ['CTRL+SHIFT', 'Ctrl+Shift'],
+        ['CTRL+ALT', 'Ctrl+Alt'],
+        ['ALT+SHIFT', 'Alt+Shift'],
+        ['CTRL+ALT+SHIFT', 'Ctrl+Alt+Shift']
       ],
-      (step.modifiers || []).join('+')
+      ['CTRL', 'ALT', 'SHIFT'].filter(v => step.modifiers?.includes(v)).join('+')
     )}</label><label>Клики ${select(
       'count',
       [
@@ -245,7 +251,7 @@ export function mountCompositionEditor(host, c, row, { cursor, newPoint }) {
     }
     if (button.hasAttribute('data-new-point')) {
       try {
-        await newPoint();
+        await newPoint(blocks[b].partyId || c.partyId);
         draw();
       } catch (error) {
         host.querySelector('[data-compose-error]').textContent = error.message;

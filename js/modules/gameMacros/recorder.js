@@ -114,6 +114,10 @@ export function mountRecorder(host, { cursor, onRecorded, limit = 60 }) {
   area.addEventListener('pointerdown', event => {
     if (!active || !accepting || event.button < 0 || event.button > 4) return;
     event.preventDefault();
+    if (event.metaKey) {
+      status.textContent = 'Win+клик не записывается.';
+      return;
+    }
     area.focus();
     const id = epoch,
       at = performance.now(),

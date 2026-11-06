@@ -175,6 +175,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                         .iter()
                         .any(|c| c.hwnd == source && c.target.pid == pid)
                 {
+                    ctx.control.stop.store(true, Ordering::SeqCst);
                     return;
                 }
                 let mut p = event.pt;
@@ -186,6 +187,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
                     || p.x >= r.right
                     || p.y >= r.bottom
                 {
+                    ctx.control.stop.store(true, Ordering::SeqCst);
                     return;
                 }
                 let msg = wp.0 as u32;
