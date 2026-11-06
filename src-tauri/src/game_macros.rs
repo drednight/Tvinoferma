@@ -14,6 +14,38 @@ fn main_only(window: &tauri::WebviewWindow) -> Result<(), String> {
 pub struct Target {
     pid: u32,
     started_at: u64,
+    #[serde(default)]
+    hwnd: Option<u64>,
+}
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct InputTiming {
+    switch_ms: u64,
+    hold_ms: u64,
+}
+impl Default for InputTiming {
+    fn default() -> Self {
+        Self {
+            switch_ms: 30,
+            hold_ms: 30,
+        }
+    }
+}
+#[tauri::command]
+pub fn game_macro_input_idle(
+    window: tauri::WebviewWindow,
+    chord: Option<String>,
+) -> Result<bool, String> {
+    main_only(&window)?;
+    #[cfg(windows)]
+    {
+        win::input_idle(chord.as_deref())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = chord;
+        Err("Windows-only".into())
+    }
 }
 #[derive(Serialize)]
 pub struct Geometry {
@@ -194,6 +226,7 @@ pub fn game_macro_navigate(
     }
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn game_macro_guide(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
@@ -202,6 +235,7 @@ pub async fn game_macro_guide(
     height: u32,
     target: Option<Target>,
     request_id: Option<String>,
+    initial_point: Option<PointInput>,
 ) -> Result<(), String> {
     main_only(&window)?;
     if let Some(old) = app.get_webview_window("game-guide") {
@@ -237,15 +271,31 @@ pub async fn game_macro_guide(
                     && compatible_integrity(c.elevated, crate::launcher::self_elevated())
             })
             .ok_or("Client identity changed or integrity level is unavailable")?;
+        let target = Target {
+            hwnd: client.hwnd,
+            ..target
+        };
         #[cfg(windows)]
         {
             let hwnd = client.hwnd.ok_or("No client window")?;
-            win::action(hwnd, target.pid, "focus", None, None, None)?;
-            origin = Some(win::client_center(hwnd)?);
+            win::action(
+                hwnd,
+                target.pid,
+                "focus",
+                None,
+                None,
+                None,
+                InputTiming::default(),
+            )?;
+            origin = Some(
+                initial_point
+                    .and_then(|point| win::point_origin(hwnd, point).ok())
+                    .unwrap_or(win::client_center(hwnd)?),
+            );
         }
         #[cfg(not(windows))]
         {
-            let _ = client;
+            let _ = (client, initial_point);
         }
         *GUIDE_TARGET.lock().map_err(|_| "Guide lock failed")? = Some((request_id.clone(), target));
     } else if !(160..=8000).contains(&width) || !(160..=8000).contains(&height) {
@@ -384,24 +434,34 @@ pub async fn game_macro_action(
     key: Option<String>,
     rect: Option<GeometryInput>,
     point: Option<PointInput>,
+    timing: Option<InputTiming>,
 ) -> Result<Option<Geometry>, String> {
     main_only(&window)?;
     #[cfg(windows)]
     {
         tauri::async_runtime::spawn_blocking(move || {
-            let client = crate::launcher::macro_client(target.pid, target.started_at)?;
+            let client =
+                crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
                 return Err("Game client identity changed or access is unavailable".into());
             }
             let hwnd = client.hwnd.ok_or("No game window")?;
-            win::action(hwnd, target.pid, &action, key.as_deref(), rect, point)
+            win::action(
+                hwnd,
+                target.pid,
+                &action,
+                key.as_deref(),
+                rect,
+                point,
+                timing.unwrap_or_default(),
+            )
         })
         .await
         .map_err(|_| "Window action failed")?
     }
     #[cfg(not(windows))]
     {
-        let _ = (target, action, key, rect, point);
+        let _ = (target, action, key, rect, point, timing);
         Err("Game control is Windows-only".into())
     }
 }
@@ -499,6 +559,31 @@ mod win {
             mods.push(code);
         }
         Ok((mods, key))
+    }
+    pub fn point_origin(raw: u64, point: PointInput) -> Result<(i32, i32), String> {
+        let hwnd = HWND(raw as usize as *mut _);
+        let mut r = RECT::default();
+        unsafe {
+            GetClientRect(hwnd, &mut r).map_err(|_| "Cannot inspect client")?;
+            if r.right - r.left != point.width
+                || r.bottom - r.top != point.height
+                || GetDpiForWindow(hwnd) != point.dpi
+                || point.x < 0
+                || point.y < 0
+                || point.x >= point.width
+                || point.y >= point.height
+            {
+                return Err("Client size or DPI differs from calibration".into());
+            }
+            let mut p = POINT {
+                x: point.x,
+                y: point.y,
+            };
+            if !ClientToScreen(hwnd, &mut p).as_bool() {
+                return Err("Cannot convert pointer".into());
+            }
+            Ok((p.x, p.y))
+        }
     }
     pub fn client_center(raw: u64) -> Result<(i32, i32), String> {
         unsafe {
@@ -799,6 +884,17 @@ mod win {
             Ok(Some(geometry))
         }
     }
+    pub(super) fn input_idle(raw: Option<&str>) -> Result<bool, String> {
+        let mut keys = vec![0x10u16, 0x11, 0x12, 0x5b, 0x5c];
+        if let Some(raw) = raw.filter(|s| !s.is_empty() && !s.contains("WHEEL")) {
+            let (mods, key) = chord(raw)?;
+            keys.extend(mods);
+            keys.push(key);
+        }
+        Ok(keys
+            .into_iter()
+            .all(|vk| unsafe { GetAsyncKeyState(vk as i32) } >= 0))
+    }
     pub fn action(
         raw: u64,
         pid: u32,
@@ -806,6 +902,7 @@ mod win {
         key: Option<&str>,
         rect: Option<GeometryInput>,
         point: Option<PointInput>,
+        timing: super::InputTiming,
     ) -> Result<Option<Geometry>, String> {
         let hwnd = HWND(raw as usize as *mut _);
         unsafe {
@@ -826,11 +923,17 @@ mod win {
                     }
                     if GetForegroundWindow() != hwnd {
                         let _ = SetForegroundWindow(hwnd);
-                        std::thread::sleep(Duration::from_millis(80));
+                        for _ in 0..25 {
+                            if GetForegroundWindow() == hwnd {
+                                break;
+                            }
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
                     }
                     if GetForegroundWindow() != hwnd {
                         return Err("Windows refused game activation".into());
                     }
+                    std::thread::sleep(Duration::from_millis(timing.switch_ms.min(500)));
                 }
                 "key-background" => {
                     let (mods, key) = chord(key.ok_or("Missing key")?)?;
@@ -865,7 +968,7 @@ mod win {
                         pressed.push(vk);
                     }
                     if ok {
-                        std::thread::sleep(Duration::from_millis(30));
+                        std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
                     }
                     for vk in pressed.into_iter().rev() {
                         ok = send(vk, true, alt) && ok;
@@ -906,7 +1009,7 @@ mod win {
                     up.extend(mods.iter().rev().map(|v| make(*v, true)));
                     let accepted = SendInput(&down, std::mem::size_of::<INPUT>() as i32);
                     if accepted == down.len() as u32 {
-                        std::thread::sleep(Duration::from_millis(30));
+                        std::thread::sleep(Duration::from_millis(timing.hold_ms.clamp(10, 200)));
                     }
                     // Always release every potentially pressed key, even after a focus change/partial send.
                     let released = SendInput(&up, std::mem::size_of::<INPUT>() as i32);
@@ -1246,6 +1349,7 @@ pub async fn game_macro_mirror(
     targets: Vec<Target>,
     shortcuts: Vec<String>,
     mouse: Option<bool>,
+    keyboard: Option<bool>,
 ) -> Result<bool, String> {
     main_only(&window)?;
     #[cfg(windows)]
@@ -1255,9 +1359,14 @@ pub async fn game_macro_mirror(
                 .lock()
                 .map_err(|_| "Mirror control lock failed")?;
             match operation.as_str() {
-                "start" => {
-                    mirror::start(app, session_id, targets, shortcuts, mouse.unwrap_or(false))
-                }
+                "start" => mirror::start(
+                    app,
+                    session_id,
+                    targets,
+                    shortcuts,
+                    mouse.unwrap_or(false),
+                    keyboard.unwrap_or(true),
+                ),
                 "stop" => mirror::stop(&session_id),
                 "heartbeat" => mirror::heartbeat(&session_id),
                 _ => Err("Unknown mirror operation".into()),
@@ -1268,7 +1377,9 @@ pub async fn game_macro_mirror(
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, operation, session_id, targets, shortcuts, mouse);
+        let _ = (
+            app, operation, session_id, targets, shortcuts, mouse, keyboard,
+        );
         Err("Game control is Windows-only".into())
     }
 }
@@ -1320,7 +1431,7 @@ pub async fn game_macro_pointer(
     #[cfg(windows)]
     {
         tauri::async_runtime::spawn_blocking(move || {
-            let c = crate::launcher::macro_client(target.pid, target.started_at)?;
+            let c = crate::launcher::macro_client_at(target.pid, target.started_at, target.hwnd)?;
             if !compatible_integrity(c.elevated, crate::launcher::self_elevated()) {
                 return Err("Game client identity changed or access is unavailable".into());
             }

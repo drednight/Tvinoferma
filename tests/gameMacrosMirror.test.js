@@ -103,3 +103,27 @@ it('does not enable itself on initialization and persists no active state', asyn
   expect(m.invoke.mock.calls.some(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start')).toBe(false);
   expect(state.settings.gameMacros.mirroring).toBeUndefined();
 });
+it('switches mouse and keyboard independently, including mouse-only mode', async () => {
+  await runtime.toggleKeyboardMirror('mouse');
+  expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: false, mirrorMouse: true });
+  let starts = () => m.invoke.mock.calls.filter(([c, a]) => c === 'game_macro_mirror' && a.operation === 'start');
+  expect(starts().at(-1)[1]).toMatchObject({ keyboard: false, mouse: true });
+  await runtime.toggleKeyboardMirror();
+  expect(starts().at(-1)[1]).toMatchObject({ keyboard: true, mouse: true });
+  await runtime.toggleKeyboardMirror('mouse');
+  expect(runtime.snapshot()).toMatchObject({ mirroring: true, mirrorKeys: true, mirrorMouse: false });
+  await runtime.toggleKeyboardMirror();
+  expect(runtime.snapshot()).toMatchObject({ mirroring: false, mirrorKeys: false, mirrorMouse: false });
+});
+it('exposes activation failures as a persistent status, not only a log', async () => {
+  state.characters = [];
+  await runtime.toggleKeyboardMirror();
+  expect(runtime.snapshot().notice).toContain('Повтор не включён');
+  expect(runtime.snapshot().notice).toContain('2–30');
+});
+it('allows a mouse toggle as an editable command and does not persist active modes', async () => {
+  state.settings.gameMacros.commands.push({ id: 'mouse', name: 'Мышь', action: 'mouse-mirror' });
+  await runtime.run('mouse');
+  expect(runtime.snapshot()).toMatchObject({ mirrorKeys: false, mirrorMouse: true });
+  expect(state.settings.gameMacros.mirrorMouse).toBeUndefined();
+});

@@ -296,6 +296,7 @@ pub fn run() {
             game_macros::game_macro_guide,
             game_macros::game_macro_guide_result,
             game_macros::game_macro_action,
+            game_macros::game_macro_input_idle,
             game_macros::game_macro_bindings,
             game_macros::game_macro_mirror,
             game_macros::game_macro_pointer,

@@ -1,8 +1,20 @@
 import { compileComposition, executeComposition, compositionActions } from './composition.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
-import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint, backgroundCompatible } from './model.js';
+import {
+  normalizeGameMacros,
+  resolveTargets,
+  steps,
+  commandPoint,
+  validPoint,
+  backgroundCompatible,
+  orderManagedTargets
+} from './model.js';
 let invoke;
+let rootTiming = { switchMs: 30, holdMs: 30 },
+  inputTiming = rootTiming;
+let mirrorKeys = false,
+  mirrorMouse = false;
 let initialized = false,
   busy = false,
   cancelled = false,
@@ -17,6 +29,9 @@ let mirroring = false,
 let paused = false,
   composing = false;
 const logs = [];
+const logEntries = [];
+let activeCommandName = '',
+  notice = '';
 const reviewedPoints = new Set();
 export const config = () => normalizeGameMacros(state.settings.gameMacros);
 const native = async (command, args) => {
@@ -29,6 +44,8 @@ export function snapshot() {
   return {
     busy,
     mirroring,
+    mirrorKeys,
+    mirrorMouse,
     mirrorPending,
     paused,
     registered,
@@ -36,6 +53,8 @@ export function snapshot() {
     appearance: c.appearance,
     topmost: c.topmost,
     commands: c.commands.map(({ id, name, hotkey }) => ({ id, name, hotkey })),
+    notice,
+    logEntries: logEntries.slice(-80),
     logs: logs.slice(-80)
   };
 }
@@ -48,9 +67,13 @@ export async function broadcast() {
     /* overlay closed */
   }
 }
-function log(text) {
+function log(text, commandName = activeCommandName) {
   logs.push(`${new Date().toLocaleTimeString('ru-RU')} · ${text}`);
-  if (logs.length > 120) logs.shift();
+  logEntries.push({ text: logs.at(-1), commandName });
+  if (logs.length > 120) {
+    logs.shift();
+    logEntries.shift();
+  }
   void broadcast();
 }
 export function stop() {
@@ -122,9 +145,13 @@ export async function listMacroWindows() {
   }
   return rows;
 }
-export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
+export async function windowTargets(
+  command = { target: 'all', action: 'next' },
+  selected = config(),
+  snapshotRows = null
+) {
   selected = scopedConfig(selected, command);
-  const rows = await listMacroWindows();
+  const rows = snapshotRows || (await listMacroWindows());
   if (command.scope === 'managed') {
     if (command.target !== 'all' || command.action === 'leader')
       throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
@@ -140,13 +167,14 @@ export async function windowTargets(command = { target: 'all', action: 'next' },
       new Set(rows.map(row => row.charId)).size !== rows.length
     )
       throw new Error('Все окна должны быть однозначно распознаны.');
-    return rows;
+    return orderManagedTargets(state, selected, rows);
   }
   return resolveTargets(state, selected, command, rows);
 }
 const act = (row, action, extra = {}) =>
   native('game_macro_action', {
-    target: { pid: row.pid, startedAt: row.startedAt },
+    target: { pid: row.pid, startedAt: row.startedAt, ...(row.hwnd ? { hwnd: row.hwnd } : {}) },
+    timing: inputTiming,
     action,
     key: null,
     rect: null,
@@ -242,17 +270,34 @@ export async function run(id, hotkey = false) {
   const c = config(),
     command = c.commands.find(r => r.id === id);
   if (!command) return;
-  if (command.action === 'mirror') {
-    await toggleKeyboardMirror();
+  if (['mirror', 'mouse-mirror'].includes(command.action)) {
+    await toggleKeyboardMirror(command.action === 'mouse-mirror' ? 'mouse' : 'keyboard', command.name);
     return;
   }
   busy = true;
+  notice = '';
+  activeCommandName = command.name;
   const started = performance.now();
+  let suspended = false;
   cancelled = false;
   void broadcast();
   try {
     if (mirroring || mirrorPending) await disableKeyboardMirror();
-    if (hotkey) await wait(200);
+    for (
+      let attempt = 0;
+      (await native('game_macro_input_idle', { chord: hotkey ? command.hotkey : null })) === false;
+      attempt++
+    ) {
+      if (attempt >= 75)
+        throw new Error('Отпустите клавиши запуска и модификаторы, затем повторите команду. Ввод не отправлен.');
+      await wait(20);
+    }
+    await checkpoint();
+    suspended = true;
+    await native('game_macro_bindings', { bindings: [{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }] });
+    registered = false;
+    rootTiming = { switchMs: command.switchMs ?? 30, holdMs: command.holdMs ?? 30 };
+    inputTiming = rootTiming;
     if (command.action === 'composite') {
       composing = true;
       const plan = compileComposition(command, c);
@@ -266,22 +311,45 @@ export async function run(id, hotkey = false) {
           log('Последовательность на паузе. Нажмите «Пауза / продолжить».');
         }
       });
+      if (command.returnTo === 'leader') {
+        const [leader] = await windowTargets({ action: 'leader', target: 'leader' }, scopedConfig(c, command));
+        await checkpoint();
+        await act(leader, 'focus');
+      }
     } else await executeLegacy(command, c, hotkey);
+    if (command.delivery === 'background') {
+      notice = 'Фоновая доставка завершена. Игра может игнорировать сообщения; результат не подтверждён.';
+      log(notice);
+    }
   } catch (error) {
-    log(cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`);
+    notice = cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`;
+    log(notice);
   } finally {
     log(
       `Время выполнения: ${Math.round(performance.now() - started)} мс. Это время доставки/проверок, не подтверждение действия в игре.`
     );
-    busy = false;
+    activeCommandName = '';
     if (composing) paused = false;
     composing = false;
+    if (suspended) {
+      try {
+        await configure();
+      } catch (error) {
+        log(`Сочетания не восстановлены: ${macroErrorText(error)}`);
+      }
+    }
+    busy = false;
     void broadcast();
   }
 }
 
 async function executeLegacy(command, c, hotkey = false, restore = true) {
+  await checkpoint();
   c = scopedConfig(c, command);
+  inputTiming = {
+    switchMs: command.switchMs ?? rootTiming.switchMs ?? 30,
+    holdMs: command.holdMs ?? rootTiming.holdMs ?? 30
+  };
   if (command.action === 'launch') {
     const party = state.parties.find(p => p.id === (command.partyId || c.partyId));
     if (!party) throw new Error('no party');
@@ -307,10 +375,14 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
     !['click', 'screen', 'layout', 'resize'].includes(command.action)
   )
     throw new Error('Эта команда не поддерживает фоновую доставку. Нужна последовательность клавиш либо F6→F1.');
-  const rows = await windowTargets(command, c);
-  if (hotkey && command.delivery !== 'background') {
+  const snapshotRows = await listMacroWindows();
+  const rows = await windowTargets(command, c, snapshotRows);
+  if (hotkey) {
     let foreground = false;
-    for (const row of rows) {
+    const memberIds = new Set((await import('./model.js')).partyMembers(state, c.partyId).map(ch => ch.id));
+    const sources =
+      command.scope === 'managed' ? rows : snapshotRows.filter(row => row.known && memberIds.has(row.charId));
+    for (const row of sources) {
       try {
         await act(row, 'foreground');
         foreground = true;
@@ -325,6 +397,9 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
     }
   }
   log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
+  log(
+    `Порядок «${state.parties.find(p => p.id === c.partyId)?.name || 'Все окна'}»: ${rows.map(row => state.characters.find(ch => ch.id === row.charId)?.nick || row.pid).join(' → ')}`
+  );
   if (command.delivery === 'background' && ['sequence', 'f6f1'].includes(command.action)) {
     const send = async (row, key) => {
       if (cancelled) throw new Error('cancel');
@@ -414,7 +489,7 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
       }
     }
     if (cancelled) throw new Error('cancel');
-    await act(leader, 'focus');
+    if (restore && command.returnTo !== 'last') await act(leader, 'focus');
     log(
       command.action === 'f6f1'
         ? 'Оба прохода F6 → F1 завершены.'
@@ -502,16 +577,24 @@ async function executeLegacy(command, c, hotkey = false, restore = true) {
       log(`Обработано окон: ${index + 1}/${rows.length}. Ввод отправлен; результат в игре не проверялся.`);
     }
   }
-  if (restore && ['sequence', 'follow', 'click'].includes(command.action) && !cancelled) {
+  if (
+    restore &&
+    command.returnTo !== 'last' &&
+    ['sequence', 'follow', 'click', 'resize', 'layout'].includes(command.action) &&
+    !cancelled
+  ) {
     const scoped = scopedConfig(c, command),
       leaderId = scoped.leaders[scoped.partyId];
     if (leaderId) {
       try {
-        const [leader] = await windowTargets({ target: 'leader', action: 'leader' }, scoped);
+        const leader =
+          rows.find(row => row.charId === leaderId) ||
+          (await windowTargets({ target: 'leader', action: 'leader' }, scoped, snapshotRows))[0];
         if (cancelled) throw new Error('cancel');
         await act(leader, 'focus');
-      } catch {
-        /* no implicit replacement */
+      } catch (error) {
+        if (cancelled) throw error;
+        log(`Возврат к ПЛ не выполнен: ${macroErrorText(error)}. Подмена окна не производится.`);
       }
     }
   }
@@ -727,7 +810,14 @@ export async function showSize(width, height, role = 'leader') {
   }
 }
 
-export async function pickPoint(charId, name, replaceId = null, partyId = config().partyId) {
+export async function pickPoint(
+  charId,
+  name,
+  replaceId = null,
+  partyId = config().partyId,
+  draftOnly = false,
+  initialPoint = null
+) {
   if (busy) throw new Error('Дождитесь окончания команды.');
   if (!name.trim()) throw new Error('Введите название точки.');
   if (replaceId && !config().points.some(p => p.id === replaceId))
@@ -757,6 +847,7 @@ export async function pickPoint(charId, name, replaceId = null, partyId = config
       requestId,
       width: 280,
       height: 180,
+      initialPoint,
       target: { pid: rows[0].pid, startedAt: rows[0].startedAt }
     });
     const geometry = await result;
@@ -772,11 +863,12 @@ export async function pickPoint(charId, name, replaceId = null, partyId = config
       dpi: geometry.dpi
     };
     if (!validPoint(point)) throw new Error('Некорректная точка. Повторите калибровку.');
-    state.settings.gameMacros = {
-      ...config(),
-      points: replaceId ? config().points.map(p => (p.id === replaceId ? point : p)) : [...config().points, point]
-    };
-    log(`Точка «${point.name}» сохранена без клика в игру.`);
+    if (!draftOnly)
+      state.settings.gameMacros = {
+        ...config(),
+        points: replaceId ? config().points.map(p => (p.id === replaceId ? point : p)) : [...config().points, point]
+      };
+    log(`Точка «${point.name}»: ${draftOnly ? 'черновик, сохраните в редакторе' : 'сохранена'}. Без клика в игру.`);
     return point;
   } finally {
     clearTimeout(timer);
@@ -812,8 +904,11 @@ function ensureMirror() {
     await listen('game-macro-mirror-state', event => {
       if (event.payload?.sessionId !== mirrorSession || event.payload.active !== false) return;
       ++mirrorEpoch;
+      mirrorSession = '';
       mirrorPending = false;
       mirroring = false;
+      mirrorKeys = false;
+      mirrorMouse = false;
       clearInterval(mirrorTimer);
       const reasons = {
         1: 'Очередь ввода не успевает: повтор остановлен.',
@@ -822,32 +917,40 @@ function ensureMirror() {
         4: 'Windows отказала в доставке: повтор остановлен.',
         5: 'Клавиша удерживалась более 60 секунд без повтора: режим выключен защитой.'
       };
-      log(reasons[event.payload.reason] || 'Повтор клавиатуры выключен.');
+      notice = reasons[event.payload.reason] || 'Повтор выключен.';
+      log(notice);
     });
     await native('game_macro_mirror', mirrorArgs('stop', ''));
   })());
 }
 export async function disableKeyboardMirror() {
+  const sessionId = mirrorSession;
+  mirrorSession = '';
   ++mirrorEpoch;
   mirroring = false;
+  mirrorKeys = false;
+  mirrorMouse = false;
   clearInterval(mirrorTimer);
   void broadcast();
   try {
-    await native('game_macro_mirror', mirrorArgs('stop'));
+    await native('game_macro_mirror', mirrorArgs('stop', sessionId));
   } catch {
     log('Не удалось подтвердить выключение повтора; защита связи отключит его автоматически.');
   }
 }
-export async function toggleKeyboardMirror() {
-  if (mirroring || mirrorPending) {
-    await disableKeyboardMirror();
-    return;
-  }
+export async function toggleKeyboardMirror(kind = 'keyboard', commandName = '') {
+  kind = kind === 'mouse' ? 'mouse' : 'keyboard';
+  if (mirrorPending) return;
+  const desiredKeys = kind === 'keyboard' ? !mirrorKeys : mirrorKeys,
+    desiredMouse = kind === 'mouse' ? !mirrorMouse : mirrorMouse;
+  if (mirroring) await disableKeyboardMirror();
+  if (!desiredKeys && !desiredMouse) return;
   if (busy || paused) {
     log('Сначала остановите команду и снимите паузу.');
     return;
   }
   mirrorPending = true;
+  notice = '';
   const epoch = ++mirrorEpoch;
   void broadcast();
   try {
@@ -868,7 +971,8 @@ export async function toggleKeyboardMirror() {
     const active = await native(
       'game_macro_mirror',
       mirrorArgs('start', id, {
-        mouse: config().mirrorMouse,
+        mouse: desiredMouse,
+        keyboard: desiredKeys,
         targets: rows.map(r => ({ pid: r.pid, startedAt: r.startedAt })),
         shortcuts: [
           'CTRL+ALT+PAUSE',
@@ -884,14 +988,19 @@ export async function toggleKeyboardMirror() {
     }
     if (!active) throw new Error('Повтор клавиатуры не включён.');
     mirroring = true;
+    mirrorKeys = desiredKeys;
+    mirrorMouse = desiredMouse;
     mirrorTimer = setInterval(async () => {
       if (epoch !== mirrorEpoch) return;
       try {
         if (!(await native('game_macro_mirror', mirrorArgs('heartbeat', id)))) {
           if (epoch === mirrorEpoch) {
             mirroring = false;
+            mirrorKeys = false;
+            mirrorMouse = false;
             clearInterval(mirrorTimer);
-            log('Повтор клавиатуры отключён нативной защитой.');
+            notice = 'Повтор отключён нативной защитой.';
+            log(notice);
           }
         }
       } catch {
@@ -899,10 +1008,15 @@ export async function toggleKeyboardMirror() {
       }
     }, 1000);
     log(
-      `Повтор клавиатуры ВКЛЮЧЁН: ${rows.length} проверенных окон, только при фокусе игры. ${config().mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`
+      `Повтор ВКЛЮЧЁН (клавиатура: ${mirrorKeys ? 'да' : 'нет'}, мышь: ${mirrorMouse ? 'да' : 'нет'}): ${rows.length} проверенных окон, только при фокусе игры. ${mirrorMouse ? 'Кнопки мыши: абсолютные экранные точки.' : 'Мышь не передаётся.'} Ctrl+Alt+Pause — выключить. Обработка сообщений игрой не подтверждена.`,
+      commandName
     );
   } catch (error) {
-    log(macroErrorText(error));
+    const message = `Повтор не включён: ${macroErrorText(error)}`;
+    notice = message;
+    log(message, commandName);
+    const { toast } = await import('../../core/ui.js');
+    toast(message, 'error');
   } finally {
     mirrorPending = false;
     void broadcast();
@@ -920,7 +1034,8 @@ function pointer(row, command, point, checkOnly) {
   if (command.delivery === 'background' && command.modifiers?.includes('ALT'))
     throw new Error('Alt+клик: выберите обычный режим этого блока. Фоновый режим поддерживает только Ctrl/Shift.');
   return native('game_macro_pointer', {
-    target: { pid: row.pid, startedAt: row.startedAt },
+    target: { pid: row.pid, startedAt: row.startedAt, ...(row.hwnd ? { hwnd: row.hwnd } : {}) },
+    timing: inputTiming,
     point: point || null,
     input: {
       x: command.x || 0,

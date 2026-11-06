@@ -126,6 +126,7 @@ mod win {
     unsafe extern "system" {
         fn EnumWindows(proc_: EnumProc, lparam: isize) -> i32;
         fn GetClassNameW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
+        fn GetWindowTextW(hwnd: Hwnd, buf: *mut u16, max: i32) -> i32;
         fn IsWindowVisible(hwnd: Hwnd) -> i32;
         fn PostMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> i32;
         fn GetWindowThreadProcessId(hwnd: Hwnd, pid: *mut u32) -> u32;
@@ -142,6 +143,7 @@ mod win {
         fn IsHungAppWindow(hwnd: Hwnd) -> i32;
         fn GetWindowLongW(hwnd: Hwnd, index: i32) -> i32;
         fn GetWindow(hwnd: Hwnd, cmd: u32) -> Hwnd;
+        fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
         // Значок из ресурсов нашего же exe (идентификатор `RT_GROUP_ICON`). Нужен большому
         // слоту окна: Tauri v2 не ставит `ICON_BIG`, а без него панель задач рисует пустой лист.
         fn LoadIconW(instance: *mut c_void, resource_id: *const u16) -> *mut c_void;
@@ -330,56 +332,37 @@ mod win {
         String::from_utf16_lossy(&buf[..n.clamp(0, 256) as usize])
     }
 
-    /// Заголовок окна с ограничением по времени.
-    ///
-    /// Заголовок чужого окна хранится в памяти чужого процесса, поэтому его читают не из
-    /// общей памяти, а сообщением `WM_GETTEXT`, на которое окно обязано ответить.
-    /// `GetWindowTextW` посылает это сообщение и ждёт, сколько понадобится чужому процессу:
-    /// зависший отвечает до 200 мс, и одно такое окно задерживает весь перебор окон — при
-    /// массовом запуске окон это и есть вероятная причина подвисаний. Поэтому отправляем
-    /// сообщение сами, с признаком `SMTO_ABORTIFHUNG` и коротким таймаутом: окно, которое
-    /// не ответило, считается окном без заголовка, а перебор окон не подвешивает.
-    fn title_with_timeout(hwnd: Hwnd) -> String {
-        const WM_GETTEXT: u32 = 0x000D;
-        const SMTO_ABORTIFHUNG: u32 = 0x0002;
-        /// Ждём ответа коротко: заголовки читаются в цикле, и зависшее окно не должно
-        /// задерживать проход дольше, чем сам шаг цикла.
-        const TIMEOUT_MS: u32 = 50;
-        let mut buf = [0u16; 256];
-        let mut copied: usize = 0;
-        let ok = unsafe {
-            SendMessageTimeoutW(
-                hwnd,
-                WM_GETTEXT,
-                buf.len(),
-                buf.as_mut_ptr() as isize,
-                SMTO_ABORTIFHUNG,
-                TIMEOUT_MS,
-                &mut copied,
-            )
-        };
-        if ok == 0 {
-            return String::new(); // окно не ответило: заголовок неизвестен
+    // Foreign captions are cached by Windows. Never force WM_GETTEXT into the game thread.
+    fn window_caption(hwnd: Hwnd) -> String {
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        // For our own process GetWindowTextW would send WM_GETTEXT synchronously instead.
+        if pid == std::process::id() {
+            return String::new();
         }
-        // Окно не обязано уложиться в буфер целиком, поэтому берём столько, сколько влезло
-        let n = copied.min(buf.len() - 1);
-        String::from_utf16_lossy(&buf[..n])
+        read(|b, n| unsafe { GetWindowTextW(hwnd, b, n) })
+    }
+    pub fn macro_window_matches(raw: usize, expected: u32) -> bool {
+        let hwnd = raw as Hwnd;
+        let mut pid = 0;
+        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        pid == expected
+            && unsafe { IsWindowVisible(hwnd) } != 0
+            && unsafe { GetAncestor(hwnd, 2) } == hwnd
+            && read(|b, n| unsafe { GetClassNameW(hwnd, b, n) }) == "ElementClient Window"
     }
 
     /// Что собирает `EnumWindows` по каждому окну.
     struct Collect<'a> {
         list: &'a mut Vec<WinInfo>,
         /// Процессы, у которых нужно читать заголовок и класс. `None` — у всех.
-        /// Заголовок чужого окна — это сообщение чужому процессу (см. `title_with_timeout`),
-        /// поэтому там, где чужие заголовки не нужны, их и не спрашивают.
+        /// Even cached foreign captions are only read for the requested processes.
         only: Option<HashSet<u32>>,
     }
 
     /// Нужно ли читать у окна процесса `pid` класс и заголовок. `None` — окна ищутся всех процессов.
     ///
-    /// Вынесено из `collect` ради проверки без запуска Windows: чтение заголовка чужого окна —
-    /// это сообщение чужому процессу (см. `title_with_timeout`), и там, где чужие заголовки
-    /// не нужны, его не должно быть.
+    /// Kept separate from `collect` for testing without Windows. Avoid unrelated window metadata.
     pub(crate) fn window_wanted(only: Option<&HashSet<u32>>, pid: u32) -> bool {
         only.is_none_or(|want| want.contains(&pid))
     }
@@ -394,7 +377,7 @@ mod win {
             return 1; // окно чужого процесса: ни класс, ни заголовок не читаем
         }
         let class = read(|b, n| unsafe { GetClassNameW(hwnd, b, n) });
-        let title = title_with_timeout(hwnd);
+        let title = window_caption(hwnd);
         ctx.list.push(WinInfo {
             hwnd: hwnd as usize,
             pid,
@@ -2352,6 +2335,43 @@ pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
 
 /// Per-operation macro validation: inspect only the requested process/windows, without
 /// reading captions or tokens of unrelated windows. No identity/handle cache is used.
+#[cfg(windows)]
+pub(crate) fn macro_client_at(
+    pid: u32,
+    started_at: u64,
+    hwnd: Option<u64>,
+) -> Result<RunningClient, String> {
+    let Some(hwnd) = hwnd else {
+        return macro_client(pid, started_at);
+    };
+    if !win::macro_window_matches(hwnd as usize, pid) {
+        let client = macro_client(pid, started_at)?;
+        return if client.hwnd == Some(hwnd) {
+            Ok(client)
+        } else {
+            Err("Game client identity changed or access is unavailable".into())
+        };
+    }
+    let image = win::process_image_path(pid).ok_or("Cannot inspect game process")?;
+    if !is_client_image(image.rsplit(['\\', '/']).next().unwrap_or(""))
+        || win::process_start_ms(pid) != Some(started_at)
+    {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    let elevated = win::process_elevated(pid);
+    if win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    Ok(RunningClient {
+        pid,
+        image,
+        started_at: Some(started_at),
+        title: String::new(),
+        hwnd: Some(hwnd),
+        elevated,
+    })
+}
+
 #[cfg(windows)]
 pub(crate) fn macro_client(pid: u32, started_at: u64) -> Result<RunningClient, String> {
     let image = win::process_image_path(pid).ok_or("Cannot inspect game process")?;

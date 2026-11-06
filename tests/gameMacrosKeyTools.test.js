@@ -20,7 +20,7 @@ it('inserts a pause as a separate sequence step', () => {
   expect(input.value).toBe('F7\nwait 100');
 });
 it('explains every offered action', () => {
-  expect(Object.keys(actionHelp)).toHaveLength(14);
+  expect(Object.keys(actionHelp)).toHaveLength(15);
   expect(actionHelp.click).toContain('предпросмотр');
 });
 

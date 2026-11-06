@@ -411,3 +411,103 @@ describe('composition input and cancellation', () => {
     expect(calls[click][1].input.modifiers).toEqual(['CTRL']);
   });
 });
+describe('PW input regression guards', () => {
+  it('waits for the launching chord to be released before sending input', async () => {
+    state.settings.gameMacros.commands[0].hotkey = 'CTRL+F7';
+    let checks = 0;
+    invoke.mockImplementation(async (command, args) => {
+      if (command === 'game_macro_input_idle') return ++checks > 2;
+      if (command === 'launcher_running_details') return [client];
+      if (args?.action === 'foreground') return true;
+      return null;
+    });
+    await runtime.run('test', true);
+    expect(checks).toBe(3);
+    const calls = invoke.mock.calls;
+    const firstFocus = calls.findIndex(([, a]) => a?.action === 'focus');
+    expect(calls.slice(0, firstFocus).filter(([c]) => c === 'game_macro_input_idle')).toHaveLength(3);
+  });
+  it('refuses a held trigger after a bounded wait, without switching windows', async () => {
+    vi.useFakeTimers();
+    try {
+      invoke.mockImplementation(async c => (c === 'game_macro_input_idle' ? false : null));
+      const pending = runtime.run('test', true);
+      await vi.runAllTimersAsync();
+      await pending;
+      expect(invoke.mock.calls.some(([c]) => c === 'game_macro_action')).toBe(false);
+      expect(runtime.snapshot().notice).toContain('Отпустите клавиши');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('unregisters command chords during injection, keeps emergency stop, then restores them', async () => {
+    state.settings.gameMacros.enabled = true;
+    Object.assign(state.settings.gameMacros.commands[0], {
+      hotkey: 'CTRL+F9',
+      sequence: 'CTRL+F9',
+      switchMs: 15,
+      holdMs: 45
+    });
+    await runtime.configure();
+    await runtime.run('test');
+    const calls = invoke.mock.calls;
+    const key = calls.findIndex(([, a]) => a?.action === 'key');
+    const before = calls
+      .slice(0, key)
+      .filter(([c]) => c === 'game_macro_bindings')
+      .at(-1)[1];
+    expect(before.bindings).toEqual([{ id: 'stop', chord: 'CTRL+ALT+PAUSE' }]);
+    expect(calls[key][1]).toMatchObject({
+      target: { pid: 10, startedAt: 1000, hwnd: 100 },
+      timing: { switchMs: 15, holdMs: 45 },
+      key: 'CTRL+F9'
+    });
+    expect(
+      calls
+        .slice(key + 1)
+        .filter(([c]) => c === 'game_macro_bindings')
+        .at(-1)[1].bindings
+    ).toContainEqual({ id: 'test', chord: 'CTRL+F9' });
+  });
+  it('reuses the validated snapshot for the final PL return, including an others-only command', async () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    state.settings.gameMacros.commands[0].target = 'others';
+    invoke.mockImplementation(async c =>
+      c === 'launcher_running_details'
+        ? [client, { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' }]
+        : null
+    );
+    await runtime.run('test');
+    expect(invoke.mock.calls.filter(([c]) => c === 'launcher_running_details')).toHaveLength(1);
+    expect(invoke.mock.calls.filter(([, a]) => a?.action === 'focus').map(([, a]) => a.target.pid)).toEqual([20, 10]);
+  });
+  it('can stay on the last recipient rather than returning to PL', async () => {
+    state.settings.gameMacros.commands[0].returnTo = 'last';
+    await runtime.run('test');
+    expect(invoke.mock.calls.filter(([, a]) => a?.action === 'focus')).toHaveLength(1);
+  });
+  it('stops at the first rejected key instead of continuing to switch recipients', async () => {
+    state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+    invoke.mockImplementation(async (c, a) => {
+      if (c === 'launcher_running_details')
+        return [client, { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' }];
+      if (a?.action === 'key') throw new Error('Key input incomplete or focus changed');
+      return null;
+    });
+    await runtime.run('test');
+    expect(invoke.mock.calls.filter(([, a]) => a?.action === 'focus')).toHaveLength(1);
+    expect(runtime.snapshot().notice).toContain('Windows не приняла ввод');
+  });
+});
+it('accepts a hotkey launched from PL even when the command only targets the other members', async () => {
+  state.characters.push({ id: 'b', nick: 'Beta', partyIds: ['p'] });
+  state.settings.gameMacros.commands[0].target = 'others';
+  invoke.mockImplementation(async (c, a) => {
+    if (c === 'launcher_running_details')
+      return [client, { ...client, pid: 20, startedAt: 2000, hwnd: 200, title: 'Beta — Воин' }];
+    if (a?.action === 'foreground' && a.target.pid !== 10) throw new Error('Game is not foreground');
+    return null;
+  });
+  await runtime.run('test', true);
+  expect(invoke.mock.calls.some(([, a]) => a?.action === 'key' && a.target.pid === 20)).toBe(true);
+});

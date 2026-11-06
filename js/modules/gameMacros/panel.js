@@ -2,7 +2,7 @@ import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { toast, showModal } from '../../core/ui.js';
-import { normalizeGameMacros, partyMembers } from './model.js';
+import { normalizeGameMacros, partyMembers, validPoint } from './model.js';
 import { commandLabels, openCommandEditor } from './editor.js';
 import {
   config,
@@ -53,6 +53,21 @@ const targetLabel = row =>
 export function mountGameMacros(host) {
   if (!host) return;
   activeHost = host;
+  const scrollNodes = [host, ...host.querySelectorAll('.gm-command-menu,.gm-command-detail,.gm-point-list')];
+  for (let node = host.parentElement; node; node = node.parentElement) scrollNodes.push(node);
+  const scroll = scrollNodes.map(node => ({
+    node,
+    top: node.scrollTop,
+    left: node.scrollLeft,
+    selector:
+      node === host || !host.contains(node)
+        ? null
+        : node.matches('.gm-point-list')
+          ? '.gm-point-list'
+          : node.matches('[data-gm-point-detail]')
+            ? '[data-gm-point-detail]'
+            : '.' + node.classList[0]
+  }));
   const wasOpen = host.querySelector('#game-macros-block')?.open === true;
   const c = config();
   const selected = c.commands.find(row => row.id === selectedId) || c.commands[0];
@@ -62,7 +77,7 @@ export function mountGameMacros(host) {
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn" data-gm-mirror aria-pressed="false">⌨ Включить повтор клавиатуры</button><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><label><input type="checkbox" data-gm-mirror-mouse ${c.mirrorMouse ? 'checked' : ''}> Повторять также кнопки мыши: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</label><div class="gm-status" role="status" data-gm-runtime></div>
+  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><button class="btn ghost" data-gm-recognize>Распознать пати / порядок</button><button class="btn" data-gm-mirror-mouse aria-pressed="false">🖱 Включить повтор мыши</button><small>Клавиатура и мышь включаются независимо. Мышь: абсолютные экранные координаты, без масштабирования. Возможен расход ресурсов.</small><div class="gm-status" role="status" data-gm-runtime></div>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -111,7 +126,7 @@ export function mountGameMacros(host) {
     .map(char => option(char.id, `${char.class || ''} — ${char.nick}`, c.leaders[c.partyId]))
     .join(
       ''
-    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-command-workbench"><nav class="gm-command-menu">${c.points.map(p => `<button class="gm-command-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article data-gm-point-detail></article></div></section>
+    )}</select></label><button class="btn primary">⊕ Задать координаты</button></form><p class="muted">Размер окна и DPI определяются автоматически. Для другого размера окна создайте вариант точки; после перемещения элементов интерфейса задайте точку заново.</p><div class="gm-command-workbench"><nav class="gm-command-menu gm-point-list">${c.points.map(p => `<button class="gm-command-choice" data-gm-point="${esc(p.id)}"><b>${esc(p.name)}</b><small>${p.width} × ${p.height}</small></button>`).join('') || '<p>Нет сохранённых точек.</p>'}</nav><article data-gm-point-detail></article></div></section>
   <footer class="gm-bottom-actions"><button class="btn" data-gm-logs>≡ Журнал сеанса</button><button class="btn" data-gm-overlay>▣ Открыть оверлей</button><button class="btn ghost" data-gm-overlay-settings>⚙ Настройки оверлея</button></footer></details>`;
   host.querySelector('#game-macros-block').open = wasOpen;
   host.querySelectorAll('[data-gm-resolution]').forEach(
@@ -125,7 +140,32 @@ export function mountGameMacros(host) {
   );
   host.querySelector('[data-gm-stop]').onclick = stop;
   host.querySelector('[data-gm-mirror]').onclick = safe(toggleKeyboardMirror);
-  host.querySelector('[data-gm-mirror-mouse]').onchange = safe(e => save({ mirrorMouse: e.target.checked }));
+  host.querySelector('[data-gm-mirror-mouse]').onclick = safe(() => toggleKeyboardMirror('mouse'));
+  host.querySelector('[data-gm-recognize]').onclick = safe(async () => {
+    const rows = await (await import('./runtime.js')).listMacroWindows();
+    const known = new Set(rows.filter(r => r.known && r.charId).map(r => r.charId));
+    const candidates = state.parties
+      .map(p => ({ party: p, members: partyMembers(state, p.id) }))
+      .map(p => ({ ...p, found: p.members.filter(ch => known.has(ch.id)) }))
+      .sort((a, b) => b.found.length - a.found.length);
+    const best = candidates[0];
+    const proposed =
+      best?.found.length > 0 && best.found.length !== (candidates[1]?.found.length ?? -1) ? best.party.id : '';
+    showModal({
+      title: 'Распознанные пати и порядок',
+      content: `<form><p>Текущая пати: ${esc(state.parties.find(p => p.id === c.partyId)?.name || 'не выбрана')}. Распознано окон: ${known.size} из ${rows.length}. Автоматического переключения по проценту нет; порядок панели задач не используется.</p><label>Подтвердить управляющую пати<select name=partyId><option value="">Выберите явно</option>${candidates.map(p => option(p.party.id, `${p.party.name}: ${p.found.length}/${p.members.length}`, proposed)).join('')}</select></label>${candidates.map(p => `<h4>${esc(p.party.name)} · ${p.found.length}/${p.members.length}</h4><p>${p.members.map(ch => `${known.has(ch.id) ? '✓' : '—'} ${esc(ch.nick)}${c.leaders[p.party.id] === ch.id ? ' (ПЛ)' : ''}`).join(' → ')}</p>`).join('')}<p>✓ — окно распознано; — не запущено. Обычный обход идёт в сохранённом порядке пати. В составной команде блоки могут иметь другие пати; возврат задаётся отдельно.</p></form>`,
+      submitText: 'Подтвердить пати',
+      cancelText: 'Закрыть',
+      onSubmit: async data => {
+        const id = data.get('partyId');
+        if (!id) {
+          toast('Выберите пати явно.', 'error');
+          return false;
+        }
+        await save({ partyId: id });
+      }
+    });
+  });
   host.querySelector('[data-gm-party]').onchange = safe(e => save({ partyId: e.target.value }));
   host.querySelector('[data-gm-enabled]').onchange = safe(e => save({ enabled: e.target.checked }));
   host.querySelector('[data-gm-create]').onclick = () => openCommandEditor(config(), save);
@@ -223,27 +263,64 @@ export function mountGameMacros(host) {
       return;
     }
     selectedPointId = point.id;
-    detail.innerHTML = `<h4>${esc(point.name)}</h4><p>${point.width} × ${point.height} · DPI ${point.dpi} · (${point.x}, ${point.y}). Схема, не снимок игры.</p><div class="gm-point-map" style="aspect-ratio:${point.width}/${point.height}"><span style="left:${(point.x / point.width) * 100}%;top:${(point.y / point.height) * 100}%">⊕</span></div><label>Окно для повторного задания<select data-point-char>${partyMembers(
-      state,
-      c.partyId
-    )
-      .map(char => option(char.id, char.nick, c.leaders[c.partyId]))
-      .join(
-        ''
-      )}</select></label><button class="btn" data-point-edit>✎ Задать заново</button><button class="btn danger" data-point-delete aria-label="Удалить точку">🗑</button>`;
+    detail.innerHTML = `<h4>${esc(point.name)}</h4><p>${point.width} × ${point.height} · DPI ${point.dpi} · (${point.x}, ${point.y}). Схема, не снимок игры.</p><div class="gm-point-map" style="aspect-ratio:${point.width}/${point.height}"><span style="left:${(point.x / point.width) * 100}%;top:${(point.y / point.height) * 100}%">⊕</span></div><button class="btn" data-point-edit>✎ Редактировать</button><button class="btn danger" data-point-delete aria-label="Удалить точку">🗑</button>`;
     detail.querySelector('[data-point-delete]').onclick = safe(() =>
       save({ points: config().points.filter(p => p.id !== point.id) })
     );
-    detail.querySelector('[data-point-edit]').onclick = safe(async () => {
-      const previous = state.settings.gameMacros;
-      try {
-        await pickPoint(detail.querySelector('[data-point-char]').value, point.name, point.id);
-        await save({});
-      } catch (error) {
-        state.settings.gameMacros = previous;
-        throw error;
-      }
-    });
+    detail.querySelector('[data-point-edit]').onclick = () => {
+      let draft = { ...point };
+      const fields = () => {
+        const form = document.querySelector('[data-point-edit-form]');
+        return {
+          ...draft,
+          name: form.elements.namedItem('name').value.trim().slice(0, 80),
+          x: Number(form.elements.namedItem('x').value),
+          y: Number(form.elements.namedItem('y').value)
+        };
+      };
+      showModal({
+        title: 'Редактировать точку',
+        content: `<form data-point-edit-form><label>Название<input class="input" name="name" maxlength="80" required value="${esc(point.name)}"></label><label>Игровое окно для показа / перемещения<select name="charId">${partyMembers(
+          state,
+          c.partyId
+        )
+          .map(ch => option(ch.id, ch.nick, c.leaders[c.partyId]))
+          .join(
+            ''
+          )}</select></label><label>X<input class="input" name="x" type="number" min="0" max="${point.width - 1}" value="${point.x}"></label><label>Y<input class="input" name="y" type="number" min="0" max="${point.height - 1}" value="${point.y}"></label><p data-point-metric>${point.width} × ${point.height}, DPI ${point.dpi}</p><button type="button" class="btn" data-point-position>Показать / переместить точку в игре</button><p class="muted">Кликов в игру нет. После задания вернитесь в этот редактор и нажмите «Сохранить». Отмена не меняет сохранённую точку и ссылки команд.</p></form>`,
+        submitText: 'Сохранить',
+        cancelText: 'Отмена',
+        onSubmit: async () => {
+          const value = fields();
+          if (!value.name || !validPoint(value)) {
+            toast('Введите название и целые координаты внутри игровой области.', 'error');
+            return false;
+          }
+          if (!config().points.some(p => p.id === point.id)) {
+            toast('Точка уже удалена.', 'error');
+            return false;
+          }
+          await save({ points: config().points.map(p => (p.id === point.id ? value : p)) });
+        }
+      });
+      document.querySelector('[data-point-position]').onclick = safe(async () => {
+        const form = document.querySelector('[data-point-edit-form]');
+        const value = fields();
+        draft = await pickPoint(
+          form.elements.namedItem('charId').value,
+          value.name || point.name,
+          point.id,
+          c.partyId,
+          true,
+          value
+        );
+        form.elements.namedItem('x').value = draft.x;
+        form.elements.namedItem('x').max = draft.width - 1;
+        form.elements.namedItem('y').value = draft.y;
+        form.elements.namedItem('y').max = draft.height - 1;
+        form.querySelector('[data-point-metric]').textContent = `${draft.width} × ${draft.height}, DPI ${draft.dpi}`;
+      });
+    };
   };
   host
     .querySelectorAll('[data-gm-point]')
@@ -253,21 +330,26 @@ export function mountGameMacros(host) {
     if (!host.isConnected) return;
     const data = snapshot();
     const mirror = host.querySelector('[data-gm-mirror]');
-    mirror.textContent = data.mirroring
+    mirror.textContent = data.mirrorKeys
       ? '⌨ Выключить повтор клавиатуры'
       : data.mirrorPending
         ? '⌨ Включение…'
         : '⌨ Включить повтор клавиатуры';
-    mirror.setAttribute('aria-pressed', String(!!data.mirroring));
-    host.querySelector('[data-gm-runtime]').textContent = data.mirroring
-      ? 'Повтор клавиатуры ВКЛЮЧЁН · только из игры · Ctrl+Alt+Pause — выключить'
-      : data.paused
-        ? 'Команды на паузе'
-        : data.busy
-          ? 'Команда выполняется…'
-          : data.registered
-            ? 'Управление клавишами включено'
-            : 'Ручной режим · команды запускаются кнопкой ▶';
+    mirror.setAttribute('aria-pressed', String(!!data.mirrorKeys));
+    const mouse = host.querySelector('[data-gm-mirror-mouse]');
+    mouse.textContent = data.mirrorMouse ? '🖱 Выключить повтор мыши' : '🖱 Включить повтор мыши';
+    mouse.setAttribute('aria-pressed', String(!!data.mirrorMouse));
+    host.querySelector('[data-gm-runtime]').textContent =
+      data.notice ||
+      (data.mirroring
+        ? `Повтор: клавиатура ${data.mirrorKeys ? 'ВКЛ' : 'выкл'} · мышь ${data.mirrorMouse ? 'ВКЛ' : 'выкл'} · Ctrl+Alt+Pause — выключить`
+        : data.paused
+          ? 'Команды на паузе'
+          : data.busy
+            ? 'Команда выполняется…'
+            : data.registered
+              ? 'Управление клавишами включено'
+              : 'Ручной режим · команды запускаются кнопкой ▶');
     host.querySelectorAll('button:not([data-gm-stop]):not([data-gm-pause]),input,select').forEach(input => {
       input.disabled = data.busy;
     });
@@ -278,6 +360,19 @@ export function mountGameMacros(host) {
   updateListener = update;
   window.addEventListener('tf-game-macros-changed', update);
   update();
+  const restoreScroll = () =>
+    scroll.forEach(({ node, selector, top, left }) => {
+      const target = selector ? host.querySelector(selector) : node;
+      if (target) {
+        target.scrollTop = top;
+        target.scrollLeft = left;
+      }
+    });
+  restoreScroll();
+  const scrollEpoch = (host._gmScrollEpoch = (host._gmScrollEpoch || 0) + 1);
+  window.requestAnimationFrame?.(() => {
+    if (host.isConnected && host._gmScrollEpoch === scrollEpoch) restoreScroll();
+  });
   void initGameMacros();
 }
 export function openMacrosDialog(action) {

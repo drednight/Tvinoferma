@@ -96,3 +96,33 @@ describe('party command workspace', () => {
     expect(form.querySelector('[data-gm-sequence-field]').hidden).toBe(true);
   });
 });
+it('preserves command-menu and page scroll when selecting a command', () => {
+  const host = document.querySelector('#host');
+  document.querySelector('.gm-command-menu').scrollTop = 137;
+  document.documentElement.scrollTop = 430;
+  document.querySelector('[data-gm-select]').click();
+  expect(host.querySelector('.gm-command-menu').scrollTop).toBe(137);
+  expect(document.documentElement.scrollTop).toBe(430);
+});
+it('edits point name and coordinates in a modal, preserving references and cancellation', async () => {
+  const point = { id: 'point', name: 'Свиток', uiScale: '100%', x: 10, y: 20, width: 800, height: 600, dpi: 96 };
+  state.settings.gameMacros.points = [point];
+  state.settings.gameMacros.commands[0].pointId = 'point';
+  mountGameMacros(document.querySelector('#host'));
+  expect(document.querySelector('[data-point-char]')).toBeNull();
+  expect(document.querySelector('[data-point-edit]').textContent).toContain('Редактировать');
+  document.querySelector('[data-point-edit]').click();
+  let form = document.querySelector('[data-point-edit-form]');
+  form.elements.namedItem('name').value = 'Отменённое имя';
+  form.elements.namedItem('x').value = 101;
+  document.querySelector('.modal-footer .ghost').click();
+  expect(state.settings.gameMacros.points[0]).toEqual(point);
+  document.querySelector('[data-point-edit]').click();
+  form = document.querySelector('[data-point-edit-form]');
+  form.elements.namedItem('name').value = 'Новое имя';
+  form.elements.namedItem('x').value = 200;
+  document.querySelector('.modal-footer .primary').click();
+  await vi.waitFor(() => expect(state.settings.gameMacros.points[0].name).toBe('Новое имя'));
+  expect(state.settings.gameMacros.points[0]).toMatchObject({ id: 'point', x: 200 });
+  expect(state.settings.gameMacros.commands[0].pointId).toBe('point');
+});

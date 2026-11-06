@@ -1,4 +1,4 @@
-import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS } from './appearance.js';
+import { normalizeAppearance, TEXT_PRESETS, KEY_PRESETS, COMMAND_PRESETS } from './appearance.js';
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -10,11 +10,13 @@ async function init() {
     const a = normalizeAppearance(data.appearance);
     document.documentElement.style.setProperty('--overlay-text', TEXT_PRESETS[a.textColor]);
     document.documentElement.style.setProperty('--overlay-key', KEY_PRESETS[a.keyColor]);
+    document.documentElement.style.setProperty('--overlay-command', COMMAND_PRESETS[a.commandColor]);
     document.documentElement.style.setProperty('--overlay-font', a.fontSize + 'px');
     document.body.classList.toggle('header-hidden', a.hideHeader);
     if (document.getElementById('appearance-screen').hidden) {
       document.getElementById('text-color').value = a.textColor;
       document.getElementById('key-color').value = a.keyColor;
+      document.getElementById('command-color').value = a.commandColor;
       document.getElementById('font-size').value = String(a.fontSize);
       document.getElementById('hide-header').checked = a.hideHeader;
     }
@@ -22,15 +24,17 @@ async function init() {
       '--alpha',
       String(Math.max(0.1, Math.min(1, Number(data.opacity) || 0.9)))
     );
-    document.getElementById('status').textContent = data.mirroring
-      ? 'Повтор клавиатуры ВКЛЮЧЁН · Ctrl+Alt+Pause — выключить'
-      : data.paused
-        ? 'Макросы на паузе'
-        : data.busy
-          ? 'Команда выполняется'
-          : data.registered
-            ? 'Хоткеи включены'
-            : 'Хоткеи выключены / недоступны';
+    document.getElementById('status').textContent =
+      data.notice ||
+      (data.mirroring
+        ? `Повтор: клавиатура ${(data.mirrorKeys ?? data.mirroring) ? 'ВКЛ' : 'выкл'} · мышь ${data.mirrorMouse ? 'ВКЛ' : 'выкл'} · Ctrl+Alt+Pause — выключить`
+        : data.paused
+          ? 'Макросы на паузе'
+          : data.busy
+            ? 'Команда выполняется'
+            : data.registered
+              ? 'Хоткеи включены'
+              : 'Хоткеи выключены / недоступны');
     document.getElementById('commands').replaceChildren(
       ...(data.commands || []).map(row => {
         const li = document.createElement('li'),
@@ -49,7 +53,30 @@ async function init() {
       document.getElementById('alpha-value').textContent = document.getElementById('opacity').value + '%';
       document.getElementById('topmost').checked = data.topmost !== false;
     }
-    document.getElementById('logs').textContent = [...(data.logs || [])].reverse().join('\n');
+    document.getElementById('logs').replaceChildren(
+      ...[...(data.logEntries || (data.logs || []).map(text => ({ text })))].reverse().map(entry => {
+        const line = document.createElement('span');
+        const text = String(entry.text || ''),
+          name = String(entry.commandName || '');
+        if (!name) {
+          line.textContent = text + '\n';
+          return line;
+        }
+        const label = document.createElement('span');
+        label.style.color = 'var(--overlay-command)';
+        label.textContent = name;
+        const index = text.indexOf(name);
+        if (index >= 0)
+          line.append(
+            document.createTextNode(text.slice(0, index)),
+            label,
+            document.createTextNode(text.slice(index + name.length))
+          );
+        else line.append(label, document.createTextNode(` · ${text}`));
+        line.append(document.createTextNode('\n'));
+        return line;
+      })
+    );
   });
   const showView = view => {
     document.getElementById('shortcuts-screen').hidden = view !== 'shortcuts';
@@ -89,6 +116,7 @@ async function init() {
         appearance: normalizeAppearance({
           textColor: document.getElementById('text-color').value,
           keyColor: document.getElementById('key-color').value,
+          commandColor: document.getElementById('command-color').value,
           fontSize: document.getElementById('font-size').value,
           hideHeader: document.getElementById('hide-header').checked
         })

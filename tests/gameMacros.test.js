@@ -173,3 +173,27 @@ it('preserves explicit delivery mode but defaults old commands to foreground', (
     'background'
   );
 });
+it('normalizes safe timing and completion defaults without changing old commands', () => {
+  const old = normalizeGameMacros({
+    commands: [
+      { id: 'old', action: 'sequence' },
+      { id: 'mix', action: 'composite' }
+    ]
+  }).commands;
+  expect(old[0]).toMatchObject({ returnTo: 'leader', switchMs: 30, holdMs: 30 });
+  expect(old[1].returnTo).toBe('last');
+  const [tuned] = normalizeGameMacros({
+    commands: [{ id: 'x', action: 'sequence', switchMs: -5, holdMs: 900, returnTo: 'last' }]
+  }).commands;
+  expect(tuned).toMatchObject({ switchMs: 0, holdMs: 200, returnTo: 'last' });
+});
+it('keeps the saved party route after normalization and reversed OS enumeration', async () => {
+  const { orderManagedTargets } = await import('../js/modules/gameMacros/model.js');
+  const restored = structuredClone(state);
+  restored.characters[0].partyOrder = { p: 2 };
+  restored.characters[1].partyOrder = { p: 1 };
+  expect(
+    resolveTargets(restored, config, { action: 'sequence', target: 'all' }, [...rows].reverse()).map(r => r.charId)
+  ).toEqual(['b', 'a']);
+  expect(orderManagedTargets(restored, config, [...rows].reverse()).map(r => r.charId)).toEqual(['b', 'a', 'c']);
+});

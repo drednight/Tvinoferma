@@ -72,24 +72,30 @@ export function installAhkPresets(input = {}) {
 
 export function installMirrorPreset(input = {}) {
   input = input && typeof input === 'object' ? input : {};
-  if (input.mirrorPresetVersion === 1) return input;
-  const commands = Array.isArray(input.commands) ? input.commands : [];
-  if (commands.length >= 64) return input;
+  if (input.mirrorPresetVersion === 2) return input;
+  const commands = [...(Array.isArray(input.commands) ? input.commands : [])];
+  for (const [action, id, name] of [
+    ['mirror', 'keyboard-mirror', 'Повтор клавиатуры — вкл / выкл'],
+    ['mouse-mirror', 'mouse-mirror', 'Повтор мыши — вкл / выкл']
+  ]) {
+    if (action === 'mirror' && input.mirrorPresetVersion === 1) continue;
+    if (commands.length < 64 && !commands.some(c => c?.action === action)) {
+      let availableId = id;
+      for (let suffix = 1; commands.some(c => c?.id === availableId); suffix++) availableId = `${id}-${suffix}`;
+      commands.push({
+        id: availableId,
+        name,
+        action,
+        scope: 'managed',
+        target: 'all',
+        hotkey: ''
+      });
+    }
+  }
   return {
     ...input,
-    mirrorPresetVersion: 1,
-    commands: commands.some(c => c?.action === 'mirror')
-      ? commands
-      : [
-          ...commands,
-          {
-            id: 'keyboard-mirror',
-            name: 'Повтор клавиатуры — вкл / выкл',
-            action: 'mirror',
-            scope: 'managed',
-            target: 'all',
-            hotkey: ''
-          }
-        ]
+    mirrorPresetVersion:
+      commands.length < 64 || commands.some(c => c?.action === 'mouse-mirror') ? 2 : input.mirrorPresetVersion,
+    commands
   };
 }

@@ -82,7 +82,7 @@ it('saves overlay appearance without opening the main app', async () => {
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', {
       opacity: 0.55,
       topmost: false,
-      appearance: { textColor: 'light', keyColor: 'gold', fontSize: 14, hideHeader: false }
+      appearance: { textColor: 'light', keyColor: 'gold', commandColor: 'mint', fontSize: 14, hideHeader: false }
     })
   );
 });
@@ -131,6 +131,23 @@ it('hides both service headings together with the service panel', () => {
 
 it('shows the continuous keyboard mirror status without exposing keystrokes', () => {
   mocks.handlers.get('game-macro-snapshot')({ payload: { mirroring: true, commands: [] } });
-  expect(document.querySelector('#status').textContent).toContain('Повтор клавиатуры ВКЛЮЧЁН');
+  expect(document.querySelector('#status').textContent).toContain('клавиатура ВКЛ');
   expect(document.querySelector('#status').textContent).toContain('Ctrl+Alt+Pause');
+});
+it('colors only the command name, independently of text and key colors, without interpreting HTML', () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      appearance: { commandColor: 'violet' },
+      logEntries: [{ text: '12:00 · Начало: <img src=x>.', commandName: '<img src=x>' }]
+    }
+  });
+  const label = document.querySelector('#logs span span');
+  expect(label.textContent).toBe('<img src=x>');
+  expect(label.style.color).toBe('var(--overlay-command)');
+  expect(document.querySelector('#logs img')).toBeNull();
+  expect(document.documentElement.style.getPropertyValue('--overlay-command')).toBe('#c4a5ff');
+});
+it('shows a mirror activation error prominently in the overlay status', () => {
+  mocks.handlers.get('game-macro-snapshot')({ payload: { notice: 'Повтор не включён: нет игровых окон', logs: [] } });
+  expect(document.querySelector('#status').textContent).toContain('нет игровых окон');
 });

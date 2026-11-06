@@ -58,6 +58,7 @@ struct Context {
     shortcuts: Vec<(Vec<u16>, u16)>,
     control: Arc<Control>,
     mouse: bool,
+    keyboard: bool,
     last_mouse: Option<(u8, i32, i32, u64)>,
 }
 thread_local! { static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) }; }
@@ -98,6 +99,9 @@ unsafe extern "system" fn hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                 // Emergency stop works even outside the game. Never suppress the user's input.
                 if event.vkCode == 0x13 && ctrl && alt {
                     halt(&ctx.control, 0);
+                    return;
+                }
+                if !ctx.keyboard {
                     return;
                 }
                 let source = GetForegroundWindow().0 as usize;
@@ -248,7 +252,12 @@ unsafe extern "system" fn mouse_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESU
     CallNextHookEx(None, code, wp, lp)
 }
 fn verify(client: &Client) -> bool {
-    crate::launcher::macro_client(client.target.pid, client.target.started_at).is_ok_and(|c| {
+    crate::launcher::macro_client_at(
+        client.target.pid,
+        client.target.started_at,
+        Some(client.hwnd as u64),
+    )
+    .is_ok_and(|c| {
         c.hwnd == Some(client.hwnd as u64)
             && compatible_integrity(c.elevated, crate::launcher::self_elevated())
     })
@@ -418,12 +427,14 @@ pub fn start(
     targets: Vec<Target>,
     shortcuts: Vec<String>,
     mouse: bool,
+    keyboard: bool,
 ) -> Result<bool, String> {
     if id.is_empty()
         || id.len() > 80
         || !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-')
         || !(2..=30).contains(&targets.len())
         || shortcuts.len() > 65
+        || (!mouse && !keyboard)
     {
         return Err("Invalid mirror configuration".into());
     }
@@ -464,6 +475,7 @@ pub fn start(
                 shortcuts: parsed,
                 control: thread_control.clone(),
                 mouse,
+                keyboard,
                 last_mouse: None,
             })
         });

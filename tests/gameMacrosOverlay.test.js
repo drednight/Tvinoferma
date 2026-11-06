@@ -90,3 +90,16 @@ it('does not retain a point if marker selection is cancelled', async () => {
   expect(runtime.config().points).toEqual([]);
   expect(runtime.snapshot().busy).toBe(false);
 });
+it('calibrates an existing point as an uncommitted draft without changing its ID or command references', async () => {
+  const original = { id: 'kept', name: 'Старая', uiScale: '100%', x: 5, y: 7, width: 2560, height: 1400, dpi: 144 };
+  state.settings.gameMacros.points = [original];
+  const pending = runtime.pickPoint('a', 'Черновик', 'kept', 'p', true, original);
+  await vi.waitFor(() => expect(mocks.invoke.mock.calls.some(([, a]) => a?.mode === 'point')).toBe(true));
+  const args = mocks.invoke.mock.calls.find(([, a]) => a?.mode === 'point')[1];
+  expect(args.initialPoint).toEqual(original);
+  mocks.handlers.get('game-macro-picked')({
+    payload: { requestId: args.requestId, geometry: { x: 100, y: 200, width: 2560, height: 1400, dpi: 144 } }
+  });
+  expect(await pending).toMatchObject({ id: 'kept', name: 'Черновик', x: 100, y: 200 });
+  expect(runtime.config().points[0]).toEqual(original);
+});

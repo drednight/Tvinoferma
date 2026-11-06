@@ -5,7 +5,7 @@ import { mergeSettings } from '../js/core/state/settings.js';
 describe('StanislavFist AHK command migration', () => {
   it('installs every command once, does not read tokens and never enables hotkeys', () => {
     const c = mergeSettings({ gameMacros: { enabled: true } }).gameMacros;
-    expect(c.commands).toHaveLength(14);
+    expect(c.commands).toHaveLength(15);
     expect(c.enabled).toBe(false);
     expect(c.commands.find(c => c.id === 'ahk-assist')).toMatchObject({
       hotkey: 'CTRL+X',
@@ -46,4 +46,15 @@ describe('StanislavFist AHK command migration', () => {
     expect(() => steps('CTRL+WHEELDOWN')).toThrow();
     expect(AHK_PRESETS.find(c => c.id === 'ahk-f6f1').action).toBe('f6f1');
   });
+});
+it('migrates mouse toggle without duplicating edited commands or restoring a deliberately deleted keyboard preset', async () => {
+  const { installMirrorPreset } = await import('../js/modules/gameMacros/presets.js');
+  const command = { id: 'mine', action: 'mirror', name: 'Мои клавиши', hotkey: 'CTRL+F12' };
+  const migrated = installMirrorPreset({ mirrorPresetVersion: 1, commands: [command] });
+  expect(migrated.commands[0]).toEqual(command);
+  expect(migrated.commands.filter(c => c.action === 'mouse-mirror')).toHaveLength(1);
+  expect(installMirrorPreset(migrated)).toEqual(migrated);
+  expect(installMirrorPreset({ mirrorPresetVersion: 1, commands: [] }).commands.map(c => c.action)).toEqual([
+    'mouse-mirror'
+  ]);
 });

@@ -103,7 +103,7 @@ export function compileComposition(command, config) {
   const expand = (cmd, path = []) => {
     if (path.includes(cmd.id) || path.length >= 4) throw new Error('Цикл команд или вложенность более 4.');
     if (cmd.action !== 'composite') {
-      if (['mirror', 'pause'].includes(cmd.action))
+      if (['mirror', 'mouse-mirror', 'pause'].includes(cmd.action))
         throw new Error('Переключатели повтора/паузы нельзя вставлять как ссылку: используйте отдельный шаг паузы.');
       if (['click', 'follow'].includes(cmd.action) && !command.resourceAllowed)
         throw new Error('Разрешите клики для всей составной команды.');

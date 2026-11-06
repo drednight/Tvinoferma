@@ -16,6 +16,7 @@ export const ACTIONS = [
   'launch',
   'pause',
   'mirror',
+  'mouse-mirror',
   'composite',
   'resize'
 ];
@@ -61,6 +62,13 @@ export function normalizeGameMacros(input = {}) {
       count: row.count === 2 ? 2 : 1,
       width: size(row.width, 2560),
       height: size(row.height, 1400),
+      returnTo: ['last', 'leader'].includes(row.returnTo)
+        ? row.returnTo
+        : ['sequence', 'follow', 'click', 'f6f1', 'optimize'].includes(row.action)
+          ? 'leader'
+          : 'last',
+      switchMs: Math.max(0, Math.min(500, Math.round(Number(row.switchMs ?? 30)) || 0)),
+      holdMs: Math.max(10, Math.min(200, Math.round(Number(row.holdMs ?? 30)) || 30)),
       delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
@@ -114,7 +122,7 @@ export function normalizeGameMacros(input = {}) {
         : null,
     enabled: input.enabled === true,
     mirrorMouse: input.mirrorMouse === true,
-    mirrorPresetVersion: input.mirrorPresetVersion === 1 ? 1 : 0,
+    mirrorPresetVersion: [1, 2].includes(input.mirrorPresetVersion) ? input.mirrorPresetVersion : 0,
     ahkPresetsVersion: input.ahkPresetsVersion === 1 ? 1 : 0,
     buffPartyId: String(input.partyId || '').slice(0, 200),
     leaderWidth: size(legacySizes ? undefined : input.leaderWidth, 2560),
@@ -243,4 +251,20 @@ export function backgroundCompatible(command) {
   } catch {
     return false;
   }
+}
+
+// Global routes start with the selected party's persisted order, never OS enumeration order.
+export function orderManagedTargets(state, config, rows) {
+  const ids = partyMembers(state, config.partyId).map(c => c.id);
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  const chars = new Map(state.characters.map(c => [c.id, c]));
+  return [...rows].sort(
+    (a, b) =>
+      (rank.get(a.charId) ?? ids.length) - (rank.get(b.charId) ?? ids.length) ||
+      String(chars.get(a.charId)?.nick || a.charId).localeCompare(
+        String(chars.get(b.charId)?.nick || b.charId),
+        'ru'
+      ) ||
+      String(a.charId).localeCompare(String(b.charId))
+  );
 }
