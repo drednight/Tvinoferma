@@ -480,8 +480,12 @@ describe('ход выполнения в полном логе', () => {
     openTaskLog(task.id);
     expect(document.querySelector('.tf-dialog-sub').textContent).toContain('25%');
     expect(document.querySelector('.tf-dialog-sub [data-task-log]')).toBeNull();
+    document.querySelector('.tf-dialog-body').scrollTop = 180;
+    document.querySelector('.tl-full').scrollTop = 70;
     task.progress(2, 4);
     await vi.waitFor(() => expect(document.querySelector('.tf-dialog-sub').textContent).toContain('50%'));
+    expect(document.querySelector('.tf-dialog-body').scrollTop).toBe(180);
+    expect(document.querySelector('.tl-full').scrollTop).toBe(70);
     document.querySelector('.tf-dialog-sub [data-task-cancel]').click();
     expect(task.cancelled).toBe(true);
     const { closeModal } = await import('../js/core/ui.js');
