@@ -18,6 +18,13 @@
         margin: 0;
         background: transparent;
       }
+      [hidden] {
+        display: none !important;
+      }
+      input[type='range'] {
+        width: 100%;
+        margin-top: 10px;
+      }
       main {
         height: 100vh;
         overflow: hidden;
@@ -79,6 +86,13 @@
     <main>
       <header data-drag>
         <span>🎮 Управление пати</span
+        ><button
+          id="info-toggle"
+          aria-controls="overlay-controls"
+          aria-expanded="true"
+          title="Скрыть или показать панель"
+        >
+          ⋯</button
         ><button data-action="stop" title="Остановить команду" aria-label="Остановить команду">■</button
         ><button
           id="fold"
@@ -91,14 +105,35 @@
         ><button id="close" aria-label="Закрыть оверлей" title="Закрыть оверлей">×</button>
       </header>
       <section id="panel">
-        <p class="muted">Ваши сочетания команд. Ctrl+Alt+Pause — остановка при включённом управлении клавишами.</p>
-        <p id="status">Ожидание главного окна…</p>
-        <button data-action="settings">Команды</button><button data-action="overlay-settings">Вид оверлея</button
-        ><button data-action="logs">Открыть журнал</button><button data-action="stop">Остановить</button>
-        <h3>Назначенные клавиши</h3>
-        <ul id="commands"></ul>
-        <h3>Журнал</h3>
-        <pre id="logs"></pre>
+        <button id="back" hidden>← Назначенные клавиши</button>
+        <section id="shortcuts-screen">
+          <div id="overlay-controls">
+            <p class="muted">Ваши сочетания команд. Ctrl+Alt+Pause — остановка при включённом управлении клавишами.</p>
+            <p id="status">Ожидание главного окна…</p>
+            <button data-view="appearance">Вид оверлея</button><button data-view="journal">Открыть журнал</button>
+          </div>
+          <h3>Назначенные клавиши</h3>
+          <ul id="commands"></ul>
+        </section>
+        <section id="appearance-screen" hidden>
+          <h3>Вид оверлея</h3>
+          <label
+            >Непрозрачность <output id="alpha-value">90%</output
+            ><input id="opacity" type="range" min="30" max="100" value="90"
+          /></label>
+          <p>
+            <label><input id="topmost" type="checkbox" checked /> Поверх других окон</label>
+          </p>
+          <p class="muted">
+            Верхняя полоса прозрачнее основного фона. ▴ сворачивает окно; ⋯ скрывает служебную панель.
+          </p>
+          <button id="save-appearance">Сохранить</button>
+          <p id="appearance-error" role="status"></p>
+        </section>
+        <section id="journal-screen" hidden>
+          <h3>Журнал текущего сеанса</h3>
+          <pre id="logs"></pre>
+        </section>
       </section>
     </main>
     <script type="module" src="/js/modules/gameMacros/overlay.js"></script>

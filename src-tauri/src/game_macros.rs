@@ -147,6 +147,26 @@ pub fn game_macro_overlay_fold(
     Ok(())
 }
 #[tauri::command]
+pub fn game_macro_overlay_preferences(
+    window: tauri::WebviewWindow,
+    app: tauri::AppHandle,
+    opacity: f64,
+    topmost: bool,
+) -> Result<(), String> {
+    if window.label() != "game-overlay" || !opacity.is_finite() || !(0.3..=1.0).contains(&opacity) {
+        return Err("Invalid overlay preferences".into());
+    }
+    window
+        .set_always_on_top(topmost)
+        .map_err(|_| "Cannot change topmost")?;
+    app.emit_to(
+        "main",
+        "game-overlay-preferences",
+        serde_json::json!({"opacity":opacity,"topmost":topmost}),
+    )
+    .map_err(|_| "Cannot save overlay preferences".into())
+}
+#[tauri::command]
 pub fn game_macro_navigate(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,

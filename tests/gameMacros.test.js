@@ -139,3 +139,19 @@ it('migrates only legacy default F11 sizes and preserves customized sizes', () =
       .leaderWidth
   ).toBe(3440);
 });
+
+it('distinguishes an unrecognized game window from an elevated one without assuming either is safe', () => {
+  expect(() => resolveTargets(state, config, { target: 'leader', action: 'leader' }, [])).toThrow('не распознано');
+  expect(() =>
+    resolveTargets(state, config, { target: 'leader', action: 'leader' }, [{ ...rows[0], elevated: true }])
+  ).toThrow('от администратора');
+  expect(() =>
+    resolveTargets(state, config, { target: 'leader', action: 'leader' }, [{ ...rows[0], elevated: null }])
+  ).toThrow('Не удалось проверить процесс');
+  expect(() =>
+    resolveTargets(state, config, { target: 'leader', action: 'leader' }, [
+      rows[0],
+      { ...rows[0], pid: 999, startedAt: null }
+    ])
+  ).toThrow();
+});

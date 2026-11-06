@@ -27,8 +27,45 @@ async function init() {
         return li;
       })
     );
+    if (document.getElementById('appearance-screen').hidden || !document.activeElement?.closest('#appearance-screen')) {
+      document.getElementById('opacity').value = String(Math.round((data.opacity || 0.9) * 100));
+      document.getElementById('alpha-value').textContent = document.getElementById('opacity').value + '%';
+      document.getElementById('topmost').checked = data.topmost !== false;
+    }
     document.getElementById('logs').textContent = (data.logs || []).join('\n');
   });
+  const showView = view => {
+    document.getElementById('shortcuts-screen').hidden = view !== 'shortcuts';
+    document.getElementById('appearance-screen').hidden = view !== 'appearance';
+    document.getElementById('journal-screen').hidden = view !== 'journal';
+    document.getElementById('back').hidden = view === 'shortcuts';
+  };
+  document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
+  document.getElementById('back').onclick = () => showView('shortcuts');
+  document.getElementById('info-toggle').onclick = () => {
+    const controls = document.getElementById('overlay-controls');
+    controls.hidden = !controls.hidden;
+    document.getElementById('info-toggle').setAttribute('aria-expanded', String(!controls.hidden));
+  };
+  document.getElementById('opacity').oninput = event => {
+    document.getElementById('alpha-value').textContent = event.target.value + '%';
+    document.documentElement.style.setProperty('--alpha', String(Number(event.target.value) / 100));
+  };
+  document.getElementById('save-appearance').onclick = async () => {
+    const button = document.getElementById('save-appearance');
+    button.disabled = true;
+    try {
+      await invoke('game_macro_overlay_preferences', {
+        opacity: Number(document.getElementById('opacity').value) / 100,
+        topmost: document.getElementById('topmost').checked
+      });
+      document.getElementById('appearance-error').textContent = 'Настройки применены.';
+    } catch {
+      document.getElementById('appearance-error').textContent = 'Не удалось применить настройки.';
+    } finally {
+      button.disabled = false;
+    }
+  };
   document.querySelectorAll('[data-action]').forEach(button => {
     button.onclick = async () => {
       try {

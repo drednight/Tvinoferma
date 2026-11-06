@@ -94,8 +94,7 @@ export async function openOverlay() {
   });
   await broadcast();
 }
-export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
-  selected = scopedConfig(selected, command);
+export async function listMacroWindows() {
   const { windowRows } = await import('../launcher/windowList.js');
   const { recalledOwnership } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
@@ -106,6 +105,11 @@ export async function windowTargets(command = { target: 'all', action: 'next' },
     if (state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1)
       row.known = false;
   }
+  return rows;
+}
+export async function windowTargets(command = { target: 'all', action: 'next' }, selected = config()) {
+  selected = scopedConfig(selected, command);
+  const rows = await listMacroWindows();
   if (command.scope === 'managed') {
     if (command.target !== 'all' || command.action === 'leader')
       throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
@@ -152,6 +156,42 @@ export async function saveProfile(name) {
     void broadcast();
   }
 }
+export function macroErrorText(error) {
+  const raw = String(error?.message || error || 'Не удалось выполнить команду.');
+  const messages = {
+    'no party': 'Выберите пати в верхней части раздела.',
+    'PL required': 'В настройках выбранной пати назначьте ПЛ.',
+    'preview required':
+      'Для этой координатной команды нажмите «Предпросмотр без клика» в «Моих командах». Это нужно один раз в текущем сеансе и после изменения точки.',
+    'Ambiguous/missing calibration for client size and DPI':
+      'Для одного из окон нет единственной подходящей точки. Задайте точку при его текущем размере и масштабе Windows; для других размеров добавьте дополнительные профили этой же точки.',
+    'no complete profile': 'Не выбран полный профиль размещения окон. Сначала сохраните профиль для текущей пати.',
+    'missing profile member':
+      'В профиле размещения отсутствует участник пати. Сохраните профиль заново для текущего состава.',
+    'Release modifier keys and retry':
+      'После запуска отпустите Ctrl, Shift и Alt. Команда не отправлялась с зажатыми клавишами. Нажмите сочетание ещё раз коротко.',
+    'Not the active game window': 'Сначала активируйте игровое окно выбранной пати, затем нажмите сочетание.',
+    'Focus changed; command stopped': 'Активное окно сменилось. Не переключайте окна во время выполнения команды.',
+    'Windows refused game activation':
+      'Windows не разрешила переключиться на игру. Откройте клиент вручную и повторите.',
+    'Client size or DPI differs from calibration':
+      'Размер игровой области или масштаб Windows изменился после задания точки. Задайте координаты заново и выполните предпросмотр.',
+    'Another window covers the calibrated point':
+      'Место клика перекрыто другим окном. Уберите оверлей или другое окно с этой точки.',
+    'Focus changed or physical input is held':
+      'Фокус сменился или зажата кнопка мыши/клавиша. Отпустите ввод и повторите из игрового окна.',
+    'Game window disappeared':
+      'Игровое окно закрылось или перезапустилось. Заново откройте клиент и проверьте список окон.',
+    'Key input incomplete or focus changed':
+      'Windows не приняла ввод целиком или сменилось активное окно. Повтора автоматически не будет.'
+  };
+  return (
+    messages[raw] ||
+    (/[А-Яа-яЁё]/.test(raw) && !/(https?:|token|password|cookie|\/home\/|[A-Z]:\\)/i.test(raw)
+      ? raw.slice(0, 600)
+      : 'Не удалось проверить или выполнить действие Windows. Откройте «Проверить окна»; ввод не повторяется автоматически.')
+  );
+}
 export async function run(id, hotkey = false) {
   if (id === 'stop') {
     stop();
@@ -180,6 +220,7 @@ export async function run(id, hotkey = false) {
   cancelled = false;
   void broadcast();
   try {
+    if (hotkey) await wait(200);
     if (command.action === 'launch') {
       const party = state.parties.find(p => p.id === c.partyId);
       if (!party) throw new Error('no party');
@@ -346,12 +387,8 @@ export async function run(id, hotkey = false) {
       }
     }
     log('Команда завершена.');
-  } catch {
-    log(
-      cancelled
-        ? 'Остановлено пользователем.'
-        : 'Остановлено: проверьте ПЛ, привязки окон, профиль/размер/DPI, предпросмотр точки в этом сеансе, разрешение расходов, фокус и отпустите клавиши-модификаторы. Повторов и повышения прав нет.'
-    );
+  } catch (error) {
+    log(cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`);
   } finally {
     busy = false;
     void broadcast();
@@ -431,6 +468,20 @@ export async function initGameMacros() {
   initialized = true;
   await listen('game-macro-hotkey', event => {
     if (config().enabled && registered) void run(String(event.payload), true);
+  });
+  await listen('game-overlay-preferences', async event => {
+    const p = event.payload;
+    if (!p || !Number.isFinite(p.opacity) || p.opacity < 0.3 || p.opacity > 1 || typeof p.topmost !== 'boolean') return;
+    const previous = config();
+    state.settings.gameMacros = { ...previous, opacity: p.opacity, topmost: p.topmost };
+    try {
+      await (await import('../../core/storage.js')).persist();
+    } catch {
+      state.settings.gameMacros = previous;
+      log('Не удалось сохранить настройки оверлея.');
+    }
+    await applyOverlayPreferences();
+    await broadcast();
   });
   await listen('game-overlay-ready', () => {
     void broadcast();

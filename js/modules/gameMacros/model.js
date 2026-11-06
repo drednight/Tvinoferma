@@ -174,11 +174,25 @@ export function resolveTargets(state, config, command, rows) {
             : true
     )
     .map(c => {
-      const matches = rows.filter(r => r.known && r.charId === c.id && r.startedAt && r.hwnd && r.elevated === false);
-      if (matches.length !== 1)
+      const candidates = rows.filter(r => r.known && r.charId === c.id);
+      const matches = candidates.filter(r => r.startedAt && r.hwnd && r.elevated === false);
+      if (matches.length !== 1 || candidates.length !== 1) {
+        if (candidates.some(r => r.elevated === true))
+          throw new Error(
+            `Окно «${c.nick}» запущено от администратора. Закройте клиент и запустите игру обычным способом, без повышения прав.`
+          );
+        if (candidates.length > 1)
+          throw new Error(
+            `Найдено несколько окон «${c.nick}». Закройте лишнее окно или исправьте его название через «Названия и значки».`
+          );
+        if (candidates.length)
+          throw new Error(
+            `Не удалось проверить процесс окна «${c.nick}» (права, время запуска или дескриптор окна). Перезапустите клиент обычным способом.`
+          );
         throw new Error(
-          `Нет однозначно привязанного доступного окна: ${c.nick}. Окна от администратора не управляются.`
+          `Окно «${c.nick}» не распознано. Откройте список игровых окон и проверьте название «Ник — Класс», либо запустите этого персонажа через Твиноферму. При одинаковых никах управление недоступно.`
         );
+      }
       return { ...matches[0], nick: c.nick, charId: c.id };
     });
   if (!targets.length) throw new Error('Нет получателей.');
@@ -209,7 +223,9 @@ export function commandPoint(c, command, authorize = true) {
   const point = c.points.find(p => p.id === command.pointId);
   if (!validPoint(point)) throw new Error('Выберите откалиброванную точку.');
   if (authorize && !command.resourceAllowed)
-    throw new Error('Для координатного действия нужно явное разрешение расхода ресурсов и подтверждение масштаба UI.');
+    throw new Error(
+      'В редакторе команды выберите точку и отметьте «Разрешаю координатный клик». Такой клик может потратить свиток или другой игровой ресурс.'
+    );
   return point;
 }
 

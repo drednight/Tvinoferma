@@ -827,9 +827,26 @@ export function renderDock() {
 /** Подробные результаты одной задачи или всех сохранённых задач журнала. */
 export function openTaskStatistics(id = '') {
   const chosen = id ? tasks.filter(task => task.id === id) : tasks;
-  const reports = chosen
-    .filter(task => task.scriptReport && Array.isArray(task.scriptReport.rows))
-    .map(task => ({ ...task.scriptReport, at: task.startedAt }));
+  const reports = chosen.flatMap(task => {
+    if (Array.isArray(task.scriptReport?.rows) && task.scriptReport.rows.length)
+      return [{ ...task.scriptReport, at: task.startedAt }];
+    const summary = [...(task.entries || [])].reverse().find(entry => entry.level === 'summary' && entry.rows?.length);
+    return summary
+      ? [
+          {
+            title: task.title,
+            at: task.startedAt,
+            rows: summary.rows.map(row => ({
+              nick: row.name,
+              action: summary.message || 'Итог',
+              status: row.status,
+              tone: row.tone,
+              details: row.note ? [row.note] : []
+            }))
+          }
+        ]
+      : [];
+  });
   return openScriptStatistics(reports, {
     title: id ? '📊 Результат по персонажам' : '📊 Статистика по персонажам',
     note: id

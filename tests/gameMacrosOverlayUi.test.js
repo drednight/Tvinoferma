@@ -45,9 +45,34 @@ it('does not start window dragging when a header button is pressed', () => {
   document.querySelector('header span').dispatchEvent(event);
   expect(mocks.drag).toHaveBeenCalledTimes(1);
 });
-it('uses the native navigation bridge for header stop and content settings', async () => {
+it('keeps settings and journal inside the overlay with a return button', async () => {
   document.querySelector('header [data-action="stop"]').click();
-  document.querySelector('[data-action="overlay-settings"]').click();
   await vi.waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'stop' }));
-  expect(mocks.invoke).toHaveBeenCalledWith('game_macro_navigate', { action: 'overlay-settings' });
+  mocks.invoke.mockClear();
+  document.querySelector('[data-view="appearance"]').click();
+  expect(document.querySelector('#appearance-screen').hidden).toBe(false);
+  expect(document.querySelector('#shortcuts-screen').hidden).toBe(true);
+  document.querySelector('#back').click();
+  expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
+  document.querySelector('[data-view="journal"]').click();
+  expect(document.querySelector('#journal-screen').hidden).toBe(false);
+  expect(mocks.invoke).not.toHaveBeenCalled();
+  expect(document.querySelectorAll('[data-action="stop"]')).toHaveLength(1);
+  expect(document.querySelector('[data-action="settings"]')).toBeNull();
+});
+it('hides the service panel without hiding assigned shortcuts', () => {
+  document.querySelector('#info-toggle').click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(true);
+  expect(document.querySelector('#shortcuts-screen').hidden).toBe(false);
+  document.querySelector('#info-toggle').click();
+  expect(document.querySelector('#overlay-controls').hidden).toBe(false);
+});
+it('saves overlay appearance without opening the main app', async () => {
+  document.querySelector('[data-view="appearance"]').click();
+  document.querySelector('#opacity').value = '55';
+  document.querySelector('#topmost').checked = false;
+  document.querySelector('#save-appearance').click();
+  await vi.waitFor(() =>
+    expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', { opacity: 0.55, topmost: false })
+  );
 });

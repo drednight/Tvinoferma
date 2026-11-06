@@ -671,3 +671,43 @@
     padding: 16px;
   }
 }
+
+.gm-action-picker {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.gm-action-picker fieldset {
+  max-height: 230px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gm-action-picker aside {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.gm-key-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.gm-key-tools .btn {
+  padding: 3px 7px;
+  font-size: 0.8rem;
+}
+@media (max-width: 600px) {
+  .gm-action-picker {
+    grid-template-columns: 1fr;
+  }
+  .gm-action-picker fieldset {
+    max-height: 180px;
+  }
+}

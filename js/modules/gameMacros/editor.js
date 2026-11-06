@@ -16,20 +16,68 @@ export const commandLabels = {
   pause: 'Пауза / продолжить'
 };
 
+export const actionHelp = {
+  next: 'Переключает на следующее распознанное окно выбранной пати. В игру ничего не отправляет.',
+  previous: 'Переключает на предыдущее окно пати.',
+  leader: 'Открывает окно ПЛ, назначенного в настройках пати. Лидерство внутри игры не меняет.',
+  sequence:
+    'Отправляет выбранным участникам клавиши и паузы по порядку. Например: SHIFT+1, затем wait 100, затем F7 — каждый шаг с новой строки.',
+  layout: 'Возвращает окна в сохранённые позиции и размеры. Сначала сохраните профиль размещения в основном разделе.',
+  click: 'Один левый клик по вашей экранной точке. Нужны калибровка, разрешение клика и предпросмотр в текущем сеансе.',
+  follow:
+    'Shift+1, затем правая кнопка по портрету и левая по пункту Follow. Требует две сохранённые точки и предпросмотр.',
+  f6f1: 'Сначала отправляет F6 всем, кроме ПЛ. Затем F1 всей пати, включая ПЛ.',
+  optimize: 'Применяет размеры из раздела F11. Остальным участникам также отправляет Ctrl+F9.',
+  launch: 'Запускает выбранную пати через обычную очередь запуска Твинофермы.',
+  pause: 'Останавливает остаток команды и запрещает новые запуски до повторного нажатия.'
+};
+export function insertKeyToken(input, token) {
+  if (input.name === 'hotkey') {
+    const parts = input.value.toUpperCase().split('+'),
+      mods = new Set(parts.filter(p => ['CTRL', 'ALT', 'SHIFT'].includes(p)));
+    let key = parts.find(p => p && !['CTRL', 'ALT', 'SHIFT'].includes(p)) || '';
+    if (['CTRL', 'ALT', 'SHIFT'].includes(token)) {
+      if (mods.has(token)) mods.delete(token);
+      else mods.add(token);
+    } else key = token;
+    input.value = [...['CTRL', 'ALT', 'SHIFT'].filter(p => mods.has(p)), key].join('+');
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+  const start = input.selectionStart ?? input.value.length,
+    end = input.selectionEnd ?? start;
+  if (input.name === 'sequence' && token === 'wait 100') {
+    const before = input.value.slice(0, start),
+      after = input.value.slice(end);
+    const text =
+      (before && !before.endsWith('\n') ? '\n' : '') + 'wait 100' + (after && !after.startsWith('\n') ? '\n' : '');
+    input.setRangeText(text, start, end, 'end');
+  } else if (input.name === 'sequence' && token === 'newline') input.setRangeText('\n', start, end, 'end');
+  else if (['CTRL', 'ALT', 'SHIFT'].includes(token)) {
+    const lineStart = input.value.lastIndexOf('\n', start - 1) + 1;
+    const line = input.value.slice(lineStart, start);
+    if (!line.toUpperCase().split('+').includes(token)) input.setRangeText(token + '+', lineStart, lineStart, 'end');
+  } else input.setRangeText(token, start, end, 'end');
+  input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 export function openCommandEditor(c, save, row = null) {
   showModal({
     title: row ? 'Изменить команду' : 'Создать команду',
     wide: true,
-    content: `<div class="gm-dialog"><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><fieldset class="gm-choice-grid gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
+    content: `<div class="gm-dialog"><form data-gm-form><input type="hidden" name="id"><label>Название <input class="input" name="name" maxlength="80" required></label><div class="gm-action-picker"><fieldset class="gm-action-choices"><legend>Что делает команда</legend>${Object.entries(
       commandLabels
     )
       .map(
-        ([key, value], index) =>
-          `<label class="gm-choice"><input type="radio" name="action" value="${key}" ${index === 0 ? 'checked' : ''}><span>${esc(value)}</span></label>`
+        ([key, value]) =>
+          `<label class="gm-choice"><input type="radio" name="action" value="${key}"><span>${esc(value)}</span></label>`
       )
       .join(
         ''
-      )}</fieldset><label>Хоткей <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -107,10 +155,29 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример 
   form.querySelectorAll('[name="pointIds"]').forEach(input => {
     input.checked = !!row?.pointIds.includes(input.value);
   });
+  for (const name of ['hotkey', 'sequence']) {
+    const input = form.elements.namedItem(name),
+      bar = document.createElement('div');
+    bar.className = 'gm-key-tools';
+    const tokens =
+      name === 'hotkey'
+        ? ['SHIFT', 'CTRL', 'ALT', 'F1', 'F7', 'F8']
+        : ['SHIFT', 'CTRL', 'ALT', 'F1', 'F7', 'F8', 'wait 100', 'newline'];
+    for (const token of tokens) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn ghost';
+      button.textContent = { SHIFT: 'Shift', CTRL: 'Ctrl', ALT: 'Alt', newline: '↵ Новая строка' }[token] || token;
+      button.onclick = () => insertKeyToken(input, token);
+      bar.append(button);
+    }
+    input.after(bar);
+  }
   const sync = () => {
     const action = form.elements.namedItem('action').value,
       scope = form.elements.namedItem('scope').value,
       target = form.elements.namedItem('target').value;
+    form.querySelector('[data-gm-action-help]').textContent = actionHelp[action] || '';
     const fixed = ['leader', 'f6f1', 'optimize', 'launch', 'pause'].includes(action) || scope === 'managed';
     form.querySelectorAll('[data-gm-click-field]').forEach(el => {
       el.hidden = !['click', 'follow'].includes(action);

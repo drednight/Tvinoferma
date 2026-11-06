@@ -58,7 +58,7 @@ export function mountGameMacros(host) {
   <header class="gm-heading"><div><span class="gm-eyebrow">Управление игровыми окнами</span><h3>🎮 Управление пати и макросы</h3><p>Выберите пати, настройте команды и запускайте их кнопкой или сочетанием клавиш.</p></div><button class="btn danger" data-gm-stop>■ Остановить</button></header>
   <div class="gm-control-bar"><label class="gm-field">Пати для всех команд<select data-gm-party><option value="">Выберите пати</option>${state.parties.map(p => option(p.id, p.name, c.partyId)).join('')}</select></label><label class="gm-switch"><input type="checkbox" data-gm-enabled ${c.enabled ? 'checked' : ''}><span><b>Управление сочетаниями клавиш</b><small>Можно запускать команды, когда открыта игра, без перехода в Твиноферму.</small></span></label></div>
   <p class="gm-key-note">Если переключатель выключен, работает ручной запуск кнопкой ▶. При включении Windows закрепляет сочетания за приложением; игровые команды срабатывают только из окон выбранной пати. Остановка — <kbd>Ctrl+Alt+Pause</kbd>.</p>
-  <div class="gm-status" role="status" data-gm-runtime></div>
+  <button class="btn ghost" data-gm-diagnostics>◎ Проверить окна</button><div class="gm-status" role="status" data-gm-runtime></div>
   <div class="gm-section-top"><h4>Мои команды <span>${c.commands.length}</span></h4><button class="btn primary" data-gm-create>＋ Создать команду</button></div>
   <div class="gm-command-workbench"><nav class="gm-command-menu" aria-label="Команды">${c.commands.map(row => `<button class="gm-command-choice ${row.id === selectedId ? 'is-selected' : ''}" data-gm-select="${esc(row.id)}" aria-pressed="${row.id === selectedId}"><b>${esc(row.name)}</b><kbd>${esc(row.hotkey || 'Без сочетания')}</kbd></button>`).join('') || '<p class="muted">Пока нет команд. Создайте первую.</p>'}</nav>
   <article class="gm-command-detail">${
@@ -123,6 +123,15 @@ export function mountGameMacros(host) {
     'click',
     safe(async () => showPoint(await previewCommand(selectedId)))
   );
+  host.querySelector('[data-gm-diagnostics]').onclick = safe(async () => {
+    const rows = await (await import('./runtime.js')).listMacroWindows();
+    showModal({
+      title: 'Проверка игровых окон',
+      content: `<p>Для управления нужны однозначное имя, проверенный процесс и обычные права. Программа не угадывает персонажа по порядку окон.</p>${rows.map(r => `<p><b>${esc(r.nick || 'Не распознано')} · PID ${r.pid}</b><br>${esc(r.title || 'Без заголовка')}<br>${r.elevated === true ? 'Запущено от администратора: перезапустите клиент без повышения прав.' : r.elevated == null ? 'Не удалось определить права процесса.' : !r.known ? 'Не распознано: проверьте ник в заголовке и список персонажей.' : !r.startedAt || !r.hwnd ? 'Не удалось проверить время запуска или игровое окно.' : 'Окно распознано, права обычные.'}</p>`).join('') || '<p>Запущенные клиенты не найдены.</p>'}`,
+      submitText: 'Закрыть',
+      onSubmit: () => {}
+    });
+  });
   host.querySelector('[data-gm-overlay]').onclick = safe(openOverlay);
   host.querySelector('[data-gm-logs]').onclick = () => openMacrosDialog('logs');
   host.querySelector('[data-gm-overlay-settings]').onclick = () => openMacrosDialog('overlay-settings');

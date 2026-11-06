@@ -522,3 +522,17 @@ describe('частота перерисовки полного журнала', 
     }
   });
 });
+
+it('shows a summary-only task in character statistics, including after journal reload', async () => {
+  localStorage.clear();
+  vi.resetModules();
+  let log = await import('../js/core/taskLog.js');
+  const task = log.startTask('Проверка авторизации');
+  task.summaryTable([{ name: 'Тест', status: 'Авторизован', tone: 'ok', note: '' }], { title: 'Итоги проверки входа' });
+  task.finish('Готово');
+  vi.resetModules();
+  log = await import('../js/core/taskLog.js');
+  log.openTaskStatistics();
+  expect(document.body.textContent).toContain('Авторизован');
+  expect(document.body.textContent).toContain('Тест');
+});
