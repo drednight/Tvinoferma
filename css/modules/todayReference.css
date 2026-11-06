@@ -1341,3 +1341,34 @@
 .rt-widget-preview > .lg-panel {
   container-type: inline-size;
 }
+/* Adapt the contents to the widget's width, not just the application's viewport. */
+@container (max-width: 420px) {
+  .rt-launch-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rt-information-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rt-heading {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .rt-launch-actions {
+    flex-wrap: wrap;
+  }
+  .rt-launch-main h3,
+  .rt-marathon-task summary span {
+    overflow-wrap: anywhere;
+  }
+}
+@container (max-width: 260px) {
+  .rt-information-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rt-pass-legend {
+    flex-wrap: wrap;
+  }
+  .rt-people {
+    flex-wrap: wrap;
+  }
+}
