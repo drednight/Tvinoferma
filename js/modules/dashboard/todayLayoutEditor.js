@@ -1,4 +1,5 @@
-import { ACTION_WIDGETS, WIDGET_VARIANTS, ensureActionWidgets } from './widgetCatalog.js';
+import { ACTION_WIDGETS, WIDGET_VARIANTS } from './widgetCatalog.js';
+import { ensureActionWidgets } from './todayWidgets.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
