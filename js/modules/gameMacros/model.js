@@ -141,7 +141,7 @@ export function normalizeGameMacros(input = {}) {
         dpi: p.dpi
       })),
     profileId: String(input.profileId || '').slice(0, 80),
-    opacity: Math.max(0.3, Math.min(1, Number(input.opacity) || 0.9)),
+    opacity: Math.max(0.1, Math.min(1, Number(input.opacity) || 0.9)),
     topmost: input.topmost !== false
   };
 }
@@ -175,11 +175,13 @@ export function resolveTargets(state, config, command, rows) {
     )
     .map(c => {
       const candidates = rows.filter(r => r.known && r.charId === c.id);
-      const matches = candidates.filter(r => r.startedAt && r.hwnd && r.elevated === false);
+      const matches = candidates.filter(
+        r => r.startedAt && r.hwnd && (r.elevated === false || (r.elevated === true && r.selfElevated === true))
+      );
       if (matches.length !== 1 || candidates.length !== 1) {
         if (candidates.some(r => r.elevated === true))
           throw new Error(
-            `Окно «${c.nick}» запущено от администратора. Закройте клиент и запустите игру обычным способом, без повышения прав.`
+            `Окно «${c.nick}» запущено от администратора, а Твиноферма — без этих прав. Запустите саму Твиноферму от администратора через стандартный запрос Windows.`
           );
         if (candidates.length > 1)
           throw new Error(

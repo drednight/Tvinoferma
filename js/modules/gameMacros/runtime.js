@@ -98,9 +98,10 @@ export async function listMacroWindows() {
   const { windowRows } = await import('../launcher/windowList.js');
   const { recalledOwnership } = await import('../launcher/launchedWindows.js');
   const clients = await native('launcher_running_details');
+  const selfElevated = clients.some(c => c.elevated === true) && (await native('launcher_self_elevated')) === true;
   const rows = windowRows(clients, state.characters, {
     recalled: recalledOwnership(clients.map(c => ({ pid: c.pid, uptimeMs: Date.now() - c.startedAt })))
-  }).map(r => ({ ...r, ...clients.find(c => c.pid === r.pid) }));
+  }).map(r => ({ ...r, ...clients.find(c => c.pid === r.pid), selfElevated }));
   for (const row of rows) {
     if (state.characters.filter(c => String(c.nick).toLowerCase() === String(row.nick).toLowerCase()).length > 1)
       row.known = false;
@@ -115,7 +116,13 @@ export async function windowTargets(command = { target: 'all', action: 'next' },
       throw new Error('Глобальная область требует явного выбора всех распознанных окон.');
     if (
       !rows.length ||
-      rows.some(row => !row.known || !row.startedAt || !row.hwnd || row.elevated !== false) ||
+      rows.some(
+        row =>
+          !row.known ||
+          !row.startedAt ||
+          !row.hwnd ||
+          !(row.elevated === false || (row.elevated === true && row.selfElevated === true))
+      ) ||
       new Set(rows.map(row => row.charId)).size !== rows.length
     )
       throw new Error('Все окна должны быть однозначно распознаны.');
@@ -471,7 +478,7 @@ export async function initGameMacros() {
   });
   await listen('game-overlay-preferences', async event => {
     const p = event.payload;
-    if (!p || !Number.isFinite(p.opacity) || p.opacity < 0.3 || p.opacity > 1 || typeof p.topmost !== 'boolean') return;
+    if (!p || !Number.isFinite(p.opacity) || p.opacity < 0.1 || p.opacity > 1 || typeof p.topmost !== 'boolean') return;
     const previous = config();
     state.settings.gameMacros = { ...previous, opacity: p.opacity, topmost: p.topmost };
     try {

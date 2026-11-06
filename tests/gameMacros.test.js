@@ -39,7 +39,7 @@ describe('bounded game command model', () => {
       opacity: 0.1,
       commands: [{ id: 'x', action: 'sequence', sequence: 'F8', target: 'invalid', hotkey: 'WIN+X' }]
     });
-    expect(c.opacity).toBe(0.3);
+    expect(c.opacity).toBe(0.1);
     expect(c.commands[0]).toMatchObject({ target: 'others', hotkey: '' });
   });
   it('discards executable text, unknown actions and malformed profiles', () => {
@@ -154,4 +154,14 @@ it('distinguishes an unrecognized game window from an elevated one without assum
       { ...rows[0], pid: 999, startedAt: null }
     ])
   ).toThrow();
+});
+
+it('allows an elevated game only when the live application privilege probe also confirms elevation', () => {
+  const command = { target: 'leader', action: 'leader' };
+  expect(resolveTargets(state, config, command, [{ ...rows[0], elevated: true, selfElevated: true }])).toHaveLength(1);
+  expect(() => resolveTargets(state, config, command, [{ ...rows[0], elevated: true, selfElevated: false }])).toThrow(
+    'Твиноферма'
+  );
+  expect(() => resolveTargets(state, config, command, [{ ...rows[0], elevated: null, selfElevated: true }])).toThrow();
+  expect(normalizeGameMacros({ opacity: 0.1 }).opacity).toBe(0.1);
 });

@@ -32,26 +32,8 @@ export function scriptStatisticsHtml(reports, query = '') {
   if (!groups.length)
     return '<div class="empty-state">Подробных результатов пока нет или по поиску ничего не найдено.</div>';
   const validTone = new Set(['ok', 'info', 'warn', 'error']);
-  return groups
-    .map(
-      group => `<section class="sr-group">
-        <div class="sr-group-head"><h4>${classIconHtml(state.characters.find(c => c.id === group.charId) || {})} ${escapeHtml(group.nick)}</h4><span class="muted">Записей: ${group.entries.length}</span></div>
-        <div class="sr-table-wrap"><table class="sr-table">
-          <thead><tr><th>Скрипт и дата</th><th>Действие</th><th>Результат</th><th>Подробности</th></tr></thead>
-          <tbody>${group.entries
-            .map(
-              row => `<tr>
-                <td><b>${escapeHtml(row.script)}</b>${row.dryRun ? '<div class="sr-dry">Пробный запуск</div>' : ''}<div class="muted">${escapeHtml(when(row.at))}</div></td>
-                <td>${escapeHtml(row.action || '—')}${row.context ? `<div class="muted">${escapeHtml(row.context)}</div>` : ''}</td>
-                <td><span class="sr-status is-${validTone.has(row.tone) ? row.tone : 'info'}">${escapeHtml(row.status || '—')}</span></td>
-                <td>${Array.isArray(row.details) && row.details.length ? `<ul class="sr-details">${row.details.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>` : '<span class="muted">Состав не записан</span>'}</td>
-              </tr>`
-            )
-            .join('')}</tbody>
-        </table></div>
-      </section>`
-    )
-    .join('');
+  const rows = groups.flatMap(group => group.entries.map(row => ({ group, row })));
+  return `<div class="tl-summary-table"><div class="tl-summary-title">Итоги по персонажам</div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Персонаж</th><th>Результат</th><th>Действие / скрипт</th><th>Подробности</th></tr></thead><tbody>${rows.map(({ group, row }) => `<tr><td>${classIconHtml(state.characters.find(c => c.id === group.charId) || {})} <b>${escapeHtml(group.nick)}</b></td><td><span class="sr-status is-${validTone.has(row.tone) ? row.tone : 'info'}">${escapeHtml(row.status || '—')}</span></td><td>${escapeHtml(row.action || '—')}<div class="muted">${escapeHtml(row.script)} · ${escapeHtml(when(row.at))}${row.dryRun ? ' · Пробный запуск' : ''}</div>${row.context ? `<div>${escapeHtml(row.context)}</div>` : ''}</td><td>${Array.isArray(row.details) && row.details.length ? row.details.map(line => escapeHtml(line)).join('<br>') : '—'}</td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 /** Отдельное окно используют итоги скрипта и журнал: данные передаются уже безопасным снимком. */

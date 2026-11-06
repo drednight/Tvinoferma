@@ -1,3 +1,5 @@
+import { ACTION_WIDGETS, WIDGET_VARIANTS, ensureActionWidgets } from './widgetCatalog.js';
+import { escapeHtml as esc } from '../../core/utils.js';
 import { state } from '../../core/state.js';
 import { persist } from '../../core/storage.js';
 import { toast } from '../../core/ui.js';
@@ -18,6 +20,7 @@ let saving = false;
 let stopGesture = null;
 let standard = false;
 let captureStandard = false;
+let grid = false;
 const notify = () => window.dispatchEvent(new Event('tf-today-layout-changed'));
 export const isTodayLayoutEditing = () => editing;
 export function setTodayLayoutEditing(enabled) {
@@ -41,7 +44,7 @@ function captureCanvas(root, defaults = false) {
   let index = 0;
   for (const id of todayOrder(defaults ? [] : state.settings.ui.todayOrder)) {
     const panel = root.querySelector(`.rt-${id}`);
-    if (!panel) continue;
+    if (!panel || (id.startsWith('script-') && panel.hidden)) continue;
     const rect = panel.getBoundingClientRect();
     blocks[id] = {
       x: rect.width ? Math.max(0, rect.left - bounds.left) : (index % 3) * 340,
@@ -59,6 +62,10 @@ function captureCanvas(root, defaults = false) {
 export function renderTodayLayoutEditor(root) {
   stopGesture?.();
   clearTodayCanvasObserver(root);
+  ensureActionWidgets(root, editing);
+  root.querySelector('[data-widget-library]')?.remove();
+  root.querySelector('[data-widget-add]')?.remove();
+  root.querySelectorAll('[data-widget-remove]').forEach(el => el.remove());
   root.querySelector('[data-layout-toolbar]')?.remove();
   root.querySelectorAll('[data-layout-resize]').forEach(el => el.remove());
   if (!editing) {
@@ -80,8 +87,101 @@ export function renderTodayLayoutEditor(root) {
   const toolbar = document.createElement('div');
   toolbar.dataset.layoutToolbar = '';
   toolbar.className = 'rt-layout-toolbar';
-  toolbar.innerHTML = `<p role="status" data-layout-status></p><div class="row gap"><button type="button" class="btn" data-layout-save>Сохранить</button><button type="button" class="btn ghost" data-layout-cancel>Отмена</button><button type="button" class="btn ghost" data-layout-reset>Стандартное расположение</button><button type="button" class="btn ghost" data-layout-auto>Авторазмер</button></div>`;
+  toolbar.innerHTML = `<p role="status" data-layout-status></p><div class="row gap"><button type="button" class="btn ghost" data-layout-grid aria-pressed="${grid}">▦ Сетка: ${grid ? 'вкл' : 'выкл'}</button><button type="button" class="btn ghost" data-widget-library-open>＋ Добавить виджет</button><button type="button" class="btn" data-layout-save>Сохранить</button><button type="button" class="btn ghost" data-layout-cancel>Отмена</button><button type="button" class="btn ghost" data-layout-reset>Стандартное расположение</button><button type="button" class="btn ghost" data-layout-auto>Авторазмер</button></div>`;
   board.before(toolbar);
+  surface.classList.toggle('rt-edit-grid', grid);
+  toolbar.querySelector('[data-layout-grid]').onclick = () => {
+    grid = !grid;
+    surface.classList.toggle('rt-edit-grid', grid);
+    const button = toolbar.querySelector('[data-layout-grid]');
+    button.setAttribute('aria-pressed', String(grid));
+    button.textContent = `▦ Сетка: ${grid ? 'вкл' : 'выкл'}`;
+  };
+  const openLibrary = () => {
+    root.querySelector('[data-widget-library]')?.remove();
+    const library = document.createElement('section');
+    library.dataset.widgetLibrary = '';
+    library.className = 'rt-widget-library';
+    library.innerHTML = `<header><h3>Библиотека виджетов</h3><button class="btn ghost" data-library-close>Закрыть</button></header><p>Выберите вид и добавьте блок. После добавления его можно свободно растянуть и переместить. Превью — схематическое, ваши данные не меняются.</p><div class="rt-widget-catalog">${TODAY_BLOCKS.map(
+      ([id, title]) => {
+        const exists = surface.querySelector(`.rt-${id}`);
+        return `<article><h4>${esc(title)}</h4><div class="rt-widget-preview" aria-hidden="true"><b>${esc(title)}</b><i></i><i></i><i></i></div><select data-widget-variant="${id}" aria-label="Вариант ${esc(title)}">${WIDGET_VARIANTS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select><p>${esc(ACTION_WIDGETS.find(row => row[0] === id)?.[2] || 'Ваши текущие данные в адаптивном блоке.')}</p><button class="btn" data-widget-insert="${id}" ${!exists ? 'disabled' : ''}>${!exists ? 'Недоступен: включите раздел в настройках' : !exists.hidden ? 'Изменить вид' : 'Добавить'}</button></article>`;
+      }
+    ).join('')}</div>`;
+    toolbar.after(library);
+    const previewWidget = (article, id, variant) => {
+      const original = surface.querySelector(`.rt-${id}`),
+        preview = article.querySelector('.rt-widget-preview');
+      if (!original) return;
+      const [, , width, height] = WIDGET_VARIANTS.find(row => row[0] === variant);
+      const clone = original.cloneNode(true);
+      clone.hidden = false;
+      clone.inert = true;
+      clone.setAttribute('aria-hidden', 'true');
+      clone.querySelectorAll('[data-layout-resize],[data-widget-remove]').forEach(el => el.remove());
+      for (const element of [clone, ...clone.querySelectorAll('*')]) {
+        for (const attr of [...element.attributes])
+          if (
+            attr.name === 'id' ||
+            attr.name === 'tabindex' ||
+            attr.name.startsWith('on') ||
+            attr.name.startsWith('data-')
+          )
+            element.removeAttribute(attr.name);
+      }
+      const scale = Math.min(1, (preview.clientWidth || 200) / width);
+      clone.style.cssText = `position:relative;left:0;top:0;width:${width}px;height:${height}px;max-width:none;transform:scale(${scale});transform-origin:top left;pointer-events:none;`;
+      preview.style.height = `${Math.min(220, height * scale)}px`;
+      preview.replaceChildren(clone);
+    };
+    library
+      .querySelectorAll('[data-widget-insert]')
+      .forEach(button => previewWidget(button.closest('article'), button.dataset.widgetInsert, 'compact'));
+    library.querySelector('[data-library-close]').onclick = () => library.remove();
+    library.querySelectorAll('[data-widget-variant]').forEach(
+      select =>
+        (select.onchange = () => {
+          previewWidget(select.closest('article'), select.dataset.widgetVariant, select.value);
+        })
+    );
+    library.querySelectorAll('[data-widget-insert]').forEach(
+      button =>
+        (button.onclick = () => {
+          const id = button.dataset.widgetInsert,
+            panel = surface.querySelector(`.rt-${id}`);
+          if (!panel || saving) return;
+          const variant = library.querySelector(`[data-widget-variant="${id}"]`).value;
+          const [, , width, height] = WIDGET_VARIANTS.find(row => row[0] === variant);
+          if (panel.hidden) {
+            draft.hidden = (draft.hidden || []).filter(key => key !== id);
+            draft.blocks[id] = {
+              x: 0,
+              y: Math.max(
+                0,
+                ...Object.entries(draft.blocks)
+                  .filter(([key]) => !draft.hidden?.includes(key))
+                  .map(([, b]) => b.y + (b.height || 400) + 24)
+              ),
+              width,
+              height
+            };
+            panel.hidden = false;
+          }
+          update(panel, id, { width, height });
+          choose(id);
+          library.remove();
+        })
+    );
+  };
+  toolbar.querySelector('[data-widget-library-open]').onclick = openLibrary;
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'btn rt-widget-add';
+  add.dataset.widgetAdd = '';
+  add.textContent = '＋ Добавить виджет';
+  add.onclick = openLibrary;
+  board.after(add);
+
   const auto = toolbar.querySelector('[data-layout-auto]');
   const refreshSelection = () => {
     for (const [id] of TODAY_BLOCKS) {
@@ -128,6 +228,24 @@ export function renderTodayLayoutEditor(root) {
       header.textContent = title;
       panel.prepend(header);
     }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'rt-widget-remove';
+    remove.dataset.widgetRemove = id;
+    remove.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg>';
+    remove.title = `Убрать «${title}»`;
+    remove.setAttribute('aria-label', remove.title);
+    remove.onclick = () => {
+      if (saving) return;
+      standard = false;
+      draft.hidden = [...new Set([...(draft.hidden || []), id])];
+      panel.hidden = true;
+      selected = '';
+      fit();
+      refreshSelection();
+    };
+    header.append(remove);
     header.dataset.layoutDrag = id;
     header.tabIndex = 0;
     header.title = 'Перетащите блок за заголовок. Стрелки — перемещение, Shift — точный шаг.';
@@ -160,10 +278,42 @@ export function renderTodayLayoutEditor(root) {
         if (e.pointerId !== event.pointerId) return;
         const dx = e.clientX - x + board.scrollLeft - scrollX;
         const dy = e.clientY - y + board.scrollTop - scrollY;
-        update(panel, id, resize ? { width: width + dx, height: height + dy } : { x: before.x + dx, y: before.y + dy });
+        const snap = value => (grid ? Math.round(value / 20) * 20 : value);
+        update(
+          panel,
+          id,
+          resize
+            ? { width: snap(width + dx), height: snap(height + dy) }
+            : { x: snap(before.x + dx), y: snap(before.y + dy) }
+        );
       };
       const finish = e => {
         if (e && e.pointerId !== event.pointerId) return;
+        if (!resize && e?.type === 'pointerup') {
+          const current = draft.blocks[id],
+            cx = current.x + (current.width || width) / 2,
+            cy = current.y + (current.height || height) / 2;
+          const other = TODAY_BLOCKS.find(([key]) => {
+            if (key === id) return false;
+            const element = surface.querySelector(`.rt-${key}`),
+              b = draft.blocks[key];
+            return (
+              element &&
+              !element.hidden &&
+              b &&
+              cx > b.x &&
+              cx < b.x + (b.width || element.offsetWidth || 320) &&
+              cy > b.y &&
+              cy < b.y + (b.height || element.offsetHeight || 400)
+            );
+          });
+          if (other) {
+            const otherId = other[0],
+              b = { ...draft.blocks[otherId] };
+            update(panel, id, { x: b.x, y: b.y });
+            update(surface.querySelector(`.rt-${otherId}`), otherId, { x: before.x, y: before.y });
+          }
+        }
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', finish);
         window.removeEventListener('pointercancel', cancel);

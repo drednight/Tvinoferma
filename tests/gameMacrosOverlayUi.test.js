@@ -1,12 +1,18 @@
 import { beforeEach, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(async () => {}), drag: vi.fn(), close: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(async () => {}), drag: vi.fn(), close: vi.fn(), handlers: new Map() }));
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.invoke.mockResolvedValue(undefined);
   vi.doMock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
-  vi.doMock('@tauri-apps/api/event', () => ({ listen: async () => () => {}, emitTo: async () => {} }));
+  vi.doMock('@tauri-apps/api/event', () => ({
+    listen: async (name, handler) => {
+      mocks.handlers.set(name, handler);
+      return () => {};
+    },
+    emitTo: async () => {}
+  }));
   vi.doMock('@tauri-apps/api/window', () => ({
     getCurrentWindow: () => ({ startDragging: mocks.drag, close: mocks.close })
   }));
@@ -75,4 +81,28 @@ it('saves overlay appearance without opening the main app', async () => {
   await vi.waitFor(() =>
     expect(mocks.invoke).toHaveBeenCalledWith('game_macro_overlay_preferences', { opacity: 0.55, topmost: false })
   );
+});
+
+it('can hide and restore the journal return control without leaving the journal', () => {
+  document.querySelector('[data-view="journal"]').click();
+  expect(document.querySelector('#back').hidden).toBe(false);
+  document.querySelector('#back-hide').click();
+  expect(document.querySelector('#back').hidden).toBe(true);
+  expect(document.querySelector('#journal-screen').hidden).toBe(false);
+  document.querySelector('#back-hide').click();
+  expect(document.querySelector('#back').hidden).toBe(false);
+  expect(document.querySelector('#opacity').min).toBe('10');
+});
+
+it('puts the latest log entry first and keeps long command names in a separate element from their key', () => {
+  mocks.handlers.get('game-macro-snapshot')({
+    payload: {
+      commands: [{ name: 'Очень длинное имя '.repeat(10), hotkey: 'CTRL+ALT+F8' }],
+      logs: ['первое действие', 'последнее действие'],
+      opacity: 0.1
+    }
+  });
+  expect(document.querySelector('#logs').textContent.split('\n')[0]).toBe('последнее действие');
+  expect(document.querySelector('#commands li span').textContent).toContain('Очень длинное');
+  expect(document.querySelector('#commands li kbd').textContent).toBe('CTRL+ALT+F8');
 });

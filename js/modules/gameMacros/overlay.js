@@ -8,7 +8,7 @@ async function init() {
     const data = event.payload;
     document.documentElement.style.setProperty(
       '--alpha',
-      String(Math.max(0.3, Math.min(1, Number(data.opacity) || 0.9)))
+      String(Math.max(0.1, Math.min(1, Number(data.opacity) || 0.9)))
     );
     document.getElementById('status').textContent = data.paused
       ? 'Макросы на паузе'
@@ -21,7 +21,10 @@ async function init() {
       ...(data.commands || []).map(row => {
         const li = document.createElement('li'),
           key = document.createElement('kbd');
-        li.textContent = String(row.name || '');
+        const name = document.createElement('span');
+        name.textContent = String(row.name || '');
+        name.style.minWidth = '0';
+        li.append(name);
         key.textContent = String(row.hotkey || 'Кнопка в Инструментах');
         li.append(key);
         return li;
@@ -32,15 +35,25 @@ async function init() {
       document.getElementById('alpha-value').textContent = document.getElementById('opacity').value + '%';
       document.getElementById('topmost').checked = data.topmost !== false;
     }
-    document.getElementById('logs').textContent = (data.logs || []).join('\n');
+    document.getElementById('logs').textContent = [...(data.logs || [])].reverse().join('\n');
   });
   const showView = view => {
     document.getElementById('shortcuts-screen').hidden = view !== 'shortcuts';
     document.getElementById('appearance-screen').hidden = view !== 'appearance';
     document.getElementById('journal-screen').hidden = view !== 'journal';
     document.getElementById('back').hidden = view === 'shortcuts';
+    document.getElementById('back-hide').hidden = view !== 'journal';
+    document.getElementById('back-hide').textContent = '◌';
+    document.getElementById('back-hide').title = 'Скрыть кнопку возврата';
   };
   document.querySelectorAll('[data-view]').forEach(button => (button.onclick = () => showView(button.dataset.view)));
+  document.getElementById('back-hide').onclick = () => {
+    const back = document.getElementById('back');
+    back.hidden = !back.hidden;
+    const toggle = document.getElementById('back-hide');
+    toggle.textContent = back.hidden ? '◉' : '◌';
+    toggle.title = back.hidden ? 'Показать кнопку возврата' : 'Скрыть кнопку возврата';
+  };
   document.getElementById('back').onclick = () => showView('shortcuts');
   document.getElementById('info-toggle').onclick = () => {
     const controls = document.getElementById('overlay-controls');

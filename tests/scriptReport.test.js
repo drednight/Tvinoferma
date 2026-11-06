@@ -139,7 +139,7 @@ describe('окно статистики', () => {
     const ov = openScriptStatistics(reports);
     ov.body.querySelector('[data-sr-search]').value = 'передача';
     ov.body.querySelector('[data-sr-search]').dispatchEvent(new Event('input', { bubbles: true }));
-    expect(ov.body.querySelectorAll('.sr-group')).toHaveLength(1);
+    expect(ov.body.querySelectorAll('.sr-table tbody tr')).toHaveLength(1);
     ov.foot.querySelector('[data-sr-close]').click();
     expect(ov.el.isConnected).toBe(false);
   });

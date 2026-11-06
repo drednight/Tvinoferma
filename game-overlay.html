@@ -40,6 +40,9 @@
       body.folded #panel {
         display: none;
       }
+      #back-hide {
+        font-size: 11px;
+      }
       header span {
         flex: 1;
       }
@@ -65,10 +68,16 @@
         cursor: pointer;
       }
       li {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 12px;
+        overflow-wrap: anywhere;
         margin: 8px 0;
       }
       kbd {
-        float: right;
+        flex: 0 0 auto;
+        white-space: nowrap;
         color: #b7c2ff;
       }
       pre {
@@ -86,6 +95,13 @@
     <main>
       <header data-drag>
         <span>🎮 Управление пати</span
+        ><button
+          id="back-hide"
+          hidden
+          title="Скрыть кнопку возврата"
+          aria-label="Скрыть или показать возврат к клавишам"
+        >
+          ◌</button
         ><button
           id="info-toggle"
           aria-controls="overlay-controls"
@@ -119,7 +135,7 @@
           <h3>Вид оверлея</h3>
           <label
             >Непрозрачность <output id="alpha-value">90%</output
-            ><input id="opacity" type="range" min="30" max="100" value="90"
+            ><input id="opacity" type="range" min="10" max="100" value="90"
           /></label>
           <p>
             <label><input id="topmost" type="checkbox" checked /> Поверх других окон</label>

@@ -717,15 +717,34 @@ mod win {
     /// перебирались отдельно — при десяти открытых окнах это десять полных обходов всех окон
     /// системы. Теперь обход один.
     pub fn main_windows_by_pid() -> std::collections::HashMap<u32, (usize, String)> {
-        let mut map = std::collections::HashMap::new();
-        for w in all_windows() {
-            if !w.visible || w.title.is_empty() {
-                continue;
-            }
-            // Берём первое видимое с заголовком: у клиента игры главное окно одно
-            map.entry(w.pid).or_insert((w.hwnd, w.title));
+        select_main_windows(all_windows())
+    }
+
+    // A verified game window can have an empty caption (including with elevated clients).
+    // Prefer its exact class, but never guess between several game windows in one process.
+    pub fn select_main_windows(
+        windows: Vec<WinInfo>,
+    ) -> std::collections::HashMap<u32, (usize, String)> {
+        let mut grouped: std::collections::HashMap<u32, Vec<WinInfo>> =
+            std::collections::HashMap::new();
+        for window in windows.into_iter().filter(|w| w.visible) {
+            grouped.entry(window.pid).or_default().push(window);
         }
-        map
+        let mut result = std::collections::HashMap::new();
+        for (pid, windows) in grouped {
+            let game: Vec<_> = windows
+                .iter()
+                .filter(|w| w.class == "ElementClient Window")
+                .collect();
+            if game.len() == 1 {
+                result.insert(pid, (game[0].hwnd, game[0].title.clone()));
+            } else if game.is_empty() {
+                if let Some(window) = windows.into_iter().find(|w| !w.title.is_empty()) {
+                    result.insert(pid, (window.hwnd, window.title));
+                }
+            }
+        }
+        result
     }
 
     /// Возвращает окну значки, которые у него уже были (проверка права менять значки без изменения вида).
@@ -3859,5 +3878,35 @@ mod tests {
             std::fs::read_to_string(dir.join("GameCenter.ini.tvinoferma-backup")).unwrap();
         assert_eq!(backup2, INI); // повторная подмена копию не затирает
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(all(test, windows))]
+mod game_window_selection_tests {
+    use super::win;
+    fn window(hwnd: usize, class: &str, title: &str) -> win::WinInfo {
+        win::WinInfo {
+            hwnd,
+            pid: 42,
+            class: class.into(),
+            title: title.into(),
+            visible: true,
+        }
+    }
+    #[test]
+    fn untitled_game_is_selected_by_exact_class_not_a_captioned_helper() {
+        let result = win::select_main_windows(vec![
+            window(1, "Helper", "Helper title"),
+            window(2, "ElementClient Window", ""),
+        ]);
+        assert_eq!(result.get(&42), Some(&(2, String::new())));
+    }
+    #[test]
+    fn ambiguous_game_windows_are_not_guessed() {
+        let result = win::select_main_windows(vec![
+            window(1, "ElementClient Window", "Alpha"),
+            window(2, "ElementClient Window", "Beta"),
+        ]);
+        assert!(!result.contains_key(&42));
     }
 }

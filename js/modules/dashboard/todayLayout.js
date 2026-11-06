@@ -1,3 +1,4 @@
+import { ACTION_WIDGETS } from './widgetCatalog.js';
 // Layout identifiers are stable; unknown/duplicate entries never remove real blocks.
 export const TODAY_BLOCKS = [
   ['news', 'Новости Perfect World'],
@@ -6,7 +7,8 @@ export const TODAY_BLOCKS = [
   ['marathon', 'Марафон'],
   ['launch', 'Быстрый запуск'],
   ['information', 'Информационная панель'],
-  ['clan', 'Клан']
+  ['clan', 'Клан'],
+  ...ACTION_WIDGETS.map(([id, title]) => [id, title])
 ];
 export function normalizeTodayOrder(value) {
   const allowed = new Set(TODAY_BLOCKS.map(([id]) => id));
@@ -70,7 +72,11 @@ export function normalizeTodayCanvas(value) {
     blocks[id] = block;
   }
   if (!Object.keys(blocks).length) return null;
-  return { width: Math.round(Math.max(320, Math.min(20000, Number(value.width) || 1200))), blocks };
+  return {
+    width: Math.round(Math.max(320, Math.min(20000, Number(value.width) || 1200))),
+    blocks,
+    ...(Array.isArray(value.hidden) ? { hidden: normalizeTodayOrder(value.hidden) } : {})
+  };
 }
 
 export function applyCanvasBlockSize(panel, block) {
@@ -103,6 +109,8 @@ export function applyTodayCanvas(root, value) {
   let nextY = Math.max(0, ...Object.values(canvas.blocks).map(block => block.y + (block.height || 400) + 18));
   for (const [id, panel] of panels) {
     surface.append(panel);
+    panel.hidden = !!canvas.hidden?.includes(id) || (id.startsWith('script-') && !canvas.blocks[id]);
+    if (panel.hidden) continue;
     // A newly enabled clan/new block is placed below existing blocks, never at (0,0).
     if (!canvas.blocks[id]) {
       canvas.blocks[id] = { x: 0, y: nextY };
@@ -111,8 +119,8 @@ export function applyTodayCanvas(root, value) {
     applyCanvasBlockSize(panel, canvas.blocks[id]);
   }
   const fit = () => {
-    surface.style.width = `${Math.max(canvas.width, ...panels.map(([, panel]) => parseFloat(panel.style.left) + (panel.offsetWidth || parseFloat(panel.style.width) || 320)))}px`;
-    surface.style.height = `${Math.max(200, ...panels.map(([, panel]) => parseFloat(panel.style.top) + (panel.offsetHeight || parseFloat(panel.style.height) || 400))) + 24}px`;
+    surface.style.width = `${Math.max(canvas.width, ...panels.filter(([, panel]) => !panel.hidden).map(([, panel]) => parseFloat(panel.style.left) + (panel.offsetWidth || parseFloat(panel.style.width) || 320)))}px`;
+    surface.style.height = `${Math.max(200, ...panels.filter(([, panel]) => !panel.hidden).map(([, panel]) => parseFloat(panel.style.top) + (panel.offsetHeight || parseFloat(panel.style.height) || 400))) + 24}px`;
   };
   fit();
   if (typeof ResizeObserver !== 'undefined') {

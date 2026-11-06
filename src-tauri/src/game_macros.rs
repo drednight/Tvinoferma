@@ -153,7 +153,7 @@ pub fn game_macro_overlay_preferences(
     opacity: f64,
     topmost: bool,
 ) -> Result<(), String> {
-    if window.label() != "game-overlay" || !opacity.is_finite() || !(0.3..=1.0).contains(&opacity) {
+    if window.label() != "game-overlay" || !opacity.is_finite() || !(0.1..=1.0).contains(&opacity) {
         return Err("Invalid overlay preferences".into());
     }
     window
@@ -233,9 +233,9 @@ pub async fn game_macro_guide(
             .find(|c| {
                 c.pid == target.pid
                     && c.started_at == Some(target.started_at)
-                    && c.elevated == Some(false)
+                    && compatible_integrity(c.elevated, crate::launcher::self_elevated())
             })
-            .ok_or("Client changed or elevated")?;
+            .ok_or("Client identity changed or integrity level is unavailable")?;
         #[cfg(windows)]
         {
             let hwnd = client.hwnd.ok_or("No client window")?;
@@ -313,9 +313,9 @@ pub async fn game_macro_guide_result(
         .find(|c| {
             c.pid == target.pid
                 && c.started_at == Some(target.started_at)
-                && c.elevated == Some(false)
+                && compatible_integrity(c.elevated, crate::launcher::self_elevated())
         })
-        .ok_or("Client changed or elevated")?;
+        .ok_or("Client identity changed or integrity level is unavailable")?;
     let pos = window
         .outer_position()
         .map_err(|_| "Cannot read marker position")?;
@@ -362,7 +362,7 @@ pub async fn game_macro_action(
             .find(|c| {
                 c.pid == target.pid
                     && c.started_at == Some(target.started_at)
-                    && c.elevated == Some(false)
+                    && compatible_integrity(c.elevated, crate::launcher::self_elevated())
             })
             .ok_or("Game client identity changed or access is unavailable")?;
         let hwnd = client.hwnd.ok_or("No game window")?;
@@ -887,5 +887,22 @@ mod win {
                 Err("Hotkey is occupied or unavailable; no hotkeys enabled".into())
             }
         }
+    }
+}
+
+fn compatible_integrity(client: Option<bool>, application: bool) -> bool {
+    client == Some(false) || (client == Some(true) && application)
+}
+#[cfg(test)]
+mod integrity_tests {
+    use super::compatible_integrity;
+    #[test]
+    fn elevated_clients_require_an_elevated_application_and_unknown_is_denied() {
+        assert!(compatible_integrity(Some(false), false));
+        assert!(compatible_integrity(Some(false), true));
+        assert!(compatible_integrity(Some(true), true));
+        assert!(!compatible_integrity(Some(true), false));
+        assert!(!compatible_integrity(None, false));
+        assert!(!compatible_integrity(None, true));
     }
 }

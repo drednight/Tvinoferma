@@ -63,7 +63,15 @@ async function save(root) {
 }
 it('normalizes stable ids, legacy sizes, and includes clan', () => {
   expect(normalizeTodayOrder(['launch', 'bad', 'launch', '<script>'])).toEqual(['launch']);
-  expect(todayOrder(['launch'])).toEqual(['launch', 'news', 'today', 'promos', 'marathon', 'information', 'clan']);
+  expect(todayOrder(['launch']).slice(0, 7)).toEqual([
+    'launch',
+    'news',
+    'today',
+    'promos',
+    'marathon',
+    'information',
+    'clan'
+  ]);
   expect(normalizeTodaySizes({ clan: { width: 2, height: 480 }, launch: { width: 8 }, news: { span: 5 } })).toEqual({
     clan: { width: 2, height: 480 },
     news: { span: 5 }
@@ -103,8 +111,8 @@ it('has no swap buttons or per-block auto buttons; toolbar auto is disabled with
   expect(root.querySelector('[data-layout-swap]')).toBeNull();
   expect(root.querySelectorAll('[data-layout-auto]')).toHaveLength(1);
   expect(root.querySelector('[data-layout-toolbar] [data-layout-auto]').disabled).toBe(true);
-  expect(root.querySelectorAll('[data-layout-drag]')).toHaveLength(7);
-  expect(root.querySelectorAll('[data-layout-resize]')).toHaveLength(7);
+  expect(root.querySelectorAll('[data-layout-drag]')).toHaveLength(15);
+  expect(root.querySelectorAll('[data-layout-resize]')).toHaveLength(15);
 });
 it('freely moves and resizes clan without grid snapping, only persisting on Save', async () => {
   const root = mount();
@@ -236,4 +244,83 @@ it('keyboard moves and resizes without grid snapping and Home applies selected a
   grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
   expect(root.querySelector('.rt-news').style.width).toBe('fit-content');
   expect(root.querySelector('.rt-news').style.left).toBe('1px');
+});
+
+it('hides a widget in the draft, restores it from a real preview, and preserves free resize controls', async () => {
+  const root = mount();
+  toggle();
+  root.querySelector('[data-widget-remove="news"]').click();
+  expect(root.querySelector('.rt-news').hidden).toBe(true);
+  root.querySelector('[data-widget-library-open]').click();
+  const library = root.querySelector('[data-widget-library]');
+  expect(library.querySelector('.rt-widget-preview .lg-panel')).not.toBeNull();
+  const variant = library.querySelector('[data-widget-variant="news"]');
+  variant.value = 'wide';
+  variant.dispatchEvent(new Event('change'));
+  library.querySelector('[data-widget-insert="news"]').click();
+  expect(root.querySelector('.rt-news').hidden).toBe(false);
+  expect(root.querySelector('.rt-news').style.width).toBe('640px');
+  expect(root.querySelector('.rt-news [data-layout-resize]')).not.toBeNull();
+  root.querySelector('[data-layout-save]').click();
+  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
+  expect(state.settings.ui.todayCanvas.blocks.news.width).toBe(640);
+});
+it('keeps additions and removals draft-only until saved and adds a script widget without executing it', async () => {
+  const root = mount();
+  toggle();
+  root.querySelector('[data-widget-remove="promos"]').click();
+  root.querySelector('[data-widget-library-open]').click();
+  root.querySelector('[data-widget-insert="script-promo"]').click();
+  expect(root.querySelector('.rt-script-promo').hidden).toBe(false);
+  expect(root.querySelector('.rt-script-promo [data-layout-resize]')).not.toBeNull();
+  root.querySelector('[data-layout-cancel]').click();
+  expect(state.settings.ui.todayCanvas).toBeNull();
+  expect(root.querySelector('.rt-promos').hidden).toBe(false);
+  expect(root.querySelector('.rt-script-promo').hidden).toBe(true);
+});
+it('shows the optional grid only in editing and keeps hidden widget coordinates through normalization', () => {
+  const root = mount();
+  expect(root.querySelector('[data-layout-grid]')).toBeNull();
+  toggle();
+  const grid = root.querySelector('[data-layout-grid]');
+  if (grid.getAttribute('aria-pressed') === 'true') grid.click();
+  grid.click();
+  expect(root.querySelector('.rt-edit-grid')).not.toBeNull();
+  root.querySelector('[data-layout-cancel]').click();
+  expect(root.querySelector('.rt-edit-grid')).toBeNull();
+  const normalized = normalizeTodayCanvas({
+    width: 1200,
+    blocks: { news: { x: 10, y: 20 } },
+    hidden: ['news', 'news', 'unsafe']
+  });
+  expect(normalized.hidden).toEqual(['news']);
+  expect(normalized.blocks.news).toMatchObject({ x: 10, y: 20 });
+});
+
+it('swaps two widgets when dropped over the center of another without changing their sizes', async () => {
+  const root = mount();
+  toggle();
+  const grid = root.querySelector('[data-layout-grid]');
+  if (grid.getAttribute('aria-pressed') === 'true') grid.click();
+  const header = root.querySelector('.rt-news [data-layout-drag]');
+  pointer(header, 'pointerdown', 0, 0);
+  pointer(window, 'pointermove', 350, 0);
+  pointer(window, 'pointerup', 350, 0);
+  expect(root.querySelector('.rt-news').style.left).toBe('340px');
+  expect(root.querySelector('.rt-today').style.left).toBe('0px');
+  root.querySelector('[data-layout-save]').click();
+  await vi.waitFor(() => expect(isTodayLayoutEditing()).toBe(false));
+  expect(state.settings.ui.todayCanvas.blocks.news.x).toBe(340);
+});
+it('keeps the grid optional and snaps movement only while it is enabled', () => {
+  const root = mount();
+  toggle();
+  const grid = root.querySelector('[data-layout-grid]');
+  if (grid.getAttribute('aria-pressed') !== 'true') grid.click();
+  const header = root.querySelector('.rt-news [data-layout-drag]');
+  pointer(header, 'pointerdown', 0, 0);
+  pointer(window, 'pointermove', 17, 13);
+  pointer(window, 'pointerup', 17, 13);
+  expect(root.querySelector('.rt-news').style.left).toBe('20px');
+  expect(root.querySelector('.rt-news').style.top).toBe('20px');
 });
