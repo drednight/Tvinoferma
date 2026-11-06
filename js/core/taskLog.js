@@ -444,6 +444,23 @@ export function startTask(title, opts = {}) {
   return t;
 }
 
+/** Read-only summaries for dashboard widgets; never expose mutable Task/credentials/entries. */
+export function scriptWidgetReports() {
+  return [...tasks]
+    .filter(t => t.scriptReport?.kind)
+    .map(t => ({
+      id: t.id,
+      kind: t.scriptReport.kind,
+      status: t.status,
+      paused: !!t.paused,
+      cancelled: !!t.cancelled,
+      percent: t.percent,
+      at: t.updatedAt || t.startedAt,
+      dryRun: !!t.scriptReport.dryRun,
+      rows: (t.scriptReport.rows || []).map(r => ({ charId: r.charId, nick: r.nick, status: r.status, tone: r.tone }))
+    }));
+}
+
 export function onTaskChange(fn) {
   subscribers.add(fn);
   return () => subscribers.delete(fn);

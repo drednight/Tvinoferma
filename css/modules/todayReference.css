@@ -1392,3 +1392,40 @@
 .rt-information-grid > div[hidden] {
   display: none !important;
 }
+
+.rt-widget-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.rt-widget-controls .input {
+  min-width: 0;
+  flex: 1 1 130px;
+}
+.rt-widget-facts {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  display: grid;
+  gap: 8px;
+}
+.rt-widget-facts > small {
+  opacity: 0.75;
+}
+.rt-widget-facts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.rt-widget-facts li {
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid #ffffff15;
+  padding-bottom: 5px;
+}
+.rt-widget-facts li span {
+  font-size: 0.85em;
+  opacity: 0.85;
+}

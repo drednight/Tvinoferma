@@ -33,3 +33,17 @@ describe('duration-balanced complete regression suite', () => {
     ).toEqual({ 'tests/a.test.js': 50 });
   });
 });
+
+it('partitions test groups including parameterized groups exactly once', async () => {
+  const { partitionRegistration } = await import('./helpers/partitionRegistration.js');
+  const all = [];
+  for (let part = 0; part < 4; part++) {
+    const fake = name => all.push(name);
+    fake.each = table => name => table.forEach(value => all.push(`${name}:${value}`));
+    const register = partitionRegistration(fake, part, 4);
+    for (let i = 0; i < 9; i++) register(`case${i}`, () => {});
+    register.each(['x', 'y'])('parameterized', () => {});
+  }
+  expect(all.length).toBe(11);
+  expect(new Set(all).size).toBe(11);
+});
