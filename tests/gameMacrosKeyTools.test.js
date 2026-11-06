@@ -30,3 +30,17 @@ it('reports the actual blocker in Russian and does not include arbitrary native 
   expect(macroErrorText('Release modifier keys and retry')).toContain('отпустите Ctrl');
   expect(macroErrorText(new Error('private path/token'))).not.toContain('private path');
 });
+
+it('edits only the current sequence step and creates a key step after a pause', () => {
+  const input = document.createElement('textarea');
+  input.name = 'sequence';
+  input.value = 'F8\nF1';
+  input.setSelectionRange(1, 1);
+  insertKeyToken(input, 'SHIFT');
+  insertKeyToken(input, 'F7');
+  expect(input.value).toBe('SHIFT+F7\nF1');
+  insertKeyToken(input, 'wait 100');
+  expect(input.value).toBe('SHIFT+F7\nwait 100\nF1');
+  insertKeyToken(input, 'F8');
+  expect(input.value).toBe('SHIFT+F7\nwait 100\nF8\nF1');
+});

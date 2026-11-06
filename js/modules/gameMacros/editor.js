@@ -48,18 +48,37 @@ export function insertKeyToken(input, token) {
   }
   const start = input.selectionStart ?? input.value.length,
     end = input.selectionEnd ?? start;
-  if (input.name === 'sequence' && token === 'wait 100') {
-    const before = input.value.slice(0, start),
-      after = input.value.slice(end);
-    const text =
-      (before && !before.endsWith('\n') ? '\n' : '') + 'wait 100' + (after && !after.startsWith('\n') ? '\n' : '');
-    input.setRangeText(text, start, end, 'end');
-  } else if (input.name === 'sequence' && token === 'newline') input.setRangeText('\n', start, end, 'end');
-  else if (['CTRL', 'ALT', 'SHIFT'].includes(token)) {
-    const lineStart = input.value.lastIndexOf('\n', start - 1) + 1;
-    const line = input.value.slice(lineStart, start);
-    if (!line.toUpperCase().split('+').includes(token)) input.setRangeText(token + '+', lineStart, lineStart, 'end');
-  } else input.setRangeText(token, start, end, 'end');
+  const lineStart = input.value.lastIndexOf('\n', start - 1) + 1;
+  const nextBreak = input.value.indexOf('\n', start),
+    lineEnd = nextBreak < 0 ? input.value.length : nextBreak;
+  const line = input.value.slice(lineStart, lineEnd).trim();
+  if (token === 'newline') input.setRangeText('\n', lineEnd, lineEnd, 'end');
+  else if (token === 'wait 100') {
+    if (!line || /^wait\s/i.test(line)) input.setRangeText('wait 100', lineStart, lineEnd, 'end');
+    else input.setRangeText('\nwait 100', lineEnd, lineEnd, 'end');
+  } else if (start !== end) input.setRangeText(token, start, end, 'end');
+  else if (/^wait\s/i.test(line))
+    input.setRangeText(
+      '\n' + (['CTRL', 'ALT', 'SHIFT'].includes(token) ? token + '+' : token),
+      lineEnd,
+      lineEnd,
+      'end'
+    );
+  else {
+    const parts = line.toUpperCase().split('+'),
+      mods = new Set(parts.filter(p => ['CTRL', 'ALT', 'SHIFT'].includes(p)));
+    let key = parts.find(p => p && !['CTRL', 'ALT', 'SHIFT'].includes(p)) || '';
+    if (['CTRL', 'ALT', 'SHIFT'].includes(token)) {
+      if (mods.has(token)) mods.delete(token);
+      else mods.add(token);
+    } else key = token;
+    input.setRangeText(
+      [...['CTRL', 'ALT', 'SHIFT'].filter(p => mods.has(p)), key].join('+'),
+      lineStart,
+      lineEnd,
+      'end'
+    );
+  }
   input.focus();
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -92,7 +111,7 @@ export function openCommandEditor(c, save, row = null) {
         .map(char => `<label><input type="checkbox" name="charIds" value="${esc(char.id)}"> ${esc(char.nick)}</label>`)
         .join('') || '<p class="muted">Сначала выберите пати.</p>'
     }</fieldset><label data-gm-click-field>Точка для клика <select name="pointId"><option value="">Не выбрана</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · UI ${esc(p.uiScale)}</option>`).join('')}</select></label><fieldset data-gm-variants-field><legend>Дополнительные профили точки для других размеров/DPI</legend><p class="muted">Для реса во всех окнах разного размера откалибруйте одну и ту же кнопку в каждом формате. Автоматического масштабирования нет. Для каждого окна должен подойти ровно один профиль.</p>${c.points.map(p => `<label><input type="checkbox" name="pointIds" value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height} · DPI ${p.dpi}</label>`).join('')}</fieldset><label data-gm-follow-field>Пункт меню Follow <select name="menuPointId"><option value="">Не выбран</option>${c.points.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${p.width}×${p.height}</option>`).join('')}</select></label><p class="muted" data-gm-follow-field>Основная точка — портрет для ПКМ. Убедитесь, что Shift+1 и этот портрет выбирают именно назначенного ПЛ в игре. Внутриигровое лидерство программа не меняет.</p><label class="gm-consent" data-gm-click-field><input type="checkbox" name="resourceAllowed"> Разрешаю координатный клик, в том числе возможный расход игровых ресурсов; сверил масштаб и расположение UI с профилем</label><label data-gm-sequence-field>Последовательность (один шаг на строку)<textarea class="input" name="sequence" rows="4">F8
-wait 200</textarea></label><p class="muted" data-gm-sequence-field>Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p></form><p data-gm-form-error role="alert" hidden></p></div>`,
+wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки клавиш меняют текущий шаг; «↵ Новая строка» добавляет следующий. Пример ассиста: SHIFT+1, wait 100, F7 — каждый шаг на новой строке. Проверьте игровые привязки; назначенный ПЛ не обязательно первый в игровом списке. Не более 20 шагов; бесконечных циклов и скриптов нет. Координатный клик — отдельное действие с калибровкой и разрешением расходов.</p></form><p data-gm-form-error role="alert" hidden></p></div>`,
     submitText: 'Сохранить команду',
     cancelText: 'Отмена',
     onSubmit: async data => {
