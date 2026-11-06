@@ -165,3 +165,11 @@ it('allows an elevated game only when the live application privilege probe also 
   expect(() => resolveTargets(state, config, command, [{ ...rows[0], elevated: null, selfElevated: true }])).toThrow();
   expect(normalizeGameMacros({ opacity: 0.1 }).opacity).toBe(0.1);
 });
+
+it('preserves explicit delivery mode but defaults old commands to foreground', () => {
+  const base = { id: 'x', action: 'sequence', sequence: 'F8' };
+  expect(normalizeGameMacros({ commands: [base] }).commands[0].delivery).toBe('foreground');
+  expect(normalizeGameMacros({ commands: [{ ...base, delivery: 'background' }] }).commands[0].delivery).toBe(
+    'background'
+  );
+});

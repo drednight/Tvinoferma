@@ -2349,6 +2349,32 @@ pub async fn launcher_running_details() -> Result<Vec<RunningClient>, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Per-operation macro validation: inspect only the requested process/windows, without
+/// reading captions or tokens of unrelated windows. No identity/handle cache is used.
+#[cfg(windows)]
+pub(crate) fn macro_client(pid: u32, started_at: u64) -> Result<RunningClient, String> {
+    let image = win::process_image_path(pid).ok_or("Cannot inspect game process")?;
+    let name = image.rsplit(['\\', '/']).next().unwrap_or("");
+    if !is_client_image(name) || win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    let mut windows = win::select_main_windows(win::windows_of(&[pid]));
+    let (hwnd, title) = windows.remove(&pid).ok_or("No unique game window")?;
+    let elevated = win::process_elevated(pid);
+    // Recheck after enumeration rather than trusting a cached PID.
+    if win::process_start_ms(pid) != Some(started_at) {
+        return Err("Game client identity changed or access is unavailable".into());
+    }
+    Ok(RunningClient {
+        pid,
+        image,
+        started_at: Some(started_at),
+        title,
+        hwnd: Some(hwnd as u64),
+        elevated,
+    })
+}
+
 /// Закрыть выбранные клиенты игры по PID. Возвращает отчёт в том же виде, что закрытие всех окон.
 /// PID — только числа, поэтому подставлять их в вызов безопасно.
 #[tauri::command]

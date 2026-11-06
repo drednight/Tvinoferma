@@ -388,17 +388,12 @@ pub async fn game_macro_action(
     main_only(&window)?;
     #[cfg(windows)]
     {
-        let clients = crate::launcher::launcher_running_details().await?;
-        let client = clients
-            .into_iter()
-            .find(|c| {
-                c.pid == target.pid
-                    && c.started_at == Some(target.started_at)
-                    && compatible_integrity(c.elevated, crate::launcher::self_elevated())
-            })
-            .ok_or("Game client identity changed or access is unavailable")?;
-        let hwnd = client.hwnd.ok_or("No game window")?;
         tauri::async_runtime::spawn_blocking(move || {
+            let client = crate::launcher::macro_client(target.pid, target.started_at)?;
+            if !compatible_integrity(client.elevated, crate::launcher::self_elevated()) {
+                return Err("Game client identity changed or access is unavailable".into());
+            }
+            let hwnd = client.hwnd.ok_or("No game window")?;
             win::action(hwnd, target.pid, &action, key.as_deref(), rect, point)
         })
         .await
@@ -576,10 +571,42 @@ mod win {
                     if IsIconic(hwnd).as_bool() {
                         let _ = ShowWindow(hwnd, SW_RESTORE);
                     }
-                    let _ = SetForegroundWindow(hwnd);
-                    std::thread::sleep(Duration::from_millis(80));
+                    if GetForegroundWindow() != hwnd {
+                        let _ = SetForegroundWindow(hwnd);
+                        std::thread::sleep(Duration::from_millis(80));
+                    }
                     if GetForegroundWindow() != hwnd {
                         return Err("Windows refused game activation".into());
+                    }
+                }
+                "key-background" => {
+                    let (mods, key) = chord(key.ok_or("Missing key")?)?;
+                    if !mods.is_empty() {
+                        return Err("Background modifiers are unsupported".into());
+                    }
+                    let scan = MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC);
+                    let extended = matches!(key, 0x21..=0x28 | 0x2d | 0x2e);
+                    let flags = 1u32 | ((scan & 0xff) << 16) | ((extended as u32) << 24);
+                    // Only enqueue messages to the verified HWND. Never activate, attach input
+                    // threads, change keyboard state, or fall back to global SendInput here.
+                    let down = PostMessageW(
+                        Some(hwnd),
+                        WM_KEYDOWN,
+                        WPARAM(key as usize),
+                        LPARAM(flags as isize),
+                    );
+                    if down.is_ok() {
+                        std::thread::sleep(Duration::from_millis(30));
+                    }
+                    // Best effort release even when the down message could not be queued.
+                    let up = PostMessageW(
+                        Some(hwnd),
+                        WM_KEYUP,
+                        WPARAM(key as usize),
+                        LPARAM((flags | 0xc0000000) as isize),
+                    );
+                    if down.is_err() || up.is_err() {
+                        return Err("Cannot queue background key".into());
                     }
                 }
                 "key" => {

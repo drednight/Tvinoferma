@@ -1,7 +1,7 @@
 import { state } from '../../core/state.js';
 import { escapeHtml as esc } from '../../core/utils.js';
 import { showModal } from '../../core/ui.js';
-import { chord, steps, partyMembers } from './model.js';
+import { chord, steps, partyMembers, backgroundCompatible } from './model.js';
 export const commandLabels = {
   next: 'Следующее окно',
   previous: 'Предыдущее окно',
@@ -96,7 +96,7 @@ export function openCommandEditor(c, save, row = null) {
       )
       .join(
         ''
-      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Неизвестное окно блокирует общий запуск, а не выбирается наугад.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
+      )}</fieldset><aside data-gm-action-help aria-live="polite"></aside></div><label>Сочетание для запуска <input class="input" name="hotkey" placeholder="CTRL+ALT+F8"></label><label>Доставка клавиш<select name="delivery"><option value="foreground">Обычная — с переключением окна (ускорена)</option><option value="background">Без переключения — оконные сообщения (эксперимент)</option></select><small>Фон: только клавиши без Ctrl/Shift/Alt в последовательности либо F6→F1. Игра может игнорировать сообщения. Нет автоперехода к переключению окон, результат в игре не подтверждается. Не используйте для расходных действий без проверки.</small></label><label data-gm-scope-field>Область команды <select name="scope"><option value="party">Управляющая пати</option><option value="managed">Все распознанные запущенные окна</option></select><small>«Управляющая пати» — участники пати, выбранной в основном разделе. «Все распознанные окна» — все проверенные клиенты, даже из других пати; это нужно, например, для общего реса. Неизвестное окно блокирует общий запуск, а не выбирается наугад.</small></label><fieldset class="gm-choice-grid" data-gm-targets><legend>Кому отправлять</legend>${[
       ['all', 'Вся пати'],
       ['leader', 'Только ПЛ'],
       ['others', 'Кроме ПЛ'],
@@ -120,6 +120,10 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
         if (!String(value.name || '').trim()) throw new Error('Введите название команды.');
         if (value.hotkey && !chord(value.hotkey)) throw new Error('Пример сочетания: CTRL+ALT+F8.');
         if (value.action === 'sequence') steps(value.sequence);
+        if (value.delivery === 'background' && !backgroundCompatible(value))
+          throw new Error(
+            'Фоновый режим: только последовательность без Ctrl/Shift/Alt или F6→F1. Клики, следование, оптимизация и переключение требуют обычного режима.'
+          );
         value.sequence = value.action === 'sequence' ? value.sequence : 'F8';
         if (value.action === 'leader') value.target = 'leader';
         if (['f6f1', 'optimize', 'launch', 'pause'].includes(value.action)) value.target = 'all';
@@ -157,6 +161,7 @@ wait 200</textarea></label><p class="muted" data-gm-sequence-field>Кнопки 
     target: 'all',
     hotkey: '',
     scope: 'party',
+    delivery: 'foreground',
     sequence: 'F8',
     pointId: '',
     menuPointId: '',

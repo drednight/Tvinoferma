@@ -256,3 +256,81 @@ it('refuses an imported contradictory global scope instead of widening an others
   await runtime.run('bad');
   expect(invoke.mock.calls.some(([, args]) => args?.action === 'key')).toBe(false);
 });
+
+describe('fast and background keyboard delivery', () => {
+  it('sends background keys without any focus, foreground probe, or global input', async () => {
+    state.settings.gameMacros.commands[0] = {
+      id: 'test',
+      name: 'Фон',
+      action: 'sequence',
+      target: 'all',
+      delivery: 'background',
+      sequence: 'F3\nwait 100\nF4'
+    };
+    await runtime.run('test');
+    const actions = invoke.mock.calls.filter(([c]) => c === 'game_macro_action').map(([, a]) => [a.action, a.key]);
+    expect(actions).toEqual([
+      ['key-background', 'F3'],
+      ['key-background', 'F4']
+    ]);
+    expect(runtime.snapshot().logs.join(' ')).toContain('НЕ подтверждена');
+  });
+  it('rejects background modifiers before enumerating or sending', async () => {
+    state.settings.gameMacros.commands[0] = {
+      id: 'test',
+      action: 'sequence',
+      target: 'all',
+      delivery: 'background',
+      sequence: 'SHIFT+1\nF7'
+    };
+    await runtime.run('test');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(runtime.snapshot().logs.join(' ')).toContain('не поддерживает фоновую');
+  });
+  it('never falls back to focus or SendInput after a background failure', async () => {
+    state.settings.gameMacros.commands[0] = {
+      id: 'test',
+      action: 'sequence',
+      target: 'all',
+      delivery: 'background',
+      sequence: 'F3\nF4'
+    };
+    invoke.mockImplementation(async (c, a) => {
+      if (c === 'launcher_running_details') return [client];
+      if (a?.action === 'key-background') throw new Error('Cannot queue background key');
+      return null;
+    });
+    await runtime.run('test');
+    expect(invoke.mock.calls.filter(([c]) => c === 'game_macro_action').map(([, a]) => a.action)).toEqual([
+      'key-background'
+    ]);
+    expect(runtime.snapshot().logs.join(' ')).toContain('Автоповтора и переключения окон нет');
+  });
+  it('retains stop between background recipients/keys', async () => {
+    state.settings.gameMacros.commands[0] = {
+      id: 'test',
+      action: 'sequence',
+      target: 'all',
+      delivery: 'background',
+      sequence: 'F3\nF4'
+    };
+    invoke.mockImplementation(async (c, a) => {
+      if (c === 'launcher_running_details') return [client];
+      if (a?.action === 'key-background') runtime.stop();
+      return null;
+    });
+    await runtime.run('test');
+    expect(invoke.mock.calls.filter(([, a]) => a?.action === 'key-background')).toHaveLength(1);
+  });
+  it('removes redundant 50/80 ms JS sleeps for a one-key foreground command', async () => {
+    state.settings.gameMacros.commands[0].sequence = 'F8';
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      await runtime.run('test');
+      expect(timeout.mock.calls.some(([, delay]) => delay === 80 || delay === 50)).toBe(false);
+      expect(runtime.snapshot().logs.join(' ')).toContain('Время выполнения');
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+});

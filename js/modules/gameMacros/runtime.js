@@ -1,6 +1,6 @@
 import { listen, emitTo } from '@tauri-apps/api/event';
 import { state } from '../../core/state.js';
-import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint } from './model.js';
+import { normalizeGameMacros, resolveTargets, steps, commandPoint, validPoint, backgroundCompatible } from './model.js';
 let invoke;
 let initialized = false,
   busy = false,
@@ -191,6 +191,10 @@ export function macroErrorText(error) {
       'Фокус сменился или зажата кнопка мыши/клавиша. Отпустите ввод и повторите из игрового окна.',
     'Game window disappeared':
       'Игровое окно закрылось или перезапустилось. Заново откройте клиент и проверьте список окон.',
+    'Background modifiers are unsupported':
+      'Фоновая доставка сочетаний с Ctrl/Shift/Alt не поддерживается. Используйте обычный режим.',
+    'Cannot queue background key':
+      'Windows отказала в постановке фоновой клавиши. Автоповтора и переключения окон нет.',
     'Key input incomplete or focus changed':
       'Windows не приняла ввод целиком или сменилось активное окно. Повтора автоматически не будет.'
   };
@@ -226,6 +230,7 @@ export async function run(id, hotkey = false) {
     command = c.commands.find(r => r.id === id);
   if (!command) return;
   busy = true;
+  const started = performance.now();
   cancelled = false;
   void broadcast();
   try {
@@ -238,8 +243,12 @@ export async function run(id, hotkey = false) {
       log('Открыта штатная очередь запуска пати.');
       return;
     }
+    if (command.delivery === 'background' && !backgroundCompatible(command))
+      throw new Error(
+        'Эта команда не поддерживает фоновую доставку. Нужна последовательность без модификаторов либо F6→F1.'
+      );
     const rows = await windowTargets(command, c);
-    if (hotkey) {
+    if (hotkey && command.delivery !== 'background') {
       let foreground = false;
       for (const row of rows) {
         try {
@@ -254,9 +263,40 @@ export async function run(id, hotkey = false) {
         log('Горячая команда пропущена: активное окно не относится к выбранной пати.');
         return;
       }
-      await wait(250);
     }
     log(`Начало: ${command.name}. Получателей: ${rows.length}.`);
+    if (command.delivery === 'background') {
+      const send = async (row, key) => {
+        if (cancelled) throw new Error('cancel');
+        await act(row, 'key-background', { key });
+      };
+      if (command.action === 'f6f1') {
+        const scoped = scopedConfig(c, command),
+          leaderId = scoped.leaders[scoped.partyId];
+        if (!rows.some(row => row.charId === leaderId)) throw new Error('PL required');
+        for (const row of rows.filter(row => row.charId !== leaderId)) await send(row, 'F6');
+        for (const row of rows) await send(row, 'F1');
+      } else {
+        for (const row of rows) {
+          let previousKey = false;
+          for (const step of steps(command.sequence)) {
+            if (step.wait) {
+              await wait(step.wait);
+              previousKey = false;
+            } else {
+              if (previousKey) await wait(30);
+              await send(row, step.key);
+              previousKey = true;
+            }
+          }
+        }
+      }
+      log(
+        'Оконные сообщения поставлены в очередь без активации окон. Обработка игрой НЕ подтверждена; автоматического повтора/переключения нет.'
+      );
+      return;
+    }
+
     if (['next', 'previous'].includes(command.action)) {
       let activeId = cycleId;
       for (const row of rows) {
@@ -283,15 +323,13 @@ export async function run(id, hotkey = false) {
       if (!leader) throw new Error('PL required');
       if (command.action === 'f6f1') {
         for (const row of rows.filter(r => r.charId !== leaderId)) {
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(row, 'focus');
-          await wait(80);
           await act(row, 'key', { key: 'F6' });
         }
         for (const row of rows) {
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(row, 'focus');
-          await wait(80);
           await act(row, 'key', { key: 'F1' });
         }
       } else {
@@ -302,21 +340,20 @@ export async function run(id, hotkey = false) {
           height: row.charId === leaderId ? c.leaderHeight : c.otherHeight
         });
         for (const row of rows) {
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(row, 'resize-check', { rect: rectFor(row) });
         }
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         await act(leader, 'client-layout', { rect: rectFor(leader) });
         for (const row of rows.filter(r => r.charId !== leaderId)) {
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(row, 'focus');
-          await wait(80);
           await act(row, 'key', { key: 'CTRL+F9' });
           await wait(150);
           await act(row, 'client-layout', { rect: rectFor(row) });
         }
       }
-      await wait(50);
+      if (cancelled) throw new Error('cancel');
       await act(leader, 'focus');
       log(
         command.action === 'f6f1'
@@ -329,13 +366,12 @@ export async function run(id, hotkey = false) {
       if (![point, menu].every(p => reviewedPoints.has(JSON.stringify(p)))) throw new Error('preview required');
       for (const row of rows)
         for (const p of [point, menu]) {
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(row, 'preview', { point: p });
         }
       for (const row of rows) {
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         await act(row, 'focus');
-        await wait(80);
         await act(row, 'key', { key: 'SHIFT+1' });
         await wait(80);
         await act(row, 'right-click', { point });
@@ -346,11 +382,11 @@ export async function run(id, hotkey = false) {
     } else if (command.action === 'click') {
       const plan = await pointPlan(c, command, rows, true);
       for (const { row, point } of plan) {
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         await act(row, 'preview', { point });
       }
       for (const [index, { row, point }] of plan.entries()) {
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         await act(row, 'focus');
         await wait(100);
         await act(row, 'click', { point });
@@ -361,7 +397,7 @@ export async function run(id, hotkey = false) {
       if (!profile || rows.some(row => !profile.windows.some(w => w.charId === row.charId)))
         throw new Error('no complete profile');
       for (const row of rows) {
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         const geometry = profile.windows.find(w => w.charId === row.charId);
         if (!geometry) throw new Error('missing profile member');
         await act(row, 'layout', { rect: geometry });
@@ -369,14 +405,18 @@ export async function run(id, hotkey = false) {
     } else {
       const sequence = command.action === 'sequence' ? steps(command.sequence) : [];
       for (const [index, row] of rows.entries()) {
-        await wait(50);
+        if (cancelled) throw new Error('cancel');
         await act(row, 'focus');
         if (cancelled) throw new Error('cancel');
+        let previousKey = false;
         for (const step of sequence) {
-          if (step.wait) await wait(step.wait);
-          else {
-            await wait(80);
+          if (step.wait) {
+            await wait(step.wait);
+            previousKey = false;
+          } else {
+            if (previousKey) await wait(30);
             await act(row, 'key', { key: step.key });
+            previousKey = true;
           }
         }
         log(`Обработано окон: ${index + 1}/${rows.length}. Ввод отправлен; результат в игре не проверялся.`);
@@ -388,7 +428,7 @@ export async function run(id, hotkey = false) {
       if (leaderId) {
         try {
           const [leader] = await windowTargets({ target: 'leader', action: 'leader' }, scoped);
-          await wait(50);
+          if (cancelled) throw new Error('cancel');
           await act(leader, 'focus');
         } catch {
           /* no implicit replacement */
@@ -399,6 +439,9 @@ export async function run(id, hotkey = false) {
   } catch (error) {
     log(cancelled ? 'Остановлено пользователем.' : `Остановлено: ${macroErrorText(error)}`);
   } finally {
+    log(
+      `Время выполнения: ${Math.round(performance.now() - started)} мс. Это время доставки/проверок, не подтверждение действия в игре.`
+    );
     busy = false;
     void broadcast();
   }

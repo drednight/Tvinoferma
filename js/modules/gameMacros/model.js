@@ -67,6 +67,7 @@ export function normalizeGameMacros(input = {}) {
         row.id === 'ahk-buff' && row.name === 'Баф — отдельная пати' ? 'Баф — выбранная пати' : row.name || 'Команда'
       ).slice(0, 80),
       action: row.action,
+      delivery: row.delivery === 'background' ? 'background' : 'foreground',
       hotkey: chord(row.hotkey),
       target: ['all', 'others', 'leader', 'subset'].includes(row.target) ? row.target : 'others',
       sequence,
@@ -235,4 +236,15 @@ export function commandPoint(c, command, authorize = true) {
 
 function size(value, fallback) {
   return Number.isInteger(value) && value >= 160 && value <= 8000 ? value : fallback;
+}
+
+/** Background window messages cannot reliably synthesize modifier state for a game. */
+export function backgroundCompatible(command) {
+  if (command.action === 'f6f1') return true;
+  if (command.action !== 'sequence') return false;
+  try {
+    return steps(command.sequence).every(step => step.wait || !step.key.includes('+'));
+  } catch {
+    return false;
+  }
 }
