@@ -38,19 +38,53 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-frontend
-      # Every file runs exactly once, still isolated; no reduced test selection.
-      - run: npm test -- --shard=${{ matrix.shard }}/8 --maxWorkers=2
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ci-timings
+          key: test-times-v1-${{ github.head_ref || github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            test-times-v1-${{ github.head_ref || github.ref_name }}-
+            test-times-v1-main-
+      # Same deterministic LPT plan on all workers; first run collects a baseline.
+      - run: node scripts/run-balanced-tests.mjs ${{ matrix.shard }}/8
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-times-${{ matrix.shard }}
+          path: .ci-results/*.json
+          retention-days: 14
+
+  frontend-timings:
+    if: github.event_name != 'push'
+    needs: frontend-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-times-*
+          path: .ci-results
+          merge-multiple: true
+      - run: node scripts/merge-test-timings.mjs
+      - uses: actions/cache/save@v4
+        with:
+          path: .ci-timings
+          key: test-times-v1-${{ github.head_ref || github.ref_name }}-${{ github.run_id }}
 
   # Preserve the existing required check name; it cannot pass before ALL shards.
   frontend:
     if: always()
-    needs: [frontend-quality, frontend-tests]
+    needs: [frontend-quality, frontend-tests, frontend-timings]
     runs-on: ubuntu-latest
     steps:
       - name: Require quality checks and the complete regression suite
         env:
           QUALITY: ${{ needs.frontend-quality.result }}
           TESTS: ${{ needs.frontend-tests.result }}
+          TIMINGS: ${{ needs.frontend-timings.result }}
           EVENT: ${{ github.event_name }}
         run: |
           test "$QUALITY" = success
@@ -58,6 +92,7 @@ jobs:
             test "$TESTS" = skipped
           else
             test "$TESTS" = success
+            test "$TIMINGS" = success
           fi
 
   frontend-audit:
@@ -90,9 +125,26 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Start cache clock
+        id: cache-clock
+        shell: pwsh
+        run: '"started=$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())" >> $env:GITHUB_OUTPUT'
       - uses: swatinem/rust-cache@v2
+        id: rust-cache
         with:
           workspaces: src-tauri -> target
+      - name: Record Rust cache result
+        shell: pwsh
+        env:
+          CACHE_HIT: ${{ steps.rust-cache.outputs.cache-hit }}
+          CACHE_STARTED: ${{ steps.cache-clock.outputs.started }}
+        run: |
+          "### Rust ${{ matrix.check }} cache" >> $env:GITHUB_STEP_SUMMARY
+          "Cache hit: $env:CACHE_HIT (an empty/false value is not a full hit)." >> $env:GITHUB_STEP_SUMMARY
+          $elapsed = ([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - [long]$env:CACHE_STARTED) / 1000
+          "Cache restore step including action overhead: $elapsed seconds." >> $env:GITHUB_STEP_SUMMARY
+          rustc -Vv
+          cargo -V
       - run: mkdir dist
       - run: ./.github/scripts/run-cargo-windows.ps1 ${{ matrix.check }}
         env:

@@ -17,3 +17,7 @@ docs/mockups/shots/
 # поэтому лок-файл pnpm не коммитим: два источника версий в одном репозитории расходятся.
 # Локально пользоваться pnpm можно, файл просто не попадёт в изменения.
 pnpm-lock.yaml
+
+# Disposable CI timing metadata (no test titles, bodies, or credentials).
+.ci-results/
+.ci-timings/
