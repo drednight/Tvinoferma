@@ -1354,6 +1354,7 @@ mod mirror;
 static MIRROR_CONTROL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri IPC parameters retain the existing frontend contract.
 pub async fn game_macro_mirror(
     window: tauri::WebviewWindow,
     app: tauri::AppHandle,
