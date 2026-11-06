@@ -268,7 +268,8 @@ export function mountGameMacros(host) {
       save({ points: config().points.filter(p => p.id !== point.id) })
     );
     detail.querySelector('[data-point-edit]').onclick = () => {
-      let draft = { ...point };
+      let draft = { ...point },
+        calibrationPending = false;
       const fields = () => {
         const form = document.querySelector('[data-point-edit-form]');
         return {
@@ -280,6 +281,9 @@ export function mountGameMacros(host) {
       };
       showModal({
         title: 'Редактировать точку',
+        onClose: () => {
+          if (calibrationPending) stop();
+        },
         content: `<form data-point-edit-form><label>Название<input class="input" name="name" maxlength="80" required value="${esc(point.name)}"></label><label>Игровое окно для показа / перемещения<select name="charId">${partyMembers(
           state,
           c.partyId
@@ -291,6 +295,10 @@ export function mountGameMacros(host) {
         submitText: 'Сохранить',
         cancelText: 'Отмена',
         onSubmit: async () => {
+          if (calibrationPending) {
+            toast('Сначала завершите задание точки в игре.', 'error');
+            return false;
+          }
           const value = fields();
           if (!value.name || !validPoint(value)) {
             toast('Введите название и целые координаты внутри игровой области.', 'error');
@@ -303,22 +311,32 @@ export function mountGameMacros(host) {
           await save({ points: config().points.map(p => (p.id === point.id ? value : p)) });
         }
       });
+      document.querySelector('[data-point-edit-form]').onsubmit = event => {
+        event.preventDefault();
+        document.querySelector('#modal-root .modal-footer .primary')?.click();
+      };
       document.querySelector('[data-point-position]').onclick = safe(async () => {
         const form = document.querySelector('[data-point-edit-form]');
         const value = fields();
-        draft = await pickPoint(
-          form.elements.namedItem('charId').value,
-          value.name || point.name,
-          point.id,
-          c.partyId,
-          true,
-          value
-        );
-        form.elements.namedItem('x').value = draft.x;
-        form.elements.namedItem('x').max = draft.width - 1;
-        form.elements.namedItem('y').value = draft.y;
-        form.elements.namedItem('y').max = draft.height - 1;
-        form.querySelector('[data-point-metric]').textContent = `${draft.width} × ${draft.height}, DPI ${draft.dpi}`;
+        if (calibrationPending) return;
+        calibrationPending = true;
+        try {
+          draft = await pickPoint(
+            form.elements.namedItem('charId').value,
+            value.name || point.name,
+            point.id,
+            c.partyId,
+            true,
+            value
+          );
+          form.elements.namedItem('x').value = draft.x;
+          form.elements.namedItem('x').max = draft.width - 1;
+          form.elements.namedItem('y').value = draft.y;
+          form.elements.namedItem('y').max = draft.height - 1;
+          form.querySelector('[data-point-metric]').textContent = `${draft.width} × ${draft.height}, DPI ${draft.dpi}`;
+        } finally {
+          calibrationPending = false;
+        }
       });
     };
   };

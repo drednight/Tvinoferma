@@ -829,6 +829,7 @@ export async function pickPoint(
   let unlisten, timer;
   try {
     const rows = await windowTargets({ target: 'subset', charIds: [charId], partyId });
+    if (cancelled) throw new Error('Задание точки отменено.');
     const requestId = crypto.randomUUID();
     let resolveResult, rejectResult;
     const result = new Promise((resolve, reject) => {
@@ -842,6 +843,7 @@ export async function pickPoint(
       else resolveResult(event.payload.geometry);
     });
     timer = setTimeout(() => rejectResult(new Error('Время задания точки истекло.')), 300000);
+    if (cancelled) throw new Error('Задание точки отменено.');
     await native('game_macro_guide', {
       mode: 'point',
       requestId,
@@ -850,6 +852,7 @@ export async function pickPoint(
       initialPoint,
       target: { pid: rows[0].pid, startedAt: rows[0].startedAt }
     });
+    if (cancelled) throw new Error('Задание точки отменено.');
     const geometry = await result;
     if (cancelled) throw new Error('Задание точки отменено.');
     const point = {
